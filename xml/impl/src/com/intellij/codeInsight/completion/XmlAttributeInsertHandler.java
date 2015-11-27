@@ -66,7 +66,7 @@ public class XmlAttributeInsertHandler implements InsertHandler<LookupElement> {
     final PsiFile file = context.getFile();
 
     final CharSequence chars = document.getCharsSequence();
-    final boolean insertQuotes = WebEditorOptions.getInstance().isInsertQuotesForAttributeValue();
+    final boolean insertQuotes = WebEditorOptions.getInstance().isInsertQuotesForAttributeValueCompletion();
     final boolean hasQuotes = CharArrayUtil.regionMatches(chars, caretOffset, "=\"");
     if (!hasQuotes && !CharArrayUtil.regionMatches(chars, caretOffset, "='")) {
       PsiElement fileContext = file.getContext();

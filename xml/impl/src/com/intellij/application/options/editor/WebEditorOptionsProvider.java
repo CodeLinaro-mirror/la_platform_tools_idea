@@ -35,6 +35,7 @@ public class WebEditorOptionsProvider implements EditorOptionsProvider {
   private JBCheckBox myAddQuotasForAttributeValue;
   private JBCheckBox myAutoCloseTagCheckBox;
   private JBCheckBox mySyncTagEditing;
+  private JBCheckBox myAddQuotesOnAttributeValueCompletion;
 
   @Override
   public String getDisplayName() {
@@ -60,6 +61,7 @@ public class WebEditorOptionsProvider implements EditorOptionsProvider {
            xmlEditorOptions.isSelectWholeCssIdentifierOnDoubleClick() != mySelectWholeCssIdentifierOnDoubleClick.isSelected() ||
            xmlEditorOptions.isAutomaticallyInsertRequiredSubTags() != myAutomaticallyInsertRequiredSubTagsCheckBox.isSelected() ||
            xmlEditorOptions.isInsertQuotesForAttributeValue() != myAddQuotasForAttributeValue.isSelected() ||
+           xmlEditorOptions.isInsertQuotesForAttributeValueCompletion() != myAddQuotesOnAttributeValueCompletion.isSelected() ||
            xmlEditorOptions.isAutoCloseTag() != myAutoCloseTagCheckBox.isSelected() ||
            xmlEditorOptions.isSyncTagEditing() != mySyncTagEditing.isSelected();
   }
@@ -73,6 +75,7 @@ public class WebEditorOptionsProvider implements EditorOptionsProvider {
     xmlEditorOptions.setAutomaticallyStartAttribute(myAutomaticallyStartAttributeAfterCheckBox.isSelected());
     xmlEditorOptions.setSelectWholeCssIdentifierOnDoubleClick(mySelectWholeCssIdentifierOnDoubleClick.isSelected());
     xmlEditorOptions.setInsertQuotesForAttributeValue(myAddQuotasForAttributeValue.isSelected());
+    xmlEditorOptions.setInsertQuotesForAttributeValueCompletion(myAddQuotesOnAttributeValueCompletion.isSelected());
     xmlEditorOptions.setAutoCloseTag(myAutoCloseTagCheckBox.isSelected());
     xmlEditorOptions.setSyncTagEditing(mySyncTagEditing.isSelected());
   }
@@ -86,6 +89,7 @@ public class WebEditorOptionsProvider implements EditorOptionsProvider {
     myAutomaticallyStartAttributeAfterCheckBox.setSelected(xmlEditorOptions.isAutomaticallyStartAttribute());
     mySelectWholeCssIdentifierOnDoubleClick.setSelected(xmlEditorOptions.isSelectWholeCssIdentifierOnDoubleClick());
     myAddQuotasForAttributeValue.setSelected(xmlEditorOptions.isInsertQuotesForAttributeValue());
+    myAddQuotesOnAttributeValueCompletion.setSelected(xmlEditorOptions.isInsertQuotesForAttributeValueCompletion());
     myAutoCloseTagCheckBox.setSelected(xmlEditorOptions.isAutoCloseTag());
     mySyncTagEditing.setSelected(xmlEditorOptions.isSyncTagEditing());
   }
