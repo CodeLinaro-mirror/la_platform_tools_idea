@@ -102,3 +102,20 @@ export PATH=$JDK_18_x64/bin:$PATH
 # Temp: Figure out if we can properly default to Java8
 export JAVA_HOME=$JAVA8_HOME
 $ANT "-Dout=$OUT" "-Dbuild=$BNUM" "-Denable.ui.tests=$UI_TESTS"
+
+# Temp: figure out how to preserve symlinks
+cd "$OUT/artifacts"
+unzip -q "android-studio-$BNUM.mac.zip"
+cd "Android Studio.app/Contents/jre/jdk/Contents/MacOS" && rm libjli.dylib && ln -s ../Home/jre/lib/jli/libjli.dylib && cd ../../../../../../
+zip --symlinks -r "android-studio-$BNUM.mac.zip" "Android Studio.app/Contents/jre/jdk/Contents/MacOS"
+cd ../../
+
+echo "## Copying android-studio distribution files"
+mkdir -p "$DIST"
+cp -Rfv "$OUT"/artifacts/android-studio* "$DIST"/
+cp -Rfv "$OUT"/updater-full.jar "$DIST"/android-studio-updater.jar
+cp -Rfv "$OUT"/studio-aswb-plugin.zip "$DIST/android-studio-aswb-$BNUM.zip"
+cp -Rfv "$OUT"/sdk-patcher.zip "$DIST"/sdk-patcher.zip
+# write the version number into the windows installer dir
+echo $BNUM > ../adt/idea/native/installer/win/version
+(cd ../adt/idea/native/installer/win && zip -r - ".") > "$DIST"/android-studio-bundle-data.zip

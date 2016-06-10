@@ -102,6 +102,11 @@ def layoutFull(String home, String targetDirectory, String patchedDescriptorDir 
   ].flatten()
 
   List<String> implementationModules = [platformImplementationModules,
+    "cidr-common",
+    "cidr-debugger",
+    "cidr-lang",
+    "cidr-lang-dfa",
+    "cidr-util",
     "compiler-impl",
     "debugger-impl",
     "dom-impl",
