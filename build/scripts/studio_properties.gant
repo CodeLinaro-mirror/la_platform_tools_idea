@@ -97,10 +97,6 @@ def getProperties(String home, String buildNumber) {
         return
       }
       layout(targetDirectory) {
-        dir("${lldbBinTargetRoot}/shared") {
-          fileset(dir: "${lldbBinSrcRoot}/shared")
-        }
-
         dir("gradle") {
           dir("m2repository") {
             fileset(dir: "$studioRepo")
@@ -109,30 +105,6 @@ def getProperties(String home, String buildNumber) {
         }
 
         dir("plugins") {
-          dir("android-ndk") {
-            dir("lib") {
-              jar("android-ndk.jar") {
-                module("android-ndk")
-              }
-            }
-          }
-
-          dir("analytics") {
-            dir("lib") {
-              jar("analytics.jar") {
-                module("analytics")
-              }
-            }
-          }
-
-          dir("games") {
-            dir("lib") {
-              jar("games.jar") {
-                module("games")
-              }
-            }
-          }
-
           dir("google-cloud-tools") {
             dir("lib") {
               jar("google-cloud-tools.jar") {
@@ -210,18 +182,6 @@ def getProperties(String home, String buildNumber) {
             }
           }
 
-          dir("firebase") {
-            dir("lib") {
-              jar("firebase.jar") {
-                module("firebase")
-              }
-              fileset(dir: "${home}/../vendor/google/firebase/lib") {
-                include(name: "**/*.jar")
-                include(name: "**/*.jar-NOTICE")
-              }
-            }
-          }
-
           dir("google-login") {
             dir("lib") {
               jar("google-login.jar") {
@@ -269,14 +229,6 @@ def getProperties(String home, String buildNumber) {
               fileset(dir: "${home}/../studio/google/cloud/testing/test-recorder/lib") {
                 include(name: "**/*.jar")
                 include(name: "**/*.jar-NOTICE")
-              }
-            }
-          }
-
-          dir("ndk-workspace") {
-            dir("lib") {
-              jar("ndk-workspace.jar") {
-                module("ndk-workspace")
               }
             }
           }
@@ -355,23 +307,6 @@ def getProperties(String home, String buildNumber) {
     }
 
     def finishLayout(out) {
-      updateAswbPlugin();
-
-      layout(out) {
-        zip("studio-aswb-plugin.zip") {
-          dir("aswb") {
-            dir("lib") {
-              jar("aswb.jar") {
-                module("aswb")
-                module("blaze-base-aswb")
-                module("blaze-cpp-aswb")
-                module("blaze-java-aswb")
-              }
-              fileset(dir: "$home/../vendor/google3/blaze/blaze-base/lib") { include(name: "*.jar") }
-            }
-          }
-        }
-      }
     }
   }
 }

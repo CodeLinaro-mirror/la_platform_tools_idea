@@ -90,8 +90,6 @@ target(compile: "Compile project") {
   clearBuildCaches()
   projectBuilder.cleanOutput()
 
-  bundledJDK64s()
-
   projectBuilder.buildProduction()
   projectBuilder.makeModuleTests(findModule("jps-builders"))
 
