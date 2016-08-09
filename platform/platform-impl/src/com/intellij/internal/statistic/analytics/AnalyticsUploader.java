@@ -19,6 +19,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Charsets;
 import com.google.common.base.Strings;
 import com.google.common.collect.*;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.intellij.diagnostic.IdeErrorsDialog;
 import com.intellij.ide.SystemHealthMonitor;
 import com.intellij.ide.plugins.PluginManager;
@@ -49,7 +50,12 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.*;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 // Note: Methods such as trackException() are called from within the logger when an exception is detected,
 // so don't use a Logger in this class and possibly end up in an infinite recursion.
@@ -115,6 +121,28 @@ public class AnalyticsUploader {
   public static final String CATEGORY_STUDIO_EXCEPTION = "excstudio";
 
   private static final LastSeenExceptions ourLastSeenExceptions = new LastSeenExceptions(3);
+
+  private static AtomicInteger ourRejectedExecutionCount = new AtomicInteger();
+
+  /**
+   * Executor to use when uploading analytics events. Earlier versions relied on the application pooled thread, but this causes
+   * issues if we generate lots of analytics events within a short time - See https://code.google.com/p/android/issues/detail?id=219563.
+   * This executor is configured such that it only allows a maximum of 5 threads to ever be alive for the purpose of uploading events,
+   * with a backlog of 5 more in the queue. If the queue is full, then subsequent submissions to the queue are rejected.
+   */
+  private static final ExecutorService ourExecutor =
+    new ThreadPoolExecutor(1,
+                           5,
+                           1, TimeUnit.MINUTES,
+                           new LinkedBlockingDeque<>(5),
+                           new ThreadFactoryBuilder().setDaemon(true).setNameFormat("google-logs-pool-%d").build(),
+                           (r, executor) -> {
+                             ourRejectedExecutionCount.incrementAndGet();
+                             if (ourRejectedExecutionCount.compareAndSet(20, 0)) {
+                               Logger.getInstance(AnalyticsUploader.class).info("Lost 20 analytics events due to full queue.");
+                             }
+                           });
+
 
   public static String getLanguage() {
     Locale locale = Locale.getDefault();
@@ -251,9 +279,8 @@ public class AnalyticsUploader {
   }
 
   public static void postToGoogleLogs(@NotNull final String categoryId, @NotNull final Map<String, String> parameters) {
-    ApplicationManager.getApplication().executeOnPooledThread(new Runnable() {
-      @Override
-      public void run() {
+    try {
+      ourExecutor.submit(() -> {
         try {
           URL url = getPingUrl(categoryId, ApplicationInfo.getInstance().getStrictVersion(), INSTALLATION_ID, parameters);
           postToGoogleLogs(url);
@@ -263,8 +290,10 @@ public class AnalyticsUploader {
             System.err.println("Unexpected error while uploading exception metrics: " + t);
           }
         }
-      }
-    });
+      });
+    } catch (RejectedExecutionException ignore) {
+      // handled by the rejected execution handler associated with ourExecutor
+    }
   }
 
   // Posting to Dremel means simply connecting to the URL and ignoring the response
@@ -297,9 +326,8 @@ public class AnalyticsUploader {
                      "unit-test" : ChannelStatus.fromCode(UpdateSettings.getInstance().getUpdateChannelType()).getDisplayName();
     final List<BasicNameValuePair> runtimeData = Collections.singletonList(new BasicNameValuePair(CD_UPDATE_CHANNEL, channel));
 
-    ApplicationManager.getApplication().executeOnPooledThread(new Runnable() {
-      @Override
-      public void run() {
+    try {
+      ourExecutor.submit(() -> {
         CloseableHttpClient client = HttpClientBuilder.create().build();
         HttpPost request = new HttpPost(ANALYTICS_URL);
         try {
@@ -327,8 +355,10 @@ public class AnalyticsUploader {
         finally {
           HttpClientUtils.closeQuietly(client);
         }
-      }
-    });
+      });
+    } catch (RejectedExecutionException e) {
+      // handled by the rejected execution handler associated with ourExecutor
+    }
   }
 
   /**
