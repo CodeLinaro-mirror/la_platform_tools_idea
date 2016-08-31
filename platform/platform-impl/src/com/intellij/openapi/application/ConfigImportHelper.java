@@ -41,7 +41,7 @@ import java.util.PropertyResourceBundle;
  */
 public class ConfigImportHelper {
   /** This should only be done in EAP builds! */
-  private static final boolean SKIP_UPDATE_CHANNEL_IMPORT = true;
+  private static final boolean SKIP_UPDATE_CHANNEL_IMPORT = false;
 
   private static final String FIRST_SESSION_KEY = "intellij.first.ide.session";
   private static final String CONFIG_IMPORTED_IN_CURRENT_SESSION_KEY = "intellij.config.imported.in.current.session";
@@ -177,11 +177,11 @@ public class ConfigImportHelper {
       File v1_3 = new File(PathManager.getDefaultConfigPathFor("AndroidStudio1.3"));
       File v1_4 = new File(PathManager.getDefaultConfigPathFor("AndroidStudio1.4"));
       File v1_5 = new File(PathManager.getDefaultConfigPathFor("AndroidStudio1.5"));
-      File v2preview = new File(PathManager.getDefaultConfigPathFor("AndroidStudioPreview2.0"));
       File v2_0 = new File(PathManager.getDefaultConfigPathFor("AndroidStudio2.0"));
-      File preview = new File(PathManager.getDefaultConfigPathFor("AndroidStudioPreview2.1"));
+      File v21preview = new File(PathManager.getDefaultConfigPathFor("AndroidStudioPreview2.1"));
       File v2_1 = new File(PathManager.getDefaultConfigPathFor("AndroidStudio2.1"));
-      for (File file : new File[] { v1_1, v1_2, v1_3, v1_4, v1_5, v2preview, v2_0, preview, v2_1 }) {
+      File preview = new File(PathManager.getDefaultConfigPathFor("AndroidStudioPreview2.2"));
+      for (File file : new File[] { v1_1, v1_2, v1_3, v1_4, v1_5, v2_0, v21preview, v2_1, preview }) {
         if (!file.isDirectory()) {
           continue;
         }
