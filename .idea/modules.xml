@@ -13,7 +13,6 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/adt-ui/adt-ui.iml" filepath="$PROJECT_DIR$/../adt/idea/adt-ui/adt-ui.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/platform/analysis-api/analysis-api.iml" filepath="$PROJECT_DIR$/platform/analysis-api/analysis-api.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/analysis-impl/analysis-impl.iml" filepath="$PROJECT_DIR$/platform/analysis-impl/analysis-impl.iml" group="platform" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google/analytics/analytics.iml" filepath="$PROJECT_DIR$/../vendor/google/analytics/analytics.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../analytics-library/inspector/analytics-inspector.iml" filepath="$PROJECT_DIR$/../analytics-library/inspector/analytics-inspector.iml" group="android/sdktools/analytics-library" />
       <module fileurl="file://$PROJECT_DIR$/../analytics-library/protos/analytics-protos.iml" filepath="$PROJECT_DIR$/../analytics-library/protos/analytics-protos.iml" group="android/sdktools/analytics-library" />
       <module fileurl="file://$PROJECT_DIR$/../analytics-library/publisher/analytics-publisher.iml" filepath="$PROJECT_DIR$/../analytics-library/publisher/analytics-publisher.iml" group="android/sdktools/analytics-library" />
@@ -21,11 +20,9 @@
       <module fileurl="file://$PROJECT_DIR$/../analytics-library/tracker/analytics-tracker.iml" filepath="$PROJECT_DIR$/../analytics-library/tracker/analytics-tracker.iml" group="android/sdktools/analytics-library" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/android.iml" filepath="$PROJECT_DIR$/../adt/idea/android/android.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../base/annotations/android-annotations.iml" filepath="$PROJECT_DIR$/../base/annotations/android-annotations.iml" group="android/sdktools" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google/android-apk/android-apk.iml" filepath="$PROJECT_DIR$/../vendor/google/android-apk/android-apk.iml" group="plugins/Android" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/common/android-common.iml" filepath="$PROJECT_DIR$/../adt/idea/android/common/android-common.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-gradle-jps/android-gradle-jps.iml" filepath="$PROJECT_DIR$/../adt/idea/android-gradle-jps/android-gradle-jps.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/jps-plugin/android-jps-plugin.iml" filepath="$PROJECT_DIR$/../adt/idea/android/jps-plugin/android-jps-plugin.iml" group="android" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google/android-ndk/android-ndk.iml" filepath="$PROJECT_DIR$/../vendor/google/android-ndk/android-ndk.iml" group="plugins/Android" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/rt/android-rt.iml" filepath="$PROJECT_DIR$/../adt/idea/android/rt/android-rt.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/platform/annotations/annotations.iml" filepath="$PROJECT_DIR$/platform/annotations/annotations.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/annotations/common/annotations-common.iml" filepath="$PROJECT_DIR$/platform/annotations/common/annotations-common.iml" group="platform" />
@@ -35,13 +32,7 @@
       <module fileurl="file://$PROJECT_DIR$/jps/antLayout/antlayout.iml" filepath="$PROJECT_DIR$/jps/antLayout/antlayout.iml" group="jps" />
       <module fileurl="file://$PROJECT_DIR$/plugins/google-app-engine/runtime/appEngine-runtime.iml" filepath="$PROJECT_DIR$/plugins/google-app-engine/runtime/appEngine-runtime.iml" group="plugins/GAE" />
       <module fileurl="file://$PROJECT_DIR$/../base/asset-studio/assetstudio.iml" filepath="$PROJECT_DIR$/../base/asset-studio/assetstudio.iml" group="android/sdktools" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/aswb/aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/aswb/aswb.iml" group="plugins/Google/Blaze" />
       <module fileurl="file://$PROJECT_DIR$/../base/apkparser/binary-resources/binary-resources.iml" filepath="$PROJECT_DIR$/../base/apkparser/binary-resources/binary-resources.iml" group="android/sdktools" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/blaze-base/blaze-base-aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/blaze-base/blaze-base-aswb.iml" group="plugins/Google/Blaze" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/blaze-cpp/blaze-cpp-aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/blaze-cpp/blaze-cpp-aswb.iml" group="plugins/Google/Blaze" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/blaze-google3/blaze-google3-aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/blaze-google3/blaze-google3-aswb.iml" group="plugins/Google/Blaze" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/blaze-java/blaze-java-aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/blaze-java/blaze-java-aswb.iml" group="plugins/Google/Blaze" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/blaze-plugin-dev/blaze-plugin-dev-aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/blaze-plugin-dev/blaze-plugin-dev-aswb.iml" group="plugins/Google/Blaze" />
       <module fileurl="file://$PROJECT_DIR$/platform/boot/boot.iml" filepath="$PROJECT_DIR$/platform/boot/boot.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/bootstrap/bootstrap.iml" filepath="$PROJECT_DIR$/platform/bootstrap/bootstrap.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/build/build.iml" filepath="$PROJECT_DIR$/build/build.iml" />
@@ -51,12 +42,6 @@
       <module fileurl="file://$PROJECT_DIR$/platform/built-in-server/built-in-server-tests.iml" filepath="$PROJECT_DIR$/platform/built-in-server/built-in-server-tests.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/../base/chunkio/chunkio.iml" filepath="$PROJECT_DIR$/../base/chunkio/chunkio.iml" group="android/sdktools" />
       <module fileurl="file://$PROJECT_DIR$/../base/chunkio-processor/chunkio-processor.iml" filepath="$PROJECT_DIR$/../base/chunkio-processor/chunkio-processor.iml" group="android/sdktools" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/intellij/cidr/cidr-common/cidr-common.iml" filepath="$PROJECT_DIR$/../vendor/intellij/cidr/cidr-common/cidr-common.iml" group="java" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/intellij/cidr/cidr-debugger/cidr-debugger.iml" filepath="$PROJECT_DIR$/../vendor/intellij/cidr/cidr-debugger/cidr-debugger.iml" group="java" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/intellij/cidr/cidr-lang/cidr-lang.iml" filepath="$PROJECT_DIR$/../vendor/intellij/cidr/cidr-lang/cidr-lang.iml" group="java" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/intellij/cidr/cidr-lang-dfa/cidr-lang-dfa.iml" filepath="$PROJECT_DIR$/../vendor/intellij/cidr/cidr-lang-dfa/cidr-lang-dfa.iml" group="java" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/intellij/cidr/cidr-util/cidr-util.iml" filepath="$PROJECT_DIR$/../vendor/intellij/cidr/cidr-util/cidr-util.iml" group="java" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/intellij/cidr/clion-build/clion-build.iml" filepath="$PROJECT_DIR$/../vendor/intellij/cidr/clion-build/clion-build.iml" group="java" />
       <module fileurl="file://$PROJECT_DIR$/colorSchemes/colorSchemes.iml" filepath="$PROJECT_DIR$/colorSchemes/colorSchemes.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/plugins/commander/commander.iml" filepath="$PROJECT_DIR$/plugins/commander/commander.iml" group="plugins" />
       <module fileurl="file://$PROJECT_DIR$/../base/common/common.iml" filepath="$PROJECT_DIR$/../base/common/common.iml" group="android/sdktools" />
@@ -110,11 +95,9 @@
       <module fileurl="file://$PROJECT_DIR$/platform/external-system-api/external-system-api.iml" filepath="$PROJECT_DIR$/platform/external-system-api/external-system-api.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/external-system-impl/external-system-impl.iml" filepath="$PROJECT_DIR$/platform/external-system-impl/external-system-impl.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/external-system-rt/external-system-rt.iml" filepath="$PROJECT_DIR$/platform/external-system-rt/external-system-rt.iml" group="platform" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google/firebase/firebase.iml" filepath="$PROJECT_DIR$/../vendor/google/firebase/firebase.iml" group="plugins/Google" />
       <module fileurl="file://$PROJECT_DIR$/../studio/google/cloud/testing/firebase-testing/firebase-testing.iml" filepath="$PROJECT_DIR$/../studio/google/cloud/testing/firebase-testing/firebase-testing.iml" group="plugins/Google" />
       <module fileurl="file://$PROJECT_DIR$/java/compiler/forms-compiler/forms-compiler.iml" filepath="$PROJECT_DIR$/java/compiler/forms-compiler/forms-compiler.iml" group="java/compiler" />
       <module fileurl="file://$PROJECT_DIR$/platform/forms_rt/forms_rt.iml" filepath="$PROJECT_DIR$/platform/forms_rt/forms_rt.iml" group="platform" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google/games/games.iml" filepath="$PROJECT_DIR$/../vendor/google/games/games.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/plugins/git4idea/git4idea.iml" filepath="$PROJECT_DIR$/plugins/git4idea/git4idea.iml" group="plugins/VCS" />
       <module fileurl="file://$PROJECT_DIR$/plugins/git4idea/rt/git4idea-rt.iml" filepath="$PROJECT_DIR$/plugins/git4idea/rt/git4idea-rt.iml" group="plugins/VCS" />
       <module fileurl="file://$PROJECT_DIR$/plugins/github/github.iml" filepath="$PROJECT_DIR$/plugins/github/github.iml" group="plugins" />
@@ -139,7 +122,6 @@
       <module fileurl="file://$PROJECT_DIR$/plugins/hg4idea/hg4idea.iml" filepath="$PROJECT_DIR$/plugins/hg4idea/hg4idea.iml" group="plugins/VCS" />
       <module fileurl="file://$PROJECT_DIR$/platform/icons/icons.iml" filepath="$PROJECT_DIR$/platform/icons/icons.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/java/idea-ui/idea-ui.iml" filepath="$PROJECT_DIR$/java/idea-ui/idea-ui.iml" group="java" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/ijwb/ijwb-aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/ijwb/ijwb-aswb.iml" group="plugins/Google/Blaze" />
       <module fileurl="file://$PROJECT_DIR$/images/images.iml" filepath="$PROJECT_DIR$/images/images.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/indexing-api/indexing-api.iml" filepath="$PROJECT_DIR$/platform/indexing-api/indexing-api.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/indexing-impl/indexing-impl.iml" filepath="$PROJECT_DIR$/platform/indexing-impl/indexing-impl.iml" group="platform" />
@@ -206,7 +188,6 @@
       <module fileurl="file://$PROJECT_DIR$/plugins/maven/maven3-server-common/maven3-server-common.iml" filepath="$PROJECT_DIR$/plugins/maven/maven3-server-common/maven3-server-common.iml" group="plugins/maven" />
       <module fileurl="file://$PROJECT_DIR$/plugins/maven/maven30-server-impl/maven30-server-impl.iml" filepath="$PROJECT_DIR$/plugins/maven/maven30-server-impl/maven30-server-impl.iml" group="plugins/maven" />
       <module fileurl="file://$PROJECT_DIR$/plugins/maven/maven32-server-impl/maven32-server-impl.iml" filepath="$PROJECT_DIR$/plugins/maven/maven32-server-impl/maven32-server-impl.iml" group="plugins/maven" />
-      <module fileurl="file://$PROJECT_DIR$/../vendor/google/ndk-workspace/ndk-workspace.iml" filepath="$PROJECT_DIR$/../vendor/google/ndk-workspace/ndk-workspace.iml" group="plugins/Android" />
       <module fileurl="file://$PROJECT_DIR$/../base/ninepatch/ninepatch.iml" filepath="$PROJECT_DIR$/../base/ninepatch/ninepatch.iml" group="android/sdktools" />
       <module fileurl="file://$PROJECT_DIR$/java/openapi/openapi.iml" filepath="$PROJECT_DIR$/java/openapi/openapi.iml" group="java" />
       <module fileurl="file://$PROJECT_DIR$/../base/perflib/perflib.iml" filepath="$PROJECT_DIR$/../base/perflib/perflib.iml" group="android/sdktools" />
