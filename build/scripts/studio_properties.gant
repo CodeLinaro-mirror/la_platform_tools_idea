@@ -96,7 +96,6 @@ def getProperties(String home, String buildNumber) {
         dir("gradle") {
           dir("m2repository") {
             fileset(dir: "$studioRepo")
-            fileset(dir: "${home}/../../out/studio/repo")
           }
         }
 
