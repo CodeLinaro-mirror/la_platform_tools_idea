@@ -44,6 +44,7 @@ import org.jetbrains.annotations.PropertyKey;
 
 import javax.swing.*;
 import javax.swing.event.HyperlinkEvent;
+import java.awt.*;
 import java.io.File;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -84,6 +85,7 @@ public class SystemHealthMonitor extends ApplicationComponent.Adapter {
   public void initComponent() {
     checkJvm();
     checkIBus();
+    checkMacNeedsNewJdk();
     startDiskSpaceMonitoring();
 
     if (ApplicationManager.getApplication().isInternal() || StatisticsUploadAssistant.isSendAllowed()) {
@@ -139,6 +141,25 @@ public class SystemHealthMonitor extends ApplicationComponent.Adapter {
             String fix = System.getenv("IBUS_ENABLE_SYNC_MODE");
             if (fix == null || fix.isEmpty() || fix.equals("0") || fix.equalsIgnoreCase("false")) {
               showNotification("ibus.blocking.warn.message");
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private void checkMacNeedsNewJdk() {
+    if (SystemInfo.isMac && !SystemInfo.isJavaVersionAtLeast("1.8.0_112")) {
+      if (SystemInfo.isOsVersionAtLeast("10.12")) { // Sierra scrolling bug
+        showNotification("mac.jdk.update");
+      } else {
+        GraphicsEnvironment graphicsEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        for (GraphicsDevice graphicsDevice : graphicsEnvironment.getScreenDevices()) {
+          if (graphicsDevice.getType() == GraphicsDevice.TYPE_RASTER_SCREEN) {
+            for (DisplayMode ds : graphicsDevice.getDisplayModes()) {
+              if (ds.getWidth() >= 3840 && ds.getHeight() >= 2160) { // display capable of 4k, again scrolling performance bug
+                showNotification("mac.jdk.update");
+              }
             }
           }
         }
