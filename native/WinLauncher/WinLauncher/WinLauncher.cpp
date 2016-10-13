@@ -247,7 +247,10 @@ bool LocateJVM()
   std::string jvmError;
   jvmError = "No JVM installation found. Please install a " BITS_STR " JDK.\n"
     "If you already have a JDK installed, define a JAVA_HOME variable in\n"
-    "Computer > System Properties > System Settings > Environment Variables.";
+    "Computer > System Properties > System Settings > Environment Variables."
+    "\nNOTE: Do *not* choose a Java \"JRE\". You need to point to a full JDK,\n"
+    "otherwise the IDE may fail to start.\n"
+    "See http://tools.android.com/knownissues for more details.\n";
 
   if (IsWow64())
   {
@@ -485,7 +488,10 @@ bool LoadJVMLibrary()
     jvmError += dllName.c_str();
     jvmError += "\n"
         "If you already have a " BITS_STR " JDK installed, define a JAVA_HOME variable in "
-        "Computer > System Properties > System Settings > Environment Variables.";
+        "Computer > System Properties > System Settings > Environment Variables."
+        "\nNOTE: Do *not* choose a Java \"JRE\". You need to point to a full JDK,\n"
+        "otherwise the IDE may fail to start.\n"
+        "See http://tools.android.com/knownissues for more details.\n";
     std::string error = LoadStdString(IDS_ERROR_LAUNCHING_APP);
     MessageBoxA(NULL, jvmError.c_str(), error.c_str(), MB_OK);
     return false;
@@ -517,7 +523,10 @@ bool CreateJVM()
     buf << "Failed to create JVM: error code " << result << ".\n";
     buf << "JVM Path: " << jvmPath << "\n";
     buf << "If you already have a " BITS_STR " JDK installed, define a JAVA_HOME variable in \n";
-    buf << "Computer > System Properties > System Settings > Environment Variables.";
+    buf << "Computer > System Properties > System Settings > Environment Variables.\n";
+    buf << "NOTE: Do *not* choose a Java \"JRE\". You need to point to a full JDK,\n";
+    buf << "otherwise the IDE may fail to start.\n";
+    buf << "See http://tools.android.com/knownissues for more details.\n";
     std::string error = LoadStdString(IDS_ERROR_LAUNCHING_APP);
     MessageBoxA(NULL, buf.str().c_str(), error.c_str(), MB_OK);
   }
