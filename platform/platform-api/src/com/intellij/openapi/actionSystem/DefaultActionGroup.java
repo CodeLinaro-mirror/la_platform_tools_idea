@@ -311,7 +311,10 @@ public class DefaultActionGroup extends ActionGroup {
       if (action instanceof ActionStub) {
         action = unStub(e, (ActionStub)action);
         if (action == null) {
-          LOG.error("Can't unstub " + mySortedChildren.get(i));
+          // Android Studio:
+          // https://code.google.com/p/android/issues/detail?id=225130
+          // Running on a JRE: we've already warned in the system health detector
+          //LOG.error("Can't unstub " + mySortedChildren.get(i));
         }
         else {
           mySortedChildren.set(i, action);
@@ -353,7 +356,11 @@ public class DefaultActionGroup extends ActionGroup {
     try {
       AnAction action = actionManager.getAction(stub.getId());
       if (action == null) {
-        LOG.error("Null child action in group " + this + " of class " + getClass() + ", id=" + stub.getId());
+        // Android Studio:
+        // https://code.google.com/p/android/issues/detail?id=225130
+        // This happens for debugger actions when running in a JRE, which we
+        // already warn about in the system health monitor
+        //LOG.error("Null child action in group " + this + " of class " + getClass() + ", id=" + stub.getId());
         return null;
       }
       replace(stub, action);

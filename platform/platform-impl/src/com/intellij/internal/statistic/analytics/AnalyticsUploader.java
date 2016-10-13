@@ -210,6 +210,15 @@ public class AnalyticsUploader {
       if (t instanceof Logger.EmptyThrowable) {
         return;
       }
+      if (t instanceof ClassNotFoundException) {
+        String cls = t.getMessage();
+        if (cls != null && cls.startsWith("com.sun.jdi.")) {
+          // Android Studio:
+          // Running on a JRE. We're already warning about that in the System Health Monitor.
+          // https://code.google.com/p/android/issues/detail?id=225130
+          return;
+        }
+      }
 
       SystemHealthMonitor.incrementAndSaveExceptionCount();
       PluginId pluginId = IdeErrorsDialog.findPluginId(t);
