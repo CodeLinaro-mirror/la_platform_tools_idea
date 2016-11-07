@@ -148,6 +148,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     registerPluginActions();
   }
 
+  @Nullable
   static AnAction convertStub(ActionStub stub) {
     Object obj;
     String className = stub.getClassName();
@@ -159,6 +160,14 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       throw error(stub, e, "class with name ''{0}'' not found", className);
     }
     catch (NoClassDefFoundError e) {
+      // Android Studio:
+      // https://code.google.com/p/android/issues/detail?id=225130
+      String message = e.getMessage();
+      if (message.startsWith("com/sun/jdi/")) {
+        // Running on a JRE. We're already warning about that in the System Health Monitor.
+        // Try to recover gracefully
+        return null;
+      }
       throw error(stub, e, "class with name ''{0}'' cannot be loaded", className);
     }
     catch(UnsupportedClassVersionError e) {
@@ -499,7 +508,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   /**
    * Converts action's stub to normal action.
    */
-  @NotNull
+  @Nullable
   private AnAction convert(@NotNull ActionStub stub) {
     LOG.assertTrue(myAction2Id.containsKey(stub));
     myAction2Id.remove(stub);
@@ -511,6 +520,9 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     LOG.assertTrue(action.equals(stub));
 
     AnAction anAction = convertStub(stub);
+    if (anAction == null) {
+      return null;
+    }
     myAction2Id.put(anAction, stub.getId());
 
     return addToMap(stub.getId(), anAction, stub.getPluginId(), stub.getProjectType());
