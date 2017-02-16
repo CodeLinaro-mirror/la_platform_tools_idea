@@ -77,10 +77,9 @@ binding.setVariable("isEap", {
 
 binding.setVariable("mem32", "-server -Xms256m -Xmx750m -XX:ReservedCodeCacheSize=240m")
 binding.setVariable("mem64", "-Xms256m -Xmx1280m -XX:ReservedCodeCacheSize=240m")
-binding.setVariable("common_vmoptions", "-XX:+UseConcMarkSweepGC -XX:SoftRefLRUPolicyMSPerMB=50 -ea " +
+binding.setVariable("common_vmoptions", "-XX:+UseConcMarkSweepGC -XX:SoftRefLRUPolicyMSPerMB=50 -da " +
                                         "-Djna.nosys=true -Djna.boot.library.path=  -Djna.debug_load=true -Djna.debug_load.jna=true " +
-                                        "-Dsun.io.useCanonCaches=false -Djava.net.preferIPv4Stack=true " +
-                                        "-XX:-OmitStackTraceInFastThrow")
+                                        "-Dsun.io.useCanonCaches=false -Djava.net.preferIPv4Stack=true")
 
 binding.setVariable("vmOptions", { "$common_vmoptions ${isEap() ? '-XX:MaxJavaStackTraceDepth=-1' : ''}".trim() })
 binding.setVariable("vmOptions32", { "$mem32 ${vmOptions()}".trim() })

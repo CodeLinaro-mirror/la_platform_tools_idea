@@ -870,11 +870,6 @@ def layoutAndroid(String androidHome, String androidToolsBaseHome) {
         jar("android-rt.jar") {
           module("android-rt")
         }
-        jar("data-binding.jar") {
-          module("db-baseLibrary")
-          module("db-compilerCommon")
-          module("db-compiler")
-        }
         jar("constraint-layout.jar") {
           module("sherpa-solver")
           module("sherpa-ui")
