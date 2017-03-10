@@ -22,8 +22,6 @@ def getProperties(String home, String buildNumber) {
   def aosp = new File(home, "../adt/idea/android").isDirectory()
   def androidRoot = aosp ? "../adt/idea" : "android";
   def toolsBaseRoot = aosp ? "../base" : "android/tools-base"
-  def lldbBinSrcRoot = "$home/../vendor/google/android-ndk/bin/lldb"
-  def lldbBinTargetRoot = "bin/lldb"
   def gradleVersion = "3.2"
   def studioCustomRepo = System.getenv().STUDIO_CUSTOM_REPO
   def studioRepo = studioCustomRepo ?: "${home}/../../prebuilts/tools/common/offline-m2"
@@ -95,10 +93,6 @@ def getProperties(String home, String buildNumber) {
         return
       }
       layout(targetDirectory) {
-        dir("${lldbBinTargetRoot}/shared") {
-          fileset(dir: "${lldbBinSrcRoot}/shared")
-        }
-
         dir("gradle") {
           dir("m2repository") {
             fileset(dir: "$studioRepo")
@@ -107,22 +101,6 @@ def getProperties(String home, String buildNumber) {
         }
 
         dir("plugins") {
-          dir("android-ndk") {
-            dir("lib") {
-              jar("android-ndk.jar") {
-                module("android-ndk")
-              }
-            }
-          }
-
-          dir("games") {
-            dir("lib") {
-              jar("games.jar") {
-                module("games")
-              }
-            }
-          }
-
           dir("google-cloud-tools") {
             dir("lib") {
               jar("google-cloud-tools.jar") {
@@ -200,30 +178,6 @@ def getProperties(String home, String buildNumber) {
             }
           }
 
-          dir("url-assistant") {
-            dir("lib") {
-              jar("url-assistant.jar") {
-                module("url-assistant")
-              }
-              fileset(dir: "${home}/../vendor/google/url-assistant/lib") {
-                include(name: "**/*.jar")
-                include(name: "**/*.jar-NOTICE")
-              }
-            }
-          }
-
-          dir("firebase") {
-            dir("lib") {
-              jar("firebase.jar") {
-                module("firebase")
-              }
-              fileset(dir: "${home}/../vendor/google/firebase/lib") {
-                include(name: "**/*.jar")
-                include(name: "**/*.jar-NOTICE")
-              }
-            }
-          }
-
           dir("google-login") {
             dir("lib") {
               jar("google-login.jar") {
@@ -271,14 +225,6 @@ def getProperties(String home, String buildNumber) {
               fileset(dir: "${home}/../studio/google/cloud/testing/test-recorder/lib") {
                 include(name: "**/*.jar")
                 include(name: "**/*.jar-NOTICE")
-              }
-            }
-          }
-
-          dir("ndk-workspace") {
-            dir("lib") {
-              jar("ndk-workspace.jar") {
-                module("ndk-workspace")
               }
             }
           }
@@ -367,45 +313,7 @@ def getProperties(String home, String buildNumber) {
       ant.copy(file: "$home/$androidRoot/android/lib/libwebp/mac/libwebp_jni64.dylib", tofile: "$targetDirectory/plugins/android/lib/libwebp_jni64.dylib")
     }
 
-    // Patches plugin.xml to replace the "SNAPSHOT" in the version with build number and product-build.txt to replace "PRODUCT_BUILD"
-    // with the full build number.
-    def updateAswbPlugin() {
-      def aswb = projectBuilder.moduleOutput(findModule("blaze-aswb-google3"))
-
-      def pluginFile = new File(aswb + "/META-INF/plugin.xml")
-      if (pluginFile.isFile()) {
-        def text = pluginFile.text
-        text = text.replaceAll("SNAPSHOT", buildNumber);
-        pluginFile.text = text;
-      }
-
-      def productBuildFile = new File(aswb + "/META-INF/product-build.txt")
-      productBuildFile.write(fullBuildNumber());
-
-    }
-
     def finishLayout(out) {
-      updateAswbPlugin();
-
-      layout(out) {
-        zip("studio-aswb-plugin.zip") {
-          dir("aswb") {
-            dir("lib") {
-              jar("aswb.jar") {
-                module("blaze-aswb-google3")
-                module("blaze-base-google3")
-                module("aswb")
-                module("blaze-base")
-                module("blaze-common")
-                module("blaze-cpp")
-                module("blaze-java")
-                module("blaze-testing")
-              }
-              fileset(dir: "$home/../vendor/google3/blaze/base/lib") { include(name: "*.jar") }
-            }
-          }
-        }
-      }
     }
   }
 }
