@@ -25,7 +25,7 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/android.iml" filepath="$PROJECT_DIR$/../adt/idea/android/android.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../base/annotations/android-annotations.iml" filepath="$PROJECT_DIR$/../base/annotations/android-annotations.iml" group="android/sdktools" />
       <module fileurl="file://$PROJECT_DIR$/../vendor/google/android-apk/android-apk.iml" filepath="$PROJECT_DIR$/../vendor/google/android-apk/android-apk.iml" group="android" />
-      <module fileurl="file://$PROJECT_DIR$/../adt/idea/common/android-common.iml" filepath="$PROJECT_DIR$/../adt/idea/common/android-common.iml" group="android" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-common/android-common.iml" filepath="$PROJECT_DIR$/../adt/idea/android-common/android-common.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-gradle-jps/android-gradle-jps.iml" filepath="$PROJECT_DIR$/../adt/idea/android-gradle-jps/android-gradle-jps.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/jps-plugin/android-jps-plugin.iml" filepath="$PROJECT_DIR$/../adt/idea/jps-plugin/android-jps-plugin.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../vendor/google/android-ndk/android-ndk.iml" filepath="$PROJECT_DIR$/../vendor/google/android-ndk/android-ndk.iml" group="android" />
@@ -41,6 +41,7 @@
       <module fileurl="file://$PROJECT_DIR$/jps/antUiTest/antUiTest.iml" filepath="$PROJECT_DIR$/jps/antUiTest/antUiTest.iml" group="jps" />
       <module fileurl="file://$PROJECT_DIR$/jps/antLayout/antlayout.iml" filepath="$PROJECT_DIR$/jps/antLayout/antlayout.iml" group="jps" />
       <module fileurl="file://$PROJECT_DIR$/plugins/google-app-engine/runtime/appEngine-runtime.iml" filepath="$PROJECT_DIR$/plugins/google-app-engine/runtime/appEngine-runtime.iml" group="plugins/GAE" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/artwork/artwork.iml" filepath="$PROJECT_DIR$/../adt/idea/artwork/artwork.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../base/asset-studio/assetstudio.iml" filepath="$PROJECT_DIR$/../base/asset-studio/assetstudio.iml" group="android/sdktools" />
       <module fileurl="file://$PROJECT_DIR$/../vendor/google3/blaze/third_party/intellij/bazel/plugin/aswb/aswb.iml" filepath="$PROJECT_DIR$/../vendor/google3/blaze/third_party/intellij/bazel/plugin/aswb/aswb.iml" group="plugins/Google/Blaze" />
       <module fileurl="file://$PROJECT_DIR$/../base/apkparser/binary-resources/binary-resources.iml" filepath="$PROJECT_DIR$/../base/apkparser/binary-resources/binary-resources.iml" group="android/sdktools" />
@@ -56,6 +57,7 @@
       <module fileurl="file://$PROJECT_DIR$/platform/boot/boot.iml" filepath="$PROJECT_DIR$/platform/boot/boot.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/platform/bootstrap/bootstrap.iml" filepath="$PROJECT_DIR$/platform/bootstrap/bootstrap.iml" group="platform" />
       <module fileurl="file://$PROJECT_DIR$/build/build.iml" filepath="$PROJECT_DIR$/build/build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/build-common/build-common.iml" filepath="$PROJECT_DIR$/../adt/idea/build-common/build-common.iml" group="android" />
       <module fileurl="file://$PROJECT_DIR$/../base/build-system/builder-model/builder-model.iml" filepath="$PROJECT_DIR$/../base/build-system/builder-model/builder-model.iml" group="android/sdktools" />
       <module fileurl="file://$PROJECT_DIR$/../base/build-system/builder-test-api/builder-test-api.iml" filepath="$PROJECT_DIR$/../base/build-system/builder-test-api/builder-test-api.iml" group="android/sdktools" />
       <module fileurl="file://$PROJECT_DIR$/platform/built-in-server/built-in-server.iml" filepath="$PROJECT_DIR$/platform/built-in-server/built-in-server.iml" group="platform" />

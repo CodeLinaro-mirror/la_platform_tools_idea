@@ -3,6 +3,8 @@ load("//tools/base/bazel:bazel.bzl", "iml_module")
 iml_module(
     name = "script-debugger-ui",
     srcs = ["src"],
+    iml_files = ["script-debugger-ui.iml"],
+    package_prefixes = {"testSrc": "org.jetbrains.debugger"},
     tags = ["managed"],
     test_srcs = ["testSrc"],
     test_tags = ["manual"],

@@ -109,10 +109,12 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       directoryName = "android"
       mainJarName = "android.jar"
       withModule("android-common", "android-common.jar", false)
+      withModule("build-common", "build-common.jar", false)
       withModule("android-rt", "android-rt.jar", false)
 
       withModule("android", "android.jar", false)
       withModule("android-plugin", "android.jar")
+      withModule("artwork")
       withModule("observable", "android.jar")
       withModule("observable-ui", "android.jar")
       withModule("flags", "android.jar")
@@ -177,7 +179,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withResourceFromModule("android","lib/juniversalchardet-1.0.3.jar", "lib")
 
       withResourceFromModule("android","lib/androidWidgets", "lib/androidWidgets")
-      withResourceFromModule("android","device-art-resources", "lib/device-art-resources")
+      withResourceFromModule("artwork","resources/device-art-resources", "lib/device-art-resources")
       withResourceFromModule("android","lib/sampleData", "lib/sampleData")
       withResourceArchiveFromModule("android", "annotations", "lib/androidAnnotations.jar")
 
@@ -266,7 +268,9 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     }
 
     buildContext.ant.copy(todir: "$targetDirectory/bin/lldb/shared") {
-      fileset(dir: "$root/tools/vendor/google/android-ndk/bin/lldb/shared")
+      fileset(dir: "$root/tools/vendor/google/android-ndk/bin/lldb/shared") {
+        exclude(name: "BUILD")
+      }
     }
   }
 
