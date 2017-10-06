@@ -129,9 +129,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("adt-ui", "adt-ui.jar")
       withModule("adt-ui-model", "adt-ui.jar")
       withModule("repository")
-      withModule("db-baseLibrary", "data-binding.jar")
-      withModule("db-compilerCommon", "data-binding.jar")
-      withModule("db-compiler", "data-binding.jar")
       withModule("sherpa-solver", "constraint-layout.jar")
       withModule("sherpa-ui", "constraint-layout.jar")
       withModule("sdklib", "sdklib.jar")
@@ -142,7 +139,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("chunkio", "pixelprobe.jar")
       withModule("pixelprobe", "pixelprobe.jar")
 
-      withModule("assetstudio", "sdk-tools.jar")
       withModule("binary-resources", "sdk-tools.jar")
       withModule("analyzer", "sdk-tools.jar")
       withModule("ddmlib", "sdk-tools.jar")
