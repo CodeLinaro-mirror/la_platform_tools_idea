@@ -6,8 +6,5 @@
         <property name="work.idea.home" value="$APPLICATION_HOME_DIR$" />
       </properties>
     </buildFile>
-    <buildFile url="file://$PROJECT_DIR$/../adt/idea/android/build.xml">
-      <executeOn event="beforeCompilation" target="preBuild" />
-    </buildFile>
   </component>
 </project>
