@@ -92,6 +92,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-cloud-tools-core-as",
                                            "google-samples",
                                            "google-services",
+                                           "gradle-dsl-parser",
                                            "smali",
                                            "test-recorder",
                                            "url-assistant",
@@ -161,6 +162,8 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("builder-test-api", "sdk-tools.jar")
       withModule("android-annotations", "sdk-tools.jar")
       withModule("layoutinspector", "sdk-tools.jar")
+      withModule("java-lib-model", "sdk-tools.jar")
+      withModule("java-lib-model-builder", "sdk-tools.jar")
 
       withJpsModule("android-gradle-jps")
       withJpsModule("android-jps-plugin")
@@ -169,7 +172,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       //withProjectLibrary("builder-model") //todo[nik] move to module libraries
       withProjectLibrary("jgraphx-3.4.0.1") //todo[nik] move to module libraries
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
-      withProjectLibrary("lombok-ast") //todo[nik] move to module libraries
       withProjectLibrary("layoutlib") //todo[nik] move to module libraries
 
       withResourceFromModule("android","lib/antlr4-runtime-4.5.3.jar", "lib")
