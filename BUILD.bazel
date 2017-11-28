@@ -55,7 +55,6 @@ iml_project(
         "//tools/adt/idea/build-common",
         "//tools/adt/idea/designer",
         "//tools/adt/idea/designer:designer-tests",
-        "//tools/adt/idea/gradle-dsl-parser",
         "//tools/adt/idea/jps-plugin:android-jps-plugin",
         "//tools/adt/idea/kotlin-integration:kotlin-integration-tests",
         "//tools/adt/idea/layoutlib",
@@ -1009,7 +1008,6 @@ iml_module(
         "//tools/adt/idea/designer[module]",
         "//tools/adt/idea/smali[module]",
         "//tools/idea/platform/build-scripts:platform-build-scripts[module, test]",
-        "//tools/adt/idea/gradle-dsl-parser[module]",
     ],
 )
 
