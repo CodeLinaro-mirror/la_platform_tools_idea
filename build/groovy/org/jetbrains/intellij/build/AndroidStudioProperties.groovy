@@ -92,6 +92,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-cloud-tools-core-as",
                                            "google-samples",
                                            "google-services",
+                                           "gradle-dsl-parser",
                                            "smali",
                                            "test-recorder",
                                            "url-assistant",
@@ -163,6 +164,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("layoutinspector", "sdk-tools.jar")
       withModule("java-lib-model", "sdk-tools.jar")
       withModule("java-lib-model-builder", "sdk-tools.jar")
+      withModule("usb-devices", "sdk-tools.jar")
 
       withJpsModule("android-gradle-jps")
       withJpsModule("android-jps-plugin")
