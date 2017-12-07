@@ -92,7 +92,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-cloud-tools-core-as",
                                            "google-samples",
                                            "google-services",
-                                           "gradle-dsl-parser",
                                            "smali",
                                            "test-recorder",
                                            "url-assistant",
@@ -166,7 +165,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("java-lib-model-builder", "sdk-tools.jar")
       withModule("usb-devices", "sdk-tools.jar")
 
-      withJpsModule("android-gradle-jps")
       withJpsModule("android-jps-plugin")
 
       withProjectLibrary("freemarker-2.3.20") //todo[nik] move to module libraries
@@ -360,17 +358,16 @@ class AndroidStudioProperties extends BaseIdeaProperties {
   MacDistributionCustomizer createMacCustomizer(String projectHome) {
     return new MacDistributionCustomizer() {
       {
-        helpId = "AI"
         urlSchemes = ["idea"]
         associateIpr = true
         enableYourkitAgentInEAP = false
         bundleIdentifier = "com.google.android.studio"
-        dmgImagePath = "$projectHome/build/conf/mac/communitydmg.png"
+        dmgImagePath = "$projectHome/build/conf/ideaCE/mac/images/communitydmg.png"
         // For now we have all 3 platform icons checked in and we change
         // the icons manually. Fix this when the other platforms have the
         // same mechanisms for our .ico and .svg files
         icnsPath = "$projectHome/../adt/idea/adt-branding/src/artwork/AndroidStudio.icns"
-        icnsPathForEAP = "$projectHome/../adt/idea/adt-branding/src/artwork/AndroidStudio.icns"
+        icnsPathForEAP = "$projectHome/../adt/idea/adt-branding/src/artwork/preview/AndroidStudio.icns"
       }
 
       @Override

@@ -1,0 +1,39 @@
+/*
+ * Copyright 2000-2016 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/* Android Studio: we do not download the Kotlin plugin from Maven
+repositories {
+  maven { url 'http://repo.labs.intellij.net/plugins.jetbrains.com' }
+  maven { url 'http://plugins.jetbrains.com/maven/' }
+}
+
+configurations {
+  kotlinPlugin
+}
+
+dependencies {
+  kotlinPlugin "com.jetbrains.plugins:org.jetbrains.kotlin:$kotlinPluginBuild@zip"
+}
+
+task setupKotlinPlugin(dependsOn: configurations.kotlinPlugin, type: Sync) {
+  from zipTree(configurations.kotlinPlugin.singleFile)
+  into "${project.buildDir}/kotlin"
+}
+*/
+
+task setupKotlinPlugin(type: Sync) {
+  from zipTree("${project.rootDir}/../../../../prebuilts/tools/common/kotlin-plugin-ij/kotlin-plugin-1.2.0-release-IJ2017.3-1.zip")
+  into "${project.buildDir}/kotlin"
+}

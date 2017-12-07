@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.documentation;
 
 import com.google.common.collect.Collections2;
@@ -21,6 +7,7 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PyNames;
+import com.jetbrains.python.codeInsight.stdlib.PyNamedTupleType;
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider;
 import com.jetbrains.python.psi.impl.PyBuiltinCache;
 import com.jetbrains.python.psi.types.*;
@@ -30,7 +17,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-import static com.jetbrains.python.documentation.DocumentationBuilderKit.$;
 import static com.jetbrains.python.documentation.DocumentationBuilderKit.combUp;
 
 /**
@@ -204,11 +190,9 @@ public class PyTypeModelBuilder {
   
   static class GenericType extends TypeModel {
     private final String name;
-    private final List<TypeModel> bounds;
 
-    public GenericType(@Nullable String name, @NotNull List<TypeModel> bounds) {
+    public GenericType(@Nullable String name) {
       this.name = name;
-      this.bounds = bounds;
     }
 
     @Override
@@ -236,19 +220,22 @@ public class PyTypeModelBuilder {
     myVisited.put(type, null); //mark as evaluating
 
     TypeModel result = null;
-    if (type instanceof PyTupleType) {
+    if (type instanceof PyNamedTupleType) {
+      result = NamedType.nameOrAny(type);
+    }
+    else if (type instanceof PyTupleType) {
       final PyTupleType tupleType = (PyTupleType)type;
 
       final List<PyType> elementTypes = tupleType.isHomogeneous()
                                         ? Collections.singletonList(tupleType.getIteratedItemType())
-                                        : tupleType.getElementTypes(myContext);
+                                        : tupleType.getElementTypes();
 
       final List<TypeModel> elementModels = ContainerUtil.map(elementTypes, elementType -> build(elementType, true));
       result = new TupleType(elementModels, tupleType.isHomogeneous());
     }
     else if (type instanceof PyCollectionType) {
       final String name = type.getName();
-      final List<PyType> elementTypes = ((PyCollectionType)type).getElementTypes(myContext);
+      final List<PyType> elementTypes = ((PyCollectionType)type).getElementTypes();
       boolean nullOnlyTypes = true;
       for (PyType elementType : elementTypes) {
         if (elementType != null) {
@@ -273,7 +260,7 @@ public class PyTypeModelBuilder {
       if (optionalType != null) {
         result = new OptionalType(build(optionalType.get(), true));
       }
-      else if (type instanceof PyDynamicallyEvaluatedType || PyTypeChecker.isUnknown(type, false)) {
+      else if (type instanceof PyDynamicallyEvaluatedType || PyTypeChecker.isUnknown(type, false, myContext)) {
         result = new UnknownType(build(unionType.excludeNull(myContext), true));
       }
       else if (unionMembers.stream().allMatch(t -> t instanceof PyClassType && ((PyClassType)t).isDefinition())) {
@@ -298,19 +285,7 @@ public class PyTypeModelBuilder {
       }
     }
     else if (type instanceof PyGenericType) {
-      //assert !((PyGenericType)type).isDefinition()
-      final PyType bound = ((PyGenericType)type).getBound();
-      final List<TypeModel> boundNames;
-      if (bound instanceof PyUnionType) {
-        boundNames = ContainerUtil.map(((PyUnionType)bound).getMembers(), t -> build(t, allowUnions));
-      }
-      else if (bound != null) {
-        boundNames = Collections.singletonList(build(bound, allowUnions));
-      }
-      else {
-        boundNames = Collections.emptyList();
-      }
-      result = new GenericType(type.getName(), boundNames);
+      result = new GenericType(type.getName());
     }
     if (result == null) {
       result = NamedType.nameOrAny(type);
@@ -421,13 +396,8 @@ public class PyTypeModelBuilder {
 
     @Override
     protected void addType(String name) {
-      final PyType type = PyTypeParser.getTypeByName(myAnchor, name);
-      if (type instanceof PyClassType) {
-        myBody.addWith(new DocumentationBuilderKit.LinkWrapper(PythonDocumentationProvider.LINK_TYPE_TYPENAME + name), $(name));
-      }
-      else {
-        add(name);
-      }
+      final TypeEvalContext context = TypeEvalContext.userInitiated(myAnchor.getProject(), myAnchor.getContainingFile());
+      myBody.addItem(PyDocumentationLink.toPossibleClass(name, myAnchor, context));
     }
   }
 
@@ -578,21 +548,7 @@ public class PyTypeModelBuilder {
 
     @Override
     public void genericType(GenericType type) {
-      add("TypeVar('");
       add(type.name);
-      add("'");
-      if (!type.bounds.isEmpty()) {
-        add(", ");
-        boolean first = true;
-        for (TypeModel bound : type.bounds) {
-          if (!first) {
-            add(", ");
-          }
-          bound.accept(this);
-          first = false;
-        }
-      }
-      add(")");
     }
   }
 }

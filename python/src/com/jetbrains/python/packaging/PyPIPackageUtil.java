@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2014 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.packaging;
 
 import com.google.common.cache.CacheBuilder;
@@ -28,12 +14,11 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.CatchingConsumer;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.HttpRequests;
-import com.intellij.webcore.packaging.PackageVersionComparator;
 import com.intellij.webcore.packaging.RepoPackage;
 import com.jetbrains.python.PythonHelpersLocator;
 import org.jetbrains.annotations.NonNls;
@@ -44,20 +29,18 @@ import javax.swing.text.MutableAttributeSet;
 import javax.swing.text.html.HTML;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.parser.ParserDelegator;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-/**
- * User: catherine
- */
 public class PyPIPackageUtil {
   private static final Logger LOG = Logger.getInstance(PyPIPackageUtil.class);
   private static final Gson GSON = new GsonBuilder().create();
@@ -67,9 +50,9 @@ public class PyPIPackageUtil {
   public static final String PYPI_LIST_URL = PYPI_HOST + "/simple";
 
   /**
-   * Contains mapping "importable top-level package" -> "package name on PyPI".
+   * Contains mapping "importable top-level package" -> "package names on PyPI".
    */
-  public static final ImmutableMap<String, String> PACKAGES_TOPLEVEL = loadPackageAliases();
+  public static final ImmutableMap<String, List<String>> PACKAGES_TOPLEVEL = loadPackageAliases();
 
   public static final PyPIPackageUtil INSTANCE = new PyPIPackageUtil();
 
@@ -141,15 +124,17 @@ public class PyPIPackageUtil {
   }
 
   @NotNull
-  private static ImmutableMap<String, String> loadPackageAliases() {
-    final ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
-    try (FileReader reader = new FileReader(PythonHelpersLocator.getHelperPath("/tools/packages"))) {
-      final String text = FileUtil.loadTextAndClose(reader);
-      final List<String> lines = StringUtil.split(text, "\n");
-      for (String line : lines) {
-        final List<String> split = StringUtil.split(line, " ");
-        builder.put(split.get(0), split.get(1));
-      }
+  private static ImmutableMap<String, List<String>> loadPackageAliases() {
+    final ImmutableMap.Builder<String, List<String>> builder = ImmutableMap.builder();
+    try {
+      Files
+        .lines(Paths.get(PythonHelpersLocator.getHelperPath("/tools/packages")))
+        .forEach(
+          line -> {
+            final List<String> split = StringUtil.split(line, " ");
+            builder.put(split.get(0), new SmartList<>(ContainerUtil.subList(split, 1)));
+          }
+        );
     }
     catch (IOException e) {
       LOG.error("Cannot find \"packages\". " + e.getMessage());
@@ -269,7 +254,7 @@ public class PyPIPackageUtil {
                                                   boolean force) throws IOException {
     final PackageDetails details = refreshAndGetPackageDetailsFromPyPI(packageName, force);
     final List<String> result = details.getReleases();
-    result.sort(PackageVersionComparator.VERSION_COMPARATOR.reversed());
+    result.sort(PyPackageVersionComparator.getSTR_COMPARATOR().reversed());
     return Collections.unmodifiableList(result);
   }
 
@@ -348,7 +333,7 @@ public class PyPIPackageUtil {
           }
         }
       }, true);
-      versions.sort(PackageVersionComparator.VERSION_COMPARATOR.reversed());
+      versions.sort(PyPackageVersionComparator.getSTR_COMPARATOR().reversed());
       return versions;
     });
   }
@@ -443,14 +428,15 @@ public class PyPIPackageUtil {
 
   @NotNull
   public Map<String, String> loadAndGetPackages() throws IOException {
-    Map<String, String> pyPIPackages = getPyPIPackages();
+    // The map returned by getPyPIPackages() is already thread-safe;
+    // this lock is solely to prevent multiple threads from updating
+    // the mammoth cache of PyPI packages simultaneously.
     synchronized (myPyPIPackageCacheUpdateLock) {
-      if (pyPIPackages.isEmpty()) {
+      if (getPyPIPackages().isEmpty()) {
         updatePyPICache(PyPackageService.getInstance());
-        pyPIPackages = getPyPIPackages();
       }
+      return getPyPIPackages();
     }
-    return pyPIPackages;
   }
 
   @NotNull

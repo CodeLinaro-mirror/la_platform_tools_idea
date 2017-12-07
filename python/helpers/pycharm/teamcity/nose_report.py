@@ -5,8 +5,9 @@ import datetime
 import inspect
 
 from teamcity import is_running_under_teamcity
-from teamcity.common import is_string, split_output, limit_output, get_class_fullname, convert_error_to_string
+from teamcity.common import is_string, get_class_fullname, convert_error_to_string, dump_test_stdout, FlushingStringIO
 from teamcity.messages import TeamcityServiceMessages
+from .diff_tools import EqualsAssertionError, patch_unittest_diff
 
 import nose
 # noinspection PyPackageRequirements
@@ -14,6 +15,7 @@ from nose.exc import SkipTest, DeprecatedTest
 # noinspection PyPackageRequirements
 from nose.plugins import Plugin
 
+patch_unittest_diff()
 
 CONTEXT_SUITE_FQN = "nose.suite.ContextSuite"
 
@@ -88,6 +90,33 @@ class TeamcityReport(Plugin):
         self.enabled = is_running_under_teamcity()
         self.config = conf
 
+        if self._capture_plugin_enabled():
+            capture_plugin = self._get_capture_plugin()
+
+            old_before_test = capture_plugin.beforeTest
+            old_after_test = capture_plugin.afterTest
+            old_format_error = capture_plugin.formatError
+
+            def newCaptureBeforeTest(test):
+                old_before_test(test)
+                test_id = self.get_test_id(test)
+                capture_plugin._buf = FlushingStringIO(lambda data: dump_test_stdout(self.messages, test_id, test_id, data))
+                sys.stdout = capture_plugin._buf
+
+            def newCaptureAfterTest(test):
+                if isinstance(capture_plugin._buf, FlushingStringIO):
+                    capture_plugin._buf.flush()
+                old_after_test(test)
+
+            def newCaptureFormatError(test, err):
+                if isinstance(capture_plugin._buf, FlushingStringIO):
+                    capture_plugin._buf.flush()
+                old_format_error(test, err)
+
+            capture_plugin.beforeTest = newCaptureBeforeTest
+            capture_plugin.afterTest = newCaptureAfterTest
+            capture_plugin.formatError = newCaptureFormatError
+
     def options(self, parser, env=os.environ):
         pass
 
@@ -132,18 +161,18 @@ class TeamcityReport(Plugin):
             # do not log test output twice, see report_finish for actual output handling
             details = details[:start_index] + details[end_index + len(_captured_output_end_marker):]
 
+        try:
+            error = err[1]
+            if isinstance(error, EqualsAssertionError):
+                details = convert_error_to_string(err, 2)
+                self.messages.testFailed(test_id, message=error.msg, details=details, flowId=test_id, comparison_failure=error)
+                return
+        except Exception:
+            pass
         self.messages.testFailed(test_id, message=fail_type, details=details, flowId=test_id)
 
     def report_finish(self, test):
         test_id = self.get_test_id(test)
-
-        captured_output = getattr(test, "capturedOutput", None)
-        if captured_output is None and self._capture_plugin_enabled():
-            # nose capture does not fill 'capturedOutput' property on successful tests
-            captured_output = self._capture_plugin_buffer()
-        if captured_output:
-            for chunk in split_output(limit_output(captured_output)):
-                self.messages.testStdOut(test_id, chunk, flowId=test_id)
 
         if test_id in self.test_started_datetime_map:
             time_diff = datetime.datetime.now() - self.test_started_datetime_map[test_id]

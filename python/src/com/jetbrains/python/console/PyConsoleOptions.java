@@ -41,8 +41,9 @@ import java.util.Map;
   }
 )
 public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptions.State> {
-  private State myState = new State();
+  private final State myState = new State();
 
+  @NotNull
   public PyConsoleSettings getPythonConsoleSettings() {
     return myState.myPythonConsoleState;
   }
@@ -55,11 +56,19 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
     myState.myShowDebugConsoleByDefault = showDebugConsoleByDefault;
   }
 
-  public boolean isIpythonEnabled(){
+  public boolean isShowVariableByDefault() {
+    return myState.myShowVariablesByDefault;
+  }
+
+  public void setShowVariablesByDefault(boolean showVariableByDefault) {
+    myState.myShowVariablesByDefault = showVariableByDefault;
+  }
+
+  public boolean isIpythonEnabled() {
     return myState.myIpythonEnabled;
   }
 
-  public void setIpythonEnabled(boolean enabled){
+  public void setIpythonEnabled(boolean enabled) {
     myState.myIpythonEnabled = enabled;
   }
 
@@ -75,6 +84,7 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
   @Override
   public void loadState(State state) {
     myState.myShowDebugConsoleByDefault = state.myShowDebugConsoleByDefault;
+    myState.myShowVariablesByDefault = state.myShowVariablesByDefault;
     myState.myPythonConsoleState = state.myPythonConsoleState;
     myState.myIpythonEnabled = state.myIpythonEnabled;
   }
@@ -83,6 +93,7 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
     public PyConsoleSettings myPythonConsoleState = new PyConsoleSettings();
 
     public boolean myShowDebugConsoleByDefault = false;
+    public boolean myShowVariablesByDefault = true;
     public boolean myIpythonEnabled = true;
   }
 
@@ -100,11 +111,12 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
     public boolean myAddSourceRoots;
     @NotNull
     private PathMappingSettings myMappings = new PathMappingSettings();
+    private boolean myUseSoftWraps = false;
 
-    public PyConsoleSettings(){
+    public PyConsoleSettings() {
     }
 
-    public PyConsoleSettings(String myCustomStartScript){
+    public PyConsoleSettings(String myCustomStartScript) {
       this.myCustomStartScript = myCustomStartScript;
     }
 
@@ -126,7 +138,7 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
       return !ComparatorUtil.equalsNullable(mySdkHome, form.getSdkHome()) ||
              !myInterpreterOptions.equals(form.getInterpreterOptions()) ||
              !myEnvs.equals(form.getEnvs()) ||
-             myPassParentEnvs != form.isPassParentEnvs() || 
+             myPassParentEnvs != form.isPassParentEnvs() ||
              myUseModuleSdk != form.isUseModuleSdk() ||
              myAddContentRoots != form.shouldAddContentRoots() ||
              myAddSourceRoots != form.shouldAddSourceRoots()
@@ -191,7 +203,7 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
     @Tag("envs")
     @Property(surroundWithTag = false)
     @MapAnnotation(surroundWithTag = false, surroundKeyWithTag = false, keyAttributeName = "key",
-                   entryTagName = "env", valueAttributeName = "value", surroundValueWithTag = false)
+      entryTagName = "env", valueAttributeName = "value", surroundValueWithTag = false)
     public Map<String, String> getEnvs() {
       return myEnvs;
     }
@@ -211,6 +223,7 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
       return myInterpreterOptions;
     }
 
+    @NotNull
     @AbstractCollection(surroundWithTag = false)
     public PathMappingSettings getMappings() {
       return myMappings;
@@ -281,6 +294,14 @@ public class PyConsoleOptions implements PersistentStateComponent<PyConsoleOptio
 
     public void setMappings(@Nullable PathMappingSettings mappings) {
       myMappings = mappings != null ? mappings : new PathMappingSettings();
+    }
+
+    public boolean isUseSoftWraps() {
+      return myUseSoftWraps;
+    }
+
+    public void setUseSoftWraps(boolean useSoftWraps) {
+      myUseSoftWraps = useSoftWraps;
     }
   }
 }

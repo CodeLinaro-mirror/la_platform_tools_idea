@@ -225,6 +225,7 @@ public class PluginGroups {
       "ByteCodeViewer",
       "com.intellij.dsm",
       "org.jetbrains.idea.eclipse",
+      "org.jetbrains.debugger.streams",
       "Remote Access:com.jetbrains.plugins.webDeployment,org.jetbrains.plugins.remote-run",
       "Task Management:com.intellij.tasks,com.intellij.tasks.timeTracking",
       "org.jetbrains.plugins.terminal",
@@ -243,9 +244,9 @@ public class PluginGroups {
                         "Web Development:Provides live edit HTML/CSS/JavaScript:com.intellij.plugins.html.instantEditing");
     addVimPlugin(featuredPlugins);
     featuredPlugins.put("NodeJS", "JavaScript:Node.js integration:NodeJS");
-    featuredPlugins.put("Angular", "Web Development:Angular 1&2 support:AngularJS");
     featuredPlugins.put("Atlassian Connector",
                         "Tools Integration:Integration for Atlassian JIRA, Bamboo, Crucible, FishEye:atlassian-idea-plugin");
+    addTrainingPlugin(featuredPlugins);
   }
 
   public static void addVcsGroup(Map<String, Pair<Icon, List<String>>> tree) {
@@ -263,6 +264,10 @@ public class PluginGroups {
 
   public static void addVimPlugin(Map<String, String> featuredPlugins) {
     featuredPlugins.put("IdeaVim", "Editor:Emulates Vim editor:" + IDEA_VIM_PLUGIN_ID);
+  }
+
+  public static void addTrainingPlugin(Map<String, String> featuredPlugins) {
+    featuredPlugins.put("IDE Features Trainer", "Code tools:Learn basic shortcuts and essential IDE features with quick interactive exercises:training");
   }
 
   public static void addLuaPlugin(Map<String, String> featuredPlugins) {

@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.packaging;
 
 import com.google.common.collect.Lists;
@@ -27,27 +13,32 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.impl.ProjectJdkImpl;
 import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.*;
 import com.intellij.openapi.vfs.newvfs.BulkFileListener;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.net.HttpConfigurable;
 import com.jetbrains.python.PythonHelpersLocator;
 import com.jetbrains.python.psi.LanguageLevel;
+import com.jetbrains.python.sdk.PyLazySdk;
 import com.jetbrains.python.sdk.PythonEnvUtil;
 import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -118,7 +109,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
   private boolean refreshAndCheckForSetuptools() throws ExecutionException {
     try {
       final List<PyPackage> packages = refreshAndGetPackages(false);
-      return PyPackageUtil.findPackage(packages, PyPackageUtil.SETUPTOOLS) != null || 
+      return PyPackageUtil.findPackage(packages, PyPackageUtil.SETUPTOOLS) != null ||
              PyPackageUtil.findPackage(packages, PyPackageUtil.DISTRIBUTE) != null;
     }
     catch (PyExecutionException e) {
@@ -160,7 +151,16 @@ public class PyPackageManagerImpl extends PyPackageManager {
   protected void subscribeToLocalChanges() {
     final Application app = ApplicationManager.getApplication();
     final MessageBusConnection connection = app.getMessageBus().connect();
-    connection.subscribe(VirtualFileManager.VFS_CHANGES, new MySdkRootWatcher());
+    MySdkRootWatcher watcher = new MySdkRootWatcher();
+    connection.subscribe(VirtualFileManager.VFS_CHANGES, watcher);
+    connection.subscribe(ProjectJdkTable.JDK_TABLE_TOPIC, new ProjectJdkTable.Adapter() {
+      @Override
+      public void jdkRemoved(@NotNull Sdk jdk) {
+        if (jdk == getSdk()) {
+          connection.disconnect();
+        }
+      }
+    });
   }
 
   @NotNull
@@ -233,7 +233,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
         if (canModify) {
           final String location = pkg.getLocation();
           if (location != null) {
-            canModify = FileUtil.ensureCanCreateFile(new File(location));
+            canModify = Files.isWritable(Paths.get(location));
           }
         }
         args.add(pkg.getName());
@@ -259,6 +259,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
 
   @NotNull
   protected List<PyPackage> collectPackages() throws ExecutionException {
+    if (mySdk instanceof PyLazySdk) return Collections.emptyList();
     final String output;
     try {
       LOG.debug("Collecting installed packages for the SDK " + mySdk.getName(), new Throwable());
@@ -336,7 +337,8 @@ public class PyPackageManagerImpl extends PyPackageManager {
       if (binaryFile != null) {
         final ProjectJdkImpl tmpSdk = new ProjectJdkImpl("", PythonSdkType.getInstance());
         tmpSdk.setHomePath(path);
-        final PyPackageManager manager = PyPackageManager.getInstance(tmpSdk);
+        // Don't save such one-shot SDK with empty name in the cache of PyPackageManagers
+        final PyPackageManager manager = new PyPackageManagerImpl(tmpSdk);
         manager.installManagement();
       }
     }
@@ -351,6 +353,12 @@ public class PyPackageManagerImpl extends PyPackageManager {
       .orElseGet(() -> PyPackageUtil.findSetupPyRequires(module));
   }
 
+  @NotNull
+  @Override
+  public List<PyRequirement> parseRequirements(@NotNull String text) {
+    return ContainerUtil.map(PyRequirement.fromText(text),
+                             req -> req.withVersionComparator(PyPackageVersionComparator.getSTR_COMPARATOR()));
+  }
 
   //   public List<PyPackage> refreshAndGetPackagesIfNotInProgress(boolean alwaysRefresh) throws ExecutionException
 
@@ -439,8 +447,8 @@ public class PyPackageManagerImpl extends PyPackageManager {
     cmdline.addAll(args);
     LOG.info("Running packaging tool: " + StringUtil.join(cmdline, " "));
 
-    final boolean canCreate = FileUtil.ensureCanCreateFile(new File(homePath));
-    final boolean useSudo = !canCreate && !SystemInfo.isWindows && askForSudo;
+    final boolean canCreate = Files.isWritable(Paths.get(homePath));
+    final boolean useSudo = !canCreate && askForSudo;
 
     try {
       final GeneralCommandLine commandLine = new GeneralCommandLine(cmdline).withWorkDirectory(workingDir);
@@ -448,6 +456,10 @@ public class PyPackageManagerImpl extends PyPackageManager {
       PythonEnvUtil.setPythonUnbuffered(environment);
       PythonEnvUtil.setPythonDontWriteBytecode(environment);
       PythonEnvUtil.resetHomePathChanges(homePath, environment);
+      final PythonSdkFlavor flavor = PythonSdkFlavor.getFlavor(mySdk);
+      if (flavor != null && flavor.commandLinePatcher() != null) {
+        flavor.commandLinePatcher().patchCommandLine(commandLine);
+      }
       final Process process;
       if (useSudo) {
         process = ExecUtil.sudo(commandLine, "Please enter your password to make changes in system packages: ");
@@ -462,7 +474,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
       if (showProgress && indicator != null) {
         handler.addProcessListener(new ProcessAdapter() {
           @Override
-          public void onTextAvailable(ProcessEvent event, Key outputType) {
+          public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
             if (outputType == ProcessOutputTypes.STDOUT || outputType == ProcessOutputTypes.STDERR) {
               for (String line : StringUtil.splitByLines(event.getText())) {
                 final String trimmed = line.trim();
@@ -523,7 +535,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
     return packages;
   }
 
-  private class MySdkRootWatcher extends BulkFileListener.Adapter {
+  private class MySdkRootWatcher implements BulkFileListener {
     @Override
     public void after(@NotNull List<? extends VFileEvent> events) {
       final Sdk sdk = getSdk();
