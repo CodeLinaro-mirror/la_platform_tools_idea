@@ -16,12 +16,12 @@ iml_module(
     tags = ["managed"],
     # do not sort: must match IML order
     test_runtime_deps = [
-        "//tools/idea:execution-impl",
-        "//tools/idea:external-system-impl",
-        "//tools/idea:lvcs-impl",
-        "//tools/idea:json",
-        "//tools/idea:tasks-platform-impl",
-        "//tools/idea:credential-store",
+        "//tools/idea/java/execution/impl:execution-impl",
+        "//tools/idea/platform/external-system-impl",
+        "//tools/idea/platform/lvcs-impl",
+        "//tools/idea/json",
+        "//tools/idea/platform/tasks-platform-impl",
+        "//tools/idea/platform/credential-store",
     ],
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
@@ -68,5 +68,11 @@ iml_module(
     name = "dependencies",
     iml_files = ["dependencies/dependencies.iml"],
     tags = ["managed"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "prebuilts",
+    srcs = ["dependencies/gradle.properties"],
     visibility = ["//visibility:public"],
 )

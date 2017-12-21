@@ -475,7 +475,6 @@ class DistributionJARsBuilder {
   }
 
   private FileSet createFileSet(String pattern, File baseDir) {
-    // Android Studio: modified by Change I0b4e1498 / commit ed89b54
     def fileSet = new ZipFileSet()
     if (baseDir.getName().endsWith(".jar")) {
       fileSet.setSrc(baseDir)

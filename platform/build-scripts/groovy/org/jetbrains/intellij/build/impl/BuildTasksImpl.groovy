@@ -349,9 +349,18 @@ idea.fatal.error.notification=disabled
   }
 
   private def copyDependenciesFile() {
-    if (buildContext.gradle.forceRun('Preparing dependencies file', 'dependenciesFile')) {
+    def inputFile = null
+    if (buildContext.options.dependenciesFile == null) {
+      if (buildContext.gradle.forceRun('Preparing dependencies file', 'dependenciesFile')) {
+        inputFile = "$buildContext.paths.communityHome/build/dependencies/build/dependencies.properties"
+      }
+    } else {
+      inputFile = "$buildContext.paths.communityHome/$buildContext.options.dependenciesFile"
+    }
+
+    if (inputFile != null) {
       def outputFile = "$buildContext.paths.artifacts/dependencies.txt"
-      buildContext.ant.copy(file: "$buildContext.paths.communityHome/build/dependencies/build/dependencies.properties", tofile: outputFile)
+      buildContext.ant.copy(file: inputFile, tofile: outputFile)
       buildContext.notifyArtifactBuilt(outputFile)
     }
   }

@@ -10,12 +10,12 @@ iml_module(
     ],
     # do not sort: must match IML order
     test_runtime_deps = [
-        "//tools/idea:execution-impl",
-        "//tools/idea:external-system-impl",
-        "//tools/idea:lvcs-impl",
-        "//tools/idea:json",
-        "//tools/idea:tasks-platform-impl",
-        "//tools/idea:credential-store",
+        "//tools/idea/java/execution/impl:execution-impl",
+        "//tools/idea/platform/external-system-impl",
+        "//tools/idea/platform/lvcs-impl",
+        "//tools/idea/json",
+        "//tools/idea/platform/tasks-platform-impl",
+        "//tools/idea/platform/credential-store",
     ],
     test_srcs = ["testSrc"],
     visibility = ["//visibility:public"],
@@ -60,7 +60,10 @@ iml_module(
 
 filegroup(
     name = "scripts",
-    srcs = glob(["groovy/**/*"]),
+    srcs = glob([
+        "groovy/**/*",
+        "resources/**/*",
+    ]),
     visibility = ["//visibility:public"],
 )
 

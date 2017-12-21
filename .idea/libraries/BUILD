@@ -1069,30 +1069,6 @@ java_library(
 )
 
 java_library(
-    name = "fest",
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-    # do not sort: must match IML order
-    exports = [
-        "//tools/idea/lib:MultithreadedTC-1.01",
-        "//tools/idea/lib:fest-assert-1.5.0-SNAPSHOT",
-        "//tools/idea/lib:fest-reflect-2.0-SNAPSHOT",
-        "//tools/idea/lib:fest-swing-1.4.1-SNAPSHOT",
-        "//tools/idea/lib:fest-util-1.3.0-SNAPSHOT",
-        "//tools/idea/lib:jsr305",
-    ],
-    # do not sort: must match IML order
-    runtime_deps = [
-        "//tools/idea/lib:MultithreadedTC-1.01",
-        "//tools/idea/lib:fest-assert-1.5.0-SNAPSHOT",
-        "//tools/idea/lib:fest-reflect-2.0-SNAPSHOT",
-        "//tools/idea/lib:fest-swing-1.4.1-SNAPSHOT",
-        "//tools/idea/lib:fest-util-1.3.0-SNAPSHOT",
-        "//tools/idea/lib:jsr305",
-    ],
-)
-
-java_library(
     name = "gradle-api",
     tags = ["managed"],
     visibility = ["//visibility:public"],
@@ -1120,13 +1096,13 @@ java_library(
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
     exports = [
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre7/1.1.51:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre8/1.1.51:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre7/1.2.10:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre8/1.2.10:jar",
     ],
     # do not sort: must match IML order
     runtime_deps = [
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre7/1.1.51:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre8/1.1.51:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre7/1.2.10:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jre8/1.2.10:jar",
     ],
 )
 
