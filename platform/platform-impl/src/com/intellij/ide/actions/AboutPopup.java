@@ -244,6 +244,7 @@ public class AboutPopup {
             myAlarm.addRequest(new Runnable() {
               @Override
               public void run() {
+                // Android Studio: modified by Change I40bfccb3 / commit 49af472
                 if (myShowCopyAlpha >= fadeStep) {
                   myShowCopyAlpha -= fadeStep;
                   repaint();
@@ -363,8 +364,10 @@ public class AboutPopup {
 
     @NotNull
     protected String getCopyrightText() {
-      ApplicationInfo appInfo = ApplicationInfo.getInstance();
-      return "\u00A9 2000\u2013" + Calendar.getInstance(Locale.US).get(Calendar.YEAR) + " " + appInfo.getCompanyName() + ". All rights reserved.";
+      /* Android Studio: https://b.corp.google.com/issues/37079872 - Remove misleading copyright notice
+      return "\u00A9 2000\u2013" + Calendar.getInstance(Locale.US).get(Calendar.YEAR) + " JetBrains s.r.o. All rights reserved.";
+      */
+      return " ";
     }
 
     @NotNull
