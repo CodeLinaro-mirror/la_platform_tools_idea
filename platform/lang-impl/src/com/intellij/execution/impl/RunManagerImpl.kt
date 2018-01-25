@@ -623,6 +623,7 @@ open class RunManagerImpl(internal val project: Project) : RunManagerEx(), Persi
   override fun noStateLoaded() {
     isFirstLoadState.set(false)
     loadSharedRunConfigurations()
+    projectRunConfigurationFirstLoaded()
   }
 
   override fun loadState(parentNode: Element) {
@@ -702,6 +703,7 @@ open class RunManagerImpl(internal val project: Project) : RunManagerEx(), Persi
       loadSharedRunConfigurations()
     }
 
+    projectRunConfigurationFirstLoaded()
     fireBeforeRunTasksUpdated()
 
     if (!isFirstLoadState && oldSelectedConfigurationId != null && oldSelectedConfigurationId != selectedConfigurationId) {
@@ -720,8 +722,6 @@ open class RunManagerImpl(internal val project: Project) : RunManagerEx(), Persi
         projectSchemeManager.reload()
       }
     }
-
-    projectRunConfigurationFirstLoaded()
   }
 
   private fun projectRunConfigurationFirstLoaded() {
