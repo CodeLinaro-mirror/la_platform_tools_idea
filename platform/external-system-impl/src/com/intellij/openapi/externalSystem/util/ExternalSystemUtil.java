@@ -544,11 +544,15 @@ public class ExternalSystemUtil {
           final Throwable error = myTask.getError();
           if (error == null) {
             if (callback != null) {
-              DataNode<ProjectData> externalProject = myTask.getExternalProject();
-              if (externalProject != null && importSpec.shouldCreateDirectoriesForEmptyContentRoots()) {
-                externalProject.putUserData(ContentRootDataService.CREATE_EMPTY_DIRECTORIES, Boolean.TRUE);
+              final ExternalProjectInfo externalProjectData = ProjectDataManagerImpl.getInstance()
+                .getExternalProjectData(project, externalSystemId, externalProjectPath);
+              if (externalProjectData != null) {
+                DataNode<ProjectData> externalProject = externalProjectData.getExternalProjectStructure();
+                if (externalProject != null && importSpec.shouldCreateDirectoriesForEmptyContentRoots()) {
+                  externalProject.putUserData(ContentRootDataService.CREATE_EMPTY_DIRECTORIES, Boolean.TRUE);
+                }
+                callback.onSuccess(externalProject);
               }
-              callback.onSuccess(externalProject);
             }
             if (!isPreviewMode) {
               externalSystemTaskActivator.runTasks(externalProjectPath, ExternalSystemTaskActivator.Phase.AFTER_SYNC);
@@ -800,23 +804,27 @@ public class ExternalSystemUtil {
         final Disposable disposable = Disposer.newDisposable();
 
         project.getMessageBus().connect(disposable).subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
+          @Override
           public void processStartScheduled(@NotNull final String executorIdLocal, @NotNull final ExecutionEnvironment environmentLocal) {
             if (executorId.equals(executorIdLocal) && environment.equals(environmentLocal)) {
               targetDone.down();
             }
           }
 
+          @Override
           public void processNotStarted(@NotNull final String executorIdLocal, @NotNull final ExecutionEnvironment environmentLocal) {
             if (executorId.equals(executorIdLocal) && environment.equals(environmentLocal)) {
               targetDone.up();
             }
           }
 
+          @Override
           public void processStarted(@NotNull final String executorIdLocal,
                                      @NotNull final ExecutionEnvironment environmentLocal,
                                      @NotNull final ProcessHandler handler) {
             if (executorId.equals(executorIdLocal) && environment.equals(environmentLocal)) {
               handler.addProcessListener(new ProcessAdapter() {
+                @Override
                 public void processTerminated(@NotNull ProcessEvent event) {
                   result.set(event.getExitCode() == 0);
                   targetDone.up();

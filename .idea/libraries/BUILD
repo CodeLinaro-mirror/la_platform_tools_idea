@@ -1020,35 +1020,15 @@ java_library(
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
     exports = [
-        "//tools/idea/plugins/gradle/lib:gradle-base-services-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-base-services-groovy-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-cli-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-core-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-launcher-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-logging-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-messaging-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-model-core-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-model-groovy-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-process-services-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-resources-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-tooling-api-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-wrapper-4.0",
+        "//tools/idea/plugins/gradle/lib:gradle-api-4.4",
+        "//tools/idea/plugins/gradle/lib:gradle-launcher-4.4",
+        "//tools/idea/plugins/gradle/lib:gradle-wrapper-4.4",
     ],
     # do not sort: must match IML order
     runtime_deps = [
-        "//tools/idea/plugins/gradle/lib:gradle-base-services-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-base-services-groovy-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-cli-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-core-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-launcher-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-logging-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-messaging-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-model-core-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-model-groovy-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-process-services-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-resources-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-tooling-api-4.0",
-        "//tools/idea/plugins/gradle/lib:gradle-wrapper-4.0",
+        "//tools/idea/plugins/gradle/lib:gradle-api-4.4",
+        "//tools/idea/plugins/gradle/lib:gradle-launcher-4.4",
+        "//tools/idea/plugins/gradle/lib:gradle-wrapper-4.4",
     ],
 )
 
@@ -1064,8 +1044,8 @@ java_library(
     name = "jediterm-pty",
     tags = ["managed"],
     visibility = ["//visibility:public"],
-    exports = ["//tools/idea/lib:jediterm-pty-2.5"],
-    runtime_deps = ["//tools/idea/lib:jediterm-pty-2.5"],
+    exports = ["//tools/idea/lib:jediterm-pty-2.6"],
+    runtime_deps = ["//tools/idea/lib:jediterm-pty-2.6"],
 )
 
 java_library(
@@ -1210,4 +1190,20 @@ java_library(
     visibility = ["//visibility:public"],
     exports = ["//prebuilts/tools/common/m2/repository/com/squareup/javapoet/1.8.0:jar"],
     runtime_deps = ["//prebuilts/tools/common/m2/repository/com/squareup/javapoet/1.8.0:jar"],
+)
+
+java_library(
+    name = "xml-apis-ext",
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+    exports = ["//tools/idea/lib:xml-apis-ext"],
+    runtime_deps = ["//tools/idea/lib:xml-apis-ext"],
+)
+
+java_library(
+    name = "aia-manifest-proto-1.0-jarjar",
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+    exports = ["//tools/base/sdk-common/aia-manifest-jar-generator:jarjar"],
+    runtime_deps = ["//tools/base/sdk-common/aia-manifest-jar-generator:jarjar"],
 )

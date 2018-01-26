@@ -15,7 +15,6 @@
  */
 package org.jetbrains.plugins.gradle.service.project;
 
-import com.google.common.io.InputSupplier;
 import com.google.gson.GsonBuilder;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.configurations.SimpleJavaParameters;
@@ -35,7 +34,10 @@ import com.intellij.openapi.externalSystem.service.notification.NotificationData
 import com.intellij.openapi.externalSystem.service.notification.NotificationSource;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.externalSystem.util.Order;
-import com.intellij.openapi.module.*;
+import com.intellij.openapi.module.EmptyModuleType;
+import com.intellij.openapi.module.JavaModuleType;
+import com.intellij.openapi.module.ModuleType;
+import com.intellij.openapi.module.StdModuleTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.DependencyScope;
 import com.intellij.openapi.util.Pair;
@@ -52,6 +54,8 @@ import com.intellij.util.net.HttpConfigurable;
 import com.intellij.util.text.CharArrayUtil;
 import groovy.lang.GroovyObject;
 import org.codehaus.groovy.runtime.typehandling.ShortTypeHandling;
+import org.gradle.internal.impldep.com.google.common.collect.Multimap;
+import org.gradle.internal.impldep.com.google.common.io.InputSupplier;
 import org.gradle.tooling.ProjectConnection;
 import org.gradle.tooling.model.DomainObjectSet;
 import org.gradle.tooling.model.GradleModuleVersion;
@@ -657,9 +661,8 @@ public class BaseGradleProjectResolverExtension implements GradleProjectResolver
       ProjectImportAction.class,
       // gradle-tooling-extension-impl jar
       ModelBuildScriptClasspathBuilderImpl.class,
-      // guava-jdk5-17.0.jar, removed (in future guava versions) class has to be used
-      // to prevent populating gradle daemon classpath with incompatible guava
-      InputSupplier.class,
+      // repacked gradle guava
+      Multimap.class,
       GsonBuilder.class,
       ShortTypeHandling.class
     );
