@@ -142,18 +142,6 @@ public class JavacOutputParser implements BuildOutputParser {
     return false;
   }
 
-  private static void addMessage(@NotNull MessageEvent message, @NotNull List<MessageEvent> messages) {
-    boolean duplicatesPrevious = false;
-    int messageCount = messages.size();
-    if (messageCount > 0) {
-      MessageEvent lastMessage = messages.get(messageCount - 1);
-      duplicatesPrevious = lastMessage.equals(message);
-    }
-    if (!duplicatesPrevious) {
-      messages.add(message);
-    }
-  }
-
   private static String amendNextInfoLinesIfNeeded(String str, BuildOutputInstantReader reader) {
     StringBuilder builder = new StringBuilder(str);
     String nextLine = reader.readLine();
