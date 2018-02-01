@@ -46,25 +46,21 @@ class JarLoader extends Loader {
     pair(Resource.Attribute.IMPL_VENDOR, Attributes.Name.IMPLEMENTATION_VENDOR));
 
   private final File myCanonicalFile;
-  private final boolean myCanLockJar; // true implies that the .jar file will not be modified in the lifetime of the JarLoader
-  private final boolean myLogError;
+  private final ClassPath myConfiguration;
   private SoftReference<JarMemoryLoader> myMemoryLoader;
   private volatile SoftReference<ZipFile> myZipFileSoftReference; // Used only when myCanLockJar==true
   private final Map<Resource.Attribute, String> myAttributes;
 
-  JarLoader(URL url, @SuppressWarnings("unused") boolean canLockJar, int index, boolean preloadJarContents, boolean logError)
-    throws IOException {
+  JarLoader(URL url, int index, ClassPath configuration) throws IOException {
     super(new URL("jar", "", -1, url + "!/"), index);
 
     myCanonicalFile = new File(FileUtil.unquote(url.getFile())).getCanonicalFile();
-    myCanLockJar = canLockJar;
-    // Android Studio: Added to avoid fatal error reports when build jars disappear during a preview render
-    myLogError = logError;
+    myConfiguration = configuration;
 
     ZipFile zipFile = getZipFile(); // IOException from opening is propagated to caller if zip file isn't valid,
     try {
       myAttributes = getAttributes(zipFile);
-      if (preloadJarContents) {
+      if (configuration.myPreloadJarContents) {
         JarMemoryLoader loader = JarMemoryLoader.load(zipFile, getBaseURL(), myAttributes);
         if (loader != null) {
           myMemoryLoader = new SoftReference<JarMemoryLoader>(loader);
@@ -189,7 +185,7 @@ class JarLoader extends Loader {
   }
 
   protected void error(String message, Throwable t) {
-    if (myLogError) {
+    if (myConfiguration.myLogErrorOnMissingJar) {
       Logger.getInstance(JarLoader.class).error(message, t);
     }
     else {
@@ -203,7 +199,7 @@ class JarLoader extends Loader {
   private ZipFile getZipFile() throws IOException {
     // This code is executed at least 100K times (O(number of classes needed to load)) and it takes considerable time to open ZipFile's
     // such number of times so we store reference to ZipFile if we allowed to lock the file (assume it isn't changed)
-    if (myCanLockJar) {
+    if (myConfiguration.myCanLockJars) {
       ZipFile zipFile = SoftReference.dereference(myZipFileSoftReference);
       if (zipFile != null) return zipFile;
 
@@ -224,7 +220,7 @@ class JarLoader extends Loader {
 
   private void releaseZipFile(ZipFile zipFile) throws IOException {
     // Closing of zip file when myCanLockJar=true happens in ZipFile.finalize
-    if (!myCanLockJar) {
+    if (!myConfiguration.myCanLockJars) {
       zipFile.close();
     }
   }

@@ -93,9 +93,9 @@ public class UrlClassLoader extends ClassLoader {
     private boolean myAcceptUnescaped;
     private boolean myPreload = true;
     private boolean myAllowBootstrapResources;
+    private boolean myErrorOnMissingJar = true;
     @Nullable private CachePoolImpl myCachePool;
     @Nullable private CachingCondition myCachingCondition;
-    private boolean myErrorOnMissingJar = true;
 
     private Builder() { }
 
@@ -139,14 +139,12 @@ public class UrlClassLoader extends ClassLoader {
     public Builder allowUnescaped() { myAcceptUnescaped = true; return this; }
     public Builder noPreload() { myPreload = false; return this; }
     public Builder allowBootstrapResources() { myAllowBootstrapResources = true; return this; }
+    public Builder setLogErrorOnMissingJar(boolean log) {myErrorOnMissingJar = log; return this; }
 
     /** @deprecated use {@link #allowUnescaped()} (to be removed in IDEA 2018) */
     public Builder allowUnescaped(boolean acceptUnescaped) { myAcceptUnescaped = acceptUnescaped; return this; }
     /** @deprecated use {@link #noPreload()} (to be removed in IDEA 2018) */
     public Builder preload(boolean preload) { myPreload = preload; return this; }
-
-    // Android Studio: Added to avoid fatal error reports when build jars disappear during a preview render
-    public Builder setLogErrorOnMissingJar(boolean log) {myErrorOnMissingJar = log; return this; }
 
     public UrlClassLoader get() { return new UrlClassLoader(this); }
   }

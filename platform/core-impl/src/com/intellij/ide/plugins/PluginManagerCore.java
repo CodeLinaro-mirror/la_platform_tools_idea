@@ -802,8 +802,10 @@ public class PluginManagerCore {
         if (optionalDescriptor == null) {
           optionalDescriptor = loadDescriptor(file, optPathName, context);
         }
-        // Android Studio: directory is hit when running in tests or in the ide. We also need this behaviour with jars.
         if (optionalDescriptor == null && (directory || resolveDescriptorsInResources())) {
+          // JDOMXIncluder can find included descriptor files via classloading in URLUtil.openResourceStream 
+          // and here code supports the same behavior. 
+          // Note that this code is meant for IDE development / testing purposes  
           URL resource = PluginManagerCore.class.getClassLoader().getResource(META_INF + '/' + optPathName);
           if (resource != null) {
             optionalDescriptor = loadDescriptorFromResource(resource, optPathName);
@@ -816,9 +818,7 @@ public class PluginManagerCore {
     return descriptor;
   }
 
-  // Android Studio: resolve optional descriptors in the same way it's done when they are in directories.
-  // We build each directory as a jar, so a basic directory check is not enough
-  private static boolean resolveDescriptorsInResources() {
+  private static boolean resolveDescriptorsInResources() {  
     return System.getProperty("resolve.descriptors.in.resources") != null;
   }
 

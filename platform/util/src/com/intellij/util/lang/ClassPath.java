@@ -20,7 +20,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.ShutDownTracker;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.containers.HashMap;
 import com.intellij.util.containers.Stack;
 import com.intellij.util.io.URLUtil;
 import org.jetbrains.annotations.Nullable;
@@ -49,15 +48,14 @@ public class ClassPath {
   private final Map<URL, Loader> myLoadersMap = new HashMap<URL, Loader>();
   private final ClasspathCache myCache = new ClasspathCache();
 
-  private final boolean myCanLockJars;
+  final boolean myCanLockJars; // true implies that the .jar file will not be modified in the lifetime of the JarLoader
   private final boolean myCanUseCache;
   private final boolean myAcceptUnescapedUrls;
-  private final boolean myPreloadJarContents;
-  private final boolean myCanHavePersistentIndex;
+  final boolean myPreloadJarContents;
+  final boolean myCanHavePersistentIndex;
   @Nullable private final CachePoolImpl myCachePool;
   @Nullable private final UrlClassLoader.CachingCondition myCachingCondition;
-  // Android Studio: Added to avoid fatal error reports when build jars disappear during a preview render
-  private final boolean myLogErrorOnMissingJar;
+  final boolean myLogErrorOnMissingJar;
 
   public ClassPath(List<URL> urls,
                    boolean canLockJars,
@@ -207,7 +205,7 @@ public class ClassPath {
       return new FileLoader(url, index, myCanHavePersistentIndex);
     }
     else if (file.isFile()) {
-      Loader loader = new JarLoader(url, myCanLockJars, index, myPreloadJarContents, myLogErrorOnMissingJar);
+      Loader loader = new JarLoader(url, index, this);
       if (processRecursively) {
         String[] referencedJars = loadManifestClasspath(file);
         if (referencedJars != null) {
