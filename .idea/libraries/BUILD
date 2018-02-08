@@ -26,8 +26,8 @@ java_library(
     name = "truth",
     tags = ["managed"],
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/com/google/truth/truth/0.28:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/com/google/truth/truth/0.28:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/com/google/truth/truth/0.34:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/com/google/truth/truth/0.34:jar"],
 )
 
 java_library(
@@ -730,8 +730,8 @@ java_library(
     name = "Eclipse",
     tags = ["managed"],
     visibility = ["//visibility:public"],
-    exports = ["//tools/idea/lib:ecj-4.6.2"],
-    runtime_deps = ["//tools/idea/lib:ecj-4.6.2"],
+    exports = ["//tools/idea/lib:ecj-4.7.2"],
+    runtime_deps = ["//tools/idea/lib:ecj-4.7.2"],
 )
 
 java_library(
