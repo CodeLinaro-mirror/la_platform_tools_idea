@@ -1,27 +1,6 @@
 java_import(
-    name = "guava-21.0",
-    jars = ["guava-21.0.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "trove4j",
-    jars = ["trove4j.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "jsr305",
     jars = ["jsr305.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "junit",
-    jars = ["junit.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -55,13 +34,6 @@ java_import(
 )
 
 java_import(
-    name = "xmlrpc-2.0",
-    jars = ["xmlrpc-2.0.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "gherkin-2.12.2",
     jars = ["gherkin-2.12.2.jar"],
     tags = ["managed"],
@@ -69,22 +41,8 @@ java_import(
 )
 
 java_import(
-    name = "cucumber-jvm-deps-1.0.3",
-    jars = ["cucumber-jvm-deps-1.0.3.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "cucumber-core-1.2.4",
     jars = ["cucumber-core-1.2.4.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "cucumber-java-1.2.4",
-    jars = ["cucumber-java-1.2.4.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -106,13 +64,6 @@ java_import(
 java_import(
     name = "jgoodies-forms",
     jars = ["jgoodies-forms.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "hamcrest-library-1.3",
-    jars = ["hamcrest-library-1.3.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -167,13 +118,6 @@ java_import(
 )
 
 java_import(
-    name = "oromatcher",
-    jars = ["oromatcher.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "snappy-in-java-0.5.1",
     jars = ["snappy-in-java-0.5.1.jar"],
     tags = ["managed"],
@@ -181,22 +125,8 @@ java_import(
 )
 
 java_import(
-    name = "imgscalr-lib-4.2",
-    jars = ["imgscalr-lib-4.2.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "batik-all",
     jars = ["batik-all.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "xmlgraphics-commons-1.5",
-    jars = ["xmlgraphics-commons-1.5.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -237,20 +167,6 @@ java_import(
 )
 
 java_import(
-    name = "nanoxml-2.2.3",
-    jars = ["nanoxml-2.2.3.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "commons-codec-1.9",
-    jars = ["commons-codec-1.9.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "pty4j-0.7.1",
     jars = ["pty4j-0.7.1.jar"],
     tags = ["managed"],
@@ -260,13 +176,6 @@ java_import(
 java_import(
     name = "microba",
     jars = ["microba.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "jaxen-1.1.3",
-    jars = ["jaxen-1.1.3.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -293,20 +202,6 @@ java_import(
 )
 
 java_import(
-    name = "jcip-annotations",
-    jars = ["jcip-annotations.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "swingx-core-1.6.2",
-    jars = ["swingx-core-1.6.2.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "velocity",
     jars = ["velocity.jar"],
     tags = ["managed"],
@@ -316,13 +211,6 @@ java_import(
 java_import(
     name = "xpp3-1.1.4-min",
     jars = ["xpp3-1.1.4-min.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "commons-logging-1.2",
-    jars = ["commons-logging-1.2.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -365,55 +253,6 @@ java_import(
 java_import(
     name = "slf4j-log4j12-1.7.10",
     jars = ["slf4j-log4j12-1.7.10.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "imageio-tiff-3.2.1",
-    jars = ["imageio-tiff-3.2.1.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "imageio-core-3.2.1",
-    jars = ["imageio-core-3.2.1.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "common-lang-3.2.1",
-    jars = ["common-lang-3.2.1.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "common-io-3.2.1",
-    jars = ["common-io-3.2.1.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "common-image-3.2.1",
-    jars = ["common-image-3.2.1.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "imageio-metadata-3.2.1",
-    jars = ["imageio-metadata-3.2.1.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "jsch-0.1.54",
-    jars = ["jsch-0.1.54.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -531,13 +370,6 @@ java_import(
 )
 
 java_import(
-    name = "snakeyaml-1.17",
-    jars = ["snakeyaml-1.17.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
     name = "jediterm-pty-2.6",
     jars = ["jediterm-pty-2.6.jar"],
     tags = ["managed"],
@@ -572,13 +404,6 @@ java_import(
 java_import(
     name = "proxy-vole-1.0.3",
     jars = ["proxy-vole-1.0.3.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "ini4j-0.5.2-patched",
-    jars = ["ini4j-0.5.2-patched.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -628,13 +453,6 @@ java_import(
 java_import(
     name = "jaxb-impl",
     jars = ["jaxb-impl.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
-
-java_import(
-    name = "xml-apis-ext",
-    jars = ["xml-apis-ext.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )

@@ -115,11 +115,11 @@ abstract class BaseIdeaProperties extends ProductProperties {
         withArtifact("debugger-agent-storage", "rt")
         withProjectLibrary("Eclipse")
         withProjectLibrary("jgoodies-common")
-        withProjectLibrary("jgoodies-looks")
         withProjectLibrary("commons-net")
         withProjectLibrary("snakeyaml")
         withoutProjectLibrary("Ant")
         withoutProjectLibrary("Gradle")
+        removeVersionFromProjectLibraryJarNames("JUnit3") //for compatibility with users projects which refer to IDEA_HOME/lib/junit.jar
       }
     } as Consumer<PlatformLayout>
 

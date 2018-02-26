@@ -135,6 +135,8 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("project-system", "android.jar")
       withModule("project-system-gradle", "android.jar")
       withModule("android-layout-inspector", "android.jar")
+      withModule("assistant", "android.jar")
+      withModule("connection-assistant", "android.jar")
       withModule("adt-ui", "adt-ui.jar")
       withModule("adt-ui-model", "adt-ui.jar")
       withModule("repository")
@@ -170,7 +172,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
       withJpsModule("android-jps-plugin")
 
-      withProjectLibrary("freemarker-2.3.20") //todo[nik] move to module libraries
+      withProjectLibrary("freemarker") //todo[nik] move to module libraries
       //withProjectLibrary("builder-model") //todo[nik] move to module libraries
       withProjectLibrary("jgraphx-3.4.0.1") //todo[nik] move to module libraries
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
@@ -180,7 +182,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withResourceFromModule("android","lib/asm-5.0.3.jar", "lib")
       withResourceFromModule("android","lib/asm-analysis-5.0.3.jar", "lib")
       withResourceFromModule("android","lib/asm-tree-5.0.3.jar", "lib")
-      withResourceFromModule("android","lib/commons-io-2.4.jar", "lib")
       withResourceFromModule("android","lib/commons-compress-1.8.1.jar", "lib")
       withResourceFromModule("android","lib/javawriter-2.2.1.jar", "lib")
       withResourceFromModule("android","lib/juniversalchardet-1.0.3.jar", "lib")
@@ -365,6 +366,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
           fileset(dir: "$root/prebuilts/tools/linux-x86_64/lldb")
         }
         extraExecutables.add("bin/lldb/bin/LLDBFrontend")
+        extraExecutables.add("bin/lldb/bin/llvm-symbolizer")
         extraExecutables.add("bin/lldb/bin/minidump_stackwalk")
         context.ant.copy(todir: "$lldbTarget/lib/python2.7") {
           fileset(dir: "$root/prebuilts/python/linux-x86/lib/python2.7")
@@ -410,6 +412,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
           fileset(dir: "$root/prebuilts/tools/darwin-x86_64/lldb")
         }
         extraExecutables.add("bin/lldb/bin/LLDBFrontend")
+        extraExecutables.add("bin/lldb/bin/llvm-symbolizer")
         extraExecutables.add("bin/lldb/bin/minidump_stackwalk")
       }
     }

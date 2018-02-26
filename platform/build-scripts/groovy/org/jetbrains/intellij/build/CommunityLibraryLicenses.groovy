@@ -115,11 +115,11 @@ class CommunityLibraryLicenses {
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt", url: "https://code.google.com/p/fest/"),
     new LibraryLicense(name: "FiraCode", attachedTo: "platform-resources", version: "1.200", license: "OFL", url: "https://github.com/tonsky/FiraCode/blob/master/LICENSE"),
     new LibraryLicense(name: "FreeMarker", attachedTo: "coverage", version: "2.3.15", license: "BSD", url: "http://freemarker.sourceforge.net/"),
-    new LibraryLicense(name: "FreeMarker", libraryName: "freemarker-2.3.20", version: "2.3.20", license: "BSD",
+    new LibraryLicense(name: "FreeMarker", libraryName: "freemarker", version: "2.3.20", license: "BSD",
                        url: "http://freemarker.sourceforge.net/"),
     new LibraryLicense(name: "fxg-utils", libraryName: "fxg-utils", version: "4.9.1", license: "Apache 2.0", url: "http://flex.apache.org",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
-    new LibraryLicense(name: "Gant", version: "1.9.8", libraryName: "gant-1.9.11_groovy-2.3.0.jar", license: "Apache 2.0",
+    new LibraryLicense(name: "Gant", version: "1.9.8", libraryName: "gant-groovy", license: "Apache 2.0",
                        url: "https://github.com/codehaus/gant", licenseUrl: "https://github.com/codehaus/gant/blob/master/LICENCE.txt"),
     new LibraryLicense(name: "Gherkin", libraryName: "Gherkin", version: "2.12.2", license: "MIT",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt", url: "https://github.com/cucumber/gherkin"),
@@ -145,11 +145,11 @@ class CommunityLibraryLicenses {
     new LibraryLicense(name: "xml-apis-ext", libraryName: "xml-apis-ext", version: "1.3", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt",
                        url: "http://xerces.apache.org/xml-commons/components/external"),
-    new LibraryLicense(name: "ImageIO", libraryName: "com.twelvemonkeys.imageio:imageio-tiff:3.2.1", version: "3.2.1", license: "BSD",
+    new LibraryLicense(name: "ImageIO", libraryName: "imageio-tiff", version: "3.2.1", license: "BSD",
                        url: "https://github.com/haraldk/TwelveMonkeys", licenseUrl: "https://github.com/haraldk/TwelveMonkeys#license"),
     new LibraryLicense(name: "Inconsolata", attachedTo: "platform-resources", version: "001.010", license: "OFL", url: "https://github.com/google/fonts/blob/master/ofl/inconsolata/OFL.txt"),
-    new LibraryLicense(name: "ini4j", libraryName: "ini4j", version: "0.5.2 (with a patch by JetBrains)", license: "Apache 2.0",
-                       url: "http://ini4j.sourceforge.net/", licenseUrl: "http://ini4j.sourceforge.net/license.html"),
+    new LibraryLicense(name: "ini4j (JetBrains's fork)", libraryName: "ini4j", version: "0.5.5-1", license: "Apache 2.0",
+                       url: "https://github.com/JetBrains/intellij-deps-ini4j"),
     new LibraryLicense(name: "ISO RELAX", libraryName: "isorelax.jar", license: "MIT License",
                        url: "http://sourceforge.net/projects/iso-relax/", licenseUrl: "http://www.opensource.org/licenses/mit-license.html"),
     /* Android Studio: added by Change I38bafaf1 / commit 0c703f7 */
@@ -184,12 +184,10 @@ class CommunityLibraryLicenses {
                        licenseUrl: "http://www.eclipse.org/org/documents/edl-v10.php", url: "https://github.com/FasterXML/jackson"),
     new LibraryLicense(name: "JGit", libraryName: "jgit", version: "4.0", license: "Eclipse Distribution License 1.0",
                        licenseUrl: "http://www.eclipse.org/org/documents/edl-v10.php", url: "https://eclipse.org/jgit/"),
-    new LibraryLicense(name: "JGoodies Common", libraryName: "jgoodies-common", version: "1.2.1", license: "BSD",
+    new LibraryLicense(name: "JGoodies Common", libraryName: "jgoodies-common", version: "1.4.0", license: "BSD",
                        url: "http://www.jgoodies.com/freeware/libraries/looks/", licenseUrl: "https://opensource.org/licenses/bsd-license.html"),
     new LibraryLicense(name: "JGoodies Forms", libraryName: "jgoodies-forms", version: "1.1-preview 2006-05-04 11:55:37", license: "BSD",
                        url: "http://www.jgoodies.com/freeware/libraries/forms/", licenseUrl: "https://opensource.org/licenses/bsd-license.html"),
-    new LibraryLicense(name: "JGoodies Looks", libraryName: "jgoodies-looks", version: "2.4.2", license: "BSD",
-                       url: "http://www.jgoodies.com/freeware/libraries/looks/", licenseUrl: "https://opensource.org/licenses/bsd-license.html"),
     new LibraryLicense(name: "jgraphx", libraryName: "jgraphx-3.4.0.1", version: "3.4.0.1", license: "BSD",
                        url: "https://github.com/jgraph/jgraphx"),
     /* Android Studio: added by Change I38bafaf1 / commit 0c703f7 */
@@ -350,7 +348,7 @@ class CommunityLibraryLicenses {
                        license: "link (commercial license)", url: "http://www.svnkit.com/", licenseUrl: "https://github.com/JetBrains/intellij-community/blob/master/license/svnkit-license.txt"),
     new LibraryLicense(name: "SVNKit", libraryName: "svnkit.jar", version: "1.8.12", license: "link (commercial license)",
                        url: "http://www.svnkit.com/", licenseUrl: "https://github.com/JetBrains/intellij-community/blob/master/license/svnkit-license.txt"),
-    new LibraryLicense(name: "swingx", libraryName: "swingx", version: "1.6.2", license: "LGPL 2.1", url: "http://java.net/downloads/swingx/",
+    new LibraryLicense(name: "swingx", libraryName: "swingx", version: "1.6.2-2", license: "LGPL 2.1", url: "http://java.net/downloads/swingx/",
                        licenseUrl: "http://www.opensource.org/licenses/lgpl-2.1.php"),
     new LibraryLicense(name: "TestNG", version: "6.9 snapshot", license: "Apache 2.0", url: "http://testng.org/doc/",
                        licenseUrl: "https://github.com/cbeust/testng/blob/master/LICENSE.txt"),
@@ -374,7 +372,7 @@ class CommunityLibraryLicenses {
                        url: "http://xml.apache.org/xalan-j/", licenseUrl: "http://xml.apache.org/xalan-j/"),
     new LibraryLicense(name: "Xerces", version: "2.11", license: "Apache 2.0", url: "http://xerces.apache.org/xerces2-j/",
                        licenseUrl: "http://xerces.apache.org/xerces2-j/"),
-    new LibraryLicense(name: "Xerial SQLite JDBC", libraryName: "sqlite", version: "3.16.1", license: "Apache 2.0",
+    new LibraryLicense(name: "Xerial SQLite JDBC", libraryName: "sqlite", version: "3.20.1", license: "Apache 2.0",
                        url: "https://github.com/xerial/sqlite-jdbc"),
     new LibraryLicense(name: "XML-RPC", libraryName: "XmlRPC", version: "2.0", license: "Apache 2.0",
                        url: "http://ws.apache.org/xmlrpc/xmlrpc2/", licenseUrl: "http://ws.apache.org/xmlrpc/xmlrpc2/license.html"),
@@ -398,6 +396,8 @@ class CommunityLibraryLicenses {
     new LibraryLicense(name: "Java Poet", libraryName: "javapoet-1.8.0", version: "1.8.0", license: "Apache 2.0",
                        url: "https://github.com/square/javapoet"),
 
+    jetbrainsLibrary("kotlin-stdlib-jre8"),  // Android Studio: added by Change If94a51ef / commit e8d58c9
+
     jetbrainsLibrary("Coverage"),
     jetbrainsLibrary("CoverageReport"),
     jetbrainsLibrary("intellij-markdown.jar"),
@@ -406,9 +406,8 @@ class CommunityLibraryLicenses {
     jetbrainsLibrary("Maven Embedder"),
     jetbrainsLibrary("tcServiceMessages"),
     jetbrainsLibrary("optimizedFileManager.jar"),
-    /* Android Studio: added by Change If94a51ef / commit e8d58c9 */
     jetbrainsLibrary("KotlinJavaRuntime"),
-    jetbrainsLibrary("kotlin-stdlib-jre7"),
-    jetbrainsLibrary("kotlin-stdlib-jre8")
+    jetbrainsLibrary("kotlinx-coroutines-core"),
+    jetbrainsLibrary("kotlinx-coroutines-jdk8")
   ] as List<LibraryLicense>
 }

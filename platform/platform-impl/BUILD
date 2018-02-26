@@ -77,7 +77,7 @@ iml_module(
         "//tools/idea/.idea/libraries:imgscalr",
         "//tools/idea/platform/built-in-server-api[module]",
         "//tools/idea/.idea/libraries:KotlinJavaRuntime",
-        "//tools/idea/.idea/libraries:com.twelvemonkeys.imageio_imageio-tiff_3.2.1",
+        "//tools/idea/.idea/libraries:imageio-tiff",
         "//tools/analytics-library/tracker:analytics-tracker[module]",
         "//tools/analytics-library/shared:analytics-shared[module]",
         "//tools/analytics-library/publisher:analytics-publisher[module]",
@@ -86,5 +86,7 @@ iml_module(
         "//tools/idea/.idea/libraries:pty4j",
         "//tools/idea/.idea/libraries:StreamEx",
         "//tools/idea/.idea/libraries:jediterm-pty",
+        "//tools/idea/.idea/libraries:kotlinx-coroutines-core",
+        "//tools/idea/.idea/libraries:kotlinx-coroutines-jdk8",
     ],
 )
