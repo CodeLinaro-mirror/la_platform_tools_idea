@@ -562,12 +562,6 @@ java_import(
     visibility = ["//visibility:public"],
 )
 
-java_import(
-    name = "trilead-ssh2",
-    jars = ["trilead-ssh2.jar"],
-    tags = ["managed"],
-    visibility = ["//visibility:public"],
-)
 
 java_import(
     name = "proxy-vole-1.0.3",
@@ -628,6 +622,13 @@ java_import(
 java_import(
     name = "jaxb-impl",
     jars = ["jaxb-impl.jar"],
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+)
+
+java_import(
+    name = "xml-apis-ext",
+    jars = ["xml-apis-ext.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
