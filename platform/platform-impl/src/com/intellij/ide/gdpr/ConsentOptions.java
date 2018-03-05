@@ -6,6 +6,7 @@ package com.intellij.ide.gdpr;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.intellij.openapi.application.ApplicationNamesInfo;
+import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
@@ -29,6 +30,12 @@ public final class ConsentOptions {
   private static final String CONSENTS_CONFIRMATION_PROPERTY = "jb.consents.confirmation.enabled";
   private static final String STATISTICS_OPTION_ID = "rsch.send.usage.stat";
 
+  @NotNull
+  private static String getBundledResourcePath() {
+    final ApplicationInfoEx appInfo = ApplicationInfoImpl.getShadowInstance();
+    return appInfo.isVendorJetBrains() ? "/consents.json" : "/consents-" + appInfo.getShortCompanyName() + ".json";
+  }
+
   private static final class InstanceHolder {
     static final ConsentOptions ourInstance = new ConsentOptions(new IOBackend() {
       private final File DEFAULT_CONSENTS_FILE = new File(Locations.getDataRoot(), ApplicationNamesInfo.getInstance().getLowercaseProductName() + "/consentOptions/cached");
@@ -45,8 +52,7 @@ public final class ConsentOptions {
 
       @NotNull
       public String readBundledConsents() {
-        String resourceName = "/consents-" + ApplicationInfoImpl.getShadowInstance().getShortCompanyName() + ".json";
-        return loadText(ConsentOptions.class.getResourceAsStream(resourceName));
+        return loadText(ConsentOptions.class.getResourceAsStream(getBundledResourcePath()));
       }
 
       public void writeConfirmedConsents(@NotNull String data) throws IOException {
