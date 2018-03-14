@@ -483,7 +483,7 @@ public class ExternalSystemUtil {
 
               @Override
               public void actionPerformed(AnActionEvent e) {
-                refreshProject(externalProjectPath, importSpec, true);
+                refreshProject(externalProjectPath, importSpec, sealBuildViewOnSucess);
               }
             };
             String systemId = id.getProjectSystemId().getReadableName();
