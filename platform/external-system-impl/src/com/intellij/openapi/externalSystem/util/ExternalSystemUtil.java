@@ -495,7 +495,8 @@ public class ExternalSystemUtil {
             ServiceManager.getService(project, SyncViewManager.class).onEvent(
               new StartBuildEventImpl(new DefaultBuildDescriptor(id, projectName, externalProjectPath, eventTime), message)
                 .withProcessHandler(processHandler, null)
-                .withRestartAction(rerunImportAction)
+                // Android Studio: See b/74360539
+                //.withRestartAction(rerunImportAction)
                 .withContentDescriptorSupplier(() -> {
                   if (consoleView == null) {
                     return null;
