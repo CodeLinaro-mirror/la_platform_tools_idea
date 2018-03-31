@@ -20,19 +20,21 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.ShutDownTracker;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.util.containers.HashMap;
 import com.intellij.util.containers.Stack;
 import com.intellij.util.io.URLUtil;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.Attributes;
-import java.util.jar.JarInputStream;
-import java.util.jar.Manifest;
 
 public class ClassPath {
   private static final ResourceStringLoaderIterator ourCheckedIterator = new ResourceStringLoaderIterator(true);
@@ -102,9 +104,7 @@ public class ClassPath {
     try {
       int i;
       if (myCanUseCache) {
-        boolean allUrlsWereProcessed;
-
-        allUrlsWereProcessed = myAllUrlsWereProcessed;
+        boolean allUrlsWereProcessed = myAllUrlsWereProcessed;
         i = allUrlsWereProcessed ? 0 : myLastLoaderProcessed.get();
 
         Resource prevResource = myCache.iterateLoaders(s, flag ? ourCheckedIterator : ourUncheckedIterator, s, this);
@@ -204,10 +204,10 @@ public class ClassPath {
     if (file.isDirectory()) {
       return new FileLoader(url, index, myCanHavePersistentIndex);
     }
-    else if (file.isFile()) {
+    if (file.isFile()) {
       Loader loader = new JarLoader(url, index, this);
       if (processRecursively) {
-        String[] referencedJars = loadManifestClasspath(file);
+        String[] referencedJars = loadManifestClasspath((JarLoader)loader);
         if (referencedJars != null) {
           for (String referencedJar : referencedJars) {
             try {
@@ -252,9 +252,19 @@ public class ClassPath {
     myLoadersMap.put(url, loader);
   }
 
+  Attributes getManifestData(URL url) {
+    return myCanUseCache && myCachePool != null ? myCachePool.getManifestData(url) : null;
+  }
+
+  void cacheManifestData(URL url, Attributes manifestAttributes) {
+    if (myCanUseCache && myCachePool != null && myCachingCondition != null && myCachingCondition.shouldCacheData(url)) {
+      myCachePool.cacheManifestData(url, manifestAttributes);
+    }
+  }
+
   private class MyEnumeration implements Enumeration<URL> {
-    private int myIndex = 0;
-    private Resource myRes = null;
+    private int myIndex;
+    private Resource myRes;
     private final String myName;
     private final String myShortName;
     private final boolean myCheck;
@@ -273,7 +283,7 @@ public class ClassPath {
         if (name.endsWith("/")) {
           myCache.iterateLoaders(name.substring(0, name.length() - 1), ourLoaderCollector, loadersSet, this);
         } else {
-          myCache.iterateLoaders(name.concat("/"), ourLoaderCollector, loadersSet, this);
+          myCache.iterateLoaders(name + "/", ourLoaderCollector, loadersSet, this);
         }
 
         loaders = new ArrayList<Loader>(loadersSet);
@@ -314,10 +324,12 @@ public class ClassPath {
       return false;
     }
 
+    @Override
     public boolean hasMoreElements() {
       return next();
     }
 
+    @Override
     public URL nextElement() {
       if (!next()) {
         throw new NoSuchElementException();
@@ -409,8 +421,8 @@ public class ClassPath {
   }
 
   private static final boolean ourLogTiming = Boolean.getBoolean("idea.print.classpath.timing");
-  private static long ourTotalTime = 0;
-  private static int ourTotalRequests = 0;
+  private static long ourTotalTime;
+  private static int ourTotalRequests;
 
   private static long startTiming() {
     return ourLogTiming ? System.nanoTime() : 0;
@@ -424,30 +436,22 @@ public class ClassPath {
     ourTotalTime += time;
     ++ourTotalRequests;
     if (time > 10000000L) {
-      System.out.println((time / 1000000) + " ms for " + msg);
+      System.out.println(time / 1000000 + " ms for " + msg);
     }
     if (ourTotalRequests % 1000 == 0) {
-      System.out.println(path.toString() + ", requests:" + ourTotalRequests + ", time:" + (ourTotalTime / 1000000) + "ms");
+      System.out.println(path + ", requests:" + ourTotalRequests + ", time:" + (ourTotalTime / 1000000) + "ms");
     }
   }
 
-  private static String[] loadManifestClasspath(File file) {
+  private static String[] loadManifestClasspath(JarLoader loader) {
     try {
-      JarInputStream inputStream = new JarInputStream(new FileInputStream(file));
-      try {
-        Manifest manifest = inputStream.getManifest();
-        if (manifest != null) {
-          final String classPath = manifest.getMainAttributes().getValue(Attributes.Name.CLASS_PATH);
-          if (classPath != null) {
-            String[] urls = classPath.split(" ");
-            if (urls.length > 0 && urls[0].startsWith("file:")) {
-              return urls;
-            }
-          }
+      String classPath = loader.getManifestAttributes().getValue(Attributes.Name.CLASS_PATH);
+
+      if (classPath != null) {
+        String[] urls = classPath.split(" ");
+        if (urls.length > 0 && urls[0].startsWith("file:")) {
+          return urls;
         }
-      }
-      finally {
-        inputStream.close();
       }
     }
     catch (Exception ignore) { }

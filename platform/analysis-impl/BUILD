@@ -44,7 +44,6 @@ iml_module(
         "//tools/idea/platform/editor-ui-ex[module]",
         "//tools/idea/platform/indexing-impl[module]",
         "//tools/idea/.idea/libraries:KotlinJavaRuntime",
-        "//tools/idea/uast/uast-common[module]",
         "//tools/idea/platform/external-system-api[module]",
     ],
 )

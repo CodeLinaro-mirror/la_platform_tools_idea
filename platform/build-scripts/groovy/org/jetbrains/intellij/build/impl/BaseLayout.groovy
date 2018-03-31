@@ -27,6 +27,7 @@ import org.jetbrains.intellij.build.ResourcesGenerator
 abstract class BaseLayout {
   /** JAR name (or path relative to 'lib' directory) to names of modules */
   final MultiValuesMap<String, String> moduleJars = new MultiValuesMap<>(true)
+  final MultiValuesMap<String, String> testModuleJars = new MultiValuesMap<>(true)  // Android Studio
   /** artifact name to relative output path */
   final Map<String, String> includedArtifacts = [:]
   final List<ModuleResourceData> resourcePaths = []
@@ -36,11 +37,11 @@ abstract class BaseLayout {
   final List<ModuleLibraryData> includedModuleLibraries = []
   /** JAR name -> name of project library which content should be unpacked */
   final MultiValuesMap<String, String> projectLibrariesToUnpack = new MultiValuesMap<>()
-  protected final Set<String> modulesWithLocalizableResourcesInCommonJar = new LinkedHashSet<>()
+  protected final Map<String, String>  modulesWithLocalizableResourcesInCommonJar = new LinkedHashMap<>()
   final List<String> modulesWithExcludedModuleLibraries = []
   final List<Pair<ResourcesGenerator, String>> resourceGenerators = []
 
-  boolean packLocalizableResourcesInCommonJar(String moduleName) {
-    return modulesWithLocalizableResourcesInCommonJar.contains(moduleName)
+  String localizableResourcesJarName(String moduleName) {
+    return modulesWithLocalizableResourcesInCommonJar.get(moduleName)
   }
 }

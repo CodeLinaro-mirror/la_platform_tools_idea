@@ -37,5 +37,6 @@ iml_module(
         "//tools/idea/platform/testFramework/extensions:testExtensions[module, test]",
         "//tools/idea/platform/testFramework[module, test]",
         "//tools/idea/platform/configuration-store-impl[module, test]",
+        "//tools/idea/platform/external-system-api[module]",
     ],
 )

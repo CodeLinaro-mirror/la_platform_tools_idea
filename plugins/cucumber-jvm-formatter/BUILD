@@ -9,6 +9,6 @@ iml_module(
     # do not sort: must match IML order
     deps = [
         "//tools/idea/.idea/libraries:cucumber-core",
-        "//tools/idea/.idea/libraries:io.cucumber_cucumber-core_2.0.1",
+        "//tools/idea/.idea/libraries:cucumber-core_2.0.1",
     ],
 )

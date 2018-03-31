@@ -166,6 +166,11 @@ class BuildContextImpl extends BuildContext {
   }
 
   @Override
+  String getOldModuleName(String newName) {
+    return compilationContext.getOldModuleName(newName)
+  }
+
+  @Override
   String getModuleOutputPath(JpsModule module) {
     return compilationContext.getModuleOutputPath(module)
   }
@@ -293,7 +298,7 @@ class BuildContextImpl extends BuildContext {
 
   private boolean isJavaSupportedInProduct() {
     def productLayout = productProperties.productLayout
-    return productLayout.includedPlatformModules.contains("execution-impl")
+    return DistributionJARsBuilder.getIncludedPlatformModules(productLayout).contains("execution-impl")
   }
 
   @CompileDynamic
@@ -322,6 +327,10 @@ class BuildContextImpl extends BuildContext {
 
     if (productProperties.toolsJarRequired) {
       jvmArgs += " -Didea.jre.check=true"
+    }
+    // Android Studio: set JVM args to be included in studio.sh when bundling UI tests
+    if (options.includeUiTests) {
+      jvmArgs += " -Ddisable.config.import=true"
     }
     return jvmArgs.trim()
   }

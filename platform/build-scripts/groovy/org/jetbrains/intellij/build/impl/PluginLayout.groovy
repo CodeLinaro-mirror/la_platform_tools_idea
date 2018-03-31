@@ -23,7 +23,7 @@ import org.jetbrains.intellij.build.ResourcesGenerator
 import java.util.function.Function
 
 /**
- * Described layout of a plugin in the product distribution
+ * Describes layout of a plugin in the product distribution
  *
  * @author nik
  */
@@ -151,6 +151,11 @@ class PluginLayout extends BaseLayout {
 
     void withJpsModule(String moduleName) {
       withModule(moduleName, "jps/${moduleName}.jar")
+    }
+
+    // Android Studio
+    void withTestModule (String moduleName, String jarName = "${moduleName}.jar") {
+      layout.testModuleJars.put (jarName, moduleName)
     }
 
     /**
