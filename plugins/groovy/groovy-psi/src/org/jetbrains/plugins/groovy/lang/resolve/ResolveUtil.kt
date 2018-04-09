@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:Suppress("LoopToCallChain")
 
 package org.jetbrains.plugins.groovy.lang.resolve
@@ -21,6 +19,7 @@ import org.jetbrains.plugins.groovy.lang.psi.api.util.GrStatementOwner
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil
 import org.jetbrains.plugins.groovy.lang.psi.impl.synthetic.DefaultConstructor
 import org.jetbrains.plugins.groovy.lang.psi.util.skipSameTypeParents
+import org.jetbrains.plugins.groovy.lang.resolve.imports.importedNameKey
 import org.jetbrains.plugins.groovy.lang.resolve.processors.DynamicMembersHint
 import org.jetbrains.plugins.groovy.lang.resolve.processors.GroovyResolveKind
 import org.jetbrains.plugins.groovy.lang.resolve.processors.GroovyResolverProcessor
@@ -67,6 +66,8 @@ fun PsiScopeProcessor.shouldProcessDynamicProperties(): Boolean {
 }
 
 fun PsiScopeProcessor.shouldProcessLocals(): Boolean = shouldProcess(GroovyResolveKind.VARIABLE)
+
+fun PsiScopeProcessor.shouldProcessFields(): Boolean = shouldProcess(GroovyResolveKind.FIELD)
 
 fun PsiScopeProcessor.shouldProcessMethods(): Boolean {
   return ResolveUtil.shouldProcessMethods(getHint(ElementClassHint.KEY))
@@ -142,4 +143,8 @@ fun PsiScopeProcessor.isNonAnnotationResolve(): Boolean {
 fun GrCodeReferenceElement.isAnnotationReference(): Boolean {
   val (possibleAnnotation, _) = skipSameTypeParents()
   return possibleAnnotation is GrAnnotation
+}
+
+fun getName(state: ResolveState, element: PsiNamedElement): String? {
+  return state[importedNameKey] ?: element.name
 }

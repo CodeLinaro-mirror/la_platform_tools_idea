@@ -300,8 +300,8 @@ java_import(
 )
 
 java_import(
-    name = "ecj-4.6.2",
-    jars = ["ecj-4.6.2.jar"],
+    name = "ecj-4.7.2",
+    jars = ["ecj-4.7.2.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )
@@ -404,6 +404,20 @@ java_import(
 java_import(
     name = "lz4-java-1.3",
     jars = ["lz4-java-1.3.jar"],
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+)
+
+java_import(
+    name = "test-discovery-agent",
+    jars = ["test-discovery-agent.jar"],
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+)
+
+java_import(
+    name = "test-discovery-instrumenter",
+    jars = ["test-discovery-instrumenter.jar"],
     tags = ["managed"],
     visibility = ["//visibility:public"],
 )

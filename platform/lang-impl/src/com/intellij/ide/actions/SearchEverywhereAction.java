@@ -636,6 +636,7 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
       Disposer.dispose(myPopupField);
     }
     myPopupField = new MySearchTextField();
+    UIUtil.typeAheadUntilFocused(e.getInputEvent(), myPopupField.getTextEditor());
     myPopupField.getTextEditor().addKeyListener(new KeyAdapter() {
       @Override
       public void keyTyped(KeyEvent e) {
@@ -741,9 +742,6 @@ public class SearchEverywhereAction extends AnAction implements CustomComponentA
     final Window window = WindowManager.getInstance().suggestParentWindow(project);
 
     project.getMessageBus().connect(myBalloon).subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
-      @Override
-      public void enteredDumbMode() {
-      }
 
       @Override
       public void exitDumbMode() {

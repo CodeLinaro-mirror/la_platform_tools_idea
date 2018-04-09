@@ -1,4 +1,12 @@
 java_library(
+    name = "javax-inject",
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/javax/inject/javax.inject/1:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/javax/inject/javax.inject/1:jar"],
+)
+
+java_library(
     name = "protobuf",
     tags = ["managed"],
     visibility = ["//visibility:public"],
@@ -333,12 +341,16 @@ java_library(
         "//tools/idea/lib:coverage-agent",
         "//tools/idea/lib:coverage-instrumenter",
         "//tools/idea/lib:coverage-util",
+        "//tools/idea/lib:test-discovery-agent",
+        "//tools/idea/lib:test-discovery-instrumenter",
     ],
     # do not sort: must match IML order
     runtime_deps = [
         "//tools/idea/lib:coverage-agent",
         "//tools/idea/lib:coverage-instrumenter",
         "//tools/idea/lib:coverage-util",
+        "//tools/idea/lib:test-discovery-agent",
+        "//tools/idea/lib:test-discovery-instrumenter",
     ],
 )
 
@@ -730,8 +742,8 @@ java_library(
     name = "Eclipse",
     tags = ["managed"],
     visibility = ["//visibility:public"],
-    exports = ["//tools/idea/lib:ecj-4.6.2"],
-    runtime_deps = ["//tools/idea/lib:ecj-4.6.2"],
+    exports = ["//tools/idea/lib:ecj-4.7.2"],
+    runtime_deps = ["//tools/idea/lib:ecj-4.7.2"],
 )
 
 java_library(
@@ -1238,4 +1250,12 @@ java_library(
         "//prebuilts/tools/common/m2/repository/org/javassist/javassist/3.21.0-GA:jar",
         "//prebuilts/tools/common/m2/repository/org/objenesis/objenesis/2.5.1:jar",
     ],
+)
+
+java_library(
+    name = "jetifier-core",
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/com/android/tools/build/jetifier/jetifier-core/0.0.1:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/com/android/tools/build/jetifier/jetifier-core/0.0.1:jar"],
 )

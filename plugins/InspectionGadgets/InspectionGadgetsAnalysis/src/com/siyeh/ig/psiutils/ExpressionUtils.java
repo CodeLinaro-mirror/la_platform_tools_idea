@@ -27,6 +27,7 @@ import com.intellij.psi.util.*;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.util.ArrayUtil;
 import com.siyeh.HardcodedMethodConstants;
+import com.siyeh.ig.callMatcher.CallMatcher;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
@@ -48,6 +49,10 @@ public class ExpressionUtils {
     convertableBoxedClassNames.add(CommonClassNames.JAVA_LANG_CHARACTER);
     convertableBoxedClassNames.add(CommonClassNames.JAVA_LANG_SHORT);
   }
+
+  private static final CallMatcher KNOWN_SIMPLE_CALLS =
+    CallMatcher.staticCall(CommonClassNames.JAVA_UTIL_COLLECTIONS, "emptyList", "emptySet", "emptyIterator", "emptyMap", "emptySortedMap",
+                           "emptySortedSet", "emptyListIterator").parameterCount(0);
 
   private ExpressionUtils() {}
 
@@ -180,7 +185,8 @@ public class ExpressionUtils {
         return false;
       }
       final PsiType type = castType.getType();
-      return TypeUtils.typeEquals(CommonClassNames.JAVA_LANG_STRING, type);
+      return TypeUtils.typeEquals(CommonClassNames.JAVA_LANG_STRING, type) &&
+        isEvaluatedAtCompileTime(typeCastExpression.getOperand());
     }
     return false;
   }
@@ -759,6 +765,9 @@ public class ExpressionUtils {
         if(resolvedQualifier instanceof PsiClass) return true;
       }
     }
+    if (expression instanceof PsiMethodCallExpression) {
+      return KNOWN_SIMPLE_CALLS.test((PsiMethodCallExpression)expression);
+    }
     return false;
   }
 
@@ -1191,6 +1200,27 @@ public class ExpressionUtils {
         }
       }
       return parent instanceof PsiArrayAccessExpression && !PsiUtil.isAccessedForWriting(parent);
+    });
+  }
+
+  /**
+   * Returns true if expression result depends only on local variable values, so it does not change
+   * if locals don't change.
+   *
+   * @param expression expression to check
+   * @return true if expression result depends only on local variable values
+   */
+  public static boolean isLocallyDefinedExpression(PsiExpression expression) {
+    return PsiTreeUtil.processElements(expression, e -> {
+      if (e instanceof PsiMethodCallExpression) return false;
+      if (e instanceof PsiReferenceExpression) {
+        PsiElement target = ((PsiReferenceExpression)e).resolve();
+        if (target instanceof PsiField) {
+          return ((PsiField)target).hasModifierProperty(PsiModifier.FINAL);
+        }
+      }
+      if (e instanceof PsiArrayAccessExpression) return false;
+      return true;
     });
   }
 }

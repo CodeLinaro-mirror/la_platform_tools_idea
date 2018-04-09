@@ -96,7 +96,7 @@ public class InlineToAnonymousClassProcessor extends BaseRefactoringProcessor {
       usages.addAll(nonCodeUsages);
     }
 
-    return usages.toArray(new UsageInfo[usages.size()]);
+    return usages.toArray(UsageInfo.EMPTY_ARRAY);
   }
 
   @NotNull
@@ -204,7 +204,7 @@ public class InlineToAnonymousClassProcessor extends BaseRefactoringProcessor {
         final PsiElement resolved = methodExpression.resolve();
         if (resolved instanceof PsiMethod) {
           final PsiMethod method = (PsiMethod)resolved;
-          if ("getClass".equals(method.getName()) && method.getParameterList().getParametersCount() == 0) {
+          if ("getClass".equals(method.getName()) && method.getParameterList().isEmpty()) {
             result.putValue(methodExpression, "Result of getClass() invocation would be changed");
           }
         }

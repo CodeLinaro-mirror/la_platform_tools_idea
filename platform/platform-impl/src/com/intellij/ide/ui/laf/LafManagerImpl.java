@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui.laf;
 
 import com.intellij.CommonBundle;
@@ -28,6 +26,7 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.ScreenUtil;
+import com.intellij.ui.components.BasicOptionButtonUI;
 import com.intellij.ui.mac.MacPopupMenuUI;
 import com.intellij.ui.popup.OurHeavyWeightPopup;
 import com.intellij.util.*;
@@ -100,8 +99,9 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
   }
 
   public static boolean useIntelliJInsteadOfAqua() {
-    return Registry.is("ide.mac.yosemite.laf") && isIntelliJLafEnabled() && SystemInfo.isJavaVersionAtLeast("1.8") && SystemInfo.isMacOSYosemite;
+    return Registry.is("ide.mac.yosemite.laf") && isIntelliJLafEnabled() && SystemInfo.isMacOSYosemite;
   }
+
   /**
    * Invoked via reflection.
    */
@@ -134,7 +134,7 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
 
     lafList.add(new DarculaLookAndFeelInfo());
 
-    myLaFs = lafList.toArray(new UIManager.LookAndFeelInfo[lafList.size()]);
+    myLaFs = lafList.toArray(new UIManager.LookAndFeelInfo[0]);
 
     if (!SystemInfo.isMac) {
       // do not sort LaFs on mac - the order is determined as Default, Darcula.
@@ -220,7 +220,7 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
   }
 
   @Override
-  public void loadState(final Element element) {
+  public void loadState(@NotNull final Element element) {
     String className = null;
     Element lafElement = element.getChild(ELEMENT_LAF);
     if (lafElement != null) {
@@ -435,6 +435,8 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
 
     fixProgressBar(uiDefaults);
 
+    fixOptionButton(uiDefaults);
+
     for (Frame frame : Frame.getFrames()) {
       // OSX/Aqua fix: Some image caching components like ToolWindowHeader use
       // com.apple.laf.AquaNativeResources$CColorPaintUIResource
@@ -519,6 +521,16 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
     if (!UIUtil.isUnderIntelliJLaF() && !UIUtil.isUnderDarcula()) {
       uiDefaults.put("ProgressBarUI", "com.intellij.ide.ui.laf.darcula.ui.DarculaProgressBarUI");
       uiDefaults.put("ProgressBar.border", "com.intellij.ide.ui.laf.darcula.ui.DarculaProgressBarBorder");
+    }
+  }
+
+  /**
+   * NOTE: This code could be removed if {@link com.intellij.ui.components.JBOptionButton} is moved to [platform-impl]
+   * and default UI is created there directly.
+   */
+  private static void fixOptionButton(UIDefaults uiDefaults) {
+    if (!UIUtil.isUnderIntelliJLaF() && !UIUtil.isUnderDarcula()) {
+      uiDefaults.put("OptionButtonUI", BasicOptionButtonUI.class.getCanonicalName());
     }
   }
 

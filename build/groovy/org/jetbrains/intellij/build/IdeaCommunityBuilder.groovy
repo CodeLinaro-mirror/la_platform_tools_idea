@@ -29,7 +29,13 @@ class IdeaCommunityBuilder {
   }
 
   void compileModules() {
-    BuildTasks.create(buildContext).compileProjectAndTests(["jps-builders"])
+    BuildTasks.create(buildContext).compileProjectAndTests(["intellij.platform.jps.build"])
+  }
+
+  void buildFullUpdater() {
+    def tasks = BuildTasks.create(buildContext)
+    tasks.compileModules(["intellij.platform.updater", "intellij.android.updater.ui"])
+    tasks.buildFullUpdaterJar()
   }
 
   void buildIntelliJCore() {

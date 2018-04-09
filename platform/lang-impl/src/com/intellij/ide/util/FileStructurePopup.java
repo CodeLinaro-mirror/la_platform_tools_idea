@@ -73,7 +73,6 @@ import com.intellij.ui.treeStructure.filtered.FilteringTreeBuilder;
 import com.intellij.ui.treeStructure.filtered.FilteringTreeStructure;
 import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.HashSet;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.TextTransferable;
@@ -570,9 +569,10 @@ public class FileStructurePopup implements Disposable, TreeActionsOwner {
         }
       }
     }
-    int checkBoxCount = fileStructureNodeProviders.size() + fileStructureFilters.size();
     JPanel panel = new JPanel(new BorderLayout());
-    JPanel chkPanel = new JPanel(new GridLayout(0, checkBoxCount > 0 && checkBoxCount % 4 == 0 ? checkBoxCount / 2 : 3, 0, 0));
+    JPanel chkPanel = new JPanel();
+    chkPanel.setLayout(new BoxLayout(chkPanel, BoxLayout.X_AXIS));
+    chkPanel.setBorder(JBUI.Borders.empty(0, 10, 1, 0));
 
     Shortcut[] F4 = ActionManager.getInstance().getAction(IdeActions.ACTION_EDIT_SOURCE).getShortcutSet().getShortcuts();
     Shortcut[] ENTER = CustomShortcutSet.fromString("ENTER").getShortcuts();
@@ -653,7 +653,7 @@ public class FileStructurePopup implements Disposable, TreeActionsOwner {
         }
         if (CommonDataKeys.NAVIGATABLE_ARRAY.is(dataId)) {
           List<Navigatable> result = getSelectedElements().filter(Navigatable.class).toList();
-          return result.isEmpty() ? null : result.toArray(new Navigatable[result.size()]);
+          return result.isEmpty() ? null : result.toArray(new Navigatable[0]);
         }
         if (LangDataKeys.POSITION_ADJUSTER_POPUP.is(dataId)) {
           return myPopup;
@@ -852,6 +852,8 @@ public class FileStructurePopup implements Disposable, TreeActionsOwner {
     }
     checkBox.setText(StringUtil.capitalize(StringUtil.trimStart(text.trim(), "Show ")));
     panel.add(checkBox);
+    panel.add(Box.createRigidArea(JBUI.size(16, 0)));
+
     myCheckBoxes.put(action.getClass(), checkBox);
   }
 
@@ -1189,7 +1191,7 @@ public class FileStructurePopup implements Disposable, TreeActionsOwner {
   }
 
   private static Set<PsiElement> getAllParents(PsiElement element) {
-    Set<PsiElement> parents = new java.util.HashSet<>();
+    Set<PsiElement> parents = new HashSet<>();
 
     while (element != null) {
       parents.add(element);

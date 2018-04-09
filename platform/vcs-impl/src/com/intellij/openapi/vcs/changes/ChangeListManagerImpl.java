@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes;
 
 import com.intellij.openapi.Disposable;
@@ -355,7 +341,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
                                 @NotNull InvokeAfterUpdateMode mode,
                                 @Nullable String title,
                                 @Nullable ModalityState state) {
-    myUpdater.invokeAfterUpdate(afterUpdate, mode, title, null, state);
+    invokeAfterUpdate(afterUpdate, mode, title, null, state);
   }
 
   @Override
@@ -364,7 +350,10 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
                                 @Nullable String title,
                                 @Nullable Consumer<VcsDirtyScopeManager> dirtyScopeManagerFiller,
                                 @Nullable ModalityState state) {
-    myUpdater.invokeAfterUpdate(afterUpdate, mode, title, dirtyScopeManagerFiller, state);
+    if (dirtyScopeManagerFiller != null && !myProject.isDisposed()) {
+      dirtyScopeManagerFiller.consume(VcsDirtyScopeManager.getInstance(myProject));
+    }
+    myUpdater.invokeAfterUpdate(afterUpdate, mode, title, state);
   }
 
   @Override
@@ -931,7 +920,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
 
 
   @Override
-  public void removeChangeList(final String name) {
+  public void removeChangeList(@NotNull String name) {
     ApplicationManager.getApplication().runReadAction(() -> {
       synchronized (myDataLock) {
         myModifier.removeChangeList(name);
@@ -941,7 +930,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
   }
 
   @Override
-  public void removeChangeList(LocalChangeList list) {
+  public void removeChangeList(@NotNull LocalChangeList list) {
     removeChangeList(list.getName());
   }
 
@@ -961,7 +950,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
   }
 
   @Override
-  public boolean setReadOnly(final String name, final boolean value) {
+  public boolean setReadOnly(@NotNull String name, final boolean value) {
     return ReadAction.compute(() -> {
       synchronized (myDataLock) {
         final boolean result = myModifier.setReadOnly(name, value);
@@ -983,7 +972,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
   }
 
   @Override
-  public String editComment(@NotNull final String fromName, final String newComment) {
+  public String editComment(@NotNull String fromName, String newComment) {
     return ReadAction.compute(() -> {
       synchronized (myDataLock) {
         final String oldComment = myModifier.editComment(fromName, StringUtil.notNullize(newComment));
@@ -994,7 +983,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
   }
 
   @Override
-  public void moveChangesTo(@NotNull final LocalChangeList list, @NotNull final Change... changes) {
+  public void moveChangesTo(@NotNull LocalChangeList list, @NotNull Change... changes) {
     ApplicationManager.getApplication().runReadAction(() -> {
       synchronized (myDataLock) {
         myModifier.moveChangesTo(list.getName(), changes);
@@ -1214,7 +1203,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
             foundChanges.set(newChanges);
 
             if (moveRequired && !newChanges.isEmpty()) {
-              moveChangesTo(list, newChanges.toArray(new Change[newChanges.size()]));
+              moveChangesTo(list, newChanges.toArray(new Change[0]));
             }
           }
         });
@@ -1319,7 +1308,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Projec
   }
 
   @Override
-  public void loadState(Element element) {
+  public void loadState(@NotNull Element element) {
     if (myProject.isDefault()) {
       return;
     }

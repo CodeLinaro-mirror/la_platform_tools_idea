@@ -511,6 +511,7 @@
     <liveTemplateMacro implementation="com.intellij.codeInsight.template.macro.CompleteMacro"/>
     <liveTemplateMacro implementation="com.intellij.codeInsight.template.macro.CompleteSmartMacro"/>
     <liveTemplateMacro implementation="com.intellij.codeInsight.template.macro.ClassNameCompleteMacro"/>
+    <liveTemplateMacro implementation="com.intellij.codeInsight.template.macro.SubstringBeforeMacro"/>
 
     <liveTemplateMacro implementation="com.intellij.codeInsight.template.macro.CommentMacro$LineCommentStart"/>
     <liveTemplateMacro implementation="com.intellij.codeInsight.template.macro.CommentMacro$BlockCommentStart"/>
@@ -1073,6 +1074,10 @@
     <automaticRenamerFactory implementation="com.intellij.refactoring.rename.RelatedFilesRenamerFactory"/>
     <refactoring.moveHandler implementation="com.intellij.refactoring.move.moveFilesOrDirectories.MoveRelatedFilesHandler"
                              order="before moveFileOrDir"/>
+
+    <searchEverywhereContributor implementation="com.intellij.ide.util.gotoByName.ClassSearchEverywhereContributor" />
+    <searchEverywhereContributor implementation="com.intellij.ide.util.gotoByName.FileSearchEverywhereContributor" />
+    <searchEverywhereContributor implementation="com.intellij.ide.util.gotoByName.SymbolSearchEverywhereContributor" />
   </extensions>
 </idea-plugin>
 

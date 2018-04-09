@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInspection.bytecodeAnalysis;
 
 import com.intellij.codeInsight.AnnotationUtil;
@@ -99,7 +85,7 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
   }
 
   private static void checkLeakingParameters(Class<?> jClass) throws IOException {
-    final HashMap<Method, boolean[]> map = new HashMap<>();
+    final HashMap<Member, boolean[]> map = new HashMap<>();
 
     // collecting leakedParameters
     final ClassReader classReader = new ClassReader(jClass.getResourceAsStream("/" + jClass.getName().replace('.', '/') + ".class"));
@@ -107,7 +93,7 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
       @Override
       public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
         final MethodNode node = new MethodNode(Opcodes.API_VERSION, access, name, desc, signature, exceptions);
-        final Method method = new Method(classReader.getClassName(), name, desc);
+        final Member method = new Member(classReader.getClassName(), name, desc);
         return new MethodVisitor(Opcodes.API_VERSION, node) {
           @Override
           public void visitEnd() {
@@ -122,7 +108,7 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
     }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
 
     for (java.lang.reflect.Method jMethod : jClass.getDeclaredMethods()) {
-      Method method = new Method(Type.getType(jClass).getInternalName(), jMethod.getName(), Type.getMethodDescriptor(jMethod));
+      Member method = new Member(Type.getType(jClass).getInternalName(), jMethod.getName(), Type.getMethodDescriptor(jMethod));
       Annotation[][] annotations = jMethod.getParameterAnnotations();
       for (int i = 0; i < annotations.length; i++) {
         boolean isLeaking = false;
@@ -211,16 +197,16 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
 
     for (java.lang.reflect.Method javaMethod : javaClass.getDeclaredMethods()) {
       if(javaMethod.isSynthetic()) continue; // skip lambda runtime representation
-      Method method = new Method(Type.getType(javaClass).getInternalName(), javaMethod.getName(), Type.getMethodDescriptor(javaMethod));
+      Member method = new Member(Type.getType(javaClass).getInternalName(), javaMethod.getName(), Type.getMethodDescriptor(javaMethod));
       boolean noKey = javaMethod.getAnnotation(ExpectNoPsiKey.class) != null;
       PsiMethod[] methods = psiClass.findMethodsByName(javaMethod.getName(), false);
-      assertTrue("Must be single method: "+javaMethod, methods.length == 1);
+      assertEquals("Must be single method: " + javaMethod, 1, methods.length);
       PsiMethod psiMethod = methods[0];
       checkCompoundId(method, psiMethod, noKey);
     }
 
     for (Constructor<?> constructor : javaClass.getDeclaredConstructors()) {
-      Method method = new Method(Type.getType(javaClass).getInternalName(), "<init>", Type.getConstructorDescriptor(constructor));
+      Member method = new Member(Type.getType(javaClass).getInternalName(), "<init>", Type.getConstructorDescriptor(constructor));
       boolean noKey = constructor.getAnnotation(ExpectNoPsiKey.class) != null;
       PsiMethod[] constructors = psiClass.getConstructors();
       PsiMethod psiMethod = constructors[0];
@@ -228,7 +214,7 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
     }
   }
 
-  private void checkCompoundId(Method method, PsiMethod psiMethod, boolean noKey) {
+  private void checkCompoundId(Member method, PsiMethod psiMethod, boolean noKey) {
     /*
     System.out.println();
     System.out.println(method.internalClassName);
@@ -239,11 +225,11 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
 
     EKey psiKey = BytecodeAnalysisConverter.psiKey(psiMethod, Direction.Out);
     if (noKey) {
-      assertTrue(null == psiKey);
+      assertNull(psiKey);
       return;
     }
     else {
-      assertFalse(null == psiKey);
+      assertNotNull(psiKey);
     }
     EKey asmKey = new EKey(method, Direction.Out, true);
     Assert.assertEquals(asmKey, psiKey);
@@ -252,7 +238,7 @@ public class BytecodeAnalysisTest extends JavaCodeInsightFixtureTestCase {
 
   private void setUpDataClasses() throws Exception {
     File classesDir = new File(Test01.class.getResource("/" + PACKAGE_PATH).toURI());
-    String basePath = myModule.getProject().getBaseDir().getPath();
+    String basePath = myModule.getProject().getBasePath();
     File destDir = new File(basePath + "/classes/" + PACKAGE_PATH);
     FileUtil.copyDir(classesDir, destDir);
     VirtualFile vFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(destDir);

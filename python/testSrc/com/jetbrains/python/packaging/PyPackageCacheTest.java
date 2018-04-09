@@ -12,12 +12,29 @@ import java.nio.file.Paths;
  */
 public class PyPackageCacheTest extends PyTestCase {
 
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
+    // Preceding tests might have initialized it to an empty state as recovery from IO errors
+    PyPIPackageCache.reset();
+  }
+
   // PY-28016
   public void testCaseInsensitivePackageNameMatching() {
     final PyPIPackageCache cache = PyPIPackageCache.getInstance(Paths.get(getTestDataPath(), "pypi-cache.json"));
 
-    assertTrue(cache.containsPackage("flask"));
-    assertTrue(cache.containsPackage("Flask"));
+    assertTrue("Package name in original case is missing: " + cache.toString(), cache.containsPackage("Flask"));
+    assertTrue("Package name in altered case is missing: " + cache.toString(), cache.containsPackage("flask"));
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    try {
+      PyPIPackageCache.reset();
+    }
+    finally {
+      super.tearDown();
+    }
   }
 
   @Override
