@@ -117,7 +117,7 @@ public abstract class PerFileMappingsBase<T> implements PersistentStateComponent
       if (t != null) return t;
       t = getMappingForHierarchy(originalFile, mappings);
       if (t != null) return t;
-      return getNotInHierarchy(file, mappings);
+      return getNotInHierarchy(originalFile != null ? originalFile : file, mappings);
     }
   }
 
@@ -214,14 +214,13 @@ public abstract class PerFileMappingsBase<T> implements PersistentStateComponent
         return o1.getPath().compareTo(o2.getPath());
       });
       for (VirtualFile file : files) {
-        final T dialect = myMappings.get(file);
-        String value = serialize(dialect);
-        if (value != null) {
-          final Element child = new Element("file");
-          element.addContent(child);
-          child.setAttribute("url", file == null ? "PROJECT" : file.getUrl());
-          child.setAttribute(getValueAttribute(), value);
-        }
+        T dialect = myMappings.get(file);
+        String value = dialect == null ? null : serialize(dialect);
+        if (value == null) continue;
+        Element child = new Element("file");
+        element.addContent(child);
+        child.setAttribute("url", file == null ? "PROJECT" : file.getUrl());
+        child.setAttribute(getValueAttribute(), value);
       }
       return element;
     }

@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl;
 
 import com.intellij.diagnostic.IdeMessagePanel;
@@ -77,7 +77,7 @@ public class IdeFrameImpl extends JFrame implements IdeFrameEx, AccessibleContex
   private BalloonLayout myBalloonLayout;
   private IdeFrameDecorator myFrameDecorator;
   private boolean myRestoreFullScreen;
-  private LafManagerListener myLafListener;
+  private final LafManagerListener myLafListener;
 
   public IdeFrameImpl(ActionManagerEx actionManager, DataManager dataManager, Application application) {
     super(ApplicationNamesInfo.getInstance().getFullProductName());

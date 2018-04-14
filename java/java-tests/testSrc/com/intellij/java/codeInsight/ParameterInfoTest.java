@@ -374,8 +374,33 @@ public class ParameterInfoTest extends AbstractParameterInfoTestCase {
                       "<html><b>int a</b>, int b, int c</html>");
     type("1, ");
     waitForAllAsyncStuff();
-    checkHintContents("[<html><font color=gray>&lt;no parameters&gt;</font color=gray></html>]\n" +
+    checkHintContents("<html><font color=gray>&lt;no parameters&gt;</font color=gray></html>\n" +
                       "-\n" +
                       "<html>int a, <b>int b</b>, int c</html>");
+  }
+
+  public void testOverloadIsChangedAfterCompletion() {
+    configureJava("class C { void m() { System.out.pr<caret> } }");
+    complete("print(int i)");
+    type("'a");
+    checkResult("class C { void m() { System.out.print('a<caret>'); } }");
+    showParameterInfo();
+    checkHintContents("<html><b>boolean b</b></html>\n" +
+                      "-\n" +
+                      "[<html><b>char c</b></html>]\n" +
+                      "-\n" +
+                      "<html><b>int i</b></html>\n" +
+                      "-\n" +
+                      "<html><b>long l</b></html>\n" +
+                      "-\n" +
+                      "<html><b>float v</b></html>\n" +
+                      "-\n" +
+                      "<html><b>double v</b></html>\n" +
+                      "-\n" +
+                      "<html><b>char[] chars</b></html>\n" +
+                      "-\n" +
+                      "<html><b>@Nullable String s</b></html>\n" +
+                      "-\n" +
+                      "<html><b>@Nullable Object o</b></html>");
   }
 }

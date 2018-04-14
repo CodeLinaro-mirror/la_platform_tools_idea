@@ -1010,8 +1010,8 @@ java_library(
     name = "jediterm-pty",
     tags = ["managed"],
     visibility = ["//visibility:public"],
-    exports = ["//tools/idea/lib:jediterm-pty-2.6"],
-    runtime_deps = ["//tools/idea/lib:jediterm-pty-2.6"],
+    exports = ["//tools/idea/lib:jediterm-pty-2.7"],
+    runtime_deps = ["//tools/idea/lib:jediterm-pty-2.7"],
 )
 
 java_library(
@@ -1174,6 +1174,14 @@ java_library(
     visibility = ["//visibility:public"],
     exports = ["//prebuilts/tools/common/m2/repository/xml-apis/xml-apis-ext/1.3.04:jar"],
     runtime_deps = ["//prebuilts/tools/common/m2/repository/xml-apis/xml-apis-ext/1.3.04:jar"],
+)
+
+java_library(
+    name = "aapt-proto-jarjar",
+    tags = ["managed"],
+    visibility = ["//visibility:public"],
+    exports = ["//tools/base/sdk-common/aapt-proto-jar-generator:jarjar"],
+    runtime_deps = ["//tools/base/sdk-common/aapt-proto-jar-generator:jarjar"],
 )
 
 java_library(

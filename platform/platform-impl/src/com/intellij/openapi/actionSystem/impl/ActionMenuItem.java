@@ -3,8 +3,8 @@ package com.intellij.openapi.actionSystem.impl;
 
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.ui.UISettings;
-import com.intellij.ide.ui.laf.darcula.DarculaLaf;
-import com.intellij.internal.statistic.customUsageCollectors.actions.MainMenuCollector;
+import com.intellij.ide.ui.laf.IconCache;
+import com.intellij.internal.statistic.collectors.fus.actions.persistence.MainMenuCollector;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
@@ -219,10 +219,9 @@ public class ActionMenuItem extends JBCheckBoxMenuItem {
       }
       else if (!(getUI() instanceof GtkMenuItemUI)) {
         if (myToggled) {
-          boolean darcula = UIUtil.isUnderDarcula();
-          setIcon(DarculaLaf.getCheckmarkIcon(darcula));
-          setSelectedIcon(DarculaLaf.getCheckmarkSelectedIcon(darcula));
-          setDisabledIcon(DarculaLaf.getCheckmarkDisabledIcon(darcula));
+          setIcon(IconCache.getIcon("checkmark", false, false, true));
+          setSelectedIcon(IconCache.getIcon("checkmark", true, false, true));
+          setDisabledIcon(IconCache.getIcon("checkmark", false, false, false));
         }
         else {
           setIcon(EmptyIcon.ICON_16);

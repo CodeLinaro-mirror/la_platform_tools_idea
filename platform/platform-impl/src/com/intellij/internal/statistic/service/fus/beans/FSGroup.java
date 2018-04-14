@@ -2,6 +2,7 @@
 package com.intellij.internal.statistic.service.fus.beans;
 
 import com.intellij.internal.statistic.beans.UsageDescriptor;
+import com.intellij.internal.statistic.service.fus.collectors.UsageDescriptorKeyValidator;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,12 +18,12 @@ public class FSGroup {
   private FSGroup(String id, Set<UsageDescriptor> usages) {
     this.id = id;
     for (UsageDescriptor usage : usages) {
-      getMetrics().put(usage.getKey(), usage.getValue());
+      getMetrics().put(UsageDescriptorKeyValidator.replaceForbiddenSymbols(usage.getKey()), usage.getValue());
     }
   }
 
   @NotNull
-  private Map<String, Integer> getMetrics() {
+  public Map<String, Integer> getMetrics() {
     if (metrics == null) {
       metrics = ContainerUtil.newHashMap();
     }
@@ -44,7 +45,6 @@ public class FSGroup {
 
   @Override
   public int hashCode() {
-
     return Objects.hash(id, metrics);
   }
 }

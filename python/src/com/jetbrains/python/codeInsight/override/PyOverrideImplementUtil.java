@@ -206,7 +206,7 @@ public class PyOverrideImplementUtil {
     }
     final LanguageLevel level = LanguageLevel.forElement(pyClass);
     PyAnnotation anno = baseFunction.getAnnotation();
-    if (anno != null && level.isAtLeast(LanguageLevel.PYTHON30)) {
+    if (anno != null && !level.isPython2()) {
       pyFunctionBuilder.annotation(anno.getText());
     }
     if (baseFunction.isAsync()) {
@@ -228,7 +228,7 @@ public class PyOverrideImplementUtil {
         }
         parameterBuilder.append(namedParameter.getName());
         final PyAnnotation annotation = namedParameter.getAnnotation();
-        if (annotation != null && level.isAtLeast(LanguageLevel.PYTHON30)) {
+        if (annotation != null && !level.isPython2()) {
           parameterBuilder.append(annotation.getText());
         }
         final PyExpression defaultValue = namedParameter.getDefaultValue();
@@ -274,6 +274,10 @@ public class PyOverrideImplementUtil {
     else {
       if (!PyNames.INIT.equals(baseFunction.getName()) && context.getReturnType(baseFunction) != PyNoneType.INSTANCE || overridingNew) {
         statementBody.append("return ");
+      }
+      if (baseFunction.isAsync()) {
+        statementBody.append(PyNames.AWAIT);
+        statementBody.append(" ");
       }
       if (baseClass.isNewStyleClass(context)) {
         statementBody.append(PyNames.SUPER);

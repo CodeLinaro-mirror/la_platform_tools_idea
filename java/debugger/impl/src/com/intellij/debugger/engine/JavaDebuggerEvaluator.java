@@ -4,10 +4,13 @@ package com.intellij.debugger.engine;
 import com.intellij.codeInsight.CodeInsightUtil;
 import com.intellij.debugger.engine.evaluation.*;
 import com.intellij.debugger.engine.evaluation.expression.ExpressionEvaluator;
+import com.intellij.debugger.engine.evaluation.expression.UnsupportedExpressionException;
 import com.intellij.debugger.engine.events.DebuggerContextCommandImpl;
 import com.intellij.debugger.impl.DebuggerContextImpl;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.impl.EditorTextProvider;
+import com.intellij.debugger.impl.PositionUtil;
+import com.intellij.debugger.ui.impl.watch.CompilingEvaluatorImpl;
 import com.intellij.debugger.ui.impl.watch.NodeManagerImpl;
 import com.intellij.debugger.ui.impl.watch.WatchItemDescriptor;
 import com.intellij.openapi.application.ReadAction;
@@ -18,6 +21,7 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiFile;
 import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.XSourcePosition;
@@ -121,13 +125,25 @@ public class JavaDebuggerEvaluator extends XDebuggerEvaluator implements XDebugg
         }
 
         try {
+          Project project = myDebugProcess.getProject();
           ExpressionEvaluator evaluator = ReadAction.compute(() -> {
             CodeFragmentFactory factory = DebuggerUtilsEx.getCodeFragmentFactory(element, null);
-            return factory.getEvaluatorBuilder().build(element, debuggerContext.getSourcePosition());
+            try {
+              return factory.getEvaluatorBuilder().build(element, debuggerContext.getSourcePosition());
+            }
+            catch (UnsupportedExpressionException ex) {
+              PsiElement context = PositionUtil.getContextElement(debuggerContext);
+              ExpressionEvaluator eval = CompilingEvaluatorImpl.create(project, context, e ->
+                factory.createCodeFragment(new TextWithImportsImpl(element), context, project));
+              if (eval != null) {
+                return eval;
+              }
+              throw ex;
+            }
           });
           Value value = evaluator.evaluate(evalContext);
           TextWithImportsImpl text = new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, "");
-          WatchItemDescriptor descriptor = new WatchItemDescriptor(element.getProject(), text, value, evalContext);
+          WatchItemDescriptor descriptor = new WatchItemDescriptor(project, text, value, evalContext);
           callback.evaluated(JavaValue.create(null, descriptor, evalContext, process.getNodeManager(), true));
         }
         catch (EvaluateException e) {
@@ -151,7 +167,8 @@ public class JavaDebuggerEvaluator extends XDebuggerEvaluator implements XDebugg
         }
         Pair<PsiElement, TextRange> pair = findExpression(elementAtCursor, sideEffectsAllowed);
         if (pair != null) {
-          return new ExpressionInfo(pair.getSecond(), null, null, pair.getFirst());
+          PsiElement element = pair.getFirst();
+          return new ExpressionInfo(pair.getSecond(), null, null, element instanceof PsiExpression ? element : null);
         }
       } catch (IndexNotReadyException ignored) {}
       return null;

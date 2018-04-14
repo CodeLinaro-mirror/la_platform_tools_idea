@@ -46,6 +46,7 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
   @NonNls private static final String GROUP_PRIORITY_ATTR = "priority";
 
   @NonNls private static final String LAST_TIME_ATTR = "time";
+  @NonNls private static final String EVENT_LOG_LAST_TIME_ATTR = "event-log-time";
   @NonNls private static final String IS_ALLOWED_ATTR = "allowed";
   @NonNls private static final String PERIOD_ATTR = "period";
   @NonNls private static final String SHOW_NOTIFICATION_ATTR = "show-notification";
@@ -84,6 +85,13 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
       setSentTime(0);
     }
 
+    try {
+      setEventLogSentTime(Long.parseLong(element.getAttributeValue(EVENT_LOG_LAST_TIME_ATTR, "0")));
+    }
+    catch (NumberFormatException e) {
+      setEventLogSentTime(0);
+    }
+
     // compatibility: if was previously allowed, transfer the setting to the new place
     final String isAllowedValue = element.getAttributeValue(IS_ALLOWED_ATTR);
     if (!StringUtil.isEmptyOrSpaces(isAllowedValue) && Boolean.parseBoolean(isAllowedValue)) {
@@ -112,6 +120,11 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
     long lastTimeSent = getLastTimeSent();
     if (lastTimeSent > 0) {
       element.setAttribute(LAST_TIME_ATTR, String.valueOf(lastTimeSent));
+    }
+
+    long lastEventLogTimeSent = getEventLogLastTimeSent();
+    if (lastEventLogTimeSent > 0) {
+      element.setAttribute(EVENT_LOG_LAST_TIME_ATTR, String.valueOf(lastEventLogTimeSent));
     }
 
     //if (isAllowed()) {
@@ -148,6 +161,10 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
     ConsentOptions.getInstance().setSendingUsageStatsAllowed(allowed);
     // Android Studio: we need to tell our Android Studio specific logging system whether the user opted-in or not.
     updateAndroidStudioMetrics(allowed);
+  }
+
+  public void updateAndroidStudioMetrics() {
+    updateAndroidStudioMetrics(ConsentOptions.getInstance().isSendingUsageStatsAllowed() == ConsentOptions.Permission.YES);
   }
 
   private void updateAndroidStudioMetrics(boolean allowed) {

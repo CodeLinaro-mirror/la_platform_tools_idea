@@ -650,7 +650,9 @@ public class AbstractPopup implements JBPopup {
         myState = State.SHOWN;
         return;
       }
-      storeDimensionSize(myContent.getSize());
+      Dimension size = myContent.getSize();
+      JBInsets.removeFrom(size, myContent.getInsets());
+      storeDimensionSize(size);
       if (myUseDimServiceForXYLocation) {
         final JRootPane root = myComponent.getRootPane();
         if (root != null) {
@@ -777,6 +779,8 @@ public class AbstractPopup implements JBPopup {
     if (sizeToSet != null) {
       sizeToSet.width = Math.max(sizeToSet.width, myContent.getMinimumSize().width);
       sizeToSet.height = Math.max(sizeToSet.height, myContent.getMinimumSize().height);
+
+      JBInsets.addTo(sizeToSet, myContent.getInsets());
 
       myContent.setSize(sizeToSet);
       myContent.setPreferredSize(sizeToSet);
@@ -925,7 +929,7 @@ public class AbstractPopup implements JBPopup {
     if ("TRUE".equals(getContent().getClientProperty("BookmarkPopup"))) {
       window.setType(Window.Type.NORMAL);
     } else if (SystemInfo.isJetBrainsJvm) {
-      window.setType(Window.Type.POPUP);
+      //window.setType(Window.Type.POPUP);
     }
 
     // Swing popup default always on top state is set in true

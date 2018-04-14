@@ -15,6 +15,7 @@
  */
 package com.intellij.ide.ui.laf.intellij;
 
+import com.intellij.ide.ui.laf.IconCache;
 import com.intellij.ide.ui.laf.darcula.DarculaUIUtil;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaComboBoxUI;
 import com.intellij.openapi.editor.Editor;
@@ -26,7 +27,6 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.components.BorderLayoutPanel;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -161,24 +161,24 @@ public class WinIntelliJComboBoxUI extends DarculaComboBoxUI {
     c.setForeground(comboBox.isEnabled() ? UIManager.getColor("Label.foreground") : UIManager.getColor("Label.disabledForeground"));
 
     Rectangle r = new Rectangle(bounds);
-    boolean changeOpaque = false;
-    if (c instanceof JComponent) {
-      JComponent jc = (JComponent)c;
-      jc.setBorder(DEFAULT_EDITOR_BORDER);
-      JBInsets.removeFrom(r, jc.getInsets());
+    JComponent jc = (JComponent)c;
 
-      changeOpaque = c.isOpaque();
-      // paint selection in table-cell-editor mode correctly
-      if (changeOpaque) {
-        jc.setOpaque(false);
-      }
+    jc.setBorder(DEFAULT_EDITOR_BORDER);
+    JBInsets.removeFrom(r, jc.getInsets());
+
+    // paint selection in table-cell-editor mode correctly
+    boolean changeOpaque = isTableCellEditor(comboBox) && c.isOpaque();
+    if (changeOpaque) {
+      jc.setOpaque(false);
+    } else if (c.isOpaque()) {
+      c.setBackground(getComboBackground(true));
     }
 
     currentValuePane.paintComponent(g, c, comboBox, r.x, r.y, r.width, r.height, c instanceof JPanel);
 
     // return opaque for combobox popup items painting
     if (changeOpaque) {
-      ((JComponent)c).setOpaque(true);
+      jc.setOpaque(true);
     }
   }
 
@@ -213,9 +213,11 @@ public class WinIntelliJComboBoxUI extends DarculaComboBoxUI {
 
         Graphics2D g2 = (Graphics2D)g.create();
         try {
+          g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+          g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_NORMALIZE);
+
           Rectangle outerRect = new Rectangle(getSize());
-          JBInsets.removeFrom(outerRect, comboBox.getComponentOrientation().isLeftToRight() ?
-                                         JBUI.insets(1, 0, 1, 1) : JBUI.insets(1, 1, 1, 0));
+          JBInsets.removeFrom(outerRect, JBUI.insets(1));
 
           Rectangle innerRect = new Rectangle(outerRect);
           JBInsets.removeFrom(innerRect, JBUI.insets(1));
@@ -259,8 +261,6 @@ public class WinIntelliJComboBoxUI extends DarculaComboBoxUI {
 
     button.setOpaque(false);
 
-    button.setBorder(comboBox.getComponentOrientation().isLeftToRight() ?
-                     JBUI.Borders.empty(2, 1, 2, 2) : JBUI.Borders.empty(2, 2, 2, 1));
     buttonReleaseListener = new MouseAdapter() {
       @Override
       public void mouseReleased(MouseEvent e) {
@@ -278,7 +278,7 @@ public class WinIntelliJComboBoxUI extends DarculaComboBoxUI {
   }
 
   public static Icon getArrowIcon(@NotNull JComponent c) {
-    return MacIntelliJIconCache.getIcon("comboDropTriangle", false, false, c.isEnabled());
+    return IconCache.getIcon("comboDropTriangle", false, false, c.isEnabled());
   }
 
   @Override public void unconfigureArrowButton() {

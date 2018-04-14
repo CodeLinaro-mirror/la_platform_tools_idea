@@ -14,11 +14,13 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.application.Result;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.util.Key;
 import com.intellij.xdebugger.*;
 import com.jetbrains.env.python.PythonDebuggerTest;
 import com.jetbrains.python.debugger.PyDebugProcess;
 import com.jetbrains.python.debugger.PyDebugRunner;
+import com.jetbrains.python.debugger.PyDebugValueExecutionService;
 import com.jetbrains.python.run.PythonCommandLineState;
 import com.jetbrains.python.run.PythonConfigurationType;
 import com.jetbrains.python.run.PythonRunConfiguration;
@@ -62,7 +64,8 @@ public class PyDebuggerTask extends PyBaseDebuggerTask {
     return Sets.newHashSet("python2.6", "python2.7", "python3.5", "python3.6", "jython", "IronPython", "pypy");
   }
 
-  public void runTestOn(String sdkHome) throws Exception {
+  @Override
+  public void runTestOn(@NotNull String sdkHome, @Nullable Sdk existingSdk) throws Exception {
     final Project project = getProject();
 
     final ConfigurationFactory factory = PythonConfigurationType.getInstance().getConfigurationFactories()[0];
@@ -230,6 +233,8 @@ public class PyDebuggerTask extends PyBaseDebuggerTask {
         // for some tests (with infinite loops, for example, it has no sense)
         waitFor(processHandler);
       }
+
+      PyDebugValueExecutionService.getInstance(getProject()).shutDownNow();
 
       if (!processHandler.isProcessTerminated()) {
         killDebugProcess();
