@@ -249,11 +249,11 @@ class CommunityRepositoryModules {
       withModule("common")  // Android Studio
 
       /* Android Studio: exclude
-      withModule("intellij.android", "android.jar", false)
+      withModule("intellij.android.core", "android.jar", false)
       withModule("intellij.android.artwork")
       withModule("intellij.android.observable", "android.jar")
       withModule("intellij.android.observable.ui", "android.jar")
-      withModule("intellij.android.flags", "android.jar")
+      withModule("android.sdktools.flags", "android.jar")
       withModule("intellij.android.designer", "android.jar")
       withModule("intellij.android.sdkUpdates", "android.jar")
       withModule("intellij.android.wizard", "android.jar")
@@ -282,6 +282,7 @@ class CommunityRepositoryModules {
       /* Android Studio: exclude
       withModule("android.sdktools.binary-resources", "sdk-tools.jar")
       withModule("intellij.android.analyzer", "sdk-tools.jar")
+      withModule("android.sdktools.analyzer", "sdk-tools.jar")
       */
       withModule("android.sdktools.ddmlib", "sdk-tools.jar")
       withModule("android.sdktools.dvlib", "sdk-tools.jar")
@@ -301,11 +302,11 @@ class CommunityRepositoryModules {
       withModule("instant-run-client", "sdk-tools.jar")  // Android Studio
       /* Android Studio: exclude
       withModule("android.sdktools.android-annotations", "sdk-tools.jar")
-      withModule("intellij.android.layoutInspector", "sdk-tools.jar")
+      withModule("android.sdktools.layoutinspector", "sdk-tools.jar")
 
       withModule("intellij.android.gradle.jps", "jps/android-gradle-jps.jar")
       */
-      withModule("intellij.android.jps", "jps/android-jps-plugin.jar")
+      withModule("intellij.android.jps", "jps/android-jps-plugin.jar", null)
 
       withProjectLibrary("freemarker") //todo[nik] move to module libraries
       withProjectLibrary("jgraphx-3.4.0.1") //todo[nik] move to module libraries
@@ -327,7 +328,7 @@ class CommunityRepositoryModules {
       withResource("lib/androidWidgets", "lib/androidWidgets")  // Android Studio
       withResource("device-art-resources", "lib/device-art-resources")  // Android Studio
       /* Android Studio: exclude
-      withResourceFromModule("intellij.android","lib/sampleData", "lib/sampleData")
+      withResourceFromModule("intellij.android.core","lib/sampleData", "lib/sampleData")
       */
       withResourceArchive("annotations", "lib/androidAnnotations.jar") // Android Studio
 
