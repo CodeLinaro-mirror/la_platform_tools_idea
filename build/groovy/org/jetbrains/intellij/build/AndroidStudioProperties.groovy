@@ -43,27 +43,16 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     // TODO: This doesn't cover all used libraries, but it's exactly what ShowLicensesUsedAction is checking.
     additionalDirectoriesWithLicenses.addAll(
       "$home/../adt/idea/android/lib/licenses",
-      "$home/../studio/google/appindexing/lib/licenses",
       "$home/../studio/google/cloud/testing/firebase-testing/lib/licenses",
       "$home/../studio/google/cloud/testing/test-recorder/lib/licenses",
       "$home/../studio/google/cloud/tools/android-studio-plugin/lib/licenses",
       "$home/../studio/google/cloud/tools/core-plugin/lib/licenses",
       "$home/../studio/google/cloud/tools/google-login-plugin/lib/licenses",
       "$home/../studio/google/services/lib/licenses",
-      "$home/../vendor/google/firebase/lib/licenses",
     )
 
     productLayout.platformApiModules = CommunityRepositoryModules.PLATFORM_API_MODULES + JAVA_API_MODULES
     productLayout.platformImplementationModules = CommunityRepositoryModules.PLATFORM_IMPLEMENTATION_MODULES + JAVA_IMPLEMENTATION_MODULES +
-                                                  [
-                                                    // Android Studio: CIDR/CLion: Must be included here to be packaged into core, not as separate plugins
-                                                    "cidr-common",
-                                                    "cidr-debugger",
-                                                    "cidr-lang",
-                                                    "cidr-lang-dfa",
-                                                    "cidr-util",
-                                                    "doxygen",
-                                                  ] +
                                                   ["duplicates-analysis", "structuralsearch", "structuralsearch-java", "typeMigration", "platform-main"] -
                                                   ["jps-model-impl", "jps-model-serialization"]
     productLayout.additionalPlatformJars.putAll("resources.jar", "community-resources", "adt-branding")
@@ -81,12 +70,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     productLayout.bundledPluginModules = BUNDLED_PLUGIN_MODULES +
                                          [
                                            // Android Studio bundles these:
-                                           "android-apk",
-                                           "android-ndk",
-                                           "firebase",
                                            "firebase-testing",
-                                           "games",
-                                           "google-appindexing",
                                            "google-login-as",
                                            "google-cloud-tools-as",
                                            "google-cloud-tools-core-as",
@@ -94,7 +78,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-services",
                                            "smali",
                                            "test-recorder",
-                                           "url-assistant",
                                          ]
     productLayout.mainModules = ["community-main"]
     productLayout.allNonTrivialPlugins = CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS + [
@@ -213,18 +196,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     def root = "$buildContext.paths.communityHome/../.."
     def gradleVersion = getGradleVersionToBundle(buildContext)
 
-    buildContext.messages.block("Bundle Gradle $gradleVersion and the offline Maven repo") {
-      buildContext.ant.unzip(src: "$root/tools/external/gradle/gradle-$gradleVersion-bin.zip", dest: "$targetDirectory/gradle")
-      buildContext.ant.copy(todir: "$targetDirectory/gradle/m2repository") {
-        fileset(dir: System.getenv().STUDIO_CUSTOM_REPO ?: "$root/prebuilts/tools/common/offline-m2") {
-          exclude(name: "BUILD")
-        }
-        fileset(dir: "$root/out/studio/repo")
-      }
-    }
-
-    buildContext.ant.touch(file: "$targetDirectory/license/dev01_license.txt", mkdirs: true)
-
     // TODO: figure out if some of these misc resources can be included in a better way
     def androidPluginLib = "$targetDirectory/plugins/android/lib"
 
@@ -250,33 +221,10 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
     // Profiler prebuilt binaries:
     buildContext.ant.copy(todir: "$androidPluginLib") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/studio-profiler-grpc-1.0-jarjar.jar")
+      fileset(file: "$root/tools/adt/idea//android/lib/studio-profiler-grpc-1.0-jarjar.jar")
     }
     buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/transform/profilers-transform.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/app/perfa.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/app/perfa_okhttp.dex")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/perfd") {
-      fileset(dir: "$root/bazel-bin/tools/base/profiler/native/perfd/android")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/perfa") {
-      fileset(dir: "$root/bazel-bin/tools/base/profiler/native/perfa/android")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/simpleperf") {
-      fileset(dir: "$root/prebuilts/tools/common/simpleperf") {
-        exclude(name: "BUILD")
-      }
-    }
-
-    buildContext.ant.copy(todir: "$targetDirectory/bin/lldb/shared") {
-      fileset(dir: "$root/tools/vendor/google/android-ndk/bin/lldb/shared") {
-        exclude(name: "BUILD")
-      }
+      fileset(dir: "$root/prebuilts/tools/common/profiler/3.1")
     }
   }
 

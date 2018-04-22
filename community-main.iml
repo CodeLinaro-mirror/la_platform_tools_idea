@@ -99,8 +99,6 @@
     <orderEntry type="module" module-name="test-recorder" />
     <orderEntry type="module" module-name="google-samples" />
     <orderEntry type="module" module-name="google-services" />
-    <orderEntry type="module" module-name="google-appindexing" />
-    <orderEntry type="module" module-name="url-assistant" />
     <orderEntry type="module" module-name="jira" />
     <orderEntry type="module" module-name="java-decompiler-plugin" />
     <orderEntry type="module" module-name="structuralsearch" />
@@ -112,10 +110,6 @@
     <orderEntry type="module" module-name="typeMigration" />
     <orderEntry type="module" module-name="platform-tests" scope="TEST" />
     <orderEntry type="module" module-name="sdk-updates" />
-    <orderEntry type="module" module-name="android-ndk" />
-    <orderEntry type="module" module-name="android-apk" />
-    <orderEntry type="module" module-name="games" />
-    <orderEntry type="module" module-name="firebase" />
     <orderEntry type="module" module-name="android" />
     <orderEntry type="module" module-name="diff-tests" scope="TEST" />
     <orderEntry type="module" module-name="built-in-server-tests" scope="TEST" />
