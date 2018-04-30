@@ -1,10 +1,10 @@
 load("//tools/base/bazel:bazel.bzl", "iml_module")
 
+# managed by go/iml_to_build
 iml_module(
     name = "intellij.platform.vcs.tests",
     srcs = ["src"],
     iml_files = ["intellij.platform.vcs.tests.iml"],
-    tags = ["managed"],
     # do not sort: must match IML order
     test_runtime_deps = [
         "//tools/idea/xml/xml-analysis-impl:intellij.xml.analysis.impl",
@@ -38,5 +38,6 @@ iml_module(
         "//tools/idea/.idea/libraries:JUnit4",
         "//tools/idea/platform/platform-api:intellij.platform.ide[module]",
         "//tools/idea/platform/diff-impl:intellij.platform.diff.tests[module, test]",
+        "//tools/idea/.idea/libraries:mockito[test]",
     ],
 )

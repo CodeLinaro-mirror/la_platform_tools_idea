@@ -197,17 +197,14 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
       withProjectLibrary("freemarker") //todo[nik] move to module libraries
       //withProjectLibrary("builder-model") //todo[nik] move to module libraries
-      withProjectLibrary("jgraphx-3.4.0.1") //todo[nik] move to module libraries
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
       withProjectLibrary("layoutlib") //todo[nik] move to module libraries
 
-      withResourceFromModule("intellij.android.core", "lib/antlr4-runtime-4.5.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/asm-5.0.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/asm-analysis-5.0.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/asm-tree-5.0.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/commons-compress-1.8.1.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/javawriter-2.2.1.jar", "lib")
-      withResourceFromModule("intellij.android.core", "lib/juniversalchardet-1.0.3.jar", "lib")
 
       withResourceFromModule("intellij.android.core", "lib/androidWidgets", "lib/androidWidgets")
       withResourceFromModule("intellij.android.artwork", "resources/device-art-resources", "lib/device-art-resources")

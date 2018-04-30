@@ -22,7 +22,7 @@ import static org.jetbrains.intellij.build.LibraryLicense.jetbrainsLibrary
 @CompileStatic
 class AndroidStudioLibraryLicenses {
   public static final List<LibraryLicense> LICENSES_LIST = (([
-    new LibraryLicense(name: "ANTLR 4 Runtime", libraryName: "antlr4-runtime-4.5.3", version: "4.5.3", license: "BSD",
+    new LibraryLicense(name: "ANTLR 4 Runtime", libraryName: "antlr4-runtime", version: "4.5.3", license: "BSD",
                        url: "http://www.antlr.org", licenseUrl: "http://www.antlr.org/license.html"),
     new LibraryLicense(name: "Apache Commons IO", libraryName: "commons-io", version: "2.4", license: "Apache 2.0",
                        url: "http://commons.apache.org/io/", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt"),
@@ -87,7 +87,7 @@ class AndroidStudioLibraryLicenses {
                        libraryName: "org.eclipse.jgit-3.3.0.201403021825-r.jar", url: "https://eclipse.org/jgit/",
                        license: "Eclipse Distribution License 1.0",
                        licenseUrl: "http://www.eclipse.org/org/documents/edl-v10.php"),
-    new LibraryLicense(name: "Juniversalchardet", libraryName: "juniversalchardet-1.0.3", version: "1.0.3",
+    new LibraryLicense(name: "Juniversalchardet", libraryName: "juniversalchardet", version: "1.0.3",
                        url: "http://juniversalchardet.googlecode.com/",
                        license: "MPL 1.1",  licenseUrl: "http://www.mozilla.org/MPL/MPL-1.1.html"),
     new LibraryLicense(name: "samplesindex-v1-1.0-SNAPSHOT.jar", libraryName: "samplesindex-v1-1.0-SNAPSHOT.jar",

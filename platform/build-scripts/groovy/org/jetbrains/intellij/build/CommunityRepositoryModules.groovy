@@ -309,21 +309,18 @@ class CommunityRepositoryModules {
       withModule("intellij.android.jps", "jps/android-jps-plugin.jar", null)
 
       withProjectLibrary("freemarker") //todo[nik] move to module libraries
-      withProjectLibrary("jgraphx-3.4.0.1") //todo[nik] move to module libraries
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
       /* Android Studio: exclude
       withProjectLibrary("lombok-ast") //todo[nik] move to module libraries
       */
       withProjectLibrary("layoutlib") //todo[nik] move to module libraries
 
-      withResource("lib/antlr4-runtime-4.5.3.jar", "lib")  // Android Studio
       withResource("lib/asm-5.0.3.jar", "lib")  // Android Studio
       withResource("lib/asm-analysis-5.0.3.jar", "lib")  // Android Studio
       withResource("lib/asm-tree-5.0.3.jar", "lib")  // Android Studio
       withResource("lib/commons-io-2.4.jar", "lib")  // Android Studio
       withResource("lib/commons-compress-1.8.1.jar", "lib")  // Android Studio
       withResource("lib/javawriter-2.2.1.jar", "lib")  // Android Studio
-      withResource("lib/juniversalchardet-1.0.3.jar", "lib")  // Android Studio
 
       withResource("lib/androidWidgets", "lib/androidWidgets")  // Android Studio
       withResource("device-art-resources", "lib/device-art-resources")  // Android Studio

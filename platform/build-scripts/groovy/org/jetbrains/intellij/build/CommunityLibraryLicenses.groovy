@@ -143,7 +143,7 @@ class CommunityLibraryLicenses {
                        url: "http://hc.apache.org/httpcomponents-client-ga/index.html"),
     new LibraryLicense(name: "imgscalr", libraryName: "imgscalr", version: "4.2", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt", url: "https://github.com/thebuzzmedia/imgscalr"),
-    new LibraryLicense(name: "batik", libraryName: "batik", version: "1.7.1", license: "Apache 2.0",
+    new LibraryLicense(name: "batik", libraryName: "batik", version: "1.9", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt", url: "https://xmlgraphics.apache.org/batik/"),
     new LibraryLicense(name: "xmlgraphics-commons", libraryName: "xmlgraphics-commons", version: "1.5", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt", url: "https://xmlgraphics.apache.org/commons/"),
@@ -195,7 +195,7 @@ class CommunityLibraryLicenses {
                        url: "http://www.jgoodies.com/freeware/libraries/looks/", licenseUrl: "https://opensource.org/licenses/bsd-license.html"),
     new LibraryLicense(name: "JGoodies Forms", libraryName: "jgoodies-forms", version: "1.1-preview 2006-05-04 11:55:37", license: "BSD",
                        url: "http://www.jgoodies.com/freeware/libraries/forms/", licenseUrl: "https://opensource.org/licenses/bsd-license.html"),
-    new LibraryLicense(name: "jgraphx", libraryName: "jgraphx-3.4.0.1", version: "3.4.0.1", license: "BSD",
+    new LibraryLicense(name: "jgraphx", libraryName: "jgraphx", version: "3.4.0.1", license: "BSD",
                        url: "https://github.com/jgraph/jgraphx"),
     /* Android Studio: added by Change I38bafaf1 / commit 0c703f7 */
     new LibraryLicense(name: "jing-trang", libraryName: "jing-trang", url: 'https://github.com/relaxng/jing-trang',
@@ -408,7 +408,7 @@ class CommunityLibraryLicenses {
     new LibraryLicense(name: "JUniversal Char Detection", libraryName: "juniversalchardet", version: "1.0.3", license: "MPL 1.1",
                        url: "https://code.google.com/archive/p/juniversalchardet"),
     // Android Studio: added by Change Ib7a30b9c / commit 91531e9
-    new LibraryLicense(name: "Java Poet", libraryName: "javapoet-1.8.0", version: "1.8.0", license: "Apache 2.0",
+    new LibraryLicense(name: "Java Poet", libraryName: "javapoet", version: "1.8.0", license: "Apache 2.0",
                        url: "https://github.com/square/javapoet"),
     jetbrainsLibrary("kotlin-stdlib-jre8"),  // Android Studio: added by Change If94a51ef / commit e8d58c9
 
