@@ -48,14 +48,6 @@ java_library(
 
 # managed by go/iml_to_build
 java_library(
-    name = "easymock-tools",
-    visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/easymock-tools:easymock-3.1"],
-    runtime_deps = ["//prebuilts/tools/common/easymock-tools:easymock-3.1"],
-)
-
-# managed by go/iml_to_build
-java_library(
     name = "mockito",
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
@@ -149,22 +141,6 @@ java_library(
         "//tools/idea/lib:httpclient-4.5.2",
         "//tools/idea/lib:httpcore-4.4.5",
         "//tools/idea/lib:httpmime-4.5.2",
-    ],
-)
-
-# managed by go/iml_to_build
-java_library(
-    name = "bouncy-castle",
-    visibility = ["//visibility:public"],
-    # do not sort: must match IML order
-    exports = [
-        "//prebuilts/tools/common/m2/repository/org/bouncycastle/bcpkix-jdk15on/1.56:jar",
-        "//prebuilts/tools/common/m2/repository/org/bouncycastle/bcprov-jdk15on/1.56:jar",
-    ],
-    # do not sort: must match IML order
-    runtime_deps = [
-        "//prebuilts/tools/common/m2/repository/org/bouncycastle/bcpkix-jdk15on/1.56:jar",
-        "//prebuilts/tools/common/m2/repository/org/bouncycastle/bcprov-jdk15on/1.56:jar",
     ],
 )
 
@@ -1038,14 +1014,6 @@ java_library(
 
 # managed by go/iml_to_build
 java_library(
-    name = "commons-lang",
-    visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/commons-lang/commons-lang/2.6:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/commons-lang/commons-lang/2.6:jar"],
-)
-
-# managed by go/iml_to_build
-java_library(
     name = "cucumber-core_2.0.1",
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
@@ -1182,22 +1150,6 @@ java_library(
     visibility = ["//visibility:public"],
     exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/0.20:jar"],
     runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/0.20:jar"],
-)
-
-# managed by go/iml_to_build
-java_library(
-    name = "javaxdelta",
-    visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/com/nothome/javaxdelta/2.0.1:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/com/nothome/javaxdelta/2.0.1:jar"],
-)
-
-# managed by go/iml_to_build
-java_library(
-    name = "fastutil",
-    visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/it/unimi/dsi/fastutil/7.2.1:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/it/unimi/dsi/fastutil/7.2.1:jar"],
 )
 
 # managed by go/iml_to_build

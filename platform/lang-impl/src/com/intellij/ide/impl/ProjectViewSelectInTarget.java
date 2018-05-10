@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.impl;
 
 import com.intellij.ide.CompositeSelectInTarget;
@@ -10,7 +8,7 @@ import com.intellij.ide.projectView.ProjectView;
 import com.intellij.ide.projectView.SelectableTreeStructureProvider;
 import com.intellij.ide.projectView.TreeStructureProvider;
 import com.intellij.ide.projectView.impl.AbstractProjectViewPane;
-import com.intellij.ide.projectView.impl.ProjectViewPane;
+import com.intellij.ide.projectView.impl.ProjectViewImpl;
 import com.intellij.ide.scratch.ScratchFileType;
 import com.intellij.ide.scratch.ScratchProjectViewPane;
 import com.intellij.openapi.application.ApplicationManager;
@@ -49,14 +47,7 @@ public abstract class ProjectViewSelectInTarget extends SelectInTargetPsiWrapper
 
   @Override
   protected final void select(final Object selector, final VirtualFile virtualFile, final boolean requestFocus) {
-    // Android Studio: fixes bug 260190. Take current viewId to use the same when showing selected file, instead of using
-    // ProjectViewPane.ID. Default value should honor studio.projectview, see b/67790043
-    ProjectView projectView = ProjectView.getInstance(myProject);
-    String viewId = ProjectView.getDefaultViewId();
-    if (projectView != null) {
-      viewId = projectView.getCurrentViewId();
-    }
-    select(myProject, selector, viewId, mySubId, virtualFile, requestFocus);
+    select(myProject, selector, getMinorViewId(), mySubId, virtualFile, requestFocus);
   }
 
   @NotNull
@@ -70,7 +61,7 @@ public abstract class ProjectViewSelectInTarget extends SelectInTargetPsiWrapper
     if (projectView == null) return ActionCallback.REJECTED;
 
     if (ApplicationManager.getApplication().isUnitTestMode()) {
-      AbstractProjectViewPane pane = projectView.getProjectViewPaneById(ObjectUtils.chooseNotNull(viewId, ProjectViewPane.ID));
+      AbstractProjectViewPane pane = projectView.getProjectViewPaneById(ObjectUtils.chooseNotNull(viewId, ProjectViewImpl.getDefaultViewId()));
       pane.select(toSelect, virtualFile, requestFocus);
       return ActionCallback.DONE;
     }
@@ -86,8 +77,7 @@ public abstract class ProjectViewSelectInTarget extends SelectInTargetPsiWrapper
     ActionCallback result = new ActionCallback();
     final Runnable runnable = () -> {
       Runnable r = () -> projectView.selectCB(toSelectSupplier.get(), virtualFile, requestFocus).notify(result);
-      // Android Studio: was ProjectViewPane.ID, but in Android Studio, we want the Android View to be the default
-      projectView.changeViewCB(ObjectUtils.chooseNotNull(viewId, ProjectView.getDefaultViewId()), subviewId).doWhenProcessed(r);
+      projectView.changeViewCB(ObjectUtils.chooseNotNull(viewId, ProjectViewImpl.getDefaultViewId()), subviewId).doWhenProcessed(r);
     };
 
     if (requestFocus) {
