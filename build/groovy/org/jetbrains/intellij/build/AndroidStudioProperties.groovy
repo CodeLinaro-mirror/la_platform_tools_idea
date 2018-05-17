@@ -75,7 +75,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     // Android Studio: include metrics libraries in $install/lib
     productLayout.additionalPlatformJars.putAll("google-analytics-library.jar",
                                                 "android.sdktools.android-annotations",
-                                                "analytics-protos",
                                                 "analytics-shared",
                                                 "analytics-tracker",
                                                 "analytics-publisher",
@@ -164,6 +163,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.adt.ui.model", "adt-ui.jar")
       withModule("android.sdktools.repository")
       withModule("db-baseLibrary", "data-binding.jar")
+      withModule("db-baseLibrarySupport", "data-binding.jar")
       withModule("db-compilerCommon", "data-binding.jar")
       withModule("db-compiler", "data-binding.jar")
       withModule("android.sdktools.sdklib", "sdklib.jar")
@@ -196,9 +196,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.jps", "jps/android-jps-plugin.jar")
 
       withProjectLibrary("freemarker") //todo[nik] move to module libraries
-      //withProjectLibrary("builder-model") //todo[nik] move to module libraries
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
-      withProjectLibrary("layoutlib") //todo[nik] move to module libraries
 
       withResourceFromModule("intellij.android.core", "lib/asm-5.0.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/asm-analysis-5.0.3.jar", "lib")
@@ -291,6 +289,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       }
     }
 
+    // Native debugger.
     buildContext.ant.copy(todir: "$targetDirectory/bin/lldb") {
       fileset(dir: "$root/prebuilts/tools/common/lldb")
     }
