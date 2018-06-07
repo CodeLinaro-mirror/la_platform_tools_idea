@@ -962,8 +962,8 @@ java_library(
 java_library(
     name = "guava-testlib",
     visibility = ["//visibility:public"],
-    exports = ["//tools/adt/idea/android/lib:guava-testlib-21.0"],
-    runtime_deps = ["//tools/adt/idea/android/lib:guava-testlib-21.0"],
+    exports = ["//prebuilts/tools/common/m2/repository/com/google/guava/guava-testlib/21.0:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/com/google/guava/guava-testlib/21.0:jar"],
 )
 
 # managed by go/iml_to_build
@@ -1220,4 +1220,12 @@ java_library(
         "//prebuilts/tools/common/m2/repository/com/fasterxml/jackson/core/jackson-core/2.9.5:jar",
         "//prebuilts/tools/common/m2/repository/com/fasterxml/jackson/core/jackson-databind/2.9.5:jar",
     ],
+)
+
+# managed by go/iml_to_build
+java_library(
+    name = "HdrHistogram",
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/hdrhistogram/HdrHistogram/2.1.4:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/hdrhistogram/HdrHistogram/2.1.4:jar"],
 )
