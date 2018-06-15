@@ -15,7 +15,6 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.Callable
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.function.Function
@@ -545,9 +544,6 @@ idea.fatal.error.notification=disabled
         }
         futures.collect { it.get() }
       }
-    }
-    catch (ExecutionException e) {
-      throw e.cause
     }
     finally {
       buildContext.messages.onAllForksFinished()
