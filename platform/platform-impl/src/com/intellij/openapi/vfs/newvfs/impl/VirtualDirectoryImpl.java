@@ -304,21 +304,16 @@ public class VirtualDirectoryImpl extends VirtualFileSystemEntry {
       return Collections.emptyList();
     }
 
-    boolean areChildrenLoadedInPersistentFs = ourPersistence.areChildrenLoaded(this);
-    
-    if (OptionHolder.loadAllChildren) {
-      if (areChildrenLoadedInPersistentFs) {
-        return Arrays.asList(getChildren());
-      }
+    if (ourPersistence.areChildrenLoaded(this)) {
+      return Arrays.asList(getChildren());
     }
     
-    if (!areChildrenLoadedInPersistentFs) {
-      final String[] names = ourPersistence.listPersisted(this);
-      final NewVirtualFileSystem delegate = PersistentFS.replaceWithNativeFS(getFileSystem());
-      for (String name : names) {
-        findChild(name, false, false, delegate);
-      }
+    final String[] names = ourPersistence.listPersisted(this);
+    final NewVirtualFileSystem delegate = PersistentFS.replaceWithNativeFS(getFileSystem());
+    for (String name : names) {
+      findChild(name, false, false, delegate);
     }
+    
     return getCachedChildren();
   }
 
