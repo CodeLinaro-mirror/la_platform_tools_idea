@@ -198,11 +198,11 @@ public class PersistentFsTest extends PlatformTestCase {
     // wrt persistence subDir becomes partially loaded and subsubDir becomes fully loaded
     File nestedDirOutsideTheProject = new File(projectStructure.getPath() + "../../../"+testName + "/subDir", "subSubDir").getCanonicalFile();
     Disposable disposable = null;
-    
+
     try {
       boolean atleastSecondRun = nestedDirOutsideTheProject.getParentFile().getParentFile().exists();
       StringBuilder eventLog = new StringBuilder();
-      
+
       if (atleastSecondRun) {
         disposable = Disposer.newDisposable();
         getProject().getMessageBus().connect(disposable).subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
@@ -224,14 +224,14 @@ public class PersistentFsTest extends PlatformTestCase {
       // recreating structure will fire vfs removal events
       VirtualFile nestedDirOutsideTheProjectFile = VfsUtil.createDirectories(nestedDirOutsideTheProject.getPath());
       WriteAction.run(() -> nestedDirOutsideTheProjectFile.createChildData(null, "Foo.txt"));
-      
+
       // subsubDir becomes fully loaded wrt persistence
       nestedDirOutsideTheProjectFile.getChildren();
 
       if (atleastSecondRun) {
         assertEquals("subDir\n" +
                      "subDir/subSubDir\n" +
-                     "subDir/subSubDir/Foo.txt\n", 
+                     "subDir/subSubDir/Foo.txt\n",
                      eventLog.toString()
         );
       }

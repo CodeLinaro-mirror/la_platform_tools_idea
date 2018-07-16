@@ -15,6 +15,7 @@
  */
 package com.intellij.psi.impl.search;
 
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
@@ -102,7 +103,7 @@ class ConstructorReferencesSearchHelper {
     };
 
     SearchScope restrictedScope = searchScope instanceof GlobalSearchScope
-                                  ? ((GlobalSearchScope)searchScope).intersectWith(new JavaFilesSearchScope(project))
+                                  ? GlobalSearchScope.getScopeRestrictedByFileTypes((GlobalSearchScope)searchScope, JavaFileType.INSTANCE)
                                   : searchScope;
 
     ReferencesSearch.searchOptimized(containingClass, restrictedScope, ignoreAccessScope, collector, true, processor1);
