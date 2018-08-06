@@ -35,7 +35,8 @@ public class JpsJavaCompilerNotNullableSerializer extends JpsProjectExtensionSer
     "javax.annotation.Nonnull",
     "edu.umd.cs.findbugs.annotations.NonNull",
     "android.support.annotation.NonNull",
-    "androidx.annotation.NonNull"
+    "androidx.annotation.NonNull",
+    "androidx.annotation.RecentlyNonNull"
   );
 
   public JpsJavaCompilerNotNullableSerializer() {
