@@ -11,6 +11,7 @@
       <file url="file://$PROJECT_DIR$/java/java-tests/testSrc/com/intellij/index/IndexTestGenerator.scala" />
       <file url="file://$PROJECT_DIR$/java/execution/jshell-frontend/src/com/intellij/execution/jshell/frontend/Main.java" />
       <file url="file://$PROJECT_DIR$/java/java-tests/testSrc/com/intellij/java/codeInspection/bytecodeAnalysis/precompiledData/TestConflict.java" />
+      <file url="file://$PROJECT_DIR$/../adt/idea/profilers/testSrc/com/android/tools/profilers/performance/DataSeriesPerformanceTest.kt" />
     </excludeFromCompile>
     <resourceExtensions>
       <entry name=".+\.(properties|gif|png|jpeg|jpg|xml|dtd|tld|xsd|ft|html|template)" />
@@ -38,6 +39,7 @@
         <processorPath useClasspath="false">
           <entry name="$PROJECT_DIR$/../../prebuilts/tools/common/m2/repository/com/google/auto/value/auto-value/1.6/auto-value-1.6.jar" />
         </processorPath>
+        <module name="aswb.jcgdi.blaze.plugin.base" />
         <module name="aswb.third_party.intellij.bazel.plugin.base" />
         <module name="aswb.third_party.intellij.bazel.plugin.cpp" />
         <module name="aswb.third_party.intellij.bazel.plugin.java" />
