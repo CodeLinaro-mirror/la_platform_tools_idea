@@ -42,6 +42,6 @@ iml_module(
         "//tools/idea/plugins/stats-collector/features:intellij.statsCollector.features[module]",
         "//tools/idea/plugins/stats-collector/log-events:intellij.statsCollector.logEvents[module]",
         "//tools/idea/.idea/libraries:commons-codec",
-        "//tools/idea/.idea/libraries:org.apache.httpcomponents_fluent-hc",
+        "//tools/idea/.idea/libraries:fluent-hc",
     ],
 )
