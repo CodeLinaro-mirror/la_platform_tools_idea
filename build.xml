@@ -44,9 +44,6 @@
       <propertyref prefix="idea.gui.test."/>
       <propertyref prefix="pass."/>  <!-- handled by TestingTasksImpl.runTests -->
     </propertyset>
-    <ant antfile="${project.home}/../adt/idea/android/build.xml" target="preBuild">
-      <property name="config" value="release"/>
-    </ant>
   </target>
 
   <macrodef name="call_gant">

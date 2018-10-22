@@ -104,23 +104,7 @@ else
   cp -Rfv "$OUT"/updater/artifacts/updater-full.jar "$DIST"/android-studio-updater.jar
   cp -Rfv "$OUT"/updater/artifacts/sdk-patcher.zip "$DIST"/sdk-patcher.zip
 
-  # Artifact built with gradle. The ant build does not pass OUT_DIR or DIST_DIR
-  # down to gradle, so it is relative to prog_dir.
-  cp -Rfv ../../out/dist/offline_repo.zip "$DIST"/offline_repo.zip
-  (cd ../../out/repo && zip -r - ".") > "$DIST"/gmaven_repo.zip
   # write the version number into the windows installer dir
   echo $BNUM > ../adt/idea/native/installer/win/version
   (cd ../adt/idea/native/installer/win && zip -r - ".") > "$DIST"/android-studio-bundle-data.zip
 fi
-
-# execute a bunch of sanity checks on the final artifacts
-../base/bazel/bazel test \
-    //tools/idea:test_studio \
-    --test_output=streamed \
-    --test_arg=--out="$OUT" \
-    --test_arg=--dist="$DIST" \
-    --test_arg=--build=$BNUM \
-    --test_arg=--aswb=$ASWB \
-    --test_strategy=standalone \
-    --spawn_strategy=standalone \
-    --nocache_test_results
