@@ -96,18 +96,26 @@ public interface InspectionToolPresentation extends ProblemDescriptionsProcessor
                      @NotNull Predicate<? super RefEntity> isEntityExcluded,
                      @NotNull Predicate<? super CommonProblemDescriptor> isProblemExcluded);
 
+  /** Export aggregate results that can't be attached to any specific problem descriptor. */
+  default void exportAggregateResults(@NotNull Element bulkRoot,
+                                      @NotNull Predicate<? super RefEntity> isEntityExcluded,
+                                      @NotNull Predicate<? super CommonProblemDescriptor> isProblemExcluded) {}
+
+  /** Override the preview panel for the entity. */
   @Nullable
   default JComponent getCustomPreviewPanel(@NotNull RefEntity entity) {
     return null;
   }
 
+  /** Override the preview panel for the problem descriptor. */
   @Nullable
   default JComponent getCustomPreviewPanel(@NotNull CommonProblemDescriptor descriptor, @NotNull Disposable parent) {
     return null;
   }
 
+  /** Additional actions applicable to the problem descriptor. May be (but not necessarily) related to the custom preview panel. */
   @Nullable
-  default JComponent getCustomToolsPanel(@NotNull CommonProblemDescriptor descriptor, @NotNull Disposable parent) {
+  default JComponent getCustomActionsPanel(@NotNull CommonProblemDescriptor descriptor, @NotNull Disposable parent) {
     return null;
   }
 

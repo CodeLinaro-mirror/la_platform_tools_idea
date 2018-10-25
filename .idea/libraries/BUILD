@@ -308,8 +308,8 @@ java_library(
 java_library(
     name = "intellij-coverage",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.470:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.470:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.493:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-coverage-agent/1.0.493:jar"],
 )
 
 # managed by go/iml_to_build
@@ -480,8 +480,16 @@ java_library(
 java_library(
     name = "pty4j",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/pty4j/pty4j/0.8.0:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/pty4j/pty4j/0.8.0:jar"],
+    # do not sort: must match IML order
+    exports = [
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/pty4j/pty4j/0.8.4:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/pty4j/purejavacomm/0.0.11.1:jar",
+    ],
+    # do not sort: must match IML order
+    runtime_deps = [
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/pty4j/pty4j/0.8.4:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/pty4j/purejavacomm/0.0.11.1:jar",
+    ],
 )
 
 # managed by go/iml_to_build
@@ -672,25 +680,15 @@ java_library(
 
 # managed by go/iml_to_build
 java_library(
-    name = "jayatana",
-    visibility = ["//visibility:public"],
-    exports = ["//tools/idea/lib:jayatana-1.2.4"],
-    runtime_deps = ["//tools/idea/lib:jayatana-1.2.4"],
-)
-
-# managed by go/iml_to_build
-java_library(
     name = "Slf4j",
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
     exports = [
-        "//prebuilts/tools/common/m2/repository/log4j/log4j/1.2.17:jar",
         "//prebuilts/tools/common/m2/repository/org/slf4j/slf4j-api/1.7.25:jar",
         "//prebuilts/tools/common/m2/repository/org/slf4j/slf4j-log4j12/1.7.25:jar",
     ],
     # do not sort: must match IML order
     runtime_deps = [
-        "//prebuilts/tools/common/m2/repository/log4j/log4j/1.2.17:jar",
         "//prebuilts/tools/common/m2/repository/org/slf4j/slf4j-api/1.7.25:jar",
         "//prebuilts/tools/common/m2/repository/org/slf4j/slf4j-log4j12/1.7.25:jar",
     ],
@@ -838,14 +836,6 @@ java_library(
         "//prebuilts/tools/common/m2/repository/com/twelvemonkeys/imageio/imageio-metadata/3.3.2:jar",
         "//prebuilts/tools/common/m2/repository/com/twelvemonkeys/imageio/imageio-tiff/3.3.2:jar",
     ],
-)
-
-# managed by go/iml_to_build
-java_library(
-    name = "purejavacomm",
-    visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/com/github/purejavacomm/purejavacomm/1.0.2.RELEASE:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/com/github/purejavacomm/purejavacomm/1.0.2.RELEASE:jar"],
 )
 
 # managed by go/iml_to_build
@@ -1140,16 +1130,16 @@ java_library(
 java_library(
     name = "kotlinx-coroutines-core",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-core/0.22.5:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-core/0.22.5:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-core/0.26.1:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-core/0.26.1:jar"],
 )
 
 # managed by go/iml_to_build
 java_library(
     name = "kotlinx-coroutines-jdk8",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/0.22.5:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/0.22.5:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/0.26.1:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/0.26.1:jar"],
 )
 
 # managed by go/iml_to_build
@@ -1256,8 +1246,8 @@ java_library(
 java_library(
     name = "intellij-test-discovery",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-test-discovery-agent/1.0.470:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-test-discovery-agent/1.0.470:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-test-discovery-agent/1.0.493:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/intellij-test-discovery-agent/1.0.493:jar"],
 )
 
 # managed by go/iml_to_build
@@ -1420,4 +1410,28 @@ java_library(
         "//prebuilts/tools/common/m2/repository/org/apache/maven/maven-model/3.3.9:jar",
         "//prebuilts/tools/common/m2/repository/org/codehaus/plexus/plexus-utils/3.0.22:jar",
     ],
+)
+
+# managed by go/iml_to_build
+java_library(
+    name = "Java_Compatibility",
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/java-compatibility/1.0.1:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/java-compatibility/1.0.1:jar"],
+)
+
+# managed by go/iml_to_build
+java_library(
+    name = "sa-jdwp",
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/sa-jdwp/1.0.5:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/sa-jdwp/1.0.5:jar"],
+)
+
+# managed by go/iml_to_build
+java_library(
+    name = "plexus-utils",
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/codehaus/plexus/plexus-utils/3.0.22:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/codehaus/plexus/plexus-utils/3.0.22:jar"],
 )

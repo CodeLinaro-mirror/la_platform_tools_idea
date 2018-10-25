@@ -300,7 +300,7 @@ public class GroovyInlineMethodUtil {
       return declaration.hasModifierProperty(PsiModifier.STATIC);
     }
 
-    public ReferenceExpressionInfo(GrReferenceExpression expression, int offsetInMethod, PsiMember declaration, PsiClass containingClass) {
+    ReferenceExpressionInfo(GrReferenceExpression expression, int offsetInMethod, PsiMember declaration, PsiClass containingClass) {
       this.expression = expression;
       this.offsetInMethod = offsetInMethod;
       this.declaration = declaration;
@@ -309,7 +309,7 @@ public class GroovyInlineMethodUtil {
   }
 
 
-  static void addQualifiersToInnerReferences(GrMethod method, Collection<ReferenceExpressionInfo> infos, @NotNull GrExpression qualifier)
+  static void addQualifiersToInnerReferences(GrMethod method, Collection<? extends ReferenceExpressionInfo> infos, @NotNull GrExpression qualifier)
       throws IncorrectOperationException {
     Set<GrReferenceExpression> exprs = new HashSet<>();
     for (ReferenceExpressionInfo info : infos) {
@@ -353,7 +353,7 @@ public class GroovyInlineMethodUtil {
 
     private final PsiMethod myMethod;
 
-    public InlineMethodDialog(Project project,
+    InlineMethodDialog(Project project,
                               PsiMethod method,
                               boolean invokedOnReference,
                               final boolean allowInlineThisOnly) {

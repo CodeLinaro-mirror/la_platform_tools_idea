@@ -30,6 +30,8 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.ex.EditorEx;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Splitter;
 import com.intellij.openapi.ui.popup.JBPopup;
@@ -389,7 +391,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
 
   @Nullable
   private static Navigatable getOpenFileDescriptor(final RefElement refElement) {
-    PsiElement psiElement = refElement.getElement();
+    PsiElement psiElement = refElement.getPsiElement();
     if (psiElement == null) return null;
     final PsiFile containingFile = psiElement.getContainingFile();
     if (containingFile == null) return null;
@@ -481,8 +483,8 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
   private void showInRightPanel(@Nullable final RefEntity refEntity) {
     final JPanel editorPanel = new JPanel();
     editorPanel.setLayout(new BorderLayout());
-    final JPanel toolsPanel = new JPanel(new BorderLayout());
-    editorPanel.add(toolsPanel, BorderLayout.NORTH);
+    final JPanel actionsPanel = new JPanel(new BorderLayout());
+    editorPanel.add(actionsPanel, BorderLayout.NORTH);
     final int problemCount = myTree.getSelectedProblemCount(true);
     JComponent previewPanel = null;
     final InspectionToolWrapper tool = myTree.getSelectedToolWrapper(true);
@@ -495,9 +497,9 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
           CommonProblemDescriptor descriptor = ((ProblemDescriptionNode)last).getDescriptor();
           if (descriptor != null) {
             previewPanel = presentation.getCustomPreviewPanel(descriptor, this);
-            JComponent customTools = presentation.getCustomToolsPanel(descriptor, this);
-            if (customTools != null) {
-              toolsPanel.add(customTools, BorderLayout.EAST);
+            JComponent customActions = presentation.getCustomActionsPanel(descriptor, this);
+            if (customActions != null) {
+              actionsPanel.add(customActions, BorderLayout.EAST);
             }
           }
         }
@@ -524,7 +526,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
         if (previewEditor != null) {
           previewPanel.setBorder(IdeBorderFactory.createBorder(SideBorder.TOP));
         }
-        toolsPanel.add(fixToolbar, BorderLayout.WEST);
+        actionsPanel.add(fixToolbar, BorderLayout.WEST);
       }
     }
     if (previewEditor != null) {
@@ -536,8 +538,8 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
   private Pair<JComponent, EditorEx> createBaseRightComponentFor(int problemCount, RefEntity selectedEntity) {
     if (selectedEntity instanceof RefElement &&
         selectedEntity.isValid() &&
-        !(((RefElement)selectedEntity).getElement() instanceof PsiDirectory)) {
-      PsiElement selectedElement = ((RefElement)selectedEntity).getElement();
+        !(((RefElement)selectedEntity).getPsiElement() instanceof PsiDirectory)) {
+      PsiElement selectedElement = ((RefElement)selectedEntity).getPsiElement();
       if (problemCount == 1) {
         CommonProblemDescriptor[] descriptors = myTree.getSelectedDescriptors();
         if (descriptors.length != 0) {
@@ -628,10 +630,8 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     return myInspectionProfile;
   }
 
-  @ReviseWhenPortedToJDK("9")
   void addProblemDescriptors(InspectionToolWrapper wrapper, RefEntity refElement, CommonProblemDescriptor[] descriptors) {
-    // redundant cast to fix compilation under jdk9
-    myTreeUpdater.submit((Runnable)() -> ReadAction.run(() -> {
+    updateTree(() -> ReadAction.run(() -> {
       if (!isDisposed()) {
         ApplicationManager.getApplication().assertReadAccessAllowed();
         synchronized (myTreeStructureUpdateLock) {
@@ -684,7 +684,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     if (app.isUnitTestMode()) {
       buildAction.run();
     } else {
-      myTreeUpdater.execute(buildAction);
+      updateTree(buildAction);
     }
   }
 
@@ -721,7 +721,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
   }
 
   public void addTools(Collection<? extends Tools> tools) {
-    myTreeUpdater.submit(() -> addToolsSynchronously(tools));
+    updateTree(() -> addToolsSynchronously(tools));
   }
 
   private void addToolsSynchronously(Collection<? extends Tools> tools) {
@@ -782,12 +782,12 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     if (selectedNode instanceof RefElementNode) {
       final RefElementNode refElementNode = (RefElementNode)selectedNode;
       RefEntity refElement = refElementNode.getElement();
-      if (refElement == null) return null;
+      if (refElement == null || !refElement.isValid()) return null;
       final RefEntity item = refElement.getRefManager().getRefinedElement(refElement);
 
       if (!item.isValid()) return null;
 
-      PsiElement psiElement = item instanceof RefElement ? ((RefElement)item).getElement() : null;
+      PsiElement psiElement = item instanceof RefElement ? ((RefElement)item).getPsiElement() : null;
       if (psiElement == null) return null;
 
       final CommonProblemDescriptor problem = refElementNode.getDescriptor();
@@ -872,7 +872,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     RefEntity[] refElements = myTree.getSelectedElements();
     List<PsiElement> psiElements = new ArrayList<>();
     for (RefEntity refElement : refElements) {
-      PsiElement psiElement = refElement instanceof RefElement ? ((RefElement)refElement).getElement() : null;
+      PsiElement psiElement = refElement instanceof RefElement ? ((RefElement)refElement).getPsiElement() : null;
       if (psiElement != null && psiElement.isValid()) {
         psiElements.add(psiElement);
       }
@@ -975,6 +975,11 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
       GlobalInspectionContextImpl.NOTIFICATION_GROUP.createNotification(InspectionsBundle.message("inspection.view.invalid.scope.message"), NotificationType.INFORMATION).notify(getProject());
     }
   }
+
+  private void updateTree(@NotNull Runnable action) {
+    myTreeUpdater.execute(() -> ProgressManager.getInstance().runProcess(action, new EmptyProgressIndicator()));
+  }
+
 
   @TestOnly
   public void dispatchTreeUpdate() throws Exception {

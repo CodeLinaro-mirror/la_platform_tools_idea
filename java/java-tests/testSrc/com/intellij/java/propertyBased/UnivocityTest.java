@@ -49,7 +49,8 @@ public class UnivocityTest extends AbstractApplyAndRevertTestCase {
       file -> Generator.frequency(5, Generator.constant(new InvokeIntention(file, new JavaGreenIntentionPolicy())),
                                   1, Generator.constant(new InvalidateAllPsi(myProject)),
                                   10, Generator.constant(new FilePropertiesChanged(file))));
-    PropertyChecker.customized().withIterationCount(30).checkScenarios(() -> env -> {
+    PropertyChecker.customized()
+      .withIterationCount(30).checkScenarios(() -> env -> {
       long startModCount = tracker.getModificationCount();
       if (rebuildStamp.getAndSet(startModCount) != startModCount) {
         checkCompiles(myCompilerTester.rebuild());
@@ -66,7 +67,8 @@ public class UnivocityTest extends AbstractApplyAndRevertTestCase {
   }
 
   public void testRandomActivity() {
-    PropertyChecker.customized().withIterationCount(30).checkScenarios(() -> env ->
+    PropertyChecker.customized()
+      .withIterationCount(30).checkScenarios(() -> env ->
       MadTestingUtil.changeAndRevert(myProject, () ->
         env.executeCommands(Generator.constant(env1 -> {
           PsiJavaFile file = env1.generateValue(psiJavaFiles(), "Working with %s");
@@ -87,7 +89,11 @@ public class UnivocityTest extends AbstractApplyAndRevertTestCase {
 
   @Override
   protected String getTestDataPath() {
-    return new File(PathManager.getHomePath(), "univocity-parsers").getAbsolutePath();
+    File file = new File(PathManager.getHomePath(), "univocity-parsers");
+    if (!file.exists()) {
+      fail("Cannot find univocity project, execute this in project home: git clone https://github.com/JetBrains/univocity-parsers.git");
+    }
+    return file.getAbsolutePath();
   }
 
 }

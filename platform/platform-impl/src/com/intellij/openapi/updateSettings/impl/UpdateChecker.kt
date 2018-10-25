@@ -232,9 +232,8 @@ object UpdateChecker {
 
     val toUpdate = ContainerUtil.newTroveMap<PluginId, PluginDownloader>()
 
-    val hosts = RepositoryHelper.getPluginHosts()
     val state = InstalledPluginsState.getInstance()
-    outer@ for (host in hosts) {
+    outer@ for (host in RepositoryHelper.getPluginHosts()) {
       try {
         val forceHttps = host == null && updateSettings.canUseSecureConnection()
         val list = RepositoryHelper.loadPlugins(host, buildNumber, forceHttps, indicator)
@@ -253,12 +252,7 @@ object UpdateChecker {
       }
       catch (e: IOException) {
         LOG.debug(e)
-        if (host != null) {
-          LOG.info("failed to load plugin descriptions from " + host + ": " + e.message)
-        }
-        else {
-          throw e
-        }
+        LOG.info("failed to load plugin descriptions from ${host ?: "default repository"}: ${e.message}")
       }
     }
 

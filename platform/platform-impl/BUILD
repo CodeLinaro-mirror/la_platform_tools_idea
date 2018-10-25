@@ -6,6 +6,7 @@ iml_module(
     srcs = ["src"],
     iml_files = ["intellij.platform.ide.impl.iml"],
     javacopts = ["-XepAllErrorsAsWarnings"],
+    resources = ["resources"],
     # do not sort: must match IML order
     test_runtime_deps = [
         "//tools/idea/xml/xml-analysis-impl:intellij.xml.analysis.impl",
@@ -22,6 +23,7 @@ iml_module(
         "//tools/idea/platform/editor-ui-ex:intellij.platform.editor.ex",
         "//tools/idea/.idea/libraries:KotlinJavaRuntime",
         "//tools/idea/.idea/libraries:StreamEx",
+        "//tools/idea/.idea/libraries:kotlinx-coroutines-core",
     ],
     # do not sort: must match IML order
     runtime_deps = [
@@ -65,7 +67,6 @@ iml_module(
         "//tools/idea/.idea/libraries:Guava",
         "//tools/idea/jps/model-impl:intellij.platform.jps.model.impl[module]",
         "//tools/idea/platform/analysis-impl:intellij.platform.analysis.impl[module]",
-        "//tools/idea/.idea/libraries:jayatana",
         "//tools/idea/platform/editor-ui-ex:intellij.platform.editor.ex[module]",
         "//tools/idea/.idea/libraries:gson",
         "//tools/idea/.idea/libraries:http-client",
@@ -87,6 +88,8 @@ iml_module(
         "//tools/idea/.idea/libraries:netty-codec-http",
         "//tools/idea/.idea/libraries:netty-handler",
         "//tools/idea/.idea/libraries:jackson",
+        "//tools/idea/.idea/libraries:microba",
+        "//tools/idea/.idea/libraries:Java_Compatibility",
         "//tools/idea/.idea/libraries:HdrHistogram",
         "//tools/idea/.idea/libraries:protobuf",
         "//tools/idea/.idea/libraries:studio-analytics-proto",

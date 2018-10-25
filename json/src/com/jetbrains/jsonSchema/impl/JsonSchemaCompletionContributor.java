@@ -40,6 +40,7 @@ import com.jetbrains.jsonSchema.extension.adapters.JsonPropertyAdapter;
 import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import java.util.*;
@@ -94,6 +95,8 @@ public class JsonSchemaCompletionContributor extends CompletionContributor {
     }
   }
 
+  @TestOnly
+  @NotNull
   public static List<LookupElement> getCompletionVariants(@NotNull final JsonSchemaObject schema,
                                                           @NotNull final PsiElement position, @NotNull final PsiElement originalPosition) {
     final List<LookupElement> result = new ArrayList<>();
@@ -132,7 +135,7 @@ public class JsonSchemaCompletionContributor extends CompletionContributor {
     private final Set<LookupElement> myVariants;
     private final JsonLikePsiWalker myWalker;
 
-    public Worker(@NotNull JsonSchemaObject rootSchema, @NotNull PsiElement position,
+    Worker(@NotNull JsonSchemaObject rootSchema, @NotNull PsiElement position,
                   @NotNull PsiElement originalPosition, @NotNull final Consumer<LookupElement> resultConsumer) {
       myRootSchema = rootSchema;
       myPosition = position;
@@ -346,7 +349,9 @@ public class JsonSchemaCompletionContributor extends CompletionContributor {
 
       final String typeText = JsonSchemaDocumentationProvider.getBestDocumentation(true, jsonSchemaObject);
       if (!StringUtil.isEmptyOrSpaces(typeText)) {
-        builder = builder.withTypeText(StringUtil.removeHtmlTags(typeText), true);
+        final String text = StringUtil.removeHtmlTags(typeText);
+        final int firstSentenceMark = text.indexOf(". ");
+        builder = builder.withTypeText(firstSentenceMark == -1 ? text : text.substring(0, firstSentenceMark + 1), true);
       }
       else {
         String type = jsonSchemaObject.getTypeDescription(true);
@@ -636,7 +641,7 @@ public class JsonSchemaCompletionContributor extends CompletionContributor {
       editor.getCaretModel().moveToOffset(newOffset);
     }
 
-    if (!walker.invokeEnterBeforeObjectAndArray()) {
+    if (!walker.invokeEnterBeforeObjectAndArray() && !stringToInsert.equals(": ")) {
       formatInsertedString(context, stringToInsert.length());
     }
 

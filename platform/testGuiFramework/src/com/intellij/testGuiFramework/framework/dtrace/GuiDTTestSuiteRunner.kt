@@ -5,7 +5,7 @@ import com.intellij.testGuiFramework.framework.GuiTestLocalRunner
 import com.intellij.testGuiFramework.framework.GuiTestSuiteRunner
 import com.intellij.testGuiFramework.launcher.GuiTestLocalLauncher
 import com.intellij.testGuiFramework.launcher.ide.Ide
-import com.intellij.testGuiFramework.remote.IdeProcessControlManager
+import com.intellij.testGuiFramework.remote.IdeControl
 import org.apache.log4j.Logger
 import org.junit.runners.model.RunnerBuilder
 
@@ -20,7 +20,7 @@ class GuiDTTestSuiteRunner(suiteClass: Class<*>, builder: RunnerBuilder) : GuiTe
   }
 
   override fun createGuiTestLocalRunner(testClass:Class<*>, suiteClass:Class<*>, myIde: Ide): GuiTestLocalRunner {
-    IdeProcessControlManager.killIdeProcess()
+    IdeControl.closeIde()
     return GuiDTTestLocalRunner(testClass, suiteClass, myIde)
   }
 

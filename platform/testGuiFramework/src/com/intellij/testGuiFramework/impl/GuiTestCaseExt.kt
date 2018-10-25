@@ -16,7 +16,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.rules.ErrorCollector
-import org.junit.rules.TemporaryFolder
 import org.junit.rules.TestName
 
 open class GuiTestCaseExt : GuiTestCase() {
@@ -33,12 +32,8 @@ open class GuiTestCaseExt : GuiTestCase() {
   @JvmField
   val logActionsDuringTest = LogActionsDuringTest()
 
-  @get:Rule
-  val testRootPath: TemporaryFolder by lazy {
-    TemporaryFolder()
-  }
   val projectFolder: String by lazy {
-    testRootPath.newFolder(testMethod.methodName).canonicalPath
+    projectsFolder.newFolder(testMethod.methodName).canonicalPath
   }
 
 //  @Rule
@@ -53,14 +48,12 @@ open class GuiTestCaseExt : GuiTestCase() {
 
   @Before
   open fun setUp() {
-    guiTestRule.IdeHandling().setUp()
     logStartTest(testMethod.methodName)
   }
 
   @After
   fun tearDown() {
     logEndTest(testMethod.methodName)
-    guiTestRule.IdeHandling().tearDown()
   }
 
   open fun isIdeFrameRun(): Boolean = true
@@ -103,11 +96,40 @@ fun GuiTestCase.waitAMoment(extraTimeOut: Long = 2000L) {
  * before using this test
  * @param expectedItem - expected exact item
  * @param name - name of item kind, such as "Library" or "Facet". Used for understandable error message
+ * @param predicate - searcher rule, how to compare an item and name. By default they are compared by equality
  * */
-fun GuiTestCase.testTreeItemExist(name: String, vararg expectedItem: String) {
+fun GuiTestCase.testTreeItemExist(name: String, vararg expectedItem: String, predicate: FinderPredicate = Predicate.equality) {
   ideFrame {
     logInfo("Check that $name -> ${expectedItem.joinToString(" -> ")} exists in a tree element")
-    kotlin.assert(exists { jTree(*expectedItem) }) { "$name '${expectedItem.joinToString(", ")}' not found" }
+    kotlin.assert(exists { jTree(*expectedItem, predicate = predicate) }) { "$name '${expectedItem.joinToString(", ")}' not found" }
+  }
+}
+
+/**
+ * Performs test whether the specified item exists in a list
+ * Note: the dialog with the investigated list must be open
+ * before using this test
+ * @param expectedItem - expected exact item
+ * @param name - name of item kind, such as "Library" or "Facet". Used for understandable error message
+ * */
+fun GuiTestCase.testListItemExist(name: String, expectedItem: String) {
+  ideFrame {
+    logInfo("Check that $name -> $expectedItem exists in a list element")
+    kotlin.assert(exists { jList(expectedItem, timeout = Timeouts.seconds05) }) { "$name '$expectedItem' not found" }
+  }
+}
+
+/**
+ * Performs test whether the specified item exists in a table
+ * Note: the dialog with the investigated list must be open
+ * before using this test
+ * @param expectedItem - expected exact item
+ * @param name - name of item kind, such as "Library" or "Facet". Used for understandable error message
+ * */
+fun GuiTestCase.testTableItemExist(name: String, expectedItem: String) {
+  ideFrame {
+    logInfo("Check that $name -> $expectedItem exists in a list element")
+    kotlin.assert(exists { table(expectedItem, timeout = Timeouts.seconds05) }) { "$name '$expectedItem' not found" }
   }
 }
 

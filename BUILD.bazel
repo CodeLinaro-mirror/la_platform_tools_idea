@@ -110,6 +110,8 @@ iml_project(
         "//tools/adt/idea/build-common:intellij.android.buildCommon",
         "//tools/adt/idea/connection-assistant",
         "//tools/adt/idea/connection-assistant:connection-assistant-test",
+        "//tools/adt/idea/databinding:intellij.android.databinding",
+        "//tools/adt/idea/databinding:intellij.android.databinding.tests",
         "//tools/adt/idea/deploy:intellij.android.deploy",
         "//tools/adt/idea/designer:intellij.android.designer",
         "//tools/adt/idea/designer:intellij.android.designer.tests",
@@ -937,6 +939,7 @@ iml_module(
         "//tools/idea/resources:intellij.java.resources[module]",
         "//tools/idea/platform/xdebugger-impl:intellij.platform.debugger.impl[module]",
         "//tools/idea/platform/platform-impl:intellij.platform.ide.impl[module]",
+        "//tools/idea/.idea/libraries:sa-jdwp",
     ],
 )
 
@@ -959,7 +962,11 @@ iml_module(
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
     ],
-    deps = ["//tools/idea:intellij.platform.jps.build_and_others[module]"],
+    # do not sort: must match IML order
+    deps = [
+        "//tools/idea:intellij.platform.jps.build_and_others[module]",
+        "//tools/idea/aether-dependency-resolver:intellij.java.aetherDependencyResolver[module, test]",
+    ],
 )
 
 # managed by go/iml_to_build

@@ -9,7 +9,7 @@ import com.intellij.testGuiFramework.fixtures.extended.RowFixture
 import com.intellij.testGuiFramework.fixtures.newProjectWizard.NewProjectWizardFixture
 import com.intellij.testGuiFramework.framework.GuiTestLocalRunner
 import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.framework.IdeTestApplication.getTestScreenshotDirPath
+import com.intellij.testGuiFramework.framework.GuiTestPaths.testScreenshotDirPath
 import com.intellij.testGuiFramework.framework.Timeouts
 import com.intellij.testGuiFramework.framework.toPrintable
 import com.intellij.testGuiFramework.impl.GuiTestUtilKt.typeMatcher
@@ -27,7 +27,9 @@ import org.fest.swing.fixture.JTableFixture
 import org.fest.swing.timing.Condition
 import org.fest.swing.timing.Pause
 import org.fest.swing.timing.Timeout
+import org.junit.ClassRule
 import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.awt.Component
 import java.io.File
@@ -63,9 +65,15 @@ import javax.swing.JPanel
 @RunWith(GuiTestLocalRunner::class)
 open class GuiTestCase {
 
+  companion object {
+    @ClassRule
+    @JvmField
+    val projectsFolder: TemporaryFolder = TemporaryFolder()
+  }
+
   @Rule
   @JvmField
-  val guiTestRule = GuiTestRule()
+  val guiTestRule = GuiTestRule(projectsFolder.apply{ create() }.root.canonicalFile)
 
   val settingsTitle: String = if (isMac()) "Preferences" else "Settings"
   //  val defaultSettingsTitle: String = if (isMac()) "Default Preferences" else "Default Settings"
@@ -90,8 +98,8 @@ open class GuiTestCase {
    * Context function: finds IDE frame and creates IdeFrameFixture instance as receiver object. Code block after it call methods on the
    * receiver object (IdeFrameFixture instance).
    */
-  fun ideFrame(func: IdeFrameFixture.() -> Unit) {
-    func(guiTestRule.findIdeFrame())
+  fun ideFrame(timeout: Timeout = Timeouts.defaultTimeout, func: IdeFrameFixture.() -> Unit) {
+    func(guiTestRule.findIdeFrame(timeout))
   }
 
   /**
@@ -112,10 +120,21 @@ open class GuiTestCase {
     if (!needToKeepDialog) dialog.waitTillGone()
   }
 
+  fun settingsDialog(timeout: Timeout = Timeouts.defaultTimeout,
+                      needToKeepDialog: Boolean = false,
+                      func: JDialogFixture.() -> Unit) {
+    if (isMac()) dialog(title = "Preferences", func = func)
+    else dialog(title = "Settings", func = func)
+  }
+
   fun pluginDialog(timeout: Timeout = Timeouts.defaultTimeout, needToKeepDialog: Boolean = false, func: PluginDialogFixture.() -> Unit) {
     val pluginDialog = PluginDialogFixture(robot(), findDialog("Plugins", false, timeout))
     func(pluginDialog)
     if (!needToKeepDialog) pluginDialog.waitTillGone()
+  }
+
+  fun pluginDialog(timeout: Timeout = Timeouts.defaultTimeout) : PluginDialogFixture{
+    return PluginDialogFixture(robot(), findDialog("Plugins", false, timeout))
   }
 
   /**
@@ -285,7 +304,7 @@ open class GuiTestCase {
   fun screenshot(component: Component, screenshotName: String) {
 
     val extension = "${getScaleSuffix()}.jpg"
-    val pathWithTestFolder = getTestScreenshotDirPath().path + slash + this.guiTestRule.getTestName()
+    val pathWithTestFolder = testScreenshotDirPath.path + slash + this.guiTestRule.getTestName()
     val fileWithTestFolder = File(pathWithTestFolder)
     FileUtil.ensureExists(fileWithTestFolder)
     var screenshotFilePath = File(fileWithTestFolder, screenshotName + extension)

@@ -6,7 +6,6 @@ import com.intellij.codeHighlighting.HighlightDisplayLevel;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.markup.TextAttributes;
-import com.intellij.openapi.extensions.Extensions;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.JDOMExternalizableStringList;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
@@ -24,8 +23,8 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class SeverityRegistrar implements Comparator<HighlightSeverity> {
@@ -151,7 +150,7 @@ public class SeverityRegistrar implements Comparator<HighlightSeverity> {
     }
     else {
       //enforce include all known
-      List<HighlightSeverity> list = getAllSeverities();
+      List<HighlightSeverity> list = getSortedSeverities(orderMap);
       for (HighlightSeverity stdSeverity : knownSeverities) {
         if (!list.contains(stdSeverity)) {
           for (int oIdx = 0; oIdx < list.size(); oIdx++) {
@@ -200,9 +199,14 @@ public class SeverityRegistrar implements Comparator<HighlightSeverity> {
 
   @NotNull
   public List<HighlightSeverity> getAllSeverities() {
-    return Arrays.stream(getOrderMap().keys())
+    return getSortedSeverities(getOrderMap());
+  }
+
+  @NotNull
+  private List<HighlightSeverity> getSortedSeverities(OrderMap map) {
+    return Arrays.stream(map.keys())
                  .map(o -> (HighlightSeverity)o)
-                 .sorted(this)
+                 .sorted((o1, o2) -> compare(o1, o2, map))
                  .collect(Collectors.toList());
   }
 
@@ -264,7 +268,12 @@ public class SeverityRegistrar implements Comparator<HighlightSeverity> {
 
   @Override
   public int compare(@NotNull HighlightSeverity s1, @NotNull HighlightSeverity s2) {
-    OrderMap orderMap = getOrderMap();
+    return compare(s1, s2, getOrderMap());
+  }
+
+  private int compare(@NotNull HighlightSeverity s1,
+                      @NotNull HighlightSeverity s2,
+                      @NotNull OrderMap orderMap) {
     int o1 = orderMap.getOrder(s1);
     int o2 = orderMap.getOrder(s2);
     return o1 - o2;
@@ -331,7 +340,7 @@ public class SeverityRegistrar implements Comparator<HighlightSeverity> {
   }
 
   static boolean isGotoBySeverityEnabled(@NotNull HighlightSeverity minSeverity) {
-    for (SeveritiesProvider provider : Extensions.getExtensions(SeveritiesProvider.EP_NAME)) {
+    for (SeveritiesProvider provider : SeveritiesProvider.EP_NAME.getExtensionList()) {
       if (provider.isGotoBySeverityEnabled(minSeverity)) return true;
     }
     return minSeverity != HighlightSeverity.INFORMATION;

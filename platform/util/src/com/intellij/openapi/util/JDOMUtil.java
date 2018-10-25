@@ -143,7 +143,7 @@ public class JDOMUtil {
     }
   }
 
-  private static class EmptyTextFilter implements Filter {
+  private static class EmptyTextFilter implements Filter<Content> {
     @Override
     public boolean matches(Object obj) {
       return !(obj instanceof Text) || !CharArrayUtil.containsOnlyWhiteSpaces(((Text)obj).getText());
@@ -174,7 +174,7 @@ public class JDOMUtil {
   }
 
   @SuppressWarnings("DuplicateDetector")
-  private static boolean isAttributesEqual(@NotNull List<Attribute> l1, @NotNull List<Attribute> l2, boolean ignoreEmptyAttrValues) {
+  private static boolean isAttributesEqual(@NotNull List<? extends Attribute> l1, @NotNull List<? extends Attribute> l2, boolean ignoreEmptyAttrValues) {
     if (ignoreEmptyAttrValues) {
       l1 = ContainerUtil.filter(l1, NOT_EMPTY_VALUE_CONDITION);
       l2 = ContainerUtil.filter(l2, NOT_EMPTY_VALUE_CONDITION);
@@ -270,6 +270,7 @@ public class JDOMUtil {
    * <p>
    * Direct usage of element allows to get rid of {@link Document#getRootElement()} because only Element is required in mostly all cases.
    */
+  @Deprecated
   @NotNull
   public static Document loadDocument(@NotNull InputStream stream) throws JDOMException, IOException {
     return loadDocumentUsingStaX(new InputStreamReader(stream, CharsetToolkit.UTF8_CHARSET));
@@ -303,6 +304,7 @@ public class JDOMUtil {
    *
    * Direct usage of element allows to get rid of {@link Document#getRootElement()} because only Element is required in mostly all cases.
    */
+  @Deprecated
   @SuppressWarnings("DeprecatedIsStillUsed")
   @NotNull
   public static Document loadDocument(@NotNull URL url) throws JDOMException, IOException {
@@ -545,7 +547,7 @@ public class JDOMUtil {
   }
 
   private final static class MyXMLOutputter extends XMLOutputter {
-    public MyXMLOutputter(@NotNull Format format) {
+    MyXMLOutputter(@NotNull Format format) {
       super(format);
     }
 
@@ -673,7 +675,7 @@ public class JDOMUtil {
   }
 
   public static boolean isEmpty(@Nullable Element element) {
-    return element == null || element.getAttributes().isEmpty() && element.getContent().isEmpty();
+    return element == null || (!element.hasAttributes() && element.getContent().isEmpty());
   }
 
   public static boolean isEmpty(@Nullable Element element, int attributeCount) {

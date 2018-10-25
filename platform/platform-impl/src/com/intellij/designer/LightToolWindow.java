@@ -390,21 +390,10 @@ public class LightToolWindow extends JPanel {
   }
 
   private class HideAction extends AnAction {
-    public HideAction() {
+    HideAction() {
       Presentation presentation = getTemplatePresentation();
       presentation.setText(UIBundle.message("tool.window.hide.action.name"));
-      if (myAnchor == ToolWindowAnchor.LEFT) {
-        presentation.setIcon(AllIcons.General.HideLeftPart);
-        presentation.setHoveredIcon(AllIcons.General.HideLeftPartHover);
-      }
-      else if (myAnchor == ToolWindowAnchor.RIGHT) {
-        presentation.setIcon(AllIcons.General.HideRightPart);
-        presentation.setHoveredIcon(AllIcons.General.HideRightPartHover);
-      }
-      else if (myAnchor == ToolWindowAnchor.BOTTOM) {
-        presentation.setIcon(AllIcons.General.HideDownPart);
-        presentation.setHoveredIcon(AllIcons.General.HideDownPartHover);
-      }
+      presentation.setIcon(AllIcons.General.HideToolWindow);
     }
 
     @Override
@@ -414,7 +403,7 @@ public class LightToolWindow extends JPanel {
   }
 
   private class TogglePinnedModeAction extends ToggleAction {
-    public TogglePinnedModeAction() {
+    TogglePinnedModeAction() {
       copyFrom(ActionManager.getInstance().getAction(InternalDecorator.TOGGLE_PINNED_MODE_ACTION_ID));
     }
 
@@ -432,7 +421,7 @@ public class LightToolWindow extends JPanel {
   }
 
   private class ToggleDockModeAction extends ToggleTypeModeAction {
-    public ToggleDockModeAction() {
+    ToggleDockModeAction() {
       super(ToolWindowType.DOCKED, InternalDecorator.TOGGLE_DOCK_MODE_ACTION_ID);
     }
 
@@ -451,7 +440,7 @@ public class LightToolWindow extends JPanel {
   }
 
   private class ToggleFloatingModeAction extends ToggleTypeModeAction {
-    public ToggleFloatingModeAction() {
+    ToggleFloatingModeAction() {
       super(ToolWindowType.FLOATING, InternalDecorator.TOGGLE_FLOATING_MODE_ACTION_ID);
     }
   }
@@ -490,7 +479,7 @@ public class LightToolWindow extends JPanel {
   }
 
   private class ToggleSideModeAction extends ToggleAction {
-    public ToggleSideModeAction() {
+    ToggleSideModeAction() {
       copyFrom(ActionManager.getInstance().getAction(InternalDecorator.TOGGLE_SIDE_MODE_ACTION_ID));
     }
 
@@ -509,7 +498,7 @@ public class LightToolWindow extends JPanel {
   private class ActionButton extends Wrapper implements ActionListener {
     private final AnAction myAction;
 
-    public ActionButton(AnAction action) {
+    ActionButton(AnAction action) {
       myAction = action;
 
       Presentation presentation = action.getTemplatePresentation();

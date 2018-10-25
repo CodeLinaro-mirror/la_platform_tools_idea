@@ -41,7 +41,7 @@ public class JavaParserUtil {
   private static class PrecedingWhitespacesAndCommentsBinder implements WhitespacesAndCommentsBinder {
     private final boolean myAfterEmptyImport;
 
-    public PrecedingWhitespacesAndCommentsBinder(final boolean afterImport) {
+    PrecedingWhitespacesAndCommentsBinder(final boolean afterImport) {
       this.myAfterEmptyImport = afterImport;
     }
 
@@ -213,11 +213,11 @@ public class JavaParserUtil {
   }
 
   // used instead of PsiBuilder.error() as it keeps all subsequent error messages
-  public static void error(final PsiBuilder builder, final String message) {
+  public static void error(final PsiBuilder builder, @NotNull String message) {
     builder.mark().error(message);
   }
 
-  public static void error(final PsiBuilder builder, final String message, @Nullable final PsiBuilder.Marker before) {
+  public static void error(final PsiBuilder builder, @NotNull String message, @Nullable final PsiBuilder.Marker before) {
     if (before == null) {
       error(builder, message);
     }

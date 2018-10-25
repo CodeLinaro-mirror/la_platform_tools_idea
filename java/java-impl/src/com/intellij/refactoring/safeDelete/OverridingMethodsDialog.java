@@ -46,7 +46,7 @@ class OverridingMethodsDialog extends DialogWrapper {
   private Table myTable;
    private final UsagePreviewPanel myUsagePreviewPanel;
 
-  public OverridingMethodsDialog(Project project, List<UsageInfo> overridingMethods) {
+  OverridingMethodsDialog(Project project, List<UsageInfo> overridingMethods) {
     super(project, true);
     myOverridingMethods = overridingMethods;
     myChecked = new boolean[myOverridingMethods.size()];
@@ -199,22 +199,15 @@ class OverridingMethodsDialog extends DialogWrapper {
 
     @Override
     public String getColumnName(int column) {
-      switch(column) {
-        case CHECK_COLUMN:
-          return " ";
-        default:
-          return RefactoringBundle.message("method.column");
-      }
+      return column == CHECK_COLUMN ? " " : RefactoringBundle.message("method.column");
     }
 
     @Override
     public Class getColumnClass(int columnIndex) {
-      switch(columnIndex) {
-        case CHECK_COLUMN:
-          return Boolean.class;
-        default:
-          return String.class;
+      if (columnIndex == CHECK_COLUMN) {
+        return Boolean.class;
       }
+      return String.class;
     }
 
 

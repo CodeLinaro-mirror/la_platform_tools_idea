@@ -115,14 +115,14 @@ public class Conditions {
     };
   }
 
-  public static <T> Condition<T> not(Condition<T> c) {
+  public static <T> Condition<T> not(Condition<? super T> c) {
     if (c == TRUE) return alwaysFalse();
     if (c == FALSE) return alwaysTrue();
     if (c instanceof Not) return ((Not)c).c;
     return new Not<T>(c);
   }
 
-  public static <T> Condition<T> and(Condition<T> c1, Condition<T> c2) {
+  public static <T> Condition<T> and(Condition<? super T> c1, Condition<? super T> c2) {
     return and2(c1, c2);
   }
 
@@ -132,7 +132,7 @@ public class Conditions {
     return new And<T>(c1, c2);
   }
 
-  public static <T> Condition<T> or(Condition<T> c1, Condition<T> c2) {
+  public static <T> Condition<T> or(Condition<? super T> c1, Condition<? super T> c2) {
     return or2(c1, c2);
   }
 
@@ -198,7 +198,7 @@ public class Conditions {
     private final HashMap<Integer, Pair<SoftReference<T>, Boolean>> myCache = new HashMap<Integer, Pair<SoftReference<T>, Boolean>>();
     private final Condition<? super T> myCondition;
 
-    public SoftRefCache(Condition<? super T> condition) {
+    SoftRefCache(Condition<? super T> condition) {
       myCondition = condition;
     }
 

@@ -6,6 +6,7 @@ iml_module(
     srcs = ["src"],
     iml_files = ["intellij.java.guiForms.designer.iml"],
     javacopts = ["-XepAllErrorsAsWarnings"],
+    resources = ["resources"],
     # do not sort: must match IML order
     test_runtime_deps = ["//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl"],
     test_srcs = ["testSrc"],
@@ -45,5 +46,6 @@ iml_module(
         "//tools/idea/plugins/properties/properties-psi-api:intellij.properties.psi[module]",
         "//tools/idea/.idea/libraries:assertJ[test]",
         "//tools/idea:intellij.java.compiler.tests[module, test]",
+        "//tools/idea/.idea/libraries:Java_Compatibility[test]",
     ],
 )

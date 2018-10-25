@@ -7,7 +7,6 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.panels.Wrapper
@@ -15,11 +14,17 @@ import git4idea.commands.Git
 import git4idea.repo.GitRemote
 import git4idea.repo.GitRepository
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager
+import org.jetbrains.plugins.github.api.GithubFullPath
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount
 import org.jetbrains.plugins.github.pullrequest.action.GithubPullRequestKeys
+import org.jetbrains.plugins.github.pullrequest.avatars.CachingGithubAvatarIconsProvider
+import org.jetbrains.plugins.github.pullrequest.config.GithubPullRequestsUISettings
+import org.jetbrains.plugins.github.pullrequest.data.GithubPullRequestsBranchesFetcher
 import org.jetbrains.plugins.github.pullrequest.data.GithubPullRequestsChangesLoader
 import org.jetbrains.plugins.github.pullrequest.data.GithubPullRequestsDetailsLoader
 import org.jetbrains.plugins.github.pullrequest.data.GithubPullRequestsLoader
+import org.jetbrains.plugins.github.util.CachingGithubUserAvatarLoader
+import org.jetbrains.plugins.github.util.GithubImageResizer
 import org.jetbrains.plugins.github.util.GithubUrlUtil
 import javax.swing.JComponent
 
@@ -28,9 +33,11 @@ class GithubPullRequestsComponentFactory(private val project: Project,
                                          private val progressManager: ProgressManager,
                                          private val requestExecutorManager: GithubApiRequestExecutorManager,
                                          private val git: Git,
+                                         private val uiSettings: GithubPullRequestsUISettings,
+                                         private val avatarLoader: CachingGithubUserAvatarLoader,
+                                         private val imageResizer: GithubImageResizer,
                                          private val actionManager: ActionManager,
-                                         private val autoPopupController: AutoPopupController,
-                                         private val popupFactory: JBPopupFactory) {
+                                         private val autoPopupController: AutoPopupController) {
 
   fun createComponent(repository: GitRepository, remote: GitRemote, remoteUrl: String, account: GithubAccount): JComponent? {
 
@@ -38,46 +45,67 @@ class GithubPullRequestsComponentFactory(private val project: Project,
     val repoPath = GithubUrlUtil.getUserAndRepositoryFromRemoteUrl(remoteUrl)!!
     val listLoader = GithubPullRequestsLoader(progressManager, requestExecutorHolder,
                                               account.server, repoPath)
-    val detailsLoader = GithubPullRequestsDetailsLoader(progressManager, requestExecutorHolder, git, repository, remote)
-    val parametersDataProvider = DataProvider {
-      when {
-        GithubPullRequestKeys.REPOSITORY.`is`(it) -> repository
-        GithubPullRequestKeys.REMOTE.`is`(it) -> remote
-        GithubPullRequestKeys.FULL_PATH.`is`(it) -> repoPath
-        GithubPullRequestKeys.SERVER_PATH.`is`(it) -> account.server
-        else -> null
-      }
-    }
-    val list = GithubPullRequestsListComponent(project, actionManager, autoPopupController, popupFactory,
-                                               parametersDataProvider, detailsLoader, listLoader)
-    val changesLoader = GithubPullRequestsChangesLoader(project, progressManager, detailsLoader, repository)
-    val changes = GithubPullRequestChangesComponent(project, changesLoader)
-    list.addSelectionListener(changesLoader, list)
-    list.setToolbarHeightReferent(changes.toolbarComponent)
+    val selectionModel = GithubPullRequestsListSelectionModel()
+    val list = GithubPullRequestsListComponent(project, actionManager, autoPopupController,
+                                               selectionModel, listLoader,
+                                               CachingGithubAvatarIconsProvider.Factory(avatarLoader, imageResizer, requestExecutorHolder))
 
-    val splitter = OnePixelSplitter("Github.PullRequests.Component", 0.7f)
+    val detailsLoader = GithubPullRequestsDetailsLoader(progressManager, requestExecutorHolder, selectionModel)
+    val branchFetcher = GithubPullRequestsBranchesFetcher(progressManager, git, detailsLoader, repository, remote)
+    val changesLoader = GithubPullRequestsChangesLoader(project, progressManager, branchFetcher, repository)
+
+    val changes = GithubPullRequestChangesComponent(project, changesLoader, actionManager)
+    val details = GithubPullRequestDetailsComponent(project, detailsLoader)
+
+    val preview = GithubPullRequestPreviewComponent(uiSettings, changes, details)
+    list.setToolbarHeightReferent(preview.toolbarComponent)
+
+    val splitter = OnePixelSplitter("Github.PullRequests.Component", 0.6f)
     splitter.firstComponent = list
-    splitter.secondComponent = changes
+    splitter.secondComponent = preview
 
     // disposed by content manager when tab is closed
-    val wrapper = DisposableWrapper(splitter)
+    val wrapper = WrappingComponent(splitter, repository, remote, repoPath, account, listLoader, detailsLoader, branchFetcher)
     Disposer.register(wrapper, Disposable {
       Disposer.dispose(list)
-      Disposer.dispose(changes)
+      Disposer.dispose(preview)
 
       Disposer.dispose(listLoader)
       Disposer.dispose(changesLoader)
+      Disposer.dispose(branchFetcher)
       Disposer.dispose(detailsLoader)
 
       Disposer.dispose(requestExecutorHolder)
     })
+    changes.diffAction.registerCustomShortcutSet(wrapper, wrapper)
     return wrapper
   }
 
   companion object {
-    private class DisposableWrapper(wrapped: JComponent) : Wrapper(wrapped), Disposable {
+    private class WrappingComponent(wrapped: JComponent,
+                                    private val repository: GitRepository,
+                                    private val remote: GitRemote,
+                                    private val repoPath: GithubFullPath,
+                                    private val account: GithubAccount,
+                                    private val listLoader: GithubPullRequestsLoader,
+                                    private val detailsLoader: GithubPullRequestsDetailsLoader,
+                                    private val branchesFetcher: GithubPullRequestsBranchesFetcher)
+      : Wrapper(wrapped), Disposable, DataProvider {
       init {
         isFocusCycleRoot = true
+      }
+
+      override fun getData(dataId: String): Any? {
+        return when {
+          GithubPullRequestKeys.REPOSITORY.`is`(dataId) -> repository
+          GithubPullRequestKeys.REMOTE.`is`(dataId) -> remote
+          GithubPullRequestKeys.FULL_PATH.`is`(dataId) -> repoPath
+          GithubPullRequestKeys.SERVER_PATH.`is`(dataId) -> account.server
+          GithubPullRequestKeys.PULL_REQUESTS_LOADER.`is`(dataId) -> listLoader
+          GithubPullRequestKeys.PULL_REQUESTS_DETAILS_LOADER.`is`(dataId) -> detailsLoader
+          GithubPullRequestKeys.PULL_REQUESTS_BRANCHES_FETCHER.`is`(dataId) -> branchesFetcher
+          else -> null
+        }
       }
 
       override fun dispose() {}

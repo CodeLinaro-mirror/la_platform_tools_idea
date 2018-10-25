@@ -24,6 +24,7 @@ import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ui.*;
@@ -66,7 +67,7 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
   private boolean myMultilineEnabled = true;
 
   public SearchTextArea(boolean searchMode) {
-    this(new JTextArea(), searchMode, false);
+    this(new JBTextArea(), searchMode, false);
   }
 
   public SearchTextArea(@NotNull JTextArea textArea, boolean searchMode, boolean infoMode) {
@@ -128,6 +129,19 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
         }
         return d;
       }
+
+      @Override
+      public void doLayout() {
+        super.doLayout();
+        JScrollBar hsb = getHorizontalScrollBar();
+        if (StringUtil.getLineBreakCount(getTextArea().getText()) == 0 && hsb.isVisible()) {
+          Rectangle hsbBounds = hsb.getBounds();
+          hsb.setVisible(false);
+          Rectangle bounds = getViewport().getBounds();
+          bounds = bounds.union(hsbBounds);
+          getViewport().setBounds(bounds);
+        }
+      }
     };
     myTextArea.setBorder(new Border() {
       @Override
@@ -181,11 +195,7 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
 
   private void updateFont() {
     if (myTextArea != null) {
-      if (UIUtil.isUnderWindowsLookAndFeel()) {
-        myTextArea.setFont(UIManager.getFont("TextField.font"));
-      } else {
-        Utils.setSmallerFont(myTextArea);
-      }
+      Utils.setSmallerFont(myTextArea);
     }
   }
 
@@ -238,8 +248,9 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
       myIconsPanel.setBorder(myHelper.getIconsPanelBorder(rows));
       myIconsPanel.revalidate();
       myIconsPanel.repaint();
-      myScrollPane.setHorizontalScrollBarPolicy(multiline ? HORIZONTAL_SCROLLBAR_AS_NEEDED : HORIZONTAL_SCROLLBAR_NEVER);
+      myScrollPane.setHorizontalScrollBarPolicy(HORIZONTAL_SCROLLBAR_AS_NEEDED);
       myScrollPane.setVerticalScrollBarPolicy(multiline ? VERTICAL_SCROLLBAR_AS_NEEDED : VERTICAL_SCROLLBAR_NEVER);
+      myScrollPane.getHorizontalScrollBar().setVisible(multiline);
       myScrollPane.revalidate();
       doLayout();
     }
@@ -322,22 +333,11 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
       g.dispose();
     }
     super.paint(graphics);
-
-    if (UIUtil.isUnderGTKLookAndFeel()) {
-      graphics.setColor(myTextArea.getBackground());
-      Rectangle bounds = myScrollPane.getViewport().getBounds();
-      if (myScrollPane.getVerticalScrollBar().isVisible()) {
-        bounds.width -= myScrollPane.getVerticalScrollBar().getWidth();
-      }
-      bounds = SwingUtilities.convertRectangle(myScrollPane.getViewport()/*myTextArea*/, bounds, this);
-      JBInsets.addTo(bounds, new JBInsets(2, 2, -1, -1));
-      ((Graphics2D)graphics).draw(bounds);
-    }
   }
 
   private class ShowHistoryAction extends DumbAwareAction {
 
-    public ShowHistoryAction() {
+    ShowHistoryAction() {
       super((mySearchMode ? "Search" : "Replace") + " History",
             (mySearchMode ? "Search" : "Replace") + " history",
             myHelper.getShowHistoryIcon());
@@ -372,7 +372,7 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
   }
 
   private class ClearAction extends DumbAwareAction {
-    public ClearAction() {
+    ClearAction() {
       super(null, null, myHelper.getClearIcon());
     }
 
@@ -384,7 +384,7 @@ public class SearchTextArea extends NonOpaquePanel implements PropertyChangeList
   }
 
   private class NewLineAction extends DumbAwareAction {
-    public NewLineAction() {
+    NewLineAction() {
       super(null, "New line (" + KeymapUtil.getKeystrokeText(NEW_LINE_KEYSTROKE) + ")",
             AllIcons.Actions.SearchNewLine);
     }
