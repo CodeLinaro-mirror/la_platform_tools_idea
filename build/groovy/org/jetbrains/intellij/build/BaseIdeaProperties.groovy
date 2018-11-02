@@ -137,6 +137,22 @@ abstract class BaseIdeaProperties extends ProductProperties {
     additionalModulesToCompile = ["intellij.tools.jps.build.standalone"]
     modulesToCompileTests = ["intellij.platform.jps.build"]
     productLayout.buildAllCompatiblePlugins = true
+    productLayout.compatiblePluginsToIgnore = [
+      "intellij.akka",
+      "intellij.changesManager",
+      "intellij.chronon.me",
+      "intellij.cidr.externalSystem",
+      "intellij.chronon",
+      "intellij.flex.uiDesigner.tests",
+      "intellij.griffon",
+      "intellij.php.workshop",
+      "intellij.html.quirksmode",
+      "intellij.shortcutPromoter",
+      "intellij.flex.profiler",
+      "intellij.kotlinNative.platformDeps",
+      "intellij.idea-clion"
+    ]
+
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = SystemProperties.getBooleanProperty('intellij.build.prepare.plugin.repository', false)
   }
 

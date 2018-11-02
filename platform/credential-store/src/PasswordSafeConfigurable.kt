@@ -1,31 +1,39 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.credentialStore
 
+import com.intellij.credentialStore.gpg.Pgp
+import com.intellij.credentialStore.gpg.PgpKey
 import com.intellij.credentialStore.kdbx.IncorrectMasterPasswordException
+import com.intellij.credentialStore.keePass.DB_FILE_NAME
 import com.intellij.credentialStore.keePass.KeePassFileManager
 import com.intellij.credentialStore.keePass.MasterKeyFileStorage
+import com.intellij.credentialStore.keePass.getDefaultMasterPasswordFile
 import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.ide.passwordSafe.impl.PasswordSafeImpl
 import com.intellij.ide.passwordSafe.impl.createPersistentCredentialStore
+import com.intellij.ide.passwordSafe.impl.getDefaultKeePassDbFile
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.ConfigurableBase
 import com.intellij.openapi.options.ConfigurableUi
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.MessageDialogBuilder
+import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.SystemInfo
-import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.ui.TextFieldWithHistoryWithBrowseButton
+import com.intellij.ui.CollectionComboBoxModel
+import com.intellij.ui.ListCellRendererWrapper
 import com.intellij.ui.components.RadioButton
 import com.intellij.ui.layout.*
 import com.intellij.util.io.exists
+import com.intellij.util.io.isDirectory
 import com.intellij.util.text.nullize
 import gnu.trove.THashMap
 import java.io.File
 import java.nio.file.Paths
+import javax.swing.JList
 import javax.swing.JPanel
-import kotlin.properties.Delegates.notNull
 
 internal class PasswordSafeConfigurable(private val settings: PasswordSafeSettings) : ConfigurableBase<PasswordSafeConfigurableUi, PasswordSafeSettings>("application.passwordSafe",
                                                                                                                                                          "Passwords",
@@ -35,17 +43,23 @@ internal class PasswordSafeConfigurable(private val settings: PasswordSafeSettin
   override fun createUi() = PasswordSafeConfigurableUi()
 }
 
-internal fun getDefaultKeePassDbFile() = getDefaultKeePassBaseDirectory().resolve(DB_FILE_NAME)
-
 internal class PasswordSafeConfigurableUi : ConfigurableUi<PasswordSafeSettings> {
   private val inKeychain = RadioButton("In native Keychain")
 
   private val inKeePass = RadioButton("In KeePass")
-  private var keePassDbFile: TextFieldWithHistoryWithBrowseButton by notNull()
+  private var keePassDbFile: TextFieldWithBrowseButton? = null
+
+  private val pgpKeyModel = CollectionComboBoxModel<PgpKey?>()
 
   private val rememberPasswordsUntilClosing = RadioButton("Do not save, forget passwords after restart")
 
   private val modeToRow = THashMap<ProviderType, Row>()
+
+  private val pgp by lazy { Pgp() }
+
+  // https://youtrack.jetbrains.com/issue/IDEA-200188
+  // reuse to avoid delays - on Linux SecureRandom is quite slow
+  private val secureRandom = lazy { createSecureRandom() }
 
   override fun reset(settings: PasswordSafeSettings) {
     when (settings.providerType) {
@@ -56,13 +70,26 @@ internal class PasswordSafeConfigurableUi : ConfigurableUi<PasswordSafeSettings>
     }
 
     @Suppress("IfThenToElvis")
-    keePassDbFile.text = settings.keepassDb ?: getDefaultKeePassDbFile().toString()
+    keePassDbFile?.text = settings.keepassDb ?: getDefaultKeePassDbFile().toString()
     updateEnabledState()
+
+    val secretKeys = pgp.listKeys()
+    pgpKeyModel.removeAll()
+    pgpKeyModel.add(null)
+    pgpKeyModel.addAll(1, secretKeys)
+
+    val currentKeyId = settings.state.pgpKeyId
+    pgpKeyModel.selectedItem = if (currentKeyId == null) null else secretKeys.firstOrNull { it.keyId == currentKeyId }
   }
 
   override fun isModified(settings: PasswordSafeSettings): Boolean {
-    return getNewProviderType() != settings.providerType || isKeepassFileLocationChanged(settings)
+    if (keePassDbFile == null) {
+      return false
+    }
+    return getNewProviderType() != settings.providerType || isKeepassFileLocationChanged(settings) || isPgpKeyChanged(settings)
   }
+
+  private fun isPgpKeyChanged(settings: PasswordSafeSettings) = settings.state.pgpKeyId != pgpKeyModel.selected?.keyId
 
   private fun isKeepassFileLocationChanged(settings: PasswordSafeSettings): Boolean {
     return getNewProviderType() == ProviderType.KEEPASS && getNewDbFileAsString() != settings.keepassDb
@@ -70,86 +97,98 @@ internal class PasswordSafeConfigurableUi : ConfigurableUi<PasswordSafeSettings>
 
   override fun apply(settings: PasswordSafeSettings) {
     val providerType = getNewProviderType()
+
+    // close if any, it is more reliable just close current store and later it will be recreated lazily with a new settings
+    (PasswordSafe.instance as PasswordSafeImpl).closeCurrentStore(isSave = false, isEvenMemoryOnly = providerType != ProviderType.MEMORY_ONLY)
+
     val passwordSafe = PasswordSafe.instance as PasswordSafeImpl
+    @Suppress("CascadeIf")
     if (settings.providerType != providerType) {
       @Suppress("NON_EXHAUSTIVE_WHEN")
       when (providerType) {
         ProviderType.MEMORY_ONLY -> {
-          if (!changeExistingKeepassStoreIfPossible(settings, passwordSafe, isMemoryOnly = true)) {
-            passwordSafe.currentProvider = createInMemoryKeePassCredentialStore()
-          }
+          // nothing else is required to setup
         }
 
         ProviderType.KEYCHAIN -> {
-          passwordSafe.currentProvider = createPersistentCredentialStore()!!
-        }
-
-        ProviderType.KEEPASS -> {
-          runAndHandleIncorrectMasterPasswordException {
-            if (!changeExistingKeepassStoreIfPossible(settings, passwordSafe, isMemoryOnly = false)) {
-              passwordSafe.currentProvider = createKeePassCredentialStoreUsingNewOptions()
+          // create here to ensure that user will get any error during native store creation
+          try {
+            val store = createPersistentCredentialStore()
+            if (store == null) {
+              throw ConfigurationException("Internal error, no available credential store implementation.")
+            }
+            passwordSafe.currentProvider = store
+          }
+          catch (e: UnsatisfiedLinkError) {
+            LOG.warn(e)
+            if (SystemInfo.isLinux) {
+              throw ConfigurationException("Package libsecret-1-0 is not installed (to install: sudo apt-get install libsecret-1-0 gnome-keyring).")
+            }
+            else {
+              throw ConfigurationException(e.message)
             }
           }
         }
 
-        else -> throw IllegalStateException("Unknown provider type: $providerType")
+        ProviderType.KEEPASS -> createAndSaveKeePassDatabaseWithNewOptions(settings)
+        else -> throw ConfigurationException("Unknown provider type: $providerType")
       }
     }
     else if (isKeepassFileLocationChanged(settings)) {
-      val newDbFile = getNewDbFile()
-      if (newDbFile != null) {
-        val currentProviderIfComputed = passwordSafe.currentProviderIfComputed as? KeePassCredentialStore
-        if (currentProviderIfComputed == null) {
-          runAndHandleIncorrectMasterPasswordException {
-            passwordSafe.currentProvider = createKeePassCredentialStoreUsingNewOptions()
-          }
-        }
-        else {
-          currentProviderIfComputed.dbFile = newDbFile
-        }
-        settings.keepassDb = newDbFile.toString()
-      }
+      createAndSaveKeePassDatabaseWithNewOptions(settings)
+    }
+    else if (providerType == ProviderType.KEEPASS && isPgpKeyChanged(settings)) {
+      // not our business in this case, if there is no db file, do not require not null KeePassFileManager
+      createKeePassFileManager()?.saveMasterKeyToApplyNewEncryptionSpec()
+    }
+
+    // not in createAndSaveKeePassDatabaseWithNewOptions (as logically should be) because we want to force users to set custom master passwords even if some another setting (not path) was changed
+    // (e.g. PGP key)
+    if (providerType == ProviderType.KEEPASS) {
+      createKeePassFileManager()?.setCustomMasterPasswordIfNeed(getDefaultKeePassDbFile())
     }
 
     settings.providerType = providerType
+    settings.state.pgpKeyId = pgpKeyModel.selected?.keyId
   }
 
-  private fun createKeePassCredentialStoreUsingNewOptions(): KeePassCredentialStore {
-    return KeePassCredentialStore(dbFile = getNewDbFileOrError(), masterKeyFile = getDefaultMasterPasswordFile())
-  }
-
-  private fun getNewDbFileOrError() = getNewDbFile() ?: throw ConfigurationException("KeePass database path is empty")
-
-  private fun changeExistingKeepassStoreIfPossible(settings: PasswordSafeSettings, passwordSafe: PasswordSafeImpl, isMemoryOnly: Boolean): Boolean {
-    if (settings.providerType != ProviderType.MEMORY_ONLY || settings.providerType != ProviderType.KEEPASS) {
-      return false
+  // existing in-memory KeePass database is not used, the same as if switched to KEYCHAIN
+  // for KeePass not clear - should we append in-memory credentials to existing database or not
+  // (and if database doesn't exist, should we append or not), so, wait first user request (prefer to keep implementation simple)
+  private fun createAndSaveKeePassDatabaseWithNewOptions(settings: PasswordSafeSettings) {
+    val newDbFile = getNewDbFile() ?: throw ConfigurationException("KeePass database path is empty.")
+    if (newDbFile.isDirectory()) {
+      // we do not normalize as we do on file choose because if user decoded to type path manually,
+      // it should be valid path and better to avoid any magic here
+      throw ConfigurationException("KeePass database file is directory.")
+    }
+    if (!newDbFile.fileName.toString().endsWith(".kdbx")) {
+      throw ConfigurationException("KeePass database file should ends with \".kdbx\".")
     }
 
-    // must be used only currentProviderIfComputed - no need to compute because it is unsafe operation (incorrect operation and so)
-    // if provider not yet computed, we will create a new one in a safe manner (PasswordSafe manager cannot handle correctly - no access to pending master password, cannot throw exceptions)
-    val provider = passwordSafe.currentProviderIfComputed as? KeePassCredentialStore ?: return false
-    provider.isMemoryOnly = isMemoryOnly
-    if (isMemoryOnly) {
-      provider.deleteFileStorage()
+    settings.keepassDb = newDbFile.toString()
+
+    try {
+      KeePassFileManager(newDbFile, getDefaultMasterPasswordFile(), getEncryptionSpec(), secureRandom).useExisting()
     }
-    else {
-      getNewDbFile()?.let {
-        provider.dbFile = it
-      }
+    catch (e: IncorrectMasterPasswordException) {
+      throw ConfigurationException("Master password for KeePass database is not correct (\"Clear\" can be used to reset database).")
     }
-    return true
+    catch (e: Exception) {
+      LOG.error(e)
+      throw ConfigurationException("Internal error: ${e.message}")
+    }
   }
 
   private fun getNewDbFile() = getNewDbFileAsString()?.let { Paths.get(it) }
 
-  private fun getNewDbFileAsString() = keePassDbFile.text.trim().nullize()
+  private fun getNewDbFileAsString() = keePassDbFile!!.text.trim().nullize()
 
   private fun updateEnabledState() {
     modeToRow[ProviderType.KEEPASS]?.subRowsEnabled = getNewProviderType() == ProviderType.KEEPASS
   }
 
   override fun getComponent(): JPanel {
-    val passwordSafe = PasswordSafe.instance as PasswordSafeImpl
     return panel {
       row { label("Save passwords:") }
 
@@ -164,70 +203,56 @@ internal class PasswordSafeConfigurableUi : ConfigurableUi<PasswordSafeSettings>
           inKeePass()
           row("Database:") {
             val fileChooserDescriptor = FileChooserDescriptorFactory.createSingleLocalFileDescriptor().withFileFilter {
-              it.name.endsWith(".kdbx")
+              it.isDirectory || it.name.endsWith(".kdbx")
             }
             keePassDbFile = textFieldWithBrowseButton("KeePass Database File",
                                                       fileChooserDescriptor = fileChooserDescriptor,
-                                                      fileChosen = ::normalizeSelectedFile,
+                                                      fileChosen = {
+                                                        when {
+                                                          it.isDirectory -> "${it.path}${File.separator}$DB_FILE_NAME"
+                                                          else -> it.path
+                                                        }
+                                                      },
                                                       comment = if (SystemInfo.isWindows) null else "Stored using weak encryption. It is recommended to store on encrypted volume for additional security.")
             gearButton(
-              object : DumbAwareAction("Clear") {
-                override fun actionPerformed(event: AnActionEvent) {
-                  if (!MessageDialogBuilder.yesNo("Clear Passwords", "Are you sure want to remove all passwords?").yesText("Remove Passwords").isYes) {
-                    return
-                  }
-
-                  LOG.info("Passwords cleared", Error())
-                  createKeePassFileManager()?.clear()
+              ClearKeePassDatabaseAction(),
+              ImportKeePassDatabaseAction(),
+              ChangeKeePassDatabaseMasterPasswordAction()
+            )
+          }
+          row("PGP key:") {
+            val comboBox = ComboBox(pgpKeyModel)
+            comboBox.setRenderer(object : ListCellRendererWrapper<PgpKey?>() {
+              override fun customize(list: JList<*>, value: PgpKey?, index: Int, selected: Boolean, hasFocus: Boolean) {
+                if (value == null) {
+                  setText(if (list.model.size == 1) "No keys" else "Do not use")
                 }
-
-                override fun update(e: AnActionEvent) {
-                  e.presentation.isEnabled = getNewDbFile()?.exists() ?: false
-                }
-              },
-              object : DumbAwareAction("Import") {
-                override fun actionPerformed(event: AnActionEvent) {
-                  chooseFile(fileChooserDescriptor, event) {
-                    createKeePassFileManager()?.import(Paths.get(normalizeSelectedFile(it)), event)
-                    // force reload KeePass Store
-                    passwordSafe.closeCurrentProvider()
-                  }
-                }
-              },
-              object : DumbAwareAction("${if (MasterKeyFileStorage(getDefaultMasterPasswordFile()).isAutoGenerated()) "Set" else "Change"} Master Password") {
-                override fun actionPerformed(event: AnActionEvent) {
-                  // even if current provider is not KEEPASS, all actions for db file must be applied immediately (show error if new master password not applicable for existing db file)
-                  if (createKeePassFileManager()?.askAndSetMasterKey(event) == true) {
-                    if (passwordSafe.settings.providerType == ProviderType.KEEPASS) {
-                      // force reload KeePass Store
-                      passwordSafe.closeCurrentProvider()
-                    }
-
-                    templatePresentation.text = "Change Master Password"
-                  }
-                }
-
-                override fun update(e: AnActionEvent) {
-                  e.presentation.isEnabled = getNewDbFileAsString() != null
+                else {
+                  setText("${value.userId} (${value.keyId})")
                 }
               }
-            )
+            })
+            comboBox(comment = "Protect master key file using PGP.", growPolicy = GrowPolicy.MEDIUM_TEXT)
           }
         }
 
         row {
-          val comment = when {
-            passwordSafe.settings.providerType == ProviderType.KEEPASS -> "Existing KeePass file will be removed."
-            else -> null
-          }
-          rememberPasswordsUntilClosing(comment = comment)
+          rememberPasswordsUntilClosing()
         }
       }
     }
   }
 
   private fun createKeePassFileManager(): KeePassFileManager? {
-    return KeePassFileManager(getNewDbFile() ?: return null, getDefaultMasterPasswordFile())
+    return KeePassFileManager(getNewDbFile() ?: return null, getDefaultMasterPasswordFile(), getEncryptionSpec(), secureRandom)
+  }
+
+  private fun getEncryptionSpec(): EncryptionSpec {
+    val pgpKey = pgpKeyModel.selected
+    return when (pgpKey) {
+      null -> EncryptionSpec(type = getDefaultEncryptionType(), pgpKeyId = null)
+      else -> EncryptionSpec(type = EncryptionType.PGP_KEY, pgpKeyId = pgpKey.keyId)
+    }
   }
 
   private fun getNewProviderType(): ProviderType {
@@ -237,28 +262,55 @@ internal class PasswordSafeConfigurableUi : ConfigurableUi<PasswordSafeSettings>
       else -> ProviderType.KEYCHAIN
     }
   }
-}
 
-private fun normalizeSelectedFile(file: VirtualFile): String {
-  return when {
-    file.isDirectory -> file.path + File.separator + DB_FILE_NAME
-    else -> file.path
+  private inner class ClearKeePassDatabaseAction : DumbAwareAction("Clear") {
+    override fun actionPerformed(event: AnActionEvent) {
+      if (!MessageDialogBuilder.yesNo("Clear Passwords", "Are you sure want to remove all passwords?").yesText("Remove Passwords").isYes) {
+        return
+      }
+
+      closeCurrentStore()
+
+      LOG.info("Passwords cleared", Error())
+      createKeePassFileManager()?.clear()
+    }
+
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabled = getNewDbFile()?.exists() ?: false
+    }
+  }
+
+  private inner class ImportKeePassDatabaseAction : DumbAwareAction("Import") {
+    override fun actionPerformed(event: AnActionEvent) {
+      closeCurrentStore()
+
+      FileChooserDescriptorFactory.createSingleLocalFileDescriptor()
+        .withFileFilter {
+          !it.isDirectory && it.nameSequence.endsWith(".kdbx")
+        }
+        .chooseFile(event) {
+          createKeePassFileManager()?.import(Paths.get(it.path), event)
+        }
+    }
+  }
+
+  private inner class ChangeKeePassDatabaseMasterPasswordAction : DumbAwareAction("${if (MasterKeyFileStorage(getDefaultMasterPasswordFile()).isAutoGenerated()) "Set" else "Change"} Master Password") {
+    override fun actionPerformed(event: AnActionEvent) {
+      closeCurrentStore()
+
+      // even if current provider is not KEEPASS, all actions for db file must be applied immediately (show error if new master password not applicable for existing db file)
+      if (createKeePassFileManager()?.askAndSetMasterKey(event) == true) {
+        templatePresentation.text = "Change Master Password"
+      }
+    }
+
+    override fun update(e: AnActionEvent) {
+      e.presentation.isEnabled = getNewDbFileAsString() != null
+    }
   }
 }
 
-enum class ProviderType {
-  MEMORY_ONLY, KEYCHAIN, KEEPASS,
-
-  // unused, but we cannot remove it because enum value maybe stored in the config and we must correctly deserialize it
-  @Deprecated("")
-  DO_NOT_STORE
-}
-
-private inline fun runAndHandleIncorrectMasterPasswordException(handler: () -> Unit) {
-  try {
-    handler()
-  }
-  catch (e: IncorrectMasterPasswordException) {
-    throw ConfigurationException("Master password for KeePass database is not correct (\"Clear\" can be used to reset database).")
-  }
+// we must save and close opened KeePass database before any action that can modify KeePass database files
+private fun closeCurrentStore() {
+  (PasswordSafe.instance as PasswordSafeImpl).closeCurrentStore(isSave = true, isEvenMemoryOnly = false)
 }

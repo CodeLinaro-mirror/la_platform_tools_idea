@@ -345,9 +345,8 @@ public final class AsyncTreeModelTest {
   }
 
   private static void testEventDispatchThread(Supplier<TreeNode> root, Consumer<ModelTest> consumer, boolean showLoadingNode) {
-    testEventDispatchThread(root, consumer, showLoadingNode, 0);
-    testEventDispatchThread(root, consumer, showLoadingNode, 10);
-    testEventDispatchThread(root, consumer, showLoadingNode, 100);
+    testEventDispatchThread(root, consumer, showLoadingNode, TreeTest.FAST);
+    testEventDispatchThread(root, consumer, showLoadingNode, TreeTest.SLOW);
   }
 
   private static void testEventDispatchThread(Supplier<TreeNode> root, Consumer<ModelTest> consumer, boolean showLoadingNode, int delay) {
@@ -355,9 +354,8 @@ public final class AsyncTreeModelTest {
   }
 
   private static void testBackgroundThread(Supplier<TreeNode> root, Consumer<ModelTest> consumer, boolean showLoadingNode) {
-    testBackgroundThread(root, consumer, showLoadingNode, 0);
-    testBackgroundThread(root, consumer, showLoadingNode, 10);
-    testBackgroundThread(root, consumer, showLoadingNode, 100);
+    testBackgroundThread(root, consumer, showLoadingNode, TreeTest.FAST);
+    testBackgroundThread(root, consumer, showLoadingNode, TreeTest.SLOW);
   }
 
   private static void testBackgroundThread(Supplier<TreeNode> root, Consumer<ModelTest> consumer, boolean showLoadingNode, int delay) {
@@ -365,9 +363,8 @@ public final class AsyncTreeModelTest {
   }
 
   private static void testBackgroundPool(Supplier<TreeNode> root, Consumer<ModelTest> consumer, boolean showLoadingNode) {
-    testBackgroundPool(root, consumer, showLoadingNode, 0);
-    testBackgroundPool(root, consumer, showLoadingNode, 10);
-    testBackgroundPool(root, consumer, showLoadingNode, 100);
+    testBackgroundPool(root, consumer, showLoadingNode, TreeTest.FAST);
+    testBackgroundPool(root, consumer, showLoadingNode, TreeTest.SLOW);
   }
 
   private static void testBackgroundPool(Supplier<TreeNode> root, Consumer<ModelTest> consumer, boolean showLoadingNode, int delay) {
@@ -425,7 +422,6 @@ public final class AsyncTreeModelTest {
       assert !SwingUtilities.isEventDispatchThread() : "test should be started on the main thread";
       long time = System.currentTimeMillis();
       runOnSwingThread(() -> {
-        //noinspection UndesirableClassUsage
         tree = new JTree(createModelForTree(model));
         runOnSwingThreadWhenProcessingDone(() -> consumer.accept(this));
       });
@@ -449,7 +445,6 @@ public final class AsyncTreeModelTest {
     }
 
     void done() {
-      //noinspection unchecked
       promise.setResult(null);
     }
 
@@ -603,7 +598,7 @@ public final class AsyncTreeModelTest {
 
     @Override
     public final Object getChild(Object parent, int index) {
-      pause();
+      if (index == 0) pause(); // do not pause for every child
       return super.getChild(parent, index);
     }
 

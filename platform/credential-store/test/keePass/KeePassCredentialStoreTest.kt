@@ -1,10 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.credentialStore.keePass
 
-import com.intellij.credentialStore.CredentialAttributes
-import com.intellij.credentialStore.Credentials
-import com.intellij.credentialStore.DB_FILE_NAME
-import com.intellij.credentialStore.KeePassCredentialStore
+import com.intellij.credentialStore.*
 import com.intellij.credentialStore.kdbx.IncorrectMasterPasswordException
 import com.intellij.testFramework.RuleChain
 import com.intellij.testFramework.TemporaryDirectory
@@ -14,6 +11,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.Rule
 import org.junit.Test
+import java.nio.file.Path
 import java.util.*
 
 // part of specific tests in the IcsCredentialTest
@@ -28,7 +26,7 @@ class KeePassCredentialStoreTest {
   @Test
   fun many() {
     val baseDir = tempDirManager.newPath()
-    var provider = KeePassCredentialStore(baseDirectory = baseDir)
+    var provider = createStore(baseDir)
 
     assertThat(baseDir).doesNotExist()
     for (i in 0..9) {
@@ -36,8 +34,8 @@ class KeePassCredentialStoreTest {
       provider.set(CredentialAttributes(randomString(), accountName), Credentials(accountName, randomString()))
     }
 
-    provider.save()
-    provider = KeePassCredentialStore(baseDirectory = baseDir)
+    provider.save(defaultEncryptionSpec)
+    provider = createStore(baseDir)
 
     provider.deleteFileStorage()
 
@@ -51,7 +49,7 @@ class KeePassCredentialStoreTest {
   @Test
   fun `custom db password`() {
     val baseDir = tempDirManager.newPath()
-    var provider = KeePassCredentialStore(baseDirectory = baseDir)
+    var provider = createStore(baseDir)
 
     assertThat(baseDir).doesNotExist()
     val credentialMap = THashMap<CredentialAttributes, Credentials>()
@@ -63,7 +61,7 @@ class KeePassCredentialStoreTest {
       credentialMap.put(attributes, credentials)
     }
 
-    provider.setMasterKey("foo")
+    provider.setMasterKey("foo", createSecureRandom())
 
     val dbFile = baseDir.resolve(DB_FILE_NAME)
     val masterPasswordFile = baseDir.resolve(MASTER_KEY_FILE_NAME)
@@ -71,7 +69,7 @@ class KeePassCredentialStoreTest {
     assertThat(dbFile).exists()
     assertThat(masterPasswordFile).exists()
 
-    provider = KeePassCredentialStore(baseDirectory = baseDir)
+    provider = createStore(baseDir)
 
     fun check() {
       for ((attributes, credentials) in credentialMap) {
@@ -85,7 +83,7 @@ class KeePassCredentialStoreTest {
     masterPasswordFile.delete()
 
     assertThatThrownBy {
-      provider = KeePassCredentialStore(baseDirectory = baseDir)
+      provider = createStore(baseDir)
     }.isInstanceOf(IncorrectMasterPasswordException::class.java)
 
     assertThat(dbFile).exists()
@@ -97,7 +95,7 @@ class KeePassCredentialStoreTest {
     val serviceName = randomString()
 
     val baseDir = tempDirManager.newPath()
-    var provider = KeePassCredentialStore(baseDirectory = baseDir)
+    var provider = createStore(baseDir)
 
     assertThat(baseDir).doesNotExist()
     val fooAttributes = CredentialAttributes(serviceName, "foo")
@@ -110,7 +108,7 @@ class KeePassCredentialStoreTest {
     val pdbFile = baseDir.resolve(DB_FILE_NAME)
     val pdbPwdFile = baseDir.resolve(MASTER_KEY_FILE_NAME)
 
-    provider.save()
+    provider.save(defaultEncryptionSpec)
 
     assertThat(pdbFile).isRegularFile()
     assertThat(pdbPwdFile).isRegularFile()
@@ -124,12 +122,12 @@ class KeePassCredentialStoreTest {
     provider.setPassword(fooAttributes, null)
     assertThat(provider.get(fooAttributes)).isNull()
 
-    provider.save()
+    provider.save(defaultEncryptionSpec)
 
     assertThat(pdbFile).isRegularFile()
     assertThat(pdbPwdFile).isRegularFile()
 
-    provider = KeePassCredentialStore(baseDirectory = baseDir)
+    provider = createStore(baseDir)
 
     assertThat(provider.get(fooAttributes)).isNull()
     assertThat(provider.getPassword(amAttributes)).isEqualTo("pass2")
@@ -137,13 +135,23 @@ class KeePassCredentialStoreTest {
     provider.setPassword(amAttributes, null)
     assertThat(provider.get(amAttributes)).isNull()
 
-    provider.save()
+    provider.save(defaultEncryptionSpec)
 
     provider.deleteFileStorage()
 
     assertThat(pdbFile).doesNotExist()
     assertThat(pdbPwdFile).doesNotExist()
   }
-
-  private fun randomString() = UUID.randomUUID().toString()
 }
+
+
+private fun randomString() = UUID.randomUUID().toString()
+
+// avoid this constructor in production sources to avoid m
+@Suppress("TestFunctionName")
+internal fun createStore(baseDir: Path): KeePassCredentialStore {
+  return KeePassCredentialStore(dbFile = baseDir.resolve(DB_FILE_NAME),
+                                masterKeyFile = baseDir.resolve(MASTER_KEY_FILE_NAME))
+}
+
+internal val defaultEncryptionSpec = EncryptionSpec(getDefaultEncryptionType(), null)

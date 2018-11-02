@@ -1417,14 +1417,14 @@ public class AllIcons {
   public final static class Gutter {
     public static final Icon Colors = IconLoader.getIcon("/gutter/colors.svg"); // 12x12
     public static final Icon ExtAnnotation = IconLoader.getIcon("/gutter/extAnnotation.svg"); // 12x12
-    public static final Icon ImplementedMethod = IconLoader.getIcon("/gutter/implementedMethod.png"); // 12x12
-    public static final Icon ImplementingFunctionalInterface = IconLoader.getIcon("/gutter/implementingFunctionalInterface.png"); // 12x12
-    public static final Icon ImplementingMethod = IconLoader.getIcon("/gutter/implementingMethod.png"); // 12x12
+    public static final Icon ImplementedMethod = IconLoader.getIcon("/gutter/implementedMethod.svg"); // 12x12
+    public static final Icon ImplementingFunctionalInterface = IconLoader.getIcon("/gutter/implementingFunctionalInterface.svg"); // 12x12
+    public static final Icon ImplementingMethod = IconLoader.getIcon("/gutter/implementingMethod.svg"); // 12x12
     public static final Icon Java9Service = IconLoader.getIcon("/gutter/java9Service.svg"); // 12x12
-    public static final Icon OverridenMethod = IconLoader.getIcon("/gutter/overridenMethod.png"); // 12x12
-    public static final Icon OverridingMethod = IconLoader.getIcon("/gutter/overridingMethod.png"); // 12x12
+    public static final Icon OverridenMethod = IconLoader.getIcon("/gutter/overridenMethod.svg"); // 12x12
+    public static final Icon OverridingMethod = IconLoader.getIcon("/gutter/overridingMethod.svg"); // 12x12
     public static final Icon RecursiveMethod = IconLoader.getIcon("/gutter/recursiveMethod.svg"); // 12x12
-    public static final Icon SiblingInheritedMethod = IconLoader.getIcon("/gutter/siblingInheritedMethod.png"); // 12x12
+    public static final Icon SiblingInheritedMethod = IconLoader.getIcon("/gutter/siblingInheritedMethod.svg"); // 12x12
     public static final Icon Unique = IconLoader.getIcon("/gutter/unique.svg"); // 8x8
 
   }
@@ -1513,6 +1513,7 @@ public class AllIcons {
       public static final Icon Recording_stop = AllIcons.Actions.Suspend;
 
     }
+    public static final Icon NavBarSeparator = IconLoader.getIcon("/ide/NavBarSeparator.svg"); // 5x15
     public static final Icon NoNotifications13 = IconLoader.getIcon("/ide/noNotifications13.png"); // 13x13
 
     public final static class Notification {
@@ -2191,6 +2192,7 @@ public class AllIcons {
     public static final Icon ApacheDerby = IconLoader.getIcon("/providers/apacheDerby.png"); // 16x16
     public static final Icon Azure = IconLoader.getIcon("/providers/azure.png"); // 16x16
     public static final Icon Bea = IconLoader.getIcon("/providers/bea.png"); // 16x16
+    public static final Icon Cassandra = IconLoader.getIcon("/providers/cassandra.svg"); // 16x16
     public static final Icon ClickHouse = IconLoader.getIcon("/providers/clickHouse.svg"); // 16x16
     public static final Icon Cvs = IconLoader.getIcon("/providers/cvs.png"); // 16x16
     public static final Icon DB2 = IconLoader.getIcon("/providers/DB2.png"); // 16x16
@@ -2524,6 +2526,7 @@ public class AllIcons {
   public final static class Vcs {
     public static final Icon Arrow_left = IconLoader.getIcon("/vcs/arrow_left.png"); // 16x16
     public static final Icon Arrow_right = IconLoader.getIcon("/vcs/arrow_right.png"); // 16x16
+    public static final Icon Branch = IconLoader.getIcon("/vcs/branch.svg"); // 16x16
     public static final Icon Changelist = IconLoader.getIcon("/vcs/changelist.svg"); // 16x16
     public static final Icon CheckSpelling = IconLoader.getIcon("/vcs/checkSpelling.png"); // 16x16
     public static final Icon Equal = IconLoader.getIcon("/vcs/equal.png"); // 16x16

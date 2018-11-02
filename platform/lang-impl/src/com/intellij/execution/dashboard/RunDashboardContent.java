@@ -90,7 +90,7 @@ public class RunDashboardContent extends JPanel implements TreeContent, Disposab
   private RunDashboardAnimator myAnimator;
   private AbstractTreeNode<?> myLastSelection;
   private final Set<Object> myCollapsedTreeNodeValues = new HashSet<>();
-  private final List<RunDashboardGrouper> myGroupers;
+  private final List<? extends RunDashboardGrouper> myGroupers;
   private final RunDashboardStatusFilter myStatusFilter = new RunDashboardStatusFilter();
 
   @NotNull private final ContentManager myContentManager;
@@ -102,7 +102,7 @@ public class RunDashboardContent extends JPanel implements TreeContent, Disposab
   private final DefaultActionGroup myDashboardContentActions = new DefaultActionGroup();
   private final Map<Content, List<AnAction>> myContentActions = new WeakHashMap<>();
 
-  public RunDashboardContent(@NotNull Project project, @NotNull ContentManager contentManager, @NotNull List<RunDashboardGrouper> groupers) {
+  public RunDashboardContent(@NotNull Project project, @NotNull ContentManager contentManager, @NotNull List<? extends RunDashboardGrouper> groupers) {
     super(new BorderLayout());
     myProject = project;
     myGroupers = groupers;
@@ -384,6 +384,7 @@ public class RunDashboardContent extends JPanel implements TreeContent, Disposab
   private void setupBuilder() {
     RunDashboardTreeStructure structure = new RunDashboardTreeStructure(myProject, myGroupers, ContainerUtil.newSmartList(myStatusFilter));
     myBuilder = new AbstractTreeBuilder(myTree, myTreeModel, structure, IndexComparator.INSTANCE) {
+      // unique class to simplify search through the logs
       @Override
       protected boolean isAutoExpandNode(NodeDescriptor nodeDescriptor) {
         return super.isAutoExpandNode(nodeDescriptor) ||
@@ -539,7 +540,7 @@ public class RunDashboardContent extends JPanel implements TreeContent, Disposab
   }
 
   private class GroupByActionGroup extends DefaultActionGroup implements CheckedActionGroup {
-    GroupByActionGroup(List<RunDashboardGrouper> groupers) {
+    GroupByActionGroup(List<? extends RunDashboardGrouper> groupers) {
       super(ExecutionBundle.message("run.dashboard.group.by.action.name"), true);
       getTemplatePresentation().setIcon(AllIcons.Actions.GroupBy);
 

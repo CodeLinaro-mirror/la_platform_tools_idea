@@ -35,7 +35,6 @@ import com.intellij.psi.impl.source.resolve.reference.impl.providers.FileReferen
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.containers.ContainerUtil;
-import com.jetbrains.jsonSchema.JsonPointerUtil;
 import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -43,6 +42,7 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.List;
 
+import static com.jetbrains.jsonSchema.JsonPointerUtil.*;
 import static com.jetbrains.jsonSchema.remote.JsonFileResolver.isHttpPath;
 
 /**
@@ -69,19 +69,24 @@ public class JsonPointerReferenceProvider extends PsiReferenceProvider {
     final JsonSchemaVariantsTreeBuilder.SchemaUrlSplitter splitter = new JsonSchemaVariantsTreeBuilder.SchemaUrlSplitter(fragment.second);
     String id = splitter.getSchemaId();
     if (id != null) {
-      addFileOrWebReferences(element, refs, hash, id);
+      if (id.startsWith("#")) {
+        refs.add(new JsonSchemaIdReference((JsonValue)element, id));
+      }
+      else {
+        addFileOrWebReferences(element, refs, hash, id);
+      }
     }
     if (!myOnlyFilePart) {
-      String relativePath = JsonSchemaService.normalizeId(splitter.getRelativePath()).replace('\\', '/');
-      List<String> parts1 = StringUtil.split(relativePath, "/");
+      String relativePath = normalizeSlashes(JsonSchemaService.normalizeId(splitter.getRelativePath()));
+      List<String> parts1 = split(relativePath);
       String[] strings = ContainerUtil.toArray(parts1, String[]::new);
-      List<String> parts2 = StringUtil.split(originalText.substring(hash + 1).replace('\\', '/'), "/");
+      List<String> parts2 = split(normalizeSlashes(originalText.substring(hash + 1)));
       if (strings.length == parts2.size()) {
         int start = hash + 2;
         for (int i = 0; i < parts2.size(); i++) {
           int length = parts2.get(i).length();
           if (i == parts2.size() - 1) length--;
-          refs.add(new JsonSchemaRefReference((JsonValue)element, new TextRange(start, start + length),
+          refs.add(new JsonPointerReference((JsonValue)element, new TextRange(start, start + length),
                                               (id == null ? "" : id) + "#/" + StringUtil.join(strings, 0, i + 1, "/")));
           start += length + 1;
         }
@@ -125,10 +130,93 @@ public class JsonPointerReferenceProvider extends PsiReferenceProvider {
     }.getAllReferences());
   }
 
-  private static class JsonSchemaRefReference extends JsonSchemaBaseReference<JsonValue> {
+  @Nullable
+  static PsiElement resolveForPath(PsiElement element, String text, boolean alwaysRoot) {
+    final JsonSchemaService service = JsonSchemaService.Impl.get(element.getProject());
+    final JsonSchemaVariantsTreeBuilder.SchemaUrlSplitter splitter = new JsonSchemaVariantsTreeBuilder.SchemaUrlSplitter(text);
+    VirtualFile schemaFile = CompletionUtil.getOriginalOrSelf(element.getContainingFile()).getVirtualFile();
+    if (splitter.isAbsolute()) {
+      assert splitter.getSchemaId() != null;
+      schemaFile = service.findSchemaFileByReference(splitter.getSchemaId(), schemaFile);
+      if (schemaFile == null) return null;
+    }
+
+    final String normalized = JsonSchemaService.normalizeId(splitter.getRelativePath());
+    if (!alwaysRoot && (StringUtil.isEmptyOrSpaces(normalized) || split(normalizeSlashes(normalized)).size() == 0)) {
+      return element.getManager().findFile(schemaFile);
+    }
+    final List<String> chain = split(normalizeSlashes(normalized));
+    final JsonSchemaObject schemaObject = service.getSchemaObjectForSchemaFile(schemaFile);
+    if (schemaObject == null) return null;
+
+    JsonValue root = schemaObject.getJsonObject();
+    final List<JsonSchemaVariantsTreeBuilder.Step> steps = JsonSchemaVariantsTreeBuilder.buildSteps(StringUtil.join(chain, "/"));
+    for (JsonSchemaVariantsTreeBuilder.Step step : steps) {
+      String name = step.getName();
+      if (name != null) {
+        if (!(root instanceof JsonObject)) return null;
+        JsonProperty property = ((JsonObject)root).findProperty(name);
+        root = property == null ? null : property.getValue();
+      }
+      else {
+        int idx = step.getIdx();
+        if (idx < 0) return null;
+
+        if (!(root instanceof JsonArray)) {
+          if (root instanceof JsonObject) {
+            JsonProperty property = ((JsonObject)root).findProperty(String.valueOf(idx));
+            if (property == null) {
+              return null;
+            }
+            root = property.getValue();
+            continue;
+          }
+          else {
+            return null;
+          }
+        }
+        List<JsonValue> list = ((JsonArray)root).getValueList();
+        if (idx >= list.size()) return null;
+        root = list.get(idx);
+      }
+    }
+
+    return root;
+  }
+
+  public static class JsonSchemaIdReference extends JsonSchemaBaseReference<JsonValue> {
+    private final String myText;
+
+    private JsonSchemaIdReference(JsonValue element, String text) {
+      super(element, getRange(element));
+      myText = text;
+    }
+
+    @NotNull
+    private static TextRange getRange(JsonValue element) {
+      final TextRange range = element.getTextRange().shiftLeft(element.getTextOffset());
+      return new TextRange(range.getStartOffset() + 1, range.getEndOffset() - 1);
+    }
+
+    @Nullable
+    @Override
+    public PsiElement resolveInner() {
+      final String id = JsonCachedValues.resolveId(myElement.getContainingFile(), myText);
+      if (id == null) return null;
+      return resolveForPath(myElement, "#" + id, false);
+    }
+
+    @NotNull
+    @Override
+    public Object[] getVariants() {
+      return JsonCachedValues.getAllIdsInFile(myElement.getContainingFile()).toArray();
+    }
+  }
+
+  private static class JsonPointerReference extends JsonSchemaBaseReference<JsonValue> {
     private final String myFullPath;
 
-    JsonSchemaRefReference(JsonValue element, TextRange textRange, String curPath) {
+    JsonPointerReference(JsonValue element, TextRange textRange, String curPath) {
       super(element, textRange);
       myFullPath = curPath;
     }
@@ -142,47 +230,7 @@ public class JsonPointerReferenceProvider extends PsiReferenceProvider {
     @Nullable
     @Override
     public PsiElement resolveInner() {
-      return resolveForPath(getCanonicalText(), false);
-    }
-
-    @Nullable
-    private PsiElement resolveForPath(String text, boolean alwaysRoot) {
-      final JsonSchemaService service = JsonSchemaService.Impl.get(getElement().getProject());
-      final JsonSchemaVariantsTreeBuilder.SchemaUrlSplitter splitter = new JsonSchemaVariantsTreeBuilder.SchemaUrlSplitter(text);
-      VirtualFile schemaFile = CompletionUtil.getOriginalOrSelf(getElement().getContainingFile()).getVirtualFile();
-      if (splitter.isAbsolute()) {
-        assert splitter.getSchemaId() != null;
-        schemaFile = service.findSchemaFileByReference(splitter.getSchemaId(), schemaFile);
-        if (schemaFile == null) return null;
-      }
-
-      final String normalized = JsonSchemaService.normalizeId(splitter.getRelativePath());
-      if (!alwaysRoot && (StringUtil.isEmptyOrSpaces(normalized) || StringUtil.split(normalized.replace("\\", "/"), "/").size() == 0)) {
-        return myElement.getManager().findFile(schemaFile);
-      }
-      final List<String> chain = StringUtil.split(normalized.replace("\\", "/"), "/");
-      final JsonSchemaObject schemaObject = service.getSchemaObjectForSchemaFile(schemaFile);
-      if (schemaObject == null) return null;
-
-      JsonValue root = schemaObject.getJsonObject();
-      final List<JsonSchemaVariantsTreeBuilder.Step> steps = JsonSchemaVariantsTreeBuilder.buildSteps(StringUtil.join(chain, "/"));
-      for (JsonSchemaVariantsTreeBuilder.Step step : steps) {
-        String name = step.getName();
-        if (name != null) {
-          if (!(root instanceof JsonObject)) return null;
-          JsonProperty property = ((JsonObject)root).findProperty(name);
-          root = property == null ? null : property.getValue();
-        }
-        else {
-          int idx = step.getIdx();
-          if (idx < 0 || !(root instanceof JsonArray)) return null;
-          List<JsonValue> list = ((JsonArray)root).getValueList();
-          if (idx >= list.size()) return null;
-          root = list.get(idx);
-        }
-      }
-
-      return root;
+      return resolveForPath(myElement, getCanonicalText(), false);
     }
 
     @Override
@@ -199,17 +247,17 @@ public class JsonPointerReferenceProvider extends PsiReferenceProvider {
         String part = text.substring(0, index);
         text = prepare(part);
         String prefix = null;
-        PsiElement element = resolveForPath(text, true);
+        PsiElement element = resolveForPath(myElement, text, true);
         int indexOfSlash = part.lastIndexOf('/');
         if (indexOfSlash != -1 && indexOfSlash < text.length() - 1 && indexOfSlash < index) {
           prefix = text.substring(indexOfSlash + 1);
-          element = resolveForPath(prepare(text.substring(0, indexOfSlash)), true);
+          element = resolveForPath(myElement, prepare(text.substring(0, indexOfSlash)), true);
         }
         String finalPrefix = prefix;
         if (element instanceof JsonObject) {
           return ((JsonObject)element).getPropertyList().stream()
             .filter(p -> p.getValue() instanceof JsonContainer && (finalPrefix == null || p.getName().startsWith(finalPrefix)))
-            .map(p -> LookupElementBuilder.create(p, JsonPointerUtil.escapeForJsonPointer(p.getName()))
+            .map(p -> LookupElementBuilder.create(p, escapeForJsonPointer(p.getName()))
             .withIcon(getIcon(p.getValue()))).toArray();
         }
         else if (element instanceof JsonArray) {

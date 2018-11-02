@@ -142,7 +142,9 @@ public class ConfigureTasksActivationDialog extends DialogWrapper {
     tree.setModel(treeModel);
     tree.setRootVisible(false);
     tree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
-    final AbstractTreeBuilder treeBuilder = new AbstractTreeBuilder(tree, treeModel, new SimpleTreeStructure.Impl(root), null);
+    final AbstractTreeBuilder treeBuilder = new AbstractTreeBuilder(tree, treeModel, new SimpleTreeStructure.Impl(root), null) {
+      // unique class to simplify search through the logs
+    };
     Disposer.register(project, treeBuilder);
     return treeBuilder;
   }
@@ -427,7 +429,7 @@ public class ConfigureTasksActivationDialog extends DialogWrapper {
   }
 
   private class ChooseProjectStep extends BaseListPopupStep<ProjectPopupItem> {
-    protected ChooseProjectStep(List<ProjectPopupItem> values) {
+    protected ChooseProjectStep(List<? extends ProjectPopupItem> values) {
       super("Choose project", values);
     }
 

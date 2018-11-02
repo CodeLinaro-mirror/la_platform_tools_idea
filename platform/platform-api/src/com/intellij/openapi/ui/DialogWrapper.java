@@ -188,7 +188,7 @@ public abstract class DialogWrapper {
     myDoNotAsk = doNotAsk;
   }
 
-  private ErrorText myErrorText;
+  private NotNullLazyValue<ErrorText> myErrorText;
 
   private final Alarm myErrorTextAlarm = new Alarm();
 
@@ -222,8 +222,8 @@ public abstract class DialogWrapper {
         public void componentResized(ComponentEvent e) {
           if (!myResizeInProgress) {
             myActualSize = myPeer.getSize();
-            if (myErrorText != null && myErrorText.isVisible()) {
-              myActualSize.height -= myErrorText.getMinimumSize().height;
+            if (myErrorText != null && myErrorText.isComputed() && myErrorText.getValue().isVisible()) {
+              myActualSize.height -= myErrorText.getValue().getMinimumSize().height;
             }
           }
         }
@@ -356,9 +356,10 @@ public abstract class DialogWrapper {
     UIUtil.invokeLaterIfNeeded(() -> IdeGlassPaneUtil.installPainter(getContentPanel(), myErrorPainter, myDisposable));
   }
 
+  @SuppressWarnings("WeakerAccess")
   protected void updateErrorInfo(@NotNull List<ValidationInfo> info) {
     boolean updateNeeded = Registry.is("ide.inplace.validation.tooltip") ?
-                           !myInfo.equals(info) : !myErrorText.isTextSet(info);
+                           !myInfo.equals(info) : !myErrorText.getValue().isTextSet(info) /* do not check isComputed, inplace validation by default now */;
 
     if (updateNeeded) {
       SwingUtilities.invokeLater(() -> {
@@ -605,7 +606,7 @@ public abstract class DialogWrapper {
       if (rightSideButtons.size() > 0) {
         JPanel buttonsPanel = createButtonsPanel(rightSideButtons);
         if (shouldAddErrorNearButtons()) {
-          lrButtonsPanel.add(myErrorText, bag.next());
+          lrButtonsPanel.add(myErrorText.getValue(), bag.next());
           lrButtonsPanel.add(Box.createHorizontalStrut(10), bag.next());
         }
         lrButtonsPanel.add(buttonsPanel, bag.next());
@@ -1217,20 +1218,20 @@ public abstract class DialogWrapper {
     return myPeer.getTitle();
   }
 
-  protected void init() {
-    ensureEventDispatchThread();
-    myErrorText = new ErrorText(getErrorTextAlignment());
-    myErrorText.setVisible(false);
+  @NotNull
+  private ErrorText createErrorText(@NotNull JPanel southSection) {
+    ErrorText errorText = new ErrorText(getErrorTextAlignment());
+    errorText.setVisible(false);
     final ComponentAdapter resizeListener = new ComponentAdapter() {
       private int myHeight;
 
       @Override
       public void componentResized(ComponentEvent event) {
-        int height = !myErrorText.isVisible() ? 0 : event.getComponent().getHeight();
+        int height = !errorText.isVisible() ? 0 : event.getComponent().getHeight();
         if (height != myHeight) {
           myHeight = height;
           myResizeInProgress = true;
-          myErrorText.setMinimumSize(new Dimension(0, height));
+          errorText.setMinimumSize(new Dimension(0, height));
           JRootPane root = myPeer.getRootPane();
           if (root != null) {
             root.validate();
@@ -1238,18 +1239,25 @@ public abstract class DialogWrapper {
           if (myActualSize != null && !shouldAddErrorNearButtons()) {
             myPeer.setSize(myActualSize.width, myActualSize.height + height);
           }
-          myErrorText.revalidate();
+          errorText.revalidate();
           myResizeInProgress = false;
         }
       }
     };
-    myErrorText.myLabel.addComponentListener(resizeListener);
+    errorText.myLabel.addComponentListener(resizeListener);
     Disposer.register(myDisposable, new Disposable() {
       @Override
       public void dispose() {
-        myErrorText.myLabel.removeComponentListener(resizeListener);
+        errorText.myLabel.removeComponentListener(resizeListener);
       }
     });
+
+    southSection.add(errorText, BorderLayout.CENTER, 0);
+    return errorText;
+  }
+
+  protected void init() {
+    ensureEventDispatchThread();
 
     final JPanel root = new JPanel(createRootLayout());
     //{
@@ -1295,12 +1303,19 @@ public abstract class DialogWrapper {
     }
 
     final JPanel southSection = new JPanel(new BorderLayout());
+    myErrorText = new NotNullLazyValue<ErrorText>() {
+      @NotNull
+      @Override
+      protected ErrorText compute() {
+        return createErrorText(southSection);
+      }
+    };
+
     if (!isVisualPaddingCompensatedOnComponentLevel) {
       southSection.setBorder(JBUI.Borders.empty(0, 12, 8, 12));
     }
     root.add(southSection, BorderLayout.SOUTH);
 
-    southSection.add(myErrorText, BorderLayout.CENTER);
     final JComponent south = createSouthPanel();
     if (south != null) {
       southSection.add(south, BorderLayout.SOUTH);
@@ -1945,8 +1960,8 @@ public abstract class DialogWrapper {
 
     myErrorTextAlarm.cancelAllRequests();
     Runnable clearErrorRunnable = () -> {
-      if (myErrorText != null) {
-        myErrorText.clearError();
+      if (myErrorText != null && myErrorText.isComputed()) {
+        myErrorText.getValue().clearError();
       }
     };
     if (headless) {
@@ -1977,13 +1992,13 @@ public abstract class DialogWrapper {
           }
         }
 
-        SwingUtilities.invokeLater(() -> myErrorText.appendError(vi.message));
+        SwingUtilities.invokeLater(() -> myErrorText.getValue().appendError(vi.message));
       });
     }
     else if (!myInfo.isEmpty()) {
       Runnable updateErrorTextRunnable = () -> {
         for (ValidationInfo vi: myInfo) {
-          myErrorText.appendError(vi.message);
+          myErrorText.getValue().appendError(vi.message);
         }
       };
       if (headless) {
@@ -2003,7 +2018,7 @@ public abstract class DialogWrapper {
   }
 
   private void updateSize() {
-    if (myActualSize == null && !myErrorText.isVisible()) {
+    if (myActualSize == null && (myErrorText == null || !myErrorText.isComputed() || !myErrorText.getValue().isVisible())) {
       myActualSize = getSize();
     }
   }
@@ -2049,8 +2064,8 @@ public abstract class DialogWrapper {
         }
         setSize(size.width, size.height);
         //repaint();
-        if (myErrorText.shouldBeVisible()) {
-          myErrorText.setVisible(true);
+        if (myErrorText != null && myErrorText.isComputed() && myErrorText.getValue().shouldBeVisible()) {
+          myErrorText.getValue().setVisible(true);
         }
         myResizeInProgress = false;
       }

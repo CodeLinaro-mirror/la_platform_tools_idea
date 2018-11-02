@@ -20,6 +20,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.plugins.terminal.arrangement.TerminalArrangementManager;
 
 /**
  * @author traff
@@ -30,6 +31,9 @@ public class TerminalToolWindowFactory implements ToolWindowFactory, DumbAware {
   @Override
   public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
     TerminalView terminalView = TerminalView.getInstance(project);
-    terminalView.initTerminal(toolWindow);
+    TerminalArrangementManager arrangementManager = TerminalArrangementManager.getInstance(project);
+    terminalView.initTerminal(toolWindow, arrangementManager.getArrangementState());
+    // allow to save tabs after the tabs are restored
+    arrangementManager.setToolWindow(toolWindow);
   }
 }

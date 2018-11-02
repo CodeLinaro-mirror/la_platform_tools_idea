@@ -235,6 +235,11 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     if (value instanceof DfaFactMapValue) {
       setVariableState(var, state.withFacts(((DfaFactMapValue)value).getFacts()));
     }
+    else if (DfaUtil.isComparedByEquals(value.getType()) && !DfaUtil.isComparedByEquals(var.getType())) {
+      // Like Object x = "foo" or Object x = 5;
+      TypeConstraint typeConstraint = TypeConstraint.empty().withInstanceofValue(myFactory.createDfaType(value.getType()));
+      setVariableState(var, createVariableState(var).withFacts(getFactMap(value).with(DfaFactType.TYPE_CONSTRAINT, typeConstraint)));
+    }
     else {
       setVariableState(var, isNull(value) ? state.withFact(DfaFactType.NULLABILITY, DfaNullability.NULLABLE) : state);
       DfaRelationValue dfaEqual = myFactory.getRelationFactory().createRelation(var, RelationType.EQ, value);
@@ -607,12 +612,6 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
   }
 
   @Override
-  public void cleanUpTempVariables() {
-    List<DfaVariableValue> values = ContainerUtil.filter(myVariableStates.keySet(), ControlFlowAnalyzer::isTempVariable);
-    values.forEach(this::flushVariable);
-  }
-
-  @Override
   public boolean castTopOfStack(@NotNull DfaPsiType type) {
     DfaValue value = unwrap(peek());
 
@@ -767,7 +766,7 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
       DfaValue dfaTrue = myFactory.getConstFactory().getTrue();
       if (dfaVar.getSource() == SpecialField.UNBOX) {
         dfaVar = dfaVar.getQualifier();
-        dfaTrue = myFactory.getBoxedFactory().createBoxed(dfaTrue);
+        dfaTrue = myFactory.getBoxedFactory().createBoxed(dfaTrue, null);
       }
       return applyRelationCondition(myFactory.getRelationFactory().createRelation(dfaVar, RelationType.EQ, dfaTrue));
     }
@@ -1125,7 +1124,6 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
 
   @Override
   @Nullable
-  @SuppressWarnings("unchecked")
   public <T> T getValueFact(@NotNull DfaValue value, @NotNull DfaFactType<T> factType) {
     if (value instanceof DfaVariableValue) {
       DfaVariableValue var = (DfaVariableValue)value;
@@ -1169,7 +1167,7 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     return DfaFactMap.fromDfaValue(value);
   }
 
-  void setVariableState(DfaVariableValue dfaVar, DfaVariableState state) {
+  void setVariableState(@NotNull DfaVariableValue dfaVar, @NotNull DfaVariableState state) {
     dfaVar = canonicalize(dfaVar);
     if (state.equals(getDefaultState(dfaVar))) {
       myVariableStates.remove(dfaVar);
@@ -1195,13 +1193,17 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     if (value instanceof DfaVariableValue) {
       return canonicalize((DfaVariableValue)value);
     }
-    if (value instanceof DfaBoxedValue && ((DfaBoxedValue)value).getWrappedValue() instanceof DfaVariableValue) {
-      return Objects.requireNonNull(myFactory.getBoxedFactory().createBoxed(canonicalize(((DfaBoxedValue)value).getWrappedValue())));
+    if (value instanceof DfaBoxedValue) {
+      DfaBoxedValue boxedValue = (DfaBoxedValue)value;
+      if (boxedValue.getWrappedValue() instanceof DfaVariableValue) {
+        DfaValue canonicalized = canonicalize(boxedValue.getWrappedValue());
+        return Objects.requireNonNull(myFactory.getBoxedFactory().createBoxed(canonicalized, boxedValue.getType()));
+      }
     }
     if (value instanceof DfaConstValue) {
       Object constant = ((DfaConstValue)value).getValue();
       if (Double.valueOf(-0.0).equals(constant)) {
-        return myFactory.getConstFactory().createFromValue(0.0, PsiType.DOUBLE, null);
+        return myFactory.getConstFactory().createFromValue(0.0, PsiType.DOUBLE);
       }
     }
     return value;
@@ -1410,7 +1412,7 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
   }
 
   private void mergeStacks(DfaMemoryStateImpl other) {
-    List<DfaValue> values = StreamEx.zip(myStack, other.myStack, DfaValue::union).toList();
+    List<DfaValue> values = StreamEx.zip(myStack, other.myStack, DfaValue::unite).toList();
     myStack.clear();
     values.forEach(myStack::push);
   }
@@ -1435,7 +1437,7 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     for (DfaVariableValue var : vars) {
       DfaVariableState state = getVariableState(var);
       DfaVariableState otherState = other.getVariableState(var);
-      setVariableState(var, state.withFacts(state.myFactMap.union(otherState.myFactMap)));
+      setVariableState(var, state.withFacts(state.myFactMap.unite(otherState.myFactMap)));
     }
   }
 

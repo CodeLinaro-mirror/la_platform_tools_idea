@@ -2,6 +2,7 @@
 package com.intellij.vcs.log.history
 
 import com.intellij.openapi.util.Couple
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.LocalFilePath
 import com.intellij.util.containers.MultiMap
@@ -17,7 +18,7 @@ import com.intellij.vcs.log.graph.impl.facade.FilteredController
 import gnu.trove.THashMap
 import gnu.trove.TIntObjectHashMap
 import org.junit.Assert
-import org.junit.Ignore
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 
 class FileHistoryTest {
@@ -159,10 +160,7 @@ class FileHistoryTest {
 
   /**
    * Rename happens in one branch, while the other branch only consists of couple of trivial merge commits.
-   * Refiner walks to the trivial branch first instead of meaningful branch and because of this misses the rename completely.
-   * Solution would be to drop trivial merges before refining and always walk to the NOT_CHANGED branch.
    */
-  @Ignore
   @Test
   fun historyWithUndetectedRename() {
     val after = LocalFilePath("after.txt", false)
@@ -205,7 +203,7 @@ class FileHistoryTest {
   }
 
   @Test
-  fun cyclicHistoryTest() {
+  fun historyWithCyclicRenames() {
     val aFile = LocalFilePath("a.txt", false)
     val bFile = LocalFilePath("b.txt", false)
     val fileNamesData = FileNamesDataBuilder(aFile)
@@ -232,7 +230,9 @@ class FileHistoryTest {
   }
 
   @Test
-  fun caseOnlyRename() {
+  fun historyWithCyclicCaseOnlyRenames() {
+    assumeFalse("Case insensitive fs is required", SystemInfo.isFileSystemCaseSensitive)
+
     val lowercasePath = LocalFilePath("file.txt", false)
     val uppercasePath = LocalFilePath("FILE.TXT", false)
     val mixedPath = LocalFilePath("FiLe.TxT", false)

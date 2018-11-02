@@ -20,6 +20,12 @@ class LayoutBuilder @PublishedApi internal constructor(@PublishedApi internal va
     return row
   }
 
+  inline fun titledRow(title: String, init: Row.() -> Unit): Row {
+    val row = builder.newTitledRow(title)
+    row.init()
+    return row
+  }
+
   // linkHandler is not an optional for backward compatibility
   /**
    * Hyperlinks are supported (`<a href=""></a>`), new lines and <br> are supported only if no links (file issue if need).
@@ -27,6 +33,10 @@ class LayoutBuilder @PublishedApi internal constructor(@PublishedApi internal va
   @JvmOverloads
   fun noteRow(text: String, linkHandler: ((url: String) -> Unit)? = null) {
     builder.noteRow(text, linkHandler)
+  }
+
+  fun commentRow(text: String) {
+    builder.commentRow(text)
   }
 
   inline fun buttonGroup(init: LayoutBuilder.() -> Unit) {
@@ -44,13 +54,13 @@ class LayoutBuilder @PublishedApi internal constructor(@PublishedApi internal va
     return group
   }
 
-  fun chooseFile(descriptor: FileChooserDescriptor, event: AnActionEvent, fileChosen: (chosenFile: VirtualFile) -> Unit) {
-    FileChooser.chooseFile(descriptor, event.getData(PlatformDataKeys.PROJECT), event.getData(PlatformDataKeys.CONTEXT_COMPONENT), null, fileChosen)
-  }
-
   @Suppress("PropertyName")
   @PublishedApi
   @Deprecated("", replaceWith = ReplaceWith("builder"), level = DeprecationLevel.ERROR)
   internal val `$`: LayoutBuilderImpl
     get() = builder
+}
+
+fun FileChooserDescriptor.chooseFile(event: AnActionEvent, fileChosen: (chosenFile: VirtualFile) -> Unit) {
+  FileChooser.chooseFile(this, event.getData(PlatformDataKeys.PROJECT), event.getData(PlatformDataKeys.CONTEXT_COMPONENT), null, fileChosen)
 }
