@@ -67,7 +67,6 @@ abstract class BaseIdeaProperties extends ProductProperties {
     "intellij.java.langInjection.jps",
     "intellij.java.debugger.streams",
     "intellij.android.smali",
-    "intellij.statsCollector"
     /* Disabled in Android Studio
     "intellij.ant",
     "intellij.java.byteCodeViewer",
@@ -76,6 +75,7 @@ abstract class BaseIdeaProperties extends ProductProperties {
     "intellij.javaFX.community",
     "intellij.maven",
     "intellij.java.guiForms.designer",
+    "intellij.statsCollector"
     "intellij.xpath",
     "intellij.xslt.debugger",
     */
@@ -150,7 +150,26 @@ abstract class BaseIdeaProperties extends ProductProperties {
       "intellij.shortcutPromoter",
       "intellij.flex.profiler",
       "intellij.kotlinNative.platformDeps",
-      "intellij.idea-clion"
+      "intellij.clion.plugin",
+
+      /* PHPStorm related plugins */
+      "intellij.apacheConfig",
+      "intellij.behat",
+      "intellij.blade",
+      "intellij.codeception",
+      "intellij.drupal",
+      "intellij.hunspell",
+      "intellij.ini",
+      "intellij.joomla",
+      "intellij.performanceTesting",
+      "intellij.phing",
+      "intellij.phpspec",
+      "intellij.php.commandLineTool",
+      "intellij.php.docker",
+      "intellij.php.impl",
+      "intellij.php.remoteInterpreter",
+      "intellij.twig",
+      "intellij.wordPress",
     ]
 
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = SystemProperties.getBooleanProperty('intellij.build.prepare.plugin.repository', false)
