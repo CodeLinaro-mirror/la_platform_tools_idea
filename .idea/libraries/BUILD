@@ -244,6 +244,7 @@ java_library(
         "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/kotlin-stdlib-jdk7",
         "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/kotlin-stdlib-jdk8",
         "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/kotlin-stdlib",
+        "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/mutability-annotations-compat",
     ],
     # do not sort: must match IML order
     runtime_deps = [
@@ -251,6 +252,7 @@ java_library(
         "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/kotlin-stdlib-jdk7",
         "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/kotlin-stdlib-jdk8",
         "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/kotlin-stdlib",
+        "//prebuilts/tools/common/kotlin-plugin-ij:Kotlin/kotlinc/lib/mutability-annotations-compat",
     ],
 )
 
@@ -990,8 +992,8 @@ java_library(
 java_library(
     name = "jediterm-pty",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/jediterm/jediterm-pty/2.13:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/jediterm/jediterm-pty/2.13:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/jediterm/jediterm-pty/2.14:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/jediterm/jediterm-pty/2.14:jar"],
 )
 
 # managed by go/iml_to_build
