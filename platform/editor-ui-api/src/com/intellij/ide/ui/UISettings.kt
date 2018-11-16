@@ -97,6 +97,7 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
   @get:OptionTag("MAX_LOOKUP_LIST_HEIGHT") var maxLookupListHeight by property(11)
   @get:OptionTag("HIDE_NAVIGATION_ON_FOCUS_LOSS") var hideNavigationOnFocusLoss by property(true)
   @get:OptionTag("DND_WITH_PRESSED_ALT_ONLY") var dndWithPressedAltOnly by property(false)
+  @get:OptionTag("LANGUAGE_FLAGS") var languageFlags by property(false)  // Android Studio: used reflectively by FlagManager.showFlagsForLanguages
   @get:OptionTag("DEFAULT_AUTOSCROLL_TO_SOURCE") var defaultAutoScrollToSource by property(false)
   @Transient var presentationMode: Boolean = false
   @get:OptionTag("PRESENTATION_MODE_FONT_SIZE") var presentationModeFontSize by property(24)
@@ -105,9 +106,6 @@ class UISettings : BaseState(), PersistentStateComponent<UISettings> {
   @get:OptionTag("SHOW_DIRECTORY_FOR_NON_UNIQUE_FILENAMES") var showDirectoryForNonUniqueFilenames by property(true)
   var smoothScrolling by property(SystemInfo.isMac && (SystemInfo.isJetBrainsJvm || SystemInfo.IS_AT_LEAST_JAVA9))
   @get:OptionTag("NAVIGATE_TO_PREVIEW") var navigateToPreview by property(false)
-
-  // Android Studio: added by Change Idf66eeec / commit 024afac
-  @get:OptionTag("LANGUAGE_FLAGS") var languageFlags by property(false)
 
   @get:OptionTag("SORT_LOOKUP_ELEMENTS_LEXICOGRAPHICALLY") var sortLookupElementsLexicographically by property(false)
   @get:OptionTag("MERGE_EQUAL_STACKTRACES") var mergeEqualStackTraces by property(true)
