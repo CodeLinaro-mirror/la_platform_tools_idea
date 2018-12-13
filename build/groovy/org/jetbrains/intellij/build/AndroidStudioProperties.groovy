@@ -103,11 +103,9 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       CommunityRepositoryModules.groovyPlugin([])
     ]
     if (buildOptions.includeUiTests) {
-      modulesToCompileTests += ["intellij.android.guiTests", "intellij.android.guiTestFramework", "uitest-framework-gradle", "uitest-framework-bazel", "intellij.android.testFramework"]
+      modulesToCompileTests += ["intellij.android.guiTests", "intellij.android.guiTestFramework", "intellij.android.testFramework"]
       productLayout.allNonTrivialPlugins.add(uitestPlugin())
-      productLayout.allNonTrivialPlugins.add(plugin("uitest-framework-bazel") { withTestModule("uitest-framework-bazel") })
-      productLayout.allNonTrivialPlugins.add(plugin("uitest-framework-gradle") { withTestModule("uitest-framework-gradle") })
-      productLayout.bundledPluginModules += ["intellij.android.guiTestFramework", "uitest-framework-gradle", "uitest-framework-bazel"]
+      productLayout.bundledPluginModules += ["intellij.android.guiTestFramework"]
     }
     productLayout.classesLoadingOrderFilePath = "$home/build/order.txt"
   }
@@ -145,6 +143,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.observable.ui", "android.jar")
       withModule("android.sdktools.flags", "android.jar")
       withModule("intellij.android.designer", "android.jar")
+      withModule("intellij.android.naveditor", "android.jar")
       withModule("intellij.android.sdkUpdates", "android.jar")
       withModule("intellij.android.wizard", "android.jar")
       withModule("intellij.android.wizard.model", "android.jar")
@@ -300,7 +299,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
     // Instant run
     buildContext.ant.copy(todir: "$androidPluginLib/../resources/installer") {
-      fileset(dir: "$root/bazel-bin/tools/base/deploy/installer/android")
+      fileset(dir: "$root/bazel-genfiles/tools/base/deploy/installer/android")
     }
 
     // Native debugger.
