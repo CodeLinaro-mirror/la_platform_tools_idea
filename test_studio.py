@@ -119,7 +119,7 @@ class StudioTests(unittest.TestCase):
           self.assertFalse(is_symlink, f.filename + " should not be a symlink")
       self.assertTrue(found, "Android Studio.*\.app/Contents/jre/jdk/Contents/MacOS/libjli.dylib not found")
 
-  def test_aswb_includes_blaze_plugin(self):
+  def test_aswb_on_mac_includes_blaze_plugin(self):
     if not aswb:
       return
 
@@ -132,6 +132,14 @@ class StudioTests(unittest.TestCase):
     files = zipfile.ZipFile(name).namelist()
     for req in required:
       self.assertTrue(any(fname.endswith(req) for fname in files), req + " not present in " + name)
+
+  def test_aswb_linux_does_not_contain_blaze_plugin(self):
+    if not aswb:
+      return
+
+    linux_artifact = os.path.join(dist_dir, self.artifact_prefix() + build + ".tar.gz")
+    tar = tarfile.open(linux_artifact, "r:gz")
+    self.assertFalse(any("plugins/aswb" in member.name for member in tar.getmembers()), linux_artifact + " contains plugins/aswb")
 
   def test_studio_does_not_contain_aswb(self):
     if aswb:
