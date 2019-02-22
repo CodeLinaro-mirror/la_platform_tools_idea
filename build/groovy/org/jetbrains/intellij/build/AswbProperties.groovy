@@ -46,16 +46,6 @@ class AswbProperties extends AndroidStudioProperties {
   String customJvmMemoryOptionsX64 = "-Xms1g -Xmx5g"
 
   @Override
-  @CompileDynamic
-  void copyAdditionalFiles(BuildContext buildContext, String targetDirectory) {
-    super.copyAdditionalFiles(buildContext, targetDirectory)
-
-    def root = "$buildContext.paths.communityHome/../.."
-    buildContext.ant.unzip(src: "$root/bazel-bin/external/blaze/java/com/google/devtools/intellij/blaze/plugin/aswb/aswb_blaze.zip",
-                           dest: "$targetDirectory/plugins")
-  }
-
-  @Override
   String getBaseArtifactName(ApplicationInfoProperties applicationInfo, String buildNumber) {"aswb-$buildNumber" }
 
   @Override
@@ -72,9 +62,22 @@ class AswbProperties extends AndroidStudioProperties {
     @Override
     Map<String, String> getCustomIdeaProperties(ApplicationInfoProperties applicationInfo) {
       [
+        "idea.case.sensitive.fs": "true",
         "idea.updates.url": "https://dl.google.com/android/aswb/patches/updates.xml",
         "idea.patches.url": "https://dl.google.com/android/aswb/patches"
       ]
+    }
+
+    @Override
+    @CompileDynamic
+    void copyAdditionalFiles(BuildContext buildContext, String targetDirectory) {
+      super.copyAdditionalFiles(buildContext, targetDirectory)
+
+      // TODO(b/122985551): Don't include the blaze plugin for beta/stable builds once we've figured out how to release
+      // g3plugins for ASWB on Mac. The two plugins won't be compatible and we'll have to replace aswb-blaze anyway.
+      def root = "$buildContext.paths.communityHome/../.."
+      buildContext.ant.unzip(src: "$root/bazel-bin/external/blaze/java/com/google/devtools/intellij/blaze/plugin/aswb/aswb_blaze.zip",
+                             dest: "$targetDirectory/plugins")
     }
   }
 
