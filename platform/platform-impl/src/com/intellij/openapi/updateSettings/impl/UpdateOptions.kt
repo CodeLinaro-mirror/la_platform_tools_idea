@@ -31,7 +31,7 @@ class UpdateOptions : BaseState() {
   var lastBuildChecked by string()
 
   @get:OptionTag("UPDATE_CHANNEL_TYPE")
-  var updateChannelType by string(ChannelStatus.BETA.code) // Android Studio 3.4 Beta
+  var updateChannelType by string(ChannelStatus.RELEASE.code) 
 
   @get:OptionTag("SECURE_CONNECTION")
   var isUseSecureConnection by property(true)
