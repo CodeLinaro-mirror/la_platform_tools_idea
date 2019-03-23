@@ -59,6 +59,7 @@ public class SendFeedbackAction extends AnAction implements DumbAware {
     String url = urlTemplate
       .replace("$BUILD", eap ? appInfo.getBuild().asStringWithoutProductCode() : appInfo.getBuild().asString())
       .replace("$TIMEZONE", System.getProperty("user.timezone"))
+      .replace("$VERSION", appInfo.getFullVersion())  // Android Studio: we include the full version
       .replace("$EVAL", la != null && la.isEvaluationLicense() ? "true" : "false")
       .replace("$DESCR", description);
     BrowserUtil.browse(url, project);
