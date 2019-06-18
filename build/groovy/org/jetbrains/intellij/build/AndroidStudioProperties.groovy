@@ -50,21 +50,10 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       "$home/../studio/google/cloud/tools/core-plugin/lib/licenses",
       "$home/../studio/google/cloud/tools/google-login-plugin/lib/licenses",
       "$home/../studio/google/services/lib/licenses",
-      "$home/../vendor/google/firebase/lib/licenses",
     )
 
     productLayout.productApiModules = JAVA_API_MODULES
     productLayout.productImplementationModules = JAVA_IMPLEMENTATION_MODULES +
-                                                  [
-                                                    // Android Studio: CIDR/CLion: Must be included here to be packaged into core, not as separate plugins
-                                                    "intellij.cidr.common",
-                                                    "intellij.cidr.debugger",
-                                                    "intellij.c",
-                                                    "intellij.c.dfa",
-                                                    "intellij.cidr.util",
-                                                    "intellij.c.doxygen",
-                                                    "intellij.cmake.psi",
-                                                  ] +
                                                   ["intellij.platform.duplicates.analysis", "intellij.platform.structuralSearch", "intellij.java.structuralSearch", "intellij.java.typeMigration", "intellij.platform.main"] -
                                                   ["intellij.platform.jps.model.impl", "intellij.platform.jps.model.serialization"]
     productLayout.additionalPlatformJars.putAll("resources.jar", "intellij.idea.community.resources", "intellij.android.adt.branding")
@@ -81,13 +70,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
     productLayout.bundledPluginModules = BUNDLED_PLUGIN_MODULES +
                                          [
-                                           // Android Studio bundles these:
-                                           "android-apk",
-                                           "android-ndk",
-                                           "firebase",
                                            "firebase-testing",
-                                           "games",
-                                           "google-appindexing",
                                            "google-login-as",
                                            "google-cloud-tools-as",
                                            "google-cloud-tools-core-as",
@@ -95,7 +78,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-services",
                                            "intellij.android.smali",
                                            "test-recorder",
-                                           "url-assistant",
                                          ]
     productLayout.mainModules = ["intellij.idea.community.main"]
     productLayout.allNonTrivialPlugins = CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS + [
@@ -274,32 +256,15 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
     // Profiler prebuilt binaries:
     buildContext.ant.copy(todir: "$androidPluginLib") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/studio-profiler-grpc-1.0-jarjar.jar")
+      fileset(file: "$root/tools/adt/idea/android/lib/studio-profiler-grpc-1.0-jarjar.jar")
     }
     buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/transform/profilers-transform.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/app/perfa.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/app/perfa_okhttp.dex")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/perfd") {
-      fileset(dir: "$root/bazel-bin/tools/base/profiler/native/perfd/android")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/perfa") {
-      fileset(dir: "$root/bazel-bin/tools/base/profiler/native/perfa/android")
+      fileset(dir: "$root/prebuilts/tools/common/android/resources")
     }
     buildContext.ant.copy(todir: "$androidPluginLib/../resources/simpleperf") {
       fileset(dir: "$root/prebuilts/tools/common/simpleperf") {
         exclude(name: "BUILD")
       }
-    }
-
-    // Instant run
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/installer") {
-      fileset(dir: "$root/bazel-genfiles/tools/base/deploy/installer/android")
     }
 
     // Native debugger.
@@ -335,13 +300,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         }
         buildContext.ant.unzip(src: "$root/bazel-bin/tools/adt/idea/android/test_deps.zip", dest: "$targetDirectory/gradle/m2repository")
         buildContext.ant.unzip(src: "$root/bazel-bin/tools/adt/idea/uitest-framework/uitest_deps.zip", dest: "$targetDirectory/gradle/m2repository")
-      }
-
-      buildContext.ant.copy(todir: "$targetDirectory/gradle/m2repository") {
-        fileset(dir: System.getenv().STUDIO_CUSTOM_REPO ?: "$root/prebuilts/tools/common/offline-m2") {
-          exclude(name: "BUILD")
-        }
-        fileset(dir: "$root/out/studio/repo")
       }
 
       buildContext.ant.unzip(

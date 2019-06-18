@@ -108,15 +108,3 @@ else
   echo $BNUM > ../adt/idea/native/installer/win/version
   (cd ../adt/idea/native/installer/win && zip -r - ".") > "$DIST"/android-studio-bundle-data.zip
 fi
-
-# execute a bunch of sanity checks on the final artifacts
-../base/bazel/bazel test \
-    //tools/idea:test_studio \
-    --test_output=streamed \
-    --test_arg=--out="$OUT" \
-    --test_arg=--dist="$DIST" \
-    --test_arg=--build=$BNUM \
-    --test_arg=--aswb=$ASWB \
-    --test_strategy=standalone \
-    --spawn_strategy=standalone \
-    --nocache_test_results
