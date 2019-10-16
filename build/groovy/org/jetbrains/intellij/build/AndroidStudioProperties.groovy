@@ -216,8 +216,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
       withModule("intellij.android.jps", "jps/android-jps-plugin.jar", null)
 
-      withProjectLibrary("freemarker") //todo[nik] move to module libraries
-
       withResourceFromModule("intellij.android.core", "lib/asm-5.0.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/asm-analysis-5.0.3.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/asm-tree-5.0.3.jar", "lib")
@@ -296,18 +294,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     }
 
     // Profiler prebuilt binaries:
-    buildContext.ant.copy(todir: "$androidPluginLib") {
-      fileset(file: "$root/bazel-genfiles/tools/base/transport/proto/transport_java_proto.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib") {
-      fileset(file: "$root/bazel-genfiles/tools/base/profiler/perfetto-protos.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib") {
-      fileset(file: "$root/bazel-genfiles/tools/base/bazel/studio-proto.jar")
-    }
-    buildContext.ant.copy(todir: "$androidPluginLib") {
-      fileset(file: "$root/bazel-genfiles/tools/base/bazel/studio-grpc.jar")
-    }
     buildContext.ant.copy(todir: "$androidPluginLib/../resources") {
       fileset(file: "$root/bazel-genfiles/tools/base/profiler/transform/profilers-transform.jar")
     }
@@ -503,11 +489,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         }
 
         def simpleperfTarget = "$targetDirectory/plugins/android/resources/simpleperf"
-        context.ant.copy(todir: "$simpleperfTarget/linux-x86") {
-          fileset(dir: "$root/prebuilts/tools/linux-x86/simpleperf")
-        }
-        extraExecutables.add("plugins/android/resources/simpleperf/linux-x86/simpleperf")
-
         context.ant.copy(todir: "$simpleperfTarget/linux-x86_64") {
           fileset(dir: "$root/prebuilts/tools/linux-x86_64/simpleperf")
         }
@@ -563,11 +544,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       extraExecutables.add("bin/lldb/bin/minidump_stackwalk")
 
       def simpleperfTarget = "$targetDirectory/plugins/android/resources/simpleperf"
-      context.ant.copy(todir: "$simpleperfTarget/darwin-x86") {
-        fileset(dir: "$root/prebuilts/tools/darwin-x86/simpleperf")
-      }
-      extraExecutables.add("plugins/android/resources/simpleperf/darwin-x86/simpleperf")
-
       context.ant.copy(todir: "$simpleperfTarget/darwin-x86_64") {
         fileset(dir: "$root/prebuilts/tools/darwin-x86_64/simpleperf")
       }
