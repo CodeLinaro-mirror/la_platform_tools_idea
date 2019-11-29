@@ -115,8 +115,8 @@ public class ExternalProjectsDataStorage implements SettingsSavingComponentJavaA
       throw e;
     }
     catch (Throwable e) {
-      LOG.warn(e);
       markDirtyAllExternalProjects();
+      LOG.error(e);
     }
 
     mergeLocalSettings();
@@ -125,8 +125,12 @@ public class ExternalProjectsDataStorage implements SettingsSavingComponentJavaA
   }
 
   private boolean hasLinkedExternalProjects() {
-    return ExternalSystemApiUtil.getAllManagers().stream()
-      .anyMatch(manager -> !manager.getSettingsProvider().fun(myProject).getLinkedProjectsSettings().isEmpty());
+    for (ExternalSystemManager<?, ?, ?, ?, ?> manager : ExternalSystemManager.EP_NAME.getIterable()) {
+      if (!manager.getSettingsProvider().fun(myProject).getLinkedProjectsSettings().isEmpty()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void markDirtyAllExternalProjects() {
@@ -138,20 +142,11 @@ public class ExternalProjectsDataStorage implements SettingsSavingComponentJavaA
   }
 
   private static boolean validate(InternalExternalProjectInfo externalProjectInfo) {
-    try {
-      final DataNode<ProjectData> projectStructure = externalProjectInfo.getExternalProjectStructure();
-      if (projectStructure == null) return false;
+    final DataNode<ProjectData> projectStructure = externalProjectInfo.getExternalProjectStructure();
+    if (projectStructure == null) return false;
 
-      ProjectDataManagerImpl.getInstance().ensureTheDataIsReadyToUse(projectStructure);
-      return externalProjectInfo.getExternalProjectPath().equals(projectStructure.getData().getLinkedExternalProjectPath());
-    }
-    catch (ProcessCanceledException e) {
-      throw e;
-    }
-    catch (Exception e) {
-      LOG.warn(e);
-    }
-    return false;
+    ProjectDataManagerImpl.getInstance().ensureTheDataIsReadyToUse(projectStructure);
+    return externalProjectInfo.getExternalProjectPath().equals(projectStructure.getData().getLinkedExternalProjectPath());
   }
 
   @Override
@@ -293,7 +288,7 @@ public class ExternalProjectsDataStorage implements SettingsSavingComponentJavaA
   }
 
   private void mergeLocalSettings() {
-    for (ExternalSystemManager<?, ?, ?, ?, ?> manager : ExternalSystemApiUtil.getAllManagers()) {
+    for (ExternalSystemManager<?, ?, ?, ?, ?> manager : ExternalSystemManager.EP_NAME.getIterable()) {
       final ProjectSystemId systemId = manager.getSystemId();
 
       AbstractExternalSystemLocalSettings<?> settings = manager.getLocalSettingsProvider().fun(myProject);

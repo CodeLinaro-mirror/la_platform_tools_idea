@@ -110,6 +110,8 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "Layout Inspector Protos", libraryName: "layoutinspector-proto", license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Layoutlib", libraryName: "layoutlib.jar", version: "1.0", license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Layoutlib Native", libraryName: "layoutlib_native.jar", version: "1.0", license: "Apache 2.0", url: "http://source.android.com/"),
+    new LibraryLicense(name: "Live SQL Proto", libraryName: "live-sql-proto", license: "Apache 2.0",
+                       licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     // for moshi module library in intellij.android.core
     new LibraryLicense(name: "Moshi", libraryName: "moshi", version: "1.6.0", license: "Apache 2.0",
                        url: "https://github.com/square/moshi"),
@@ -132,6 +134,7 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "TightVNC", libraryName: "tightvnc", license: "Commercial License"),
     new LibraryLicense(name: "Transport Pipeline", libraryName: "transport-proto", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
+    new LibraryLicense(name: "Xtext", libraryName: "org.eclipse.xtext.xbase", license: "Eclipse Public License 1.0"),
     new LibraryLicense(name: "Instant App Proto Manifest", libraryName: "aia-proto",
                        license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Archive Patcher",
