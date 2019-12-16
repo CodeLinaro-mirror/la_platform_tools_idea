@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.svn.dialogs;
 
 import com.intellij.CommonBundle;
@@ -28,6 +28,7 @@ import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ui.ChangeListViewerDialog;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.PopupHandler;
+import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.util.IconUtil;
 import com.intellij.util.WaitForProgressToShow;
 import com.intellij.vcsUtil.VcsUtil;
@@ -62,6 +63,7 @@ import java.util.Collection;
 import java.util.List;
 
 import static com.intellij.util.ArrayUtil.isEmpty;
+import static com.intellij.util.ui.JBUI.size;
 import static org.jetbrains.idea.svn.SvnUtil.createUrl;
 import static org.jetbrains.idea.svn.SvnUtil.getRelativeUrl;
 
@@ -71,7 +73,7 @@ public class RepositoryBrowserDialog extends DialogWrapper {
 
   private final Project myProject;
   protected final SvnVcs myVCS;
-  private RepositoryBrowserComponent myRepositoryBrowser;
+  @NotNull private final RepositoryBrowserComponent myRepositoryBrowser;
 
   private final DeleteAction myDeleteAction;
   private AnAction copyUrlAction;
@@ -94,6 +96,10 @@ public class RepositoryBrowserDialog extends DialogWrapper {
     myShowFiles = showFiles;
     myProject = project;
     myVCS = SvnVcs.getInstance(project);
+
+    myRepositoryBrowser = new RepositoryBrowserComponent(myVCS);
+    myRepositoryBrowser.setPreferredSize(size(300, 300));
+
     setTitle("SVN Repository Browser");
     setResizable(true);
     setOKButtonText(CommonBundle.getCloseButtonText());
@@ -274,22 +280,21 @@ public class RepositoryBrowserDialog extends DialogWrapper {
         }
       }
     });
+    getRepositoryBrowser().getStatusText()
+      .clear()
+      .appendText(SvnBundle.message("repository.browser.no.locations.added.info"))
+      .appendSecondaryText(SvnBundle.message("repository.browser.add.location.action.description"), SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES,
+                           e -> addLocation(getRepositoryBrowser()));
     return panel;
   }
 
+  @NotNull
   protected RepositoryBrowserComponent getRepositoryBrowser() {
-    if (myRepositoryBrowser == null) {
-      myRepositoryBrowser = new RepositoryBrowserComponent(SvnVcs.getInstance(myProject));
-      myRepositoryBrowser.setPreferredSize(new Dimension(300, 300));
-    }
     return myRepositoryBrowser;
   }
 
   public void disposeRepositoryBrowser() {
-    if (myRepositoryBrowser != null) {
-      Disposer.dispose(myRepositoryBrowser);
-      myRepositoryBrowser = null;
-    }
+    Disposer.dispose(myRepositoryBrowser);
   }
 
   @Override
@@ -384,24 +389,29 @@ public class RepositoryBrowserDialog extends DialogWrapper {
     @Override
     public void update(@NotNull AnActionEvent e) {
       if (e.getPlace().equals(PLACE_TOOLBAR)) {
-        e.getPresentation().setDescription(SvnBundle.message("repository.browser.add.location.action"));
-        e.getPresentation().setText(SvnBundle.message("repository.browser.add.location.action"));
+        e.getPresentation().setDescription(SvnBundle.message("repository.browser.add.location.action.description"));
+        e.getPresentation().setText(SvnBundle.message("repository.browser.add.location.action.text"));
         e.getPresentation().setIcon(IconUtil.getAddIcon());
       }
     }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      final SvnApplicationSettings settings = SvnApplicationSettings.getInstance();
-      final AddRepositoryLocationDialog dialog = new AddRepositoryLocationDialog(myBrowserComponent.getProject(), settings.getTypedUrlsListCopy());
-      dialog.show();
-      if (dialog.getExitCode() == DialogWrapper.OK_EXIT_CODE) {
-        Url url = dialog.getSelected();
-        if (url != null) {
-          settings.addTypedUrl(url.toDecodedString());
-          settings.addCheckoutURL(url.toDecodedString());
-          myBrowserComponent.addURL(url);
-        }
+      addLocation(myBrowserComponent);
+    }
+  }
+
+  private static void addLocation(@NotNull RepositoryBrowserComponent browserComponent) {
+    final SvnApplicationSettings settings = SvnApplicationSettings.getInstance();
+    final AddRepositoryLocationDialog dialog =
+      new AddRepositoryLocationDialog(browserComponent.getProject(), settings.getTypedUrlsListCopy());
+    dialog.show();
+    if (dialog.getExitCode() == DialogWrapper.OK_EXIT_CODE) {
+      Url url = dialog.getSelected();
+      if (url != null) {
+        settings.addTypedUrl(url.toDecodedString());
+        settings.addCheckoutURL(url.toDecodedString());
+        browserComponent.addURL(url);
       }
     }
   }
@@ -650,7 +660,7 @@ public class RepositoryBrowserDialog extends DialogWrapper {
         doCopy(src, dst, myMove, message);
 
         final CopyMoveReloadHelper sourceReloader = myMove ? new MoveSourceReloader(node) : CopyMoveReloadHelper.EMPTY;
-        final TargetReloader destinationReloader = new TargetReloader(dialog, node, rootNode, myRepositoryBrowser);
+        final TargetReloader destinationReloader = new TargetReloader(dialog, node, rootNode, getRepositoryBrowser());
 
         sourceReloader.doSynthetic();
         destinationReloader.doSynthetic();
@@ -1130,7 +1140,7 @@ public class RepositoryBrowserDialog extends DialogWrapper {
   private void showDiffEditorResults(final Collection<Change> changes, String sourceTitle, String targetTitle) {
     final String title = SvnBundle.message("repository.browser.compare.title", sourceTitle, targetTitle);
     SwingUtilities.invokeLater(() -> {
-      final ChangeListViewerDialog dlg = new ChangeListViewerDialog(myRepositoryBrowser, myProject, changes);
+      final ChangeListViewerDialog dlg = new ChangeListViewerDialog(getRepositoryBrowser(), myProject, changes);
       dlg.markChangesInAir(true);
       dlg.setTitle(title);
       dlg.show();

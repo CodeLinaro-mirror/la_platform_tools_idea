@@ -3,18 +3,17 @@ package com.intellij.completion.settings
 
 import com.intellij.application.options.CodeCompletionOptionsCustomSection
 import com.intellij.completion.StatsCollectorBundle
-import com.intellij.completion.sorting.RankingSupport
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.ui.layout.*
 
-class MLRankingConfigurable : BoundConfigurable("ML Ranking"), CodeCompletionOptionsCustomSection {
+class MLRankingConfigurable(private val supportedLanguages: List<String>)
+  : BoundConfigurable("ML Ranking") {
   private val settings = CompletionMLRankingSettings.getInstance()
 
   override fun createPanel(): DialogPanel {
-    val supportedLanguages = RankingSupport.availableLanguages()
     return panel {
       titledRow(StatsCollectorBundle.message("ml.completion.settings.group")) {
         row {
@@ -27,13 +26,11 @@ class MLRankingConfigurable : BoundConfigurable("ML Ranking"), CodeCompletionOpt
             }
           }
         }
-        if (ApplicationManager.getApplication().isInternal) {
-          val registry = Registry.get("completion.stats.show.ml.ranking.diff")
-          row {
-            checkBox(StatsCollectorBundle.message("ml.completion.show.diff"),
-                     { registry.asBoolean() },
-                     { registry.setValue(it) })
-          }
+        val registry = Registry.get("completion.stats.show.ml.ranking.diff")
+        row {
+          checkBox(StatsCollectorBundle.message("ml.completion.show.diff"),
+                   { registry.asBoolean() },
+                   { registry.setValue(it) })
         }
       }
     }

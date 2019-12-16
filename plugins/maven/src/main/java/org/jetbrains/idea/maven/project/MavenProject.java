@@ -16,6 +16,7 @@
 package org.jetbrains.idea.maven.project;
 
 import com.intellij.execution.configurations.ParametersList;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.ModuleType;
@@ -44,8 +45,8 @@ import org.jetbrains.idea.maven.model.*;
 import org.jetbrains.idea.maven.plugins.api.MavenModelPropertiesPatcher;
 import org.jetbrains.idea.maven.server.MavenEmbedderWrapper;
 import org.jetbrains.idea.maven.server.NativeMavenProjectHolder;
-import org.jetbrains.idea.maven.utils.*;
 import org.jetbrains.idea.maven.utils.MavenJDOMUtil;
+import org.jetbrains.idea.maven.utils.*;
 import org.jetbrains.jps.util.JpsPathUtil;
 
 import java.io.*;
@@ -913,7 +914,7 @@ public class MavenProject {
     }
 
     MavenProjectsManager projectsManager = MavenProjectsManager.getInstance(project);
-    Module module = projectsManager.findModule(this);
+    Module module = ReadAction.compute(() -> projectsManager.findModule(this));
     if (module != null) {
       MavenAnnotationProcessorsModuleService apService = MavenAnnotationProcessorsModuleService.getInstance(module);
       for (String moduleName : apService.getAnnotationProcessorModules()) {
@@ -959,11 +960,11 @@ public class MavenProject {
 
   @NotNull
   public Set<String> getSupportedDependencyScopes() {
-    Set<String> result = new THashSet<>(Arrays.asList(MavenConstants.SCOPE_COMPILE,
-                                                      MavenConstants.SCOPE_PROVIDED,
-                                                      MavenConstants.SCOPE_RUNTIME,
-                                                      MavenConstants.SCOPE_TEST,
-                                                      MavenConstants.SCOPE_SYSTEM));
+    Set<String> result = ContainerUtil.set(MavenConstants.SCOPE_COMPILE,
+                                           MavenConstants.SCOPE_PROVIDED,
+                                           MavenConstants.SCOPE_RUNTIME,
+                                           MavenConstants.SCOPE_TEST,
+                                           MavenConstants.SCOPE_SYSTEM);
     for (MavenImporter each : getSuitableImporters()) {
       each.getSupportedDependencyScopes(result);
     }
@@ -1065,16 +1066,17 @@ public class MavenProject {
   }
 
   @Nullable
-  public String getEncoding() {
-    String encoding = myState.myProperties.getProperty("project.build.sourceEncoding");
-    if (encoding != null) return encoding;
+  public String getSourceEncoding() {
+    return myState.myProperties.getProperty("project.build.sourceEncoding");
+  }
 
+  @Nullable
+  public String getResourceEncoding() {
     Element pluginConfiguration = getPluginConfiguration("org.apache.maven.plugins", "maven-resources-plugin");
     if (pluginConfiguration != null) {
       return pluginConfiguration.getChildTextTrim("encoding");
     }
-
-    return null;
+    return getSourceEncoding();
   }
 
   @Nullable

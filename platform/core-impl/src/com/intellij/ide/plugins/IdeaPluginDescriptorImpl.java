@@ -21,6 +21,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.HashSetInterner;
 import com.intellij.util.containers.Interner;
 import com.intellij.util.messages.ListenerDescriptor;
+import com.intellij.util.ref.GCWatcher;
 import com.intellij.util.xmlb.BeanBinding;
 import com.intellij.util.xmlb.JDOMXIncluder;
 import com.intellij.util.xmlb.XmlSerializer;
@@ -34,7 +35,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.ParseException;
@@ -90,7 +90,6 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
 
   private List<String> myModules;
   private ClassLoader myLoader;
-  private WeakReference<ClassLoader> myLoaderRef;
   private String myDescriptionChildText;
   private boolean myUseIdeaClassLoader;
   private boolean myUseCoreClassLoader;
@@ -102,6 +101,7 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
   private boolean myEnabled = true;
   private boolean myDeleted;
   private Boolean mySkipped;
+  private boolean myExtensionsCleared = false;
 
   public IdeaPluginDescriptorImpl(@NotNull File pluginPath, boolean bundled) {
     myPath = pluginPath;
@@ -417,8 +417,25 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
     descriptor.serviceInterface = element.getAttributeValue("serviceInterface");
     descriptor.serviceImplementation = StringUtil.nullize(element.getAttributeValue("serviceImplementation"));
     descriptor.testServiceImplementation = StringUtil.nullize(element.getAttributeValue("testServiceImplementation"));
+    descriptor.headlessImplementation = StringUtil.nullize(element.getAttributeValue("headlessImplementation"));
     descriptor.configurationSchemaKey = element.getAttributeValue("configurationSchemaKey");
-    descriptor.preload = Boolean.parseBoolean(element.getAttributeValue("preload"));
+
+    String preload = element.getAttributeValue("preload");
+    if (preload != null) {
+      if (preload.equals("true")) {
+        descriptor.preload = ServiceDescriptor.PreloadMode.TRUE;
+      }
+      else if (preload.equals("await")) {
+        descriptor.preload = ServiceDescriptor.PreloadMode.AWAIT;
+      }
+      else if (preload.equals("notHeadless")) {
+        descriptor.preload = ServiceDescriptor.PreloadMode.NOT_HEADLESS;
+      }
+      else {
+        LOG.error("Unknown preload mode value: " + JDOMUtil.writeElement(element));
+      }
+    }
+
     descriptor.overrides = Boolean.parseBoolean(element.getAttributeValue("overrides"));
     return descriptor;
   }
@@ -558,6 +575,7 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
           }
           return true;
         });
+        myExtensionsCleared = true;
 
         if (myExtensions.isEmpty()) {
           myExtensions = null;
@@ -655,9 +673,11 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
     myCategory = category;
   }
 
-  @SuppressWarnings("UnusedDeclaration") // Used in Upsource
   @Nullable
   public Map<String, List<Element>> getExtensions() {
+    if (myExtensionsCleared) {
+      throw new IllegalStateException("Trying to retrieve extensions list after extension elements have been cleared");
+    }
     if (myExtensions == null) {
       return null;
     }
@@ -689,11 +709,6 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
             }
           }
           else {
-            // hack for IDEA-219113, to be removed after merging jre11-compatible Android plugin
-            if ("org.jetbrains.android".equals(getPluginId().getIdString())) {
-              if (f.getName().equals(SystemInfo.isJavaVersionAtLeast(11) ? "jdk11" : "jdk8"))
-                result.add(new File(f, "layoutlib.jar"));
-            }
             result.add(f);
           }
         }
@@ -741,13 +756,12 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
 
   public void setLoader(ClassLoader loader) {
     myLoader = loader;
-    myLoaderRef = new WeakReference<>(loader);
   }
 
   public boolean unloadClassLoader() {
+    GCWatcher watcher = GCWatcher.tracking(myLoader);
     myLoader = null;
-    System.gc();
-    return myLoaderRef.get() == null;
+    return watcher.tryCollect();
   }
 
   @Override
@@ -867,14 +881,6 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
     else {
       myList.addAll(list);
     }
-  }
-
-  public Boolean getSkipped() {
-    return mySkipped;
-  }
-
-  public void setSkipped(final Boolean skipped) {
-    mySkipped = skipped;
   }
 
   @Override

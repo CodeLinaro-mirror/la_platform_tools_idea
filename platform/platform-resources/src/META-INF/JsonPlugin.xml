@@ -2,6 +2,14 @@
 
   <module value="com.intellij.modules.json"/>
 
+  <actions>
+    <action id="JsonCopyPointer" class="com.intellij.json.editor.JsonCopyPointerAction" description="Copy JSON Pointer" text="Copy JSON Pointer">
+      <add-to-group group-id="CutCopyPasteGroup" anchor="after" relative-to-action="CopyReference"/>
+      <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="CopyReference"/>
+      <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="CopyReference"/>
+    </action>
+  </actions>
+
   <extensions defaultExtensionNs="com.intellij">
     <fileType name="JSON" extensions="json" implementationClass="com.intellij.json.JsonFileType" fieldName="INSTANCE" language="JSON"/>
     <fileType name="JSON5" extensions="json5" implementationClass="com.intellij.json.json5.Json5FileType" fieldName="INSTANCE" language="JSON5"/>
@@ -100,9 +108,13 @@
     <multiHostInjector implementation="com.jetbrains.jsonSchema.impl.JsonSchemaRegexInjector"/>
     <multiHostInjector implementation="com.jetbrains.jsonSchema.impl.JsonSchemaBasedLanguageInjector"/>
     <lang.lineWrapStrategy language="JSON" implementationClass="com.intellij.json.formatter.JsonLineWrapPositionStrategy"/>
-    <gotoDeclarationHandler implementation="com.jetbrains.jsonSchema.impl.JsonSchemaGotoDeclarationHandler"/>
+    <gotoDeclarationHandler id="JsonSchemaGotoDeclarationHandler" implementation="com.jetbrains.jsonSchema.impl.JsonSchemaGotoDeclarationHandler"/>
     <copyPastePostProcessor implementation="com.intellij.json.editor.JsonCopyPastePostProcessor"/>
     <highlightVisitor implementation="com.intellij.json.highlighting.JsonRainbowVisitor"/>
+    <intentionAction>
+      <className>com.intellij.json.intentions.JsonSortPropertiesIntention</className>
+      <category>JSON</category>
+    </intentionAction>
   </extensions>
   <extensions defaultExtensionNs="JavaScript">
     <JsonSchema.ProviderFactory implementation="com.jetbrains.jsonSchema.extension.JsonSchemaUserDefinedProviderFactory"/>

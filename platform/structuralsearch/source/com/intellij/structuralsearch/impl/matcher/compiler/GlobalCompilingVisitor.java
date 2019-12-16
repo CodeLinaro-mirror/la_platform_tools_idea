@@ -7,13 +7,14 @@ import com.intellij.psi.PsiElement;
 import com.intellij.structuralsearch.MalformedPatternException;
 import com.intellij.structuralsearch.StructuralSearchProfile;
 import com.intellij.structuralsearch.StructuralSearchUtil;
-import com.intellij.structuralsearch.impl.matcher.filters.CompositeFilter;
+import com.intellij.structuralsearch.impl.matcher.filters.CompositeNodeFilter;
 import com.intellij.structuralsearch.impl.matcher.filters.LexicalNodesFilter;
 import com.intellij.structuralsearch.impl.matcher.handlers.LiteralWithSubstitutionHandler;
 import com.intellij.structuralsearch.impl.matcher.handlers.MatchingHandler;
 import com.intellij.structuralsearch.impl.matcher.handlers.SubstitutionHandler;
 import com.intellij.structuralsearch.impl.matcher.predicates.RegExpPredicate;
 import com.intellij.util.SmartList;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
@@ -31,7 +32,8 @@ import static com.intellij.structuralsearch.MatchOptions.MODIFIER_ANNOTATION_NAM
 public class GlobalCompilingVisitor {
   @NonNls private static final String SUBSTITUTION_PATTERN_STR = "\\b(__\\$_\\w+)\\b";
   private static final Pattern ourSubstitutionPattern = Pattern.compile(SUBSTITUTION_PATTERN_STR);
-  private static final Set<String> ourReservedWords = new HashSet<>(Arrays.asList(MODIFIER_ANNOTATION_NAME, INSTANCE_MODIFIER_NAME));
+  private static final Set<String> ourReservedWords =
+    ContainerUtil.set(MODIFIER_ANNOTATION_NAME, INSTANCE_MODIFIER_NAME);
   private static final NodeFilter ourFilter = LexicalNodesFilter.getInstance();
 
   static {
@@ -96,7 +98,7 @@ public class GlobalCompilingVisitor {
   public static void setFilter(MatchingHandler handler, NodeFilter filter) {
     if (handler.getFilter() != null && handler.getFilter().getClass() != filter.getClass()) {
       // for constructor we will have the same handler for class and method and tokens itself
-      handler.setFilter(new CompositeFilter(filter, handler.getFilter()));
+      handler.setFilter(new CompositeNodeFilter(filter, handler.getFilter()));
     }
     else {
       handler.setFilter(filter);
@@ -243,6 +245,7 @@ public class GlobalCompilingVisitor {
   }
 
   public void processTokenizedName(String name, boolean skipComments, GlobalCompilingVisitor.OccurenceKind kind) {
+    if (kind == OccurenceKind.LITERAL) name = StringUtil.unescapeStringCharacters(name);
     for (String word : StringUtil.getWordsInStringLongestFirst(name)) {
       addFilesToSearchForGivenWord(word, true, kind, getContext());
     }

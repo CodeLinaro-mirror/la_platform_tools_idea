@@ -13,7 +13,10 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.DataIndexer;
 import com.intellij.util.indexing.StorageException;
 import com.intellij.util.indexing.impl.InputData;
-import com.intellij.util.indexing.impl.forward.*;
+import com.intellij.util.indexing.impl.forward.ForwardIndex;
+import com.intellij.util.indexing.impl.forward.ForwardIndexAccessor;
+import com.intellij.util.indexing.impl.forward.KeyCollectionForwardIndexAccessor;
+import com.intellij.util.indexing.impl.forward.PersistentMapBasedForwardIndex;
 import com.intellij.util.io.*;
 import com.intellij.vcs.log.VcsLogIndexService;
 import com.intellij.vcs.log.data.VcsLogStorage;
@@ -236,7 +239,7 @@ public class VcsLogPathsIndex extends VcsLogFullDetailsIndex<List<VcsLogPathsInd
                                                               int pathId, int parentsCount) {
       List<ChangeKind> changeDataList = pathIdToChangeDataListsMap.get(pathId);
       if (changeDataList == null) {
-        changeDataList = ContainerUtil.newSmartList();
+        changeDataList = new SmartList<>();
         for (int i = 0; i < parentsCount; i++) {
           changeDataList.add(ChangeKind.NOT_CHANGED);
         }
@@ -274,7 +277,7 @@ public class VcsLogPathsIndex extends VcsLogFullDetailsIndex<List<VcsLogPathsInd
 
     @Override
     public List<ChangeKind> read(@NotNull DataInput in) throws IOException {
-      List<ChangeKind> value = ContainerUtil.newSmartList();
+      List<ChangeKind> value = new SmartList<>();
 
       int size = DataInputOutputUtil.readINT(in);
       for (int i = 0; i < size; i++) {

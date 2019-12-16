@@ -28,7 +28,7 @@ class VcsLogFileHistoryProviderImpl : VcsLogFileHistoryProvider {
       return canShowSingleFileHistory(project, dataManager, paths.single(), revisionNumber != null)
     }
 
-    return revisionNumber == null && VcsLogUtil.isFolderHistoryShownInLog() && createPathsFilter(project, dataManager, paths) != null
+    return revisionNumber == null && createPathsFilter(project, dataManager, paths) != null
   }
 
   private fun canShowSingleFileHistory(project: Project, dataManager: VcsLogData, path: FilePath, isRevisionHistory: Boolean): Boolean {
@@ -69,11 +69,11 @@ class VcsLogFileHistoryProviderImpl : VcsLogFileHistoryProvider {
   private fun canShowHistoryInLog(dataManager: VcsLogData,
                                   correctedPath: FilePath,
                                   root: VirtualFile): Boolean {
-    if (!VcsLogUtil.isFolderHistoryShownInLog() || !correctedPath.isDirectory) {
+    if (!correctedPath.isDirectory) {
       return false
     }
     val logProvider = dataManager.logProviders[root] ?: return false
-    return (VcsLogProperties.get(logProvider, VcsLogProperties.SUPPORTS_LOG_DIRECTORY_HISTORY))
+    return VcsLogProperties.SUPPORTS_LOG_DIRECTORY_HISTORY.getOrDefault(logProvider)
   }
 
   private fun triggerFileHistoryUsage(paths: Collection<FilePath>, hash: Hash?) {
@@ -117,10 +117,10 @@ class VcsLogFileHistoryProviderImpl : VcsLogFileHistoryProvider {
     for (path in paths) {
       val root = VcsLogUtil.getActualRoot(project, path)
       if (root == null) return null
-      if (!VcsLogProperties.get(dataManager.getLogProvider(root), VcsLogProperties.SUPPORTS_LOG_DIRECTORY_HISTORY)) return null
+      if (!VcsLogProperties.SUPPORTS_LOG_DIRECTORY_HISTORY.getOrDefault(dataManager.getLogProvider(root))) return null
 
       val correctedPath = getCorrectedPath(project, path, root, false)
-      if (!correctedPath.isDirectory) return null;
+      if (!correctedPath.isDirectory) return null
 
       if (path.virtualFile == root) {
         forRootFilter.add(root)

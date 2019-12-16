@@ -71,7 +71,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
   private static boolean PREVIEW_IN_TESTS = true;
 
   protected final Project myProject;
-  protected final SearchScope myRefactoringScope;
+  protected final @NotNull SearchScope myRefactoringScope;
 
   private RefactoringTransaction myTransaction;
   private boolean myIsPreviewUsages;
@@ -170,7 +170,9 @@ public abstract class BaseRefactoringProcessor implements Runnable {
   protected abstract String getCommandName();
 
   protected void doRun() {
-    PsiDocumentManager.getInstance(myProject).commitAllDocuments();
+    if (!PsiDocumentManager.getInstance(myProject).commitAllDocumentsUnderProgress()) {
+      return;
+    }
     final Ref<UsageInfo[]> refUsages = new Ref<>();
     final Ref<Language> refErrorLanguage = new Ref<>();
     final Ref<Boolean> refProcessCanceled = new Ref<>();

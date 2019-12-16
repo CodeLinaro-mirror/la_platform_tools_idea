@@ -341,9 +341,6 @@ public class CommonCodeStyleSettings {
   @BraceStyleConstant public int METHOD_BRACE_STYLE = END_OF_LINE;
   @BraceStyleConstant public int LAMBDA_BRACE_STYLE = END_OF_LINE;
 
-  @Deprecated
-  public boolean USE_FLYING_GEESE_BRACES = false;
-
   public boolean DO_NOT_INDENT_TOP_LEVEL_CLASS_MEMBERS = false;
 
   /**
@@ -419,9 +416,6 @@ public class CommonCodeStyleSettings {
   public boolean ALIGN_MULTILINE_PARAMETERS_IN_CALLS = false;
   public boolean ALIGN_MULTILINE_RESOURCES = true;
   public boolean ALIGN_MULTILINE_FOR = true;
-
-  @Deprecated
-  public boolean INDENT_WHEN_CASES = true;
 
   public boolean ALIGN_MULTILINE_BINARY_OPERATION = false;
   public boolean ALIGN_MULTILINE_ASSIGNMENT = false;
@@ -904,9 +898,6 @@ public class CommonCodeStyleSettings {
   @WrapConstant
   public int ASSIGNMENT_WRAP = DO_NOT_WRAP;
   public boolean PLACE_ASSIGNMENT_SIGN_ON_NEXT_LINE = false;
-
-  @Deprecated
-  public int LABELED_STATEMENT_WRAP = WRAP_ALWAYS;
 
   public boolean WRAP_COMMENTS = false;
 

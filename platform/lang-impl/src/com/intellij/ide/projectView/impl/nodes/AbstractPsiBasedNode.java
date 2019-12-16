@@ -65,12 +65,12 @@ public abstract class AbstractPsiBasedNode<Value> extends ProjectViewNode<Value>
 
   @Override
   @NotNull
-  public final Collection<AbstractTreeNode> getChildren() {
+  public final Collection<? extends AbstractTreeNode> getChildren() {
     return AstLoadingFilter.disallowTreeLoading(this::doGetChildren);
   }
 
   @NotNull
-  private Collection<AbstractTreeNode> doGetChildren() {
+  private Collection<? extends AbstractTreeNode> doGetChildren() {
     final PsiElement psiElement = extractPsiFromValue();
     if (psiElement == null) {
       return new ArrayList<>();
@@ -93,12 +93,12 @@ public abstract class AbstractPsiBasedNode<Value> extends ProjectViewNode<Value>
   }
 
   protected boolean isMarkReadOnly() {
-    final AbstractTreeNode parent = getParent();
+    final AbstractTreeNode<?> parent = getParent();
     if (parent == null) {
       return false;
     }
     if (parent instanceof AbstractPsiBasedNode) {
-      final PsiElement psiElement = ((AbstractPsiBasedNode)parent).extractPsiFromValue();
+      final PsiElement psiElement = ((AbstractPsiBasedNode<?>)parent).extractPsiFromValue();
       return psiElement instanceof PsiDirectory;
     }
 

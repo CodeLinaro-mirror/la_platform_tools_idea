@@ -72,6 +72,7 @@ import com.intellij.ui.*;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.util.Alarm;
 import com.intellij.util.SmartList;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.textCompletion.TextCompletionUtil;
 import com.intellij.util.ui.TextTransferable;
 import org.jdom.JDOMException;
@@ -124,6 +125,19 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
   Language myDialect = null;
   PatternContext myPatternContext = null;
   final List<RangeHighlighter> myRangeHighlighters = new SmartList<>();
+  private final DocumentListener myRestartHighlightingListener = new DocumentListener() {
+    @Override
+    public void documentChanged(@NotNull DocumentEvent event) {
+      ReadAction.nonBlocking(() -> {
+        removeMatchHighlights();
+        addMatchHighlights();
+      })
+        .withDocumentsCommitted(getProject())
+        .expireWith(getDisposable())
+        .coalesceBy(this, event.getDocument())
+        .submit(AppExecutorUtil.getAppExecutorService());
+    }
+  };
 
   // ui management
   private final Alarm myAlarm;
@@ -142,7 +156,6 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
   EditorTextField mySearchCriteriaEdit;
   EditorTextField myReplaceCriteriaEdit;
   OnePixelSplitter mySearchEditorPanel;
-  private OnePixelSplitter myReplaceEditorPanel;
 
   FilterPanel myFilterPanel;
   private LinkComboBox myTargetComboBox;
@@ -166,14 +179,17 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
     myEditConfigOnly = editConfigOnly;
     mySearchContext = searchContext;
     myEditor = searchContext.getEditor();
+    addRestartHighlightingListenerToCurrentEditor();
     final FileEditorManagerListener listener = new FileEditorManagerListener() {
 
       @Override
       public void selectionChanged(@NotNull FileEditorManagerEvent event) {
         if (myRangeHighlighters.isEmpty()) return;
+        removeRestartHighlightingListenerToCurrentEditor();
         removeMatchHighlights();
         myEditor = event.getManager().getSelectedTextEditor();
         addMatchHighlights();
+        addRestartHighlightingListenerToCurrentEditor();
       }
     };
     getProject().getMessageBus().connect(getDisposable()).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, listener);
@@ -183,6 +199,18 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
     init();
     myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, myDisposable);
     ProjectManager.getInstance().addProjectManagerListener(getProject(), this);
+  }
+
+  private void addRestartHighlightingListenerToCurrentEditor() {
+    if (myEditor != null) {
+      myEditor.getDocument().addDocumentListener(myRestartHighlightingListener);
+    }
+  }
+
+  private void removeRestartHighlightingListenerToCurrentEditor() {
+    if (myEditor != null) {
+      myEditor.getDocument().removeDocumentListener(myRestartHighlightingListener);
+    }
   }
 
   public void setUseLastConfiguration(boolean useLastConfiguration) {
@@ -435,7 +463,7 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
     layout.setVerticalGroup(
       layout.createSequentialGroup()
         .addComponent(wrapper)
-        .addGap(2)
+        .addGap(8)
         .addComponent(myReplacePanel)
         .addComponent(myScopePanel, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
         .addGap(16)
@@ -454,15 +482,15 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
     myReformat = new JCheckBox(SSRBundle.message("reformat.checkbox"));
     myUseStaticImport = new JCheckBox(SSRBundle.message("use.static.import.checkbox"));
 
-    myReplaceEditorPanel = new OnePixelSplitter(false, 1.0f);
-    myReplaceEditorPanel.setLackOfSpaceStrategy(Splitter.LackOfSpaceStrategy.HONOR_THE_SECOND_MIN_SIZE);
+    OnePixelSplitter replaceEditorPanel = new OnePixelSplitter(false, 1.0f);
+    replaceEditorPanel.setLackOfSpaceStrategy(Splitter.LackOfSpaceStrategy.HONOR_THE_SECOND_MIN_SIZE);
     myReplaceCriteriaEdit = createEditor(true);
-    myReplaceEditorPanel.setFirstComponent(myReplaceCriteriaEdit);
+    replaceEditorPanel.setFirstComponent(myReplaceCriteriaEdit);
 
     final JPanel wrapper = new JPanel(new BorderLayout());
     final Color color = UIManager.getColor("Borders.ContrastBorderColor");
     wrapper.setBorder(IdeBorderFactory.createBorder(color));
-    wrapper.add(myReplaceEditorPanel, BorderLayout.CENTER);
+    wrapper.add(replaceEditorPanel, BorderLayout.CENTER);
 
     final JPanel replacePanel = new JPanel(null);
     final GroupLayout layout = new GroupLayout(replacePanel);
@@ -491,6 +519,7 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
             .addComponent(myReformat)
             .addComponent(myUseStaticImport)
         )
+        .addGap(4)
         .addComponent(wrapper)
     );
 
@@ -670,7 +699,7 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
     return panel;
   }
 
-  Project getProject() {
+  private Project getProject() {
     return mySearchContext.getProject();
   }
 
@@ -1157,6 +1186,7 @@ public class StructuralSearchDialog extends DialogWrapper implements ProjectMana
     myAlarm.cancelAllRequests();
     mySearchCriteriaEdit.removeNotify();
     myReplaceCriteriaEdit.removeNotify();
+    removeRestartHighlightingListenerToCurrentEditor();
     super.dispose();
   }
 

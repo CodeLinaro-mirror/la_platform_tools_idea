@@ -21,13 +21,6 @@ java_import(
 
 # managed by go/iml_to_build
 java_import(
-    name = "serviceMessages",
-    jars = ["serviceMessages.jar"],
-    visibility = ["//visibility:public"],
-)
-
-# managed by go/iml_to_build
-java_import(
     name = "ecj-4.10",
     jars = ["ecj-4.10.jar"],
     visibility = ["//visibility:public"],
@@ -55,13 +48,6 @@ exports_files(["src/trove4j_src.jar"])
 filegroup(
     name = "all-libs",
     srcs = ["//tools/idea/lib/ant:ant-all"] + glob(["**"]),
-    visibility = ["//visibility:public"],
-)
-
-# managed by go/iml_to_build
-java_import(
-    name = "wadl-core",
-    jars = ["wadl-core.jar"],
     visibility = ["//visibility:public"],
 )
 

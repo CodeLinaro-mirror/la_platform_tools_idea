@@ -6,6 +6,7 @@ import com.intellij.openapi.components.ComponentManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.*;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.util.ThreeState;
 import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
@@ -114,7 +115,7 @@ public final class ExtensionsAreaImpl implements ExtensionsArea {
   }
 
   // don't want to expose clearCache directly
-  public static void extensionsRegistered(@NotNull ExtensionPointImpl<?>[] points) {
+  static void extensionsRegistered(@NotNull ExtensionPointImpl<?>[] points) {
     for (ExtensionPointImpl<?> point : points) {
       point.clearCache();
     }
@@ -234,10 +235,10 @@ public final class ExtensionsAreaImpl implements ExtensionsArea {
 
   @ApiStatus.Internal
   public boolean registerExtensions(@NotNull String pointName,
-                                 @NotNull List<Element> extensions,
-                                 @NotNull PluginDescriptor pluginDescriptor,
-                                 @NotNull ComponentManager componentManager,
-                                 boolean notifyListeners)  {
+                                    @NotNull List<? extends Element> extensions,
+                                    @NotNull PluginDescriptor pluginDescriptor,
+                                    @NotNull ComponentManager componentManager,
+                                    boolean notifyListeners)  {
     ExtensionPointImpl<?> point = myExtensionPoints.get(pointName);
     if (point == null) {
       return false;
@@ -276,7 +277,7 @@ public final class ExtensionsAreaImpl implements ExtensionsArea {
     // TeamCity plugin wants DefaultDebugExecutor in constructor
     if (aClass.getName().equals("com.intellij.execution.executors.DefaultDebugExecutor")) {
       //noinspection unchecked
-      return ((ExtensionPointImpl<T>)myExtensionPoints.get("com.intellij.executor")).findExtension(aClass, false, /* strictMatch = */ true);
+      return ((ExtensionPointImpl<T>)myExtensionPoints.get("com.intellij.executor")).findExtension(aClass, false, ThreeState.YES);
     }
 
     for (ExtensionPointImpl<?> point : myExtensionPoints.values()) {
@@ -284,23 +285,20 @@ public final class ExtensionsAreaImpl implements ExtensionsArea {
         continue;
       }
 
-      Class<?> extensionClass;
       try {
-        extensionClass = point.getExtensionClass();
+        Class<?> extensionClass = point.getExtensionClass();
+        if (!extensionClass.isAssignableFrom(aClass)) {
+          continue;
+        }
+
+        //noinspection unchecked
+        T extension = ((ExtensionPointImpl<T>)point).findExtension(aClass, false, ThreeState.YES);
+        if (extension != null) {
+          return extension;
+        }
       }
       catch (Throwable e) {
         LOG.warn("error during findExtensionPointByClass", e);
-        continue;
-      }
-
-      if (!extensionClass.isAssignableFrom(aClass)) {
-        continue;
-      }
-
-      //noinspection unchecked
-      T extension = ((ExtensionPointImpl<T>)point).findExtension(aClass, false, /* strictMatch = */ true);
-      if (extension != null) {
-        return extension;
       }
     }
     return null;

@@ -18,8 +18,8 @@ iml_module(
     # do not sort: must match IML order
     test_runtime_deps = [
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
-        "//tools/idea/images:intellij.platform.images",
         "//tools/idea/platform/testFramework/extensions:intellij.platform.testExtensions",
+        "//tools/idea/images:intellij.platform.images",
     ],
     test_srcs = ["testSrc"],
     test_tags = ["manual"],
@@ -33,6 +33,7 @@ iml_module(
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
         "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
     ],
     # do not sort: must match IML order
     deps = [

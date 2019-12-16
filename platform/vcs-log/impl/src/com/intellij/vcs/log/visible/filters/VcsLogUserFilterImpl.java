@@ -2,6 +2,7 @@
 package com.intellij.vcs.log.visible.filters;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.containers.ContainerUtil;
@@ -13,7 +14,10 @@ import com.intellij.vcs.log.util.VcsUserUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 @ApiStatus.Internal
 public class VcsLogUserFilterImpl implements VcsLogUserFilter {
@@ -64,7 +68,12 @@ public class VcsLogUserFilterImpl implements VcsLogUserFilter {
         users.addAll(getUsers(vcsUser.getName())); // do not just add vcsUser, also add synonyms
         String emailNamePart = VcsUserUtil.getNameFromEmail(vcsUser.getEmail());
         if (emailNamePart != null) {
-          users.addAll(getUsers(emailNamePart));
+          Set<String> emails = ContainerUtil.map2Set(users, user -> VcsUserUtil.emailToLowerCase(user.getEmail()));
+          for (VcsUser candidateUser : getUsers(emailNamePart)) {
+            if (emails.contains(VcsUserUtil.emailToLowerCase(candidateUser.getEmail()))) {
+              users.add(candidateUser);
+            }
+          }
         }
       }
       else {
@@ -127,14 +136,11 @@ public class VcsLogUserFilterImpl implements VcsLogUserFilter {
     if (this == o) return true;
     if (o == null || getClass() != o.getClass()) return false;
     VcsLogUserFilterImpl filter = (VcsLogUserFilterImpl)o;
-    return myUsers.equals(filter.myUsers) &&
-           myData.equals(filter.myData) &&
-           myAllUsersByNames.equals(filter.myAllUsersByNames) &&
-           myAllUsersByEmails.equals(filter.myAllUsersByEmails);
+    return Comparing.haveEqualElements(myUsers, filter.myUsers);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(myUsers, myData, myAllUsersByNames, myAllUsersByEmails);
+    return Comparing.unorderedHashcode(myUsers);
   }
 }

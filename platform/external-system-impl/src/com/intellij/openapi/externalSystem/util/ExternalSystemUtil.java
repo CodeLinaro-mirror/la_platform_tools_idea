@@ -1,10 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.util;
 
-import com.intellij.build.BuildContentDescriptor;
-import com.intellij.build.BuildEventDispatcher;
-import com.intellij.build.DefaultBuildDescriptor;
-import com.intellij.build.SyncViewManager;
+import com.intellij.build.*;
 import com.intellij.build.events.BuildEvent;
 import com.intellij.build.events.EventResult;
 import com.intellij.build.events.FinishBuildEvent;
@@ -23,11 +20,13 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.execution.ui.ExecutionConsole;
 import com.intellij.icons.AllIcons;
+import com.intellij.internal.statistic.IdeActivity;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationGroup;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.ex.ApplicationEx;
@@ -58,6 +57,7 @@ import com.intellij.openapi.externalSystem.service.project.manage.ProjectDataMan
 import com.intellij.openapi.externalSystem.settings.AbstractExternalSystemLocalSettings;
 import com.intellij.openapi.externalSystem.settings.AbstractExternalSystemSettings;
 import com.intellij.openapi.externalSystem.settings.ExternalProjectSettings;
+import com.intellij.openapi.externalSystem.statistics.ExternalSystemStatUtilKt;
 import com.intellij.openapi.externalSystem.task.TaskCallback;
 import com.intellij.openapi.externalSystem.view.ExternalProjectsView;
 import com.intellij.openapi.externalSystem.view.ExternalProjectsViewImpl;
@@ -95,6 +95,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.Semaphore;
 import gnu.trove.TObjectHashingStrategy;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -385,7 +386,14 @@ public class ExternalSystemUtil {
       @Override
       public void execute(@NotNull ProgressIndicator indicator) {
         String title = ExternalSystemBundle.message("progress.refresh.text", projectName, externalSystemId.getReadableName());
-        DumbService.getInstance(project).suspendIndexingAndRun(title, () -> executeImpl(indicator));
+        IdeActivity activity = ExternalSystemStatUtilKt.importActivityStarted(project, externalSystemId, data -> {
+        });
+        try {
+          DumbService.getInstance(project).suspendIndexingAndRun(title, () -> executeImpl(indicator));
+        }
+        finally {
+          activity.finished();
+        }
       }
 
       private void executeImpl(@NotNull ProgressIndicator indicator) {
@@ -504,7 +512,9 @@ public class ExternalSystemUtil {
             public void onFailure(@NotNull ExternalSystemTaskId id, @NotNull Exception e) {
               String title = ExternalSystemBundle.message("notification.project.refresh.fail.title",
                                                           externalSystemId.getReadableName(), projectName);
-              com.intellij.build.events.FailureResult failureResult = createFailureResult(title, e, externalSystemId, project);
+              DataProvider dataProvider = BuildConsoleUtils.getDataProvider(id, syncViewManager);
+              com.intellij.build.events.FailureResult failureResult =
+                createFailureResult(title, e, externalSystemId, project, dataProvider);
               finishSyncEventSupplier.set(() -> new FinishBuildEventImpl(id, null, System.currentTimeMillis(), "failed", failureResult));
               processHandler.notifyProcessTerminated(1);
             }
@@ -512,7 +522,7 @@ public class ExternalSystemUtil {
             @Override
             public void onSuccess(@NotNull ExternalSystemTaskId id) {
               finishSyncEventSupplier.set(
-                () -> new FinishBuildEventImpl(id, null, System.currentTimeMillis(), "successful", new SuccessResultImpl()));
+                () -> new FinishBuildEventImpl(id, null, System.currentTimeMillis(), "finished", new SuccessResultImpl()));
               processHandler.notifyProcessTerminated(0);
             }
 
@@ -527,11 +537,6 @@ public class ExternalSystemUtil {
                 BuildEvent buildEvent = convert(((ExternalSystemTaskExecutionEvent)event));
                 eventDispatcher.onEvent(event.getId(), buildEvent);
               }
-            }
-
-            @Override
-            public void onEnd(@NotNull ExternalSystemTaskId id) {
-              eventDispatcher.close();
             }
           };
           final long startTS = System.currentTimeMillis();
@@ -666,13 +671,16 @@ public class ExternalSystemUtil {
            project.getUserData(ExternalSystemDataKeys.NEWLY_IMPORTED_PROJECT) == Boolean.TRUE;
   }
 
+  @ApiStatus.Internal
   @NotNull
   public static FailureResultImpl createFailureResult(@NotNull String title,
                                                       @NotNull Exception exception,
                                                       @NotNull ProjectSystemId externalSystemId,
-                                                      @NotNull Project project) {
+                                                      @NotNull Project project,
+                                                      @NotNull DataProvider dataProvider) {
     ExternalSystemNotificationManager notificationManager = ExternalSystemNotificationManager.getInstance(project);
-    NotificationData notificationData = notificationManager.createNotification(title, exception, externalSystemId, project);
+    NotificationData notificationData =
+      notificationManager.createNotification(title, exception, externalSystemId, project, dataProvider);
     if (notificationData == null) {
       return new FailureResultImpl();
     }
@@ -1056,12 +1064,9 @@ public class ExternalSystemUtil {
 
   @Nullable
   public static VirtualFile findLocalFileByPath(String path) {
-    VirtualFile result = StandardFileSystems.local().findFileByPath(path);
-    if (result != null) return result;
-
-    return !ApplicationManager.getApplication().isReadAccessAllowed()
-           ? findLocalFileByPathUnderWriteAction(path)
-           : findLocalFileByPathUnderReadAction(path);
+    return ApplicationManager.getApplication().isReadAccessAllowed()
+           ? findLocalFileByPathUnderReadAction(path)
+           : findLocalFileByPathUnderWriteAction(path);
   }
 
   @Nullable

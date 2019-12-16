@@ -13,7 +13,8 @@ import org.jetbrains.annotations.NotNull;
  */
 @State(
   name = "VcsApplicationSettings",
-  storages = @Storage("vcs.xml")
+  storages = @Storage("vcs.xml"),
+  reportStatistic = true
 )
 public class VcsApplicationSettings implements PersistentStateComponent<VcsApplicationSettings> {
   public String PATCH_STORAGE_LOCATION = null;
@@ -25,7 +26,7 @@ public class VcsApplicationSettings implements PersistentStateComponent<VcsAppli
   public boolean MANAGE_IGNORE_FILES = false;
   public boolean DISABLE_MANAGE_IGNORE_FILES = false;
   public boolean MARK_EXCLUDED_AS_IGNORED = true;
-  public boolean COMMIT_FROM_LOCAL_CHANGES = true;
+  public boolean COMMIT_FROM_LOCAL_CHANGES = false;
 
   public static VcsApplicationSettings getInstance() {
     return ServiceManager.getService(VcsApplicationSettings.class);

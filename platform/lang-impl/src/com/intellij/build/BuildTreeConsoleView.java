@@ -37,7 +37,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
@@ -57,15 +56,10 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
-import javax.swing.plaf.TreeUI;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.List;
@@ -76,9 +70,9 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import static com.intellij.build.BuildConsoleUtils.getMessageTitle;
 import static com.intellij.build.BuildView.CONSOLE_VIEW_NAME;
 import static com.intellij.openapi.util.text.StringUtil.isEmpty;
-import static com.intellij.openapi.util.text.StringUtil.stripHtml;
 import static com.intellij.ui.AnimatedIcon.ANIMATION_IN_RENDERER_ALLOWED;
 import static com.intellij.ui.SimpleTextAttributes.GRAYED_ATTRIBUTES;
 import static com.intellij.util.ObjectUtils.chooseNotNull;
@@ -365,6 +359,17 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     scheduleUpdate(currentNode);
   }
 
+  @ApiStatus.Internal
+  @TestOnly
+  @Nullable
+  public String getSelectedNodeConsoleText() {
+    ExecutionConsole console = myConsoleViewHandler.getCurrentConsole();
+    if (console instanceof ConsoleViewImpl) {
+      return ((ConsoleViewImpl)console).getText();
+    }
+    return null;
+  }
+
   private static EventResult calculateDerivedResult(DerivedResult result, ExecutionNode node) {
     if (node.getResult() != null) {
       return node.getResult(); // if another thread set result for child
@@ -459,15 +464,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     if (text == null) {
       text = defaultFailureMessage;
     }
-    text = stripHtml(text, true);
-    int sepIndex = text.indexOf(". ");
-    if (sepIndex < 0) {
-      sepIndex = text.indexOf("\n");
-    }
-    if (sepIndex > 0) {
-      text = text.substring(0, sepIndex);
-    }
-    String failureNodeName = StringUtil.trimEnd(text, '.');
+    String failureNodeName = getMessageTitle(text);
     ExecutionNode failureNode = parentNode.findFirstChild(executionNode -> failureNodeName.equals(executionNode.getName()));
     if (failureNode == null) {
       failureNode = new ExecutionNode(myProject, parentNode);
@@ -679,12 +676,13 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   }
 
   @ApiStatus.Internal
-  JTree getTree() {
+  public JTree getTree() {
     return myTree;
   }
 
   private static Tree initTree(@NotNull AsyncTreeModel model) {
-    Tree tree = new MyTree(model);
+    Tree tree = new Tree(model);
+    tree.setLargeModel(true);
     UIUtil.putClientProperty(tree, ANIMATION_IN_RENDERER_ALLOWED, true);
     tree.setRootVisible(false);
     EditSourceOnDoubleClickHandler.install(tree);
@@ -952,11 +950,8 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     private final ConsoleViewHandler myConsoleViewHandler;
 
     ScrollEditorToTheEndAction(@NotNull ConsoleViewHandler handler) {
+      super(ActionsBundle.message("action.EditorConsoleScrollToTheEnd.text"), null, AllIcons.RunConfigurations.Scroll_down);
       myConsoleViewHandler = handler;
-      final String message = ActionsBundle.message("action.EditorConsoleScrollToTheEnd.text");
-      getTemplatePresentation().setDescription(message);
-      getTemplatePresentation().setText(message);
-      getTemplatePresentation().setIcon(AllIcons.RunConfigurations.Scroll_down);
     }
 
     @Override
@@ -980,18 +975,6 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
         LogicalPosition position = new LogicalPosition(Math.max(0, Math.min(currentPosition.line, lastLine - 1)), currentPosition.column);
         editor.getCaretModel().moveToLogicalPosition(position);
       }
-    }
-  }
-
-  private static class MyTree extends Tree {
-    private MyTree(TreeModel treemodel) {
-      super(treemodel);
-    }
-
-    @Override
-    public void setUI(final TreeUI ui) {
-      super.setUI(ui instanceof DefaultTreeUI ? ui : DefaultTreeUI.createUI(this));
-      setLargeModel(true);
     }
   }
 

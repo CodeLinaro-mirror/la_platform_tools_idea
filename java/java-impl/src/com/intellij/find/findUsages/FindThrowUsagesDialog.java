@@ -16,7 +16,7 @@
 package com.intellij.find.findUsages;
 
 import com.intellij.find.FindBundle;
-import com.intellij.internal.statistic.service.fus.collectors.FUStateUsagesLogger;
+import com.intellij.internal.statistic.service.fus.collectors.FUCounterUsageLogger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.search.ThrowSearchUtil;
@@ -77,8 +77,7 @@ public class FindThrowUsagesDialog extends JavaFindUsagesDialog<JavaThrowFindUsa
   public void calcFindUsagesOptions(final JavaThrowFindUsagesOptions options) {
     super.calcFindUsagesOptions(options);
     options.isUsages = isSelected(myCbUsages) || !myHasFindWhatPanel;
-    FUStateUsagesLogger.logStateEvent(myEventLogGroup, "FindThrowUsages", createFeatureUsageData(options));
-    options.storeDefaults(myProject);
+    FUCounterUsageLogger.getInstance().logEvent(EVENT_LOG_GROUP, "find.throw.started", createFeatureUsageData(options));
   }
 
   @Override

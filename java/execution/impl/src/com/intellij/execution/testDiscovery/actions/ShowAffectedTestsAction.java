@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.testDiscovery.actions;
 
 import com.intellij.codeInsight.actions.FormatChangedTextUtil;
@@ -19,6 +19,7 @@ import com.intellij.find.FindUtil;
 import com.intellij.find.actions.CompositeActiveComponent;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
+import com.intellij.ide.IdeBundle;
 import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.impl.ActionButton;
@@ -58,6 +59,7 @@ import com.intellij.usages.UsageView;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.PsiNavigateUtil;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.ui.EdtInvocationManager;
@@ -161,7 +163,7 @@ public class ShowAffectedTestsAction extends AnAction {
       if (DumbService.isDumb(project)) return;
       String className = ReadAction.compute(() -> DiscoveredTestsTreeModel.getClassName(psiClass));
       if (className == null) return;
-      List<Couple<String>> classesAndMethods = ContainerUtil.newSmartList(Couple.of(className, null));
+      List<Couple<String>> classesAndMethods = new SmartList<>(Couple.of(className, null));
       processTestDiscovery(project, createTreeProcessor(tree), classesAndMethods, Collections.emptyList());
       EdtInvocationManager.getInstance().invokeLater(() -> tree.setPaintBusy(false));
     });
@@ -220,7 +222,7 @@ public class ShowAffectedTestsAction extends AnAction {
         Document document = FileDocumentManager.getInstance().getDocument(file);
         if (document == null) return null;
 
-        List<PsiElement> physicalMethods = ContainerUtil.newSmartList();
+        List<PsiElement> physicalMethods = new SmartList<>();
         psiFile.accept(new PsiRecursiveElementWalkingVisitor() {
           @Override
           public void visitElement(PsiElement element) {
@@ -323,7 +325,8 @@ public class ShowAffectedTestsAction extends AnAction {
 
     KeyStroke findUsageKeyStroke = findUsagesKeyStroke();
     String pinTooltip =
-      "Open in Find Tool Window" + (findUsageKeyStroke == null ? "" : " " + KeymapUtil.getKeystrokeText(findUsageKeyStroke));
+      IdeBundle.message("show.in.find.window.button.name") +
+      (findUsageKeyStroke == null ? "" : " " + KeymapUtil.getKeystrokeText(findUsageKeyStroke));
     ActiveComponent pinButton = createButton(pinTooltip, AllIcons.General.Pin_tab, pinActionListener, tree);
 
     PopupChooserBuilder builder =

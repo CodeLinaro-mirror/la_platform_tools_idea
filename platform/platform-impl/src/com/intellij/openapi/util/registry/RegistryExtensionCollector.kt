@@ -2,7 +2,10 @@
 package com.intellij.openapi.util.registry
 
 import com.intellij.internal.statistic.utils.getPluginInfoById
-import com.intellij.openapi.extensions.*
+import com.intellij.openapi.extensions.ExtensionPointListener
+import com.intellij.openapi.extensions.ExtensionPointName
+import com.intellij.openapi.extensions.PluginAware
+import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.xmlb.annotations.Attribute
 import com.intellij.util.xmlb.annotations.Transient
@@ -20,9 +23,9 @@ class RegistryKeyBean : PluginAware {
   companion object {
     @JvmStatic
     fun addKeysFromPlugins() {
-      Registry.addKeys(EP_NAME.iterable.map(::createRegistryKeyDescriptor))
+      Registry.addKeys(EP_NAME.iterable.map { createRegistryKeyDescriptor(it) })
 
-      Extensions.getRootArea().getExtensionPoint(EP_NAME).addExtensionPointListener(object : ExtensionPointListener<RegistryKeyBean> {
+      EP_NAME.addExtensionPointListener(object : ExtensionPointListener<RegistryKeyBean> {
         override fun extensionAdded(extension: RegistryKeyBean, pluginDescriptor: PluginDescriptor) {
           Registry.addKeys(listOf(createRegistryKeyDescriptor(extension)))
         }
@@ -30,7 +33,7 @@ class RegistryKeyBean : PluginAware {
         override fun extensionRemoved(extension: RegistryKeyBean, pluginDescriptor: PluginDescriptor) {
           Registry.removeKey(extension.key)
         }
-      }, false, null)
+      }, null)
     }
 
     private fun createRegistryKeyDescriptor(extension: RegistryKeyBean): RegistryKeyDescriptor {

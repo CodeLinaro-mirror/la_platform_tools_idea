@@ -39,6 +39,7 @@ import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.ex.JavaSdkUtil;
 import com.intellij.openapi.roots.CompilerModuleExtension;
 import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
@@ -75,6 +76,11 @@ public abstract class JavaTestFrameworkRunnableState<T extends
   private static final Logger LOG = Logger.getInstance(JavaTestFrameworkRunnableState.class);
 
   private static final ExtensionPointName<JUnitPatcher> JUNIT_PATCHER_EP = new ExtensionPointName<>("com.intellij.junitPatcher");
+  private static final String JIGSAW_OPTIONS = "Jigsaw Options";
+
+  public static ParamsGroup getJigsawOptions(JavaParameters parameters) {
+    return parameters.getVMParametersList().getParamsGroup(JIGSAW_OPTIONS);
+  }
 
   protected ServerSocket myServerSocket;
   protected File myTempFile;
@@ -204,7 +210,7 @@ public abstract class JavaTestFrameworkRunnableState<T extends
     return result;
   }
 
-  protected abstract void configureRTClasspath(JavaParameters javaParameters) throws CantRunException;
+  protected abstract void configureRTClasspath(JavaParameters javaParameters, Module module) throws CantRunException;
 
   @Override
   protected JavaParameters createJavaParameters() throws ExecutionException {
@@ -223,8 +229,8 @@ public abstract class JavaTestFrameworkRunnableState<T extends
     finally {
       getConfiguration().setProgramParameters(parameters);
     }
-    javaParameters.getClassPath().addFirst(JavaSdkUtil.getIdeaRtJarPath());
     configureClasspath(javaParameters);
+    javaParameters.getClassPath().addFirst(JavaSdkUtil.getIdeaRtJarPath());
 
     for (JUnitPatcher patcher : JUNIT_PATCHER_EP.getExtensionList()) {
       patcher.patchJavaParameters(project, module, javaParameters);
@@ -343,7 +349,6 @@ public abstract class JavaTestFrameworkRunnableState<T extends
   }
 
   protected void configureClasspath(final JavaParameters javaParameters) throws CantRunException {
-    configureRTClasspath(javaParameters);
     RunConfigurationModule configurationModule = getConfiguration().getConfigurationModule();
     final String jreHome = getConfiguration().isAlternativeJrePathEnabled() ? getConfiguration().getAlternativeJrePath() : null;
     final int pathType = JavaParameters.JDK_AND_CLASSES_AND_TESTS;
@@ -358,18 +363,25 @@ public abstract class JavaTestFrameworkRunnableState<T extends
     else {
       JavaParametersUtil.configureProject(getConfiguration().getProject(), javaParameters, pathType, jreHome);
     }
+    configureRTClasspath(javaParameters, module);
   }
 
-  private static void configureModulePath(JavaParameters javaParameters, @NotNull Module module) {
-    DumbService dumbService = DumbService.getInstance(module.getProject());
-    PsiJavaModule currentModule =
-      dumbService.computeWithAlternativeResolveEnabled(() -> JavaModuleGraphUtil.findDescriptorByModule(module, true));
-    if (currentModule != null) {
-      //add current module explicitly as it's not reachable from `idea.rt` auto modules
-      ParametersList vmParametersList = javaParameters.getVMParametersList();
-      vmParametersList.add("--add-modules");
-      vmParametersList.add(currentModule.getName());
+  protected static PsiJavaModule findJavaModule(Module module, boolean inTests) {
+    return DumbService.getInstance(module.getProject())
+      .computeWithAlternativeResolveEnabled(() -> JavaModuleGraphUtil.findDescriptorByModule(module, inTests));
+  }
 
+  private void configureModulePath(JavaParameters javaParameters, @NotNull Module module) {
+    PsiJavaModule testModule = findJavaModule(module, true);
+    if (testModule != null) {
+      //adding the test module explicitly as it is unreachable from `idea.rt`
+      ParametersList vmParametersList = javaParameters
+        .getVMParametersList()
+        .addParamsGroup(JIGSAW_OPTIONS)
+        .getParametersList();
+
+      vmParametersList.add("--add-modules");
+      vmParametersList.add(testModule.getName());
       //setup module path
       PathsList classPath = javaParameters.getClassPath();
       PathsList modulePath = javaParameters.getModulePath();
@@ -377,7 +389,10 @@ public abstract class JavaTestFrameworkRunnableState<T extends
       classPath.clear();
     }
     else {
-      splitDepsBetweenModuleAndClasspath(module, javaParameters);
+      PsiJavaModule prodModule = findJavaModule(module, false);
+      if (prodModule != null) {
+        splitDepsBetweenModuleAndClasspath(javaParameters, module, prodModule);
+      }
     }
   }
 
@@ -385,54 +400,95 @@ public abstract class JavaTestFrameworkRunnableState<T extends
    * Put dependencies reachable from module-info located in production sources on the module path
    * leave all other dependencies on the class path as is
    */
-  private static void splitDepsBetweenModuleAndClasspath(Module module, JavaParameters javaParameters) {
-    PsiJavaModule prodModule =
-      DumbService.getInstance(module.getProject())
-        .computeWithAlternativeResolveEnabled(() -> JavaModuleGraphUtil.findDescriptorByModule(module, false));
-    if (prodModule == null) {
-      return;
-    }
+  private void splitDepsBetweenModuleAndClasspath(JavaParameters javaParameters, Module module, PsiJavaModule prodModule) {
     CompilerModuleExtension compilerExt = CompilerModuleExtension.getInstance(module);
-    if (compilerExt == null) {
-      return;
-    }
+    if (compilerExt == null) return;
+
     PathsList modulePath = javaParameters.getModulePath();
     PathsList classPath = javaParameters.getClassPath();
 
-    //put all transitive required modules on the module path
-    Set<PsiJavaModule> allRequires = JavaModuleGraphUtil.getAllRequires(prodModule);
-    JarFileSystem instance = JarFileSystem.getInstance();
-    for (PsiJavaModule javaModule : allRequires) {
-      VirtualFile virtualFile = instance.getLocalVirtualFileFor(PsiImplUtil.getModuleVirtualFile(javaModule));
-      if (virtualFile != null) {
-        classPath.remove(virtualFile.getPath());
-        modulePath.add(virtualFile.getPath());
-      }
-    }
+    putDependenciesOnModulePath(modulePath, classPath, prodModule);
 
-    ParametersList vmParametersList = javaParameters.getVMParametersList();
-    //put production output on the module path
-    VirtualFile out = compilerExt.getCompilerOutputPath();
-    if (out != null) {
-      classPath.remove(out.getPath());
-      modulePath.add(out.getPath());
-    }
+    ParametersList vmParametersList = javaParameters.getVMParametersList()
+      .addParamsGroup(JIGSAW_OPTIONS)
+      .getParametersList();
+    String prodModuleName = prodModule.getName();
 
     //ensure test output is merged to the production module
     VirtualFile testOutput = compilerExt.getCompilerOutputPathForTests();
     if (testOutput != null) {
       vmParametersList.add("--patch-module");
-      vmParametersList.add(prodModule.getName() + "=" + testOutput.getPath());
+      vmParametersList.add(prodModuleName + "=" + testOutput.getPath());
     }
 
-    //ensure test dependencies which are missed from production module info are available in tests
+    //ensure test dependencies missing from production module descriptor are available in tests
     //todo enumerate all test dependencies explicitly
     vmParametersList.add("--add-reads");
-    vmParametersList.add(prodModule.getName() + "=ALL-UNNAMED");
+    vmParametersList.add(prodModuleName + "=ALL-UNNAMED");
 
-    //ensure production module is explicitly added as test starter doesn't depend on it explicitly
+    //open packages with tests to test runner
+    List<String> opensOptions = new ArrayList<>();
+    collectPackagesToOpen(opensOptions);
+    for (String option : opensOptions) {
+      if (option.isEmpty()) continue;
+      vmParametersList.add("--add-opens");
+      vmParametersList.add(prodModuleName + "/" + option + "=ALL-UNNAMED");
+    }
+
+    //ensure production module is explicitly added as test starter in `idea-rt` doesn't depend on it
     vmParametersList.add("--add-modules");
-    vmParametersList.add(prodModule.getName());
+    vmParametersList.add(prodModuleName);
+  }
+
+  protected void collectPackagesToOpen(List<String> options) { }
+
+  /**
+   * called on EDT
+   */
+  protected static void collectSubPackages(List<String> options, PsiPackage aPackage, GlobalSearchScope globalSearchScope) {
+    if (aPackage.getClasses(globalSearchScope).length > 0) {
+      options.add(aPackage.getQualifiedName());
+    }
+    PsiPackage[] subPackages = aPackage.getSubPackages(globalSearchScope);
+    for (PsiPackage subPackage : subPackages) {
+      collectSubPackages(options, subPackage, globalSearchScope);
+    }
+  }
+
+  protected static void putDependenciesOnModulePath(PathsList modulePath,
+                                                    PathsList classPath,
+                                                    PsiJavaModule prodModule) {
+    Set<PsiJavaModule> allRequires = JavaModuleGraphUtil.getAllDependencies(prodModule);
+    allRequires.add(prodModule);    //put production output on the module path as well
+    JarFileSystem jarFS = JarFileSystem.getInstance();
+    ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(prodModule.getProject());
+    allRequires.stream()
+      .filter(javaModule -> !PsiJavaModule.JAVA_BASE.equals(javaModule.getName()))
+      .map(javaModule -> getClasspathEntry(javaModule, fileIndex, jarFS))
+      .filter(Objects::nonNull)
+      .forEach(file -> putOnModulePath(modulePath, classPath, file));
+  }
+
+  private static void putOnModulePath(PathsList modulePath, PathsList classPath, VirtualFile virtualFile) {
+    String path = PathUtil.getLocalPath(virtualFile.getPath());
+    if (classPath.getPathList().contains(path)) {
+      classPath.remove(path);
+      modulePath.add(path);
+    }
+  }
+
+  private static VirtualFile getClasspathEntry(PsiJavaModule javaModule,
+                                               ProjectFileIndex fileIndex,
+                                               JarFileSystem jarFileSystem) {
+    VirtualFile moduleFile = PsiImplUtil.getModuleVirtualFile(javaModule);
+
+    Module moduleDependency = fileIndex.getModuleForFile(moduleFile);
+    if (moduleDependency == null) {
+      return jarFileSystem.getLocalVirtualFileFor(moduleFile);
+    }
+
+    CompilerModuleExtension moduleExtension = CompilerModuleExtension.getInstance(moduleDependency);
+    return moduleExtension != null ? moduleExtension.getCompilerOutputPath() : null;
   }
 
   protected void createServerSocket(JavaParameters javaParameters) {
@@ -470,7 +526,7 @@ public abstract class JavaTestFrameworkRunnableState<T extends
   }
 
   /**
-   * Configuration based on package which spans multiple modules
+   * Configuration based on a package spanning multiple modules.
    */
   protected boolean forkPerModule() {
     return getScope() != TestSearchScope.SINGLE_MODULE &&
@@ -519,12 +575,28 @@ public abstract class JavaTestFrameworkRunnableState<T extends
 
           if (classpath == null) {
             final JavaParameters parameters = new JavaParameters();
-            parameters.getClassPath().add(JavaSdkUtil.getIdeaRtJarPath());
-             try {
-               configureRTClasspath(parameters);
-               JavaParametersUtil.configureModule(module, parameters, JavaParameters.JDK_AND_CLASSES_AND_TESTS,
-                                                 getConfiguration().isAlternativeJrePathEnabled() ? getConfiguration().getAlternativeJrePath() : null);
+            try {
+              JavaParametersUtil.configureModule(module, parameters, JavaParameters.JDK_AND_CLASSES_AND_TESTS,
+                                                 getConfiguration().isAlternativeJrePathEnabled() ? getConfiguration()
+                                                   .getAlternativeJrePath() : null);
+              if (JavaSdkUtil.isJdkAtLeast(parameters.getJdk(), JavaSdkVersion.JDK_1_9)) {
+                configureModulePath(parameters, module);
+              }
+              configureRTClasspath(parameters, module);
+              parameters.getClassPath().add(JavaSdkUtil.getIdeaRtJarPath());
               wWriter.println(parameters.getClassPath().getPathsString());
+              wWriter.println(parameters.getModulePath().getPathsString());
+              ParamsGroup paramsGroup = getJigsawOptions(parameters);
+              if (paramsGroup == null) {
+                wWriter.println(0);
+              }
+              else {
+                List<String> parametersList = paramsGroup.getParametersList().getList();
+                wWriter.println(parametersList.size());
+                for (String option : parametersList) {
+                  wWriter.println(option);
+                }
+              }
             }
             catch (CantRunException e) {
               wWriter.println(javaParameters.getClassPath().getPathsString());

@@ -67,6 +67,15 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
     init(null, project);
   }
 
+  public SettingsDialog(@NotNull Project project, @Nullable Component parentComponent, @NotNull List<? extends ConfigurableGroup> groups, @Nullable Configurable configurable, @Nullable String filter) {
+    super(project, parentComponent, true, IdeModalityType.IDE);
+
+    myDimensionServiceKey = DIMENSION_KEY;
+    myEditor = new SettingsEditor(myDisposable, project, groups, configurable, filter, this::treeViewFactory);
+    myApplyButtonNeeded = true;
+    init(null, project);
+  }
+
   @NotNull
   protected SettingsTreeView treeViewFactory(@NotNull SettingsFilter filter, @NotNull List<? extends ConfigurableGroup> groups) {
     return new SettingsTreeView(filter, groups);
@@ -187,7 +196,7 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
   public void applyAndClose(boolean scheduleSave) {
     if (myEditor.apply()) {
       if (scheduleSave) {
-        SaveAndSyncHandler.getInstance().scheduleSave(new SaveAndSyncHandler.SaveTask(null, /* saveDocuments = */ false), false);
+        SaveAndSyncHandler.getInstance().scheduleSave(new SaveAndSyncHandler.SaveTask(null, /* saveDocuments = */ false, /* forceSavingAllSettings = */ true), false);
       }
       super.doOKAction();
     }
@@ -196,7 +205,7 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
   @Override
   public void doCancelAction(AWTEvent source) {
     if (source instanceof KeyEvent || source instanceof ActionEvent) {
-      if (!myEditor.cancel()) {
+      if (!myEditor.cancel(source)) {
         return;
       }
     }

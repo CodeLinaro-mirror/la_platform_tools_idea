@@ -18,6 +18,8 @@ import java.util.Objects;
 
 import static com.intellij.util.ObjectUtils.notNull;
 
+//not used currently
+@SuppressWarnings("ComponentNotRegistered")
 public class ShowPreviewEditorAction extends DumbAwareAction {
   public static final DataKey<DiffPreviewProvider> DATA_KEY = DataKey.create("com.intellij.vcs.log.ui.actions.ShowPreviewEditorAction.DiffPreviewProvider");
 
@@ -52,6 +54,7 @@ public class ShowPreviewEditorAction extends DumbAwareAction {
     @NotNull private final DiffPreviewProvider myProvider;
 
     private MyDiffVirtualFile(@NotNull DiffPreviewProvider provider) {
+      super("Diff");
       myProvider = provider;
     }
 

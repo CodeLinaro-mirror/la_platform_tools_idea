@@ -20,10 +20,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
-import com.intellij.vcs.log.VcsLogRangeFilter;
-import com.intellij.vcs.log.VcsLogRootFilter;
-import com.intellij.vcs.log.impl.VcsLogContentUtil;
-import com.intellij.vcs.log.visible.filters.VcsLogFilterObject;
+import com.intellij.openapi.util.registry.Registry;
 import git4idea.GitVcs;
 import git4idea.commands.Git;
 import git4idea.repo.GitRepository;
@@ -60,10 +57,15 @@ class GitBrancherImpl implements GitBrancher {
 
   @Override
   public void createBranch(@NotNull String name, @NotNull Map<GitRepository, String> startPoints) {
+    createBranch(name, startPoints, false);
+  }
+
+  @Override
+  public void createBranch(@NotNull String name, @NotNull Map<GitRepository, String> startPoints, boolean force) {
     new CommonBackgroundTask(myProject, "Creating branch " + name, null) {
       @Override
       public void execute(@NotNull ProgressIndicator indicator) {
-        newWorker(indicator).createBranch(name, startPoints);
+        newWorker(indicator).createBranch(name, startPoints, force);
       }
     }.runInBackground();
   }
@@ -98,10 +100,18 @@ class GitBrancherImpl implements GitBrancher {
                                             @NotNull String startPoint,
                                             @NotNull List<? extends GitRepository> repositories,
                                             @Nullable Runnable callInAwtLater) {
+    checkoutNewBranchStartingFrom(newBranchName, startPoint, false, repositories, callInAwtLater);
+  }
+
+  @Override
+  public void checkoutNewBranchStartingFrom(@NotNull String newBranchName,
+                                            @NotNull String startPoint, boolean overwriteIfNeeded,
+                                            @NotNull List<? extends GitRepository> repositories,
+                                            @Nullable Runnable callInAwtLater) {
     new CommonBackgroundTask(myProject, String.format("Checking out %s from %s", newBranchName, startPoint), callInAwtLater) {
       @Override
       public void execute(@NotNull ProgressIndicator indicator) {
-        newWorker(indicator).checkoutNewBranchStartingFrom(newBranchName, startPoint, repositories);
+        newWorker(indicator).checkoutNewBranchStartingFrom(newBranchName, startPoint, overwriteIfNeeded, repositories);
       }
     }.runInBackground();
   }
@@ -129,11 +139,17 @@ class GitBrancherImpl implements GitBrancher {
   @Override
   public void compare(@NotNull String branchName, @NotNull List<? extends GitRepository> repositories,
                       @NotNull GitRepository selectedRepository) {
-    VcsLogContentUtil.runWhenLogIsReady(myProject, (log, logManager) -> {
-      VcsLogRangeFilter range = VcsLogFilterObject.fromRange("HEAD", branchName);
-      VcsLogRootFilter roots = repositories.size() == 1 ? VcsLogFilterObject.fromRoot(selectedRepository.getRoot()) : null;
-      log.getTabsManager().openAnotherLogTab(logManager, VcsLogFilterObject.collection(range, roots));
-    });
+    if (Registry.is("git.compare.branches.as.tab")) {
+      new GitCompareBranchesUi(myProject, repositories, branchName).create();
+    }
+    else {
+      new CommonBackgroundTask(myProject, "Comparing with " + branchName + "...", null) {
+        @Override
+        public void execute(@NotNull ProgressIndicator indicator) {
+          newWorker(indicator).compare(branchName, repositories, selectedRepository);
+        }
+      }.runInBackground();
+    }
   }
 
   @Override
@@ -163,13 +179,19 @@ class GitBrancherImpl implements GitBrancher {
 
   @Override
   public void rebaseOnCurrent(@NotNull List<? extends GitRepository> repositories, @NotNull String branchName) {
+    rebase(repositories, "HEAD", branchName);
+  }
+
+  @Override
+  public void rebase(@NotNull List<? extends GitRepository> repositories, @NotNull String upstream, @NotNull String branchName) {
     new CommonBackgroundTask(myProject, "Rebasing " + branchName + "...", null) {
       @Override
       void execute(@NotNull ProgressIndicator indicator) {
-        newWorker(indicator).rebaseOnCurrent(repositories, branchName);
+        newWorker(indicator).rebase(repositories, upstream, branchName);
       }
     }.runInBackground();
   }
+
 
   @Override
   public void renameBranch(@NotNull String currentName, @NotNull String newName, @NotNull List<? extends GitRepository> repositories) {
@@ -218,12 +240,7 @@ class GitBrancherImpl implements GitBrancher {
       execute(indicator);
       if (myCallInAwtAfterExecution != null) {
         Application application = ApplicationManager.getApplication();
-        if (application.isUnitTestMode()) {
-          myCallInAwtAfterExecution.run();
-        }
-        else {
-          application.invokeLater(myCallInAwtAfterExecution, application.getDefaultModalityState());
-        }
+        application.invokeLater(myCallInAwtAfterExecution, application.getDefaultModalityState());
       }
     }
 

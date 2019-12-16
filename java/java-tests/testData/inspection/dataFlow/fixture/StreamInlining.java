@@ -61,7 +61,7 @@ public class StreamInlining {
   void testIsInstanceIncomplete(List<?> objects) {
     IntStream is = objects.stream()
       .filter(String.class::isInstance)
-      .mapToInt(x -> (<warning descr="Casting 'x' to 'Integer' may produce 'ClassCastException'">Integer</warning>)x);
+      .mapToInt(x -> (<warning descr="Casting 'x' to 'Integer' will produce 'ClassCastException' for any non-null value">Integer</warning>)x);
 
     objects.stream()
       .filter(String.class::isInstance)
@@ -300,5 +300,11 @@ public class StreamInlining {
         <error descr="Cannot resolve symbol 'aa'">aa</error>, 
         <error descr="Cannot resolve symbol 'bb'">bb</error>, 
         <error descr="Cannot resolve symbol 'cc'">cc</error>));
+  }
+
+  void testNotTooComplexForEach(List<String> list) {
+    int[] count = {0};
+    list.stream().forEach(l -> count[0]++);
+    System.out.println(count[0]);
   }
 }

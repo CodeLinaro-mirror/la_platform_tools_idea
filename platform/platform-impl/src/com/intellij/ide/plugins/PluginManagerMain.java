@@ -6,8 +6,10 @@ import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.ui.search.SearchUtil;
 import com.intellij.ide.ui.search.SearchableOptionsRegistrar;
-import com.intellij.notification.NotificationListener;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationType;
+import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.ex.ApplicationEx;
@@ -25,6 +27,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.util.XmlStringUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,7 +38,6 @@ import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLFrameHyperlinkEvent;
 import java.io.IOException;
 import java.net.URL;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -47,7 +49,6 @@ import static com.intellij.openapi.util.text.StringUtil.isEmptyOrSpaces;
  * @author Konstantin Bulenkov
  */
 public abstract class PluginManagerMain {
-  public static final String JETBRAINS_VENDOR = "JetBrains";
 
   public static final Logger LOG = Logger.getInstance(PluginManagerMain.class);
 
@@ -62,7 +63,7 @@ public abstract class PluginManagerMain {
   public static boolean isDevelopedByJetBrains(@Nullable String vendorString) {
     if (vendorString == null) return false;
     for (String vendor : StringUtil.split(vendorString, ",")) {
-      if (vendor.trim().equals(JETBRAINS_VENDOR)) {
+      if (PluginManagerCore.VENDOR_JETBRAINS.equals(vendor.trim())) {
         return true;
       }
     }
@@ -87,6 +88,7 @@ public abstract class PluginManagerMain {
   /**
    * @deprecated use {@link #downloadPlugins(List, List, Runnable, PluginEnabler, Runnable)} instead
    */
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
   @Deprecated
   public static boolean downloadPlugins(List<PluginNode> plugins,
                                         List<? extends PluginId> allPlugins,
@@ -104,14 +106,22 @@ public abstract class PluginManagerMain {
                                         Runnable onSuccess,
                                         PluginEnabler pluginEnabler,
                                         @Nullable Runnable cleanup) throws IOException {
+    return downloadPlugins(plugins, allPlugins, false, onSuccess, pluginEnabler, cleanup);
+  }
+
+  public static boolean downloadPlugins(List<PluginNode> plugins,
+                                        List<? extends IdeaPluginDescriptor> allPlugins,
+                                        boolean allowInstallWithoutRestart,
+                                        Runnable onSuccess,
+                                        PluginEnabler pluginEnabler,
+                                        @Nullable Runnable cleanup) throws IOException {
     boolean[] result = new boolean[1];
     try {
       ProgressManager.getInstance().run(new Task.Backgroundable(null, IdeBundle.message("progress.download.plugins"), true, PluginManagerUISettings.getInstance()) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           try {
-            if (PluginInstaller.prepareToInstall(plugins, allPlugins, pluginEnabler, indicator)) {
-              ApplicationManager.getApplication().invokeLater(onSuccess);
+            if (PluginInstaller.prepareToInstall(plugins, allPlugins, allowInstallWithoutRestart, pluginEnabler, onSuccess, indicator)) {
               result[0] = true;
             }
           }
@@ -257,7 +267,7 @@ public abstract class PluginManagerMain {
       }
       List<PluginId> depends = node.getDepends();
       if (depends != null) {
-        Set<PluginId> optionalDeps = new HashSet<>(Arrays.asList(node.getOptionalDependentPluginIds()));
+        Set<PluginId> optionalDeps = ContainerUtil.set(node.getOptionalDependentPluginIds());
         for (PluginId dependantId : depends) {
           if (optionalDeps.contains(dependantId)) continue;
           IdeaPluginDescriptor pluginDescriptor = PluginManagerCore.getPlugin(dependantId);
@@ -357,14 +367,18 @@ public abstract class PluginManagerMain {
 
   public static void notifyPluginsUpdated(@Nullable Project project) {
     ApplicationEx app = ApplicationManagerEx.getApplicationEx();
-    String title = IdeBundle.message("update.notifications.title");
-    String action = IdeBundle.message(app.isRestartCapable() ? "ide.restart.action" : "ide.shutdown.action");
-    String message = IdeBundle.message("ide.restart.required.notification", action, ApplicationNamesInfo.getInstance().getFullProductName());
-    NotificationListener listener = (notification, __) -> {
-      notification.expire();
-      app.restart(true);
-    };
-    UpdateChecker.NOTIFICATIONS.createNotification(title, XmlStringUtil.wrapInHtml(message), NotificationType.INFORMATION, listener).notify(project);
+    String title = IdeBundle.message("updates.plugins.ready.title", ApplicationNamesInfo.getInstance().getFullProductName());
+    String action = IdeBundle.message("ide.restart.required.notification",
+                                      IdeBundle.message(app.isRestartCapable() ? "ide.restart.action" : "ide.shutdown.action"));
+    Notification notification = UpdateChecker.NOTIFICATIONS.createNotification(title, "", NotificationType.INFORMATION, null);
+    notification.addAction(new NotificationAction(action) {
+      @Override
+      public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
+        notification.expire();
+        app.restart(true);
+      }
+    });
+    notification.notify(project);
   }
 
   public static boolean checkThirdPartyPluginsAllowed(Iterable<? extends IdeaPluginDescriptor> descriptors) {

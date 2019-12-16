@@ -35,6 +35,7 @@ import org.jetbrains.annotations.Nullable;
  * new Task.Backgroundable(project, "Synchronizing data", true) {
  *  public void run(ProgressIndicator indicator) {
  *    indicator.setText("Loading changes");
+ *    indicator.setIndeterminate(false);
  *    indicator.setFraction(0.0);
  *    // some code
  *    indicator.setFraction(1.0);
@@ -231,10 +232,10 @@ public abstract class Task implements TaskInfo, Progressive {
     }
 
     /**
-     * @deprecated do not implement. to remove in IDEA 16
+     * @deprecated do not implement
      */
     @Deprecated
-    @ApiStatus.ScheduledForRemoval(inVersion = "2016")
+    @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
     public DumbModeAction getDumbModeAction() {
       return DumbModeAction.NOTHING;
     }

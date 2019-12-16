@@ -17,7 +17,6 @@ iml_module(
     ],
     # do not sort: must match IML order
     test_runtime_deps = [
-        "//tools/idea/xml/dom-openapi:intellij.xml.dom",
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
         "//tools/idea/xml/relaxng:intellij.relaxng",
     ],
@@ -41,6 +40,7 @@ iml_module(
         "//tools/idea/json:intellij.json",
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
     ],
     # do not sort: must match IML order
     deps = [

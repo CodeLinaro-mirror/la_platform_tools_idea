@@ -433,7 +433,7 @@ public class ContentManagerImpl implements ContentManager, PropertyChangeListene
     mySelectionHistory.remove(content);
     mySelectionHistory.add(0, content);
     if (isSelected(content) && requestFocus) {
-      return requestFocus(content, forcedFocus);
+      return getFocusManager().requestFocus(getComponent(), true).doWhenProcessed(() -> requestFocus(content, forcedFocus));
     }
 
     if (!checkSelectionChangeShouldBeProcessed(content, implicit)) {
@@ -470,7 +470,7 @@ public class ContentManagerImpl implements ContentManager, PropertyChangeListene
     boolean enabledFocus = getFocusManager().isFocusTransferEnabled();
     if (focused || requestFocus) {
       if (enabledFocus) {
-        return getFocusManager().requestFocus(getComponent(), true).doWhenProcessed(() -> selection.run().notify(result));
+        return getFocusManager().requestFocusInProject(getComponent(), myProject).doWhenProcessed(() -> selection.run().notify(result));
       }
     }
     return selection.run().notify(result);

@@ -21,6 +21,7 @@ import java.awt.Color
 class ConsolePromptDecorator(private val myEditorEx: EditorEx) : EditorLinePainter(), TextAnnotationGutterProvider {
 
   var mainPrompt: String = "> "
+    get() = if (myEditorEx.isRendererMode) "" else field
     set(mainPrompt) {
       if (this.mainPrompt != mainPrompt) {
         // to be compatible with LanguageConsoleView we should reset the indent prompt
@@ -38,6 +39,7 @@ class ConsolePromptDecorator(private val myEditorEx: EditorEx) : EditorLinePaint
     }
 
   var indentPrompt: String = ""
+    get() = if (myEditorEx.isRendererMode) "" else field
     set(indentPrompt) {
       field = indentPrompt
       update()
@@ -75,8 +77,12 @@ class ConsolePromptDecorator(private val myEditorEx: EditorEx) : EditorLinePaint
 
   override fun gutterClosed() {}
 
+  override fun useMargin(): Boolean = false
+
   fun update() {
-    UIUtil.invokeLaterIfNeeded { myEditorEx.gutterComponentEx.revalidateMarkup() }
+    UIUtil.invokeLaterIfNeeded {
+      myEditorEx.gutterComponentEx.revalidateMarkup()
+    }
   }
 
   companion object {

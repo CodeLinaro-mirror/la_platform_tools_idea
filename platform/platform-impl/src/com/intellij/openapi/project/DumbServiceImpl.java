@@ -2,10 +2,12 @@
 package com.intellij.openapi.project;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.intellij.diagnostic.LoadingPhase;
+import com.intellij.diagnostic.LoadingState;
+import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.file.BatchFileChangeListener;
+import com.intellij.internal.statistic.IdeActivity;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.impl.ApplicationImpl;
@@ -73,14 +75,12 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
   private final Queue<Runnable> myRunWhenSmartQueue = new Queue<>(5);
   private final Project myProject;
   private final ThreadLocal<Integer> myAlternativeResolution = new ThreadLocal<>();
-  private final StartupManager myStartupManager;
   private volatile ProgressSuspender myCurrentSuspender;
   private final List<String> myRequestedSuspensions = ContainerUtil.createEmptyCOWList();
 
-  public DumbServiceImpl(Project project, StartupManager startupManager) {
+  public DumbServiceImpl(Project project) {
     myProject = project;
     myPublisher = project.getMessageBus().syncPublisher(DUMB_MODE);
-    myStartupManager = startupManager;
 
     ApplicationManager.getApplication().getMessageBus().connect(project)
                       .subscribe(BatchFileChangeListener.TOPIC, new BatchFileChangeListener() {
@@ -149,6 +149,12 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
     try (AccessToken ignore = heavyActivityStarted(activityName)) {
       activity.run();
     }
+  }
+
+  @Override
+  public boolean isSuspendedDumbMode() {
+    ProgressSuspender suspender = myCurrentSuspender;
+    return isDumb() && suspender != null && suspender.isSuspended();
   }
 
   @NotNull
@@ -230,7 +236,7 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
 
   @Override
   public void runWhenSmart(@Async.Schedule @NotNull Runnable runnable) {
-    myStartupManager.runWhenProjectIsInitialized(() -> {
+    StartupManager.getInstance(myProject).runWhenProjectIsInitialized(() -> {
       synchronized (myRunWhenSmartQueue) {
         if (isDumb()) {
           myRunWhenSmartQueue.addLast(runnable);
@@ -351,7 +357,7 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
       }
     }
 
-    LoadingPhase.compareAndSet(LoadingPhase.PROJECT_OPENED, LoadingPhase.INDEXING_FINISHED);
+    StartUpMeasurer.compareAndSetCurrentState(LoadingState.PROJECT_OPENED, LoadingState.INDEXING_FINISHED);
 
     myDumbEnterTrace = null;
     myDumbStart = null;
@@ -529,6 +535,7 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
       myCurrentSuspender = suspender;
       suspendIfRequested(suspender);
 
+      IdeActivity activity = IdeActivity.started(myProject, "indexing");
       final ShutDownTracker shutdownTracker = ShutDownTracker.getInstance();
       final Thread self = Thread.currentThread();
       try {
@@ -542,6 +549,7 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
           if (pair == null) break;
 
           task = pair.first;
+          activity.stageStarted(task.getClass());
           ProgressIndicatorEx taskIndicator = pair.second;
           suspender.attachToProgress(taskIndicator);
           taskIndicator.addStateDelegate(new AbstractProgressIndicatorExBase() {
@@ -566,6 +574,7 @@ public class DumbServiceImpl extends DumbService implements Disposable, Modifica
         // the ProgressSuspender close() method called at the exit of this try-with-resources block which removes the hook if it has been
         // previously installed.
         myCurrentSuspender = null;
+        activity.finished();
       }
     }
   }

@@ -2,7 +2,7 @@
 package com.intellij.util.ui;
 
 import com.intellij.BundleBase;
-import com.intellij.diagnostic.LoadingPhase;
+import com.intellij.diagnostic.LoadingState;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
@@ -78,15 +78,17 @@ import java.util.regex.Pattern;
  */
 @SuppressWarnings("StaticMethodOnlyUsedInOneClass")
 public final class UIUtil extends StartupUiUtil {
+
   static {
-    LoadingPhase.LAF_INITIALIZED.assertAtLeast();
+    LoadingState.LAF_INITIALIZED.checkOccurred();
   }
 
   public static final String BORDER_LINE = "<hr size=1 noshade>";
 
   public static final Key<Boolean> LAF_WITH_THEME_KEY = Key.create("Laf.with.ui.theme");
 
-  public static final boolean SUPPRESS_FOCUS_STEALING = Registry.is("suppress.focus.stealing.linux", false) && Registry.is("suppress.focus.stealing", true);
+  public static final boolean SUPPRESS_FOCUS_STEALING = Registry.is("suppress.focus.stealing.active.window.checks", false);
+  public static final boolean DISABLE_AUTO_REQUEST_FOCUS = Registry.is("suppress.focus.stealing.disable.auto.request.focus", false);
 
   @NotNull
   // cannot be static because logging maybe not configured yet
@@ -94,80 +96,73 @@ public final class UIUtil extends StartupUiUtil {
     return Logger.getInstance("#com.intellij.util.ui.UIUtil");
   }
 
-  /**
-   * @deprecated use {@link #decorateWindowHeader(JRootPane)}
-   */
-  @Deprecated
-  public static void decorateFrame(@NotNull JRootPane pane) {
-    decorateWindowHeader(pane);
-  }
-
   public static void decorateWindowHeader(JRootPane pane) {
     if (pane != null && SystemInfo.isMac) {
-      pane.putClientProperty("jetbrains.awt.windowDarkAppearance", Registry.is("ide.mac.allowDarkWindowDecorations", false) &&
-                                                                   StartupUiUtil.isUnderDarcula());
+      pane.putClientProperty("jetbrains.awt.windowDarkAppearance", StartupUiUtil.isUnderDarcula());
     }
   }
 
   public static void setCustomTitleBar(@NotNull Window window, @NotNull JRootPane rootPane, Consumer<Runnable> onDispose) {
-    if(SystemInfo.isMac && Registry.is("ide.mac.transparentTitleBarAppearance", false)) {
-      JBInsets topWindowInset = JBUI.insetsTop(24);
-      rootPane.putClientProperty("jetbrains.awt.transparentTitleBarAppearance", true);
-      AbstractBorder customDecorationBorder = new AbstractBorder() {
-        @Override
-        public Insets getBorderInsets(Component c) {
-          return topWindowInset;
-        }
-
-        @Override
-        public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-          Graphics2D graphics = (Graphics2D)g.create();
-          try {
-            Rectangle headerRectangle = new Rectangle(0, 0, c.getWidth(), topWindowInset.top);
-            graphics.setColor(getPanelBackground());
-            graphics.fill(headerRectangle);
-            Color color = window.isActive()
-                          ? JBColor.black
-                          : JBColor.gray;
-            graphics.setColor(color);
-            int controlButtonsWidth = 70;
-            String windowTitle = getWindowTitle(window);
-            double widthToFit = (controlButtonsWidth*2 + GraphicsUtil.stringWidth(windowTitle, g.getFont())) - c.getWidth();
-            if (widthToFit <= 0) {
-              drawCenteredString(graphics, headerRectangle, windowTitle);
-            } else {
-              FontMetrics fm = graphics.getFontMetrics();
-              Rectangle2D stringBounds = fm.getStringBounds(windowTitle, graphics);
-              Rectangle bounds =
-                AffineTransform.getTranslateInstance(controlButtonsWidth, fm.getAscent() + (headerRectangle.height - stringBounds.getHeight()) / 2).createTransformedShape(stringBounds).getBounds();
-              drawCenteredString(graphics, bounds, windowTitle, false, true);
-            }
-          }
-          finally {
-            graphics.dispose();
-          }
-        }
-      };
-      rootPane.setBorder(customDecorationBorder);
-
-      WindowAdapter windowAdapter = new WindowAdapter() {
-        @Override
-        public void windowActivated(WindowEvent e) {
-          rootPane.repaint();
-        }
-
-        @Override
-        public void windowDeactivated(WindowEvent e) {
-          rootPane.repaint();
-        }
-      };
-      PropertyChangeListener propertyChangeListener = e -> rootPane.repaint();
-      window.addPropertyChangeListener("title", propertyChangeListener);
-      onDispose.consume(() -> {
-        window.removeWindowListener(windowAdapter);
-        window.removePropertyChangeListener("title", propertyChangeListener);
-      });
+    if (!SystemInfo.isMac || !Registry.is("ide.mac.transparentTitleBarAppearance", false)) {
+      return;
     }
+
+    JBInsets topWindowInset = JBUI.insetsTop(24);
+    rootPane.putClientProperty("jetbrains.awt.transparentTitleBarAppearance", true);
+    AbstractBorder customDecorationBorder = new AbstractBorder() {
+      @Override
+      public Insets getBorderInsets(Component c) {
+        return topWindowInset;
+      }
+
+      @Override
+      public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
+        Graphics2D graphics = (Graphics2D)g.create();
+        try {
+          Rectangle headerRectangle = new Rectangle(0, 0, c.getWidth(), topWindowInset.top);
+          graphics.setColor(getPanelBackground());
+          graphics.fill(headerRectangle);
+          Color color = window.isActive()
+                        ? JBColor.black
+                        : JBColor.gray;
+          graphics.setColor(color);
+          int controlButtonsWidth = 70;
+          String windowTitle = getWindowTitle(window);
+          double widthToFit = (controlButtonsWidth*2 + GraphicsUtil.stringWidth(windowTitle, g.getFont())) - c.getWidth();
+          if (widthToFit <= 0) {
+            drawCenteredString(graphics, headerRectangle, windowTitle);
+          } else {
+            FontMetrics fm = graphics.getFontMetrics();
+            Rectangle2D stringBounds = fm.getStringBounds(windowTitle, graphics);
+            Rectangle bounds =
+              AffineTransform.getTranslateInstance(controlButtonsWidth, fm.getAscent() + (headerRectangle.height - stringBounds.getHeight()) / 2).createTransformedShape(stringBounds).getBounds();
+            drawCenteredString(graphics, bounds, windowTitle, false, true);
+          }
+        }
+        finally {
+          graphics.dispose();
+        }
+      }
+    };
+    rootPane.setBorder(customDecorationBorder);
+
+    WindowAdapter windowAdapter = new WindowAdapter() {
+      @Override
+      public void windowActivated(WindowEvent e) {
+        rootPane.repaint();
+      }
+
+      @Override
+      public void windowDeactivated(WindowEvent e) {
+        rootPane.repaint();
+      }
+    };
+    PropertyChangeListener propertyChangeListener = e -> rootPane.repaint();
+    window.addPropertyChangeListener("title", propertyChangeListener);
+    onDispose.consume(() -> {
+      window.removeWindowListener(windowAdapter);
+      window.removePropertyChangeListener("title", propertyChangeListener);
+    });
   }
 
   private static String getWindowTitle(Window window) {
@@ -260,12 +255,6 @@ public final class UIUtil extends StartupUiUtil {
   @NotNull
   public static RGBImageFilter getTextGrayFilter() {
     return GrayFilter.namedFilter("text.grayFilter", new GrayFilter(20, 0, 100));
-  }
-
-  public static boolean isMinimized(Window window) {
-    if (!(window instanceof Frame)) return false;
-    Frame frame = (Frame)window;
-    return frame.getExtendedState() == Frame.ICONIFIED;
   }
 
   @ApiStatus.Experimental
@@ -367,9 +356,9 @@ public final class UIUtil extends StartupUiUtil {
     }
   }
 
-  /** @deprecated Apple JRE is no longer supported (to be removed in IDEA 2019) */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019")
+  /** @deprecated use {@link JBUIScale} instead */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
   public static boolean isAppleRetina() {
     return false;
   }
@@ -1029,7 +1018,7 @@ public final class UIUtil extends StartupUiUtil {
 
   @NotNull
   public static Color getToolTipForeground() {
-    return JBColor.namedColor("ToolTip.foreground", new JBColor(Gray.x00, Gray.xBB));
+    return JBColor.namedColor("ToolTip.foreground", new JBColor(Gray.x00, Gray.xBF));
   }
 
   public static Color getComboBoxDisabledForeground() {
@@ -1771,7 +1760,7 @@ public final class UIUtil extends StartupUiUtil {
 
   @Deprecated
   public static void applyRenderingHints(@NotNull Graphics g) {
-    GraphicsUtil.applyRenderingHints(g);
+    GraphicsUtil.applyRenderingHints((Graphics2D)g);
   }
 
   /**
@@ -2229,16 +2218,6 @@ public final class UIUtil extends StartupUiUtil {
   @NotNull
   public static Color getHeaderInactiveColor() {
     return INACTIVE_HEADER_COLOR;
-  }
-
-  /**
-   * @deprecated use {@link JBColor#border()}
-   */
-  @NotNull
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.3")
-  public static Color getBorderColor() {
-    return JBColor.border();
   }
 
   @NotNull
@@ -3090,29 +3069,12 @@ public final class UIUtil extends StartupUiUtil {
 
   public static int getLcdContrastValue() {
     int lcdContrastValue  = Registry.intValue("lcd.contrast.value", 0);
-
-    // Evaluate the value depending on our current theme
     if (lcdContrastValue == 0) {
-      if (SystemInfo.isMacIntel64) {
-        lcdContrastValue = StartupUiUtil.isUnderDarcula() ? 140 : 230;
-      } else {
-        Map map = (Map)Toolkit.getDefaultToolkit().getDesktopProperty("awt.font.desktophints");
-
-        if (map == null) {
-          lcdContrastValue = 140;
-        } else {
-          Object o = map.get(RenderingHints.KEY_TEXT_LCD_CONTRAST);
-          lcdContrastValue = o == null ? 140 : (Integer)o;
-        }
-      }
+      return StartupUiUtil.doGetLcdContrastValueForSplash(StartupUiUtil.isUnderDarcula());
     }
-
-    if (lcdContrastValue < 100 || lcdContrastValue > 250) {
-      // the default value
-      lcdContrastValue = 140;
+    else {
+      return normalizeLcdContrastValue(lcdContrastValue);
     }
-
-    return lcdContrastValue;
   }
 
   /**
@@ -3162,15 +3124,6 @@ public final class UIUtil extends StartupUiUtil {
       }
     }
     return null;
-  }
-
-  @NotNull
-  public static Window getActiveWindow() {
-    Window[] windows = Window.getWindows();
-    for (Window each : windows) {
-      if (each.isVisible() && each.isActive()) return each;
-    }
-    return JOptionPane.getRootFrame();
   }
 
   public static void setAutoRequestFocus(@NotNull Window window, boolean value) {
@@ -3288,9 +3241,11 @@ public final class UIUtil extends StartupUiUtil {
     return null;
   }
 
-  public static void playSoundFromResource(@NotNull final String resourceName) {
-    final Class callerClass = ReflectionUtil.getGrandCallerClass();
-    if (callerClass == null) return;
+  public static void playSoundFromResource(@NotNull String resourceName) {
+    Class<?> callerClass = ReflectionUtil.getGrandCallerClass();
+    if (callerClass == null) {
+      return;
+    }
     playSoundFromStream(() -> callerClass.getResourceAsStream(resourceName));
   }
 
@@ -3859,5 +3814,36 @@ public final class UIUtil extends StartupUiUtil {
       }
     }
     editor.scrollToReference(reference);
+  }
+
+  public static void runWhenFocused(@NotNull Component component, @NotNull Runnable runnable) {
+    assert component.isShowing();
+    if (component.isFocusOwner()) {
+      runnable.run();
+    }
+    else {
+      Disposable disposable = Disposer.newDisposable();
+      FocusListener focusListener = new FocusAdapter() {
+        @Override
+        public void focusGained(FocusEvent e) {
+          Disposer.dispose(disposable);
+          runnable.run();
+        }
+      };
+      HierarchyListener hierarchyListener = new HierarchyListener() {
+        @Override
+        public void hierarchyChanged(HierarchyEvent e) {
+          if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && !component.isShowing()) {
+            Disposer.dispose(disposable);
+          }
+        }
+      };
+      component.addFocusListener(focusListener);
+      component.addHierarchyListener(hierarchyListener);
+      Disposer.register(disposable, () -> {
+        component.removeFocusListener(focusListener);
+        component.removeHierarchyListener(hierarchyListener);
+      });
+    }
   }
 }

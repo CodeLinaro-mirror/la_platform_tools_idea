@@ -71,17 +71,13 @@ import java.util.stream.Collectors;
 /**
  * This class also controls the auto-reparse and auto-hints.
  */
-@State(
-  name = "DaemonCodeAnalyzer",
-  storages = @Storage(StoragePathMacros.WORKSPACE_FILE)
-)
+@State(name = "DaemonCodeAnalyzer", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
 public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements PersistentStateComponent<Element>, Disposable {
   private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl");
 
   private static final Key<List<HighlightInfo>> FILE_LEVEL_HIGHLIGHTS = Key.create("FILE_LEVEL_HIGHLIGHTS");
   private final Project myProject;
   private final DaemonCodeAnalyzerSettings mySettings;
-  @NotNull private final EditorTracker myEditorTracker;
   @NotNull private final PsiDocumentManager myPsiDocumentManager;
   private DaemonProgressIndicator myUpdateProgress = new DaemonProgressIndicator(); //guarded by this
 
@@ -105,22 +101,20 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
   @NonNls private static final String URL_ATT = "url";
   private final PassExecutorService myPassExecutorService;
 
-  public DaemonCodeAnalyzerImpl(@NotNull Project project,
-                                @NotNull DaemonCodeAnalyzerSettings daemonCodeAnalyzerSettings,
-                                @NotNull EditorTracker editorTracker,
-                                @NotNull PsiDocumentManager psiDocumentManager,
-                                // DependencyValidationManagerImpl adds scope listener, so, we need to force service creation
-                                @SuppressWarnings("unused") @NotNull DependencyValidationManager dependencyValidationManager) {
+  public DaemonCodeAnalyzerImpl(@NotNull Project project) {
+    // DependencyValidationManagerImpl adds scope listener, so, we need to force service creation
+    DependencyValidationManager.getInstance(project);
+
     myProject = project;
-    mySettings = daemonCodeAnalyzerSettings;
-    myEditorTracker = editorTracker;
-    myPsiDocumentManager = psiDocumentManager;
-    myLastSettings = ((DaemonCodeAnalyzerSettingsImpl)daemonCodeAnalyzerSettings).clone();
+    mySettings = DaemonCodeAnalyzerSettings.getInstance();
+    myPsiDocumentManager = PsiDocumentManager.getInstance(myProject);
+    myLastSettings = ((DaemonCodeAnalyzerSettingsImpl)mySettings).clone();
 
     myFileStatusMap = new FileStatusMap(project);
     myPassExecutorService = new PassExecutorService(project);
     Disposer.register(this, myPassExecutorService);
     Disposer.register(this, myFileStatusMap);
+    //noinspection TestOnlyProblems
     DaemonProgressIndicator.setDebug(LOG.isDebugEnabled());
 
     assert !myInitialized : "Double Initializing";
@@ -165,8 +159,7 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
   @TestOnly
   public List<HighlightInfo> getFileLevelHighlights(@NotNull Project project, @NotNull PsiFile file) {
     VirtualFile vFile = file.getViewProvider().getVirtualFile();
-    final FileEditorManager manager = FileEditorManager.getInstance(project);
-    return Arrays.stream(manager.getEditors(vFile))
+    return Arrays.stream(FileEditorManager.getInstance(project).getEditors(vFile))
       .map(fileEditor -> fileEditor.getUserData(FILE_LEVEL_HIGHLIGHTS))
       .filter(Objects::nonNull)
       .flatMap(Collection::stream)
@@ -247,7 +240,7 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
           TextEditorHighlightingPassRegistrarEx.getInstanceEx(myProject).instantiateMainPasses(psiFile, document,
                                                                                                HighlightInfoProcessor.getEmpty());
 
-        Collections.sort(passes, (o1, o2) -> {
+        passes.sort((o1, o2) -> {
           if (o1 instanceof GeneralHighlightingPass) return -1;
           if (o2 instanceof GeneralHighlightingPass) return 1;
           return 0;
@@ -315,9 +308,8 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
 
     FileStatusMap fileStatusMap = getFileStatusMap();
 
-    Map<FileEditor, HighlightingPass[]> map = new HashMap<>();
-
     NonBlockingReadActionImpl.waitForAsyncTaskCompletion(); // wait for async editor loading
+    Map<FileEditor, HighlightingPass[]> map = new HashMap<>();
     for (TextEditor textEditor : textEditors) {
       TextEditorBackgroundHighlighter highlighter = (TextEditorBackgroundHighlighter)textEditor.getBackgroundHighlighter();
       if (highlighter == null) {
@@ -678,9 +670,9 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
   }
 
   @NotNull
-  public static List<LineMarkerInfo> getLineMarkers(@NotNull Document document, @NotNull Project project) {
+  public static List<LineMarkerInfo<?>> getLineMarkers(@NotNull Document document, @NotNull Project project) {
     ApplicationManager.getApplication().assertIsDispatchThread();
-    List<LineMarkerInfo> result = new ArrayList<>();
+    List<LineMarkerInfo<?>> result = new ArrayList<>();
     LineMarkersUtil.processLineMarkers(project, document, new TextRange(0, document.getTextLength()), -1,
                                        new CommonProcessors.CollectProcessor<>(result));
     return result;
@@ -867,28 +859,37 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
 
   @NotNull
   private Collection<FileEditor> getSelectedEditors() {
-    ApplicationManager.getApplication().assertIsDispatchThread();
+    Application app = ApplicationManager.getApplication();
+    app.assertIsDispatchThread();
 
-    // Editors in modal context
-    List<Editor> editors = myEditorTracker.getActiveEditors();
-    Collection<FileEditor> activeTextEditors = new THashSet<>(editors.size());
-    for (Editor editor : editors) {
-      if (editor.isDisposed()) continue;
-      TextEditor textEditor = TextEditorProvider.getInstance().getTextEditor(editor);
-      activeTextEditors.add(textEditor);
+    // editors in modal context
+    EditorTracker editorTracker = myProject.getServiceIfCreated(EditorTracker.class);
+    List<Editor> editors = editorTracker == null ? Collections.emptyList() : editorTracker.getActiveEditors();
+    Collection<FileEditor> activeTextEditors;
+    if (editors.isEmpty()) {
+      activeTextEditors = Collections.emptyList();
     }
-    if (ApplicationManager.getApplication().getCurrentModalityState() != ModalityState.NON_MODAL) {
+    else {
+      activeTextEditors = new THashSet<>(editors.size());
+      for (Editor editor : editors) {
+        if (editor.isDisposed()) continue;
+        TextEditor textEditor = TextEditorProvider.getInstance().getTextEditor(editor);
+        activeTextEditors.add(textEditor);
+      }
+    }
+
+    if (app.getCurrentModalityState() != ModalityState.NON_MODAL) {
       return activeTextEditors;
     }
 
     Collection<FileEditor> result = new THashSet<>();
     Collection<VirtualFile> files = new THashSet<>(activeTextEditors.size());
-    if (!ApplicationManager.getApplication().isUnitTestMode()) {
-      // Editors in tabs.
-      final FileEditor[] tabEditors = FileEditorManager.getInstance(myProject).getSelectedEditors();
-      for (FileEditor tabEditor : tabEditors) {
+    if (!app.isUnitTestMode()) {
+      // editors in tabs
+      FileEditorManagerEx fileEditorManager = FileEditorManagerEx.getInstanceEx(myProject);
+      for (FileEditor tabEditor : fileEditorManager.getSelectedEditors()) {
         if (!tabEditor.isValid()) continue;
-        VirtualFile file = ((FileEditorManagerEx)FileEditorManager.getInstance(myProject)).getFile(tabEditor);
+        VirtualFile file = fileEditorManager.getFile(tabEditor);
         if (file != null) {
           files.add(file);
         }
@@ -897,16 +898,21 @@ public class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implements Pers
     }
 
     // do not duplicate documents
-    for (FileEditor fileEditor : activeTextEditors) {
-      VirtualFile file = ((FileEditorManagerEx)FileEditorManager.getInstance(myProject)).getFile(fileEditor);
-      if (file != null && files.contains(file)) continue;
-      result.add(fileEditor);
+    if (!activeTextEditors.isEmpty()) {
+      FileEditorManagerEx fileEditorManager = FileEditorManagerEx.getInstanceEx(myProject);
+      for (FileEditor fileEditor : activeTextEditors) {
+        VirtualFile file = fileEditorManager.getFile(fileEditor);
+        if (file != null && files.contains(file)) {
+          continue;
+        }
+        result.add(fileEditor);
+      }
     }
     return result;
   }
 
   @TestOnly
-  private static void wrap(@NotNull ThrowableRunnable runnable) {
+  private static void wrap(@NotNull ThrowableRunnable<?> runnable) {
     try {
       runnable.run();
     }

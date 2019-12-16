@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.zmlx.hg4idea;
 
 import com.intellij.dvcs.ignore.VcsRepositoryIgnoredFilesHolder;
@@ -224,10 +224,9 @@ public class HgVFSListener extends VcsVFSListener {
 
   @Override
   protected void executeDelete() {
-    final List<FilePath> filesToDelete = new ArrayList<>(myDeletedWithoutConfirmFiles);
-    final List<FilePath> filesToConfirmDeletion = new ArrayList<>(myDeletedFiles);
-    myDeletedWithoutConfirmFiles.clear();
-    myDeletedFiles.clear();
+    AllDeletedFiles files = myProcessor.acquireAllDeletedFiles();
+    List<FilePath> filesToDelete = files.deletedWithoutConfirmFiles;
+    List<FilePath> filesToConfirmDeletion = files.deletedFiles;
 
     // skip files which are not under Mercurial
     skipNotUnderHg(filesToDelete);
@@ -298,12 +297,8 @@ public class HgVFSListener extends VcsVFSListener {
 
   @Override
   protected void performDeletion(@NotNull final List<FilePath> filesToDelete) {
-    final ArrayList<HgFile> deletes = new ArrayList<>();
+    List<HgFile> deletes = new ArrayList<>();
     for (FilePath file : filesToDelete) {
-      if (file.isDirectory()) {
-        continue;
-      }
-
       VirtualFile root = VcsUtil.getVcsRootFor(myProject, file);
       if (root != null) {
         deletes.add(new HgFile(root, file));
@@ -340,10 +335,7 @@ public class HgVFSListener extends VcsVFSListener {
           dialog.setTitle("Failed to Rename");
           dialog.show();
         });
-        NotificationAction retryAction = NotificationAction.create("Retry", (e, notification) -> {
-          notification.expire();
-          performMoveRename(failedToMove);
-        });
+        NotificationAction retryAction = NotificationAction.createSimpleExpiring("Retry", () -> performMoveRename(failedToMove));
         VcsNotifier.getInstance(myProject)
           .notifyError("Rename Failed", "Couldn't mark some files as renamed", viewFilesAction, retryAction);
       }
@@ -377,6 +369,11 @@ public class HgVFSListener extends VcsVFSListener {
   @Override
   protected boolean isDirectoryVersioningSupported() {
     return false;
+  }
+
+  @Override
+  protected boolean isRecursiveDeleteSupported() {
+    return true;
   }
 
   private static class ProcessedFilePathsDialog extends SelectFilePathsDialog {

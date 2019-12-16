@@ -159,6 +159,7 @@ public class RevealFileAction extends DumbAwareAction {
   private static void doOpen(@NotNull File _dir, @Nullable File _toSelect) {
     String dir = FileUtil.toSystemDependentName(FileUtil.toCanonicalPath(_dir.getPath()));
     String toSelect = _toSelect != null ? FileUtil.toSystemDependentName(FileUtil.toCanonicalPath(_toSelect.getPath())) : null;
+    String fmApp;
 
     if (SystemInfo.isWindows) {
       spawn(toSelect != null ? "explorer /select,\"" + shortPath(toSelect) + '"' : "explorer /root,\"" + shortPath(dir) + '"');
@@ -171,8 +172,13 @@ public class RevealFileAction extends DumbAwareAction {
         spawn("open", dir);
       }
     }
-    else if (fileManagerApp.getValue() != null) {
-      spawn(fileManagerApp.getValue(), toSelect != null ? toSelect : dir);
+    else if ((fmApp = fileManagerApp.getValue()) != null) {
+      if (fmApp.endsWith("dolphin") && toSelect != null) {
+        spawn(fmApp, "--select", toSelect);
+      }
+      else {
+        spawn(fmApp, toSelect != null ? toSelect : dir);
+      }
     }
     else if (SystemInfo.hasXdgOpen()) {
       spawn("xdg-open", dir);
@@ -214,11 +220,12 @@ public class RevealFileAction extends DumbAwareAction {
       try {
         CapturingProcessHandler handler;
         if (SystemInfo.isWindows) {
+          assert command.length == 1;
           Process process = Runtime.getRuntime().exec(command[0]);  // no quoting/escaping is needed
-          handler = new CapturingProcessHandler(process, null, command[0]);
+          handler = new CapturingProcessHandler.Silent(process, null, command[0]);
         }
         else {
-          handler = new CapturingProcessHandler(new GeneralCommandLine(command));
+          handler = new CapturingProcessHandler.Silent(new GeneralCommandLine(command));
         }
         handler.runProcess(10000, false).checkSuccess(LOG);
       }
@@ -233,7 +240,7 @@ public class RevealFileAction extends DumbAwareAction {
     protected String compute() {
       return readDesktopEntryKey("Exec")
         .map(line -> line.split(" ")[0])
-        .filter(exec -> exec.endsWith("nautilus") || exec.endsWith("pantheon-files"))
+        .filter(exec -> exec.endsWith("nautilus") || exec.endsWith("pantheon-files") || exec.endsWith("dolphin"))
         .orElse(null);
     }
   };

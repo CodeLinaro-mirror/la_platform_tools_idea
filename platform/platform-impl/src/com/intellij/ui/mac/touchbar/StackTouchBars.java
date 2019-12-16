@@ -17,13 +17,9 @@ public class StackTouchBars {
 
   private long myCurrentKeyMask;
 
-  // static String changeReason;  // for debugging only
-
   void updateKeyMask(long newMask) {
     if (myCurrentKeyMask != newMask) {
       synchronized (this) {
-        // System.out.printf("change current mask: 0x%X -> 0x%X\n", myCurrentKeyMask, e.getModifiersEx());
-        // changeReason = String.format("change current mask: 0x%X -> 0x%X", myCurrentKeyMask, newMask);
         myCurrentKeyMask = newMask;
         _setTouchBarFromTopContainer();
       }
@@ -91,28 +87,6 @@ public class StackTouchBars {
     }
   }
 
-  synchronized
-  void elevateContainer(BarContainer bar) {
-    if (bar == null)
-      return;
-
-    final BarContainer top = myContainersStack.peek();
-    if (top == bar)
-      return;
-
-    final boolean preserveTop = top != null && (top.isPopup() || top.isDialog() || top.get().isManualClose());
-    if (preserveTop) {
-      myContainersStack.remove(bar);
-      myContainersStack.remove(top);
-      myContainersStack.push(bar);
-      myContainersStack.push(top);
-    } else {
-      myContainersStack.remove(bar);
-      myContainersStack.push(bar);
-      _setTouchBarFromTopContainer();
-    }
-  }
-
   private void _setTouchBarFromTopContainer() {
     if (myContainersStack.isEmpty()) {
       myTouchBarHolder.setTouchBar(null);
@@ -135,8 +109,8 @@ public class StackTouchBars {
     private TouchBar myNextBar;
 
     synchronized void setTouchBar(TouchBar bar) {
-      final Application application = ApplicationManager.getApplication();
-      if (application != null && (application.isUnitTestMode() || application.isHeadlessEnvironment())) {
+      final @NotNull Application application = ApplicationManager.getApplication();
+      if (application.isUnitTestMode() || application.isHeadlessEnvironment()) {
         // don't create swing timers when unit-test mode
         return;
       }

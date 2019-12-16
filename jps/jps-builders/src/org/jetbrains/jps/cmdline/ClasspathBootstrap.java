@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.cmdline;
 
+import com.google.gson.Gson;
 import com.google.protobuf.Message;
 import com.intellij.compiler.notNullVerification.NotNullVerifyingInstrumenter;
 import com.intellij.openapi.application.PathManager;
@@ -11,6 +12,7 @@ import com.intellij.uiDesigner.core.GridConstraints;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.containers.ContainerUtil;
 import com.jgoodies.forms.layout.CellConstraints;
+import com.thoughtworks.qdox.JavaProjectBuilder;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.handler.codec.protobuf.ProtobufDecoder;
@@ -72,6 +74,8 @@ public class ClasspathBootstrap {
     cp.add(getResourcePath(CellConstraints.class));  // jGoodies-forms
     cp.addAll(getInstrumentationUtilRoots());
     cp.add(getResourcePath(IXMLBuilder.class));  // nano-xml
+    cp.add(getResourcePath(JavaProjectBuilder.class));  // qdox lightweight java parser
+    cp.add(getResourcePath(Gson.class));  // gson
 
     cp.addAll(ContainerUtil.map(ArtifactRepositoryManager.getClassesFromDependencies(), ClasspathBootstrap::getResourcePath));
 

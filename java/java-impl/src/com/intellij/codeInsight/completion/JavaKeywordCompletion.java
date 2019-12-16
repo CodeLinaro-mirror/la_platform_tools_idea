@@ -4,6 +4,7 @@ package com.intellij.codeInsight.completion;
 import com.intellij.codeInsight.ExpectedTypeInfo;
 import com.intellij.codeInsight.TailType;
 import com.intellij.codeInsight.TailTypes;
+import com.intellij.codeInsight.completion.util.CompletionStyleUtil;
 import com.intellij.codeInsight.completion.util.ParenthesesInsertHandler;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightUtil;
 import com.intellij.codeInsight.daemon.impl.analysis.LambdaHighlightingUtil;
@@ -343,7 +344,7 @@ public class JavaKeywordCompletion {
     TailType tailType = TailTypes.forSwitchLabel(switchBlock);
     for (PsiField field : switchType.getAllFields()) {
       String name = field.getName();
-      if (!(field instanceof PsiEnumConstant) || used.contains(CompletionUtil.getOriginalOrSelf(field)) || name == null) {
+      if (!(field instanceof PsiEnumConstant) || used.contains(CompletionUtil.getOriginalOrSelf(field))) {
         continue;
       }
       String prefix = "case ";
@@ -522,7 +523,7 @@ public class JavaKeywordCompletion {
               PsiInstanceOfExpression expr =
                 PsiTreeUtil.findElementOfClassAtOffset(context.getFile(), context.getStartOffset(), PsiInstanceOfExpression.class, false);
               if (expr != null) {
-                String space = context.getCodeStyleSettings().SPACE_WITHIN_PARENTHESES ? " " : "";
+                String space = CompletionStyleUtil.getCodeStyleSettings(context).SPACE_WITHIN_PARENTHESES ? " " : "";
                 context.getDocument().insertString(expr.getTextRange().getStartOffset(), "!(" + space);
                 context.getDocument().insertString(context.getTailOffset(), space + ")");
               }
@@ -610,7 +611,8 @@ public class JavaKeywordCompletion {
     if (prev == null) return false;
 
     PsiElement expr = PsiTreeUtil.getParentOfType(prev, PsiExpression.class);
-    if (expr != null && expr.getTextRange().getEndOffset() == prev.getTextRange().getEndOffset()) {
+    if (expr != null && expr.getTextRange().getEndOffset() == prev.getTextRange().getEndOffset() &&
+        PsiTreeUtil.getParentOfType(expr, PsiAnnotation.class) == null) {
       return true;
     }
 

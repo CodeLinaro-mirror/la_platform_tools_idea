@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.concurrent.Future;
 
 import static com.intellij.ide.CliResult.error;
-import static com.intellij.ide.CliResult.ok;
 import static com.intellij.openapi.util.Pair.pair;
 
 /**
@@ -54,7 +53,7 @@ public final class CommandLineProcessor {
       return doOpenFile(file, -1, false, shouldWait);
     }
     else {
-      return pair(project, shouldWait ? CommandLineWaitingManager.getInstance().addHookForProject(project) : ok());
+      return pair(project, shouldWait ? CommandLineWaitingManager.getInstance().addHookForProject(project) : CliResult.OK_FUTURE);
     }
   }
 
@@ -72,14 +71,14 @@ public final class CommandLineProcessor {
         return pair(null, error(1, message));
       }
 
-      return pair(project, shouldWait ? CommandLineWaitingManager.getInstance().addHookForFile(file) : ok());
+      return pair(project, shouldWait ? CommandLineWaitingManager.getInstance().addHookForFile(file) : CliResult.OK_FUTURE);
     }
     else {
       NonProjectFileWritingAccessProvider.allowWriting(Collections.singletonList(file));
       Project project = findBestProject(file, projects);
       (line > 0 ? new OpenFileDescriptor(project, file, line - 1, 0) : PsiNavigationSupport.getInstance().createNavigatable(project, file, -1)).navigate(true);
 
-      return pair(project, shouldWait ? CommandLineWaitingManager.getInstance().addHookForFile(file) : ok());
+      return pair(project, shouldWait ? CommandLineWaitingManager.getInstance().addHookForFile(file) : CliResult.OK_FUTURE);
     }
   }
 
@@ -109,32 +108,33 @@ public final class CommandLineProcessor {
     LOG.info("Dir: " + currentDirectory);
     for (String arg : args) LOG.info(arg);
     LOG.info("-----");
-    if (args.isEmpty()) return pair(null, ok());
+    if (args.isEmpty()) return pair(null, CliResult.OK_FUTURE);
 
     String command = args.get(0);
-    for (ApplicationStarter starter : ApplicationStarter.EP_NAME.getIterable()) {
-      if (starter == null) {
-        break;
+    Pair<Project, Future<CliResult>> result = ApplicationStarter.EP_NAME.computeSafeIfAny(starter -> {
+      if (!command.equals(starter.getCommandName())) {
+        return null;
       }
 
-      if (command.equals(starter.getCommandName())) {
-        if (starter.canProcessExternalCommandLine()) {
-          LOG.info("Processing command with " + starter);
-          return pair(null, starter.processExternalCommandLineAsync(args, currentDirectory));
-        }
-        else {
-          String title = "Cannot execute command '" + command + "'";
-          String message = "Only one instance of " + ApplicationNamesInfo.getInstance().getProductName() + " can be run at a time.";
-          Messages.showErrorDialog(message, title);
-          return pair(null, error(1, message));
-        }
+      if (starter.canProcessExternalCommandLine()) {
+        LOG.info("Processing command with " + starter);
+        return pair(null, starter.processExternalCommandLineAsync(args, currentDirectory));
       }
+      else {
+        String title = "Cannot execute command '" + command + "'";
+        String message = "Only one instance of " + ApplicationNamesInfo.getInstance().getProductName() + " can be run at a time.";
+        Messages.showErrorDialog(message, title);
+        return pair(null, error(1, message));
+      }
+    });
+    if (result != null) {
+      return result;
     }
 
     if (command.startsWith(JetBrainsProtocolHandler.PROTOCOL)) {
       JetBrainsProtocolHandler.processJetBrainsLauncherParameters(command);
       ApplicationManager.getApplication().invokeLater(() -> JBProtocolCommand.handleCurrentCommand());
-      return pair(null, ok());
+      return pair(null, CliResult.OK_FUTURE);
     }
 
     final boolean shouldWait = args.contains(WAIT_KEY);
@@ -204,6 +204,6 @@ public final class CommandLineProcessor {
     if (shouldWait && projectAndCallback == null) {
       return pair(null, error(1, "--wait must be supplied with file or project to wait for"));
     }
-    return projectAndCallback == null ? pair(null, ok()) : projectAndCallback;
+    return projectAndCallback == null ? pair(null, CliResult.OK_FUTURE) : projectAndCallback;
   }
 }

@@ -14,6 +14,7 @@ import com.intellij.ui.components.JBPanel;
 import com.intellij.util.Consumer;
 import com.intellij.util.NotNullFunction;
 import com.intellij.util.messages.MessageBusConnection;
+import com.intellij.vcs.log.ui.AbstractVcsLogUi;
 import com.intellij.vcs.log.ui.VcsLogPanel;
 import com.intellij.vcs.log.ui.VcsLogUiImpl;
 import org.jetbrains.annotations.CalledInAwt;
@@ -31,7 +32,8 @@ import java.util.Arrays;
  */
 public class VcsLogContentProvider implements ChangesViewContentProvider {
   private static final Logger LOG = Logger.getInstance(VcsLogContentProvider.class);
-  public static final String TAB_NAME = "Log";
+  @SuppressWarnings("StaticNonFinalField") //might be changed in other IDEs
+  public static String TAB_NAME = "Log";
 
   @NotNull private final VcsProjectLog myProjectLog;
   @NotNull private final JPanel myContainer = new JBPanel(new BorderLayout());
@@ -71,13 +73,18 @@ public class VcsLogContentProvider implements ChangesViewContentProvider {
     LOG.assertTrue(ApplicationManager.getApplication().isDispatchThread());
     if (myUi == null) {
       myUi = logManager.createLogUi(VcsLogProjectTabsProperties.MAIN_LOG_ID, true);
-      VcsLogPanel panel = new VcsLogPanel(logManager, myUi);
+      VcsLogPanel panel = createPanel(logManager, myUi);
       myContainer.add(panel, BorderLayout.CENTER);
       DataManager.registerDataProvider(myContainer, panel);
 
       if (myOnCreatedListener != null) myOnCreatedListener.consume(myUi);
       myOnCreatedListener = null;
     }
+  }
+
+  @NotNull
+  protected VcsLogPanel createPanel(@NotNull VcsLogManager logManager, AbstractVcsLogUi ui) {
+    return new VcsLogPanel(logManager, ui);
   }
 
   @CalledInAwt

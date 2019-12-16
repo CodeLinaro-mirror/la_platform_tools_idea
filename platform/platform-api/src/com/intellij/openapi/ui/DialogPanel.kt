@@ -2,19 +2,19 @@
 package com.intellij.openapi.ui
 
 import com.intellij.openapi.Disposable
+import com.intellij.ui.components.JBPanel
 import java.awt.LayoutManager
 import java.util.function.Supplier
 import javax.swing.JComponent
-import javax.swing.JPanel
 import javax.swing.text.JTextComponent
 
 /**
  * @author yole
  */
-class DialogPanel : JPanel {
+class DialogPanel : JBPanel<DialogPanel> {
   var preferredFocusedComponent: JComponent? = null
   var validateCallbacks: List<() -> ValidationInfo?> = emptyList()
-  var componentValidateCallbacks: Map<JComponent, () -> String?> = emptyMap()
+  var componentValidateCallbacks: Map<JComponent, () -> ValidationInfo?> = emptyMap()
   var applyCallbacks: List<() -> Unit> = emptyList()
   var resetCallbacks: List<() -> Unit> = emptyList()
   var isModifiedCallbacks: List<() -> Boolean> = emptyList()
@@ -27,7 +27,7 @@ class DialogPanel : JPanel {
   fun registerValidators(parentDisposable: Disposable, componentValidityChangedCallback: ((Map<JComponent, ValidationInfo>) -> Unit)? = null) {
     for ((component, callback) in componentValidateCallbacks) {
       val validator = ComponentValidator(parentDisposable).withValidator(Supplier {
-        val infoForComponent = callback()?.let { ValidationInfo(it, component) }
+        val infoForComponent = callback()
         if (componentValidationStatus[component] != infoForComponent) {
           if (infoForComponent != null) {
             componentValidationStatus[component] = infoForComponent

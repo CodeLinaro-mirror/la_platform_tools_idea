@@ -36,6 +36,7 @@ import com.intellij.util.BitUtil;
 import com.intellij.util.indexing.*;
 import com.intellij.util.indexing.counters.IndexCounters;
 import com.intellij.util.indexing.impl.*;
+import com.intellij.util.indexing.impl.forward.EmptyForwardIndex;
 import com.intellij.util.io.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -47,7 +48,7 @@ import java.util.*;
 public class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<SerializedStubTree>
   implements CustomImplementationFileBasedIndexExtension<Integer, SerializedStubTree> {
   static final Logger LOG = Logger.getInstance(StubUpdatingIndex.class);
-  private static final int VERSION = 41 + (PersistentHashMapValueStorage.COMPRESSION_ENABLED ? 1 : 0);
+  private static final int VERSION = 43 + (PersistentHashMapValueStorage.COMPRESSION_ENABLED ? 1 : 0);
 
   // todo remove once we don't need this for stub-ast mismatch debug info
   private static final FileAttribute INDEXED_STAMP = new FileAttribute("stubIndexStamp", 3, true);

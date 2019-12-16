@@ -8,6 +8,49 @@ iml_module(
     resources = ["resources"],
     # do not sort: must match IML order
     test_runtime_deps = [
+        "//tools/idea/xml/dom-openapi:intellij.xml.dom",
+        "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
+        "//tools/idea/platform/testFramework/extensions:intellij.platform.testExtensions",
+        "//tools/idea/images:intellij.platform.images",
+    ],
+    visibility = ["//visibility:public"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/completion/ngram-slp/0.0.2:jar"],
+    # do not sort: must match IML order
+    runtime_deps = [
+        "//tools/idea/xml/xml-structure-view-impl:intellij.xml.structureView.impl",
+        "//tools/idea/xml/xml-analysis-impl:intellij.xml.analysis.impl",
+        "//tools/idea/platform/lvcs-impl:intellij.platform.lvcs.impl",
+        "//tools/idea/platform/testRunner:intellij.platform.testRunner",
+        "//tools/idea/xml/impl:intellij.xml.impl",
+        "//tools/idea/spellchecker:intellij.spellchecker",
+        "//tools/idea/platform/tasks-platform-impl:intellij.platform.tasks.impl",
+        "//tools/idea/json:intellij.json",
+        "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
+        "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
+        "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
+    ],
+    # do not sort: must match IML order
+    deps = [
+        "//tools/idea/.idea/libraries:kotlin-stdlib-jdk8",
+        "//tools/idea/platform/platform-api:intellij.platform.ide[module]",
+        "//tools/idea/platform/lang-impl:intellij.platform.lang.impl[module]",
+        "//tools/idea/.idea/libraries:http-client",
+        "//tools/idea/.idea/libraries:Guava",
+        "//tools/idea/.idea/libraries:gson",
+        "//tools/idea/plugins/stats-collector/log-events:intellij.statsCollector.logEvents[module]",
+        "//tools/idea/.idea/libraries:fluent-hc",
+        "//tools/idea/plugins/stats-collector/completion-ranker:intellij.statsCollector.completionRanker[module]",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/completion/ngram-slp/0.0.2:jar",
+    ],
+)
+
+# managed by go/iml_to_build
+iml_module(
+    name = "intellij.statsCollector.tests",
+    iml_files = ["intellij.statsCollector.tests.iml"],
+    # do not sort: must match IML order
+    test_runtime_deps = [
         "//tools/idea/plugins/IntelliLang/intellilang-jps-plugin:intellij.java.langInjection.jps",
         "//tools/idea/plugins/groovy/jps-plugin:intellij.groovy.jps",
         "//tools/idea/plugins/ant/jps-plugin:intellij.ant.jps",
@@ -29,6 +72,10 @@ iml_module(
         "//tools/idea/plugins/groovy/groovy-psi:intellij.groovy.psi",
         "//tools/idea/plugins/eclipse:intellij.eclipse",
         "//tools/idea/java/plugin:intellij.java.plugin",
+        "//tools/idea/platform/tasks-platform-impl:intellij.platform.tasks.impl",
+        "//tools/idea/json:intellij.json",
+        "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
         "//tools/idea/plugins/ui-designer-core:intellij.uiDesigner",
@@ -37,34 +84,13 @@ iml_module(
     test_tags = ["manual"],
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
-    runtime_deps = [
-        "//tools/idea/xml/xml-structure-view-impl:intellij.xml.structureView.impl",
-        "//tools/idea/xml/xml-analysis-impl:intellij.xml.analysis.impl",
-        "//tools/idea/platform/lvcs-impl:intellij.platform.lvcs.impl",
-        "//tools/idea/platform/testRunner:intellij.platform.testRunner",
-        "//tools/idea/xml/impl:intellij.xml.impl",
-        "//tools/idea/spellchecker:intellij.spellchecker",
-        "//tools/idea/platform/tasks-platform-impl:intellij.platform.tasks.impl",
-        "//tools/idea/json:intellij.json",
-        "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
-        "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
-        "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
-    ],
-    # do not sort: must match IML order
     deps = [
-        "//tools/idea/.idea/libraries:kotlin-stdlib-jdk8",
-        "//tools/idea/platform/platform-api:intellij.platform.ide[module]",
-        "//tools/idea/platform/lang-impl:intellij.platform.lang.impl[module]",
-        "//tools/idea/.idea/libraries:http-client",
-        "//tools/idea/.idea/libraries:Guava",
-        "//tools/idea/.idea/libraries:gson",
         "//tools/idea:intellij.platform.jps.build_and_others[module, test]",
         "//tools/idea/.idea/libraries:mockito[test]",
         "//tools/idea/.idea/libraries:assertJ[test]",
-        "//tools/idea/plugins/stats-collector/features:intellij.statsCollector.features[module]",
-        "//tools/idea/plugins/stats-collector/log-events:intellij.statsCollector.logEvents[module]",
-        "//tools/idea/.idea/libraries:commons-codec",
-        "//tools/idea/.idea/libraries:fluent-hc",
-        "//tools/idea/plugins/stats-collector/completion-ranker:intellij.statsCollector.completionRanker[module]",
+        "//tools/idea/.idea/libraries:commons-codec[test]",
+        "//tools/idea/plugins/stats-collector/log-events:intellij.statsCollector.logEvents[module, test]",
+        "//tools/idea/plugins/stats-collector:intellij.statsCollector[module, test]",
+        "//tools/idea/plugins/stats-collector/completion-ranker:intellij.statsCollector.completionRanker[module, test]",
     ],
 )

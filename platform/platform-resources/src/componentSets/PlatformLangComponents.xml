@@ -2,13 +2,6 @@
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
              xsi:schemaLocation="http://www.w3.org/2001/XInclude
    http://www.w3.org/2001/XInclude.xsd">
-  <project-components>
-    <component>
-      <implementation-class>com.intellij.profile.codeInspection.ProjectInspectionProfileManager</implementation-class>
-      <loadForDefaultProject/>
-    </component>
-  </project-components>
-
   <xi:include href="/componentSets/Platform.xml" xpointer="xpointer(/idea-plugin/*)"/>
   <xi:include href="/componentSets/UICore.xml" xpointer="xpointer(/idea-plugin/*)"/>
   <xi:include href="/componentSets/Editor.xml" xpointer="xpointer(/idea-plugin/*)"/>
@@ -26,8 +19,11 @@
 
     <listener class="com.intellij.notification.impl.NotificationsManagerImpl$MyNotificationListener" topic="com.intellij.notification.Notifications"/>
     <listener class="com.intellij.notification.EventLog$MyNotificationListener" topic="com.intellij.notification.Notifications"/>
+    <listener class="com.intellij.notification.impl.NotificationsConfigurationImpl$MyNotificationListener" topic="com.intellij.notification.Notifications"/>
   </applicationListeners>
   <projectListeners>
     <listener class="com.intellij.ide.bookmarks.BookmarkManager$BookmarkManagerPsiDocumentManagerListener" topic="com.intellij.psi.PsiDocumentListener" activeInTestMode="false"/>
+    <listener class="com.intellij.openapi.vfs.newvfs.impl.CachedFileType$PsiListener" topic="com.intellij.psi.util.PsiModificationTracker$Listener"/>
+    <listener class="com.intellij.execution.lineMarker.RunLineMarkerProvider$RunnableStatusListener" topic="com.intellij.codeInsight.daemon.DaemonCodeAnalyzer$DaemonListener"/>
   </projectListeners>
 </idea-plugin>

@@ -38,11 +38,11 @@ class JavaInlayParameterHintsProvider : InlayParameterHintsProvider {
     return true
   }
 
-  fun getMethodInfo(method: PsiMethod): MethodInfo? {
+  private fun getMethodInfo(method: PsiMethod): MethodInfo? {
     val containingClass = method.containingClass ?: return null
     val fullMethodName = StringUtil.getQualifiedName(containingClass.qualifiedName, method.name)
 
-    val paramNames: List<String> = method.parameterList.parameters.map { it.name ?: "" }
+    val paramNames: List<String> = method.parameterList.parameters.map { it.name }
     return MethodInfo(fullMethodName, paramNames)
   }
 
@@ -114,15 +114,18 @@ class JavaInlayParameterHintsProvider : InlayParameterHintsProvider {
                                                   false)
 
   val isShowHintWhenExpressionTypeIsClear: Option = Option("java.clear.expression.type",
-                                                           "All other cases",
-                                                           false)
+                                                           "Complex expressions: binary, functional, array access and other",
+                                                           false).also {
+    it.extendedDescription = "Array initializer, switch, conditional, reference, instance " +
+                             "of, assignment, call, qualified, type cast, class object access expressions."
+  }
 
   val isShowHintsForEnumConstants: Option = Option("java.enums",
                                                            "Enum constants",
                                                            true)
 
   val isShowHintsForNewExpressions: Option = Option("java.new.expr",
-                                                    "'new' expressions",
+                                                    "'New' expressions",
                                                     true)
 
   override fun getSupportedOptions(): List<Option> {

@@ -4,6 +4,7 @@ package com.intellij.ide.ui;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.actions.QuickChangeLookAndFeel;
+import com.intellij.ide.ui.laf.LafManagerImpl;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.editor.EditorFactory;
@@ -15,9 +16,9 @@ import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.util.Comparing;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
+import com.intellij.ui.ContextHelpLabel;
 import com.intellij.ui.FontComboBox;
 import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.components.JBCheckBox;
@@ -28,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ItemEvent;
 import java.util.Dictionary;
 import java.util.Hashtable;
 
@@ -63,7 +65,7 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     myComponent.myFontSizeCombo.setEditable(true);
     myComponent.myPresentationModeFontSize.setEditable(true);
 
-    myComponent.myLafComboBox.setModel(new DefaultComboBoxModel(LafManager.getInstance().getInstalledLookAndFeels()));
+    myComponent.myLafComboBox.setModel(LafManager.getInstance().getLafComboBoxModel());
     myComponent.myLafComboBox.setRenderer(SimpleListCellRenderer.create("", UIManager.LookAndFeelInfo::getName));
 
     myComponent.myAntialiasingInIDE.setModel(new DefaultComboBoxModel(AntialiasingType.values()));
@@ -116,17 +118,18 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     myComponent.myBackgroundImageButton.addActionListener(ActionUtil.createActionListener(
       "Images.SetBackgroundImage", myComponent.myPanel, ActionPlaces.UNKNOWN));
 
-    myComponent.myDarkWindowHeaders.setSelected(Registry.is("ide.mac.allowDarkWindowDecorations"));
-    updateDarkWindowHeaderVisibility();
-    myComponent.myLafComboBox.addItemListener(x -> updateDarkWindowHeaderVisibility());
+    updateDarkWindowHeaderVisibility((UIManager.LookAndFeelInfo)myComponent.myLafComboBox.getSelectedItem());
+    myComponent.myLafComboBox.addItemListener(itemEvent -> {
+      if (itemEvent.getStateChange() == ItemEvent.SELECTED) {
+        updateDarkWindowHeaderVisibility((UIManager.LookAndFeelInfo)itemEvent.getItem());
+      }
+    });
 
     return myComponent.myPanel;
   }
 
-  private void updateDarkWindowHeaderVisibility() {
-    Object item = myComponent.myLafComboBox.getSelectedItem();
-    boolean isDarkLaf = item instanceof UIManager.LookAndFeelInfo && ((UIManager.LookAndFeelInfo)item).getClassName().endsWith("DarculaLaf");
-    myComponent.myDarkWindowHeaders.setVisible(SystemInfo.isMac && isDarkLaf);
+  private static void updateDarkWindowHeaderVisibility(UIManager.LookAndFeelInfo item) {
+    boolean isDarkLaf = item != null && item.getClassName().endsWith("DarculaLaf");
   }
 
   @Override
@@ -223,6 +226,9 @@ public class AppearanceConfigurable implements SearchableConfigurable {
       updateEditorScheme = true;
     }
 
+    update |= settings.getUseContrastScrollBars() != myComponent.myUseContrastScrollBarsCheckBox.isSelected();
+    settings.setUseContrastScrollBars(myComponent.myUseContrastScrollBarsCheckBox.isSelected());
+
     update |= settings.getDisableMnemonicsInControls() != myComponent.myDisableMnemonicInControlsCheckBox.isSelected();
     settings.setDisableMnemonicsInControls(myComponent.myDisableMnemonicInControlsCheckBox.isSelected());
 
@@ -231,12 +237,6 @@ public class AppearanceConfigurable implements SearchableConfigurable {
 
     update |= settings.getShowTreeIndentGuides() != myComponent.myShowTreeIndentGuides.isSelected();
     settings.setShowTreeIndentGuides(myComponent.myShowTreeIndentGuides.isSelected());
-
-    if (isModified(myComponent.myDarkWindowHeaders, Registry.is("ide.mac.allowDarkWindowDecorations"))) {
-      Registry.get("ide.mac.allowDarkWindowDecorations").setValue(myComponent.myDarkWindowHeaders.isSelected());
-      update = true;
-      shouldUpdateUI = true;
-    }
 
     if (!Comparing.equal(myComponent.myLafComboBox.getSelectedItem(), lafManager.getCurrentLookAndFeel())) {
       UIManager.LookAndFeelInfo lafInfo = (UIManager.LookAndFeelInfo)myComponent.myLafComboBox.getSelectedItem();
@@ -349,7 +349,6 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     myComponent.myAltDNDCheckBox.setSelected(settings.getDndWithPressedAltOnly());
     myComponent.myShowFlagsForLanguagesCheckBox.setSelected(settings.getLanguageFlags());  // Android Studio: added by Change I18c5f540
     myComponent.myLafComboBox.setSelectedItem(LafManager.getInstance().getCurrentLookAndFeel());
-    myComponent.myDarkWindowHeaders.setSelected(Registry.is("ide.mac.allowDarkWindowDecorations"));
     myComponent.myOverrideLAFFonts.setSelected(settings.getOverrideLafFonts());
     myComponent.myDisableMnemonics.setSelected(settings.getDisableMnemonics());
     myComponent.myWidescreenLayoutCheckBox.setSelected(settings.getWideScreenSupport());
@@ -367,6 +366,7 @@ public class AppearanceConfigurable implements SearchableConfigurable {
       : null);
 
     myComponent.myColorBlindnessPanel.setColorBlindness(settings.getColorBlindness());
+    myComponent.myUseContrastScrollBarsCheckBox.setSelected(settings.getUseContrastScrollBars());
     myComponent.myDisableMnemonicInControlsCheckBox.setSelected(settings.getDisableMnemonicsInControls());
 
     boolean alphaModeEnabled = WindowManagerEx.getInstanceEx().isAlphaModeSupported();
@@ -421,6 +421,7 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     isModified |= myComponent.myNavigateToPreviewCheckBox.isSelected() != settings.getNavigateToPreview();
     isModified |= myComponent.isSupportScreenReadersModified();
     isModified |= myComponent.myColorBlindnessPanel.getColorBlindness() != settings.getColorBlindness();
+    isModified |= myComponent.myUseContrastScrollBarsCheckBox.isSelected() != settings.getUseContrastScrollBars();
 
     isModified |= myComponent.myHideIconsInQuickNavigation.isSelected() != settings.getShowIconInQuickNavigation();
     isModified |= myComponent.myShowTreeIndentGuides.isSelected() != settings.getShowTreeIndentGuides();
@@ -432,7 +433,6 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     isModified |= myComponent.myAltDNDCheckBox.isSelected() != settings.getDndWithPressedAltOnly();
     isModified |= myComponent.myShowFlagsForLanguagesCheckBox.isSelected() != settings.getLanguageFlags();  // Android Studio: added by Change I18c5f540
     isModified |= !Comparing.equal(myComponent.myLafComboBox.getSelectedItem(), LafManager.getInstance().getCurrentLookAndFeel());
-    isModified |= isModified(myComponent.myDarkWindowHeaders, Registry.is("ide.mac.allowDarkWindowDecorations"));
     if (WindowManagerEx.getInstanceEx().isAlphaModeSupported()) {
       isModified |= myComponent.myEnableAlphaModeCheckBox.isSelected() != settings.getEnableAlphaMode();
       int delay = -1;
@@ -503,7 +503,8 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     private JComboBox myAntialiasingInIDE;
     private JComboBox myAntialiasingInEditor;
     private JButton myBackgroundImageButton;
-    private JBCheckBox myDarkWindowHeaders;
+    private JBCheckBox myUseContrastScrollBarsCheckBox;
+    private ContextHelpLabel mySmoothScrollingContextHelpLabel;
 
     MyComponent() {
       myOverrideLAFFonts.addActionListener(__ -> updateCombo());
@@ -528,6 +529,8 @@ public class AppearanceConfigurable implements SearchableConfigurable {
     private void createUIComponents() {
       myFontSizeCombo = new ComboBox();
       myPresentationModeFontSize = new ComboBox();
+      mySmoothScrollingContextHelpLabel =
+        ContextHelpLabel.create("When using the mouse wheel/touchpad, the entire interface will scroll smoothly instead of line by line");
     }
   }
 

@@ -1,5 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.documentation;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -28,7 +27,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.command.CommandProcessor;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.impl.EditorMouseHoverPopupControl;
@@ -62,6 +60,7 @@ import com.intellij.psi.search.scope.packageSet.PackageSetBase;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.reference.SoftReference;
+import com.intellij.serviceContainer.NonInjectable;
 import com.intellij.ui.*;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.popup.AbstractPopup;
@@ -70,8 +69,10 @@ import com.intellij.ui.tabs.FileColorManagerImpl;
 import com.intellij.util.Alarm;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.DateFormatUtil;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -123,9 +124,7 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
   private final Alarm myUpdateDocAlarm;
   private WeakReference<JBPopup> myDocInfoHintRef;
   private WeakReference<Component> myFocusedBeforePopup;
-  public static final Key<SmartPsiElementPointer> ORIGINAL_ELEMENT_KEY = Key.create("Original element");
-
-  private final TargetElementUtil myTargetElementUtil;
+  public static final Key<SmartPsiElementPointer<?>> ORIGINAL_ELEMENT_KEY = Key.create("Original element");
 
   private boolean myCloseOnSneeze;
   private String myPrecalculatedDocumentation;
@@ -177,8 +176,8 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
     super.restorePopupBehavior();
     Component previouslyFocused = SoftReference.dereference(myFocusedBeforePopup);
     if (previouslyFocused != null && previouslyFocused.isShowing()) {
+      UIUtil.runWhenFocused(previouslyFocused, () -> updateComponent(true));
       IdeFocusManager.getInstance(myProject).requestFocus(previouslyFocused, true);
-      updateComponent(true);
     }
   }
 
@@ -224,11 +223,20 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
     myToolWindow.setAutoHide(false);
   }
 
-  public static DocumentationManager getInstance(Project project) {
-    return ServiceManager.getService(project, DocumentationManager.class);
+  public static DocumentationManager getInstance(@NotNull Project project) {
+    return project.getService(DocumentationManager.class);
   }
 
+  /**
+   * @deprecated Use {@link #DocumentationManager(Project)}
+   */
+  @NonInjectable
+  @Deprecated
   public DocumentationManager(Project project, ActionManager manager, TargetElementUtil targetElementUtil) {
+   this(project);
+  }
+
+  public DocumentationManager(@NotNull Project project) {
     super(project);
     AnActionListener actionListener = new AnActionListener() {
       @Override
@@ -237,7 +245,7 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
             LookupManager.getActiveLookup(myEditor) == null && // let the lookup manage all the actions
             !Conditions.instanceOf(ACTION_CLASSES_TO_IGNORE).value(action) &&
             !ArrayUtil.contains(event.getPlace(), ACTION_PLACES_TO_IGNORE) &&
-            !ContainerUtil.exists(ACTION_IDS_TO_IGNORE, id -> manager.getAction(id) == action)) {
+            !ContainerUtil.exists(ACTION_IDS_TO_IGNORE, id -> ActionManager.getInstance().getAction(id) == action)) {
           closeDocHint();
         }
       }
@@ -252,7 +260,6 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
     };
     ApplicationManager.getApplication().getMessageBus().connect(project).subscribe(AnActionListener.TOPIC, actionListener);
     myUpdateDocAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, myProject);
-    myTargetElementUtil = targetElementUtil;
   }
 
   private void closeDocHint() {
@@ -531,7 +538,7 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
       JBPopup hint = getDocInfoHint();
       if (hint != null && hint.isVisible()) hint.cancel();
     };
-    List<Pair<ActionListener, KeyStroke>> actions = ContainerUtil.newSmartList();
+    List<Pair<ActionListener, KeyStroke>> actions = new SmartList<>();
     AnAction quickDocAction = ActionManager.getInstance().getAction(IdeActions.ACTION_QUICK_JAVADOC);
     for (Shortcut shortcut : quickDocAction.getShortcutSet().getShortcuts()) {
       if (!(shortcut instanceof KeyboardShortcut)) continue;
@@ -667,11 +674,12 @@ public class DocumentationManager extends DockablePopupManager<DocumentationComp
     }
 
     if (element == null) {
-      element = assertSameProject(util.findTargetElement(editor, myTargetElementUtil.getAllAccepted(), offset));
+      TargetElementUtil targetElementUtil = TargetElementUtil.getInstance();
+      element = assertSameProject(util.findTargetElement(editor, targetElementUtil.getAllAccepted(), offset));
 
       // Allow context doc over xml tag content
       if (element != null || contextElement != null) {
-        PsiElement adjusted = assertSameProject(util.adjustElement(editor, myTargetElementUtil.getAllAccepted(), element, contextElement));
+        PsiElement adjusted = assertSameProject(util.adjustElement(editor, targetElementUtil.getAllAccepted(), element, contextElement));
         if (adjusted != null) {
           element = adjusted;
         }

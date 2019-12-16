@@ -10,14 +10,15 @@ import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
 import com.intellij.json.JsonBundle;
 import com.intellij.json.JsonDialectUtil;
 import com.intellij.json.JsonElementTypes;
+import com.intellij.json.JsonLanguage;
 import com.intellij.json.psi.*;
+import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiComment;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
 import com.intellij.psi.codeStyle.CodeStyleManager;
-import com.intellij.psi.impl.source.tree.injected.InjectedFileViewProvider;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
@@ -154,7 +155,8 @@ public class JsonStandardComplianceInspection extends LocalInspectionTool {
     @Override
     public void visitComment(PsiComment comment) {
       if (!allowComments() && myWarnAboutComments) {
-        if (JsonStandardComplianceProvider.shouldWarnAboutComment(comment)) {
+        if (JsonStandardComplianceProvider.shouldWarnAboutComment(comment) &&
+            comment.getContainingFile().getLanguage() instanceof JsonLanguage) {
           myHolder.registerProblem(comment, JsonBundle.message("inspection.compliance.msg.comments"));
         }
       }
@@ -195,7 +197,7 @@ public class JsonStandardComplianceInspection extends LocalInspectionTool {
     @Override
     public void visitReferenceExpression(@NotNull JsonReferenceExpression reference) {
       if (!allowIdentifierPropertyNames() || !JsonPsiUtil.isPropertyKey(reference) || !isValidPropertyName(reference)) {
-        if (!MISSING_VALUE.equals(reference.getText()) || !(myHolder.getFile().getViewProvider() instanceof InjectedFileViewProvider)) {
+        if (!MISSING_VALUE.equals(reference.getText()) || !InjectedLanguageManager.getInstance(myHolder.getProject()).isInjectedFragment(myHolder.getFile())) {
           myHolder.registerProblem(reference, JsonBundle.message("inspection.compliance.msg.bad.token"), new AddDoubleQuotesFix());
         }
       }

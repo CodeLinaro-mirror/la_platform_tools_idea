@@ -22,10 +22,12 @@ import com.intellij.ui.navigation.Place;
 import com.intellij.util.concurrency.EdtExecutorService;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.StatusText;
 import com.intellij.vcs.log.CommitId;
 import com.intellij.vcs.log.data.VcsLogData;
 import com.intellij.vcs.log.data.VcsLogProgress;
 import com.intellij.vcs.log.ui.AbstractVcsLogUi;
+import com.intellij.vcs.log.ui.filter.VcsLogFilterUiEx;
 import com.intellij.vcs.log.ui.frame.ProgressStripe;
 import com.intellij.vcs.log.ui.frame.VcsLogCommitDetailsListPanel;
 import com.intellij.vcs.log.ui.table.VcsLogGraphTable;
@@ -55,14 +57,14 @@ public class VcsLogUiUtil {
     logData.getProgress().addProgressIndicatorListener(new VcsLogProgress.ProgressListener() {
       @Override
       public void progressStarted(@NotNull Collection<? extends VcsLogProgress.ProgressKey> keys) {
-        if (matches(keys)) {
+        if (isProgressVisible(keys, logId)) {
           progressStripe.startLoading();
         }
       }
 
       @Override
       public void progressChanged(@NotNull Collection<? extends VcsLogProgress.ProgressKey> keys) {
-        if (matches(keys)) {
+        if (isProgressVisible(keys, logId)) {
           progressStripe.startLoading();
         }
         else {
@@ -74,16 +76,17 @@ public class VcsLogUiUtil {
       public void progressStopped() {
         progressStripe.stopLoading();
       }
-
-      private boolean matches(@NotNull Collection<? extends VcsLogProgress.ProgressKey> keys) {
-        if (keys.contains(VcsLogData.DATA_PACK_REFRESH)) {
-          return true;
-        }
-        return ContainerUtil.find(keys, key -> VisiblePackRefresherImpl.isVisibleKeyFor(key, logId)) != null;
-      }
     }, disposableParent);
 
     return progressStripe;
+  }
+
+  public static boolean isProgressVisible(@NotNull Collection<? extends VcsLogProgress.ProgressKey> keys,
+                                          @NotNull String logId) {
+    if (keys.contains(VcsLogData.DATA_PACK_REFRESH)) {
+      return true;
+    }
+    return ContainerUtil.find(keys, key -> VisiblePackRefresherImpl.isVisibleKeyFor(key, logId)) != null;
   }
 
   @NotNull
@@ -158,6 +161,14 @@ public class VcsLogUiUtil {
     Insets borderInsets = component.getMyBorder().getBorderInsets(component);
     Insets ipad = component.getIpad();
     return borderInsets.left + borderInsets.right + ipad.left + ipad.right;
+  }
+
+  public static void appendActionToEmptyText(@NotNull StatusText emptyText, @NotNull String text, @NotNull Runnable action) {
+    emptyText.appendSecondaryText(text, getLinkAttributes(), e -> action.run());
+  }
+
+  public static void appendResetFiltersActionToEmptyText(@NotNull VcsLogFilterUiEx filterUi, @NotNull StatusText emptyText) {
+    appendActionToEmptyText(emptyText, "Reset filters", () -> filterUi.setFilter(null));
   }
 
   private static class VcsLogPlaceNavigator implements Place.Navigator {

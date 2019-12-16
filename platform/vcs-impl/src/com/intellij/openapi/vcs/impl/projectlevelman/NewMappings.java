@@ -70,7 +70,7 @@ public class NewMappings implements Disposable {
   @NotNull private final MergingUpdateQueue myRootUpdateQueue;
   private final VirtualFilePointerListener myFilePointerListener;
 
-  public NewMappings(Project project, ProjectLevelVcsManagerImpl vcsManager) {
+  public NewMappings(@NotNull Project project, @NotNull ProjectLevelVcsManagerImpl vcsManager) {
     myProject = project;
     myVcsManager = vcsManager;
     myFileWatchRequestsManager = new FileWatchRequestsManager(myProject, this);
@@ -154,7 +154,7 @@ public class NewMappings implements Disposable {
 
     MyVcsActivator activator = null;
     synchronized (myUpdateLock) {
-      boolean mappingsChanged = !Comparing.equal(myMappings, newMappings);
+      boolean mappingsChanged = !myMappings.equals(newMappings);
       if (!mappingsChanged) return; // mappings are up-to-date
 
       myMappings = newMappings;
@@ -179,22 +179,26 @@ public class NewMappings implements Disposable {
     List<VcsDirectoryMapping> mappings = myMappings;
     Mappings newMappedRoots = collectMappedRoots(mappings);
 
+    boolean mappedRootsChanged;
     synchronized (myUpdateLock) {
-      boolean mappedRootsChanged = !Comparing.equal(myMappedRoots, newMappedRoots);
-      if (!mappedRootsChanged || myMappings != mappings) {
+      if (myMappings != mappings) {
         Disposer.dispose(newMappedRoots.filePointerDisposable);
         return;
       }
 
       Disposer.dispose(myFilePointerDisposable);
-      myMappedRoots = newMappedRoots.mappedRoots;
-      myMappedRootsMapping = new FilePathMapping(newMappedRoots.mappedRoots);
       myFilePointerDisposable = newMappedRoots.filePointerDisposable;
 
-      dumpMappedRootsToLog();
+      mappedRootsChanged = !myMappedRoots.equals(newMappedRoots.mappedRoots);
+      if (mappedRootsChanged) {
+        myMappedRoots = newMappedRoots.mappedRoots;
+        myMappedRootsMapping = new FilePathMapping(newMappedRoots.mappedRoots);
+
+        dumpMappedRootsToLog();
+      }
     }
 
-    if (fireMappingsChangedEvent) mappingsChanged();
+    if (fireMappingsChangedEvent && mappedRootsChanged) mappingsChanged();
   }
 
   @NotNull
@@ -202,7 +206,7 @@ public class NewMappings implements Disposable {
     List<VcsDirectoryMapping> newMapping = new ArrayList<>();
     Set<String> paths = new HashSet<>();
 
-    for (VcsDirectoryMapping mapping : reverse(newArrayList(mappings))) {
+    for (VcsDirectoryMapping mapping : reverse(new ArrayList<>(mappings))) {
       // take last mapping in collection in case of duplicates
       if (paths.add(mapping.getDirectory())) {
         newMapping.add(mapping);
@@ -272,8 +276,7 @@ public class NewMappings implements Disposable {
 
   @Nullable
   private AbstractVcs getMappingsVcs(@NotNull VcsDirectoryMapping mapping) {
-    String vcsName = mapping.getVcs();
-    return vcsName != null ? AllVcses.getInstance(myProject).getByName(vcsName) : null;
+    return AllVcses.getInstance(myProject).getByName(mapping.getVcs());
   }
 
   private boolean checkMappedRoot(@Nullable AbstractVcs vcs, @NotNull VirtualFile vcsRoot) {
@@ -471,7 +474,11 @@ public class NewMappings implements Disposable {
       filteredMappings.add(defaultMapping);
     }
 
-    MultiMap<String, VcsDirectoryMapping> groupedMappings = groupBy(oldMappings, mapping -> mapping.getVcs());
+    MultiMap<String, VcsDirectoryMapping> groupedMappings = new MultiMap<>();
+    for (VcsDirectoryMapping mapping : oldMappings) {
+      groupedMappings.putValue(mapping.getVcs(), mapping);
+    }
+
     for (Map.Entry<String, Collection<VcsDirectoryMapping>> entry : groupedMappings.entrySet()) {
       String vcsName = entry.getKey();
       Collection<VcsDirectoryMapping> mappings = entry.getValue();
@@ -563,6 +570,21 @@ public class NewMappings implements Disposable {
       this.vcs = vcs;
       this.mapping = mapping;
       this.root = root;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      MappedRoot other = (MappedRoot)o;
+      return Objects.equals(vcs, other.vcs) &&
+             mapping.equals(other.mapping) &&
+             root.equals(other.root);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(vcs, mapping, root);
     }
   }
 

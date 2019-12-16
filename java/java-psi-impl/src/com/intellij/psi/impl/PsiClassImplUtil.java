@@ -369,7 +369,7 @@ public class PsiClassImplUtil {
             PsiUtilCore.ensureValid(element);
             allMembers.add((PsiMember)element);
             String currentName = ((PsiMember)element).getName();
-            List<PsiMember> listByName = map.computeIfAbsent(currentName, __ -> ContainerUtil.newSmartList());
+            List<PsiMember> listByName = map.computeIfAbsent(currentName, __ -> new SmartList<>());
             listByName.add((PsiMember)element);
           }
         }
@@ -1171,7 +1171,6 @@ public class PsiClassImplUtil {
   public static boolean isFieldEquivalentTo(@NotNull PsiField field, PsiElement another) {
     if (!(another instanceof PsiField)) return false;
     String name1 = field.getName();
-    if (name1 == null) return false;
     if (!another.isValid()) return false;
 
     String name2 = ((PsiField)another).getName();

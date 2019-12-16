@@ -4,6 +4,7 @@ package com.intellij.openapi.wm.impl.welcomeScreen;
 import com.intellij.diagnostic.IdeMessagePanel;
 import com.intellij.diagnostic.MessagePool;
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.AppLifecycleListener;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.RecentProjectsManager;
 import com.intellij.ide.dnd.FileCopyPasteUtil;
@@ -16,6 +17,7 @@ import com.intellij.notification.impl.IdeNotificationArea;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.MnemonicHelper;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.impl.MenuItemPresentationFactory;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.diagnostic.Logger;
@@ -23,15 +25,17 @@ import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectManagerListener;
-import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListItemDescriptorAdapter;
 import com.intellij.openapi.ui.popup.StackingPopupDispatcher;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.wm.*;
+import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.openapi.wm.IdeFrame;
+import com.intellij.openapi.wm.StatusBar;
+import com.intellij.openapi.wm.WelcomeScreen;
 import com.intellij.openapi.wm.impl.IdeFrameDecorator;
-import com.intellij.openapi.wm.impl.IdeFrameImpl;
 import com.intellij.openapi.wm.impl.IdeGlassPaneImpl;
+import com.intellij.openapi.wm.impl.ProjectFrameHelper;
 import com.intellij.openapi.wm.impl.customFrameDecorations.header.CustomFrameDialogContent;
 import com.intellij.openapi.wm.impl.customFrameDecorations.header.CustomFrameViewHolder;
 import com.intellij.ui.*;
@@ -46,6 +50,7 @@ import com.intellij.ui.popup.PopupFactoryImpl;
 import com.intellij.ui.popup.list.GroupedItemsListRenderer;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.Function;
+import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.accessibility.AccessibleContextAccessor;
 import com.intellij.util.ui.accessibility.AccessibleContextDelegate;
@@ -122,7 +127,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     setResizable(false);
 
     Dimension size = getPreferredSize();
-    Point location = DimensionService.getInstance().getLocation(WelcomeFrame.DIMENSION_KEY, null);
+    Point location = WindowStateService.getInstance().getLocation(WelcomeFrame.DIMENSION_KEY);
     Rectangle screenBounds = ScreenUtil.getScreenRectangle(location != null ? location : new Point(0, 0));
     setBounds(
       screenBounds.x + (screenBounds.width - size.width) / 2,
@@ -137,10 +142,17 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     // so we need resize window when it is shown
     doWhenFirstShown(this, this::pack);
 
-    ApplicationManager.getApplication().getMessageBus().connect(this).subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
+    MessageBusConnection connection = ApplicationManager.getApplication().getMessageBus().connect(this);
+    connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectOpened(@NotNull Project project) {
         Disposer.dispose(FlatWelcomeFrame.this);
+      }
+    });
+    connection.subscribe(AppLifecycleListener.TOPIC, new AppLifecycleListener() {
+      @Override
+      public void appClosing() {
+        saveLocation(getBounds());
       }
     });
 
@@ -168,7 +180,6 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
       return;
     }
     myDisposed = true;
-    saveLocation(getBounds());
     super.dispose();
     if (myBalloonLayout != null) {
       ((BalloonLayoutImpl)myBalloonLayout).dispose();
@@ -178,11 +189,12 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     WelcomeFrame.resetInstance();
   }
 
-  private static void saveLocation(Rectangle location) {
+  private static void saveLocation(@NotNull Rectangle location) {
     Point middle = new Point(location.x + location.width / 2, location.y + location.height / 2);
-    DimensionService.getInstance().setLocation(WelcomeFrame.DIMENSION_KEY, middle, null);
+    WindowStateService.getInstance().putLocation(WelcomeFrame.DIMENSION_KEY, middle);
   }
 
+  @Nullable
   @Override
   public StatusBar getStatusBar() {
     return null;
@@ -223,7 +235,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     if (Boolean.getBoolean("ide.ui.version.in.title")) {
       title += ' ' + ApplicationInfo.getInstance().getFullVersion();
     }
-    String suffix = IdeFrameImpl.getSuperUserSuffix();
+    String suffix = ProjectFrameHelper.getSuperUserSuffix();
     if (suffix != null) {
       title += ' ' + suffix;
     }
@@ -255,7 +267,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
       if (RecentProjectsManager.getInstance().getRecentProjectsActions(false, isUseProjectGroups()).length > 0) {
         final JComponent recentProjects = createRecentProjects();
         add(recentProjects, BorderLayout.WEST);
-        final JList projectsList = UIUtil.findComponentOfType(recentProjects, JList.class);
+        JList<?> projectsList = UIUtil.findComponentOfType(recentProjects, JList.class);
         if (projectsList != null) {
           projectsList.getModel().addListDataListener(new ListDataListener() {
             @Override
@@ -463,9 +475,11 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
           ActionGroup configureGroup = (ActionGroup)ActionManager.getInstance().getAction(groupId);
-          final PopupFactoryImpl.ActionGroupPopup popup = (PopupFactoryImpl.ActionGroupPopup)JBPopupFactory.getInstance()
-            .createActionGroupPopup(null, new IconsFreeActionGroup(configureGroup), e.getDataContext(), JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false,
-                                    ActionPlaces.WELCOME_SCREEN);
+          PopupFactoryImpl.ActionGroupPopup popup = new PopupFactoryImpl.ActionGroupPopup(
+            null, configureGroup, e.getDataContext(),
+            false, false, false, false, null, -1, null,
+            ActionPlaces.WELCOME_SCREEN,
+            new MenuItemPresentationFactory(true), false);
           popup.showUnderneathOfLabel(ref.get());
         }
       };
@@ -783,64 +797,6 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     public void dispose() {
 
     }
-
-    private class IconsFreeActionGroup extends ActionGroup {
-      private final ActionGroup myGroup;
-
-      IconsFreeActionGroup(ActionGroup group) {
-        super(group.getTemplatePresentation().getText(), group.getTemplatePresentation().getDescription(), null);
-        myGroup = group;
-      }
-
-      @Override
-      public boolean isPopup() {
-        return myGroup.isPopup();
-      }
-
-      @NotNull
-      @Override
-      public AnAction[] getChildren(@Nullable AnActionEvent e) {
-        AnAction[] children = myGroup.getChildren(e);
-        AnAction[] patched = new AnAction[children.length];
-        for (int i = 0; i < children.length; i++) {
-          patched[i] = patch(children[i]);
-        }
-        return patched;
-      }
-
-      private AnAction patch(final AnAction child) {
-        if (child instanceof ActionGroup) {
-          return new IconsFreeActionGroup((ActionGroup)child);
-        }
-
-        Presentation presentation = child.getTemplatePresentation();
-        return new AnAction(presentation.getText(),
-                            presentation.getDescription(),
-                            null) {
-
-          @Override
-          public boolean startInTransaction() {
-            return child.startInTransaction();
-          }
-
-          @Override
-          public void actionPerformed(@NotNull AnActionEvent e) {
-            child.actionPerformed(e);
-          }
-
-          @Override
-          public void update(@NotNull AnActionEvent e) {
-            child.update(e);
-            e.getPresentation().setIcon(null);
-          }
-
-          @Override
-          public boolean isDumbAware() {
-            return child.isDumbAware();
-          }
-        };
-      }
-    }
   }
 
   public static boolean isUseProjectGroups() {
@@ -862,11 +818,13 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     return arrow;
   }
 
+  @Nullable
   @Override
   public BalloonLayout getBalloonLayout() {
     return myBalloonLayout;
   }
 
+  @NotNull
   @Override
   public Rectangle suggestChildFrameBounds() {
     return getBounds();
@@ -882,16 +840,6 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
   @Override
   public void setFrameTitle(String title) {
     setTitle(title);
-  }
-
-  @Override
-  public void setFileTitle(String fileTitle, File ioFile) {
-    setTitle(fileTitle);
-  }
-
-  @Override
-  public IdeRootPaneNorthExtension getNorthExtension(String key) {
-    return null;
   }
 
   @Override

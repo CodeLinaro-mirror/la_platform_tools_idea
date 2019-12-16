@@ -67,8 +67,6 @@ public class JBScrollPane extends JScrollPane {
   private int myViewportBorderWidth = -1;
   private volatile boolean myBackgroundRequested; // avoid cyclic references
 
-  private MouseWheelSmoothScroll mySmoothScroll;
-
   public JBScrollPane(int viewportWidth) {
     init(false);
     myViewportBorderWidth = viewportWidth;
@@ -168,34 +166,7 @@ public class JBScrollPane extends JScrollPane {
         Object value = field.get(ui);
         if (value instanceof MouseWheelListener) {
           MouseWheelListener oldListener = (MouseWheelListener)value;
-          MouseWheelListener newListener = event -> {
-            if (isScrollEvent(event)) {
-              Object source = event.getSource();
-              if (source instanceof JScrollPane) {
-                JScrollPane pane = (JScrollPane)source;
-                if (pane.isWheelScrollingEnabled()) {
-                  JScrollBar bar = event.isShiftDown() ? pane.getHorizontalScrollBar() : pane.getVerticalScrollBar();
-                  if (bar != null && bar.isVisible()) {
-                    if (Registry.is("idea.inertial.smooth.scrolling.enabled")) {
-                      if (mySmoothScroll == null) {
-                        mySmoothScroll = MouseWheelSmoothScroll.create(() -> {
-                          return ScrollSettings.isEligibleFor(this);
-                        });
-                      }
-                      mySmoothScroll.processMouseWheelEvent(event, oldListener::mouseWheelMoved);
-                    } else if (!(bar instanceof JBScrollBar && ((JBScrollBar)bar).handleMouseWheelEvent(event))) {
-                      oldListener.mouseWheelMoved(event);
-                    }
-                  }
-                }
-                if (!event.isConsumed()) {
-                  // try to process a mouse wheel event by outer scroll pane
-                  MouseEventAdapter.redispatch(event, ComponentUtil
-                    .getParentOfType((Class<? extends JScrollPane>)JScrollPane.class, (Component)pane.getParent()));
-                }
-              }
-            }
-          };
+          MouseWheelListener newListener = new JBMouseWheelListener(oldListener);
           field.set(ui, newListener);
           // replace listener if field updated successfully
           removeMouseWheelListener(oldListener);
@@ -204,6 +175,49 @@ public class JBScrollPane extends JScrollPane {
       }
       catch (Exception exception) {
         LOG.warn(exception);
+      }
+    }
+  }
+
+  private static class JBMouseWheelListener implements MouseWheelListener {
+
+    private final MouseWheelListener myDelegate;
+    private MouseWheelSmoothScroll mySmoothScroll;
+
+    private JBMouseWheelListener(MouseWheelListener delegate) {
+      this.myDelegate = delegate;
+    }
+
+    @Override
+    public void mouseWheelMoved(MouseWheelEvent event) {
+      boolean isScrollEvent = isScrollEvent(event);
+      boolean isScrollPaneEvent = event.getSource() instanceof JScrollPane;
+      if (isScrollEvent && isScrollPaneEvent) {
+        JScrollPane pane = (JScrollPane)event.getSource();
+        JScrollBar bar = event.isShiftDown() ? pane.getHorizontalScrollBar() : pane.getVerticalScrollBar();
+
+        boolean isWheelScrollEnabled = pane.isWheelScrollingEnabled();
+        boolean isBarVisible = bar != null && bar.isVisible();
+        boolean isAdjustedDeltaZero = bar instanceof JBScrollBar && ((JBScrollBar)bar).getDeltaAdjusted(event) == 0.0;
+
+        if (isWheelScrollEnabled && isBarVisible && !isAdjustedDeltaZero) {
+          if (Registry.is("idea.inertial.smooth.scrolling.enabled")) {
+            if (mySmoothScroll == null) {
+              mySmoothScroll = MouseWheelSmoothScroll.create(() -> {
+                return ScrollSettings.isEligibleFor(pane);
+              });
+            }
+            mySmoothScroll.processMouseWheelEvent(event, myDelegate::mouseWheelMoved);
+          } else if (!(bar instanceof JBScrollBar && ((JBScrollBar)bar).handleMouseWheelEvent(event))) {
+            myDelegate.mouseWheelMoved(event);
+          }
+        }
+
+        if (!event.isConsumed()) {
+          // try to process a mouse wheel event by outer scroll pane
+          MouseEventAdapter.redispatch(event, ComponentUtil
+            .getParentOfType((Class<? extends JScrollPane>)JScrollPane.class, pane.getParent()));
+        }
       }
     }
   }
@@ -443,25 +457,18 @@ public class JBScrollPane extends JScrollPane {
       // Once we're through computing the dimensions of these three parts
       // we can go back and set the bounds for the corners and the dimensions of
       // colHeadBounds.x, colHeadBounds.width, rowHeadBounds.y, rowHeadBounds.height.
+
+      // Don't bother checking the Scrollable methods if there is no room for the viewport,
+      // we aren't going to show any scroll bars in this case anyway.
       boolean isEmpty = bounds.width < 0 || bounds.height < 0;
+
       Component view = viewport == null ? null : viewport.getView();
       Dimension viewPreferredSize = view == null ? new Dimension() : view.getPreferredSize();
       if (view instanceof JComponent && !view.isPreferredSizeSet()) {
         JBInsets.removeFrom(viewPreferredSize, JBViewport.getViewInsets((JComponent)view));
       }
       Dimension viewportExtentSize = viewport == null ? new Dimension() : viewport.toViewCoordinates(bounds.getSize());
-      // If the view is tracking the viewports width we don't bother with a horizontal scrollbar.
-      // If the view is tracking the viewports height we don't bother with a vertical scrollbar.
-      Scrollable scrollable = null;
-      boolean viewTracksViewportWidth = false;
-      boolean viewTracksViewportHeight = false;
-      // Don't bother checking the Scrollable methods if there is no room for the viewport,
-      // we aren't going to show any scroll bars in this case anyway.
-      if (!isEmpty && view instanceof Scrollable) {
-        scrollable = (Scrollable)view;
-        viewTracksViewportWidth = scrollable.getScrollableTracksViewportWidth();
-        viewTracksViewportHeight = scrollable.getScrollableTracksViewportHeight();
-      }
+
       // workaround for installed JBViewport.ViewBorder:
       // do not hide scroll bars if view is not aligned
       Point viewLocation = new Point();
@@ -473,7 +480,9 @@ public class JBScrollPane extends JScrollPane {
       int vsbPolicy = pane.getVerticalScrollBarPolicy();
       if (!isEmpty && vsbPolicy != VERTICAL_SCROLLBAR_NEVER) {
         vsbNeeded = vsbPolicy == VERTICAL_SCROLLBAR_ALWAYS
-                    || !viewTracksViewportHeight && (viewPreferredSize.height > viewportExtentSize.height || viewLocation.y != 0);
+                    || isScrollBarNeeded(viewLocation.y, viewPreferredSize.height, viewportExtentSize.height) &&
+                       // If the view is tracking the viewports height we don't bother with a vertical scrollbar.
+                       !tracksViewportHeight(view);
       }
       Rectangle vsbBounds = new Rectangle(0, bounds.y - insets.top, 0, 0);
       if (vsb != null) {
@@ -493,7 +502,9 @@ public class JBScrollPane extends JScrollPane {
       int hsbPolicy = pane.getHorizontalScrollBarPolicy();
       if (!isEmpty && hsbPolicy != HORIZONTAL_SCROLLBAR_NEVER) {
         hsbNeeded = hsbPolicy == HORIZONTAL_SCROLLBAR_ALWAYS
-                    || !viewTracksViewportWidth && (viewPreferredSize.width > viewportExtentSize.width || viewLocation.x != 0);
+                    || isScrollBarNeeded(viewLocation.x, viewPreferredSize.width, viewportExtentSize.width)
+                       // If the view is tracking the viewports width we don't bother with a horizontal scrollbar.
+                       && !tracksViewportWidth(view);
       }
       Rectangle hsbBounds = new Rectangle(bounds.x - insets.left, 0, 0, 0);
       if (hsb != null) {
@@ -510,7 +521,7 @@ public class JBScrollPane extends JScrollPane {
             else if (viewport != null) {
               viewportExtentSize = viewport.toViewCoordinates(bounds.getSize());
             }
-            vsbNeeded = viewPreferredSize.height > viewportExtentSize.height || viewLocation.y != 0;
+            vsbNeeded = isScrollBarNeeded(viewLocation.y, viewPreferredSize.height, viewportExtentSize.height);
             if (vsbNeeded) adjustForVSB(bounds, insets, vsbBounds, vsbOpaque, vsbOnLeft);
           }
         }
@@ -520,14 +531,13 @@ public class JBScrollPane extends JScrollPane {
       // so that if we don't ask after resetting the bounds we may have gotten the wrong answer.
       if (viewport != null) {
         viewport.setBounds(bounds);
-        if (scrollable != null) {
-          viewTracksViewportWidth = scrollable.getScrollableTracksViewportWidth();
-          viewTracksViewportHeight = scrollable.getScrollableTracksViewportHeight();
+        if (!isEmpty && view instanceof Scrollable) {
           viewportExtentSize = viewport.toViewCoordinates(bounds.getSize());
 
           boolean vsbNeededOld = vsbNeeded;
           if (vsb != null && vsbPolicy == VERTICAL_SCROLLBAR_AS_NEEDED) {
-            boolean vsbNeededNew = !viewTracksViewportHeight && viewPreferredSize.height > viewportExtentSize.height || viewLocation.y != 0;
+            boolean vsbNeededNew = isScrollBarNeeded(viewLocation.y, viewPreferredSize.height, viewportExtentSize.height) &&
+                                   !tracksViewportHeight(view);
             if (vsbNeeded != vsbNeededNew) {
               vsbNeeded = vsbNeededNew;
               if (vsbNeeded) {
@@ -541,7 +551,8 @@ public class JBScrollPane extends JScrollPane {
           }
           boolean hsbNeededOld = hsbNeeded;
           if (hsb != null && hsbPolicy == HORIZONTAL_SCROLLBAR_AS_NEEDED) {
-            boolean hsbNeededNew = !viewTracksViewportWidth && viewPreferredSize.width > viewportExtentSize.width || viewLocation.x != 0;
+            boolean hsbNeededNew = isScrollBarNeeded(viewLocation.x, viewPreferredSize.width, viewportExtentSize.width) &&
+                                   !tracksViewportWidth(view);
             if (hsbNeeded != hsbNeededNew) {
               hsbNeeded = hsbNeededNew;
               if (hsbNeeded) {
@@ -552,7 +563,7 @@ public class JBScrollPane extends JScrollPane {
               }
               if (hsbOpaque && vsb != null && !vsbNeeded && vsbPolicy != VERTICAL_SCROLLBAR_NEVER) {
                 viewportExtentSize = viewport.toViewCoordinates(bounds.getSize());
-                vsbNeeded = viewPreferredSize.height > viewportExtentSize.height || viewLocation.y != 0;
+                vsbNeeded = isScrollBarNeeded(viewLocation.y, viewPreferredSize.height, viewportExtentSize.height);
                 if (vsbNeeded) adjustForVSB(bounds, insets, vsbBounds, vsbOpaque, vsbOnLeft);
               }
             }
@@ -682,6 +693,14 @@ public class JBScrollPane extends JScrollPane {
       }
     }
 
+    private static boolean tracksViewportWidth(Component view) {
+      return view instanceof Scrollable && ((Scrollable)view).getScrollableTracksViewportWidth();
+    }
+
+    private static boolean tracksViewportHeight(Component view) {
+      return view instanceof Scrollable && ((Scrollable)view).getScrollableTracksViewportHeight();
+    }
+
     @Override
     public Dimension preferredLayoutSize(Container parent) {
       Dimension result = new Dimension();
@@ -785,6 +804,16 @@ public class JBScrollPane extends JScrollPane {
 
     private static int min(int one, int two) {
       return Math.max(0, Math.min(one, two));
+    }
+
+    /**
+     * @param location      a horizontal (or vertical) position of a component
+     * @param preferredSize a preferred width (or height) of a component
+     * @param extentSize    an extent size of a viewport
+     * @return {@code true} if a preferred size exceeds an extent size or if a component is not aligned
+     */
+    private static boolean isScrollBarNeeded(int location, int preferredSize, int extentSize) {
+      return preferredSize > extentSize || location != 0;
     }
   }
 

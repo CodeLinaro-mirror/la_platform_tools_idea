@@ -15,16 +15,13 @@ import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager;
 import com.intellij.psi.PsiElement;
+import com.intellij.util.containers.ContainerUtil;
 import org.jdom.Element;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 public interface HighlightInfoType {
@@ -65,168 +62,32 @@ public interface HighlightInfoType {
    * The field will be removed in version 17.
    */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
   HighlightInfoType LOCAL_VARIABLE = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.LOCAL_VARIABLE_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.INSTANCE_FIELD or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType INSTANCE_FIELD = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.INSTANCE_FIELD_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.STATIC_FIELD or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType STATIC_FIELD = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.STATIC_FIELD_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.STATIC_FINAL_FIELD or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType STATIC_FINAL_FIELD = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.STATIC_FINAL_FIELD_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.PARAMETER or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType PARAMETER = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.PARAMETER_ATTRIBUTES);
   /**
    * @deprecated For Java use JavaHighlightInfoTypes.METHOD_CALL or create a language-specific HighlightInfoType.
    * The field will be removed in version 17.
    */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
   HighlightInfoType METHOD_CALL = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.METHOD_CALL_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.METHOD_DECLARATION or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType METHOD_DECLARATION = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.METHOD_DECLARATION_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.CONSTRUCTOR_CALL or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType CONSTRUCTOR_CALL = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.CONSTRUCTOR_CALL_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.CONSTRUCTOR_DECLARATION or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType CONSTRUCTOR_DECLARATION = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.CONSTRUCTOR_DECLARATION_ATTRIBUTES);
   /**
    * @deprecated For Java use JavaHighlightInfoTypes.STATIC_METHOD or create a language-specific HighlightInfoType.
    * The field will be removed in version 17.
    */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
   HighlightInfoType STATIC_METHOD = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.STATIC_METHOD_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.ABSTRACT_METHOD or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType ABSTRACT_METHOD = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.ABSTRACT_METHOD_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.INHERITED_METHOD or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType INHERITED_METHOD = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.INHERITED_METHOD_ATTRIBUTES);
   /**
    * @deprecated For Java use JavaHighlightInfoTypes.CLASS_NAME or create a language-specific HighlightInfoType.
    * The field will be removed in version 17.
    */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
   HighlightInfoType CLASS_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.CLASS_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.ANONYMOUS_CLASS_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType ANONYMOUS_CLASS_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.ANONYMOUS_CLASS_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.INTERFACE_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType INTERFACE_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.INTERFACE_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.ENUM_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType ENUM_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.ENUM_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.TYPE_PARAMETER_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType TYPE_PARAMETER_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.TYPE_PARAMETER_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.ABSTRACT_CLASS_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType ABSTRACT_CLASS_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.ABSTRACT_CLASS_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.ANNOTATION_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType ANNOTATION_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.ANNOTATION_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.ANNOTATION_ATTRIBUTE_NAME or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType ANNOTATION_ATTRIBUTE_NAME = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.ANNOTATION_ATTRIBUTE_NAME_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.REASSIGNED_LOCAL_VARIABLE or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType REASSIGNED_LOCAL_VARIABLE = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.REASSIGNED_LOCAL_VARIABLE_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.REASSIGNED_PARAMETER or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType REASSIGNED_PARAMETER = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.REASSIGNED_PARAMETER_ATTRIBUTES);
-  /**
-   * @deprecated For Java use JavaHighlightInfoTypes.IMPLICIT_ANONYMOUS_CLASS_PARAMETER or create a language-specific HighlightInfoType.
-   * The field will be removed in version 17.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
-  HighlightInfoType IMPLICIT_ANONYMOUS_CLASS_PARAMETER = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.IMPLICIT_ANONYMOUS_CLASS_PARAMETER_ATTRIBUTES);
 
   HighlightInfoType TODO = new HighlightInfoTypeImpl(HighlightSeverity.INFORMATION, CodeInsightColors.TODO_DEFAULT_ATTRIBUTES);  // these are default attributes, can be configured differently for specific patterns
   HighlightInfoType UNHANDLED_EXCEPTION = new HighlightInfoTypeImpl(HighlightSeverity.ERROR, CodeInsightColors.ERRORS_ATTRIBUTES);
 
+  HighlightSeverity INJECTED_FRAGMENT_SYNTAX_SEVERITY = new HighlightSeverity("INJECTED_FRAGMENT_SYNTAX", SYMBOL_TYPE_SEVERITY.myVal - 2);
   HighlightSeverity INJECTED_FRAGMENT_SEVERITY = new HighlightSeverity("INJECTED_FRAGMENT", SYMBOL_TYPE_SEVERITY.myVal - 1);
-  HighlightInfoType INJECTED_LANGUAGE_FRAGMENT = new HighlightInfoTypeImpl(SYMBOL_TYPE_SEVERITY, CodeInsightColors.INFORMATION_ATTRIBUTES);
+  HighlightInfoType INJECTED_LANGUAGE_FRAGMENT = new HighlightInfoTypeImpl(INJECTED_FRAGMENT_SYNTAX_SEVERITY, CodeInsightColors.INFORMATION_ATTRIBUTES);
   HighlightInfoType INJECTED_LANGUAGE_BACKGROUND = new HighlightInfoTypeImpl(INJECTED_FRAGMENT_SEVERITY, CodeInsightColors.INFORMATION_ATTRIBUTES);
 
   HighlightSeverity ELEMENT_UNDER_CARET_SEVERITY = new HighlightSeverity("ELEMENT_UNDER_CARET", HighlightSeverity.ERROR.myVal + 1);
@@ -238,13 +99,13 @@ public interface HighlightInfoType {
   /**
    * @see com.intellij.openapi.editor.impl.RangeHighlighterImpl#VISIBLE_IF_FOLDED
    */
-  Set<HighlightInfoType> VISIBLE_IF_FOLDED = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+  Set<HighlightInfoType> VISIBLE_IF_FOLDED = ContainerUtil.immutableSet(
     ELEMENT_UNDER_CARET_READ, 
     ELEMENT_UNDER_CARET_WRITE,
     WARNING,
     ERROR,
     WRONG_REF
-  )));
+  );
 
   @NotNull
   HighlightSeverity getSeverity(@Nullable PsiElement psiElement);
@@ -287,7 +148,6 @@ public interface HighlightInfoType {
     }
 
     @Override
-    @SuppressWarnings("HardCodedStringLiteral")
     public String toString() {
       return "HighlightInfoTypeImpl[severity=" + mySeverity + ", key=" + myAttributesKey + "]";
     }
@@ -329,6 +189,7 @@ public interface HighlightInfoType {
   }
 
   class HighlightInfoTypeSeverityByKey implements HighlightInfoType {
+    @SuppressWarnings("unused")
     static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.HighlightInfoType.HighlightInfoTypeSeverityByKey");
 
     private final TextAttributesKey myAttributesKey;
@@ -355,7 +216,6 @@ public interface HighlightInfoType {
     }
 
     @Override
-    @SuppressWarnings("HardCodedStringLiteral")
     public String toString() {
       return "HighlightInfoTypeSeverityByKey[severity=" + myToolKey + ", key=" + myAttributesKey + "]";
     }

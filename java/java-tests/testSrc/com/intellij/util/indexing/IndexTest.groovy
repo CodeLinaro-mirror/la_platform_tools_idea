@@ -14,6 +14,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.impl.CurrentEditorProvider
+import com.intellij.openapi.fileEditor.impl.FileDocumentManagerImpl
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.fileTypes.StdFileTypes
 import com.intellij.openapi.module.StdModuleTypes
@@ -43,6 +44,7 @@ import com.intellij.psi.impl.cache.impl.id.IdIndexImpl
 import com.intellij.psi.impl.cache.impl.todo.TodoIndex
 import com.intellij.psi.impl.file.impl.FileManagerImpl
 import com.intellij.psi.impl.java.JavaFunctionalExpressionIndex
+import com.intellij.psi.impl.java.stubs.index.JavaShortClassNameIndex
 import com.intellij.psi.impl.java.stubs.index.JavaStubIndexKeys
 import com.intellij.psi.impl.search.JavaNullMethodArgumentIndex
 import com.intellij.psi.impl.source.*
@@ -168,7 +170,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   private static StringIndex createIndex(String testName, EnumeratorStringDescriptor keyDescriptor, boolean readOnly) {
     final File storageFile = FileUtil.createTempFile("index_test", "storage")
     final File metaIndexFile = FileUtil.createTempFile("index_test_inputs", "storage")
-    final VfsAwareMapIndexStorage indexStorage = new VfsAwareMapIndexStorage(storageFile, keyDescriptor, new EnumeratorStringDescriptor(), 16 * 1024, readOnly)
+    final VfsAwareMapIndexStorage indexStorage = new VfsAwareMapIndexStorage(storageFile, keyDescriptor, new EnumeratorStringDescriptor(),
+                                                                             16 * 1024, readOnly)
     return new StringIndex(testName, indexStorage, metaIndexFile, !readOnly)
   }
 
@@ -357,7 +360,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
 
     assert JavaPsiFacade.getInstance(project).findClass("Foo", scope)
 
-    assert !((FileManagerImpl) psiManager.fileManager).getCachedDirectory(psiFile.virtualFile.parent)
+    assert !((FileManagerImpl)psiManager.fileManager).getCachedDirectory(psiFile.virtualFile.parent)
     assert psiFile.setName("Foo1.java") == psiFile
 
     assert FileDocumentManager.instance.unsavedDocuments
@@ -377,7 +380,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     assert JavaPsiFacade.getInstance(project).findClass("pkg.Foo", scope)
 
     def dir = psiFile.virtualFile.parent
-    assert !((FileManagerImpl) psiManager.fileManager).getCachedDirectory(dir)
+    assert !((FileManagerImpl)psiManager.fileManager).getCachedDirectory(dir)
     dir.rename(this, "bar")
 
     assert FileDocumentManager.instance.unsavedDocuments
@@ -396,6 +399,34 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     IdeaTestUtil.setModuleLanguageLevel(myFixture.module, LanguageLevel.JDK_1_3)
 
     assert ((PsiJavaFile)psiFile).importList.node
+  }
+
+  void "test rename file with indexed associated unsaved document don't lost its data"() {
+    def level = LanguageLevel.HIGHEST
+    IdeaTestUtil.setModuleLanguageLevel(myFixture.module, level)
+    def psiFile = myFixture.addFileToProject("Foo.java", "class Foo {}")
+
+    def file = psiFile.virtualFile
+    def scope = GlobalSearchScope.allScope(project)
+
+    PostprocessReformattingAspect.getInstance(getProject()).doPostponedFormatting()
+    PsiDocumentManager.getInstance(getProject()).commitAllDocuments()
+    def vp = PsiManager.getInstance(project).findViewProvider(file)
+    CodeStyleManager.getInstance(getProject()).reformat(vp.getPsi(vp.baseLanguage))
+
+    PostprocessReformattingAspect.getInstance(getProject()).doPostponedFormatting()
+    FileContentUtilCore.reparseFiles(file)
+
+    vp = PsiManager.getInstance(project).findViewProvider(file)
+    ((PsiFileImpl)vp.getPsi(vp.baseLanguage)).greenStubTree
+
+    PostprocessReformattingAspect.getInstance(getProject()).doPostponedFormatting()
+    FileContentUtilCore.reparseFiles(file)
+
+    PostprocessReformattingAspect.getInstance(getProject()).doPostponedFormatting()
+    IdeaTestUtil.setModuleLanguageLevel(myFixture.module, level)
+
+    assert JavaPsiFacade.getInstance(project).findClass("Foo", scope)
   }
 
   void "test language level change2"() {
@@ -417,7 +448,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     assert ((PsiJavaFile)getPsiManager().findFile(vFile)).importList.node
   }
 
-  void "test unknown file type in stubs" () {
+  void "test unknown file type in stubs"() {
     def vFile = myFixture.addFileToProject("Foo.java", "").virtualFile
     final Document document = FileDocumentManager.getInstance().getDocument(vFile)
     document.setText("class Foo {}")
@@ -440,7 +471,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     }
   }
 
-  void "test plain text file type in stubs" () {
+  void "test plain text file type in stubs"() {
     def vFile = myFixture.addFileToProject("Foo.java", "class Bar {}").virtualFile
     assert findClass("Bar")
     final Document document = FileDocumentManager.getInstance().getDocument(vFile)
@@ -467,8 +498,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
 
     //noinspection GroovyUnusedAssignment
     psiFile = null
-    GCWatcher.tracking(((PsiManagerEx) psiManager).fileManager.getCachedPsiFile(vFile)).tryGc()
-    assert !((PsiManagerEx) psiManager).fileManager.getCachedPsiFile(vFile)
+    GCWatcher.tracking(((PsiManagerEx)psiManager).fileManager.getCachedPsiFile(vFile)).tryGc()
+    assert !((PsiManagerEx)psiManager).fileManager.getCachedPsiFile(vFile)
 
     VfsUtil.saveText(vFile, "class Foo3 {}")
 
@@ -480,7 +511,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   void "test rename file invalidates indices in right order"() throws IOException {
     GlobalSearchScope scope = GlobalSearchScope.allScope(getProject())
 
-    for(def i = 0; i < 100; ++i) {
+    for (def i = 0; i < 100; ++i) {
       final VirtualFile file = myFixture.addFileToProject("foo/Foo" + i + ".java", "package foo; class Foo" + i + " {}").getVirtualFile()
       assertNotNull(JavaPsiFacade.getInstance(getProject()).findClass("foo.Foo" + i, scope))
       file.rename(this, "Bar" + i + ".java")
@@ -529,7 +560,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
 """).virtualFile
     def stamp = FileBasedIndex.instance.getIndexModificationStamp(JavaNullMethodArgumentIndex.INDEX_ID, project)
     def data = new JavaNullMethodArgumentIndex.MethodCallData("staticMethod", 0)
-    def files = FileBasedIndex.instance.getContainingFiles(JavaNullMethodArgumentIndex.INDEX_ID, data, GlobalSearchScope.projectScope(project))
+    def files = FileBasedIndex.instance.getContainingFiles(JavaNullMethodArgumentIndex.INDEX_ID, data, GlobalSearchScope.projectScope(
+      project))
     assertTrue(files.size() == 1)
     assertEquals(files[0], vFile)
 
@@ -703,7 +735,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
             return true
           }
         })
-    } catch (e) {
+    }
+    catch (e) {
       if (!(e instanceof RuntimeException)) throw e
     }
 
@@ -734,7 +767,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
             return true
           }
         })
-    } catch (e) {
+    }
+    catch (e) {
       if (!(e instanceof RuntimeException)) throw e
     }
 
@@ -766,7 +800,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
             return true
           }
         }, scope)
-    } catch (e) {
+    }
+    catch (e) {
       if (!(e instanceof RuntimeException)) throw e
     }
 
@@ -789,7 +824,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
 
   class RecordingVfsListener extends IndexedFilesListener {
     RecordingVfsListener() {
-      super(ManagingFS.getInstance())
+      super()
     }
 
     @Override
@@ -865,7 +900,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   void "test requesting nonexisted index fails as expected"() {
     ID<?, ?> myId = ID.create("my.id")
     FileBasedIndex.instance.getContainingFiles(myId, "null", GlobalSearchScope.allScope(project))
-    FileBasedIndex.instance.processAllKeys(myId, Processor.TRUE, project)
+    FileBasedIndex.instance.processAllKeys(myId, CommonProcessors.alwaysTrue(), project)
   }
 
   void "test read-only index access"() {
@@ -877,14 +912,15 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       assertInstanceOf(rebuildThrowable, StorageException.class)
       def rebuildCause = rebuildThrowable.getCause()
       assertInstanceOf(rebuildCause, IncorrectOperationException.class)
-    } finally {
+    }
+    finally {
       index.dispose()
     }
   }
 
   void "test commit without reparse properly changes index"() {
     def srcFile = myFixture.addFileToProject('A.java', 'class A {}')
-    assert findClass('A' ) != null
+    assert findClass('A') != null
 
     Document document = FileDocumentManager.getInstance().getDocument(srcFile.virtualFile)
     document.replaceString(0, document.getTextLength(), 'class B {}')
@@ -923,7 +959,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       PersistentHashMap<String, UpdatableValueContainer<String>> map = storage.getIndexMap()
       assertTrue(map.getReadOnly())
       assertTrue(map.getValueStorage().isReadOnly())
-    } finally {
+    }
+    finally {
       index.dispose()
     }
   }
@@ -944,7 +981,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       List<VFileEvent> eventList = new ArrayList<>(max)
       def len = max / 2
 
-      for(int i = 0; i < len; ++i) {
+      for (int i = 0; i < len; ++i) {
         eventList.add(new VFilePropertyChangeEvent(null, file, VirtualFile.PROP_NAME, filename, filename2, true))
         eventList.add(new VFilePropertyChangeEvent(null, file, VirtualFile.PROP_NAME, filename2, filename, true))
         eventList.add(new VFileDeleteEvent(null, file, true))
@@ -1002,7 +1039,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
           }
         }, progressIndicatorBase
       )
-    } finally {
+    }
+    finally {
       TodoConfiguration.getInstance().setTodoPatterns(oldPatterns)
     }
   }
@@ -1038,7 +1076,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
             return true
           }
         })
-    } catch (e) {
+    }
+    catch (e) {
       if (!(e instanceof RuntimeException)) throw e
     }
 
@@ -1122,5 +1161,62 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
     VfsUtil.saveText(vFile, "class Foo { void m() { int k = 0; } }")
     assertTrue(stamp == ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+  }
+
+  void "test index stamp update on transient data deletion"() {
+    def stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+    def file = myFixture.addClass("class Foo {}").getContainingFile()
+
+    ((PsiJavaFile)file).getImportList().add(JavaPsiFacade.getElementFactory(getProject()).createImportStatementOnDemand("java.io"))
+    assert findClass("Foo") != null
+    PsiDocumentManager.getInstance(getProject()).commitAllDocuments()
+    assertTrue(stamp != ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+    stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+
+    assert findClass("Foo") != null
+    PsiDocumentManager.getInstance(getProject()).commitAllDocuments()
+    assertTrue(stamp == ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+    stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+
+    PostprocessReformattingAspect.getInstance(getProject()).doPostponedFormatting()
+    PsiManager.getInstance(getProject()).reloadFromDisk(file)
+    assertTrue(stamp != ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+
+    assert findClass("Foo") != null
+    PsiDocumentManager.getInstance(getProject()).commitAllDocuments()
+    assertTrue(stamp != ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+    stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+
+    findClass("Foo").replace(findClass("Foo").copy())
+    assert findClass("Foo") != null
+    assertTrue(stamp == ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+  }
+
+  void "test non empty memory storage cleanup advances index modification stamp"() {
+    def stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+    def file = myFixture.addClass("class Foo {}").getContainingFile()
+    assert findClass("Foo")
+    assertTrue(stamp != ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+    stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+
+    ((PsiJavaFile)file).getImportList().add(JavaPsiFacade.getElementFactory(getProject()).createImportStatementOnDemand("java.io"))
+    assert findClass("Foo")
+    assertTrue(stamp != ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+    stamp = ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project)
+
+    ((FileDocumentManagerImpl)FileDocumentManager.instance).dropAllUnsavedDocuments()
+    assert findClass("Foo")
+    assertTrue(stamp != ((FileBasedIndexImpl)FileBasedIndex.instance).getIndexModificationStamp(StubUpdatingIndex.INDEX_ID, project))
+  }
+
+  void "test index clear increments modification stamp"() {
+    StringIndex index = createIndex(getTestName(false), new EnumeratorStringDescriptor(), false)
+    try {
+      def stamp = index.getModificationStamp()
+      index.clear();
+      assertTrue(stamp != index.getModificationStamp())
+    } finally {
+      index.dispose()
+    }
   }
 }

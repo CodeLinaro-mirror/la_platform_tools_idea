@@ -45,6 +45,9 @@ public class DataFlowRangeAnalysisTest extends DataFlowInspectionTestCase {
   public void testLongRangeKnownMethods() {
     doTest();
   }
+  public void testStringSubstring() {
+    doTest();
+  }
 
   public void testLongRangeMod() { doTest(); }
   public void testLongRangeDivShift() { doTest(); }
@@ -62,4 +65,7 @@ public class DataFlowRangeAnalysisTest extends DataFlowInspectionTestCase {
   public void testBackPropagationMod() { doTest(); }
   public void testArithmeticNoOp() { doTest(); }
   public void testStringConcat() { doTest(); }
+  public void testUnaryPlusMinus() { doTest(); }
+  public void testWidenPlusInLoop() { doTest(); }
+  public void testWidenMulInLoop() { doTest(); }
 }

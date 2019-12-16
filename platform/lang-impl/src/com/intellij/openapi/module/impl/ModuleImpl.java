@@ -78,18 +78,17 @@ public class ModuleImpl extends PlatformComponentManagerImpl implements ModuleEx
   public void init(@Nullable Runnable beforeComponentCreation) {
     // do not measure (activityNamePrefix method not overridden by this class)
     // because there are a lot of modules and no need to measure each one
-    registerComponents(PluginManagerCore.getLoadedPlugins());
+    registerComponents(PluginManagerCore.getLoadedPlugins(), false);
     if (beforeComponentCreation != null) {
       beforeComponentCreation.run();
     }
     createComponents(null);
   }
 
-  @Nullable
   @Override
-  protected ProgressIndicator getProgressIndicator() {
-    // module loading progress is not tracked, progress updated by ModuleManagerImpl on module load
-    return null;
+  protected void setProgressDuringInit(@NotNull ProgressIndicator indicator) {
+    // Component loading progress is not reported for module, because at this stage minimal reporting unit it is the module itself.
+    // Stage "Loading modules" — progress reported for each loaded module and module component count doesn't matter.
   }
 
   @Override

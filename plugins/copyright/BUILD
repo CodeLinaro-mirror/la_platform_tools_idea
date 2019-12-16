@@ -7,6 +7,7 @@ iml_module(
     iml_files = ["intellij.copyright.iml"],
     # do not sort: must match IML order
     test_runtime_deps = [
+        "//tools/idea/xml/dom-openapi:intellij.xml.dom",
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
         "//tools/idea/images:intellij.platform.images",
     ],
@@ -23,14 +24,13 @@ iml_module(
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
         "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
     ],
     # do not sort: must match IML order
     deps = [
-        "//tools/idea/java/jsp-openapi:intellij.jsp[module]",
         "//tools/idea/xml/openapi:intellij.xml[module]",
         "//tools/idea/platform/lang-api:intellij.platform.lang[module]",
         "//tools/idea/platform/lang-impl:intellij.platform.lang.impl[module]",
-        "//tools/idea/java/openapi:intellij.java[module]",
         "//tools/idea/.idea/libraries:Velocity",
         "//tools/idea/.idea/libraries:commons-collections",
         "//tools/idea/xml/impl:intellij.xml.impl[module]",

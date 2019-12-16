@@ -1,8 +1,11 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.issue
 
+import com.intellij.build.BuildConsoleUtils.getMessageTitle
 import com.intellij.build.issue.BuildIssue
 import com.intellij.build.issue.BuildIssueQuickFix
+import com.intellij.openapi.project.Project
+import com.intellij.pom.Navigatable
 import org.gradle.util.GradleVersion
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.issue.quickfix.GradleVersionQuickFix
@@ -28,12 +31,20 @@ class UnsupportedGradleVersionIssueChecker : GradleIssueChecker {
       gradleVersionUsed = GradleVersion.version(issueData.buildEnvironment.gradle.gradleVersion)
     }
 
-    val errorMessagePrefix = "org.gradle.tooling.UnsupportedVersionException: Support for builds using Gradle versions older than "
-    if (!rootCauseText.startsWith(errorMessagePrefix)) {
+    if (!rootCauseText.startsWith("org.gradle.tooling.UnsupportedVersionException: ")) {
       return null
     }
 
-    val minRequiredVersionCandidate = rootCauseText.substringAfter(errorMessagePrefix).substringBefore(" ", "")
+    val errorMessagePrefix = "org.gradle.tooling.UnsupportedVersionException: Support for builds using Gradle versions older than "
+    val isVeryOldGradleVersion = rootCauseText.endsWith(
+      "does not support the ModelBuilder API. Support for this is available in Gradle 1.2 and all later versions.")
+    if (!rootCauseText.startsWith(errorMessagePrefix) && !isVeryOldGradleVersion) {
+      return null
+    }
+
+    val minRequiredVersionCandidate: String
+    if (isVeryOldGradleVersion) minRequiredVersionCandidate = "2.6"
+    else minRequiredVersionCandidate = rootCauseText.substringAfter(errorMessagePrefix).substringBefore(" ", "")
     val gradleMinimumVersionRequired = try {
       GradleVersion.version(minRequiredVersionCandidate)
     }
@@ -44,10 +55,16 @@ class UnsupportedGradleVersionIssueChecker : GradleIssueChecker {
     val quickFixes: MutableList<BuildIssueQuickFix>
     quickFixes = ArrayList()
 
-    val issueDescription = StringBuilder(rootCause.message)
+    val str = if (isVeryOldGradleVersion) {
+      "Support for builds using Gradle versions older than 2.6 was removed. You should upgrade your Gradle build to use Gradle 2.6 or later."
+    }
+    else {
+      rootCause.message
+    }
+    val issueDescription = StringBuilder(str)
     issueDescription.append("\n\nPossible solution:\n")
     val wrapperPropertiesFile = GradleUtil.findDefaultWrapperPropertiesFile(issueData.projectPath)
-    if (wrapperPropertiesFile == null || gradleVersionUsed != null && gradleVersionUsed.baseVersion < gradleMinimumVersionRequired) {
+    if (wrapperPropertiesFile == null || isVeryOldGradleVersion || gradleVersionUsed != null && gradleVersionUsed.baseVersion < gradleMinimumVersionRequired) {
       val gradleVersionFix = GradleVersionQuickFix(issueData.projectPath, gradleMinimumVersionRequired, true)
       issueDescription.append(
         " - <a href=\"${gradleVersionFix.id}\">Upgrade Gradle wrapper to ${gradleMinimumVersionRequired.version} version " +
@@ -63,9 +80,13 @@ class UnsupportedGradleVersionIssueChecker : GradleIssueChecker {
       quickFixes.add(reimportQuickFix)
     }
 
+    val description = issueDescription.toString()
+    val title = getMessageTitle(description)
     return object : BuildIssue {
-      override val description: String = issueDescription.toString()
+      override val title: String = title
+      override val description: String = description
       override val quickFixes = quickFixes
+      override fun getNavigatable(project: Project): Navigatable? = null
     }
   }
 }

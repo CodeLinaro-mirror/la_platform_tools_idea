@@ -20,6 +20,7 @@ import com.intellij.util.messages.MessageBusFactory;
 import com.intellij.util.messages.Topic;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -122,6 +123,24 @@ public class MessageBusTest extends LightPlatformTestCase {
 
     myBus.syncPublisher(TOPIC1).t11();
     assertEvents("c1:t11", "c2:t11");
+  }
+
+  public void testSameTopicInOneConnection() {
+    MessageBusConnection connection = myBus.connect();
+    connection.subscribe(TOPIC1, new T1Handler("c1"));
+    connection.subscribe(TOPIC1, new T1Handler("c2"));
+
+    myBus.syncPublisher(TOPIC1).t11();
+    assertEvents("c1:t11", "c2:t11");
+  }
+
+  public void testSameTopicInOneConnectionForList() {
+    MessageBusConnectionImpl connection = myBus.connect();
+    connection.subscribe(TOPIC1, new T1Handler("c1"));
+    connection.subscribe(TOPIC1, Arrays.asList(new T1Handler("c2"), new T1Handler("c3")));
+
+    myBus.syncPublisher(TOPIC1).t11();
+    assertEvents("c1:t11", "c2:t11", "c3:t11");
   }
 
   public void testTwoMessagesWithSingleSubscription() {
@@ -262,6 +281,20 @@ public class MessageBusTest extends LightPlatformTestCase {
         publisher.t11();
       }
     });
+  }
+
+  public void testManyChildrenCreationDeletionPerformance() {
+    PlatformTestUtil.startPerformanceTest("Child bus creation/deletion", 1_000, () -> {
+      List<MessageBusImpl> children = new ArrayList<>();
+      int count = 10_000;
+      for (int i = 0; i < count; i++) {
+        children.add(new MessageBusImpl(this, myBus));
+      }
+      // reverse iteration to avoid O(n^2) while deleting from list's beginning
+      for (int i = count - 1; i >= 0; i--) {
+        Disposer.dispose(children.get(i));
+      }
+    }).assertTiming();
   }
 
   public void testStress() throws Throwable {

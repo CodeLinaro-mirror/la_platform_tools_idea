@@ -8,7 +8,6 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.SystemProperties;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,6 +16,7 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -91,8 +91,52 @@ public class VMOptions {
     writeGeneralOption(Pattern.compile("-D" + option + separator + "(true|false)*([a-zA-Z0-9]*)"), "-D" + option + separator + value);
   }
 
+  public static void writeEnableCDSArchiveOption(@NotNull final String archivePath) {
+    writeGeneralOptions(
+      Function.<String>identity()
+        .andThen(replaceOrAddOption(Pattern.compile("-Xshare:.*"), "-Xshare:auto"))
+        .andThen(replaceOrAddOption(Pattern.compile("-XX:\\+UnlockDiagnosticVMOptions"), "-XX:+UnlockDiagnosticVMOptions"))
+        .andThen(replaceOrAddOption(Pattern.compile("-XX:SharedArchiveFile=.*"), "-XX:SharedArchiveFile=" + archivePath))
+    );
+  }
+
+  public static void writeDisableCDSArchiveOption() {
+    writeGeneralOptions(
+      Function.<String>identity()
+        .andThen(replaceOrAddOption(Pattern.compile("-Xshare:.*\\r?\\n?"), ""))
+        // we cannot remove "-XX:+UnlockDiagnosticVMOptions", we do not know the reason it was included
+        .andThen(replaceOrAddOption(Pattern.compile("-XX:SharedArchiveFile=.*\\r?\\n?"), ""))
+    );
+  }
 
   private static void writeGeneralOption(@NotNull Pattern pattern, @NotNull String value) {
+    writeGeneralOptions(replaceOrAddOption(pattern, value));
+  }
+
+  @NotNull
+  private static Function<String, String> replaceOrAddOption(@NotNull Pattern pattern, @NotNull String value) {
+    return content -> {
+      if (!StringUtil.isEmptyOrSpaces(content)) {
+        Matcher m = pattern.matcher(content);
+        if (m.find()) {
+          StringBuffer b = new StringBuffer();
+          m.appendReplacement(b, Matcher.quoteReplacement(value));
+          m.appendTail(b);
+          content = b.toString();
+        }
+        else if (!StringUtil.isEmptyOrSpaces(value)) {
+          content = StringUtil.trimTrailing(content) + SystemProperties.getLineSeparator() + value;
+        }
+      }
+      else {
+        content = value;
+      }
+
+      return content;
+    };
+  }
+
+  private static void writeGeneralOptions(@NotNull Function<String, String> transformContent) {
     File file = getWriteFile();
     if (file == null) {
       LOG.warn("VM options file not configured");
@@ -102,22 +146,7 @@ public class VMOptions {
     try {
       String content = file.exists() ? FileUtil.loadFile(file) :
                        "# custom Android Studio VM options, see https://developer.android.com/studio/intro/studio-config.html\n";
-
-      if (!StringUtil.isEmptyOrSpaces(content)) {
-        Matcher m = pattern.matcher(content);
-        if (m.find()) {
-          StringBuffer b = new StringBuffer();
-          m.appendReplacement(b, Matcher.quoteReplacement(value));
-          m.appendTail(b);
-          content = b.toString();
-        }
-        else {
-          content = StringUtil.trimTrailing(content) + SystemProperties.getLineSeparator() + value;
-        }
-      }
-      else {
-        content = value;
-      }
+      content = transformContent.apply(content);
 
       if (file.exists()) {
         FileUtil.setReadOnlyAttribute(file.getPath(), false);
@@ -157,7 +186,7 @@ public class VMOptions {
   public static File getWriteFile() {
     String vmOptionsFile = System.getProperty("jb.vmOptionsFile");
     if (vmOptionsFile == null) {
-      // launchers should specify a path to an options file used to configure a JVM
+      // launchers should specify a path to a VM options file used to configure a JVM
       return null;
     }
 
@@ -183,14 +212,4 @@ public class VMOptions {
     fileName += ".vmoptions";
     return fileName;
   }
-
-  //<editor-fold desc="Deprecated stuff.">
-  /** @deprecated use {@link #readOption(MemoryKind, boolean)} (to be removed in IDEA 2018) */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019")
-  @Deprecated
-  public static int readXmx() {
-    return readOption(MemoryKind.HEAP, true);
-  }
-
-  //</editor-fold>
 }

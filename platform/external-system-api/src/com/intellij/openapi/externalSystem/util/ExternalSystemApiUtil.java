@@ -21,7 +21,6 @@ import com.intellij.openapi.externalSystem.settings.ExternalProjectSettings;
 import com.intellij.openapi.externalSystem.settings.ExternalSystemSettingsListener;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ExternalProjectSystemRegistry;
 import com.intellij.openapi.roots.OrderRootType;
@@ -50,9 +49,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.*;
 import java.util.function.Consumer;
-
-import static com.intellij.util.PlatformUtils.getPlatformPrefix;
-import static com.intellij.util.PlatformUtils.isIntelliJ;
 
 /**
  * @author Denis Zhdanov
@@ -175,12 +171,7 @@ public class ExternalSystemApiUtil {
 
   @Nullable
   public static ExternalSystemManager<?, ?, ?, ?, ?> getManager(@NotNull ProjectSystemId externalSystemId) {
-    for (ExternalSystemManager manager : ExternalSystemManager.EP_NAME.getIterable()) {
-      if (externalSystemId.equals(manager.getSystemId())) {
-        return manager;
-      }
-    }
-    return null;
+    return ExternalSystemManager.EP_NAME.findFirstSafe(manager -> externalSystemId.equals(manager.getSystemId()));
   }
 
   @NotNull
@@ -443,10 +434,11 @@ public class ExternalSystemApiUtil {
    *
    * @param ideProject  target ide project
    * @param projectData target external project
+   * @param modules     the list of modules to check (during import this contains uncommitted modules from the modifiable model)
    * @return {@code true} if given ide project has 1-1 mapping to the given external project;
    * {@code false} otherwise
    */
-  public static boolean isOneToOneMapping(@NotNull Project ideProject, @NotNull ProjectData projectData) {
+  public static boolean isOneToOneMapping(@NotNull Project ideProject, @NotNull ProjectData projectData, Module[] modules) {
     String linkedExternalProjectPath = null;
     for (ExternalSystemManager<?, ?, ?, ?, ?> manager : ExternalSystemManager.EP_NAME.getIterable()) {
       ProjectSystemId externalSystemId = manager.getSystemId();
@@ -473,7 +465,7 @@ public class ExternalSystemApiUtil {
       return false;
     }
 
-    for (Module module : ModuleManager.getInstance(ideProject).getModules()) {
+    for (Module module : modules) {
       if (!isExternalSystemAwareModule(projectData.getOwner(), module)) {
         return false;
       }
@@ -539,13 +531,9 @@ public class ExternalSystemApiUtil {
    * @param e exception to process
    * @return error message for the given exception
    */
-  @SuppressWarnings({"IOResourceOpenedButNotSafelyClosed"})
   @NotNull
   public static String buildErrorMessage(@NotNull Throwable e) {
     Throwable unwrapped = RemoteUtil.unwrap(e);
-    if (ApplicationManager.getApplication().isUnitTestMode()) {
-      return stacktraceAsString(unwrapped);
-    }
     String reason = unwrapped.getLocalizedMessage();
     if (!StringUtil.isEmpty(reason)) {
       return reason;
@@ -712,7 +700,7 @@ public class ExternalSystemApiUtil {
     DataNode<ProjectData> projectStructure = projectInfo.getExternalProjectStructure();
     if (projectStructure == null) return Collections.emptyList();
 
-    List<TaskData> tasks = ContainerUtil.newSmartList();
+    List<TaskData> tasks = new SmartList<>();
 
     DataNode<ModuleData> moduleDataNode = findAll(projectStructure, ProjectKeys.MODULE).stream()
       .filter(moduleNode -> FileUtil.pathsEqual(projectPath, moduleNode.getData().getLinkedExternalProjectPath()))
@@ -743,17 +731,5 @@ public class ExternalSystemApiUtil {
     if (linkedProjectSettings == null) return null;
     String rootProjectPath = linkedProjectSettings.getExternalProjectPath();
     return ProjectDataManager.getInstance().getExternalProjectData(project, systemId, rootProjectPath);
-  }
-
-  /**
-   * DO NOT USE THIS METHOD.
-   * The method should be removed when the 'java' subsystem features will be extracted from External System API [IDEA-187832]
-   *
-   * @return check if the current IDE is compatible with the 'java' IntelliJ subsystem
-   */
-  @ApiStatus.Experimental
-  @Deprecated
-  public static boolean isJavaCompatibleIde() {
-    return isIntelliJ() || "AndroidStudio".equals(getPlatformPrefix());
   }
 }

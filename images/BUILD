@@ -12,6 +12,8 @@ iml_module(
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
         "//tools/idea/platform/testFramework/extensions:intellij.platform.testExtensions",
     ],
+    test_srcs = ["test"],
+    test_tags = ["manual"],
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
     runtime_deps = [
@@ -26,6 +28,7 @@ iml_module(
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
         "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
     ],
     # do not sort: must match IML order
     deps = [
@@ -33,5 +36,6 @@ iml_module(
         "//tools/idea/platform/lang-impl:intellij.platform.lang.impl[module]",
         "//tools/idea/.idea/libraries:commons-imaging",
         "//tools/idea/xml/xml-psi-impl:intellij.xml.psi.impl[module]",
+        "//tools/idea/platform/testFramework:intellij.platform.testFramework[module, test]",
     ],
 )

@@ -51,9 +51,6 @@
                     interface="org.jetbrains.plugins.groovy.extensions.GroovyUnresolvedHighlightFileFilter"/>
     <extensionPoint name="configSlurperSupport" interface="org.jetbrains.plugins.groovy.configSlurper.ConfigSlurperSupport"/>
 
-    <!--suppress DeprecatedClassUsageInspection -->
-    <extensionPoint name="callExpressionTypeCalculator"
-                    interface="org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrCallExpressionTypeCalculator"/>
     <extensionPoint name="typeCalculator" beanClass="com.intellij.openapi.util.ClassExtensionPoint">
       <with attribute="implementationClass" implements="org.jetbrains.plugins.groovy.lang.typing.GrTypeCalculator"/>
     </extensionPoint>
@@ -90,7 +87,7 @@
     <extensionPoint name="gdslScriptProvider" interface="org.jetbrains.plugins.groovy.dsl.GdslScriptProvider"/>
     <extensionPoint name="expectedPackageNameProvider" interface="org.jetbrains.plugins.groovy.lang.resolve.ExpectedPackageNameProvider"/>
     <extensionPoint name="delegatesToProvider" interface="org.jetbrains.plugins.groovy.lang.resolve.delegatesTo.GrDelegatesToProvider"/>
-    <extensionPoint name="expressionFilter" interface="org.jetbrains.plugins.groovy.lang.GroovyExpressionFilter"/>
+    <extensionPoint name="elementFilter" interface="org.jetbrains.plugins.groovy.lang.GroovyElementFilter"/>
     <extensionPoint name="inlayHintFilter" interface="org.jetbrains.plugins.groovy.editor.GroovyInlayHintFilter"/>
   </extensionPoints>
 
@@ -177,8 +174,6 @@
                     implementationClass="org.jetbrains.plugins.groovy.lang.typing.DefaultListOrMapTypeCalculator"/>
     <typeCalculator forClass="org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.path.GrIndexProperty" order="last"
                     implementationClass="org.jetbrains.plugins.groovy.lang.typing.DefaultIndexAccessTypeCalculator"/>
-    <typeCalculator forClass="org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrMethodCall" order="last"
-                    implementationClass="org.jetbrains.plugins.groovy.lang.typing.MethodCallTypeCalculator"/>
     <typeCalculator forClass="org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrMethodCall"
                     implementationClass="org.jetbrains.plugins.groovy.lang.typing.DefaultMethodCallTypeCalculator" order="last"/>
     <typeCalculator forClass="org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrBuiltinTypeClassExpression" order="last"
@@ -286,6 +281,7 @@
     <mvc.runCommandHandler implementation="org.jetbrains.plugins.groovy.mvc.actions.DefaultMvcRunCommandActionHandler" order="last"/>
     <methodComparator implementation="org.jetbrains.plugins.groovy.lang.resolve.DGMGetAtMethodFilter" order="last"/>
     <methodComparator implementation="org.jetbrains.plugins.groovy.lang.resolve.GrDefaultMethodComparator" order="last"/>
+    <overloadResolver implementation="org.jetbrains.plugins.groovy.lang.resolve.DGMGetAtOverloadResolver" order="last"/>
     <overloadResolver implementation="org.jetbrains.plugins.groovy.lang.resolve.impl.DistanceOverloadResolver" order="last"/>
     <expectedPackageNameProvider implementation="org.jetbrains.plugins.groovy.lang.resolve.DefaultExpectedPackageNameProvider"
                                  order="last"/>

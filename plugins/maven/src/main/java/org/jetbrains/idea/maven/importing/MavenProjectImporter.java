@@ -81,7 +81,6 @@ public class MavenProjectImporter {
   @Nullable
   public List<MavenProjectsProcessorTask> importProject() {
     List<MavenProjectsProcessorTask> postTasks = new ArrayList<>();
-
     boolean hasChanges;
 
     // in the case projects are changed during importing we must memorise them
@@ -134,14 +133,16 @@ public class MavenProjectImporter {
         }
       });
 
-      MavenUtil.invokeAndWait(myProject, () -> {
+
+      List<MavenModuleConfigurer> configurers = MavenModuleConfigurer.getConfigurers();
+
+      MavenUtil.runInBackground(myProject, "Configuring projects", false, indicator -> {
+        float count = 0;
         for (MavenProject mavenProject : myAllProjects) {
           Module module = myMavenProjectToModule.get(mavenProject);
-          if (module == null || module.isDisposed()) {
-            continue;
-          }
-
-          for (MavenModuleConfigurer configurer : MavenModuleConfigurer.getConfigurers()) {
+          indicator.setFraction(count++ / myAllProjects.size());
+          indicator.setText2("Configuring module " + module.getName());
+          for (MavenModuleConfigurer configurer : configurers) {
             configurer.configure(mavenProject, myProject, module);
           }
         }

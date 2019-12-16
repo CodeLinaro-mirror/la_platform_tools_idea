@@ -91,7 +91,7 @@ public abstract class MavenBuildToolLogTestUtils extends UsefulTestCase {
 
     public TestCaseBuider withLines(String... lines) {
       List<String> joinedAndSplitted = ContainerUtil.newArrayList(StringUtil.join(lines, "\n").split("\n"));
-      ContainerUtil.addAll(myLines, joinedAndSplitted);
+      myLines.addAll(joinedAndSplitted);
       return this;
     }
 
@@ -371,8 +371,7 @@ public abstract class MavenBuildToolLogTestUtils extends UsefulTestCase {
       throw new UnsupportedOperationException();
     }
 
-    @Override
-    public String getCurrentLine() {
+    public String getCurrentLine() { // FIXME-ank: made public (should be private)
       if (myPosition >= myLines.size() || myPosition < 0) {
         return null;
       }

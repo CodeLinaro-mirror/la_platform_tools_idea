@@ -8,6 +8,9 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPoint;
+import com.intellij.openapi.extensions.impl.ExtensionPointImpl;
+import com.intellij.openapi.extensions.impl.ExtensionProcessingHelper;
+import com.intellij.openapi.extensions.impl.ExtensionsAreaImpl;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.KeyedExtensionCollector;
 import com.intellij.openapi.vfs.*;
@@ -34,12 +37,16 @@ import java.util.List;
 public class  VirtualFileManagerImpl extends VirtualFileManagerEx implements Disposable {
   protected static final Logger LOG = Logger.getInstance("#com.intellij.openapi.vfs.impl.VirtualFileManagerImpl");
 
+  // do not use extension point name to avoid map lookup on each event publishing
+  private static final ExtensionPointImpl<VirtualFileManagerListener>
+    MANAGER_LISTENER_EP = ((ExtensionsAreaImpl)ApplicationManager.getApplication().getExtensionArea()).getExtensionPoint("com.intellij.virtualFileManagerListener");
+
   private static class VirtualFileSystemBean extends KeyedLazyInstanceEP<VirtualFileSystem> {
     @Attribute
     public boolean physical;
   }
 
-  private final KeyedExtensionCollector<VirtualFileSystem, String> myCollector = new KeyedExtensionCollector<>("com.intellij.virtualFileSystem", this);
+  private final KeyedExtensionCollector<VirtualFileSystem, String> myCollector = new KeyedExtensionCollector<>("com.intellij.virtualFileSystem");
   private final VirtualFileSystem[] myPhysicalFileSystems;
   private final EventDispatcher<VirtualFileListener> myVirtualFileListenerMulticaster = EventDispatcher.create(VirtualFileListener.class);
   private final List<VirtualFileManagerListener> myVirtualFileManagerListeners = ContainerUtil.createLockFreeCopyOnWriteList();
@@ -229,30 +236,38 @@ public class  VirtualFileManagerImpl extends VirtualFileManagerEx implements Dis
 
   @Override
   public void fireBeforeRefreshStart(boolean asynchronous) {
-    if (myRefreshCount++ == 0) {
-      for (final VirtualFileManagerListener listener : myVirtualFileManagerListeners) {
-        try {
-          listener.beforeRefreshStart(asynchronous);
-        }
-        catch (Exception e) {
-          LOG.error(e);
-        }
+    if (myRefreshCount++ != 0) {
+      return;
+    }
+
+    for (final VirtualFileManagerListener listener : myVirtualFileManagerListeners) {
+      try {
+        listener.beforeRefreshStart(asynchronous);
+      }
+      catch (Exception e) {
+        LOG.error(e);
       }
     }
+
+    ExtensionProcessingHelper.forEachExtensionSafe(listener -> listener.beforeRefreshStart(asynchronous), MANAGER_LISTENER_EP);
   }
 
   @Override
   public void fireAfterRefreshFinish(boolean asynchronous) {
-    if (--myRefreshCount == 0) {
-      for (final VirtualFileManagerListener listener : myVirtualFileManagerListeners) {
-        try {
-          listener.afterRefreshFinish(asynchronous);
-        }
-        catch (Exception e) {
-          LOG.error(e);
-        }
+    if (--myRefreshCount != 0) {
+      return;
+    }
+
+    for (final VirtualFileManagerListener listener : myVirtualFileManagerListeners) {
+      try {
+        listener.afterRefreshFinish(asynchronous);
+      }
+      catch (Exception e) {
+        LOG.error(e);
       }
     }
+
+    ExtensionProcessingHelper.forEachExtensionSafe(listener -> listener.afterRefreshFinish(asynchronous), MANAGER_LISTENER_EP);
   }
 
   @Override

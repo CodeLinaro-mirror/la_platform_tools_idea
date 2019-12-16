@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import groovy.io.FileType
@@ -96,8 +97,8 @@ class BuildTasksImpl extends BuildTasks {
       buildContext.notifyArtifactBuilt(targetFilePath)
     })
   }
-
-  static void runApplicationStarter(BuildContext buildContext, String tempDir, List<String> modules, List<String> arguments) {
+  
+  static void runApplicationStarter(BuildContext buildContext, String tempDir, List<String> modules, List<String> arguments, Map<String, Object> systemProperties = [:]) {
     def javaRuntimeClasses = "${buildContext.getModuleOutputPath(buildContext.findModule("intellij.java.rt"))}"
     if (!new File(javaRuntimeClasses).exists()) {
       buildContext.messages.error("Cannot run application starter ${arguments}, 'java-runtime' module isn't compiled ($javaRuntimeClasses doesn't exist)")
@@ -126,6 +127,11 @@ class BuildTasksImpl extends BuildTasks {
       sysproperty(key: "idea.home.path", value: buildContext.paths.projectHome)
       sysproperty(key: "idea.system.path", value: systemPath)
       sysproperty(key: "idea.config.path", value: configPath)
+
+      systemProperties.each {
+        sysproperty(key: it.key, value: it.value)
+      }
+      
       if (buildContext.productProperties.platformPrefix != null) {
         sysproperty(key: "idea.platform.prefix", value: buildContext.productProperties.platformPrefix)
       }
@@ -250,9 +256,10 @@ idea.fatal.error.notification=disabled
         def builder = factory.apply(context)
         if (builder != null && context.shouldBuildDistributionForOS(builder.targetOs.osId)) {
           return context.messages.block("Build $builder.targetOs.osName Distribution") {
-            def distDirectory = builder.copyFilesForOsDistribution()
-            builder.buildArtifacts(distDirectory)
-            distDirectory
+            def osSpecificDistDirectory = "$context.paths.buildOutputRoot/dist.$builder.targetOs.distSuffix".toString()
+            builder.copyFilesForOsDistribution(osSpecificDistDirectory)
+            builder.buildArtifacts(osSpecificDistDirectory)
+            osSpecificDistDirectory
           }
         }
         return null
@@ -274,26 +281,15 @@ idea.fatal.error.notification=disabled
                    productLayout.mainModules + buildContext.productProperties.mavenArtifacts.additionalModules,
                    buildContext.productProperties.modulesToCompileTests)
 
-    def pluginsToPublish = new LinkedHashMap<PluginLayout, PluginPublishingSpec>()
-    for (PluginLayout plugin  : DistributionJARsBuilder.getPluginsByModules(buildContext, buildContext.productProperties.productLayout.pluginModulesToPublish)) {
-      def publishingSpec = buildContext.productProperties.productLayout.getPluginPublishingSpec(plugin)
-      if (publishingSpec == null) {
-        buildContext.messages.error("buildContext.productProperties.productLayout.pluginModulesToPublish doesn't have info for $plugin.mainModule")
-      }
-
-      pluginsToPublish.put(plugin, publishingSpec)
-    }
+    def pluginsToPublish = new LinkedHashSet<>(
+      DistributionJARsBuilder.getPluginsByModules(buildContext, buildContext.productProperties.productLayout.pluginModulesToPublish))
 
     if (buildContext.shouldBuildDistributions()) {
       def providedModulesFilePath = "${buildContext.paths.artifacts}/${buildContext.applicationInfo.productCode}-builtinModules.json"
       buildProvidedModulesList(providedModulesFilePath, moduleNames)
       if (buildContext.productProperties.productLayout.buildAllCompatiblePlugins) {
         if (!buildContext.options.buildStepsToSkip.contains(BuildOptions.PROVIDED_MODULES_LIST_STEP)) {
-          pluginsToPublish = new LinkedHashMap<PluginLayout, PluginPublishingSpec>()
-          for (PluginLayout plugin : new PluginsCollector(buildContext, providedModulesFilePath).collectCompatiblePluginsToPublish()) {
-            def spec = buildContext.productProperties.productLayout.getPluginPublishingSpec(plugin)
-            pluginsToPublish.put(plugin, spec ?: plugin.defaultPublishingSpec ?: new PluginPublishingSpec(includeIntoDirectoryForAutomaticUploading: true))
-          }
+          pluginsToPublish.addAll(new PluginsCollector(buildContext, providedModulesFilePath).collectCompatiblePluginsToPublish())
         }
         else {
           buildContext.messages.info("Skipping collecting compatible plugins because PROVIDED_MODULES_LIST_STEP was skipped")
@@ -303,8 +299,7 @@ idea.fatal.error.notification=disabled
     return compilePlatformAndPluginModules(patchedApplicationInfo, pluginsToPublish)
   }
 
-  private DistributionJARsBuilder compilePlatformAndPluginModules(File patchedApplicationInfo,
-                                                                  LinkedHashMap<PluginLayout, PluginPublishingSpec> pluginsToPublish) {
+  private DistributionJARsBuilder compilePlatformAndPluginModules(File patchedApplicationInfo, LinkedHashSet<PluginLayout> pluginsToPublish) {
     def distributionJARsBuilder = new DistributionJARsBuilder(buildContext, patchedApplicationInfo, pluginsToPublish)
     compileModules(distributionJARsBuilder.modulesForPluginsToPublish)
 
@@ -328,13 +323,14 @@ idea.fatal.error.notification=disabled
     if (mavenArtifacts.forIdeModules || !mavenArtifacts.additionalModules.isEmpty() || !mavenArtifacts.proprietaryModules.isEmpty()) {
       buildContext.executeStep("Generate Maven artifacts", BuildOptions.MAVEN_ARTIFACTS_STEP) {
         def mavenArtifactsBuilder = new MavenArtifactsBuilder(buildContext)
-        def moduleNames
+        def ideModuleNames
         if (mavenArtifacts.forIdeModules) {
           def bundledPlugins = buildContext.productProperties.productLayout.allBundledPluginsModules
-          moduleNames = distributionJARsBuilder.platformModules + buildContext.productProperties.productLayout.getIncludedPluginModules(bundledPlugins)
+          ideModuleNames = distributionJARsBuilder.platformModules + buildContext.productProperties.productLayout.getIncludedPluginModules(bundledPlugins)
         } else {
-          moduleNames = mavenArtifacts.additionalModules
+          ideModuleNames = []
         }
+        def moduleNames = ideModuleNames + mavenArtifacts.additionalModules
         if (!moduleNames.isEmpty()) {
           mavenArtifactsBuilder.generateMavenArtifacts(moduleNames, 'maven-artifacts')
         }
@@ -351,6 +347,7 @@ idea.fatal.error.notification=disabled
       }
       else {
         buildContext.messages.info("Skipped building product distributions because 'intellij.build.target.os' property is set to '$BuildOptions.OS_NONE'")
+        distributionJARsBuilder.buildOrderFiles()
         distributionJARsBuilder.buildSearchableOptions()
         distributionJARsBuilder.buildNonBundledPlugins()
       }
@@ -400,7 +397,7 @@ idea.fatal.error.notification=disabled
                 "-Pintellij.build.toolbox.litegen.version=${toolboxLiteGenVersion}",
                 //NOTE[jo]: right now we assume all installer files are created under the same path
                 "-Pintellij.build.artifacts=${buildContext.paths.artifacts}",
-                "-Pintellij.build.productCode=${buildContext.productProperties.productCode}",
+                "-Pintellij.build.productCode=${buildContext.applicationInfo.productCode}",
                 "-Pintellij.build.isEAP=${buildContext.applicationInfo.isEAP}",
                 "-Pintellij.build.output=${buildContext.paths.buildOutputRoot}/toolbox-lite-gen",
               ]
@@ -436,12 +433,8 @@ idea.fatal.error.notification=disabled
     checkProductProperties()
     checkPluginModules(mainPluginModules, "mainPluginModules", [] as Set<String>)
     copyDependenciesFile()
-    def pluginsToPublish = new LinkedHashMap<PluginLayout, PluginPublishingSpec>()
-    def plugins = DistributionJARsBuilder.getPluginsByModules(buildContext, mainPluginModules)
-    for (plugin in plugins) {
-      def spec = buildContext.productProperties.productLayout.getPluginPublishingSpec(plugin)
-      pluginsToPublish[plugin] = spec ?: plugin.defaultPublishingSpec ?: new PluginPublishingSpec()
-    }
+    def pluginsToPublish = new LinkedHashSet<PluginLayout>(
+      DistributionJARsBuilder.getPluginsByModules(buildContext, mainPluginModules))
     def distributionJARsBuilder = compilePlatformAndPluginModules(patchApplicationInfo(), pluginsToPublish)
     distributionJARsBuilder.buildSearchableOptions()
     distributionJARsBuilder.buildNonBundledPlugins()
@@ -780,34 +773,59 @@ idea.fatal.error.notification=disabled
   }
 
   @Override
-  void buildUnpackedDistribution(String targetDirectory) {
+  void buildUnpackedDistribution(String targetDirectory, boolean includeBinAndRuntime) {
     buildContext.paths.distAll = targetDirectory
+    OsFamily currentOs = SystemInfo.isWindows ? OsFamily.WINDOWS :
+                         SystemInfo.isMac ? OsFamily.MACOS :
+                         SystemInfo.isLinux ? OsFamily.LINUX : null
+    if (currentOs == null) {
+      buildContext.messages.error("Update from source isn't supported for '$SystemInfo.OS_NAME'")
+    }
+    buildContext.options.targetOS = currentOs.osId
+
     setupBundledMaven()
-    def jarsBuilder = new DistributionJARsBuilder(buildContext, patchApplicationInfo())
+    def patchedApplicationInfo = patchApplicationInfo()
+    def jarsBuilder = new DistributionJARsBuilder(buildContext, patchedApplicationInfo)
     CompilationTasks.create(buildContext).buildProjectArtifacts(jarsBuilder.includedProjectArtifacts)
     jarsBuilder.buildJARs()
+    if (includeBinAndRuntime) {
+      setupJBre()
+    }
     layoutShared()
-    unpackPty4jNative(buildContext, targetDirectory, null)
 
-/*
-    //todo[nik] uncomment this to update os-specific files (e.g. in 'bin' directory) as well
-    def propertiesFile = patchIdeaPropertiesFile()
-    OsSpecificDistributionBuilder builder;
-    if (SystemInfo.isWindows) {
-      builder = new WindowsDistributionBuilder(buildContext, buildContext.windowsDistributionCustomizer, propertiesFile)
-    }
-    else if (SystemInfo.isLinux) {
-      builder = new LinuxDistributionBuilder(buildContext, buildContext.linuxDistributionCustomizer, propertiesFile)
-    }
-    else if (SystemInfo.isMac) {
-      builder = new MacDistributionBuilder(buildContext, buildContext.macDistributionCustomizer, propertiesFile)
+    if (includeBinAndRuntime) {
+      def propertiesFile = patchIdeaPropertiesFile()
+      OsSpecificDistributionBuilder builder;
+      switch (currentOs) {
+        case OsFamily.WINDOWS:
+          builder = new WindowsDistributionBuilder(buildContext, buildContext.windowsDistributionCustomizer, propertiesFile, patchedApplicationInfo)
+          break
+        case OsFamily.LINUX:
+          builder = new LinuxDistributionBuilder(buildContext, buildContext.linuxDistributionCustomizer, propertiesFile)
+          break
+        case OsFamily.MACOS:
+          builder = new MacDistributionBuilder(buildContext, buildContext.macDistributionCustomizer, propertiesFile)
+          break
+      }
+      builder.copyFilesForOsDistribution(targetDirectory)
+      /* Android Studio: Don't include JBR to unpacked distribution.
+      def jbrTargetDir = buildContext.bundledJreManager.extractJre(currentOs)
+      buildContext.ant.move(todir: targetDirectory) {
+        fileset(dir: jbrTargetDir)
+      }
+      Android Studio: Don't include JBR to unpacked distribution. */
+      def executableFilesPatterns = builder.generateExecutableFilesPatterns(true)
+      buildContext.ant.chmod(perm: "755") {
+        fileset(dir: targetDirectory) {
+          executableFilesPatterns.each {
+            include(name: it)
+          }
+        }
+      }
     }
     else {
-      buildContext.messages.error("Update from source isn't supported for '$SystemInfo.OS_NAME'")
-      return
+      unpackPty4jNative(buildContext, targetDirectory, null)
     }
-    def osSpecificDistPath = builder.copyFilesForOsDistribution()
-*/
   }
 
   private abstract static class BuildTaskRunnable<V> {

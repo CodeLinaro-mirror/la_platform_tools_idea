@@ -1,7 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm;
 
-import com.intellij.diagnostic.LoadingPhase;
+import com.intellij.diagnostic.LoadingState;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.Application;
@@ -138,8 +138,6 @@ public abstract class IdeFocusManager implements FocusRequestor {
    */
   public abstract void toFront(JComponent c);
 
-  public abstract Project getProject();
-
   public static IdeFocusManager getInstance(@Nullable Project project) {
     Application app = ApplicationManager.getApplication();
     if (app == null || app.isHeadlessEnvironment() || app.isUnitTestMode() || project == null || project.isDisposed() || !project.isInitialized()) {
@@ -219,7 +217,7 @@ public abstract class IdeFocusManager implements FocusRequestor {
     IdeFocusManager focusManager = null;
 
     Application app = ApplicationManager.getApplication();
-    if (app != null && LoadingPhase.COMPONENT_REGISTERED.isComplete()) {
+    if (app != null && LoadingState.COMPONENTS_REGISTERED.isOccurred()) {
       focusManager = app.getComponent(IdeFocusManager.class);
     }
 

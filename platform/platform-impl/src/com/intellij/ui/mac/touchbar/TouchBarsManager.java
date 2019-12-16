@@ -13,6 +13,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -49,6 +50,7 @@ public final class TouchBarsManager {
   private static final Logger LOG = Logger.getInstance(TouchBarsManager.class);
   private static final StackTouchBars ourStack = new StackTouchBars();
 
+  private static final Object ourLoadNstSync = new Object();
   private static final Map<Project, ProjectData> ourProjectData = new HashMap<>(); // NOTE: probably it is better to use api of UserDataHolder
   private static final Map<Container, BarContainer> ourTemporaryBars = new HashMap<>();
 
@@ -56,11 +58,10 @@ public final class TouchBarsManager {
   private static volatile boolean isEnabled = true;
 
   public static void onApplicationInitialized() {
-    if (!isTouchBarAvailable()) {
+    initialize();
+    if (!isInitialized || !isTouchBarEnabled()) {
       return;
     }
-
-    LOG.assertTrue(!isInitialized);
 
     for (Project project : ProjectManager.getInstance().getOpenProjects()) {
       registerProject(project);
@@ -68,18 +69,6 @@ public final class TouchBarsManager {
 
     for (Editor editor : EditorFactory.getInstance().getAllEditors()) {
       registerEditor(editor);
-    }
-
-    isInitialized = true;
-
-    { // calculate isEnabled
-      final String appId = Utils.getAppId();
-      if (appId == null || appId.isEmpty()) {
-        LOG.debug("can't obtain application id from NSBundle");
-      } else if (NSDefaults.isShowFnKeysEnabled(appId)) {
-        LOG.info("nst library was loaded, but user enabled fn-keys in touchbar");
-        isEnabled = false;
-      }
     }
 
     EditorFactory.getInstance().addEditorFactoryListener(new EditorFactoryListener() {
@@ -164,6 +153,27 @@ public final class TouchBarsManager {
         ApplicationManager.getApplication().invokeLater(TouchBarsManager::_updateCurrentTouchbar);
       }
     });
+  }
+
+  public static void initialize() {
+    synchronized (ourLoadNstSync) {
+      if (isInitialized)
+        return;
+
+      NST.initialize();
+
+      { // calculate isEnabled
+        final String appId = Utils.getAppId();
+        if (appId == null || appId.isEmpty()) {
+          LOG.debug("can't obtain application id from NSBundle");
+        } else if (NSDefaults.isShowFnKeysEnabled(appId)) {
+          LOG.info("nst library was loaded, but user enabled fn-keys in touchbar");
+          isEnabled = false;
+        }
+      }
+
+      isInitialized = true;
+    }
   }
 
   public static boolean isTouchBarAvailable() {
@@ -365,7 +375,7 @@ public final class TouchBarsManager {
           }
 
           if (actions != null) {
-            editorData.containerSearch = new BarContainer(BarType.EDITOR_SEARCH, TouchBar.buildFromGroup("editor_search_" + header, actions, true, true), null, header);
+            editorData.containerSearch = new BarContainer(BarType.EDITOR_SEARCH, BuildUtils.buildFromGroup("editor_search_" + header, actions, true, true), null, header);
             ourStack.showContainer(editorData.containerSearch);
           }
         }
@@ -398,7 +408,7 @@ public final class TouchBarsManager {
       return null;
     }
 
-    final ModalityState ms = Utils.getCurrentModalityState();
+    final @NotNull ModalityState ms = LaterInvocator.getCurrentModalityState();
     final BarType btype = ModalityState.NON_MODAL.equals(ms) ? BarType.DIALOG : BarType.MODAL_DIALOG;
     BarContainer bc;
     TouchBar tb;
@@ -418,7 +428,7 @@ public final class TouchBarsManager {
       replaceEsc = groupDesc == null || groupDesc.isReplaceEsc();
       emulateEsc = true;
     }
-    tb = new TouchBar("dialog_buttons", replaceEsc, false, emulateEsc);
+    tb = new TouchBar("dialog_buttons", replaceEsc, false, emulateEsc, null, null);
     BuildUtils.addDialogButtons(tb, jbuttons, actions);
     bc = new BarContainer(btype, tb, null, contentPane);
 

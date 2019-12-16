@@ -1,21 +1,28 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application.impl;
 
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
+import com.intellij.testFramework.LeakHunter;
 import com.intellij.testFramework.LightPlatformTestCase;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
 import org.jetbrains.concurrency.CancellablePromise;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.intellij.testFramework.PlatformTestUtil.waitForPromise;
 
@@ -73,5 +80,50 @@ public class NonBlockingReadActionTest extends LightPlatformTestCase {
       .submit(AppExecutorUtil.getAppExecutorService());
     outerIndicator.cancel();
     waitForPromise(promise);
+  }
+
+  public void testDoNotSpawnZillionThreadsForManyCoalescedSubmissions() {
+    int count = 1000;
+
+    AtomicInteger executionCount = new AtomicInteger();
+    Executor countingExecutor = r -> AppExecutorUtil.getAppExecutorService().execute(() -> {
+      executionCount.incrementAndGet();
+      r.run();
+    });
+
+    List<CancellablePromise<?>> submissions = new ArrayList<>();
+    WriteAction.run(() -> {
+      for (int i = 0; i < count; i++) {
+        submissions.add(ReadAction.nonBlocking(() -> {}).coalesceBy(this).submit(countingExecutor));
+      }
+    });
+    for (CancellablePromise<?> submission : submissions) {
+      waitForPromise(submission);
+    }
+
+    assertTrue(executionCount.toString(), executionCount.get() <= 2);
+  }
+
+  public void testDoNotLeakFirstCancelledCoalescedAction() {
+    Object leak = new Object(){};
+    Disposable disposable = Disposer.newDisposable();
+    Disposer.dispose(disposable);
+    CancellablePromise<String> p = ReadAction
+      .nonBlocking(() -> "a")
+      .expireWith(disposable)
+      .coalesceBy(leak)
+      .submit(AppExecutorUtil.getAppExecutorService());
+    assertTrue(p.isCancelled());
+    LeakHunter.checkLeak(NonBlockingReadActionImpl.getTasksByEquality(), leak.getClass());
+  }
+
+  public void testDoNotLeakSecondCancelledCoalescedAction() {
+    Object leak = new Object(){};
+    CancellablePromise<String> p = ReadAction.nonBlocking(() -> "a").coalesceBy(leak).submit(AppExecutorUtil.getAppExecutorService());
+    WriteAction.run(() -> {
+      ReadAction.nonBlocking(() -> "b").coalesceBy(leak).submit(AppExecutorUtil.getAppExecutorService()).cancel();
+    });
+    assertTrue(p.isDone());
+    LeakHunter.checkLeak(NonBlockingReadActionImpl.getTasksByEquality(), leak.getClass());
   }
 }

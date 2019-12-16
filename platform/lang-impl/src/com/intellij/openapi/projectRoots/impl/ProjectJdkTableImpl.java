@@ -5,6 +5,7 @@ import com.intellij.ide.highlighter.ArchiveFileType;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.components.*;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.ProjectBundle;
@@ -17,6 +18,7 @@ import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.newvfs.BulkFileListener;
+import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import com.intellij.util.ThreeState;
 import com.intellij.util.containers.SmartHashSet;
@@ -26,6 +28,7 @@ import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.io.File;
 import java.util.*;
@@ -67,13 +70,20 @@ public class ProjectJdkTableImpl extends ProjectJdkTable implements ExportableCo
       }
 
       private void addAffectedJavaSdk(VFileEvent event, Set<? super Sdk> affected) {
-        final VirtualFile file = event.getFile();
         CharSequence fileName = null;
-        if (file != null && file.isValid()) {
-          if (file.isDirectory()) {
-            return;
+        if (event instanceof VFileCreateEvent) {
+          if (((VFileCreateEvent)event).isDirectory()) return;
+          fileName = ((VFileCreateEvent)event).getChildName();
+        }
+        else {
+          final VirtualFile file = event.getFile();
+
+          if (file != null && file.isValid()) {
+            if (file.isDirectory()) {
+              return;
+            }
+            fileName = file.getNameSequence();
           }
-          fileName = file.getNameSequence();
         }
         if (fileName == null) {
           final String eventPath = event.getPath();
@@ -173,6 +183,13 @@ public class ProjectJdkTableImpl extends ProjectJdkTable implements ExportableCo
       }
     }
     return result;
+  }
+
+  @TestOnly
+  public void addTestJdk(@NotNull Sdk jdk, @NotNull Disposable parentDisposable) {
+    ApplicationManager.getApplication().assertWriteAccessAllowed();
+    mySdks.add(jdk);
+    Disposer.register(parentDisposable, () -> WriteAction.runAndWait(()-> mySdks.remove(jdk)));
   }
 
   @Override

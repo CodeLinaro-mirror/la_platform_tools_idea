@@ -5,6 +5,8 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.containers.FList;
 import com.intellij.util.io.IOUtil;
+import com.intellij.util.text.CharArrayCharSequence;
+import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.NameUtilCore;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -19,6 +21,9 @@ import org.jetbrains.annotations.Nullable;
  * @author peter
  */
 class MinusculeMatcherImpl extends MinusculeMatcher {
+  /** Camel-hump matching is >O(n), so for larger prefixes we fall back to simpler matching to avoid pauses */
+  private static final int MAX_CAMEL_HUMP_MATCHING_LENGTH = 100;
+
   private final char[] myPattern;
   private final String myHardSeparators;
   private final NameUtil.MatchingCaseSensitivity myOptions;
@@ -203,6 +208,10 @@ class MinusculeMatcherImpl extends MinusculeMatcher {
       return null;
     }
 
+    if (myPattern.length > MAX_CAMEL_HUMP_MATCHING_LENGTH) {
+      return matchBySubstring(name);
+    }
+
     int length = name.length();
     int patternIndex = 0;
     boolean isAscii = true;
@@ -221,6 +230,25 @@ class MinusculeMatcherImpl extends MinusculeMatcher {
     }
 
     return matchWildcards(name, 0, 0, isAscii);
+  }
+
+  @Nullable
+  private FList<TextRange> matchBySubstring(@NotNull String name) {
+    boolean infix = isPatternChar(0, '*');
+    if (name.length() < myPattern.length - (infix ? 1 : 0)) {
+      return null;
+    }
+    if (infix) {
+      int index = StringUtil.indexOfIgnoreCase(name, new CharArrayCharSequence(myPattern, 1, myPattern.length), 0);
+      if (index >= 0) {
+        return FList.<TextRange>emptyList().prepend(TextRange.from(index, myPattern.length - 1));
+      }
+      return null;
+    }
+    if (CharArrayUtil.regionMatches(myPattern, 0, myPattern.length, name)) {
+      return FList.<TextRange>emptyList().prepend(new TextRange(0, myPattern.length));
+    }
+    return null;
   }
 
   /**
@@ -256,11 +284,6 @@ class MinusculeMatcherImpl extends MinusculeMatcher {
         return null;
       }
       return FList.emptyList();
-    }
-
-    FList<TextRange> ranges = matchFragment(name, patternIndex, nameIndex, isAsciiName);
-    if (ranges != null) {
-      return ranges;
     }
 
     return matchSkippingWords(name, patternIndex, nameIndex, true, isAsciiName);
@@ -306,6 +329,7 @@ class MinusculeMatcherImpl extends MinusculeMatcher {
           return ranges;
         }
       }
+      nameIndex++;
     }
   }
 
@@ -316,7 +340,7 @@ class MinusculeMatcherImpl extends MinusculeMatcher {
                                             boolean allowSpecialChars, boolean wordStartsOnly) {
     int next = wordStartsOnly
                ? indexOfWordStart(name, patternIndex, startAt)
-               : indexOfIgnoreCase(name, startAt + 1, myPattern[patternIndex], patternIndex, isAsciiName);
+               : indexOfIgnoreCase(name, startAt, myPattern[patternIndex], patternIndex, isAsciiName);
 
     // pattern humps are allowed to match in words separated by " ()", lowercase characters aren't
     if (!allowSpecialChars && !myHasSeparators && !myHasHumps && StringUtil.containsAnyChar(name, myHardSeparators, startAt, next)) {
@@ -514,15 +538,15 @@ class MinusculeMatcherImpl extends MinusculeMatcher {
         myHasHumps && isLowerCase[patternIndex] && !(patternIndex > 0 && isWordSeparator[patternIndex - 1])) {
       return -1;
     }
-    int nextWordStart = startFrom;
+    int nextWordStart = NameUtilCore.isWordStart(name, startFrom) ? startFrom : nextWord(name, startFrom);
     while (true) {
-      nextWordStart = nextWord(name, nextWordStart);
       if (nextWordStart >= name.length()) {
         return -1;
       }
       if (charEquals(p, patternIndex, name.charAt(nextWordStart), true)) {
         return nextWordStart;
       }
+      nextWordStart = nextWord(name, nextWordStart);
     }
   }
 

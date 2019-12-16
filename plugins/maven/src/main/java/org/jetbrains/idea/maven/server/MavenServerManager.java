@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.server;
 
+import com.intellij.build.events.MessageEvent;
 import com.intellij.execution.DefaultExecutionResult;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.ExecutionResult;
@@ -36,7 +37,6 @@ import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.PathUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.io.BaseOutputReader;
 import com.intellij.util.xmlb.Converter;
 import com.intellij.util.xmlb.annotations.Attribute;
 import gnu.trove.THashMap;
@@ -47,9 +47,11 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
+import org.jetbrains.idea.maven.buildtool.MavenSyncConsole;
 import org.jetbrains.idea.maven.execution.MavenExecutionOptions;
 import org.jetbrains.idea.maven.execution.MavenRunnerSettings;
 import org.jetbrains.idea.maven.execution.RunnerBundle;
+import org.jetbrains.idea.maven.execution.SyncBundle;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
 import org.jetbrains.idea.maven.model.MavenModel;
 import org.jetbrains.idea.maven.project.MavenGeneralSettings;
@@ -98,6 +100,17 @@ public class MavenServerManager extends MavenRemoteObjectWrapper<MavenServer> im
   private boolean myLoggerExported;
   private boolean myDownloadListenerExported;
   private State myState = new State();
+
+  public void showMavenNotifications(MavenSyncConsole console) {
+    String mavenVersion = getCurrentMavenVersion();
+    if (mavenVersion == null) {
+      console.showQuickFixBadMaven(SyncBundle.message("maven.sync.quickfixes.nomaven"), MessageEvent.Kind.ERROR);
+    }
+
+    if (StringUtil.compareVersionNumbers(mavenVersion, "3.6.0") == 0) {
+      console.showQuickFixBadMaven(SyncBundle.message("maven.sync.quickfixes.maven360"), MessageEvent.Kind.WARNING);
+    }
+  }
 
   private static class BundledMavenPathHolder {
     private static final File myBundledMaven2Home;
@@ -215,7 +228,7 @@ public class MavenServerManager extends MavenRemoteObjectWrapper<MavenServer> im
             if (!manager.isMavenizedProject()) {
               return;
             }
-            manager.getSyncConsole().terminated(event.getExitCode());
+            manager.terminateImport(event.getExitCode());
           });
         }
       }
@@ -306,6 +319,7 @@ public class MavenServerManager extends MavenRemoteObjectWrapper<MavenServer> im
                        NotificationType.WARNING).notify(null);
     }
   }
+
 
   public static File getMavenEventListener() {
     return BundledMavenPathHolder.eventListenerJar;
@@ -773,13 +787,7 @@ public class MavenServerManager extends MavenRemoteObjectWrapper<MavenServer> im
     protected OSProcessHandler startProcess() throws ExecutionException {
       SimpleJavaParameters params = createJavaParameters();
       GeneralCommandLine commandLine = params.toCommandLine();
-      OSProcessHandler processHandler = new OSProcessHandler(commandLine) {
-        @NotNull
-        @Override
-        protected BaseOutputReader.Options readerOptions() {
-          return BaseOutputReader.Options.forMostlySilentProcess();
-        }
-      };
+      OSProcessHandler processHandler = new OSProcessHandler.Silent(commandLine);
       processHandler.setShouldDestroyProcessRecursively(false);
       return processHandler;
     }

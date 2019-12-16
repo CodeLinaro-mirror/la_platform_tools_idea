@@ -43,9 +43,6 @@
       <implementation-class>com.intellij.openapi.projectRoots.impl.DefaultJdkConfigurator</implementation-class>
       <headless-implementation-class/>
     </component>
-    <component>
-      <implementation-class>com.intellij.openapi.module.WebModuleTypeRegistrar</implementation-class>
-    </component>
   </application-components>
 
   <project-components>
@@ -63,15 +60,7 @@
       <implementation-class>com.intellij.framework.detection.impl.FrameworkDetectionManager</implementation-class>
     </component>
     <component>
-      <interface-class>com.intellij.ide.impl.convert.ProjectFileVersion</interface-class>
-      <implementation-class>com.intellij.ide.impl.convert.ProjectFileVersionImpl</implementation-class>
-    </component>
-    <component>
       <implementation-class>com.intellij.execution.testDiscovery.TestDiscoveryIndex</implementation-class>
-    </component>
-
-    <component>
-      <implementation-class>com.intellij.execution.scratch.JavaScratchCompilationSupport</implementation-class>
     </component>
 
     <component>
@@ -82,13 +71,12 @@
       <implementation-class>com.intellij.execution.testDiscovery.AffectedTestsInChangeListPainter</implementation-class>
       <headless-implementation-class/>
     </component>
-
   </project-components>
 
   <extensionPoints>
     <extensionPoint qualifiedName="com.intellij.methodImplementor" interface="com.intellij.codeInsight.MethodImplementor"/>
     <extensionPoint qualifiedName="com.intellij.javaExpressionSurrounder" interface="com.intellij.codeInsight.generation.surroundWith.JavaExpressionSurrounder"/>
-    <extensionPoint qualifiedName="com.intellij.unscrambleSupport" interface="com.intellij.unscramble.UnscrambleSupport"/>
+    <extensionPoint qualifiedName="com.intellij.unscrambleSupport" interface="com.intellij.unscramble.UnscrambleSupport" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.java.refactoring.chainCallExtractor" interface="com.intellij.refactoring.chainCall.ChainCallExtractor"/>
     <extensionPoint qualifiedName="com.intellij.java.inspection.bulkMethodInfo" interface="com.intellij.codeInspection.bulkOperation.BulkMethodInfoProvider"/>
     <extensionPoint qualifiedName="com.intellij.java.externalAnnotation" interface="com.intellij.codeInsight.externalAnnotation.AnnotationProvider"/>
@@ -189,7 +177,7 @@
                     interface="com.intellij.ide.util.newProjectWizard.impl.FrameworkSupportCommunicator"/>
 
     <!--new project wizard-->
-    <extensionPoint qualifiedName="com.intellij.projectWizard.projectCategory" interface="com.intellij.ide.projectWizard.ProjectCategory"/>
+    <extensionPoint qualifiedName="com.intellij.projectWizard.projectCategory" interface="com.intellij.ide.projectWizard.ProjectCategory" dynamic="true"/>
 
     <!-- both EP implementation classes requires constructor injection (our plugins fixed, but 3rd-party not) -->
     <extensionPoint qualifiedName="com.intellij.projectImportProvider" interface="com.intellij.projectImport.ProjectImportProvider"/>
@@ -302,6 +290,8 @@
     <virtualFileSystem implementationClass="com.intellij.openapi.vfs.impl.jrt.JrtFileSystemImpl" key="jrt" physical="true"/>
 
     <sdkType implementation="com.intellij.openapi.projectRoots.impl.JavaSdkImpl"/>
+
+    <applicationService serviceImplementation="com.intellij.openapi.module.WebModuleTypeRegistrar" preload="true"/>
 
     <applicationService serviceImplementation="com.intellij.codeInsight.generation.SetterTemplatesManager"/>
     <applicationService serviceImplementation="com.intellij.codeInsight.generation.GetterTemplatesManager"/>
@@ -417,7 +407,9 @@
     <applicationService serviceImplementation="com.intellij.debugger.settings.ThreadsViewSettings"/>
     <applicationService serviceImplementation="com.intellij.debugger.settings.TraceSettings"/>
 
+    <statistics.counterUsagesCollector groupId="java.find.usages" version="1"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.debugger.settings.DebuggerSettingsStatisticsCollector"/>
+    <statistics.applicationUsagesCollector implementation="com.intellij.refactoring.JavaRefactoringUsageCollector"/>
 
     <applicationService serviceInterface="com.intellij.packaging.elements.PackagingElementFactory"
                         serviceImplementation="com.intellij.packaging.impl.elements.PackagingElementFactoryImpl"/>
@@ -442,7 +434,7 @@
 
     <projectService serviceImplementation="com.intellij.compiler.CompilerWorkspaceConfiguration"/>
     <statistics.projectUsagesCollector implementation="com.intellij.compiler.CompilerSettingsCollector"/>
-    <statistics.projectUsagesCollector implementation="com.intellij.pom.java.JavaLanguageLevelCollector"/>
+    <statistics.projectUsagesCollector implementation="com.intellij.pom.java.JavaLanguageVersionsCollector"/>
 
     <changesGroupingPolicy key="module" id="module"
                            implementationClass="com.intellij.openapi.vcs.changes.ui.ModuleChangesGroupingPolicy$Factory"/>
@@ -530,10 +522,6 @@
     <postStartupActivity implementation="com.intellij.compiler.impl.CleanStaleModuleOutputsActivity"/>
     <postStartupActivity implementation="com.intellij.lang.java.JavaModuleRenameListener"/>
 
-    <bundledKeymap file="Visual Studio.xml"/>
-    <bundledKeymap file="Eclipse.xml"/>
-    <bundledKeymap file="Eclipse (Mac OS X).xml"/>
-    <bundledKeymap file="NetBeans 6.5.xml"/>
     <keymapExtension implementation="com.intellij.debugger.actions.DebuggerKeymapExtension"/>
 
     <moduleExtension implementation="com.intellij.openapi.roots.LanguageLevelModuleExtensionImpl"/>
@@ -657,8 +645,6 @@
 
     <favoriteNodeProvider implementation="com.intellij.ide.favoritesTreeView.UsageFavoriteNodeProvider"/>
 
-    <configurationType implementation="com.intellij.execution.applet.AppletConfigurationType"/>
-    <configurationProducer implementation="com.intellij.execution.applet.AppletConfigurationProducer"/>
     <configurationType implementation="com.intellij.execution.application.ApplicationConfigurationType"/>
     <configurationType implementation="com.intellij.execution.jar.JarApplicationConfigurationType"/>
     <configurationType implementation="com.intellij.execution.scratch.JavaScratchConfigurationType"/>
@@ -1105,6 +1091,7 @@
              order="before explicitlyImported"/>
     <weigher key="proximity" implementationClass="com.intellij.psi.util.proximity.ReferenceListWeigher" id="referenceList"
              order="before samePsiMember"/>
+    <completion.ml.model implementation="com.intellij.codeInsight.completion.ml.JavaMLRankingProvider"/>
     <joinLinesHandler implementation="com.intellij.codeInsight.editorActions.NestedIfJoinLinesHandler"/>
     <joinLinesHandler implementation="com.intellij.codeInsight.editorActions.BlockJoinLinesHandler"/>
     <joinLinesHandler implementation="com.intellij.codeInsight.editorActions.ChainCallJoinLinesHandler"/>
@@ -1131,6 +1118,7 @@
     <codeStyle.ReferenceAdjuster language="JAVA" implementationClass="com.intellij.psi.impl.source.codeStyle.JavaReferenceAdjuster"/>
     <enterHandlerDelegate implementation="com.intellij.codeInsight.editorActions.JavaEnterAfterUnmatchedBraceHandler" order="before afterUnmatchedBrace"/>
     <lang.smartEnterProcessor language="JAVA" implementationClass="com.intellij.codeInsight.editorActions.smartEnter.JavaSmartEnterProcessor"/>
+    <enterHandlerDelegate implementation="com.intellij.codeInsight.editorActions.JavaEnterInTextBlockHandler"/>
     <breadcrumbsInfoProvider implementation="com.intellij.lang.java.JavaBreadcrumbsInfoProvider"/>
     <editorFileSwapper implementation="com.intellij.codeEditor.JavaEditorFileSwapper"/>
     <flipCommaIntention.flipper language="JAVA" implementationClass="com.intellij.codeInsight.intention.impl.JavaFlipper"/>
@@ -1145,7 +1133,8 @@
     <codeInsight.lineMarkerProvider language="JAVA" implementationClass="com.intellij.codeInsight.daemon.impl.RecursiveCallLineMarkerProvider"/>
     <codeInsight.lineMarkerProvider language="UAST" implementationClass="com.intellij.codeInsight.daemon.impl.IconLineMarkerProvider"/>
     <codeInsight.lineMarkerProvider language="JAVA" implementationClass="com.intellij.codeInsight.ExternalAnnotationLineMarkerProvider"/>
-    <codeInsight.lineMarkerProvider language="JAVA" implementationClass="com.intellij.codeInsight.InferredAnnotationsLineMarkerProvider"/>
+    <codeInsight.lineMarkerProvider language="JAVA" implementationClass="com.intellij.codeInsight.InferredNullabilityAnnotationsLineMarkerProvider"/>
+    <codeInsight.lineMarkerProvider language="JAVA" implementationClass="com.intellij.codeInsight.InferredContractAnnotationsLineMarkerProvider"/>
     <codeInsight.gotoSuper language="SPI" implementationClass="com.intellij.spi.SPIGotoSuperHandler"/>
     <codeInsight.gotoSuper language="JAVA" implementationClass="com.intellij.codeInsight.navigation.JavaGotoSuperHandler"/>
     <codeInsight.delegateMethods language="JAVA" implementationClass="com.intellij.codeInsight.generation.GenerateDelegateHandler"/>
@@ -1332,6 +1321,18 @@
                      bundle="messages.InspectionsBundle"
                      key="inspection.redundant.explicit.close"
                      implementationClass="com.intellij.codeInspection.RedundantExplicitCloseInspection"/>
+    <localInspection groupPath="Java,Java language level migration aids" language="JAVA" shortName="TextBlockMigration"
+                     groupBundle="messages.InspectionsBundle"
+                     groupKey="group.names.language.level.specific.issues.and.migration.aids13" enabledByDefault="true" level="WARNING"
+                     implementationClass="com.intellij.codeInspection.TextBlockMigrationInspection"
+                     bundle="messages.InspectionsBundle"
+                     key="inspection.text.block.migration.name"/>
+    <localInspection groupPath="Java,Java language level migration aids" language="JAVA" shortName="TextBlockBackwardMigration"
+                     groupBundle="messages.InspectionsBundle"
+                     groupKey="group.names.language.level.specific.issues.and.migration.aids13" enabledByDefault="true" level="INFORMATION"
+                     implementationClass="com.intellij.codeInspection.TextBlockBackwardMigrationInspection"
+                     bundle="messages.InspectionsBundle"
+                     key="inspection.text.block.backward.migration.name"/>
     <localInspection groupPath="Java" language="JAVA" shortName="WrapperTypeMayBePrimitive"
                      groupBundle="messages.InspectionsBundle"
                      groupKey="group.names.declaration.redundancy" enabledByDefault="true" level="WARNING"
@@ -1778,6 +1779,10 @@
       <category>Java/Refactorings</category>
     </intentionAction>
     <intentionAction>
+      <className>com.intellij.codeInsight.intention.impl.ExtractMethodIntentionAction</className>
+      <category>Java/Refactorings</category>
+    </intentionAction>
+    <intentionAction>
       <className>com.intellij.codeInsight.daemon.impl.quickfix.DefineParamsDefaultValueAction</className>
       <category>Java/Declaration</category>
     </intentionAction>
@@ -1963,6 +1968,10 @@
     <codeInsight.inlayProvider language="JAVA" implementationClass="com.intellij.codeInsight.daemon.impl.JavaLensProvider"/>
 
     <fileBasedIndex.providedLocator implementation="com.intellij.index.BasicProvidedExtensionLocator"/>
+
+    <commandLineInspectionProjectConfigurator implementation="com.intellij.codeInspection.JavaCommandLineInspectionProjectConfigurator"/>
+
+    <compiler.task implementation="com.intellij.execution.scratch.JavaScratchCompilationSupport"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains">

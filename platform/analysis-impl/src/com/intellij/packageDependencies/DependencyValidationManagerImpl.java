@@ -33,7 +33,7 @@ import java.util.Map;
   name = "DependencyValidationManager",
   storages = @Storage(value = "scopes", stateSplitter = DependencyValidationManagerImpl.ScopesStateSplitter.class)
 )
-public class DependencyValidationManagerImpl extends DependencyValidationManager {
+public final class DependencyValidationManagerImpl extends DependencyValidationManager {
   private static final Icon ourSharedScopeIcon = new IconLoader.LazyIcon() {
     @NotNull
     @Override
@@ -60,11 +60,11 @@ public class DependencyValidationManagerImpl extends DependencyValidationManager
   @NonNls private static final String UNNAMED_SCOPE = "unnamed_scope";
   @NonNls private static final String VALUE = "value";
 
-  public DependencyValidationManagerImpl(@NotNull Project project, @NotNull NamedScopeManager namedScopeManager) {
+  public DependencyValidationManagerImpl(@NotNull Project project) {
     super(project);
 
-    myNamedScopeManager = namedScopeManager;
-    namedScopeManager.addScopeListener(() -> reloadScopes(), project);
+    myNamedScopeManager = NamedScopeManager.getInstance(project);
+    myNamedScopeManager.addScopeListener(() -> reloadScopes(), project);
   }
 
   @Override

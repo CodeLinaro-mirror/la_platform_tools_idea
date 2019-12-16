@@ -24,9 +24,7 @@ import com.intellij.psi.util.QualifiedName;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
-import com.jetbrains.python.PyBundle;
-import com.jetbrains.python.PyCustomType;
-import com.jetbrains.python.PyNames;
+import com.jetbrains.python.*;
 import com.jetbrains.python.codeInsight.PyCodeInsightSettings;
 import com.jetbrains.python.codeInsight.PyCustomMember;
 import com.jetbrains.python.codeInsight.PySubstitutionChunkReference;
@@ -60,7 +58,7 @@ import com.jetbrains.python.psi.resolve.ImportedResolveResult;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
 import com.jetbrains.python.psi.types.*;
-import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import com.jetbrains.python.sdk.skeletons.PySkeletonRefresher;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nls;
@@ -147,7 +145,7 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
           myIsEnabled = false;
         }
         else if (isPyCharm) {
-          myIsEnabled = PythonSdkType.findPythonSdk(anchor) != null || PyUtil.isInScratchFile(anchor);
+          myIsEnabled = PythonSdkUtil.findPythonSdk(anchor) != null || PythonRuntimeService.getInstance().isInScratchFile(anchor);
         }
         else {
           myIsEnabled = true;
@@ -546,8 +544,8 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
                   }
                 }
                 description = PyBundle.message("INSP.unresolved.operator.ref",
-                                               className, refName,
-                                               ((PyOperatorReference)reference).getReadableOperatorName());
+                                                  className, refName,
+                                                  ((PyOperatorReference)reference).getReadableOperatorName());
               }
               else {
                 description = PyBundle.message("INSP.unresolved.ref.$0.for.class.$1", refText, type.getName());
@@ -601,11 +599,11 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
         if (!components.isEmpty()) {
           final String packageName = components.get(0);
           final Module module = ModuleUtilCore.findModuleForPsiElement(node);
-          final Sdk sdk = PythonSdkType.findPythonSdk(module);
+          final Sdk sdk = PythonSdkUtil.findPythonSdk(module);
           if (module != null && sdk != null && PyPackageUtil.packageManagementEnabled(sdk)) {
             StreamEx
               .of(packageName)
-              .append(PyPIPackageUtil.PACKAGES_TOPLEVEL.getOrDefault(packageName, Collections.emptyList()))
+              .append(PyPsiPackageUtil.PACKAGES_TOPLEVEL.getOrDefault(packageName, Collections.emptyList()))
               .filter(PyPIPackageUtil.INSTANCE::isInPyPI)
               .forEach(pkg -> addInstallPackageAction(actions, pkg, module, sdk));
           }
@@ -977,12 +975,12 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
         if (!components.isEmpty()) {
           final String packageName = components.get(0);
           final Module module = ModuleUtilCore.findModuleForPsiElement(node);
-          if (PyPIPackageUtil.INSTANCE.isInPyPI(packageName) && PythonSdkType.findPythonSdk(module) != null) {
+          if (PyPIPackageUtil.INSTANCE.isInPyPI(packageName) && PythonSdkUtil.findPythonSdk(module) != null) {
             actions.add(new PyPackageRequirementsInspection.InstallAndImportQuickFix(packageName, packageName, node));
           }
           else {
             final String packageAlias = PyPackageAliasesProvider.commonImportAliases.get(packageName);
-            if (packageAlias != null && PyPIPackageUtil.INSTANCE.isInPyPI(packageName) && PythonSdkType.findPythonSdk(module) != null) {
+            if (packageAlias != null && PyPIPackageUtil.INSTANCE.isInPyPI(packageName) && PythonSdkUtil.findPythonSdk(module) != null) {
               actions.add(new PyPackageRequirementsInspection.InstallAndImportQuickFix(packageAlias, packageName, node));
             }
           }
@@ -1066,7 +1064,7 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
         final PyElement toHighlight = asElement != null ? asElement : importElement.getImportReferenceExpression();
         registerProblem(toHighlight,
                         PyBundle.message("INSP.try.except.import.error",
-                                         importElement.getVisibleName()),
+                                            importElement.getVisibleName()),
                         ProblemHighlightType.LIKE_UNKNOWN_SYMBOL);
       }
     }
@@ -1088,7 +1086,7 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
       // Remove those unsed, that are reported to be skipped by extension points
       final Set<PyImportedNameDefiner> unusedImportToSkip = new HashSet<>();
       for (final PyImportedNameDefiner unusedImport : unusedImports) {
-        if (importShouldBeSkippedByExtPoint(unusedImport)) { // Pass to extension points
+        if (PyInspectionExtension.EP_NAME.getExtensionList().stream().anyMatch(o -> o.ignoreUnusedImports(unusedImport))) {
           unusedImportToSkip.add(unusedImport);
         }
       }
@@ -1199,20 +1197,5 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
         element.delete();
       }
     }
-  }
-
-  /**
-   * Checks if one or more extension points ask unused import to be skipped
-   *
-   * @param importNameDefiner unused import
-   * @return true of one or more asks
-   */
-  private static boolean importShouldBeSkippedByExtPoint(@NotNull final PyImportedNameDefiner importNameDefiner) {
-    for (final PyUnresolvedReferenceSkipperExtPoint skipper : PyUnresolvedReferenceSkipperExtPoint.EP_NAME.getExtensions()) {
-      if (skipper.unusedImportShouldBeSkipped(importNameDefiner)) {
-        return true;
-      }
-    }
-    return false;
   }
 }

@@ -1,16 +1,19 @@
+import logging
+import sys
+import unittest.result
+from types import TracebackType
 from typing import (
     Any, AnyStr, Callable, Container, ContextManager, Dict, FrozenSet, Generic,
     Iterable, List, NoReturn, Optional, overload, Pattern, Sequence, Set,
     Tuple, Type, TypeVar, Union,
 )
-import logging
-import unittest.result
-from types import TracebackType
-
 
 _E = TypeVar('_E', bound=BaseException)
 _FT = TypeVar('_FT', bound=Callable[..., Any])
 
+if sys.version_info >= (3, 8):
+    def addModuleCleanup(__function: Callable[..., Any], *args: Any, **kwargs: Any) -> None: ...
+    def doModuleCleanups() -> None: ...
 
 def expectedFailure(func: _FT) -> _FT: ...
 def skip(reason: str) -> Callable[[_FT], _FT]: ...
@@ -154,6 +157,11 @@ class TestCase:
     def addCleanup(self, function: Callable[..., Any], *args: Any,
                    **kwargs: Any) -> None: ...
     def doCleanups(self) -> None: ...
+    if sys.version_info >= (3, 8):
+        @classmethod
+        def addClassCleanup(cls, __function: Callable[..., Any], *args: Any, **kwargs: Any) -> None: ...
+        @classmethod
+        def doClassCleanups(cls) -> None: ...
     def _formatMessage(self, msg: Optional[str], standardMsg: str) -> str: ...  # undocumented
     def _getAssertEqualityFunc(self, first: Any, second: Any) -> Callable[..., None]: ...  # undocumented
     # below is deprecated
@@ -214,11 +222,11 @@ class _AssertWarnsContext:
     lineno: int
     def __enter__(self) -> _AssertWarnsContext: ...
     def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> bool: ...
+                 exc_tb: Optional[TracebackType]) -> None: ...
 
 class _AssertLogsContext:
     records: List[logging.LogRecord]
     output: List[str]
     def __enter__(self) -> _AssertLogsContext: ...
     def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException],
-                 exc_tb: Optional[TracebackType]) -> bool: ...
+                 exc_tb: Optional[TracebackType]) -> Optional[bool]: ...

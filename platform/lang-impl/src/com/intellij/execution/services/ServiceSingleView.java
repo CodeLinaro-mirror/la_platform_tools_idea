@@ -73,6 +73,11 @@ class ServiceSingleView extends ServiceView {
   }
 
   @Override
+  boolean hasItems() {
+    return myUi.getDetailsComponent() != null;
+  }
+
+  @Override
   public void dispose() {
     getModel().removeModelListener(myListener);
   }
@@ -91,7 +96,7 @@ class ServiceSingleView extends ServiceView {
           myUi.setDetailsComponent(descriptor.getContentComponent());
         }
       }
-    }, myProject.getDisposed());
+    }, getProject().getDisposed());
   }
 
   private void showContent() {
@@ -108,7 +113,7 @@ class ServiceSingleView extends ServiceView {
   }
 
   @Override
-  List<Object> getChildrenSafe(@NotNull Object value) {
+  List<Object> getChildrenSafe(@NotNull List<Object> valueSubPath) {
     return Collections.emptyList();
   }
 }

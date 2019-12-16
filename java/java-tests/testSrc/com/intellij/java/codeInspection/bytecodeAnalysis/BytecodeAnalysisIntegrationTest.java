@@ -4,7 +4,10 @@ package com.intellij.java.codeInspection.bytecodeAnalysis;
 import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.codeInsight.ExternalAnnotationsManager;
 import com.intellij.codeInsight.ExternalAnnotationsManagerImpl;
+import com.intellij.codeInsight.InferredContractAnnotationsLineMarkerProvider;
 import com.intellij.codeInsight.daemon.GutterMark;
+import com.intellij.codeInsight.daemon.LineMarkerSettings;
+import com.intellij.codeInsight.daemon.impl.LineMarkerSettingsImpl;
 import com.intellij.codeInspection.bytecodeAnalysis.BytecodeAnalysisConverter;
 import com.intellij.codeInspection.bytecodeAnalysis.ClassDataIndexer;
 import com.intellij.codeInspection.bytecodeAnalysis.ProjectBytecodeAnalysis;
@@ -18,6 +21,7 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.*;
 import com.intellij.openapi.roots.libraries.Library;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -94,6 +98,11 @@ public class BytecodeAnalysisIntegrationTest extends LightJavaCodeInsightFixture
   }
 
   public void testInferredAnnoGutter() {
+    LineMarkerSettingsImpl settings = (LineMarkerSettingsImpl)LineMarkerSettings.getSettings();
+    final InferredContractAnnotationsLineMarkerProvider descriptor = new InferredContractAnnotationsLineMarkerProvider();
+    settings.setEnabled(descriptor, true);
+    Disposer.register(getTestRootDisposable(), () -> settings.resetEnabled(descriptor));
+
     checkHasGutter("org.apache.velocity.util.ExceptionUtils",
                    "<html><i>Inferred</i> annotations available. Full signature:<p>\n" +
                    "<b><i>@Contract('null,_,_->null')</i></b> \n" +
@@ -133,6 +142,9 @@ public class BytecodeAnalysisIntegrationTest extends LightJavaCodeInsightFixture
         for (PsiClass aClass : classes) {
           for (PsiMethod method : aClass.getMethods()) {
             checkMethodAnnotations(method, digest, diffs);
+          }
+          for (PsiField field : aClass.getFields()) {
+            checkFieldAnnotations(field, digest, diffs);
           }
         }
       }
@@ -185,6 +197,17 @@ public class BytecodeAnalysisIntegrationTest extends LightJavaCodeInsightFixture
     }
   }
 
+  private void checkFieldAnnotations(PsiField field, MessageDigest digest, List<? super String> diffs) {
+    if (ProjectBytecodeAnalysis.getInstance(getProject()).getKey(field, digest) == null) return;
+    String fieldKey = PsiFormatUtil.getExternalName(field, false, Integer.MAX_VALUE);
+
+    String externalNotNullMethodAnnotation = findExternalAnnotation(field, AnnotationUtil.NOT_NULL) == null ? "-" : "@NotNull";
+    String inferredNotNullMethodAnnotation = findInferredAnnotation(field, AnnotationUtil.NOT_NULL) == null ? "-" : "@NotNull";
+    if (!externalNotNullMethodAnnotation.equals(inferredNotNullMethodAnnotation)) {
+      diffs.add(fieldKey + ": " + externalNotNullMethodAnnotation + " != " + inferredNotNullMethodAnnotation + "\n");
+    }
+  }
+
   public void _testExportInferredAnnotations() {
     PsiPackage rootPackage = JavaPsiFacade.getInstance(getProject()).findPackage("");
     assertNotNull(rootPackage);
@@ -201,6 +224,7 @@ public class BytecodeAnalysisIntegrationTest extends LightJavaCodeInsightFixture
 
       private void processClass(PsiClass aClass, Map<String, Map<String, PsiNameValuePair[]>> annotations) {
         for (PsiMethod method : aClass.getMethods()) annotateMethod(method, annotations);
+        for (PsiField field : aClass.getFields()) annotateField(field, annotations);
         for (PsiClass innerClass : aClass.getInnerClasses()) processClass(innerClass, annotations);
       }
 
@@ -237,6 +261,13 @@ public class BytecodeAnalysisIntegrationTest extends LightJavaCodeInsightFixture
         }
       }
 
+      private void annotateField(PsiField field, Map<String, Map<String, PsiNameValuePair[]>> annotations) {
+        PsiAnnotation inferredNotNullMethodAnnotation = findInferredAnnotation(field, AnnotationUtil.NOT_NULL);
+        if (inferredNotNullMethodAnnotation != null) {
+          annotate(annotations, field, AnnotationUtil.NOT_NULL, PsiNameValuePair.EMPTY_ARRAY);
+        }
+      }
+
       private void annotate(Map<String, Map<String, PsiNameValuePair[]>> annotations,
                             PsiModifierListOwner owner,
                             String annotationFQN,
@@ -249,7 +280,8 @@ public class BytecodeAnalysisIntegrationTest extends LightJavaCodeInsightFixture
         if (annotations.isEmpty()) return;
         String xmlContent = EntryStream.of(annotations)
           .mapValues(map -> EntryStream.of(map).mapKeyValue(ExternalAnnotationsManagerImpl::createAnnotationTag).joining())
-          .mapKeyValue((externalName, content) -> "<item name=\'" + StringUtil.escapeXmlEntities(externalName) + "\'>\n" + content.trim() + "\n</item>\n")
+          .mapKeyValue((externalName, content) -> "<item name='" + StringUtil.escapeXmlEntities(externalName) +
+                                                  "'>\n" + content.trim() + "\n</item>\n")
           .joining("", "<root>\n", "</root>");
         WriteCommandAction.runWriteCommandAction(getProject(), () -> {
           XmlFile xml = ExternalAnnotationsManagerImpl.createAnnotationsXml(root, packageName, getPsiManager());

@@ -2,10 +2,8 @@
 package com.intellij.util;
 
 import com.intellij.openapi.application.ApplicationInfo;
+import com.intellij.util.containers.ContainerUtil;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -37,10 +35,10 @@ public final class PlatformUtils {
   public static final String GOIDE_PREFIX = "GoLand";
   public static final String STUDIO_PREFIX = "AndroidStudio";
 
-  private static final Set<String> COMMERCIAL_EDITIONS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-    IDEA_PREFIX, APPCODE_PREFIX, CLION_PREFIX, PYCHARM_PREFIX, RUBY_PREFIX, PHP_PREFIX, WEB_PREFIX, DBE_PREFIX,
-    RIDER_PREFIX, GOIDE_PREFIX
-  )));
+  private static final Set<String> COMMERCIAL_EDITIONS = ContainerUtil.immutableSet(IDEA_PREFIX, APPCODE_PREFIX, CLION_PREFIX,
+                                                                                    PYCHARM_PREFIX, RUBY_PREFIX, PHP_PREFIX,
+                                                                                    WEB_PREFIX, DBE_PREFIX, RIDER_PREFIX,
+                                                                                    GOIDE_PREFIX);
 
   public static String getPlatformPrefix() {
     return getPlatformPrefix(IDEA_PREFIX);
@@ -48,6 +46,12 @@ public final class PlatformUtils {
 
   public static String getPlatformPrefix(String defaultPrefix) {
     return System.getProperty(PLATFORM_PREFIX_KEY, defaultPrefix);
+  }
+  
+  public static void setDefaultPrefixForCE() {
+    //IJ CE doesn't have prefix if we start IDE from the source code.
+    //The proper fix is to set the prefix in all CE run configurations but for keeping compatibility set it indirectly 
+    System.setProperty(PLATFORM_PREFIX_KEY, getPlatformPrefix(IDEA_CE_PREFIX));
   }
 
   public static boolean isJetBrainsProduct() {
@@ -67,7 +71,7 @@ public final class PlatformUtils {
     return is(IDEA_CE_PREFIX);
   }
 
-  private static boolean isIdeaEducational() {
+  public static boolean isIdeaEducational() {
     return is(IDEA_EDU_PREFIX);
   }
 

@@ -20,61 +20,16 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-
 /**
  * @author traff
  */
-public interface RemoteSdkProperties {
-  String getInterpreterPath();
+public interface RemoteSdkProperties extends RemoteSdkPropertiesPaths {
 
   void setInterpreterPath(String interpreterPath);
-
-  String getHelpersPath();
 
   void setHelpersPath(String helpersPath);
 
   String getDefaultHelpersName();
-
-  /**
-   * Use getPathMappings() instead
-   * To be removed in IDEA 15
-   *
-   * @deprecated
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2015")
-  void addRemoteRoot(String remoteRoot);
-
-  /**
-   * Use getPathMappings() instead
-   * To be removed in IDEA 15
-   *
-   * @deprecated
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2015")
-  void clearRemoteRoots();
-
-  /**
-   * Use getPathMappings() instead
-   * To be removed in IDEA 15
-   *
-   * @deprecated
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2015")
-  List<String> getRemoteRoots();
-
-  /**
-   * Use setPathMappings() instead
-   * To be removed in IDEA 15
-   *
-   * @deprecated
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2015")
-  void setRemoteRoots(List<String> remoteRoots);
 
   @NotNull
   PathMappingSettings getPathMappings();

@@ -55,7 +55,6 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.components.ServiceManager;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -129,6 +128,8 @@ import org.jetbrains.annotations.TestOnly;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -153,6 +154,11 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private final TempDirTestFixture myTempDirFixture;
   private PsiManagerImpl myPsiManager;
   private VirtualFile myFile;
+
+  // Strong references to PSI files configured by the test (to avoid tree access assertions after PSI has been GC'ed)
+  private PsiFile myPsiFile;
+  private PsiFile[] myAllPsiFiles;
+
   private Editor myEditor;
   private EditorTestFixture myEditorTestFixture;
   private String myTestDataPath;
@@ -162,6 +168,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private boolean myCaresAboutInjection = true;
   private VirtualFilePointerTracker myVirtualFilePointerTracker;
   private ResourceBundle[] myMessageBundles = new ResourceBundle[0];
+  private boolean myReplaceEdtQueue = true;
 
   public CodeInsightTestFixtureImpl(@NotNull IdeaProjectTestFixture projectFixture, @NotNull TempDirTestFixture tempDirTestFixture) {
     myProjectFixture = projectFixture;
@@ -172,12 +179,15 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     myFile = file;
     myEditor = editor;
     myEditorTestFixture = new EditorTestFixture(getProject(), editor, file);
+    myPsiFile = ReadAction.compute(() -> PsiManager.getInstance(getProject()).findFile(myFile));
   }
 
   private void clearFileAndEditor() {
     myFile = null;
     myEditor = null;
     myEditorTestFixture = null;
+    myPsiFile = null;
+    myAllPsiFiles = null;
   }
 
   private static void addGutterIconRenderer(GutterMark renderer, int offset, @NotNull SortedMap<Integer, List<GutterMark>> result) {
@@ -289,15 +299,18 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
     List<HighlightInfo> infos = DaemonCodeAnalyzerEx.getInstanceEx(file.getProject()).getFileLevelHighlights(file.getProject(), file);
     for (HighlightInfo info : infos) {
-      for (Pair<HighlightInfo.IntentionActionDescriptor, TextRange> pair : info.quickFixActionRanges) {
-        HighlightInfo.IntentionActionDescriptor actionInGroup = pair.first;
-        if (actionInGroup.getAction().isAvailable(file.getProject(), editor, file)) {
-          result.add(actionInGroup.getAction());
-          List<IntentionAction> options = actionInGroup.getOptions(file, editor);
-          if (options != null) {
-            for (IntentionAction subAction : options) {
-              if (subAction.isAvailable(file.getProject(), editor, file)) {
-                result.add(subAction);
+      List<Pair<HighlightInfo.IntentionActionDescriptor, TextRange>> fixRanges = info.quickFixActionRanges;
+      if (fixRanges != null) {
+        for (Pair<HighlightInfo.IntentionActionDescriptor, TextRange> pair : fixRanges) {
+          HighlightInfo.IntentionActionDescriptor actionInGroup = pair.first;
+          if (actionInGroup.getAction().isAvailable(file.getProject(), editor, file)) {
+            result.add(actionInGroup.getAction());
+            List<IntentionAction> options = actionInGroup.getOptions(file, editor);
+            if (options != null) {
+              for (IntentionAction subAction : options) {
+                if (subAction.isAvailable(file.getProject(), editor, file)) {
+                  result.add(subAction);
+                }
               }
             }
           }
@@ -335,8 +348,13 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       if (candidate.isAbsolute()) {
         sourceFile = candidate;
         if (targetPath == sourcePath) {
-          targetPath = PathUtil.getFileName(sourcePath);
-          Logger.getInstance(getClass()).warn("Absolute target path '" + sourcePath + "' trimmed to '" + targetPath + "'");
+          Path testDataPathObj = Paths.get(testDataPath), targetPathObj = Paths.get(targetPath);
+          if (targetPathObj.startsWith(testDataPathObj) && !targetPathObj.equals(testDataPathObj)) {
+            targetPath = testDataPathObj.relativize(targetPathObj).toString();
+          }
+          else {
+            throw new IllegalArgumentException("Cannot guess target path for '" + sourcePath + "'; please specify explicitly");
+          }
         }
       }
     }
@@ -1156,11 +1174,17 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     return psiFile;
   }
 
+  public void disableEdtQueueReplacement() {
+    myReplaceEdtQueue = false;
+  }
+
   @Override
   public void setUp() throws Exception {
     super.setUp();
 
-    TestRunnerUtil.replaceIdeEventQueueSafely();
+    if (myReplaceEdtQueue) {
+      TestRunnerUtil.replaceIdeEventQueueSafely();
+    }
     EdtTestUtil.runInEdtAndWait(() -> {
       myProjectFixture.setUp();
       myTempDirFixture.setUp();
@@ -1270,11 +1294,11 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private PsiFile[] configureByFilesInner(@NotNull String... filePaths) {
     assertInitialized();
     clearFileAndEditor();
-    PsiFile[] psiFiles = new PsiFile[filePaths.length];
+    myAllPsiFiles = new PsiFile[filePaths.length];
     for (int i = filePaths.length - 1; i >= 0; i--) {
-      psiFiles[i] = configureByFileInner(filePaths[i]);
+      myAllPsiFiles[i] = configureByFileInner(filePaths[i]);
     }
-    return psiFiles;
+    return myAllPsiFiles;
   }
 
   @Override

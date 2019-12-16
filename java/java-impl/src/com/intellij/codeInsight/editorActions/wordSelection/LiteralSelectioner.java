@@ -19,15 +19,18 @@ import com.intellij.codeInsight.editorActions.SelectWordUtil;
 import com.intellij.lexer.StringLiteralLexer;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.JavaTokenType;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiLiteralExpression;
 import com.intellij.psi.PsiType;
+import com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
 import static com.intellij.psi.CommonClassNames.JAVA_LANG_STRING;
+import static com.intellij.util.ObjectUtils.tryCast;
 
 public class LiteralSelectioner extends BasicSelectioner {
   @Override
@@ -53,7 +56,18 @@ public class LiteralSelectioner extends BasicSelectioner {
                                                   new StringLiteralLexer('\"', JavaTokenType.STRING_LITERAL),
                                                   result);
 
-    result.add(new TextRange(range.getStartOffset() + 1, range.getEndOffset() - 1));
+    PsiLiteralExpressionImpl literalExpression = tryCast(e, PsiLiteralExpressionImpl.class);
+    if (literalExpression == null) literalExpression = tryCast(e.getParent(), PsiLiteralExpressionImpl.class);
+    if (literalExpression != null && literalExpression.getLiteralElementType() == JavaTokenType.TEXT_BLOCK_LITERAL) {
+      int start = StringUtil.indexOf(editorText, '\n', range.getStartOffset()) + 1;
+      int end = range.getEndOffset() - 3;
+      if (start < end) result.add(new TextRange(start, end));
+      start += literalExpression.getTextBlockIndent();
+      if (start < end) result.add(new TextRange(start, end));
+    }
+    else {
+      result.add(new TextRange(range.getStartOffset() + 1, range.getEndOffset() - 1));
+    }
 
     return result;
   }

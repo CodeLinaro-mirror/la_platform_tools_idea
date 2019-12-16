@@ -60,6 +60,7 @@ import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * @author Alexander Lobas
@@ -137,6 +138,9 @@ public class PluginManagerConfigurable
   public PluginManagerConfigurable() {
   }
 
+  /**
+   * @deprecated use {@link PluginManagerConfigurable}
+   */
   @Deprecated
   public PluginManagerConfigurable(PluginManagerUISettings uiSettings) {
   }
@@ -706,6 +710,15 @@ public class PluginManagerConfigurable
                   result.descriptors.addAll(0, builtinList);
                 }
 
+                if (result.descriptors.isEmpty() && "/tag:Paid".equals(query)) {
+                  for (IdeaPluginDescriptor descriptor : getRepositoryPlugins()) {
+                    if (descriptor.getProductCode() != null) {
+                      result.descriptors.add(descriptor);
+                    }
+                  }
+                  result.sortByName();
+                }
+
                 ContainerUtil.removeDuplicates(result.descriptors);
 
                 if (!result.descriptors.isEmpty()) {
@@ -985,7 +998,7 @@ public class PluginManagerConfigurable
           @Override
           protected void setEmptyText() {
             myPanel.getEmptyText().setText("Nothing found.");
-            myPanel.getEmptyText().appendSecondaryText("Search in marketplace", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES,
+            myPanel.getEmptyText().appendSecondaryText("Search in Marketplace", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES,
                                                        e -> myTabHeaderComponent.setSelectionWithEvents(MARKETPLACE_TAB));
           }
 
@@ -1020,11 +1033,11 @@ public class PluginManagerConfigurable
             for (Iterator<IdeaPluginDescriptor> I = descriptors.iterator(); I.hasNext(); ) {
               IdeaPluginDescriptor descriptor = I.next();
               if (parser.attributes) {
-                if (parser.enabled && !myPluginModel.isEnabled(descriptor)) {
+                if (parser.enabled && (!myPluginModel.isEnabled(descriptor) || myPluginModel.hasErrors(descriptor))) {
                   I.remove();
                   continue;
                 }
-                if (parser.disabled && myPluginModel.isEnabled(descriptor)) {
+                if (parser.disabled && (myPluginModel.isEnabled(descriptor) || myPluginModel.hasErrors(descriptor))) {
                   I.remove();
                   continue;
                 }
@@ -1277,9 +1290,16 @@ public class PluginManagerConfigurable
 
   @Messages.YesNoResult
   public static int showRestartDialog(@NotNull String title) {
-    String action = IdeBundle.message(ApplicationManager.getApplication().isRestartCapable() ? "ide.restart.action" : "ide.shutdown.action");
-    String message = IdeBundle.message("ide.restart.required.message", action, ApplicationNamesInfo.getInstance().getFullProductName());
-    return Messages.showYesNoDialog(message, title, action, IdeBundle.message("ide.notnow.action"), Messages.getQuestionIcon());
+    return showRestartDialog(title, action -> IdeBundle
+      .message("ide.restart.required.message", action, ApplicationNamesInfo.getInstance().getFullProductName()));
+  }
+
+  @Messages.YesNoResult
+  public static int showRestartDialog(@NotNull String title, @NotNull Function<String, String> message) {
+    String action =
+      IdeBundle.message(ApplicationManager.getApplication().isRestartCapable() ? "ide.restart.action" : "ide.shutdown.action");
+    return Messages
+      .showYesNoDialog(message.apply(action), title, action, IdeBundle.message("ide.notnow.action"), Messages.getQuestionIcon());
   }
 
   public static void shutdownOrRestartApp() {
@@ -1288,6 +1308,16 @@ public class PluginManagerConfigurable
 
   public static void shutdownOrRestartApp(@NotNull String title) {
     if (showRestartDialog(title) == Messages.YES) {
+      ApplicationManagerEx.getApplicationEx().restart(true);
+    }
+  }
+
+  public static void shutdownOrRestartAppAfterInstall(@NotNull String plugin) {
+    String title = IdeBundle.message("update.notifications.title");
+    Function<String, String> message = action -> IdeBundle
+      .message("plugin.installed.ide.restart.required.message", plugin, action, ApplicationNamesInfo.getInstance().getFullProductName());
+
+    if (showRestartDialog(title, message) == Messages.YES) {
       ApplicationManagerEx.getApplicationEx().restart(true);
     }
   }
@@ -1581,6 +1611,7 @@ public class PluginManagerConfigurable
     }
 
     myPluginUpdatesService.dispose();
+    PluginPriceService.cancel();
 
     if (myShutdownCallback != null) {
       myShutdownCallback.run();
@@ -1588,6 +1619,11 @@ public class PluginManagerConfigurable
     }
 
     InstalledPluginsState.getInstance().resetChangesAppliedWithoutRestart();
+  }
+
+  @Override
+  public void cancel() {
+    myPluginModel.removePluginsOnCancel();
   }
 
   @Override
@@ -1600,9 +1636,13 @@ public class PluginManagerConfigurable
     if (myPluginModel.apply(myCardPanel)) return;
 
     if (myShutdownCallback == null && myPluginModel.createShutdownCallback) {
-      myShutdownCallback = () -> ApplicationManager.getApplication().invokeLater(
-        () -> shutdownOrRestartApp(IdeBundle.message("update.notifications.title")));
+      myShutdownCallback = () -> ApplicationManager.getApplication().invokeLater(() -> shutdownOrRestartApp());
     }
+  }
+
+  @Override
+  public void reset() {
+    myPluginModel.removePluginsOnCancel();
   }
 
   @NotNull
@@ -1645,14 +1685,18 @@ public class PluginManagerConfigurable
     }
 
     return () -> {
-      if (myTabHeaderComponent.getSelectionTab() != INSTALLED_TAB) {
-        myTabHeaderComponent.setSelectionWithEvents(INSTALLED_TAB);
+      boolean marketplace = option != null && option.startsWith("/tag:");
+      int tabIndex = marketplace ? MARKETPLACE_TAB : INSTALLED_TAB;
+
+      if (myTabHeaderComponent.getSelectionTab() != tabIndex) {
+        myTabHeaderComponent.setSelectionWithEvents(tabIndex);
       }
 
-      myInstalledTab.clearSearchPanel(option);
+      PluginsTab tab = marketplace ? myMarketplaceTab : myInstalledTab;
+      tab.clearSearchPanel(option);
 
       if (!StringUtil.isEmpty(option)) {
-        myInstalledTab.showSearchPanel(option);
+        tab.showSearchPanel(option);
       }
     };
   }

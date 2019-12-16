@@ -757,4 +757,242 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
       )
     );
   }
+
+  // PY-35235
+  public void testTypingLiteralInitialization() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing_extensions import Literal\n" +
+                         "\n" +
+                         "a: Literal[20] = 20\n" +
+                         "b: Literal[30] = <warning descr=\"Expected type 'Literal[30]', got 'Literal[25]' instead\">25</warning>\n" +
+                         "c: Literal[2, 3, 4] = 3")
+    );
+  }
+
+  // PY-35235
+  public void testTypingLiteralInitializationWithDifferentExpressions() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing_extensions import Literal\n" +
+                         "\n" +
+                         "a1: Literal[0x14] = 20\n" +
+                         "a2: Literal[20] = 0x14\n" +
+                         "b1: Literal[0] = <warning descr=\"Expected type 'Literal[0]', got 'Literal[False]' instead\">False</warning>\n" +
+                         "b2: Literal[False] = <warning descr=\"Expected type 'Literal[False]', got 'Literal[0]' instead\">0</warning>")
+    );
+  }
+
+  // PY-35235
+  public void testExplicitTypingLiteralArgument() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing_extensions import Literal\n" +
+                         "\n" +
+                         "a: Literal[20] = undefined\n" +
+                         "b: Literal[30] = undefined\n" +
+                         "c: int = 20\n" +
+                         "\n" +
+                         "def foo1(p1: Literal[20]):\n" +
+                         "    pass\n" +
+                         "\n" +
+                         "foo1(a)\n" +
+                         "foo1(<warning descr=\"Expected type 'Literal[20]', got 'Literal[30]' instead\">b</warning>)\n" +
+                         "foo1(<warning descr=\"Expected type 'Literal[20]', got 'int' instead\">c</warning>)\n" +
+                         "\n" +
+                         "def foo2(p1: int):\n" +
+                         "    pass\n" +
+                         "\n" +
+                         "foo2(a)\n" +
+                         "foo2(b)\n" +
+                         "foo2(c)")
+    );
+  }
+
+  // PY-35235
+  public void testTypingLiteralStrings() {
+    doTestByText("from typing_extensions import Literal\n" +
+                 "\n" +
+                 "a = undefined  # type: Literal[\"abc\"]\n" +
+                 "b = undefined  # type: Literal[u\"abc\"]\n" +
+                 "\n" +
+                 "def foo1(p1):\n" +
+                 "    # type: (Literal[\"abc\"]) -> None\n" +
+                 "    pass\n" +
+                 "foo1(a)\n" +
+                 "foo1(<warning descr=\"Expected type 'Literal[\\\"abc\\\"]', got 'Literal[u\\\"abc\\\"]' instead\">b</warning>)\n" +
+                 "\n" +
+                 "def foo2(p1):\n" +
+                 "    # type: (Literal[u\"abc\"]) -> None\n" +
+                 "    pass\n" +
+                 "foo2(<warning descr=\"Expected type 'Literal[u\\\"abc\\\"]', got 'Literal[\\\"abc\\\"]' instead\">a</warning>)\n" +
+                 "foo2(b)\n" +
+                 "\n" +
+                 "def foo3(p1):\n" +
+                 "    # type: (bytes) -> None\n" +
+                 "    pass\n" +
+                 "foo3(a)\n" +
+                 "foo3(<warning descr=\"Expected type 'str', got 'Literal[u\\\"abc\\\"]' instead\">b</warning>)\n" +
+                 "\n" +
+                 "def foo4(p1):\n" +
+                 "    # type: (unicode) -> None\n" +
+                 "    pass\n" +
+                 "foo4(a)\n" +
+                 "foo4(b)\n");
+  }
+
+  // PY-35235
+  public void testNegativeTypingLiterals() {
+    doTestByText("from typing_extensions import Literal\n" +
+                 "a = undefined  # type: Literal[-10]\n" +
+                 "b = undefined  # type: Literal[-20]\n" +
+                 "a = <warning descr=\"Expected type 'Literal[-10]', got 'Literal[-20]' instead\">b</warning>");
+  }
+
+  // PY-35235
+  public void testDistinguishTypingLiteralsFromTypeHintOrValue() {
+    doTestByText("from typing_extensions import Literal\n" +
+                 "# no warning because `Literal[10]` as an expression has type `Any`\n" +
+                 "a = Literal[10]  # type: Literal[0]");
+  }
+
+  // PY-35235
+  public void testLiteralAgainstTypeVarBoundedWithTypingLiteral() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing_extensions import Literal\n" +
+                         "from typing import TypeVar\n" +
+                         "T = TypeVar('T', Literal[\"a\"], Literal[\"b\"], Literal[\"c\"])\n" +
+                         "\n" +
+                         "def repeat(x: T, n: int):\n" +
+                         "    return [x] * n\n" +
+                         "\n" +
+                         "repeat(\"c\", 2)")
+    );
+  }
+
+  // PY-35235
+  public void testKeywordArgumentAgainstTypingLiteral() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing_extensions import Literal\n" +
+                         "def f(a: Literal[\"b\"]):\n" +
+                         "    pass\n" +
+                         "f(a='b')\n" +
+                         "f(<warning descr=\"Expected type 'Literal[\\\"b\\\"]', got 'Literal['c']' instead\">a='c'</warning>)")
+    );
+  }
+
+  // PY-35235
+  public void testNumericMatchingAndTypingLiteral() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import Literal\n" +
+                         "def expects_str(x: float) -> None: ...\n" +
+                         "var: Literal[1] = 1\n" +
+                         "expects_str(var)")
+    );
+  }
+
+  // PY-35235
+  public void testNonPlainStringAsTypingLiteralValue() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import Literal\n" +
+                         "a: Literal[\"22\"] = f\"22\"\n" +
+                         "b: Literal[\"22\"] = <warning descr=\"Expected type 'Literal[\\\"22\\\"]', got 'Literal[f\\\"32\\\"]' instead\">f\"32\"</warning>\n" +
+                         "two = \"2\"\n" +
+                         "c: Literal[\"22\"] = <warning descr=\"Expected type 'Literal[\\\"22\\\"]', got 'str' instead\">f\"2{two}\"</warning>")
+    );
+  }
+
+  // PY-36008
+  public void testTypedDictDefinitionAlternativeSyntax() {
+    doTestByText("from typing import TypedDict\n" +
+                 "\n" +
+                 "Movie = TypedDict('Movie', {'name': str, 'year': int}, total=False)\n" +
+                 "movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, Union[str, int]]' instead\">{'name': 'Blade Runner', 'lo': 1234}</warning> # type: Movie\n" +
+                 "movie['year'] = '1984'\n");
+  }
+
+  // PY-36008
+  public void testTypedDictAsArgument() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import TypedDict\n" +
+                         "class Movie(TypedDict):\n" +
+                         "    name: str\n" +
+                         "    year: int\n" +
+                         "def record_movie(movie: Movie) -> None: ...\n" +
+                         "record_movie({'name': 'Blade Runner', 'year': 1982})\n" +
+                         "record_movie(<warning descr=\"Expected type 'Movie', got 'Dict[str, int]' instead\">{'name': 1984}</warning>)")
+    );
+  }
+
+  // PY-36008
+  public void testTypedDictSubscriptionAsArgument() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import TypedDict\n" +
+                         "class Movie(TypedDict):\n" +
+                         "    name: str\n" +
+                         "    year: int\n" +
+                         "m1: Movie = dict(name='Alien', year=1979)\n" +
+                         "m2 = Movie(name='Garden State', year=2004)\n" +
+                         "def foo(p: int):\n" +
+                         "  pass\n" +
+                         "foo(m2[\"year\"])\n" +
+                         "foo(<warning descr=\"Expected type 'int', got 'str' instead\">m2[\"name\"]</warning>)\n" +
+                         "foo(<warning descr=\"Expected type 'int', got 'str' instead\">m1[\"name\"]</warning>)")
+    );
+  }
+
+  // PY-36008
+  public void testTypedDictSubscriptionAssignment() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import TypedDict\n" +
+                         "class X(TypedDict):\n" +
+                         "    x: int\n" +
+                         "f = X(x=12)\n" +
+                         "f['x'] = 13\n" +
+                         "f['x'] = <weak_warning descr=\"Expected type 'int' (matched generic type '_VT'), got 'str' instead\">'14'</weak_warning>\n" +
+                         "g: X = {'x': 12}\n" +
+                         "g['x'] = 13\n" +
+                         "g['x'] = <weak_warning descr=\"Expected type 'int' (matched generic type '_VT'), got 'str' instead\">'14'</weak_warning>"));
+  }
+
+  // PY-36008
+  public void testTypedDictAssignment() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import TypedDict\n" +
+                         "class Movie(TypedDict):\n" +
+                         "    name: str\n" +
+                         "    year: int\n" +
+                         "m1: Movie = dict(name='Alien', year=1979)\n" +
+                         "m2: Movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, str]' instead\">dict(name='Alien', year='1979')</warning>\n" +
+                         "m3: Movie = typing.cast(Movie, dict(zip(['name', 'year'], ['Alien', 1979])))\n" +
+                         "m4: Movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, str]' instead\">{'name': 'Alien', 'year': '1979'}</warning>\n" +
+                         "m5 = Movie(name='Garden State', year=2004)"));
+  }
+
+  // PY-36008
+  public void testTypedDictDefinition() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import TypedDict\n" +
+                         "class Employee(TypedDict):\n" +
+                         "    name: str\n" +
+                         "    id: int\n" +
+                         "class Employee2(Employee, total=False):\n" +
+                         "    director: str\n" +
+                         "em = Employee2(name='John Dorian', id=1234, <warning descr=\"Expected type 'str', got 'int' instead\">director=3</warning>)\n" +
+                         "Movie = TypedDict(<warning descr=\"Expected type 'str', got 'int' instead\">3</warning>, <warning descr=\"Expected type 'dict', got 'List[int]' instead\">[1, 2, 3]</warning>)"));
+  }
+
+  // PY-36008
+  public void testTypedDictConsistency() {
+    runWithLanguageLevel(LanguageLevel.PYTHON36, this::doTest);
+  }
 }

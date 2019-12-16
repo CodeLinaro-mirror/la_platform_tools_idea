@@ -2,8 +2,11 @@
 package org.jetbrains.idea.maven.tasks;
 
 import com.intellij.execution.BeforeRunTaskProvider;
+import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.configurations.RunConfiguration;
+import com.intellij.execution.dashboard.RunDashboardManager;
 import com.intellij.execution.runners.ExecutionEnvironment;
+import com.intellij.execution.ui.RunContentManagerImpl;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
@@ -24,11 +27,11 @@ import icons.MavenIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.execution.MavenEditGoalDialog;
+import org.jetbrains.idea.maven.execution.MavenRunConfigurationType;
 import org.jetbrains.idea.maven.execution.MavenRunner;
 import org.jetbrains.idea.maven.execution.MavenRunnerParameters;
 import org.jetbrains.idea.maven.model.MavenConstants;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
-import org.jetbrains.idea.maven.project.MavenConsole;
 import org.jetbrains.idea.maven.project.MavenProject;
 import org.jetbrains.idea.maven.project.MavenProjectsManager;
 import org.jetbrains.idea.maven.utils.MavenLog;
@@ -170,7 +173,6 @@ public class MavenBeforeRunTasksProvider extends BeforeRunTaskProvider<MavenBefo
 
         final MavenExplicitProfiles explicitProfiles = MavenProjectsManager.getInstance(project).getExplicitProfiles();
         final MavenRunner mavenRunner = MavenRunner.getInstance(project);
-        final MavenConsole console = MavenRunner.createConsole(myProject, myProject.getBasePath(), "Maven: " + task.getGoal(), env.getExecutionId());
 
         targetDone.down();
         new Task.Backgroundable(project, TasksBundle.message("maven.tasks.executing"), true) {
@@ -185,12 +187,16 @@ public class MavenBeforeRunTasksProvider extends BeforeRunTaskProvider<MavenBefo
                 explicitProfiles.getEnabledProfiles(),
                 explicitProfiles.getDisabledProfiles());
 
+              RunnerAndConfigurationSettings configuration =
+                MavenRunConfigurationType.createRunnerAndConfigurationSettings(null, null, params, myProject);
               result[0] = mavenRunner.runBatch(Collections.singletonList(params),
-                                            null,
-                                            null,
-                                            TasksBundle.message("maven.tasks.executing"),
-                                            indicator,
-                                            console);
+                                               null,
+                                               null,
+                                               TasksBundle.message("maven.tasks.executing"),
+                                               indicator,
+                                               ph -> ph.putUserData(RunContentManagerImpl.TEMPORARY_CONFIGURATION_KEY, configuration));
+              myProject.getMessageBus().syncPublisher(RunDashboardManager.DASHBOARD_TOPIC)
+                .configurationChanged(configuration.getConfiguration(), true);
             }
             finally {
               targetDone.up();

@@ -11,7 +11,6 @@ import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
-import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.progress.ProcessCanceledException;
@@ -164,25 +163,26 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
   public void reformatTextWithContext(@NotNull PsiFile file,
                                       @NotNull ChangedRangesInfo info) throws IncorrectOperationException
   {
-    FormatTextRanges formatRanges = new FormatTextRanges(info);
-    reformatText(file, formatRanges, null, true);
+    FormatTextRanges formatRanges = new FormatTextRanges(info, ChangedRangesUtil.processChangedRanges(file, info));
+    formatRanges.setExtendToContext(true);
+    reformatText(file, formatRanges, null);
   }
+
+
 
   public void reformatText(@NotNull PsiFile file, @NotNull Collection<? extends TextRange> ranges, @Nullable Editor editor) throws IncorrectOperationException {
     FormatTextRanges formatRanges = new FormatTextRanges();
     ranges.forEach((range) -> formatRanges.add(range, true));
-    reformatText(file, formatRanges, editor, false);
+    reformatText(file, formatRanges, editor);
   }
 
   private void reformatText(@NotNull PsiFile file,
                             @NotNull FormatTextRanges ranges,
-                            @Nullable Editor editor,
-                            boolean reformatContext) throws IncorrectOperationException
+                            @Nullable Editor editor) throws IncorrectOperationException
   {
     if (ranges.isEmpty()) {
       return;
     }
-    boolean isFullReformat = ranges.isFullReformat(file);
     ApplicationManager.getApplication().assertWriteAccessAllowed();
     PsiDocumentManager.getInstance(getProject()).commitAllDocuments();
 
@@ -214,16 +214,11 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
                  ? null  // do nothing, delegate the external formatting activity to post-processor
                  : () -> {
                    final CodeFormatterFacade codeFormatter = new CodeFormatterFacade(getSettings(file), file.getLanguage());
-                   codeFormatter.setReformatContext(reformatContext);
                    codeFormatter.processText(file, ranges, true);
                  });
 
     if (caretKeeper != null) {
       caretKeeper.restoreCaretPosition();
-    }
-    if (editor instanceof EditorEx && isFullReformat) {
-      //TODO<rv> Move to another place
-      //CodeStyleSettingsManager.getInstance(myProject).fireCodeStyleSettingsChanged(file);
     }
   }
 
@@ -732,13 +727,13 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
   }
 
   private static class RangeFormatInfo{
-    private final SmartPsiElementPointer startPointer;
-    private final SmartPsiElementPointer endPointer;
-    private final boolean                fromStart;
-    private final boolean                toEnd;
+    private final SmartPsiElementPointer<?> startPointer;
+    private final SmartPsiElementPointer<?> endPointer;
+    private final boolean                   fromStart;
+    private final boolean                   toEnd;
 
-    RangeFormatInfo(@Nullable SmartPsiElementPointer startPointer,
-                    @Nullable SmartPsiElementPointer endPointer,
+    RangeFormatInfo(@Nullable SmartPsiElementPointer<?> startPointer,
+                    @Nullable SmartPsiElementPointer<?> endPointer,
                     boolean fromStart,
                     boolean toEnd)
     {

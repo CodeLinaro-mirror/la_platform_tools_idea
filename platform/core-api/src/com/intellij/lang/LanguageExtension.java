@@ -5,9 +5,10 @@
  */
 package com.intellij.lang;
 
-import com.intellij.openapi.Disposable;
+import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.KeyedExtensionCollector;
+import com.intellij.util.KeyedLazyInstance;
 import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NonNls;
@@ -26,19 +27,25 @@ public class LanguageExtension<T> extends KeyedExtensionCollector<T, Language> {
 
   private final T myDefaultImplementation;
   private final /* non static!!! */ Key<T> myCacheKey;
+  private final /* non static!!! */ Key<List<T>> myAllCacheKey;
 
-  public LanguageExtension(@NonNls final String epName) {
+  public LanguageExtension(@NotNull final ExtensionPointName<? extends KeyedLazyInstance<T>> epName) {
+    this(epName.getName(), null);
+  }
+
+  public LanguageExtension(@NotNull @NonNls final String epName) {
     this(epName, null);
   }
 
-  public LanguageExtension(@NonNls final String epName, @Nullable final T defaultImplementation) {
-    this(epName, defaultImplementation, null);
+  public LanguageExtension(@NotNull final ExtensionPointName<? extends KeyedLazyInstance<T>> epName, @Nullable T defaultImplementation) {
+    this(epName.getName(), defaultImplementation);
   }
 
-  public LanguageExtension(@NonNls String epName, @Nullable T defaultImplementation, @Nullable Disposable parentDisposable) {
-    super(epName, parentDisposable);
+  public LanguageExtension(@NonNls String epName, @Nullable T defaultImplementation) {
+    super(epName);
     myDefaultImplementation = defaultImplementation;
     myCacheKey = Key.create("EXTENSIONS_IN_LANGUAGE_" + epName);
+    myAllCacheKey = Key.create("ALL_EXTENSIONS_IN_LANGUAGE_" + epName);
   }
 
   @NotNull
@@ -49,16 +56,25 @@ public class LanguageExtension<T> extends KeyedExtensionCollector<T, Language> {
 
   @TestOnly
   public void clearCache(@NotNull Language language) {
-    language.putUserData(myCacheKey, null);
+    Set<Language> languages = LanguageUtil.getAllDerivedLanguages(language);
+    for (Language derivedLanguage : languages) {
+      derivedLanguage.putUserData(myCacheKey, null);
+      derivedLanguage.putUserData(myAllCacheKey, null);
+    }
     clearCache();
   }
 
   @Override
-  protected void invalidateCacheForExtension(String key) {
+  public void invalidateCacheForExtension(String key) {
     super.invalidateCacheForExtension(key);
+
     final Language language = Language.findLanguageByID(key);
     if (language != null) {
-      language.putUserData(myCacheKey, null);
+      Set<Language> languages = LanguageUtil.getAllDerivedLanguages(language);
+      for (Language derivedLanguage : languages) {
+        derivedLanguage.putUserData(myCacheKey, null);
+        derivedLanguage.putUserData(myAllCacheKey, null);
+      }
     }
   }
 
@@ -87,6 +103,14 @@ public class LanguageExtension<T> extends KeyedExtensionCollector<T, Language> {
    */
   @NotNull
   public List<T> allForLanguage(@NotNull Language language) {
+    List<T> cached = language.getUserData(myAllCacheKey);
+    if (cached != null) return cached;
+    List<T> result = collectAllForLanguage(language);
+    return language.putUserDataIfAbsent(myAllCacheKey, result);
+  }
+
+  @NotNull
+  private List<T> collectAllForLanguage(@NotNull Language language) {
     boolean copyList = true;
     List<T> result = null;
     for (Language l = language; l != null; l = l.getBaseLanguage()) {
@@ -133,12 +157,14 @@ public class LanguageExtension<T> extends KeyedExtensionCollector<T, Language> {
   @Override
   public void addExplicitExtension(@NotNull Language key, @NotNull T t) {
     key.putUserData(myCacheKey, null);
+    key.putUserData(myAllCacheKey, null);
     super.addExplicitExtension(key, t);
   }
 
   @Override
   public void removeExplicitExtension(@NotNull Language key, @NotNull T t) {
     key.putUserData(myCacheKey, null);
+    key.putUserData(myAllCacheKey, null);
     super.removeExplicitExtension(key, t);
   }
 

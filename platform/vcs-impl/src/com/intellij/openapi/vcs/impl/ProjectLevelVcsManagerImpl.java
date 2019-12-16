@@ -67,7 +67,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @State(name = "ProjectLevelVcsManager", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
-public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx implements PersistentStateComponent<Element>, Disposable {
+public final class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx implements PersistentStateComponent<Element>, Disposable {
   private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl");
   @NonNls private static final String SETTINGS_EDITED_MANUALLY = "settingsEditedManually";
 
@@ -111,16 +111,21 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
     }
     else {
       myInitialization = new VcsInitialization(myProject);
-      Disposer.register(project, myInitialization); // wait for the thread spawned in VcsInitialization to terminate
-      ProjectManager.getInstance().addProjectManagerListener(project, new ProjectManagerListener() {
+      // wait for the thread spawned in VcsInitialization to terminate
+      Disposer.register(this, myInitialization);
+
+      ApplicationManager.getApplication().getMessageBus().connect(this).subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
         @Override
         public void projectClosing(@NotNull Project project) {
-          Disposer.dispose(myInitialization);
+          if (project == myProject) {
+            Disposer.dispose(myInitialization);
+          }
         }
       });
     }
 
     myMappings = new NewMappings(myProject, this);
+    Disposer.register(this, myMappings);
   }
 
   public static ProjectLevelVcsManagerImpl getInstanceImpl(@NotNull Project project) {
@@ -134,7 +139,6 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
   @Override
   @Nullable
   public AbstractVcs findVcsByName(String name) {
-    if (name == null) return null;
     AbstractVcs result = myProject.isDisposed() ? null : AllVcses.getInstance(myProject).getByName(name);
     ProgressManager.checkCanceled();
     return result;
@@ -165,7 +169,6 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
   @Override
   public void dispose() {
     releaseConsole();
-    Disposer.dispose(myMappings);
   }
 
   @NotNull
@@ -423,13 +426,15 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
   }
 
   @Override
-  @Deprecated
   public void setDirectoryMapping(@NotNull String path, @Nullable String activeVcsName) {
     if (myMappingsLoaded) return;            // ignore per-module VCS settings if the mapping table was loaded from .ipr
     myHaveLegacyVcsConfiguration = true;
     myMappings.setMapping(FileUtil.toSystemIndependentName(path), activeVcsName);
   }
 
+  /**
+   * @deprecated use {@link #setAutoDirectoryMappings(List)}
+   */
   @Deprecated
   public void setAutoDirectoryMapping(@NotNull String path, @Nullable String activeVcsName) {
     setAutoDirectoryMappings(ContainerUtil.append(myMappings.getDirectoryMappings(), new VcsDirectoryMapping(path, activeVcsName)));
@@ -467,7 +472,7 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
     VcsRootIterator.iterateVcsRoot(myProject, root, iterator, directoryFilter);
   }
 
-  @Nullable
+  @NotNull
   @Override
   public Element getState() {
     Element element = new Element("state");
@@ -715,7 +720,7 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
   }
 
   /**
-   * @deprecated {@link BackgroundableActionLock}
+   * @deprecated use {@link BackgroundableActionLock}
    */
   @Deprecated
   public BackgroundableActionEnabledHandler getBackgroundableActionHandler(final VcsBackgroundableActions action) {
@@ -743,7 +748,7 @@ public class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx impleme
 
   public void addInitializationRequest(final VcsInitObject vcsInitObject, final Runnable runnable) {
     if (myInitialization != null) {
-      ApplicationManager.getApplication().runReadAction(() -> myInitialization.add(vcsInitObject, runnable));
+      myInitialization.add(vcsInitObject, runnable);
     }
   }
 

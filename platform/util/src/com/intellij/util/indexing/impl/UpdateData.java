@@ -27,8 +27,7 @@ import java.io.IOException;
 import java.util.Map;
 
 @ApiStatus.Experimental
-public class UpdateData<Key, Value> {
-  private int myInputId;
+public class UpdateData<Key, Value> extends AbstractUpdateData<Key, Value> {
   private final Map<Key, Value> myNewData;
   private final ThrowableComputable<InputDataDiffBuilder<Key, Value>, IOException> myCurrentDataEvaluator;
   private final IndexId<Key, Value> myIndexId;
@@ -39,16 +38,17 @@ public class UpdateData<Key, Value> {
                     @NotNull ThrowableComputable<InputDataDiffBuilder<Key, Value>, IOException> currentDataEvaluator,
                     @NotNull IndexId<Key, Value> indexId,
                     @Nullable ThrowableRunnable<? extends IOException> forwardIndexUpdate) {
-    myInputId = inputId;
+    super(inputId);
     myNewData = newData;
     myCurrentDataEvaluator = currentDataEvaluator;
     myIndexId = indexId;
     myForwardIndexUpdate = forwardIndexUpdate;
   }
 
-  boolean iterateKeys(@NotNull KeyValueUpdateProcessor<? super Key, ? super Value> addProcessor,
-                      @NotNull KeyValueUpdateProcessor<? super Key, ? super Value> updateProcessor,
-                      @NotNull RemovedKeyProcessor<? super Key> removeProcessor) throws StorageException {
+  @Override
+  protected boolean iterateKeys(@NotNull KeyValueUpdateProcessor<? super Key, ? super Value> addProcessor,
+                                @NotNull KeyValueUpdateProcessor<? super Key, ? super Value> updateProcessor,
+                                @NotNull RemovedKeyProcessor<? super Key> removeProcessor) throws StorageException {
     final InputDataDiffBuilder<Key, Value> currentData;
     try {
       currentData = getCurrentDataEvaluator().compute();
@@ -59,26 +59,18 @@ public class UpdateData<Key, Value> {
     return currentData.differentiate(myNewData, addProcessor, updateProcessor, removeProcessor);
   }
 
+  @Override
+  public boolean newDataIsEmpty() {
+    return myNewData.isEmpty();
+  }
+
   @NotNull
   protected ThrowableComputable<InputDataDiffBuilder<Key, Value>, IOException> getCurrentDataEvaluator() {
     return myCurrentDataEvaluator;
   }
 
-  public int getInputId() {
-    return myInputId;
-  }
-
-  @NotNull
-  public Map<Key, Value> getNewData() {
-    return myNewData;
-  }
-
-  @NotNull
-  public IndexId<Key, Value> getIndexId() {
-    return myIndexId;
-  }
-
-  void updateForwardIndex() throws IOException {
+  @Override
+  protected void updateForwardIndex() throws IOException {
     if (myForwardIndexUpdate != null) {
       myForwardIndexUpdate.run();
     }

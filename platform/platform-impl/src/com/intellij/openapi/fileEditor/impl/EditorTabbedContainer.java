@@ -72,6 +72,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
     myWindow = window;
     myProject = project;
     myTabs =  new EditorTabs(project, this, window);
+    myTabs.getComponent().setFocusable(false);
     myTabs.getComponent().setTransferHandler(new MyTransferHandler());
     myTabs
       .setDataProvider(new MyDataProvider())
@@ -716,6 +717,13 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
         }
       }
       return super.getToSelectOnRemoveOf(info);
+    }
+
+    @Override
+    public void revalidateAndRepaint(boolean layoutNow) {
+      //noinspection ConstantConditions - called from super constructor
+      if (myWindow != null && myWindow.getOwner().isInsideChange()) return;
+      super.revalidateAndRepaint(layoutNow);
     }
   }
 }

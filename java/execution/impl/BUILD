@@ -43,6 +43,7 @@ iml_module(
         "//tools/idea/platform/tasks-platform-impl:intellij.platform.tasks.impl",
         "//tools/idea/json:intellij.json",
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
@@ -70,5 +71,6 @@ iml_module(
         "//tools/idea/platform/vcs-impl:intellij.platform.vcs.impl[module]",
         "//tools/idea/.idea/libraries:NanoXML",
         "//tools/idea/.idea/libraries:jackson-databind",
+        "//tools/idea:intellij.platform.debugger.impl_and_others[module]",
     ],
 )

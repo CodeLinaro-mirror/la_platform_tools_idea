@@ -82,7 +82,7 @@ public class JavaClassNameCompletionContributor extends CompletionContributor {
                                    @NotNull final Consumer<? super LookupElement> consumer) {
     final PsiElement insertedElement = parameters.getPosition();
 
-    if (JavaCompletionContributor.ANNOTATION_NAME.accepts(insertedElement)) {
+    if (JavaCompletionContributor.getAnnotationNameIfInside(insertedElement) != null) {
       MultiMap<String, PsiClass> annoMap = getAllAnnotationClasses(insertedElement, matcher);
       Processor<PsiClass> processor = new LimitedAccessibleClassPreprocessor(parameters, filterByScope, anno -> {
         JavaPsiClassReferenceElement item = AllClassesGetter.createLookupItem(anno, JAVA_CLASS_INSERT_HANDLER);
@@ -90,7 +90,7 @@ public class JavaClassNameCompletionContributor extends CompletionContributor {
         consumer.consume(item);
         return true;
       });
-      for (String name : CompletionUtil.sortMatching(matcher, annoMap.keySet())) {
+      for (String name : matcher.sortMatching(annoMap.keySet())) {
         if (!ContainerUtil.process(annoMap.get(name), processor)) break;
       }
       return;
@@ -244,7 +244,7 @@ public class JavaClassNameCompletionContributor extends CompletionContributor {
       return LangBundle.message("completion.no.suggestions") +
              "; " +
              StringUtil.decapitalize(
-                 CompletionBundle.message("completion.class.name.hint.2", getActionShortcut(IdeActions.ACTION_CODE_COMPLETION)));
+                 CompletionBundle.message("completion.class.name.hint.2", CompletionUtil.getActionShortcut(IdeActions.ACTION_CODE_COMPLETION)));
     }
 
     return null;

@@ -11,8 +11,8 @@ iml_module(
     test_runtime_deps = [
         "//tools/idea/xml/dom-openapi:intellij.xml.dom",
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
-        "//tools/idea/images:intellij.platform.images",
         "//tools/idea/platform/testFramework/extensions:intellij.platform.testExtensions",
+        "//tools/idea/images:intellij.platform.images",
     ],
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
@@ -41,6 +41,7 @@ iml_module(
         "//tools/idea/.idea/libraries:javax.annotation-api",
         "//tools/idea/platform/object-serializer:intellij.platform.objectSerializer",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
         "//tools/idea/platform/usageView:intellij.platform.usageView",
         "//tools/idea/xml/xml-structure-view-impl:intellij.xml.structureView.impl",
         "//tools/idea/xml/xml-analysis-impl:intellij.xml.analysis.impl",

@@ -15,6 +15,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Class for working with WSL after Fall Creators Update
@@ -33,7 +35,6 @@ import java.util.List;
  * - file system is unavailable form windows (for now at least)
  */
 public class WSLUtil {
-
   public static final Logger LOG = Logger.getInstance("#com.intellij.execution.wsl");
 
   /**
@@ -127,7 +128,8 @@ public class WSLUtil {
    * Temporary hack method to fix <a href="https://github.com/Microsoft/BashOnWindows/issues/2592">WSL bug</a>
    * Must be invoked just before execution, see RUBY-20358
    */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.2")
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
   @NotNull
   public static <T extends ProcessHandler> T addInputCloseListener(@NotNull T processHandler) {
     if (Experiments.getInstance().isFeatureEnabled("wsl.close.process.input")) {
@@ -142,19 +144,11 @@ public class WSLUtil {
   }
 
   /**
-   * @deprecated in order to make custom wsl mount paths work, use {@link WSLUtil#getWindowsPath(java.lang.String, java.lang.String)} or
-   * {@link WSLDistribution#getWslPath(java.lang.String)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.2")
-  @Nullable
-  public static String getWindowsPath(@NotNull String wslPath) {
-    return getWindowsPath(wslPath, WSLDistribution.DEFAULT_WSL_MNT_ROOT);
-  }
-
-  /**
-   * @return Windows-dependent path for a file, pointed by {@code wslPath} in WSL or null if path is unmappable.
-   * For example, {@code getWindowsPath("/mnt/c/Users/file.txt") returns "c:\Users\file.txt"}
+   * @param wslPath a path in WSL file system, e.g. "/mnt/c/Users/file.txt" or "/c/Users/file.txt"
+   * @param mntRoot a directory where fixed drives will be mounted. Default is "/mnt/" - {@link WSLDistribution#DEFAULT_WSL_MNT_ROOT}).
+   *               See https://docs.microsoft.com/ru-ru/windows/wsl/wsl-config#configuration-options
+   * @return Windows-dependent path to the file, pointed by {@code wslPath} in WSL or null if the path is unmappable.
+   * For example, {@code getWindowsPath("/mnt/c/Users/file.txt", "/mnt/") returns "C:\Users\file.txt"}
    */
   @Nullable
   public static String getWindowsPath(@NotNull String wslPath, @NotNull String mntRoot) {
@@ -170,5 +164,20 @@ public class WSLUtil {
       return null;
     }
     return FileUtil.toSystemDependentName(Character.toUpperCase(wslPath.charAt(driveLetterIndex)) + ":" + wslPath.substring(slashIndex));
+  }
+
+  /**
+   * @return list of existing UNC roots for known WSL distributions
+   */
+  @ApiStatus.Experimental
+  @NotNull
+  public static List<File> getExistingUNCRoots() {
+    if (!isSystemCompatible() || !Experiments.getInstance().isFeatureEnabled("wsl.p9.support")) {
+      return Collections.emptyList();
+    }
+    return getAvailableDistributions().stream()
+      .map(WSLDistribution::getUNCRoot)
+      .filter(File::exists)
+      .collect(Collectors.toList());
   }
 }

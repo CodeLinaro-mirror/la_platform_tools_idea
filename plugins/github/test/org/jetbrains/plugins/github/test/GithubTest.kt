@@ -3,6 +3,7 @@ package org.jetbrains.plugins.github.test
 
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.Clock
 import com.intellij.testFramework.RunAll
 import com.intellij.testFramework.VfsTestUtil
@@ -81,7 +82,7 @@ abstract class GithubTest : GitPlatformTest() {
       .append(ThrowableRunnable { deleteRepos(secondaryAccount, secondaryRepos) })
       .append(ThrowableRunnable { deleteRepos(mainAccount, mainRepos) })
       .append(ThrowableRunnable { setCurrentAccount(null) })
-      .append(ThrowableRunnable { if (wasInit { authenticationManager }) authenticationManager.clearAccounts() })
+      .append(ThrowableRunnable { if (::authenticationManager.isInitialized) authenticationManager.clearAccounts() })
       .append(ThrowableRunnable { super.tearDown() })
       .run()
   }
@@ -181,4 +182,20 @@ abstract class GithubTest : GitPlatformTest() {
                                    val username: String,
                                    val executor: GithubApiRequestExecutor)
 
+  companion object {
+    private const val RETRIES = 3
+
+    internal fun retry(LOG: Logger, action: () -> Unit) {
+      for (i in 1..RETRIES) {
+        try {
+          LOG.debug("Attempt #$i")
+          return action()
+        }
+        catch (e: Throwable) {
+          if (i == RETRIES) throw e
+          Thread.sleep(1000L)
+        }
+      }
+    }
+  }
 }

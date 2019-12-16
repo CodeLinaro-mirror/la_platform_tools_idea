@@ -7,7 +7,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.containers.ContainerUtilRt;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.hash.LinkedHashMap;
 import gnu.trove.TObjectIntHashMap;
 import org.jetbrains.annotations.NonNls;
@@ -22,7 +22,7 @@ import java.util.Map;
  * @see PathMacrosImpl#addMacroReplacements(ReplacePathToMacroMap)
  * @see com.intellij.openapi.components.PathMacroManager
  */
-public class ReplacePathToMacroMap extends PathMacroMap {
+public final class ReplacePathToMacroMap extends PathMacroMap {
   private List<String> myPathsIndex = null;
   private final Map<String, String> myMacroMap = new LinkedHashMap<>();
 
@@ -34,9 +34,7 @@ public class ReplacePathToMacroMap extends PathMacroMap {
     protocols.add("file");
     protocols.add("jar");
     if (Extensions.getRootArea().hasExtensionPoint(PathMacroExpandableProtocolBean.EP_NAME)) {
-      for (PathMacroExpandableProtocolBean bean : PathMacroExpandableProtocolBean.EP_NAME.getIterable(null)) {
-        protocols.add(bean.protocol);
-      }
+      PathMacroExpandableProtocolBean.EP_NAME.forEachExtensionSafe(bean -> protocols.add(bean.protocol));
     }
     PROTOCOLS = ArrayUtilRt.toStringArray(protocols);
   }
@@ -199,7 +197,7 @@ public class ReplacePathToMacroMap extends PathMacroMap {
       }
 
       entries.sort((o1, o2) -> weights.get(o2.getKey()) - weights.get(o1.getKey()));
-      myPathsIndex = ContainerUtilRt.map2List(entries, entry -> entry.getKey());
+      myPathsIndex = ContainerUtil.map2List(entries, entry -> entry.getKey());
     }
     return myPathsIndex;
   }

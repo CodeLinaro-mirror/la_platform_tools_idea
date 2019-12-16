@@ -8,6 +8,7 @@
     <action id="CheckinProject" class="com.intellij.openapi.vcs.actions.CommonCheckinProjectAction" icon="AllIcons.Actions.Commit">
       <keyboard-shortcut first-keystroke="control K" keymap="$default"/>
     </action>
+    <action id="ChangesView.ToggleCommitUi" class="com.intellij.vcs.commit.ToggleChangesViewCommitUiAction" use-shortcut-of="CheckinProject" />
     <action id="CheckinFiles" class="com.intellij.openapi.vcs.actions.CommonCheckinFilesAction"/>
     <action id="UpdateFiles" class="com.intellij.openapi.vcs.update.CommonUpdateFileOrDirectoryAction"/>
     <action id="CheckStatusForFiles" class="com.intellij.openapi.vcs.update.CommonStatusFileOrDirectoryAction"/>
@@ -61,6 +62,7 @@
                 class = "com.intellij.openapi.vcs.actions.VcsQuickListPopupAction"
                 text = "VCS Operations Popup..." description="Context aware popup with list of commonly used VCS actions"/>
         <reference ref="CheckinProject"/>
+        <reference ref="ChangesView.ToggleCommitUi"/>
         <action id="Vcs.UpdateProject" class="com.intellij.openapi.vcs.update.CommonUpdateProjectAction" icon="AllIcons.Actions.CheckOut">
           <keyboard-shortcut first-keystroke="control T" keymap="$default"/>
         </action>
@@ -76,7 +78,6 @@
       </group>
 
       <separator/>
-      <group id="Vcs.Checkout" class="com.intellij.openapi.vcs.checkout.CheckoutActionGroup" popup="true"/>
       <reference id="Vcs.VcsClone"/>
       <group id="Vcs.Import" class="com.intellij.ide.actions.NonEmptyActionGroup" popup="true"/>
       <group id="Vcs.Browse" class="com.intellij.ide.actions.NonEmptyActionGroup" popup="true"/>
@@ -101,6 +102,7 @@
       <action id="ChangesView.Refresh" class="com.intellij.openapi.vcs.changes.actions.RefreshAction"
               icon="AllIcons.Actions.Refresh"/>
       <reference ref="CheckinProject"/>
+      <reference ref="ChangesView.ToggleCommitUi"/>
       <reference ref="ChangesView.Revert"/>
       <action id="ChangesView.Diff" class="com.intellij.diff.actions.ShowDiffAction" icon="AllIcons.Actions.Diff"
               use-shortcut-of="Diff.ShowDiff"/>
@@ -122,7 +124,7 @@
     </group>
 
     <group id="ChangesViewPopupMenu">
-      <reference ref="CheckinProject"/>
+      <reference ref="CheckinFiles"/>
       <reference ref="ChangesView.Revert"/>
       <reference ref="ChangesView.Move"/>
       <reference ref="Diff.ShowDiff"/>
@@ -301,13 +303,12 @@
     <group id="Vcs.CommitExecutor.Actions"/>
 
     <group id="ChangesView.CommitToolbar">
-      <action id="Vcs.ToggleAmendCommitMode" icon="AllIcons.Actions.Amend" text="Amend Commit"
-              description="Modify the latest commit of the current branch"
-              class="com.intellij.vcs.commit.ToggleAmendCommitModeAction"/>
       <action id="ChangesView.ShowCommitOptions" text="Show Commit Options"
               class="com.intellij.openapi.vcs.actions.ShowCommitOptionsAction"/>
       <reference id="Vcs.MessageActionGroup"/>
     </group>
+    <action id="Vcs.ToggleAmendCommitMode" icon="AllIcons.Actions.Amend" text="Amend Commit"
+            description="Modify the latest commit of the current branch" class="com.intellij.vcs.commit.ToggleAmendCommitModeAction"/>
 
     <action class="com.intellij.openapi.vcs.actions.VcsToolbarLabelAction" id="VcsToolbarLabelAction" text="VCS Label"/>
 
@@ -315,6 +316,7 @@
       <reference ref="VcsToolbarLabelAction"/>
       <reference ref="Vcs.UpdateProject"/>
       <reference ref="CheckinProject"/>
+      <reference ref="ChangesView.ToggleCommitUi"/>
       <reference ref="Compare.SameVersion"/>
       <reference ref="Vcs.ShowTabbedFileHistory"/>
       <reference ref="ChangesView.Revert"/>
@@ -326,6 +328,7 @@
       <reference ref="VcsToolbarLabelAction"/>
       <reference ref="Vcs.UpdateProject"/>
       <reference ref="CheckinProject"/>
+      <reference ref="ChangesView.ToggleCommitUi"/>
       <reference ref="Vcs.ShowTabbedFileHistory"/>
       <reference ref="ChangesView.Revert"/>
       <separator/>
@@ -346,12 +349,8 @@
       <add-to-group group-id="Diff.KeymapGroup" relative-to-action="Vcs.Diff.ExcludeChangedLinesFromCommit" anchor="after"/>
     </action>
 
-    <action id="WelcomeScreen.GetFromVcs" class="com.intellij.openapi.wm.impl.welcomeScreen.GetFromVcsAction"
-            icon="AllIcons.Welcome.FromVCS">
-      <add-to-group group-id="WelcomeScreen.QuickStart" anchor="first"/>
-    </action>
     <reference ref="Vcs.VcsClone">
-      <add-to-group group-id="WelcomeScreen.QuickStart" anchor="last"/>
+      <add-to-group group-id="WelcomeScreen.QuickStart" anchor="first"/>
     </reference>
 
     <action id="Vcs.CopyRevisionNumberAction" class="com.intellij.openapi.vcs.history.actions.CopyRevisionNumberAction"
@@ -387,8 +386,10 @@
     </group>
 
     <group>
+      <reference ref="Vcs.ToggleAmendCommitMode"/>
       <reference ref="CheckinProject"/>
       <reference ref="CheckinFiles"/>
+      <reference ref="ChangesView.ShowCommitOptions"/>
       <reference ref="UpdateFiles"/>
       <reference ref="CheckStatusForFiles"/>
       <reference ref="IntegrateFiles"/>
@@ -448,7 +449,6 @@
       <separator/>
       <reference ref="Vcs.ShowMessageHistory"/>
       <reference ref="CloseAllUnmodifiedEditors"/>
-      <reference ref="WelcomeScreen.GetFromVcs"/>
       <reference ref="Vcs.VcsClone"/>
       <reference ref="Vcs.CopyRevisionNumberAction"/>
       <separator/>

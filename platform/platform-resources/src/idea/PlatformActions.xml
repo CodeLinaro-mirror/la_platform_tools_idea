@@ -315,6 +315,7 @@
       <action id="EditorMoveToPageBottomWithSelection" class="com.intellij.openapi.editor.actions.PageBottomWithSelectionAction"/>
       <action id="EditorEnter" class="com.intellij.openapi.editor.actions.EnterAction"/>
       <action id="EditorEscape" class="com.intellij.openapi.editor.actions.EscapeAction"/>
+      <action id="FocusEditor" class="com.intellij.ide.actions.FocusEditorAction"/>
       <action id="EditorUp" class="com.intellij.openapi.editor.actions.MoveCaretUpAction"/>
       <action id="EditorDown" class="com.intellij.openapi.editor.actions.MoveCaretDownAction"/>
       <action id="EditorLeft" class="com.intellij.openapi.editor.actions.MoveCaretLeftAction"/>
@@ -388,6 +389,8 @@
       <action id="EditorKillRingSave" class="com.intellij.openapi.editor.actions.KillRingSaveAction"/>
       <action id="EditorDuplicate" class="com.intellij.openapi.editor.actions.DuplicateAction"/>
       <action id="EditorDuplicateLines" class="com.intellij.openapi.editor.actions.DuplicateLinesAction"/>
+      <action id="EditorSortLines" class="com.intellij.openapi.editor.actions.SortLinesAction"/>
+      <action id="EditorReverseLines" class="com.intellij.openapi.editor.actions.ReverseLinesAction"/>
       <action id="EditorToggleInsertState" class="com.intellij.openapi.editor.actions.ToggleInsertStateAction"/>
       <action id="EditorToggleColumnMode" class="com.intellij.openapi.editor.actions.ToggleColumnModeAction"/>
       <action id="EditorIncreaseFontSize" class="com.intellij.openapi.editor.actions.ChangeEditorFontSizeAction$IncreaseEditorFontSize"/>
@@ -605,6 +608,8 @@
           <reference ref="EditorJoinLines"/>
           <reference ref="FillParagraph"/>
           <reference ref="EditorDuplicate"/>
+          <reference ref="EditorSortLines"/>
+          <reference ref="EditorReverseLines"/>
           <reference ref="EditorIndentSelection"/>
           <reference ref="EditorUnindentSelection"/>
           <reference ref="EditorToggleCase"/>
@@ -822,6 +827,7 @@
         <separator/>
         <action id="CheckForUpdate" class="com.intellij.openapi.updateSettings.impl.CheckForUpdateAction"/>
         <action id="About" class="com.intellij.ide.actions.AboutAction"/>
+        <separator/>
       </group>
 
       <group id="OtherMenu" class="com.intellij.ide.actions.NonEmptyActionGroup"/>
@@ -999,8 +1005,6 @@
 
     <group id="MaintenanceGroup">
       <action id="ShowRegistry" class="com.intellij.openapi.util.registry.ShowRegistryAction"/>
-      <action id="SwitchBootJdk" class="com.intellij.ide.actions.SwitchBootJdkAction"/>
-      <action id="SwitchBootRuntime" class="com.intellij.bootRuntime.SwitchBootRuntimeAction"/>
       <action id="UiDebugger" class="com.intellij.ui.debugger.ShowUiDebuggerAction"/>
       <action id="ShowExperiments" class="com.intellij.application.ShowExperimentsAction"/>
     </group>
@@ -1138,6 +1142,8 @@
                 class="com.intellij.internal.statistic.actions.ShowStatisticsEventLogAction"
                 text="Show Statistics Event Log">
         </action>
+        <action internal="true" id="ConfigureWhitelistAction" class="com.intellij.internal.statistic.actions.ConfigureWhitelistAction"
+                text="Configure Whitelist"/>
       </group>
 
       <group id="Internal.PMM" popup="true" text="PMM Utils">
@@ -1318,23 +1324,22 @@
     <action id="NextWindow" class="com.intellij.openapi.wm.impl.NextWindow"  text="Activate Next Window"/>
     <action id="PreviousWindow" class="com.intellij.openapi.wm.impl.PreviousWindow" text="Activate Previous Window"/>
 
-    <action id="CopyReferencePopup" class="com.intellij.ide.actions.CopyReferencePopup" text="Copy Reference...">
+    <action id="CopyReferencePopup" class="com.intellij.ide.actions.CopyReferencePopup" text="Copy Path...">
       <add-to-group group-id="CutCopyPasteGroup" anchor="after" relative-to-action="CopyPaths"/>
       <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="CopyPaths"/>
-      <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="$Copy"/>
     </action>
 
     <group id="CopyReferencePopupGroup">
       <group id="CopyFileReference">
-        <action id="CopyAbsolutePath" class="com.intellij.ide.actions.CopyAbsolutePathProvider" text="Absolute Path"/>
+        <action id="CopyAbsolutePath" class="com.intellij.ide.actions.CopyAbsolutePathProvider" text="Absolute Path" use-shortcut-of="CopyPaths"/>
         <action id="CopyPathWithLineNumber" class="com.intellij.ide.actions.CopyFileWithLineNumberPathProvider" text="Path With Line Number"/>
         <action id="CopyContentRootPath" class="com.intellij.ide.actions.CopyContentRootPathProvider" text="Content Root Path"/>
         <action id="CopySourceRootPath" class="com.intellij.ide.actions.CopySourceRootPathProvider" text="Source Root Path"/>
       </group>
       <separator/>
       <group id="CopyExternalReferenceGroup">
-        <action id="CopyTBXReference" class="com.intellij.ide.actions.CopyTBXReferenceProvider" text="Toolbox Reference"
-                icon="AllIcons.Actions.Copy"/>
+        <action id="CopyTBXReference" class="com.intellij.ide.actions.CopyTBXReferenceProvider" text="Toolbox URL"
+                icon="AllIcons.Nodes.Toolbox"/>
       </group>
     </group>
   </actions>

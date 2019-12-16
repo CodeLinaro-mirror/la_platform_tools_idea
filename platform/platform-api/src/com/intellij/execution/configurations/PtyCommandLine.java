@@ -138,29 +138,36 @@ public class PtyCommandLine extends GeneralCommandLine {
       return startProcessWithPty(commands);
     }
     catch (Throwable t) {
-      File logFile = getPtyLogFile();
-      if (logFile != null && logFile.exists()) {
-        String logContent;
-        try {
-          logContent = FileUtil.loadFile(logFile);
+      String message = "Couldn't run process with PTY";
+      if (LOG.isDebugEnabled()) {
+        String logFileContent = loadLogFile();
+        if (logFileContent != null) {
+          LOG.debug(message, t, logFileContent);
         }
-        catch (Exception e) {
-          logContent = "Unable to retrieve log: " + e.getMessage();
+        else {
+          LOG.warn(message, t);
         }
-
-        LOG.debug("Couldn't run process with PTY", t, logContent);
       }
       else {
-        LOG.debug("Couldn't run process with PTY", t);
+        LOG.warn(message, t);
       }
     }
-
     return super.startProcess(commands);
   }
 
-  private static File getPtyLogFile() {
+  @Nullable
+  private static String loadLogFile() {
     Application app = ApplicationManager.getApplication();
-    return app != null && app.isEAP() ? new File(PathManager.getLogPath(), "pty.log") : null;
+    File logFile = app != null && app.isEAP() ? new File(PathManager.getLogPath(), "pty.log") : null;
+    if (logFile != null && logFile.exists()) {
+      try {
+        return FileUtil.loadFile(logFile);
+      }
+      catch (Exception e) {
+        return "Unable to retrieve pty log: " + e.getMessage();
+      }
+    }
+    return null;
   }
 
   @NotNull
@@ -217,12 +224,13 @@ public class PtyCommandLine extends GeneralCommandLine {
     File workDirectory = getWorkDirectory();
     String directory = workDirectory != null ? workDirectory.getPath() : null;
     boolean cygwin = myUseCygwinLaunch && SystemInfo.isWindows;
+    Application app = ApplicationManager.getApplication();
     PtyProcessBuilder builder = new PtyProcessBuilder(command)
       .setEnvironment(env)
       .setDirectory(directory)
       .setConsole(myConsoleMode)
       .setCygwin(cygwin)
-      .setLogFile(getPtyLogFile())
+      .setLogFile(app != null && app.isEAP() ? new File(PathManager.getLogPath(), "pty.log") : null)
       .setRedirectErrorStream(isRedirectErrorStream())
       .setWindowsAnsiColorEnabled(myWindowsAnsiColorEnabled);
     return builder.start();

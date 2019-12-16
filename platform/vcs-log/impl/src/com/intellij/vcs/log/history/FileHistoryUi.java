@@ -28,6 +28,7 @@ import com.intellij.vcs.log.ui.highlighters.CurrentBranchHighlighter;
 import com.intellij.vcs.log.ui.highlighters.MyCommitsHighlighter;
 import com.intellij.vcs.log.ui.highlighters.VcsLogHighlighterFactory;
 import com.intellij.vcs.log.ui.table.GraphTableModel;
+import com.intellij.vcs.log.ui.table.VcsLogColumn;
 import com.intellij.vcs.log.ui.table.VcsLogGraphTable;
 import com.intellij.vcs.log.util.VcsLogUiUtil;
 import com.intellij.vcs.log.visible.VisiblePack;
@@ -66,6 +67,8 @@ public class FileHistoryUi extends AbstractVcsLogUi {
                        @NotNull VirtualFile root) {
     super(getFileHistoryLogId(path, revision), logData, new FileHistoryColorManager(root, path), refresher);
 
+    assert !path.isDirectory();
+
     myPath = path;
     myRoot = root;
     myRevision = revision;
@@ -74,7 +77,7 @@ public class FileHistoryUi extends AbstractVcsLogUi {
     myDiffHandler = notNull(logData.getLogProvider(root).getDiffHandler());
 
     myFilterUi = new FileHistoryFilterUi(path, revision, root, uiProperties);
-    myFileHistoryPanel = new FileHistoryPanel(this, logData, myVisiblePack, path);
+    myFileHistoryPanel = new FileHistoryPanel(this, logData, path);
 
     myHighlighterIds = myRevision == null
                        ? ContainerUtil.newHashSet(MyCommitsHighlighter.Factory.ID,
@@ -108,10 +111,6 @@ public class FileHistoryUi extends AbstractVcsLogUi {
     }
   }
 
-  public boolean hasDiffPreview() {
-    return myFileHistoryPanel.hasDiffPreview();
-  }
-
   @Nullable
   public VcsFileRevision createRevision(@Nullable VcsCommitMetadata commit) {
     if (commit == null) return null;
@@ -123,33 +122,17 @@ public class FileHistoryUi extends AbstractVcsLogUi {
 
   @Nullable
   public FilePath getPathInCommit(@NotNull Hash hash) {
-    if (myPath.isDirectory()) return myPath;
     int commitIndex = myLogData.getStorage().getCommitIndex(hash, myRoot);
     return FileHistoryPaths.filePath(myVisiblePack, commitIndex);
   }
 
   private boolean isFileDeletedInCommit(@NotNull Hash hash) {
-    if (myPath.isDirectory()) return false;
-
     int commitIndex = myLogData.getStorage().getCommitIndex(hash, myRoot);
     return FileHistoryPaths.isDeletedInCommit(myVisiblePack, commitIndex);
   }
 
-  @NotNull
-  List<Change> collectRelevantChanges(@NotNull VcsFullCommitDetails details) {
-    FilePath filePath = getPathInCommit(details.getId());
-    if (filePath == null) return ContainerUtil.emptyList();
-    return FileHistoryUtil.collectRelevantChanges(details,
-                                                  change -> filePath.isDirectory()
-                                                            ? FileHistoryUtil.affectsDirectory(change, filePath)
-                                                            : FileHistoryUtil
-                                                              .affectsFile(change, filePath, isFileDeletedInCommit(details.getId())));
-  }
-
   @Nullable
   public Change getSelectedChange() {
-    if (myPath.isDirectory()) return null;
-
     int[] rows = getTable().getSelectedRows();
     if (rows.length == 0) return null;
     int row = rows[0];
@@ -278,7 +261,10 @@ public class FileHistoryUi extends AbstractVcsLogUi {
         myFileHistoryPanel.showDiffPreview(myUiProperties.get(CommonUiProperties.SHOW_DIFF_PREVIEW));
       }
       else if (CommonUiProperties.SHOW_ROOT_NAMES.equals(property)) {
-        myFileHistoryPanel.getGraphTable().rootColumnUpdated();
+        getTable().rootColumnUpdated();
+      }
+      else if (property.equals(CommonUiProperties.PREFER_COMMIT_DATE) && getTable().getTableColumn(VcsLogColumn.DATE) != null) {
+        getTable().repaint();
       }
     }
   }

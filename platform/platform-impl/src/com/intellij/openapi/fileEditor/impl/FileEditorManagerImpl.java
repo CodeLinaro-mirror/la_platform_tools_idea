@@ -20,7 +20,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.extensions.ExtensionPointListener;
-import com.intellij.openapi.extensions.Extensions;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.fileEditor.*;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
@@ -46,7 +45,14 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.FileStatusListener;
 import com.intellij.openapi.vcs.FileStatusManager;
-import com.intellij.openapi.vfs.*;
+import com.intellij.openapi.vfs.VfsUtilCore;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileManager;
+import com.intellij.openapi.vfs.newvfs.BulkFileListener;
+import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.WindowManager;
@@ -56,6 +62,7 @@ import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.docking.DockContainer;
 import com.intellij.ui.docking.DockManager;
 import com.intellij.ui.docking.impl.DockManagerImpl;
+import com.intellij.ui.tabs.impl.JBTabsImpl;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
@@ -99,7 +106,7 @@ import java.util.concurrent.atomic.AtomicInteger;
   @Storage(value = StoragePathMacros.WORKSPACE_FILE, deprecated = true)
 })
 public class FileEditorManagerImpl extends FileEditorManagerEx implements PersistentStateComponent<Element>, Disposable {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl");
+  private static final Logger LOG = Logger.getInstance(FileEditorManagerImpl.class);
   private static final Key<Boolean> DUMB_AWARE = Key.create("DUMB_AWARE");
 
   private static final FileEditor[] EMPTY_EDITOR_ARRAY = {};
@@ -107,14 +114,13 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   public static final Key<Boolean> CLOSING_TO_REOPEN = Key.create("CLOSING_TO_REOPEN");
   public static final String FILE_EDITOR_MANAGER = "FileEditorManager";
 
-  private volatile JPanel myPanels;
   private EditorsSplitters mySplitters;
   private final Project myProject;
   private final List<Pair<VirtualFile, EditorWindow>> mySelectionHistory = new ArrayList<>();
   private Reference<EditorComposite> myLastSelectedComposite = new WeakReference<>(null);
 
   private final MergingUpdateQueue myQueue = new MergingUpdateQueue("FileEditorManagerUpdateQueue", 50, true,
-                                                                    MergingUpdateQueue.ANY_COMPONENT);
+                                                                    MergingUpdateQueue.ANY_COMPONENT, this);
 
   private final BusyObject.Impl.Simple myBusyObject = new BusyObject.Impl.Simple();
 
@@ -129,13 +135,14 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   static final ModificationTracker OPEN_FILE_SET_MODIFICATION_COUNT = ourOpenFilesSetModificationCount::get;
   private final List<EditorComposite> myOpenedEditors = new CopyOnWriteArrayList<>();
 
+  private final MessageListenerList<FileEditorManagerListener> myListenerList;
+
   public FileEditorManagerImpl(@NotNull Project project) {
     myProject = project;
     myDockManager = DockManager.getInstance(myProject);
-    myListenerList =
-      new MessageListenerList<>(myProject.getMessageBus(), FileEditorManagerListener.FILE_EDITOR_MANAGER);
+    myListenerList = new MessageListenerList<>(myProject.getMessageBus(), FileEditorManagerListener.FILE_EDITOR_MANAGER);
 
-    if (!FileEditorAssociateFinder.EP_NAME.getExtensionList().isEmpty()) {
+    if (FileEditorAssociateFinder.EP_NAME.hasAnyExtensions()) {
       myListenerList.add(new FileEditorManagerListener() {
         @Override
         public void selectionChanged(@NotNull FileEditorManagerEvent event) {
@@ -147,16 +154,14 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
 
     myQueue.setTrackUiActivity(true);
 
-    final MessageBusConnection connection = project.getMessageBus().connect();
+    MessageBusConnection connection = project.getMessageBus().connect(this);
     connection.subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
-
       @Override
       public void exitDumbMode() {
         // can happen under write action, so postpone to avoid deadlock on FileEditorProviderManager.getProviders()
         ApplicationManager.getApplication().invokeLater(() -> {
-          if (!myProject.isDisposed())
-            dumbModeFinished(myProject);
-        });
+          dumbModeFinished(myProject);
+        }, myProject.getDisposed());
       }
     });
     connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
@@ -177,20 +182,19 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       }
     });
 
-    Extensions.getRootArea().getExtensionPoint(FileEditorProvider.EP_FILE_EDITOR_PROVIDER).addExtensionPointListener(
-      new ExtensionPointListener<FileEditorProvider>() {
-        @Override
-        public void extensionRemoved(@NotNull FileEditorProvider extension, @NotNull PluginDescriptor pluginDescriptor) {
-          for (EditorComposite editor : myOpenedEditors) {
-            for (FileEditorProvider provider : editor.getProviders()) {
-              if (provider.equals(extension)) {
-                closeFile(editor.getFile());
-                break;
-              }
+    FileEditorProvider.EP_FILE_EDITOR_PROVIDER.addExtensionPointListener(new ExtensionPointListener<FileEditorProvider>() {
+      @Override
+      public void extensionRemoved(@NotNull FileEditorProvider extension, @NotNull PluginDescriptor pluginDescriptor) {
+        for (EditorComposite editor : myOpenedEditors) {
+          for (FileEditorProvider provider : editor.getProviders()) {
+            if (provider.equals(extension)) {
+              closeFile(editor.getFile());
+              break;
             }
           }
         }
-      }, false, this);
+      }
+    }, this);
   }
 
   @Override
@@ -206,15 +210,13 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
         ContainerUtil.addAll(providers, composite.getProviders());
       }
       FileEditorProvider[] newProviders = FileEditorProviderManager.getInstance().getProviders(project, file);
-      if (newProviders.length > providers.size()) {
-        List<FileEditorProvider> toOpen = new ArrayList<>(Arrays.asList(newProviders));
-        toOpen.removeAll(providers);
-        // need to open additional non dumb-aware editors
-        for (EditorWithProviderComposite composite : composites) {
-          for (FileEditorProvider provider : toOpen) {
-            FileEditor editor = provider.createEditor(myProject, file);
-            composite.addEditor(editor, provider);
-          }
+      List<FileEditorProvider> toOpen = new ArrayList<>(Arrays.asList(newProviders));
+      toOpen.removeAll(providers);
+      // need to open additional non dumb-aware editors
+      for (EditorWithProviderComposite composite : composites) {
+        for (FileEditorProvider provider : toOpen) {
+          FileEditor editor = provider.createEditor(myProject, file);
+          composite.addEditor(editor, provider);
         }
       }
     }
@@ -226,7 +228,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   public void initDockableContentFactory() {
     if (myContentFactory != null) return;
 
-    myContentFactory = new DockableEditorContainerFactory(myProject, this, myDockManager);
+    myContentFactory = new DockableEditorContainerFactory(myProject, this);
     myDockManager.register(DockableEditorContainerFactory.TYPE, myContentFactory);
     Disposer.register(this, myContentFactory);
   }
@@ -241,7 +243,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   @Override
   public JComponent getComponent() {
     initUI();
-    return myPanels;
+    return mySplitters;
   }
 
   @NotNull
@@ -314,16 +316,14 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   private final Object myInitLock = new Object();
 
   private void initUI() {
-    if (myPanels == null) {
+    if (mySplitters == null) {
       synchronized (myInitLock) {
-        if (myPanels == null) {
+        if (mySplitters == null) {
           final JPanel panel = new JPanel(new BorderLayout());
           panel.setOpaque(false);
           panel.setBorder(new MyBorder());
-          mySplitters = new EditorsSplitters(this, myDockManager, true);
+          mySplitters = new EditorsSplitters(this, true);
           Disposer.register(this, mySplitters);
-          panel.add(mySplitters, BorderLayout.CENTER);
-          myPanels = panel;
         }
       }
     }
@@ -392,10 +392,8 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   public void updateFilePresentation(@NotNull VirtualFile file) {
     if (!isFileOpen(file)) return;
 
-    updateFileColor(file);
-    updateFileIcon(file);
     updateFileName(file);
-    updateFileBackgroundColor(file);
+    queueUpdateFile(file);
   }
 
   /**
@@ -639,7 +637,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
 
 
     EditorWindow wndToOpenIn = null;
-    if (searchForSplitter) {
+    if (searchForSplitter && UISettings.getInstance().getEditorTabPlacement() != UISettings.TABS_NONE) {
       Set<EditorsSplitters> all = getAllSplitters();
       EditorsSplitters active = getActiveSplittersSync();
       if (active.getCurrentWindow() != null && active.getCurrentWindow().isFileOpen(file)) {
@@ -816,7 +814,11 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       builders = null;
     }
 
-    ApplicationManager.getApplication().invokeAndWait(() -> openFileImpl4Edt(window, file, entry, options, compositeRef, newProviders, builders));
+    ApplicationManager.getApplication().invokeAndWait(() -> {
+      runBulkTabChange(window.getOwner(), splitters -> {
+        openFileImpl4Edt(window, file, entry, options, compositeRef, newProviders, builders);
+      });
+    });
 
     EditorWithProviderComposite composite = compositeRef.get();
     return Pair.create(composite == null ? EMPTY_EDITOR_ARRAY : composite.getEditors(),
@@ -1047,7 +1049,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
 
 
   @Nullable
-  EditorWithProviderComposite newEditorComposite(final VirtualFile file) {
+  EditorWithProviderComposite newEditorComposite(@Nullable VirtualFile file) {
     if (file == null) {
       return null;
     }
@@ -1085,6 +1087,13 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   @Override
   @NotNull
   public List<FileEditor> openEditor(@NotNull OpenFileDescriptor descriptor, final boolean focusEditor) {
+    return openEditorImpl(descriptor, focusEditor).first;
+  }
+
+  /**
+   * @return the list of opened editors, and the one of them that was selected (if any)
+   */
+  private Pair<List<FileEditor>, FileEditor> openEditorImpl(@NotNull OpenFileDescriptor descriptor, final boolean focusEditor) {
     assertDispatchThread();
     OpenFileDescriptor realDescriptor;
     if (descriptor.getFile() instanceof VirtualFileWindow) {
@@ -1098,6 +1107,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     }
 
     final List<FileEditor> result = new SmartList<>();
+    Ref<FileEditor> selectedEditor = new Ref<>();
     CommandProcessor.getInstance().executeCommand(myProject, () -> {
       VirtualFile file = realDescriptor.getFile();
       final FileEditor[] editors = openFile(file, focusEditor, !realDescriptor.isUseCurrentWindow());
@@ -1108,7 +1118,10 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
         if (editor instanceof NavigatableFileEditor &&
             getSelectedEditor(realDescriptor.getFile()) == editor) { // try to navigate opened editor
           navigated = navigateAndSelectEditor((NavigatableFileEditor)editor, realDescriptor);
-          if (navigated) break;
+          if (navigated) {
+            selectedEditor.set(editor);
+            break;
+          }
         }
       }
 
@@ -1116,6 +1129,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
         for (final FileEditor editor : editors) {
           if (editor instanceof NavigatableFileEditor && getSelectedEditor(realDescriptor.getFile()) != editor) { // try other editors
             if (navigateAndSelectEditor((NavigatableFileEditor)editor, realDescriptor)) {
+              selectedEditor.set(editor);
               break;
             }
           }
@@ -1123,7 +1137,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       }
     }, "", null);
 
-    return result;
+    return Pair.create(result, selectedEditor.get());
   }
 
   private boolean navigateAndSelectEditor(@NotNull NavigatableFileEditor editor, @NotNull OpenFileDescriptor descriptor) {
@@ -1179,7 +1193,9 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
 
   @Nullable
   private TextEditor doOpenTextEditor(@NotNull OpenFileDescriptor descriptor, boolean focusEditor) {
-    final Collection<FileEditor> fileEditors = openEditor(descriptor, focusEditor);
+    Pair<List<FileEditor>, FileEditor> editorsWithSelected = openEditorImpl(descriptor, focusEditor);
+    final Collection<FileEditor> fileEditors = editorsWithSelected.first;
+    FileEditor selectedEditor = editorsWithSelected.second;
 
     if (fileEditors.isEmpty()) return null;
     else if (fileEditors.size() == 1) return ObjectUtils.tryCast((ContainerUtil.getFirstItem(fileEditors)), TextEditor.class);
@@ -1187,7 +1203,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     List<TextEditor> textEditors = ContainerUtil.mapNotNull(fileEditors, e -> ObjectUtils.tryCast(e, TextEditor.class));
     if (textEditors.isEmpty()) return null;
 
-    TextEditor target = textEditors.get(0);
+    TextEditor target = selectedEditor instanceof TextEditor ? (TextEditor)selectedEditor : textEditors.get(0);
     if (textEditors.size() > 1) {
       EditorWithProviderComposite composite = getEditorComposite(target);
       assert composite != null;
@@ -1417,26 +1433,24 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   @Override
   public void removeBottomComponent(@NotNull final FileEditor editor, @NotNull final JComponent component) {
     ApplicationManager.getApplication().assertIsDispatchThread();
-    final EditorComposite composite = getEditorComposite(editor);
+    EditorComposite composite = getEditorComposite(editor);
     if (composite != null) {
       composite.removeBottomComponent(editor, component);
     }
   }
 
-  private final MessageListenerList<FileEditorManagerListener> myListenerList;
-
   @Override
-  public void addFileEditorManagerListener(@NotNull final FileEditorManagerListener listener) {
+  public void addFileEditorManagerListener(@NotNull FileEditorManagerListener listener) {
     myListenerList.add(listener);
   }
 
   @Override
-  public void addFileEditorManagerListener(@NotNull final FileEditorManagerListener listener, @NotNull final Disposable parentDisposable) {
-    myListenerList.add(listener, parentDisposable);
+  public void addFileEditorManagerListener(@NotNull FileEditorManagerListener listener, @NotNull Disposable parentDisposable) {
+    myProject.getMessageBus().connect(parentDisposable).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, listener);
   }
 
   @Override
-  public void removeFileEditorManagerListener(@NotNull final FileEditorManagerListener listener) {
+  public void removeFileEditorManagerListener(@NotNull FileEditorManagerListener listener) {
     myListenerList.remove(listener);
   }
 
@@ -1444,29 +1458,24 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     //myFocusWatcher.install(myWindows.getComponent ());
     getMainSplitters().startListeningFocus();
 
-    final FileStatusManager fileStatusManager = FileStatusManager.getInstance(myProject);
+    FileStatusManager fileStatusManager = FileStatusManager.getInstance(myProject);
     if (fileStatusManager != null) {
-      /*
-        Updates tabs colors
-       */
-      final MyFileStatusListener myFileStatusListener = new MyFileStatusListener();
-      fileStatusManager.addFileStatusListener(myFileStatusListener, myProject);
+      // updates tabs colors
+      fileStatusManager.addFileStatusListener(new MyFileStatusListener(), myProject);
     }
     connection.subscribe(FileTypeManager.TOPIC, new MyFileTypeListener());
     connection.subscribe(ProjectTopics.PROJECT_ROOTS, new MyRootsListener());
 
-    /*
-      Updates tabs names
-     */
-    final MyVirtualFileListener myVirtualFileListener = new MyVirtualFileListener();
-    VirtualFileManager.getInstance().addVirtualFileListener(myVirtualFileListener, myProject);
-    /*
-      Extends/cuts number of opened tabs. Also updates location of tabs.
-     */
+    // updates tabs names
+    connection.subscribe(VirtualFileManager.VFS_CHANGES, new MyVirtualFileListener());
+
+    // extends/cuts number of opened tabs. Also updates location of tabs
     connection.subscribe(UISettingsListener.TOPIC, new MyUISettingsListener());
 
     StartupManager.getInstance(myProject).registerPostStartupActivity((DumbAwareRunnable)() -> {
-      if (myProject.isDisposed()) return;
+      if (myProject.isDisposed()) {
+        return;
+      }
 
       ToolWindowManager.getInstance(myProject).invokeLater(() -> {
         if (!myProject.isDisposed()) {
@@ -1648,28 +1657,62 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     }
 
     for (EditorsSplitters each : target) {
-      each.myInsideChange++;
+      runBulkTabChange(each, change);
+    }
+  }
+
+  void runBulkTabChange(@NotNull EditorsSplitters splitters, @NotNull FileEditorManagerChange change) {
+    if (!ApplicationManager.getApplication().isDispatchThread()) {
+      change.run(splitters);
+    }
+    else {
+      splitters.myInsideChange++;
       try {
-        change.run(each);
+        change.run(splitters);
       }
       finally {
-        each.myInsideChange--;
+        splitters.myInsideChange--;
+
+        if (!splitters.isInsideChange()) {
+          splitters.validate();
+          for (EditorWindow window : splitters.getWindows()) {
+            ((JBTabsImpl)window.getTabbedPane().getTabs()).revalidateAndRepaint();
+          }
+        }
       }
     }
   }
 
-  //================== Listeners =====================
-
   /**
    * Closes deleted files. Closes file which are in the deleted directories.
    */
-  private final class MyVirtualFileListener implements VirtualFileListener {
+  private final class MyVirtualFileListener implements BulkFileListener {
     @Override
-    public void beforeFileDeletion(@NotNull VirtualFileEvent e) {
+    public void before(@NotNull List<? extends VFileEvent> events) {
+      for (VFileEvent event : events) {
+        if (event instanceof VFileDeleteEvent) {
+          beforeFileDeletion((VFileDeleteEvent)event);
+        }
+      }
+    }
+
+    @Override
+    public void after(@NotNull List<? extends VFileEvent> events) {
+      for (VFileEvent event : events) {
+        if (event instanceof VFilePropertyChangeEvent) {
+          propertyChanged((VFilePropertyChangeEvent)event);
+        }
+        else if (event instanceof VFileMoveEvent) {
+          fileMoved((VFileMoveEvent)event);
+        }
+      }
+    }
+
+    private void beforeFileDeletion(@NotNull VFileDeleteEvent event) {
       assertDispatchThread();
 
-      final VirtualFile file = e.getFile();
-      final VirtualFile[] openFiles = getOpenFiles();
+      VirtualFile file = event.getFile();
+      VirtualFile[] openFiles = getOpenFiles();
       for (int i = openFiles.length - 1; i >= 0; i--) {
         if (VfsUtilCore.isAncestor(file, openFiles[i], false)) {
           closeFile(openFiles[i],true, true);
@@ -1677,26 +1720,25 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       }
     }
 
-    @Override
-    public void propertyChanged(@NotNull VirtualFilePropertyEvent e) {
-      if (VirtualFile.PROP_NAME.equals(e.getPropertyName())) {
+    private void propertyChanged(@NotNull VFilePropertyChangeEvent event) {
+      if (VirtualFile.PROP_NAME.equals(event.getPropertyName())) {
         assertDispatchThread();
-        final VirtualFile file = e.getFile();
+        final VirtualFile file = event.getFile();
         if (isFileOpen(file)) {
           updateFileName(file);
           updateFileIcon(file); // file type can change after renaming
           updateFileBackgroundColor(file);
         }
       }
-      else if (VirtualFile.PROP_WRITABLE.equals(e.getPropertyName()) || VirtualFile.PROP_ENCODING.equals(e.getPropertyName())) {
+      else if (VirtualFile.PROP_WRITABLE.equals(event.getPropertyName()) || VirtualFile.PROP_ENCODING.equals(event.getPropertyName())) {
         // TODO: message bus?
-        updateIconAndStatusBar(e);
+        updateIconAndStatusBar(event);
       }
     }
 
-    private void updateIconAndStatusBar(final VirtualFilePropertyEvent e) {
+    private void updateIconAndStatusBar(@NotNull VFilePropertyChangeEvent event) {
       assertDispatchThread();
-      final VirtualFile file = e.getFile();
+      final VirtualFile file = event.getFile();
       if (isFileOpen(file)) {
         updateFileIcon(file);
         if (file.equals(getSelectedFiles()[0])) { // update "write" status
@@ -1707,11 +1749,9 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       }
     }
 
-    @Override
-    public void fileMoved(@NotNull VirtualFileMoveEvent e) {
-      final VirtualFile file = e.getFile();
-      final VirtualFile[] openFiles = getOpenFiles();
-      for (final VirtualFile openFile : openFiles) {
+    private void fileMoved(@NotNull VFileMoveEvent e) {
+      VirtualFile file = e.getFile();
+      for (VirtualFile openFile : getOpenFiles()) {
         if (VfsUtilCore.isAncestor(file, openFile, false)) {
           updateFileName(openFile);
           updateFileBackgroundColor(openFile);
@@ -1884,7 +1924,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     }
 
     private void handleUiSettingChange(UISettings uiSettings) {
-      myPanels.revalidate();
+      mySplitters.revalidate();
       for (EditorsSplitters each : getAllSplitters()) {
         each.setTabsPlacement(uiSettings.getEditorTabPlacement());
         each.trimToSize(uiSettings.getEditorTabLimit());
@@ -1911,10 +1951,12 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
 
   @Override
   public void closeAllFiles() {
-    final VirtualFile[] openFiles = getSplitters().getOpenFiles();
-    for (VirtualFile openFile : openFiles) {
-      closeFile(openFile);
-    }
+    runBulkTabChange(getSplitters(), splitters -> {
+      final VirtualFile[] openFiles = splitters.getOpenFiles();
+      for (VirtualFile openFile : openFiles) {
+        closeFile(openFile);
+      }
+    });
   }
 
   @Override

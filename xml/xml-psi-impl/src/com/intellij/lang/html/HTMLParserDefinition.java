@@ -27,6 +27,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.html.HtmlEmbeddedContentImpl;
 import com.intellij.psi.impl.source.html.HtmlFileImpl;
+import com.intellij.psi.impl.source.xml.stub.XmlStubBasedElementType;
 import com.intellij.psi.tree.IFileElementType;
 import com.intellij.psi.tree.TokenSet;
 import com.intellij.psi.util.PsiUtilCore;
@@ -76,6 +77,10 @@ public class HTMLParserDefinition implements ParserDefinition {
   @Override
   @NotNull
   public PsiElement createElement(ASTNode node) {
+    if (node.getElementType() instanceof XmlStubBasedElementType) {
+      //noinspection rawtypes
+      return ((XmlStubBasedElementType)node.getElementType()).createPsi(node);
+    }
     if (node.getElementType() == XmlElementType.HTML_EMBEDDED_CONTENT) {
       return new HtmlEmbeddedContentImpl(node);
     }

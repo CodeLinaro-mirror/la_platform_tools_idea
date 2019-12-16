@@ -151,20 +151,14 @@ abstract class ComponentStoreImpl : IComponentStore {
     return withEdtContext(storageManager.componentManager, task)
   }
 
-  internal suspend fun createSaveSessionManagerAndSaveComponents(saveResult: SaveResult, forceSavingAllSettings: Boolean): SaveSessionProducerManager {
-    return withEdtContext {
+  internal suspend fun commitComponentsOnEdt(saveResult: SaveResult, forceSavingAllSettings: Boolean,
+                                             saveSessionProducerManager: SaveSessionProducerManager) {
+    withEdtContext {
       val errors = SmartList<Throwable>()
-      val manager = doCreateSaveSessionManagerAndCommitComponents(forceSavingAllSettings, errors)
+      commitComponents(forceSavingAllSettings, saveSessionProducerManager, errors)
       saveResult.addErrors(errors)
-      manager
+      saveSessionProducerManager
     }
-  }
-
-  @CalledInAwt
-  internal fun doCreateSaveSessionManagerAndCommitComponents(isForce: Boolean, errors: MutableList<Throwable>): SaveSessionProducerManager {
-    val saveManager = createSaveSessionProducerManager()
-    commitComponents(isForce, saveManager, errors)
-    return saveManager
   }
 
   @CalledInAwt
@@ -260,7 +254,7 @@ abstract class ComponentStoreImpl : IComponentStore {
     }
   }
 
-  internal open fun createSaveSessionProducerManager() = SaveSessionProducerManager()
+  open fun createSaveSessionProducerManager() = SaveSessionProducerManager()
 
   private fun commitComponent(session: SaveSessionProducerManager, info: ComponentInfo, componentName: String?) {
     val component = info.component
@@ -349,11 +343,6 @@ abstract class ComponentStoreImpl : IComponentStore {
   private fun doAddComponent(name: String, component: Any, stateSpec: State?, serviceDescriptor: ServiceDescriptor?): ComponentInfo {
     val newInfo = createComponentInfo(component, stateSpec, serviceDescriptor)
     val existing = components.put(name, newInfo)
-
-    if (name == "GradleSettings") {
-      LOG.info("hi")
-    }
-
     if (existing != null && existing.component !== component) {
       components.put(name, existing)
       LOG.error("Conflicting component name '$name': ${existing.component.javaClass} and ${component.javaClass} (componentManager=${storageManager.componentManager})")
@@ -404,12 +393,12 @@ abstract class ComponentStoreImpl : IComponentStore {
         val storage = storageManager.getStateStorage(storageSpec)
 
         // if storage marked as changed, it means that analyzeExternalChangesAndUpdateIfNeeded was called for it and storage is already reloaded
-        val isReloadDataForStorage = if (reloadData == ThreeState.UNSURE) changedStorages!!.contains(storage) else reloadData.toBoolean()
+        val isReloadDataForStorage = if (reloadData == ThreeState.UNSURE) isStorageChanged(changedStorages!!, storage) else reloadData.toBoolean()
 
         val stateGetter = doCreateStateGetter(isReloadDataForStorage, storage, info, name, stateClass)
         var state = stateGetter.getState(defaultState)
         if (state == null) {
-          if (changedStorages != null && changedStorages.contains(storage)) {
+          if (changedStorages != null && isStorageChanged(changedStorages, storage)) {
             // state will be null if file deleted
             // we must create empty (initial) state to reinit component
             state = deserializeState(Element("state"), stateClass, null)!!
@@ -438,6 +427,9 @@ abstract class ComponentStoreImpl : IComponentStore {
     }
     return true
   }
+
+  private fun isStorageChanged(changedStorages: Set<StateStorage>, storage: StateStorage) =
+    changedStorages.contains(storage) || storage is ExternalStorageWithInternalPart && changedStorages.contains(storage.internalStorage)
 
   protected open fun doCreateStateGetter(reloadData: Boolean,
                                          storage: StateStorage,
@@ -644,9 +636,9 @@ abstract class ChildlessComponentStore : ComponentStoreImpl() {
 }
 
 internal suspend fun ComponentStoreImpl.childlessSaveImplementation(result: SaveResult, forceSavingAllSettings: Boolean) {
-  createSaveSessionManagerAndSaveComponents(result, forceSavingAllSettings)
-    .save()
-    .appendTo(result)
+  val saveSessionManager = createSaveSessionProducerManager()
+  commitComponentsOnEdt(result, forceSavingAllSettings, saveSessionManager)
+  saveSessionManager.save().appendTo(result)
 }
 
 internal suspend inline fun <T> withEdtContext(disposable: ComponentManager?, crossinline task: suspend () -> T): T {

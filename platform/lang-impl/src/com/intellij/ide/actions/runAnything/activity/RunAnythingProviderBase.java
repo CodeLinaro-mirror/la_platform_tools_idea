@@ -1,6 +1,9 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions.runAnything.activity;
 
+import com.intellij.ide.actions.runAnything.RunAnythingChooseContextAction;
+import com.intellij.ide.actions.runAnything.RunAnythingContext;
+import com.intellij.ide.actions.runAnything.RunAnythingUtil;
 import com.intellij.ide.actions.runAnything.items.RunAnythingHelpItem;
 import com.intellij.ide.actions.runAnything.items.RunAnythingItem;
 import com.intellij.ide.actions.runAnything.items.RunAnythingItemBase;
@@ -14,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * This class provides ability to run an arbitrary activity for matched 'Run Anything' input text
@@ -70,6 +74,12 @@ public abstract class RunAnythingProviderBase<V> implements RunAnythingProvider<
   @Override
   public Matcher getMatcher(@NotNull DataContext dataContext, @NotNull String pattern) {
     return null;
+  }
+
+  @NotNull
+  @Override
+  public List<RunAnythingContext> getExecutionContexts(@NotNull DataContext dataContext) {
+    return RunAnythingChooseContextAction.Companion.allContexts(RunAnythingUtil.fetchProject(dataContext));
   }
 
   @Nullable

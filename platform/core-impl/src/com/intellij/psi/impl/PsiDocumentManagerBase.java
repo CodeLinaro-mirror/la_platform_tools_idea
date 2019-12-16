@@ -36,7 +36,6 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.*;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.messages.MessageBus;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.*;
 
@@ -51,7 +50,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
 
   protected final Project myProject;
   private final PsiManager myPsiManager;
-  private final DocumentCommitProcessor myDocumentCommitProcessor;
+  protected final DocumentCommitProcessor myDocumentCommitProcessor;
   final Set<Document> myUncommittedDocuments = ContainerUtil.newConcurrentSet();
   private final Map<Document, UncommittedInfo> myUncommittedInfos = ContainerUtil.newConcurrentMap();
   boolean myStopTrackingDocuments;
@@ -63,18 +62,16 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
 
   private final List<Listener> myListeners = ContainerUtil.createLockFreeCopyOnWriteList();
 
-  protected PsiDocumentManagerBase(@NotNull final Project project,
-                                   @NotNull PsiManager psiManager,
-                                   @NotNull MessageBus bus,
-                                   @NotNull DocumentCommitProcessor documentCommitProcessor) {
+  protected PsiDocumentManagerBase(@NotNull Project project) {
     myProject = project;
-    myPsiManager = psiManager;
-    myDocumentCommitProcessor = documentCommitProcessor;
-    mySynchronizer = new PsiToDocumentSynchronizer(this, bus);
+    myPsiManager = PsiManager.getInstance(project);
+    myDocumentCommitProcessor = ApplicationManager.getApplication().getService(DocumentCommitProcessor.class);
+    mySynchronizer = new PsiToDocumentSynchronizer(this, project.getMessageBus());
     myPsiManager.addPsiTreeChangeListener(mySynchronizer);
 
-    bus.connect(this).subscribe(PsiDocumentTransactionListener.TOPIC,
-                                (document, file) -> myUncommittedDocuments.remove(document));
+    project.getMessageBus().connect(this).subscribe(PsiDocumentTransactionListener.TOPIC, (document, file) -> {
+      myUncommittedDocuments.remove(document);
+    });
   }
 
   @Override
@@ -107,9 +104,8 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
   }
 
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2017")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
   // todo remove when plugins come to their senses and stopped using it
-  // todo to be removed in idea 17
   public static void cachePsi(@NotNull Document document, @Nullable PsiFile file) {
     DeprecatedMethodException.report("Unsupported method");
   }
@@ -214,6 +210,34 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     }
 
     assertEverythingCommitted();
+  }
+
+  @Override
+  public boolean commitAllDocumentsUnderProgress() {
+    Application application = ApplicationManager.getApplication();
+    if (application.isWriteAccessAllowed()) {
+      commitAllDocuments();
+      //there are lot of existing actions/processors/tests which execute it under write lock
+      //show this message only to developer in internal mode
+      if (application.isInternal() && !application.isUnitTestMode()) {
+        LOG.error("Do not call commitAllDocumentsUnderProgress inside write-action");
+      }
+      return true;
+    }
+    final int semaphoreTimeoutInMs = 50;
+    final Runnable commitAllDocumentsRunnable = () -> {
+      Semaphore semaphore = new Semaphore(1);
+      application.invokeLater(() -> {
+        PsiDocumentManager.getInstance(myProject).performWhenAllCommitted(() -> {
+          semaphore.up();
+        });
+      });
+      while (!semaphore.waitFor(semaphoreTimeoutInMs)) {
+        ProgressManager.checkCanceled();
+      }
+    };
+    return ProgressManager.getInstance().runProcessWithProgressSynchronously(commitAllDocumentsRunnable, "Processing Documents",
+                                                                             true, myProject);
   }
 
   private void assertEverythingCommitted() {

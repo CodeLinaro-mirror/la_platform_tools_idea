@@ -10,10 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.lang.reflect.Array;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 @SuppressWarnings("MethodOverridesStaticMethodOfSuperclass")
 public final class ArrayUtil extends ArrayUtilRt {
@@ -633,7 +630,7 @@ public final class ArrayUtil extends ArrayUtilRt {
       if (o1 == null) return -1;
       if (o2 == null) return 1;
       //noinspection unchecked
-      int res = ((Comparable)o1).compareTo(o2);
+      int res = ((Comparable<T>)o1).compareTo(o2);
       if (res != 0) return res;
     }
     return 0;
@@ -716,6 +713,16 @@ public final class ArrayUtil extends ArrayUtilRt {
   public static int indexOf(@NotNull int[] ints, int value) {
     for (int i = 0; i < ints.length; i++) {
       if (ints[i] == value) return i;
+    }
+    return -1;
+  }
+
+  @Contract(pure = true)
+  public static int indexOf(@NotNull byte[] array, @NotNull byte[] pattern, int startIndex) {
+    for (int i = startIndex; i <= array.length - pattern.length; i++) {
+      if (startsWith(array, i, pattern)) {
+        return i;
+      }
     }
     return -1;
   }

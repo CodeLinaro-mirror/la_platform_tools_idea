@@ -15,6 +15,7 @@
  */
 package com.jetbrains.python.packaging;
 
+import com.google.common.collect.Sets;
 import com.intellij.execution.ExecutionException;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
@@ -33,6 +34,7 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.*;
+import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import com.intellij.psi.PsiElement;
@@ -41,6 +43,7 @@ import com.intellij.psi.PsiManager;
 import com.intellij.psi.ResolveResult;
 import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.PyNames;
+import com.jetbrains.python.PyPsiPackageUtil;
 import com.jetbrains.python.codeInsight.controlflow.ScopeOwner;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.impl.PyPsiUtils;
@@ -48,7 +51,7 @@ import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.remote.PyCredentialsContribution;
 import com.jetbrains.python.sdk.CredentialsTypeExChecker;
-import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -326,7 +329,7 @@ public class PyPackageUtil {
   }
 
   public static boolean packageManagementEnabled(@Nullable Sdk sdk) {
-    if (!PythonSdkType.isRemote(sdk)) {
+    if (!PythonSdkUtil.isRemote(sdk)) {
       return true;
     }
     return new CredentialsTypeExChecker() {
@@ -401,19 +404,9 @@ public class PyPackageUtil {
   }
 
 
-  @Nullable
-  public static PyPackage findPackage(@NotNull List<? extends PyPackage> packages, @NotNull String name) {
-    for (PyPackage pkg : packages) {
-      if (name.equalsIgnoreCase(pkg.getName())) {
-        return pkg;
-      }
-    }
-    return null;
-  }
-
   public static boolean hasManagement(@NotNull List<? extends PyPackage> packages) {
-    return (findPackage(packages, SETUPTOOLS) != null || findPackage(packages, DISTRIBUTE) != null) ||
-           findPackage(packages, PIP) != null;
+    return (PyPsiPackageUtil.findPackage(packages, SETUPTOOLS) != null || PyPsiPackageUtil.findPackage(packages, DISTRIBUTE) != null) ||
+           PyPsiPackageUtil.findPackage(packages, PIP) != null;
   }
 
   @Nullable
@@ -527,18 +520,23 @@ public class PyPackageUtil {
       @Nullable
       @Override
       public ChangeApplier prepareChange(@NotNull List<? extends VFileEvent> events) {
-        final VirtualFile[] roots = sdk.getRootProvider().getFiles(OrderRootType.CLASSES);
+        final Set<VirtualFile> roots = Sets.newHashSet(sdk.getRootProvider().getFiles(OrderRootType.CLASSES));
         allEvents:
         for (VFileEvent event : events) {
+          if (event instanceof VFileContentChangeEvent) continue;
           // In case of create event getFile() returns null as the file hasn't been created yet
-          final VirtualFile file = event instanceof VFileCreateEvent ? ((VFileCreateEvent)event).getParent() : event.getFile();
-          if (file != null) {
-            for (VirtualFile root : roots) {
-              if (VfsUtilCore.isAncestor(root, file, false)) {
-                app.executeOnPooledThread(runnable);
-                break allEvents;
-              }
-            }
+          VirtualFile parent = null;
+          if (event instanceof VFileCreateEvent) {
+            parent = ((VFileCreateEvent)event).getParent();
+          }
+          else {
+            VirtualFile file = event.getFile();
+            if (file != null) parent = file.getParent();
+          }
+
+          if (parent != null && roots.contains(parent)) {
+            app.executeOnPooledThread(runnable);
+            break allEvents;
           }
         }
         // No continuation in write action is needed

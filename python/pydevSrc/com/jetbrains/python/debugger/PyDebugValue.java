@@ -2,6 +2,7 @@ package com.jetbrains.python.debugger;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -9,6 +10,7 @@ import com.intellij.xdebugger.frame.*;
 import com.intellij.xdebugger.frame.presentation.XRegularValuePresentation;
 import com.jetbrains.python.debugger.pydev.PyDebugCallback;
 import com.jetbrains.python.debugger.pydev.PyVariableLocator;
+import com.jetbrains.python.debugger.render.PyNodeRenderer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.jetbrains.python.debugger.PyDebugValueGroupsKt.*;
 
 // todo: null modifier for modify modules, class objects etc.
 public class PyDebugValue extends XNamedValue {
@@ -48,6 +52,8 @@ public class PyDebugValue extends XNamedValue {
   private final boolean myErrorOnEval;
   private int myOffset;
   private int myCollectionLength = -1;
+
+  private @NotNull PyDebugValueDescriptor myDescriptor = new PyDebugValueDescriptor();
 
   public enum ValuesPolicy {
     SYNC, ASYNC, ON_DEMAND
@@ -236,17 +242,42 @@ public class PyDebugValue extends XNamedValue {
     }
   }
 
+  /**
+   * Evaluate full name to access variable at runtime
+   * Used for evaluation values of "Returned values". They are saved in a separate dictionary on Python side, so the variable's name
+   * should be transformed.
+   *
+   * @return full variable name at runtime
+   */
   @NotNull
   public String getFullName() {
     return wrapWithPrefix(getName());
   }
 
+  /**
+   * Remove util information from variable name to hide it from user
+   *
+   * @return variable name without util information
+   */
+  @NotNull
+  public String getVisibleName() {
+    return removeId(myName);
+  }
+
+  /**
+   * Removes object id from variable name. Object id is saved inside dict keys to find object at runtime
+   *
+   * @param name variable name with or without object id ('a' (11259136))
+   * @return variable name without object id ('a')
+   */
   @NotNull
   private static String removeId(@NotNull String name) {
-    if (name.indexOf('(') != -1) {
-      name = name.substring(0, name.indexOf('(')).trim();
+    if (name.endsWith(")")) {
+      final int lastInd = name.lastIndexOf('(');
+      if (lastInd != -1) {
+        name = name.substring(0, lastInd).trim();
+      }
     }
-
     return name;
   }
 
@@ -260,7 +291,7 @@ public class PyDebugValue extends XNamedValue {
   }
 
   private static boolean isLen(@NotNull String name) {
-    return "__len__".equals(name);
+    return DUNDER_LEN.equals(name);
   }
 
   @NotNull
@@ -274,6 +305,34 @@ public class PyDebugValue extends XNamedValue {
     }
   }
 
+  private String getTypeString() {
+    if (myShape != null) {
+      return myType + ": " + myShape;
+    }
+    return myType;
+  }
+
+  private void setElementPresentation(@NotNull XValueNode node, @NotNull String value) {
+    if (myParent != null && "set".equals(myParent.getType())) {
+      // hide object id and '=' when showing set elements
+      node.setPresentation(getValueIcon(), new XRegularValuePresentation(value, getTypeString()) {
+        @NotNull
+        @Override
+        public String getSeparator() {
+          return myName.equals(DUNDER_LEN) ? " = " : "";
+        }
+
+        @Override
+        public boolean isShowName() {
+          return myName.equals(DUNDER_LEN);
+        }
+      }, myContainer);
+    }
+    else {
+      node.setPresentation(getValueIcon(), getTypeString(), value, myContainer);
+    }
+  }
+
   @Override
   public void computePresentation(@NotNull XValueNode node, @NotNull XValuePlace place) {
     String value = PyTypeHandler.format(this);
@@ -281,7 +340,8 @@ public class PyDebugValue extends XNamedValue {
     if (value.length() >= MAX_VALUE) {
       value = value.substring(0, MAX_VALUE);
     }
-    node.setPresentation(getValueIcon(), myType, value, myContainer);
+    value = applyRendererIfApplicable(value);
+    setElementPresentation(node, value);
   }
 
   public void updateNodeValueAfterLoading(@NotNull XValueNode node,
@@ -297,7 +357,7 @@ public class PyDebugValue extends XNamedValue {
       }, myContainer);
     }
     else {
-      node.setPresentation(getValueIcon(), myType, value, myContainer);
+      setElementPresentation(node, value);
     }
 
     if (isNumericContainer()) return; // do not update FullValueEvaluator not to break Array Viewer
@@ -401,15 +461,24 @@ public class PyDebugValue extends XNamedValue {
     ApplicationManager.getApplication().executeOnPooledThread(() -> {
       try {
         XValueChildrenList values = myFrameAccessor.loadVariable(this);
+
+        restoreChildrenRenderers(values);
+
         if (!node.isObsolete()) {
           updateLengthIfIsCollection(values);
 
           if (isLargeCollection()) {
             values = processLargeCollection(values);
+          }
+          if (myFrameAccessor.isSimplifiedView()) {
+            extractChildrenToGroup(PROTECTED_ATTRS_NAME, AllIcons.Nodes.C_protected, node, values, (String name) -> name.startsWith("_"),
+                                   getPROTECTED_ATTRS_EXCLUDED());
+          }
+          else {
             node.addChildren(values, true);
+          }
+          if (isLargeCollection()) {
             updateOffset(node, values);
-          } else {
-            node.addChildren(values, true);
           }
 
           getAsyncValues(myFrameAccessor, values);
@@ -594,4 +663,49 @@ public class PyDebugValue extends XNamedValue {
     }
   }
 
+  @NotNull
+  public PyDebugValueDescriptor getDescriptor() {
+    return myDescriptor;
+  }
+
+  public void setDescriptor(@NotNull PyDebugValueDescriptor descriptor) {
+    myDescriptor = descriptor;
+  }
+
+  private void restoreChildrenRenderers(XValueChildrenList values) {
+    PyDebugValueDescriptor descriptor = getDescriptor();
+    Map<String, PyDebugValueDescriptor> childrenDescriptors = descriptor.getChildrenDescriptors();
+
+    if (childrenDescriptors == null) {
+      childrenDescriptors = Maps.newHashMap();
+      descriptor.setChildrenDescriptors(childrenDescriptors);
+    }
+
+    if (values == null) return;
+
+    for (int i = 0; i < values.size(); i++) {
+      if (values.getValue(i) instanceof PyDebugValue) {
+        PyDebugValue value = (PyDebugValue) values.getValue(i);
+        descriptor = childrenDescriptors.getOrDefault(value.getName(), null);
+        if (descriptor == null) {
+          descriptor = new PyDebugValueDescriptor();
+          childrenDescriptors.put(value.getName(), descriptor);
+        }
+        value.setDescriptor(descriptor);
+      }
+    }
+  }
+
+  private String applyRendererIfApplicable(String value) {
+    final PyNodeRenderer renderer = getDescriptor().getRenderer();
+    final String type = getType();
+    if (renderer == null || type == null) return value;
+    if (renderer.isApplicable(type)) {
+      return renderer.render(value);
+    }
+    else {
+      getDescriptor().setRenderer(null);
+    }
+    return value;
+  }
 }

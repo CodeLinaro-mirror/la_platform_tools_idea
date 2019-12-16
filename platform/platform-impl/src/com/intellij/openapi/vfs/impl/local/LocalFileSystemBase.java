@@ -14,7 +14,6 @@ import com.intellij.openapi.vfs.newvfs.RefreshQueue;
 import com.intellij.openapi.vfs.newvfs.VfsImplUtil;
 import com.intellij.openapi.vfs.newvfs.impl.FakeVirtualFile;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.PathUtilRt;
 import com.intellij.util.ThrowableConsumer;
 import com.intellij.util.containers.ContainerUtil;
@@ -66,9 +65,8 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
   private static File convertToIOFile(@NotNull VirtualFile file) {
     String path = file.getPath();
     if (StringUtil.endsWithChar(path, ':') && path.length() == 2 && SystemInfo.isWindows) {
-      path += "/"; // Make 'c:' resolve to a root directory for drive c:, not the current directory on that drive
+      path += '/';  // makes 'C:' resolve to a root directory of the drive C:, not the current directory on that drive
     }
-
     return new File(path);
   }
 
@@ -126,31 +124,12 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     return FileSystemUtil.resolveSymLink(file.getPath());
   }
 
-  @Override
   @NotNull
+  @Override
   public String[] list(@NotNull VirtualFile file) {
-    if (file.getParent() == null) {
-      File[] roots = File.listRoots();
-      if (roots.length == 1 && roots[0].getName().isEmpty()) {
-        String[] list = roots[0].list();
-        if (list != null) return list;
-        LOG.warn("Root '" + roots[0] + "' has no children - is it readable?");
-        return ArrayUtilRt.EMPTY_STRING_ARRAY;
-      }
-      if (file.getName().isEmpty()) {
-        // return drive letter names for the 'fake' root on windows
-        String[] names = new String[roots.length];
-        for (int i = 0; i < names.length; i++) {
-          String name = roots[i].getPath();
-          name = StringUtil.trimTrailing(name, File.separatorChar);
-          names[i] = name;
-        }
-        return names;
-      }
-    }
-
-    String[] names = convertToIOFile(file).list();
-    return names == null ? ArrayUtilRt.EMPTY_STRING_ARRAY : names;
+    File directory = convertToIOFile(file);
+    String[] names = directory.list(DirectoryAccessChecker.getFileFilter(directory));
+    return names == null ? ArrayUtil.EMPTY_STRING_ARRAY : names;
   }
 
   @Override
@@ -640,15 +619,21 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
         int slashCount = 0;
         int idx;
+        boolean isSlash = false;
         for (idx = 2; idx < path.length() && slashCount < 2; idx++) {
           char c = path.charAt(idx);
-          if (c == '\\' || c == '/') {
+          isSlash = c == '\\' || c == '/';
+          if (isSlash) {
             slashCount++;
-            idx--;
+            if (slashCount == 2) {
+              idx--;
+            }
           }
         }
 
-        return path.substring(0, idx);
+        if (slashCount == 2 || slashCount == 1 && !isSlash) {
+          return path.substring(0, idx);
+        }
       }
 
       return "";
@@ -717,7 +702,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
       // behaviour of this code.
       return canonicalFileName;
     }
-    catch (IOException e) {
+    catch (IOException | InvalidPathException e) {
       return originalFileName;
     }
     finally {
@@ -746,12 +731,10 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
   @Override
   public boolean hasChildren(@NotNull VirtualFile file) {
     if (file.getParent() == null) {
-      // assume roots always have children
-      return true;
+      return true;  // assume roots always have children
     }
-    // make sure to not load all children
     try (DirectoryStream<Path> stream = Files.newDirectoryStream(Paths.get(file.getPath()))) {
-      return stream.iterator().hasNext();
+      return stream.iterator().hasNext();  // make sure to not load all children
     }
     catch (InvalidPathException | IOException | SecurityException e) {
       return true;

@@ -478,8 +478,8 @@ public abstract class DialogWrapper {
    * @return south panel
    */
   protected JComponent createSouthPanel() {
-    List<Action> actions = ContainerUtil.filter(createActions(), Condition.NOT_NULL);
-    List<Action> leftSideActions = ContainerUtil.filter(createLeftSideActions(), Condition.NOT_NULL);
+    List<Action> actions = ContainerUtil.filter(createActions(), Conditions.notNull());
+    List<Action> leftSideActions = ContainerUtil.filter(createLeftSideActions(), Conditions.notNull());
 
     Action helpAction = getHelpAction();
     boolean addHelpToLeftSide = false;
@@ -1896,7 +1896,7 @@ public abstract class DialogWrapper {
 
     @Override
     protected void doAction(ActionEvent e) {
-      doCancelAction();
+      doCancelAction(e);
     }
   }
 

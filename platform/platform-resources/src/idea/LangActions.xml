@@ -109,10 +109,6 @@
       <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="$Copy"/>
     </action>
 
-    <action id="CopyReferencePopupAction" class="com.intellij.ide.actions.CopyReferencePopupAction" text="Reference">
-      <add-to-group group-id="CopyFileReference" anchor="first"/>
-    </action>
-
     <action id="CopyAsRichText" class="com.intellij.openapi.editor.richcopy.CopyAsRichTextAction">
       <add-to-group group-id="CutCopyPasteGroup" anchor="after" relative-to-action="CopyPaths"/>
       <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="$Copy"/>
@@ -139,6 +135,19 @@
       <separator/>
 
       <add-to-group group-id="GoToMenu" anchor="after" relative-to-action="JumpToNextChange"/>
+    </group>
+
+    <group id="GutterMenuBookmarks">
+      <reference ref="ToggleBookmark"/>
+      <reference ref="ToggleBookmarkWithMnemonic"/>
+      <separator/>
+
+      <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="EditorGutterVcsPopupMenu"/>
+    </group>
+
+    <group id="popup@BookmarkContextMenu">
+      <reference ref="ToggleBookmark"/>
+      <action id="EditBookmark" class="com.intellij.ide.bookmarks.actions.EditBookmarkAction"/>
     </group>
 
     <action id="GotoDeclarationOnly" class="com.intellij.codeInsight.navigation.actions.GotoDeclarationOnlyAction"/>
@@ -812,8 +821,8 @@
               text="Duplicate Watch" use-shortcut-of="EditorDuplicate"/>
       <action id="XDebugger.RemoveWatch" class="com.intellij.xdebugger.impl.frame.actions.XRemoveWatchAction" icon="AllIcons.General.Remove"
               use-shortcut-of="$Delete"/>
-      <action id="XDebugger.MoveWatchUp" class="com.intellij.xdebugger.impl.frame.actions.XMoveWatchUp" use-shortcut-of="MethodUp"/>
-      <action id="XDebugger.MoveWatchDown" class="com.intellij.xdebugger.impl.frame.actions.XMoveWatchDown" use-shortcut-of="MethodDown"/>
+      <action id="XDebugger.MoveWatchUp" class="com.intellij.xdebugger.impl.frame.actions.XMoveWatchUp" use-shortcut-of="MoveLineUp"/>
+      <action id="XDebugger.MoveWatchDown" class="com.intellij.xdebugger.impl.frame.actions.XMoveWatchDown" use-shortcut-of="MoveLineDown"/>
       <action id="XDebugger.SwitchWatchesInVariables" class="com.intellij.xdebugger.impl.frame.actions.XSwitchWatchesInVariables"
               icon="AllIcons.Debugger.Watch"/>
       <action id="XDebugger.RemoveAllWatches" class="com.intellij.xdebugger.impl.frame.actions.XRemoveAllWatchesAction"/>
@@ -981,6 +990,7 @@
         <group id="Vcs.Operations.Popup.VcsNameSeparator" class="com.intellij.openapi.vcs.actions.VcsQuickListPopupAction$VcsNameSeparator"/>
         <reference id="ChangesView.AddUnversioned"/>
         <reference id="CheckinProject"/>
+        <reference ref="ChangesView.ToggleCommitUi"/>
         <reference id="CheckinFiles"/>
         <reference id="ChangesView.Revert"/>
         <separator/>
@@ -993,7 +1003,6 @@
              class="com.intellij.openapi.vcs.actions.VcsQuickListPopupAction$Providers"/>
       <group id="Vcs.Operations.Popup.NonVcsAware" class="com.intellij.openapi.vcs.actions.VcsQuickListPopupAction$NonVcsAware">
         <reference id="Start.Use.Vcs"/>
-        <reference id="Vcs.Checkout"/>
       </group>
       <separator/>
       <group class="com.intellij.openapi.vcs.actions.ShowAnnotateOperationsPopup$Group" text="Annotated Line" popup="true" id="ShowAnnotateOperationsPopupGroup"/>
@@ -1011,7 +1020,7 @@
     <group id="ConsoleView.PopupMenu">
       <reference ref="ConsoleEditorPopupMenu"/>
       <separator/>
-      <action id="ConsoleView.ClearAll" class="com.intellij.execution.impl.ConsoleViewImpl$ClearAllAction"/>
+      <action id="ConsoleView.ClearAll" class="com.intellij.execution.actions.ClearConsoleAction"/>
     </group>
 
     <action id="SendEOF" class="com.intellij.execution.actions.EOFAction" text="Send EOF"/>
@@ -1149,11 +1158,7 @@
       <action id="RunDashboard.Stop" class="com.intellij.execution.dashboard.actions.StopAction"
               text="Stop" icon="AllIcons.Actions.Suspend"
               use-shortcut-of="Stop"/>
-      <separator/>
-      <action id="RunDashboard.ShowConfigurations" class="com.intellij.execution.dashboard.actions.ShowConfigurationsAction"
-              text="Show Configurations" icon="AllIcons.Actions.ShowAsTree"/>
     </group>
-    <group id="RunDashboardTreeToolbar"/>
     <group id="RunDashboardPopup">
       <action id="RunDashboard.EditConfiguration" class="com.intellij.execution.dashboard.actions.EditConfigurationAction"
               text="Edit Configuration" icon="AllIcons.Actions.EditSource"
@@ -1161,9 +1166,14 @@
       <action id="RunDashboard.CopyConfiguration" class="com.intellij.execution.dashboard.actions.CopyConfigurationAction"
               text="Copy Configuration" icon="AllIcons.Actions.Copy"
               use-shortcut-of="EditorDuplicate"/>
-      <action id="RunDashboard.RemoveConfiguration" class="com.intellij.execution.dashboard.actions.RemoveConfigurationAction"
-              text="Remove Configuration" icon="AllIcons.General.Remove"
-              use-shortcut-of="$Delete"/>
+      <separator/>
+      <action id="RunDashboard.HideConfiguration" class="com.intellij.execution.dashboard.actions.HideConfigurationAction"
+              text="Hide Configuration"/>
+      <action id="RunDashboard.RestoreHiddenConfigurations"
+              class="com.intellij.execution.dashboard.actions.RestoreHiddenConfigurationsAction"
+              text="Restore Hidden Configurations"/>
+      <action id="RunDashboard.RemoveType" class="com.intellij.execution.dashboard.actions.RemoveRunConfigurationTypeAction"
+              text="Remove Selected Types from Services"/>
       <separator/>
       <action id="RunDashboard.ClearContent" class="com.intellij.execution.dashboard.actions.ClearContentAction"
               text="Clear Content" icon="AllIcons.Actions.Cancel"/>
@@ -1187,13 +1197,22 @@
                 text="Service Groups"/>
         <separator/>
       </group>
+      <group id="ServiceView.Filter" popup="true" text="Filter" icon="AllIcons.General.Filter"
+             class="com.intellij.ide.actions.NonEmptyActionGroup"/>
+      <group id="ServiceView.OpenInNewTabGroup" popup="true" text="Open in New Tab" icon="AllIcons.Actions.OpenNewTab"
+             class="com.intellij.execution.services.OpenInNewTabActionGroup">
+        <action id="ServiceView.OpenInNewTab" class="com.intellij.execution.services.OpenInNewTabAction"
+                text="Open in New Tab">
+        </action>
+        <action id="ServiceView.OpenEachInNewTab" class="com.intellij.execution.services.OpenEachInNewTabAction"
+                text="Open Each in New Tab"/>
+        <action id="ServiceView.SplitByType" class="com.intellij.execution.services.SplitByTypeAction"
+                text="Open Each Type in New Tab"/>
+      </group>
       <separator/>
-      <action id="ServiceView.ShowInNewTab" class="com.intellij.execution.services.ShowInNewTabAction"
-              text="Show in New Tab" icon="AllIcons.Actions.OpenNewTab"/>
-      <action id="ServiceView.SplitToNewTabs" class="com.intellij.execution.services.SplitToNewTabsAction"
-              text="Split to New Tabs" icon="AllIcons.General.Layout"/>
-      <action id="ServiceView.SplitByType" class="com.intellij.execution.services.SplitByTypeAction"
-              text="Split By Type" icon="AllIcons.Modules.Split"/>
+      <group id="ServiceView.AddService" popup="true" text="Add Service" icon="AllIcons.General.Add" use-shortcut-of="NewElement"
+             class="com.intellij.execution.services.AddServiceActionGroup">
+      </group>
     </group>
     <group id="ServiceViewItemToolbar">
       <group class="com.intellij.execution.services.ServiceViewActionProvider$ItemToolbarActionGroup" id="ServiceViewItemToolbarGroup"/>
@@ -1202,8 +1221,8 @@
     <group id="ServiceViewItemPopup">
       <group class="com.intellij.execution.services.ServiceViewActionProvider$ItemPopupActionGroup" id="ServiceViewItemPopupGroup"/>
       <separator/>
-      <reference id="ServiceView.ShowInNewTab"/>
-      <reference id="ServiceView.SplitToNewTabs"/>
+      <reference id="ServiceView.OpenInNewTab"/>
+      <reference id="ServiceView.OpenEachInNewTab"/>
       <reference id="ServiceView.SplitByType"/>
       <separator/>
       <reference id="$Delete"/>
@@ -1213,7 +1232,7 @@
               text="Jump to Services" use-shortcut-of="ShowNavBar"/>
     </group>
     <action id="ServiceView.ShowServices" class="com.intellij.execution.services.ShowServicesAction"
-            text="Show Services Tree" icon="AllIcons.Actions.ShowAsTree" use-shortcut-of="RunDashboard.ShowConfigurations"/>
+            text="Show Services Tree" icon="AllIcons.Actions.ShowAsTree"/>
     <group id="RunDashboard.GroupBy" popup="true" text="Configuration" class="com.intellij.ide.actions.NonEmptyActionGroup">
       <action id="RunDashboard.GroupByType" class="com.intellij.execution.dashboard.actions.GroupByConfigurationTypeAction"
               text="Type"/>
@@ -1221,6 +1240,14 @@
               text="Status"/>
       <add-to-group group-id="ServiceView.GroupBy"/>
     </group>
+    <group id="RunDashboard.Filter" popup="true" text="Configuration Status"
+           class="com.intellij.execution.dashboard.actions.RunDashboardFilterActionGroup">
+      <add-to-group group-id="ServiceView.Filter"/>
+    </group>
+    <action id="RunDashboard.AddType" text="Run Configuration Type"
+            class="com.intellij.execution.dashboard.actions.AddRunConfigurationTypeAction">
+      <add-to-group group-id="ServiceView.AddService"/>
+    </action>
 
     <action id="RenameFile" class="com.intellij.refactoring.actions.RenameFileAction">
       <add-to-group group-id="EditorTabPopupMenuEx" anchor="after" relative-to-action="AddAllToFavorites"/>
@@ -1242,6 +1269,7 @@
         <group id="TouchBarDefaultOptionalGroup" text="Optional Actions">
           <reference ref="Vcs.UpdateProject"/>
           <reference ref="CheckinProject"/>
+          <reference ref="ChangesView.ToggleCommitUi"/>
         </group>
         <group id="TouchBarDefault_ctrl" text="Default with Ctrl Key">
           <separator/>

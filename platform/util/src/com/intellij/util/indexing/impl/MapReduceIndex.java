@@ -31,7 +31,6 @@ import com.intellij.util.indexing.impl.forward.IntForwardIndex;
 import com.intellij.util.indexing.impl.forward.IntForwardIndexAccessor;
 import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.DataOutputStream;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,7 +42,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-@ApiStatus.Experimental
 public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<Key, Value, Input> {
   private static final Logger LOG = Logger.getInstance("#com.intellij.util.indexing.impl.MapReduceIndex");
   @NotNull protected final IndexId<Key, Value> myIndexId;
@@ -53,7 +51,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
 
   protected final DataExternalizer<Value> myValueExternalizer;
   protected final IndexExtension<Key, Value, Input> myExtension;
-  private final AtomicLong myModificationStamp = new AtomicLong();
+  protected final AtomicLong myModificationStamp = new AtomicLong();
   private final DataIndexer<Key, Value, Input> myIndexer;
 
   private final ForwardIndex myForwardIndex;
@@ -137,6 +135,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
   public void clear() {
     try {
       getWriteLock().lock();
+      myModificationStamp.incrementAndGet();
       doClear();
     }
     catch (StorageException | IOException e) {
@@ -249,7 +248,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
   }
 
   @NotNull
-  protected Computable<Boolean> createIndexUpdateComputation(@NotNull UpdateData<Key, Value> updateData) {
+  protected Computable<Boolean> createIndexUpdateComputation(@NotNull AbstractUpdateData<Key, Value> updateData) {
     return () -> {
       // Android Studio: Code instrumented to log indexing/index performance.
       return myIndexCounters.getUpdateCounter().timeCallable(() -> {
@@ -296,7 +295,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
   protected InputDataDiffBuilder<Key, Value> getKeysDiffBuilder(int inputId) throws IOException {
     if (myForwardIndex != null) {
       if (myUseIntForwardIndex) {
-        return ((IntForwardIndexAccessor)myForwardIndexAccessor).getDiffBuilderFromInt(inputId, ((IntForwardIndex)myForwardIndex).getInt(inputId));
+        return ((IntForwardIndexAccessor<Key, Value>)myForwardIndexAccessor).getDiffBuilderFromInt(inputId, ((IntForwardIndex)myForwardIndex).getInt(inputId));
       } else {
         return myForwardIndexAccessor.getDiffBuilder(inputId, myForwardIndex.get(inputId));
       }
@@ -357,14 +356,14 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
     }
   };
 
-  public void updateWithMap(@NotNull UpdateData<Key, Value> updateData) throws StorageException {
+  public void updateWithMap(@NotNull AbstractUpdateData<Key, Value> updateData) throws StorageException {
     // Android Studio: Code instrumented to log indexing/index performance.
     if (!getWriteLock().tryLock()) {
       // Do not count cases when the lock is acquired without waiting.
       myIndexCounters.getWriteLockCounter().timeRunnable(() -> getWriteLock().lock());
     }
     try {
-      IndexId oldIndexId = DebugAssertions.DEBUG_INDEX_ID.get();
+      IndexId<?, ?> oldIndexId = DebugAssertions.DEBUG_INDEX_ID.get();
       try {
         DebugAssertions.DEBUG_INDEX_ID.set(myIndexId);
         boolean hasDifference = updateData.iterateKeys(myAddedKeyProcessor, myUpdatedKeyProcessor, myRemovedKeyProcessor);

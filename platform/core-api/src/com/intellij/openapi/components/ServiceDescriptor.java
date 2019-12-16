@@ -13,6 +13,9 @@ import org.jetbrains.annotations.Nullable;
  * <a href="http://www.jetbrains.org/intellij/sdk/docs/basics/plugin_structure/plugin_services.html">Plugin Services</a>
  */
 public final class ServiceDescriptor {
+  public enum PreloadMode {
+    TRUE, FALSE, AWAIT, NOT_HEADLESS,
+  }
 
   @Attribute
   public String serviceInterface;
@@ -23,6 +26,9 @@ public final class ServiceDescriptor {
 
   @Attribute
   public String testServiceImplementation;
+
+  @Attribute
+  public String headlessImplementation;
 
   @Attribute
   public boolean overrides;
@@ -36,13 +42,13 @@ public final class ServiceDescriptor {
   public String configurationSchemaKey;
 
   /**
-   * Preload service (before component creation). Applicable for application level only.
+   * Preload service (before component creation). Not applicable for module level.
    *
    * Loading order and thread are not guaranteed, service should be decoupled as much as possible.
    */
   @Attribute
-  @ApiStatus.Experimental
-  public boolean preload;
+  @ApiStatus.Internal
+  public PreloadMode preload = ServiceDescriptor.PreloadMode.FALSE;
 
   public String getInterface() {
     return serviceInterface != null ? serviceInterface : getImplementation();
@@ -50,7 +56,15 @@ public final class ServiceDescriptor {
 
   @Nullable
   public String getImplementation() {
-    return testServiceImplementation != null && ApplicationManager.getApplication().isUnitTestMode() ? testServiceImplementation : serviceImplementation;
+    if (testServiceImplementation != null && ApplicationManager.getApplication().isUnitTestMode()) {
+      return testServiceImplementation;
+    }
+    else if (headlessImplementation != null && ApplicationManager.getApplication().isHeadlessEnvironment()) {
+      return headlessImplementation;
+    }
+    else {
+      return serviceImplementation;
+    }
   }
 
   @Override

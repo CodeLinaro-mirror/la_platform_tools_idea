@@ -17,6 +17,7 @@ import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.impl.ui.ActionsTreeUtil;
 import com.intellij.openapi.keymap.impl.ui.EditKeymapsDialog;
 import com.intellij.openapi.keymap.impl.ui.KeymapPanel;
+import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.SystemInfo;
@@ -34,7 +35,7 @@ import java.util.List;
 import java.util.*;
 import java.util.function.Supplier;
 
-public class SystemShortcuts {
+public final class SystemShortcuts {
   private static final Logger LOG = Logger.getInstance(SystemShortcuts.class);
   private static final @NotNull String ourNotificationGroupId = "System shortcuts conflicts";
   private static final @NotNull String ourUnknownSysAction = "Unknown action";
@@ -43,15 +44,19 @@ public class SystemShortcuts {
 
   private @NotNull final Map<KeyStroke, AWTKeyStroke> myKeyStroke2SysShortcut = new HashMap<>();
   private @NotNull final MuteConflictsSettings myMutedConflicts = new MuteConflictsSettings();
+  private @NotNull final Set<String> myNotifiedActions = new HashSet<>();
+  private int myNotifyCount = 0;
 
   private @Nullable Keymap myKeymap;
-  private @NotNull Map<AWTKeyStroke, ConflictItem> myKeymapConflicts = new HashMap<>();
+
+  @NotNull
+  private final Map<AWTKeyStroke, ConflictItem> myKeymapConflicts = new HashMap<>();
 
   public SystemShortcuts() {
     readSystem();
   }
 
-  public static class ConflictItem {
+  public static final class ConflictItem {
     final @NotNull String mySysActionDesc;
     final @NotNull KeyStroke mySysKeyStroke;
     final @NotNull String[] myActionIds;
@@ -124,65 +129,6 @@ public class SystemShortcuts {
     return ActionsTreeUtil.isActionFiltered(ActionManager.getInstance(), myKeymap, predicat);
   }
 
-  public void checkConflictsAndNotify(@NotNull Keymap keymap) {
-    if (myKeyStroke2SysShortcut.isEmpty())
-      return;
-
-    updateKeymapConflicts(keymap);
-
-    //System.out.printf("\n========================== found %d conflicts: =========================\n\n", myConflicts.size());
-
-    final List<AWTKeyStroke> keys = new ArrayList<>(myKeymapConflicts.keySet());
-    keys.sort((c0, c1) -> {
-      if (c0.getKeyChar() != KeyEvent.CHAR_UNDEFINED && c1.getKeyChar() != KeyEvent.CHAR_UNDEFINED)
-        return c0.getKeyChar() - c1.getKeyChar();
-      if (c0.getKeyChar() != KeyEvent.CHAR_UNDEFINED)
-        return -1;
-      if (c1.getKeyChar() != KeyEvent.CHAR_UNDEFINED)
-        return 1;
-      return c0.getKeyCode() - c1.getKeyCode();
-    });
-
-    for (AWTKeyStroke shk: keys) {
-      final @NotNull ConflictItem conflictItem = myKeymapConflicts.get(shk);
-      final @NotNull KeyStroke sysKS = conflictItem.mySysKeyStroke;
-      final @Nullable String actionId = conflictItem.getUnmutedActionId(myMutedConflicts);
-
-      if (actionId == null) {
-        //System.out.println("Skip muted: " + actionId);
-        continue;
-      }
-
-      final Shortcut[] actionShortcuts = computeOnEdt(() -> keymap.getShortcuts(actionId));
-      if (actionShortcuts == null || actionShortcuts.length == 0) {
-        LOG.error(String.format("keymap %s found actions '%s' by keystroke='%s' but can't find shortcuts for action '%s'", keymap, Arrays.toString(conflictItem.myActionIds), sysKS, actionId));
-        continue;
-      }
-
-      final @Nullable String macOsShortcutAction = getDescription(shk);
-      //System.out.println(actionId + " shortcut '" + sysKS + "' "
-      //                   + Arrays.toString(actionShortcuts) + " conflicts with macOS shortcut"
-      //                   + (macOsShortcutAction == null ? "." : " '" + macOsShortcutAction + "'."));
-
-      KeyboardShortcut conflicted = null;
-      for (Shortcut sc: actionShortcuts) {
-        if (!(sc instanceof KeyboardShortcut))
-          continue;
-        final KeyboardShortcut ksc = (KeyboardShortcut)sc;
-        if (sysKS.equals(ksc.getFirstKeyStroke()) || sysKS.equals(ksc.getSecondKeyStroke())) {
-          conflicted = ksc;
-          break;
-        }
-      }
-      if (conflicted == null) {
-        LOG.error("can't find conflict shortcut of action " + actionId + ", system-shortcut='" + sysKS + "', action shortcuts: " + Arrays.toString(actionShortcuts));
-        continue;
-      }
-      doNotify(keymap, actionId, sysKS, macOsShortcutAction, conflicted);
-      break; // Multiple conflicts notifications will be implemented later
-    }
-  }
-
   public @Nullable Map<KeyboardShortcut, String> calculateConflicts(@NotNull Keymap keymap, @NotNull String actionId) {
     if (myKeyStroke2SysShortcut.isEmpty())
       return null;
@@ -236,6 +182,40 @@ public class SystemShortcuts {
     return result;
   }
 
+  public void onUserPressedShortcut(@NotNull Keymap keymap, @NotNull String[] actionIds, @NotNull KeyboardShortcut ksc) {
+    if (myNotifyCount > 0 || actionIds.length == 0)
+      return;
+
+    KeyStroke ks = ksc.getFirstKeyStroke();
+    AWTKeyStroke sysKs = myKeyStroke2SysShortcut.get(ks);
+    if (sysKs == null && ksc.getSecondKeyStroke() != null)
+      sysKs = myKeyStroke2SysShortcut.get(ks = ksc.getSecondKeyStroke());
+    if (sysKs == null)
+      return;
+
+    String unmutedActId = null;
+    for (String actId: actionIds) {
+      if (myNotifiedActions.contains(actId)) {
+        continue;
+      }
+      if (!myMutedConflicts.isMutedAction(actId)) {
+        unmutedActId = actId;
+        break;
+      }
+    }
+    if (unmutedActId == null)
+      return;
+
+    @Nullable String macOsShortcutAction = getDescription(sysKs);
+    if (macOsShortcutAction == ourUnknownSysAction) {
+      macOsShortcutAction = null;
+    }
+    //System.out.println(actionId + " shortcut '" + sysKS + "' "
+    //                   + Arrays.toString(actionShortcuts) + " conflicts with macOS shortcut"
+    //                   + (macOsShortcutAction == null ? "." : " '" + macOsShortcutAction + "'."));
+    doNotify(keymap, unmutedActId, ks, macOsShortcutAction, ksc);
+  }
+
   private void doNotify(@NotNull Keymap keymap, @NotNull String actionId, @NotNull KeyStroke sysKS, @Nullable String macOsShortcutAction, @NotNull KeyboardShortcut conflicted) {
     if (!ourIsNotificationRegistered) {
       ourIsNotificationRegistered = true;
@@ -245,13 +225,30 @@ public class SystemShortcuts {
         true);
     }
 
-    final String message = actionId + " shortcut conflicts with macOS shortcut" + (macOsShortcutAction == null ? "" : " '" + macOsShortcutAction + "'") + ".";
+    updateKeymapConflicts(keymap);
+    final int unmutedConflicts = getUnmutedConflictsCount();
+    final boolean hasOtherConflicts = unmutedConflicts > 1;
+
+    final AnAction act = ActionManager.getInstance().getAction(actionId);
+    final String actText = act == null ? actionId : act.getTemplateText(); // TODO: fix action ids from services domain
+    final String message;
+    if (hasOtherConflicts) {
+      message = actText + " and " + (unmutedConflicts - 1) + " more shortcut conflict with macOS shortcuts. Modify these shortcuts or change macOS system settings.";
+    } else {
+      message = "The " + actText + " shortcut conflicts with macOS shortcut" + (macOsShortcutAction == null ? "" : " '" + macOsShortcutAction + "'") + ". Modify this shortcut or change macOS system settings.";
+    }
+
     final Notification notification = new Notification(ourNotificationGroupId, "Shortcuts conflicts", message, NotificationType.WARNING, null);
 
-    final AnAction configureShortcut = new AnAction() {
-      { getTemplatePresentation().setText("Configure shortcut"); }
-      @Override
-      public void actionPerformed(@NotNull AnActionEvent e) {
+    if (hasOtherConflicts) {
+      final AnAction showKeymapPanelAction = DumbAwareAction.create("Modify shortcuts", e -> {
+          new EditKeymapsDialog(null, actionId, true).show();
+          updateKeymapConflicts(myKeymap);
+        }
+      );
+      notification.addAction(showKeymapPanelAction);
+    } else {
+      final AnAction configureShortcut = DumbAwareAction.create("Modify shortcut",  e -> {
         Component component = e.getDataContext().getData(PlatformDataKeys.CONTEXT_COMPONENT);
         if (component == null) {
           Window[] frames = Window.getWindows();
@@ -263,80 +260,80 @@ public class SystemShortcuts {
         }
 
         KeymapPanel.addKeyboardShortcut(actionId, ActionShortcutRestrictions.getInstance().getForActionId(actionId), keymap, component, conflicted, SystemShortcuts.this);
-        updateKeymapConflicts(myKeymap);
-        if (getUnmutedConflictsCount() == 0)
-          notification.expire();
-      }
-    };
-    notification.addAction(configureShortcut);
+        notification.expire();
+      });
+      notification.addAction(configureShortcut);
+    }
 
-    if (SystemInfo.isMac) {
-      final AnAction changeSystemSettings = new AnAction() {
-        { getTemplatePresentation().setText("Change system settings"); }
-        @Override
-        public void actionPerformed(@NotNull AnActionEvent e) {
-          ApplicationManager.getApplication().executeOnPooledThread(()->{
-            final GeneralCommandLine cmdLine = new GeneralCommandLine(
-              "osascript",
-              "-e", "tell application \"System Preferences\"",
-              "-e", "set the current pane to pane id \"com.apple.preference.keyboard\"",
-              "-e", "reveal anchor \"shortcutsTab\" of pane id \"com.apple.preference.keyboard\"",
-              "-e", "activate",
-              "-e", "end tell");
-            try {
-              ExecUtil.execAndGetOutput(cmdLine);
-              // NOTE: we can't detect OS-settings changes
-              // but we can try to schedule check conflicts (and expire notification if necessary)
-            } catch (ExecutionException ex) {
-              LOG.error(ex);
-            }
-          });
-        }
-      };
+    final AnAction muteAction = DumbAwareAction.create("Don't show again", e -> {
+      myMutedConflicts.addMutedAction(actionId);
+      notification.expire();
+    });
+    notification.addAction(muteAction);
+
+    if (SystemInfo.isMac && !hasOtherConflicts) {
+      final AnAction changeSystemSettings = DumbAwareAction.create("Change system shortcuts", e -> {
+        ApplicationManager.getApplication().executeOnPooledThread(()->{
+          final GeneralCommandLine cmdLine = new GeneralCommandLine(
+            "osascript",
+            "-e", "tell application \"System Preferences\"",
+            "-e", "set the current pane to pane id \"com.apple.preference.keyboard\"",
+            "-e", "reveal anchor \"shortcutsTab\" of pane id \"com.apple.preference.keyboard\"",
+            "-e", "activate",
+            "-e", "end tell");
+          try {
+            ExecUtil.execAndGetOutput(cmdLine);
+            // NOTE: we can't detect OS-settings changes
+            // but we can try to schedule check conflicts (and expire notification if necessary)
+          } catch (ExecutionException ex) {
+            LOG.error(ex);
+          }
+        });
+      });
       notification.addAction(changeSystemSettings);
     }
 
-    final AnAction muteAction = new AnAction() {
-      { getTemplatePresentation().setText("Don't show again for " + actionId); }
-      @Override
-      public void actionPerformed(@NotNull AnActionEvent e) {
-        myMutedConflicts.addMutedAction(actionId);
-      }
-    };
-    notification.addAction(muteAction);
-
-    if (getUnmutedConflictsCount() > 1) {
-      final AnAction showKeymapPanelAction = new AnAction() {
-        { getTemplatePresentation().setText("Show all conflicts"); }
-        @Override
-        public void actionPerformed(@NotNull AnActionEvent e) {
-          new EditKeymapsDialog(null, actionId, true).show();
-          updateKeymapConflicts(myKeymap);
-          if (getUnmutedConflictsCount() == 0)
-            notification.expire();
-        }
-      };
-      notification.addAction(showKeymapPanelAction);
-    }
-
+    myNotifiedActions.add(actionId);
+    ++myNotifyCount;
     notification.notify(null);
   }
 
+  private static Class ourShkClass;
+  private static Method ourMethodGetDescription;
+  private static Method ourMethodReadSystemHotkeys;
+
   private static @NotNull String getDescription(@NotNull AWTKeyStroke systemHotkey) {
-    Class shkClass = ReflectionUtil.forName("java.awt.desktop.SystemHotkey");
-    if (shkClass == null)
+    if (ourShkClass == null)
+      ourShkClass = ReflectionUtil.forName("java.awt.desktop.SystemHotkey");
+    if (ourShkClass == null)
       return ourUnknownSysAction;
 
-    final Method method = ReflectionUtil.getMethod(shkClass, "getDescription");
+    if (ourMethodGetDescription == null)
+      ourMethodGetDescription = ReflectionUtil.getMethod(ourShkClass, "getDescription");
     String result = null;
     try {
-      result = (String)method.invoke(systemHotkey);
+      result = (String)ourMethodGetDescription.invoke(systemHotkey);
     } catch (Throwable e) {
       Logger.getInstance(SystemShortcuts.class).error(e);
     }
-    return result == null ? ourUnknownSysAction : result;
+
+    if (result == null)
+      return ourUnknownSysAction;
+
+    // shorten description when the result string looks like:
+    // "com.apple.Safari - Search With %WebSearchProvider@ - searchWithWebSearchProvider"
+    final String delimiter = " - ";
+    final int pos0 = result.indexOf(delimiter);
+    if (pos0 < 0)
+      return result;
+    final int pos1 = result.indexOf(delimiter, pos0 + delimiter.length());
+    if (pos1 < 0)
+      return result;
+
+    return result.substring(pos0 + delimiter.length(), pos1).replace("%", "").replace("@", "");
   }
 
+  private static final boolean DEBUG_SYSTEM_SHORTCUTS = Boolean.getBoolean("debug.system.shortcuts");
   private void readSystem() {
     myKeyStroke2SysShortcut.clear();
 
@@ -347,18 +344,22 @@ public class SystemShortcuts {
       if (!Registry.is("read.system.shortcuts"))
         return;
 
-      Class shkClass = ReflectionUtil.forName("java.awt.desktop.SystemHotkey");
-      if (shkClass == null)
+      if (ourShkClass == null)
+        ourShkClass = ReflectionUtil.forName("java.awt.desktop.SystemHotkey");
+      if (ourShkClass == null)
         return;
 
-      final Method method = ReflectionUtil.getMethod(shkClass, "readSystemHotkeys");
-      if (method == null)
+      if (ourMethodReadSystemHotkeys == null)
+        ourMethodReadSystemHotkeys = ReflectionUtil.getMethod(ourShkClass, "readSystemHotkeys");
+      if (ourMethodReadSystemHotkeys == null)
         return;
 
-      List<AWTKeyStroke> all = (List<AWTKeyStroke>)method.invoke(shkClass);
+      @SuppressWarnings("unchecked")
+      List<AWTKeyStroke> all = (List<AWTKeyStroke>)ourMethodReadSystemHotkeys.invoke(ourShkClass);
       if (all == null || all.isEmpty())
         return;
 
+      String debugInfo = "";
       for (AWTKeyStroke shk: all) {
         if (shk.getModifiers() == 0) {
           //System.out.println("Skip system shortcut [without modifiers]: " + shk);
@@ -368,6 +369,12 @@ public class SystemShortcuts {
           //System.out.println("Skip system shortcut [undefined key]: " + shk);
           continue;
         }
+        if ("Move focus to the next window in application".equals(getDescription(shk))) {
+          // Skip this shortcut because it handled in IDE-side
+          // see: JBR-1515 Regression test jb/sun/awt/macos/MoveFocusShortcutTest.java fails on macOS  (Now we prevent Mac OS from handling the shortcut. We can enumerate windows on IDE level.)
+          continue;
+        }
+
         KeyStroke sysKS;
         if (shk.getKeyChar() != KeyEvent.CHAR_UNDEFINED) {
           final int keyCode = KeyEvent.getExtendedKeyCodeForChar(shk.getKeyChar());
@@ -380,6 +387,13 @@ public class SystemShortcuts {
           sysKS = KeyStroke.getKeyStroke(shk.getKeyCode(), shk.getModifiers());
 
         myKeyStroke2SysShortcut.put(sysKS, shk);
+
+        if (DEBUG_SYSTEM_SHORTCUTS) {
+          debugInfo += shk.toString() + ";\n";
+        }
+      }
+      if (DEBUG_SYSTEM_SHORTCUTS) {
+        Logger.getInstance(SystemShortcuts.class).info("system shortcuts:\n" + debugInfo);
       }
     } catch (Throwable e) {
       Logger.getInstance(SystemShortcuts.class).debug(e);
@@ -388,9 +402,12 @@ public class SystemShortcuts {
 
   private static class MuteConflictsSettings {
     private static final String MUTED_ACTIONS_KEY = "muted.system.shortcut.conflicts.actions";
-    private final @NotNull Set<String> myMutedActions = new HashSet<>();
+    private @NotNull Set<String> myMutedActions;
 
-    MuteConflictsSettings() {
+    void init() {
+      if (myMutedActions != null)
+        return;
+      myMutedActions = new HashSet<>();
       final String[] muted = PropertiesComponent.getInstance().getValues(MUTED_ACTIONS_KEY);
       if (muted != null) {
         Collections.addAll(myMutedActions, muted);
@@ -398,16 +415,19 @@ public class SystemShortcuts {
     }
 
     void addMutedAction(@NotNull String actId) {
+      init();
       myMutedActions.add(actId);
       PropertiesComponent.getInstance().setValues(MUTED_ACTIONS_KEY, ArrayUtilRt.toStringArray(myMutedActions));
     }
 
     void removeMutedAction(@NotNull String actId) {
+      init();
       myMutedActions.remove(actId);
       PropertiesComponent.getInstance().setValues(MUTED_ACTIONS_KEY, ArrayUtilRt.toStringArray(myMutedActions));
     }
 
     public boolean isMutedAction(@NotNull String actionId) {
+      init();
       return myMutedActions.contains(actionId);
     }
   }

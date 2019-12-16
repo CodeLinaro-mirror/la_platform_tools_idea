@@ -8,6 +8,7 @@ import com.intellij.codeInsight.hint.HintUtil;
 import com.intellij.find.findUsages.PsiElement2UsageTargetAdapter;
 import com.intellij.find.impl.FindInProjectUtil;
 import com.intellij.find.replaceInProject.ReplaceInProjectManager;
+import com.intellij.internal.statistic.eventLog.FeatureUsageData;
 import com.intellij.internal.statistic.service.fus.collectors.FUCounterUsageLogger;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -85,27 +86,26 @@ public class FindUtil {
   }
 
   public static void configureFindModel(boolean replace, @Nullable Editor editor, FindModel model, boolean firstSearch) {
-    String stringToFind = firstSearch ? "" : model.getStringToFind();
     String selectedText = getSelectedText(editor);
+    boolean multiline = selectedText != null && selectedText.contains("\n");
+    String stringToFind = firstSearch || model.getStringToFind().contains("\n") ? "" : model.getStringToFind();
     boolean isSelectionUsed = false;
     if (!StringUtil.isEmpty(selectedText)) {
-      stringToFind = selectedText;
-      isSelectionUsed = true;
+      if (!multiline) {
+        stringToFind = selectedText;
+        isSelectionUsed = true;
+      } else {
+        stringToFind = "";
+      }
     }
     model.setReplaceState(replace);
-    boolean multiline = stringToFind.contains("\n");
-    boolean isGlobal = true;
-    if (replace && multiline) {
-      isGlobal = false;
-      stringToFind = "";
-      multiline = false;
-    }
+    boolean isGlobal = !multiline;
     model.setStringToFind(isSelectionUsed
                           && model.isRegularExpressions()
                           && Registry.is("ide.find.escape.selected.text.for.regex")
                           ? StringUtil.escapeToRegexp(stringToFind)
                           : stringToFind);
-    model.setMultiline(multiline);
+    model.setMultiline(false);
     model.setGlobal(isGlobal);
     model.setPromptOnReplace(false);
   }
@@ -314,6 +314,9 @@ public class FindUtil {
   }
 
   static void findAllAndShow(@NotNull Project project, @NotNull PsiFile psiFile, @NotNull FindModel findModel) {
+    findModel.setCustomScope(true);
+    findModel.setProjectScope(false);
+    findModel.setCustomScopeName("File " + psiFile.getName());
     List<Usage> usages = findAll(project, psiFile, findModel);
     if (usages == null) return;
     final UsageTarget[] usageTargets = {new FindInProjectUtil.StringUsageTarget(project, findModel)};
@@ -938,7 +941,7 @@ public class FindUtil {
     PsiElement[] primary = sourceElement == null ? PsiElement.EMPTY_ARRAY : new PsiElement[]{sourceElement};
 
     SmartPointerManager smartPointerManager = SmartPointerManager.getInstance(project);
-    SmartPsiElementPointer[] pointers = Stream.of(targets).map(smartPointerManager::createSmartPsiElementPointer).toArray(SmartPsiElementPointer[]::new);
+    SmartPsiElementPointer<?>[] pointers = Stream.of(targets).map(smartPointerManager::createSmartPsiElementPointer).toArray(SmartPsiElementPointer[]::new);
     // usage view will load document/AST so still referencing all these PSI elements might lead to out of memory
     //noinspection UnusedAssignment
     targets = PsiElement.EMPTY_ARRAY;
@@ -1014,14 +1017,19 @@ public class FindUtil {
            ? findResult.getEndOffset() : Math.min(findResult.getStartOffset() + caretShiftFromSelectionStart, findResult.getEndOffset());
   }
 
-  public static void triggerUsedOptionsStats(@NotNull String prefix, @NotNull FindModel model) {
-    FUCounterUsageLogger logger = FUCounterUsageLogger.getInstance();
-    if (model.isCaseSensitive()) logger.logEvent("find", prefix + ".MatchCaseOn");
-    if (model.isWholeWordsOnly()) logger.logEvent("find", prefix + ".WholeWordsOn");
-    if (model.isRegularExpressions()) logger.logEvent("find", prefix + ".RegexOn");
-    if (model.getFileFilter() != null) logger.logEvent("find", prefix + ".FileFilterOn");
-    if (model.getSearchContext() != FindModel.SearchContext.ANY) {
-      logger.logEvent("find", prefix + ".Context." + model.getSearchContext());
-    }
+  public static void triggerUsedOptionsStats(@NotNull String type, @NotNull FindModel model) {
+    FeatureUsageData data = new FeatureUsageData().
+      addData("type", type).
+      addData("case_sensitive", model.isCaseSensitive()).
+      addData("whole_words_only", model.isWholeWordsOnly()).
+      addData("regular_expressions", model.isRegularExpressions()).
+      addData("with_file_filter", model.getFileFilter() != null).
+      addData("context", model.getSearchContext().name());
+    FUCounterUsageLogger.getInstance().logEvent("find", "search.session.started", data);
+  }
+
+  public static void triggerRegexHelpClicked(@Nullable String type) {
+    FeatureUsageData data = new FeatureUsageData().addData("type", StringUtil.notNullize(type, "Unknown"));
+    FUCounterUsageLogger.getInstance().logEvent("find", "regexp.help.clicked", data);
   }
 }

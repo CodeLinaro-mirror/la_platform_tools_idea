@@ -19,12 +19,18 @@ public interface EditorColors {
   ColorKey READONLY_FRAGMENT_BACKGROUND_COLOR = ColorKey.createColorKey("READONLY_FRAGMENT_BACKGROUND");
   ColorKey WHITESPACES_COLOR = ColorKey.createColorKey("WHITESPACES");
   ColorKey INDENT_GUIDE_COLOR = ColorKey.createColorKey("INDENT_GUIDE");
+  ColorKey STRING_CONTENT_INDENT_GUIDE_COLOR = ColorKey.createColorKey("STRING_CONTENT_INDENT_GUIDE");
   ColorKey SOFT_WRAP_SIGN_COLOR = ColorKey.createColorKey("SOFT_WRAP_SIGN_COLOR");
   ColorKey SELECTED_INDENT_GUIDE_COLOR = ColorKey.createColorKey("SELECTED_INDENT_GUIDE");
   ColorKey SELECTION_BACKGROUND_COLOR = ColorKey.createColorKey("SELECTION_BACKGROUND");
   ColorKey SELECTION_FOREGROUND_COLOR = ColorKey.createColorKey("SELECTION_FOREGROUND");
   ColorKey SCROLLBAR_THUMB_COLOR = ColorKey.createColorKey(SystemInfo.isMac ? "ScrollBar.Mac.thumbColor" :  "ScrollBar.thumbColor");
   ColorKey SCROLLBAR_THUMB_WHILE_SCROLLING_COLOR = ColorKey.createColorKey(SystemInfo.isMac ? "ScrollBar.Mac.hoverThumbColor" :  "ScrollBar.hoverThumbColor");
+
+  TextAttributesKey TAB_SELECTED = TextAttributesKey.createTextAttributesKey("TAB_SELECTED");
+  TextAttributesKey TAB_SELECTED_INACTIVE = TextAttributesKey.createTextAttributesKey("TAB_SELECTED_INACTIVE");
+  ColorKey TAB_UNDERLINE = ColorKey.createColorKey("TAB_UNDERLINE");
+  ColorKey TAB_UNDERLINE_INACTIVE = ColorKey.createColorKey("TAB_UNDERLINE_INACTIVE");
 
   TextAttributesKey REFERENCE_HYPERLINK_COLOR = TextAttributesKey.createTextAttributesKey("CTRL_CLICKABLE", new TextAttributes(JBColor.blue, null, JBColor.blue, EffectType.LINE_UNDERSCORE,
                                                                                                                                Font.PLAIN));

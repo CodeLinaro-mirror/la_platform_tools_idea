@@ -6,7 +6,7 @@ import com.intellij.configurationStore.BundledSchemeEP;
 import com.intellij.configurationStore.LazySchemeProcessor;
 import com.intellij.configurationStore.SchemeDataHolder;
 import com.intellij.configurationStore.SchemeExtensionProvider;
-import com.intellij.diagnostic.LoadingPhase;
+import com.intellij.diagnostic.LoadingState;
 import com.intellij.ide.WelcomeWizardUtil;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.ui.UITheme;
@@ -102,11 +102,18 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
       }
 
       @Override
-      public void onCurrentSchemeSwitched(@Nullable EditorColorsScheme oldScheme, @Nullable EditorColorsScheme newScheme) {
-        ApplicationManager.getApplication().invokeLater(() -> { // don't do heavy operations right away
+      public void onCurrentSchemeSwitched(@Nullable EditorColorsScheme oldScheme,
+                                          @Nullable EditorColorsScheme newScheme,
+                                          boolean processChangeSynchronously) {
+        if (processChangeSynchronously) {
           LafManager.getInstance().updateUI();
           schemeChangedOrSwitched(newScheme);
-        });
+        }
+        else {
+          ApplicationManager.getApplication().invokeLater(() -> { // don't do heavy operations right away
+            onCurrentSchemeSwitched(oldScheme, newScheme, true);
+          });
+        }
       }
 
       @NotNull
@@ -197,21 +204,23 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
 
   private void loadBundledSchemes() {
     if (!isUnitTestOrHeadlessMode()) {
-      for (BundledSchemeEP ep : BUNDLED_EP_NAME.getIterable()) {
+      BUNDLED_EP_NAME.forEachExtensionSafe(ep -> {
         mySchemeManager.loadBundledScheme(ep.getPath() + ".xml", ep);
-      }
+      });
     }
   }
 
   private void loadSchemesFromThemes() {
-    if (!isUnitTestOrHeadlessMode()) {
-      for (UIManager.LookAndFeelInfo laf : LafManager.getInstance().getInstalledLookAndFeels()) {
-        if (laf instanceof UIThemeBasedLookAndFeelInfo) {
-          UITheme theme = ((UIThemeBasedLookAndFeelInfo)laf).getTheme();
-          String path = theme.getEditorScheme();
-          if (path != null) {
-            mySchemeManager.loadBundledScheme(path, theme);
-          }
+    if (isUnitTestOrHeadlessMode()) {
+      return;
+    }
+
+    for (UIManager.LookAndFeelInfo laf : LafManager.getInstance().getInstalledLookAndFeels()) {
+      if (laf instanceof UIThemeBasedLookAndFeelInfo) {
+        UITheme theme = ((UIThemeBasedLookAndFeelInfo)laf).getTheme();
+        String path = theme.getEditorScheme();
+        if (path != null) {
+          mySchemeManager.loadBundledScheme(path, theme);
         }
       }
     }
@@ -275,6 +284,28 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
     myTreeDispatcher.getMulticaster().globalSchemeChange(newScheme);
   }
 
+  public void handleThemeAdded(@NotNull UITheme theme) {
+    String editorScheme = theme.getEditorScheme();
+    if (editorScheme != null) {
+      getSchemeManager().loadBundledScheme(editorScheme, theme);
+      initEditableBundledSchemesCopies();
+    }
+  }
+
+  public void handleThemeRemoved(@NotNull UITheme theme) {
+    String editorSchemeName = theme.getEditorSchemeName();
+    if (editorSchemeName != null) {
+      EditorColorsScheme scheme = mySchemeManager.findSchemeByName(editorSchemeName);
+      if (scheme != null) {
+        mySchemeManager.removeScheme(scheme);
+        String editableCopyName = getEditableCopyName(scheme);
+        if (editableCopyName != null) {
+          mySchemeManager.removeScheme(editableCopyName);
+        }
+      }
+    }
+  }
+
   static final class BundledScheme extends EditorColorsSchemeImpl implements ReadOnlyColorsScheme {
     BundledScheme() {
       super(null);
@@ -306,18 +337,18 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
   }
 
   private void loadAdditionalTextAttributes() {
-    for (AdditionalTextAttributesEP attributesEP : AdditionalTextAttributesEP.EP_NAME.getExtensions()) {
+    AdditionalTextAttributesEP.EP_NAME.forEachExtensionSafe(attributesEP -> {
       EditorColorsScheme editorColorsScheme = mySchemeManager.findSchemeByName(attributesEP.scheme);
       if (editorColorsScheme == null) {
         if (!isUnitTestOrHeadlessMode()) {
           LOG.warn("Cannot find scheme: " + attributesEP.scheme + " from plugin: " + attributesEP.getPluginDescriptor().getPluginId());
         }
-        continue;
+        return;
       }
       URL resource = attributesEP.getLoaderForClass().getResource(attributesEP.file);
       if (resource == null) {
         LOG.warn("resource not found: " + attributesEP.file);
-        continue;
+        return;
       }
       try {
         Element root = JDOMUtil.load(URLUtil.openStream(resource));
@@ -332,7 +363,7 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
       catch (Exception e) {
         LOG.error(e);
       }
-    }
+    });
   }
 
   @Override
@@ -366,8 +397,12 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
 
   @Override
   public void setGlobalScheme(@Nullable EditorColorsScheme scheme) {
-    boolean notify = LoadingPhase.COMPONENT_LOADED.isComplete();
-    mySchemeManager.setCurrent(scheme == null ? getDefaultScheme() : scheme, notify);
+    setGlobalScheme(scheme, false);
+  }
+
+  public void setGlobalScheme(@Nullable EditorColorsScheme scheme, boolean processChangeSynchronously) {
+    boolean notify = LoadingState.COMPONENTS_LOADED.isOccurred();
+    mySchemeManager.setCurrent(scheme == null ? getDefaultScheme() : scheme, notify, processChangeSynchronously);
   }
 
   private void setGlobalSchemeInner(@Nullable EditorColorsScheme scheme) {

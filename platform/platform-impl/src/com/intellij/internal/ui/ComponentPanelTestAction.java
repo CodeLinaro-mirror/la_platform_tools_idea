@@ -2,7 +2,9 @@
 package com.intellij.internal.ui;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.HelpTooltip;
 import com.intellij.ide.ui.laf.darcula.DarculaUIUtil;
+import com.intellij.ide.ui.laf.darcula.ui.DarculaSliderUI;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.editor.event.DocumentListener;
@@ -23,11 +25,13 @@ import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.table.JBTable;
 import com.intellij.util.Alarm;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UI;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.components.BorderLayoutPanel;
+import net.miginfocom.swing.MigLayout;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,7 +49,8 @@ import java.awt.event.ActionListener;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.Set;
 import java.util.function.BiFunction;
 
 public class ComponentPanelTestAction extends DumbAwareAction {
@@ -85,8 +90,9 @@ public class ComponentPanelTestAction extends DumbAwareAction {
   @SuppressWarnings({"MethodMayBeStatic", "UseOfSystemOutOrSystemErr"})
   private static class ComponentPanelTest extends DialogWrapper {
 
-    private static final HashSet<String> ALLOWED_VALUES = new HashSet<>(Arrays.asList("one", "two", "three", "four", "five", "six",
-              "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "abracadabra"));
+    private static final Set<String> ALLOWED_VALUES = ContainerUtil
+      .set("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+           "fifteen", "sixteen", "abracadabra");
 
     private static final String[] STRING_VALUES = { "One", "Two", "Three", "Four", "Five", "Six" };
     private static final SimpleTextAttributes WARNING_CELL_ATTRIBUTES = new SimpleTextAttributes(SimpleTextAttributes.STYLE_WAVED, null);
@@ -121,6 +127,7 @@ public class ComponentPanelTestAction extends DumbAwareAction {
       pane.addTab("Progress Grid", createProgressGridPanel());
       pane.addTab("Validators", createValidatorsPanel());
       pane.addTab("Multilines", createMultilinePanel());
+      pane.addTab("JSliderUI", createJSliderTab());
 
       pane.addChangeListener(e -> {
         if (pane.getSelectedIndex() == 2) {
@@ -235,7 +242,14 @@ public class ComponentPanelTestAction extends DumbAwareAction {
         withTooltip("Enable full border around the tabbed pane").createPanel(), gc);
 
       gc.gridy++;
-      topPanel.add(UI.PanelFactory.panel(new JButton("Abracadabra")).
+      JButton button = new JButton("Abracadabra");
+      new HelpTooltip().
+        setTitle("Highlight Non-Picked Commit and Automatically Create Some Very Long Action Name").
+        setShortcut("Ctrl+Alt+Shift+H").
+        setDescription("Highlight commits from selected branch that have not been applied to the current branch.").
+        installOn(button);
+
+      topPanel.add(UI.PanelFactory.panel(button).
         withComment("Abradabra comment").resizeX(false).createPanel(), gc);
 
       gc.gridy++;
@@ -747,7 +761,7 @@ public class ComponentPanelTestAction extends DumbAwareAction {
             actionsArray[1].getTemplatePresentation().setEnabled(false);
           }
 
-          e.getPresentation().putClientProperty(Toggleable.SELECTED_PROPERTY, selected);
+          Toggleable.setSelected(e.getPresentation(), selected);
         }
       };
 
@@ -776,6 +790,66 @@ public class ComponentPanelTestAction extends DumbAwareAction {
       JComponent toolbarComponent = toolbar.getComponent();
       toolbarComponent.setBorder(IdeBorderFactory.createBorder(SideBorder.BOTTOM));
       return toolbarComponent;
+    }
+
+    private JComponent createJSliderTab() {
+      JPanel panel = new JPanel(new MigLayout("ins 0, gap 10, flowy"));
+      JSlider hSlider = new JSlider(JSlider.HORIZONTAL, 0, 100, 0){
+        @Override
+        public void updateUI() {
+          setUI(DarculaSliderUI.createUI(this));
+          updateLabelUIs();
+        }
+      };
+
+      JSlider vSlider = new JSlider(JSlider.VERTICAL){
+        @Override
+        public void updateUI() {
+          setUI(DarculaSliderUI.createUI(this));
+          updateLabelUIs();
+        }
+      };
+
+      JSlider hSliderBase = new JSlider(JSlider.HORIZONTAL, 0, 100, 0);
+
+      JPanel pane1 = new JPanel(new MigLayout("debug, ins 0, gap 5"));
+      pane1.add(new JLabel("A color key and IntelliJ: "), "baseline");
+      pane1.add(hSliderBase, "baseline");
+
+      setupSlider(hSlider);
+      setupSlider(vSlider);
+      setupSlider(hSliderBase);
+
+      panel.add(wrap((hSlider)));
+      panel.add(wrap(hSliderBase));
+      panel.add(wrap(vSlider));
+
+      return panel;
+    }
+
+    private JComponent wrap(JComponent component) {
+      JPanel pane = new JPanel(new MigLayout("debug, ins 0, gap 5"));
+      pane.add(new JLabel("A color key and IntelliJ: "), "baseline");
+      pane.add(component, "baseline");
+      return pane;
+    }
+
+    private void setupSlider(JSlider slider) {
+      slider.setMajorTickSpacing(25);
+      slider.setMinorTickSpacing(5);
+      slider.setPaintTicks(true);
+      slider.setPaintLabels(true);
+
+      slider.setSnapToTicks(true);
+
+      Hashtable position = new Hashtable();
+      position.put(0, new JLabel("Hashtable"));
+      position.put(25, new JLabel("Hash"));
+      position.put(50, new JLabel("Ha"));
+      position.put(75, new JLabel("HashtableHashtable"));
+      position.put(100, new JLabel("100"));
+
+      slider.setLabelTable(position);
     }
   }
 

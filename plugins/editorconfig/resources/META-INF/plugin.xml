@@ -2,10 +2,12 @@
 <idea-plugin>
   <id>org.editorconfig.editorconfigjetbrains</id>
   <name>EditorConfig</name>
-  <vendor url="http://editorconfig.org">Kirill Glazyrin and Kevin Bell, JetBrains</vendor>
+  <vendor>JetBrains</vendor>
 
   <description><![CDATA[
       Supports storing code formatting settings inside EditorConfig files, as well as editing EditorConfig files.
+      <p></p>
+      <p>Originally developed by Kirill Glazyrin and Kevin Bell.</p>
       ]]></description>
 
   <depends>com.intellij.modules.lang</depends>
@@ -32,6 +34,7 @@
     <codeInsight.lineMarkerProvider language="" implementationClass="org.editorconfig.configmanagement.editor.EditorConfigPreviewMarkerProvider"/>
     <projectService serviceImplementation="org.editorconfig.configmanagement.editor.EditorConfigPreviewManager"/>
     <gotoFileContributor implementation="org.editorconfig.configmanagement.finder.EditorConfigGotoFileContributor"/>
+    <stripTrailingSpacesFilterFactory implementation="org.editorconfig.configmanagement.EditorConfigTrailingSpacesFilterFactory"/>
 
     <!-- Language support -->
     <fileType name="EditorConfig" 

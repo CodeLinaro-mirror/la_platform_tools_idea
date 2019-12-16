@@ -37,6 +37,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     applicationInfoModule = "intellij.android.adt.branding"
     additionalIDEPropertiesFilePaths = ["$home/build/conf/ideaCE.properties".toString()]
     toolsJarRequired = true
+    scrambleMainJar = false
     buildCrossPlatformDistribution = true
 
     allLibraryLicenses.addAll(AndroidStudioLibraryLicenses.LICENSES_LIST)
@@ -101,6 +102,8 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "url-assistant",
                                          ]
     productLayout.mainModules = ["intellij.idea.community.main"]
+    productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
+    productLayout.buildAllCompatiblePlugins = false
     productLayout.allNonTrivialPlugins = CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS + [
       JavaPluginLayout.javaPlugin(false),
       androidPluginInStudio([:]),

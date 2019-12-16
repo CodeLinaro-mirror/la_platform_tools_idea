@@ -111,6 +111,19 @@ public class Comparing {
     return hashcode(obj1) ^ hashcode(obj2);
   }
 
+  /**
+   * @see AbstractSet#hashCode()
+   */
+  public static int unorderedHashcode(@NotNull Collection<?> collection) {
+    int h = 0;
+    for (Object obj : collection) {
+      if (obj != null) {
+        h += obj.hashCode();
+      }
+    }
+    return h;
+  }
+
   public static int compare(byte o1, byte o2) {
     return o1 < o2 ? -1 : o1 == o2 ? 0 : 1;
   }
@@ -148,7 +161,7 @@ public class Comparing {
     return 0;
   }
 
-  public static <T extends Comparable<T>> int compare(@Nullable T o1, @Nullable T o2) {
+  public static <T extends Comparable<? super T>> int compare(@Nullable T o1, @Nullable T o2) {
     if (o1 == o2) return 0;
     if (o1 == null) return -1;
     if (o2 == null) return 1;

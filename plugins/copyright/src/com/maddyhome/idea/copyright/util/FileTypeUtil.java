@@ -185,8 +185,8 @@ public class FileTypeUtil {
     return preview.substring(0, preview.length() - 1);
   }
 
-  public boolean isSupportedFile(VirtualFile file) {
-    if (file == null || file.isDirectory()) {
+  public boolean isSupportedFile(@NotNull VirtualFile file) {
+    if (file.isDirectory()) {
       return false;
     }
 
@@ -229,12 +229,6 @@ public class FileTypeUtil {
     Commenter commenter = getCommenter(fileType);
 
     return commenter != null && commenter.getBlockCommentPrefix() != null;
-  }
-
-  public static boolean hasLineComment(FileType fileType) {
-    Commenter commenter = getCommenter(fileType);
-
-    return commenter != null && commenter.getLineCommentPrefix() != null;
   }
 
   public boolean allowSeparators(FileType fileType) {

@@ -1,8 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.lookup;
 
-import com.intellij.codeInsight.AutoPopupController;
-import com.intellij.codeInsight.TailType;
+import com.intellij.codeInsight.*;
 import com.intellij.codeInsight.completion.*;
 import com.intellij.codeInsight.daemon.impl.JavaColorProvider;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightControlFlowUtil;
@@ -165,8 +164,7 @@ public class VariableLookupItem extends LookupItem<PsiVariable> implements Typed
       if (willBeImported()) {
         RangeMarker toDelete = JavaCompletionUtil.insertTemporary(context.getTailOffset(), document, " ");
         context.commitDocument();
-        final PsiReferenceExpression
-          ref = PsiTreeUtil.findElementOfClassAtOffset(context.getFile(), context.getStartOffset(), PsiReferenceExpression.class, false);
+        PsiReferenceExpression ref = findReference(context, context.getStartOffset());
         if (ref != null) {
           if (ref.isQualified()) {
             return; // shouldn't happen, but sometimes we see exceptions because of this
@@ -184,12 +182,12 @@ public class VariableLookupItem extends LookupItem<PsiVariable> implements Typed
       }
     }
 
-    PsiReferenceExpression ref = PsiTreeUtil.findElementOfClassAtOffset(context.getFile(), context.getTailOffset() - 1, PsiReferenceExpression.class, false);
+    PsiReferenceExpression ref = findReference(context, context.getTailOffset() - 1);
     if (ref != null) {
       JavaCodeStyleManager.getInstance(context.getProject()).shortenClassReferences(ref);
     }
 
-    ref = PsiTreeUtil.findElementOfClassAtOffset(context.getFile(), context.getTailOffset() - 1, PsiReferenceExpression.class, false);
+    ref = findReference(context, context.getTailOffset() - 1);
     PsiElement target = ref == null ? null : ref.resolve();
     if (target instanceof PsiLocalVariable || target instanceof PsiParameter) {
       makeFinalIfNeeded(context, (PsiVariable)target);
@@ -198,11 +196,11 @@ public class VariableLookupItem extends LookupItem<PsiVariable> implements Typed
     final char completionChar = context.getCompletionChar();
     if (completionChar == '=') {
       context.setAddCompletionChar(false);
-      TailType.EQ.processTail(context.getEditor(), context.getTailOffset());
+      EqTailType.INSTANCE.processTail(context.getEditor(), context.getTailOffset());
     }
     else if (completionChar == ',' && getAttribute(LookupItem.TAIL_TYPE_ATTR) != TailType.UNKNOWN) {
       context.setAddCompletionChar(false);
-      TailType.COMMA.processTail(context.getEditor(), context.getTailOffset());
+      CommaTailType.INSTANCE.processTail(context.getEditor(), context.getTailOffset());
       AutoPopupController.getInstance(context.getProject()).autoPopupParameterInfo(context.getEditor(), null);
     }
     else if (completionChar == ':' && getAttribute(LookupItem.TAIL_TYPE_ATTR) != TailType.UNKNOWN && isTernaryCondition(ref)) {
@@ -219,6 +217,23 @@ public class VariableLookupItem extends LookupItem<PsiVariable> implements Typed
         document.insertString(ref.getTextRange().getStartOffset(), "!");
       }
     }
+    else if (completionChar == Lookup.REPLACE_SELECT_CHAR) {
+      removeEmptyCallParentheses(context);
+    }
+  }
+
+  private static void removeEmptyCallParentheses(@NotNull InsertionContext context) {
+    PsiReferenceExpression ref = findReference(context, context.getTailOffset() - 1);
+    if (ref != null && ref.getParent() instanceof PsiMethodCallExpression) {
+      PsiExpressionList argList = ((PsiMethodCallExpression)ref.getParent()).getArgumentList();
+      if (argList.getExpressionCount() == 0) {
+        context.getDocument().deleteString(argList.getTextRange().getStartOffset(), argList.getTextRange().getEndOffset());
+      }
+    }
+  }
+
+  private static PsiReferenceExpression findReference(@NotNull InsertionContext context, int offset) {
+    return PsiTreeUtil.findElementOfClassAtOffset(context.getFile(), offset, PsiReferenceExpression.class, false);
   }
 
   private static boolean isTernaryCondition(PsiReferenceExpression ref) {

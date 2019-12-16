@@ -7,6 +7,7 @@ import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.util.treeView.NodeDescriptor;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.util.Comparing;
@@ -22,6 +23,7 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.treeStructure.*;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
@@ -54,9 +56,11 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.awt.event.InputEvent;
+import java.io.File;
 import java.net.URL;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 
 import static org.jetbrains.idea.maven.navigator.MavenProjectsNavigator.TOOL_WINDOW_PLACE_ID;
 import static org.jetbrains.idea.maven.project.ProjectBundle.message;
@@ -67,6 +71,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
   private static final Collection<String> PHASES = MavenConstants.PHASES;
 
   private static final Comparator<MavenSimpleNode> NODE_COMPARATOR = (o1, o2) -> StringUtil.compare(o1.getName(), o2.getName(), true);
+  private final ExecutorService boundedUpdateService;
 
   private final Project myProject;
   private final MavenProjectsManager myProjectsManager;
@@ -90,6 +95,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     myTasksManager = tasksManager;
     myShortcutsManager = shortcutsManager;
     myProjectsNavigator = projectsNavigator;
+    boundedUpdateService = AppExecutorUtil.createBoundedApplicationPoolExecutor("Maven Plugin Updater", 1);
 
     configureTree(tree);
 
@@ -773,7 +779,6 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
       myRunConfigurationsNode = new RunConfigurationsNode(this);
 
       setUniformIcon(MavenIcons.MavenProject);
-      updateProject();
     }
 
     public MavenProject getMavenProject() {
@@ -1119,35 +1124,9 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     }
 
     public void updatePlugins(MavenProject mavenProject) {
+
       List<MavenPlugin> plugins = mavenProject.getDeclaredPlugins();
-
-      for (Iterator<PluginNode> itr = myPluginNodes.iterator(); itr.hasNext(); ) {
-        PluginNode each = itr.next();
-
-        if (plugins.contains(each.getPlugin())) {
-          each.updatePlugin();
-        }
-        else {
-          itr.remove();
-        }
-      }
-      for (MavenPlugin each : plugins) {
-        if (!hasNodeFor(each)) {
-          myPluginNodes.add(new PluginNode(this, each));
-        }
-      }
-
-      sort(myPluginNodes);
-      childrenChanged();
-    }
-
-    private boolean hasNodeFor(MavenPlugin plugin) {
-      for (PluginNode each : myPluginNodes) {
-        if (each.getPlugin().getMavenId().equals(plugin.getMavenId())) {
-          return true;
-        }
-      }
-      return false;
+      MavenUtil.runInBackground(myProject, "Updating plugins", false, new UpdatePluginsTreeTask(this, plugins), boundedUpdateService);
     }
   }
 
@@ -1155,12 +1134,12 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     private final MavenPlugin myPlugin;
     private MavenPluginInfo myPluginInfo;
 
-    public PluginNode(PluginsNode parent, MavenPlugin plugin) {
+    public PluginNode(PluginsNode parent, MavenPlugin plugin, MavenPluginInfo pluginInfo) {
       super(parent);
       myPlugin = plugin;
 
       setUniformIcon(MavenIcons.MavenPlugin);
-      updatePlugin();
+      updatePlugin(pluginInfo);
     }
 
     public MavenPlugin getPlugin() {
@@ -1177,11 +1156,10 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
       setNameAndTooltip(getName(), null, myPluginInfo != null ? myPlugin.getDisplayString() : null);
     }
 
-    public void updatePlugin() {
+    public void updatePlugin(@Nullable MavenPluginInfo newPluginInfo) {
       boolean hadPluginInfo = myPluginInfo != null;
 
-      myPluginInfo = MavenArtifactUtil.readPluginInfo(myProjectsManager.getLocalRepository(), myPlugin.getMavenId());
-
+      myPluginInfo = newPluginInfo;
       boolean hasPluginInfo = myPluginInfo != null;
 
       setErrorLevel(myPluginInfo == null ? ErrorLevel.ERROR : ErrorLevel.NONE);
@@ -1526,8 +1504,79 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
 
     @Override
     public void handleDoubleClickOrEnter(SimpleTree tree, InputEvent inputEvent) {
-      MavenActionsUsagesCollector.trigger(myProject, MavenActionsUsagesCollector.ActionID.ExecuteMavenRunConfigurationAction, TOOL_WINDOW_PLACE_ID, false, null);
+      MavenActionsUsagesCollector
+        .trigger(myProject, MavenActionsUsagesCollector.ActionID.ExecuteMavenRunConfigurationAction, TOOL_WINDOW_PLACE_ID, false, null);
       ProgramRunnerUtil.executeConfiguration(mySettings, DefaultRunExecutor.getRunExecutorInstance());
+    }
+  }
+
+  private class UpdatePluginsTreeTask implements MavenTask {
+    @NotNull private final PluginsNode myParentNode;
+    private final List<MavenPlugin> myPlugins;
+    private final List<PluginNode> myNodes;
+
+    UpdatePluginsTreeTask(PluginsNode parentNode, List<MavenPlugin> plugins) {
+      myNodes = new ArrayList<>(parentNode.myPluginNodes);
+      myParentNode = parentNode;
+      myPlugins = plugins;
+    }
+
+    private boolean hasNodeFor(MavenPlugin plugin) {
+      for (PluginNode each : myNodes) {
+        if (each.getPlugin().getMavenId().equals(plugin.getMavenId())) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    @Override
+    public void run(MavenProgressIndicator indicator) throws MavenProcessCanceledException {
+      Map<MavenPlugin, MavenPluginInfo> pluginsToUpdate = new HashMap<>();
+      Map<MavenPlugin, MavenPluginInfo> pluginsToAdd = new HashMap<>();
+      List<MavenPlugin> pluginsToDelete = new ArrayList<>();
+
+      File localRepository = myProjectsManager.getLocalRepository();
+      for (Iterator<PluginNode> itr = myNodes.iterator(); itr.hasNext(); ) {
+        PluginNode note = itr.next();
+        if (myPlugins.contains(note.getPlugin())) {
+          pluginsToUpdate.put(note.getPlugin(), MavenArtifactUtil.readPluginInfo(localRepository, note.getPlugin().getMavenId()));
+        }
+        else {
+          pluginsToDelete.add(note.getPlugin());
+        }
+      }
+
+      for (MavenPlugin each : myPlugins) {
+        if (!hasNodeFor(each)) {
+          pluginsToAdd.put(each, MavenArtifactUtil.readPluginInfo(localRepository, each.getMavenId()));
+        }
+      }
+
+      updateNodesInEDT(pluginsToUpdate, pluginsToAdd, pluginsToDelete);
+    }
+
+    private void updateNodesInEDT(Map<MavenPlugin, MavenPluginInfo> pluginsToUpdate,
+                                  Map<MavenPlugin, MavenPluginInfo> pluginsToAdd,
+                                  List<MavenPlugin> nodesToDelete) {
+      ApplicationManager.getApplication().invokeLater(() -> {
+        myParentNode.myPluginNodes.removeIf(it -> nodesToDelete.contains(it.myPlugin));
+        for (PluginNode node : myParentNode.myPluginNodes) {
+          MavenPluginInfo info = pluginsToUpdate.get(node.myPlugin);
+          if (info != null) {
+            node.updatePlugin(info);
+          }
+        }
+
+        for (Map.Entry<MavenPlugin, MavenPluginInfo> entry : pluginsToAdd.entrySet()) {
+          if (!hasNodeFor(entry.getKey())) {
+            myParentNode.myPluginNodes.add(new PluginNode(myParentNode, entry.getKey(), entry.getValue()));
+          }
+        }
+
+        myParentNode.sort(myParentNode.myPluginNodes);
+        myParentNode.childrenChanged();
+      });
     }
   }
 }

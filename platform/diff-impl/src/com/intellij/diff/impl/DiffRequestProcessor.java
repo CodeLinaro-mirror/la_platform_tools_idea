@@ -49,6 +49,7 @@ import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.ex.IdeFocusTraversalPolicy;
 import com.intellij.ui.HintHint;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.JBSplitter;
 import com.intellij.ui.LightweightHint;
 import com.intellij.ui.components.JBPanelWithEmptyText;
@@ -316,6 +317,7 @@ public abstract class DiffRequestProcessor implements Disposable {
       myState.destroy();
       myToolbarStatusPanel.setContent(null);
       myContentPanel.setContent(null);
+      myToolbarWrapper.setBorder(null);
 
       myToolbarGroup.removeAll();
       myPopupActionGroup.removeAll();
@@ -659,12 +661,12 @@ public abstract class DiffRequestProcessor implements Disposable {
   @NotNull private IterationState myIterationState = IterationState.NONE;
 
   @CalledInAwt
-  protected boolean hasNextChange() {
+  protected boolean hasNextChange(boolean fromUpdate) {
     return false;
   }
 
   @CalledInAwt
-  protected boolean hasPrevChange() {
+  protected boolean hasPrevChange(boolean fromUpdate) {
     return false;
   }
 
@@ -695,7 +697,7 @@ public abstract class DiffRequestProcessor implements Disposable {
         return;
       }
 
-      if (getSettings().isGoToNextFileOnNextDifference() && isNavigationEnabled() && hasNextChange()) {
+      if (getSettings().isGoToNextFileOnNextDifference() && isNavigationEnabled() && hasNextChange(true)) {
         e.getPresentation().setEnabled(true);
         return;
       }
@@ -712,7 +714,7 @@ public abstract class DiffRequestProcessor implements Disposable {
         return;
       }
 
-      if (!isNavigationEnabled() || !hasNextChange() || !getSettings().isGoToNextFileOnNextDifference()) return;
+      if (!isNavigationEnabled() || !hasNextChange(false) || !getSettings().isGoToNextFileOnNextDifference()) return;
 
       if (myIterationState != IterationState.NEXT) {
         notifyMessage(e, true);
@@ -738,7 +740,7 @@ public abstract class DiffRequestProcessor implements Disposable {
         return;
       }
 
-      if (getSettings().isGoToNextFileOnNextDifference() && isNavigationEnabled() && hasPrevChange()) {
+      if (getSettings().isGoToNextFileOnNextDifference() && isNavigationEnabled() && hasPrevChange(true)) {
         e.getPresentation().setEnabled(true);
         return;
       }
@@ -755,7 +757,7 @@ public abstract class DiffRequestProcessor implements Disposable {
         return;
       }
 
-      if (!isNavigationEnabled() || !hasPrevChange() || !getSettings().isGoToNextFileOnNextDifference()) return;
+      if (!isNavigationEnabled() || !hasPrevChange(false) || !getSettings().isGoToNextFileOnNextDifference()) return;
 
       if (myIterationState != IterationState.PREV) {
         notifyMessage(e, false);
@@ -838,12 +840,12 @@ public abstract class DiffRequestProcessor implements Disposable {
       }
 
       e.getPresentation().setVisible(true);
-      e.getPresentation().setEnabled(hasNextChange());
+      e.getPresentation().setEnabled(hasNextChange(true));
     }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      if (!isNavigationEnabled() || !hasNextChange()) return;
+      if (!isNavigationEnabled() || !hasNextChange(false)) return;
 
       goToNextChange(false);
     }
@@ -869,12 +871,12 @@ public abstract class DiffRequestProcessor implements Disposable {
       }
 
       e.getPresentation().setVisible(true);
-      e.getPresentation().setEnabled(hasPrevChange());
+      e.getPresentation().setEnabled(hasPrevChange(true));
     }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      if (!isNavigationEnabled() || !hasPrevChange()) return;
+      if (!isNavigationEnabled() || !hasPrevChange(false)) return;
 
       goToPrevChange(false);
     }
@@ -888,7 +890,7 @@ public abstract class DiffRequestProcessor implements Disposable {
     Shortcut[] originalShortcuts = keymap.getShortcuts(originalActionId);
 
     Shortcut[] shortcuts = action.getShortcutSet().getShortcuts();
-    Set<Shortcut> newShortcuts = new HashSet<>(Arrays.asList(shortcuts));
+    Set<Shortcut> newShortcuts = ContainerUtil.set(shortcuts);
     boolean hadOriginalShortcut = ContainerUtil.removeAll(newShortcuts, originalShortcuts);
     if (!hadOriginalShortcut) return;
 
@@ -998,7 +1000,7 @@ public abstract class DiffRequestProcessor implements Disposable {
 
   private class MyFocusTraversalPolicy extends IdeFocusTraversalPolicy {
     @Override
-    public final Component getDefaultComponentImpl(final Container focusCycleRoot) {
+    public final Component getDefaultComponent(final Container focusCycleRoot) {
       JComponent component = DiffRequestProcessor.this.getPreferredFocusedComponent();
       if (component == null) return null;
       return IdeFocusTraversalPolicy.getPreferredFocusedComponent(component, this);
@@ -1208,6 +1210,9 @@ public abstract class DiffRequestProcessor implements Disposable {
       buildActionPopup(toolbarComponents.popupActions);
 
       myToolbarStatusPanel.setContent(toolbarComponents.statusPanel);
+      if (toolbarComponents.needTopToolbarBorder) {
+        myToolbarWrapper.setBorder(JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0));
+      }
     }
 
     @Override
@@ -1264,6 +1269,9 @@ public abstract class DiffRequestProcessor implements Disposable {
       buildActionPopup(mergeActions(toolbarComponents1.popupActions, toolbarComponents2.popupActions));
 
       myToolbarStatusPanel.setContent(toolbarComponents1.statusPanel); // TODO: combine both panels ?
+      if (toolbarComponents1.needTopToolbarBorder) {
+        myToolbarWrapper.setBorder(JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0));
+      }
     }
 
     @Nullable

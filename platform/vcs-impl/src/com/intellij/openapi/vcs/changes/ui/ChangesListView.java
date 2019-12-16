@@ -20,6 +20,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.UtilKt;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.vcsUtil.VcsUtil;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -39,6 +40,7 @@ import static com.intellij.openapi.vcs.changes.ChangesUtil.*;
 import static com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode.*;
 import static com.intellij.util.containers.UtilKt.getIfSingle;
 import static com.intellij.util.containers.UtilKt.stream;
+import static com.intellij.vcs.commit.ChangesViewCommitPanelKt.subtreeRootObject;
 import static java.util.stream.Collectors.toList;
 
 // TODO: Check if we could extend DnDAwareTree here instead of directly implementing DnDAware
@@ -79,6 +81,15 @@ public class ChangesListView extends ChangesTree implements DataProvider, DnDAwa
   }
 
   @Override
+  protected boolean isInclusionVisible(@NotNull ChangesBrowserNode<?> node) {
+    Object subtreeRootObject = subtreeRootObject(node);
+
+    if (subtreeRootObject instanceof LocalChangeList) return !((LocalChangeList)subtreeRootObject).getChanges().isEmpty();
+    if (subtreeRootObject == UNVERSIONED_FILES_TAG) return true;
+    return false;
+  }
+
+  @Override
   public DefaultTreeModel getModel() {
     return (DefaultTreeModel)super.getModel();
   }
@@ -108,10 +119,7 @@ public class ChangesListView extends ChangesTree implements DataProvider, DnDAwa
     }
 
     if (oldRoot.getFileCount() == 0 && TreeUtil.collectExpandedPaths(this).size() == 0) {
-      // expanding lots of nodes is a slow operation (and result is not very useful)
-      if (defaultListNode.getChildCount() <= 10000) {
-        expandPath(TreeUtil.getPath(newRoot, defaultListNode));
-      }
+      expandSafe(defaultListNode);
     }
   }
 
@@ -443,8 +451,18 @@ public class ChangesListView extends ChangesTree implements DataProvider, DnDAwa
     return node != null ? TreeUtil.getPathFromRoot(node) : null;
   }
 
+  /**
+   * Expands node only if its child count is small enough.
+   * As expanding node with large child count is a slow operation (and result is not very useful).
+   */
+  public void expandSafe(@NotNull DefaultMutableTreeNode node) {
+    if (node.getChildCount() <= 10000) {
+      expandPath(TreeUtil.getPathFromRoot(node));
+    }
+  }
+
   private static class DistinctChangePredicate implements Predicate<Change> {
-    private final Set<Object> seen = ContainerUtil.newTroveSet(ChangeListChange.HASHING_STRATEGY);
+    private final Set<Object> seen = new THashSet<>(ChangeListChange.HASHING_STRATEGY);
 
     @Override
     public boolean test(Change change) {

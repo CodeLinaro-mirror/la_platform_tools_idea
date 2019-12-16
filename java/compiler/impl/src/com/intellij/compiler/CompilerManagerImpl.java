@@ -28,6 +28,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiManager;
+import com.intellij.serviceContainer.NonInjectable;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
@@ -44,7 +45,8 @@ import org.jetbrains.jps.incremental.BinaryContent;
 import org.jetbrains.jps.javac.*;
 import org.jetbrains.jps.javac.ast.api.JavacFileData;
 
-import javax.tools.*;
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -64,16 +66,23 @@ public class CompilerManagerImpl extends CompilerManager {
   private final Set<FileType> myCompilableTypes = new HashSet<>();
   private final CompilationStatusListener myEventPublisher;
   private final Semaphore myCompilationSemaphore = new Semaphore(1, true);
-  private final Set<ModuleType> myValidationDisabledModuleTypes = new HashSet<>();
+  private final Set<ModuleType<?>> myValidationDisabledModuleTypes = new HashSet<>();
   private final Set<LocalFileSystem.WatchRequest> myWatchRoots;
   private volatile ExternalJavacManager myExternalJavacManager;
 
-  public CompilerManagerImpl(final Project project, MessageBus messageBus) {
+  @SuppressWarnings("MissingDeprecatedAnnotation")
+  @NonInjectable
+  @Deprecated
+  public CompilerManagerImpl(@NotNull Project project, @NotNull MessageBus messageBus) {
+    this(project);
+  }
+
+  public CompilerManagerImpl(@NotNull Project project) {
     myProject = project;
-    myEventPublisher = messageBus.syncPublisher(CompilerTopics.COMPILATION_STATUS);
+    myEventPublisher = project.getMessageBus().syncPublisher(CompilerTopics.COMPILATION_STATUS);
 
     // predefined compilers
-    for(Compiler compiler: Compiler.EP_NAME.getExtensions(myProject)) {
+    for (Compiler compiler : Compiler.EP_NAME.getExtensions(myProject)) {
       addCompiler(compiler);
     }
     for (CompilerFactory factory : CompilerFactory.EP_NAME.getExtensionList(project)) {
@@ -342,7 +351,7 @@ public class CompilerManagerImpl extends CompilerManager {
   }
 
   @Override
-  public void setValidationEnabled(ModuleType moduleType, boolean enabled) {
+  public void setValidationEnabled(ModuleType<?> moduleType, boolean enabled) {
     if (enabled) {
       myValidationDisabledModuleTypes.remove(moduleType);
     }
@@ -407,7 +416,7 @@ public class CompilerManagerImpl extends CompilerManager {
     final Map<File, Set<File>> outs = Collections.singletonMap(outputDir, sourceRoots);
 
     final ExternalJavacManager javacManager = getJavacManager();
-    final CompilationPaths paths = CompilationPaths.create(platformCp, classpath, upgradeModulePath, modulePath, sourcePath);
+    final CompilationPaths paths = CompilationPaths.create(platformCp, classpath, upgradeModulePath, ModulePath.create(modulePath), sourcePath);
     // do not keep process alive in tests since every test expects all spawned processes to terminate in teardown
     boolean compiledOk = javacManager != null && javacManager.forkJavac(
       javaHome, -1, Collections.emptyList(), options, paths, files, outs, diagnostic, outputCollector,

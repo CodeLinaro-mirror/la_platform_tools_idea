@@ -47,6 +47,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jdom.Element;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -289,7 +290,8 @@ public class ExternalProjectsViewImpl extends SimpleToolWindowPanel implements D
     return group;
   }
 
-  private void initStructure() {
+  @ApiStatus.Internal
+  public void initStructure() {
     myStructure = new ExternalProjectsStructure(myProject, myTree);
     Disposer.register(this, myStructure);
     myStructure.init(this);
@@ -533,11 +535,6 @@ public class ExternalProjectsViewImpl extends SimpleToolWindowPanel implements D
   }
 
   private void scheduleStructureRequest(final Runnable r) {
-    if (isUnitTestMode()) {
-      r.run();
-      return;
-    }
-
     invokeLater(myProject, () -> {
       if (!myToolWindow.isVisible()) return;
 
@@ -582,7 +579,7 @@ public class ExternalProjectsViewImpl extends SimpleToolWindowPanel implements D
     final List<ExternalSystemNode> selectedNodes = getSelectedNodes(ExternalSystemNode.class);
     if (selectedNodes.isEmpty()) return null;
 
-    List<TaskData> tasks = ContainerUtil.newSmartList();
+    List<TaskData> tasks = new SmartList<>();
 
     ExternalTaskExecutionInfo taskExecutionInfo = new ExternalTaskExecutionInfo();
 

@@ -44,7 +44,6 @@ import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.impl.FileTypeManagerImpl;
 import com.intellij.openapi.module.EmptyModuleType;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.module.ModuleType;
 import com.intellij.openapi.project.ModuleListener;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
@@ -290,7 +289,7 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
 
   @NotNull
   protected LightProjectDescriptor getProjectDescriptor() {
-    return new SimpleLightProjectDescriptor(getModuleType(), getProjectJDK());
+    return new SimpleLightProjectDescriptor(getModuleTypeId(), getProjectJDK());
   }
 
   @NotNull
@@ -308,6 +307,8 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
       initProject(descriptor);
       reusedProject = false;
     }
+
+    descriptor.registerSdk(parentDisposable);
 
     ProjectManagerEx projectManagerEx = ProjectManagerEx.getInstanceEx();
     Project project = ourProject;
@@ -410,8 +411,8 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
         }
       },
       () -> checkEditorsReleased(),
-      () -> myOldSdks.checkForJdkTableLeaks(),
       super::tearDown,
+      () -> myOldSdks.checkForJdkTableLeaks(),
       () -> {
         if (myThreadTracker != null) {
           myThreadTracker.checkLeak();
@@ -486,8 +487,18 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
           templateDataLanguageMappings.cleanupForNextTest();
         }
       }).
-      append(() -> ((PsiManagerImpl)PsiManager.getInstance(project)).cleanupForNextTest()).
-      append(() -> ((StructureViewFactoryImpl)StructureViewFactory.getInstance(project)).cleanupForNextTest()).
+      append(() -> {
+        PsiManager psiManager = project.getServiceIfCreated(PsiManager.class);
+        if (psiManager != null) {
+          ((PsiManagerImpl)psiManager).cleanupForNextTest();
+        }
+      }).
+      append(() -> {
+        StructureViewFactory structureViewFactory = project.getServiceIfCreated(StructureViewFactory.class);
+        if (structureViewFactory != null) {
+          ((StructureViewFactoryImpl)structureViewFactory).cleanupForNextTest();
+        }
+      }).
       append(() -> HeavyPlatformTestCase.waitForProjectLeakingThreads(project, 10, TimeUnit.SECONDS)).
       append(() -> ProjectManagerEx.getInstanceEx().closeTestProject(project)).
       append(() -> application.setDataProvider(null)).
@@ -634,8 +645,8 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
   }
 
   @NotNull
-  protected ModuleType getModuleType() {
-    return EmptyModuleType.getInstance();
+  protected String getModuleTypeId() {
+    return EmptyModuleType.EMPTY_MODULE;
   }
 
   /**
@@ -763,18 +774,18 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
   }
 
   private static class SimpleLightProjectDescriptor extends LightProjectDescriptor {
-    @NotNull private final ModuleType myModuleType;
+    @NotNull private final String myModuleTypeId;
     @Nullable private final Sdk mySdk;
 
-    SimpleLightProjectDescriptor(@NotNull ModuleType moduleType, @Nullable Sdk sdk) {
-      myModuleType = moduleType;
+    SimpleLightProjectDescriptor(@NotNull String moduleTypeId, @Nullable Sdk sdk) {
+      myModuleTypeId = moduleTypeId;
       mySdk = sdk;
     }
 
     @NotNull
     @Override
-    public ModuleType getModuleType() {
-      return myModuleType;
+    public String getModuleTypeId() {
+      return myModuleTypeId;
     }
 
     @Nullable
@@ -790,13 +801,13 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
 
       SimpleLightProjectDescriptor that = (SimpleLightProjectDescriptor)o;
 
-      if (!myModuleType.equals(that.myModuleType)) return false;
+      if (!myModuleTypeId.equals(that.myModuleTypeId)) return false;
       return areJdksEqual(that.getSdk());
     }
 
     @Override
     public int hashCode() {
-      return myModuleType.hashCode();
+      return myModuleTypeId.hashCode();
     }
 
     private boolean areJdksEqual(final Sdk newSdk) {

@@ -38,13 +38,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 
+import static com.jetbrains.env.python.debug.PyBaseDebuggerTask.convertToList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author traff
  */
 public class PyConsoleTask extends PyExecutionFixtureTestTask {
-  private static final Logger LOG = Logger.getInstance("com.jetbrains.env.python.console.PyConsoleTask");
+  private static final Logger LOG = Logger.getInstance(PyConsoleTask.class);
 
   private boolean myProcessCanTerminate;
 
@@ -63,10 +64,14 @@ public class PyConsoleTask extends PyExecutionFixtureTestTask {
     super(null);
   }
 
+  public PyConsoleTask(String relativeTestDataPath) {
+    super(relativeTestDataPath);
+  }
+
   @Nullable
   @Override
   public Set<String> getTagsToCover() {
-    return Sets.newHashSet("python3.6", "python2.7", "ipython", "ipython200", "jython", "IronPython");
+    return Sets.newHashSet("python3.8", "python2.7", "ipython", "ipython780", "jython", "IronPython");
   }
 
   public PythonConsoleView getConsoleView() {
@@ -400,6 +405,10 @@ public class PyConsoleTask extends PyExecutionFixtureTestTask {
       result.add(((PyDebugValue)list.getValue(i)).getValue());
     }
     return result;
+  }
+
+  protected List<PyDebugValue> loadFrame() throws PyDebuggerException {
+    return convertToList(myCommunication.loadFrame());
   }
 
   protected void input(String text) {

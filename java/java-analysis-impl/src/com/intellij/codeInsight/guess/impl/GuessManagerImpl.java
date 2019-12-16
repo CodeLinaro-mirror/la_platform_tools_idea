@@ -30,10 +30,7 @@ import com.intellij.psi.search.PsiElementProcessorAdapter;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
 import com.intellij.psi.search.searches.ReferencesSearch;
-import com.intellij.psi.util.CachedValueProvider;
-import com.intellij.psi.util.CachedValuesManager;
-import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.psi.util.PsiUtil;
+import com.intellij.psi.util.*;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.BitUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -347,7 +344,7 @@ public class GuessManagerImpl extends GuessManager {
       GuessTypeVisitor visitor = tryGuessingTypeWithoutDfa(place, honorAssignments);
       if (!visitor.isDfaNeeded()) {
         result = visitor.mySpecificType == null ?
-                 Collections.emptyList() : Collections.singletonList(tryGenerify(expr, visitor.mySpecificType));
+                 Collections.emptyList() : Collections.singletonList(DfaPsiUtil.tryGenerify(expr, visitor.mySpecificType));
       }
     }
     if (result == null) {
@@ -358,7 +355,7 @@ public class GuessManagerImpl extends GuessManager {
       PsiClass typeClass = PsiUtil.resolveClassInType(t);
       return typeClass == null || PsiUtil.isAccessible(typeClass, expr, null);
     });
-    if (result.equals(Collections.singletonList(expr.getType()))) {
+    if (result.equals(Collections.singletonList(TypeConversionUtil.erasure(expr.getType())))) {
       return Collections.emptyList();
     }
     return result;
@@ -389,24 +386,9 @@ public class GuessManagerImpl extends GuessManager {
   private static List<PsiType> flattenConjuncts(@NotNull PsiExpression expr, Collection<PsiType> conjuncts) {
     if (!conjuncts.isEmpty()) {
       Set<PsiType> flatTypes = PsiIntersectionType.flatten(conjuncts.toArray(PsiType.EMPTY_ARRAY), new LinkedHashSet<>());
-      return ContainerUtil.mapNotNull(flatTypes, type -> tryGenerify(expr, type));
+      return ContainerUtil.mapNotNull(flatTypes, type -> DfaPsiUtil.tryGenerify(expr, type));
     }
     return Collections.emptyList();
-  }
-
-  private static PsiType tryGenerify(PsiExpression expression, PsiType type) {
-    if (!(type instanceof PsiClassType)) {
-      return type;
-    }
-    PsiClassType classType = (PsiClassType)type;
-    if (!classType.isRaw()) {
-      return classType;
-    }
-    PsiClass psiClass = classType.resolve();
-    if (psiClass == null) return classType;
-    PsiType expressionType = expression.getType();
-    if (!(expressionType instanceof PsiClassType)) return classType;
-    return GenericsUtil.getExpectedGenericType(expression, psiClass, (PsiClassType)expressionType);
   }
 
   private static class GuessTypeVisitor extends JavaElementVisitor {

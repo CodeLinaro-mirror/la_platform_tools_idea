@@ -2,6 +2,7 @@
 package com.intellij.vcs.commit
 
 import com.intellij.ide.util.DelegatingProgressIndicator
+import com.intellij.internal.statistic.IdeActivity
 import com.intellij.openapi.application.TransactionGuard
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.diagnostic.logger
@@ -10,7 +11,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.ProgressManager.progress
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
@@ -76,12 +76,14 @@ abstract class AbstractCommitter(
     val task = object : Task.Backgroundable(project, taskName, true, configuration.commitOption) {
       override fun run(indicator: ProgressIndicator) {
         val vcsManager = ProjectLevelVcsManager.getInstance(myProject)
+        val activity = IdeActivity.started(myProject, "vcs", "commit")
         vcsManager.startBackgroundVcsOperation()
         try {
           delegateCommitToVcsThread()
         }
         finally {
           vcsManager.stopBackgroundVcsOperation()
+          activity.finished()
         }
       }
 
@@ -210,5 +212,11 @@ abstract class AbstractCommitter(
 
     @JvmStatic
     fun collectErrors(exceptions: List<VcsException>): List<VcsException> = exceptions.filterNot { it.isWarning }
+
+    internal fun progress(message: String) =
+      ProgressManager.getInstance().progressIndicator?.apply {
+        text = message
+        text2 = ""
+      }
   }
 }

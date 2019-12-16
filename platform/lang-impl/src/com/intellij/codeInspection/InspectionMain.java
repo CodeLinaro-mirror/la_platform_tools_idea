@@ -54,6 +54,9 @@ public class InspectionMain implements ApplicationStarter {
         else if ("-d".equals(arg)) {
           myApplication.mySourceDirectory = args.get(++i);
         }
+        else if ("-format".equals(arg)) {
+          myApplication.myOutputFormat = args.get(++i);
+        }
         else if ("-v0".equals(arg)) {
           myApplication.setVerboseLevel(0);
         }
@@ -71,6 +74,9 @@ public class InspectionMain implements ApplicationStarter {
         }
         else if ("-t".equals(arg)) {
           myApplication.myErrorCodeRequired = false;
+        }
+        else if ("-changes".equals(arg)) {
+          myApplication.myAnalyzeChanges = true;
         }
         else {
           System.err.println("unexpected argument: " + arg);

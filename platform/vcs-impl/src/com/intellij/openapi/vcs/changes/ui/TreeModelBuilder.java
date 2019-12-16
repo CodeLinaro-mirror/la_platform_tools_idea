@@ -76,7 +76,7 @@ public class TreeModelBuilder implements ChangesViewModelBuilder {
    */
   @Deprecated
   public TreeModelBuilder(@NotNull Project project, boolean showFlatten) {
-    this(project, ChangesGroupingSupport.getFactory(project, showFlatten ? NONE_GROUPING : DIRECTORY_GROUPING));
+    this(project, ChangesGroupingSupport.getFactory(showFlatten ? NONE_GROUPING : DIRECTORY_GROUPING));
   }
 
   /**
@@ -395,8 +395,10 @@ public class TreeModelBuilder implements ChangesViewModelBuilder {
                                   @NotNull ChangesBrowserNode<?> node,
                                   @NotNull Function<StaticFilePath, ChangesBrowserNode<?>> nodeBuilder) {
     PATH_NODE_BUILDER.set(subtreeRoot, nodeBuilder);
-    if (!GROUPING_POLICY.isIn(subtreeRoot) && myProject != null) {
-      GROUPING_POLICY.set(subtreeRoot, myGroupingPolicyFactory.createGroupingPolicy(myProject, myModel));
+    if (!GROUPING_POLICY.isIn(subtreeRoot)) {
+      ChangesGroupingPolicy policy = myProject != null ? myGroupingPolicyFactory.createGroupingPolicy(myProject, myModel)
+                                                       : NoneChangesGroupingPolicy.INSTANCE;
+      GROUPING_POLICY.set(subtreeRoot, policy);
     }
 
     StaticFilePath pathKey = getKey(change);

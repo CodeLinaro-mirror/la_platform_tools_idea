@@ -73,6 +73,10 @@ public class GitHandlerAuthenticationManager implements AutoCloseable {
         manager.prepareNativeSshAuth();
       }
       boolean useCredentialHelper = GitVcsApplicationSettings.getInstance().isUseCredentialHelper();
+
+      boolean isConfigCommand = handler.getCommand() == GitCommand.CONFIG;
+      if (isConfigCommand) return;
+
       boolean shouldResetCredentialHelper = !useCredentialHelper &&
                                             GitVersionSpecialty.CAN_OVERRIDE_CREDENTIAL_HELPER_WITH_EMPTY.existsIn(version);
       if (shouldResetCredentialHelper) {
@@ -108,6 +112,10 @@ public class GitHandlerAuthenticationManager implements AutoCloseable {
     myHandler.addLineListener(new GitLineHandlerListener() {
       @Override
       public void onLineAvailable(@NonNls String line, Key outputType) {
+        if (!httpAuthenticator.wasRequested()) {
+          return;
+        }
+
         String lowerCaseLine = StringUtil.toLowerCase(line);
         if (lowerCaseLine.contains("authentication failed") ||
             lowerCaseLine.contains("403 forbidden") ||
@@ -122,6 +130,10 @@ public class GitHandlerAuthenticationManager implements AutoCloseable {
 
       @Override
       public void processTerminated(int exitCode) {
+        if (!httpAuthenticator.wasRequested()) {
+          return;
+        }
+
         LOG.debug("auth listener: process terminated. auth failed=" + myHttpAuthFailed + ", cancelled=" + httpAuthenticator.wasCancelled());
         if (!httpAuthenticator.wasCancelled()) {
           if (myHttpAuthFailed) {

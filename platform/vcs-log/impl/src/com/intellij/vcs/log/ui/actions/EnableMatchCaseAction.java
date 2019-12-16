@@ -40,15 +40,15 @@ public class EnableMatchCaseAction extends BooleanPropertyToggleAction {
       }
       else {
         Collection<VcsLogProvider> providers = new LinkedHashSet<>(ui.getDataPack().getLogProviders().values());
-        List<VcsLogProvider> supported =
-          ContainerUtil.filter(providers, p -> VcsLogProperties.get(p, VcsLogProperties.CASE_INSENSITIVE_REGEX));
+        List<VcsLogProvider> supported = ContainerUtil.filter(providers, VcsLogProperties.CASE_INSENSITIVE_REGEX::getOrDefault);
         e.getPresentation().setVisible(true);
         e.getPresentation().setEnabled(!supported.isEmpty());
         if (providers.size() == supported.size() || supported.isEmpty()) {
           e.getPresentation().setText(MATCH_CASE);
         }
         else {
-          String supportedText = StringUtil.join(ContainerUtil.map(supported, p -> StringUtil.toLowerCase(p.getSupportedVcs().getName())), ", ");
+          String supportedText = StringUtil.join(ContainerUtil.map(supported,
+                                                                   p -> StringUtil.toLowerCase(p.getSupportedVcs().getName())), ", ");
           e.getPresentation().setText(MATCH_CASE + " (" + supportedText + " only)");
         }
       }

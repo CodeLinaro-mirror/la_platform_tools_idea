@@ -1,7 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
-import com.intellij.concurrency.JobScheduler
+import com.intellij.conversion.ConversionService
 import com.intellij.ide.FrameStateListener
 import com.intellij.ide.GeneralSettings
 import com.intellij.ide.IdeEventQueue
@@ -28,6 +28,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.ManagingFS
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile
 import com.intellij.openapi.vfs.newvfs.RefreshQueue
+import com.intellij.project.isDirectoryBased
 import com.intellij.util.SingleAlarm
 import com.intellij.util.concurrency.EdtScheduledExecutorService
 import com.intellij.util.pooledThreadSingleAlarm
@@ -36,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.annotations.CalledInAwt
 import java.beans.PropertyChangeListener
+import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -53,10 +55,8 @@ internal class SaveAndSyncHandlerImpl : BaseSaveAndSyncHandler(), Disposable {
 
   private val saveAlarm = pooledThreadSingleAlarm(delay = 300, parentDisposable = this) {
     val app = ApplicationManager.getApplication()
-    if (app != null && !app.isDisposed && !app.isDisposeInProgress && blockSaveOnFrameDeactivationCount.get() == 0) {
-      runBlocking {
-        processTasks()
-      }
+    if (app != null && !app.isDisposedOrDisposeInProgress && blockSaveOnFrameDeactivationCount.get() == 0) {
+      processTasks()
     }
   }
 
@@ -65,7 +65,7 @@ internal class SaveAndSyncHandlerImpl : BaseSaveAndSyncHandler(), Disposable {
     EdtScheduledExecutorService.getInstance().schedule({ addListeners() }, LISTEN_DELAY.toLong(), TimeUnit.SECONDS)
   }
 
-  private suspend fun processTasks() {
+  private fun processTasks() {
     while (true) {
       val task = synchronized(saveQueue) {
         saveQueue.pollFirst() ?: return
@@ -76,16 +76,18 @@ internal class SaveAndSyncHandlerImpl : BaseSaveAndSyncHandler(), Disposable {
       }
 
       LOG.runAndLogException {
-        coroutineScope {
-          if (task.saveDocuments) {
-            launch(storeEdtCoroutineDispatcher) {
-              // forceSavingAllSettings is set to true currently only if save triggered explicitly (or on close app/project), so, pass equal isDocumentsSavingExplicit
-              // in any case flag isDocumentsSavingExplicit is not really important
-              (FileDocumentManagerImpl.getInstance() as FileDocumentManagerImpl).saveAllDocuments(task.forceSavingAllSettings)
+        runBlocking {
+          coroutineScope {
+            if (task.saveDocuments) {
+              launch(storeEdtCoroutineDispatcher) {
+                // forceSavingAllSettings is set to true currently only if save triggered explicitly (or on close app/project), so, pass equal isDocumentsSavingExplicit
+                // in any case flag isDocumentsSavingExplicit is not really important
+                (FileDocumentManagerImpl.getInstance() as FileDocumentManagerImpl).saveAllDocuments(task.forceSavingAllSettings)
+              }
             }
-          }
-          launch {
-            saveProjectsAndApp(forceSavingAllSettings = task.forceSavingAllSettings, onlyProject = task.onlyProject)
+            launch {
+              saveProjectsAndApp(forceSavingAllSettings = task.forceSavingAllSettings, onlyProject = task.onlyProject)
+            }
           }
         }
       }
@@ -225,6 +227,17 @@ internal class SaveAndSyncHandlerImpl : BaseSaveAndSyncHandler(), Disposable {
               saveSettings(ApplicationManager.getApplication(), forceSavingAllSettings = true)
             }
           }
+
+          if (project != null && !ApplicationManager.getApplication().isUnitTestMode) {
+            val path = if (project.isDirectoryBased) project.basePath else project.projectFilePath
+            if (path == null) {
+              LOG.info("Cannot save conversion result: filePath == null")
+            }
+            else {
+              // update last modified for all project files that were modified between project open and close
+              ConversionService.getInstance().saveConversionResult(Paths.get(path))
+            }
+          }
         }
       })
     }
@@ -276,7 +289,7 @@ internal class SaveAndSyncHandlerImpl : BaseSaveAndSyncHandler(), Disposable {
       FileEditorManager.getInstance(project).selectedFiles.filterTo(files) { it is NewVirtualFile }
     }
 
-    if (!files.isEmpty()) {
+    if (files.isNotEmpty()) {
       // refresh open files synchronously so it doesn't wait for potentially longish refresh request in the queue to finish
       RefreshQueue.getInstance().refresh(false, false, null, files)
     }

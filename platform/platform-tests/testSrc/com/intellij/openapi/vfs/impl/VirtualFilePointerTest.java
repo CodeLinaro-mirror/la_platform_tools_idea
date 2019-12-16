@@ -11,6 +11,7 @@ import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ex.PathManagerEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.IoTestUtil;
 import com.intellij.openapi.vfs.*;
@@ -25,19 +26,22 @@ import com.intellij.testFramework.Timings;
 import com.intellij.testFramework.VfsTestUtil;
 import com.intellij.testFramework.fixtures.BareTestFixtureTestCase;
 import com.intellij.testFramework.rules.TempDirectory;
-import com.intellij.util.*;
+import com.intellij.util.ExceptionUtil;
+import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.TestTimeOut;
+import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -832,25 +836,6 @@ public class VirtualFilePointerTest extends BareTestFixtureTestCase {
   }
 
   @Test
-  public void testPointerToRootFromUrlMustNotBeMangled() {
-    VirtualFile root = ManagingFS.getInstance().getLocalRoots()[0];
-    String rootPath = root.getPath();
-    String rootUrl = root.getUrl();
-
-    VirtualFilePointer rootPointer = myVirtualFilePointerManager.create(rootUrl, disposable, null);
-    assertThat(rootPointer.getUrl()).as("root pointer url before getting file").isEqualTo(rootUrl);
-    assertThat(rootPointer.getFile()).as("root pointer file").isEqualTo(root);
-    assertThat(rootPointer.getUrl()).as("root pointer url after getting file").isEqualTo(rootUrl);
-
-    assertThat(Arrays.asList(
-      createPointerByFile(new File(rootPath + "//"), null),
-      createPointerByFile(new File(rootPath + "/."), null),
-      createPointerByFile(new File(rootPath + "/.//"), null),
-      createPointerByFile(new File(rootPath + "/.//."), null)
-    )).containsOnly(rootPointer);
-  }
-
-  @Test
   public void testDifferentFileSystemsLocalFSAndJarFSWithSimilarUrlsMustReturnDifferentInstances() throws IOException {
     VirtualFile vDir = getVirtualTempRoot();
     WriteAction.runAndWait(() -> {
@@ -875,5 +860,43 @@ public class VirtualFilePointerTest extends BareTestFixtureTestCase {
       assertNotSame(p1, pj1);
       assertNotSame(p2, pj2);
     });
+  }
+
+  @Test
+  public void testCrazyMoronicPointersWithEmptyPathDontCrashAnything() {
+    VirtualFilePointer p = myVirtualFilePointerManager.create("file:/", disposable, null);
+    assertEquals("file:/", p.getUrl());
+    p = myVirtualFilePointerManager.create("file://", disposable, null);
+    assertEquals("file://", p.getUrl());
+    p = myVirtualFilePointerManager.create("file:///", disposable, null);
+    assertEquals("file://", p.getUrl());
+    p = myVirtualFilePointerManager.create("file:////", disposable, null);
+    assertEquals("file://", p.getUrl());
+  }
+
+  @Test
+  public void testCleanupPathWithWindowsUNC() {
+    Assume.assumeTrue(SystemInfo.isWindows);
+    final VirtualFilePointer path = createPointerByFile(new File("\\\\wsl$\\Ubuntu"), null);
+    assertEquals("\\\\wsl$\\Ubuntu\\", path.getPresentableUrl());
+  }
+
+  @Test
+  public void testSpacesOnlyFileNamesUnderUnixMustBeAllowed() {
+    Assume.assumeTrue("Expected unix but got: '" + SystemInfo.getOsNameAndVersion()+"'", SystemInfo.isUnix);
+    VirtualFile vDir = getVirtualTempRoot();
+    VirtualFilePointer pointer = myVirtualFilePointerManager.create(vDir.getUrl() + "/xxx/ /c.txt", disposable, null);
+    assertFalse(pointer.isValid());
+  }
+  @Test
+  public void testCrazyExclamationMarkInFileNameMustBeAllowed() {
+    IoTestUtil.assumeWindows();
+    VirtualFile vDir = getVirtualTempRoot();
+    String rel = "/xxx/!/c.txt";
+    VirtualFilePointer pointer = myVirtualFilePointerManager.create(vDir.getUrl() + rel, disposable, null);
+    assertFalse(pointer.isValid());
+    assertTrue(FileUtil.createIfDoesntExist(new File(vDir.getPath() + rel)));
+    vDir.refresh(false, true);
+    assertTrue(pointer.isValid());
   }
 }

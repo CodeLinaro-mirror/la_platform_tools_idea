@@ -51,7 +51,7 @@
     <projectImportProvider implementation="org.jetbrains.idea.maven.wizards.MavenProjectImportProvider"/>
     <projectOpenProcessor implementation="org.jetbrains.idea.maven.wizards.MavenProjectOpenProcessor"/>
     <projectImportBuilder implementation="org.jetbrains.idea.maven.wizards.MavenProjectBuilder"/>
-    <moduleBuilder builderClass="org.jetbrains.idea.maven.wizards.MavenModuleBuilder"/>
+    <moduleBuilder builderClass="org.jetbrains.idea.maven.wizards.InternalMavenModuleBuilder"/>
     <frameworkSupport implementation="org.jetbrains.idea.maven.wizards.MavenFrameworkSupportProvider"/>
     <moduleExtension implementation="org.jetbrains.idea.maven.importing.MavenSourceFoldersModuleExtension"/>
     <moduleService serviceImplementation="org.jetbrains.idea.maven.importing.MavenPomPathModuleService"/>
@@ -86,7 +86,9 @@
     -->
     <orderEnumerationHandlerFactory implementation="org.jetbrains.idea.maven.execution.MavenOrderEnumeratorHandler$FactoryImpl"/>
 
-    <junitPatcher implementation="org.jetbrains.idea.maven.execution.MavenJUnitPatcher" />
+    <junitPatcher implementation="org.jetbrains.idea.maven.execution.MavenJUnitPatcher"/>
+
+    <programRunner implementation="org.jetbrains.idea.maven.execution.build.DelegateBuildRunner" id="mavenDelegateBuildRunner"/>
 
     <compileServer.plugin classpath="maven-jps-plugin.jar"/>
 
@@ -495,8 +497,8 @@
 
     <action id="Maven.RemoveManagedFiles"
             class="org.jetbrains.idea.maven.project.actions.RemoveManagedFilesAction"
-            text="Remove Projects"
-            description="Remove selected Maven projects from the project tree"
+            text="Unlink Maven Projects"
+            description="Unlink selected Maven projects and their subprojects from the project tree"
             icon="AllIcons.General.Remove">
     </action>
 

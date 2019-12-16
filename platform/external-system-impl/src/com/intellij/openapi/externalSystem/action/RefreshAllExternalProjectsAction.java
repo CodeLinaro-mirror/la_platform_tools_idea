@@ -9,7 +9,6 @@ import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder;
 import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskType;
-import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode;
 import com.intellij.openapi.externalSystem.service.internal.ExternalSystemProcessingManager;
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManagerImpl;
 import com.intellij.openapi.externalSystem.statistics.ExternalSystemActionsCollector;
@@ -78,27 +77,20 @@ public class RefreshAllExternalProjectsAction extends AnAction implements AnActi
     ExternalProjectsManagerImpl.disableProjectWatcherAutoUpdate(project);
     for (ProjectSystemId externalSystemId : systemIds) {
       ExternalSystemActionsCollector.trigger(project, externalSystemId, this, e);
-      ExternalSystemUtil.refreshProjects(
-        new ImportSpecBuilder(project, externalSystemId)
-          .forceWhenUptodate(true)
-          .use(ProgressExecutionMode.IN_BACKGROUND_ASYNC)
-      );
+      ExternalSystemUtil.refreshProjects(new ImportSpecBuilder(project, externalSystemId).forceWhenUptodate(true));
     }
   }
 
+  @NotNull
   private static List<ProjectSystemId> getSystemIds(@NotNull AnActionEvent e) {
-    final List<ProjectSystemId> systemIds = new ArrayList<>();
-
-    final ProjectSystemId externalSystemId = e.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID);
-    if (externalSystemId != null) {
-      systemIds.add(externalSystemId);
+    List<ProjectSystemId> systemIds = new ArrayList<>();
+    ProjectSystemId externalSystemId = e.getData(ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID);
+    if (externalSystemId == null) {
+      ExternalSystemManager.EP_NAME.forEachExtensionSafe(manager -> systemIds.add(manager.getSystemId()));
     }
     else {
-      for (ExternalSystemManager manager : ExternalSystemManager.EP_NAME.getIterable()) {
-        systemIds.add(manager.getSystemId());
-      }
+      systemIds.add(externalSystemId);
     }
-
     return systemIds;
   }
 }

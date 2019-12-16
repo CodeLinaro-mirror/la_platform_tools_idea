@@ -4,9 +4,8 @@ package com.intellij.util.indexing.hash;
 import com.intellij.openapi.util.Computable;
 import com.intellij.util.IntIntFunction;
 import com.intellij.util.indexing.*;
+import com.intellij.util.indexing.impl.AbstractUpdateData;
 import com.intellij.util.indexing.impl.IndexStorage;
-import com.intellij.util.indexing.impl.MapIndexStorage;
-import com.intellij.util.indexing.impl.UpdateData;
 import com.intellij.util.indexing.impl.forward.MapForwardIndexAccessor;
 import com.intellij.util.indexing.impl.forward.PersistentMapBasedForwardIndex;
 import org.jetbrains.annotations.NotNull;
@@ -24,8 +23,8 @@ public class FileContentHashIndex extends VfsAwareMapReduceIndex<Integer, Void, 
 
   @NotNull
   @Override
-  protected Computable<Boolean> createIndexUpdateComputation(@NotNull UpdateData<Integer, Void> updateData) {
-    return new HashIndexUpdateComputable(super.createIndexUpdateComputation(updateData), updateData.getNewData().isEmpty());
+  protected Computable<Boolean> createIndexUpdateComputation(@NotNull AbstractUpdateData<Integer, Void> updateData) {
+    return new HashIndexUpdateComputable(super.createIndexUpdateComputation(updateData), updateData.newDataIsEmpty());
   }
 
   public int getHashId(int fileId) throws StorageException {
@@ -36,17 +35,14 @@ public class FileContentHashIndex extends VfsAwareMapReduceIndex<Integer, Void, 
 
   @NotNull
   IntIntFunction toHashIdToFileIdFunction() {
-    return new IntIntFunction() {
-      @Override
-      public int fun(int hash) {
-        try {
-          ValueContainer<Void> data = getData(hash);
-          assert data.size() == 1;
-          return data.getValueIterator().getInputIdsIterator().next();
-        }
-        catch (StorageException e) {
-          throw new RuntimeException(e);
-        }
+    return hash -> {
+      try {
+        ValueContainer<Void> data = getData(hash);
+        assert data.size() == 1;
+        return data.getValueIterator().getInputIdsIterator().next();
+      }
+      catch (StorageException e) {
+        throw new RuntimeException(e);
       }
     };
   }
@@ -54,7 +50,7 @@ public class FileContentHashIndex extends VfsAwareMapReduceIndex<Integer, Void, 
   final static class HashIndexUpdateComputable implements Computable<Boolean> {
     @NotNull
     private final Computable<Boolean> myUnderlying;
-    private boolean myEmptyInput;
+    private final boolean myEmptyInput;
 
     HashIndexUpdateComputable(@NotNull Computable<Boolean> underlying, boolean isEmptyInput) {myUnderlying = underlying;
       myEmptyInput = isEmptyInput;

@@ -20,9 +20,11 @@ import com.intellij.ide.DataManager;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
 import com.jetbrains.python.fixtures.PyTestCase;
+import com.jetbrains.python.formatter.PyCodeStyleSettings;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyImportStatementBase;
 import com.jetbrains.python.psi.impl.PyFileImpl;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
@@ -30,6 +32,10 @@ import java.util.List;
  * @author yole
  */
 public class PyOptimizeImportsTest extends PyTestCase {
+  @NotNull
+  private PyCodeStyleSettings getPythonCodeStyleSettings() {
+    return getCodeStyleSettings().getCustomSettings(PyCodeStyleSettings.class);
+  }
 
   public void testSimple() {
     doTest();
@@ -68,16 +74,43 @@ public class PyOptimizeImportsTest extends PyTestCase {
   }
 
   public void testOrderByType() {
-    doTest();
+    runWithAdditionalFileInLibDir(
+      "sys.py",
+      "",
+      (__) ->
+        runWithAdditionalFileInLibDir(
+          "datetime.py",
+          "",
+          (___) -> doTest()
+        )
+    );
   }
 
   // PY-12018
   public void testAlphabeticalOrder() {
-    doTest();
+    runWithAdditionalFileInLibDir(
+      "sys.py",
+      "",
+      (__) ->
+        runWithAdditionalFileInLibDir(
+          "datetime.py",
+          "",
+          (___) -> doTest()
+        )
+    );
   }
 
   public void testInsertBlankLines() {  // PY-8355
-    doTest();
+    runWithAdditionalFileInLibDir(
+      "sys.py",
+      "",
+      (__) ->
+        runWithAdditionalFileInLibDir(
+          "datetime.py",
+          "",
+          (___) -> doTest()
+        )
+    );
   }
 
   // PY-16351
@@ -121,7 +154,16 @@ public class PyOptimizeImportsTest extends PyTestCase {
   // PY-18792
   public void testDisableAlphabeticalOrder() {
     getPythonCodeStyleSettings().OPTIMIZE_IMPORTS_SORT_IMPORTS = false;
-    doTest();
+    runWithAdditionalFileInLibDir(
+      "sys.py",
+      "",
+      (__) ->
+        runWithAdditionalFileInLibDir(
+          "datetime.py",
+          "",
+          (___) -> doTest()
+        )
+    );
   }
 
   // PY-18792, PY-19292
@@ -227,7 +269,20 @@ public class PyOptimizeImportsTest extends PyTestCase {
 
   // PY-18972
   public void testReferencesInFStringLiterals() {
-    runWithLanguageLevel(LanguageLevel.PYTHON36, this::doTest);
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () ->
+        runWithAdditionalFileInLibDir(
+          "sys.py",
+          "",
+          (__) ->
+            runWithAdditionalFileInLibDir(
+              "datetime.py",
+              "",
+              (___) -> doTest()
+            )
+        )
+    );
   }
 
   // PY-22355
@@ -302,6 +357,28 @@ public class PyOptimizeImportsTest extends PyTestCase {
   // PY-20100
   public void testSplittingOfFromImports() {
     getPythonCodeStyleSettings().OPTIMIZE_IMPORTS_ALWAYS_SPLIT_FROM_IMPORTS = true;
+    doTest();
+  }
+
+  // PY-23475
+  public void testModuleLevelDunder() {
+    getPythonCodeStyleSettings().OPTIMIZE_IMPORTS_JOIN_FROM_IMPORTS_WITH_SAME_SOURCE = true;
+    doTest();
+  }
+
+  // PY-23475
+  public void testModuleLevelDunderWithImportFromFutureAbove() {
+    getPythonCodeStyleSettings().OPTIMIZE_IMPORTS_JOIN_FROM_IMPORTS_WITH_SAME_SOURCE = true;
+    doTest();
+  }
+
+  // PY-23475
+  public void testModuleLevelDunderWithImportFromFutureBelow() {
+    doTest();
+  }
+
+  // PY-23475
+  public void testImportFromFutureWithRegularImports() {
     doTest();
   }
 

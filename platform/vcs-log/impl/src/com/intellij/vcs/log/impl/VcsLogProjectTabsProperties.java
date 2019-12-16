@@ -1,13 +1,14 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.impl;
 
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
+import com.intellij.openapi.util.Comparing;
 import com.intellij.util.xmlb.annotations.XCollection;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
@@ -15,17 +16,18 @@ import static com.intellij.util.containers.ContainerUtil.emptyList;
 import static com.intellij.util.containers.ContainerUtil.map2List;
 
 @State(name = "Vcs.Log.Tabs.Properties", storages = {@Storage(StoragePathMacros.WORKSPACE_FILE)})
-public class VcsLogProjectTabsProperties implements PersistentStateComponent<VcsLogProjectTabsProperties.State>, VcsLogTabsProperties {
+public final class VcsLogProjectTabsProperties implements PersistentStateComponent<VcsLogProjectTabsProperties.State>,
+                                                          VcsLogTabsProperties {
   public static final String MAIN_LOG_ID = "MAIN";
   private static final int RECENTLY_FILTERED_VALUES_LIMIT = 10;
   @NotNull private final VcsLogApplicationSettings myAppSettings;
-  private State myState = new State();
+  @NotNull private State myState = new State();
 
-  public VcsLogProjectTabsProperties(@NotNull VcsLogApplicationSettings appSettings) {
-    myAppSettings = appSettings;
+  public VcsLogProjectTabsProperties() {
+    myAppSettings = ApplicationManager.getApplication().getService(VcsLogApplicationSettings.class);
   }
 
-  @Nullable
+  @NotNull
   @Override
   public State getState() {
     return myState;
@@ -116,12 +118,12 @@ public class VcsLogProjectTabsProperties implements PersistentStateComponent<Vcs
       if (this == o) return true;
       if (o == null || getClass() != o.getClass()) return false;
       RecentGroup group = (RecentGroup)o;
-      return Objects.equals(FILTER_VALUES, group.FILTER_VALUES);
+      return Comparing.haveEqualElements(FILTER_VALUES, group.FILTER_VALUES);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(FILTER_VALUES);
+      return Comparing.unorderedHashcode(FILTER_VALUES);
     }
   }
 

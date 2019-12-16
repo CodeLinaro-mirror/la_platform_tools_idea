@@ -27,6 +27,7 @@ import com.intellij.util.io.*;
 import one.util.streamex.IntStreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.io.*;
 import java.io.DataOutputStream;
@@ -121,8 +122,20 @@ public class SerializedStubTree {
     }
   }
 
+  <K> StubIdList restoreIndexedStubs(@NotNull StubForwardIndexExternalizer<?> dataExternalizer, @NotNull StubIndexKey<K, ?> indexKey, @NotNull K key) throws IOException {
+    Map<StubIndexKey, Map<Object, StubIdList>> incompleteMap = dataExternalizer.doRead(new DataInputStream(new ByteArrayInputStream(myIndexedStubBytes, 0, myIndexedStubByteLength)), indexKey, key);
+    Map<Object, StubIdList> map = incompleteMap.get(indexKey);
+    return map == null ? null : map.get(key);
+  }
+
   @NotNull
   public Map<StubIndexKey, Map<Object, StubIdList>> getStubIndicesValueMap() {
+    return myIndexedStubs;
+  }
+
+  @TestOnly
+  public Map<StubIndexKey, Map<Object, StubIdList>> readStubIndicesValueMap() throws IOException {
+    restoreIndexedStubs(StubForwardIndexExternalizer.IdeStubForwardIndexesExternalizer.INSTANCE);
     return myIndexedStubs;
   }
 
@@ -210,7 +223,8 @@ public class SerializedStubTree {
   static Map<StubIndexKey, Map<Object, StubIdList>> indexTree(@NotNull Stub root) {
     ObjectStubTree objectStubTree = root instanceof PsiFileStub ? new StubTree((PsiFileStub)root, false) :
                                     new ObjectStubTree((ObjectStubBase)root, false);
-    Map<StubIndexKey, Map<Object, int[]>> map = objectStubTree.indexStubTree();
+    StubIndexImpl indexImpl = (StubIndexImpl)StubIndex.getInstance();
+    Map<StubIndexKey, Map<Object, int[]>> map = objectStubTree.indexStubTree(k -> indexImpl.getKeyHashingStrategy((StubIndexKey<Object, ?>)k));
 
     // xxx:fix refs inplace
     for (StubIndexKey key : map.keySet()) {

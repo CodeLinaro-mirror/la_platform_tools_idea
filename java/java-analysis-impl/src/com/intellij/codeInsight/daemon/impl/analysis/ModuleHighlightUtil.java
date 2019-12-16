@@ -24,6 +24,7 @@ import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import gnu.trove.THashSet;
@@ -95,7 +96,7 @@ public class ModuleHighlightUtil {
 
   @NotNull
   static List<HighlightInfo> checkDuplicateStatements(@NotNull PsiJavaModule module) {
-    List<HighlightInfo> results = ContainerUtil.newSmartList();
+    List<HighlightInfo> results = new SmartList<>();
     checkDuplicateRefs(module.getRequires(), st -> st.getModuleName(), "module.duplicate.requires", results);
     checkDuplicateRefs(module.getExports(), st -> st.getPackageName(), "module.duplicate.exports", results);
     checkDuplicateRefs(module.getOpens(), st -> st.getPackageName(), "module.duplicate.opens", results);
@@ -123,7 +124,7 @@ public class ModuleHighlightUtil {
 
   @NotNull
   static List<HighlightInfo> checkUnusedServices(@NotNull PsiJavaModule module, @NotNull PsiFile file) {
-    List<HighlightInfo> results = ContainerUtil.newSmartList();
+    List<HighlightInfo> results = new SmartList<>();
 
     Module host = findModuleForFile(file);
     if (host != null) {
@@ -203,7 +204,7 @@ public class ModuleHighlightUtil {
       }
       else {
         Collection<PsiJavaModule> cycle = JavaModuleGraphUtil.findCycle(target);
-        if (cycle != null && cycle.contains(container)) {
+        if (cycle.contains(container)) {
           Stream<String> stream = cycle.stream().map(PsiJavaModule::getName);
           if (ApplicationManager.getApplication().isUnitTestMode()) stream = stream.sorted();
           String message = JavaErrorMessages.message("module.cyclic.dependence", stream.collect(Collectors.joining(", ")));
@@ -275,7 +276,7 @@ public class ModuleHighlightUtil {
 
   @NotNull
   static List<HighlightInfo> checkPackageAccessTargets(@NotNull PsiPackageAccessibilityStatement statement) {
-    List<HighlightInfo> results = ContainerUtil.newSmartList();
+    List<HighlightInfo> results = new SmartList<>();
 
     Set<String> targets = new THashSet<>();
     for (PsiJavaModuleReferenceElement refElement : statement.getModuleReferences()) {
@@ -314,12 +315,12 @@ public class ModuleHighlightUtil {
     return null;
   }
 
-  @Nullable
+  @NotNull
   static List<HighlightInfo> checkServiceImplementations(@NotNull PsiProvidesStatement statement, @NotNull PsiFile file) {
     PsiReferenceList implRefList = statement.getImplementationList();
-    if (implRefList == null) return null;
+    if (implRefList == null) return Collections.emptyList();
 
-    List<HighlightInfo> results = ContainerUtil.newSmartList();
+    List<HighlightInfo> results = new SmartList<>();
     PsiJavaCodeReferenceElement intRef = statement.getInterfaceReference();
     PsiElement intTarget = intRef != null ? intRef.resolve() : null;
 
@@ -391,7 +392,7 @@ public class ModuleHighlightUtil {
     return null;
   }
 
-  @Nullable
+  @NotNull
   static List<HighlightInfo> checkModifiers(@NotNull PsiRequiresStatement statement) {
     PsiModifierList modList = statement.getModifierList();
     if (modList != null && PsiJavaModule.JAVA_BASE.equals(statement.getModuleName())) {
@@ -406,7 +407,7 @@ public class ModuleHighlightUtil {
           }).toList();
     }
 
-    return null;
+    return Collections.emptyList();
   }
 
   private static QuickFixFactory factory() {

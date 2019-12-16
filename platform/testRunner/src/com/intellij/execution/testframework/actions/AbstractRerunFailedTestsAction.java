@@ -211,6 +211,9 @@ public abstract class AbstractRerunFailedTestsAction extends AnAction implements
     }
   }
 
+  /**
+   * @deprecated use {@link #getRunProfile(ExecutionEnvironment)}
+   */
   @Deprecated
   public MyRunProfile getRunProfile() {
     return null;
@@ -287,7 +290,6 @@ public abstract class AbstractRerunFailedTestsAction extends AnAction implements
       return myConfiguration.clone();
     }
 
-    @SuppressWarnings("deprecation")
     @Override
     public int getUniqueID() {
       return myConfiguration.getUniqueID();

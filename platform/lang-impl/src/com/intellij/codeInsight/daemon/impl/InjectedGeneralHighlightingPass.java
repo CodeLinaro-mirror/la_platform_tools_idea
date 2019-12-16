@@ -206,6 +206,12 @@ public class InjectedGeneralHighlightingPass extends GeneralHighlightingPass {
                                                                                injectedLanguageManager));
   }
 
+  @Override
+  protected void queueInfoToUpdateIncrementally(@NotNull HighlightInfo info) {
+    // do not send info to highlight immediately - we need to convert its offsets first
+    // see addPatchedInfos()
+  }
+
   private boolean addInjectedPsiHighlights(@NotNull PsiFile injectedPsi,
                                            TextAttributes injectedAttributes,
                                            @NotNull Collection<? super HighlightInfo> outInfos,
@@ -256,7 +262,7 @@ public class InjectedGeneralHighlightingPass extends GeneralHighlightingPass {
                             info.type, fixedTextRange.getStartOffset(),
                             fixedTextRange.getEndOffset(),
                             info.getDescription(), info.getToolTip(), info.type.getSeverity(null),
-                            info.isAfterEndOfLine(), null, false, 0, info.getProblemGroup(), info.getGutterIconRenderer());
+                            info.isAfterEndOfLine(), null, false, 0, info.getProblemGroup(), info.getInspectionToolId(), info.getGutterIconRenderer(), info.getGroup());
         patched.setFromInjection(true);
         outInfos.add(patched);
       }
@@ -318,7 +324,8 @@ public class InjectedGeneralHighlightingPass extends GeneralHighlightingPass {
       HighlightInfo patched =
         new HighlightInfo(info.forcedTextAttributes, info.forcedTextAttributesKey, info.type,
                           hostRange.getStartOffset(), hostRange.getEndOffset(),
-                          info.getDescription(), info.getToolTip(), info.type.getSeverity(null), isAfterEndOfLine, null, false, 0, info.getProblemGroup(), info.getGutterIconRenderer());
+                          info.getDescription(), info.getToolTip(), info.type.getSeverity(null), isAfterEndOfLine, null,
+                          false, 0, info.getProblemGroup(), info.getInspectionToolId(), info.getGutterIconRenderer(), info.getGroup());
       patched.setHint(info.hasHint());
 
       if (info.quickFixActionRanges != null) {
@@ -350,8 +357,7 @@ public class InjectedGeneralHighlightingPass extends GeneralHighlightingPass {
     return textRange;
   }
 
-  private void runHighlightVisitorsForInjected(@NotNull PsiFile injectedPsi,
-                                               @NotNull final HighlightInfoHolder holder) {
+  private void runHighlightVisitorsForInjected(@NotNull PsiFile injectedPsi, @NotNull HighlightInfoHolder holder) {
     HighlightVisitor[] filtered = getHighlightVisitors(injectedPsi);
     try {
       final List<PsiElement> elements = CollectHighlightsUtil.getElementsInRange(injectedPsi, 0, injectedPsi.getTextLength());

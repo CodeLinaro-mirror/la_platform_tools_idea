@@ -3,7 +3,6 @@ package com.intellij.openapi.wm.impl;
 
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.ActionCallback;
 import com.intellij.openapi.util.ExpirableRunnable;
 import com.intellij.openapi.wm.IdeFocusManager;
@@ -13,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.awt.*;
 
-public final class IdeFocusManagerHeadless extends IdeFocusManager {
+public class IdeFocusManagerHeadless extends IdeFocusManager { // FIXME-ank: reverted final
   public static final IdeFocusManagerHeadless INSTANCE = new IdeFocusManagerHeadless();
 
   @Override
@@ -80,10 +79,5 @@ public final class IdeFocusManagerHeadless extends IdeFocusManager {
 
   @Override
   public void toFront(JComponent c) {
-  }
-
-  @Override
-  public Project getProject() {
-    return null;
   }
 }

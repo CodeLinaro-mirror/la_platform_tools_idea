@@ -76,11 +76,9 @@ public class CodeStyle {
       return tempSettings;
     }
 
-    for (FileCodeStyleProvider provider : FileCodeStyleProvider.EP_NAME.getIterable()) {
-      CodeStyleSettings fileSettings = provider.getSettings(file);
-      if (fileSettings != null) {
-        return fileSettings;
-      }
+    CodeStyleSettings result = FileCodeStyleProvider.EP_NAME.computeSafeIfAny(provider -> provider.getSettings(file));
+    if (result != null) {
+      return result;
     }
 
     if (!file.isPhysical()) {
@@ -323,7 +321,19 @@ public class CodeStyle {
     return !getSettings(file).getExcludedFiles().contains(file);
   }
 
-
+  /**
+   * Reformat the given {@code fileToReformat} using code style settings for the {@code contextFile}. The method may be
+   * useful to reformat a fragment of code (temporary file) which eventually will be inserted to the context file.
+   *
+   * @param fileToReformat The file to reformat (may be a temporary dummy file).
+   * @param contextFile    The actual (target) file whose settings must be used.
+   */
+  public static void reformatWithFileContext(@NotNull PsiFile fileToReformat, @NotNull PsiFile contextFile) {
+    final Project project = contextFile.getProject();
+    CodeStyleManager codeStyleManager = CodeStyleManager.getInstance(project);
+    CodeStyleSettings realFileSettings = getSettings(contextFile);
+    doWithTemporarySettings(project, realFileSettings, () -> codeStyleManager.reformat(fileToReformat));
+  }
 
 
 }

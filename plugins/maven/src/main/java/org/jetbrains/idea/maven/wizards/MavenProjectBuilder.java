@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.wizards;
 
 import com.intellij.ide.impl.NewProjectUtil;
@@ -23,7 +23,9 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.packaging.artifacts.ModifiableArtifactModel;
 import com.intellij.projectImport.DeprecatedProjectBuilderForImport;
 import com.intellij.projectImport.ProjectImportBuilder;
+import com.intellij.projectImport.ProjectOpenProcessor;
 import icons.MavenIcons;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
@@ -94,11 +96,6 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
       myParameters = new Parameters();
     }
     return myParameters;
-  }
-
-  @Override
-  public boolean validate(Project current, Project dest) {
-    return true;
   }
 
   private boolean setupProjectImport(@NotNull Project project) {
@@ -248,6 +245,18 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
     });
   }
 
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval
+  public boolean setSelectedProfiles(MavenExplicitProfiles profiles) {
+    return runConfigurationProcess(ProjectBundle.message("maven.scanning.projects"), new MavenTask() {
+      @Override
+      public void run(MavenProgressIndicator indicator) {
+        readMavenProjectTree(indicator);
+        indicator.setText2("");
+      }
+    });
+  }
+
   private static boolean runConfigurationProcess(String message, MavenTask p) {
     try {
       MavenUtil.run(null, message, p);
@@ -365,5 +374,11 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
   @Override
   public Project createProject(String name, String path) {
     return ExternalProjectsManagerImpl.setupCreatedProject(super.createProject(name, path));
+  }
+
+  @NotNull
+  @Override
+  public ProjectOpenProcessor getProjectOpenProcessor() {
+    return ProjectOpenProcessor.EXTENSION_POINT_NAME.findExtensionOrFail(MavenProjectOpenProcessor.class);
   }
 }

@@ -26,6 +26,7 @@ import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import java.awt.*
 import java.awt.event.*
+import java.util.*
 import javax.swing.*
 import javax.swing.border.Border
 
@@ -188,10 +189,15 @@ abstract class CustomHeader(private val window: Window) : JPanel(), Disposable {
 
     protected fun updateCustomDecorationHitTestSpots() {
         if(!added) return
-
-        val toList = getHitTestSpots().map {it.getRectangleOn(window)}.toList()
-        JdkEx.setCustomDecorationHitTestSpots(window, toList)
-        JdkEx.setCustomDecorationTitleBarHeight(window, height)
+        if ((window is JDialog && window.isUndecorated) ||
+            (window is JFrame && window.isUndecorated)) {
+            JdkEx.setCustomDecorationHitTestSpots(window, Collections.emptyList())
+            JdkEx.setCustomDecorationTitleBarHeight(window, 0)
+        } else {
+            val toList = getHitTestSpots().map { it.getRectangleOn(window) }.toList()
+            JdkEx.setCustomDecorationHitTestSpots(window, toList)
+            JdkEx.setCustomDecorationTitleBarHeight(window, height)
+        }
     }
 
     abstract fun getHitTestSpots(): List<RelativeRectangle>
@@ -270,7 +276,7 @@ abstract class CustomHeader(private val window: Window) : JPanel(), Disposable {
         fun repaintBorder() {
             val borderInsets = getBorderInsets(this@CustomHeader)
 
-            repaint(0, 0, width, borderInsets.top)
+            repaint(0, 0, width, thickness)
             repaint(0, height - borderInsets.bottom, width, borderInsets.bottom)
         }
 

@@ -5,6 +5,9 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.configurations.GeneralCommandLine;
+import com.intellij.execution.process.CapturingProcessAdapter;
+import com.intellij.execution.process.OSProcessHandler;
+import com.intellij.execution.process.ProcessEvent;
 import com.intellij.lang.annotation.Annotation;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.ExternalAnnotator;
@@ -13,8 +16,8 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.openapi.util.io.StreamUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
@@ -25,6 +28,7 @@ import com.intellij.sh.shellcheck.intention.DisableInspectionIntention;
 import com.intellij.sh.shellcheck.intention.SuppressInspectionIntention;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,15 +40,14 @@ import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import static java.util.Arrays.asList;
 
 public class ShShellcheckExternalAnnotator extends ExternalAnnotator<PsiFile, ShShellcheckExternalAnnotator.ShellcheckResponse> {
+  private static final Logger LOG = Logger.getInstance(ShShellcheckExternalAnnotator.class);
   private static final List<String> KNOWN_SHELLS = asList("bash", "dash", "ksh", "sh");
   private static final String DEFAULT_SHELL = "bash";
-
-  private final static Logger LOG = Logger.getInstance(ShShellcheckExternalAnnotator.class);
+  private static final int TIMEOUT_IN_MILLISECONDS = 10_000;
 
   @Override
   public String getPairedBatchInspectionShortName() {
@@ -77,17 +80,26 @@ public class ShShellcheckExternalAnnotator extends ExternalAnnotator<PsiFile, Sh
           .withExePath(shellcheckExecutable)
           .withParameters(executionParams);
       long timestamp = file.getModificationStamp();
-      Process process = commandLine.createProcess();
-      writeFileContentToStdin(process, fileContent, commandLine.getCharset());
-      if (process.waitFor(10, TimeUnit.SECONDS)) {
-        String output = StreamUtil.readText(process.getInputStream(), commandLine.getCharset());
-        Type type = TypeToken.getParameterized(List.class, Result.class).getType();
-        Collection<Result> results = new Gson().fromJson(output, type);
-        return results != null ? new ShellcheckResponse(results, timestamp) : null;
+      OSProcessHandler handler = new OSProcessHandler(commandLine);
+      Ref<ShellcheckResponse> response = Ref.create();
+      handler.addProcessListener(new CapturingProcessAdapter(){
+        @Override
+        public void processTerminated(@NotNull ProcessEvent event) {
+          // The process ends up with code 1
+          Type type = TypeToken.getParameterized(List.class, Result.class).getType();
+          Collection<Result> results = new Gson().fromJson(getOutput().getStdout(), type);
+          if (results != null) response.set(new ShellcheckResponse(results, timestamp));
+        }
+      });
+      handler.startNotify();
+      writeFileContentToStdin(handler.getProcess(), fileContent, commandLine.getCharset());
+      if (!handler.waitFor(TIMEOUT_IN_MILLISECONDS)) {
+        LOG.debug("Execution timeout, process will be forcibly terminated");
+        handler.destroyProcess();
       }
-      return null;
+      return response.get();
     }
-    catch (IOException | ExecutionException | InterruptedException e) {
+    catch (ExecutionException e) {
       LOG.error(e);
       return null;
     }
@@ -140,7 +152,7 @@ public class ShShellcheckExternalAnnotator extends ExternalAnnotator<PsiFile, Sh
   @NotNull
   private static List<String> getShellcheckExecutionParams(@NotNull PsiFile file) {
     String interpreter = getInterpreter(file);
-    List<String> params = ContainerUtil.newSmartList();
+    List<String> params = new SmartList<>();
     ShShellcheckInspection inspection = ShShellcheckInspection.findShShellcheckInspection(file);
 
     Collections.addAll(params, "--color=never", "--format=json", "--severity=style", "--shell=" + interpreter, "--wiki-link-count=10", "--exclude=SC1091", "-");

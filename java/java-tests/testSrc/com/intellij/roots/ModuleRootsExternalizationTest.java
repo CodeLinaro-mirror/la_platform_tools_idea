@@ -5,7 +5,6 @@ import com.intellij.application.options.ReplacePathToMacroMap;
 import com.intellij.configurationStore.StoreUtil;
 import com.intellij.ide.highlighter.ModuleFileType;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.components.ExpandMacroToPathMap;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.roots.*;
@@ -88,7 +87,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
     PsiTestUtil.setCompilerOutputPath(module, classesFile.getUrl(), false);
     PsiTestUtil.setCompilerOutputPath(module, testClassesFile.getUrl(), true);
 
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\">\n" +
@@ -122,10 +121,9 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
       JavaModuleExternalPaths extension = model.getModuleExtension(JavaModuleExternalPaths.class);
       extension.setExternalAnnotationUrls(new String[]{annotationsUrl});
       extension.setJavadocUrls(new String[]{javadocUrl});
-      WriteAction.run(() -> extension.commit());
     });
 
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\" inherit-compiler-output=\"true\">\n" +
@@ -173,7 +171,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
     assertEquals(libraryIterator.next(), namedLibrary);
 
     ApplicationManager.getApplication().runWriteAction(rootModel::commit);
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\" inherit-compiler-output=\"true\">\n" +
@@ -209,7 +207,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
     final ModifiableRootModel rootModel = moduleRootManager.getModifiableModel();
     rootModel.getModuleExtension(CompilerModuleExtension.class).inheritCompilerOutputPath(true);
     ApplicationManager.getApplication().runWriteAction(rootModel::commit);
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\" inherit-compiler-output=\"true\">\n" +

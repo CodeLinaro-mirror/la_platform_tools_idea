@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.stubs.provided;
 
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.stubs.*;
@@ -11,6 +12,7 @@ import com.intellij.util.indexing.provided.ProvidedIndexExtension;
 import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.EnumeratorIntegerDescriptor;
 import com.intellij.util.io.KeyDescriptor;
+import com.intellij.util.io.VoidDataExternalizer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,19 +49,19 @@ public class StubProvidedIndexExtension implements ProvidedIndexExtension<Intege
     SerializationManagerImpl manager =
       new SerializationManagerImpl(new File(new File(path, StringUtil.toLowerCase(StubUpdatingIndex.INDEX_ID.getName())), "rep.names"),
                                    true);
-    Disposer.register(((FileBasedIndexImpl)FileBasedIndex.getInstance()), manager);
+    Disposer.register(ApplicationManager.getApplication(), manager);
     return new SerializedStubTreeDataExternalizer(false, manager);
   }
 
   @Nullable
-  public <K> ProvidedIndexExtension<K, StubIdList> findProvidedStubIndex(@NotNull StubIndexExtension<K, ?> extension) {
+  public <K> ProvidedIndexExtension<K, Void> findProvidedStubIndex(@NotNull StubIndexExtension<K, ?> extension) {
     String name = extension.getKey().getName();
     File path = getIndexPath();
 
     File indexPath = new File(path, StringUtil.toLowerCase(name));
     if (!indexPath.exists()) return null;
 
-    return new ProvidedIndexExtension<K, StubIdList>() {
+    return new ProvidedIndexExtension<K, Void>() {
       @NotNull
       @Override
       public File getIndexPath() {
@@ -68,7 +70,7 @@ public class StubProvidedIndexExtension implements ProvidedIndexExtension<Intege
 
       @NotNull
       @Override
-      public ID<K, StubIdList> getIndexId() {
+      public ID<K, Void> getIndexId() {
         return (ID)extension.getKey();
       }
 
@@ -80,8 +82,8 @@ public class StubProvidedIndexExtension implements ProvidedIndexExtension<Intege
 
       @NotNull
       @Override
-      public DataExternalizer<StubIdList> createValueExternalizer() {
-        return StubIndexImpl.StubIdExternalizer.INSTANCE;
+      public DataExternalizer<Void> createValueExternalizer() {
+        return VoidDataExternalizer.INSTANCE;
       }
     };
   }

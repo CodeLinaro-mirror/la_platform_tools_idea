@@ -24,7 +24,10 @@ import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.wm.*;
+import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.openapi.wm.IdeFrame;
+import com.intellij.openapi.wm.ToolWindowId;
+import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowManagerEx;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
 import com.intellij.openapi.wm.impl.IdeGlassPaneImpl;
@@ -273,7 +276,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
         Icon icon = ToolWindowManagerEx.getInstanceEx(myProject != null ? myProject : ProjectUtil.guessCurrentProject((JComponent)myOwner))
           .getLocationIcon(ToolWindowId.FIND, AllIcons.General.Pin_tab);
         myCaption.setButtonComponent(new InplaceButton(
-          new IconButton("Open in Find Tool Window", icon),
+          new IconButton(IdeBundle.message("show.in.find.window.button.name"), icon),
           e -> pinCallback.process(this)
         ), JBUI.Borders.empty(4));
       }
@@ -1476,14 +1479,12 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
       Dimension size = myContent.getSize();
       JBInsets.removeFrom(size, myContent.getInsets());
       getWindowStateService(myProject).putSize(myDimensionServiceKey, size);
-      DimensionService.getInstance().setSize(myDimensionServiceKey, size, myProject);
     }
   }
 
   private void storeLocation(final Point xy) {
     if (myDimensionServiceKey != null) {
       getWindowStateService(myProject).putLocation(myDimensionServiceKey, xy);
-      DimensionService.getInstance().setLocation(myDimensionServiceKey, xy, myProject);
     }
   }
 
@@ -1999,26 +2000,29 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   }
 
   /**
-   * @return {@code true} if focus moved to a popup window or its child window
+   * @param event a {@code WindowEvent} for the activated or focused window
+   * @param popup a window that corresponds to the current popup
+   * @return {@code false} if a focus moved to a popup window or its child window in the whole hierarchy
    */
-  private static boolean isCancelNeeded(@NotNull WindowEvent event, Window window) {
-    if (window == null) return true;
-    Window focused = event.getWindow();
-    return focused != window && (focused == null || window != focused.getOwner());
+  private static boolean isCancelNeeded(@NotNull WindowEvent event, @Nullable Window popup) {
+    Window window = event.getWindow(); // the activated or focused window
+    while (window != null) {
+      if (popup == window) return false; // do not close a popup, which child is activated or focused
+      window = window.getOwner(); // consider a window owner as activated or focused
+    }
+    return true;
   }
 
   @Nullable
   private Point getStoredLocation() {
     if (myDimensionServiceKey == null) return null;
-    Point location = getWindowStateService(myProject).getLocation(myDimensionServiceKey);
-    return location != null ? location : DimensionService.getInstance().getLocation(myDimensionServiceKey, myProject);
+    return getWindowStateService(myProject).getLocation(myDimensionServiceKey);
   }
 
   @Nullable
   private Dimension getStoredSize() {
     if (myDimensionServiceKey == null) return null;
-    Dimension size = getWindowStateService(myProject).getSize(myDimensionServiceKey);
-    return size != null ? size : DimensionService.getInstance().getSize(myDimensionServiceKey, myProject);
+    return getWindowStateService(myProject).getSize(myDimensionServiceKey);
   }
 
   @NotNull

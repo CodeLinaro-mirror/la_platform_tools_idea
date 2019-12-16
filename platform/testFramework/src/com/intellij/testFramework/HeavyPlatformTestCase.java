@@ -181,9 +181,9 @@ public abstract class HeavyPlatformTestCase extends UsefulTestCase implements Da
   // if adt-branding is not on the classpath, then we should simply run as IDEA.
   private static final String[] PREFIX_CANDIDATES = {"AndroidStudio", "Idea"}; /*
   private static final String[] PREFIX_CANDIDATES = {
-    "Rider", "GoLand",
+    "Rider", "GoLand", "CLion",
     null,
-    "AppCode", "CLion", "CidrCommonTests",
+    "AppCode", "SwiftTests", "CidrCommonTests",
     "DataGrip",
     "Python", "PyCharmCore",
     "Ruby",
@@ -240,10 +240,9 @@ public abstract class HeavyPlatformTestCase extends UsefulTestCase implements Da
       myOldSdks = new SdkLeakTracker();
     }
 
+    setUpProject();
     myEditorListenerTracker = new EditorListenerTracker();
     myThreadTracker = new ThreadTracker();
-
-    setUpProject();
 
     boolean isTrackCodeStyleChanges = !(isStressTest() ||
                                         ApplicationManager.getApplication() == null ||
@@ -547,10 +546,19 @@ public abstract class HeavyPlatformTestCase extends UsefulTestCase implements Da
   @Override
   protected void tearDown() throws Exception {
     Project project = myProject;
+    if (project instanceof ProjectImpl) {
+      ((ProjectImpl)project).stopServicePreloading();
+    }
+
     if (project != null && !project.isDisposed()) {
-      AutoPopupController.getInstance(project).cancelAllRequests(); // clear "show param info" delayed requests leaking project
+      // clear "show param info" delayed requests leaking project
+      AutoPopupController autoPopupController = project.getServiceIfCreated(AutoPopupController.class);
+      if (autoPopupController != null) {
+        autoPopupController.cancelAllRequests();
+      }
       waitForProjectLeakingThreads(project, 10, TimeUnit.SECONDS);
     }
+
     // don't use method references here to make stack trace reading easier
     //noinspection Convert2MethodRef
     new RunAll()
@@ -1024,6 +1032,10 @@ public abstract class HeavyPlatformTestCase extends UsefulTestCase implements Da
   }
 
   public static void waitForProjectLeakingThreads(@NotNull Project project, long timeout, @NotNull TimeUnit timeUnit) throws Exception {
+    if (project instanceof ProjectImpl) {
+      ((ProjectImpl)project).stopServicePreloading();
+    }
+
     NonBlockingReadActionImpl.cancelAllTasks();
     GeneratedSourceFileChangeTrackerImpl tracker =
       (GeneratedSourceFileChangeTrackerImpl)project.getComponent(GeneratedSourceFileChangeTracker.class);

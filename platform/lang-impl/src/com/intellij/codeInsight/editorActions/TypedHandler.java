@@ -31,6 +31,7 @@ import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.fileTypes.PlainTextLanguage;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.KeyedExtensionCollector;
 import com.intellij.openapi.util.ProperTextRange;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiDocumentManager;
@@ -48,14 +49,15 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.Function;
 
 public class TypedHandler extends TypedActionHandlerBase {
   private static final Set<Character> COMPLEX_CHARS =
-    new HashSet<>(Arrays.asList('\n', '\t', '(', ')', '<', '>', '[', ']', '{', '}', '"', '\''));
+    ContainerUtil.set('\n', '\t', '(', ')', '<', '>', '[', ']', '{', '}', '"', '\'');
 
   private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.editorActions.TypedHandler");
 
-  private static final Map<FileType,QuoteHandler> quoteHandlers = new HashMap<>();
+  private static final KeyedExtensionCollector<QuoteHandler, String> quoteHandlers = new KeyedExtensionCollector<>(QuoteHandlerEP.EP_NAME);
 
   private static final Map<Class<? extends Language>, QuoteHandler> ourBaseLanguageQuoteHandlers = new HashMap<>();
 
@@ -104,17 +106,7 @@ public class TypedHandler extends TypedActionHandlerBase {
   }
 
   public static QuoteHandler getQuoteHandlerForType(@NotNull FileType fileType) {
-    if (!quoteHandlers.containsKey(fileType)) {
-      QuoteHandler handler = null;
-      for(QuoteHandlerEP ep: QuoteHandlerEP.EP_NAME.getExtensionList()) {
-        if (ep.fileType.equals(fileType.getName())) {
-          handler = ep.getHandler();
-          break;
-        }
-      }
-      quoteHandlers.put(fileType, handler);
-    }
-    return quoteHandlers.get(fileType);
+    return ContainerUtil.getFirstItem(quoteHandlers.forKey(fileType.getName()));
   }
 
   /**
@@ -122,7 +114,7 @@ public class TypedHandler extends TypedActionHandlerBase {
    */
   @Deprecated
   public static void registerQuoteHandler(@NotNull FileType fileType, @NotNull QuoteHandler quoteHandler) {
-    quoteHandlers.put(fileType, quoteHandler);
+    quoteHandlers.addExplicitExtension(fileType.getName(), quoteHandler);
   }
 
   @Override
@@ -163,21 +155,10 @@ public class TypedHandler extends TypedActionHandlerBase {
       }
 
       Editor editor = injectedEditorIfCharTypedIsSignificant(charTyped, originalEditor, originalFile);
-      PsiFile file = editor == originalEditor ? originalFile : psiDocumentManager.getPsiFile(editor.getDocument());
-
-
-      final List<TypedHandlerDelegate> delegates = TypedHandlerDelegate.EP_NAME.getExtensionList();
+      PsiFile file = editor == originalEditor ? originalFile : Objects.requireNonNull(psiDocumentManager.getPsiFile(editor.getDocument()));
 
       if (caret == originalEditor.getCaretModel().getPrimaryCaret()) {
-        boolean handled = false;
-        for (TypedHandlerDelegate delegate : delegates) {
-          final TypedHandlerDelegate.Result result = delegate.checkAutoPopup(charTyped, project, editor, file);
-          handled = result == TypedHandlerDelegate.Result.STOP;
-          if (result != TypedHandlerDelegate.Result.CONTINUE) {
-            break;
-          }
-        }
-
+        boolean handled = callDelegates(delegate -> delegate.checkAutoPopup(charTyped, project, editor, file));
         if (!handled) {
           autoPopupCompletion(editor, charTyped, project, file);
           autoPopupParameterInfo(editor, charTyped, project, file);
@@ -189,28 +170,16 @@ public class TypedHandler extends TypedActionHandlerBase {
         return;
       }
 
-      for (TypedHandlerDelegate delegate : delegates) {
-        final TypedHandlerDelegate.Result result = delegate.beforeSelectionRemoved(charTyped, project, editor, file);
-        if (result == TypedHandlerDelegate.Result.STOP) {
-          return;
-        }
-        if (result == TypedHandlerDelegate.Result.DEFAULT) {
-          break;
-        }
+      if (callDelegates(delegate -> delegate.beforeSelectionRemoved(charTyped, project, editor, file))) {
+        return;
       }
 
       EditorModificationUtil.deleteSelectedText(editor);
 
       FileType fileType = getFileType(file, editor);
 
-      for (TypedHandlerDelegate delegate : delegates) {
-        final TypedHandlerDelegate.Result result = delegate.beforeCharTyped(charTyped, project, editor, file, fileType);
-        if (result == TypedHandlerDelegate.Result.STOP) {
-          return;
-        }
-        if (result == TypedHandlerDelegate.Result.DEFAULT) {
-          break;
-        }
+      if (callDelegates(delegate -> delegate.beforeCharTyped(charTyped, project, editor, file, fileType))) {
+        return;
       }
 
       if (')' == charTyped || ']' == charTyped || '}' == charTyped) {
@@ -242,15 +211,10 @@ public class TypedHandler extends TypedActionHandlerBase {
         indentClosingParenth(project, editor);
       }
 
-      for (TypedHandlerDelegate delegate : delegates) {
-        final TypedHandlerDelegate.Result result = delegate.charTyped(charTyped, project, editor, file);
-        if (result == TypedHandlerDelegate.Result.STOP) {
-          return;
-        }
-        if (result == TypedHandlerDelegate.Result.DEFAULT) {
-          break;
-        }
+      if (callDelegates(delegate -> delegate.charTyped(charTyped, project, editor, file))) {
+        return;
       }
+
       if ('{' == charTyped) {
         indentOpenedBrace(project, editor);
       }
@@ -258,6 +222,20 @@ public class TypedHandler extends TypedActionHandlerBase {
         indentOpenedParenth(project, editor);
       }
     });
+  }
+
+  // returns true if any delegate requested a STOP
+  private static boolean callDelegates(Function<TypedHandlerDelegate, TypedHandlerDelegate.Result> action) {
+    for (TypedHandlerDelegate delegate : TypedHandlerDelegate.EP_NAME.getExtensionList()) {
+      TypedHandlerDelegate.Result result = action.apply(delegate);
+      if (result == TypedHandlerDelegate.Result.STOP) {
+        return true;
+      }
+      if (result == TypedHandlerDelegate.Result.DEFAULT) {
+        break;
+      }
+    }
+    return false;
   }
 
   private static void type(Editor editor, char charTyped) {

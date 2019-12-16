@@ -30,18 +30,15 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.packaging.artifacts.Artifact;
 import com.intellij.packaging.impl.compiler.ArtifactCompileScope;
-import com.intellij.task.ProjectTaskContext;
 import com.intellij.task.ProjectTaskManager;
-import com.intellij.task.ProjectTaskNotification;
-import com.intellij.task.ProjectTaskResult;
 import com.intellij.testFramework.*;
 import com.intellij.testFramework.fixtures.IdeaProjectTestFixture;
 import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.PathUtil;
+import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.Semaphore;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.PathKt;
 import com.intellij.util.io.TestFileSystemItem;
 import com.intellij.util.ui.UIUtil;
@@ -120,7 +117,7 @@ public abstract class ExternalSystemTestCase extends UsefulTestCase {
   }
 
   public static Collection<String> collectRootsInside(String root) {
-    final List<String> roots = ContainerUtil.newSmartList();
+    final List<String> roots = new SmartList<>();
     roots.add(root);
     FileUtil.processFilesRecursively(new File(root), file -> {
       try {
@@ -302,21 +299,19 @@ public abstract class ExternalSystemTestCase extends UsefulTestCase {
 
   protected VirtualFile createConfigFile(final VirtualFile dir, String config) {
     final String configFileName = getExternalSystemConfigFileName();
-    VirtualFile f = dir.findChild(configFileName);
+    VirtualFile configFile;
     try {
-      if (f == null) {
-        f = WriteAction.computeAndWait(() -> {
-          VirtualFile res = dir.createChildData(null, configFileName);
-          return res;
+        configFile = WriteAction.computeAndWait(() -> {
+          VirtualFile file = dir.findChild(configFileName);
+          return file == null ? dir.createChildData(null, configFileName) : file;
         });
-        myAllConfigs.add(f);
-      }
+        myAllConfigs.add(configFile);
     }
     catch (IOException e) {
       throw new RuntimeException(e);
     }
-    setFileContent(f, config, true);
-    return f;
+    setFileContent(configFile, config, true);
+    return configFile;
   }
 
   protected abstract String getExternalSystemConfigFileName();
@@ -415,17 +410,15 @@ public abstract class ExternalSystemTestCase extends UsefulTestCase {
   private void build(@NotNull Object[] buildableElements) {
     final Semaphore semaphore = new Semaphore();
     semaphore.down();
-    ProjectTaskNotification callback = new ProjectTaskNotification() {
-      @Override
-      public void finished(@NotNull ProjectTaskContext context, @NotNull ProjectTaskResult executionResult) {
-        semaphore.up();
-      }
-    };
     if (buildableElements instanceof Module[]) {
-      ProjectTaskManager.getInstance(myProject).build((Module[])buildableElements, callback);
+      ProjectTaskManager.getInstance(myProject)
+        .build((Module[])buildableElements)
+        .onProcessed(result -> semaphore.up());
     }
     else if (buildableElements instanceof Artifact[]) {
-      ProjectTaskManager.getInstance(myProject).build((Artifact[])buildableElements, callback);
+      ProjectTaskManager.getInstance(myProject)
+        .build((Artifact[])buildableElements)
+        .onProcessed(result -> semaphore.up());
     }
     else {
       assert false : "Unsupported buildableElements: " + Arrays.toString(buildableElements);

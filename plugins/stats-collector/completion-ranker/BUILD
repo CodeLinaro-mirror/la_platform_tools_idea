@@ -5,16 +5,39 @@ iml_module(
     name = "intellij.statsCollector.completionRanker",
     srcs = ["src"],
     iml_files = ["intellij.statsCollector.completionRanker.iml"],
+    # do not sort: must match IML order
+    test_runtime_deps = [
+        "//tools/idea/xml/dom-openapi:intellij.xml.dom",
+        "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
+        "//tools/idea/platform/testFramework/extensions:intellij.platform.testExtensions",
+        "//tools/idea/images:intellij.platform.images",
+    ],
     test_srcs = ["test"],
     test_tags = ["no_test_windows"],  # b/137421177
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
+    runtime_deps = [
+        "//tools/idea/platform/usageView:intellij.platform.usageView",
+        "//tools/idea/xml/xml-structure-view-impl:intellij.xml.structureView.impl",
+        "//tools/idea/xml/xml-analysis-impl:intellij.xml.analysis.impl",
+        "//tools/idea/platform/lvcs-impl:intellij.platform.lvcs.impl",
+        "//tools/idea/platform/testRunner:intellij.platform.testRunner",
+        "//tools/idea/xml/impl:intellij.xml.impl",
+        "//tools/idea/spellchecker:intellij.spellchecker",
+        "//tools/idea/platform/tasks-platform-impl:intellij.platform.tasks.impl",
+        "//tools/idea/json:intellij.json",
+        "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
+        "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
+        "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
+    ],
+    # do not sort: must match IML order
     deps = [
         "//tools/idea/.idea/libraries:kotlin-stdlib-jdk8",
-        "//tools/idea/plugins/stats-collector/features:intellij.statsCollector.features[module]",
         "//tools/idea/.idea/libraries:JUnit4[test]",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/completion/completion-ranking-java/0.0.7:jar",
         "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/completion/completion-ranking-kotlin/0.0.2:jar",
         "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/completion/completion-ranking-python/0.0.4:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/completion/completion-ranking-scala/0.0.1:jar",
+        "//tools/idea/platform/platform-impl:intellij.platform.ide.impl[module]",
     ],
 )

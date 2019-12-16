@@ -36,7 +36,6 @@ import com.intellij.usages.*;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.ContainerUtilRt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -190,7 +189,7 @@ public class SafeDeleteProcessor extends BaseRefactoringProcessor {
       if (preprocessedUsages == null) return false;
     }
 
-    HashSet<UsageInfo> diff = ContainerUtilRt.newHashSet(preprocessedUsages);
+    HashSet<UsageInfo> diff = ContainerUtil.newHashSet(preprocessedUsages);
     diff.removeAll(Arrays.asList(usages));
 
     if (checkConflicts(diff.toArray(UsageInfo.EMPTY_ARRAY), new ArrayList<>())) return false;
@@ -475,7 +474,7 @@ public class SafeDeleteProcessor extends BaseRefactoringProcessor {
                                                    PsiElement[] elementsToDelete, boolean isSearchInComments, boolean isSearchNonJava,
                                                    boolean askForAccessors) {
     ArrayList<PsiElement> elements = new ArrayList<>(Arrays.asList(elementsToDelete));
-    HashSet<PsiElement> elementsToDeleteSet = new HashSet<>(Arrays.asList(elementsToDelete));
+    Set<PsiElement> elementsToDeleteSet = ContainerUtil.set(elementsToDelete);
 
     for (PsiElement psiElement : elementsToDelete) {
       for(SafeDeleteProcessorDelegate delegate: SafeDeleteProcessorDelegate.EP_NAME.getExtensionList()) {

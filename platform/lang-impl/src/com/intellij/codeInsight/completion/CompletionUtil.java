@@ -9,11 +9,13 @@ import com.intellij.codeInsight.lookup.LookupValueWithPsiElement;
 import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.lang.Language;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.fileTypes.FileType;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.patterns.CharPattern;
@@ -200,41 +202,6 @@ public class CompletionUtil {
     return element == null ? psi : element;
   }
 
-  /**
-   * Filters _names for strings that match given matcher and sorts them.
-   * "Start matching" items go first, then others.
-   * Within both groups names are sorted lexicographically in a case-insensitive way.
-   */
-  public static LinkedHashSet<String> sortMatching(final PrefixMatcher matcher, Collection<String> _names) {
-    ProgressManager.checkCanceled();
-    if (matcher.getPrefix().isEmpty()) {
-      return new LinkedHashSet<>(_names);
-    }
-
-    List<String> sorted = new ArrayList<>();
-    for (String name : _names) {
-      if (matcher.prefixMatches(name)) {
-        sorted.add(name);
-      }
-    }
-
-    ProgressManager.checkCanceled();
-    Collections.sort(sorted, String.CASE_INSENSITIVE_ORDER);
-    ProgressManager.checkCanceled();
-
-    LinkedHashSet<String> result = new LinkedHashSet<>();
-    for (String name : sorted) {
-      if (matcher.isStartMatch(name)) {
-        result.add(name);
-      }
-    }
-
-    ProgressManager.checkCanceled();
-
-    result.addAll(sorted);
-    return result;
-  }
-
   public static Iterable<String> iterateLookupStrings(@NotNull final LookupElement element) {
     return new Iterable<String>() {
       @NotNull
@@ -273,5 +240,14 @@ public class CompletionUtil {
         };
       }
     };
+  }
+
+  /**
+   * @return String representation of action shortcut. Useful while advertising something
+   * @see #advertise(CompletionParameters)
+   */
+  @NotNull
+  public static String getActionShortcut(@NonNls @NotNull final String actionId) {
+    return KeymapUtil.getFirstKeyboardShortcutText(ActionManager.getInstance().getAction(actionId));
   }
 }

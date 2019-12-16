@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xml;
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfoType;
@@ -18,7 +18,6 @@ import com.intellij.psi.xml.XmlDocument;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
 import com.intellij.xml.util.XmlUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -156,15 +155,7 @@ public abstract class XmlExtension {
   public boolean shouldBeInserted(final XmlAttributeDescriptor descriptor) {
     return descriptor.isRequired();
   }
-
-  @SuppressWarnings("unused") //for binary compatibility
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.3")
-  public AttributeValuePresentation getAttributeValuePresentation(@Nullable XmlAttributeDescriptor descriptor,
-                                                                  @NotNull String defaultAttributeQuote,
-                                                                  @NotNull PsiElement context) { 
-    return getAttributeValuePresentation(null, "", defaultAttributeQuote);
-  }
-
+  
   @NotNull
   public AttributeValuePresentation getAttributeValuePresentation(@Nullable XmlTag tag,
                                                                   @NotNull String attributeName,

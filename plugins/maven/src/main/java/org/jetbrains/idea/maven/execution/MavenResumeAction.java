@@ -210,6 +210,9 @@ public class MavenResumeAction extends AnAction {
       e.getPresentation().setEnabled(true);
       e.getPresentation().setText("Resume build from \"" + myResumeFromModuleName + "\"");
     }
+    else {
+      e.getPresentation().setEnabled(false);
+    }
   }
 
   @Override
@@ -355,7 +358,10 @@ public class MavenResumeAction extends AnAction {
     @Override
     public void processTerminated(@NotNull ProcessEvent event) {
       myContext.getStartedProjects();
-      if (event.getExitCode() == 0 && myContext.getProjectsInReactor().size() != myContext.getStartedProjects().size()) {
+
+      if (event.getExitCode() == 0 &&
+          myContext.getStartedProjects().size() != 0 &&
+          myContext.getProjectsInReactor().size() != myContext.getStartedProjects().size()) {
         log(String.format("Build was success, but not all project was build. Project build order: %s, built projects: %s",
                           myContext.getProjectsInReactor(),
                           myContext.getStartedProjects()));

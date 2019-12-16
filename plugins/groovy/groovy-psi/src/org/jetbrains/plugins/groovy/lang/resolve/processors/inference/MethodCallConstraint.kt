@@ -9,7 +9,7 @@ import org.jetbrains.plugins.groovy.lang.psi.api.SpreadState
 import org.jetbrains.plugins.groovy.lang.psi.util.PsiUtil
 
 class MethodCallConstraint(
-  private val leftType: PsiType?,
+  private val expectedType: ExpectedType?,
   private val result: GroovyMethodResult,
   private val context: PsiElement
 ) : GrConstraintFormula() {
@@ -22,15 +22,11 @@ class MethodCallConstraint(
       nested.initArgumentConstraints(candidate.argumentMapping)
       nested.repeatInferencePhases()
 
-      if (leftType != null) {
-        val left = nested.substituteWithInferenceVariables(contextSubstitutor.substitute(leftType))
-        if (left != null) {
-          val rt = SpreadState.apply(PsiUtil.getSmartReturnType(method), result.spreadState, context.project)
-          val right = nested.substituteWithInferenceVariables(contextSubstitutor.substitute(rt))
-          if (right != null && right != PsiType.VOID) {
-            nested.addConstraint(TypeConstraint(left, right, context))
-            nested.repeatInferencePhases()
-          }
+      if (expectedType != null) {
+        val rt = SpreadState.apply(PsiUtil.getSmartReturnType(method), result.spreadState, context.project)
+        if (rt != null && rt != PsiType.VOID) {
+          nested.registerReturnTypeConstraints(expectedType, rt, context)
+          nested.repeatInferencePhases()
         }
       }
     }

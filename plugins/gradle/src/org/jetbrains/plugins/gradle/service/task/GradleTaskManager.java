@@ -21,10 +21,7 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.Consumer;
-import com.intellij.util.Function;
-import com.intellij.util.SystemProperties;
+import com.intellij.util.*;
 import org.gradle.api.Task;
 import org.gradle.tooling.BuildLauncher;
 import org.gradle.tooling.CancellationTokenSource;
@@ -84,8 +81,11 @@ public class GradleTaskManager extends BaseExternalSystemTaskManager<GradleExecu
       settings == null ? new GradleExecutionSettings(null, null, DistributionType.BUNDLED, false) : settings;
 
     ForkedDebuggerConfiguration forkedDebuggerSetup = ForkedDebuggerConfiguration.parse(jvmParametersSetup);
-    if (forkedDebuggerSetup != null && isGradleScriptDebug(settings)) {
-      effectiveSettings.withVmOption(forkedDebuggerSetup.getJvmAgentSetup(isJdk9orLater(effectiveSettings.getJavaHome())));
+    if (forkedDebuggerSetup != null) {
+      if (isGradleScriptDebug(settings)) {
+        effectiveSettings.withVmOption(forkedDebuggerSetup.getJvmAgentSetup(isJdk9orLater(effectiveSettings.getJavaHome())));
+      }
+      effectiveSettings.putUserData(GradleRunConfiguration.DEBUGGER_DISPATCH_PORT_KEY, forkedDebuggerSetup.getForkSocketPort());
     }
 
     CancellationTokenSource cancellationTokenSource = GradleConnector.newCancellationTokenSource();
@@ -98,7 +98,7 @@ public class GradleTaskManager extends BaseExternalSystemTaskManager<GradleExecu
             effectiveSettings.withArguments(GradleConstants.INCLUDE_BUILD_CMD_OPTION, buildParticipant.getProjectPath());
           }
 
-          List<String> args = newSmartList();
+          List<String> args = new SmartList<>();
           for (Iterator<String> iterator = effectiveSettings.getArguments().iterator(); iterator.hasNext(); ) {
             String arg = iterator.next();
             if ("--args".equals(arg) && iterator.hasNext()) {
@@ -180,8 +180,23 @@ public class GradleTaskManager extends BaseExternalSystemTaskManager<GradleExecu
             "//");
         }
       };
-      boolean isTestExecution = Boolean.TRUE == effectiveSettings.getUserData(GradleConstants.RUN_TASK_AS_TEST);
-      resolverExtension.enhanceTaskProcessing(taskNames, jvmParametersSetup, initScriptConsumer, isTestExecution);
+
+      Map<String, String> enhancementParameters = new HashMap<>();
+      enhancementParameters.put(GradleProjectResolverExtension.JVM_PARAMETERS_SETUP_KEY, jvmParametersSetup);
+
+      String isTestExecution = String.valueOf(Boolean.TRUE == effectiveSettings.getUserData(GradleConstants.RUN_TASK_AS_TEST));
+      enhancementParameters.put(GradleProjectResolverExtension.TEST_EXECUTION_EXPECTED_KEY, isTestExecution);
+
+      Integer debugDispatchPort = effectiveSettings.getUserData(GradleRunConfiguration.DEBUGGER_DISPATCH_PORT_KEY);
+
+      if (debugDispatchPort != null) {
+        enhancementParameters.put(GradleProjectResolverExtension.DEBUG_DISPATCH_PORT_KEY, String.valueOf(debugDispatchPort));
+        String debugOptions = effectiveSettings.getUserData(GradleRunConfiguration.DEBUGGER_PARAMETERS_KEY);
+        enhancementParameters.put(GradleProjectResolverExtension.DEBUG_OPTIONS_KEY, debugOptions);
+      }
+
+
+      resolverExtension.enhanceTaskProcessing(taskNames, initScriptConsumer, enhancementParameters);
     }
 
     if (!initScripts.isEmpty()) {
@@ -248,7 +263,8 @@ public class GradleTaskManager extends BaseExternalSystemTaskManager<GradleExecu
                         "allprojects {\n" +
                         "  afterEvaluate { project ->\n" +
                         "    if(project.path == '" + gradlePath + "') {\n" +
-                        "        project.tasks.create(name: '" + taskName + "', overwrite: true, type: " + taskClass.getName() + ") {\n" +
+                        "        def overwrite = project.tasks.findByName('" + taskName + "') != null\n" +
+                        "        project.tasks.create(name: '" + taskName + "', overwrite: overwrite, type: " + taskClass.getName() + ") {\n" +
                         StringUtil.notNullize(taskConfiguration) + "\n" +
                         "        }\n" +
                         "    }\n" +

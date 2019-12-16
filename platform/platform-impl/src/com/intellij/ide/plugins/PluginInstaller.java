@@ -4,7 +4,10 @@ package com.intellij.ide.plugins;
 import com.intellij.CommonBundle;
 import com.intellij.ide.startup.StartupActionScriptManager;
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.fileChooser.FileChooser;
@@ -22,7 +25,6 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.Consumer;
 import com.intellij.util.io.Decompressor;
@@ -47,18 +49,33 @@ public class PluginInstaller {
   public static final String UNKNOWN_HOST_MARKER = "__unknown_repository__";
 
   static final Object ourLock = new Object();
-  private static final InstalledPluginsState ourState = InstalledPluginsState.getInstance();
   private static final String PLUGINS_PRESELECTION_PATH = "plugins.preselection.path";
 
   private PluginInstaller() { }
 
   public static boolean prepareToInstall(List<PluginNode> pluginsToInstall,
                                          List<? extends IdeaPluginDescriptor> allPlugins,
+                                         boolean allowInstallWithoutRestart,
                                          PluginManagerMain.PluginEnabler pluginEnabler,
+                                         Runnable onSuccess,
                                          @NotNull ProgressIndicator indicator) {
     PluginInstallOperation operation = new PluginInstallOperation(pluginsToInstall, allPlugins, pluginEnabler, indicator);
+    operation.setAllowInstallWithoutRestart(allowInstallWithoutRestart);
     operation.run();
-    return operation.isSuccess();
+    boolean success = operation.isSuccess();
+    if (success) {
+      ApplicationManager.getApplication().invokeLater(() -> {
+        if (allowInstallWithoutRestart) {
+          for (PendingDynamicPluginInstall install : operation.getPendingDynamicPluginInstalls()) {
+            installAndLoadDynamicPlugin(install.getFile(), null, install.getPluginDescriptor());
+          }
+        }
+        if (onSuccess != null) {
+          onSuccess.run();
+        }
+      });
+    }
+    return success;
   }
 
   /**
@@ -71,7 +88,7 @@ public class PluginInstaller {
           PluginManagerMain.LOG.error("Plugin is bundled: " + pluginDescriptor.getPluginId());
         }
         else {
-          boolean needRestart = !DynamicPlugins.isUnloadSafe(pluginDescriptor);
+          boolean needRestart = !DynamicPlugins.allowLoadUnloadWithoutRestart((IdeaPluginDescriptorImpl)pluginDescriptor);
           if (needRestart) {
             uninstallAfterRestart(pluginDescriptor);
           }
@@ -88,11 +105,10 @@ public class PluginInstaller {
     StartupActionScriptManager.addActionCommand(new StartupActionScriptManager.DeleteCommand(pluginDescriptor.getPath()));
   }
 
-  public static boolean uninstallDynamicPlugin(IdeaPluginDescriptor pluginDescriptor) {
-    boolean uninstalledWithoutRestart = DynamicPlugins.unloadPlugin((IdeaPluginDescriptorImpl)pluginDescriptor);
+  public static boolean uninstallDynamicPlugin(IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
+    boolean uninstalledWithoutRestart = DynamicPlugins.unloadPlugin((IdeaPluginDescriptorImpl)pluginDescriptor, false, isUpdate);
     if (uninstalledWithoutRestart) {
       FileUtil.delete(pluginDescriptor.getPath());
-      PluginManagerCore.setPlugins(ArrayUtil.remove(PluginManagerCore.getPlugins(), pluginDescriptor));
     }
     else {
       try {
@@ -120,8 +136,7 @@ public class PluginInstaller {
       commands.add(new StartupActionScriptManager.CopyCommand(sourceFile, new File(pluginsPath, sourceFile.getName())));
     }
     else {
-      commands
-        .add(new StartupActionScriptManager.DeleteCommand(new File(pluginsPath, rootEntryName(sourceFile))));  // drops stale directory
+      commands.add(new StartupActionScriptManager.DeleteCommand(new File(pluginsPath, rootEntryName(sourceFile))));  // drops stale directory
       commands.add(new StartupActionScriptManager.UnzipCommand(sourceFile, new File(pluginsPath)));
     }
 
@@ -201,6 +216,8 @@ public class PluginInstaller {
         return false;
       }
 
+      InstalledPluginsState ourState = InstalledPluginsState.getInstance();
+
       if (ourState.wasInstalled(pluginDescriptor.getPluginId())) {
         String message = "Plugin '" + pluginDescriptor.getName() + "' was already installed";
         MessagesEx.showWarningDialog(parent, message, "Install Plugin");
@@ -213,13 +230,20 @@ public class PluginInstaller {
         return false;
       }
 
-      File oldFile = null;
       IdeaPluginDescriptor installedPlugin = PluginManagerCore.getPlugin(pluginDescriptor.getPluginId());
+      if (installedPlugin != null && ApplicationInfoEx.getInstanceEx().isEssentialPlugin(installedPlugin.getPluginId().getIdString())) {
+        String message = "Plugin '" + pluginDescriptor.getName() + "' is a core part of " + ApplicationNamesInfo.getInstance().getFullProductName()
+                         + ". In order to update it to a newer version you should update the IDE.";
+        MessagesEx.showErrorDialog(parent, message, CommonBundle.getErrorTitle());
+        return false;
+      }
+
+      File oldFile = null;
       if (installedPlugin != null && !installedPlugin.isBundled()) {
         oldFile = installedPlugin.getPath();
       }
 
-      boolean installWithoutRestart = oldFile == null && DynamicPlugins.isUnloadSafe(pluginDescriptor);
+      boolean installWithoutRestart = oldFile == null && DynamicPlugins.allowLoadUnloadWithoutRestart(pluginDescriptor);
       if (!installWithoutRestart) {
         installAfterRestart(file, false, oldFile, pluginDescriptor);
       }
@@ -235,17 +259,19 @@ public class PluginInstaller {
     return false;
   }
 
-  public static void installAndLoadDynamicPlugin(@NotNull File file,
-                                                 @Nullable Component parent,
-                                                 IdeaPluginDescriptorImpl pluginDescriptor) {
+  @Nullable
+  public static IdeaPluginDescriptorImpl installAndLoadDynamicPlugin(@NotNull File file,
+                                                                     @Nullable Component parent,
+                                                                     IdeaPluginDescriptorImpl pluginDescriptor) {
     File targetFile = installWithoutRestart(file, pluginDescriptor, parent);
     if (targetFile != null) {
       IdeaPluginDescriptorImpl targetDescriptor = PluginManagerCore.loadDescriptor(targetFile, PluginManagerCore.PLUGIN_XML);
       if (targetDescriptor != null) {
-        DynamicPlugins.loadPlugin(targetDescriptor);
-        PluginManagerCore.setPlugins(ArrayUtil.mergeArrays(PluginManagerCore.getPlugins(), new IdeaPluginDescriptor[]{targetDescriptor}));
+        DynamicPlugins.loadPlugin(targetDescriptor, false);
+        return targetDescriptor;
       }
     }
+    return null;
   }
 
   private static void checkInstalledPluginDependencies(@NotNull InstalledPluginsTableModel model,

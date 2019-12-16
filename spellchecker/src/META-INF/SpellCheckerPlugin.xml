@@ -1,10 +1,11 @@
 <idea-plugin>
   <extensionPoints>
-    <extensionPoint name="spellchecker.support" beanClass="com.intellij.lang.LanguageExtensionPoint">
+    <extensionPoint name="spellchecker.support" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.spellchecker.tokenizer.SpellcheckingStrategy"/>
     </extensionPoint>
     <extensionPoint name="spellchecker.bundledDictionaryProvider" interface="com.intellij.spellchecker.BundledDictionaryProvider"/>
     <extensionPoint name="spellchecker.dictionary.customDictionaryProvider" interface="com.intellij.spellchecker.dictionary.CustomDictionaryProvider"/>
+    <extensionPoint name="spellchecker.dictionary.runtimeDictionaryProvider" interface="com.intellij.spellchecker.dictionary.RuntimeDictionaryProvider"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -14,6 +15,7 @@
     <fileType name="Dictionary" implementationClass="com.intellij.spellchecker.DictionaryFileType" extensions="dic"/>
     <projectService serviceImplementation="com.intellij.spellchecker.settings.SpellCheckerSettings"/>
     <projectService serviceImplementation="com.intellij.spellchecker.SpellCheckerManager"/>
+    <applicationService serviceImplementation="com.intellij.spellchecker.SpellcheckerCorrectionsFilter"/>
     <projectConfigurable groupId="editor" instance="com.intellij.spellchecker.settings.SpellCheckerSettingsManager" id="reference.settings.ide.settings.spelling" key="spelling" bundle="com.intellij.spellchecker.util.SpellCheckerBundle" />
 
 

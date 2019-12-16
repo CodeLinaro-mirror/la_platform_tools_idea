@@ -47,14 +47,13 @@ public class ThreadDumper {
 
   @NotNull
   public static ThreadInfo[] getThreadInfos() {
-    ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-    return sort(threadMXBean.dumpAllThreads(false, false));
+    return getThreadInfos(ManagementFactory.getThreadMXBean(), true);
   }
 
   @NotNull
-  public static ThreadDump getThreadDumpInfo(@NotNull final ThreadMXBean threadMXBean) {
+  public static ThreadDump getThreadDumpInfo(ThreadInfo[] threadInfos) {
+    sort(threadInfos);
     StringWriter writer = new StringWriter();
-    ThreadInfo[] threadInfos = getThreadInfos(threadMXBean, true);
     StackTraceElement[] edtStack = dumpThreadInfos(threadInfos, writer);
     return new ThreadDump(writer.toString(), edtStack, threadInfos);
   }
@@ -63,10 +62,10 @@ public class ThreadDumper {
   public static ThreadInfo[] getThreadInfos(@NotNull ThreadMXBean threadMXBean, boolean sort) {
     ThreadInfo[] threads;
     try {
-      threads = sort(threadMXBean.dumpAllThreads(false, false));
+      threads = threadMXBean.dumpAllThreads(false, false);
     }
     catch (Exception ignored) {
-      threads = sort(threadMXBean.getThreadInfo(threadMXBean.getAllThreadIds(), Integer.MAX_VALUE));
+      threads = threadMXBean.getThreadInfo(threadMXBean.getAllThreadIds(), Integer.MAX_VALUE);
     }
     if (sort) {
       sort(threads);
@@ -78,8 +77,8 @@ public class ThreadDumper {
     return isEDT(info.getThreadName());
   }
 
-  public static boolean isEDT(@NotNull String threadName) {
-    return threadName.startsWith("AWT-EventQueue");
+  public static boolean isEDT(@Nullable String threadName) {
+    return threadName != null && threadName.startsWith("AWT-EventQueue");
   }
 
   private static StackTraceElement[] dumpThreadInfos(@NotNull ThreadInfo[] threadInfo, @NotNull Writer f) {

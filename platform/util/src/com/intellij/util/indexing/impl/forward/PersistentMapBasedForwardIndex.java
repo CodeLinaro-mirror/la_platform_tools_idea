@@ -70,8 +70,8 @@ public class PersistentMapBasedForwardIndex implements ForwardIndex {
     try {
       myPersistentMap.close();
     }
-    catch (Exception e) {
-      LOG.error(e);
+    catch (IOException e) {
+      LOG.info(e);
     }
     PersistentHashMap.deleteFilesStartingWith(baseFile);
     myPersistentMap = createMap(myMapFile);
@@ -80,10 +80,6 @@ public class PersistentMapBasedForwardIndex implements ForwardIndex {
   @Override
   public void close() throws IOException {
     myPersistentMap.close();
-  }
-
-  public boolean isBusyReading() {
-    return myPersistentMap.isBusyReading();
   }
 
   public boolean containsMapping(int key) throws IOException {

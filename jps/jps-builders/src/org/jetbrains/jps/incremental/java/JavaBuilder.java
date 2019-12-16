@@ -27,14 +27,10 @@ import org.jetbrains.jps.PathUtils;
 import org.jetbrains.jps.ProjectPaths;
 import org.jetbrains.jps.api.GlobalOptions;
 import org.jetbrains.jps.backwardRefs.JavaBackwardReferenceIndexWriter;
-import org.jetbrains.jps.builders.BuildRootIndex;
-import org.jetbrains.jps.builders.DirtyFilesHolder;
-import org.jetbrains.jps.builders.FileProcessor;
+import org.jetbrains.jps.builders.*;
 import org.jetbrains.jps.builders.impl.DirtyFilesHolderBase;
-import org.jetbrains.jps.builders.java.JavaBuilderExtension;
-import org.jetbrains.jps.builders.java.JavaBuilderUtil;
-import org.jetbrains.jps.builders.java.JavaCompilingTool;
-import org.jetbrains.jps.builders.java.JavaSourceRootDescriptor;
+import org.jetbrains.jps.builders.impl.TargetOutputIndexImpl;
+import org.jetbrains.jps.builders.java.*;
 import org.jetbrains.jps.builders.logging.ProjectBuilderLogger;
 import org.jetbrains.jps.builders.storage.BuildDataCorruptedException;
 import org.jetbrains.jps.cmdline.ProjectDescriptor;
@@ -59,7 +55,8 @@ import org.jetbrains.jps.model.serialization.PathMacroUtil;
 import org.jetbrains.jps.service.JpsServiceManager;
 import org.jetbrains.jps.service.SharedThreadPool;
 
-import javax.tools.*;
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -70,6 +67,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.intellij.openapi.util.Pair.pair;
@@ -81,6 +79,8 @@ public class JavaBuilder extends ModuleLevelBuilder {
   private static final Logger LOG = Logger.getInstance("#org.jetbrains.jps.incremental.java.JavaBuilder");
   private static final String JAVA_EXTENSION = "java";
 
+  private static final String USE_MODULE_PATH_ONLY_OPTION = "compiler.force.module.path";
+
   public static final String BUILDER_NAME = "java";
   public static final Key<Boolean> IS_ENABLED = Key.create("_java_compiler_enabled_");
   public static final FileFilter JAVA_SOURCES_FILTER = FileFilters.withExtension(JAVA_EXTENSION);
@@ -89,6 +89,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
   private static final Key<Boolean> PREFER_TARGET_JDK_COMPILER = GlobalContextKey.create("_prefer_target_jdk_javac_");
   private static final Key<JavaCompilingTool> COMPILING_TOOL = Key.create("_java_compiling_tool_");
   private static final Key<ConcurrentMap<String, Collection<String>>> COMPILER_USAGE_STATISTICS = Key.create("_java_compiler_usage_stats_");
+  private static final Key<ModulePathSplitter> MODULE_PATH_SPLITTER = GlobalContextKey.create("_module_path_splitter_");
   private static final List<String> COMPILABLE_EXTENSIONS = Collections.singletonList(JAVA_EXTENSION);
 
   private static final Set<String> FILTERED_OPTIONS = ContainerUtil.newHashSet(
@@ -144,6 +145,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Java compiler ID: " + compilerId);
     }
+    MODULE_PATH_SPLITTER.set(context, new ModulePathSplitter(new ExplodedModuleNameFinder(context)));
     JavaCompilingTool compilingTool = JavaBuilderUtil.findCompilingTool(compilerId);
     COMPILING_TOOL.set(context, compilingTool);
     COMPILER_USAGE_STATISTICS.set(context, new ConcurrentHashMap<>());
@@ -229,12 +231,17 @@ public class JavaBuilder extends ModuleLevelBuilder {
         return true;
       });
 
+      File moduleInfoFile = null;
       int javaModulesCount = 0;
       if ((!filesToCompile.isEmpty() || dirtyFilesHolder.hasRemovedFiles()) &&
           getTargetPlatformLanguageVersion(chunk.representativeTarget().getModule()) >= 9) {
         for (ModuleBuildTarget target : chunk.getTargets()) {
-          if (JavaBuilderUtil.findModuleInfoFile(context, target) != null) {
+          final File moduleInfo = JavaBuilderUtil.findModuleInfoFile(context, target);
+          if (moduleInfo != null) {
             javaModulesCount++;
+            if (moduleInfoFile == null) {
+              moduleInfoFile = moduleInfo;
+            }
           }
         }
       }
@@ -253,7 +260,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
         return ExitCode.ABORT;
       }
 
-      return compile(context, chunk, dirtyFilesHolder, filesToCompile, outputConsumer, compilingTool, javaModulesCount > 0);
+      return compile(context, chunk, dirtyFilesHolder, filesToCompile, outputConsumer, compilingTool, moduleInfoFile);
     }
     catch (BuildDataCorruptedException | PersistentEnumeratorBase.CorruptedException | ProjectBuildException e) {
       throw e;
@@ -275,7 +282,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
                            Collection<? extends File> files,
                            OutputConsumer outputConsumer,
                            JavaCompilingTool compilingTool,
-                           boolean hasModules) throws Exception {
+                           File moduleInfoFile) throws Exception {
     ExitCode exitCode = ExitCode.NOTHING_DONE;
 
     final boolean hasSourcesToCompile = !files.isEmpty();
@@ -328,7 +335,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
             }
           }
           try {
-            compiledOk = compileJava(context, chunk, files, classpath, platformCp, srcPath, diagnosticSink, outputSink, compilingTool, hasModules);
+            compiledOk = compileJava(context, chunk, files, classpath, platformCp, srcPath, diagnosticSink, outputSink, compilingTool, moduleInfoFile);
           }
           finally {
             filesWithErrors = diagnosticSink.getFilesWithErrors();
@@ -372,17 +379,19 @@ public class JavaBuilder extends ModuleLevelBuilder {
                               DiagnosticOutputConsumer diagnosticSink,
                               OutputFileConsumer outputSink,
                               JavaCompilingTool compilingTool,
-                              boolean hasModules) {
+                              File moduleInfoFile) {
     final Semaphore counter = new Semaphore();
     COUNTER_KEY.set(context, counter);
 
     final Set<JpsModule> modules = chunk.getModules();
     ProcessorConfigProfile profile = null;
 
+    final JpsJavaCompilerConfiguration compilerConfig = JpsJavaExtensionService.getInstance().getCompilerConfiguration(
+      context.getProjectDescriptor().getProject()
+    );
+    assert compilerConfig != null;
+
     if (modules.size() == 1) {
-      final JpsJavaCompilerConfiguration compilerConfig =
-        JpsJavaExtensionService.getInstance().getCompilerConfiguration(context.getProjectDescriptor().getProject());
-      assert compilerConfig != null;
       profile = compilerConfig.getAnnotationProcessingProfile(modules.iterator().next());
     }
     else {
@@ -412,7 +421,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
       final int compilerSdkVersion = forkSdk == null ? JavaVersion.current().feature : forkSdk.getSecond();
 
       final Pair<List<String>, List<String>> vm_compilerOptions = getCompilationOptions(
-        compilerSdkVersion, context, chunk, profile, hasModules, compilingTool
+        compilerSdkVersion, context, chunk, profile, compilingTool
       );
       final List<String> vmOptions = vm_compilerOptions.first;
       final List<String> options = vm_compilerOptions.second;
@@ -432,15 +441,31 @@ public class JavaBuilder extends ModuleLevelBuilder {
       }
 
       Collection<? extends File> classPath = originalClassPath;
-      Collection<File> modulePath = Collections.emptyList();
+      ModulePath modulePath = ModulePath.EMPTY;
       Collection<? extends File> upgradeModulePath = Collections.emptyList();
 
-      if (hasModules) {
-        // in Java 9, named modules are not allowed to read classes from the classpath
-        // moreover, the compiler requires all transitive dependencies to be on the module path
-        modulePath = ProjectPaths.getCompilationModulePath(chunk, false);
-        classPath = Collections.emptyList();
-        // modules located above the JDK make a module upgrade path
+      if (moduleInfoFile != null) { // has modules
+        final ModulePathSplitter splitter = MODULE_PATH_SPLITTER.get(context);
+        final Pair<ModulePath, Collection<File>> pair = splitter.splitPath(
+          moduleInfoFile, outs.keySet(), ProjectPaths.getCompilationModulePath(chunk, false)
+        );
+        final boolean useModulePathOnly = Boolean.parseBoolean(System.getProperty(USE_MODULE_PATH_ONLY_OPTION))/*compilerConfig.useModulePathOnly()*/;
+        if (useModulePathOnly) {
+          // in Java 9, named modules are not allowed to read classes from the classpath
+          // moreover, the compiler requires all transitive dependencies to be on the module path
+          ModulePath.Builder mpBuilder = ModulePath.newBuilder();
+          for (File file : ProjectPaths.getCompilationModulePath(chunk, false)) {
+            mpBuilder.add(pair.first.getModuleName(file), file);
+          }
+          modulePath = mpBuilder.create();
+          classPath = Collections.emptyList();
+        }
+        else {
+          // placing only explicitly referenced modules into the module path and the rest of deps to classpath
+          modulePath = pair.first;
+          classPath = pair.second;
+        }
+        // modules above the JDK in the order entry list make a module upgrade path
         upgradeModulePath = platformCp;
         platformCp = Collections.emptyList();
       }
@@ -732,7 +757,6 @@ public class JavaBuilder extends ModuleLevelBuilder {
                                                                         CompileContext context,
                                                                         ModuleChunk chunk,
                                                                         @Nullable ProcessorConfigProfile profile,
-                                                                        boolean withModules,
                                                                         @NotNull JavaCompilingTool compilingTool) {
     final List<String> compilationOptions = new ArrayList<>();
     final List<String> vmOptions = new ArrayList<>();
@@ -810,7 +834,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
       vmOptions.addAll(extension.getOptions(compilingTool));
     }
 
-    addCompilationOptions(compilerSdkVersion, compilationOptions, context, chunk, profile, withModules);
+    addCompilationOptions(compilerSdkVersion, compilationOptions, context, chunk, profile);
 
     return pair(vmOptions, compilationOptions);
   }
@@ -819,13 +843,13 @@ public class JavaBuilder extends ModuleLevelBuilder {
                                            CompileContext context,
                                            ModuleChunk chunk,
                                            @Nullable ProcessorConfigProfile profile) {
-    addCompilationOptions(JavaVersion.current().feature, options, context, chunk, profile, false);
+    addCompilationOptions(JavaVersion.current().feature, options, context, chunk, profile);
   }
 
   private static void addCompilationOptions(int compilerSdkVersion,
                                             List<? super String> options,
                                             CompileContext context, ModuleChunk chunk,
-                                            @Nullable ProcessorConfigProfile profile, boolean withModules) {
+                                            @Nullable ProcessorConfigProfile profile) {
     if (!options.contains("-encoding")) {
       final CompilerEncodingConfiguration config = context.getProjectDescriptor().getEncodingConfiguration();
       final String encoding = config.getPreferredModuleChunkEncoding(chunk);
@@ -852,7 +876,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
       }
     }
 
-    if (addAnnotationProcessingOptions(options, profile, withModules)) {
+    if (addAnnotationProcessingOptions(options, profile)) {
       final File srcOutput = ProjectPaths.getAnnotationProcessorGeneratedSourcesOutputDir(
         chunk.getModules().iterator().next(), chunk.containsTests(), profile
       );
@@ -867,9 +891,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
   /**
    * @return true if annotation processing is enabled and corresponding options were added, false if profile is null or disabled
    */
-  public static boolean addAnnotationProcessingOptions(List<? super String> options,
-                                                       @Nullable AnnotationProcessingConfiguration profile,
-                                                       boolean withModules) {
+  public static boolean addAnnotationProcessingOptions(List<? super String> options, @Nullable AnnotationProcessingConfiguration profile) {
     if (profile == null || !profile.isEnabled()) {
       options.add("-proc:none");
       return false;
@@ -878,7 +900,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
     // configuring annotation processing
     if (!profile.isObtainProcessorsFromClasspath()) {
       final String processorsPath = profile.getProcessorPath();
-      options.add(withModules ? "--processor-module-path" : "-processorpath");
+      options.add(profile.isUseProcessorModulePath() ? "--processor-module-path" : "-processorpath");
       options.add(FileUtil.toSystemDependentName(processorsPath.trim()));
     }
 
@@ -1224,6 +1246,29 @@ public class JavaBuilder extends ModuleLevelBuilder {
     @NotNull
     Collection<File> getFilesWithErrors() {
       return myFilesWithErrors;
+    }
+  }
+
+  private static class ExplodedModuleNameFinder implements Function<File, String> {
+    private final TargetOutputIndex myOutsIndex;
+
+    ExplodedModuleNameFinder(CompileContext context) {
+      final BuildTargetIndex targetIndex = context.getProjectDescriptor().getBuildTargetIndex();
+      final List<ModuleBuildTarget> javaModuleTargets = new ArrayList<>();
+      for (JavaModuleBuildTargetType type : JavaModuleBuildTargetType.ALL_TYPES) {
+        javaModuleTargets.addAll(targetIndex.getAllTargets(type));
+      }
+      myOutsIndex = new TargetOutputIndexImpl(javaModuleTargets, context);
+    }
+
+    @Override
+    public String apply(File outputDir) {
+      for (BuildTarget<?> target : myOutsIndex.getTargetsByOutputFile(outputDir)) {
+        if (target instanceof ModuleBasedTarget) {
+          return ((ModuleBasedTarget<?>)target).getModule().getName().trim();
+        }
+      }
+      return ModulePathSplitter.DEFAULT_MODULE_NAME_SEARCH.apply(outputDir);
     }
   }
 

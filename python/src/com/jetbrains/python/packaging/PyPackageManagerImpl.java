@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.packaging;
 
 import com.google.common.collect.Lists;
@@ -23,6 +23,7 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.net.HttpConfigurable;
+import com.jetbrains.python.PyPsiPackageUtil;
 import com.jetbrains.python.PythonHelpersLocator;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.sdk.*;
@@ -93,21 +94,21 @@ public class PyPackageManagerImpl extends PyPackageManager {
     if (!refreshAndCheckForSetuptools()) {
       installManagement(PyPackageUtil.SETUPTOOLS + "-" + SETUPTOOLS_VERSION);
     }
-    if (PyPackageUtil.findPackage(refreshAndGetPackages(false), PyPackageUtil.PIP) == null) {
+    if (PyPsiPackageUtil.findPackage(refreshAndGetPackages(false), PyPackageUtil.PIP) == null) {
       installManagement(PyPackageUtil.PIP + "-" + PIP_VERSION);
     }
   }
 
   @Override
   public boolean hasManagement() throws ExecutionException {
-    return refreshAndCheckForSetuptools() && PyPackageUtil.findPackage(refreshAndGetPackages(false), PyPackageUtil.PIP) != null;
+    return refreshAndCheckForSetuptools() && PyPsiPackageUtil.findPackage(refreshAndGetPackages(false), PyPackageUtil.PIP) != null;
   }
 
   private boolean refreshAndCheckForSetuptools() throws ExecutionException {
     try {
       final List<PyPackage> packages = refreshAndGetPackages(false);
-      return PyPackageUtil.findPackage(packages, PyPackageUtil.SETUPTOOLS) != null ||
-             PyPackageUtil.findPackage(packages, PyPackageUtil.DISTRIBUTE) != null;
+      return PyPsiPackageUtil.findPackage(packages, PyPackageUtil.SETUPTOOLS) != null ||
+             PyPsiPackageUtil.findPackage(packages, PyPackageUtil.DISTRIBUTE) != null;
     }
     catch (PyExecutionException e) {
       if (e.getExitCode() == ERROR_NO_SETUPTOOLS) {
@@ -152,7 +153,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
   }
 
   protected void subscribeToLocalChanges() {
-    PyPackageUtil.runOnChangeUnderInterpreterPaths(getSdk(), this::refreshPackagesSynchronously);
+    PyPackageUtil.runOnChangeUnderInterpreterPaths(getSdk(), () -> PythonSdkType.getInstance().setupSdkPaths(getSdk()));
   }
 
   @NotNull
@@ -208,7 +209,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
       for (PyRequirement req : requirements) {
         simplifiedArgs.addAll(req.getInstallOptions());
       }
-      throw new PyExecutionException(e.getMessage(), "pip", makeSafeToDisplayCommand(simplifiedArgs), 
+      throw new PyExecutionException(e.getMessage(), "pip", makeSafeToDisplayCommand(simplifiedArgs),
                                      e.getStdout(), e.getStderr(), e.getExitCode(), e.getFixes());
     }
     finally {
@@ -327,7 +328,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
       }
     }
 
-    final String binary = PythonSdkType.getPythonExecutable(destinationDir);
+    final String binary = PythonSdkUtil.getPythonExecutable(destinationDir);
     final String binaryFallback = destinationDir + mySeparator + "bin" + mySeparator + "python";
     final String path = (binary != null) ? binary : binaryFallback;
 
@@ -471,7 +472,7 @@ public class PyPackageManagerImpl extends PyPackageManager {
     cmdline.add(helperPath);
     cmdline.addAll(args);
     LOG.info("Running packaging tool: " + StringUtil.join(makeSafeToDisplayCommand(cmdline), " "));
-    
+
     try {
       final GeneralCommandLine commandLine =
         new GeneralCommandLine(cmdline).withWorkDirectory(workingDir).withEnvironment(PythonSdkType.activateVirtualEnv(getSdk()));

@@ -24,10 +24,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.task.ModuleBuildTask;
-import com.intellij.task.ProjectTaskContext;
-import com.intellij.task.ProjectTaskManager;
-import com.intellij.task.ProjectTaskResult;
+import com.intellij.task.*;
 import com.intellij.task.impl.ProjectTaskManagerImpl;
 import com.intellij.task.impl.ProjectTaskManagerListener;
 import com.intellij.task.impl.ProjectTaskScope;
@@ -69,8 +66,8 @@ public class ExternalSystemTaskActivator {
       }
 
       @Override
-      public void afterRun(@NotNull ProjectTaskContext context, @NotNull ProjectTaskResult result) throws ExecutionException {
-        if (!doExecuteBuildPhaseTriggers(false, context)) {
+      public void afterRun(@NotNull ProjectTaskManager.Result result) throws ExecutionException {
+        if (!doExecuteBuildPhaseTriggers(false, result.getContext())) {
           throw new ExecutionException("After build triggering task failed");
         }
       }
@@ -164,7 +161,7 @@ public class ExternalSystemTaskActivator {
       for (Phase phase : phases) {
         List<String> activationTasks = activation.state.getTasks(phase);
         if (hashPath || (phase.isSyncPhase() && !activationTasks.isEmpty() &&  isShareSameRootPath(modules, activation))) {
-          ContainerUtil.addAll(tasks, activationTasks);
+          tasks.addAll(activationTasks);
         }
       }
 

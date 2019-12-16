@@ -64,6 +64,7 @@ public class PyCompatibilityInspection extends PyInspection {
   public static final List<String> BACKPORTED_PACKAGES = ImmutableList.<String>builder()
     .add("enum")
     .add("typing")
+    .add("dataclasses")
     .build();
 
   public static final List<String> COMPATIBILITY_LIBS = Collections.singletonList("six");
@@ -197,11 +198,8 @@ public class PyCompatibilityInspection extends PyInspection {
       if (resolvedCallee instanceof PyFunction) {
         final PyFunction function = (PyFunction)resolvedCallee;
         final PyClass containingClass = function.getContainingClass();
-        final String originalFunctionName = function.getName();
 
-        final String functionName = containingClass != null && PyNames.INIT.equals(originalFunctionName)
-                                    ? callee.getText()
-                                    : originalFunctionName;
+        final String functionName = PyUtil.isInitOrNewMethod(function) ? callee.getText() : function.getName();
 
         if (containingClass != null) {
           final String className = containingClass.getName();

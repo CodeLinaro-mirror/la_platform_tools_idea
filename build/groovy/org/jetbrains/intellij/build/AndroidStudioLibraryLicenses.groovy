@@ -34,7 +34,7 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "Apache Commons Lang", libraryName: "commons-lang", version: "2.6", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt", url: "http://commons.apache.org/proper/commons-lang/"),
     // for bouncycastle module library in android.sdktools.sdk-common
-    new LibraryLicense(name: "bouncycastle", version: "1.56", license: "MIT License", url: "http://bouncycastle.org",
+    new LibraryLicense(name: "Bouncy Castle", libraryName: "bouncycastle", license: "MIT License", url: "http://bouncycastle.org",
                        licenseUrl: "http://bouncycastle.org/licence.html"),
     new LibraryLicense(name: "CDT", libraryName: "org.eclipse.cdt", license: "Eclipse Public License 1.0"),
     // for eclipse-layout-kernel module library in intellij.android.designer
@@ -147,7 +147,7 @@ class AndroidStudioLibraryLicenses {
                        license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Instant run version", libraryName: "libjava_version.jar",
                        license: "Apache 2.0", url: "http://source.android.com/"),
-    new LibraryLicense(name: "R8", libraryName: "r8-master.jar", license: "BSD"),
+    new LibraryLicense(name: "R8", libraryName: "r8.jar", license: "BSD"),
   ] as List<LibraryLicense>) + (("true" == System.getProperty("bundle.ui.tests") ? [
     new LibraryLicense(name: "truth", libraryName: "truth", version: "0.28", license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     new LibraryLicense(name: "easymock-tools", libraryName: "easymock-tools", version: "3.1", license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),

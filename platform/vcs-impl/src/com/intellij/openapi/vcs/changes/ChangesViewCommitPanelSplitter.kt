@@ -3,32 +3,69 @@ package com.intellij.openapi.vcs.changes
 
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.ui.OnePixelSplitter
-import com.intellij.util.ui.update.UiNotifyConnector
-import javax.swing.JComponent
 
-private const val CHANGES_VIEW_COMMIT_SPLITTER_PROPORTION = "ChangesViewManager.COMMIT_SPLITTER_PROPORTION"
+private const val VERTICAL_PROPORTION_KEY = "ChangesViewManager.COMMIT_SPLITTER_PROPORTION"
+private const val HORIZONTAL_PROPORTION_KEY = "ChangesViewManager.COMMIT_SPLITTER_PROPORTION.HORIZONTAL"
+private const val DEFAULT_VERTICAL_PROPORTION = 1.0f
+private const val DEFAULT_HORIZONTAL_PROPORTION = 0.4f
 
-private class ChangesViewCommitPanelSplitter : OnePixelSplitter(true, CHANGES_VIEW_COMMIT_SPLITTER_PROPORTION, 1.0f) {
-  private var isDefaultProportionSet = false
+private val propertiesComponent get() = PropertiesComponent.getInstance()
 
-  override fun setSecondComponent(component: JComponent?) {
-    if (component != null && !isDefaultProportionSet) {
-      UiNotifyConnector.doWhenFirstShown(this) {
-        isDefaultProportionSet = true
-        proportion = 1.0f - (component.preferredSize.getHeight().toFloat() / height).coerceIn(0.05f, 0.95f)
-      }
-    }
-    super.setSecondComponent(component)
+private class ChangesViewCommitPanelSplitter : OnePixelSplitter(true, "", DEFAULT_VERTICAL_PROPORTION) {
+  private var isVerticalProportionSet = propertiesComponent.isValueSet(VERTICAL_PROPORTION_KEY)
+  private var previousHeight = 0
+  private var verticalSecondHeight = 0
+
+  init {
+    addPropertyChangeListener(PROP_ORIENTATION) { loadProportion() }
   }
 
-  override fun loadProportion() {
-    val key = splitterProportionKey
-    isDefaultProportionSet = key != null && PropertiesComponent.getInstance().isValueSet(key)
+  override fun doLayout() {
+    calculateInitialVerticalProportion()
+    doLayoutRetainingSecondHeight()
+  }
 
-    if (isDefaultProportionSet) super.loadProportion()
+  private fun doLayoutRetainingSecondHeight() {
+    if (isVerticalProportionSet && canCalculateVerticalProportion() && isSplitterHeightChanged()) {
+      if (isVertical && secondComponent.height > 0) proportion = getProportionForSecondHeight(secondComponent.height)
+      else if (!isVertical && verticalSecondHeight > 0) saveVerticalProportion(getProportionForSecondHeight(verticalSecondHeight))
+    }
+    super.doLayout()
+    previousHeight = height
+    if (isVerticalProportionSet && isVertical && canCalculateVerticalProportion()) verticalSecondHeight = secondComponent.height
+  }
+
+  private fun calculateInitialVerticalProportion() {
+    if (isVerticalProportionSet || !isVertical || !canCalculateVerticalProportion()) return
+
+    isVerticalProportionSet = true
+    proportion = getProportionForSecondHeight(secondComponent.preferredSize.height)
+  }
+
+  private fun getProportionForSecondHeight(secondHeight: Int): Float =
+    getProportionForSecondSize(secondHeight, height).coerceIn(0.05f, 0.95f)
+
+  private fun canCalculateVerticalProportion(): Boolean = secondComponent != null && height > dividerWidth
+  private fun isSplitterHeightChanged(): Boolean = previousHeight != height
+
+  override fun loadProportion() {
+    if (!isVertical) {
+      proportion = propertiesComponent.getFloat(HORIZONTAL_PROPORTION_KEY, DEFAULT_HORIZONTAL_PROPORTION)
+    }
+    else if (isVerticalProportionSet) {
+      proportion = propertiesComponent.getFloat(VERTICAL_PROPORTION_KEY, DEFAULT_VERTICAL_PROPORTION)
+    }
   }
 
   override fun saveProportion() {
-    if (isDefaultProportionSet) super.saveProportion()
+    if (!isVertical) {
+      propertiesComponent.setValue(HORIZONTAL_PROPORTION_KEY, proportion, DEFAULT_HORIZONTAL_PROPORTION)
+    }
+    else if (isVerticalProportionSet) {
+      saveVerticalProportion(proportion)
+    }
   }
+
+  private fun saveVerticalProportion(value: Float) =
+    propertiesComponent.setValue(VERTICAL_PROPORTION_KEY, value, DEFAULT_VERTICAL_PROPORTION)
 }

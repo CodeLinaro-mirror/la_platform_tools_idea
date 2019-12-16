@@ -4,11 +4,12 @@ package com.intellij.util;
 import com.intellij.openapi.diagnostic.LoggerRt;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.text.StringUtilRt;
-import com.intellij.util.containers.ContainerUtilRt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -23,7 +24,11 @@ public class PathUtilRt {
     }
 
     int end = getEnd(path);
-    return path.substring(getLastIndexOfPathSeparator(path, end) + 1, end);
+    int start = getLastIndexOfPathSeparator(path, end);
+    if (isWindowsUNCRoot(path, start)) {
+      start = -1;
+    }
+    return path.substring(start + 1, end);
   }
 
   @Nullable
@@ -53,6 +58,9 @@ public class PathUtilRt {
     if (end == -1 || end == 0) {
       return "";
     }
+    if (isWindowsUNCRoot(path, end)) {
+      return "";
+    }
     // parent of '//host' is root
     char prev = path.charAt(end - 1);
     if (prev == '/' || prev == '\\') {
@@ -63,6 +71,11 @@ public class PathUtilRt {
 
   private static int getLastIndexOfPathSeparator(@NotNull String path, int end) {
     return Math.max(path.lastIndexOf('/', end - 1), path.lastIndexOf('\\', end - 1));
+  }
+
+  private static boolean isWindowsUNCRoot(@NotNull String path, int lastPathSeparatorPosition) {
+    return Platform.CURRENT == Platform.WINDOWS &&
+           (path.startsWith("//") || path.startsWith("\\\\")) && getLastIndexOfPathSeparator(path, lastPathSeparatorPosition) == 1;
   }
 
   @NotNull
@@ -142,10 +155,11 @@ public class PathUtilRt {
   }
 
   private static final String WINDOWS_CHARS = "<>:\"|?*";
-  private static final Set<String> WINDOWS_NAMES = ContainerUtilRt.newHashSet(
-    "CON", "PRN", "AUX", "NUL",
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9");
+  private static final Set<String> WINDOWS_NAMES = new HashSet<String>(Arrays.asList(
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4",
+    "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+    "LPT3",
+    "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"));
 
   private static final Charset FS_CHARSET = fsCharset();
   private static Charset fsCharset() {

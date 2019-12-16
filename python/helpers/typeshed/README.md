@@ -15,7 +15,7 @@ For information on how to use `typeshed`, read below.  Information for
 contributors can be found in [CONTRIBUTING.md](CONTRIBUTING.md).  **Please read
 it before submitting pull requests.**
 
-Typeshed supports Python versions 2.7 and 3.4 and up.
+Typeshed supports Python versions 2.7 and 3.5 and up.
 
 ## Using
 
@@ -45,10 +45,13 @@ pytype repo.
 
 ## Format
 
-Each Python module is represented by a `.pyi` "stub". This is a normal Python
-file (i.e., it can be interpreted by Python 3), except all the methods are empty.
+Each Python module is represented by a `.pyi` "stub file".  This is a
+syntactically valid Python file, although it usually cannot be run by
+Python 3 (since forward references don't require string quotes).  All
+the methods are empty.
+
 Python function annotations ([PEP 3107](https://www.python.org/dev/peps/pep-3107/))
-are used to describe the types the function has.
+are used to describe the signature of each function or method.
 
 See [PEP 484](http://www.python.org/dev/peps/pep-0484/) for the exact
 syntax of the stub files and [CONTRIBUTING.md](CONTRIBUTING.md) for the

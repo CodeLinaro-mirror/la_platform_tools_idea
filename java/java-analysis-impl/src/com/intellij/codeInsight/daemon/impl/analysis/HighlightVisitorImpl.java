@@ -163,9 +163,9 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
         myRefCountHolder = refCountHolder;
         Project project = file.getProject();
         Document document = PsiDocumentManager.getInstance(project).getDocument(file);
-        TextRange dirtyScope = Optional.ofNullable(document)
-          .map(doc -> DaemonCodeAnalyzerEx.getInstanceEx(project).getFileStatusMap().getFileDirtyScope(doc, Pass.UPDATE_ALL))
-          .orElse(file.getTextRange());
+        TextRange dirtyScope = document == null ? null : DaemonCodeAnalyzerEx.getInstanceEx(project).getFileStatusMap().getFileDirtyScope(document, Pass.UPDATE_ALL);
+        if (dirtyScope == null) dirtyScope = file.getTextRange();
+
         success = refCountHolder.analyze(file, dirtyScope, progress, () -> {
           highlight.run();
           ProgressManager.checkCanceled();
@@ -370,11 +370,10 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
       }
       final Map<PsiElement, String> returnErrors = LambdaUtil.checkReturnTypeCompatible(expression, LambdaUtil.getFunctionalInterfaceReturnType(functionalInterfaceType));
       if (parentInferenceErrorMessage != null && (returnErrors == null || !returnErrors.containsValue(parentInferenceErrorMessage))) {
+        if (returnErrors == null) return;
         HighlightInfo info = HighlightMethodUtil.createIncompatibleTypeHighlightInfo(callExpression, getResolveHelper(myHolder.getProject()),
                                                                                      (MethodCandidateInfo)containingCallResolveResult, expression.getTextRange());
-        if (returnErrors != null) {
-          returnErrors.keySet().forEach(k -> QuickFixAction.registerQuickFixAction(info, AdjustFunctionContextFix.createFix(k)));
-        }
+        returnErrors.keySet().forEach(k -> QuickFixAction.registerQuickFixAction(info, AdjustFunctionContextFix.createFix(k)));
         myHolder.add(info);
       }
       else if (returnErrors != null) {
@@ -672,7 +671,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
       if (method.isConstructor()) {
         HighlightInfo info = HighlightMethodUtil.checkConstructorName(method);
         if (info != null) {
-          PsiType expectedType = myExpectedReturnTypes.computeIfAbsent(method, HighlightUtil::determineReturnType);
+          PsiType expectedType = myExpectedReturnTypes.computeIfAbsent(method, HighlightMethodUtil::determineReturnType);
           if (expectedType != null) HighlightUtil.registerReturnTypeFixes(info, method, expectedType);
         }
         myHolder.add(info);
@@ -914,7 +913,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     if (!myHolder.hasErrorResults()) myHolder.add(HighlightClassUtil.checkSuperQualifierType(myFile.getProject(), expression));
     if (!myHolder.hasErrorResults()) {
       try {
-        myHolder.add(HighlightMethodUtil.checkMethodCall(expression, getResolveHelper(myHolder.getProject()), myLanguageLevel, myJavaSdkVersion, myFile));
+        HighlightMethodUtil.checkMethodCall(expression, getResolveHelper(myHolder.getProject()), myLanguageLevel, myJavaSdkVersion, myFile, myHolder);
       }
       catch (IndexNotReadyException ignored) { }
     }
@@ -1270,7 +1269,6 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
         if (!myHolder.hasErrorResults()) {
           myHolder.add(HighlightControlFlowUtil.checkFinalVariableMightAlreadyHaveBeenAssignedTo(variable, expression, myFinalVarProblems));
         }
-        if (!myHolder.hasErrorResults()) myHolder.add(HighlightControlFlowUtil.checkFinalVariableInitializedInLoop(expression, resolved));
       }
       if (!myHolder.hasErrorResults()) {
         try {
@@ -1461,16 +1459,6 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     }
 
     if (!myHolder.hasErrorResults()) {
-      final String badReturnTypeMessage = PsiMethodReferenceUtil.checkReturnType(expression, result, functionalInterfaceType);
-      if (badReturnTypeMessage != null) {
-        HighlightInfo info =
-          HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expression).descriptionAndTooltip(badReturnTypeMessage).create();
-        QuickFixAction.registerQuickFixAction(info, AdjustFunctionContextFix.createFix(expression));
-        myHolder.add(info);
-      }
-    }
-
-    if (!myHolder.hasErrorResults()) {
       if (results.length == 0 || results[0] instanceof MethodCandidateInfo &&
                                  !((MethodCandidateInfo)results[0]).isApplicable() &&
                                  functionalInterfaceType != null || results.length > 1) {
@@ -1502,6 +1490,16 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
           TextRange fixRange = HighlightMethodUtil.getFixRange(referenceNameElement);
           QuickFixAction.registerQuickFixAction(highlightInfo, fixRange, QuickFixFactory.getInstance().createCreateMethodFromUsageFix(expression));
         }
+      }
+    }
+
+    if (!myHolder.hasErrorResults()) {
+      final String badReturnTypeMessage = PsiMethodReferenceUtil.checkReturnType(expression, result, functionalInterfaceType);
+      if (badReturnTypeMessage != null) {
+        HighlightInfo info =
+          HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expression).descriptionAndTooltip(badReturnTypeMessage).create();
+        QuickFixAction.registerQuickFixAction(info, AdjustFunctionContextFix.createFix(expression));
+        myHolder.add(info);
       }
     }
   }
@@ -1596,11 +1594,12 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     }
     if (!myHolder.hasErrorResults()) {
       try {
-        PsiElement parent = HighlightUtil.getReturnStatementParent(statement);
+        PsiElement parent = PsiTreeUtil.getParentOfType(statement, PsiFile.class, PsiClassInitializer.class,
+                                                        PsiLambdaExpression.class, PsiMethod.class);
         HighlightInfo info = parent != null ? HighlightUtil.checkReturnStatementType(statement, parent) : null;
         if (info != null && parent instanceof PsiMethod) {
           PsiMethod method = (PsiMethod)parent;
-          PsiType expectedType = myExpectedReturnTypes.computeIfAbsent(method, HighlightUtil::determineReturnType);
+          PsiType expectedType = myExpectedReturnTypes.computeIfAbsent(method, HighlightMethodUtil::determineReturnType);
           if (expectedType != null && !PsiType.VOID.equals(expectedType)) HighlightUtil.registerReturnTypeFixes(info, method, expectedType);
         }
         myHolder.add(info);

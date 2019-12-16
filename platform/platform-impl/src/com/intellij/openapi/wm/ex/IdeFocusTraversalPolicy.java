@@ -1,7 +1,6 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.ex;
 
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.impl.EditorComponentImpl;
 import com.intellij.openapi.fileEditor.impl.EditorWindowHolder;
 import com.intellij.util.ReflectionUtil;
@@ -11,11 +10,12 @@ import javax.swing.*;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
 
-public class IdeFocusTraversalPolicy extends LayoutFocusTraversalPolicyExt {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.wm.ex.IdeFocusTraversalPolicy");
+import static com.intellij.util.ui.FocusUtil.findFocusableComponentIn;
+
+public class IdeFocusTraversalPolicy extends LayoutFocusTraversalPolicy {
 
   @Override
-  protected Component getDefaultComponentImpl(Container focusCycleRoot) {
+  public Component getDefaultComponent(Container focusCycleRoot) {
     if (!(focusCycleRoot instanceof JComponent)) {
       return super.getDefaultComponent(focusCycleRoot);
     }
@@ -24,6 +24,20 @@ public class IdeFocusTraversalPolicy extends LayoutFocusTraversalPolicyExt {
 
   public static JComponent getPreferredFocusedComponent(@NotNull final JComponent component) {
     return getPreferredFocusedComponent(component, null);
+  }
+
+  @Override
+  public Component getComponentAfter(Container aContainer, Component aComponent) {
+    Component after = super.getComponentAfter(aContainer, aComponent);
+    if (after != null) return after.isFocusable() ? after : findFocusableComponentIn((JComponent)after, null);
+    return findFocusableComponentIn(aContainer, aComponent);
+  }
+
+  @Override
+  public Component getComponentBefore(Container aContainer, Component aComponent) {
+    Component before = super.getComponentBefore(aContainer, aComponent);
+    if (before != null) return before.isFocusable() ? before : findFocusableComponentIn((JComponent)before, null);
+    return findFocusableComponentIn(aContainer, aComponent);
   }
 
   /**
@@ -43,13 +57,7 @@ public class IdeFocusTraversalPolicy extends LayoutFocusTraversalPolicyExt {
         return component;
       }
 
-      Component defaultComponent;
-      if (focusTraversalPolicy instanceof LayoutFocusTraversalPolicyExt) {
-        final LayoutFocusTraversalPolicyExt extPolicy = (LayoutFocusTraversalPolicyExt)focusTraversalPolicy;
-        defaultComponent = extPolicy.queryImpl(() -> extPolicy.getDefaultComponent(component));
-      } else {
-        defaultComponent = focusTraversalPolicy.getDefaultComponent(component);
-      }
+      Component defaultComponent = focusTraversalPolicy.getDefaultComponent(component);
 
       if (defaultComponent instanceof JComponent) {
         return (JComponent)defaultComponent;

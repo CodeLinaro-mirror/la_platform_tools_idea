@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source.resolve.graphInference;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -16,6 +16,7 @@ import com.intellij.psi.infos.MethodCandidateInfo;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.*;
 import com.intellij.util.Function;
+import com.intellij.util.MathUtil;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.UniqueNameGenerator;
@@ -156,7 +157,9 @@ public class InferenceSession {
 
         if (args[i] != null && isPertinentToApplicability(args[i], method)) {
           PsiType parameterType = getParameterType(parameters, i, mySiteSubstitutor, varargs);
-          addConstraint(new ExpressionCompatibilityConstraint(args[i], substituteWithInferenceVariables(parameterType)));
+          if (!ignoreLambdaConstraintTree(args[i])) {
+            addConstraint(new ExpressionCompatibilityConstraint(args[i], substituteWithInferenceVariables(parameterType)));
+          }
         }
       }
     }
@@ -490,7 +493,9 @@ public class InferenceSession {
       }
     }
     else if (returnExpression instanceof PsiLambdaExpression) {
-      collectLambdaReturnExpression(additionalConstraints, ignoredConstraints, (PsiLambdaExpression)returnExpression, functionalType, myErased, initialSubstitutor);
+      if (!ignoreLambdaConstraintTree(returnExpression)) {
+        collectLambdaReturnExpression(additionalConstraints, ignoredConstraints, (PsiLambdaExpression)returnExpression, functionalType, myErased, initialSubstitutor);
+      }
     }
   }
 
@@ -587,7 +592,7 @@ public class InferenceSession {
     for (PsiTypeParameter parameter : typeParameters) {
       String name = parameter.getName();
       if (myContext != null) {
-        name += Math.abs(myContext.hashCode());
+        name += MathUtil.nonNegativeAbs(myContext.hashCode());
       }
       InferenceVariable variable = new InferenceVariable(context, parameter, name);
       result.add(variable);
@@ -1107,7 +1112,7 @@ public class InferenceSession {
   }
 
   @NotNull
-  private PsiSubstitutor resolveSubset(Collection<InferenceVariable> vars, PsiSubstitutor substitutor) {
+  protected final PsiSubstitutor resolveSubset(Collection<InferenceVariable> vars, PsiSubstitutor substitutor) {
     if (myErased) {
       for (InferenceVariable var : vars) {
         substitutor = substitutor.put(var, null);
@@ -1344,8 +1349,11 @@ public class InferenceSession {
 
   public void addConstraint(ConstraintFormula constraint) {
     if (myConstraintsCopy.add(constraint)) {
-        myConstraints.add(constraint);
+      if (constraint instanceof ExpressionCompatibilityConstraint && ignoreLambdaConstraintTree(((ExpressionCompatibilityConstraint)constraint).getExpression())) {
+        LOG.error("Should have been stopped at lambda under overload guard");
       }
+      myConstraints.add(constraint);
+    }
   }
 
   private boolean proceedWithAdditionalConstraints(Set<ConstraintFormula> additionalConstraints, Set<ConstraintFormula> ignoredConstraints) {

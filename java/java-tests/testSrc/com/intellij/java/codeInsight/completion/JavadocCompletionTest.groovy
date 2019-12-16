@@ -82,12 +82,17 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
 
   void testParamValueCompletion() {
     configureByFile("ParamValue0.java")
-    assertStringItems("a", "b", "c")
+    assertStringItems("a", "b", "c", "<A>", "<B>")
   }
 
   void testParamValueWithPrefixCompletion() {
     configureByFile("ParamValue1.java")
     assertStringItems("a1", "a2", "a3")
+  }
+
+  void testTypeParamValueWithPrefix() {
+    configureByTestName()
+    assertStringItems("<A>", "<B>")
   }
 
   void testDescribedParameters() {
@@ -244,6 +249,20 @@ class Foo {
     myFixture.type('\n intParam\n@para')
     myFixture.completeBasic()
     myFixture.assertPreferredCompletionItems 0, 'param', 'param param2'
+  }
+
+  void "test suggest type param names"() {
+    myFixture.configureByText "a.java", '''
+/**
+* @par<caret>
+*/
+class Foo<T,V>{}
+'''
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'param', 'param <T>', 'param <V>'
+    myFixture.type('\n <T>\n@para')
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'param', 'param <V>'
   }
 
   void "test fqns in package info"() {
@@ -650,6 +669,13 @@ class Foo {
     myFixture.type('\t')
     myFixture.checkResult "/** a. {@link #foo(int)}<caret> */ interface Foo { void foo(int a); }}"
     assert !TemplateManagerImpl.getTemplateState(myFixture.editor)
+  }
+
+  void "test insert link to method in a q-named class"() {
+    myFixture.configureByText 'a.java', "/** a. java.io.File#liFi<caret> */ interface Foo {}"
+    myFixture.completeBasic()
+    myFixture.type('\n')
+    myFixture.checkResult "import java.io.File;\n\n/** a. {@link File#listFiles()} */ interface Foo {}"
   }
 
   void "test insert link to field"() {

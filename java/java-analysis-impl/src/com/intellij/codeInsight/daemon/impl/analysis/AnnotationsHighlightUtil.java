@@ -42,7 +42,7 @@ import static com.intellij.patterns.PsiJavaPatterns.psiElement;
  * @author ven
  */
 public class AnnotationsHighlightUtil {
-  private static final Logger LOG = Logger.getInstance("com.intellij.codeInsight.daemon.impl.analysis.AnnotationsHighlightUtil");
+  private static final Logger LOG = Logger.getInstance(AnnotationsHighlightUtil.class);
 
   @Nullable
   static HighlightInfo checkNameValuePair(@NotNull PsiNameValuePair pair,
@@ -727,7 +727,6 @@ public class AnnotationsHighlightUtil {
         if (field instanceof PsiEnumConstant) {
           String name = ((PsiEnumConstant)field).getName();
           try {
-            //noinspection ConstantConditions
             return Enum.valueOf(RetentionPolicy.class, name);
           }
           catch (Exception e) {

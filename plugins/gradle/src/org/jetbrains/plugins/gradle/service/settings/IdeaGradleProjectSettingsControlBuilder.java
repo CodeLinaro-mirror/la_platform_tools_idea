@@ -121,7 +121,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
 
   @Nullable
   private JBCheckBox myResolveExternalAnnotationsCheckBox;
-  private boolean dropResolveExternalAnnotationsCheckBox = !Registry.is("external.system.import.resolve.annotations", false);
+  private boolean dropResolveExternalAnnotationsCheckBox = false;
 
   @Nullable
   private JLabel myDelegateBuildLabel;
@@ -325,9 +325,9 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       }
 
       if (!dropResolveExternalAnnotationsCheckBox) {
-        panel.add(
-          myResolveExternalAnnotationsCheckBox = new JBCheckBox(GradleBundle.message("gradle.settings.text.download.annotations")),
-          ExternalSystemUiUtil.getFillLineConstraints(indentLevel));
+      panel.add(
+        myResolveExternalAnnotationsCheckBox = new JBCheckBox(GradleBundle.message("gradle.settings.text.download.annotations")),
+        ExternalSystemUiUtil.getFillLineConstraints(indentLevel));
       }
     });
   }
@@ -537,12 +537,26 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
     settings.setCompositeBuild(myInitialSettings.getCompositeBuild());
     if (myGradleHomePathField != null) {
       String gradleHomePath = FileUtil.toCanonicalPath(myGradleHomePathField.getText());
-      if (StringUtil.isEmpty(gradleHomePath)) {
+      File gradleHomeFile = new File(gradleHomePath);
+      String finalGradleHomePath;
+      if (myInstallationManager.isGradleSdkHome(gradleHomeFile)) {
+        finalGradleHomePath = gradleHomePath;
+      }
+      else {
+        finalGradleHomePath = myInstallationManager.suggestBetterGradleHomePath(gradleHomePath);
+        if (finalGradleHomePath != null) {
+          //noinspection SSBasedInspection
+          SwingUtilities.invokeLater(() -> {
+            myGradleHomePathField.setText(finalGradleHomePath);
+          });
+        }
+      }
+      if (StringUtil.isEmpty(finalGradleHomePath)) {
         settings.setGradleHome(null);
       }
       else {
-        settings.setGradleHome(gradleHomePath);
-        GradleUtil.storeLastUsedGradleHome(gradleHomePath);
+        settings.setGradleHome(finalGradleHomePath);
+        GradleUtil.storeLastUsedGradleHome(finalGradleHomePath);
       }
     }
 
@@ -651,9 +665,14 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       deduceGradleHomeIfPossible();
     }
     else {
-      myGradleHomeSettingType = myInstallationManager.isGradleSdkHome(new File(gradleHome)) ?
-                                LocationSettingType.EXPLICIT_CORRECT :
-                                LocationSettingType.EXPLICIT_INCORRECT;
+      File gradleHomeFile = new File(gradleHome);
+      if (myInstallationManager.isGradleSdkHome(gradleHomeFile)) {
+        myGradleHomeSettingType = LocationSettingType.EXPLICIT_CORRECT;
+      } else {
+        myGradleHomeSettingType = myInstallationManager.suggestBetterGradleHomePath(gradleHome) != null
+                                  ? LocationSettingType.EXPLICIT_CORRECT
+                                  : LocationSettingType.EXPLICIT_INCORRECT;
+      }
       myAlarm.cancelAllRequests();
       if (myGradleHomeSettingType == LocationSettingType.EXPLICIT_INCORRECT &&
           settings.getDistributionType() == DistributionType.LOCAL) {

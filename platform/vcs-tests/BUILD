@@ -5,10 +5,7 @@ iml_module(
     name = "intellij.platform.vcs.tests",
     iml_files = ["intellij.platform.vcs.tests.iml"],
     # do not sort: must match IML order
-    test_runtime_deps = [
-        "//tools/idea/xml/dom-openapi:intellij.xml.dom",
-        "//tools/idea/xml/relaxng:intellij.relaxng",
-    ],
+    test_runtime_deps = ["//tools/idea/xml/relaxng:intellij.relaxng"],
     test_srcs = ["testSrc"],
     test_tags = ["manual"],
     visibility = ["//visibility:public"],
@@ -26,6 +23,7 @@ iml_module(
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
         "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
         "//tools/idea/images:intellij.platform.images",
     ],
@@ -70,6 +68,7 @@ iml_module(
         "//tools/idea/platform/credential-store:intellij.platform.credentialStore",
         "//tools/idea/platform/external-system-impl:intellij.platform.externalSystem.impl",
         "//tools/idea/platform/built-in-server:intellij.platform.builtInServer.impl",
+        "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
         "//tools/idea/xml/dom-impl:intellij.xml.dom.impl",
         "//tools/idea/images:intellij.platform.images",
     ],

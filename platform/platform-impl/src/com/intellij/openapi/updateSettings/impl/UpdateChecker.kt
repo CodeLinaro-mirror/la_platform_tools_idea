@@ -9,6 +9,7 @@ import com.intellij.ide.externalComponents.ExternalComponentManager
 import com.intellij.ide.plugins.*
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.*
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.*
 import com.intellij.openapi.application.ex.ApplicationInfoEx
 import com.intellij.openapi.diagnostic.IdeaLoggingEvent
@@ -43,7 +44,6 @@ import gnu.trove.THashMap
 import org.jdom.JDOMException
 import java.io.File
 import java.io.IOException
-import java.lang.IllegalStateException
 import java.nio.charset.Charset
 import java.util.*
 import kotlin.collections.HashSet
@@ -226,7 +226,7 @@ object UpdateChecker {
           }
         }
         if (incompatiblePlugins != null && buildNumber != null) {
-          updateable.values.filterTo(incompatiblePlugins) {
+          updateable.values.asSequence().filterNotNull().filterTo(incompatiblePlugins) {
             it.isEnabled && !PluginManagerCore.isCompatible(it, buildNumber)
           }
         }
@@ -244,7 +244,7 @@ object UpdateChecker {
    * Returns a list of plugins that are currently installed or were installed in the previous installation from which
    * we're importing the settings.
    */
-  private fun collectUpdateablePlugins(): MutableMap<PluginId, IdeaPluginDescriptor> {
+  private fun collectUpdateablePlugins(): MutableMap<PluginId, IdeaPluginDescriptor?> {
     val updateable = THashMap<PluginId, IdeaPluginDescriptor>()
 
     updateable += PluginManagerCore.getPlugins().filter { !it.isBundled || it.allowBundledUpdate() }.associateBy { it.pluginId }
@@ -387,8 +387,8 @@ object UpdateChecker {
         // Android Studio: Analytics
         logNotificationShown(newBuild.number.asStringWithoutProductCode());
         IdeUpdateUsageTriggerCollector.trigger("notification.shown")
-        val message = IdeBundle.message("updates.ready.message", ApplicationNamesInfo.getInstance().fullProductName)
-        showNotification(project, message, {
+        val title = IdeBundle.message("updates.new.build.notification.title", ApplicationNamesInfo.getInstance().fullProductName, newBuild.version)
+        showNotification(project, title, "", {
           // Android Studio: Analytics
           logClickNotification(newBuild.number.asStringWithoutProductCode());
           logUpdateDialogOpenFromNotification(newBuild.number.asStringWithoutProductCode());
@@ -411,9 +411,10 @@ object UpdateChecker {
         runnable.invoke()
       }
       else {
+        val title = IdeBundle.message("updates.plugins.ready.title.available", ApplicationNamesInfo.getInstance().fullProductName)
         val plugins = updatedPlugins.joinToString { downloader -> downloader.pluginName }
         val message = IdeBundle.message("updates.plugins.ready.message", updatedPlugins.size, plugins)
-        showNotification(project, message, runnable, NotificationUniqueType.PLUGINS)
+        showNotification(project, title, message, runnable, NotificationUniqueType.PLUGINS)
       }
     }
 
@@ -429,9 +430,10 @@ object UpdateChecker {
           runnable.invoke()
         }
         else {
+          val title = IdeBundle.message("updates.plugins.ready.title.available", ApplicationNamesInfo.getInstance().fullProductName)
           val updates = update.components.joinToString(", ")
           val message = IdeBundle.message("updates.external.ready.message", update.components.size, updates)
-          showNotification(project, message, runnable, NotificationUniqueType.EXTERNAL)
+          showNotification(project, title, message, runnable, NotificationUniqueType.EXTERNAL)
         }
       }
     }
@@ -441,14 +443,14 @@ object UpdateChecker {
     }
   }
 
-  private fun showNotification(project: Project?, message: String, action: () -> Unit, notificationType: NotificationUniqueType) {
-    val listener = NotificationListener { notification, _ ->
-      notification.expire()
-      action.invoke()
-    }
-
-    val title = IdeBundle.message("update.notifications.title")
-    val notification = NOTIFICATIONS.createNotification(title, XmlStringUtil.wrapInHtml(message), NotificationType.INFORMATION, listener)
+  private fun showNotification(project: Project?, title: String, message: String, action: () -> Unit, notificationType: NotificationUniqueType) {
+    val notification = NOTIFICATIONS.createNotification(title, XmlStringUtil.wrapInHtml(message), NotificationType.INFORMATION, null)
+    notification.addAction(object : NotificationAction(IdeBundle.message("updates.notification.update.action")) {
+      override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+        notification.expire()
+        action.invoke()
+      }
+    })
     notification.whenExpired { ourShownNotifications.remove(notificationType, notification) }
     notification.notify(project)
     ourShownNotifications.putValue(notificationType, notification)
@@ -657,7 +659,7 @@ object UpdateChecker {
   }
 
   /** A helper method for manually testing platform updates (see [com.intellij.internal.ShowUpdateInfoDialogAction]). */
-  fun testPlatformUpdate(updateInfoText: String, patchFilePath: String?, forceUpdate: Boolean) {
+  fun testPlatformUpdate(project: Project?, updateInfoText: String, patchFilePath: String?, forceUpdate: Boolean) {
     if (!ApplicationManager.getApplication().isInternal) {
       throw IllegalStateException()
     }
@@ -682,7 +684,7 @@ object UpdateChecker {
 
     if (channel != null && newBuild != null) {
       val patchFile = if (patchFilePath != null) File(FileUtil.toSystemDependentName(patchFilePath)) else null
-      UpdateInfoDialog(channel, newBuild, patches, patchFile).show()
+      UpdateInfoDialog(project, channel, newBuild, patches, patchFile).show()
     }
     else {
       NoUpdatesDialog(true).show()

@@ -20,7 +20,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 public final class LowMemoryWatcherManager implements Disposable {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.util.LowMemoryWatcherManager");
+  @NotNull
+  private static Logger getLogger() {
+    return Logger.getInstance("#com.intellij.openapi.util.LowMemoryWatcherManager");
+  }
 
   private static final long MEM_THRESHOLD = 5 /*MB*/ * 1024 * 1024;
   @NotNull private final ExecutorService myExecutorService;
@@ -67,7 +70,7 @@ public final class LowMemoryWatcherManager implements Disposable {
       }
       catch (Throwable e) {
         // should not happen normally
-        LOG.info("Errors initializing LowMemoryWatcher: ", e);
+        getLogger().info("Errors initializing LowMemoryWatcher: ", e);
       }
     });
   }
@@ -75,6 +78,7 @@ public final class LowMemoryWatcherManager implements Disposable {
   private final NotificationListener myLowMemoryListener = new NotificationListener() {
     @Override
     public void handleNotification(Notification notification, Object __) {
+      if (LowMemoryWatcher.notificationsSuppressed()) return;
       boolean memoryThreshold = MemoryNotificationInfo.MEMORY_THRESHOLD_EXCEEDED.equals(notification.getType());
       boolean memoryCollectionThreshold = MemoryNotificationInfo.MEMORY_COLLECTION_THRESHOLD_EXCEEDED.equals(notification.getType());
 
@@ -103,7 +107,7 @@ public final class LowMemoryWatcherManager implements Disposable {
       ((NotificationEmitter)ManagementFactory.getMemoryMXBean()).removeNotificationListener(myLowMemoryListener);
     }
     catch (Exception e) {
-      LOG.error(e);
+      getLogger().error(e);
     }
     synchronized (myJanitor) {
       if (mySubmitted != null) {

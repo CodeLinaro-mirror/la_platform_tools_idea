@@ -3,7 +3,6 @@ package com.intellij.psi.formatter.java;
 
 import com.intellij.formatting.*;
 import com.intellij.formatting.alignment.AlignmentStrategy;
-import com.intellij.formatting.blocks.CStyleCommentBlock;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.TextRange;
@@ -20,8 +19,10 @@ import com.intellij.psi.impl.source.codeStyle.ShiftIndentInsideHelper;
 import com.intellij.psi.impl.source.tree.*;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.psi.impl.source.tree.java.ClassElement;
+import com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl;
 import com.intellij.psi.jsp.JspElementType;
 import com.intellij.psi.tree.IElementType;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.text.CharArrayUtil;
 import org.jetbrains.annotations.NotNull;
@@ -225,6 +226,9 @@ public abstract class AbstractJavaBlock extends AbstractBlock implements JavaBlo
     }
     if (elementType == JavaDocElementType.DOC_COMMENT) {
       return new DocCommentBlock(child, wrap, alignment, actualIndent, settings, javaSettings, formattingMode);
+    }
+    if (isTextBlock(childPsi)) {
+      return new TextBlockBlock(child, wrap, alignmentStrategy, actualIndent, settings, javaSettings, formattingMode);
     }
 
     SimpleJavaBlock simpleJavaBlock = new SimpleJavaBlock(child, wrap, alignmentStrategy, actualIndent, settings, javaSettings, myFormattingMode);
@@ -436,6 +440,9 @@ public abstract class AbstractJavaBlock extends AbstractBlock implements JavaBlo
       }
       return createAlignment(mySettings.ALIGN_MULTILINE_BINARY_OPERATION, defaultAlignment);
     }
+    if (isTextBlock(myNode.getPsi())) {
+        return createAlignment(myJavaSettings.ALIGN_MULTILINE_TEXT_BLOCKS,null);
+    }
     return null;
   }
 
@@ -457,6 +464,11 @@ public abstract class AbstractJavaBlock extends AbstractBlock implements JavaBlo
     else {
       return false;
     }
+  }
+
+  private static boolean isTextBlock(@NotNull PsiElement childPsi) {
+    PsiLiteralExpressionImpl literal = ObjectUtils.tryCast(childPsi, PsiLiteralExpressionImpl.class);
+    return literal != null && literal.getLiteralElementType() == JavaTokenType.TEXT_BLOCK_LITERAL;
   }
 
   private boolean shouldInheritAlignment() {

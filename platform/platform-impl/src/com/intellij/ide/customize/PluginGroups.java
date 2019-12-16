@@ -41,7 +41,7 @@ public class PluginGroups {
   private Runnable myLoadingCallback;
 
   public PluginGroups() {
-    myAllPlugins = PluginManagerCore.loadDescriptors(new ArrayList<>());
+    myAllPlugins = PluginManagerCore.loadDescriptors();
     SwingWorker worker = new SwingWorker<List<IdeaPluginDescriptor>, Object>() {
       @Override
       protected List<IdeaPluginDescriptor> doInBackground() {
@@ -117,7 +117,6 @@ public class PluginGroups {
       "com.intellij.appengine",
       "org.intellij.grails",
       "com.intellij.gwt",
-      "com.intellij.vaadin",
       "JBoss Seam:com.intellij.seam,com.intellij.seam.pages,com.intellij.seam.pageflow",
       "JBoss jBPM:JBPM",
       "Struts:com.intellij.struts2",
@@ -132,7 +131,9 @@ public class PluginGroups {
       "com.intellij.spring.webflow," +
       "com.intellij.spring.ws,com.intellij.aop",
 
-      "Microservices:com.intellij.micronaut",
+      "com.intellij.micronaut",
+      "com.intellij.quarkus",
+      "com.intellij.helidon",
 
       "Java EE:com.intellij.javaee.batch," +
       "com.intellij.beanValidation," +
@@ -169,7 +170,8 @@ public class PluginGroups {
       "org.coffeescript",
       "com.intellij.flex",
       "com.intellij.plugins.html.instantEditing",
-      "com.jetbrains.restClient"
+      "com.jetbrains.restClient",
+      "com.intellij.swagger"
     )));
 
     addVcsGroup(tree);
@@ -194,11 +196,8 @@ public class PluginGroups {
       "com.intellij.dmserver",
       "JSR45Plugin"
     )));
-    tree.put("Clouds", Pair.create(PlatformImplIcons.Clouds, Arrays.asList(
-      "CloudFoundry",
-      "CloudBees",
-      "Heroku",
-      "OpenShift"
+    tree.put("Clouds", Pair.create(PlatformImplIcons.Clouds, Collections.singletonList(
+      "CloudFoundry"
     )));
     //myTree.put("Groovy", Arrays.asList("org.intellij.grails"));
     //TODO Scala -> Play 2.x (Play 2.0 Support)
@@ -268,6 +267,10 @@ public class PluginGroups {
 
   public static void addMarkdownPlugin(Map<String, String> featuredPlugins) {
     featuredPlugins.put("Markdown", "Custom Languages:Markdown language support:org.intellij.plugins.markdown");
+  }
+
+  public static void addRPlugin(Map<String, String> featuredPlugins) {
+    featuredPlugins.put("R", "Custom Languages:R language support:R4Intellij");
   }
 
   protected static void addConfigurationServerPlugin(Map<String, String> featuredPlugins) {

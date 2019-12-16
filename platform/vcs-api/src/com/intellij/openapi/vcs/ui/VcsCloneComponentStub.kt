@@ -31,4 +31,11 @@ class VcsCloneComponentStub(private val checkoutProvider: CheckoutProvider,
   override fun doValidateAll() = emptyList<ValidationInfo>()
 
   override fun getOkButtonText() = primaryActionText
+
+  override fun getPreferredFocusedComponent(): JComponent? {
+    // TODO: implement obtaining focus for GitHub
+    return null
+  }
+
+  override fun dispose() {}
 }

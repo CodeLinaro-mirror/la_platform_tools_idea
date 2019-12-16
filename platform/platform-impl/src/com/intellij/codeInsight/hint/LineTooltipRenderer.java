@@ -8,6 +8,7 @@ import com.intellij.internal.statistic.service.fus.collectors.TooltipActionsLogg
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.IdeActions;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.util.registry.Registry;
@@ -94,7 +95,8 @@ public class LineTooltipRenderer extends ComparableObject.Impl implements Toolti
       @Override
       public int getPreferredHeight(int width) {
         Dimension size = editorPane.getSize();
-        editorPane.setSize(width - leftBorder - rightBorder, Math.max(1, size.height));
+        int sideComponentsWidth = getSideComponentWidth();
+        editorPane.setSize(width - leftBorder - rightBorder - sideComponentsWidth, Math.max(1, size.height));
         int height;
         try {
           height = getPreferredSize().height;
@@ -113,6 +115,35 @@ public class LineTooltipRenderer extends ComparableObject.Impl implements Toolti
             return getParent();
           }
         };
+      }
+
+      private int getSideComponentWidth() {
+        GridBagLayout layout = (GridBagLayout)getLayout();
+        Component sideComponent = null;
+        GridBagConstraints sideComponentConstraints = null;
+        boolean unsupportedLayout = false;
+        for (Component component : getComponents()) {
+          GridBagConstraints c = layout.getConstraints(component);
+          if (c.gridx > 0) {
+            if (sideComponent == null && c.gridy == 0) {
+              sideComponent = component;
+              sideComponentConstraints = c;
+            }
+            else {
+              unsupportedLayout = true;
+            }
+          }
+        }
+        if (unsupportedLayout) {
+          Logger.getInstance(LineTooltipRenderer.class).error("Unsupported tooltip layout");
+        }
+        if (sideComponent == null) {
+          return 0;
+        }
+        else {
+          Insets insets = sideComponentConstraints.insets;
+          return sideComponent.getPreferredSize().width + (insets == null ? 0 : insets.left + insets.right);
+        }
       }
     }
     JPanel grid = new MyPanel();
@@ -242,20 +273,10 @@ public class LineTooltipRenderer extends ComparableObject.Impl implements Toolti
                                ? toExpand -> reloadFor(hint, editor, p, editorPane, alignToRight, group, hintHint, toExpand)
                                : tooltipReloader;
 
-    actions.add(new AnAction() {
-      // an action to expand description when tooltip was shown after mouse move; need to unregister from editor component
-      {
-        registerCustomShortcutSet(KeymapUtil.getActiveKeymapShortcuts(IdeActions.ACTION_SHOW_ERROR_DESCRIPTION), contentComponent);
-      }
-
-      @Override
-      public void actionPerformed(@NotNull final AnActionEvent e) {
-        // The tooltip gets the focus if using a screen reader and invocation through a keyboard shortcut.
-        hintHint.setRequestFocus(ScreenReader.isActive() && e.getInputEvent() instanceof KeyEvent);
-        TooltipActionsLogger.INSTANCE.logShowDescription(e.getProject(), "shortcut", e.getInputEvent(), e.getPlace());
-        reloader.reload(!expanded);
-      }
-    });
+    ReloadHintAction reloadAction = new ReloadHintAction(hintHint, reloader, expanded);
+    // an action to expand description when tooltip was shown after mouse move; need to unregister from editor component
+    reloadAction.registerCustomShortcutSet(KeymapUtil.getActiveKeymapShortcuts(IdeActions.ACTION_SHOW_ERROR_DESCRIPTION), contentComponent);
+    actions.add(reloadAction);
 
     editorPane.addHyperlinkListener(new HyperlinkListener() {
       @Override
@@ -517,5 +538,25 @@ public class LineTooltipRenderer extends ComparableObject.Impl implements Toolti
   @Nullable
   public String getText() {
     return myText;
+  }
+
+  private static class ReloadHintAction extends AnAction implements HintManagerImpl.ActionToIgnore {
+    private final HintHint myHintHint;
+    private final TooltipReloader myReloader;
+    private final boolean myExpanded;
+
+    private ReloadHintAction(HintHint hintHint, TooltipReloader reloader, boolean expanded) {
+      myHintHint = hintHint;
+      myReloader = reloader;
+      myExpanded = expanded;
+    }
+
+    @Override
+    public void actionPerformed(@NotNull final AnActionEvent e) {
+      // The tooltip gets the focus if using a screen reader and invocation through a keyboard shortcut.
+      myHintHint.setRequestFocus(ScreenReader.isActive() && e.getInputEvent() instanceof KeyEvent);
+      TooltipActionsLogger.INSTANCE.logShowDescription(e.getProject(), "shortcut", e.getInputEvent(), e.getPlace());
+      myReloader.reload(!myExpanded);
+    }
   }
 }

@@ -15,7 +15,7 @@ import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.QualifiedName;
 import com.jetbrains.python.psi.resolve.PyResolveImportUtil;
-import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -62,11 +62,6 @@ public abstract class QtFileType extends LanguageFileType implements INativeFile
   }
 
   @Override
-  public String getCharset(@NotNull VirtualFile file, @NotNull byte[] content) {
-    return null;
-  }
-
-  @Override
   public boolean openFileInAssociatedApplication(Project project, @NotNull VirtualFile file) {
     String qtTool = findQtTool(ModuleUtilCore.findModuleForFile(file, project), getToolName());
     if (qtTool == null) {
@@ -86,7 +81,7 @@ public abstract class QtFileType extends LanguageFileType implements INativeFile
       if (module == null) {
         return null;
       }
-      Sdk sdk = PythonSdkType.findPythonSdk(module);
+      Sdk sdk = PythonSdkUtil.findPythonSdk(module);
       if (sdk == null) {
         return null;
       }

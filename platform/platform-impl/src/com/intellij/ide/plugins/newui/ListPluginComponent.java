@@ -42,7 +42,7 @@ public class ListPluginComponent extends JPanel {
   private final MyPluginModel myPluginModel;
   private final LinkListener<Object> mySearchListener;
   private final boolean myMarketplace;
-  public final IdeaPluginDescriptor myPlugin;
+  public IdeaPluginDescriptor myPlugin;
   private boolean myUninstalled;
   private boolean myUninstalledWithoutRestart;
   public IdeaPluginDescriptor myUpdateDescriptor;
@@ -54,6 +54,7 @@ public class ListPluginComponent extends JPanel {
   protected InstallButton myInstallButton;
   protected JButton myUpdateButton;
   private JCheckBox myEnableDisableButton;
+  private JComponent myAlignButton;
   private JLabel myRating;
   private JLabel myDownloads;
   private JLabel myVersion;
@@ -152,50 +153,65 @@ public class ListPluginComponent extends JPanel {
         ColorButton.setWidth72(myInstallButton);
       }
     }
-    else if (myPlugin instanceof IdeaPluginDescriptorImpl && ((IdeaPluginDescriptorImpl)myPlugin).isDeleted()) {
-      myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel));
-
-      myUninstalled = true;
-    }
     else {
-      InstalledPluginsState pluginsState = InstalledPluginsState.getInstance();
-      PluginId id = myPlugin.getPluginId();
+      JCheckBox enableDisableButton = createEnableDisableButton();
 
-      if (pluginsState.wasInstalled(id) || pluginsState.wasUpdated(id)) {
+      if (myPlugin instanceof IdeaPluginDescriptorImpl && ((IdeaPluginDescriptorImpl)myPlugin).isDeleted()) {
         myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel));
+
+        myUninstalled = true;
       }
       else {
-        myLayout.addButtonComponent(myEnableDisableButton = new JCheckBox() {
-          int myBaseline = -1;
-
-          @Override
-          public int getBaseline(int width, int height) {
-            if (myBaseline == -1) {
-              JCheckBox checkBox = new JCheckBox("Foo", true);
-              Dimension size = checkBox.getPreferredSize();
-              myBaseline = checkBox.getBaseline(size.width, size.height) - JBUIScale.scale(1);
-            }
-            return myBaseline;
-          }
-
-          @Override
-          public void setUI(ButtonUI ui) {
-            myBaseline = -1;
-            super.setUI(ui);
-          }
-
-          @Override
-          public Dimension getPreferredSize() {
-            Dimension size = super.getPreferredSize();
-            return new Dimension(size.width + JBUIScale.scale(8), size.height + JBUIScale.scale(2));
-          }
-        });
-
-        myEnableDisableButton.setOpaque(false);
-        myEnableDisableButton.setSelected(isEnabledState());
-        myEnableDisableButton.addActionListener(e -> myPluginModel.changeEnableDisable(myPlugin));
+        InstalledPluginsState pluginsState = InstalledPluginsState.getInstance();
+        PluginId id = myPlugin.getPluginId();
+        if (pluginsState.wasInstalled(id) || pluginsState.wasUpdated(id)) {
+          myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel));
+        }
+        else {
+          myLayout.addButtonComponent(myEnableDisableButton = enableDisableButton);
+          myEnableDisableButton.setOpaque(false);
+          myEnableDisableButton.setSelected(isEnabledState());
+          myEnableDisableButton.addActionListener(e -> myPluginModel.changeEnableDisable(myPlugin));
+        }
       }
+
+      myLayout.addButtonComponent(myAlignButton = new JComponent() {
+        @Override
+        public Dimension getPreferredSize() {
+          return enableDisableButton.getPreferredSize();
+        }
+      });
+      myAlignButton.setOpaque(false);
     }
+  }
+
+  @NotNull
+  private static JCheckBox createEnableDisableButton() {
+    return new JCheckBox() {
+      int myBaseline = -1;
+
+      @Override
+      public int getBaseline(int width, int height) {
+        if (myBaseline == -1) {
+          JCheckBox checkBox = new JCheckBox("Foo", true);
+          Dimension size = checkBox.getPreferredSize();
+          myBaseline = checkBox.getBaseline(size.width, size.height) - JBUIScale.scale(1);
+        }
+        return myBaseline;
+      }
+
+      @Override
+      public void setUI(ButtonUI ui) {
+        myBaseline = -1;
+        super.setUI(ui);
+      }
+
+      @Override
+      public Dimension getPreferredSize() {
+        Dimension size = super.getPreferredSize();
+        return new Dimension(size.width + JBUIScale.scale(8), size.height + JBUIScale.scale(2));
+      }
+    };
   }
 
   private void createMetricsPanel() {
@@ -255,7 +271,7 @@ public class ListPluginComponent extends JPanel {
     }
 
     LicensingFacade instance = LicensingFacade.getInstance();
-    if (instance == null || instance.registerCallback == null) {
+    if (instance == null) {
       setTagTooltip("No license in EAP build");
       return;
     }
@@ -273,7 +289,7 @@ public class ListPluginComponent extends JPanel {
 
     if (licensePanel.isNotification()) {
       licensePanel.setBorder(JBUI.Borders.emptyTop(3));
-      licensePanel.setLink("Manage licenses", () -> LicensingFacade.getInstance().register(), false);
+      //licensePanel.setLink("Manage licenses", () -> { XXX }, false);
       myLayout.addLineComponent(licensePanel);
     }
   }
@@ -294,6 +310,9 @@ public class ListPluginComponent extends JPanel {
       }
       if (myUpdateButton != null) {
         myUpdateButton.setVisible(false);
+      }
+      if (myAlignButton != null) {
+        myAlignButton.setVisible(false);
       }
     }
     else {
@@ -320,6 +339,9 @@ public class ListPluginComponent extends JPanel {
       }
       else {
         myUpdateButton.setVisible(true);
+      }
+      if (myAlignButton != null) {
+        myAlignButton.setVisible(myEnableDisableButton != null && !myEnableDisableButton.isVisible());
       }
     }
 
@@ -378,11 +400,11 @@ public class ListPluginComponent extends JPanel {
     boolean errors = myPluginModel.hasErrors(myPlugin);
     updateIcon(errors, myUninstalled || !myPluginModel.isEnabled(myPlugin));
 
-    if (myUpdateButton != null) {
-      myUpdateButton.setVisible(myUpdateDescriptor != null && !errors);
-    }
     if (myEnableDisableButton != null) {
       myEnableDisableButton.setVisible(!errors);
+    }
+    if (myAlignButton != null) {
+      myAlignButton.setVisible(errors || myRestartButton != null);
     }
 
     if (errors) {
@@ -411,7 +433,7 @@ public class ListPluginComponent extends JPanel {
   }
 
   protected void updateIcon(boolean errors, boolean disabled) {
-    myIconComponent.setIcon(PluginLogo.getIcon(myPlugin, false, PluginManagerConfigurable.isJBPlugin(myPlugin), errors, disabled));
+    myIconComponent.setIcon(PluginLogo.getIcon(myPlugin, false, false, errors, disabled));
   }
 
   public void showProgress() {
@@ -420,7 +442,7 @@ public class ListPluginComponent extends JPanel {
 
   private void showProgress(boolean repaint) {
     myIndicator = new OneLineProgressIndicator(false);
-    myIndicator.setCancelRunnable(() -> myPluginModel.finishInstall(myPlugin, false, false, true));
+    myIndicator.setCancelRunnable(() -> myPluginModel.finishInstall(myPlugin, null, false, false, true));
     myLayout.setProgressComponent(myIndicator.createBaselineWrapper());
 
     MyPluginModel.addProgress(myPlugin, myIndicator);
@@ -468,7 +490,10 @@ public class ListPluginComponent extends JPanel {
       myEnableDisableButton = null;
     }
     if (myRestartButton == null) {
-      myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel));
+      myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel), 0);
+    }
+    if (myAlignButton != null) {
+      myAlignButton.setVisible(true);
     }
   }
 

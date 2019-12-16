@@ -32,13 +32,13 @@ public class ResolveCache implements Disposable {
 
   public ResolveCache(@NotNull Project project) {
     this(project.getMessageBus());
-    LowMemoryWatcher.register(() -> onLowMemory(), this);  // Android Studio: to be replaced by commit 1d7fbebb
+    LowMemoryWatcher.register(() -> onLowMemory(), this);
   }
 
   @SuppressWarnings({"DeprecatedIsStillUsed", "MissingDeprecatedAnnotation"})
   @Deprecated
   public ResolveCache(@NotNull MessageBus bus) {
-    bus.connect().subscribe(PsiManagerImpl.ANY_PSI_CHANGE_TOPIC, new AnyPsiChangeListener.Adapter() {
+    bus.connect().subscribe(PsiManagerImpl.ANY_PSI_CHANGE_TOPIC, new AnyPsiChangeListener() {
       @Override
       public void beforePsiChanged(boolean isPhysical) {
         clearCache(isPhysical);

@@ -531,8 +531,7 @@ public class UsageViewImpl implements UsageViewEx {
 
   private int getVisibleRowCount() {
     ApplicationManager.getApplication().assertIsDispatchThread();
-    // myTree.getVisibleRowCount returns 20
-    return TreeUtil.getVisibleRowCountForFixedRowHeight(myTree);
+    return TreeUtil.getVisibleRowCount(myTree);
   }
 
   private void setupCentralPanel() {
@@ -833,6 +832,7 @@ public class UsageViewImpl implements UsageViewEx {
     DefaultActionGroup group = new DefaultActionGroup();
     group.setPopup(true);
     group.getTemplatePresentation().setIcon(AllIcons.Actions.GroupBy);
+    group.getTemplatePresentation().setText(UsageViewBundle.message("action.group.by.title"));
     group.getTemplatePresentation().setDescription(UsageViewBundle.message("action.group.by.title"));
     final AnAction[] groupingActions = createGroupingActions();
     if (groupingActions.length > 0) {

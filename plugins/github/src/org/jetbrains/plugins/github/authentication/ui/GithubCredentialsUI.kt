@@ -22,6 +22,7 @@ import org.jetbrains.plugins.github.exceptions.GithubParseException
 import org.jetbrains.plugins.github.ui.util.DialogValidationUtils
 import org.jetbrains.plugins.github.ui.util.Validator
 import java.awt.event.ActionListener
+import java.awt.event.KeyEvent
 import java.net.UnknownHostException
 import java.util.function.Supplier
 import javax.swing.*
@@ -41,12 +42,14 @@ sealed class GithubCredentialsUI {
   protected val loginButton = JButton("Log In").apply { isVisible = false }
   protected val cancelButton = JButton("Cancel").apply { isVisible = false }
 
-  fun setLoginAction(actionListener: ActionListener) {
+  open fun setLoginAction(actionListener: ActionListener) {
     loginButton.addActionListener(actionListener)
+    loginButton.setMnemonic('l')
   }
 
   fun setCancelAction(actionListener: ActionListener) {
     cancelButton.addActionListener(actionListener)
+    cancelButton.setMnemonic('c')
   }
 
   fun setLoginButtonVisible(visible: Boolean) {
@@ -76,12 +79,19 @@ sealed class GithubCredentialsUI {
       passwordField.text = password
     }
 
+    override fun setLoginAction(actionListener: ActionListener) {
+      super.setLoginAction(actionListener)
+      passwordField.setEnterPressedAction(actionListener)
+      loginTextField.setEnterPressedAction(actionListener)
+      serverTextField.setEnterPressedAction(actionListener)
+    }
+
     override fun getPanel(): JPanel = panel {
       buildTitleAndLinkRow(this, dialogMode, switchUiLink)
       row("Server:") { serverTextField(pushX, growX) }
       row("Login:") { loginTextField(pushX, growX) }
       row("Password:") {
-        passwordField(comment = "Password is not saved and used only to acquire GitHub token",
+        passwordField(comment = "The password is not saved and is only used to generate a GitHub token",
                       constraints = *arrayOf(pushX, growX))
       }
       row("") {
@@ -223,6 +233,12 @@ sealed class GithubCredentialsUI {
     fun setFixedLogin(fixedLogin: String?) {
       this.fixedLogin = fixedLogin
     }
+
+    override fun setLoginAction(actionListener: ActionListener) {
+      super.setLoginAction(actionListener)
+      tokenTextField.setEnterPressedAction(actionListener)
+      serverTextField.setEnterPressedAction(actionListener)
+    }
   }
 }
 
@@ -241,4 +257,8 @@ private fun buildTitleAndLinkRow(layoutBuilder: LayoutBuilder,
       linkLabel()
     }
   }
+}
+
+private fun JComponent.setEnterPressedAction(actionListener: ActionListener) {
+  registerKeyboardAction(actionListener, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), JComponent.WHEN_FOCUSED)
 }

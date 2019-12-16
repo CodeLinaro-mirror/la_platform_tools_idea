@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @SuppressWarnings("UnusedReturnValue")
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public class Field {
 
   public enum Relation {
@@ -200,16 +200,17 @@ public class Field {
   }
 
   @NotNull
-  public List<LookupElementBuilder> getKeyLookups(@NotNull YamlMetaClass ownerClass,
+  public List<LookupElementBuilder> getKeyLookups(@NotNull YamlMetaType ownerClass,
                                                   @NotNull PsiElement insertedScalar) {
     if (isAnyNameAllowed()) {
       return Collections.emptyList();
     }
 
-    LookupElementBuilder lookup = LookupElementBuilder.create(new TypeFieldPair(ownerClass, this), getName())
-                                                      .withTypeText(myMainType.getDisplayName(), true)
-                                                      .withIcon(getLookupIcon())
-                                                      .withStrikeoutness(isDeprecated());
+    LookupElementBuilder lookup = LookupElementBuilder
+      .create(new TypeFieldPair(ownerClass, this), getName())
+      .withTypeText(myMainType.getDisplayName(), true)
+      .withIcon(getLookupIcon())
+      .withStrikeoutness(isDeprecated());
 
     if (isRequired()) {
       lookup = lookup.bold();

@@ -42,6 +42,7 @@ class BuildOptions {
   /** Build actual searchableOptions.xml file. If skipped; the (possibly outdated) source version of the file will be used. */
   static final String SEARCHABLE_OPTIONS_INDEX_STEP = "search_index"
   static final String PROVIDED_MODULES_LIST_STEP = "provided_modules_list"
+  static final String GENERATE_JAR_ORDER_STEP = "jar_order"
   static final String SOURCES_ARCHIVE_STEP = "sources_archive"
   static final String SCRAMBLING_STEP = "scramble"
   static final String NON_BUNDLED_PLUGINS_STEP = "non_bundled_plugins"
@@ -130,6 +131,13 @@ class BuildOptions {
    */
   boolean isInDevelopmentMode = SystemProperties.getBooleanProperty("intellij.build.dev.mode",
                                                                     System.getProperty("teamcity.buildType.id") == null)
+
+
+  /**
+   * Specifies list of names of directories of bundled plugins which shouldn't be included into the product distribution. This option can be
+   * used to speed up updating the IDE from sources.
+   */
+  List<String> bundledPluginDirectoriesToSkip = System.getProperty("intellij.build.bundled.plugin.dirs.to.skip", "").split(",") as List<String>
 
   /**
    * Specifies JRE version to be bundled with distributions, 11 by default.

@@ -12,10 +12,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.roots.FileIndexFacade;
-import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.LowMemoryWatcher;
-import com.intellij.openapi.util.StackOverflowPreventedException;
+import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.InvalidVirtualFileAccessException;
 import com.intellij.openapi.vfs.VfsUtilCore;
@@ -43,7 +40,7 @@ public final class FileManagerImpl implements FileManager {
   private final Key<FileViewProvider> myPsiHardRefKey = Key.create("HARD_REFERENCE_TO_PSI"); //non-static!
 
   private final PsiManagerImpl myManager;
-  private final FileIndexFacade myFileIndex;
+  private final NotNullLazyValue<? extends FileIndexFacade> myFileIndex;
 
   private final AtomicReference<ConcurrentMap<VirtualFile, PsiDirectory>> myVFileToPsiDirMap = new AtomicReference<>();
   private final AtomicReference<ConcurrentMap<VirtualFile, FileViewProvider>> myVFileToViewProviderMap = new AtomicReference<>();
@@ -57,7 +54,7 @@ public final class FileManagerImpl implements FileManager {
 
   private final MessageBusConnection myConnection;
 
-  public FileManagerImpl(PsiManagerImpl manager, FileIndexFacade fileIndex) {
+  public FileManagerImpl(@NotNull PsiManagerImpl manager, @NotNull NotNullLazyValue<? extends FileIndexFacade> fileIndex) {
     myManager = manager;
     myFileIndex = fileIndex;
     myConnection = manager.getProject().getMessageBus().connect();
@@ -68,12 +65,12 @@ public final class FileManagerImpl implements FileManager {
     myConnection.subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
       @Override
       public void enteredDumbMode() {
-        processFileTypesChanged();
+        processFileTypesChanged(false);
       }
 
       @Override
       public void exitDumbMode() {
-        processFileTypesChanged();
+        processFileTypesChanged(false);
       }
     });
   }
@@ -250,7 +247,7 @@ public final class FileManagerImpl implements FileManager {
                                       : LanguageFileViewProviders.INSTANCE.forLanguage(language);
     FileViewProvider viewProvider = factory == null ? null : factory.createFileViewProvider(file, language, myManager, eventSystemEnabled);
 
-    return viewProvider == null ? new SingleRootFileViewProvider(myManager, file, eventSystemEnabled, fileType) : viewProvider;
+    return viewProvider == null ? new SingleRootFileViewProvider(myManager, file, eventSystemEnabled) : viewProvider;
   }
 
   /** @deprecated Left for plugin compatibility */
@@ -266,7 +263,7 @@ public final class FileManagerImpl implements FileManager {
 
   private boolean myProcessingFileTypesChange;
 
-  void processFileTypesChanged() {
+  void processFileTypesChanged(boolean clearViewProviders) {
     if (myProcessingFileTypesChange) return;
     myProcessingFileTypesChange = true;
     DebugUtil.performPsiModification(null, () -> {
@@ -277,6 +274,9 @@ public final class FileManagerImpl implements FileManager {
           myManager.beforePropertyChange(event);
 
           possiblyInvalidatePhysicalPsi();
+          if (clearViewProviders) {
+            clearViewProviders();
+          }
 
           myManager.propertyChanged(event);
         });
@@ -406,7 +406,8 @@ public final class FileManagerImpl implements FileManager {
 
   private boolean isExcludedOrIgnored(@NotNull VirtualFile vFile) {
     if (myManager.getProject().isDefault()) return false;
-    return Registry.is("ide.hide.excluded.files") ? myFileIndex.isExcludedFile(vFile) : myFileIndex.isUnderIgnored(vFile);
+    FileIndexFacade fileIndexFacade = myFileIndex.getValue();
+    return Registry.is("ide.hide.excluded.files") ? fileIndexFacade.isExcludedFile(vFile) : fileIndexFacade.isUnderIgnored(vFile);
   }
 
   public PsiDirectory getCachedDirectory(@NotNull VirtualFile vFile) {

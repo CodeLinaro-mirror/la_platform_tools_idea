@@ -31,7 +31,7 @@ import javax.swing.*;
 public abstract class JavaFindUsagesDialog<T extends JavaFindUsagesOptions> extends CommonFindUsagesDialog {
   private StateRestoringCheckBox myCbIncludeOverloadedMethods;
   private boolean myIncludeOverloadedMethodsAvailable;
-  protected final EventLogGroup myEventLogGroup = new EventLogGroup("JavaFindUsages", 1);
+  protected static final String EVENT_LOG_GROUP = "java.find.usages";
 
   protected JavaFindUsagesDialog(@NotNull PsiElement element,
                                  @NotNull Project project,
@@ -46,9 +46,6 @@ public abstract class JavaFindUsagesDialog<T extends JavaFindUsagesOptions> exte
   @Override
   protected void init() {
     myIncludeOverloadedMethodsAvailable = myPsiElement instanceof PsiMethod && MethodSignatureUtil.hasOverloads((PsiMethod)myPsiElement);
-    if (myFindUsagesOptions instanceof JavaFindUsagesOptions) {
-      ((JavaFindUsagesOptions)myFindUsagesOptions).setDefaults(myProject);
-    }
     super.init();
   }
 

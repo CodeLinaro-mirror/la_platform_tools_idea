@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.xmlb.annotations.Attribute;
 import com.intellij.util.xmlb.annotations.Tag;
+import com.intellij.vcs.log.VcsUser;
 import git4idea.push.GitPushTagMode;
 import git4idea.reset.GitResetMode;
 import org.jetbrains.annotations.NotNull;
@@ -25,10 +26,8 @@ import static git4idea.config.GitIncomingCheckStrategy.Never;
  * Git VCS settings
  */
 @State(name = "Git.Settings", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
-public class GitVcsSettings extends SimplePersistentStateComponent<GitVcsOptions> implements DvcsSyncSettings, DvcsCompareSettings {
+public final class GitVcsSettings extends SimplePersistentStateComponent<GitVcsOptions> implements DvcsSyncSettings, DvcsCompareSettings {
   private static final int PREVIOUS_COMMIT_AUTHORS_LIMIT = 16; // Limit for previous commit authors
-
-  private final GitVcsApplicationSettings myAppSettings;
 
   /**
    * The way the local changes are saved before update if user has selected auto-stash
@@ -38,14 +37,12 @@ public class GitVcsSettings extends SimplePersistentStateComponent<GitVcsOptions
     SHELVE,
   }
 
-  public GitVcsSettings(GitVcsApplicationSettings appSettings) {
+  public GitVcsSettings() {
     super(new GitVcsOptions());
-
-    myAppSettings = appSettings;
   }
 
   public GitVcsApplicationSettings getAppSettings() {
-    return myAppSettings;
+    return GitVcsApplicationSettings.getInstance();
   }
 
   public static GitVcsSettings getInstance(Project project) {
@@ -75,13 +72,13 @@ public class GitVcsSettings extends SimplePersistentStateComponent<GitVcsOptions
    *
    * @param author an author to save
    */
-  public void saveCommitAuthor(String author) {
+  public void saveCommitAuthor(@NotNull VcsUser author) {
     List<String> previousCommitAuthors = getState().getPreviousCommitAuthors();
-    previousCommitAuthors.remove(author);
+    previousCommitAuthors.remove(author.toString());
     while (previousCommitAuthors.size() >= PREVIOUS_COMMIT_AUTHORS_LIMIT) {
       previousCommitAuthors.remove(previousCommitAuthors.size() - 1);
     }
-    previousCommitAuthors.add(0, author);
+    previousCommitAuthors.add(0, author.toString());
   }
 
   public String[] getCommitAuthors() {

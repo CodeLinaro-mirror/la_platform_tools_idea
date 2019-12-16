@@ -1,7 +1,10 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.dataFlow;
 
-import com.intellij.codeInspection.dataFlow.instructions.*;
+import com.intellij.codeInspection.dataFlow.instructions.AssignInstruction;
+import com.intellij.codeInspection.dataFlow.instructions.EndOfInitializerInstruction;
+import com.intellij.codeInspection.dataFlow.instructions.Instruction;
+import com.intellij.codeInspection.dataFlow.instructions.ReturnInstruction;
 import com.intellij.codeInspection.dataFlow.value.*;
 import com.intellij.codeInspection.util.OptionalUtil;
 import com.intellij.openapi.application.Application;
@@ -13,11 +16,13 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiTypesUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.ThreeState;
 import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.ig.callMatcher.CallMatcher;
 import com.siyeh.ig.psiutils.TypeUtils;
+import one.util.streamex.EntryStream;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -31,6 +36,7 @@ final class DataFlowInstructionVisitor extends StandardInstructionVisitor {
   private static final Logger LOG = Logger.getInstance("#com.intellij.codeInspection.dataFlow.DataFlowInstructionVisitor");
   private final Map<NullabilityProblemKind.NullabilityProblem<?>, StateInfo> myStateInfos = new LinkedHashMap<>();
   private final Map<PsiTypeCastExpression, StateInfo> myClassCastProblems = new HashMap<>();
+  private final Map<PsiTypeCastExpression, TypeConstraint> myRealOperandTypes = new HashMap<>();
   private final Map<PsiCallExpression, Boolean> myFailingCalls = new HashMap<>();
   private final Map<PsiExpression, ConstantResult> myConstantExpressions = new HashMap<>();
   private final Map<PsiElement, ThreeState> myOfNullableCalls = new HashMap<>();
@@ -152,8 +158,9 @@ final class DataFlowInstructionVisitor extends StandardInstructionVisitor {
     return myMethodReferenceResults;
   }
 
-  StreamEx<PsiTypeCastExpression> getFailingCastExpressions() {
-    return StreamEx.ofKeys(myClassCastProblems, StateInfo::shouldReport);
+  EntryStream<PsiTypeCastExpression, Pair<Boolean, PsiType>> getFailingCastExpressions() {
+    return EntryStream.of(myClassCastProblems).filterValues(StateInfo::shouldReport).mapToValue(
+      (cast, info) -> Pair.create(info.alwaysFails(), myRealOperandTypes.getOrDefault(cast, TypeConstraint.empty()).getPsiType()));
   }
 
   Set<PsiElement> getMutabilityViolations(boolean receiver) {
@@ -189,6 +196,12 @@ final class DataFlowInstructionVisitor extends StandardInstructionVisitor {
       }
     }
     expression.accept(new ExpressionVisitor(value, memState));
+    PsiElement parent = PsiUtil.skipParenthesizedExprUp(expression.getParent());
+    if (parent instanceof PsiTypeCastExpression) {
+      TypeConstraint fact = memState.getValueFact(value, DfaFactType.TYPE_CONSTRAINT);
+      if (fact == null) fact = TypeConstraint.empty();
+      myRealOperandTypes.merge((PsiTypeCastExpression)parent, fact, TypeConstraint::unite);
+    }
     if (range == null) {
       reportConstantExpressionValue(value, memState, expression);
     }
@@ -327,6 +340,10 @@ final class DataFlowInstructionVisitor extends StandardInstructionVisitor {
       // ephemeral exceptions should also be reported if only ephemeral states have reached a particular problematic instruction
       //  (e.g. if it's inside "if (var == null)" check after contract method invocation
       return normalException || ephemeralException && !normalOk;
+    }
+
+    boolean alwaysFails() {
+      return (normalException || ephemeralException) && !normalOk;
     }
   }
 

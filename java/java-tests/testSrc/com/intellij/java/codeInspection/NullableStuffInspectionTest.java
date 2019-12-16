@@ -69,6 +69,11 @@ public class NullableStuffInspectionTest extends LightJavaCodeInsightFixtureTest
     doTest();
   }
 
+  public void testAnnotatingArrayAmbiguous() {
+    DataFlowInspection8Test.setupAmbiguousAnnotations("withTypeUse", myFixture);
+    doTest();
+  }
+
   public void testProblems2() { doTest(); }
   public void testNullableFieldNotnullParam() { doTest(); }
   public void testNotNullFieldNullableParam() { doTest(); }
@@ -79,6 +84,7 @@ public class NullableStuffInspectionTest extends LightJavaCodeInsightFixtureTest
   public void testGetterSetterProblems() { doTest(); }
   public void testNonTrivialGettersSetters() { doTest(); }
   public void testGetterSetterFieldMismatch() { doTest(); }
+  public void testAbstractMapAndSortedMap() { doTest(); }
 
   public void testOverriddenMethods() {
     myInspection.REPORT_ANNOTATION_NOT_PROPAGATED_TO_OVERRIDERS = true;

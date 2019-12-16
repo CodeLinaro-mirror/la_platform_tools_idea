@@ -1044,7 +1044,7 @@ public class ProjectViewImpl extends ProjectView implements PersistentStateCompo
 
     pane.addToolbarActions(myActionGroup);
 
-    List<AnAction> titleActions = ContainerUtil.newSmartList();
+    List<AnAction> titleActions = new SmartList<>();
     createTitleActions(titleActions);
     if (!titleActions.isEmpty()) {
       ToolWindowEx window = (ToolWindowEx)ToolWindowManager.getInstance(myProject).getToolWindow(ToolWindowId.PROJECT_VIEW);
@@ -2078,7 +2078,7 @@ public class ProjectViewImpl extends ProjectView implements PersistentStateCompo
             runnable.run();
           }
         })
-        .coalesceBy(ProjectViewImpl.this)
+        .coalesceBy(EditorSelectInContext.class, ProjectViewImpl.this)
         .expireWhen(editor::isDisposed)
         .submit(AppExecutorUtil.getAppExecutorService());
     }
@@ -2119,7 +2119,7 @@ public class ProjectViewImpl extends ProjectView implements PersistentStateCompo
 
   private class ScrollFromSourceAction extends AnAction implements DumbAware {
     private ScrollFromSourceAction() {
-      super("Select Opened File" + getScrollToSourceShortcut(), "Select the file open in the active editor", AllIcons.General.Locate);
+      super("Select Opened File", "Select the file open in the active editor", AllIcons.General.Locate);
     }
 
     @Override
@@ -2129,7 +2129,9 @@ public class ProjectViewImpl extends ProjectView implements PersistentStateCompo
 
     @Override
     public void update(@NotNull AnActionEvent event) {
-      event.getPresentation().setEnabledAndVisible(!isAutoscrollFromSource(myCurrentViewId));
+      Presentation presentation = event.getPresentation();
+      presentation.setText("Select Opened File" + getScrollToSourceShortcut());
+      presentation.setEnabledAndVisible(!isAutoscrollFromSource(myCurrentViewId));
     }
   }
 

@@ -645,7 +645,7 @@ public class JavaFormatterAlignmentTest extends AbstractJavaFormatterTest {
     doTextTest(
       REFORMAT_WITH_CONTEXT,
       "public class Test {\n" +
-      "  \n" +
+      "\n" +
       "    public void fooooo(String foo,\n" +
       "                    String booo,\n" +
       "                    String kakadoo) {\n" +
@@ -924,6 +924,28 @@ public class JavaFormatterAlignmentTest extends AbstractJavaFormatterTest {
       "    void foo(A a, int xyz) {\n" +
       "        a.bar = 9999;\n" +
       "        xyz   = 1;\n" +
+      "    }\n" +
+      "}"
+    );
+  }
+
+  public void test_alignMultilineTextBlock() {
+    getJavaSettings().ALIGN_MULTILINE_TEXT_BLOCKS = true;
+    doTextTest(
+      "public class Test {\n" +
+      "    void foo() {\n" +
+      "        String block = \"\"\"\n" +
+      "  text\n" +
+      "  block\n" +
+      " \"\"\";\n" +
+      "    }\n" +
+      "}",
+      "public class Test {\n" +
+      "    void foo() {\n" +
+      "        String block = \"\"\"\n" +
+      "                        text\n" +
+      "                        block\n" +
+      "                       \"\"\";\n" +
       "    }\n" +
       "}"
     );

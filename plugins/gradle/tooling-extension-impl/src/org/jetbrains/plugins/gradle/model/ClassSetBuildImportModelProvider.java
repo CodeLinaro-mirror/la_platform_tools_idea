@@ -2,8 +2,8 @@
 package org.jetbrains.plugins.gradle.model;
 
 import org.gradle.tooling.BuildController;
-import org.gradle.tooling.model.BuildModel;
 import org.gradle.tooling.model.Model;
+import org.gradle.tooling.model.gradle.GradleBuild;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -19,9 +19,9 @@ public final class ClassSetBuildImportModelProvider implements ProjectImportMode
   }
 
   @Override
-  public <T extends Model & BuildModel> void populateBuildModels(@NotNull BuildController controller,
-                                                                 @NotNull T buildModel,
-                                                                 @NotNull BuildModelConsumer consumer) {
+  public void populateBuildModels(@NotNull BuildController controller,
+                                  @NotNull GradleBuild buildModel,
+                                  @NotNull BuildModelConsumer consumer) {
     for (Class<?> aClass : classSet) {
       Object instance = controller.findModel(buildModel, aClass);
       if (instance != null) {
@@ -35,5 +35,19 @@ public final class ClassSetBuildImportModelProvider implements ProjectImportMode
                                     @Nullable Model module,
                                     @NotNull ProjectModelConsumer modelConsumer) {
     // Do nothing, this provider only works on the build model level
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    ClassSetBuildImportModelProvider provider = (ClassSetBuildImportModelProvider)o;
+    if (!classSet.equals(provider.classSet)) return false;
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    return classSet.hashCode();
   }
 }

@@ -17,7 +17,6 @@ import com.intellij.openapi.editor.ScrollingModel;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.fileEditor.TextEditor;
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Splitter;
@@ -76,6 +75,7 @@ public class EditorWindow {
     myOwner = owner;
     myPanel = new JPanel(new BorderLayout());
     myPanel.setOpaque(false);
+    myPanel.setFocusable(false);
 
     myTabbedPane = new EditorTabbedContainer(this, getManager().getProject(), myOwner);
     myPanel.add(myTabbedPane.getComponent(), BorderLayout.CENTER);
@@ -105,12 +105,14 @@ public class EditorWindow {
   }
 
   public void closeAllExcept(final VirtualFile selectedFile) {
-    final VirtualFile[] files = getFiles();
-    for (final VirtualFile file : files) {
-      if (!Comparing.equal(file, selectedFile) && !isFilePinned(file)) {
-        closeFile(file);
+    getManager().runBulkTabChange(myOwner, splitters -> {
+      final VirtualFile[] files = getFiles();
+      for (final VirtualFile file : files) {
+        if (!Comparing.equal(file, selectedFile) && !isFilePinned(file)) {
+          closeFile(file);
+        }
       }
-    }
+    });
   }
 
   void dispose() {
@@ -158,7 +160,7 @@ public class EditorWindow {
 
   public void closeFile(@NotNull final VirtualFile file, final boolean disposeIfNeeded, final boolean transferFocus) {
     final FileEditorManagerImpl editorManager = getManager();
-    editorManager.runChange(splitters -> {
+    editorManager.runBulkTabChange(myOwner, splitters -> {
       final List<EditorWithProviderComposite> editors = splitters.findEditorComposites(file);
       if (editors.isEmpty()) return;
       try {
@@ -217,7 +219,7 @@ public class EditorWindow {
 
         splitters.afterFileClosed(file);
       }
-    }, myOwner);
+    });
   }
 
   void removeFromSplitter() {
@@ -532,17 +534,18 @@ public class EditorWindow {
 
         final VirtualFile file = editor.getFile();
         final Icon template = AllIcons.FileTypes.Text;
-        myTabbedPane.insertTab(file, EmptyIcon.create(template.getIconWidth(), template.getIconHeight()), new TComp(this, editor), null, indexToInsert, editor);
+        EmptyIcon emptyIcon = EmptyIcon.create(template.getIconWidth(), template.getIconHeight());
+        myTabbedPane.insertTab(file, emptyIcon, new TComp(this, editor), null, indexToInsert, editor);
         trimToSize(UISettings.getInstance().getEditorTabLimit(), file, false);
         if (selectEditor) {
           setSelectedEditor(editor, focusEditor);
         }
-        myOwner.updateFileIcon(file);
+        myOwner.updateFileIconImmediately(file);
         myOwner.updateFileColor(file);
       }
       myOwner.setCurrentWindow(this, false);
     }
-    myOwner.validate();
+    if (!myOwner.isInsideChange()) myOwner.validate();
   }
 
   protected void onBeforeSetEditor(VirtualFile file) {
@@ -895,14 +898,9 @@ public class EditorWindow {
   }
 
   void trimToSize(final int limit, @Nullable final VirtualFile fileToIgnore, final boolean transferFocus) {
-    FileEditorManagerEx.getInstanceEx(getManager().getProject()).getReady(this).doWhenDone(() -> {
-      if (isDisposed()) return;
-      final EditorComposite selectedComposite = getSelectedEditor();
-      try {
+    getManager().getReady(this).doWhenDone(() -> {
+      if (!isDisposed()) {
         doTrimSize(limit, fileToIgnore, UISettings.getInstance().getState().getCloseNonModifiedFilesFirst(), transferFocus);
-      }
-      finally {
-        setSelectedEditor(selectedComposite, false);
       }
     });
   }

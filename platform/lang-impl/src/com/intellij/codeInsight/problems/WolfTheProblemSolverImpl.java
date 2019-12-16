@@ -4,6 +4,8 @@ package com.intellij.codeInsight.problems;
 
 import com.intellij.codeInsight.daemon.impl.*;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightInfoHolder;
+import com.intellij.ide.plugins.DynamicPluginListener;
+import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ReadAction;
@@ -55,8 +57,6 @@ public class WolfTheProblemSolverImpl extends WolfTheProblemSolver {
   private final Collection<VirtualFile> myCheckingQueue = new THashSet<>(10);
 
   private final Project myProject;
-  private final List<Condition<VirtualFile>> myFilters = ContainerUtil.createLockFreeCopyOnWriteList();
-  private boolean myFiltersLoaded;
 
   private void doRemove(@NotNull VirtualFile problemFile) {
     ProblemFileInfo old;
@@ -173,6 +173,17 @@ public class WolfTheProblemSolverImpl extends WolfTheProblemSolver {
         }
       });
     }
+
+    messageBus.connect(project).subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
+      @Override
+      public void beforePluginUnload(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
+        // Ensure we don't have any leftover problems referring to classes from plugin being unloaded
+        Set<VirtualFile> allFiles = new HashSet<>(myProblems.keySet());
+        for (VirtualFile file : allFiles) {
+          doRemove(file);
+        }
+      }
+    });
   }
 
   private void clearInvalidFiles() {
@@ -252,6 +263,7 @@ public class WolfTheProblemSolverImpl extends WolfTheProblemSolver {
     try {
       GeneralHighlightingPass pass = new GeneralHighlightingPass(myProject, psiFile, document, 0, document.getTextLength(),
                                                                  false, new ProperTextRange(0, document.getTextLength()), null, HighlightInfoProcessor.getEmpty()) {
+        @NotNull
         @Override
         protected HighlightInfoHolder createInfoHolder(@NotNull final PsiFile file) {
           return new HighlightInfoHolder(file) {
@@ -364,13 +376,7 @@ public class WolfTheProblemSolverImpl extends WolfTheProblemSolver {
   private boolean isToBeHighlighted(@Nullable VirtualFile virtualFile) {
     if (virtualFile == null) return false;
 
-    synchronized (myFilters) {
-      if (!myFiltersLoaded) {
-        myFiltersLoaded = true;
-        myFilters.addAll(Arrays.asList(FILTER_EP_NAME.getExtensions(myProject)));
-      }
-    }
-    for (final Condition<VirtualFile> filter : myFilters) {
+    for (final Condition<VirtualFile> filter : FILTER_EP_NAME.getExtensions(myProject)) {
       ProgressManager.checkCanceled();
       if (filter.value(virtualFile)) {
         return true;

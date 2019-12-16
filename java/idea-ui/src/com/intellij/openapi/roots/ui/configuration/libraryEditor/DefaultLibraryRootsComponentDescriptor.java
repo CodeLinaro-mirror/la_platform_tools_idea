@@ -60,13 +60,18 @@ public class DefaultLibraryRootsComponentDescriptor extends LibraryRootsComponen
                                                       //some libraries store native libraries inside their JAR files and unpack them dynamically so we should detect such JARs as classes roots
                                                       || file.getFileSystem() instanceof JarFileSystem && isNativeLibrary(file)));
     results.add(DescendentBasedRootFilter.createFileTypeBasedFilter(OrderRootType.CLASSES, true, StdFileTypes.CLASS, "jar directory"));
-    ContainerUtil.addAll(results, LibrarySourceRootDetectorUtil.JAVA_SOURCE_ROOT_DETECTOR.getExtensionList());
+    results.addAll(LibrarySourceRootDetectorUtil.JAVA_SOURCE_ROOT_DETECTOR.getExtensionList());
     results.add(DescendentBasedRootFilter.createFileTypeBasedFilter(OrderRootType.SOURCES, true, StdFileTypes.JAVA, "source archive directory"));
     results.add(new JavadocRootDetector());
-    results.add(new DescendentBasedRootFilter(AnnotationOrderRootType.getInstance(), false, "external annotations",
-                                              file -> ExternalAnnotationsManager.ANNOTATIONS_XML.equals(file.getName())));
+    results.add(createAnnotationsRootDetector());
     results.add(new NativeLibraryRootFilter());
     return results;
+  }
+
+  @NotNull
+  public static DescendentBasedRootFilter createAnnotationsRootDetector() {
+    return new DescendentBasedRootFilter(AnnotationOrderRootType.getInstance(), false, "external annotations",
+                                              file -> ExternalAnnotationsManager.ANNOTATIONS_XML.equals(file.getName()));
   }
 
   private static boolean isNativeLibrary(VirtualFile file) {

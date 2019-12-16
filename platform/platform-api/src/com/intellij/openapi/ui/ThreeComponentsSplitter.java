@@ -3,7 +3,6 @@ package com.intellij.openapi.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Weighted;
 import com.intellij.openapi.util.registry.Registry;
@@ -14,7 +13,6 @@ import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.UIBundle;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.EventDispatcher;
-import com.intellij.util.ReflectionUtil;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -30,10 +28,10 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
+
+import static com.intellij.util.ui.FocusUtil.*;
 
 /**
  * @author Vladimir Kondratyev
@@ -72,22 +70,23 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
   private boolean myShowDividerControls;
   private int myDividerZone;
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.ui.ThreeComponentsSplitter");
-
   private class MyFocusTraversalPolicy extends LayoutFocusTraversalPolicy {
 
     @Override
     @SuppressWarnings("Duplicates")
     public Component getComponentAfter(Container aContainer, Component aComponent) {
       Component comp;
-      if (aComponent == myFirstComponent) {
-        comp = findChildToFocus(myInnerComponent);
+      if (SwingUtilities.isDescendingFrom(aComponent, myFirstComponent)) {
+        Component next = nextVisible(myFirstComponent);
+        comp = (next != null) ? findChildToFocus(next) : aComponent;
       }
-      else if (aComponent == myInnerComponent) {
-        comp = findChildToFocus(myLastComponent);
+      else if (SwingUtilities.isDescendingFrom(aComponent, myInnerComponent)) {
+        Component next = nextVisible(myInnerComponent);
+        comp = (next != null) ? findChildToFocus(next) : aComponent;
       }
       else {
-        comp = findChildToFocus(myFirstComponent);
+        Component next = nextVisible(myLastComponent);
+        comp = (next != null) ? findChildToFocus(next) : aComponent;
       }
       if (comp == aComponent) {
         // if focus is stuck on the component let it go further
@@ -100,14 +99,17 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
     @SuppressWarnings("Duplicates")
     public Component getComponentBefore(Container aContainer, Component aComponent) {
       Component comp;
-      if (aComponent == myInnerComponent) {
-        comp = findChildToFocus(myFirstComponent);
+      if (SwingUtilities.isDescendingFrom(aComponent, myInnerComponent)) {
+        Component prev = prevVisible(myInnerComponent);
+        comp = (prev != null) ? findChildToFocus(prev) : aComponent;
       }
-      else if (aComponent == myLastComponent) {
-        comp = findChildToFocus(myInnerComponent);
+      else if (SwingUtilities.isDescendingFrom(aComponent, myLastComponent)) {
+        Component prev = prevVisible(myLastComponent);
+        comp = (prev != null) ? findChildToFocus(prev) : aComponent;
       }
       else {
-        comp = findChildToFocus(myFirstComponent);
+        Component prev = prevVisible(myFirstComponent);
+        comp = (prev != null) ? findChildToFocus(prev) : aComponent;
       }
       if (comp == aComponent) {
         // if focus is stuck on the component let it go further
@@ -116,14 +118,33 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
       return comp;
     }
 
+    private Component nextVisible(Component comp) {
+      if (comp == myFirstComponent) return innerVisible() ? myInnerComponent : lastVisible() ? myLastComponent : null;
+      if (comp == myInnerComponent) return lastVisible() ? myLastComponent : firstVisible() ? myFirstComponent : null;
+      if (comp == myLastComponent) return firstVisible() ? myFirstComponent : innerVisible() ? myInnerComponent : null;
+      return null;
+    }
+
+
+    private Component prevVisible(Component comp) {
+      if (comp == myFirstComponent) return lastVisible() ? myLastComponent : innerVisible() ? myInnerComponent : null;
+      if (comp == myInnerComponent) return firstVisible() ? myFirstComponent : lastVisible() ? myLastComponent : null;
+      if (comp == myLastComponent) return innerVisible() ? myInnerComponent : firstVisible() ? myFirstComponent : null;
+      return null;
+    }
+
     @Override
     public Component getFirstComponent(Container aContainer) {
-      return findChildToFocus(myFirstComponent);
+      if (firstVisible()) return findChildToFocus(myFirstComponent);
+      Component next = nextVisible(myFirstComponent);
+      return next != null ? findChildToFocus(next) : null;
     }
 
     @Override
     public Component getLastComponent(Container aContainer) {
-      return findChildToFocus(myLastComponent);
+      if (lastVisible()) return findChildToFocus(myLastComponent);
+      Component prev = prevVisible(myLastComponent);
+      return prev != null ? findChildToFocus(prev) : null;
     }
 
     private boolean myReentrantLock = false;
@@ -132,7 +153,9 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
       if (myReentrantLock) return null;
       try {
         myReentrantLock = true;
-        return findChildToFocus(myInnerComponent);
+        if (innerVisible()) return findChildToFocus(myInnerComponent);
+        Component next = nextVisible(myLastComponent);
+        return next != null ? findChildToFocus(next) : null;
       } finally {
         myReentrantLock = false;
       }
@@ -140,42 +163,26 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
 
     Component findChildToFocus (Component component) {
       final Window ancestor = SwingUtilities.getWindowAncestor(ThreeComponentsSplitter.this);
-      if (ancestor != null) {
-        //KeyboardFocusManager.getMostRecentFocusOwner(this)
-        try {
-          final Component mostRecentFocusOwner;
+      // Step 1 : We should take into account cases with detached toolwindows and editors
+      //       - find the recent focus owner for the window of the splitter and
+      //         make sure that the most recently focused component is inside the
+      //         passed component. By the way, the recent focused component is supposed to be focusable
 
-          mostRecentFocusOwner = (Component)
-            Objects.requireNonNull(ReflectionUtil.getDeclaredMethod(KeyboardFocusManager.class,
-            "getMostRecentFocusOwner", Window.class)).invoke(null, ancestor);
+      final Component mostRecentFocusOwner = getMostRecentComponent(component, ancestor);
+      if (mostRecentFocusOwner != null) return mostRecentFocusOwner;
 
-          if (mostRecentFocusOwner != null &&
-              SwingUtilities.isDescendingFrom(mostRecentFocusOwner, component) &&
-              mostRecentFocusOwner.isShowing()) {
-            return mostRecentFocusOwner;
-          }
-        }  catch (InvocationTargetException|IllegalAccessException e) {
-          LOG.debug(e);
-        }
-      }
-      if (component instanceof JPanel) {
-        JPanel container = (JPanel)component;
-        final FocusTraversalPolicy policy = container.getFocusTraversalPolicy();
+      // Step 2 : If the best candidate to focus is a panel, usually it does not
+      //          have focus representation for showing the focused state
+      //          Let's ask the focus traversal policy what is the best candidate
 
-        if (policy == null) {
-          return container;
-        }
+      Component defaultComponentInPanel = getDefaultComponentInPanel(component);
+      if (defaultComponentInPanel != null) return defaultComponentInPanel;
 
-        final Component defaultComponent = policy.getDefaultComponent(container);
-        if (defaultComponent == null) {
-          return container;
-        }
-        return policy.getDefaultComponent(container);
-      }
+      //Step 3 : Return the component, but find the first focusable component first
 
-      return component;
-
+      return findFocusableComponentIn((JComponent)component, null);
     }
+
 
   }
 

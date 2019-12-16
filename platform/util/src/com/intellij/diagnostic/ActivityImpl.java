@@ -21,33 +21,19 @@ public final class ActivityImpl implements Activity {
   private final ActivityImpl parent;
 
   @Nullable
-  private final StartUpMeasurer.Level level;
+  private ActivityCategory category;
 
-  @Nullable
-  private final ParallelActivity parallelActivity;
   @Nullable
   private final String pluginId;
 
-  ActivityImpl(@Nullable String name, @Nullable StartUpMeasurer.Level level, @Nullable String pluginId) {
-    this(name, System.nanoTime(), null, level, null, pluginId);
+  ActivityImpl(@Nullable String name, @Nullable String pluginId) {
+    this(name, StartUpMeasurer.getCurrentTime(), null, pluginId);
   }
 
-  @NotNull
-  static ActivityImpl createParallelActivity(@NotNull ParallelActivity parallelActivity, @NotNull String name) {
-    return new ActivityImpl(name, System.nanoTime(), /* parent = */ null, /* level = */ null, parallelActivity, null);
-  }
-
-  ActivityImpl(@Nullable String name,
-               long start,
-               @Nullable ActivityImpl parent,
-               @Nullable StartUpMeasurer.Level level,
-               @Nullable ParallelActivity parallelActivity,
-               @Nullable String pluginId) {
+  ActivityImpl(@Nullable String name, long start, @Nullable ActivityImpl parent, @Nullable String pluginId) {
     this.name = name;
     this.start = start;
     this.parent = parent;
-    this.level = level;
-    this.parallelActivity = parallelActivity;
     this.pluginId = pluginId;
 
     Thread thread = Thread.currentThread();
@@ -70,21 +56,22 @@ public final class ActivityImpl implements Activity {
   }
 
   @Nullable
-  public StartUpMeasurer.Level getLevel() {
-    return level;
+  public ActivityCategory getCategory() {
+    return category;
   }
 
-  @Nullable
-  public ParallelActivity getParallelActivity() {
-    return parallelActivity;
+  void setCategory(@Nullable ActivityCategory value) {
+    category = value;
   }
 
-  // and how do we can sort correctly, when parent item equals to child (start and end) and also there is another child with start equals to end?
+  // and how do we can sort correctly, when parent item equals to child (start and end), also there is another child with start equals to end?
   // so, parent added to API but as it was not enough, decided to measure time in nanoseconds instead of ms to mitigate such situations
   @Override
   @NotNull
   public ActivityImpl startChild(@NotNull String name) {
-    return new ActivityImpl(name, System.nanoTime(), this, null, null, pluginId);
+    ActivityImpl activity = new ActivityImpl(name, StartUpMeasurer.getCurrentTime(), this, pluginId);
+    activity.category = category;
+    return activity;
   }
 
   @NotNull
@@ -95,10 +82,6 @@ public final class ActivityImpl implements Activity {
   @Nullable
   public String getDescription() {
     return description;
-  }
-
-  void setDescription(String description) {
-    this.description = description;
   }
 
   @Nullable
@@ -120,24 +103,38 @@ public final class ActivityImpl implements Activity {
   }
 
   @Override
-  public void end(@Nullable String description) {
-    if (description != null) {
-      this.description = description;
-    }
-    assert end == 0;
-    end = System.nanoTime();
-    StartUpMeasurer.add(this);
+  public void end() {
+    assert end == 0 : "not started or already ended";
+    end = StartUpMeasurer.getCurrentTime();
+    StartUpMeasurer.addActivity(this);
+  }
+
+  @Override
+  public void setDescription(@NotNull String value) {
+    description = value;
   }
 
   @Override
   @NotNull
   public Activity endAndStart(@NotNull String name) {
     end();
-    return new ActivityImpl(name, /* start = */end, parent, /* level = */null, parallelActivity, pluginId);
+    ActivityImpl activity = new ActivityImpl(name, /* start = */end, parent, /* level = */ pluginId);
+    activity.setCategory(category);
+    return activity;
   }
 
   @Override
   public String toString() {
-    return "ActivityImpl(name=" + name + ", start=" + TimeUnit.NANOSECONDS.toMillis(start) + ", end=" + TimeUnit.NANOSECONDS.toMillis(end) + ")";
+    StringBuilder builder = new StringBuilder();
+    builder.append("ActivityImpl(name=").append(name).append(", start=");
+    nanoToString(start, builder);
+    builder.append(", end=");
+    nanoToString(end, builder);
+    builder.append(", category=").append(category).append(")");
+    return builder.toString();
+  }
+
+  private static void nanoToString(long start, @NotNull StringBuilder builder) {
+    builder.append(TimeUnit.NANOSECONDS.toMillis(start - StartUpMeasurer.getStartTime())).append("ms (").append(TimeUnit.NANOSECONDS.toMicros(start - StartUpMeasurer.getStartTime())).append("μs)");
   }
 }

@@ -29,10 +29,7 @@ import org.jetbrains.idea.maven.utils.MavenMergingUpdateQueue;
 import org.jetbrains.idea.maven.utils.MavenSimpleProjectComponent;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public final class MavenProjectIndicesManager extends MavenSimpleProjectComponent {
@@ -104,7 +101,7 @@ public final class MavenProjectIndicesManager extends MavenSimpleProjectComponen
         else {
           myProjectIndices = MavenIndicesManager.getInstance().ensureIndicesExist(myProject, remoteRepositoriesIdsAndUrls);
         }
-        myProjectIndices.add(MavenIndicesManager.getInstance().createIndexForLocalRepo(myProject, localRepository));
+        ContainerUtil.addIfNotNull(myProjectIndices, MavenIndicesManager.getInstance().createIndexForLocalRepo(myProject, localRepository));
         myDependencySearchService.reload();
 
         if (consumer != null) {
@@ -122,7 +119,7 @@ public final class MavenProjectIndicesManager extends MavenSimpleProjectComponen
     Set<Pair<String, String>> result = new THashSet<>();
     Set<MavenRemoteRepository> remoteRepositories = new HashSet<>(getMavenProjectManager().getRemoteRepositories());
     for (MavenRepositoryProvider repositoryProvider : MavenRepositoryProvider.EP_NAME.getExtensions()) {
-      ContainerUtil.addAll(remoteRepositories, repositoryProvider.getRemoteRepositories(myProject));
+      remoteRepositories.addAll(repositoryProvider.getRemoteRepositories(myProject));
     }
     for (MavenRemoteRepository each : remoteRepositories) {
       String id = each.getId();

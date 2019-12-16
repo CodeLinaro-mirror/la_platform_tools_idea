@@ -79,8 +79,14 @@ class IntellijModulesPublication {
       if (jar.exists()) {
         deployJar(jar, pom)
       }
+      else {
+        context.messages.warning("$it.name jar is not found")
+      }
       if (sources.exists()) {
         deploySources(sources, coordinates)
+      }
+      else {
+        context.messages.warning("$it.name sources is not found")
       }
     }
   }
@@ -124,22 +130,27 @@ class IntellijModulesPublication {
     def output = process.text
     def exitCode = process.waitFor()
     if (exitCode != 0) {
-      context.messages.error("Upload of $file.name failed with exit code $exitCode: $output")
+      context.messages.warning("Upload of $file.name failed with exit code $exitCode: $output")
     }
   }
 
   private File mavenSettings() {
+    def server = ''
+    if (options.repositoryPassword != null && options.repositoryUser != null &&
+        !options.repositoryPassword.isEmpty() && !options.repositoryUser.isEmpty()) {
+      server = """<server>
+        <id>server-id</id>
+        <username>${options.repositoryUser}</username>
+        <password>${options.repositoryPassword}</password>
+      </server>"""
+    }
     File.createTempFile('settings', '.xml').with {
       it << """<settings xmlns="https://maven.apache.org/SETTINGS/1.0.0"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xsi:schemaLocation="https://maven.apache.org/SETTINGS/1.0.0
                             https://maven.apache.org/xsd/settings-1.0.0.xsd">
                 <servers>
-                  <server>
-                    <id>server-id</id>
-                    <username>${options.repositoryUser}</username>
-                    <password>${options.repositoryPassword}</password>
-                  </server>
+                   $server
                 </servers>
                </settings>
       """.stripIndent()

@@ -31,18 +31,15 @@ import com.intellij.psi.impl.source.html.HtmlDocumentImpl;
 import com.intellij.psi.impl.source.parsing.xml.HtmlBuilderDriver;
 import com.intellij.psi.impl.source.parsing.xml.XmlBuilder;
 import com.intellij.psi.impl.source.tree.CompositeElement;
-import com.intellij.psi.impl.source.xml.XmlTagImpl;
 import com.intellij.psi.templateLanguages.OuterLanguageElement;
 import com.intellij.psi.templateLanguages.TemplateLanguageFileViewProvider;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.*;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.*;
 import com.intellij.xml.impl.schema.XmlAttributeDescriptorImpl;
 import com.intellij.xml.impl.schema.XmlElementDescriptorImpl;
-import com.intellij.xml.util.documentation.MimeTypeDictionary;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.*;
@@ -63,12 +60,12 @@ public class HtmlUtil {
 
   public static final String SCRIPT_TAG_NAME = "script";
   public static final String STYLE_TAG_NAME = "style";
+  public static final String TEMPLATE_TAG_NAME = "template";
 
   public static final String STYLE_ATTRIBUTE_NAME = STYLE_TAG_NAME;
+  public static final String SRC_ATTRIBUTE_NAME = "src";
   public static final String ID_ATTRIBUTE_NAME = "id";
   public static final String CLASS_ATTRIBUTE_NAME = "class";
-
-  public static final String[] CONTENT_TYPES = ArrayUtilRt.toStringArray(MimeTypeDictionary.getContentTypes());
 
   @NonNls public static final String MATH_ML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
   @NonNls public static final String SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -138,7 +135,7 @@ public class HtmlUtil {
   public static boolean isSingleHtmlTag(@NotNull XmlTag tag, boolean lowerCase) {
     final XmlExtension extension = XmlExtension.getExtensionByElement(tag);
     final String name = tag.getName();
-    boolean result = EMPTY_TAGS_MAP.contains(!lowerCase || tag instanceof XmlTagImpl && ((XmlTagImpl)tag).isCaseSensitive()
+    boolean result = EMPTY_TAGS_MAP.contains(!lowerCase || tag.isCaseSensitive()
                                              ? name : StringUtil.toLowerCase(name));
     return result && (extension == null || !extension.isSingleTagException(tag));
   }

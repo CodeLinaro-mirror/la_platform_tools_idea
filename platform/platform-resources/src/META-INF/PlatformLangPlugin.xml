@@ -10,6 +10,9 @@
 
   <xi:include href="/componentSets/PlatformLangComponents.xml" xpointer="xpointer(/idea-plugin/*)"/>
   <xi:include href="/idea/PlatformLangActionManager.xml" xpointer="xpointer(/idea-plugin/*)"/>
+  <xi:include href="/META-INF/coverage-common-plugin.xml" xpointer="xpointer(/idea-plugin/*)">
+    <xi:fallback/>
+  </xi:include>
 
   <extensionPoints>
     <xi:include href="/META-INF/PlatformExtensionPoints.xml" xpointer="xpointer(/idea-plugin/extensionPoints/*)"/>
@@ -24,7 +27,7 @@
     <xi:include href="/META-INF/ExternalSystemExtensions.xml" xpointer="xpointer(/idea-plugin/extensions/*)"/>
 
     <applicationService serviceInterface="com.intellij.ide.RecentProjectsManager"
-                        serviceImplementation="com.intellij.ide.AttachedModuleAwareRecentProjectsManager"/>
+                        serviceImplementation="com.intellij.ide.AttachedModuleAwareRecentProjectsManager" preload="notHeadless"/>
 
     <applicationService serviceInterface="com.intellij.openapi.projectRoots.ProjectJdkTable"
                         serviceImplementation="com.intellij.openapi.projectRoots.impl.ProjectJdkTableImpl"/>

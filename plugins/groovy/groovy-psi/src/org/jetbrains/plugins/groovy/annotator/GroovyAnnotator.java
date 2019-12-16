@@ -101,7 +101,8 @@ import static org.jetbrains.plugins.groovy.lang.resolve.ResolveUtil.isFieldDecla
  * @author ven
  */
 public class GroovyAnnotator extends GroovyElementVisitor {
-  private static final Logger LOG = Logger.getInstance("org.jetbrains.plugins.groovy.annotator.GroovyAnnotator");
+  private static final Logger LOG = Logger.getInstance(GroovyAnnotator.class);
+
   public static final Condition<PsiClass> IS_INTERFACE = aClass -> aClass.isInterface();
   private static final Condition<PsiClass> IS_NOT_INTERFACE = aClass -> !aClass.isInterface();
   public static final Condition<PsiClass> IS_TRAIT = aClass -> GrTraitUtil.isTrait(aClass);
@@ -859,13 +860,11 @@ public class GroovyAnnotator extends GroovyElementVisitor {
     final PsiReference constructorReference = listOrMap.getReference();
     if (constructorReference instanceof LiteralConstructorReference &&
         ((LiteralConstructorReference)constructorReference).getConstructedClassType() != null) {
-      final PsiElement startToken = listOrMap.getFirstChild();
-      if (startToken != null && startToken.getNode().getElementType() == GroovyTokenTypes.mLBRACK) {
-        myHolder.createInfoAnnotation(startToken, null).setTextAttributes(GroovySyntaxHighlighter.LITERAL_CONVERSION);
-      }
-      final PsiElement endToken = listOrMap.getLastChild();
-      if (endToken != null && endToken.getNode().getElementType() == GroovyTokenTypes.mRBRACK) {
-        myHolder.createInfoAnnotation(endToken, null).setTextAttributes(GroovySyntaxHighlighter.LITERAL_CONVERSION);
+      final PsiElement lBracket = listOrMap.getLBrack();
+      myHolder.createInfoAnnotation(lBracket, null).setTextAttributes(GroovySyntaxHighlighter.LITERAL_CONVERSION);
+      final PsiElement rBracket = listOrMap.getRBrack();
+      if (rBracket != null) {
+        myHolder.createInfoAnnotation(rBracket, null).setTextAttributes(GroovySyntaxHighlighter.LITERAL_CONVERSION);
       }
     }
 

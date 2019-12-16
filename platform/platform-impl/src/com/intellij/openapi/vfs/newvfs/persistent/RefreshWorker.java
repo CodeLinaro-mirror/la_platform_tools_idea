@@ -7,11 +7,10 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileAttributes;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.vfs.InvalidVirtualFileAccessException;
-import com.intellij.openapi.vfs.VFileProperty;
-import com.intellij.openapi.vfs.VfsUtil;
-import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.*;
 import com.intellij.openapi.vfs.ex.temp.TempFileSystem;
+import com.intellij.openapi.vfs.impl.local.DirectoryAccessChecker;
+import com.intellij.openapi.vfs.impl.local.LocalFileSystemBase;
 import com.intellij.openapi.vfs.newvfs.ChildInfoImpl;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFileSystem;
@@ -87,6 +86,10 @@ public class RefreshWorker {
       myHelper.scheduleDeletion(root);
       root.markClean();
       return;
+    }
+
+    if (fs instanceof LocalFileSystemBase) {
+      DirectoryAccessChecker.refresh();
     }
 
     checkAndScheduleChildRefresh(fs, persistence, root.getParent(), root, attributes);
