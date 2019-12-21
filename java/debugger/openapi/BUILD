@@ -59,6 +59,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/.idea/libraries:javax.annotation-api",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
     ],
     # do not sort: must match IML order
     deps = [

@@ -40,6 +40,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
         "//tools/idea/plugins/ui-designer-core:intellij.uiDesigner",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
         "//tools/idea/.idea/libraries:precompiled_jshell-frontend",
     ],
     test_srcs = ["test"],

@@ -622,6 +622,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/.idea/libraries:javax.annotation-api",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
     ],
     # do not sort: must match IML order
     deps = [
@@ -707,6 +708,7 @@ iml_module(
         "//tools/idea/.idea/libraries:error-prone-annotations",
         "//tools/idea/.idea/libraries:javax.annotation-api",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
     ],
     # do not sort: must match IML order
     deps = [
@@ -790,6 +792,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
         "//tools/idea/.idea/libraries:precompiled_jshell-frontend",
         "//tools/idea/java/plugin:intellij.java.plugin",
@@ -968,6 +971,7 @@ iml_module(
         "//tools/idea/platform/diagnostic:intellij.platform.diagnostic",
         "//tools/idea/.idea/libraries:error-prone-annotations",
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
         "//tools/idea/.idea/libraries:precompiled_jshell-frontend",
         "//tools/idea/java/remote-servers/impl:intellij.java.remoteServers.impl",
@@ -1096,6 +1100,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
         "//tools/idea/.idea/libraries:precompiled_jshell-frontend",
         "//tools/idea/java/manifest:intellij.java.manifest",
         "//tools/idea/java/remote-servers/impl:intellij.java.remoteServers.impl",
@@ -1208,6 +1213,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
     ],
     # do not sort: must match IML order
@@ -1260,6 +1266,7 @@ iml_module(
         "//tools/idea/.idea/libraries:jaxb-runtime",
         "//tools/idea/jvm/jvm-analysis-impl:intellij.jvm.analysis.impl",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/193.4:jar",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
         "//tools/idea/java/execution/impl:intellij.java.execution.impl",
         "//tools/idea/.idea/libraries:precompiled_jshell-frontend",
