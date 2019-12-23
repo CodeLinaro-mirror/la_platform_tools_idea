@@ -116,28 +116,28 @@ public class GradleExtensionsSettings {
           gradleProp.typeFqn = property.getTypeFqn();
           extensionsData.properties.put(gradleProp.name, gradleProp);
         }
-        for (ExternalTask task : gradleExtensions.getTasks()) {
-          GradleTask gradleTask = new GradleTask();
-          gradleTask.name = task.getName();
-          String type = task.getType();
-          if (type != null) {
-            gradleTask.typeFqn = type;
-          }
-
-          StringBuilder description = new StringBuilder();
-          if (task.getDescription() != null) {
-            description.append(task.getDescription());
-            if (task.getGroup() != null) {
-              description.append("<p>");
-            }
-          }
-          if (task.getGroup() != null) {
-            description.append("<i>Task group: ").append(task.getGroup()).append("<i>");
-          }
-
-          gradleTask.description = description.toString();
-          extensionsData.tasksMap.put(gradleTask.name, gradleTask);
-        }
+        //for (ExternalTask task : gradleExtensions.getTasks()) {
+        //  GradleTask gradleTask = new GradleTask();
+        //  gradleTask.name = task.getName();
+        //  String type = task.getType();
+        //  if (type != null) {
+        //    gradleTask.typeFqn = type;
+        //  }
+        //
+        //  StringBuilder description = new StringBuilder();
+        //  if (task.getDescription() != null) {
+        //    description.append(task.getDescription());
+        //    if (task.getGroup() != null) {
+        //      description.append("<p>");
+        //    }
+        //  }
+        //  if (task.getGroup() != null) {
+        //    description.append("<i>Task group: ").append(task.getGroup()).append("<i>");
+        //  }
+        //
+        //  gradleTask.description = description.toString();
+        //  extensionsData.tasksMap.put(gradleTask.name, gradleTask);
+        //}
         extensionsData.tasks = new SmartList<>(extensionsData.tasksMap.values());
         for (org.jetbrains.plugins.gradle.model.GradleConfiguration configuration : gradleExtensions.getConfigurations()) {
           GradleConfiguration gradleConfiguration = new GradleConfiguration();
