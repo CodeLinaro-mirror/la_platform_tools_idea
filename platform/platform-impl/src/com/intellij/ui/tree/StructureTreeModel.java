@@ -44,13 +44,21 @@ public class StructureTreeModel<Structure extends AbstractTreeStructure>
   private final Structure structure;
   private volatile Comparator<? super Node> comparator;
 
-  private StructureTreeModel(@NotNull Structure structure, boolean background, @NotNull Disposable parentDisposable) {
+  private StructureTreeModel(@NotNull Structure structure, boolean useReadAction, @NotNull Disposable parentDisposable) {
     this.structure = structure;
     description = format(structure.toString());
-    invoker = background
-              ? new Invoker.Background(this)
-              : new Invoker.EDT(this);
+    invoker = new Invoker.Background(this, useReadAction);
     Disposer.register(parentDisposable, this);
+  }
+
+  /**
+   * Creates a {@link StructureTreeModel} which does not automatically acquire the read lock when calling methods on {@code structure}.
+   */
+  public static <Structure extends AbstractTreeStructure> StructureTreeModel<Structure> createLightModel(
+    @NotNull Structure structure,
+    @NotNull Disposable parentDisposable
+  ) {
+    return new StructureTreeModel<>(structure, false, parentDisposable);
   }
 
   public StructureTreeModel(@NotNull Structure structure, @NotNull Disposable parentDisposable) {
