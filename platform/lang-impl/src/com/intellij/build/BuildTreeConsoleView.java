@@ -53,6 +53,7 @@ import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.EditSourceOnDoubleClickHandler;
 import com.intellij.util.EditSourceOnEnterKeyHandler;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.SmartHashSet;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
@@ -117,8 +118,9 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     myFocusFirstError = !(buildDescriptor instanceof DefaultBuildDescriptor) ||
                         ((DefaultBuildDescriptor)buildDescriptor).isActivateToolWindowWhenFailed();
 
-    myRootNode = new ExecutionNode(myProject, null, true);
-    myBuildProgressRootNode = new ExecutionNode(myProject, myRootNode, true);
+    myRootNode = new ExecutionNode(myProject, null, true, this::isCorrectThread);
+    myBuildProgressRootNode = new ExecutionNode(myProject, myRootNode, true, this::isCorrectThread);
+    myRootNode.setFilter(getFilter());
     myRootNode.add(myBuildProgressRootNode);
 
     AbstractTreeStructure treeStructure = new MyTreeStructure();
@@ -139,8 +141,14 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     myThreeComponentsSplitter.setSecondComponent(myConsoleViewHandler.getComponent());
     myPanel.add(myThreeComponentsSplitter, BorderLayout.CENTER);
     BuildTreeFilters.install(this);
-    myRootNode.setFilter(getFilter());
     myOccurrenceNavigatorSupport = new ProblemOccurrenceNavigatorSupport(myTree);
+  }
+
+  private boolean isCorrectThread() {
+    if (myTreeModel != null) {
+      return myTreeModel.getInvoker().isValidThread();
+    }
+    return true;
   }
 
   private void installContextMenu(@NotNull StartBuildEvent startBuildEvent) {
@@ -174,6 +182,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   @Override
   public void clear() {
     getRootElement().removeChildren();
+    scheduleUpdate(getRootElement(), true);
     nodesMap.clear();
     myConsoleViewHandler.clear();
     myTreeModel.invalidate();
@@ -212,8 +221,10 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
 
   private void updateFilter() {
     ExecutionNode rootElement = getRootElement();
-    rootElement.setFilter(getFilter());
-    scheduleUpdate(rootElement);
+    myTreeModel.getInvoker().runOrInvokeLater(() -> {
+      rootElement.setFilter(getFilter());
+      scheduleUpdate(rootElement, true);
+    });
   }
 
   private ExecutionNode getRootElement() {
@@ -232,12 +243,17 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   private ExecutionNode getOrMaybeCreateParentNode(@NotNull BuildEvent event) {
     ExecutionNode parentNode = event.getParentId() == null ? null : nodesMap.get(event.getParentId());
     if (event instanceof MessageEvent) {
-      parentNode = createMessageParentNodes((MessageEvent)event, parentNode);
+      ExecutionNode node = parentNode;
+      parentNode = createMessageParentNodes((MessageEvent)event, node);
+      if (parentNode != null) {
+        scheduleUpdate(parentNode, true); // To update its parent.
+      }
     }
     return parentNode;
   }
 
   private void onEventInternal(@NotNull Object buildId, @NotNull BuildEvent event) {
+    SmartHashSet<ExecutionNode> structureChanged = new SmartHashSet<>();
     final ExecutionNode parentNode = getOrMaybeCreateParentNode(event);
     final Object eventId = event.getId();
     ExecutionNode currentNode = nodesMap.get(eventId);
@@ -264,16 +280,16 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
           currentNode.setTitle(buildTitle);
         }
         else {
-          currentNode = new ExecutionNode(myProject, parentNode, false);
+          currentNode = new ExecutionNode(myProject, parentNode, false, this::isCorrectThread);
 
           if (event instanceof MessageEvent) {
             MessageEvent messageEvent = (MessageEvent)event;
             currentNode.setStartTime(messageEvent.getEventTime());
-            currentNode.setEndTime(messageEvent.getEventTime());
+            addNotNull(structureChanged, currentNode.setEndTime(messageEvent.getEventTime()));
             Navigatable messageEventNavigatable = messageEvent.getNavigatable(myProject);
             currentNode.setNavigatable(messageEventNavigatable);
             MessageEventResult messageEventResult = messageEvent.getResult();
-            currentNode.setResult(messageEventResult);
+            addNotNull(structureChanged, currentNode.setResult(messageEventResult));
 
             if (messageEventResult instanceof FailureResult) {
               for (Failure failure : ((FailureResult)messageEventResult).getFailures()) {
@@ -293,6 +309,10 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
             }
             myConsoleViewHandler.addOutput(currentNode, buildId, event);
           }
+          if (parentNode != null) {
+            structureChanged.add(parentNode);
+            parentNode.add(currentNode);
+          }
         }
         nodesMap.put(eventId, currentNode);
       }
@@ -300,18 +320,15 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
         LOG.warn("start event id collision found:" + eventId + ", was also in node: " + currentNode.getTitle());
         return;
       }
-
-      if (parentNode != null) {
-        parentNode.add(currentNode);
-      }
     }
     else {
       currentNode = nodesMap.get(eventId);
       if (currentNode == null) {
         if (event instanceof ProgressBuildEvent) {
-          currentNode = new ExecutionNode(myProject, parentNode, false);
+          currentNode = new ExecutionNode(myProject, parentNode, false, this::isCorrectThread);
           nodesMap.put(eventId, currentNode);
           if (parentNode != null) {
+            structureChanged.add(parentNode);
             parentNode.add(currentNode);
           }
         }
@@ -332,18 +349,18 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     }
 
     if (event instanceof FinishEvent) {
-      currentNode.setEndTime(event.getEventTime());
       EventResult result = ((FinishEvent)event).getResult();
       if (result instanceof DerivedResult) {
         result = calculateDerivedResult((DerivedResult)result, currentNode);
       }
-      currentNode.setResult(result);
+      addNotNull(structureChanged, currentNode.setResult(result));
+      addNotNull(structureChanged, currentNode.setEndTime(event.getEventTime()));
       SkippedResult skippedResult = new SkippedResultImpl();
-      finishChildren(currentNode, skippedResult);
+      finishChildren(structureChanged, currentNode, skippedResult);
       if (result instanceof FailureResult) {
         for (Failure failure : ((FailureResult)result).getFailures()) {
-          Runnable selectErrorTask2 = addChildFailureNode(currentNode, failure, event.getMessage());
-          if (selectErrorNodeTask == null) selectErrorNodeTask = selectErrorTask2;
+          Runnable task = addChildFailureNode(currentNode, failure, event.getMessage(), structureChanged);
+          if (selectErrorNodeTask == null) selectErrorNodeTask = task;
         }
       }
     }
@@ -359,7 +376,14 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
         invokeLater(() -> myConsoleViewHandler.setNode(buildProgressRootNode));
       }
     }
-    scheduleUpdate(currentNode);
+    if (structureChanged.isEmpty()) {
+      scheduleUpdate(currentNode, false);
+    }
+    else {
+      for (ExecutionNode node : structureChanged) {
+        scheduleUpdate(node, true);
+      }
+    }
     if (selectErrorNodeTask != null) {
       Runnable finalSelectErrorTask = selectErrorNodeTask;
       myTreeModel.invalidate(getRootElement(), false).onProcessed(p -> finalSelectErrorTask.run());
@@ -377,6 +401,12 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     return null;
   }
 
+  private static void addNotNull(@NotNull SmartHashSet<ExecutionNode> changed, @Nullable ExecutionNode result) {
+    if (result != null) {
+      changed.add(result);
+    }
+  }
+
   private static EventResult calculateDerivedResult(DerivedResult result, ExecutionNode node) {
     if (node.getResult() != null) {
       return node.getResult(); // if another thread set result for child
@@ -391,23 +421,17 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   private void reportMessageKind(@NotNull MessageEvent messageEvent, @NotNull ExecutionNode parentNode) {
     final MessageEvent.Kind eventKind = messageEvent.getKind();
     if (eventKind == MessageEvent.Kind.ERROR || eventKind == MessageEvent.Kind.WARNING || eventKind == MessageEvent.Kind.INFO) {
-      ExecutionNode p = parentNode;
-      Ref<ExecutionNode> child = new Ref<>();
+      ExecutionNode executionNode = parentNode;
       do {
-        ExecutionNode executionNode = (ExecutionNode)p;
-        executionNode.reportChildMessageKind(eventKind);
-
-        boolean isUpdateNeeded =
-          (eventKind == MessageEvent.Kind.WARNING && !executionNode.hasWarnings()) ||
-          (eventKind == MessageEvent.Kind.INFO && !executionNode.hasInfos()) ||
-          (!child.isNull() && executionNode.getChildList().stream().noneMatch(node -> child.get() == node));
-        if (isUpdateNeeded) {
-          scheduleUpdate(executionNode);
+        ExecutionNode updatedRoot = executionNode.reportChildMessageKind(eventKind);
+        if (updatedRoot != null) {
+          scheduleUpdate(updatedRoot, true);
+        } else {
+          scheduleUpdate(executionNode, false);
         }
-        child.set(executionNode);
       }
-      while ((p = p.getParent()) instanceof ExecutionNode);
-      scheduleUpdate(getRootElement());
+      while ((executionNode = executionNode.getParent()) != null);
+      scheduleUpdate(getRootElement(), false);
     }
   }
 
@@ -467,7 +491,10 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   }
 
   @Nullable
-  private Runnable addChildFailureNode(@NotNull ExecutionNode parentNode, @NotNull Failure failure, @NotNull String defaultFailureMessage) {
+  private Runnable addChildFailureNode(@NotNull ExecutionNode parentNode,
+                                       @NotNull Failure failure,
+                                       @NotNull String defaultFailureMessage,
+                                       @NotNull Set<ExecutionNode> strcutreChanged) {
     String text = chooseNotNull(failure.getDescription(), failure.getMessage());
     if (text == null && failure.getError() != null) {
       text = failure.getError().getMessage();
@@ -478,7 +505,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     String failureNodeName = getMessageTitle(text);
     ExecutionNode failureNode = parentNode.findFirstChild(executionNode -> failureNodeName.equals(executionNode.getName()));
     if (failureNode == null) {
-      failureNode = new ExecutionNode(myProject, parentNode, true);
+      failureNode = new ExecutionNode(myProject, parentNode, true, this::isCorrectThread);
       failureNode.setName(failureNodeName);
       parentNode.add(failureNode);
     }
@@ -495,30 +522,25 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     else {
       failures = Collections.singletonList(failure);
     }
-    failureNode.setResult(new FailureResultImpl(failures));
+    ExecutionNode updatedRoot = failureNode.setResult(new FailureResultImpl(failures));
+    if (updatedRoot == null) {
+      updatedRoot = parentNode;
+    }
+    strcutreChanged.add(updatedRoot);
     myConsoleViewHandler.addOutput(failureNode, failure);
     return showErrorIfFirst(failureNode, failure.getNavigatable());
   }
 
-  private void finishChildren(@NotNull ExecutionNode node, @NotNull EventResult result) {
-    if (node.hasEmptyChildren()) return;
-    invokeLater(() -> {
-      for (ExecutionNode child : node.getChildList()) {
-        if (child instanceof ExecutionNode) {
-          ExecutionNode executionChild = (ExecutionNode)child;
-          if (!executionChild.isRunning()) {
-            continue;
-          }
-          invokeLater(() -> {
-            // Need to check again since node could have finished on a later event.
-            if (executionChild.isRunning()) {
-              finishChildren(executionChild, result);
-              executionChild.setResult(result);
-            }
-          });
-        }
+  private static void finishChildren(@NotNull SmartHashSet<ExecutionNode> structureChanged,
+                                     @NotNull ExecutionNode node,
+                                     @NotNull EventResult result) {
+    for (ExecutionNode child : node.getChildList()) {
+      if (!child.isRunning()) {
+        continue;
       }
-    });
+      finishChildren(structureChanged, child, result);
+      addNotNull(structureChanged, child.setResult(result));
+    }
   }
 
   @Override
@@ -603,9 +625,9 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     myTreeModel.getInvoker().runOrInvokeLater(() -> onEventInternal(buildId, event));
   }
 
-  void scheduleUpdate(ExecutionNode executionNode) {
-    ExecutionNode node = executionNode.getParent() == null ? executionNode : (ExecutionNode)(executionNode.getParent());
-    myTreeModel.invalidate(node, true);
+  void scheduleUpdate(ExecutionNode executionNode, boolean parentStructureChanged) {
+    ExecutionNode node = (executionNode.getParent() == null || !parentStructureChanged) ? executionNode : executionNode.getParent();
+    myTreeModel.invalidate(node, parentStructureChanged);
   }
 
   private ExecutionNode createMessageParentNodes(MessageEvent messageEvent, ExecutionNode parentNode) {
@@ -691,17 +713,17 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   }
 
   @NotNull
-  private static ExecutionNode getOrCreateMessagesNode(MessageEvent messageEvent,
-                                                       String nodeId,
-                                                       ExecutionNode parentNode,
-                                                       String nodeName,
-                                                       @Nullable Supplier<? extends Icon> iconProvider,
-                                                       @Nullable Navigatable navigatable,
-                                                       Map<Object, ExecutionNode> nodesMap,
-                                                       Project project) {
+  private ExecutionNode getOrCreateMessagesNode(MessageEvent messageEvent,
+                                                String nodeId,
+                                                ExecutionNode parentNode,
+                                                String nodeName,
+                                                @Nullable Supplier<? extends Icon> iconProvider,
+                                                @Nullable Navigatable navigatable,
+                                                Map<Object, ExecutionNode> nodesMap,
+                                                Project project) {
     ExecutionNode node = nodesMap.get(nodeId);
     if (node == null) {
-      node = new ExecutionNode(project, parentNode, true);
+      node = new ExecutionNode(project, parentNode, true, this::isCorrectThread);
       node.setName(nodeName);
       node.setStartTime(messageEvent.getEventTime());
       node.setEndTime(messageEvent.getEventTime());
