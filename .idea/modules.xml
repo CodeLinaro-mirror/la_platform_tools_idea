@@ -430,7 +430,6 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/adt-ui-model/intellij.android.adt.ui.model.iml" filepath="$PROJECT_DIR$/../adt/idea/adt-ui-model/intellij.android.adt.ui.model.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/apkanalyzer/intellij.android.apkanalyzer.iml" filepath="$PROJECT_DIR$/../adt/idea/apkanalyzer/intellij.android.apkanalyzer.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/app-inspection/api/intellij.android.app-inspection.api.iml" filepath="$PROJECT_DIR$/../adt/idea/app-inspection/api/intellij.android.app-inspection.api.iml" />
-      <module fileurl="file://$PROJECT_DIR$/../adt/idea/app-inspection/api/intellij.android.app-inspection.api.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/app-inspection/api/intellij.android.app-inspection.api.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/app-inspection/ide/intellij.android.app-inspection.ide.iml" filepath="$PROJECT_DIR$/../adt/idea/app-inspection/ide/intellij.android.app-inspection.ide.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/artwork/intellij.android.artwork.iml" filepath="$PROJECT_DIR$/../adt/idea/artwork/intellij.android.artwork.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/build-attribution/intellij.android.build-attribution.iml" filepath="$PROJECT_DIR$/../adt/idea/build-attribution/intellij.android.build-attribution.iml" />
@@ -447,11 +446,10 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-debuggers/intellij.android.debuggers.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/android-debuggers/intellij.android.debuggers.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/deploy/intellij.android.deploy.iml" filepath="$PROJECT_DIR$/../adt/idea/deploy/intellij.android.deploy.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/designer/intellij.android.designer.iml" filepath="$PROJECT_DIR$/../adt/idea/designer/intellij.android.designer.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/designer-perf-tests/intellij.android.designer-perf-tests.iml" filepath="$PROJECT_DIR$/../adt/idea/designer-perf-tests/intellij.android.designer-perf-tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/designer/customview/intellij.android.designer.customview.iml" filepath="$PROJECT_DIR$/../adt/idea/designer/customview/intellij.android.designer.customview.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/designer/customview/intellij.android.designer.customview.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/designer/customview/intellij.android.designer.customview.tests.iml" />
-      <module fileurl="file://$PROJECT_DIR$/../adt/idea/designer-perf-tests/intellij.android.designer-perf-tests.iml" filepath="$PROJECT_DIR$/../adt/idea/designer-perf-tests/intellij.android.designer-perf-tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/designer/intellij.android.designer.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/designer/intellij.android.designer.tests.iml" />
-      <module fileurl="file://$PROJECT_DIR$/../adt/idea/game-tools-starter/intellij.android.gameToolsStarter.iml" filepath="$PROJECT_DIR$/../adt/idea/game-tools-starter/intellij.android.gameToolsStarter.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-api/intellij.android.gradle-tooling.api.iml" filepath="$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-api/intellij.android.gradle-tooling.api.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-impl/intellij.android.gradle-tooling.impl.iml" filepath="$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-impl/intellij.android.gradle-tooling.impl.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/uitest-framework/intellij.android.guiTestFramework.iml" filepath="$PROJECT_DIR$/../adt/idea/uitest-framework/intellij.android.guiTestFramework.iml" />
@@ -635,6 +633,8 @@
       <module fileurl="file://$PROJECT_DIR$/jvm/jvm-analysis-java-tests/intellij.jvm.analysis.java.tests.iml" filepath="$PROJECT_DIR$/jvm/jvm-analysis-java-tests/intellij.jvm.analysis.java.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/jvm/jvm-analysis-kotlin-tests/intellij.jvm.analysis.kotlin.tests.iml" filepath="$PROJECT_DIR$/jvm/jvm-analysis-kotlin-tests/intellij.jvm.analysis.kotlin.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/jvm/jvm-analysis-tests-api/intellij.jvm.analysis.tests.iml" filepath="$PROJECT_DIR$/jvm/jvm-analysis-tests-api/intellij.jvm.analysis.tests.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/lint/intellij.lint.iml" filepath="$PROJECT_DIR$/../adt/idea/lint/intellij.lint.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/lint/tests/intellij.lint.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/lint/tests/intellij.lint.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/plugins/maven/intellij.maven.iml" filepath="$PROJECT_DIR$/plugins/maven/intellij.maven.iml" />
       <module fileurl="file://$PROJECT_DIR$/plugins/maven/artifact-resolver/common/intellij.maven.artifactResolver.common.iml" filepath="$PROJECT_DIR$/plugins/maven/artifact-resolver/common/intellij.maven.artifactResolver.common.iml" />
       <module fileurl="file://$PROJECT_DIR$/plugins/maven/artifact-resolver-m2/intellij.maven.artifactResolver.m2.iml" filepath="$PROJECT_DIR$/plugins/maven/artifact-resolver-m2/intellij.maven.artifactResolver.m2.iml" />
