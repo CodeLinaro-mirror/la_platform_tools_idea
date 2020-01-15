@@ -29,6 +29,7 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.util.PlatformUtils
 import com.intellij.util.Url
 import com.intellij.util.Urls
 import com.intellij.util.containers.MultiMap
@@ -361,6 +362,14 @@ object UpdateChecker {
     }
   }
 
+  // Android Studio: check if updating Android Studio from Canary versions to Beta. If so, users will get a notification that
+  // Compose features are available only in Canary versions.
+  private fun needComposeNotification(newBuild: BuildInfo?) =
+    PlatformUtils.isAndroidStudio() &&
+    ApplicationManager.getApplication().isEAP() &&
+    newBuild != null &&
+    !newBuild.version.contains("Canary")
+
   private fun showUpdateResult(project: Project?,
                                checkForUpdateResult: CheckForUpdateResult,
                                updatedPlugins: Collection<PluginDownloader>?,
@@ -388,7 +397,10 @@ object UpdateChecker {
         logNotificationShown(newBuild.number.asStringWithoutProductCode());
         IdeUpdateUsageTriggerCollector.trigger("notification.shown")
         val title = IdeBundle.message("updates.new.build.notification.title", ApplicationNamesInfo.getInstance().fullProductName, newBuild.version)
-        showNotification(project, title, "", {
+        // Android Studio: notify users when updating from Canary to Beta versions that Compose is available in Canary only.
+        // This is a temporary change and will be removed once Compose is stable.
+        val message = if (needComposeNotification(newBuild)) IdeBundle.message("android.studio.updates.new.build.to.beta") else ""
+        showNotification(project, title, message, {
           // Android Studio: Analytics
           logClickNotification(newBuild.number.asStringWithoutProductCode());
           logUpdateDialogOpenFromNotification(newBuild.number.asStringWithoutProductCode());
