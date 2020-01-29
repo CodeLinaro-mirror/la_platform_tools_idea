@@ -181,11 +181,12 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
 
   @Override
   public void clear() {
-    getRootElement().removeChildren();
+    myTreeModel.getInvoker().runOrInvokeLater(() -> {
+      getRootElement().removeChildren();
+      nodesMap.clear();
+      myConsoleViewHandler.clear();
+    });
     scheduleUpdate(getRootElement(), true);
-    nodesMap.clear();
-    myConsoleViewHandler.clear();
-    myTreeModel.invalidate();
   }
 
   @Override
@@ -940,7 +941,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
         return null;
       }
       final ExecutionNode executionNode = (ExecutionNode)userObject;
-      if (!executionNode.getChildList().isEmpty() || !executionNode.hasWarnings() && !executionNode.isFailed()) {
+      if (node.getChildCount() != 0 || !executionNode.hasWarnings() && !executionNode.isFailed()) {
         return null;
       }
       List<Navigatable> navigatables = executionNode.getNavigatables();
