@@ -212,6 +212,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("android.sdktools.draw9patch", "sdk-tools.jar")
       withModule("android.sdktools.lint-api", "sdk-tools.jar")
       withModule("android.sdktools.lint-checks", "sdk-tools.jar")
+      withModule("android.sdktools.mlkit-common", "sdk-tools.jar")
       withModule("android.sdktools.ninepatch", "sdk-tools.jar")
       withModule("android.sdktools.perflib", "sdk-tools.jar")
       withModule("android.sdktools.builder-model", "sdk-tools.jar")
@@ -581,6 +582,8 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       }
       extraExecutables.add("bin/clang/mac/clangd")
       extraExecutables.add("bin/clang/mac/clang-tidy")
+
+      context.ant.copy(file: "$root/tools/idea/platform/build-scripts/tools/mac/scripts/entitlements.xml", tofile: "$targetDirectory/_codesign/entitlements.xml")
     }
   }
 

@@ -1,3 +1,5 @@
+exports_files(["kotlin_known_problems.txt"])
+
 java_binary(
     name = "BazelAntLauncher",
     srcs = ["src/main/java/com/android/tools/BazelAntLauncher.java"],
@@ -17,6 +19,7 @@ java_test(
         "//tools/idea:android-studio.mac.zip",
         "//tools/idea:android-studio.tar.gz",
         "//tools/idea:android-studio.win.zip",
+        "//tools/idea:android-studio.win32.zip",
     ],
     jvm_flags = ["-Dtest.suite.jar=AndroidStudioBundleTest.jar"],
     tags = [
