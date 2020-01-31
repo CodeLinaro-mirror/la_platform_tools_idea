@@ -535,7 +535,10 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   private static void finishChildren(@NotNull SmartHashSet<ExecutionNode> structureChanged,
                                      @NotNull ExecutionNode node,
                                      @NotNull EventResult result) {
-    for (ExecutionNode child : node.getChildList()) {
+    List<ExecutionNode> childList = node.getChildList();
+    if (childList.isEmpty()) return;
+    // Make a copy of the list since child.setResult may remove items from the collection.
+    for (ExecutionNode child : new ArrayList<>(childList)) {
       if (!child.isRunning()) {
         continue;
       }
