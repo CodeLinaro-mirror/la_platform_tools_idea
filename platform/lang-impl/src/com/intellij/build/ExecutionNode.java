@@ -18,38 +18,39 @@ package com.intellij.build;
 import com.intellij.build.events.*;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.projectView.PresentationData;
+import com.intellij.ide.util.treeView.PresentableNodeDescriptor;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NullableLazyValue;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.pom.Navigatable;
 import com.intellij.ui.AnimatedIcon;
 import com.intellij.ui.SimpleTextAttributes;
-import com.intellij.ui.treeStructure.CachingSimpleNode;
-import com.intellij.ui.treeStructure.SimpleNode;
+import com.intellij.ui.tree.StructureTreeModel;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 import static com.intellij.util.ui.EmptyIcon.ICON_16;
 
 /**
  * @author Vladislav.Soroka
  */
-public class ExecutionNode extends CachingSimpleNode {
+public class ExecutionNode extends PresentableNodeDescriptor<ExecutionNode> {
+  private static final Logger LOG = Logger.getInstance(ExecutionNode.class);
   private static final Icon NODE_ICON_OK = AllIcons.RunConfigurations.TestPassed;
   private static final Icon NODE_ICON_ERROR = AllIcons.RunConfigurations.TestError;
   private static final Icon NODE_ICON_WARNING = AllIcons.General.Warning;
@@ -60,45 +61,43 @@ public class ExecutionNode extends CachingSimpleNode {
   private static final Icon NODE_ICON_DEFAULT = ICON_16;
   private static final Icon NODE_ICON_RUNNING = new AnimatedIcon.FS();
 
-  private final Collection<ExecutionNode> myChildrenList = new ConcurrentLinkedDeque<>();
+  private final List<ExecutionNode> myChildrenList = new ArrayList<>(); // Accessed from the async model thread only.
+  private List<ExecutionNode> myVisibleChildrenList = null;  // Accessed from the async model thread only.
   private final AtomicInteger myErrors = new AtomicInteger();
   private final AtomicInteger myWarnings = new AtomicInteger();
   private final AtomicInteger myInfos = new AtomicInteger();
-  private long startTime;
-  private long endTime;
+  private final ExecutionNode myParentNode;
+  private volatile long startTime;
+  private volatile long endTime;
   @Nullable
   private String myTitle;
   @Nullable
-  private String myTooltip;
-  @Nullable
   private String myHint;
   @Nullable
-  private EventResult myResult;
-  private boolean myAutoExpandNode;
+  private volatile EventResult myResult;
+  private final boolean myAutoExpandNode;
+  private final Supplier<Boolean> myIsCorrectThread;
   @Nullable
-  private Navigatable myNavigatable;
+  private volatile Navigatable myNavigatable;
   @Nullable
-  private NullableLazyValue<Icon> myPreferredIconValue;
+  private volatile NullableLazyValue<Icon> myPreferredIconValue;
   @Nullable
   private Predicate<ExecutionNode> myFilter;
-  private volatile boolean myVisible = true;
 
-  public ExecutionNode(Project aProject, ExecutionNode parentNode) {
+  public ExecutionNode(Project aProject, ExecutionNode parentNode, boolean isAutoExpandNode, @NotNull Supplier<Boolean> isCorrectThread) {
     super(aProject, parentNode);
+    myParentNode = parentNode;
+    myAutoExpandNode = isAutoExpandNode;
+    myIsCorrectThread = isCorrectThread;
   }
 
-  @Override
-  protected SimpleNode[] buildChildren() {
-    Stream<ExecutionNode> stream = myChildrenList.stream();
-    stream = stream.filter(node -> node.myVisible);
-    if (myFilter != null) {
-      stream = stream.filter(myFilter);
-    }
-    return stream.toArray(SimpleNode[]::new);
+  private boolean nodeIsVisible(ExecutionNode node) {
+    return myFilter == null || myFilter.test(node);
   }
 
   @Override
   protected void update(@NotNull PresentationData presentation) {
+    assertCorrectThread();
     setIcon(getCurrentIcon());
     presentation.setPresentableText(myName);
     presentation.setIcon(getIcon());
@@ -117,9 +116,6 @@ public class ExecutionNode extends CachingSimpleNode {
       }
       presentation.addText(hint, SimpleTextAttributes.GRAY_ATTRIBUTES);
     }
-    if (myTooltip != null) {
-      presentation.setTooltip(myTooltip);
-    }
   }
 
   @Override
@@ -128,51 +124,50 @@ public class ExecutionNode extends CachingSimpleNode {
   }
 
   public void setName(String name) {
+    assertCorrectThread();
     myName = name;
   }
 
   @Nullable
   public String getTitle() {
+    assertCorrectThread();
     return myTitle;
   }
 
   public void setTitle(@Nullable String title) {
+    assertCorrectThread();
     myTitle = title;
   }
 
-  @Nullable
-  public String getTooltip() {
-    return myTooltip;
-  }
-
-  public void setTooltip(@Nullable String tooltip) {
-    myTooltip = tooltip;
-  }
-
-  @Nullable
-  public String getHint() {
-    return myHint;
-  }
-
   public void setHint(@Nullable String hint) {
+    assertCorrectThread();
     myHint = hint;
   }
 
-  public void add(ExecutionNode node) {
+  public void add(@NotNull ExecutionNode node) {
+    assertCorrectThread();
     myChildrenList.add(node);
     node.setFilter(myFilter);
-    cleanUpCache();
+    if (myVisibleChildrenList != null) {
+      if (nodeIsVisible(node)) {
+        myVisibleChildrenList.add(node);
+      }
+    }
   }
 
   void removeChildren() {
+    assertCorrectThread();
     myChildrenList.clear();
+    if (myVisibleChildrenList != null) {
+      myVisibleChildrenList.clear();
+    }
     myErrors.set(0);
     myWarnings.set(0);
     myInfos.set(0);
     myResult = null;
-    cleanUpCache();
   }
 
+  // Note: invoked from the EDT.
   @Nullable
   public String getDuration() {
     if (startTime == endTime) return null;
@@ -191,19 +186,71 @@ public class ExecutionNode extends CachingSimpleNode {
   }
 
   public long getStartTime() {
+    assertCorrectThread();
     return startTime;
   }
 
   public void setStartTime(long startTime) {
+    assertCorrectThread();
     this.startTime = startTime;
   }
 
   public long getEndTime() {
+    assertCorrectThread();
     return endTime;
   }
 
-  public void setEndTime(long endTime) {
+  public ExecutionNode setEndTime(long endTime) {
+    assertCorrectThread();
     this.endTime = endTime;
+    return reapplyParentFilterIfRequired(null);
+  }
+
+  private ExecutionNode reapplyParentFilterIfRequired(@Nullable ExecutionNode result) {
+    assertCorrectThread();
+    if (myParentNode != null) {
+      List<ExecutionNode> parentVisibleChildrenList = myParentNode.myVisibleChildrenList;
+      if (parentVisibleChildrenList != null) {
+        Predicate<ExecutionNode> filter = myParentNode.myFilter;
+        if (filter != null) {
+          boolean wasPresent = parentVisibleChildrenList.contains(this);
+          boolean shouldBePresent = filter.test(this);
+          if (shouldBePresent != wasPresent) {
+            if (shouldBePresent) {
+              myParentNode.maybeReapplyFilter();
+            }
+            else {
+              parentVisibleChildrenList.remove(this);
+            }
+            result = myParentNode;
+          }
+        }
+      }
+      return myParentNode.reapplyParentFilterIfRequired(result);
+    }
+    return result;
+  }
+
+  @NotNull
+  public List<ExecutionNode> getChildList() {
+    assertCorrectThread();
+    List<ExecutionNode> visibleList = myVisibleChildrenList;
+    if (visibleList != null) {
+      return visibleList;
+    }
+    else {
+      return myChildrenList;
+    }
+  }
+
+  @Nullable
+  public ExecutionNode getParent() {
+    return myParentNode;
+  }
+
+  @Override
+  public ExecutionNode getElement() {
+    return this;
   }
 
   public static boolean isFailed(@Nullable EventResult result) {
@@ -237,24 +284,32 @@ public class ExecutionNode extends CachingSimpleNode {
 
   @Nullable
   public Predicate<ExecutionNode> getFilter() {
+    assertCorrectThread();
     return myFilter;
   }
 
   public void setFilter(@Nullable Predicate<ExecutionNode> filter) {
+    assertCorrectThread();
     myFilter = filter;
     for (ExecutionNode node : myChildrenList) {
       node.setFilter(myFilter);
     }
-    cleanUpCache();
+    if (filter == null) {
+      myVisibleChildrenList = null;
+    }
+    else {
+      if (myVisibleChildrenList == null) {
+        myVisibleChildrenList = Collections.synchronizedList(new ArrayList<>());
+      }
+      maybeReapplyFilter();
+    }
   }
 
-  public void setVisible(boolean visible) {
-    if (myVisible != visible) {
-      myVisible = visible;
-      SimpleNode parent = getParent();
-      if (parent instanceof CachingSimpleNode) {
-        ((CachingSimpleNode)parent).cleanUpCache();
-      }
+  private void maybeReapplyFilter() {
+    assertCorrectThread();
+    if (myVisibleChildrenList != null) {
+      myVisibleChildrenList.clear();
+      myVisibleChildrenList.addAll(myChildrenList.stream().filter(it -> nodeIsVisible(it)).collect(Collectors.toList()));
     }
   }
 
@@ -284,23 +339,18 @@ public class ExecutionNode extends CachingSimpleNode {
     return myResult;
   }
 
-  public void setResult(@Nullable EventResult result) {
+  public ExecutionNode setResult(@Nullable EventResult result) {
+    assertCorrectThread();
     myResult = result;
-    if (myFilter != null) {
-      cleanUpCache();
-    }
+    return reapplyParentFilterIfRequired(null);
   }
 
-  @Override
   public boolean isAutoExpandNode() {
-    return myAutoExpandNode || (myFilter != null && (isRunning() || isFailed()));
-  }
-
-  public void setAutoExpandNode(boolean autoExpandNode) {
-    myAutoExpandNode = autoExpandNode;
+    return myAutoExpandNode;
   }
 
   public void setNavigatable(@Nullable Navigatable navigatable) {
+    assertCorrectThread();
     myNavigatable = navigatable;
   }
 
@@ -331,7 +381,12 @@ public class ExecutionNode extends CachingSimpleNode {
     };
   }
 
-  public void reportChildMessageKind(MessageEvent.Kind kind) {
+  /**
+   * @return the top most node whose parent structure has changed. Returns null if only node itself needs to be updated.
+   */
+  @Nullable
+  public ExecutionNode reportChildMessageKind(MessageEvent.Kind kind) {
+    assertCorrectThread();
     if (kind == MessageEvent.Kind.ERROR) {
       myErrors.incrementAndGet();
     }
@@ -341,15 +396,18 @@ public class ExecutionNode extends CachingSimpleNode {
     else if (kind == MessageEvent.Kind.INFO) {
       myInfos.incrementAndGet();
     }
+    return reapplyParentFilterIfRequired(null);
   }
 
   @Nullable
   @ApiStatus.Experimental
   ExecutionNode findFirstChild(@NotNull Predicate<? super ExecutionNode> filter) {
+    assertCorrectThread();
     return myChildrenList.stream().filter(filter).findFirst().orElse(null);
   }
 
   private String getCurrentHint() {
+    assertCorrectThread();
     String hint = myHint;
     int warnings = myWarnings.get();
     int errors = myErrors.get();
@@ -357,7 +415,7 @@ public class ExecutionNode extends CachingSimpleNode {
       if (hint == null) {
         hint = "";
       }
-      SimpleNode parent = getParent();
+      ExecutionNode parent = getParent();
       hint += parent == null || parent.getParent() == null ? (isRunning() ? "  " : " with ") : " ";
       if (errors > 0) {
         hint += (errors + " " + StringUtil.pluralize("error", errors));
@@ -421,5 +479,13 @@ public class ExecutionNode extends CachingSimpleNode {
         return NODE_ICON_SIMPLE;
     }
     return NODE_ICON_DEFAULT;
+  }
+
+  private void assertCorrectThread() {
+    Boolean correctThread = myIsCorrectThread.get();
+    assert correctThread;
+    if (!correctThread){
+      LOG.error("Incorrect invocation thread", new Throwable());
+    }
   }
 }
