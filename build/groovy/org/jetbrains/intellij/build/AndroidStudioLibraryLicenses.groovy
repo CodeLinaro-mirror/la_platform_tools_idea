@@ -39,6 +39,9 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "Bouncy Castle", libraryName: "bouncycastle", license: "MIT License", url: "http://bouncycastle.org",
                        licenseUrl: "http://bouncycastle.org/licence.html"),
     new LibraryLicense(name: "CDT", libraryName: "org.eclipse.cdt", license: "Eclipse Public License 1.0"),
+    // for compose-compiler-hosted module library in intellij.android.compose-ide-plugin
+    new LibraryLicense(name: "Compose Compiler Hosted", libraryName: "compose-compiler-hosted",
+                       license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     // for eclipse-layout-kernel module library in intellij.android.designer
     new LibraryLicense(name: "Eclipse Layout Kernel", libraryName: "eclipse-layout-kernel", license: "Eclipse Public License 1.0"),
     // for LSP4J module libraries in intellij.c
@@ -116,8 +119,6 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "Layout Inspector Protos", libraryName: "layoutinspector-proto", license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Layoutlib", libraryName: "layoutlib.jar", version: "1.0", license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Layoutlib Native", libraryName: "layoutlib_native.jar", version: "1.0", license: "Apache 2.0", url: "http://source.android.com/"),
-    new LibraryLicense(name: "Live SQL Proto", libraryName: "live-sql-proto", license: "Apache 2.0",
-                       licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     // for moshi module library in intellij.android.core
     new LibraryLicense(name: "Moshi", libraryName: "moshi", version: "1.6.0", license: "Apache 2.0",
                        url: "https://github.com/square/moshi"),
@@ -130,6 +131,8 @@ class AndroidStudioLibraryLicenses {
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     new LibraryLicense(name: "samplesindex-v1-1.0-SNAPSHOT.jar", libraryName: "samplesindex-v1-1.0-SNAPSHOT.jar",
                        license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
+    new LibraryLicense(name: "SQLite Inspector Proto", libraryName: "sqlite-inspector-proto", license: "Apache 2.0",
+                       licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     new LibraryLicense(name: "Studio gRPC", libraryName: "studio-grpc", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     new LibraryLicense(name: "Studio Protobuf", libraryName: "studio-proto", license: "protobuf",

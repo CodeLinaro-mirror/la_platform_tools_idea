@@ -95,6 +95,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-cloud-tools-core-as",
                                            "google-samples",
                                            "google-services",
+                                           "intellij.android.compose-ide-plugin",
                                            "intellij.android.layoutlib",
                                            "intellij.android.layoutlib-native",
                                            "intellij.android.smali",
@@ -146,6 +147,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.app-inspection.ide", "android.jar")
       withModule("intellij.android.databinding", "android.jar")
       withModule("intellij.android.debuggers", "android.jar")
+      withModule("intellij.android.emulator", "android.jar")
       withModule("intellij.android.lang", "android.jar")
       withModule("intellij.android.lang-databinding", "android.jar")
       withModule("intellij.android.mlkit", "android.jar")
@@ -584,6 +586,12 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       extraExecutables.add("bin/clang/mac/clang-tidy")
 
       context.ant.copy(file: "$root/tools/idea/platform/build-scripts/tools/mac/scripts/entitlements.xml", tofile: "$targetDirectory/_codesign/entitlements.xml")
+
+      def bundleName = getRootDirectoryName(context.applicationInfo, context.buildNumber)
+      context.ant.copy(file: "$root/tools/idea/macos_codesign_filelist.txt", tofile: "$targetDirectory/_codesign/filelist")
+      context.ant.replace(file: "$targetDirectory/_codesign/filelist") {
+        replaceFilter(token: "@@bundle@@", value: bundleName)
+      }
     }
   }
 
