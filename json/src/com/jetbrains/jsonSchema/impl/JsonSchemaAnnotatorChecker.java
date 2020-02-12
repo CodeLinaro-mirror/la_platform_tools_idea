@@ -160,7 +160,11 @@ class JsonSchemaAnnotatorChecker {
     if (type != null) {
       JsonSchemaType schemaType = getMatchingSchemaType(schema, type);
       if (schemaType != null && !schemaType.equals(type)) {
-        typeError(value.getDelegate(), value.substituteTypeForErrorMessage(type), schemaType);
+        JsonSchemaType altType = value.getAlternateType(type);
+        JsonSchemaType matchingAltType = getMatchingSchemaType(schema, altType);
+        if (altType == type || matchingAltType != null && !schemaType.equals(matchingAltType)) {
+          typeError(value.getDelegate(), altType, getExpectedTypes(Collections.singleton(schema)));
+        }
       }
       else {
         if (JsonSchemaType._string_number.equals(type)) {
@@ -227,7 +231,7 @@ class JsonSchemaAnnotatorChecker {
           result.myExcludingSchemas.stream().flatMap(Collection::stream)
             .anyMatch(s -> schema.equals(s))) return;
 
-      final JsonSchemaAnnotatorChecker checker = checkByMatchResult(myProject, value, result, myOptions);
+      final JsonSchemaAnnotatorChecker checker = checkByMatchResult(myProject, value, result, myOptions.withForcedStrict());
       if (checker == null || checker.isCorrect()) error("Validates against 'not' schema", value.getDelegate(), JsonErrorPriority.NOT_SCHEMA);
     }
 
@@ -300,7 +304,7 @@ class JsonSchemaAnnotatorChecker {
       set.add(name);
     }
 
-    if (object.shouldCheckIntegralRequirements()) {
+    if (object.shouldCheckIntegralRequirements() || myOptions.isForceStrict()) {
       final Set<String> required = schema.getRequired();
       if (required != null) {
         HashSet<String> requiredNames = new LinkedHashSet<>(required);
@@ -519,11 +523,15 @@ class JsonSchemaAnnotatorChecker {
     }
     else {
       final List<JsonSchemaObject> filtered = new ArrayList<>(collection.size());
+      JsonSchemaType altType = value.getAlternateType(type);
       for (JsonSchemaObject schema: collection) {
-        if (!areSchemaTypesCompatible(schema, type)) continue;
+        if (!areSchemaTypesCompatible(schema, type)
+            && !areSchemaTypesCompatible(schema, altType)) continue;
         filtered.add(schema);
       }
-      if (filtered.isEmpty()) checker.typeError(value.getDelegate(), value.substituteTypeForErrorMessage(type), getExpectedTypes(collection));
+      if (filtered.isEmpty()) {
+        checker.typeError(value.getDelegate(), altType, getExpectedTypes(collection));
+      }
       else if (filtered.size() == 1) {
         selected = filtered.get(0);
         checker.checkByScheme(value, selected);
