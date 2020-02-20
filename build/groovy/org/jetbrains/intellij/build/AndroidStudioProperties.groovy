@@ -50,7 +50,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       "$home/../studio/google/cloud/tools/android-studio-plugin/lib/licenses",
       "$home/../studio/google/cloud/tools/core-plugin/lib/licenses",
       "$home/../studio/google/cloud/tools/google-login-plugin/lib/licenses",
-      "$home/../studio/google/services/lib/licenses",
       "$home/../vendor/google/firebase/lib/licenses",
       "$home/../../prebuilts/studio/layoutlib/licenses",
     )
@@ -94,7 +93,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                            "google-cloud-tools-as",
                                            "google-cloud-tools-core-as",
                                            "google-samples",
-                                           "google-services",
                                            "intellij.android.compose-ide-plugin",
                                            "intellij.android.layoutlib",
                                            "intellij.android.layoutlib-native",
@@ -145,6 +143,8 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.adb", "android.jar")
       withModule("intellij.android.app-inspection.api", "android.jar")
       withModule("intellij.android.app-inspection.ide", "android.jar")
+      withModule("intellij.android.app-inspection.inspector.api", "android.jar")
+      withModule("intellij.android.app-inspection.inspector.ide", "android.jar")
       withModule("intellij.android.databinding", "android.jar")
       withModule("intellij.android.debuggers", "android.jar")
       withModule("intellij.android.emulator", "android.jar")
@@ -165,6 +165,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.compose-designer", "android.jar")
       withModule("intellij.android.designer.customview", "android.jar")
       withModule("intellij.android.nav.editor", "android.jar")
+      withModule("intellij.android.nav.safeargs", "android.jar")
       withModule("intellij.android.sdkUpdates", "android.jar")
       withModule("intellij.android.wizard", "android.jar")
       withModule("intellij.android.wizard.model", "android.jar")
@@ -331,6 +332,16 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         exclude(name: "BUILD")
         exclude(name: "README.md")
       }
+    }
+
+    // App Inspection: Sqlite Inspector prebuilt
+    buildContext.ant.copy(todir: "$androidPluginLib/../resources/app-inspection/") {
+      fileset(file: "$root/prebuilts/tools/common/app-inspection/androidx/sqlite/sqlite-inspection.jar")
+    }
+
+    // Trace agent. TODO(b/149320690): remove in 4.1 final release.
+    buildContext.ant.copy(todir: "$androidPluginLib") {
+      fileset(file: "$root/bazel-bin/tools/base/tracer/trace_agent.jar")
     }
 
     // Instant run

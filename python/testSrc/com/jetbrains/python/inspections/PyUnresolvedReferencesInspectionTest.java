@@ -635,6 +635,11 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
     doTest();
   }
 
+  // PY-7251
+  public void testImportHighlightLevel() {
+    doMultiFileTest();
+  }
+
   // PY-26243
   public void testNotImportedModuleInDunderAll() {
     doMultiFileTest("pkg/__init__.py");
@@ -815,6 +820,25 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
                          "x1.<warning descr=\"Unresolved attribute reference 'clea' for class 'X'\">clea</warning>()\n" +
                          "x1.<warning descr=\"Unresolved attribute reference 'x' for class 'X'\">x</warning>()")
     );
+  }
+
+  // PY-39682
+  public void testWildcardIgnorePatternReferenceForNestedBinaryModule() {
+    // TODO simplify runWithAdditionalClassEntryInSdkRoots to accept a relative path directly
+    final String testDataDir = getTestDataPath() + "/" + getTestDirectoryPath();
+    final VirtualFile sitePackagesDir = StandardFileSystems.local().findFileByPath(testDataDir + "/site-packages");
+    final VirtualFile skeletonsDir = StandardFileSystems.local().findFileByPath(testDataDir + "/python_stubs");
+    runWithAdditionalClassEntryInSdkRoots(sitePackagesDir, () -> {
+      runWithAdditionalClassEntryInSdkRoots(skeletonsDir, () -> {
+        myFixture.configureByFile(getTestDirectoryPath() + "/a.py");
+        final PyUnresolvedReferencesInspection inspection = new PyUnresolvedReferencesInspection();
+        inspection.ignoredIdentifiers.add("pkg.*");
+        myFixture.enableInspections(inspection);
+        myFixture.checkHighlighting(isWarning(), isInfo(), isWeakWarning());
+        assertSdkRootsNotParsed(myFixture.getFile());
+        assertProjectFilesNotParsed(myFixture.getFile());
+      });
+    });
   }
 
   @NotNull

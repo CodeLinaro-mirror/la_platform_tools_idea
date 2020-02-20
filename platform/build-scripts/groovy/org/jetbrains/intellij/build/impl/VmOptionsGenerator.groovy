@@ -35,7 +35,7 @@ Android Studio: removed by Change Ie7351d92 */
     if (isEAP) {
       //must be consistent with com.intellij.openapi.application.ConfigImportHelper.updateVMOptions
       // Android Studio: modified by Change Ie7351d92
-      commonVmOptions = COMMON_VM_OPTIONS + ["-XX:MaxJavaStackTraceDepth=10000 -XX:+HeapDumpOnOutOfMemoryError -XX:-OmitStackTraceInFastThrow -ea"]
+      commonVmOptions = COMMON_VM_OPTIONS + ["-XX:MaxJavaStackTraceDepth=10000", "-XX:+HeapDumpOnOutOfMemoryError", "-XX:-OmitStackTraceInFastThrow", "-ea"]
     }
     else {
       commonVmOptions = COMMON_VM_OPTIONS
