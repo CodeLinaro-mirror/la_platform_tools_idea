@@ -214,6 +214,7 @@ public class GitHandlerAuthenticationManager implements AutoCloseable {
     addHandlerPathToEnvironment(GitNativeSshAskPassXmlRpcHandler.SSH_ASK_PASS_ENV, service);
     myHandler.addCustomEnvironmentVariable(GitNativeSshAskPassXmlRpcHandler.IJ_HANDLER_ENV, myNativeSshHandler.toString());
     myHandler.addCustomEnvironmentVariable(GitNativeSshAskPassXmlRpcHandler.IJ_PORT_ENV, Integer.toString(port));
+    myHandler.addCustomEnvironmentVariable(GitAskPassXmlRpcHandler.GIT_ASK_PASS_TOKEN_ENV, BuiltinWebServerAccess.getUserAuthenticationToken());  // Android Studio: BuiltinWebServerAccess
     LOG.debug(String.format("myHandler=%s, port=%s", myNativeSshHandler, port));
 
     // SSH_ASKPASS is ignored if DISPLAY variable is not set

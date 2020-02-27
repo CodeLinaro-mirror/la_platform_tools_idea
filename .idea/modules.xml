@@ -358,6 +358,7 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-layout-inspector/android-layout-inspector-test.iml" filepath="$PROJECT_DIR$/../adt/idea/android-layout-inspector/android-layout-inspector-test.iml" />
       <module fileurl="file://$PROJECT_DIR$/../vendor/google/android-ndk/android-ndk.iml" filepath="$PROJECT_DIR$/../vendor/google/android-ndk/android-ndk.iml" />
       <module fileurl="file://$PROJECT_DIR$/../vendor/google/game-tools/main/android.game-tools.main.iml" filepath="$PROJECT_DIR$/../vendor/google/game-tools/main/android.game-tools.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../vendor/google/game-tools/packaging/android.game-tools.packaging.iml" filepath="$PROJECT_DIR$/../vendor/google/game-tools/packaging/android.game-tools.packaging.iml" />
       <module fileurl="file://$PROJECT_DIR$/../analytics-library/testing/android.sdktools.analytics-testing.iml" filepath="$PROJECT_DIR$/../analytics-library/testing/android.sdktools.analytics-testing.iml" />
       <module fileurl="file://$PROJECT_DIR$/../base/apkparser/analyzer/android.sdktools.analyzer.iml" filepath="$PROJECT_DIR$/../base/apkparser/analyzer/android.sdktools.analyzer.iml" />
       <module fileurl="file://$PROJECT_DIR$/../base/annotations/android.sdktools.android-annotations.iml" filepath="$PROJECT_DIR$/../base/annotations/android.sdktools.android-annotations.iml" />
@@ -445,6 +446,8 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/compose-ide-plugin/intellij.android.compose-ide-plugin.iml" filepath="$PROJECT_DIR$/../adt/idea/compose-ide-plugin/intellij.android.compose-ide-plugin.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/intellij.android.core.iml" filepath="$PROJECT_DIR$/../adt/idea/android/intellij.android.core.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android/intellij.android.core.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/android/intellij.android.core.tests.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/dagger/intellij.android.dagger.iml" filepath="$PROJECT_DIR$/../adt/idea/dagger/intellij.android.dagger.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/dagger/intellij.android.dagger.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/dagger/intellij.android.dagger.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/databinding/intellij.android.databinding.iml" filepath="$PROJECT_DIR$/../adt/idea/databinding/intellij.android.databinding.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/databinding/intellij.android.databinding.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/databinding/intellij.android.databinding.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-debuggers/intellij.android.debuggers.iml" filepath="$PROJECT_DIR$/../adt/idea/android-debuggers/intellij.android.debuggers.iml" />
@@ -459,6 +462,8 @@
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/emulator/intellij.android.emulator.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/emulator/intellij.android.emulator.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-api/intellij.android.gradle-tooling.api.iml" filepath="$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-api/intellij.android.gradle-tooling.api.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-impl/intellij.android.gradle-tooling.impl.iml" filepath="$PROJECT_DIR$/../adt/idea/gradle-tooling/studio-gradle-tooling-impl/intellij.android.gradle-tooling.impl.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/gradle-dsl/intellij.android.gradle.dsl.iml" filepath="$PROJECT_DIR$/../adt/idea/gradle-dsl/intellij.android.gradle.dsl.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../adt/idea/gradle-dsl/intellij.android.gradle.dsl.tests.iml" filepath="$PROJECT_DIR$/../adt/idea/gradle-dsl/intellij.android.gradle.dsl.tests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/uitest-framework/intellij.android.guiTestFramework.iml" filepath="$PROJECT_DIR$/../adt/idea/uitest-framework/intellij.android.guiTestFramework.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/android-uitests/intellij.android.guiTests.iml" filepath="$PROJECT_DIR$/../adt/idea/android-uitests/intellij.android.guiTests.iml" />
       <module fileurl="file://$PROJECT_DIR$/../adt/idea/ide-perf-tests/intellij.android.ide-perf-tests.iml" filepath="$PROJECT_DIR$/../adt/idea/ide-perf-tests/intellij.android.ide-perf-tests.iml" />
