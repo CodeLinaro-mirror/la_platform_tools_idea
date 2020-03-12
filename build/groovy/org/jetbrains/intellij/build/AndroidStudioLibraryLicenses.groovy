@@ -44,6 +44,9 @@ class AndroidStudioLibraryLicenses {
     // for compose-compiler-hosted module library in intellij.android.compose-ide-plugin
     new LibraryLicense(name: "Compose Compiler Hosted", libraryName: "compose-compiler-hosted",
                        license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
+    // For ADB wireless QR Code generation
+    new LibraryLicense(name: "Core barcode encoding/decoding library", libraryName: "zxing-core",
+                       license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     // for eclipse-layout-kernel module library in intellij.android.designer
     new LibraryLicense(name: "Eclipse Layout Kernel", libraryName: "eclipse-layout-kernel", license: "Eclipse Public License 1.0"),
     // for LSP4J module libraries in intellij.c
@@ -54,8 +57,6 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "FlatBuffers Java API", libraryName: "flatbuffers-java",
                        version: "1.11.1", url: "https://google.github.io/flatbuffers/",
                        license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
-    // for freemarker module library in intellij.android.core
-    new LibraryLicense(name: "FreeMarker", libraryName: "freemarker", version: "2.3.20", license: "BSD", url: "https://freemarker.apache.org/"),
     new LibraryLicense(name: "Google APIs Client Library for Java", version: "min-repackaged-1.20.0",
                        libraryName: "google-api-java-client", url: "https://developers.google.com/api-client-library/java/",
                        license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),

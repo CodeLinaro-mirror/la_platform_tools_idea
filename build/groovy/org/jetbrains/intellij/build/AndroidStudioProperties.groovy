@@ -187,6 +187,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.projectSystem", "android.jar")
       withModule("intellij.android.projectSystem.gradle", "android.jar")
       withModule("intellij.android.projectSystem.gradle.psd", "android.jar")
+      withModule("intellij.android.projectSystem.gradle.sync", "android.jar")
       withModule("intellij.android.gradle-tooling.api", "android.jar")
       withModule("intellij.android.gradle-tooling.impl", "android.jar")
       withModule("intellij.android.resources-base", "android.jar")
@@ -297,14 +298,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         include(name: "data/fonts/native/fonts.xml")
         include(name: "data/fonts/standard/fonts.xml")
         exclude(name: "data/fonts/BUILD")
-      }
-    }
-
-    // TODO: This extra copying is unfortunate, but our TemplateManager doesn't seem to handle the default resources.jar packaging (which
-    // works out just fine for the rest of Intellij, see lib/resources.jar).
-    buildContext.ant.copy(todir: "$androidPluginLib/templates") {
-      fileset(dir: "$root/tools/base/templates") {
-        exclude(name: "BUILD")
       }
     }
 
@@ -453,6 +446,10 @@ class AndroidStudioProperties extends BaseIdeaProperties {
           fileset(dir: "$root/prebuilts/tools/windows-x86_64/simpleperf")
         }
 
+        context.ant.copy(todir: "$targetDirectory/plugins/android/resources/trace_processor_daemon") {
+          fileset(dir: "$root/prebuilts/tools/common/trace-processor-daemon/windows")
+        }
+
         context.ant.copy(todir: "$targetDirectory/plugins/android/lib/layoutlib/data") {
           fileset(dir: "$root/prebuilts/studio/layoutlib/data") {
             include(name: "icu/*")
@@ -526,6 +523,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         context.ant.copy(todir: "$targetDirectory/plugins/android/resources/trace_processor_daemon") {
           fileset(dir: "$root/prebuilts/tools/common/trace-processor-daemon/linux")
         }
+        extraExecutables.add("plugins/android/resources/trace_processor_daemon/trace_processor_daemon")
 
         context.ant.copy(todir: "$targetDirectory/plugins/android/lib/layoutlib/data") {
           fileset(dir: "$root/prebuilts/studio/layoutlib/data") {
@@ -591,6 +589,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       context.ant.copy(todir: "$targetDirectory/plugins/android/resources/trace_processor_daemon") {
         fileset(dir: "$root/prebuilts/tools/common/trace-processor-daemon/darwin")
       }
+      extraExecutables.add("plugins/android/resources/trace_processor_daemon/trace_processor_daemon")
 
       context.ant.copy(todir: "$targetDirectory/plugins/android/lib/layoutlib/data") {
         fileset(dir: "$root/prebuilts/studio/layoutlib/data") {
