@@ -26,10 +26,11 @@ public class GradleOutputParserProvider implements ExternalSystemOutputParserPro
   @Override
   public List<BuildOutputParser> getBuildOutputParsers(@NotNull ExternalSystemTaskId taskId) {
     List<BuildOutputParser> parsers = new SmartList<>();
-    if (taskId.getType().equals(ExternalSystemTaskType.RESOLVE_PROJECT)) {
+    // Android Studio - Ensure all error handlers are run 4.0 ONLY.
+    /*if (taskId.getType().equals(ExternalSystemTaskType.RESOLVE_PROJECT)) {
       parsers.add(new GradleSyncOutputParser());
     }
-    parsers.add(new GradleBuildScriptErrorParser());
+    parsers.add(new GradleBuildScriptErrorParser());*/
     parsers.add(new JavacOutputParser("java", "scala"));
     parsers.add(new KotlincOutputParser());
     return parsers;
