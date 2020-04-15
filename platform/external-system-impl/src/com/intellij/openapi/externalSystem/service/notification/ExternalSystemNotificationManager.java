@@ -99,9 +99,10 @@ public class ExternalSystemNotificationManager implements Disposable {
                                              @NotNull ProjectSystemId externalSystemId,
                                              @NotNull Project project,
                                              @NotNull DataProvider dataProvider) {
-    if (isInternalError(error, externalSystemId)) {
+    // Android Studio - Ensure all error handlers are run 4.0 ONLY.
+    /*if (isInternalError(error, externalSystemId)) {
       return null;
-    }
+    }*/
 
     String message = ExternalSystemApiUtil.buildErrorMessage(error);
     NotificationCategory notificationCategory = NotificationCategory.ERROR;
