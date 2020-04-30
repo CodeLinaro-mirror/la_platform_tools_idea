@@ -64,6 +64,8 @@ class AndroidStudioProperties extends BaseIdeaProperties {
                                                     "intellij.c.dfa",
                                                     "intellij.cidr.util",
                                                     "intellij.c.doxygen",
+                                                    "intellij.cidr.core",
+                                                    "intellij.cidr.workspaceModel",
                                                     "intellij.cmake.psi",
                                                   ] +
                                                   ["intellij.platform.duplicates.analysis", "intellij.platform.structuralSearch", "intellij.platform.main"] -
@@ -103,7 +105,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = false
     productLayout.allNonTrivialPlugins = CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS + [
-      JavaPluginLayout.javaPlugin(false),
+      JavaPluginLayout.javaPlugin(),
       androidPluginInStudio([:]),
       CommunityRepositoryModules.groovyPlugin([]),
       layoutlibPlugin(),
@@ -189,6 +191,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("intellij.android.projectSystem.gradle.sync", "android.jar")
       withModule("intellij.android.gradle-tooling.api", "android.jar")
       withModule("intellij.android.gradle-tooling.impl", "android.jar")
+      withModule("intellij.android.newProjectWizard", "android.jar")
       withModule("intellij.android.resources-base", "android.jar")
       withModule("android-layout-inspector", "android.jar")
       withModule("assistant", "android.jar")
@@ -220,6 +223,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withModule("android.sdktools.draw9patch", "sdk-tools.jar")
       withModule("android.sdktools.lint-api", "sdk-tools.jar")
       withModule("android.sdktools.lint-checks", "sdk-tools.jar")
+      withModule("android.sdktools.lint-model", "sdk-tools.jar")
       withModule("android.sdktools.mlkit-common", "sdk-tools.jar")
       withModule("android.sdktools.ninepatch", "sdk-tools.jar")
       withModule("android.sdktools.perflib", "sdk-tools.jar")
