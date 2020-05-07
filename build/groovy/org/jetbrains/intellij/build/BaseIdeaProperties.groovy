@@ -27,6 +27,7 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "intellij.java.ide.customization",
     "intellij.copyright",
     "intellij.properties",
+    "intellij.properties.resource.bundle.editor",
     "intellij.terminal",
     "intellij.textmate",
     "intellij.editorconfig",
@@ -53,12 +54,14 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "intellij.android.smali",
     "intellij.sh",
     "intellij.vcs.changeReminder",
+    "intellij.filePrediction",
     /* Disabled in Android Studio
     "intellij.ant",
     "intellij.java.byteCodeViewer",
     "intellij.devkit",
     "intellij.eclipse",
     "intellij.gradle.java.maven",
+    "intellij.grazie",
     "intellij.javaFX.community",
     "intellij.markdown"
     "intellij.maven",

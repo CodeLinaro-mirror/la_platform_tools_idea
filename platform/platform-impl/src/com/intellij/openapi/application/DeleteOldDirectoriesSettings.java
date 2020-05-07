@@ -17,6 +17,7 @@ package com.intellij.openapi.application;
 
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.util.PlatformUtils;
 import com.intellij.util.SystemProperties;
 import org.jetbrains.annotations.NotNull;
 
@@ -51,7 +52,8 @@ public class DeleteOldDirectoriesSettings {
                                PathManager.getLogPath())
                            .map(PathWithTransformations::new)
                            .collect(Collectors.toList());
-    applicationInfoFilePath = "idea/" + ApplicationNamesInfo.getComponentName() + ".xml";
+    String prefix = System.getProperty(PlatformUtils.PLATFORM_PREFIX_KEY, "");
+    applicationInfoFilePath = "/idea/" + prefix + "ApplicationInfo.xml";
   }
 
   /**
