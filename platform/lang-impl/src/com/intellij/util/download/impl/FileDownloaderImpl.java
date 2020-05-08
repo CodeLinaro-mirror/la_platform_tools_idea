@@ -273,7 +273,8 @@ public class FileDownloaderImpl implements FileDownloader {
     indicator.setText2(IdeBundle.message("progress.connecting.to.download.file.text", presentableUrl));
     indicator.setIndeterminate(true);
 
-    return HttpRequests.request(description.getDownloadUrl()).connect(new HttpRequests.RequestProcessor<File>() {
+    // Android Studio: b/149032231
+    return HttpRequests.request(description.getDownloadUrl()).productNameAsUserAgent().connect(new HttpRequests.RequestProcessor<File>() {
       @Override
       public File process(@NotNull HttpRequests.Request request) throws IOException {
         int size = request.getConnection().getContentLength();
