@@ -1879,6 +1879,7 @@ public final class PluginManagerCore {
       if (context == null) {
         context = loadDescriptors();
       }
+      context.result.mergeIncompletePlugins();
       Activity loadPluginsActivity = StartUpMeasurer.startActivity("plugin initialization");
       PluginManagerState initResult = initializePlugins(context, coreLoader, !isUnitTestMode);
 

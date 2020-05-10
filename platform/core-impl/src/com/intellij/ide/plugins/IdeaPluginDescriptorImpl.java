@@ -419,7 +419,7 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor, Plu
     incomplete = true;
     setEnabled(false);
     if (myId != null) {
-      context.parentContext.result.addIncompletePlugin(this);
+      context.parentContext.result.addIncompletePlugin(context, this);
     }
   }
 
