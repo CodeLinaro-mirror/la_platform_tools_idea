@@ -21,6 +21,9 @@ final class PluginLoadingResult {
 
   final Map<PluginId, IdeaPluginDescriptorImpl> incompletePlugins = ContainerUtil.newConcurrentMap();
 
+  // A separate map for incomplete non bundled plugins, as they may be overridden with bundled ones
+  final Map<PluginId, IdeaPluginDescriptorImpl> incompleteNonBundledPlugins = ContainerUtil.newConcurrentMap();
+
   final List<IdeaPluginDescriptorImpl> pluginsWithoutId = new ArrayList<>();
   private final Map<PluginId, IdeaPluginDescriptorImpl> plugins = new HashMap<>();
 
@@ -81,9 +84,23 @@ final class PluginLoadingResult {
     return result;
   }
 
-  void addIncompletePlugin(@NotNull IdeaPluginDescriptorImpl plugin) {
+  void addIncompletePlugin(@NotNull DescriptorLoadingContext context, @NotNull IdeaPluginDescriptorImpl plugin) {
     if (!idMap.containsKey(plugin.getPluginId())) {
-      incompletePlugins.put(plugin.getPluginId(), plugin);
+      if (context.isBundled) {
+        incompletePlugins.put(plugin.getPluginId(), plugin);
+      } else {
+        incompleteNonBundledPlugins.put(plugin.getPluginId(), plugin);
+      }
+    }
+  }
+
+  // Merge incompleteNonBundledPlugins to incompletePlugins, so inCompletePlugins contains all incomplete plugins, bundled or not.
+  // This is called before initializePlugins
+  void mergeIncompletePlugins() {
+    for (Map.Entry<PluginId, IdeaPluginDescriptorImpl> entry : incompleteNonBundledPlugins.entrySet()) {
+      if (!idMap.containsKey(entry.getKey()) && !incompletePlugins.containsKey(entry.getKey())) {
+        incompletePlugins.put(entry.getKey(), entry.getValue());
+      }
     }
   }
 
