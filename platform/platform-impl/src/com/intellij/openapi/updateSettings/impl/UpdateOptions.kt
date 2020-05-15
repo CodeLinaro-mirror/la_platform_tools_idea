@@ -33,7 +33,7 @@ class UpdateOptions : BaseState() {
   var lastBuildChecked by string()
 
   @get:OptionTag("UPDATE_CHANNEL_TYPE")
-  var updateChannelType by string(ChannelStatus.BETA.code) // Android Studio: 4.0 Beta
+  var updateChannelType by string(ChannelStatus.RELEASE.code)
 
   @get:OptionTag("THIRD_PARTY_PLUGINS_ALLOWED")
   var isThirdPartyPluginsAllowed by property(false)
