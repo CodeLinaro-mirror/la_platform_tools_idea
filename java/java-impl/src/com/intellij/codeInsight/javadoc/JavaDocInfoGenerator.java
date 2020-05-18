@@ -738,9 +738,11 @@ public class JavaDocInfoGenerator {
   }
 
   public void generateCommonSection(StringBuilder buffer, PsiDocComment docComment) {
-    buffer.append(DocumentationMarkup.CONTENT_START);
-    generateDescription(buffer, docComment);
-    buffer.append(DocumentationMarkup.CONTENT_END);
+    if (!isEmptyDescription(docComment)) {
+      buffer.append(DocumentationMarkup.CONTENT_START);
+      generateDescription(buffer, docComment);
+      buffer.append(DocumentationMarkup.CONTENT_END);
+    }
 
     buffer.append(DocumentationMarkup.SECTIONS_START).append("<p>");
     generateApiSection(buffer, docComment);
@@ -750,7 +752,7 @@ public class JavaDocInfoGenerator {
   }
 
   private void generateAuthorAndVersionSections(StringBuilder buffer, PsiDocComment docComment) {
-    generateSingleTagSection(buffer, docComment, "author", JavaBundle.messagePointer("javadoc.author"));
+    generateAuthorSection(buffer, docComment);
     generateSingleTagSection(buffer, docComment, "version", JavaBundle.messagePointer("javadoc.version"));
   }
 
@@ -997,16 +999,16 @@ public class JavaDocInfoGenerator {
           return method.getContainingClass();
         }
       });
-      buffer.append("<p>");
+      if (!rendered) buffer.append("<p>");
       buffer.append(DocumentationMarkup.CONTENT_END);
       buffer.append(DocumentationMarkup.SECTIONS_START);
-      buffer.append("<p>");
+      if (!rendered) buffer.append("<p>");
     }
     else {
       buffer.append(DocumentationMarkup.SECTIONS_START);
-      buffer.append("<p>");
 
       if (!rendered) {
+        buffer.append("<p>");
         Pair<PsiElement[], InheritDocProvider<PsiElement[]>> pair = findInheritDocTag(method, descriptionLocator);
         if (pair != null) {
           PsiElement[] elements = pair.first;
@@ -1476,6 +1478,22 @@ public class JavaDocInfoGenerator {
         }
         if (i < tags.length - 1) {
           buffer.append(",\n");
+        }
+      }
+      buffer.append(DocumentationMarkup.SECTION_END);
+    }
+  }
+
+  protected void generateAuthorSection(StringBuilder buffer, PsiDocComment comment) {
+    PsiDocTag[] tags = comment.findTagsByName("author");
+    if (tags.length > 0) {
+      startHeaderSection(buffer, JavaBundle.message("javadoc.author")).append("<p>");
+      for (int i = 0; i < tags.length; i++) {
+        StringBuilder tmp = new StringBuilder();
+        generateValue(tmp, tags[i].getDataElements(), ourEmptyElementsProvider);
+        buffer.append(tmp.toString().trim());
+        if (i < tags.length - 1) {
+          buffer.append(", ");
         }
       }
       buffer.append(DocumentationMarkup.SECTION_END);

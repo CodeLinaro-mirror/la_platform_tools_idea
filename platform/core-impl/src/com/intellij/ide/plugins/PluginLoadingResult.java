@@ -3,6 +3,7 @@ package com.intellij.ide.plugins;
 
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.util.BuildNumber;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.ContainerUtilRt;
@@ -11,18 +12,16 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Path;
 import java.util.*;
 
 @ApiStatus.Internal
 final class PluginLoadingResult {
   final Map<PluginId, Set<String>> brokenPluginVersions;
-  @NotNull
-  final BuildNumber productBuildNumber;
+
+  final @NotNull BuildNumber productBuildNumber;
 
   final Map<PluginId, IdeaPluginDescriptorImpl> incompletePlugins = ContainerUtil.newConcurrentMap();
-
-  // A separate map for incomplete non bundled plugins, as they may be overridden with bundled ones
-  final Map<PluginId, IdeaPluginDescriptorImpl> incompleteNonBundledPlugins = ContainerUtil.newConcurrentMap();
 
   final List<IdeaPluginDescriptorImpl> pluginsWithoutId = new ArrayList<>();
   private final Map<PluginId, IdeaPluginDescriptorImpl> plugins = new HashMap<>();
@@ -33,7 +32,9 @@ final class PluginLoadingResult {
   @Nullable
   Map<PluginId, List<IdeaPluginDescriptorImpl>> duplicateModuleMap;
 
-  private final Map<PluginId, String> errors = ContainerUtil.newConcurrentMap();
+  private final Map<PluginId, PluginError> errors = ContainerUtil.newConcurrentMap();
+
+  private final Set<PluginId> shadowedBundledIds = new HashSet<>();
 
   final boolean checkModuleDependencies;
 
@@ -70,37 +71,26 @@ final class PluginLoadingResult {
   }
 
   @NotNull
-  List<String> getErrors() {
+  List<PluginError> getErrors() {
     if (errors.isEmpty()) {
       return Collections.emptyList();
     }
 
     PluginId[] ids = errors.keySet().toArray(PluginId.EMPTY_ARRAY);
     Arrays.sort(ids, null);
-    List<String> result = new ArrayList<>(ids.length);
+    List<PluginError> result = new ArrayList<>(ids.length);
     for (PluginId id : ids) {
       result.add(errors.get(id));
     }
     return result;
   }
 
-  void addIncompletePlugin(@NotNull DescriptorLoadingContext context, @NotNull IdeaPluginDescriptorImpl plugin) {
+  void addIncompletePlugin(@NotNull IdeaPluginDescriptorImpl plugin, @Nullable PluginError error) {
     if (!idMap.containsKey(plugin.getPluginId())) {
-      if (context.isBundled) {
-        incompletePlugins.put(plugin.getPluginId(), plugin);
-      } else {
-        incompleteNonBundledPlugins.put(plugin.getPluginId(), plugin);
-      }
+      incompletePlugins.put(plugin.getPluginId(), plugin);
     }
-  }
-
-  // Merge incompleteNonBundledPlugins to incompletePlugins, so inCompletePlugins contains all incomplete plugins, bundled or not.
-  // This is called before initializePlugins
-  void mergeIncompletePlugins() {
-    for (Map.Entry<PluginId, IdeaPluginDescriptorImpl> entry : incompleteNonBundledPlugins.entrySet()) {
-      if (!idMap.containsKey(entry.getKey()) && !incompletePlugins.containsKey(entry.getKey())) {
-        incompletePlugins.put(entry.getKey(), entry.getValue());
-      }
+    if (error != null) {
+      errors.put(plugin.getPluginId(), error);
     }
   }
 
@@ -118,10 +108,15 @@ final class PluginLoadingResult {
       until = "*.*";
     }
 
-    String message = "is incompatible (" + reason + ", target build " +
+    String message = "is incompatible (reason: " + reason + ", target build " +
                      (since.equals(until) ? ("is " + since) : ("range is " + since + " to " + until)) +
                      ")";
-    errors.put(plugin.getPluginId(), plugin.formatErrorMessage(message));
+    errors.put(plugin.getPluginId(), new PluginError(plugin, message, reason));
+  }
+
+  void reportCannotLoad(@NotNull DescriptorListLoadingContext context, @NotNull Path file, Exception e) {
+    context.getLogger().warn("Cannot load " + file, e);
+    errors.put(PluginId.getId("__cannot load__"), new PluginError(null, "File \"" + FileUtil.getLocationRelativeToUserHome(file.toString(), false) + "\" contains invalid plugin descriptor", null));
   }
 
   @SuppressWarnings("UnusedReturnValue")
@@ -140,19 +135,20 @@ final class PluginLoadingResult {
     if (!descriptor.isBundled()) {
       Set<String> set = brokenPluginVersions.get(pluginId);
       if (set != null && set.contains(descriptor.getVersion())) {
-        String message = descriptor.formatErrorMessage("was marked as incompatible");
-        context.getLogger().info(message);
-        errors.put(pluginId, message);
+        errors.put(pluginId, new PluginError(descriptor, "was marked as broken", "marked as broken"));
         return true;
       }
 
       if (checkModuleDependencies && !PluginManagerCore.hasModuleDependencies(descriptor)) {
-        String message = descriptor.formatErrorMessage("defines no module dependencies (supported only in IntelliJ IDEA)");
-        context.getLogger().info(message);
-        errors.put(pluginId, message);
+        String message = "defines no module dependencies (supported only in IntelliJ IDEA)";
+        errors.put(pluginId, new PluginError(descriptor, message, "supported only in IntelliJ IDEA"));
         return false;
       }
     }
+
+    // remove any error that occurred for plugin with the same id
+    errors.remove(pluginId);
+    incompletePlugins.remove(pluginId);
 
     IdeaPluginDescriptorImpl prevDescriptor = plugins.put(pluginId, descriptor);
     if (prevDescriptor == null) {
@@ -162,6 +158,10 @@ final class PluginLoadingResult {
         checkAndAdd(descriptor, module);
       }
       return true;
+    }
+
+    if (prevDescriptor.isBundled() || descriptor.isBundled()) {
+      shadowedBundledIds.add(pluginId);
     }
 
     if (isCompatible(descriptor) &&
@@ -202,5 +202,9 @@ final class PluginLoadingResult {
     list.add(existingDescriptor);
     list.add(descriptor);
     duplicateModuleMap.put(id, list);
+  }
+
+  Set<PluginId> getShadowedBundledIds() {
+    return shadowedBundledIds;
   }
 }

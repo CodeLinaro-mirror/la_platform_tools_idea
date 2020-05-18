@@ -875,6 +875,10 @@ public final class UIUtil {
     return JBColor.namedColor("Label.foreground", new JBColor(Gray._0, Gray.xBB));
   }
 
+  public static Color getErrorForeground() {
+    return JBColor.namedColor("Label.errorForeground", new JBColor(new Color(0xC7222D), JBColor.RED));
+  }
+
   @NotNull
   public static Color getLabelDisabledForeground() {
     return JBColor.namedColor("Label.disabledForeground", JBColor.GRAY);
@@ -3581,6 +3585,18 @@ public final class UIUtil {
       @Override
       protected void adjustVisibility(Rectangle nloc) {}
     });
+  }
+
+  /**
+   * By default soft wrapping in text components (for ASCII text) is only performed at spaces. This enables wrapping also at other places,
+   * e.g. at dots.
+   * <p>
+   * NOTE: any operation which replaces document in the text component (e.g. {@link JTextComponent#setDocument(Document)},
+   * {@link JEditorPane#setPage(URL)}, {@link JEditorPane#setEditorKit(EditorKit)}) will cancel the effect of this call.
+   */
+  public static void enableEagerSoftWrapping(@NotNull JTextComponent textComponent) {
+    // see javax.swing.text.GlyphView.getBreaker()
+    textComponent.getDocument().putProperty("multiByte", Boolean.TRUE);
   }
 
   @NotNull

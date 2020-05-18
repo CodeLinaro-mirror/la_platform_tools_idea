@@ -199,13 +199,20 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
     initComponent();
   }
 
-  void scheduleFullIndexesRescan(@NotNull Collection<ID<?, ?>> indexesToRebuild) {
+  @ApiStatus.Internal
+  public void scheduleFullIndexesRebuild(@NotNull String reason) {
+    RegisteredIndexes registeredIndexes = myRegisteredIndexes;
+    if (registeredIndexes == null) {
+      scheduleFullIndexesRescan(registeredIndexes.getState().getIndexIDs(), reason);
+    } else {
+      RebuildStatus.rebuildAfterInitialization();
+    }
+  }
+
+  void scheduleFullIndexesRescan(@NotNull Collection<ID<?, ?>> indexesToRebuild, @NotNull String reason) {
     cleanupProcessedFlag();
     doClearIndices(id -> indexesToRebuild.contains(id));
-    String rebuiltIndexesLog = indexesToRebuild.isEmpty()
-      ? ""
-      : "; indexes " + indexesToRebuild + " will be rebuild completely due to version change";
-    scheduleIndexRebuild("File type change" + rebuiltIndexesLog);
+    scheduleIndexRebuild(reason);
   }
 
   @VisibleForTesting
@@ -301,7 +308,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
   }
 
   @Override
-  void waitUntilIndicesAreInitialized() {
+  public void waitUntilIndicesAreInitialized() {
     if (myRegisteredIndexes == null) {
       // interrupt all calculation while plugin reload
       throw new ProcessCanceledException();
@@ -481,7 +488,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
           }
         }
 
-        FileBasedIndexInfrastructureExtension.EP_NAME.extensions().forEach(ex -> ex.performShutdown());
+        FileBasedIndexInfrastructureExtension.EP_NAME.extensions().forEach(ex -> ex.shutdown());
         IndexedHashesSupport.flushContentHashes();
         SharedIndicesData.flushData();
         if (!keepConnection) {
@@ -937,7 +944,7 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
           getInputFilter(requestedIndexId).acceptInput(vFile)) {
         final int inputId = Math.abs(getFileId(vFile));
 
-        if (!isTooLarge(vFile, contentText.length())) {
+        if (!isTooLarge(vFile, (long)contentText.length())) {
           // Reasonably attempt to use same file content when calculating indices as we can evaluate them several at once and store in file content
           WeakReference<FileContentImpl> previousContentRef = document.getUserData(ourFileContentKey);
           FileContentImpl previousContent = com.intellij.reference.SoftReference.dereference(previousContentRef);
@@ -1514,16 +1521,21 @@ public final class FileBasedIndexImpl extends FileBasedIndexEx {
     return !(file instanceof NewVirtualFile);
   }
 
-  boolean isTooLarge(@NotNull VirtualFile file) {
-    if (SingleRootFileViewProvider.isTooLargeForIntelligence(file)) {
-      return !myRegisteredIndexes.skipLimitCheck(file) || SingleRootFileViewProvider.isTooLargeForContentLoading(file);
-    }
-    return false;
+  public boolean isTooLarge(@NotNull VirtualFile file) {
+    return isTooLarge(file, null);
   }
 
-  private boolean isTooLarge(@NotNull VirtualFile file, long contentSize) {
+  public boolean isTooLarge(@NotNull VirtualFile file,
+                            @Nullable("if content size should be retrieved from a file") Long contentSize) {
+    return isTooLarge(file, contentSize, myRegisteredIndexes.getNoLimitCheckFileTypes());
+  }
+
+  @ApiStatus.Internal
+  public static boolean isTooLarge(@NotNull VirtualFile file,
+                                   @Nullable("if content size should be retrieved from a file") Long contentSize,
+                                   @NotNull Set<FileType> noLimitFileTypes) {
     if (SingleRootFileViewProvider.isTooLargeForIntelligence(file, contentSize)) {
-      return !myRegisteredIndexes.skipLimitCheck(file) || SingleRootFileViewProvider.isTooLargeForContentLoading(file, contentSize);
+      return !noLimitFileTypes.contains(file.getFileType()) || SingleRootFileViewProvider.isTooLargeForContentLoading(file, contentSize);
     }
     return false;
   }

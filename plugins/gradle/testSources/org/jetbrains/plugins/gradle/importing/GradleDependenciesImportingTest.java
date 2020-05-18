@@ -14,6 +14,7 @@ import com.intellij.openapi.externalSystem.service.notification.ExternalSystemPr
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.roots.*;
+import com.intellij.openapi.roots.impl.libraries.LibraryEx;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
@@ -581,8 +582,37 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
     assertModules("project", "project.main", "project.test");
     final String path = path("build/generated-resources/main");
     final String depName = PathUtil.toPresentableUrl(path);
-    assertModuleLibDep("project.main", depName, "file://" + path);
+    String root = "file://" + path;
+    assertModuleLibDep("project.main", depName, root);
     assertModuleLibDepScope("project.main", depName, DependencyScope.RUNTIME);
+
+    String[] excludedRoots = isNewDependencyResolutionApplicable() ? new String[]{root} : ArrayUtil.EMPTY_STRING_ARRAY;
+    assertLibraryExcludedRoots("project.main", depName, excludedRoots);
+
+    VirtualFile depJar = createProjectJarSubFile("lib/dep.jar");
+    importProject(
+      "apply plugin: 'java'\n" +
+      "sourceSets.main.output.dir file(\"$buildDir/generated-resources/main\")\n" +
+      "dependencies {\n" +
+      " runtime 'junit:junit:4.11'\n" +
+      " runtime files('lib/dep.jar')\n" +
+      "}\n"
+    );
+
+    assertLibraryExcludedRoots("project.main", depName, excludedRoots);
+    assertLibraryExcludedRoots("project.main", depJar.getPresentableUrl(), ArrayUtil.EMPTY_STRING_ARRAY);
+    assertLibraryExcludedRoots("project.main", "Gradle: junit:junit:4.11", ArrayUtil.EMPTY_STRING_ARRAY);
+  }
+
+  private void assertLibraryExcludedRoots(String moduleName, String depName, String ... roots) {
+    List<LibraryOrderEntry> deps = getModuleLibDeps(moduleName, depName);
+    assertThat(deps).hasSize(1);
+    LibraryEx library = (LibraryEx)deps.get(0).getLibrary();
+
+    assertThat(library.getUrls(OrderRootType.CLASSES)).hasSize(1);
+
+    String[] excludedRootUrls = library.getExcludedRootUrls();
+    assertThat(excludedRootUrls).containsExactly(roots);
   }
 
   @Test
@@ -1832,6 +1862,32 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
     assertThat(aLib.getRootFiles(JavadocOrderRootType.getInstance()))
       .hasSize(1)
       .allSatisfy(file -> assertEquals("aLib-1.0-SNAPSHOT-1-javadoc.jar", file.getName()));
+  }
+
+  @Test
+  public void testModifiedSourceSetClasspathFileCollectionDependencies() throws Exception {
+    importProject(
+      "apply plugin: 'java'\n" +
+      "dependencies {\n" +
+      "  compile 'junit:junit:4.11'\n" +
+      "}\n" +
+      "afterEvaluate {\n" +
+      "    def mainSourceSet = sourceSets['main']\n" +
+      "    def mainClassPath = mainSourceSet.compileClasspath\n" +
+      "    def exclusion = mainClassPath.filter { it.name.contains('junit') }\n" +
+      "    mainSourceSet.compileClasspath = mainClassPath - exclusion\n" +
+      "}"
+    );
+
+    assertModules("project", "project.main", "project.test");
+
+    assertModuleLibDeps("project.main", "Gradle: junit:junit:4.11", "Gradle: org.hamcrest:hamcrest-core:1.3");
+    assertModuleLibDepScope("project.main", "Gradle: org.hamcrest:hamcrest-core:1.3", DependencyScope.COMPILE);
+    assertModuleLibDepScope("project.main", "Gradle: junit:junit:4.11", DependencyScope.COMPILE);
+
+    assertModuleLibDeps("project.test", "Gradle: junit:junit:4.11", "Gradle: org.hamcrest:hamcrest-core:1.3");
+    assertModuleLibDepScope("project.test", "Gradle: org.hamcrest:hamcrest-core:1.3", DependencyScope.COMPILE);
+    assertModuleLibDepScope("project.test", "Gradle: junit:junit:4.11", DependencyScope.COMPILE);
   }
 
   @SuppressWarnings("SameParameterValue")

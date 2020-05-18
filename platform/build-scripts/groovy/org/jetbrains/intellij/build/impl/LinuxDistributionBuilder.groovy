@@ -125,6 +125,7 @@ class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
       "plugins/android/resources/*",
       "plugins/java/lib/java-api.jar",
       "plugins/java/lib/java-impl.jar",
+      "plugins/java/lib/resources.jar",
       "plugins/java/lib/java_resources_en.jar"].
       collect { "CLASSPATH=\"\$CLASSPATH:\$IDE_HOME/${it}\"" }.join("\n")
 
@@ -166,6 +167,7 @@ class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
       "$unixDistPath/Install-Linux-tar.txt",
       ["product_full"   : fullName,
        "product"        : buildContext.productProperties.baseFileName,
+       "product_vendor" : buildContext.applicationInfo.shortCompanyName,
        "system_selector": buildContext.systemSelector], "@@")
     buildContext.ant.fixcrlf(file: "$unixDistPath/bin/Install-Linux-tar.txt", eol: "unix")
   }

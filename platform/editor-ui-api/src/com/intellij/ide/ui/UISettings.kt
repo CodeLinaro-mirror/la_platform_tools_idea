@@ -62,6 +62,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       state.animateWindows = value
     }
 
+  @Deprecated("use StatusBarWidgetSettings#isEnabled(MemoryUsagePanel.WIDGET_ID)")
   var showMemoryIndicator: Boolean
     get() = state.showMemoryIndicator
     set(value) {
@@ -404,6 +405,12 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     get() = state.sortTabsAlphabetically
     set(value) {
       state.sortTabsAlphabetically = value
+    }
+
+  var openTabsAtTheEnd: Boolean
+    get() = state.openTabsAtTheEnd
+    set(value) {
+      state.openTabsAtTheEnd = value
     }
 
   var showInplaceComments: Boolean

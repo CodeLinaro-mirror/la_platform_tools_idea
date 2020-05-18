@@ -3,23 +3,21 @@ package com.intellij.serviceContainer
 
 import com.intellij.diagnostic.ActivityCategory
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.components.BaseComponent
 import com.intellij.openapi.extensions.PluginDescriptor
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.Disposer
 
 internal class MyComponentAdapter(private val componentKey: Class<*>,
                                   override val implementationClassName: String,
                                   pluginDescriptor: PluginDescriptor,
-                                  componentManager: PlatformComponentManagerImpl,
+                                  componentManager: ComponentManagerImpl,
                                   implementationClass: Class<*>?,
                                   val isWorkspaceComponent: Boolean = false) : BaseComponentAdapter(componentManager, pluginDescriptor, null, implementationClass) {
   override fun getComponentKey() = componentKey
 
   override fun isImplementationEqualsToInterface() = componentKey.name == implementationClassName
 
-  override fun getActivityCategory(componentManager: PlatformComponentManagerImpl): ActivityCategory? {
+  override fun getActivityCategory(componentManager: ComponentManagerImpl): ActivityCategory? {
     if (componentManager.activityNamePrefix() == null) {
       return null
     }
@@ -32,7 +30,7 @@ internal class MyComponentAdapter(private val componentKey: Class<*>,
     }
   }
 
-  override fun <T : Any> doCreateInstance(componentManager: PlatformComponentManagerImpl, implementationClass: Class<T>, indicator: ProgressIndicator?): T {
+  override fun <T : Any> doCreateInstance(componentManager: ComponentManagerImpl, implementationClass: Class<T>, indicator: ProgressIndicator?): T {
     try {
       val instance = componentManager.instantiateClassWithConstructorInjection(implementationClass, componentKey, pluginId)
       if (instance is Disposable) {
@@ -41,7 +39,7 @@ internal class MyComponentAdapter(private val componentKey: Class<*>,
 
       componentManager.initializeComponent(instance, serviceDescriptor = null, pluginId = pluginId)
       @Suppress("DEPRECATION")
-      if (instance is BaseComponent) {
+      if (instance is com.intellij.openapi.components.BaseComponent) {
         @Suppress("DEPRECATION")
         instance.initComponent()
         if (instance !is Disposable) {
@@ -58,11 +56,8 @@ internal class MyComponentAdapter(private val componentKey: Class<*>,
       componentManager.componentCreated(indicator)
       return instance
     }
-    catch (e: ProcessCanceledException) {
-      throw e
-    }
     catch (t: Throwable) {
-      componentManager.handleInitComponentError(t, getComponentKey().name, pluginId)
+      componentManager.handleInitComponentError(t, componentKey.name, pluginId)
       throw t
     }
   }
