@@ -144,6 +144,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       "plugins/android/resources/*",
       "plugins/java/lib/java-api.jar",
       "plugins/java/lib/java-impl.jar",
+      "plugins/java/lib/resources.jar",
       "plugins/java/lib/java_resources_en.jar"].
       collect { "SET CLASS_PATH=%CLASS_PATH%;%IDE_HOME%\\$it" }.join("\n")
 
@@ -156,7 +157,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
         filter(token: "vm_options", value: vmOptionsFileName)
         filter(token: "isEap", value: buildContext.applicationInfo.isEAP)
         filter(token: "system_selector", value: "AndroidStudioGameTools")
-        filter(token: "ide_jvm_args", value: buildContext.additionalJvmArguments + " -Didea.platform.prefix=AndroidStudioGameTools -Didea.load.plugins=false")
+        filter(token: "ide_jvm_args", value: buildContext.additionalJvmArguments + " -Didea.platform.prefix=AndroidStudioGameTools -Didea.load.plugins=false -Didea.initially.ask.config=force-not")
         filter(token: "class_path", value: gameToolsClassPath)
         filter(token: "script_name", value: "game-tools.bat")
       }
