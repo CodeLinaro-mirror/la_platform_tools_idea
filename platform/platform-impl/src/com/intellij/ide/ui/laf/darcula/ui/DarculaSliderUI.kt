@@ -60,7 +60,7 @@ public open class DarculaSliderUI(b: JComponent? = null) : BasicSliderUI(b as JS
         theme.buttonBorderColor
       }
       else {
-        theme.disabledButtonColor
+        theme.disabledButtonBorderColor  // Android Studio: b/157127302
       }
 
       g2d.stroke = BasicStroke(theme.borderThickness.toFloat())
