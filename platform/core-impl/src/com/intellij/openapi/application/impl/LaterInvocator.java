@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class LaterInvocator {
   private static final Logger LOG = Logger.getInstance(LaterInvocator.class);
@@ -138,13 +139,6 @@ public class LaterInvocator {
       }
     };
     invokeLaterWithCallback(runnable1, modalityState, Conditions.alwaysFalse(), null, onEdt);
-
-    // IDEA-241340: Timeout in tests during BaseFixture.disposeRootDisposable caused by LaterInvocator
-    // Android Studio: The item just added to the queue may never run. Flush it explicitly here to avoid deadlock on semaphore.waitFor().
-    if (isTestMode()) {
-      getRunnableQueue(onEdt).scheduleFlush();
-    }
-
     semaphore.waitFor();
     if (!exception.isNull()) {
       Throwable cause = exception.get();
@@ -157,20 +151,6 @@ public class LaterInvocator {
         ExceptionUtil.rethrow(cause);
       }
     }
-  }
-
-  // Android Studio: copied from IdeEventQueue for use in invokeAndWait above
-  private static Boolean myTestMode;
-  private static boolean isTestMode() {
-    Boolean testMode = myTestMode;
-    if (testMode != null) return testMode;
-
-    Application application = ApplicationManager.getApplication();
-    if (application == null) return false;
-
-    testMode = application.isUnitTestMode();
-    myTestMode = testMode;
-    return testMode;
   }
 
   public static void enterModal(@NotNull Object modalEntity) {
@@ -351,8 +331,11 @@ public class LaterInvocator {
   }
 
   static void requestFlush() {
-    if (FLUSHER_SCHEDULED.compareAndSet(false, true)) {
+    SUBMITTED_COUNT.incrementAndGet();
+    while (FLUSHER_SCHEDULED.compareAndSet(false, true)) {
       int whichThread = THREAD_TO_FLUSH.getAndUpdate(operand -> operand ^ 1);
+
+      long submittedCount = SUBMITTED_COUNT.get();
 
       FlushQueue firstQueue = getRunnableQueue(whichThread == 0);
       if (firstQueue.mayHaveItems()) {
@@ -367,6 +350,14 @@ public class LaterInvocator {
       }
 
       FLUSHER_SCHEDULED.set(false);
+
+      // If a requestFlush was called by somebody else (because queues were modified) but we have not really scheduled anything
+      // then we've missed `mayHaveItems` `true` value because of race.
+      // Another run of `requestFlush` will get the correct `mayHaveItems` because
+      // `mayHaveItems` is mutated strictly before SUBMITTED_COUNT which we've observe below
+      if (submittedCount == SUBMITTED_COUNT.get()) {
+        break;
+      }
     }
   }
 
@@ -397,6 +388,8 @@ public class LaterInvocator {
   }
 
   static final AtomicBoolean FLUSHER_SCHEDULED = new AtomicBoolean(false);
+
+  private static final AtomicLong SUBMITTED_COUNT = new AtomicLong(0);
 
   private static final AtomicInteger THREAD_TO_FLUSH = new AtomicInteger(0);
 
