@@ -41,7 +41,7 @@ class UpdateOptions : BaseState() {
   var lastBuildChecked by string()
 
   @get:OptionTag("UPDATE_CHANNEL_TYPE")
- var updateChannelType by string(ChannelStatus.BETA.code) // Android Studio: 4.1 Beta
+  var updateChannelType by string(ChannelStatus.EAP.code) // Android Studio: EAP as default unless building beta, RC, stable.
 
   @get:OptionTag("THIRD_PARTY_PLUGINS_ALLOWED")
   var isThirdPartyPluginsAllowed by property(false)
