@@ -49,7 +49,7 @@ object UpdateInstaller {
     for (i in 1 until chain.size) {
       val from = chain[i - 1].withoutProductCode().asString()
       val to = chain[i].withoutProductCode().asString()
-      val patchName = "${product}-${from}-${to}-patch${jdk}-${PatchInfo.OS_SUFFIX}.jar"
+      val patchName = "${product}-${from}-${to}-patch-${PatchInfo.OS_SUFFIX}.jar"  // Android Studio: no JDK suffix
       val patchFile = File(getTempDir(), patchName)
       val url = URL(patchesUrl, patchName).toString()
       val partIndicator = object : DelegatingProgressIndicator(indicator) {
@@ -208,6 +208,6 @@ object UpdateInstaller {
   private fun getJdkSuffix(): String = when {
     !SystemInfo.isMac && Files.isDirectory(Paths.get(PathManager.getHomePath(), "jbr-x86")) -> "-jbr11-x86"
     Files.isDirectory(Paths.get(PathManager.getHomePath(), "jbr")) -> "-jbr11"
-    else -> ""  // Android Studio: no "-no-jbr"
+    else -> "-no-jbr"
   }
 }
