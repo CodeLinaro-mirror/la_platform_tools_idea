@@ -45,6 +45,9 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "Bouncy Castle", libraryName: "bouncycastle", license: "MIT License", url: "http://bouncycastle.org",
                        licenseUrl: "http://bouncycastle.org/licence.html"),
     new LibraryLicense(name: "CDT", libraryName: "org.eclipse.cdt", license: "Eclipse Public License 1.0"),
+    // for ui-animation-tooling-internal module library in intellij.android.compose-designer
+    new LibraryLicense(name: "Compose Animation Tooling", libraryName: "ui-animation-tooling-internal", version: "0.1.0-SNAPSHOT",
+                       license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0", url: "http://source.android.com/"),
     // for compose-compiler-hosted module library in intellij.android.compose-ide-plugin
     new LibraryLicense(name: "Compose Compiler Hosted", libraryName: "compose-compiler-hosted",
                        license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
@@ -174,6 +177,10 @@ class AndroidStudioLibraryLicenses {
     new LibraryLicense(name: "Instant run version", libraryName: "libjava_version.jar",
                        license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "R8", libraryName: "r8.jar", license: "BSD"),
+    // remove LibraryLicense for xml-apis when it appears in CommunityLibraryLicenses
+    new LibraryLicense(name: "xml-apis", libraryName: "xml-apis", license: "Apache 2.0",
+                       licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0.txt",
+                       url: "http://xerces.apache.org/xml-commons/components/external"),
   ] as List<LibraryLicense>) + (("true" == System.getProperty("bundle.ui.tests") ? [
     new LibraryLicense(name: "truth", libraryName: "truth", version: "0.28", license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
     new LibraryLicense(name: "easymock-tools", libraryName: "easymock-tools", version: "3.1", license: "Apache 2.0", licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
