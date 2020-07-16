@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class LaterInvocator {
   private static final Logger LOG = Logger.getInstance(LaterInvocator.class);
@@ -107,8 +108,7 @@ public class LaterInvocator {
       return;
     }
     FlushQueue.RunnableInfo runnableInfo = new FlushQueue.RunnableInfo(runnable, modalityState, expired, callback);
-    getRunnableQueue(onEdt).push(runnableInfo);
-    requestFlush();
+    pushRunnableToQueue(onEdt, runnableInfo);
   }
 
   static void invokeAndWait(@NotNull final Runnable runnable, @NotNull ModalityState modalityState, boolean onEdt) {
@@ -202,8 +202,7 @@ public class LaterInvocator {
       guard.enteredModality(appendedState);
     }
 
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   public static void enterModal(Project project, Dialog dialog) {
@@ -237,8 +236,7 @@ public class LaterInvocator {
   @ApiStatus.Internal
   public static void markTransparent(@NotNull ModalityState state) {
     ((ModalityStateEx)state).markTransparent();
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   public static void leaveModal(Project project, Dialog dialog) {
@@ -266,8 +264,7 @@ public class LaterInvocator {
       }
     }
 
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   private static void removeModality(@NotNull Object modalEntity, int index) {
@@ -295,8 +292,7 @@ public class LaterInvocator {
     LOG.assertTrue(index >= 0);
     removeModality(modalEntity, index);
 
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   @TestOnly
@@ -305,8 +301,7 @@ public class LaterInvocator {
       leaveModal(ourModalEntities.get(ourModalEntities.size() - 1));
     }
     LOG.assertTrue(getCurrentModalityState() == ModalityState.NON_MODAL, getCurrentModalityState());
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   public static Object @NotNull [] getCurrentModalEntities() {
@@ -351,8 +346,11 @@ public class LaterInvocator {
   }
 
   static void requestFlush() {
-    if (FLUSHER_SCHEDULED.compareAndSet(false, true)) {
+    SUBMITTED_COUNT.incrementAndGet();
+    while (FLUSHER_SCHEDULED.compareAndSet(false, true)) {
       int whichThread = THREAD_TO_FLUSH.getAndUpdate(operand -> operand ^ 1);
+
+      long submittedCount = SUBMITTED_COUNT.get();
 
       FlushQueue firstQueue = getRunnableQueue(whichThread == 0);
       if (firstQueue.mayHaveItems()) {
@@ -367,6 +365,14 @@ public class LaterInvocator {
       }
 
       FLUSHER_SCHEDULED.set(false);
+
+      // If a requestFlush was called by somebody else (because queues were modified) but we have not really scheduled anything
+      // then we've missed `mayHaveItems` `true` value because of race.
+      // Another run of `requestFlush` will get the correct `mayHaveItems` because
+      // `mayHaveItems` is mutated strictly before SUBMITTED_COUNT which we've observe below
+      if (submittedCount == SUBMITTED_COUNT.get()) {
+        break;
+      }
     }
   }
 
@@ -398,6 +404,8 @@ public class LaterInvocator {
 
   static final AtomicBoolean FLUSHER_SCHEDULED = new AtomicBoolean(false);
 
+  private static final AtomicLong SUBMITTED_COUNT = new AtomicLong(0);
+
   private static final AtomicInteger THREAD_TO_FLUSH = new AtomicInteger(0);
 
   @TestOnly
@@ -411,14 +419,21 @@ public class LaterInvocator {
     return ourWtQueue.getQueue();
   }
 
-  private static void reincludeSkippedItems() {
+  private static void pushRunnableToQueue(boolean onEdt, FlushQueue.RunnableInfo runnableInfo) {
+    getRunnableQueue(onEdt).push(runnableInfo);
+    requestFlush();
+  }
+
+  private static void reincludeSkippedItemsAndRequestFlush() {
     ourEdtQueue.reincludeSkippedItems();
     ourWtQueue.reincludeSkippedItems();
+    requestFlush();
   }
 
   public static void purgeExpiredItems() {
     ourEdtQueue.purgeExpiredItems();
     ourWtQueue.purgeExpiredItems();
+    requestFlush();
   }
 
   @TestOnly
