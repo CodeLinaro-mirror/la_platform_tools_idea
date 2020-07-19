@@ -42,6 +42,7 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
   public void testOptionalOfNullable() { doTest(); }
   public void testPrimitiveOptional() { doTest(); }
   public void testOptionalOrElse() { doTest(); }
+  public void testOptionalIntSwitch() { doTest(); }
   public void testOptionalIsPresent() {
     myFixture.addClass("package org.junit;" +
                        "public class Assert {" +
@@ -267,6 +268,7 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
   public void testManyNestedOptionals() { doTest(); }
   public void testGetClass() { doTest(); }
   public void testParamContract() { doTest(); }
+  public void testParamContractBoolean() { doTest(); }
   public void testTypeUseVarArg() {
     setupTypeUseAnnotations("typeUse", myFixture);
     doTest();
