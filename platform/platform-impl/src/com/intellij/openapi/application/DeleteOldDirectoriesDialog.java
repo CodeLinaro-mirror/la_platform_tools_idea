@@ -76,7 +76,7 @@ public class DeleteOldDirectoriesDialog extends JDialog {
 
   private void setLabelTexts() {
     String productName = ApplicationNamesInfo.getInstance().getFullProductName();
-    myFoundUnusedLabel.setText(html(ApplicationBundle.message("label.found.unused", productName)));
+    myFoundUnusedLabel.setText(html(String.format("The directories below contain configuration and system files for unused versions of %s. Check the box next to each directory you want to safely delete.", productName)));
     setPreferredSize(myFoundUnusedLabel, 600, 2);
   }
 
@@ -121,21 +121,21 @@ public class DeleteOldDirectoriesDialog extends JDialog {
     myTableUIPanel.add(myAggregateCheckBox, constraints);
 
     // column 1 title
-    final JLabel directoryTitle = new JLabel(html(bold(ApplicationBundle.message("label.column.title.directory"))), SwingConstants.LEADING);
+    final JLabel directoryTitle = new JLabel(html(bold("Directory")), SwingConstants.LEADING);
     setPreferredSize(directoryTitle, 270, 1);
     constraints.setRow(0);
     constraints.setColumn(1);
     myTableUIPanel.add(directoryTitle, constraints);
 
     // column 2 title
-    final JLabel lastUsedTitle = new JLabel(html(bold(ApplicationBundle.message("label.column.title.lastused"))), SwingConstants.LEADING);
+    final JLabel lastUsedTitle = new JLabel(html(bold("Last Used")), SwingConstants.LEADING);
     setPreferredSize(lastUsedTitle, 100, 1);
     constraints.setRow(0);
     constraints.setColumn(2);
     myTableUIPanel.add(lastUsedTitle, constraints);
 
     // column 3 title
-    final JLabel sizeTitle = new JLabel(html(bold(ApplicationBundle.message("label.column.title.size"))), SwingConstants.TRAILING);
+    final JLabel sizeTitle = new JLabel(html(bold("Size")), SwingConstants.TRAILING);
     setPreferredSize(sizeTitle, 90, 1);
     constraints.setRow(0);
     constraints.setColumn(3);
@@ -229,22 +229,22 @@ public class DeleteOldDirectoriesDialog extends JDialog {
     final int days = months == 0 ? period.getDays() % 7 : 0;
 
     if (months > 0) {
-      return months > 300 ? ApplicationBundle.message("label.format.period.never") :
-             months > 1 ? ApplicationBundle.message("label.format.period.months.ago", months)
-                        : ApplicationBundle.message("label.format.period.month.ago", months);
+      return months > 300 ? "Never" :
+             months > 1 ? String.format("%d months ago", months)
+                        : String.format("%d month ago", months);
     }
 
     if (weeks > 0) {
-      return weeks > 1 ? ApplicationBundle.message("label.format.period.weeks.ago", weeks)
-                       : ApplicationBundle.message("label.format.period.week.ago", weeks);
+      return weeks > 1 ? String.format("%d weeks ago", weeks)
+                       : String.format("%d week ago", weeks);
     }
 
     if (days > 0) {
-      return days > 1 ? ApplicationBundle.message("label.format.period.days.ago", days)
-                      : ApplicationBundle.message("label.format.period.yesterday");
+      return days > 1 ? String.format("%d days ago", days)
+                      : "Yesterday";
     }
 
-    return ApplicationBundle.message("label.format.period.today");
+    return "Today";
   }
 
   private void addListeners() {
@@ -291,7 +291,7 @@ public class DeleteOldDirectoriesDialog extends JDialog {
 
   private void setDialogProperties() {
     String productName = ApplicationNamesInfo.getInstance().getFullProductName();
-    setTitle(ApplicationBundle.message("title.delete.unused.directories", productName));
+    setTitle(String.format("Delete Unused %s Directories", productName));
     setModalityType(ModalityType.APPLICATION_MODAL);
 
     getContentPane().setLayout(new BorderLayout());
