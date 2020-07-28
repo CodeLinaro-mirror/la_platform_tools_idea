@@ -378,9 +378,9 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       }
     }
 
-    // Asset Studio
-    buildContext.ant.copy(todir: "$androidPluginLib/../resources/images") {
-      fileset(dir: "$root/tools/adt/idea/android/resources/images")
+    // Asset Studio images.
+    buildContext.ant.copy(todir: "$androidPluginLib/../resources/images/asset_studio") {
+      fileset(dir: "$root/tools/adt/idea/android/resources/images/asset_studio")
     }
 
     // Native debugger.
@@ -452,10 +452,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
         if (context.options.studioSdk) {
           return
-        }
-
-        context.ant.copy(todir: "$targetDirectory/plugins/sdk-updates/offline-repo") {
-          fileset(dir: "$root/prebuilts/tools/windows-x86_64/offline-sdk")
         }
 
         def androidRoot = "$root/tools/adt/idea"
@@ -533,10 +529,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
         if (context.options.studioSdk) {
           return
-        }
-
-        context.ant.copy(todir: "$targetDirectory/plugins/sdk-updates/offline-repo") {
-          fileset(dir: "$root/prebuilts/tools/linux-x86_64/offline-sdk")
         }
 
         def androidRoot = "$root/tools/adt/idea"
@@ -630,10 +622,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
       if (context.options.studioSdk) {
         return
-      }
-
-      context.ant.copy(todir: "$targetDirectory/plugins/sdk-updates/offline-repo") {
-        fileset(dir: "$root/prebuilts/tools/darwin-x86_64/offline-sdk")
       }
 
       def androidRoot = "$root/tools/adt/idea"
