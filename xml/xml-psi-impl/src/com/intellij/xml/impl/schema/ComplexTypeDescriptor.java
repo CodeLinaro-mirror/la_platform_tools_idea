@@ -2,7 +2,6 @@
 package com.intellij.xml.impl.schema;
 
 import com.intellij.openapi.project.DumbService;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.FieldCache;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.resolve.reference.impl.providers.FileReferenceSet;
@@ -70,8 +69,8 @@ public class ComplexTypeDescriptor extends TypeDescriptor {
 
   private final Map<String, CachedValue<CanContainAttributeType>> myAnyAttributeCache =
     ConcurrentFactoryMap.createMap(key -> CachedValuesManager.getManager(myTag.getProject()).createCachedValue(() -> {
-      THashSet<Object> dependencies = new THashSet<>();
-      CanContainAttributeType type = _canContainAttribute(key, myTag, null, new THashSet<>(), dependencies);
+      Set<Object> dependencies = new HashSet<>();
+      CanContainAttributeType type = _canContainAttribute(key, myTag, null, new HashSet<>(), dependencies);
       if (dependencies.isEmpty()) {
         dependencies.add(myTag.getContainingFile());
       }
@@ -303,7 +302,7 @@ public class ComplexTypeDescriptor extends TypeDescriptor {
       ns = nsDescriptor.getDefaultNamespace();
     }
 
-    if (Comparing.equal(info.expectedDefaultNs, ns) && info.documentDescriptor == nsDescriptor) return info;
+    if (Objects.equals(info.expectedDefaultNs, ns) && info.documentDescriptor == nsDescriptor) return info;
     return new CurrentContextInfo(nsDescriptor, ns);
   }
 

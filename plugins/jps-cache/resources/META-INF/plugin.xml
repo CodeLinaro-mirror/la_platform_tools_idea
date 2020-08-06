@@ -9,10 +9,18 @@
 ]]></description>
 
   <depends>Git4Idea</depends>
+  <depends>com.intellij.modules.java</depends>
+
+  <extensionPoints>
+    <extensionPoint qualifiedName="com.jetbrains.jpsServerAuthExtension"
+                    interface="com.intellij.jps.cache.client.JpsServerAuthExtension"
+                    dynamic="true"/>
+  </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
     <projectService serviceImplementation="com.intellij.jps.cache.loader.JpsOutputLoaderManager"/>
-    <notificationWhitelist groupIds="Compile Output Loader;Compile Output Loader Status"/>
+    <notificationAllowlist groupIds="Compile Output Loader;Compile Output Loader Status"/>
+    <postStartupActivity implementation="com.intellij.jps.cache.JpsCacheStartupActivity"/>
   </extensions>
 
   <projectListeners>
@@ -28,11 +36,5 @@
     </action>
   </actions>
 
-  <!-- Dirty hack for not making plugin dynamic https://youtrack.jetbrains.com/issue/IDEA-227327 -->
-  <project-components>
-    <component>
-      <implementation-class>com.intellij.jps.cache.JpsCachesDummyProjectComponent</implementation-class>
-    </component>
-  </project-components>
   <resource-bundle>messages.JpsCacheBundle</resource-bundle>
 </idea-plugin>

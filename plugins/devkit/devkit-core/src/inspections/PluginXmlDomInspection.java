@@ -3,11 +3,11 @@ package org.jetbrains.idea.devkit.inspections;
 
 import com.intellij.ExtensionPoints;
 import com.intellij.codeInspection.LocalQuickFix;
-import com.intellij.codeInspection.LocalQuickFixBase;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ui.ListTable;
 import com.intellij.codeInspection.ui.ListWrappingTableModel;
+import com.intellij.codeInspection.util.IntentionFamilyName;
 import com.intellij.diagnostic.ITNReporter;
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl;
 import com.intellij.ide.plugins.PluginManager;
@@ -65,6 +65,7 @@ import org.jetbrains.idea.devkit.dom.impl.PluginPsiClassConverter;
 import org.jetbrains.idea.devkit.inspections.quickfix.AddWithTagFix;
 import org.jetbrains.idea.devkit.module.PluginModuleType;
 import org.jetbrains.idea.devkit.util.DescriptorUtil;
+import org.jetbrains.idea.devkit.util.PluginPlatformInfo;
 import org.jetbrains.idea.devkit.util.PsiUtil;
 import org.jetbrains.jps.model.java.JavaModuleSourceRootTypes;
 
@@ -258,35 +259,34 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
     final Module module = listeners.getModule();
     if (module == null || PsiUtil.isIdeaProject(module.getProject())) return;
 
-    IdeaPlugin ideaPlugin = DomUtil.getParentOfType(listeners, IdeaPlugin.class, true);
-    assert ideaPlugin != null;
-    if (!hasRealPluginId(ideaPlugin)) {
-      ideaPlugin = findMainDescriptor(module);
-    }
+    PluginPlatformInfo platformInfo = PluginPlatformInfo.forDomElement(listeners);
+    final PluginPlatformInfo.PlatformResolveStatus resolveStatus = platformInfo.getResolveStatus();
 
-    if (ideaPlugin == null) {
+    if (resolveStatus == PluginPlatformInfo.PlatformResolveStatus.DEVKIT_NO_MAIN) {
       holder.createProblem(listeners, ProblemHighlightType.ERROR,
                            "Could not locate main plugin.xml file to determine required <idea-version> 'since-build'", null)
         .highlightWholeElement();
       return;
     }
 
-    final GenericAttributeValue<BuildNumber> sinceBuild = ideaPlugin.getIdeaVersion().getSinceBuild();
-    final boolean noSinceBuildXml = !DomUtil.hasXml(sinceBuild);
-    if (noSinceBuildXml ||
-        sinceBuild.getValue() == null) {
-
-      // Gradle setups usually do not specify it in plugin.xml
-      if (!PluginModuleType.isPluginModuleOrDependency(module)) return;
-
+    if (resolveStatus == PluginPlatformInfo.PlatformResolveStatus.DEVKIT_NO_SINCE_BUILD) {
+      final boolean noSinceBuildXml = !DomUtil.hasXml(platformInfo.getMainIdeaPlugin().getIdeaVersion().getSinceBuild());
       holder.createProblem(listeners, ProblemHighlightType.ERROR,
                            "Must specify <idea-version> 'since-build'", null,
-                           noSinceBuildXml ? new AddDomElementQuickFix<>(ideaPlugin.getIdeaVersion()) : null)
+                           noSinceBuildXml ? new AddDomElementQuickFix<>(platformInfo.getMainIdeaPlugin().getIdeaVersion()) : null)
         .highlightWholeElement();
       return;
     }
 
-    final int baselineVersion = sinceBuild.getValue().getBaselineVersion();
+    final BuildNumber buildNumber = platformInfo.getSinceBuildNumber();
+    if (buildNumber == null) {
+      holder.createProblem(listeners, ProblemHighlightType.ERROR,
+                           "Could not determine target platform version, please check project setup", null)
+        .highlightWholeElement();
+      return;
+    }
+
+    final int baselineVersion = buildNumber.getBaselineVersion();
 
     boolean canHaveOsAttribute = baselineVersion >= LISTENERS_OS_ATTRIBUTE_PLATFORM_VERSION;
     if (!canHaveOsAttribute) {
@@ -308,14 +308,6 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
                          "Feature available in platform version " + LISTENERS_PLATFORM_VERSION + " or later only, " +
                          "but specified 'since-build' platform is '" + baselineVersion + "'", null)
       .highlightWholeElement();
-  }
-
-  @Nullable
-  private static IdeaPlugin findMainDescriptor(@NotNull Module module) {
-    final XmlFile mainPluginXml = PluginModuleType.getPluginXml(module);
-    if (mainPluginXml == null) return null;
-
-    return DescriptorUtil.getIdeaPlugin(mainPluginXml);
   }
 
   private static void annotateDependency(Dependency dependency, DomElementAnnotationHolder holder) {
@@ -360,7 +352,7 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
     checkTemplateTextContains(ideaPlugin.getChangeNotes(), "Add change notes here", holder);
     checkTemplateTextContains(ideaPlugin.getChangeNotes(), "most HTML tags may be used", holder);
 
-    if (!hasRealPluginId(ideaPlugin)) return;
+    if (!ideaPlugin.hasRealPluginId()) return;
 
     MultiMap<String, Dependency> dependencies = MultiMap.create();
     ideaPlugin.getDependencies().forEach(dependency -> {
@@ -407,7 +399,7 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
       }
     }
 
-    if (!hasRealPluginId(ideaPlugin)) return;
+    if (!ideaPlugin.hasRealPluginId()) return;
 
     String id = ideaPlugin.getId().getStringValue();
     if (id != null &&
@@ -454,7 +446,7 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
   }
 
   private static void checkPluginIcon(IdeaPlugin ideaPlugin, DomElementAnnotationHolder holder, Module module) {
-    if (!hasRealPluginId(ideaPlugin)) return;
+    if (!ideaPlugin.hasRealPluginId()) return;
     if (!isUnderProductionSources(ideaPlugin, module)) return;
     if (Boolean.TRUE == ideaPlugin.getImplementationDetail().getValue()) return;
 
@@ -465,11 +457,6 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
                            DevKitBundle.message("inspections.plugin.xml.no.plugin.icon.svg.file", PLUGIN_ICON_SVG_FILENAME),
                            null);
     }
-  }
-
-  private static boolean hasRealPluginId(IdeaPlugin ideaPlugin) {
-    String pluginId = ideaPlugin.getPluginId();
-    return pluginId != null && !pluginId.equals(PluginManagerCore.CORE_PLUGIN_ID);
   }
 
   private static void annotateExtensionPoint(ExtensionPoint extensionPoint,
@@ -492,7 +479,12 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
         if (epQualifiedName != null && epQualifiedName.startsWith(pluginId + ".")) {
           holder.createProblem(extensionPoint.getQualifiedName(), ProblemHighlightType.WARNING,
                                DevKitBundle.message("inspections.plugin.xml.ep.qualifiedName.superfluous"), null,
-                               new LocalQuickFixBase(DevKitBundle.message("inspections.plugin.xml.ep.qualifiedName.superfluous.fix")) {
+                               new LocalQuickFix() {
+                                 @Override
+                                 public @IntentionFamilyName @NotNull String getFamilyName() {
+                                   return DevKitBundle.message("inspections.plugin.xml.ep.qualifiedName.superfluous.fix");
+                                 }
+
                                  @Override
                                  public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
                                    extensionPoint.getQualifiedName().undefine();
@@ -800,17 +792,31 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
     checkMaxLength(productDescriptor.getCode(), 15, holder);
 
     String releaseDate = productDescriptor.getReleaseDate().getValue();
-    if (releaseDate == null) return;
+    if (releaseDate != null && !isPlaceHolder(releaseDate)) {
+      try {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd", Locale.US);
+        dateFormat.setLenient(false);
+        dateFormat.parse(releaseDate);
+      }
+      catch (ParseException e) {
+        holder.createProblem(productDescriptor.getReleaseDate(),
+                             DevKitBundle.message("inspections.plugin.xml.product.descriptor.invalid.date"));
+      }
+    }
+    String version = productDescriptor.getReleaseVersion().getValue();
+    if (version != null && !isPlaceHolder(version)) {
+      try {
+        Integer.parseInt(version);
+      }
+      catch (NumberFormatException e) {
+        holder.createProblem(productDescriptor.getReleaseVersion(),
+                             DevKitBundle.message("inspections.plugin.xml.product.descriptor.invalid.version"));
+      }
+    }
+  }
 
-    try {
-      SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd", Locale.US);
-      dateFormat.setLenient(false);
-      dateFormat.parse(releaseDate);
-    }
-    catch (ParseException e) {
-      holder.createProblem(productDescriptor.getReleaseDate(),
-                           DevKitBundle.message("inspections.plugin.xml.product.descriptor.invalid.date"));
-    }
+  private static boolean isPlaceHolder(@Nullable String value) {
+    return value != null && value.length() > 4 && value.startsWith("__") && value.endsWith("__");
   }
 
   private static void annotateAddToGroup(AddToGroup addToGroup, DomElementAnnotationHolder holder) {

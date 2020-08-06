@@ -22,19 +22,20 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.Alarm
+import com.intellij.util.EditSourceOnDoubleClickHandler
 import com.intellij.util.EventDispatcher
 import com.intellij.util.FontUtil.spaceAndThinSpace
 import com.intellij.util.ui.tree.TreeUtil
+import com.intellij.util.ui.update.DisposableUpdate
 import com.intellij.util.ui.update.MergingUpdateQueue
-import com.intellij.util.ui.update.Update
 import git4idea.GitUtil
 import git4idea.merge.GitMergeUtil
 import git4idea.repo.GitConflict
 import git4idea.repo.GitConflict.ConflictSide
 import git4idea.repo.GitConflict.Status
-import git4idea.repo.GitConflictsHolder
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
+import git4idea.status.GitStagingAreaHolder
 import java.awt.BorderLayout
 import java.beans.PropertyChangeListener
 import java.util.*
@@ -69,10 +70,23 @@ class GitConflictsPanel(
       add(ScrollPaneFactory.createScrollPane(conflictsTree), BorderLayout.CENTER)
     }
 
-    conflictsTree.setDoubleClickAndEnterKeyHandler { showMergeWindowForSelection() }
+    conflictsTree.setDoubleClickHandler { e ->
+      when {
+        EditSourceOnDoubleClickHandler.isToggleEvent(conflictsTree, e) -> false
+        else -> {
+          showMergeWindowForSelection()
+          true
+        }
+      }
+    }
+    conflictsTree.setEnterKeyHandler {
+      showMergeWindowForSelection()
+      true
+    }
 
     val connection = project.messageBus.connect(this)
-    connection.subscribe(GitConflictsHolder.CONFLICTS_CHANGE, GitConflictsHolder.ConflictsListener { updateConflicts() })
+    connection.subscribe(GitStagingAreaHolder.TOPIC,
+                         GitStagingAreaHolder.StagingAreaListener { updateConflicts() })
     connection.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { updateConflicts() })
 
     updateConflicts()
@@ -94,7 +108,7 @@ class GitConflictsPanel(
   }
 
   private fun updateConflicts() {
-    updateQueue.queue(Update.create("update") {
+    updateQueue.queue(DisposableUpdate.createDisposable(this, "update", Runnable {
       val description = mergeHandler.loadMergeDescription()
 
       val newConflicts = ArrayList<GitConflict>()
@@ -103,7 +117,7 @@ class GitConflictsPanel(
       val repos = GitUtil.getRepositories(project)
       for (repo in repos) {
         if (GitMergeUtil.isReverseRoot(repo)) newReversedRoots.add(repo.root)
-        newConflicts.addAll(repo.conflictsHolder.conflicts)
+        newConflicts.addAll(repo.stagingAreaHolder.allConflicts)
       }
 
       runInEdt {
@@ -121,7 +135,7 @@ class GitConflictsPanel(
           TreeUtil.promiseSelectFirstLeaf(conflictsTree)
         }
       }
-    })
+    }))
   }
 
   fun canShowMergeWindowForSelection(): Boolean {
@@ -278,4 +292,6 @@ private class MyChangesTree(project: Project)
     })
     return groupingSupport
   }
+
+  override fun getToggleClickCount(): Int = 2
 }

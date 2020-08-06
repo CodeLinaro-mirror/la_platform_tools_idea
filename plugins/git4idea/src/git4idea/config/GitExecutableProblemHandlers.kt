@@ -11,6 +11,7 @@ import git4idea.config.GitExecutableProblemsNotifier.getPrettyErrorMessage
 import git4idea.i18n.GitBundle
 import org.jetbrains.annotations.CalledInAny
 import org.jetbrains.annotations.CalledInAwt
+import org.jetbrains.annotations.CalledInBackground
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.Nls.Capitalization.Sentence
 import org.jetbrains.annotations.Nls.Capitalization.Title
@@ -39,10 +40,10 @@ interface ErrorNotifier {
   @CalledInAny
   fun showError(@Nls(capitalization = Sentence) text: String,
                 @Nls(capitalization = Sentence) description: String? = null,
-                fixOption: FixOption)
+                fixOption: FixOption?)
 
   @CalledInAny
-  fun showError(@Nls(capitalization = Sentence) text: String, fixOption: FixOption) {
+  fun showError(@Nls(capitalization = Sentence) text: String, fixOption: FixOption?) {
     showError(text, null, fixOption)
   }
 
@@ -61,7 +62,7 @@ interface ErrorNotifier {
   @CalledInAny
   fun hideProgress()
 
-  @CalledInAny
+  @CalledInBackground
   fun resetGitExecutable() {
     GitVcsApplicationSettings.getInstance().setPathToGit(null)
     GitExecutableManager.getInstance().dropExecutableCache()
@@ -79,7 +80,8 @@ interface ErrorNotifier {
 
 @CalledInAwt
 internal fun showUnsupportedVersionError(project: Project, version: GitVersion, errorNotifier: ErrorNotifier) {
-  errorNotifier.showError(unsupportedVersionMessage(version), unsupportedVersionDescription(), getLinkToConfigure(project))
+  val description = if (version.type == GitVersion.Type.WSL1) unsupportedWslVersionDescription() else unsupportedVersionDescription()
+  errorNotifier.showError(unsupportedVersionMessage(version), description, getLinkToConfigure(project))
 }
 
 internal fun unsupportedVersionMessage(version: GitVersion): String =
@@ -87,6 +89,9 @@ internal fun unsupportedVersionMessage(version: GitVersion): String =
 
 internal fun unsupportedVersionDescription(): String =
   GitBundle.message("git.executable.validation.error.version.message", GitVersion.MIN.presentation)
+
+internal fun unsupportedWslVersionDescription(): String =
+  GitBundle.message("git.executable.validation.error.wsl1.unsupported.message")
 
 internal fun getLinkToConfigure(project: Project): ErrorNotifier.FixOption = ErrorNotifier.FixOption.Configure(project)
 
@@ -97,8 +102,17 @@ internal fun getErrorTitle(text: String, description: String?) =
 
 internal fun getErrorMessage(text: String, description: String?) = description ?: text
 
+internal fun getHumanReadableErrorFor(exception: Throwable): String? {
+  if (exception is GitNotInstalledException) {
+    return null
+  }
+  return getPrettyErrorMessage(exception)
+}
+
 private class DefaultExecutableProblemHandler(val project: Project) : GitExecutableProblemHandler {
   override fun showError(exception: Throwable, errorNotifier: ErrorNotifier, onErrorResolved: () -> Unit) {
-    errorNotifier.showError(getPrettyErrorMessage(exception), getLinkToConfigure(project))
+    errorNotifier.showError(GitBundle.message("executable.error.git.not.installed"),
+                            getHumanReadableErrorFor(exception),
+                            getLinkToConfigure(project))
   }
 }

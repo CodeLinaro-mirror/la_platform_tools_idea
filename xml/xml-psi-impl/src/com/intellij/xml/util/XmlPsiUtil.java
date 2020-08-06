@@ -27,6 +27,7 @@ import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.xml.*;
+import com.intellij.util.IdempotenceChecker;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,18 +39,18 @@ public class XmlPsiUtil {
   private static final Key<CachedValue<PsiElement>> PARSED_DECL_KEY = Key.create("PARSED_DECL_KEY");
   @NonNls public static final String XINCLUDE_URI = "http://www.w3.org/2001/XInclude";
 
-  public static boolean processXmlElements(XmlElement element, PsiElementProcessor processor, boolean deepFlag) {
+  public static boolean processXmlElements(XmlElement element, PsiElementProcessor<? super PsiElement> processor, boolean deepFlag) {
     return processXmlElements(element, processor, deepFlag, false);
   }
 
-  public static boolean processXmlElements(XmlElement element, PsiElementProcessor processor, boolean deepFlag, boolean wideFlag) {
+  public static boolean processXmlElements(XmlElement element, PsiElementProcessor<? super PsiElement> processor, boolean deepFlag, boolean wideFlag) {
     if (element == null) return true;
     PsiFile baseFile = element.isValid() ? element.getContainingFile() : null;
     return processXmlElements(element, processor, deepFlag, wideFlag, baseFile);
   }
 
   public static boolean processXmlElements(final XmlElement element,
-                                           final PsiElementProcessor processor,
+                                           final PsiElementProcessor<? super PsiElement> processor,
                                            final boolean deepFlag,
                                            final boolean wideFlag,
                                            final PsiFile baseFile) {
@@ -57,7 +58,7 @@ public class XmlPsiUtil {
   }
 
   public static boolean processXmlElements(final XmlElement element,
-                                           final PsiElementProcessor processor,
+                                           final PsiElementProcessor<? super PsiElement> processor,
                                            final boolean deepFlag,
                                            final boolean wideFlag,
                                            final PsiFile baseFile,
@@ -65,7 +66,7 @@ public class XmlPsiUtil {
     return new XmlElementProcessor(processor, baseFile).processXmlElements(element, deepFlag, wideFlag, processIncludes);
   }
 
-  public static boolean processXmlElementChildren(final XmlElement element, final PsiElementProcessor processor, final boolean deepFlag) {
+  public static boolean processXmlElementChildren(final XmlElement element, final PsiElementProcessor<? super PsiElement> processor, final boolean deepFlag) {
     final XmlPsiUtil.XmlElementProcessor p = new XmlPsiUtil.XmlElementProcessor(processor, element.getContainingFile());
 
     final boolean wideFlag = false;
@@ -94,11 +95,11 @@ public class XmlPsiUtil {
   }
 
   private static class XmlElementProcessor {
-    private final PsiElementProcessor processor;
+    private final PsiElementProcessor<? super PsiElement> processor;
     private final PsiFile targetFile;
     private final Set<String> visitedEntities = new HashSet<>();
 
-    XmlElementProcessor(PsiElementProcessor _processor, PsiFile _targetFile) {
+    XmlElementProcessor(PsiElementProcessor<? super PsiElement> _processor, PsiFile _targetFile) {
       processor = _processor;
       targetFile = _targetFile;
     }
@@ -126,7 +127,14 @@ public class XmlPsiUtil {
         startFrom = xmlConditionalSection.getBodyStart();
       }
       else if (processIncludes && XmlIncludeHandler.isXInclude(element)) {
-        for (PsiElement psiElement : InclusionProvider.getIncludedTags((XmlTag)element)) {
+        if (IdempotenceChecker.isLoggingEnabled()) {
+          IdempotenceChecker.logTrace("Processing xinclude " + element.getText());
+        }
+        PsiElement[] tags = InclusionProvider.getIncludedTags((XmlTag)element);
+        for (PsiElement psiElement : tags) {
+          if (IdempotenceChecker.isLoggingEnabled()) {
+            IdempotenceChecker.logTrace("Processing included tag " + psiElement);
+          }
           if (!processElement(psiElement, deepFlag, wideFlag, true)) return false;
         }
       }

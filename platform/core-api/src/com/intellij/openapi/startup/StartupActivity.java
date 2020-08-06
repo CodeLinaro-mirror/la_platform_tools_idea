@@ -14,14 +14,20 @@ import org.jetbrains.annotations.NotNull;
  * See https://github.com/JetBrains/intellij-community/blob/master/platform/service-container/overview.md#startup-activity.
  */
 public interface StartupActivity {
-  ExtensionPointName<StartupActivity> POST_STARTUP_ACTIVITY = ExtensionPointName.create("com.intellij.postStartupActivity");
+  ExtensionPointName<StartupActivity> POST_STARTUP_ACTIVITY = new ExtensionPointName<>("com.intellij.postStartupActivity");
 
   /**
    * Please see https://github.com/JetBrains/intellij-community/blob/master/platform/service-container/overview.md#startup-activity
    */
-  ExtensionPointName<StartupActivity.Background> BACKGROUND_POST_STARTUP_ACTIVITY = ExtensionPointName.create("com.intellij.backgroundPostStartupActivity");
+  ExtensionPointName<StartupActivity.Background> BACKGROUND_POST_STARTUP_ACTIVITY = new ExtensionPointName<>("com.intellij.backgroundPostStartupActivity");
 
   void runActivity(@NotNull Project project);
+
+  /**
+   * Represent a startup activity that should be executed before {@link com.intellij.openapi.project.DumbService} will be switched to "smart mode".
+   */
+  interface RequiredForSmartMode extends StartupActivity {
+  }
 
   interface DumbAware extends StartupActivity, com.intellij.openapi.project.DumbAware {
   }

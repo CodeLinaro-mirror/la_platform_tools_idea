@@ -8,12 +8,11 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.util.pico.DefaultPicoContainer
 import org.jetbrains.annotations.ApiStatus
 import org.picocontainer.PicoContainer
-import java.util.function.BiConsumer
 
 @ApiStatus.Internal
 fun <T : Any> processComponentInstancesOfType(container: PicoContainer, baseClass: Class<T>, processor: (T) -> Unit) {
   // we must use instances only from our adapter (could be service or something else)
-  for (adapter in container.componentAdapters) {
+  for (adapter in (container as DefaultPicoContainer).unsafeGetAdapters()) {
     if (adapter is MyComponentAdapter && baseClass.isAssignableFrom(adapter.componentImplementation)) {
       @Suppress("UNCHECKED_CAST")
       processor((adapter.getInitializedInstance() ?: continue) as T)
@@ -22,25 +21,21 @@ fun <T : Any> processComponentInstancesOfType(container: PicoContainer, baseClas
 }
 
 @ApiStatus.Internal
-fun processProjectComponents(container: PicoContainer, @Suppress("DEPRECATION") processor: BiConsumer<com.intellij.openapi.components.ProjectComponent, PluginDescriptor>) {
+fun processProjectComponents(container: PicoContainer, @Suppress("DEPRECATION") processor: (com.intellij.openapi.components.ProjectComponent, PluginDescriptor) -> Unit) {
   // we must use instances only from our adapter (could be service or something else)
-  for (adapter in container.componentAdapters) {
+  // unsafeGetAdapters should be not used here as ProjectManagerImpl uses it to call projectOpened
+  for (adapter in (container as DefaultPicoContainer).componentAdapters) {
     if (adapter is MyComponentAdapter) {
       @Suppress("DEPRECATION")
       val instance = adapter.getInitializedInstance() as? com.intellij.openapi.components.ProjectComponent ?: continue
-      processor.accept(instance, adapter.pluginDescriptor)
+      processor(instance, adapter.pluginDescriptor)
     }
   }
 }
 
 @ApiStatus.Internal
 fun processAllImplementationClasses(container: PicoContainer, processor: (componentClass: Class<*>, plugin: PluginDescriptor?) -> Boolean) {
-  val adapters = container.componentAdapters
-  if (adapters.isEmpty()) {
-    return
-  }
-
-  for (o in adapters) {
+  for (o in (container as DefaultPicoContainer).unsafeGetAdapters()) {
     var aClass: Class<*>
     if (o is ServiceComponentAdapter) {
       val pluginDescriptor = o.pluginDescriptor
@@ -85,8 +80,8 @@ fun processAllImplementationClasses(container: PicoContainer, processor: (compon
 
 @ApiStatus.Internal
 fun isWorkspaceComponent(container: PicoContainer, componentImplementation: Class<*>?): Boolean {
-  for (adapter in container.componentAdapters) {
-    if (adapter is MyComponentAdapter && adapter.componentImplementation == componentImplementation) {
+  for (adapter in (container as DefaultPicoContainer).unsafeGetAdapters()) {
+    if (adapter is MyComponentAdapter && adapter.componentImplementation === componentImplementation) {
       return adapter.isWorkspaceComponent
     }
   }

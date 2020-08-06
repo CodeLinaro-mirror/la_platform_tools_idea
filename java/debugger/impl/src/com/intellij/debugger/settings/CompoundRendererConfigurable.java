@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.settings;
 
 import com.intellij.debugger.JavaDebuggerBundle;
@@ -27,8 +13,13 @@ import com.intellij.debugger.ui.JavaDebuggerSupport;
 import com.intellij.debugger.ui.tree.render.*;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.editor.event.DocumentEvent;
+import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.ComponentValidator;
+import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.PsiTypeCodeFragmentImpl;
 import com.intellij.ui.*;
@@ -52,8 +43,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 class CompoundRendererConfigurable extends JPanel {
-  private CompoundTypeRenderer myRenderer;
-  private CompoundTypeRenderer myOriginalRenderer;
+  private CompoundReferenceRenderer myRenderer;
+  private CompoundReferenceRenderer myOriginalRenderer;
   private Project myProject;
   private final ClassNameEditorWithBrowseButton myClassNameField;
   private final JRadioButton myRbDefaultLabel;
@@ -129,10 +120,24 @@ class CompoundRendererConfigurable extends JPanel {
         }
       }
     }, myProject);
-    myClassNameField.getEditorTextField().addFocusListener(new FocusAdapter() {
+    EditorTextField editorTextField = myClassNameField.getEditorTextField();
+    editorTextField.addFocusListener(new FocusAdapter() {
       @Override
       public void focusLost(@NotNull FocusEvent e) {
         updateContext(myClassNameField.getText());
+      }
+    });
+    ComponentValidator validator = new ComponentValidator(myProject).withValidator(() -> {
+      String text = myClassNameField.getText();
+      if (StringUtil.containsAnyChar(text, "<>")) {
+        return new ValidationInfo(JavaDebuggerBundle.message("error.compound.renderer.configurable.fqn.generic"), editorTextField);
+      }
+      return null;
+    }).installOn(editorTextField);
+    myClassNameField.addDocumentListener(new DocumentListener() {
+      @Override
+      public void documentChanged(@NotNull DocumentEvent event) {
+        validator.revalidate();
       }
     });
 
@@ -192,9 +197,9 @@ class CompoundRendererConfigurable extends JPanel {
   }
 
   public void setRenderer(NodeRenderer renderer) {
-    if (renderer instanceof CompoundTypeRenderer) {
-      myRenderer = (CompoundTypeRenderer)renderer;
-      myOriginalRenderer = (CompoundTypeRenderer)renderer.clone();
+    if (renderer instanceof CompoundReferenceRenderer) {
+      myRenderer = (CompoundReferenceRenderer)renderer;
+      myOriginalRenderer = (CompoundReferenceRenderer)renderer.clone();
     }
     else {
       myRenderer = myOriginalRenderer = null;
@@ -202,7 +207,7 @@ class CompoundRendererConfigurable extends JPanel {
     reset();
   }
 
-  public CompoundTypeRenderer getRenderer() {
+  public CompoundReferenceRenderer getRenderer() {
     return myRenderer;
   }
 
@@ -308,7 +313,7 @@ class CompoundRendererConfigurable extends JPanel {
     if (myRenderer == null) {
       return false;
     }
-    final CompoundTypeRenderer cloned = (CompoundTypeRenderer)myRenderer.clone();
+    final CompoundReferenceRenderer cloned = myRenderer.clone();
     flushDataTo(cloned);
     return !DebuggerUtilsEx.externalizableEqual(cloned, myOriginalRenderer);
   }
@@ -319,10 +324,10 @@ class CompoundRendererConfigurable extends JPanel {
     }
     flushDataTo(myRenderer);
     // update the renderer to compare with in order to find out whether we've been modified since last apply
-    myOriginalRenderer = (CompoundTypeRenderer)myRenderer.clone();
+    myOriginalRenderer = myRenderer.clone();
   }
 
-  private void flushDataTo(final CompoundTypeRenderer renderer) { // label
+  private void flushDataTo(final CompoundReferenceRenderer renderer) { // label
     LabelRenderer labelRenderer = null;
     renderer.setShowType(myShowTypeCheckBox.isSelected());
     if (myRbExpressionLabel.isSelected()) {

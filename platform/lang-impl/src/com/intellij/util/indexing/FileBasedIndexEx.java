@@ -2,30 +2,33 @@
 package com.intellij.util.indexing;
 
 import com.intellij.ide.lightEdit.LightEdit;
+import com.intellij.model.ModelBranch;
+import com.intellij.model.ModelBranchImpl;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
-import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.*;
-import com.intellij.openapi.roots.impl.PushedFilePropertiesUpdaterImpl;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileFilter;
 import com.intellij.openapi.vfs.VirtualFileWithId;
-import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFS;
 import com.intellij.psi.search.EverythingGlobalScope;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.*;
+import com.intellij.util.containers.ConcurrentBitSet;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.impl.InvertedIndexValueIterator;
 import com.intellij.util.indexing.roots.*;
 import gnu.trove.THashSet;
-import gnu.trove.TIntHashSet;
+import it.unimi.dsi.fastutil.ints.IntIterable;
+import it.unimi.dsi.fastutil.ints.IntIterator;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -48,7 +51,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
   public abstract ProjectIndexableFilesFilter projectIndexableFiles(@Nullable Project project);
 
   @ApiStatus.Internal
-  abstract <K, V> UpdatableIndex<K, V, FileContent> getIndex(ID<K, V> indexId);
+  public abstract <K, V> UpdatableIndex<K, V, FileContent> getIndex(ID<K, V> indexId);
 
   @ApiStatus.Internal
   public abstract void waitUntilIndicesAreInitialized();
@@ -87,7 +90,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
       return true;
     };
     if (restrictToFile != null) {
-      processValuesInOneFile(indexId, dataKey, restrictToFile, processor, filter);
+      processValuesInOneFile(indexId, dataKey, restrictToFile, filter, processor);
     }
     else {
       processValuesInScope(indexId, dataKey, true, filter, null, processor);
@@ -122,7 +125,8 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
       if (idFilter == null) {
         idFilter = projectIndexableFiles(scope.getProject());
       }
-      return index.processAllKeys(processor, scope, idFilter);
+      @Nullable IdFilter finalIdFilter = idFilter;
+      return myAccessValidator.validate(indexId, () -> index.processAllKeys(processor, scope, finalIdFilter));
     }
     catch (StorageException e) {
       scheduleRebuild(indexId, e);
@@ -182,7 +186,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
                                       @NotNull GlobalSearchScope filter,
                                       @Nullable IdFilter idFilter) {
     return inFile != null
-           ? processValuesInOneFile(indexId, dataKey, inFile, processor, filter)
+           ? processValuesInOneFile(indexId, dataKey, inFile, filter, processor)
            : processValuesInScope(indexId, dataKey, false, filter, idFilter, processor);
   }
 
@@ -212,7 +216,7 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
         return null;
       }
 
-      return myAccessValidator.validate(indexId, ()-> ConcurrencyUtil.withLock(index.getReadLock(), ()->computable.convert(index)));
+      return myAccessValidator.validate(indexId, () -> ConcurrencyUtil.withLock(index.getLock().readLock(), ()->computable.convert(index)));
     }
     catch (StorageException e) {
       scheduleRebuild(indexId, e);
@@ -232,12 +236,18 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
   private <K, V> boolean processValuesInOneFile(@NotNull ID<K, V> indexId,
                                                 @NotNull K dataKey,
                                                 @NotNull VirtualFile restrictToFile,
-                                                @NotNull ValueProcessor<? super V> processor, @NotNull GlobalSearchScope scope) {
-    if (!(restrictToFile instanceof VirtualFileWithId)) return true;
+                                                @NotNull GlobalSearchScope scope,
+                                                @NotNull ValueProcessor<? super V> processor) {
+    Project project = scope.getProject();
+    if (!(restrictToFile instanceof VirtualFileWithId)) {
+      return project == null ||
+             ModelBranch.getFileBranch(restrictToFile) == null ||
+             processInMemoryFileData(indexId, dataKey, project, restrictToFile, processor);
+    }
 
     int restrictedFileId = getFileId(restrictToFile);
 
-    if (!getAccessibleFileIdFilter(scope.getProject()).test(restrictedFileId)) return true;
+    if (!getAccessibleFileIdFilter(project).test(restrictedFileId)) return true;
 
     return processValueIterator(indexId, dataKey, restrictToFile, scope, valueIt -> {
       while (valueIt.hasNext()) {
@@ -251,15 +261,30 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
     });
   }
 
+  private <K, V> boolean processInMemoryFileData(ID<K, V> indexId,
+                                                 K dataKey,
+                                                 Project project,
+                                                 VirtualFile file,
+                                                 ValueProcessor<? super V> processor) {
+    Map<K, V> data = getFileData(indexId, file, project);
+    return !data.containsKey(dataKey) || processor.process(file, data.get(dataKey));
+  }
+
   private <K, V> boolean processValuesInScope(@NotNull ID<K, V> indexId,
                                               @NotNull K dataKey,
                                               boolean ensureValueProcessedOnce,
                                               @NotNull GlobalSearchScope scope,
                                               @Nullable IdFilter idFilter,
                                               @NotNull ValueProcessor<? super V> processor) {
-    PersistentFS fs = (PersistentFS)ManagingFS.getInstance();
-    IdFilter filter = idFilter != null ? idFilter : projectIndexableFiles(scope.getProject());
-    IntPredicate accessibleFileFilter = getAccessibleFileIdFilter(scope.getProject());
+    Project project = scope.getProject();
+    if (project != null &&
+        !ModelBranchImpl.processBranchedFilesInScope(scope, file -> processInMemoryFileData(indexId, dataKey, project, file, processor))) {
+      return false;
+    }
+
+    PersistentFS fs = PersistentFS.getInstance();
+    IdFilter filter = idFilter != null ? idFilter : projectIndexableFiles(project);
+    IntPredicate accessibleFileFilter = getAccessibleFileIdFilter(project);
 
     return processValueIterator(indexId, dataKey, null, scope, valueIt -> {
       while (valueIt.hasNext()) {
@@ -296,13 +321,13 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
   }
 
   @Override
-  public <K, V> boolean processFilesContainingAllKeys(@NotNull final ID<K, V> indexId,
-                                                      @NotNull final Collection<? extends K> dataKeys,
-                                                      @NotNull final GlobalSearchScope filter,
+  public <K, V> boolean processFilesContainingAllKeys(@NotNull ID<K, V> indexId,
+                                                      @NotNull Collection<? extends K> dataKeys,
+                                                      @NotNull GlobalSearchScope filter,
                                                       @Nullable Condition<? super V> valueChecker,
-                                                      @NotNull final Processor<? super VirtualFile> processor) {
+                                                      @NotNull Processor<? super VirtualFile> processor) {
     ProjectIndexableFilesFilter filesSet = projectIndexableFiles(filter.getProject());
-    final TIntHashSet set = collectFileIdsContainingAllKeys(indexId, dataKeys, filter, valueChecker, filesSet);
+    IntSet set = collectFileIdsContainingAllKeys(indexId, dataKeys, filter, valueChecker, filesSet);
     return set != null && processVirtualFiles(set, filter, processor);
   }
 
@@ -331,24 +356,40 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
   }
 
   @Override
-  public void iterateIndexableFilesConcurrently(@NotNull ContentIterator processor, @NotNull Project project, @NotNull ProgressIndicator indicator) {
-    PushedFilePropertiesUpdaterImpl.invokeConcurrentlyIfPossible(collectScanRootRunnables(processor, project, indicator));
-  }
-
-  @Override
-  public void iterateIndexableFiles(@NotNull ContentIterator processor, @NotNull Project project, ProgressIndicator indicator) {
-    for (Runnable r : collectScanRootRunnables(processor, project, indicator)) r.run();
+  public void iterateIndexableFiles(@NotNull ContentIterator processor, @NotNull Project project, @Nullable ProgressIndicator indicator) {
+    List<IndexableFilesProvider> providers = getOrderedIndexableFilesProviders(project);
+    ConcurrentBitSet visitedFileSet = new ConcurrentBitSet();
+    boolean wasIndeterminate = false;
+    if (indicator != null) {
+      wasIndeterminate = indicator.isIndeterminate();
+      indicator.setIndeterminate(false);
+      indicator.setFraction(0);
+      indicator.pushState();
+    }
+    try {
+      for (int i = 0; i < providers.size(); i++) {
+        if (indicator != null) {
+          indicator.checkCanceled();
+        }
+        IndexableFilesProvider provider = providers.get(i);
+        if (!provider.iterateFiles(project, processor, visitedFileSet)) {
+          break;
+        }
+        if (indicator != null) {
+          indicator.setFraction((i + 1) * 1.0 / providers.size());
+        }
+      }
+    } finally {
+      if (indicator != null) {
+        indicator.popState();
+        indicator.setIndeterminate(wasIndeterminate);
+      }
+    }
   }
 
   /**
-   * This method is backport-ed from master (202+ branches), where indexing roots collecting has been reimplemented.
-   * In this 201 branch the method is used only for shared-indexes, which are experimental.
-   * It must not be used in production code!
-   *
-   * It is copied to avoid massive merge conflicts on backport-ing changes to "shared-indexes" plugin from the master branch.
+   * Returns providers of files to be indexed. Indexing is performed in the order corresponding to the resulting list.
    */
-  @ApiStatus.Internal
-  @ApiStatus.Experimental
   @NotNull
   public List<IndexableFilesProvider> getOrderedIndexableFilesProviders(@NotNull Project project) {
     if (LightEdit.owns(project)) {
@@ -398,45 +439,42 @@ public abstract class FileBasedIndexEx extends FileBasedIndex {
     });
   }
 
-  @NotNull
-  private static List<Runnable> collectScanRootRunnables(@NotNull final ContentIterator processor,
-                                                         @NotNull final Project project,
-                                                         ProgressIndicator indicator) {
-    FileBasedIndexScanRunnableCollector collector = FileBasedIndexScanRunnableCollector.getInstance(project);
-    ProgressIndicator finalIndicator = indicator != null ? indicator : new EmptyProgressIndicator();
-    return collector.collectScanRootRunnables(processor, finalIndicator);
-  }
-
   @Nullable
-  private <K, V> TIntHashSet collectFileIdsContainingAllKeys(@NotNull final ID<K, V> indexId,
-                                                             @NotNull final Collection<? extends K> dataKeys,
-                                                             @NotNull final GlobalSearchScope filter,
-                                                             @Nullable final Condition<? super V> valueChecker,
-                                                             @Nullable final ProjectIndexableFilesFilter projectFilesFilter) {
+  private <K, V> IntSet collectFileIdsContainingAllKeys(@NotNull final ID<K, V> indexId,
+                                                        @NotNull final Collection<? extends K> dataKeys,
+                                                        @NotNull final GlobalSearchScope filter,
+                                                        @Nullable final Condition<? super V> valueChecker,
+                                                        @Nullable final ProjectIndexableFilesFilter projectFilesFilter) {
     IntPredicate accessibleFileFilter = getAccessibleFileIdFilter(filter.getProject());
-    ThrowableConvertor<UpdatableIndex<K, V, FileContent>, TIntHashSet, StorageException> convertor =
-      index -> InvertedIndexUtil.collectInputIdsContainingAllKeys(index, dataKeys, __ -> {
-                                                                    ProgressManager.checkCanceled();
-                                                                    return true;
-                                                                  }, valueChecker,
-                                                                  projectFilesFilter == null ? accessibleFileFilter::test : id -> {
-                                                                    return projectFilesFilter.containsFileId(id) && accessibleFileFilter.test(id);
-                                                                  });
+    ValueContainer.IntPredicate idChecker = projectFilesFilter == null ? accessibleFileFilter::test : id ->
+      projectFilesFilter.containsFileId(id) && accessibleFileFilter.test(id);
+    Condition<? super K> keyChecker = __ -> {
+      ProgressManager.checkCanceled();
+      return true;
+    };
+    ThrowableConvertor<UpdatableIndex<K, V, FileContent>, IntSet, StorageException> convertor = index -> {
+      return InvertedIndexUtil.collectInputIdsContainingAllKeys(index, dataKeys, keyChecker, valueChecker, idChecker);
+    };
 
     return processExceptions(indexId, null, filter, convertor);
   }
 
-  private static boolean processVirtualFiles(@NotNull TIntHashSet ids,
-                                             @NotNull final GlobalSearchScope filter,
-                                             @NotNull final Processor<? super VirtualFile> processor) {
-    final PersistentFS fs = (PersistentFS)ManagingFS.getInstance();
-    return ids.forEach(id -> {
+  private static boolean processVirtualFiles(@NotNull IntIterable ids,
+                                             @NotNull VirtualFileFilter filter,
+                                             @NotNull Processor<? super VirtualFile> processor) {
+    PersistentFS fs = PersistentFS.getInstance();
+    for (IntIterator iterator = ids.iterator(); iterator.hasNext(); ) {
       ProgressManager.checkCanceled();
+      int id = iterator.nextInt();
       VirtualFile file = IndexInfrastructure.findFileByIdIfCached(fs, id);
       if (file != null && filter.accept(file)) {
-        return processor.process(file);
+        boolean processNext = processor.process(file);
+        ProgressManager.checkCanceled();
+        if (!processNext) {
+          return false;
+        }
       }
-      return true;
-    });
+    }
+    return true;
   }
 }

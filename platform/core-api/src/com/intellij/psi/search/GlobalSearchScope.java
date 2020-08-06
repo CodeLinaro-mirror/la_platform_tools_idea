@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.search;
 
 import com.intellij.core.CoreBundle;
+import com.intellij.model.ModelBranch;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.module.Module;
@@ -86,6 +87,13 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     return Collections.emptySet();
   }
 
+  /**
+   * @return a set of model branches whose copied files this scope might contain
+   */
+  public @NotNull Collection<ModelBranch> getModelBranchesAffectingScope() {
+    return Collections.emptySet();
+  }
+
   @NotNull
   @Contract(pure = true)
   public GlobalSearchScope intersectWith(@NotNull GlobalSearchScope scope) {
@@ -162,6 +170,11 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
         return GlobalSearchScope.this.getUnloadedModulesBelongingToScope();
       }
 
+      @Override
+      public @NotNull Collection<ModelBranch> getModelBranchesAffectingScope() {
+        return GlobalSearchScope.this.getModelBranchesAffectingScope();
+      }
+
       @NonNls
       @Override
       public String toString() {
@@ -224,7 +237,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     return new NotScope(scope);
   }
 
-  private static class NotScope extends DelegatingGlobalSearchScope {
+  private static final class NotScope extends DelegatingGlobalSearchScope {
     private NotScope(@NotNull GlobalSearchScope scope) {
       super(scope);
     }
@@ -384,7 +397,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     };
   }
 
-  private static class IntersectionScope extends GlobalSearchScope {
+  private static final class IntersectionScope extends GlobalSearchScope {
     private final GlobalSearchScope myScope1;
     private final GlobalSearchScope myScope2;
     private final String myDisplayName;
@@ -457,6 +470,11 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     }
 
     @Override
+    public @NotNull Collection<ModelBranch> getModelBranchesAffectingScope() {
+      return ContainerUtil.intersection(myScope1.getModelBranchesAffectingScope(), myScope2.getModelBranchesAffectingScope());
+    }
+
+    @Override
     public boolean equals(Object o) {
       if (this == o) return true;
       if (!(o instanceof IntersectionScope)) return false;
@@ -478,7 +496,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     }
   }
 
-  private static class UnionScope extends GlobalSearchScope {
+  private static final class UnionScope extends GlobalSearchScope {
     private final GlobalSearchScope[] myScopes;
 
     @NotNull
@@ -523,6 +541,15 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
       Set<UnloadedModuleDescription> result = new LinkedHashSet<>();
       for (GlobalSearchScope scope : myScopes) {
         result.addAll(scope.getUnloadedModulesBelongingToScope());
+      }
+      return result;
+    }
+
+    @Override
+    public @NotNull Collection<ModelBranch> getModelBranchesAffectingScope() {
+      Set<ModelBranch> result = new LinkedHashSet<>();
+      for (GlobalSearchScope scope : myScopes) {
+        result.addAll(scope.getModelBranchesAffectingScope());
       }
       return result;
     }
@@ -608,7 +635,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     return new FileTypeRestrictionScope(scope, fileTypes);
   }
 
-  private static class FileTypeRestrictionScope extends DelegatingGlobalSearchScope {
+  private static final class FileTypeRestrictionScope extends DelegatingGlobalSearchScope {
     private final FileType[] myFileTypes;
 
     private FileTypeRestrictionScope(@NotNull GlobalSearchScope scope, FileType @NotNull [] fileTypes) {
@@ -713,7 +740,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
 
   public static final GlobalSearchScope EMPTY_SCOPE = new EmptyScope();
 
-  private static class FileScope extends GlobalSearchScope implements Iterable<VirtualFile> {
+  private static final class FileScope extends GlobalSearchScope implements Iterable<VirtualFile> {
     private final VirtualFile myVirtualFile; // files can be out of project roots
     @Nullable private final String myDisplayName;
     private final Module myModule;

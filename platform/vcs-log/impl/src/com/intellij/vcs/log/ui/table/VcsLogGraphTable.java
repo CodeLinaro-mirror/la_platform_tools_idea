@@ -188,11 +188,12 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   }
 
   public void updateDataPack(@NotNull VisiblePack visiblePack, boolean permGraphChanged) {
-    Selection previousSelection = getSelection();
     boolean filtersChanged = !getModel().getVisiblePack().getFilters().equals(visiblePack.getFilters());
 
+    Selection previousSelection = getSelection();
     getModel().setVisiblePack(visiblePack);
     previousSelection.restore(visiblePack.getVisibleGraph(), true, permGraphChanged);
+
     for (VcsLogHighlighter highlighter : myHighlighters) {
       highlighter.update(visiblePack, permGraphChanged);
     }
@@ -646,7 +647,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     return mySelection;
   }
 
-  public void handleAnswer(@Nullable GraphAnswer<Integer> answer) {
+  public void handleAnswer(@NotNull GraphAnswer<Integer> answer) {
     GraphCommitCellController controller = (GraphCommitCellController)Objects.requireNonNull(getController(VcsLogColumn.COMMIT));
     Cursor cursor = controller.handleGraphAnswer(answer, true, null, null);
     myMouseAdapter.handleCursor(cursor);
@@ -750,9 +751,12 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   }
 
   private class StringCellRenderer extends ColoredTableCellRenderer {
+    private StringCellRenderer() {
+      setCellState(new GraphCommitCellRenderer.BorderlessTableCellState());
+    }
+
     @Override
     protected void customizeCellRenderer(JTable table, Object value, boolean selected, boolean hasFocus, int row, int column) {
-      setBorder(null);
       if (value == null) {
         return;
       }

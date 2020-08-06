@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.ide.util.gotoByName;
 
@@ -15,6 +15,7 @@ import com.intellij.ide.actions.CopyReferenceAction;
 import com.intellij.ide.actions.GotoFileAction;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextBorder;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextFieldUI;
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.MnemonicHelper;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
@@ -1531,7 +1532,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
 
       final UsageViewPresentation presentation = new UsageViewPresentation();
       final String text = getTrimmedText();
-      final String prefixPattern = myFindUsagesTitle + " \'" + text + "\'";
+      final String prefixPattern = myFindUsagesTitle + " '" + text + "'";
       presentation.setCodeUsagesString(prefixPattern);
       presentation.setUsagesInGeneratedCodeString(prefixPattern + " in generated code");
       presentation.setTabName(prefixPattern);
@@ -1567,7 +1568,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
             ApplicationManager.getApplication().runReadAction(() -> {
               myCalcUsagesThread.addElementsByPattern(text, collected, indicator, everywhere);
 
-              indicator.setText("Prepare...");
+              indicator.setText(LangBundle.message("progress.text.prepare"));
               fillUsages(collected, usages, targets);
             });
           }

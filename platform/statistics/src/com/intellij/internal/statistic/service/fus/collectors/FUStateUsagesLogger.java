@@ -6,6 +6,8 @@ import com.intellij.internal.statistic.eventLog.EventLogGroup;
 import com.intellij.internal.statistic.eventLog.EventLogSystemEvents;
 import com.intellij.internal.statistic.eventLog.FeatureUsageData;
 import com.intellij.internal.statistic.eventLog.fus.FeatureUsageLogger;
+import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
@@ -13,10 +15,8 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.concurrency.Promises;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * <p>Called by a scheduler once a day and records IDE/project state.</p> <br/>
@@ -27,64 +27,89 @@ import java.util.Set;
  * <p>To record IDE events (e.g. invoked action, opened dialog) use {@link FUCounterUsageLogger}</p>
  */
 public class FUStateUsagesLogger implements UsagesCollectorConsumer {
-  public static final Object LOCK = new Object();
+  private static final Logger LOG = Logger.getInstance(FUStateUsagesLogger.class);
+  private static final Object LOCK = new Object();
 
   public static FUStateUsagesLogger create() { return new FUStateUsagesLogger(); }
 
-  public void logProjectStates(@NotNull Project project, @NotNull ProgressIndicator indicator) {
+  public @NotNull CompletableFuture<Void> logProjectStates(@NotNull Project project, @NotNull ProgressIndicator indicator) {
     synchronized (LOCK) {
+      List<CompletableFuture<Void>> futures = new ArrayList<>();
       for (ProjectUsagesCollector usagesCollector : ProjectUsagesCollector.getExtensions(this)) {
-        final EventLogGroup group = new EventLogGroup(usagesCollector.getGroupId(), usagesCollector.getVersion());
-        try {
-          logUsagesAsStateEvents(project, group, usagesCollector.getData(project), usagesCollector.getMetrics(project, indicator));
+        String groupId = usagesCollector.getGroupId();
+        if (!PluginInfoDetectorKt.getPluginInfo(usagesCollector.getClass()).isDevelopedByJetBrains()) {
+          LOG.warn("Skip '" + groupId + "' because its registered in a third-party plugin");
+          continue;
         }
-        catch (Throwable th) {
-          logCollectingUsageFailed(project, group, th);
-        }
+
+        EventLogGroup group = new EventLogGroup(groupId, usagesCollector.getVersion());
+        Promise<? extends Set<MetricEvent>> metrics = usagesCollector.getMetrics(project, indicator);
+        futures.add(logMetricsOrError(project, group, usagesCollector.getData(project), metrics));
       }
+      return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
   }
 
-  public void logApplicationStates() {
+  public @NotNull CompletableFuture<Void> logApplicationStates() {
     synchronized (LOCK) {
+      List<CompletableFuture<Void>> futures = new ArrayList<>();
       for (ApplicationUsagesCollector usagesCollector : ApplicationUsagesCollector.getExtensions(this)) {
-        final EventLogGroup group = new EventLogGroup(usagesCollector.getGroupId(), usagesCollector.getVersion());
-        try {
-          logUsagesAsStateEvents(null, group, usagesCollector.getData(), Promises.resolvedPromise(usagesCollector.getMetrics()));
+        String groupId = usagesCollector.getGroupId();
+        if (!PluginInfoDetectorKt.getPluginInfo(usagesCollector.getClass()).isDevelopedByJetBrains()) {
+          LOG.warn("Skip '" + groupId + "' because its registered in a third-party plugin");
+          continue;
         }
-        catch (Throwable th) {
-          logCollectingUsageFailed(null, group, th);
-        }
+
+        EventLogGroup group = new EventLogGroup(groupId, usagesCollector.getVersion());
+        Promise<Set<MetricEvent>> metrics = Promises.resolvedPromise(usagesCollector.getMetrics());
+        futures.add(logMetricsOrError(null, group, usagesCollector.getData(), metrics));
       }
+      return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
   }
 
-  private static void logUsagesAsStateEvents(@Nullable Project project,
-                                             @NotNull EventLogGroup group,
-                                             @Nullable FeatureUsageData context,
-                                             @NotNull Promise<? extends Set<MetricEvent>> metricsPromise) {
+  private static CompletableFuture<Void> logMetricsOrError(@Nullable Project project,
+                                                           @NotNull EventLogGroup group,
+                                                           @Nullable FeatureUsageData context,
+                                                           @NotNull Promise<? extends Set<MetricEvent>> metricsPromise) {
+    try {
+      return logUsagesAsStateEvents(project, group, context, metricsPromise);
+    }
+    catch (Throwable th) {
+      if (project != null && project.isDisposed()) {
+        return CompletableFuture.completedFuture(null);
+      }
+
+      FeatureUsageData data = new FeatureUsageData().addProject(project);
+      return FeatureUsageLogger.INSTANCE.logState(group, EventLogSystemEvents.STATE_COLLECTOR_FAILED, data.build());
+    }
+  }
+
+  private static @NotNull CompletableFuture<Void> logUsagesAsStateEvents(@Nullable Project project,
+                                                                         @NotNull EventLogGroup group,
+                                                                         @Nullable FeatureUsageData context,
+                                                                         @NotNull Promise<? extends Set<MetricEvent>> metricsPromise) {
+    CompletableFuture<Void> future = new CompletableFuture<>();
     metricsPromise.onSuccess(metrics -> {
       if (project != null && project.isDisposed()) {
         return;
       }
       FeatureUsageLogger logger = FeatureUsageLogger.INSTANCE;
+
+      List<CompletableFuture<Void>> futures = new ArrayList<>();
       if (!metrics.isEmpty()) {
         final FeatureUsageData groupData = addProject(project, context);
         for (MetricEvent metric : metrics) {
           final FeatureUsageData data = mergeWithEventData(groupData, metric.getData());
           final Map<String, Object> eventData = data != null ? data.build() : Collections.emptyMap();
-          logger.logState(group, metric.getEventId(), eventData);
+          futures.add(logger.logState(group, metric.getEventId(), eventData));
         }
       }
-      logger.logState(group, EventLogSystemEvents.STATE_COLLECTOR_INVOKED, new FeatureUsageData().addProject(project).build());
+      futures.add(logger.logState(group, EventLogSystemEvents.STATE_COLLECTOR_INVOKED, new FeatureUsageData().addProject(project).build()));
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+        .whenComplete((result, throwable) -> future.complete(null));
     });
-  }
-
-  private static void logCollectingUsageFailed(@Nullable Project project, @NotNull EventLogGroup group, @NotNull Throwable error) {
-    if (project != null && project.isDisposed()) {
-      return;
-    }
-    FeatureUsageLogger.INSTANCE.logState(group, EventLogSystemEvents.STATE_COLLECTOR_FAILED, new FeatureUsageData().addProject(project).build());
+    return future;
   }
 
   @Nullable

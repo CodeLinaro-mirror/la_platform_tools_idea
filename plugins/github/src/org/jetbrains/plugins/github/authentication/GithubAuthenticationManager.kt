@@ -13,6 +13,7 @@ import org.jetbrains.plugins.github.authentication.accounts.GithubAccount
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccountManager
 import org.jetbrains.plugins.github.authentication.accounts.GithubProjectDefaultAccountHolder
 import org.jetbrains.plugins.github.authentication.ui.GithubLoginDialog
+import org.jetbrains.plugins.github.i18n.GithubBundle
 import java.awt.Component
 
 /**
@@ -34,7 +35,8 @@ class GithubAuthenticationManager internal constructor() {
   @CalledInAwt
   @JvmOverloads
   internal fun requestNewToken(account: GithubAccount, project: Project?, parentComponent: Component? = null): String? {
-    val dialog = GithubLoginDialog(GithubApiRequestExecutor.Factory.getInstance(), project, parentComponent, message = "Missing access token for $account")
+    val dialog = GithubLoginDialog(GithubApiRequestExecutor.Factory.getInstance(), project, parentComponent,
+                                   message = GithubBundle.message("account.token.missing.for", account))
       .withServer(account.server.toString(), false)
       .withCredentials(account.name)
       .withToken()
@@ -42,8 +44,8 @@ class GithubAuthenticationManager internal constructor() {
     DialogManager.show(dialog)
     if (!dialog.isOK) return null
 
-    val token = dialog.getToken()
-    account.name = dialog.getLogin()
+    val token = dialog.token
+    account.name = dialog.login
     accountManager.updateAccountToken(account, token)
     return token
   }
@@ -55,7 +57,7 @@ class GithubAuthenticationManager internal constructor() {
     DialogManager.show(dialog)
     if (!dialog.isOK) return null
 
-    return registerAccount(dialog.getLogin(), dialog.getServer(), dialog.getToken())
+    return registerAccount(dialog.login, dialog.server, dialog.token)
   }
 
   @CalledInAwt
@@ -65,7 +67,7 @@ class GithubAuthenticationManager internal constructor() {
     DialogManager.show(dialog)
     if (!dialog.isOK) return null
 
-    return registerAccount(dialog.getLogin(), dialog.getServer(), dialog.getToken())
+    return registerAccount(dialog.login, dialog.server, dialog.token)
   }
 
   @CalledInAwt
@@ -80,7 +82,7 @@ class GithubAuthenticationManager internal constructor() {
     DialogManager.show(dialog)
     if (!dialog.isOK) return null
 
-    return registerAccount(dialog.getLogin(), dialog.getServer(), dialog.getToken())
+    return registerAccount(dialog.login, dialog.server, dialog.token)
   }
 
   internal fun isAccountUnique(name: String,
@@ -96,8 +98,8 @@ class GithubAuthenticationManager internal constructor() {
     DialogManager.show(dialog)
     if (!dialog.isOK) return false
 
-    val token = dialog.getToken()
-    account.name = dialog.getLogin()
+    val token = dialog.token
+    account.name = dialog.login
     accountManager.updateAccountToken(account, token)
     return true
   }

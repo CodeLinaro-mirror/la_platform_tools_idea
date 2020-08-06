@@ -62,6 +62,7 @@ public interface IdeActions {
   @NonNls String ACTION_EDITOR_CREATE_RECTANGULAR_SELECTION_ON_MOUSE_DRAG = "EditorCreateRectangularSelectionOnMouseDrag";
   @NonNls String ACTION_EDITOR_CLONE_CARET_BELOW= "EditorCloneCaretBelow";
   @NonNls String ACTION_EDITOR_CLONE_CARET_ABOVE= "EditorCloneCaretAbove";
+  @NonNls String ACTION_EDITOR_ADD_CARET_PER_SELECTED_LINE = "EditorAddCaretPerSelectedLine";
   @NonNls String ACTION_EDITOR_TOGGLE_STICKY_SELECTION= "EditorToggleStickySelection";
   @NonNls String ACTION_EDITOR_TOGGLE_OVERWRITE_MODE= "EditorToggleInsertState";
   @NonNls String ACTION_EDITOR_TOGGLE_CASE= "EditorToggleCase";
@@ -111,6 +112,7 @@ public interface IdeActions {
   @NonNls String GROUP_CONSOLE_EDITOR_POPUP = "ConsoleEditorPopupMenu";
   @NonNls String GROUP_CUT_COPY_PASTE = "CutCopyPasteGroup";
   @NonNls String GROUP_EDITOR_TAB_POPUP = "EditorTabPopupMenu";
+  @NonNls String GROUP_HELP_MENU = "HelpMenu";
 
   @NonNls String ACTION_CVS_ADD = "Cvs.Add";
   @NonNls String ACTION_CVS_COMMIT = "Cvs.Commit";
@@ -224,6 +226,7 @@ public interface IdeActions {
 
   @NonNls String GROUP_OTHER_MENU = "OtherMenu";
   @NonNls String GROUP_EDITOR = "EditorActions";
+  @NonNls String GROUP_EDITOR_BIDI_TEXT_DIRECTION = "EditorBidiTextDirection";
 
   @NonNls String ACTION_TOGGLE_LINE_BREAKPOINT = "ToggleLineBreakpoint";
 
@@ -350,5 +353,5 @@ public interface IdeActions {
   @NonNls String BREADCRUMBS_SHOW_BELOW = "EditorBreadcrumbsShowBelow";
   @NonNls String BREADCRUMBS_HIDE_BOTH = "EditorBreadcrumbsHideBoth";
 
-  @NonNls String ACTION_RESTOR_FONT_PREVIEW_TEXT = "RestoreFontPreviewTextAction";
+  @NonNls String ACTION_RESTORE_FONT_PREVIEW_TEXT = "RestoreFontPreviewTextAction";
 }

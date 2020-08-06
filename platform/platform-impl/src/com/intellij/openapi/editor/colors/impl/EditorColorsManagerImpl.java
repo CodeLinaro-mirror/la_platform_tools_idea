@@ -9,6 +9,8 @@ import com.intellij.configurationStore.SchemeExtensionProvider;
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.WelcomeWizardUtil;
+import com.intellij.ide.plugins.DynamicPluginListener;
+import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.ui.UITheme;
 import com.intellij.ide.ui.laf.TempUIThemeBasedLookAndFeelInfo;
@@ -57,10 +59,7 @@ import javax.swing.UIManager.LookAndFeelInfo;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 import java.util.function.Function;
 
 @State(
@@ -181,6 +180,26 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
     initEditableBundledSchemesCopies();
     resolveLinksToBundledSchemes();
     initScheme();
+
+    ApplicationManager.getApplication().getMessageBus().connect().subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
+      @Override
+      public void pluginLoaded(@NotNull IdeaPluginDescriptor pluginDescriptor) {
+        String activeScheme = mySchemeManager.getCurrentSchemeName();
+        mySchemeManager.reload();
+
+        if (StringUtil.isNotEmpty(activeScheme)) {
+          EditorColorsScheme scheme = getScheme(activeScheme);
+          if (scheme != null) {
+            setGlobalScheme(scheme);
+          }
+        }
+      }
+
+      @Override
+      public void pluginUnloaded(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
+        mySchemeManager.reload();
+      }
+    });
   }
 
   private void initDefaultSchemes() {
@@ -264,9 +283,9 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
       }
       catch (InvalidDataException e) {
         brokenSchemesList.add(scheme);
-        String message = "Color scheme '" + scheme.getName() + "'" +
-                         " points to incorrect or non-existent default (base) scheme " +
-                         e.getMessage();
+        String message = IdeBundle
+          .message("notification.content.color.scheme", scheme.getName(),
+                   e.getMessage());
         Notifications.Bus.notify(
           new Notification(Notifications.SYSTEM_MESSAGES_GROUP_ID, IdeBundle.message("notification.title.incompatible.color.scheme"), message, NotificationType.ERROR));
       }
@@ -368,7 +387,7 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
   }
 
   private void loadRemainAdditionalTextAttributes(@NotNull MultiMap<String, AdditionalTextAttributesEP> additionalTextAttributes) {
-    additionalTextAttributes.entrySet().forEach(entry -> {
+    for (Map.Entry<String, Collection<AdditionalTextAttributesEP>> entry : additionalTextAttributes.entrySet()) {
       String schemeName = entry.getKey();
       EditorColorsScheme editorColorsScheme = mySchemeManager.findSchemeByName(schemeName);
       if (!(editorColorsScheme instanceof AbstractColorsScheme)) {
@@ -376,11 +395,11 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
           LOG.warn("Cannot find scheme: " + schemeName + " from plugins: " +
                    StringUtil.join(entry.getValue(), ep -> ep.getPluginDescriptor().getPluginId().getIdString(), ";"));
         }
-        return;
+        continue;
       }
 
       loadAdditionalTextAttributesForScheme((AbstractColorsScheme)editorColorsScheme, entry.getValue());
-    });
+    }
     additionalTextAttributes.clear();
   }
 
@@ -394,11 +413,11 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
 
   private static void loadAdditionalTextAttributesForScheme(@NotNull AbstractColorsScheme scheme,
                                                             @NotNull Collection<AdditionalTextAttributesEP> attributesEPs) {
-    attributesEPs.forEach(attributesEP -> {
+    for (AdditionalTextAttributesEP attributesEP : attributesEPs) {
       URL resource = attributesEP.getLoaderForClass().getResource(attributesEP.file);
       if (resource == null) {
         LOG.warn("resource not found: " + attributesEP.file);
-        return;
+        continue;
       }
       try {
         Element root = JDOMUtil.load(URLUtil.openStream(resource));
@@ -412,7 +431,7 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
       catch (Exception e) {
         LOG.error(e);
       }
-    });
+    }
   }
 
   @Override

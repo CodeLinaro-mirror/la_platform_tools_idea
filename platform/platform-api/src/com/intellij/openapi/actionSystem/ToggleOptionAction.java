@@ -1,7 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem;
 
-import org.jetbrains.annotations.Nls;
+import com.intellij.openapi.util.NlsActions.ActionDescription;
+import com.intellij.openapi.util.NlsActions.ActionText;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,10 +47,12 @@ public class ToggleOptionAction extends ToggleAction {
   @Override
   public final void update(@NotNull AnActionEvent event) {
     Option option = optionSupplier.apply(event);
-    boolean supported = option != null && option.isEnabled();
+    boolean enabled = option != null && option.isEnabled();
+    boolean visible = enabled || option != null && option.isAlwaysVisible();
     Presentation presentation = event.getPresentation();
-    presentation.setEnabledAndVisible(supported);
-    if (supported) {
+    presentation.setEnabled(enabled);
+    presentation.setVisible(visible);
+    if (visible) {
       Toggleable.setSelected(presentation, option.isSelected());
       String name = option.getName();
       if (name != null) presentation.setText(name);
@@ -64,7 +67,7 @@ public class ToggleOptionAction extends ToggleAction {
      * @return a not null string to override an action name
      */
     @Nullable
-    @Nls(capitalization = Nls.Capitalization.Title)
+    @ActionText
     default String getName() {
       return null;
     }
@@ -73,13 +76,17 @@ public class ToggleOptionAction extends ToggleAction {
      * @return a not null string to override an action description
      */
     @Nullable
-    @Nls(capitalization = Nls.Capitalization.Sentence)
+    @ActionDescription
     default String getDescription() {
       return null;
     }
 
     default boolean isEnabled() {
       return true;
+    }
+
+    default boolean isAlwaysVisible() {
+      return false;
     }
 
     boolean isSelected();

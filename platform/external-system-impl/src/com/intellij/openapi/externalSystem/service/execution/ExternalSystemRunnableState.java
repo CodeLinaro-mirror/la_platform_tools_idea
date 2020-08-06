@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.execution;
 
 import com.intellij.build.*;
@@ -12,6 +12,7 @@ import com.intellij.execution.*;
 import com.intellij.execution.configurations.ParametersList;
 import com.intellij.execution.configurations.RunProfileState;
 import com.intellij.execution.configurations.SimpleJavaParameters;
+import com.intellij.execution.filters.Filter;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessOutputTypes;
 import com.intellij.execution.runners.ExecutionEnvironment;
@@ -27,7 +28,6 @@ import com.intellij.openapi.externalSystem.execution.ExternalSystemExecutionCons
 import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationEvent;
-import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListenerAdapter;
 import com.intellij.openapi.externalSystem.model.task.event.ExternalSystemBuildEvent;
 import com.intellij.openapi.externalSystem.model.task.event.ExternalSystemTaskExecutionEvent;
@@ -40,7 +40,6 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.net.NetUtils;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.xdebugger.XDebugProcess;
@@ -52,6 +51,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.Arrays;
 
 import static com.intellij.openapi.externalSystem.util.ExternalSystemUtil.convert;
 import static com.intellij.openapi.externalSystem.util.ExternalSystemUtil.getConsoleManagerFor;
@@ -137,7 +137,7 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
                                    mySettings.getTaskNames(), mySettings.getExecutionName(), ": ", "");
 
     final ExternalSystemProcessHandler processHandler = new ExternalSystemProcessHandler(task, executionName);
-    final ExternalSystemExecutionConsoleManager<ExternalSystemRunConfiguration, ExecutionConsole, ProcessHandler>
+    final ExternalSystemExecutionConsoleManager<ExecutionConsole, ProcessHandler>
       consoleManager = getConsoleManagerFor(task);
 
     final ExecutionConsole consoleView =
@@ -152,10 +152,14 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
       Disposer.register(consoleView, processHandler);
       restartActions = consoleManager.getRestartActions(consoleView);
     }
+    DefaultBuildDescriptor buildDescriptor =
+      new DefaultBuildDescriptor(task.getId(), executionName, task.getExternalProjectPath(), System.currentTimeMillis());
     Class<? extends BuildProgressListener> progressListenerClazz = task.getUserData(ExternalSystemRunConfiguration.PROGRESS_LISTENER_KEY);
+    Filter[] filters = consoleManager.getCustomExecutionFilters(myProject, task, myEnv);
+    Arrays.stream(filters).forEach(buildDescriptor::withExecutionFilter);
     final BuildProgressListener progressListener =
       progressListenerClazz != null ? ServiceManager.getService(myProject, progressListenerClazz)
-                                    : createBuildView(task.getId(), executionName, task.getExternalProjectPath(), consoleView);
+                                    : createBuildView(buildDescriptor, consoleView);
 
     ExternalSystemRunConfiguration.EP_NAME
       .forEachExtensionSafe(extension -> extension.attachToProcess(myConfiguration, processHandler, myEnv.getRunnerSettings()));
@@ -176,22 +180,20 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
           @Override
           public void onStart(@NotNull ExternalSystemTaskId id, String workingDir) {
             if (progressListener != null) {
-              long eventTime = System.currentTimeMillis();
               AnAction rerunTaskAction = new ExternalSystemRunConfiguration.MyTaskRerunAction(progressListener, myEnv, myContentDescriptor);
               BuildViewSettingsProvider viewSettingsProvider =
                 consoleView instanceof BuildViewSettingsProvider ?
                 new BuildViewSettingsProviderAdapter((BuildViewSettingsProvider)consoleView) : null;
+              buildDescriptor
+                .withProcessHandler(processHandler, view -> ExternalSystemRunConfiguration
+                  .foldGreetingOrFarewell(consoleView, greeting, true))
+                .withContentDescriptor(() -> myContentDescriptor)
+                .withRestartAction(rerunTaskAction)
+                .withRestartActions(restartActions)
+                .withExecutionEnvironment(myEnv);
               progressListener.onEvent(id,
-                                       new StartBuildEventImpl(new DefaultBuildDescriptor(id, executionName, workingDir, eventTime),
-                                                               "running...")
-                                         .withProcessHandler(processHandler, view -> ExternalSystemRunConfiguration
-                                           .foldGreetingOrFarewell(consoleView, greeting, true))
-                                         .withContentDescriptorSupplier(() -> myContentDescriptor)
-                                         .withRestartAction(rerunTaskAction)
-                                         .withRestartActions(restartActions)
-                                         .withExecutionEnvironment(myEnv)
-                                         .withBuildViewSettingsProvider(viewSettingsProvider)
-              );
+                                       new StartBuildEventImpl(buildDescriptor, BuildBundle.message("build.status.running"))
+                                         .withBuildViewSettingsProvider(viewSettingsProvider));
             }
           }
 
@@ -212,14 +214,15 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
             DataProvider dataProvider = BuildConsoleUtils.getDataProvider(id, progressListener);
             FailureResult failureResult =
               ExternalSystemUtil.createFailureResult(executionName + " failed", e, id.getProjectSystemId(), myProject, dataProvider);
-            eventDispatcher.onEvent(id, new FinishBuildEventImpl(id, null, System.currentTimeMillis(), "failed", failureResult));
+            eventDispatcher.onEvent(id, new FinishBuildEventImpl(id, null, System.currentTimeMillis(),
+                                                                 BuildBundle.message("build.status.failed"), failureResult));
             processHandler.notifyProcessTerminated(1);
           }
 
           @Override
           public void onSuccess(@NotNull ExternalSystemTaskId id) {
             eventDispatcher.onEvent(id, new FinishBuildEventImpl(
-              id, null, System.currentTimeMillis(), "successful", new SuccessResultImpl()));
+              id, null, System.currentTimeMillis(), BuildBundle.message("build.event.message.successful"), new SuccessResultImpl()));
           }
 
           @Override
@@ -248,10 +251,11 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
             processHandler.notifyProcessTerminated(0);
           }
         };
-        task.execute(ArrayUtil.prepend(taskListener, ExternalSystemTaskNotificationListener.EP_NAME.getExtensions()));
+        task.execute(taskListener);
         Throwable taskError = task.getError();
         if (taskError != null && !(taskError instanceof Exception)) {
-          FinishBuildEventImpl failureEvent = new FinishBuildEventImpl(task.getId(), null, System.currentTimeMillis(), "failed",
+          FinishBuildEventImpl failureEvent = new FinishBuildEventImpl(task.getId(), null, System.currentTimeMillis(),
+                                                                       BuildBundle.message("build.status.failed"),
                                                                        new FailureResultImpl(taskError));
           eventDispatcher.onEvent(task.getId(), failureEvent);
         }
@@ -280,8 +284,9 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
   @Nullable
   private String getJvmParametersSetup() throws ExecutionException {
     final SimpleJavaParameters extensionsJP = new SimpleJavaParameters();
-    ExternalSystemRunConfiguration.EP_NAME.forEachExtensionSafe(
-      extension -> extension.updateVMParameters(myConfiguration, extensionsJP, myEnv.getRunnerSettings(), myEnv.getExecutor()));
+    for (ExternalSystemRunConfigurationExtension extension : ExternalSystemRunConfiguration.EP_NAME.getExtensionList()) {
+      extension.updateVMParameters(myConfiguration, extensionsJP, myEnv.getRunnerSettings(), myEnv.getExecutor());
+    }
     String jvmParametersSetup = "";
     if (myDebugPort <= 0) {
       final ParametersList allVMParameters = new ParametersList();
@@ -301,11 +306,7 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
     return nullize(jvmParametersSetup);
   }
 
-  private BuildProgressListener createBuildView(ExternalSystemTaskId id,
-                                                String executionName,
-                                                String workingDir,
-                                                ExecutionConsole executionConsole) {
-    BuildDescriptor buildDescriptor = new DefaultBuildDescriptor(id, executionName, workingDir, System.currentTimeMillis());
+  private BuildView createBuildView(DefaultBuildDescriptor buildDescriptor, ExecutionConsole executionConsole) {
     return new BuildView(myProject, executionConsole, buildDescriptor, "build.toolwindow.run.selection.state",
                          new ViewManager() {
                            @Override

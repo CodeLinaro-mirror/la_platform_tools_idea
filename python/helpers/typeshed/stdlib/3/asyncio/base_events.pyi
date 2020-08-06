@@ -2,18 +2,14 @@ from socket import socket, _Address, _RetAddress
 import ssl
 import sys
 from typing import Any, Awaitable, Callable, Dict, Generator, IO, List, Optional, Sequence, Tuple, TypeVar, Union, overload
+from typing_extensions import Literal
 from abc import ABCMeta
 from asyncio.futures import Future
 from asyncio.events import AbstractEventLoop, AbstractServer, Handle, TimerHandle
 from asyncio.protocols import BaseProtocol
 from asyncio.tasks import Task
 from asyncio.transports import BaseTransport
-from _types import FileDescriptorLike
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from _typeshed import FileDescriptorLike
 
 if sys.version_info >= (3, 7):
     from contextvars import Context
@@ -72,8 +68,10 @@ class BaseEventLoop(AbstractEventLoop, metaclass=ABCMeta):
         def call_soon_threadsafe(self, callback: Callable[..., Any], *args: Any, context: Optional[Context] = ...) -> Handle: ...
     else:
         def call_soon_threadsafe(self, callback: Callable[..., Any], *args: Any) -> Handle: ...
-    async def run_in_executor(self, executor: Any,
-                              func: Callable[..., _T], *args: Any) -> _T: ...
+    # run_in_executor is defined as a coroutine in AbstractEventLoop but returns a Future in concrete implementation.
+    # Need to ignore mypy Return type error as a result.
+    def run_in_executor(self, executor: Any,  # type: ignore
+                        func: Callable[..., _T], *args: Any) -> Future[_T]: ...
     def set_default_executor(self, executor: Any) -> None: ...
     # Network I/O methods returning Futures.
     # TODO the "Tuple[Any, ...]" should be "Union[Tuple[str, int], Tuple[str, int, int, int]]" but that triggers
@@ -216,3 +214,5 @@ class BaseEventLoop(AbstractEventLoop, metaclass=ABCMeta):
     # Debug flag management.
     def get_debug(self) -> bool: ...
     def set_debug(self, enabled: bool) -> None: ...
+    if sys.version_info >= (3, 9):
+        async def shutdown_default_executor(self) -> None: ...

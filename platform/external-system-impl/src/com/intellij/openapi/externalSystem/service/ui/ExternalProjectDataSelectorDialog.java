@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.ui;
 
 import com.intellij.icons.AllIcons;
@@ -13,10 +13,7 @@ import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ExternalProjectInfo;
 import com.intellij.openapi.externalSystem.model.Key;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
-import com.intellij.openapi.externalSystem.model.project.Identifiable;
-import com.intellij.openapi.externalSystem.model.project.ModuleData;
-import com.intellij.openapi.externalSystem.model.project.ModuleDependencyData;
-import com.intellij.openapi.externalSystem.model.project.ProjectData;
+import com.intellij.openapi.externalSystem.model.project.*;
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle;
@@ -43,12 +40,12 @@ import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.ui.tree.TreeUtil;
-import gnu.trove.TObjectHashingStrategy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 import java.awt.*;
@@ -58,11 +55,10 @@ import java.util.*;
 /**
  * @author Vladislav.Soroka
  */
-public class ExternalProjectDataSelectorDialog extends DialogWrapper {
-
+public final class ExternalProjectDataSelectorDialog extends DialogWrapper {
   private static final int MAX_PATH_LENGTH = 50;
   private static final Set<? extends Key<?>> DATA_KEYS = ContainerUtil.set(ProjectKeys.PROJECT, ProjectKeys.MODULE);
-  private static final com.intellij.openapi.util.Key<DataNode> MODIFIED_NODE_KEY = com.intellij.openapi.util.Key.create("modifiedData");
+  private static final com.intellij.openapi.util.Key<DataNode<?>> MODIFIED_NODE_KEY = com.intellij.openapi.util.Key.create("modifiedData");
   private static final com.intellij.openapi.util.Key<DataNodeCheckedTreeNode> CONNECTED_UI_NODE_KEY =
     com.intellij.openapi.util.Key.create("connectedUiNode");
   @NotNull
@@ -81,9 +77,7 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
   @Nullable
   private final Object myPreselectedNodeObject;
   private CheckboxTree myTree;
-  @SuppressWarnings("unchecked")
-  private final MultiMap<DataNode<Identifiable>, DataNode<Identifiable>> dependentNodeMap =
-    MultiMap.create(TObjectHashingStrategy.IDENTITY);
+  private final MultiMap<DataNode<Identifiable>, DataNode<Identifiable>> dependentNodeMap = MultiMap.createIdentity();
 
   private final SimpleModificationTracker myModificationTracker = new SimpleModificationTracker();
   private final CachedValue<SelectionState> selectionState = new CachedValueImpl<>(
@@ -290,8 +284,8 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
   }
 
   private Couple<CheckedTreeNode> createRoot() {
-    final Map<DataNode, DataNodeCheckedTreeNode> treeNodeMap = ContainerUtil.newIdentityTroveMap();
-    final Map<String, DataNode> ideGroupingMap = new TreeMap<>(); // need order for assigning parents
+    final Map<DataNode<?>, DataNodeCheckedTreeNode> treeNodeMap = new IdentityHashMap<>();
+    final Map<String, DataNode<?>> ideGroupingMap = new TreeMap<>(); // need order for assigning parents
 
     final DataNodeCheckedTreeNode[] preselectedNode = {null};
     final DataNodeCheckedTreeNode[] rootModuleNode = {null};
@@ -359,7 +353,7 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
       }
     });
 
-    for (Map.Entry<String, DataNode> groupingEntry : ideGroupingMap.entrySet()) {
+    for (Map.Entry<String, DataNode<?>> groupingEntry : ideGroupingMap.entrySet()) {
       DataNode node = groupingEntry.getValue();
       if (!(node.getData() instanceof ModuleData)) continue;
       ModuleData moduleData = (ModuleData)node.getData();
@@ -402,8 +396,8 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
     }
 
     List<TreeNode> nodes = projectNode != null ? TreeUtil.listChildren(projectNode) : ContainerUtil.emptyList();
-    Collections.sort(nodes, (o1, o2) -> {
-      if(o1 instanceof DataNodeCheckedTreeNode && o2 instanceof DataNodeCheckedTreeNode) {
+    nodes.sort((o1, o2) -> {
+      if (o1 instanceof DataNodeCheckedTreeNode && o2 instanceof DataNodeCheckedTreeNode) {
         if (rootModuleComment.equals(((DataNodeCheckedTreeNode)o1).comment)) return -1;
         if (rootModuleComment.equals(((DataNodeCheckedTreeNode)o2).comment)) return 1;
         return StringUtil.naturalCompare(((DataNodeCheckedTreeNode)o1).text, ((DataNodeCheckedTreeNode)o2).text);
@@ -442,7 +436,7 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
     return result;
   }
 
-  private class DataNodeCheckedTreeNode extends CheckedTreeNode {
+  private final class DataNodeCheckedTreeNode extends CheckedTreeNode {
     private static final int MAX_DEPENDENCIES_TO_DESCRIBE = 5;
 
     private final DataNode myDataNode;
@@ -525,9 +519,9 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
       if (!checked && parent instanceof DataNodeCheckedTreeNode) {
         if (myDataNode.getKey().equals(ProjectKeys.MODULE) &&
             ((DataNodeCheckedTreeNode)parent).myDataNode.getKey().equals(ProjectKeys.PROJECT)) {
-          final DataNode projectDataNode = ((DataNodeCheckedTreeNode)parent).myDataNode;
-          final ProjectData projectData = (ProjectData)projectDataNode.getData();
-          final ModuleData moduleData = (ModuleData)myDataNode.getData();
+          DataNode<?> projectDataNode = ((DataNodeCheckedTreeNode)parent).myDataNode;
+          ExternalConfigPathAware projectData = (ProjectData)projectDataNode.getData();
+          ExternalConfigPathAware moduleData = (ModuleData)myDataNode.getData();
           if (moduleData.getLinkedExternalProjectPath().equals(projectData.getLinkedExternalProjectPath())) {
             if (ExternalSystemApiUtil.findAll(projectDataNode, ProjectKeys.MODULE).size() == 1) {
               ((DataNodeCheckedTreeNode)parent).setChecked(false);
@@ -695,9 +689,11 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      final DefaultTreeModel treeModel = (DefaultTreeModel)myTree.getModel();
-      final Object root = treeModel.getRoot();
-      if (!(root instanceof CheckedTreeNode)) return;
+      TreeModel treeModel = myTree.getModel();
+      Object root = treeModel.getRoot();
+      if (!(root instanceof CheckedTreeNode)) {
+        return;
+      }
 
       if (!myShowSelectedRowsOnly) {
         myTree.setNodeState((CheckedTreeNode)root, true);
@@ -798,8 +794,7 @@ public class ExternalProjectDataSelectorDialog extends DialogWrapper {
   @Override
   public boolean showAndGet() {
     final BooleanValueHolder result = new BooleanValueHolder(false);
-    DumbService.getInstance(myProject).suspendIndexingAndRun(
-      "Select External Data",
+    DumbService.getInstance(myProject).suspendIndexingAndRun(ExternalSystemBundle.message("activity.name.select.external.data"),
       () -> result.setValue(super.showAndGet())
     );
     return result.getValue();

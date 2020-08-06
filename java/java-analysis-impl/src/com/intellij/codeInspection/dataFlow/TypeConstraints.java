@@ -303,7 +303,9 @@ public class TypeConstraints {
 
     @Override
     public boolean canBeInstantiated() {
-      return !myClass.hasModifierProperty(PsiModifier.ABSTRACT) &&
+      // Abstract final type is incorrect. We, however, assume that final wins: it can be instantiated
+      // otherwise TypeConstraints.instanceOf(type) would return impossible type
+      return (myClass.hasModifierProperty(PsiModifier.FINAL) || !myClass.hasModifierProperty(PsiModifier.ABSTRACT)) &&
              !CommonClassNames.JAVA_LANG_VOID.equals(myClass.getQualifiedName());
     }
 
@@ -322,8 +324,15 @@ public class TypeConstraints {
     @NotNull
     @Override
     public String toString() {
-      // TODO: support anonymous classes
-      return String.valueOf(myClass.getQualifiedName());
+      String name = myClass.getQualifiedName();
+      if (name == null) {
+        name = myClass.getName();
+      }
+      if (name == null && myClass instanceof PsiAnonymousClass) {
+        PsiClassType baseClassType = ((PsiAnonymousClass)myClass).getBaseClassType();
+        name = "anonymous " + createExact(baseClassType);
+      }
+      return String.valueOf(name);
     }
 
     @Override
@@ -334,7 +343,12 @@ public class TypeConstraints {
     @Override
     public StreamEx<Exact> superTypes() {
       List<Exact> superTypes = new ArrayList<>();
-      InheritanceUtil.processSupers(myClass, false, t -> superTypes.add(exactClass(t)));
+      InheritanceUtil.processSupers(myClass, false, t -> {
+        if (!t.hasModifierProperty(PsiModifier.FINAL)) {
+          superTypes.add(exactClass(t));
+        }
+        return true;
+      });
       return StreamEx.of(superTypes);
     }
 
@@ -428,6 +442,11 @@ public class TypeConstraints {
       }
       return false;
     }
+
+    @Override
+    public @NotNull Exact getArrayComponent() {
+      return myComponent;
+    }
   }
 
   private static final class Unresolved implements TypeConstraint.Exact {
@@ -435,6 +454,11 @@ public class TypeConstraints {
 
     private Unresolved(@NotNull String reference) {
       myReference = reference;
+    }
+
+    @Override
+    public boolean isResolved() {
+      return false;
     }
 
     @Override

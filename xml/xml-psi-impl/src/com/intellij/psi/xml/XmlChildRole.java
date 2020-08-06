@@ -1,14 +1,17 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.xml;
 
 import com.intellij.lang.ASTNode;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.tree.DefaultRoleFinder;
+import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.RoleFinder;
 import com.intellij.util.ArrayUtil;
 import com.intellij.xml.util.XmlTagUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Function;
 
 public interface XmlChildRole {
 
@@ -34,13 +37,12 @@ public interface XmlChildRole {
   RoleFinder EMPTY_TAG_END_FINDER = new DefaultRoleFinder(XmlTokenType.XML_EMPTY_ELEMENT_END);
   RoleFinder ATTRIBUTE_NAME_FINDER = new DefaultRoleFinder(XmlTokenType.XML_NAME);
   RoleFinder ATTRIBUTE_VALUE_VALUE_FINDER = new DefaultRoleFinder(XmlTokenType.XML_ATTRIBUTE_VALUE_TOKEN);
-  RoleFinder START_TAG_END_FINDER = new DefaultRoleFinder(XmlTokenType.XML_TAG_END) {
-    {
-      for (StartTagEndTokenProvider tokenProvider : StartTagEndTokenProvider.EP_NAME.getExtensionList()) {
-        myElementTypes = ArrayUtil.mergeArrays(myElementTypes, tokenProvider.getTypes());
-      }
-    }
-  };
+
+
+  RoleFinder START_TAG_END_FINDER = new DefaultRoleFinder(() -> {
+    return StartTagEndTokenProvider.EP_NAME.computeIfAbsent("the key", Helper.START_TAG_END_FINDER);
+  });
+
   RoleFinder START_TAG_START_FINDER = new DefaultRoleFinder(XmlTokenType.XML_START_TAG_START);
 
   int XML_DOCUMENT = 223;
@@ -63,4 +65,14 @@ public interface XmlChildRole {
   int XML_TAG = 241;
   int XML_ATTRIBUTE_VALUE = 243;
   int HTML_DOCUMENT = 252;
+}
+
+final class Helper {
+  static final Function<String, IElementType[]> START_TAG_END_FINDER = s -> {
+    IElementType[] elementTypes = new IElementType[]{XmlTokenType.XML_TAG_END};
+    for (StartTagEndTokenProvider tokenProvider : StartTagEndTokenProvider.EP_NAME.getExtensionList()) {
+      elementTypes = ArrayUtil.mergeArrays(elementTypes, tokenProvider.getTypes());
+    }
+    return elementTypes;
+  };
 }

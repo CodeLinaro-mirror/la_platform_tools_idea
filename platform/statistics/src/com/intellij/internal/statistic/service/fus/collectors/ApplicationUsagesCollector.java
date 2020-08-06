@@ -2,17 +2,15 @@
 package com.intellij.internal.statistic.service.fus.collectors;
 
 import com.intellij.internal.statistic.beans.MetricEvent;
-import com.intellij.internal.statistic.beans.MetricEventFactoryKt;
-import com.intellij.internal.statistic.beans.UsageDescriptor;
 import com.intellij.internal.statistic.eventLog.FeatureUsageData;
 import com.intellij.internal.statistic.eventLog.validator.SensitiveDataValidator;
 import com.intellij.openapi.extensions.ExtensionPointName;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * <p>Use it to create a collector which records IDE state.</p>
@@ -22,18 +20,19 @@ import java.util.stream.Collectors;
  *   <li>Inherit the class, implement {@link ApplicationUsagesCollector#getMetrics()} and register collector in plugin.xml;</li>
  *   <li>Specify collectors data scheme and implement custom validation rules if necessary.<br/>
  *   For more information see {@link SensitiveDataValidator};</li>
- *   <li>Create an <a href="https://youtrack.jetbrains.com/issues/FUS">issue</a> to add group, its data scheme and description to the whitelist;</li>
+ *   <li>Create an <a href="https://youtrack.jetbrains.com/issues/FUS">issue</a> with group data scheme and descriptions
+ *   to register it on the server in statistic metadata repository</li>
  * </ol>
  *
  * To test collector:
  * <ol>
  *  <li>
- *    If group is not whitelisted, add it to local whitelist with "Add Test Group to Local Whitelist" action.<br/>
- *    {@link com.intellij.internal.statistic.actions.AddTestGroupToLocalWhitelistAction}
+ *    If group is not registered on the server, add it to events test scheme with "Add Group to Events Test Scheme" action.<br/>
+ *    {@link com.intellij.internal.statistic.actions.scheme.AddGroupToTestSchemeAction}
  *  </li>
  *  <li>
  *    Open toolwindow with event logs with "Show Statistics Event Log" action.<br/>
- *    {@link com.intellij.internal.statistic.actions.ShowStatisticsEventLogAction}
+ *    {@link com.intellij.internal.statistic.actions.OpenEventLogFileAction}
  *  </li>
  *  <li>
  *    Record all state collectors with "Record State Collectors to Event Log" action.<br/>
@@ -44,8 +43,11 @@ import java.util.stream.Collectors;
  * @see ProjectUsagesCollector
  * @see FUCounterUsageLogger
  */
+@ApiStatus.Internal
 public abstract class ApplicationUsagesCollector extends FeatureUsagesCollector {
-  private static final ExtensionPointName<ApplicationUsagesCollector> EP_NAME =
+
+  @ApiStatus.Internal
+  public static final ExtensionPointName<ApplicationUsagesCollector> EP_NAME =
     ExtensionPointName.create("com.intellij.statistics.applicationUsagesCollector");
 
   @NotNull
@@ -61,22 +63,6 @@ public abstract class ApplicationUsagesCollector extends FeatureUsagesCollector 
    */
   @NotNull
   public Set<MetricEvent> getMetrics() {
-    return getUsages().stream().
-      filter(descriptor -> descriptor.getValue() > 0).
-      map(descriptor -> {
-      if (descriptor.getValue() == 1) {
-        return MetricEventFactoryKt.newMetric(descriptor.getKey(), descriptor.getData());
-      }
-      return MetricEventFactoryKt.newCounterMetric(descriptor.getKey(), descriptor.getValue(), descriptor.getData());
-    }).collect(Collectors.toSet());
-  }
-
-  /**
-   * @deprecated use {@link ApplicationUsagesCollector#getMetrics()}
-   */
-  @NotNull
-  @Deprecated
-  public Set<UsageDescriptor> getUsages() {
     return Collections.emptySet();
   }
 

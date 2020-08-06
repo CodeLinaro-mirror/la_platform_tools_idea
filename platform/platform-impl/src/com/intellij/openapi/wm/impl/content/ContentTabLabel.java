@@ -33,7 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 
 class ContentTabLabel extends BaseLabel {
-  private static final int MAX_WIDTH = JBUIScale.scale(300);
+  private static final int MAX_WIDTH = JBUIScale.scale(400);
   private static final int DEFAULT_HORIZONTAL_INSET = JBUIScale.scale(12);
   private static final int ICONS_GAP = JBUIScale.scale(3);
 
@@ -157,6 +157,10 @@ class ContentTabLabel extends BaseLabel {
   }
 
   private void updateText() {
+    if (myText != null && myText.startsWith("<html>")) {
+      super.setText(myText); // SwingUtilities2.clipString does not support HTML
+      return;
+    }
     FontMetrics fm = getFontMetrics(getFont());
     int textWidth = UIUtilities.stringWidth(this, fm, myText);
     int prefWidth = myIconWithInsetsWidth + textWidth;

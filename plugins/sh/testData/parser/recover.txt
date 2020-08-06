@@ -1,5 +1,6 @@
 SHELL_SCRIPT
-  PsiComment(shebang)('#!/bin/bash\n')
+  PsiComment(shebang)('#!/bin/bash')
+  PsiElement(\n)('\n')
   PsiElement(\n)('\n')
   PsiElement(\n)('\n')
   COMMANDS_LIST
@@ -376,10 +377,9 @@ SHELL_SCRIPT
             PsiElement(CLOSE_QUOTE)('"')
             PsiElement(\n)('\n')
             PsiWhiteSpace('  ')
-            PsiElement(word)(';')
-            PsiElement(word)(';')
+            PsiElement(word)(';;')
             PsiElement(\n)('\n')
-          PsiElement(word)('pattern')
+            PsiElement(word)('pattern')
         PsiElement())(')')
         PsiElement(\n)('\n')
         PsiWhiteSpace('  ')

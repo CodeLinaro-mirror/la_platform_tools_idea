@@ -41,7 +41,7 @@ public class DesignerToolWindowManager extends AbstractToolWindowManager impleme
   }
 
   public static DesignerToolWindowManager getInstance(@NotNull Project project) {
-    return project.getComponent(DesignerToolWindowManager.class);
+    return project.getService(DesignerToolWindowManager.class);
   }
 
   @Nullable
@@ -55,7 +55,7 @@ public class DesignerToolWindowManager extends AbstractToolWindowManager impleme
     Disposer.register(this, () -> myToolWindowPanel.dispose());
 
     myToolWindow = ToolWindowManager.getInstance(myProject).registerToolWindow(UIDesignerBundle.message("toolwindow.ui.designer.name"),
-                                                                               false, getAnchor(), myProject, true);
+                                                                               false, getAnchor(), this, true);
     myToolWindow.setIcon(AllIcons.Toolwindows.ToolWindowUIDesigner);
 
     if (!ApplicationManager.getApplication().isHeadlessEnvironment()) {

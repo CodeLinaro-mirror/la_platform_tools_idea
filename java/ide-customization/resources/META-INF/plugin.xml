@@ -33,15 +33,9 @@
     <vcsAwareCheckoutListener implementation="com.intellij.openapi.vcs.checkout.RegisterMappingCheckoutListener"/>
 
     <projectTemplatesFactory implementation="com.intellij.platform.templates.ArchivedTemplatesFactory"/>
-    <!--
-    <projectTemplatesFactory implementation="com.intellij.platform.templates.RemoteTemplatesFactory"/>
-    -->
     <applicationService serviceImplementation="com.intellij.platform.templates.ProjectTemplateExportable"/>
     <exportable serviceInterface="com.intellij.platform.templates.ProjectTemplateExportable"/>
     <projectTemplateFileProcessor implementation="com.intellij.platform.templates.SystemFileProcessor"/>
-
-    <hectorComponentProvider implementation="com.intellij.codeInsight.daemon.impl.ImportPopupHectorComponentProvider"/>
-
 
     <usageFilteringRuleProvider implementation="com.intellij.usages.impl.ImportUsageFilteringRuleProvider"/>
     <applicationService serviceImplementation="com.intellij.usages.impl.ImportFilteringUsageViewSetting"/>
@@ -88,7 +82,7 @@
     <group id="WelcomeScreen.QuickStart.IDEA">
       <action id="WelcomeScreen.CreateNewProject" class="com.intellij.ide.actions.NewProjectAction"
               icon="AllIcons.Welcome.CreateNewProject"/>
-      <action id="WelcomeScreen.OpenProject" class="com.intellij.ide.actions.OpenFileAction$OnWelcomeScreen" icon="AllIcons.Actions.Menu_open"/>
+      <action id="WelcomeScreen.OpenProject" class="com.intellij.ide.actions.OpenFileAction$OnWelcomeScreen"/>
       <add-to-group group-id="WelcomeScreen.QuickStart" anchor="first"/>
     </group>
 

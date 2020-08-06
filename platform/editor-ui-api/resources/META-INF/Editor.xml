@@ -1,6 +1,6 @@
 <idea-plugin>
   <extensionPoints>
-    <extensionPoint name="editorFactoryListener" interface="com.intellij.openapi.editor.event.EditorFactoryListener"/>
+    <extensionPoint name="editorFactoryListener" interface="com.intellij.openapi.editor.event.EditorFactoryListener" dynamic="true"/>
     <extensionPoint name="syntaxHighlighter"
                     beanClass="com.intellij.openapi.extensions.KeyedFactoryEPBean"
                     dynamic="true">
@@ -10,5 +10,8 @@
   <extensions defaultExtensionNs="com.intellij">
     <applicationService serviceImplementation="com.intellij.ide.ui.UISettings" preload="true"/>
     <applicationService serviceImplementation="com.intellij.ide.ui.NotRoamableUiSettings"/>
+    <projectService
+      serviceInterface="com.intellij.openapi.vcs.FileStatusManager"
+      serviceImplementation="com.intellij.openapi.vcs.DefaultFileStatusManager" />
   </extensions>
 </idea-plugin>

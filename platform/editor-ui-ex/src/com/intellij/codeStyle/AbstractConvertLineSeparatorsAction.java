@@ -7,13 +7,16 @@ import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.PlatformEditorBundle;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.fileTypes.InternalFileType;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileVisitor;
@@ -23,6 +26,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.function.Supplier;
 
 /**
@@ -77,8 +81,9 @@ public abstract class AbstractConvertLineSeparatorsAction extends AnAction imple
       return;
     }
 
-    VirtualFile projectVirtualDirectory = ProjectKt.getStateStore(project).getDirectoryStoreFile();
-    final FileTypeRegistry fileTypeManager = FileTypeRegistry.getInstance();
+    Path directoryStorePath = ProjectKt.getStateStore(project).getDirectoryStorePath();
+    VirtualFile projectVirtualDirectory = directoryStorePath == null ? null : StandardFileSystems.local().findFileByPath(FileUtil.toSystemIndependentName(directoryStorePath.toString()));
+    FileTypeRegistry fileTypeManager = FileTypeRegistry.getInstance();
     for (VirtualFile file : virtualFiles) {
       VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
         @NotNull
@@ -114,7 +119,7 @@ public abstract class AbstractConvertLineSeparatorsAction extends AnAction imple
     String currentSeparator = LoadTextUtil.detectLineSeparator(virtualFile, false);
     final String commandText;
     if (StringUtil.isEmpty(currentSeparator)) {
-      commandText = "Changed line separators to " + LineSeparator.fromString(newSeparator);
+      commandText = PlatformEditorBundle.message("command.name.changed.line.separators.to", LineSeparator.fromString(newSeparator));
     }
     else {
       commandText = String.format("Changed line separators from %s to %s",

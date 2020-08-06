@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.sdk;
 
 import com.google.common.collect.ImmutableList;
@@ -74,10 +60,12 @@ public class PythonSdkUpdater implements StartupActivity.Background {
   private static final Logger LOG = Logger.getInstance(PythonSdkUpdater.class);
 
   private static final Object ourLock = new Object();
-  private static final Set<String> ourScheduledToRefresh = Sets.newHashSet();
+  private static final Set<String> ourScheduledToRefresh = new HashSet<String>();
   private static final BlockingSet<String> ourUnderRefresh = new BlockingSet<>();
 
-  private static final NotificationGroup NOTIFICATION_GROUP = NotificationGroup.balloonGroup("Python SDK Updater");
+  private static final NotificationGroup NOTIFICATION_GROUP = NotificationGroup.balloonGroup(
+    "Python SDK Updater",
+    PyBundle.message("python.sdk.updater.notifications.group.title"));
 
   /**
    * Refreshes the SDKs of the modules for the open project after some delay.
@@ -379,7 +367,7 @@ public class PythonSdkUpdater implements StartupActivity.Background {
     final SdkAdditionalData additionalData = sdk.getSdkAdditionalData();
     if (additionalData instanceof PyRemoteSdkAdditionalDataBase) {
       final PyRemoteSdkAdditionalDataBase remoteSdkData = (PyRemoteSdkAdditionalDataBase)additionalData;
-      final List<String> paths = Lists.newArrayList();
+      final List<String> paths = new ArrayList<>();
       for (PathMappingSettings.PathMapping mapping : remoteSdkData.getPathMappings().getPathMappings()) {
         paths.add(mapping.getLocalRoot());
       }
@@ -403,7 +391,7 @@ public class PythonSdkUpdater implements StartupActivity.Background {
         moduleRoots.addAll(PyUtil.getSourceRoots(module));
       }
     }
-    final List<VirtualFile> results = Lists.newArrayList();
+    final List<VirtualFile> results = new ArrayList<>();
     // TODO: Refactor SDK so they can provide exclusions for root paths
     final VirtualFile condaFolder = PythonSdkUtil.isConda(sdk) ? PythonSdkUtil.getCondaDirectory(sdk) : null;
     for (String path : paths) {
@@ -427,7 +415,7 @@ public class PythonSdkUpdater implements StartupActivity.Background {
    */
   @NotNull
   private static List<VirtualFile> getSkeletonsPaths(@NotNull Sdk sdk) {
-    final List<VirtualFile> results = Lists.newArrayList();
+    final List<VirtualFile> results = new ArrayList<>();
     final String skeletonsPath = PythonSdkUtil.getSkeletonsPath(sdk);
     if (skeletonsPath != null) {
       final VirtualFile skeletonsDir = StandardFileSystems.local().refreshAndFindFileByPath(skeletonsPath);
@@ -513,7 +501,7 @@ public class PythonSdkUpdater implements StartupActivity.Background {
    */
   @NotNull
   private static Set<Sdk> getPythonSdks(@NotNull Project project) {
-    final Set<Sdk> pythonSdks = Sets.newLinkedHashSet();
+    final Set<Sdk> pythonSdks = new LinkedHashSet<Sdk>();
     for (Module module : ModuleManager.getInstance(project).getModules()) {
       final Sdk sdk = PythonSdkUtil.findPythonSdk(module);
       if (sdk != null && sdk.getSdkType() instanceof PythonSdkType) {

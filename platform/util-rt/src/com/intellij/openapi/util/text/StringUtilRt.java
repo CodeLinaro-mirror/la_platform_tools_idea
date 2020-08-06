@@ -53,8 +53,9 @@ public class StringUtilRt {
 
   @Contract(pure = true)
   public static char toLowerCase(char a) {
-    if (a < 'A' || a >= 'a' && a <= 'z') return a;
-    if (a <= 'Z') return (char)(a + ('a' - 'A'));
+    if (a <= 'z') {
+      return a >= 'A' && a <= 'Z' ? (char)(a + ('a' - 'A')) : a;
+    }
     return Character.toLowerCase(a);
   }
 
@@ -383,5 +384,18 @@ public class StringUtilRt {
   public static String unquoteString(@NotNull String s, char quotationChar) {
     boolean quoted = s.length() > 1 && quotationChar == s.charAt(0) && quotationChar == s.charAt(s.length() - 1);
     return quoted ? s.substring(1, s.length() - 1) : s;
+  }
+
+  @Contract(pure = true)
+  public static boolean startsWith(@NotNull CharSequence text, @NotNull CharSequence prefix) {
+    int l1 = text.length();
+    int l2 = prefix.length();
+    if (l1 < l2) return false;
+
+    for (int i = 0; i < l2; i++) {
+      if (text.charAt(i) != prefix.charAt(i)) return false;
+    }
+
+    return true;
   }
 }

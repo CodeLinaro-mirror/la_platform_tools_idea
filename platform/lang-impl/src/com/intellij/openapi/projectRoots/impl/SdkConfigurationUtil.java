@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 /**
  * @author yole
  */
-public class SdkConfigurationUtil {
+public final class SdkConfigurationUtil {
   private static final Logger LOG = Logger.getInstance(SdkConfigurationUtil.class);
   private SdkConfigurationUtil() { }
 
@@ -229,7 +229,7 @@ public class SdkConfigurationUtil {
       List<Sdk> sdks = ProjectJdkTable.getInstance().getSdksOfType(type);
       if (!sdks.isEmpty()) {
         if (comparator != null) {
-          Collections.sort(sdks, comparator);
+          sdks.sort(comparator);
         }
         return sdks.get(0);
       }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes.committed;
 
 import com.intellij.ide.CopyProvider;
@@ -17,7 +17,6 @@ import com.intellij.openapi.progress.util.BackgroundTaskUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Splitter;
 import com.intellij.openapi.ui.SplitterProportionsData;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.FilePath;
@@ -32,7 +31,7 @@ import com.intellij.ui.treeStructure.Tree;
 import com.intellij.ui.treeStructure.actions.CollapseAllAction;
 import com.intellij.ui.treeStructure.actions.ExpandAllAction;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.LinkedMultiMap;
+import com.intellij.util.containers.MultiMap;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.messages.Topic;
 import com.intellij.util.ui.StatusText;
@@ -196,7 +195,7 @@ public class CommittedChangesTreeBrowser extends JPanel implements DataProvider,
     String lastGroupName = null;
     for(CommittedChangeList list: filteredChangeLists) {
       String groupName = StringUtil.notNullize(myGroupingStrategy.getGroupName(list));
-      if (!Comparing.equal(groupName, lastGroupName)) {
+      if (!Objects.equals(groupName, lastGroupName)) {
         lastGroupName = groupName;
         lastGroupNode = new DefaultMutableTreeNode(lastGroupName);
         root.add(lastGroupNode);
@@ -272,7 +271,7 @@ public class CommittedChangesTreeBrowser extends JPanel implements DataProvider,
 
   @NotNull
   public static List<Change> collectChanges(final List<? extends CommittedChangeList> selectedChangeLists, final boolean withMovedTrees) {
-    Collections.sort(selectedChangeLists, CommittedChangeListByDateComparator.ASCENDING);
+    selectedChangeLists.sort(CommittedChangeListByDateComparator.ASCENDING);
 
     List<Change> changes = new ArrayList<>();
     for (CommittedChangeList cl : selectedChangeLists) {
@@ -308,7 +307,7 @@ public class CommittedChangesTreeBrowser extends JPanel implements DataProvider,
 
 
     // key - after path (nullable)
-    LinkedMultiMap<FilePath, Change> map = new LinkedMultiMap<>();
+    MultiMap<FilePath, Change> map = MultiMap.createLinked();
 
     for (Change change : changes) {
       ContentRevision bRev = change.getBeforeRevision();
@@ -467,7 +466,7 @@ public class CommittedChangesTreeBrowser extends JPanel implements DataProvider,
   @Override
   public void reportLoadedLists(@NotNull CommittedChangeListsListener listener) {
     List<CommittedChangeList> lists = new ArrayList<>(myChangeLists);
-    ApplicationManager.getApplication().executeOnPooledThread(() -> {
+    BackgroundTaskUtil.executeOnPooledThread(this, () -> {
       listener.onBeforeStartReport();
       for (CommittedChangeList list : lists) {
         listener.report(list);

@@ -22,9 +22,10 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.service.project.GradleNotification.NOTIFICATION_GROUP
 import org.jetbrains.plugins.gradle.util.GradleProperties.GradleProperty
 import java.io.File
+import java.nio.file.Path
 import javax.swing.event.HyperlinkEvent
 
-fun validateJavaHome(project: Project, externalProjectPath: String, gradleVersion: GradleVersion) {
+fun validateJavaHome(project: Project, externalProjectPath: Path, gradleVersion: GradleVersion) {
   val gradleProperties = getGradleProperties(externalProjectPath)
   val javaHomeProperty = gradleProperties.javaHomeProperty
   if (javaHomeProperty != null) {
@@ -35,7 +36,7 @@ fun validateJavaHome(project: Project, externalProjectPath: String, gradleVersio
     }
   }
   else {
-    val javaHome = Environment.getEnvVariable(JAVA_HOME)
+    val javaHome = ExternalSystemJdkUtil.getJavaHome()
     when (val validationStatus = validateGradleJavaHome(gradleVersion, javaHome)) {
       JavaHomeValidationStatus.Invalid -> notifyInvalidJavaHomeInfo(project, validationStatus)
       is JavaHomeValidationStatus.Unsupported -> notifyInvalidJavaHomeInfo(project, validationStatus)
@@ -53,10 +54,13 @@ fun validateGradleJavaHome(gradleVersion: GradleVersion, javaHome: String?): Jav
   return JavaHomeValidationStatus.Success(javaHome)
 }
 
+/**
+ * @see org.jetbrains.plugins.gradle.util.suggestGradleVersion
+ */
 fun isSupported(gradleVersion: GradleVersion, javaVersionString: String): Boolean {
   val version = JavaVersion.tryParse(javaVersionString) ?: return false
   return when {
-    gradleVersion >= GradleVersion.version("6.3") -> version.feature in 8..14
+    gradleVersion >= GradleVersion.version("6.3") -> version.feature >= 8 // ..14
     gradleVersion >= GradleVersion.version("6.0") -> version.feature in 8..13
     gradleVersion >= GradleVersion.version("5.4.1") -> version.feature in 8..12
     gradleVersion >= GradleVersion.version("5.0") -> version.feature in 8..11

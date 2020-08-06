@@ -3,6 +3,7 @@ package com.intellij.psi.impl;
 
 import com.intellij.openapi.application.ReadActionProcessor;
 import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.DumbUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.FileIndexFacade;
 import com.intellij.openapi.roots.PackageIndex;
@@ -25,6 +26,7 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
   private final Project myProject;
   private final JavaFileManager myFileManager;
 
+  @SuppressWarnings("unused") //used for extension point instantiation
   public PsiElementFinderImpl(Project project) {
     myProject = project;
     myFileManager = JavaFileManager.getInstance(project);
@@ -41,11 +43,17 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
 
   @Override
   public PsiClass findClass(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+    if (!DumbUtil.getInstance(myProject).mayUseIndices()) {
+      return null;
+    }
     return myFileManager.findClass(qualifiedName, scope);
   }
 
   @Override
   public PsiClass @NotNull [] findClasses(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+    if (!DumbUtil.getInstance(myProject).mayUseIndices()) {
+      return PsiClass.EMPTY_ARRAY;
+    }
     return myFileManager.findClasses(qualifiedName, scope);
   }
 

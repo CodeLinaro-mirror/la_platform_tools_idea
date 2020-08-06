@@ -2,10 +2,12 @@
 package com.intellij.ui;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ui.LafManager;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorGutter;
@@ -15,6 +17,7 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.popup.Balloon;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.NlsContexts.DialogTitle;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
@@ -376,7 +379,7 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
 
   @Nullable
   public static Color showDialog(@NotNull Component parent,
-                                 String caption,
+                                 @DialogTitle String caption,
                                  Color preselectedColor,
                                  boolean enableOpacity,
                                  List<? extends ColorPickerListener> listeners,
@@ -399,18 +402,26 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
   }
 
   public static void showColorPickerPopup(@Nullable Project project, @Nullable Color currentColor, @NotNull ColorListener listener, @Nullable RelativePoint location) {
+    showColorPickerPopup(project, currentColor, listener, location, false);
+  }
+
+  public static void showColorPickerPopup(@Nullable final Project project, @Nullable Color currentColor, @NotNull final ColorListener listener, @Nullable RelativePoint location, boolean showAlpha) {
     Ref<LightCalloutPopup> ref = Ref.create();
 
     ColorListener colorListener = new ColorListener() {
       final Object groupId = new Object();
 
       @Override
-      public void colorChanged(Color color, Object source) {
-        CommandProcessor.getInstance().executeCommand(project, () -> listener.colorChanged(color, source), "Apply Color", groupId);
+      public void colorChanged(final Color color, final Object source) {
+        ApplicationManager.getApplication().invokeLaterOnWriteThread(
+          () -> CommandProcessor.getInstance().executeCommand(project,
+                                                              () -> listener.colorChanged(color, source),
+                                                              IdeBundle.message("command.name.apply.color"),
+                                                              groupId));
       }
     };
 
-    LightCalloutPopup popup = new ColorPickerBuilder()
+    LightCalloutPopup popup = new ColorPickerBuilder(showAlpha)
       .setOriginalColor(currentColor)
       .addSaturationBrightnessComponent()
       .addColorAdjustPanel(new MaterialGraphicalColorPipetteProvider())
@@ -624,8 +635,8 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
           int my = myWheel.y + myWheel.height / 2;
           double s;
           double h;
-          s = Math.sqrt((double)((x - mx) * (x - mx) + (y - my) * (y - my))) / (myWheel.height / 2);
-          h = -Math.atan2((double)(y - my), (double)(x - mx)) / (2 * Math.PI);
+          s = Math.sqrt((x - mx) * (x - mx) + (y - my) * (y - my)) / (myWheel.height / 2);
+          h = -Math.atan2(y - my, x - mx) / (2 * Math.PI);
           if (h < 0) h += 1.0;
           if (s > 1) s = 1.0;
 
@@ -642,8 +653,8 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
           int my = myWheel.y + myWheel.height / 2;
           double s;
           double h;
-          s = Math.sqrt((double)((x - mx) * (x - mx) + (y - my) * (y - my))) / (myWheel.height / 2);
-          h = -Math.atan2((double)(y - my), (double)(x - mx)) / (2 * Math.PI);
+          s = Math.sqrt((x - mx) * (x - mx) + (y - my) * (y - my)) / (myWheel.height / 2);
+          h = -Math.atan2(y - my, x - mx) / (2 * Math.PI);
           if (h < 0) h += 1.0;
           if (s <= 1) {
             setHSBValue((float)h, (float)s, myBrightness, myOpacity);
@@ -812,11 +823,12 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
     }
     @Override
     public void insertString(int offs, String str, AttributeSet a) throws BadLocationException {
+      str = StringUtil.trimStart(str, "#");
       final boolean rgb = isRGBMode();
       char[] source = str.toCharArray();
       if (mySrc != null) {
         final int selected = mySrc.getSelectionEnd() - mySrc.getSelectionStart();
-        int newLen = mySrc.getText().length() -  selected + str.length();
+        int newLen = mySrc.getText().length() - selected + str.length();
         if (newLen > (myHex ? 6 : 3)) {
           Toolkit.getDefaultToolkit().beep();
           return;
@@ -842,9 +854,10 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
               Toolkit.getDefaultToolkit().beep();
               return;
             }
-          } else {
+          }
+          else {
             if ((mySrc == myRed && num > 359)
-              || ((mySrc == myGreen || mySrc == myBlue) && num > 100)) {
+                || ((mySrc == myGreen || mySrc == myBlue) && num > 100)) {
               Toolkit.getDefaultToolkit().beep();
               return;
             }
@@ -963,9 +976,9 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
       final int top = i.top + (d.height - i.top - i.bottom - HEIGHT) / 2;
 
       int col = (x - left - 2) / 31;
-      col = col > 9 ? 9 : col;
+      col = Math.min(col, 9);
       int row = (y - top - 2) / 31;
-      row = row > 1 ? 1 : row;
+      row = Math.min(row, 1);
 
       return row >= 0 && col >= 0 ? Couple.of(row, col) : null;
     }
@@ -1019,8 +1032,12 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
     private final boolean myEnableOpacity;
     private final boolean myOpacityInPercent;
 
-    ColorPickerDialog(@NotNull Component parent, String caption, @Nullable Color preselectedColor, boolean enableOpacity,
-                      List<? extends ColorPickerListener> listeners, boolean opacityInPercent) {
+    ColorPickerDialog(@NotNull Component parent,
+                      @DialogTitle String caption,
+                      @Nullable Color preselectedColor,
+                      boolean enableOpacity,
+                      List<? extends ColorPickerListener> listeners,
+                      boolean opacityInPercent) {
       super(parent, true);
       myListeners = listeners;
       myPreselectedColor = preselectedColor;
@@ -1029,7 +1046,7 @@ public class ColorPicker extends JPanel implements ColorListener, DocumentListen
 
       setTitle(caption);
       setResizable(false);
-      setOKButtonText("Choose");
+      setOKButtonText(IdeBundle.message("button.choose"));
       super.init();
     }
 

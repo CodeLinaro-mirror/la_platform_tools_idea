@@ -1,13 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.merge;
 
 import com.intellij.CommonBundle;
 import com.intellij.configurationStore.StoreReloadManager;
 import com.intellij.diff.DiffContext;
-import com.intellij.diff.contents.DiffContent;
 import com.intellij.diff.merge.MergeTool.MergeViewer;
-import com.intellij.diff.requests.ContentDiffRequest;
-import com.intellij.diff.requests.DiffRequest;
 import com.intellij.diff.util.DiffUserDataKeysEx;
 import com.intellij.diff.util.DiffUtil;
 import com.intellij.diff.util.ThreeSide;
@@ -17,11 +14,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vcs.FilePath;
-import com.intellij.openapi.vcs.history.VcsRevisionNumber;
-import com.intellij.openapi.vcs.merge.MergeData;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.projectImport.ProjectOpenProcessor;
 import com.intellij.util.Function;
@@ -37,7 +30,7 @@ import java.util.Locale;
 
 import static com.intellij.openapi.project.ProjectUtil.isProjectOrWorkspaceFile;
 
-public class MergeUtil {
+public final class MergeUtil {
   @NotNull
   public static Action createSimpleResolveAction(@NotNull MergeResult result,
                                                  @NotNull MergeRequest request,
@@ -172,33 +165,6 @@ public class MergeUtil {
                                     CommonBundle.message("button.without.mnemonic.restore"),
                                     CommonBundle.message("button.without.mnemonic.do.nothing"),
                                     Messages.getQuestionIcon()) == Messages.YES;
-  }
-
-  public static void putRevisionInfos(@NotNull MergeRequest request, @NotNull MergeData data) {
-    if (request instanceof ThreesideMergeRequest) {
-      List<? extends DiffContent> contents = ((ThreesideMergeRequest)request).getContents();
-      putRevisionInfo(contents, data);
-    }
-  }
-
-  public static void putRevisionInfos(@NotNull DiffRequest request, @NotNull MergeData data) {
-    if (request instanceof ContentDiffRequest) {
-      List<? extends DiffContent> contents = ((ContentDiffRequest)request).getContents();
-      if (contents.size() == 3) {
-        putRevisionInfo(contents, data);
-      }
-    }
-  }
-
-  private static void putRevisionInfo(@NotNull List<? extends DiffContent> contents, @NotNull MergeData data) {
-    for (ThreeSide side : ThreeSide.values()) {
-      DiffContent content = side.select(contents);
-      FilePath filePath = side.select(data.CURRENT_FILE_PATH, data.ORIGINAL_FILE_PATH, data.LAST_FILE_PATH);
-      VcsRevisionNumber revision = side.select(data.CURRENT_REVISION_NUMBER, data.ORIGINAL_REVISION_NUMBER, data.LAST_REVISION_NUMBER);
-      if (filePath != null && revision != null) {
-        content.putUserData(DiffUserDataKeysEx.REVISION_INFO, Pair.create(filePath, revision));
-      }
-    }
   }
 
   public static void reportProjectFileChangeIfNeeded(@Nullable Project project, @Nullable VirtualFile file) {

@@ -1,8 +1,7 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.run;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.intellij.execution.DefaultExecutionResult;
@@ -29,7 +28,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkAdditionalData;
 import com.intellij.openapi.roots.*;
-import com.intellij.openapi.roots.impl.libraries.LibraryImpl;
+import com.intellij.openapi.roots.impl.libraries.LibraryEx;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.PersistentLibraryKind;
 import com.intellij.openapi.util.io.FileUtil;
@@ -431,7 +430,7 @@ public abstract class PythonCommandLineState extends CommandLineState {
                                      boolean isDebug) {
     Sdk pythonSdk = PythonSdkUtil.findSdkByPath(sdkHome);
     if (pythonSdk != null) {
-      List<String> pathList = Lists.newArrayList();
+      List<String> pathList = new ArrayList<>();
       pathList.addAll(getAddedPaths(pythonSdk));
       pathList.addAll(collectPythonPath(module, sdkHome, shouldAddContentRoots, shouldAddSourceRoots, isDebug));
       initPythonPath(commandLine, passParentEnvs, pathList, sdkHome);
@@ -525,7 +524,7 @@ public abstract class PythonCommandLineState extends CommandLineState {
   @NotNull
   public static Collection<String> collectPythonPath(@Nullable Module module, boolean addContentRoots,
                                                      boolean addSourceRoots) {
-    Collection<String> pythonPathList = Sets.newLinkedHashSet();
+    Collection<String> pythonPathList = new LinkedHashSet<String>();
     if (module != null) {
       Set<Module> dependencies = new HashSet<>();
       ModuleUtilCore.getDependencies(module, dependencies);
@@ -567,8 +566,8 @@ public abstract class PythonCommandLineState extends CommandLineState {
           if (!PlatformUtils.isPyCharm()) {
             addToPythonPath(root, list);
           }
-          else if (library instanceof LibraryImpl) {
-            final PersistentLibraryKind<?> kind = ((LibraryImpl)library).getKind();
+          else if (library instanceof LibraryEx) {
+            final PersistentLibraryKind<?> kind = ((LibraryEx)library).getKind();
             if (kind == PythonLibraryType.getInstance().getKind()) {
               addToPythonPath(root, list);
             }

@@ -21,6 +21,9 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.*
 import com.intellij.ui.components.*
+import com.intellij.ui.components.fields.ExpandableTextField
+import com.intellij.util.Function
+import com.intellij.util.execution.ParametersListUtil
 import com.intellij.util.ui.UIUtil
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
@@ -31,6 +34,7 @@ import java.awt.event.ActionListener
 import java.awt.event.ItemEvent
 import java.awt.event.MouseEvent
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import kotlin.jvm.internal.CallableReference
@@ -156,7 +160,9 @@ fun <T : JCheckBox> CellBuilder<T>.actsAsLabel(): CellBuilder<T> {
   return this
 }
 
-fun <T : JComponent> CellBuilder<T>.applyToComponent(task: T.() -> Unit): CellBuilder<T> = also { task(component) }
+fun <T : JComponent> CellBuilder<T>.applyToComponent(task: T.() -> Unit): CellBuilder<T> {
+  return also { task(component) }
+}
 
 internal interface ScrollPaneCellBuilder {
   fun noGrowY()
@@ -274,6 +280,13 @@ abstract class Cell : BaseBuilder {
     return component(comment = comment).withSelectedBinding(modelBinding)
   }
 
+  fun checkBox(@Nls text: String,
+               property: GraphProperty<Boolean>,
+               comment: String? = null): CellBuilder<JBCheckBox> {
+    val component = JBCheckBox(text, property.get())
+    return component(comment = comment).withGraphProperty(property).applyToComponent { component.bind(property) }
+  }
+
   open fun radioButton(@Nls text: String, @Nls comment: String? = null): CellBuilder<JBRadioButton> {
     val component = JBRadioButton(text)
     component.putClientProperty(UNBOUND_RADIO_BUTTON, true)
@@ -345,11 +358,13 @@ abstract class Cell : BaseBuilder {
       .applyToComponent { bind(property) }
   }
 
-  fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> =
-    intTextField(prop.toBinding(), columns, range)
+  fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
+    return intTextField(prop.toBinding(), columns, range)
+  }
 
-  fun intTextField(getter: () -> Int, setter: (Int) -> Unit, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> =
-    intTextField(PropertyBinding(getter, setter), columns, range)
+  fun intTextField(getter: () -> Int, setter: (Int) -> Unit, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
+    return intTextField(PropertyBinding(getter, setter), columns, range)
+  }
 
   fun intTextField(binding: PropertyBinding<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
     return textField(
@@ -358,11 +373,11 @@ abstract class Cell : BaseBuilder {
       columns
     ).withValidationOnInput {
       val value = it.text.toIntOrNull()
-      if (value == null)
-        error("Please enter a number")
-      else if (range != null && value !in range)
-        error("Please enter a number from ${range.first} to ${range.last}")
-      else null
+      when {
+        value == null -> error("Please enter a number")
+        range != null && value !in range -> error("Please enter a number from ${range.first} to ${range.last}")
+        else -> null
+      }
     }
   }
 
@@ -471,6 +486,33 @@ abstract class Cell : BaseBuilder {
     return component(label)
   }
 
+  fun expandableTextField(getter: () -> String,
+                          setter: (String) -> Unit,
+                          parser: Function<in String, out MutableList<String>> = ParametersListUtil.DEFAULT_LINE_PARSER,
+                          joiner: Function<in MutableList<String>, String> = ParametersListUtil.DEFAULT_LINE_JOINER)
+    : CellBuilder<ExpandableTextField> {
+    return ExpandableTextField(parser, joiner)()
+      .withBinding({ editor -> editor.text.orEmpty() },
+                   { editor, value -> editor.text = value },
+                   PropertyBinding(getter, setter))
+  }
+
+  fun expandableTextField(prop: KMutableProperty0<String>,
+                          parser: Function<in String, out MutableList<String>> = ParametersListUtil.DEFAULT_LINE_PARSER,
+                          joiner: Function<in MutableList<String>, String> = ParametersListUtil.DEFAULT_LINE_JOINER)
+    : CellBuilder<ExpandableTextField> {
+    return expandableTextField(prop::get, prop::set, parser, joiner)
+  }
+
+  fun expandableTextField(prop: GraphProperty<String>,
+                          parser: Function<in String, out MutableList<String>> = ParametersListUtil.DEFAULT_LINE_PARSER,
+                          joiner: Function<in MutableList<String>, String> = ParametersListUtil.DEFAULT_LINE_JOINER)
+    : CellBuilder<ExpandableTextField> {
+    return expandableTextField(prop::get, prop::set, parser, joiner)
+      .withGraphProperty(prop)
+      .applyToComponent { bind(prop) }
+  }
+
   /**
    * @see LayoutBuilder.titledRow
    */
@@ -486,7 +528,7 @@ abstract class Cell : BaseBuilder {
   }
 
   fun comment(text: String, maxLineLength: Int = -1): CellBuilder<JLabel> {
-    return component(ComponentPanelBuilder.createCommentComponent(text, true, maxLineLength))
+    return component(ComponentPanelBuilder.createCommentComponent(text, true, maxLineLength, true))
   }
 
   fun commentNoWrap(text: String): CellBuilder<JLabel> {
@@ -514,6 +556,20 @@ abstract class Cell : BaseBuilder {
   }
 }
 
+private fun JBCheckBox.bind(property: GraphProperty<Boolean>) {
+  val mutex = AtomicBoolean()
+  property.afterChange {
+    mutex.lockOrSkip {
+      isSelected = property.get()
+    }
+  }
+  addItemListener {
+    mutex.lockOrSkip {
+      property.set(isSelected)
+    }
+  }
+}
+
 class InnerCell(val cell: Cell) : Cell() {
   override fun <T : JComponent> component(component: T): CellBuilder<T> {
     return cell.component(component)
@@ -535,11 +591,18 @@ fun <T> listCellRenderer(renderer: SimpleListCellRenderer<T?>.(value: T, index: 
 }
 
 private fun <T> ComboBox<T>.bind(property: GraphProperty<T>) {
-  property.afterChange { if (selectedItem != it) selectedItem = it }
+  val mutex = AtomicBoolean()
+  property.afterChange {
+    mutex.lockOrSkip {
+      selectedItem = it
+    }
+  }
   addItemListener {
     if (it.stateChange == ItemEvent.SELECTED) {
-      @Suppress("UNCHECKED_CAST")
-      property.set(it.item as T)
+      mutex.lockOrSkip {
+        @Suppress("UNCHECKED_CAST")
+        property.set(it.item as T)
+      }
     }
   }
 }
@@ -549,14 +612,31 @@ private fun TextFieldWithBrowseButton.bind(property: GraphProperty<String>) {
 }
 
 private fun JTextField.bind(property: GraphProperty<String>) {
-  property.afterChange { if (text != it) text = it }
+  val mutex = AtomicBoolean()
+  property.afterChange {
+    mutex.lockOrSkip {
+      text = it
+    }
+  }
   document.addDocumentListener(
     object : DocumentAdapter() {
       override fun textChanged(e: DocumentEvent) {
-        property.set(text)
+        mutex.lockOrSkip {
+          property.set(text)
+        }
       }
     }
   )
+}
+
+private fun AtomicBoolean.lockOrSkip(action: () -> Unit) {
+  if (!compareAndSet(false, true)) return
+  try {
+    action()
+  }
+  finally {
+    set(false)
+  }
 }
 
 fun Cell.slider(min: Int, max: Int, minorTick: Int, majorTick: Int): CellBuilder<JSlider> {

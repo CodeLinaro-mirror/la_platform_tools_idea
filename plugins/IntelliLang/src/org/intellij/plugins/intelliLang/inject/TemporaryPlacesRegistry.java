@@ -89,6 +89,10 @@ public final class TemporaryPlacesRegistry {
         newHost.putUserData(LanguageInjectionSupport.TEMPORARY_INJECTED_LANGUAGE, place.language);
         place.elementPointer = SmartPointerManager.createPointer(newHost);
       }
+      else if (!element.isValidHost()) {
+        element.putUserData(LanguageInjectionSupport.TEMPORARY_INJECTED_LANGUAGE, null);
+        return true;
+      }
       else {
         element.putUserData(LanguageInjectionSupport.TEMPORARY_INJECTED_LANGUAGE, place.language);
       }
@@ -104,7 +108,7 @@ public final class TemporaryPlacesRegistry {
     PsiLanguageInjectionHost host = place.elementPointer.getElement();
     if (host == null) return;
 
-    Set<PsiLanguageInjectionHost> hosts = new SmartHashSet<>(1);
+    Set<PsiLanguageInjectionHost> hosts = new SmartHashSet<>();
     hosts.add(host); // because `enumerate` doesn't handle reference injections
 
     InjectedLanguageManager.getInstance(myProject).enumerate(host, (injectedPsi, places) -> {

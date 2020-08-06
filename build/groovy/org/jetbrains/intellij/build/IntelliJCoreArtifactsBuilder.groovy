@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build
 
 import org.jetbrains.intellij.build.impl.ClassVersionChecker
@@ -31,6 +31,10 @@ class IntelliJCoreArtifactsBuilder {
     "intellij.platform.projectModel",
     "intellij.platform.util",
     "intellij.platform.util.rt",
+    "intellij.platform.util.text.matching",
+    "intellij.platform.util.collections",
+    "intellij.platform.util.strings",
+    "intellij.platform.util.diagnostic",
     "intellij.platform.util.classLoader",
     "intellij.xml.analysis",
     "intellij.xml.psi",
@@ -106,6 +110,10 @@ class IntelliJCoreArtifactsBuilder {
       jar("intellij-core.jar") {
         module("intellij.platform.util.rt")
         module("intellij.platform.util.classLoader")
+        module("intellij.platform.util.text.matching")
+        module("intellij.platform.util.collections")
+        module("intellij.platform.util.strings")
+        module("intellij.platform.util.diagnostic")
         module("intellij.platform.util")
         module("intellij.platform.core")
         module("intellij.platform.core.impl")

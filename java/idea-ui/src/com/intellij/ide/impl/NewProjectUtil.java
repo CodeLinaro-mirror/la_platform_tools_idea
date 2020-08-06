@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * @author max
@@ -33,7 +33,6 @@ import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.openapi.wm.ToolWindowManager;
-import com.intellij.platform.PlatformProjectOpenProcessor;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
@@ -112,10 +111,7 @@ public final class NewProjectUtil {
       if (projectBuilder == null || !projectBuilder.isUpdate()) {
         String name = wizard.getProjectName();
         if (projectBuilder == null) {
-          OpenProjectTask options = new OpenProjectTask();
-          options.useDefaultProjectAsTemplate = true;
-          options.isNewProject = true;
-          newProject = projectManager.newProject(projectFile, name, options);
+          newProject = projectManager.newProject(projectFile, OpenProjectTask.newProject().withProjectName(name));
         }
         else {
           newProject = projectBuilder.createProject(name, projectFilePath);
@@ -169,8 +165,8 @@ public final class NewProjectUtil {
       }
 
       if (newProject != projectToClose) {
-        ProjectUtil.updateLastProjectLocation(projectFilePath);
-        PlatformProjectOpenProcessor.openExistingProject(projectFile, projectDir, new OpenProjectTask(newProject));
+        ProjectUtil.updateLastProjectLocation(projectFile);
+        ProjectManagerEx.getInstanceEx().openProject(projectDir, OpenProjectTask.withCreatedProject(newProject).withProjectName(projectFile.getFileName().toString()));
       }
 
       if (!ApplicationManager.getApplication().isUnitTestMode()) {

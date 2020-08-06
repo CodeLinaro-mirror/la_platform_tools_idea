@@ -5,7 +5,6 @@ import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.java.JavaBundle;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ScrollType;
@@ -21,7 +20,6 @@ import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.NotNullFunction;
 import com.intellij.util.ObjectUtils;
 import com.siyeh.ig.psiutils.CommentTracker;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -43,7 +41,7 @@ public abstract class BaseConvertToLocalQuickFix<V extends PsiVariable> implemen
   }
 
   @Override
-  public final void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
+  public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
     final V variable = getVariable(descriptor);
     if (variable == null || !variable.isValid()) return; //weird. should not get here when field becomes invalid
     final PsiFile myFile = variable.getContainingFile();
@@ -65,16 +63,14 @@ public abstract class BaseConvertToLocalQuickFix<V extends PsiVariable> implemen
 
     final PsiLocalVariable newVariable = extractDeclared(declaration);
     if (newVariable != null) {
-      final PsiExpression initializer = ParenthesesUtils.stripParentheses(newVariable.getInitializer());
+      final PsiExpression initializer = PsiUtil.skipParenthesizedExprDown(newVariable.getInitializer());
 
-      WriteAction.run(() -> {
-        if (VariableAccessUtils.isLocalVariableCopy(newVariable, initializer)) {
-          for (PsiReference reference : ReferencesSearch.search(newVariable).findAll()) {
-            InlineUtil.inlineVariable(newVariable, initializer, (PsiJavaCodeReferenceElement)reference);
-          }
-          declaration.delete();
+      if (VariableAccessUtils.isLocalVariableCopy(newVariable, initializer)) {
+        for (PsiReference reference : ReferencesSearch.search(newVariable).findAll()) {
+          InlineUtil.inlineVariable(newVariable, initializer, (PsiJavaCodeReferenceElement)reference);
         }
-      });
+        declaration.delete();
+      }
     }
   }
 
@@ -92,6 +88,7 @@ public abstract class BaseConvertToLocalQuickFix<V extends PsiVariable> implemen
   protected abstract V getVariable(@NotNull ProblemDescriptor descriptor);
 
   protected static void positionCaretToDeclaration(@NotNull Project project, @NotNull PsiFile psiFile, @NotNull PsiElement declaration) {
+    if (!psiFile.isPhysical()) return;
     final Editor editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
     if (editor != null && (IJSwingUtilities.hasFocus(editor.getComponent()) || ApplicationManager.getApplication().isUnitTestMode())) {
       final PsiFile openedFile = PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
@@ -166,13 +163,11 @@ public abstract class BaseConvertToLocalQuickFix<V extends PsiVariable> implemen
                                     final boolean delete, @NotNull final NotNullFunction<? super PsiDeclarationStatement, ? extends PsiElement> action) {
     final PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
 
-    return WriteAction.compute(() -> {
-      final PsiElement newDeclaration = moveDeclaration(elementFactory, localName, variable, initializer, action, references);
-      if (delete) {
-        deleteSourceVariable(project, variable, newDeclaration);
-      }
-      return newDeclaration;
-    });
+    final PsiElement newDeclaration = moveDeclaration(elementFactory, localName, variable, initializer, action, references);
+    if (delete) {
+      deleteSourceVariable(project, variable, newDeclaration);
+    }
+    return newDeclaration;
   }
 
   protected void deleteSourceVariable(@NotNull Project project, @NotNull V variable, PsiElement newDeclaration) {

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project.manage
 
 import com.intellij.ProjectTopics
@@ -17,16 +17,15 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.roots.SourceFolder
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import com.intellij.util.containers.CollectionFactory
 import com.intellij.util.containers.MultiMap
-import gnu.trove.THashMap
-import gnu.trove.THashSet
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.jps.model.java.JavaModuleSourceRootTypes
 import org.jetbrains.jps.model.java.JavaResourceRootType
@@ -35,12 +34,11 @@ import org.jetbrains.jps.model.module.JpsModuleSourceRootType
 
 @State(name = "sourceFolderManager",  storages = [Storage(StoragePathMacros.CACHE_FILE)])
 class SourceFolderManagerImpl(private val project: Project) : SourceFolderManager, Disposable, PersistentStateComponent<SourceFolderManagerState> {
-
   private val moduleNamesToSourceFolderState: MultiMap<String, SourceFolderModelState> = MultiMap.create()
   private var isDisposed = false
   private val mutex = Any()
   private var sourceFolders = PathPrefixTreeMap<SourceFolderModel>()
-  private var sourceFoldersByModule = THashMap<String, ModuleModel>()
+  private var sourceFoldersByModule = Object2ObjectOpenHashMap<String, ModuleModel>()
 
   override fun addSourceFolder(module: Module, url: String, type: JpsModuleSourceRootType<*>) {
     synchronized(mutex) {
@@ -109,7 +107,7 @@ class SourceFolderManagerImpl(private val project: Project) : SourceFolderManage
 
   private data class ModuleModel(
     val module: Module,
-    val sourceFolders: MutableSet<String> = THashSet(FileUtil.PATH_HASHING_STRATEGY)
+    val sourceFolders: MutableSet<String> = CollectionFactory.createFilePathSet()
   )
 
   init {
@@ -145,7 +143,7 @@ class SourceFolderManagerImpl(private val project: Project) : SourceFolderManage
           moduleNamesToSourceFolderState.remove(module.name)
         }
       }
-    });
+    })
   }
 
   fun rescanAndUpdateSourceFolders() {
@@ -205,8 +203,8 @@ class SourceFolderManagerImpl(private val project: Project) : SourceFolderManage
       if (isDisposed) {
         return
       }
-      sourceFolders =  PathPrefixTreeMap()
-      sourceFoldersByModule = THashMap()
+      sourceFolders = PathPrefixTreeMap()
+      sourceFoldersByModule = Object2ObjectOpenHashMap()
 
       val moduleManager = ModuleManager.getInstance(project)
 

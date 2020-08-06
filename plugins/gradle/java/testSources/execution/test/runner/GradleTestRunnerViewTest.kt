@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.execution.test.runner
 
 import com.intellij.execution.executors.DefaultRunExecutor
@@ -13,11 +13,13 @@ import com.intellij.openapi.externalSystem.model.task.ExternalSystemTask
 import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.ExtensionTestUtil.maskExtensions
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.runInEdtAndGet
 import com.intellij.util.ui.tree.TreeUtil
 import groovy.json.StringEscapeUtils.escapeJava
+import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.plugins.gradle.importing.GradleBuildScriptBuilderEx
 import org.jetbrains.plugins.gradle.importing.GradleImportingTestCase
 import org.jetbrains.plugins.gradle.tooling.annotation.TargetVersions
@@ -173,11 +175,21 @@ class GradleTestRunnerViewTest : GradleImportingTestCase() {
       console.text
     }
 
-    val consoleTextWithoutFirstLine = consoleText.substringAfter("\n")
-    assertTrue(consoleTextWithoutFirstLine.contains(testOutputText))
-    assertEquals("script \n" +
-                 "output\n" +
-                 "text\n" +
-                 "text w/o eol\n", consoleTextWithoutFirstLine.substringBefore(testOutputText))
+    val consoleTextWithoutFirstTestingGreetingsLine: String
+    if (consoleText.startsWith("Testing started at ")) {
+      consoleTextWithoutFirstTestingGreetingsLine = consoleText.substringAfter("\n")
+    } else {
+      consoleTextWithoutFirstTestingGreetingsLine = consoleText
+    }
+    assertThat(consoleTextWithoutFirstTestingGreetingsLine).contains(testOutputText)
+    val expectedText = if (SystemInfo.isWindows) {
+      scriptOutputText + scriptOutputTextWOEol + "\n"
+    } else {
+      "script \n" +
+      "output\n" +
+      "text\n" +
+      "text w/o eol\n"
+    }
+    assertEquals(expectedText, consoleTextWithoutFirstTestingGreetingsLine.substringBefore(testOutputText))
   }
 }

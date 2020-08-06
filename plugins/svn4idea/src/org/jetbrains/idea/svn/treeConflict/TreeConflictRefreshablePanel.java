@@ -49,12 +49,10 @@ import java.util.Objects;
 
 import static com.intellij.openapi.application.ModalityState.defaultModalityState;
 import static com.intellij.openapi.util.io.FileUtil.toSystemIndependentName;
-import static com.intellij.util.ObjectUtils.notNull;
 import static com.intellij.vcsUtil.VcsUtil.getFilePathOnNonLocal;
 import static org.jetbrains.idea.svn.history.SvnHistorySession.getCurrentCommittedRevision;
 
 public class TreeConflictRefreshablePanel implements Disposable {
-
   public static final String TITLE = "Resolve tree conflict";
   private final ConflictedSvnChange myChange;
   private final SvnVcs myVcs;
@@ -155,7 +153,7 @@ public class TreeConflictRefreshablePanel implements Disposable {
 
   private static boolean isDifferentURLs(TreeConflictDescription description) {
     return description.getSourceLeftVersion() != null && description.getSourceRightVersion() != null &&
-           !Comparing.equal(description.getSourceLeftVersion().getPath(), description.getSourceRightVersion().getPath());
+           !Objects.equals(description.getSourceLeftVersion().getPath(), description.getSourceRightVersion().getPath());
   }
 
   @NotNull

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.execution.build;
 
 import com.intellij.execution.*;
@@ -106,7 +106,7 @@ public class GradleApplicationEnvironmentProviderTest extends GradleSettingsImpo
   }
 
   @NotNull
-  private String runAppAndGetOutput(RunnerAndConfigurationSettings configurationSettings) {
+  private static String runAppAndGetOutput(RunnerAndConfigurationSettings configurationSettings) {
     final Semaphore done = new Semaphore();
     done.down();
     ExternalSystemProgressNotificationManager notificationManager =
@@ -138,26 +138,31 @@ public class GradleApplicationEnvironmentProviderTest extends GradleSettingsImpo
         if (!id.equals(myId)) {
           return;
         }
-        notificationManager.removeNotificationListener(this);
         done.up();
       }
     };
-    notificationManager.addNotificationListener(listener);
-    edt(() -> {
-      try {
-        ExecutionEnvironment environment =
-          ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), configurationSettings)
-            .contentToReuse(null)
-            .dataContext(null)
-            .activeTarget()
-            .build();
-        ProgramRunnerUtil.executeConfiguration(environment, false, true);
-      }
-      catch (ExecutionException e) {
-        fail(e.getMessage());
-      }
-    });
-    Assert.assertTrue(done.waitFor(30000));
+
+    try {
+      notificationManager.addNotificationListener(listener);
+      edt(() -> {
+        try {
+          ExecutionEnvironment environment =
+            ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), configurationSettings)
+              .contentToReuse(null)
+              .dataContext(null)
+              .activeTarget()
+              .build();
+          ProgramRunnerUtil.executeConfiguration(environment, false, true);
+        }
+        catch (ExecutionException e) {
+          fail(e.getMessage());
+        }
+      });
+      Assert.assertTrue(done.waitFor(30000));
+    }
+    finally {
+      notificationManager.removeNotificationListener(listener);
+    }
     return out.toString();
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.instrument;
 
 import com.intellij.ide.plugins.MainRunner;
@@ -14,7 +14,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Stream;
 
-public class WriteIntentLockInstrumenter {
+public final class WriteIntentLockInstrumenter {
 
   private static final Set<String> ourAlreadyInstrumented = Collections.synchronizedSet(new HashSet<>());
   public static final Object LOCK = new Object();
@@ -74,7 +74,7 @@ public class WriteIntentLockInstrumenter {
 
           Logger.getInstance(MainRunner.class).info("Redefining " + className);
           ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES);
-          cr.accept(new LockWrappingClassVisitor(cw, methodsToAnnotate), ClassReader.SKIP_FRAMES);
+          cr.accept(new LockWrappingClassVisitor(cw, className, methodsToAnnotate), ClassReader.SKIP_FRAMES);
           return cw.toByteArray();
         }
       }, true);

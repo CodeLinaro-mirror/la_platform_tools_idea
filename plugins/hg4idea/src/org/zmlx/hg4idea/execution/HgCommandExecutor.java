@@ -27,6 +27,7 @@ import com.intellij.vcsUtil.VcsImplUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.zmlx.hg4idea.HgBundle;
+import org.zmlx.hg4idea.HgDisposable;
 import org.zmlx.hg4idea.HgExecutableManager;
 import org.zmlx.hg4idea.HgVcs;
 import org.zmlx.hg4idea.util.HgEncodingUtil;
@@ -35,6 +36,7 @@ import org.zmlx.hg4idea.util.HgUtil;
 
 import java.io.File;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -109,7 +111,7 @@ public class HgCommandExecutor {
                       @NotNull final String operation,
                       @Nullable final List<String> arguments,
                       @Nullable final HgCommandResultHandler handler) {
-    BackgroundTaskUtil.executeOnPooledThread(myProject, () -> {
+    BackgroundTaskUtil.executeOnPooledThread(HgDisposable.getInstance(myProject), () -> {
       HgCommandResult result = executeInCurrentThread(repo, operation, arguments);
       if (handler != null) {
         handler.process(result);
@@ -142,7 +144,7 @@ public class HgCommandExecutor {
     boolean success = executeInCurrentThreadAndLog(repo, operation, arguments, ignoreDefaultOptions, listener);
     List<String> errors = StringUtil.split(listener.getErrorOutput().toString(), SystemProperties.getLineSeparator());
     if (success && HgErrorUtil.isUnknownEncodingError(errors)) {
-      setCharset(Charset.forName("utf8"));
+      setCharset(StandardCharsets.UTF_8);
       return executeInCurrentThreadAndLog(repo, operation, arguments, ignoreDefaultOptions, listener);
     }
     return success;
@@ -234,10 +236,8 @@ public class HgCommandExecutor {
   protected void showError(Exception e) {
     final HgVcs vcs = HgVcs.getInstance(myProject);
     if (vcs == null) return;
-    String message =
-      HgBundle.message("hg4idea.command.executable.error", HgExecutableManager.getInstance().getHgExecutable(myProject)) +
-      "\nOriginal Error:\n" +
-      e.getMessage();
+    String message = HgBundle.message("hg4idea.command.executor.error", HgExecutableManager.getInstance().getHgExecutable(myProject),
+                                      e.getMessage());
     VcsImplUtil.showErrorMessage(myProject, message, HgBundle.message("hg4idea.error"));
   }
 }

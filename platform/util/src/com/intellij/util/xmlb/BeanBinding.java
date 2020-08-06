@@ -1,16 +1,17 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.xmlb;
 
+import com.intellij.openapi.util.JDOMExternalizable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.serialization.MutableAccessor;
 import com.intellij.serialization.PropertyCollector;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.ThreeState;
-import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.ContainerUtilRt;
 import com.intellij.util.xmlb.annotations.AbstractCollection;
 import com.intellij.util.xmlb.annotations.*;
-import gnu.trove.TObjectFloatHashMap;
+import it.unimi.dsi.fastutil.objects.Object2FloatMap;
+import it.unimi.dsi.fastutil.objects.Object2FloatOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import org.jdom.Comment;
 import org.jdom.Content;
 import org.jdom.Element;
@@ -22,6 +23,7 @@ import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Type;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @ApiStatus.Internal
 public class BeanBinding extends NotNullDeserializeBinding {
@@ -142,8 +144,8 @@ public class BeanBinding extends NotNullDeserializeBinding {
     return true;
   }
 
-  public final @NotNull TObjectFloatHashMap<String> computeBindingWeights(@NotNull LinkedHashSet<String> accessorNameTracker) {
-    TObjectFloatHashMap<String> weights = new TObjectFloatHashMap<>(accessorNameTracker.size());
+  public final @NotNull Object2FloatMap<String> computeBindingWeights(@NotNull ObjectLinkedOpenHashSet<String> accessorNameTracker) {
+    Object2FloatMap<String> weights = new Object2FloatOpenHashMap<>(accessorNameTracker.size());
     float weight = 0;
     float step = (float)myBindings.length / (float)accessorNameTracker.size();
     for (String name : accessorNameTracker) {
@@ -163,12 +165,12 @@ public class BeanBinding extends NotNullDeserializeBinding {
     return weights;
   }
 
-  public final void sortBindings(@NotNull final TObjectFloatHashMap<? super String> weights) {
+  public final void sortBindings(@NotNull Object2FloatMap<? super String> weights) {
     Arrays.sort(myBindings, (o1, o2) -> {
       String n1 = o1.getAccessor().getName();
       String n2 = o2.getAccessor().getName();
-      float w1 = weights.get(n1);
-      float w2 = weights.get(n2);
+      float w1 = weights.getFloat(n1);
+      float w2 = weights.getFloat(n2);
       return (int)(w1 - w2);
     });
   }
@@ -214,7 +216,7 @@ public class BeanBinding extends NotNullDeserializeBinding {
             if (data == null) {
               data = new LinkedHashMap<>();
             }
-            ContainerUtilRt.putValue(binding, child, data);
+            data.computeIfAbsent(binding, it -> new ArrayList<>()).add(child);
           }
           else {
             if (accessorNameTracker != null) {
@@ -274,11 +276,7 @@ public class BeanBinding extends NotNullDeserializeBinding {
   }
 
   public static @NotNull List<MutableAccessor> getAccessors(@NotNull Class<?> aClass) {
-    List<MutableAccessor> accessors = PROPERTY_COLLECTOR.collect(aClass);
-    if (accessors.isEmpty() && !isAssertBindings(aClass)) {
-      LOG.warn("no accessors for " + aClass);
-    }
-    return accessors;
+    return PROPERTY_COLLECTOR.collect(aClass);
   }
 
   private static boolean isAssertBindings(@NotNull Class<?> aClass) {
@@ -293,16 +291,31 @@ public class BeanBinding extends NotNullDeserializeBinding {
   }
 
   private static final class XmlSerializerPropertyCollector extends PropertyCollector {
-    private final Map<Class<?>, List<MutableAccessor>> accessorCache = ContainerUtil.newConcurrentMap();
+    private final Map<Class<?>, List<MutableAccessor>> accessorCache = new ConcurrentHashMap<>();
 
     XmlSerializerPropertyCollector() {
       super(PropertyCollector.COLLECT_ACCESSORS);
     }
 
     @Override
-    @NotNull
-    public List<MutableAccessor> collect(@NotNull Class<?> aClass) {
-      return accessorCache.computeIfAbsent(aClass, super::collect);
+    public @NotNull List<MutableAccessor> collect(@NotNull Class<?> aClass) {
+      return accessorCache.computeIfAbsent(aClass, aClass1 -> {
+        List<MutableAccessor> result = super.collect(aClass1);
+        if (result.isEmpty() && !isAssertBindings(aClass)) {
+          //noinspection deprecation
+          if (JDOMExternalizable.class.isAssignableFrom(aClass)) {
+            LOG.error("Do not compute bindings for JDOMExternalizable: " + aClass.getName());
+          }
+          else if (aClass.isEnum()) {
+            LOG.error("Do not compute bindings for enum: " + aClass.getName());
+          }
+          else if (aClass == String.class) {
+            LOG.error("Do not compute bindings for String");
+          }
+          LOG.warn("no accessors for " + aClass.getName());
+        }
+        return result;
+      });
     }
 
     @Override

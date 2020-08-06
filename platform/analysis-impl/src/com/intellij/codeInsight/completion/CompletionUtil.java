@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.completion;
 
@@ -32,7 +32,7 @@ import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.List;
 
-public class CompletionUtil {
+public final class CompletionUtil {
 
   private static final CompletionData ourGenericCompletionData = new CompletionData() {
     {
@@ -111,7 +111,7 @@ public class CompletionUtil {
   @SuppressWarnings("unused") // used in Rider
   public static String findIdentifierPrefix(@NotNull Document document, int offset, ElementPattern<Character> idPart,
                                             ElementPattern<Character> idStart) {
-    final String text = document.getText();
+    final CharSequence text = document.getImmutableCharSequence();
     return findInText(offset, 0, idPart, idStart, text);
   }
 
@@ -245,7 +245,7 @@ public class CompletionUtil {
 
   @NotNull
   @ApiStatus.Internal
-  public static CompletionAssertions.WatchingInsertionContext createInsertionContext(@Nullable Lookup lookup,
+  public static CompletionAssertions.WatchingInsertionContext createInsertionContext(@Nullable List<LookupElement> lookupItems,
                                                                                      LookupElement item,
                                                                                      char completionChar,
                                                                                      Editor editor,
@@ -259,14 +259,21 @@ public class CompletionUtil {
     offsetMap.addOffset(CompletionInitializationContext.SELECTION_END_OFFSET, caretOffset);
     offsetMap.addOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET, idEndOffset);
 
-    List<LookupElement> items = lookup != null ? lookup.getItems() : Collections.emptyList();
+    List<LookupElement> items = lookupItems == null ? Collections.emptyList() : lookupItems;
+
     return new CompletionAssertions.WatchingInsertionContext(offsetMap, psiFile, completionChar, items, editor);
   }
 
   @ApiStatus.Internal
-  public static int calcIdEndOffset(CompletionProcessEx indicator) {
-    return indicator.getOffsetMap().containsOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET) ?
-           indicator.getOffsetMap().getOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET) :
-           CompletionInitializationContext.calcDefaultIdentifierEnd(indicator.getEditor(), indicator.getCaret().getOffset());
+  public static int calcIdEndOffset(OffsetMap offsetMap, Editor editor, Integer initOffset) {
+    return offsetMap.containsOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET) ?
+           offsetMap.getOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET) :
+           CompletionInitializationContext.calcDefaultIdentifierEnd(editor, initOffset);
   }
+
+  @ApiStatus.Internal
+  public static int calcIdEndOffset(CompletionProcessEx indicator) {
+    return calcIdEndOffset(indicator.getOffsetMap(), indicator.getEditor(), indicator.getCaret().getOffset());
+  }
+
 }

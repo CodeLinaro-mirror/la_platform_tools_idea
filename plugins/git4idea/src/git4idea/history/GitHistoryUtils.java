@@ -1,9 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.history;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.FilePath;
@@ -157,10 +156,9 @@ public class GitHistoryUtils {
    * Create a proper list of parameters for `git log` command from a list of hashes.
    *
    * @param vcs    an instance of {@link GitVcs} class for the repository, could be obtained from the
-   *               corresponding {@link git4idea.repo.GitRepository} or from a project by calling {@code GitVcs.getInstance(project)}
+   *               corresponding {@link GitRepository} or from a project by calling {@code GitVcs.getInstance(project)}
    * @param hashes a list of hashes to call `git log` for
    * @return a list of parameters that could be fed to a `git log` command
-   * @throws VcsException if there is a problem with running git
    */
   public static String @NotNull [] formHashParameters(@NotNull GitVcs vcs, @NotNull Collection<String> hashes) {
     List<String> parameters = new ArrayList<>();
@@ -226,7 +224,7 @@ public class GitHistoryUtils {
     }
     record.setUsedHandler(h);
 
-    final String author = Comparing.equal(record.getAuthorName(), record.getCommitterName()) ? record.getAuthorName() :
+    final String author = Objects.equals(record.getAuthorName(), record.getCommitterName()) ? record.getAuthorName() :
                           record.getAuthorName() + " (" + record.getCommitterName() + ")";
     return new VcsRevisionDescriptionImpl(new GitRevisionNumber(record.getHash(), record.getDate()), record.getDate(), author,
                                           record.getFullMessage());

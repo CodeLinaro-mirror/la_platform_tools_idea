@@ -19,6 +19,10 @@ import com.intellij.ide.ui.customization.CustomActionsSchema;
 import com.intellij.idea.IdeaLogger;
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionIdProvider;
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsCollectorImpl;
+import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsEventLogGroup;
+import com.intellij.internal.statistic.eventLog.EventFields;
+import com.intellij.internal.statistic.eventLog.EventPair;
+import com.intellij.internal.statistic.eventLog.ObjectEventData;
 import com.intellij.lang.Language;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
@@ -28,9 +32,10 @@ import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.impl.LaterInvocator;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.actions.BackspaceAction;
+import com.intellij.openapi.editor.actionSystem.EditorAction;
+import com.intellij.openapi.editor.actionSystem.EditorActionHandlerBean;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.extensions.PluginId;
@@ -55,11 +60,12 @@ import com.intellij.util.ReflectionUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.messages.MessageBusConnection;
-import com.intellij.util.pico.CachingConstructorInjectionComponentAdapter;
 import com.intellij.util.ui.UIUtil;
-import gnu.trove.THashMap;
-import gnu.trove.TObjectIntHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jdom.Element;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -76,6 +82,8 @@ import java.util.*;
 public final class ActionManagerImpl extends ActionManagerEx implements Disposable {
   private static final ExtensionPointName<ActionConfigurationCustomizer> EP =
     new ExtensionPointName<>("com.intellij.actionConfigurationCustomizer");
+  private static final ExtensionPointName<EditorActionHandlerBean> EDITOR_ACTION_HANDLER_EP =
+    new ExtensionPointName<>("com.intellij.editorActionHandler");
 
   private static final String ACTION_ELEMENT_NAME = "action";
   private static final String GROUP_ELEMENT_NAME = "group";
@@ -88,6 +96,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   private static final String MOUSE_SHORTCUT_ELEMENT_NAME = "mouse-shortcut";
   private static final String DESCRIPTION = "description";
   private static final String TEXT_ATTR_NAME = "text";
+  private static final String KEY_ATTR_NAME = "key";
   private static final String POPUP_ATTR_NAME = "popup";
   private static final String COMPACT_ATTR_NAME = "compact";
   private static final String SEPARATOR_ELEMENT_NAME = "separator";
@@ -126,10 +135,10 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   private static final int UPDATE_DELAY_AFTER_TYPING = 500;
 
   private final Object myLock = new Object();
-  private final Map<String, AnAction> myId2Action = new THashMap<>();
+  private final Map<String, AnAction> myId2Action = new Object2ObjectOpenHashMap<>();
   private final MultiMap<PluginId, String> myPlugin2Id = new MultiMap<>();
-  private final TObjectIntHashMap<String> myId2Index = new TObjectIntHashMap<>();
-  private final Map<Object, String> myAction2Id = new THashMap<>();
+  private final Object2IntMap<String> myId2Index = new Object2IntOpenHashMap<>();
+  private final Map<Object, String> myAction2Id = new Object2ObjectOpenHashMap<>();
   private final MultiMap<String, String> myId2GroupId = new MultiMap<>();
   private final List<String> myNotRegisteredInternalActionIds = new ArrayList<>();
   private final List<AnActionListener> myActionListeners = ContainerUtil.createLockFreeCopyOnWriteList();
@@ -149,8 +158,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     Application app = ApplicationManager.getApplication();
     if (!app.isUnitTestMode()) {
       LoadingState.COMPONENTS_LOADED.checkOccurred();
-      // todo check TraverseUi
-      if (!app.isHeadlessEnvironment()) {
+      if (!app.isHeadlessEnvironment() && !app.isCommandLine()) {
         LOG.assertTrue(!app.isDispatchThread());
       }
     }
@@ -160,6 +168,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     }
 
     EP.forEachExtensionSafe(customizer -> customizer.customize(this));
+    EDITOR_ACTION_HANDLER_EP.addChangeListener(this::updateAllHandlers, this);
   }
 
   @NotNull
@@ -181,7 +190,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   }
 
   @Nullable
-  private static <T> T instantiate(@NotNull String stubClassName, @NotNull IdeaPluginDescriptor pluginDescriptor, Class<T> expectedClass) {
+  private static <T> T instantiate(@NotNull String stubClassName, @NotNull PluginDescriptor pluginDescriptor, Class<T> expectedClass) {
     Object obj;
     try {
       if (expectedClass == ActionGroup.class) {
@@ -222,7 +231,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   }
 
   @Nullable
-  static ActionGroup convertGroupStub(@NotNull ActionGroupStub stub, @NotNull ActionManager actionManager) {
+  private static ActionGroup convertGroupStub(@NotNull ActionGroupStub stub, @NotNull ActionManager actionManager) {
     IdeaPluginDescriptor plugin = stub.getPlugin();
     ActionGroup group = instantiate(stub.getActionClass(), plugin, ActionGroup.class);
     if (group == null) {
@@ -552,6 +561,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     LOG.assertTrue(action.equals(stub));
 
     myAction2Id.put(anAction, stub.getId());
+    updateHandlers(anAction);
 
     return addToMap(stub.getId(), anAction, stub.getPlugin().getPluginId(), stub instanceof ActionStub ? ((ActionStub)stub).getProjectType() : null);
   }
@@ -625,11 +635,8 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     ActionStub stub = new ActionStub(className, id, plugin, iconPath, projectType, () -> {
       String text = computeActionText(bundle, id, ACTION_ELEMENT_NAME, textValue);
       if (text == null) {
-        reportActionError(plugin.getPluginId(), "'text' attribute is mandatory (action ID=" +
-                                                    id +
-                                                    ";" +
-                                                    (" plugin path: " + plugin.getPath()) +
-                                                    ")");
+        reportActionError(plugin.getPluginId(), "'text' attribute is mandatory (actionId=" + id +
+                                                ", plugin=" + plugin + ")");
       }
       Presentation presentation = new Presentation();
       presentation.setText(text);
@@ -727,9 +734,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
         group = new DefaultCompactActionGroup();
       }
       else if (id == null) {
-        Class<?> aClass = Class.forName(className, true, plugin.getPluginClassLoader());
-        Object obj = new CachingConstructorInjectionComponentAdapter(className, aClass).getComponentInstance(ApplicationManager.getApplication().getPicoContainer());
-
+        Object obj = ApplicationManager.getApplication().instantiateExtensionWithPicoContainerOnlyIfNeeded(className, plugin);
         if (!(obj instanceof ActionGroup)) {
           reportActionError(plugin.getPluginId(), "class with name \"" + className + "\" should be instance of " + ActionGroup.class.getName());
           return null;
@@ -808,7 +813,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
           }
         }
         else if (SEPARATOR_ELEMENT_NAME.equals(name)) {
-          processSeparatorNode((DefaultActionGroup)group, child, plugin.getPluginId());
+          processSeparatorNode((DefaultActionGroup)group, child, plugin.getPluginId(), bundle);
         }
         else if (GROUP_ELEMENT_NAME.equals(name)) {
           AnAction action = processGroupElement(child, plugin, bundle);
@@ -937,10 +942,11 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       String text = element.getAttributeValue(TEXT_ATTR_NAME, "");
       if (text.isEmpty() && bundle != null) {
         String key = "action." + stub.getId() + "." + place + ".text";
-        text = BundleBase.message(bundle, key);
+        stub.addActionTextOverride(place, () -> BundleBase.message(bundle, key));
       }
-
-      stub.addActionTextOverride(place, text);
+      else {
+        stub.addActionTextOverride(place, () -> text);
+      }
     }
   }
 
@@ -949,13 +955,15 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
    *                    case separator will be added to group described in the <add-to-group ....> subelement.
    * @param element     XML element which represent separator.
    */
-  private void processSeparatorNode(@Nullable DefaultActionGroup parentGroup, Element element, PluginId pluginId) {
+  private void processSeparatorNode(@Nullable DefaultActionGroup parentGroup, @NotNull Element element, PluginId pluginId, @Nullable ResourceBundle bundle) {
     if (!SEPARATOR_ELEMENT_NAME.equals(element.getName())) {
       reportActionError(pluginId, "unexpected name of element \"" + element.getName() + "\"");
       return;
     }
     String text = element.getAttributeValue(TEXT_ATTR_NAME);
-    Separator separator = text != null ? new Separator(text) : Separator.getInstance();
+    String key = element.getAttributeValue(KEY_ATTR_NAME);
+    Separator separator =
+      text != null ? new Separator(text) : key != null ? createSeparator(bundle, key) : Separator.getInstance();
     if (parentGroup != null) {
       parentGroup.add(separator, this);
     }
@@ -965,6 +973,12 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
         processAddToGroupNode(separator, child, pluginId, isSecondary(child));
       }
     }
+  }
+
+  @NotNull
+  private static Separator createSeparator(@Nullable ResourceBundle bundle, @NotNull String key) {
+    String text = bundle != null ? AbstractBundle.messageOrNull(bundle, key) : null;
+    return text != null ? new Separator(text) : Separator.getInstance();
   }
 
   private void processUnregisterNode(Element element, PluginId pluginId) {
@@ -1075,41 +1089,45 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
                                           @Nullable ResourceBundle bundle,
                                           boolean initialStartup) {
     String name = child.getName();
-    if (ACTION_ELEMENT_NAME.equals(name)) {
-      AnAction action = processActionElement(child, plugin, bundle);
-      if (action != null) {
-        assertActionIsGroupOrStub(action);
-      }
-    }
-    else if (GROUP_ELEMENT_NAME.equals(name)) {
-      processGroupElement(child, plugin, bundle);
-    }
-    else if (SEPARATOR_ELEMENT_NAME.equals(name)) {
-      processSeparatorNode(null, child, plugin.getPluginId());
-    }
-    else if (REFERENCE_ELEMENT_NAME.equals(name)) {
-      processReferenceNode(child, plugin.getPluginId(), initialStartup);
-    }
-    else if (UNREGISTER_ELEMENT_NAME.equals(name)) {
-      processUnregisterNode(child, plugin.getPluginId());
-    }
-    else {
-      reportActionError(plugin.getPluginId(), "unexpected name of element \"" + name + "\n");
+    switch (name) {
+      case ACTION_ELEMENT_NAME:
+        AnAction action = processActionElement(child, plugin, bundle);
+        if (action != null) {
+          assertActionIsGroupOrStub(action);
+        }
+        break;
+      case GROUP_ELEMENT_NAME:
+        processGroupElement(child, plugin, bundle);
+        break;
+      case SEPARATOR_ELEMENT_NAME:
+        processSeparatorNode(null, child, plugin.getPluginId(), bundle);
+        break;
+      case REFERENCE_ELEMENT_NAME:
+        processReferenceNode(child, plugin.getPluginId(), initialStartup);
+        break;
+      case UNREGISTER_ELEMENT_NAME:
+        processUnregisterNode(child, plugin.getPluginId());
+        break;
+      default:
+        reportActionError(plugin.getPluginId(), "unexpected name of element \"" + name + "\n");
+        break;
     }
   }
 
-  public boolean canUnloadActions(IdeaPluginDescriptor pluginDescriptor) {
+  @ApiStatus.Internal
+  public static @Nullable String checkUnloadActions(PluginId pluginId, @NotNull IdeaPluginDescriptorImpl pluginDescriptor) {
     List<Element> elements = pluginDescriptor.getActionDescriptionElements();
-    if (elements == null) return true;
+    if (elements == null) {
+      return null;
+    }
     for (Element element : elements) {
       if (!element.getName().equals(ACTION_ELEMENT_NAME) &&
           !(element.getName().equals(GROUP_ELEMENT_NAME) && canUnloadGroup(element)) &&
           !element.getName().equals(REFERENCE_ELEMENT_NAME)) {
-        LOG.info("Plugin " + pluginDescriptor.getPluginId() + " is not unload-safe because of action element " + element.getName());
-        return false;
+        return "Plugin " + pluginId + " is not unload-safe because of action element " + element.getName();
       }
     }
-    return true;
+    return null;
   }
 
   private static boolean canUnloadGroup(@NotNull Element element) {
@@ -1122,7 +1140,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     return true;
   }
 
-  public void unloadActions(@NotNull IdeaPluginDescriptor pluginDescriptor) {
+  public void unloadActions(@NotNull IdeaPluginDescriptorImpl pluginDescriptor) {
     List<Element> elements = pluginDescriptor.getActionDescriptionElements();
     if (elements == null) {
       return;
@@ -1199,11 +1217,12 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       }
       action.registerCustomShortcutSet(new ProxyShortcutSet(actionId), null);
       notifyCustomActionsSchema(actionId);
+      updateHandlers(action);
     }
   }
 
   private static void notifyCustomActionsSchema(@NotNull String registeredID) {
-    CustomActionsSchema schema = ServiceManager.getServiceIfCreated(CustomActionsSchema.class);
+    CustomActionsSchema schema = ApplicationManager.getApplication().getServiceIfCreated(CustomActionsSchema.class);
     if (schema == null) return;
     for (ActionUrl url : schema.getActions()) {
       if (registeredID.equals(url.getComponent())) {
@@ -1271,24 +1290,32 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       }
       AnAction actionToRemove = myId2Action.remove(actionId);
       myAction2Id.remove(actionToRemove);
-      myId2Index.remove(actionId);
+      myId2Index.removeInt(actionId);
 
-      for (final Map.Entry<PluginId, Collection<String>> entry : myPlugin2Id.entrySet()) {
-        Collection<String> pluginActions = entry.getValue();
-        pluginActions.remove(actionId);
+      for (Map.Entry<PluginId, Collection<String>> entry : myPlugin2Id.entrySet()) {
+        entry.getValue().remove(actionId);
       }
+
       if (removeFromGroups) {
         CustomActionsSchema customActionSchema = ApplicationManager.getApplication().getServiceIfCreated(CustomActionsSchema.class);
         for (String groupId : myId2GroupId.get(actionId)) {
           if (customActionSchema != null) {
             customActionSchema.invalidateCustomizedActionGroup(groupId);
           }
-          DefaultActionGroup group = Objects.requireNonNull((DefaultActionGroup)getActionOrStub(groupId));
+          DefaultActionGroup group = (DefaultActionGroup)getActionOrStub(groupId);
+          if (group == null) {
+            LOG.error("Trying to remove action " + actionId + " from non-existing group " + groupId);
+            continue;
+          }
           group.remove(actionToRemove, actionId);
           if (!(group instanceof ActionGroupStub)) {
             //group can be used as a stub in other actions
             for (String parentOfGroup : myId2GroupId.get(groupId)) {
-              DefaultActionGroup parentOfGroupAction = Objects.requireNonNull((DefaultActionGroup)getActionOrStub(parentOfGroup));
+              DefaultActionGroup parentOfGroupAction = (DefaultActionGroup) getActionOrStub(parentOfGroup);
+              if (parentOfGroupAction == null) {
+                LOG.error("Trying to remove action " + actionId + " from non-existing group " + parentOfGroup);
+                continue;
+              }
               for (AnAction stub : parentOfGroupAction.getChildActionsOrStubs()) {
                 if (stub instanceof ActionGroupStub && ((ActionGroupStub)stub).getId() == groupId) {
                   ((ActionGroupStub)stub).remove(actionToRemove, actionId);
@@ -1303,13 +1330,14 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
           entry.getValue().remove(actionId);
         }
       }
+      updateHandlers(actionToRemove);
     }
   }
 
   @NotNull
   @Override
   public Comparator<String> getRegistrationOrderComparator() {
-    return Comparator.comparingInt(myId2Index::get);
+    return Comparator.comparingInt(myId2Index::getInt);
   }
 
   @Override
@@ -1436,14 +1464,13 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     IdeaLogger.ourLastActionId = myLastPreformedActionId;
     final PsiFile file = CommonDataKeys.PSI_FILE.getData(dataContext);
     final Language language = file != null ? file.getLanguage() : null;
-    ActionsCollectorImpl.recordActionInvoked(CommonDataKeys.PROJECT.getData(dataContext), action, event, (featureUsageData) -> {
-      if (language != null) {
-        featureUsageData.addCurrentFile(language);
-      }
-      if (action instanceof FusAwareAction) {
-        ((FusAwareAction) action).addAdditionalUsageData(event, featureUsageData);
-      }
-    });
+    final List<EventPair> customData = new ArrayList<>();
+    customData.add(EventFields.CurrentFile.with(language));
+    if (action instanceof FusAwareAction) {
+      List<EventPair> additionalUsageData = ((FusAwareAction)action).getAdditionalUsageData(event);
+      customData.add(ActionsEventLogGroup.ADDITIONAL.with(new ObjectEventData(additionalUsageData.toArray(new EventPair[0]))));
+    }
+    ActionsCollectorImpl.recordActionInvoked(CommonDataKeys.PROJECT.getData(dataContext), action, event, customData);
     for (AnActionListener listener : myActionListeners) {
       listener.beforeActionPerformed(action, dataContext, event);
     }
@@ -1602,7 +1629,35 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     }, ModalityState.defaultModalityState());
   }
 
-  private class MyTimer extends Timer implements ActionListener {
+  @Override
+  public @NotNull List<EditorActionHandlerBean> getRegisteredHandlers(@NotNull EditorAction editorAction) {
+    List<EditorActionHandlerBean> result = new ArrayList<>();
+    String id = getId(editorAction);
+    if (id != null) {
+      List<EditorActionHandlerBean> extensions = EDITOR_ACTION_HANDLER_EP.getExtensionList();
+      for (int i = extensions.size() - 1; i >= 0; i--) {
+        EditorActionHandlerBean handlerBean = extensions.get(i);
+        if (handlerBean.action.equals(id)) {
+          result.add(handlerBean);
+        }
+      }
+    }
+    return result;
+  }
+
+  private void updateAllHandlers() {
+    synchronized (myLock) {
+      myAction2Id.keySet().forEach(ActionManagerImpl::updateHandlers);
+    }
+  }
+
+  private static void updateHandlers(Object action) {
+    if (action instanceof EditorAction) {
+      ((EditorAction)action).clearDynamicHandlersCache();
+    }
+  }
+
+  private final class MyTimer extends Timer implements ActionListener {
     private final List<TimerListener> myTimerListeners = ContainerUtil.createLockFreeCopyOnWriteList();
     private final List<TimerListener> myTransparentTimerListeners = ContainerUtil.createLockFreeCopyOnWriteList();
     private int myLastTimePerformed;

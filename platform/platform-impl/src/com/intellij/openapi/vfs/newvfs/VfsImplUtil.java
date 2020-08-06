@@ -1,6 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs.newvfs;
 
+import com.intellij.ide.plugins.DynamicPluginListener;
+import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -11,10 +13,13 @@ import com.intellij.openapi.vfs.*;
 import com.intellij.openapi.vfs.impl.ArchiveHandler;
 import com.intellij.openapi.vfs.newvfs.events.*;
 import com.intellij.util.Function;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.messages.MessageBusConnection;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.io.File;
 import java.util.*;
@@ -23,7 +28,7 @@ import java.util.function.Consumer;
 
 import static com.intellij.openapi.util.Pair.pair;
 
-public class VfsImplUtil {
+public final class VfsImplUtil {
   private static final Logger LOG = Logger.getInstance(VfsImplUtil.class);
 
   private static final String FILE_SEPARATORS = "/" + (File.separatorChar == '/' ? "" : File.separator);
@@ -162,7 +167,7 @@ public class VfsImplUtil {
    * <code>
    *  FileDocumentManager.getInstance().saveDocument(document);
    *  runExternalToolToChangeFile(virtualFile.getPath()) // changes file externally in milliseconds, probably without changing file's length
-   *  VfsUtil.markDirtyAndRefresh(true, true, true, virtualFile); // might be replace with {@link #forceSyncRefresh(VirtualFile)}
+   *  VfsUtil.markDirtyAndRefresh(true, true, true, virtualFile); // might be replaced with {@link #forceSyncRefresh(VirtualFile)}
    * </code>
    */
   public static void forceSyncRefresh(@NotNull VirtualFile file) {
@@ -171,7 +176,7 @@ public class VfsImplUtil {
 
   private static final AtomicBoolean ourSubscribed = new AtomicBoolean(false);
   private static final Object ourLock = new Object();
-  private static final Map<String, Pair<ArchiveFileSystem, ArchiveHandler>> ourHandlers = new THashMap<>(FileUtil.PATH_HASHING_STRATEGY);
+  private static final Map<String, Pair<ArchiveFileSystem, ArchiveHandler>> ourHandlerCache = new THashMap<>(FileUtil.PATH_HASHING_STRATEGY); // guarded by ourLock
   private static final Map<String, Set<String>> ourDominatorsMap = new THashMap<>(FileUtil.PATH_HASHING_STRATEGY);
 
   @NotNull
@@ -184,12 +189,12 @@ public class VfsImplUtil {
     T handler;
 
     synchronized (ourLock) {
-      Pair<ArchiveFileSystem, ArchiveHandler> record = ourHandlers.get(localPath);
+      Pair<ArchiveFileSystem, ArchiveHandler> record = ourHandlerCache.get(localPath);
 
       if (record == null) {
         handler = producer.fun(localPath);
         record = pair(vfs, handler);
-        ourHandlers.put(localPath, record);
+        ourHandlerCache.put(localPath, record);
 
         forEachDirectoryComponent(localPath, containingDirectoryPath -> {
           Set<String> handlers = ourDominatorsMap.computeIfAbsent(containingDirectoryPath, __ -> new THashSet<>());
@@ -204,7 +209,7 @@ public class VfsImplUtil {
     return handler;
   }
 
-  private static void forEachDirectoryComponent(String rootPath, Consumer<? super String> consumer) {
+  private static void forEachDirectoryComponent(@NotNull String rootPath, @NotNull Consumer<? super String> consumer) {
     int index = rootPath.lastIndexOf('/');
     while (index > 0) {
       String containingDirectoryPath = rootPath.substring(0, index);
@@ -221,7 +226,8 @@ public class VfsImplUtil {
       // we might perform a shutdown activity that includes visiting archives (IDEA-181620)
       return;
     }
-    app.getMessageBus().connect(app).subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
+    MessageBusConnection connection = app.getMessageBus().connect(app);
+    connection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
       @Override
       public void after(@NotNull List<? extends VFileEvent> events) {
         InvalidationState state = null;
@@ -230,20 +236,9 @@ public class VfsImplUtil {
           for (VFileEvent event : events) {
             if (!(event.getFileSystem() instanceof LocalFileSystem)) continue;
 
-            if (event instanceof VFileCreateEvent) continue;  // new files don't affect existing handlers (and getFile() is costly)
-
-            if (event instanceof VFilePropertyChangeEvent &&
-                !VirtualFile.PROP_NAME.equals(((VFilePropertyChangeEvent)event).getPropertyName())) {
-              continue;
-            }
+            if (!(event instanceof VFileContentChangeEvent)) continue;
 
             String path = event.getPath();
-            if (event instanceof VFilePropertyChangeEvent) {
-              path = ((VFilePropertyChangeEvent)event).getOldPath();
-            }
-            else if (event instanceof VFileMoveEvent) {
-              path = ((VFileMoveEvent)event).getOldPath();
-            }
 
             VirtualFile file = event.getFile();
             if (file == null || !file.isDirectory()) {
@@ -264,11 +259,20 @@ public class VfsImplUtil {
         if (state != null) state.scheduleRefresh();
       }
     });
+    connection.subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
+      @Override
+      public void pluginUnloaded(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
+        synchronized (ourLock) {
+          // avoid leaking ArchiveFileSystem registered by plugin, e.g. TgzFileSystem from Kubernetes plugin
+          ourHandlerCache.clear();
+        }
+      }
+    });
   }
 
   @Nullable
-  private static InvalidationState invalidate(@Nullable InvalidationState state, String path) {
-    Pair<ArchiveFileSystem, ArchiveHandler> handlerPair = ourHandlers.remove(path);
+  private static InvalidationState invalidate(@Nullable InvalidationState state, @NotNull String path) {
+    Pair<ArchiveFileSystem, ArchiveHandler> handlerPair = ourHandlerCache.remove(path);
     if (handlerPair != null) {
       handlerPair.second.dispose();
 
@@ -287,24 +291,91 @@ public class VfsImplUtil {
   }
 
   private static class InvalidationState {
-    private Set<NewVirtualFile> myRootsToRefresh;
+    private Set<Pair<String, ArchiveFileSystem>> myRootsToRefresh;
 
-    private void registerPathToRefresh(String path, ArchiveFileSystem vfs) {
-      NewVirtualFile root = ManagingFS.getInstance().findRoot(vfs.composeRootPath(path), vfs);
-      if (root != null) {
-        if (myRootsToRefresh == null) myRootsToRefresh = new HashSet<>();
-        myRootsToRefresh.add(root);
-      }
+    private void registerPathToRefresh(@NotNull String path, @NotNull ArchiveFileSystem vfs) {
+      if (myRootsToRefresh == null) myRootsToRefresh = new HashSet<>();
+      myRootsToRefresh.add(pair(path, vfs));
     }
 
     private void scheduleRefresh() {
       if (myRootsToRefresh != null) {
-        for (NewVirtualFile root : myRootsToRefresh) {
+        List<NewVirtualFile> rootsToRefresh = ContainerUtil.mapNotNull(myRootsToRefresh, pathAndFs ->
+          ManagingFS.getInstance().findRoot(pathAndFs.second.composeRootPath(pathAndFs.first), pathAndFs.second));
+        for (NewVirtualFile root : rootsToRefresh) {
           root.markDirtyRecursively();
         }
         boolean async = !ApplicationManager.getApplication().isUnitTestMode();
-        RefreshQueue.getInstance().refresh(async, true, null, myRootsToRefresh);
+        RefreshQueue.getInstance().refresh(async, true, null, rootsToRefresh);
       }
     }
+  }
+
+  @TestOnly
+  public static void releaseHandler(@NotNull String localPath) {
+    if (!ApplicationManager.getApplication().isUnitTestMode()) throw new IllegalStateException();
+    synchronized (ourLock) {
+      InvalidationState state = invalidate(null, localPath);
+      if (state == null) throw new IllegalArgumentException(localPath + " not in " + ourHandlerCache.keySet());
+    }
+  }
+
+  /**
+   * check whether {@code event} (in LocalFileSystem) affects some jars and if so, generate appropriate additional JarFileSystem-events and corresponding after-event-actions.
+   * For example, "delete/change/move '/tmp/x.jar'" event should generate "delete jar:///tmp/x.jar!/" events.
+   */
+  @NotNull
+  public static List<VFileDeleteEvent> getJarInvalidationEvents(@NotNull VFileEvent event, @NotNull List<? super Runnable> outApplyActions) {
+    if (!(event instanceof VFileDeleteEvent ||
+          event instanceof VFileMoveEvent ||
+          event instanceof VFilePropertyChangeEvent && VirtualFile.PROP_NAME.equals(((VFilePropertyChangeEvent)event).getPropertyName()))) {
+      return Collections.emptyList();
+    }
+    String path;
+    if (event instanceof VFilePropertyChangeEvent) {
+      path = ((VFilePropertyChangeEvent)event).getOldPath();
+    }
+    else if (event instanceof VFileMoveEvent) {
+      path = ((VFileMoveEvent)event).getOldPath();
+    }
+    else {
+      path = event.getPath();
+    }
+
+    VirtualFile file = event.getFile();
+    if (file == null) {
+      return Collections.emptyList();
+    }
+    Collection<String> jarPaths = ourDominatorsMap.get(path);
+    if (jarPaths == null) {
+      jarPaths = Collections.singletonList(path);
+    }
+    List<VFileDeleteEvent> events = new ArrayList<>(jarPaths.size());
+    for (String jarPath : jarPaths) {
+      Pair<ArchiveFileSystem, ArchiveHandler> handlerPair = ourHandlerCache.get(jarPath);
+      if (handlerPair == null) {
+        continue;
+      }
+      ArchiveFileSystem fileSystem = handlerPair.first;
+      NewVirtualFile root = ManagingFS.getInstance().findRoot(fileSystem.composeRootPath(jarPath), fileSystem);
+      if (root != null) {
+        VFileDeleteEvent jarDeleteEvent = new VFileDeleteEvent(event.getRequestor(), root, event.isFromRefresh());
+        Runnable runnable = () -> {
+          Pair<ArchiveFileSystem, ArchiveHandler> pair = ourHandlerCache.remove(jarPath);
+          if (pair != null) {
+            pair.second.dispose();
+            forEachDirectoryComponent(jarPath, containingDirectoryPath -> {
+              Set<String> handlers = ourDominatorsMap.get(containingDirectoryPath);
+              if (handlers != null && handlers.remove(jarPath) && handlers.isEmpty()) {
+                ourDominatorsMap.remove(containingDirectoryPath);
+              }
+            });
+          }
+        };
+        events.add(jarDeleteEvent);
+        outApplyActions.add(runnable);
+      }
+    }
+    return events;
   }
 }

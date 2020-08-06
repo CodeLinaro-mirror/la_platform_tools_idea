@@ -2,17 +2,17 @@
 package org.jetbrains.idea.maven.project;
 
 import com.intellij.ProjectTopics;
-import com.intellij.execution.Executor;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTracker;
 import com.intellij.openapi.externalSystem.autoimport.AutoImportProjectTracker;
+import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTracker;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.ModuleListener;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootEvent;
 import com.intellij.openapi.roots.ModuleRootListener;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.messages.MessageBusConnection;
@@ -21,6 +21,7 @@ import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.concurrency.AsyncPromise;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
+import org.jetbrains.idea.maven.utils.MavenLog;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,7 +65,7 @@ public class MavenProjectsManagerWatcher {
     busConnection.subscribe(ProjectTopics.MODULES, new MavenIgnoredModulesWatcher());
     busConnection.subscribe(ProjectTopics.PROJECT_ROOTS, new MyRootChangesListener());
     registerGeneralSettingsWatcher(myManager, this, myBackgroundExecutor, myDisposable);
-    myProjectTracker.register(myProjectsAware);
+    myProjectTracker.register(myProjectsAware, myManager);
     myProjectTracker.activate(myProjectsAware.getProjectId());
   }
 
@@ -181,14 +182,22 @@ public class MavenProjectsManagerWatcher {
   private class MavenIgnoredModulesWatcher implements ModuleListener {
     @Override
     public void moduleRemoved(@NotNull Project project, @NotNull Module module) {
+      if(Registry.is("maven.modules.do.not.ignore.on.delete")) return;
+
       MavenProject mavenProject = myManager.findProject(module);
       if (mavenProject != null && !myManager.isIgnored(mavenProject)) {
         VirtualFile file = mavenProject.getFile();
 
         if (myManager.isManagedFile(file) && myManager.getModules(mavenProject).isEmpty()) {
+          MavenLog.LOG.info("remove managed maven project  + " + mavenProject + "because there is no module for it");
           myManager.removeManagedFiles(Collections.singletonList(file));
         }
         else {
+          if (myManager.getRootProjects().contains(mavenProject)) {
+            MavenLog.LOG.info("Requested to ignore " + mavenProject + ", will not do it because it is a root project");
+            return;
+          }
+          MavenLog.LOG.info("Ignoring " + mavenProject);
           myManager.setIgnoredState(Collections.singletonList(mavenProject), true);
         }
       }
@@ -196,6 +205,7 @@ public class MavenProjectsManagerWatcher {
 
     @Override
     public void moduleAdded(@NotNull final Project project, @NotNull final Module module) {
+      if(Registry.is("maven.modules.do.not.ignore.on.delete")) return;
       // this method is needed to return non-ignored status for modules that were deleted (and thus ignored) and then created again with a different module type
       MavenProject mavenProject = myManager.findProject(module);
       if (mavenProject != null) myManager.setIgnoredState(Collections.singletonList(mavenProject), false);

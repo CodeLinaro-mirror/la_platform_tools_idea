@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.roots.ProjectFileIndex;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.io.FileAttributes;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -17,7 +16,6 @@ import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.newvfs.ChildInfoImpl;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile;
 import com.intellij.openapi.vfs.newvfs.events.*;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.SmartList;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.ContainerUtil;
@@ -30,8 +28,9 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
-class VfsEventGenerationHelper {
+final class VfsEventGenerationHelper {
   static final Logger LOG = Logger.getInstance(RefreshWorker.class);
 
   private final List<VFileEvent> myEvents = new ArrayList<>();
@@ -44,7 +43,9 @@ class VfsEventGenerationHelper {
 
   static boolean checkDirty(@NotNull NewVirtualFile file) {
     boolean fileDirty = file.isDirty();
-    if (LOG.isTraceEnabled()) LOG.trace("file=" + file + " dirty=" + fileDirty);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("file=" + file + " dirty=" + fileDirty);
+    }
     return fileDirty;
   }
 
@@ -63,17 +64,18 @@ class VfsEventGenerationHelper {
                         @NotNull FileAttributes attributes,
                         @Nullable String symlinkTarget,
                         @NotNull ThrowableRunnable<RefreshWorker.RefreshCancelledException> checkCanceled) throws RefreshWorker.RefreshCancelledException {
-    if (LOG.isTraceEnabled()) LOG.trace("create parent=" + parent + " name=" + childName + " attr=" + attributes);
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("create parent=" + parent + " name=" + childName + " attr=" + attributes);
+    }
     ChildInfo[] children = null;
     if (attributes.isDirectory() && parent.getFileSystem() instanceof LocalFileSystem && !attributes.isSymLink()) {
       try {
         Path child = Paths.get(parent.getPath(), childName);
         if (shouldScanDirectory(parent, child, childName)) {
-          Path[] relevantExcluded = ContainerUtil.mapNotNull(ProjectManagerEx.getInstanceEx().getAllExcludedUrls(),
-               url -> {
-                 Path path = Paths.get(VirtualFileManager.extractPath(url));
-                 return path.startsWith(child) ? path : null;
-               }, new Path[0]);
+          List<Path> relevantExcluded = ContainerUtil.mapNotNull(ProjectManagerEx.getInstanceEx().getAllExcludedUrls(), url -> {
+            Path path = Paths.get(VirtualFileManager.extractPath(url));
+            return path.startsWith(child) ? path : null;
+          });
           children = scanChildren(child, relevantExcluded, checkCanceled);
         }
       }
@@ -113,7 +115,7 @@ class VfsEventGenerationHelper {
   // scan all children of "root" (except excluded dirs) recursively and return them in the ChildInfo[] array
   // null means error during scan
   private static ChildInfo @Nullable [] scanChildren(@NotNull Path root,
-                                                     Path @NotNull [] excluded,
+                                                     @NotNull List<Path> excluded,
                                                      @NotNull ThrowableRunnable<RefreshWorker.RefreshCancelledException> checkCanceled)
   throws RefreshWorker.RefreshCancelledException {
     // top of the stack contains list of children found so far in the current directory
@@ -128,7 +130,7 @@ class VfsEventGenerationHelper {
           visitFile(dir, attrs);
         }
         // on average, this "excluded" array is very small for any particular root, so linear search it is.
-        if (ArrayUtil.contains(dir, excluded)) {
+        if (excluded.contains(dir)) {
           // do not drill inside excluded root (just record its attributes nevertheless), even if we have content roots beneath
           // stop optimization right here - it's too much pain to track all these nested content/excluded/content otherwise
           return FileVisitResult.SKIP_SUBTREE;
@@ -162,7 +164,7 @@ class VfsEventGenerationHelper {
         // store children back
         ChildInfo parentInfo = ContainerUtil.getLastItem(parentInfos);
         ChildInfo[] children = childInfos.toArray(ChildInfo.EMPTY_ARRAY);
-        ChildInfo newInfo = new ChildInfoImpl(parentInfo.getId(), parentInfo.getNameId(), parentInfo.getFileAttributes(), children, parentInfo.getSymLinkTarget());
+        ChildInfo newInfo = new ChildInfoImpl(parentInfo.getId(), parentInfo.getNameId(), parentInfo.getFileAttributes(), children, parentInfo.getSymlinkTarget());
         parentInfos.set(parentInfos.size() - 1, newInfo);
         return FileVisitResult.CONTINUE;
       }
@@ -191,7 +193,7 @@ class VfsEventGenerationHelper {
 
   void checkSymbolicLinkChange(@NotNull VirtualFile child, String oldTarget, String currentTarget) {
     String currentVfsTarget = currentTarget != null ? FileUtil.toSystemIndependentName(currentTarget) : null;
-    if (!Comparing.equal(oldTarget, currentVfsTarget)) {
+    if (!Objects.equals(oldTarget, currentVfsTarget)) {
       scheduleAttributeChange(child, VirtualFile.PROP_SYMLINK_TARGET, oldTarget, currentVfsTarget);
     }
   }

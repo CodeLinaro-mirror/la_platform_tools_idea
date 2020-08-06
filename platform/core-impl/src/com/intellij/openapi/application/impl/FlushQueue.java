@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application.impl;
 
+import com.intellij.codeWithMe.ClientId;
 import com.intellij.diagnostic.EventWatcher;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
@@ -14,7 +15,7 @@ import org.jetbrains.annotations.*;
 import java.util.*;
 import java.util.function.Consumer;
 
-class FlushQueue {
+final class FlushQueue {
   private static final Logger LOG = Logger.getInstance(LaterInvocator.class);
   private static final boolean DEBUG = LOG.isDebugEnabled();
   private final Object LOCK = new Object();
@@ -77,7 +78,10 @@ class FlushQueue {
 
   // Extracted to have a capture point
   private static void doRun(@Async.Execute RunnableInfo info) {
-    info.runnable.run();
+    if (ClientId.Companion.getPropagateAcrossThreads())
+      ClientId.withClientId(info.clientId, info.runnable);
+    else
+      info.runnable.run();
   }
 
   @Override
@@ -185,11 +189,12 @@ class FlushQueue {
     }
   }
 
-  static class RunnableInfo {
+  final static class RunnableInfo {
     @NotNull private final Runnable runnable;
     @NotNull private final ModalityState modalityState;
     @NotNull private final Condition<?> expired;
     @Nullable private final ActionCallback callback;
+    @Nullable private final ClientId clientId;
 
     @Async.Schedule
     RunnableInfo(@NotNull Runnable runnable,
@@ -200,6 +205,7 @@ class FlushQueue {
       this.modalityState = modalityState;
       this.expired = expired;
       this.callback = callback;
+      this.clientId = ClientId.getCurrent();
     }
 
     void markDone() {

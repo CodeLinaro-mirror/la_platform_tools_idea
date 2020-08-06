@@ -18,6 +18,7 @@ import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.w3c.dom.Element;
@@ -29,8 +30,11 @@ import javax.swing.plaf.BorderUIResource;
 import javax.swing.plaf.ColorUIResource;
 import javax.swing.plaf.IconUIResource;
 import java.awt.*;
+import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -59,6 +63,7 @@ public class UITheme {
   private Map<String, Object> icons;
   private IconPathPatcher patcher;
   private Map<String, Object> background;
+  private Map<String, Object> emptyFrameBackground;
   private Map<String, Object> colors;
   private ClassLoader providerClassLoader = getClass().getClassLoader();
   private String editorSchemeName;
@@ -76,6 +81,34 @@ public class UITheme {
 
   public String getAuthor() {
     return author;
+  }
+
+  public URL getResource(String path) {
+    if (isTempTheme()) {
+      File file = new File(path);
+      if (file.exists()) {
+        try {
+          return file.toURI().toURL();
+        }
+        catch (MalformedURLException e) {
+          LOG.warn(e);
+        }
+      }
+    }
+    return getProviderClassLoader().getResource(path);
+  }
+
+  public InputStream getResourceAsStream(String path) {
+    URL url = getResource(path);
+    try {
+      return url != null ? url.openStream() : null;
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
+  private boolean isTempTheme() {
+    return "Temp theme".equals(id);
   }
 
   @NotNull
@@ -186,22 +219,27 @@ public class UITheme {
 
               @Override
               public void patchColors(@NotNull Element svg) {
-                String fill = svg.getAttribute("fill");
-                if (fill != null) {
-                  String newFill = newPalette.get(StringUtil.toLowerCase(fill));
-                  if (newFill != null) {
-                    svg.setAttribute("fill", newFill);
-                    if (alphas.get(newFill) != null) {
-                      svg.setAttribute("fill-opacity", String.valueOf((Float.valueOf(alphas.get(newFill)) / 255f)));
-                    }
-                  }
-                }
+                patchColorAttribute(svg, "fill");
+                patchColorAttribute(svg, "stroke");
                 NodeList nodes = svg.getChildNodes();
                 int length = nodes.getLength();
                 for (int i = 0; i < length; i++) {
                   Node item = nodes.item(i);
                   if (item instanceof Element) {
                     patchColors((Element)item);
+                  }
+                }
+              }
+
+              private void patchColorAttribute(@NotNull Element svg, String attrName) {
+                String color = svg.getAttribute(attrName);
+                if (color != null) {
+                  String newColor = newPalette.get(StringUtil.toLowerCase(color));
+                  if (newColor != null) {
+                    svg.setAttribute(attrName, newColor);
+                    if (alphas.get(newColor) != null) {
+                      svg.setAttribute(attrName + "-opacity", String.valueOf((Float.valueOf(alphas.get(newColor)) / 255f)));
+                    }
                   }
                 }
               }
@@ -214,15 +252,15 @@ public class UITheme {
     return theme;
   }
 
-  private static String toColorString(String fillValue, boolean darkTheme) {
-    if (darkTheme && fillValue.startsWith("Actions.") && !fillValue.endsWith(".Dark")) {
-      fillValue += ".Dark";
+  private static String toColorString(String key, boolean darkTheme) {
+    if (darkTheme && colorPalette.get(key + ".Dark") != null) {
+      key += ".Dark";
     }
-    String color = colorPalette.get(fillValue);
-    return color != null ? StringUtil.toLowerCase(color) : StringUtil.toLowerCase(fillValue);
+    String color = colorPalette.get(key);
+    return color != null ? StringUtil.toLowerCase(color) : StringUtil.toLowerCase(key);
   }
 
-  private static final Map<String, String> colorPalette = new HashMap<>();
+  private static final @NonNls Map<String, String> colorPalette = new HashMap<>();
   static {
     colorPalette.put("Actions.Red", "#DB5860");
     colorPalette.put("Actions.Red.Dark", "#C75450");
@@ -269,6 +307,8 @@ public class UITheme {
     colorPalette.put("Checkbox.Foreground.Selected.Dark", "#A7A7A7");
     colorPalette.put("Checkbox.Focus.Thin.Selected", "#ACCFF7");
     colorPalette.put("Checkbox.Focus.Thin.Selected.Dark", "#466D94");
+    colorPalette.put("Tree.iconColor", "#808080");
+    colorPalette.put("Tree.iconColor.Dark", "#AFB1B3");
   }
 
   public String getId() {
@@ -282,6 +322,10 @@ public class UITheme {
 
   public Map<String, Object> getBackground() {
     return background;
+  }
+
+  public Map<String, Object> getEmptyFrameBackground() {
+    return emptyFrameBackground;
   }
 
   public void applyProperties(UIDefaults defaults) {
@@ -527,6 +571,7 @@ public class UITheme {
     final PaletteScope ui = new PaletteScope();
     final PaletteScope checkBoxes = new PaletteScope();
     final PaletteScope radioButtons = new PaletteScope();
+    final PaletteScope trees = new PaletteScope();
 
     PaletteScopeManager() {
     }
@@ -534,6 +579,7 @@ public class UITheme {
     PaletteScope getScope(String colorKey) {
       if (colorKey.startsWith("Checkbox.")) return checkBoxes;
       if (colorKey.startsWith("Radio.")) return radioButtons;
+      if (colorKey.startsWith("Tree.iconColor")) return trees;
       if (colorKey.startsWith("Objects.")) return ui;
       if (colorKey.startsWith("Actions.")) return ui;
       if (colorKey.startsWith("#")) return ui;
@@ -549,6 +595,7 @@ public class UITheme {
         String file = path.substring(path.lastIndexOf('/') + 1);
 
         if (path.contains("/com/intellij/ide/ui/laf/icons/")) {
+          if (file.equals("treeCollapsed.svg") || file.equals("treeExpanded.svg")) return trees;
           if (file.startsWith("check")) return checkBoxes;
           if (file.startsWith("radio")) return checkBoxes; //same set of colors as for checkboxes
           return null;
@@ -558,10 +605,7 @@ public class UITheme {
     }
   }
 
-  //
-  //json deserialization methods
-  //
-
+  //<editor-fold desc="JSON deserialization methods">
   @SuppressWarnings("unused")
   private void setName(String name) {
     this.name = name;
@@ -596,6 +640,10 @@ public class UITheme {
     this.background = background;
   }
 
+  public void setEmptyFrameBackground(Map<String, Object> emptyFrameBackground) {
+    this.emptyFrameBackground = emptyFrameBackground;
+  }
+
   public Map<String, Object> getColors() {
     return colors;
   }
@@ -603,4 +651,5 @@ public class UITheme {
   public void setColors(Map<String, Object> colors) {
     this.colors = colors;
   }
+  //</editor-fold>
 }

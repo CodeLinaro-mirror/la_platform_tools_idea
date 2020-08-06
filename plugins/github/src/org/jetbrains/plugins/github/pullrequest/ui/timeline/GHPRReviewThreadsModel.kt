@@ -10,7 +10,14 @@ import org.jetbrains.plugins.github.pullrequest.comment.ui.GHPRReviewThreadModel
 class GHPRReviewThreadsModel
   : CollectionListModel<GHPRReviewThreadModel>(SortedList<GHPRReviewThreadModel>(compareBy { it.createdAt }), true) {
 
+  var loaded = false
+    private set
+
   fun update(list: List<GHPullRequestReviewThread>) {
+    loaded = true
+    //easier then creating another event type and doesn't break JList
+    fireContentsChanged(this, -1, -1)
+
     val threadsById = list.associateBy { it.id }.toMutableMap()
     val removals = mutableListOf<GHPRReviewThreadModel>()
     for (item in items) {
@@ -22,12 +29,7 @@ class GHPRReviewThreadsModel
       remove(model)
     }
     for (thread in threadsById.values) {
-      val model = GHPRReviewThreadModelImpl(thread).also {
-        it.addDeletionListener {
-          remove(it)
-        }
-      }
-      add(model)
+      add(GHPRReviewThreadModelImpl(thread))
     }
   }
 }

@@ -5,8 +5,11 @@ import com.intellij.execution.BeforeRunTask;
 import com.intellij.execution.ExecutionBundle;
 import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.configurations.RunConfiguration;
+import com.intellij.execution.configurations.RunConfigurationBase;
 import com.intellij.execution.configurations.WithoutOwnBeforeRunSteps;
 import com.intellij.execution.runners.ProgramRunner;
+import com.intellij.execution.ui.RunConfigurationFragmentedEditor;
+import com.intellij.execution.ui.RunnerAndConfigurationSettingsEditor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.util.PropertiesComponent;
@@ -54,8 +57,9 @@ public class ConfigurationSettingsEditorWrapper extends SettingsEditor<RunnerAnd
     return myEditor.selectTabAndGetEditor(editorClass);
   }
 
-  public ConfigurationSettingsEditorWrapper(@NotNull RunnerAndConfigurationSettings settings) {
-    myEditor = new ConfigurationSettingsEditor(settings);
+  private ConfigurationSettingsEditorWrapper(@NotNull RunnerAndConfigurationSettings settings, SettingsEditor<RunConfiguration> configurationEditor) {
+    myEditor = new ConfigurationSettingsEditor(settings, configurationEditor);
+    myEditor.addSettingsEditorListener(editor -> fireStepsBeforeRunChanged());
     Disposer.register(this, myEditor);
     myBeforeRunStepsPanel = new BeforeRunStepsPanel(this);
     myDecorator = new HideableDecorator(myBeforeLaunchContainer, "", false) {
@@ -184,5 +188,14 @@ public class ConfigurationSettingsEditorWrapper extends SettingsEditor<RunnerAnd
         }
       }
     });
+  }
+
+  public static SettingsEditor<RunnerAndConfigurationSettings> createWrapper(@NotNull RunnerAndConfigurationSettings settings) {
+    SettingsEditor<?> configurationEditor = settings.getConfiguration().getConfigurationEditor();
+    //noinspection unchecked
+    return configurationEditor instanceof RunConfigurationFragmentedEditor<?>
+           ? new RunnerAndConfigurationSettingsEditor(settings,
+                                                      (RunConfigurationFragmentedEditor<RunConfigurationBase<?>>)configurationEditor)
+           : new ConfigurationSettingsEditorWrapper(settings, (SettingsEditor<RunConfiguration>)configurationEditor);
   }
 }

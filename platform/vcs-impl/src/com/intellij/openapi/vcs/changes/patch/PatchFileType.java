@@ -5,7 +5,6 @@ package com.intellij.openapi.vcs.changes.patch;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.vcs.VcsBundle;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -17,6 +16,8 @@ import javax.swing.*;
 import java.io.File;
 
 public class PatchFileType implements FileType {
+  public static final PatchFileType INSTANCE = new PatchFileType();
+
   public static final String NAME = "PATCH"; //NON-NLS
 
   @Override
@@ -63,7 +64,7 @@ public class PatchFileType implements FileType {
   }
 
   public static boolean isPatchFile(@Nullable VirtualFile vFile) {
-    return vFile != null && FileTypeRegistry.getInstance().isFileOfType(vFile, StdFileTypes.PATCH);
+    return vFile != null && FileTypeRegistry.getInstance().isFileOfType(vFile, INSTANCE);
   }
 
   public static boolean isPatchFile(@NotNull File file) {

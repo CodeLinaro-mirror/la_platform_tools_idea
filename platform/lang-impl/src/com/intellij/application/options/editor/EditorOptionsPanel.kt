@@ -6,14 +6,12 @@ import com.intellij.codeInsight.CodeInsightSettings
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings
 import com.intellij.codeInsight.daemon.impl.IdentifierHighlighterPass
-import com.intellij.codeInsight.documentation.QuickDocOnMouseOverManager
 import com.intellij.ide.ui.UISettings
 import com.intellij.ide.ui.search.OptionDescription
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.application.ApplicationBundle.message
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.actions.CaretStopBoundary
 import com.intellij.openapi.editor.actions.CaretStopOptionsTransposed
@@ -26,17 +24,15 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.BoundCompositeConfigurable
-import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.options.Configurable.WithEpDependencies
 import com.intellij.openapi.options.SchemeManager
+import com.intellij.openapi.options.UnnamedConfigurable
 import com.intellij.openapi.options.ex.ConfigurableWrapper
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.openapi.vcs.VcsApplicationSettings
-import com.intellij.openapi.vcs.impl.LineStatusTrackerSettingListener
 import com.intellij.profile.codeInspection.ui.ErrorOptionsProvider
 import com.intellij.profile.codeInspection.ui.ErrorOptionsProviderEP
 import com.intellij.ui.SimpleListCellRenderer
@@ -48,7 +44,6 @@ private val codeInsightSettings get() = CodeInsightSettings.getInstance()
 private val editorSettings get() = EditorSettingsExternalizable.getInstance()
 private val uiSettings get() = UISettings.instance
 private val richCopySettings get() = RichCopySettings.getInstance()
-private val vcsSettings get() = VcsApplicationSettings.getInstance()
 private val codeAnalyzerSettings get() = DaemonCodeAnalyzerSettings.getInstance()
 
 private fun String.capitalizeWords(): String = StringUtil.capitalizeWords(this, true)
@@ -64,8 +59,6 @@ private val highlightBraces                                            get() = C
 private val highlightScope                                             get() = CheckboxDescriptor(message("checkbox.highlight.current.scope"), codeInsightSettings::HIGHLIGHT_SCOPE, groupName = message("group.brace.highlighting"))
 private val highlightIdentifierUnderCaret                              get() = CheckboxDescriptor(message("checkbox.highlight.usages.of.element.at.caret"), codeInsightSettings::HIGHLIGHT_IDENTIFIER_UNDER_CARET, groupName = message("group.brace.highlighting"))
 
-private val showNotificationAfterReformatCodeCheckBox                  get() = CheckboxDescriptor(message("checkbox.show.notification.after.reformat.code.action"), PropertyBinding(editorSettings::isShowNotificationAfterReformat, editorSettings::setShowNotificationAfterReformat), groupName = message("label.show.notification.after").capitalizeWords())
-private val myShowNotificationAfterOptimizeImportsCheckBox             get() = CheckboxDescriptor(message("checkbox.show.notification.after.optimize.imports.action"), PropertyBinding(editorSettings::isShowNotificationAfterOptimizeImports, editorSettings::setShowNotificationAfterOptimizeImports), groupName = message("label.show.notification.after").capitalizeWords())
 private val renameLocalVariablesInplace                                get() = CheckboxDescriptor(message("radiobutton.rename.local.variables.inplace"), PropertyBinding(editorSettings::isVariableInplaceRenameEnabled, editorSettings::setVariableInplaceRenameEnabled), groupName = message("radiogroup.rename.local.variables").capitalizeWords())
 private val preselectCheckBox                                          get() = CheckboxDescriptor(message("checkbox.rename.local.variables.preselect"), PropertyBinding(editorSettings::isPreselectRename, editorSettings::setPreselectRename), groupName = message("group.refactorings"))
 private val showInlineDialogForCheckBox                                get() = CheckboxDescriptor(message("checkbox.show.inline.dialog.on.local.variable.references"), PropertyBinding(editorSettings::isShowInlineLocalDialog, editorSettings::setShowInlineLocalDialog))
@@ -77,30 +70,27 @@ private val cdShowSoftWrapsOnlyOnCaretLine                             get() = C
 private val cdEnsureBlankLineBeforeCheckBox                            get() = CheckboxDescriptor(message("editor.options.line.feed"), PropertyBinding(editorSettings::isEnsureNewLineAtEOF, editorSettings::setEnsureNewLineAtEOF))
 private val cdShowQuickDocOnMouseMove                                  get() = CheckboxDescriptor(message("editor.options.quick.doc.on.mouse.hover"), PropertyBinding(editorSettings::isShowQuickDocOnMouseOverElement, editorSettings::setShowQuickDocOnMouseOverElement))
 private val cdKeepTrailingSpacesOnCaretLine                            get() = CheckboxDescriptor(message("editor.settings.delete.trailing.spaces.on.caret.line"), PropertyBinding({ !editorSettings.isKeepTrailingSpacesOnCaretLine }, { editorSettings.isKeepTrailingSpacesOnCaretLine = !it }))
-private val cdShowLSTInGutterCheckBox                                  get() = CheckboxDescriptor(message("editor.options.highlight.modified.line"), vcsSettings::SHOW_LST_GUTTER_MARKERS)
-private val cdShowWhitespacesInLSTGutterCheckBox                       get() = CheckboxDescriptor(message("editor.options.whitespace.line.color"), vcsSettings::SHOW_WHITESPACES_IN_LST)
 
 // @formatter:on
 
-internal val optionDescriptors: List<OptionDescription> = listOf(
-  myCbHonorCamelHumpsWhenSelectingByClicking,
-  enableWheelFontChange,
-  enableDnD,
-  virtualSpace,
-  caretInsideTabs,
-  virtualPageAtBottom,
-  highlightBraces,
-  highlightScope,
-  highlightIdentifierUnderCaret,
-  showNotificationAfterReformatCodeCheckBox,
-  myShowNotificationAfterOptimizeImportsCheckBox,
-  renameLocalVariablesInplace,
-  preselectCheckBox,
-  showInlineDialogForCheckBox
-).map(CheckboxDescriptor::asOptionDescriptor)
+internal val optionDescriptors: List<OptionDescription>
+  get() = listOf(
+    myCbHonorCamelHumpsWhenSelectingByClicking,
+    enableWheelFontChange,
+    enableDnD,
+    virtualSpace,
+    caretInsideTabs,
+    virtualPageAtBottom,
+    highlightBraces,
+    highlightScope,
+    highlightIdentifierUnderCaret,
+    renameLocalVariablesInplace,
+    preselectCheckBox,
+    showInlineDialogForCheckBox
+  ).map(CheckboxDescriptor::asUiOptionDescriptor)
 
 
-class EditorOptionsPanel : BoundConfigurable(message("title.editor"), ID) {
+class EditorOptionsPanel : BoundCompositeConfigurable<UnnamedConfigurable>(message("title.editor"), ID), WithEpDependencies {
   companion object {
     const val ID = "preferences.editor"
 
@@ -128,6 +118,9 @@ class EditorOptionsPanel : BoundConfigurable(message("title.editor"), ID) {
       }
     }
   }
+
+  override fun createConfigurables() = ConfigurableWrapper.createConfigurables(GeneralEditorOptionsProviderEP.EP_NAME)
+  override fun getDependencies() = setOf(GeneralEditorOptionsProviderEP.EP_NAME)
 
   override fun createPanel(): DialogPanel {
     return panel {
@@ -205,16 +198,10 @@ class EditorOptionsPanel : BoundConfigurable(message("title.editor"), ID) {
         row {
           val copyShortcut = ActionManager.getInstance().getKeyboardShortcut(IdeActions.ACTION_COPY)
           val copyShortcutText = copyShortcut?.let { " (" + KeymapUtil.getShortcutText(it) + ")" } ?: ""
-          buttonGroup(richCopySettings::isEnabled, richCopySettings::setEnabled) {
-            checkBoxGroup(message("radiogroup.enable.richcopy.label", copyShortcutText)) {
-              row {
-                cell(isFullWidth = true) {
-                  radioButton(message("radiobutton.enable.richcopy.as.rich.text")).bindValue(true)
-                  commentNoWrap(message("radiobutton.enable.richcopy.as.rich.text.comment")).withLargeLeftGap()
-                }
-              }
-              row { radioButton(message("radiobutton.enable.richcopy.as.simple.text")).bindValue(false) }
-            }
+          cell(isFullWidth = true) {
+            checkBox(CheckboxDescriptor(message("checkbox.enable.richcopy.label", copyShortcutText),
+                                        PropertyBinding(richCopySettings::isEnabled, richCopySettings::setEnabled)))
+            commentNoWrap(message("checkbox.enable.richcopy.comment")).withLargeLeftGap()
           }
         }
         row {
@@ -268,20 +255,8 @@ class EditorOptionsPanel : BoundConfigurable(message("title.editor"), ID) {
         }
         row { checkBox(cdEnsureBlankLineBeforeCheckBox) }
       }
-      titledRow(message("editor.options.gutter.group")) {
-        row {
-          fun fireLSTSettingsChanged() {
-            ApplicationManager.getApplication().messageBus.syncPublisher(LineStatusTrackerSettingListener.TOPIC).settingsUpdated()
-          }
-
-          val showLstGutter = checkBox(cdShowLSTInGutterCheckBox)
-            .onApply(::fireLSTSettingsChanged)
-          row {
-            checkBox(cdShowWhitespacesInLSTGutterCheckBox)
-              .enableIf(showLstGutter.selected)
-              .onApply(::fireLSTSettingsChanged)
-          }
-        }
+      for (configurable in configurables) {
+        appendDslConfigurableRow(configurable)
       }
     }
   }
@@ -315,14 +290,6 @@ class EditorCodeEditingConfigurable : BoundCompositeConfigurable<ErrorOptionsPro
         row { checkBox(highlightBraces) }
         row { checkBox(highlightScope) }
         row { checkBox(highlightIdentifierUnderCaret) }
-      }
-      titledRow(message("group.formatting")) {
-        row {
-          checkBoxGroup(message("label.show.notification.after")) {
-            row { checkBox(showNotificationAfterReformatCodeCheckBox) }
-            row { checkBox(myShowNotificationAfterOptimizeImportsCheckBox) }
-          }
-        }
       }
       titledRow(message("group.refactorings")) {
         row {
@@ -375,11 +342,7 @@ class EditorCodeEditingConfigurable : BoundCompositeConfigurable<ErrorOptionsPro
         }
       }
       titledRow(message("group.quick.documentation")) {
-        row {
-          checkBox(cdShowQuickDocOnMouseMove).apply {
-            onApply { service<QuickDocOnMouseOverManager>().setEnabled(component.isSelected) }
-          }
-        }
+        row { checkBox(cdShowQuickDocOnMouseMove) }
       }
       titledRow(message("group.editor.tooltips")) {
         row {

@@ -27,9 +27,9 @@ public class XmlStructureViewBuilderFactory implements PsiStructureViewFactory {
 
   public XmlStructureViewBuilderFactory()
   {
-    XmlStructureViewBuilderProvider.EP_NAME.addExtensionPointListener(
+    XmlStructureViewBuilderProvider.EP_NAME.addChangeListener(
       () -> ApplicationManager.getApplication().getMessageBus().syncPublisher(StructureViewWrapperImpl.STRUCTURE_CHANGED).run(),
-      ExtensionPointUtil.createKeyedExtensionDisposable(this, PsiStructureViewFactory.EP_NAME.getPoint(null)));
+      ExtensionPointUtil.createKeyedExtensionDisposable(this, PsiStructureViewFactory.EP_NAME.getPoint()));
   }
 
   @Override

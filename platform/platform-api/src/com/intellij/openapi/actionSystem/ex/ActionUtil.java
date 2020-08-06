@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.DumbService;
@@ -35,6 +36,7 @@ import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 import static java.awt.event.InputEvent.ALT_DOWN_MASK;
@@ -225,7 +227,7 @@ public final class ActionUtil {
     return ProgressManager.getInstance().runProcessWithProgressSynchronously(process, progressTitle, true, project);
   }
 
-  public static class ActionPauses {
+  public static final class ActionPauses {
     public static final PausesStat STAT = new PausesStat("AnAction.update()");
   }
 
@@ -300,7 +302,7 @@ public final class ActionUtil {
                                   @NotNull String actionText,
                                   @NotNull String targetActionText,
                                   boolean before) {
-    if (Comparing.equal(actionText, targetActionText)) {
+    if (Objects.equals(actionText, targetActionText)) {
       return;
     }
 
@@ -308,12 +310,13 @@ public final class ActionUtil {
     int targetIndex = -1;
     for (int i = 0; i < list.size(); i++) {
       AnAction action = list.get(i);
-      if (actionIndex == -1 && Comparing.equal(actionText, action.getTemplateText())) actionIndex = i;
-      if (targetIndex == -1 && Comparing.equal(targetActionText, action.getTemplateText())) targetIndex = i;
+      if (actionIndex == -1 && Objects.equals(actionText, action.getTemplateText())) actionIndex = i;
+      if (targetIndex == -1 && Objects.equals(targetActionText, action.getTemplateText())) targetIndex = i;
       if (actionIndex != -1 && targetIndex != -1) {
         if (actionIndex < targetIndex) targetIndex--;
         AnAction anAction = list.remove(actionIndex);
-        list.add(before ? Math.max(0, targetIndex) : targetIndex + 1, anAction);
+        assert targetIndex >= 0;
+        list.add(before ? targetIndex : targetIndex + 1, anAction);
         return;
       }
     }
@@ -462,23 +465,7 @@ public final class ActionUtil {
 
   @Nullable
   public static ShortcutSet getMnemonicAsShortcut(@NotNull AnAction action) {
-    int mnemonic = KeyEvent.getExtendedKeyCodeForChar(action.getTemplatePresentation().getMnemonic());
-    if (mnemonic != KeyEvent.VK_UNDEFINED) {
-      KeyboardShortcut ctrlAltShortcut = new KeyboardShortcut(KeyStroke.getKeyStroke(mnemonic, ALT_DOWN_MASK | CTRL_DOWN_MASK), null);
-      KeyboardShortcut altShortcut = new KeyboardShortcut(KeyStroke.getKeyStroke(mnemonic, ALT_DOWN_MASK), null);
-      CustomShortcutSet shortcutSet;
-      if (SystemInfo.isMac) {
-        if (Registry.is("ide.mac.alt.mnemonic.without.ctrl")) {
-          shortcutSet = new CustomShortcutSet(ctrlAltShortcut, altShortcut);
-        } else {
-          shortcutSet = new CustomShortcutSet(ctrlAltShortcut);
-        }
-      } else {
-        shortcutSet = new CustomShortcutSet(altShortcut);
-      }
-      return shortcutSet;
-    }
-    return null;
+    return KeymapUtil.getMnemonicAsShortcut(action.getTemplatePresentation().getMnemonic());
   }
 
   private static class ActionUpdateData {

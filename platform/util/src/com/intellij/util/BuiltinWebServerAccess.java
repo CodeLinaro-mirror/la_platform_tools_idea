@@ -56,7 +56,7 @@ public class BuiltinWebServerAccess {
 
   private static File getTokenFile() {
     String configPath = PathManager.getConfigPath();
-    return new File(configPath + File.separator + TOKEN_FILE);
+    return new File(configPath + '/' + TOKEN_FILE);
   }
 
   private static String createUserAuthenticationToken() throws IOException {

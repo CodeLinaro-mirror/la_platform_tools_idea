@@ -1,22 +1,30 @@
 package com.intellij.jps.cache.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intellij.jps.cache.JpsCachesPluginUtil;
 import com.intellij.jps.cache.model.AffectedModule;
 import com.intellij.jps.cache.model.OutputLoadResult;
+import com.intellij.jps.cache.ui.JpsLoaderNotifications;
 import com.intellij.jps.cache.ui.SegmentedProgressIndicatorManager;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationType;
+import com.intellij.notification.Notifications;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.StreamUtil;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.download.DownloadableFileDescription;
 import com.intellij.util.download.DownloadableFileService;
-import com.intellij.util.download.FileDownloader;
 import com.intellij.util.io.HttpRequests;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -29,6 +37,7 @@ import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 
 public class TemporaryCacheServerClient implements JpsServerClient {
   private static final Logger LOG = Logger.getInstance("com.intellij.jps.cache.client.TemporaryCacheServerClient");
@@ -38,16 +47,16 @@ public class TemporaryCacheServerClient implements JpsServerClient {
   private final String stringThree;
 
   private TemporaryCacheServerClient() {
-    byte[] decodedBytes = Base64.getDecoder().decode("aHR0cHM6Ly90ZW1wb3JhcnktY2FjaGUubGFicy5pbnRlbGxpai5uZXQvY2FjaGUv");
+    byte[] decodedBytes = Base64.getDecoder().decode("aHR0cHM6Ly90ZW1wb3JhcnktZmlsZXMtY2FjaGUubGFicy5qYi5nZy9jYWNoZS8=");
     stringThree = new String(decodedBytes, CharsetToolkit.UTF8_CHARSET);
   }
 
   @NotNull
   @Override
-  public Set<String> getAllCacheKeys() {
-    TemporaryCacheEntryDto[] responseDtos = doGetRequest(TemporaryCacheEntryDto[].class);
-    if (responseDtos == null) return Collections.emptySet();
-    return Arrays.stream(responseDtos).map(TemporaryCacheEntryDto::getName).collect(Collectors.toSet());
+  public Set<String> getAllCacheKeys(@NotNull Project project) {
+    Map<String, List<String>> response = doGetRequest(project, getRequestHeaders());
+    if (response == null) return Collections.emptySet();
+    return response.values().stream().flatMap(Collection::stream).collect(Collectors.toSet());
   }
 
   @Nullable
@@ -57,12 +66,14 @@ public class TemporaryCacheServerClient implements JpsServerClient {
     DownloadableFileService service = DownloadableFileService.getInstance();
     String fileName = "metadata.json";
     DownloadableFileDescription description = service.createFileDescription(downloadUrl, fileName);
-    FileDownloader downloader = service.createDownloader(Collections.singletonList(description), fileName);
+    ProgressIndicator progressIndicator = ProgressManager.getInstance().getProgressIndicator();
+    JpsCachesDownloader downloader = new JpsCachesDownloader(Collections.singletonList(description),
+                                                             new SegmentedProgressIndicatorManager(progressIndicator));
 
     LOG.debug("Downloading JPS metadata from: " + downloadUrl);
     File metadataFile;
     try {
-      List<Pair<File, DownloadableFileDescription>> pairs = downloader.download(targetDir);
+      List<Pair<File, DownloadableFileDescription>> pairs = downloader.download(targetDir, getRequestHeaders());
       Pair<File, DownloadableFileDescription> first = ContainerUtil.getFirstItem(pairs);
       metadataFile = first != null ? first.first : null;
       if (metadataFile == null) {
@@ -86,12 +97,12 @@ public class TemporaryCacheServerClient implements JpsServerClient {
     String fileName = "portable-build-cache.zip";
     DownloadableFileService service = DownloadableFileService.getInstance();
     DownloadableFileDescription description = service.createFileDescription(downloadUrl, fileName);
-    JpsOutputsDownloader outputsDownloader = new JpsOutputsDownloader(Collections.singletonList(description), downloadIndicatorManager);
+    JpsCachesDownloader downloader = new JpsCachesDownloader(Collections.singletonList(description), downloadIndicatorManager);
 
     LOG.debug("Downloading JPS caches from: " + downloadUrl);
     File zipFile;
     try {
-      List<Pair<File, DownloadableFileDescription>> pairs = outputsDownloader.download(targetDir);
+      List<Pair<File, DownloadableFileDescription>> pairs = downloader.download(targetDir, getRequestHeaders());
       downloadIndicatorManager.finished(this);
 
       Pair<File, DownloadableFileDescription> first = ContainerUtil.getFirstItem(pairs);
@@ -121,12 +132,12 @@ public class TemporaryCacheServerClient implements JpsServerClient {
     List<DownloadableFileDescription> descriptions = ContainerUtil.map(urlToModuleNameMap.entrySet(),
                                                                        entry -> service.createFileDescription(entry.getKey(),
                                                                        entry.getValue().getOutPath().getName() + ".zip"));
-    JpsOutputsDownloader outputsDownloader = new JpsOutputsDownloader(descriptions, downloadIndicatorManager);
+    JpsCachesDownloader downloader = new JpsCachesDownloader(descriptions, downloadIndicatorManager);
 
     List<File> downloadedFiles = new ArrayList<>();
     try {
       // Downloading process
-      List<Pair<File, DownloadableFileDescription>> download = outputsDownloader.download(targetDir);
+      List<Pair<File, DownloadableFileDescription>> download = downloader.download(targetDir, getRequestHeaders());
       downloadIndicatorManager.finished(this);
 
       downloadedFiles = ContainerUtil.map(download, pair -> pair.first);
@@ -144,23 +155,22 @@ public class TemporaryCacheServerClient implements JpsServerClient {
     }
   }
 
-  private <T> T doGetRequest(Class<T> responseClass) {
+  private Map<String, List<String>> doGetRequest(@NotNull Project project, @NotNull Map<String, String> headers) {
     try {
-      return HttpRequests.request(stringThree + REPOSITORY_NAME + "/caches/?json=1")
+      return HttpRequests.request(stringThree + REPOSITORY_NAME + "/commit_history.json")
+        .tuner(tuner -> headers.forEach((k, v) -> tuner.addRequestProperty(k, v)))
         .connect(it -> {
           URLConnection connection = it.getConnection();
           if (connection instanceof HttpURLConnection) {
             HttpURLConnection httpConnection = (HttpURLConnection)connection;
             if (httpConnection.getResponseCode() == 200) {
-              InputStream inputStream = httpConnection.getInputStream();
-              return OBJECT_MAPPER.readValue(inputStream, responseClass);
+              return OBJECT_MAPPER.readValue(getInputStream(httpConnection), new TypeReference<Map<String, List<String>>>() {});
             }
-
             else {
               String statusLine = httpConnection.getResponseCode() + " " + httpConnection.getRequestMethod();
               InputStream errorStream = httpConnection.getErrorStream();
               String errorText = StreamUtil.readText(errorStream, StandardCharsets.UTF_8);
-              LOG.debug("Request: " + httpConnection.getRequestMethod() + httpConnection.getURL() + " : Error " + statusLine + " body: " +
+              LOG.info("Request: " + httpConnection.getRequestMethod() + httpConnection.getURL() + " : Error " + statusLine + " body: " +
                         errorText);
             }
           }
@@ -169,57 +179,27 @@ public class TemporaryCacheServerClient implements JpsServerClient {
     }
     catch (IOException e) {
       LOG.warn("Failed request to cache server", e);
+      Notification notification = JpsLoaderNotifications.NONE_NOTIFICATION_GROUP
+        .createNotification("Compiler Caches Loader", "Failed request to cache server: " + e.getMessage(), NotificationType.ERROR, null);
+      Notifications.Bus.notify(notification, project);
     }
     return null;
   }
 
-  private static class TemporaryCacheEntryDto {
-    private String name;
-    private String type;
-    private String mtime;
+  private static @NotNull Map<String, String> getRequestHeaders() {
+    Optional<JpsServerAuthExtension> optional = JpsServerAuthExtension.EP_NAME.extensions().findFirst();
+    if (!optional.isPresent()) return Collections.emptyMap();
+    Map<String, String> authHeader = optional.get().getAuthHeader();
+    if (authHeader == null) return Collections.emptyMap();
+    return authHeader;
+  }
 
-    private String getName() {
-      return name;
+  private static InputStream getInputStream(HttpURLConnection httpConnection) throws IOException {
+    String contentEncoding = httpConnection.getContentEncoding();
+    InputStream inputStream = httpConnection.getInputStream();
+    if (contentEncoding != null && StringUtil.toLowerCase(contentEncoding).contains("gzip")) {
+      return new GZIPInputStream(inputStream);
     }
-
-    private void setName(String name) {
-      this.name = name;
-    }
-
-    private String getType() {
-      return type;
-    }
-
-    private void setType(String type) {
-      this.type = type;
-    }
-
-    private String getMtime() {
-      return mtime;
-    }
-
-    private void setMtime(String mtime) {
-      this.mtime = mtime;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-
-      TemporaryCacheEntryDto dto = (TemporaryCacheEntryDto)o;
-      if (name != null ? !name.equals(dto.name) : dto.name != null) return false;
-      if (type != null ? !type.equals(dto.type) : dto.type != null) return false;
-      if (mtime != null ? !mtime.equals(dto.mtime) : dto.mtime != null) return false;
-      return true;
-    }
-
-    @Override
-    public int hashCode() {
-      int result = name != null ? name.hashCode() : 0;
-      result = 31 * result + (type != null ? type.hashCode() : 0);
-      result = 31 * result + (mtime != null ? mtime.hashCode() : 0);
-      return result;
-    }
+    return inputStream;
   }
 }

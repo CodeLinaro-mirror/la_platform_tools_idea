@@ -22,7 +22,6 @@ import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.impl.ModuleManagerImpl;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectLoadHelper;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.project.ex.ProjectManagerEx;
@@ -35,10 +34,12 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.impl.FrameTitleBuilder;
 import com.intellij.project.ProjectStoreOwner;
-import com.intellij.psi.impl.DebugUtil;
+import com.intellij.serviceContainer.AlreadyDisposedException;
 import com.intellij.serviceContainer.ComponentManagerImpl;
+import com.intellij.util.ExceptionUtil;
 import com.intellij.util.PathUtil;
 import com.intellij.util.TimedReference;
+import com.intellij.util.messages.impl.MessageBusEx;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
@@ -51,8 +52,8 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
   private static final Logger LOG = Logger.getInstance(ProjectImpl.class);
 
   public static final Key<Long> CREATION_TIME = Key.create("ProjectImpl.CREATION_TIME");
-
   public static final Key<String> CREATION_TRACE = Key.create("ProjectImpl.CREATION_TRACE");
+  private static final Key<String> DISPOSE_EARLY_DISPOSABLE_TRACE = Key.create("ProjectImpl.DISPOSE_EARLY_DISPOSABLE_TRACE");
 
   @TestOnly
   public static final String LIGHT_PROJECT_NAME = "light_temp";
@@ -75,7 +76,7 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
     super((ComponentManagerImpl)ApplicationManager.getApplication());
 
     putUserData(CREATION_TIME, System.nanoTime());
-    creationTrace = ApplicationManager.getApplication().isUnitTestMode() ? DebugUtil.currentStackTrace() : null;
+    creationTrace = ApplicationManager.getApplication().isUnitTestMode() ? ExceptionUtil.currentStackTrace() : null;
 
     registerServiceInstance(Project.class, this, ComponentManagerImpl.getFakeCorePluginDescriptor());
 
@@ -93,10 +94,10 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
 
     putUserData(CREATION_TIME, System.nanoTime());
     if (ApplicationManager.getApplication().isUnitTestMode()) {
-      putUserData(CREATION_TRACE, DebugUtil.currentStackTrace());
+      putUserData(CREATION_TRACE, ExceptionUtil.currentStackTrace());
     }
 
-    creationTrace = ApplicationManager.getApplication().isUnitTestMode() ? DebugUtil.currentStackTrace() : null;
+    creationTrace = ApplicationManager.getApplication().isUnitTestMode() ? ExceptionUtil.currentStackTrace() : null;
 
     myName = TEMPLATE_PROJECT_NAME;
     myLight = false;
@@ -129,6 +130,15 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
         throw new IllegalStateException("earlyDisposable must be null on second opening of light project");
       }
     }
+
+    // Must be not only on temporarilyDisposed = true, but also on temporarilyDisposed = false,
+    // because events fired for temporarilyDisposed project between project close and project open and it can lead to cache population.
+    // Message bus implementation can be complicated to add owner.isDisposed check before getting subscribers, but as bus is a very important subsystem,
+    // better to not add any non-production logic
+
+    // light project is not disposed, so, subscriber cache contains handlers that will handle events for a temporarily disposed project,
+    // so, we clear subscriber cache. `isDisposed` for project returns `true` if `temporarilyDisposed`, so, handler will be not added.
+    ((MessageBusEx)getMessageBus()).clearAllSubscriberCache();
 
     temporarilyDisposed = value;
   }
@@ -169,14 +179,12 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
   }
 
   // do not call for default project
-  @NotNull
-  public final IProjectStore getStateStore() {
+  public final @NotNull IProjectStore getStateStore() {
     return (IProjectStore)getComponentStore();
   }
 
   @Override
-  @NotNull
-  public IComponentStore getComponentStore() {
+  public @NotNull IComponentStore getComponentStore() {
     return myComponentStore.getValue();
   }
 
@@ -191,15 +199,13 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
     return getComponentCreated() && !isDisposed() && isOpen() && StartupManagerEx.getInstanceEx(this).startupActivityPassed();
   }
 
-  @NotNull
   @Override
-  protected ContainerDescriptor getContainerDescriptor(@NotNull IdeaPluginDescriptorImpl pluginDescriptor) {
+  protected @NotNull ContainerDescriptor getContainerDescriptor(@NotNull IdeaPluginDescriptorImpl pluginDescriptor) {
     return pluginDescriptor.getProject();
   }
 
-  @Nullable
   @Override
-  public @SystemIndependent String getProjectFilePath() {
+  public @Nullable @SystemIndependent String getProjectFilePath() {
     return getStateStore().getProjectFilePath();
   }
 
@@ -210,18 +216,16 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
 
   @Override
   public VirtualFile getBaseDir() {
-    return LocalFileSystem.getInstance().findFileByPath(getStateStore().getProjectBasePath());
+    return LocalFileSystem.getInstance().findFileByPath(getBasePath());
   }
 
   @Override
-  @Nullable
-  public @SystemIndependent String getBasePath() {
+  public @NotNull @SystemIndependent String getBasePath() {
     return getStateStore().getProjectBasePath();
   }
 
-  @NotNull
   @Override
-  public String getName() {
+  public @NotNull String getName() {
     if (myName == null) {
       return getStateStore().getProjectName();
     }
@@ -234,10 +238,9 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
     return PathUtil.toSystemDependentName(store.getStorageScheme() == StorageScheme.DIRECTORY_BASED ? store.getProjectBasePath() : store.getProjectFilePath());
   }
 
-  @NotNull
   @NonNls
   @Override
-  public String getLocationHash() {
+  public @NotNull String getLocationHash() {
     String str = getPresentableUrl();
     if (str == null) {
       str = getName();
@@ -248,8 +251,7 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
   }
 
   @Override
-  @Nullable
-  public VirtualFile getWorkspaceFile() {
+  public @Nullable VirtualFile getWorkspaceFile() {
     String workspaceFilePath = getStateStore().getWorkspaceFilePath();
     return workspaceFilePath == null ? null : LocalFileSystem.getInstance().findFileByPath(workspaceFilePath);
   }
@@ -353,7 +355,7 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
   @NonNls
   @Override
   public String toString() {
-    return "Project (name=" + myName + ", containerState=" + getContainerStateName() +
+    return "Project(name=" + myName + ", containerState=" + getContainerStateName() +
            ", componentStore=" + (myComponentStore.isComputed() ? getPresentableUrl() : "<not initialized>") + ") " +
            (temporarilyDisposed ? " (disposed" + " temporarily)" : "");
   }
@@ -363,29 +365,48 @@ public class ProjectImpl extends ComponentManagerImpl implements ProjectEx, Proj
     return creationTrace;
   }
 
-  @Nullable
   @ApiStatus.Internal
   @Override
-  public String activityNamePrefix() {
+  public @Nullable String activityNamePrefix() {
     return "project ";
   }
 
   @Override
-  @NotNull
   @ApiStatus.Experimental
   @ApiStatus.Internal
-  public final Disposable getEarlyDisposable() {
+  public final @NotNull Disposable getEarlyDisposable() {
     if (isDisposed()) {
-      throw new IllegalStateException(this + " is disposed already");
+      throw new AlreadyDisposedException(this + " is disposed already");
     }
 
     // maybe null only if disposed, but this condition is checked above
-    return earlyDisposable.get();
+    Disposable disposable = earlyDisposable.get();
+    if (disposable == null) {
+      throwEarlyDisposableError("earlyDisposable is null for");
+    }
+    return disposable;
   }
 
   @ApiStatus.Internal
   public final void disposeEarlyDisposable() {
-    Disposable earlyDisposable = this.earlyDisposable.getAndSet(null);
-    Disposer.dispose(earlyDisposable);
+    if (LOG.isDebugEnabled() || ApplicationManager.getApplication().isUnitTestMode()) {
+      LOG.debug("dispose early disposable: " + toString());
+    }
+
+    Disposable disposable = earlyDisposable.getAndSet(null);
+    if (disposable == null) {
+      throwEarlyDisposableError("earlyDisposable was already disposed");
+    }
+
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      putUserData(DISPOSE_EARLY_DISPOSABLE_TRACE, ExceptionUtil.currentStackTrace());
+    }
+
+    Disposer.dispose(disposable);
+  }
+
+  private void throwEarlyDisposableError(@NotNull String error) {
+    throw new IllegalStateException(error + " for " + toString() +
+                                    "\n---begin of dispose trace--\n" + getUserData(DISPOSE_EARLY_DISPOSABLE_TRACE) + "---end of dispose trace---\n");
   }
 }

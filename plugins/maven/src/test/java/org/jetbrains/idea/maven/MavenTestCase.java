@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -15,7 +15,6 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
-import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.rt.execution.junit.FileComparisonFailure;
 import com.intellij.testFramework.EdtTestUtil;
@@ -38,12 +37,12 @@ import org.jetbrains.idea.maven.utils.MavenProgressIndicator;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public abstract class MavenTestCase extends UsefulTestCase {
   protected static final String MAVEN_COMPILER_PROPERTIES = "<properties>\n" +
@@ -112,11 +111,11 @@ public abstract class MavenTestCase extends UsefulTestCase {
   protected void tearDown() throws Exception {
     new RunAll(
       () -> MavenServerManager.getInstance().shutdown(true),
+      () -> checkAllMavenConnectorsDisposed(),
       () -> MavenArtifactDownloader.awaitQuiescence(100, TimeUnit.SECONDS),
       () -> myProject = null,
       () -> EdtTestUtil.runInEdtAndWait(() -> tearDownFixtures()),
       () -> MavenIndicesManager.getInstance().clear(),
-      () -> super.tearDown(),
       () -> {
         FileUtil.delete(myDir);
         // cannot use reliably the result of the com.intellij.openapi.util.io.FileUtil.delete() method
@@ -127,8 +126,12 @@ public abstract class MavenTestCase extends UsefulTestCase {
           myDir.deleteOnExit();
         }
       },
-      () -> resetClassFields(getClass())
+      () -> super.tearDown()
     ).run();
+  }
+
+  private void checkAllMavenConnectorsDisposed() {
+    assertEmpty("all maven connectors should be disposed", MavenServerManager.getInstance().getAllConnectors());
   }
 
   private void ensureTempDirCreated() throws IOException {
@@ -170,29 +173,6 @@ public abstract class MavenTestCase extends UsefulTestCase {
     finally {
       myTestFixture = null;
     }
-  }
-
-  private void resetClassFields(final Class<?> aClass) {
-    if (aClass == null) return;
-
-    final Field[] fields = aClass.getDeclaredFields();
-    for (Field field: fields) {
-      final int modifiers = field.getModifiers();
-      if ((modifiers & Modifier.FINAL) == 0
-          && (modifiers & Modifier.STATIC) == 0
-          && !field.getType().isPrimitive()) {
-        field.setAccessible(true);
-        try {
-          field.set(this, null);
-        }
-        catch (IllegalAccessException e) {
-          e.printStackTrace();
-        }
-      }
-    }
-
-    if (aClass == MavenTestCase.class) return;
-    resetClassFields(aClass.getSuperclass());
   }
 
   @Override
@@ -501,8 +481,8 @@ public abstract class MavenTestCase extends UsefulTestCase {
     assertOrderedElementsAreEqual(actual, expected.toArray());
   }
 
-  protected static <T> void assertUnorderedElementsAreEqual(Collection<T> actual, Collection<T> expected) {
-    assertEquals(new HashSet<>(expected), new HashSet<>(actual));
+  protected static <T> void assertUnorderedElementsAreEqual(@NotNull Collection<T> actual, @NotNull Collection<T> expected) {
+    assertThat(actual).hasSameElementsAs(expected);
   }
 
   protected static void assertUnorderedPathsAreEqual(Collection<String> actual, Collection<String> expected) {

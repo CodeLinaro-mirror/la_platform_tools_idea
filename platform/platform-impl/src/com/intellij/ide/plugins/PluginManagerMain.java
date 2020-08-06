@@ -4,6 +4,7 @@ package com.intellij.ide.plugins;
 import com.intellij.CommonBundle;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.IdeBundle;
+import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
 import com.intellij.ide.ui.search.SearchUtil;
 import com.intellij.ide.ui.search.SearchableOptionsRegistrar;
 import com.intellij.notification.Notification;
@@ -24,9 +25,7 @@ import com.intellij.openapi.updateSettings.impl.UpdateChecker;
 import com.intellij.openapi.updateSettings.impl.UpdateSettings;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.scale.JBUIScale;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.util.XmlStringUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,6 +36,7 @@ import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLFrameHyperlinkEvent;
 import java.io.IOException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -67,32 +67,16 @@ public abstract class PluginManagerMain {
            fontSize, m1, m1, fontSize, m2, m2);
   }
 
-  /**
-   * @deprecated use {@link #downloadPlugins(List, List, Runnable, PluginEnabler, Runnable)} instead
-   */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
-  @Deprecated
   public static boolean downloadPlugins(List<PluginNode> plugins,
-                                        List<PluginId> allPlugins,
-                                        Runnable onSuccess,
-                                        @Nullable Runnable cleanup) throws IOException {
-    return downloadPlugins(plugins,
-                           ContainerUtil.map(allPlugins, p -> new PluginNode(p, p.getIdString(), "-1")),
-                           onSuccess,
-                           new PluginEnabler.HEADLESS(),
-                           cleanup);
-  }
-
-  public static boolean downloadPlugins(List<PluginNode> plugins,
-                                        List<? extends IdeaPluginDescriptor> allPlugins,
+                                        List<? extends IdeaPluginDescriptor> customPlugins,
                                         Runnable onSuccess,
                                         PluginEnabler pluginEnabler,
                                         @Nullable Runnable cleanup) throws IOException {
-    return downloadPlugins(plugins, allPlugins, false, onSuccess, pluginEnabler, cleanup);
+    return downloadPlugins(plugins, customPlugins, false, onSuccess, pluginEnabler, cleanup);
   }
 
   public static boolean downloadPlugins(List<PluginNode> plugins,
-                                        List<? extends IdeaPluginDescriptor> allPlugins,
+                                        List<? extends IdeaPluginDescriptor> customPlugins,
                                         boolean allowInstallWithoutRestart,
                                         Runnable onSuccess,
                                         PluginEnabler pluginEnabler,
@@ -103,7 +87,7 @@ public abstract class PluginManagerMain {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           try {
-            if (PluginInstaller.prepareToInstall(plugins, allPlugins, allowInstallWithoutRestart, pluginEnabler, onSuccess, indicator)) {
+            if (PluginInstaller.prepareToInstall(plugins, customPlugins, allowInstallWithoutRestart, pluginEnabler, onSuccess, indicator)) {
               result[0] = true;
             }
           }
@@ -170,9 +154,26 @@ public abstract class PluginManagerMain {
       }
 
       String pluginDescriptorUrl = plugin.getUrl();
-      if (!isEmptyOrSpaces(pluginDescriptorUrl)) {
-        sb.append("<h4>Plugin homepage</h4>").append(composeHref(pluginDescriptorUrl));
+      try {
+        List<String> marketplacePlugins = MarketplaceRequests.getInstance().getMarketplaceCachedPlugins();
+        if (marketplacePlugins != null){
+          if (marketplacePlugins.contains(plugin.getPluginId().getIdString())){
+            // Prevent the link to the marketplace from showing to external plugins
+            setPluginHomePage(pluginDescriptorUrl, sb);
+          }
+        } else {
+          // There are no marketplace plugins in the cache, but we should show the title anyway.
+          setPluginHomePage(pluginDescriptorUrl, sb);
+          // will get the marketplace plugins ids next time
+          ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            try {
+              MarketplaceRequests.getInstance().getMarketplacePlugins(null);
+            }
+            catch (IOException ignore) {}
+          });
+        }
       }
+      catch (IOException ignore) {}
 
       String size = plugin instanceof PluginNode ? ((PluginNode)plugin).getSize() : null;
       if (!isEmptyOrSpaces(size)) {
@@ -181,6 +182,12 @@ public abstract class PluginManagerMain {
     }
 
     setTextValue(sb, filter, descriptionTextArea);
+  }
+
+  private static void setPluginHomePage(String pluginDescriptorUrl, StringBuilder sb){
+    if (!isEmptyOrSpaces(pluginDescriptorUrl)) {
+      sb.append("<h4>Plugin homepage</h4>").append(composeHref(pluginDescriptorUrl));
+    }
   }
 
   private static void setTextValue(@Nullable StringBuilder text, @Nullable String filter, JEditorPane pane) {
@@ -238,7 +245,7 @@ public abstract class PluginManagerMain {
     return descriptionSet.isEmpty();
   }
 
-  public static boolean suggestToEnableInstalledDependantPlugins(PluginEnabler pluginEnabler, List<PluginNode> list) {
+  public static boolean suggestToEnableInstalledDependantPlugins(@NotNull PluginEnabler pluginEnabler, @NotNull List<PluginNode> list) {
     Set<IdeaPluginDescriptor> disabled = new HashSet<>();
     Set<IdeaPluginDescriptor> disabledDependants = new HashSet<>();
     for (PluginNode node : list) {
@@ -248,9 +255,11 @@ public abstract class PluginManagerMain {
       }
       List<PluginId> depends = node.getDepends();
       if (depends != null) {
-        Set<PluginId> optionalDeps = ContainerUtil.set(node.getOptionalDependentPluginIds());
+        Set<PluginId> optionalDeps = new HashSet<>(Arrays.asList(node.getOptionalDependentPluginIds()));
         for (PluginId dependantId : depends) {
-          if (optionalDeps.contains(dependantId)) continue;
+          if (optionalDeps.contains(dependantId)) {
+            continue;
+          }
           IdeaPluginDescriptor pluginDescriptor = PluginManagerCore.getPlugin(dependantId);
           if (pluginDescriptor != null && pluginEnabler.isDisabled(dependantId)) {
             disabledDependants.add(pluginDescriptor);
@@ -324,7 +333,7 @@ public abstract class PluginManagerMain {
     class HEADLESS implements PluginEnabler {
       @Override
       public void enablePlugins(Set<? extends IdeaPluginDescriptor> disabled) {
-        PluginManager.getInstance().enablePlugins(disabled, true);
+        DisabledPluginsState.enablePlugins(disabled, true);
       }
 
       @Override
@@ -346,7 +355,7 @@ public abstract class PluginManagerMain {
     String title = IdeBundle.message("updates.plugins.ready.title", ApplicationNamesInfo.getInstance().getFullProductName());
     String action = IdeBundle.message("ide.restart.required.notification",
                                       IdeBundle.message(app.isRestartCapable() ? "ide.restart.action" : "ide.shutdown.action"));
-    Notification notification = UpdateChecker.getNotificationGroup().createNotification(title, "", NotificationType.INFORMATION, null);
+    Notification notification = UpdateChecker.getNotificationGroup().createNotification(title, "", NotificationType.INFORMATION, null, "plugins.updated.suggest.restart");
     notification.addAction(new NotificationAction(action) {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {

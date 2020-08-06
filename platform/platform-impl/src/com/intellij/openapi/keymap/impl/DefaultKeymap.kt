@@ -15,7 +15,6 @@ import com.intellij.openapi.util.io.FileUtil
 import gnu.trove.THashMap
 import org.jdom.Element
 import java.util.*
-import java.util.function.BiConsumer
 
 private val LOG = logger<DefaultKeymap>()
 
@@ -72,18 +71,6 @@ open class DefaultKeymap {
         }, bean.pluginDescriptor)
       }
     }
-
-    @Suppress("DEPRECATION")
-    BundledKeymapProvider.EP_NAME.processWithPluginDescriptor(BiConsumer { provider, plugin ->
-      for (fileName in provider.keymapFileNames) {
-        val keymapName = provider.getKeyFromFileName(fileName)
-        LOG.runAndLogException {
-          loadKeymap(keymapName, object : SchemeDataHolder<KeymapImpl> {
-            override fun read() = provider.load(fileName) { JDOMUtil.load(it) }
-          }, plugin)
-        }
-      }
-    })
   }
 
   internal fun loadKeymap(keymapName: String,
@@ -162,6 +149,6 @@ private fun isKnownLinuxKeymap(keymapName: String?) = when (keymapName) {
 
 private fun isKnownMacOSKeymap(keymapName: String?) = when (keymapName) {
   KeymapManager.MAC_OS_X_KEYMAP, KeymapManager.MAC_OS_X_10_5_PLUS_KEYMAP,
-  "Eclipse (Mac OS X)", "Sublime Text (Mac OS X)", "Xcode", "ReSharper OSX" -> true
+  "Eclipse (Mac OS X)", "Sublime Text (Mac OS X)", "Xcode", "ReSharper OSX", "Visual Studio OSX", "Visual Assist OSX", "VSCode OSX" -> true
   else -> false
 }

@@ -34,9 +34,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * @author cdr
- */
 public class ColorAndFontDescriptionPanel extends JPanel implements OptionsPanelImpl.ColorDescriptionPanel {
   private final EventDispatcher<Listener> myDispatcher = EventDispatcher.create(Listener.class);
 
@@ -101,6 +98,7 @@ public class ColorAndFontDescriptionPanel extends JPanel implements OptionsPanel
     }
     myEffectsCombo.addActionListener(actionListener);
 
+    //noinspection HardCodedStringLiteral
     Messages.configureMessagePaneUi(myInheritanceLabel, "<html>", null);
     myInheritanceLabel.addHyperlinkListener(e -> myDispatcher.getMulticaster().onHyperLinkClicked(e));
     myInheritanceLabel.setBorder(JBUI.Borders.empty(4, 0, 4, 4));

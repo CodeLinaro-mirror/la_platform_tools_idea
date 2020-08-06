@@ -23,13 +23,17 @@ import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.OrderEnumerator
+import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.roots.libraries.LibraryUtil
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.io.systemIndependentPath
 import com.intellij.task.ProjectTaskManager
+import com.intellij.util.PathUtil
+import com.intellij.util.Restarter
 import com.intellij.util.SystemProperties
 import org.jetbrains.idea.devkit.util.PsiUtil
 import java.io.File
@@ -235,16 +239,16 @@ internal open class UpdateIdeFromSourcesAction
          removal of the script file is performed in separate process to avoid errors while executing the script */
       FileUtil.writeToFile(updateScript, """
         @echo off
-        SET count=30
-        SET time_to_wait=500
+        SET count=20
+        SET time_to_wait=1
         :DELETE_DIR
         RMDIR /Q /S "$workHomePath"
         IF EXIST "$workHomePath" (
           IF %count% GEQ 0 (
-            ECHO "$workHomePath" still exists, wait %time_to_wait%ms and try delete again
-            PING 127.0.0.1 -n 2 -w %time_to_wait% >NUL
+            ECHO "$workHomePath" still exists, wait %time_to_wait%s and try delete again
+            SET /A time_to_wait=%time_to_wait%+1
+            PING 127.0.0.1 -n %time_to_wait% >NUL
             SET /A count=%count%-1
-            SET /A time_to_wait=%time_to_wait%+1000
             ECHO %count% attempts remain
             GOTO DELETE_DIR
           )
@@ -256,8 +260,7 @@ internal open class UpdateIdeFromSourcesAction
         :CLEANUP_AND_EXIT
         START /b "" cmd /c DEL /Q /F "${updateScript.absolutePath}" & EXIT /b
       """.trimIndent())
-      // 'Runner' class specified as a parameter which is actually not used by the script; this is needed to use a copy of restarter (see com.intellij.util.Restarter.runRestarter)
-      return arrayOf("cmd", "/c", updateScript.absolutePath, "com.intellij.updater.Runner", ">${restartLogFile.absolutePath}", "2>&1")
+      return arrayOf("cmd", "/c", updateScript.absolutePath, ">${restartLogFile.absolutePath}", "2>&1")
     }
 
     val command = arrayOf(
@@ -269,6 +272,7 @@ internal open class UpdateIdeFromSourcesAction
   }
 
   private fun restartWithCommand(command: Array<String>) {
+    Restarter.doNotLockInstallFolderOnRestart()
     (ApplicationManager.getApplication() as ApplicationImpl).restart(ApplicationEx.FORCE_EXIT or ApplicationEx.EXIT_CONFIRMED or ApplicationEx.SAVE, command)
   }
 
@@ -289,17 +293,6 @@ internal open class UpdateIdeFromSourcesAction
     params.isUseClasspathJar = true
     params.setDefaultCharset(project)
     params.jdk = sdk
-    //todo use org.jetbrains.idea.maven.utils.MavenUtil.resolveLocalRepository instead
-    val m2Repo = File(SystemProperties.getUserHome(), ".m2/repository").systemIndependentPath
-
-    //todo get from project configuration
-    val coreClassPath = listOf(
-      "$m2Repo/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar",
-      "$m2Repo/commons-cli/commons-cli/1.2/commons-cli-1.2.jar",
-      "$devIdeaHome/community/lib/ant/lib/ant.jar",
-      "$devIdeaHome/community/lib/ant/lib/ant-launcher.jar"
-    )
-    params.classPath.addAll(coreClassPath)
 
     params.mainClass = "org.codehaus.groovy.tools.GroovyStarter"
     params.programParametersList.add("--classpath")
@@ -311,7 +304,20 @@ internal open class UpdateIdeFromSourcesAction
     }
     val classpath = OrderEnumerator.orderEntries(buildScriptsModule)
       .recursively().withoutSdk().runtimeOnly().productionOnly().classes().pathsList
+
+    val classesFromCoreJars = listOf(
+      params.mainClass,
+      "org.apache.tools.ant.BuildException",   //ant
+      "org.apache.tools.ant.launch.AntMain",   //ant-launcher
+      "org.apache.commons.cli.ParseException", //commons-cli
+      "groovy.util.CliBuilder"                 //groovy-cli-commons
+    )
+    val coreClassPath = classpath.rootDirs.filter { root ->
+      classesFromCoreJars.any { LibraryUtil.isClassAvailableInLibrary(listOf(root), it) }
+    }.mapNotNull { PathUtil.getLocalPath(it) }
+    params.classPath.addAll(coreClassPath)
     coreClassPath.forEach { classpath.remove(FileUtil.toSystemDependentName(it)) }
+
     params.programParametersList.add(classpath.pathsString)
     params.programParametersList.add("--main")
     params.programParametersList.add("gant.Gant")

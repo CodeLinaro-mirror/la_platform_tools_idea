@@ -2,10 +2,7 @@
 package com.intellij.usages.impl;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CustomShortcutSet;
-import com.intellij.openapi.actionSystem.ToggleAction;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.usageView.UsageViewBundle;
@@ -27,7 +24,7 @@ public class UsageFilteringRuleProviderImpl implements UsageFilteringRuleProvide
 
   @Override
   public UsageFilteringRule @NotNull [] getActiveRules(@NotNull Project project) {
-    final List<UsageFilteringRule> rules = new ArrayList<>();
+    List<UsageFilteringRule> rules = new ArrayList<>();
 
     if (!myReadWriteState.isShowReadAccess()) {
       rules.add(new ReadAccessFilteringRule());
@@ -40,16 +37,16 @@ public class UsageFilteringRuleProviderImpl implements UsageFilteringRuleProvide
 
   @Override
   public AnAction @NotNull [] createFilteringActions(@NotNull UsageView view) {
-    final UsageViewImpl impl = (UsageViewImpl)view;
     if (!view.getPresentation().isCodeUsages()) {
       return AnAction.EMPTY_ARRAY;
     }
-    final JComponent component = view.getComponent();
+    JComponent component = view.getComponent();
 
-    final ShowReadAccessUsagesAction read = new ShowReadAccessUsagesAction();
+    UsageViewImpl impl = (UsageViewImpl)view;
+    ShowReadAccessUsagesAction read = new ShowReadAccessUsagesAction();
     read.registerCustomShortcutSet(new CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_R, InputEvent.CTRL_DOWN_MASK)), component, impl);
 
-    final ShowWriteAccessUsagesAction write = new ShowWriteAccessUsagesAction();
+    ShowWriteAccessUsagesAction write = new ShowWriteAccessUsagesAction();
     write.registerCustomShortcutSet(new CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK)), component, impl);
     return new AnAction[] {read, write};
   }
@@ -62,7 +59,7 @@ public class UsageFilteringRuleProviderImpl implements UsageFilteringRuleProvide
       return myShowReadAccess;
     }
 
-    void setShowReadAccess(final boolean showReadAccess) {
+    void setShowReadAccess(boolean showReadAccess) {
       myShowReadAccess = showReadAccess;
       if (!showReadAccess) {
         myShowWriteAccess = true;
@@ -73,7 +70,7 @@ public class UsageFilteringRuleProviderImpl implements UsageFilteringRuleProvide
       return myShowWriteAccess;
     }
 
-    void setShowWriteAccess(final boolean showWriteAccess) {
+    void setShowWriteAccess(boolean showWriteAccess) {
       myShowWriteAccess = showWriteAccess;
       if (!showWriteAccess) {
         myShowReadAccess = true;
@@ -83,7 +80,8 @@ public class UsageFilteringRuleProviderImpl implements UsageFilteringRuleProvide
 
   private class ShowReadAccessUsagesAction extends ToggleAction implements DumbAware {
     private ShowReadAccessUsagesAction() {
-      super(UsageViewBundle.messagePointer("action.show.read.access"), AllIcons.Actions.ShowReadAccess);
+      super(UsageViewBundle.messagePointer("action.show.read.access"),
+            UsageViewBundle.messagePointer("action.show.read.access.description"), AllIcons.Actions.ShowReadAccess);
     }
 
     @Override
@@ -102,7 +100,8 @@ public class UsageFilteringRuleProviderImpl implements UsageFilteringRuleProvide
 
   private class ShowWriteAccessUsagesAction extends ToggleAction implements DumbAware {
     private ShowWriteAccessUsagesAction() {
-      super(UsageViewBundle.messagePointer("action.show.write.access"), AllIcons.Actions.ShowWriteAccess);
+      super(UsageViewBundle.messagePointer("action.show.write.access"),
+            UsageViewBundle.messagePointer("action.show.write.access.description"), AllIcons.Actions.ShowWriteAccess);
     }
 
     @Override

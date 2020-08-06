@@ -172,7 +172,7 @@ public class JavaExecutionStack extends XExecutionStack {
 
     @Override
     public Priority getPriority() {
-      return myAdded <= 10 ? Priority.NORMAL : Priority.LOW;
+      return myAdded <= StackFrameProxyImpl.FRAMES_BATCH_MAX? Priority.NORMAL : Priority.LOW;
     }
 
     private void addFrameIfNeeded(XStackFrame frame, boolean last) {
@@ -225,7 +225,7 @@ public class JavaExecutionStack extends XExecutionStack {
             }
           }
           // append agent stack after the next frame
-          relatedStack = AsyncStacksUtils.getAgentRelatedStack((JavaStackFrame)frame, suspendContext);
+          relatedStack = AsyncStacksUtils.getAgentRelatedStack(frameProxy, suspendContext);
         }
 
         myDebugProcess.getManagerThread().schedule(

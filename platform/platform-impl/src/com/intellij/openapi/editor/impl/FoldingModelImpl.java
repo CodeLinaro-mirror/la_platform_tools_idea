@@ -13,7 +13,6 @@ import com.intellij.openapi.editor.ex.FoldingListener;
 import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.editor.ex.PrioritizedDocumentListener;
 import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper;
-import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Getter;
@@ -76,8 +75,16 @@ public class FoldingModelImpl extends InlayModel.SimpleAdapter
       }
 
       @Override
-      protected int getBlockInlaysHeight(int startOffset, int endOffset) {
-        return EditorUtil.getTotalInlaysHeight(myEditor.getInlayModel().getBlockElementsInRange(startOffset, endOffset));
+      protected int getFoldedBlockInlaysHeight(int foldStartOffset, int foldEndOffset) {
+        int sum = 0;
+        for (Inlay inlay : myEditor.getInlayModel().getBlockElementsInRange(foldStartOffset, foldEndOffset)) {
+          int offset = inlay.getOffset();
+          boolean relatedToPrecedingText = inlay.isRelatedToPrecedingText();
+          if ((relatedToPrecedingText || offset != foldStartOffset) && (!relatedToPrecedingText || offset != foldEndOffset)) {
+            sum += inlay.getHeightInPixels();
+          }
+        }
+        return sum;
       }
     };
     myFoldRegionsProcessed = false;
@@ -234,18 +241,22 @@ public class FoldingModelImpl extends InlayModel.SimpleAdapter
   @Override
   @Nullable
   public FoldRegion getFoldingPlaceholderAt(@NotNull Point p) {
-    VisualPosition visualPosition = myEditor.xyToVisualPosition(p);
-    int visualLineStartY = myEditor.visualLineToY(visualPosition.line);
+    return getFoldingPlaceholderAt(new EditorLocation(myEditor, p));
+  }
+
+  FoldRegion getFoldingPlaceholderAt(@NotNull EditorLocation location) {
+    int visualLineStartY = location.getVisualLineBaseY();
+    Point p = location.getPoint();
     if (p.y < visualLineStartY || p.y >= visualLineStartY + myEditor.getLineHeight()) {
       // block inlay area
       return null;
     }
-    LogicalPosition pos = myEditor.visualToLogicalPosition(visualPosition);
+    LogicalPosition pos = location.getLogicalPosition();
     int line = pos.line;
 
     if (line >= myEditor.getDocument().getLineCount()) return null;
 
-    int offset = myEditor.logicalPositionToOffset(pos);
+    int offset = location.getOffset();
 
     return myFoldTree.fetchOutermost(offset);
   }
@@ -654,7 +665,7 @@ public class FoldingModelImpl extends InlayModel.SimpleAdapter
         if (!region.isExpanded()) topLevelRegions.add(region);
       }
     }
-    Collections.sort(topLevelRegions, Comparator.comparingInt(r -> r.getStartOffset()));
+    topLevelRegions.sort(Comparator.comparingInt(r -> r.getStartOffset()));
 
     FoldRegion[] actualVisibles = fetchVisible();
     if (actualVisibles != null) {
@@ -705,14 +716,14 @@ public class FoldingModelImpl extends InlayModel.SimpleAdapter
 
     @NotNull
     @Override
-    protected Node<FoldRegionImpl> createNewNode(@NotNull FoldRegionImpl key,
+    protected RMNode<FoldRegionImpl> createNewNode(@NotNull FoldRegionImpl key,
                                                  int start,
                                                  int end,
                                                  boolean greedyToLeft,
                                                  boolean greedyToRight,
                                                  boolean stickingToRight,
                                                  int layer) {
-      return new Node<FoldRegionImpl>(this, key, start, end, greedyToLeft, greedyToRight, stickingToRight) {
+      return new RMNode<FoldRegionImpl>(this, key, start, end, greedyToLeft, greedyToRight, stickingToRight) {
         @Override
         void onRemoved() {
           for (Getter<FoldRegionImpl> getter : intervals) {
@@ -755,7 +766,7 @@ public class FoldingModelImpl extends InlayModel.SimpleAdapter
       if (oldLength > 0 /* document change can cause regions to become equal*/) {
         for (Object o : affected) {
           //noinspection unchecked
-          Node<FoldRegionImpl> node = (Node<FoldRegionImpl>)o;
+          RMNode<FoldRegionImpl> node = (RMNode<FoldRegionImpl>)o;
           FoldRegionImpl region = getRegion(node);
           // region with the largest metric value is kept when several regions become identical after document change
           // we want the largest collapsed region to survive

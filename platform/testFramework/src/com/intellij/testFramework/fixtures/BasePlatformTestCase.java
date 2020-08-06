@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework.fixtures;
 
 import com.intellij.lang.Language;
@@ -29,9 +29,8 @@ import org.jetbrains.annotations.NotNull;
 public abstract class BasePlatformTestCase extends UsefulTestCase {
   protected CodeInsightTestFixture myFixture;
 
-  @NotNull
   @Override
-  public Disposable getTestRootDisposable() {
+  public @NotNull Disposable getTestRootDisposable() {
     return myFixture == null ? super.getTestRootDisposable() : myFixture.getTestRootDisposable();
   }
 
@@ -43,8 +42,7 @@ public abstract class BasePlatformTestCase extends UsefulTestCase {
     TestFixtureBuilder<IdeaProjectTestFixture> fixtureBuilder = factory.createLightFixtureBuilder(getProjectDescriptor());
     IdeaProjectTestFixture fixture = fixtureBuilder.getFixture();
 
-    TempDirTestFixture tempDirFixture = createTempDirTestFixture();
-    myFixture = IdeaTestFixtureFactory.getFixtureFactory().createCodeInsightFixture(fixture, tempDirFixture);
+    myFixture = IdeaTestFixtureFactory.getFixtureFactory().createCodeInsightFixture(fixture, createTempDirTestFixture());
 
     myFixture.setTestDataPath(getTestDataPath());
     myFixture.setUp();
@@ -132,8 +130,7 @@ public abstract class BasePlatformTestCase extends UsefulTestCase {
     return PsiFileFactory.getInstance(getProject()).createFileFromText(fileName, language, text, false, true);
   }
 
-  @NotNull
-  protected Module getModule() {
+  protected @NotNull Module getModule() {
     return myFixture.getModule();
   }
 }

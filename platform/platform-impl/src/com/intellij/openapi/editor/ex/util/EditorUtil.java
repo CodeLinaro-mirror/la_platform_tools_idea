@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.ex.util;
 
 import com.intellij.diagnostic.AttachmentFactory;
@@ -183,8 +183,7 @@ public final class EditorUtil {
 
   public static int getVisualLineEndOffset(@NotNull Editor editor, int line) {
     VisualPosition endLineVisualPosition = new VisualPosition(line, getLastVisualLineColumnNumber(editor, line));
-    LogicalPosition endLineLogicalPosition = editor.visualToLogicalPosition(endLineVisualPosition);
-    return editor.logicalPositionToOffset(endLineLogicalPosition);
+    return editor.visualPositionToOffset(endLineVisualPosition);
   }
 
   public static float calcVerticalScrollProportion(@NotNull Editor editor) {
@@ -677,7 +676,7 @@ public final class EditorUtil {
 
   public static int yPositionToLogicalLine(@NotNull Editor editor, int y) {
     int line = editor instanceof EditorImpl ? editor.yToVisualLine(y) : y / editor.getLineHeight();
-    return line > 0 ? editor.visualToLogicalPosition(new VisualPosition(line, 0)).line : 0;
+    return editor.visualToLogicalPosition(new VisualPosition(line, 0)).line;
   }
 
   /**
@@ -688,7 +687,7 @@ public final class EditorUtil {
     int visualLine = editor.yToVisualLine(y);
     int visualLineStartY = editor.visualLineToY(visualLine);
     if (y < visualLineStartY || y >= visualLineStartY + editor.getLineHeight()) return -1;
-    return visualLine > 0 ? editor.visualToLogicalPosition(new VisualPosition(visualLine, 0)).line : 0;
+    return editor.visualToLogicalPosition(new VisualPosition(visualLine, 0)).line;
   }
 
   public static boolean isAtLineEnd(@NotNull Editor editor, int offset) {
@@ -728,7 +727,7 @@ public final class EditorUtil {
   }
 
   /**
-   * This returns a {@link java.awt.Font#PLAIN} font from family, used in editor, with size matching editor font size (except in
+   * This returns a {@link Font#PLAIN} font from family, used in editor, with size matching editor font size (except in
    * presentation mode, when adjusted presentation mode font size is used). Returned font has fallback variants (i.e. if main font doesn't
    * support certain Unicode characters, some other font may be used to display them), but fallback mechanism differs from the one used in
    * editor.
@@ -815,7 +814,7 @@ public final class EditorUtil {
 
   @NotNull
   public static String displayCharInEditor(char c, @NotNull TextAttributesKey textAttributesKey, @NotNull String fallback) {
-    int codePoint = (int)c;
+    int codePoint = c;
     if (!Character.isValidCodePoint(codePoint)) {
       return fallback;
     }
@@ -823,7 +822,7 @@ public final class EditorUtil {
     EditorColorsScheme scheme = EditorColorsManager.getInstance().getGlobalScheme();
     TextAttributes textAttributes = scheme.getAttributes(textAttributesKey);
     int style = textAttributes != null ? textAttributes.getFontType() : Font.PLAIN;
-    FontInfo fallbackFont = ComplementaryFontsRegistry.getFontAbleToDisplay((int)c, style, scheme.getFontPreferences(), null);
+    FontInfo fallbackFont = ComplementaryFontsRegistry.getFontAbleToDisplay(c, style, scheme.getFontPreferences(), null);
     return fallbackFont.canDisplay(codePoint) ? String.valueOf(c) : fallback;
   }
 
@@ -863,6 +862,22 @@ public final class EditorUtil {
 
   public static int getInlaysHeight(@NotNull Editor editor, int visualLine, boolean above) {
     return getTotalInlaysHeight(editor.getInlayModel().getBlockElementsForVisualLine(visualLine, above));
+  }
+
+  /**
+   * Tells whether given inlay element is invisible due to folding of text in editor
+   */
+  public static boolean isInlayFolded(@NotNull Inlay inlay) {
+    Editor editor = inlay.getEditor();
+    Inlay.Placement placement = inlay.getPlacement();
+    int offset = inlay.getOffset();
+    if (placement == Inlay.Placement.AFTER_LINE_END) {
+      offset = DocumentUtil.getLineEndOffset(offset, editor.getDocument());
+    }
+    else if ((placement == Inlay.Placement.ABOVE_LINE || placement == Inlay.Placement.BELOW_LINE) && !inlay.isRelatedToPrecedingText()) {
+      offset--;
+    }
+    return editor.getFoldingModel().isOffsetCollapsed(offset);
   }
 
   /**
@@ -960,7 +975,7 @@ public final class EditorUtil {
     LogicalPosition logicalPosition = editor.visualToLogicalPosition(visualPosition);
     int offset = editor.logicalPositionToOffset(logicalPosition);
     if (!logicalPosition.equals(editor.offsetToLogicalPosition(offset))) return false; // virtual space
-    List<Inlay> inlays = editor.getInlayModel().getInlineElementsInRange(offset, offset);
+    List<Inlay<?>> inlays = editor.getInlayModel().getInlineElementsInRange(offset, offset);
     if (!inlays.isEmpty()) {
       VisualPosition inlaysStart = editor.offsetToVisualPosition(offset);
       if (inlaysStart.line == visualPosition.line) {

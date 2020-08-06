@@ -10,27 +10,50 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.elementsAroundOffsetUp
-import org.jetbrains.annotations.ApiStatus.Experimental
+import com.intellij.psi.util.elementsAtOffsetUp
 
 /**
- * @return iterable of [references][PsiSymbolReferenceService.getReferences]
- * and [implicit references][ImplicitReferenceProvider] around given [offset]
+ * @return collection of [references][PsiSymbolReferenceService.getReferences] to the right of given [offset]
  */
-@Experimental
-fun PsiFile.allReferencesAround(offset: Int): Iterable<PsiSymbolReference> {
-  val service: PsiSymbolReferenceService = PsiSymbolReferenceService.getService()
-  for ((element, offsetInElement) in elementsAroundOffsetUp(offset)) {
-    val hints = PsiSymbolReferenceHints.offsetHint(offsetInElement)
-    val references: Collection<PsiSymbolReference> = service.getReferences(element, hints)
+fun PsiFile.referencesAt(offset: Int): Collection<PsiSymbolReference> {
+  for ((element, offsetInElement) in elementsAtOffsetUp(offset)) {
+    val references = referencesInElement(element, offsetInElement)
     if (references.isNotEmpty()) {
       return references
     }
-    val implicitReference = implicitReference(element)
-    if (implicitReference != null) {
-      return listOf(implicitReference)
+  }
+  return emptyList()
+}
+
+/**
+ * @return collection of [references][PsiSymbolReferenceService.getReferences]
+ * and [implicit references][ImplicitReferenceProvider] around given [offset]
+ */
+fun PsiFile.allReferencesAround(offset: Int): Collection<PsiSymbolReference> {
+  for ((element, offsetInElement) in elementsAroundOffsetUp(offset)) {
+    val referencesInElement = allReferencesInElement(element, offsetInElement)
+    if (referencesInElement.isNotEmpty()) {
+      return referencesInElement
     }
   }
   return emptyList()
+}
+
+fun allReferencesInElement(element: PsiElement, offsetInElement: Int): Collection<PsiSymbolReference> {
+  val references: Collection<PsiSymbolReference> = referencesInElement(element, offsetInElement)
+  if (references.isNotEmpty()) {
+    return references
+  }
+  val implicitReference = implicitReference(element)
+  if (implicitReference != null) {
+    return listOf(implicitReference)
+  }
+  return emptyList()
+}
+
+private fun referencesInElement(element: PsiElement, offsetInElement: Int): Collection<PsiSymbolReference> {
+  val hints = PsiSymbolReferenceHints.offsetHint(offsetInElement)
+  return PsiSymbolReferenceService.getService().getReferences(element, hints)
 }
 
 private fun implicitReference(element: PsiElement): PsiSymbolReference? {

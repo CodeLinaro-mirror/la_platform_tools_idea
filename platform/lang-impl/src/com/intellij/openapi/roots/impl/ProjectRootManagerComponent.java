@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl;
 
 import com.intellij.ProjectTopics;
@@ -8,7 +8,6 @@ import com.intellij.openapi.application.*;
 import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.components.impl.stores.BatchUpdateListener;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.extensions.ExtensionPointChangeListener;
 import com.intellij.openapi.fileTypes.FileTypeEvent;
 import com.intellij.openapi.fileTypes.FileTypeListener;
 import com.intellij.openapi.fileTypes.FileTypeManager;
@@ -18,10 +17,7 @@ import com.intellij.openapi.module.impl.ModuleEx;
 import com.intellij.openapi.project.DumbModeTask;
 import com.intellij.openapi.project.DumbServiceImpl;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.AdditionalLibraryRootsProvider;
-import com.intellij.openapi.roots.ModuleRootManager;
-import com.intellij.openapi.roots.OrderRootType;
-import com.intellij.openapi.roots.WatchedRootsProvider;
+import com.intellij.openapi.roots.*;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.EmptyRunnable;
@@ -38,13 +34,14 @@ import com.intellij.project.ProjectKt;
 import com.intellij.ui.GuiUtils;
 import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.FileBasedIndex;
 import com.intellij.util.indexing.FileBasedIndexImpl;
 import com.intellij.util.indexing.FileBasedIndexProjectHandler;
 import com.intellij.util.indexing.UnindexedFilesUpdater;
 import com.intellij.util.messages.MessageBusConnection;
-import gnu.trove.THashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.CalledInAwt;
 import org.jetbrains.annotations.NotNull;
 
@@ -68,19 +65,25 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
   private final ExecutorService myExecutor = ApplicationManager.getApplication().isUnitTestMode()
                                              ? ConcurrencyUtil.newSameThreadExecutorService()
                                              : AppExecutorUtil.createBoundedApplicationPoolExecutor("Project Root Manager", 1);
-  @NotNull
-  private Future<?> myCollectWatchRootsFuture = CompletableFuture.completedFuture(null); // accessed in EDT only
+  private @NotNull Future<?> myCollectWatchRootsFuture = CompletableFuture.completedFuture(null); // accessed in EDT only
+
+  private final OnlyOnceExceptionLogger myRootsChangedLogger = new OnlyOnceExceptionLogger(LOG);
 
   private boolean myPointerChangesDetected;
   private int myInsideRefresh;
-  @NotNull
-  private Set<LocalFileSystem.WatchRequest> myRootsToWatch = new THashSet<>();
+  private @NotNull Set<LocalFileSystem.WatchRequest> myRootsToWatch = new ObjectOpenHashSet<>();
   private Disposable myRootPointersDisposable = Disposer.newDisposable(); // accessed in EDT
 
   public ProjectRootManagerComponent(@NotNull Project project) {
     super(project);
 
-    MessageBusConnection connection = project.getMessageBus().connect(this);
+    if (!myProject.isDefault()) {
+      registerListeners();
+    }
+  }
+
+  private void registerListeners() {
+    MessageBusConnection connection = myProject.getMessageBus().connect(this);
     connection.subscribe(FileTypeManager.TOPIC, new FileTypeListener() {
       @Override
       public void beforeFileTypesChanged(@NotNull FileTypeEvent event) {
@@ -93,18 +96,17 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
       }
     });
 
-    VirtualFileManager.getInstance().addVirtualFileManagerListener(new VirtualFileManagerListener() {
-      @Override
-      public void afterRefreshFinish(boolean asynchronous) {
-        doUpdateOnRefresh();
-      }
-    }, project);
-
-    if (!myProject.isDefault()) {
-      StartupManager.getInstance(project).registerStartupActivity(() -> {
-        myStartupActivityPerformed = true;
-      });
+    if (!LightEdit.owns(myProject)) {
+      VirtualFileManager.getInstance().addVirtualFileManagerListener(new VirtualFileManagerListener() {
+        @Override
+        public void afterRefreshFinish(boolean asynchronous) {
+          doUpdateOnRefresh();
+        }
+      }, this);
     }
+    StartupManager.getInstance(myProject).registerStartupActivity(() -> {
+      myStartupActivityPerformed = true;
+    });
 
     connection.subscribe(BatchUpdateListener.TOPIC, new BatchUpdateListener() {
       @Override
@@ -119,16 +121,13 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
         myFileTypesChanged.levelDown();
       }
     });
-    AdditionalLibraryRootsProvider.EP_NAME.addExtensionPointListener(new ExtensionPointChangeListener() {
-      @Override
-      public void extensionListChanged() {
-        ApplicationManager.getApplication().invokeLater(() -> {
-          WriteAction.run(() -> {
-            makeRootsChange(EmptyRunnable.getInstance(), false, true);
-          });
-        });
-      }
-    }, project);
+    Runnable rootsExtensionPointListener = () -> ApplicationManager.getApplication().invokeLater(() -> {
+      WriteAction.run(() -> {
+        makeRootsChange(EmptyRunnable.getInstance(), false, true);
+      });
+    });
+    AdditionalLibraryRootsProvider.EP_NAME.addChangeListener(rootsExtensionPointListener, this);
+    OrderEnumerationHandler.EP_NAME.addChangeListener(rootsExtensionPointListener, this);
   }
 
   @Override
@@ -176,9 +175,6 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
     if (ApplicationManager.getApplication().isUnitTestMode() && (!myStartupActivityPerformed || myProject.isDisposed())) {
       return; // in test mode suppress addition to a queue unless project is properly initialized
     }
-    if (myProject.isDefault() || LightEdit.owns(myProject)) {
-      return;
-    }
 
     if (LOG_CACHES_UPDATE || LOG.isDebugEnabled()) {
       LOG.debug("refresh");
@@ -215,12 +211,11 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
     addRootsToWatch();
   }
 
-  @NotNull
-  private Pair<Set<String>, Set<String>> collectWatchRoots(@NotNull Disposable disposable) {
+  private @NotNull Pair<Set<String>, Set<String>> collectWatchRoots(@NotNull Disposable disposable) {
     ApplicationManager.getApplication().assertReadAccessAllowed();
 
-    Set<String> recursivePaths = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
-    Set<String> flatPaths = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
+    Set<String> recursivePaths = CollectionFactory.createFilePathSet();
+    Set<String> flatPaths = CollectionFactory.createFilePathSet();
 
     String projectFilePath = myProject.getProjectFilePath();
     if (projectFilePath != null && !Project.DIRECTORY_STORE_FOLDER.equals(new File(projectFilePath).getParentFile().getName())) {
@@ -246,7 +241,7 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
     }
 
     List<String> recursiveUrls = ContainerUtil.map(recursivePaths, VfsUtilCore::pathToUrl);
-    Set<String> excludedUrls = new THashSet<>();
+    Set<String> excludedUrls = new ObjectOpenHashSet<>();
     // changes in files provided by this method should be watched manually because no-one's bothered to set up correct pointers for them
     for (DirectoryIndexExcludePolicy excludePolicy : DirectoryIndexExcludePolicy.EP_NAME.getExtensions(myProject)) {
       Collections.addAll(excludedUrls, excludePolicy.getExcludeUrlsForProject());
@@ -271,7 +266,7 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
   }
 
   private void collectModuleWatchRoots(@NotNull Set<? super String> recursivePaths, @NotNull Set<? super String> flatPaths) {
-    Set<String> urls = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
+    Set<String> urls = CollectionFactory.createFilePathSet();
 
     for (Module module : ModuleManager.getInstance(myProject).getModules()) {
       ModuleRootManager rootManager = ModuleRootManager.getInstance(module);
@@ -303,11 +298,12 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
   private void synchronizeRoots() {
     if (!myStartupActivityPerformed) return;
 
-    if (LOG_CACHES_UPDATE || LOG.isTraceEnabled()) {
-      LOG.trace(new Throwable("sync roots"));
+    String message = "project roots have changed";
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      LOG.info(message);
     }
-    else if (!ApplicationManager.getApplication().isUnitTestMode()) {
-      LOG.info("project roots have changed");
+    else {
+      myRootsChangedLogger.info(message, new Throwable());
     }
 
     DumbServiceImpl dumbService = DumbServiceImpl.getInstance(myProject);
@@ -337,7 +333,7 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
 
   @Override
   public void markRootsForRefresh() {
-    Set<String> paths = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
+    Set<String> paths = CollectionFactory.createFilePathSet();
     collectModuleWatchRoots(paths, paths);
 
     LocalFileSystem fs = LocalFileSystem.getInstance();
@@ -413,9 +409,8 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
     }
   };
 
-  @NotNull
   @Override
-  public VirtualFilePointerListener getRootsValidityChangedListener() {
+  public @NotNull VirtualFilePointerListener getRootsValidityChangedListener() {
     return myRootsChangedListener;
   }
 }

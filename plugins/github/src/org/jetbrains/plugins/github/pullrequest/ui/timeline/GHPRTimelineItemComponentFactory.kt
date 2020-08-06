@@ -3,10 +3,10 @@ package org.jetbrains.plugins.github.pullrequest.ui.timeline
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.plugins.newui.VerticalLayout
 import com.intellij.ui.components.labels.LinkLabel
 import com.intellij.ui.components.labels.LinkListener
 import com.intellij.ui.components.panels.HorizontalBox
-import com.intellij.ui.components.panels.VerticalBox
 import com.intellij.util.ui.JBDimension
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UI
@@ -22,9 +22,10 @@ import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestReview
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestReviewState.*
 import org.jetbrains.plugins.github.api.data.pullrequest.timeline.GHPRTimelineEvent
 import org.jetbrains.plugins.github.api.data.pullrequest.timeline.GHPRTimelineItem
+import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.avatars.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.pullrequest.comment.ui.GHPRReviewThreadComponent
-import org.jetbrains.plugins.github.pullrequest.data.service.GHPRReviewServiceAdapter
+import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRReviewDataProvider
 import org.jetbrains.plugins.github.ui.util.HtmlEditorPane
 import org.jetbrains.plugins.github.util.GithubUIUtil
 import java.util.*
@@ -32,7 +33,7 @@ import javax.swing.*
 import kotlin.math.ceil
 import kotlin.math.floor
 
-class GHPRTimelineItemComponentFactory(private val reviewService: GHPRReviewServiceAdapter,
+class GHPRTimelineItemComponentFactory(private val reviewDataProvider: GHPRReviewDataProvider,
                                        private val avatarIconsProvider: GHAvatarIconsProvider,
                                        private val reviewsThreadsModelsProvider: GHPRReviewsThreadsModelsProvider,
                                        private val reviewDiffComponentFactory: GHPRReviewThreadDiffComponentFactory,
@@ -52,28 +53,27 @@ class GHPRTimelineItemComponentFactory(private val reviewService: GHPRReviewServ
       }
     }
     catch (e: Exception) {
-      return Item(AllIcons.General.Warning, HtmlEditorPane("Cannot display item - ${e.message}"))
+      return Item(AllIcons.General.Warning, HtmlEditorPane(GithubBundle.message("cannot.display.item", e.message ?: "")))
     }
   }
 
   private fun createComponent(model: GHIssueComment) =
     Item(userAvatar(model.author),
-         actionTitle(model.author, "commented", model.createdAt),
+         actionTitle(model.author, GithubBundle.message("pull.request.timeline.commented"), model.createdAt),
          HtmlEditorPane(model.bodyHtml))
 
   private fun createComponent(review: GHPullRequestReview): Item {
     val reviewThreadsModel = reviewsThreadsModelsProvider.getReviewThreadsModel(review.id)
 
-    val reviewPanel = VerticalBox().apply {
-      add(Box.createRigidArea(JBDimension(0, 4)))
+    val reviewPanel = JPanel(VerticalLayout(UI.scale(12))).apply {
+      isOpaque = false
+      border = JBUI.Borders.emptyTop(4)
       if (review.bodyHTML.isNotEmpty()) {
-        add(HtmlEditorPane(review.bodyHTML).apply {
-          border = JBUI.Borders.emptyBottom(12)
-        })
+        add(HtmlEditorPane(review.bodyHTML))
       }
-      add(GHPRReviewThreadsPanel(reviewThreadsModel) {
-        GHPRReviewThreadComponent.createWithDiff(it, reviewService, reviewDiffComponentFactory, avatarIconsProvider, currentUser)
-      })
+      add(GHPRReviewThreadsPanel.create(reviewThreadsModel) {
+        GHPRReviewThreadComponent.createWithDiff(it, reviewDataProvider, reviewDiffComponentFactory, avatarIconsProvider, currentUser)
+      }, VerticalLayout.FILL_HORIZONTAL)
     }
 
     val icon = when (review.state) {
@@ -85,9 +85,10 @@ class GHPRTimelineItemComponentFactory(private val reviewService: GHPRReviewServ
     }
 
     val actionText = when (review.state) {
-      APPROVED -> "approved these changes"
-      CHANGES_REQUESTED -> "rejected these changes"
-      COMMENTED, DISMISSED, PENDING -> "reviewed"
+      APPROVED -> GithubBundle.message("pull.request.timeline.approved.changes")
+      CHANGES_REQUESTED -> GithubBundle.message("pull.request.timeline.rejected.changes")
+      PENDING -> GithubBundle.message("pull.request.timeline.started.review")
+      COMMENTED, DISMISSED -> GithubBundle.message("pull.request.timeline.reviewed")
     }
 
     return Item(icon, actionTitle(avatarIconsProvider, review.author, actionText, review.createdAt), reviewPanel)
@@ -128,7 +129,7 @@ class GHPRTimelineItemComponentFactory(private val reviewService: GHPRReviewServ
       }
 
       add(marker, CC().pushY())
-      add(title, CC().growX().pushX())
+      add(title, CC().pushX())
       if (content != null) add(content, CC().newline().skip().grow().push())
     }
 

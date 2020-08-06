@@ -20,6 +20,7 @@ import com.intellij.util.Alarm;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.StartupUiUtil;
 import org.intellij.markdown.html.HtmlGenerator;
+import org.intellij.plugins.markdown.MarkdownBundle;
 import org.intellij.plugins.markdown.settings.MarkdownApplicationSettings;
 import org.intellij.plugins.markdown.settings.MarkdownCssSettings;
 import org.intellij.plugins.markdown.settings.MarkdownPreviewSettings;
@@ -48,7 +49,7 @@ public class MarkdownPreviewFileEditor extends UserDataHolderBase implements Fil
       return Sanitizers.BLOCKS
         .and(Sanitizers.FORMATTING)
         .and(new HtmlPolicyBuilder()
-               .allowUrlProtocols("file", "http", "https").allowElements("img")
+               .allowUrlProtocols("source", "file", "http", "https").allowElements("img")
                .allowAttributes("alt", "src", "title").onElements("img")
                .allowAttributes("border", "height", "width").onElements("img")
                .toFactory())
@@ -61,7 +62,7 @@ public class MarkdownPreviewFileEditor extends UserDataHolderBase implements Fil
                .allowAttributes("class").onElements("li")
                .toFactory())
         .and(new HtmlPolicyBuilder()
-               .allowUrlProtocols("file", "http", "https", "mailto").allowElements("a")
+               .allowUrlProtocols("source", "file", "http", "https", "mailto").allowElements("a")
                .allowAttributes("href", "title").onElements("a")
                .toFactory())
         .and(Sanitizers.TABLES)
@@ -69,6 +70,10 @@ public class MarkdownPreviewFileEditor extends UserDataHolderBase implements Fil
                .allowElements("body", "pre", "hr", "code", "tr", "span")
                .allowAttributes(HtmlGenerator.Companion.getSRC_ATTRIBUTE_NAME()).globally()
                .allowAttributes("class").onElements("code", "tr", "span")
+               .toFactory())
+        .and(new HtmlPolicyBuilder()
+               .allowElements("font")
+               .allowAttributes("color").onElements("font")
                .toFactory());
     }
   };
@@ -279,7 +284,7 @@ public class MarkdownPreviewFileEditor extends UserDataHolderBase implements Fil
 
       Messages.showMessageDialog(
         myHtmlPanelWrapper,
-        "Tried to use preview panel provider (" + providerInfo.getName() + "), but it is unavailable. Reverting to default.",
+        MarkdownBundle.message("dialog.message.tried.to.use.preview.panel.provider", providerInfo.getName()),
         CommonBundle.getErrorTitle(),
         Messages.getErrorIcon()
       );
@@ -404,7 +409,7 @@ public class MarkdownPreviewFileEditor extends UserDataHolderBase implements Fil
             attachHtmlPanel();
           }
 
-          myPanel.setHtml(myLastRenderedHtml);
+          updateHtml(true);
           updatePanelCssSettings(myPanel, settings.getMarkdownCssSettings());
         }
       }, 0, ModalityState.stateForComponent(getComponent()));

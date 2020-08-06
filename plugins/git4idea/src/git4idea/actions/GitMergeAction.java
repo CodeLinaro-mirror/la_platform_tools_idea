@@ -12,7 +12,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.ProjectLevelVcsManager;
@@ -24,7 +23,6 @@ import com.intellij.openapi.vcs.update.AbstractCommonUpdateAction;
 import com.intellij.openapi.vcs.update.ActionInfo;
 import com.intellij.openapi.vcs.update.UpdateInfoTree;
 import com.intellij.openapi.vcs.update.UpdatedFiles;
-import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.GuiUtils;
 import com.intellij.vcs.ViewUpdateInfoNotification;
@@ -53,6 +51,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static com.intellij.notification.NotificationType.INFORMATION;
 import static git4idea.commands.GitLocalChangesWouldBeOverwrittenDetector.Operation.MERGE;
@@ -67,13 +66,13 @@ abstract class GitMergeAction extends GitRepositoryAction {
   protected static class DialogState {
     final VirtualFile selectedRoot;
     final String progressTitle;
-    final Computable<GitLineHandler> handlerProvider;
+    final Supplier<GitLineHandler> handlerProvider;
     @NotNull private final List<String> selectedBranches;
     final boolean commitAfterMerge;
 
     DialogState(@NotNull VirtualFile root,
                 @NotNull String title,
-                @NotNull Computable<GitLineHandler> provider,
+                @NotNull Supplier<GitLineHandler> provider,
                 @NotNull List<String> selectedBranches,
                 boolean commitAfterMerge) {
       selectedRoot = root;
@@ -95,7 +94,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
       return;
     }
     VirtualFile selectedRoot = dialogState.selectedRoot;
-    Computable<GitLineHandler> handlerProvider = dialogState.handlerProvider;
+    Supplier<GitLineHandler> handlerProvider = dialogState.handlerProvider;
     Label beforeLabel = LocalHistory.getInstance().putSystemLabel(project, "Before update");
 
     new Task.Backgroundable(project, dialogState.progressTitle, true) {
@@ -130,7 +129,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
         Ref<GitHandlerRebaseEditorManager> rebaseEditorManager = Ref.create();
         try (AccessToken ignore = DvcsUtil.workingTreeChangeStarted(project, getActionName())) {
           GitCommandResult result = git.runCommand(() -> {
-            GitLineHandler handler = handlerProvider.compute();
+            GitLineHandler handler = handlerProvider.get();
 
             if (setupRebaseEditor) {
               if (!rebaseEditorManager.isNull()) {
@@ -191,7 +190,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
     }
 
     if (result.success() || mergeConflictDetector.hasHappened()) {
-      VfsUtil.markDirtyAndRefresh(false, true, false, root);
+      GitUtil.refreshVfsInRoot(root);
       repository.update();
       if (updatedRanges != null &&
           AbstractCommonUpdateAction.showsCustomNotification(singletonList(GitVcs.getInstance(project))) &&
@@ -215,7 +214,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
         VcsNotifier.getInstance(project).notify(notification);
       }
       else {
-        showUpdates(project, root, currentRev, beforeLabel, getActionName());
+        showUpdates(project, repository, currentRev, beforeLabel, getActionName());
       }
     }
     else if (localChangesDetector.wasMessageDetected()) {
@@ -233,13 +232,13 @@ abstract class GitMergeAction extends GitRepositoryAction {
   }
 
   private static void showUpdates(@NotNull Project project,
-                                  @NotNull VirtualFile root,
+                                  @NotNull GitRepository repository,
                                   @NotNull GitRevisionNumber currentRev,
                                   @NotNull Label beforeLabel,
                                   @NotNull String actionName) {
     try {
       UpdatedFiles files = UpdatedFiles.create();
-      MergeChangeCollector collector = new MergeChangeCollector(project, root, currentRev);
+      MergeChangeCollector collector = new MergeChangeCollector(project, repository, currentRev);
       collector.collect(files);
 
       GuiUtils.invokeLaterIfNeeded(() -> {

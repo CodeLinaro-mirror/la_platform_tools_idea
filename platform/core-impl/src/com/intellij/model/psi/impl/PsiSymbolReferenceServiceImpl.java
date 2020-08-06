@@ -17,8 +17,7 @@ import java.util.Collections;
 import java.util.List;
 
 @Internal
-public final class PsiSymbolReferenceServiceImpl implements PsiSymbolReferenceService {
-
+final class PsiSymbolReferenceServiceImpl implements PsiSymbolReferenceService {
   /**
    * This field is intentionally private.
    * Clients are supposed to use {@link #getReferences(PsiElement)} to obtain all available references.
@@ -26,43 +25,64 @@ public final class PsiSymbolReferenceServiceImpl implements PsiSymbolReferenceSe
   private static final PsiSymbolReferenceHints EMPTY_HINTS = new PsiSymbolReferenceHints() {
   };
 
-  @NotNull
   @Override
-  public Iterable<? extends PsiSymbolReference> getReferences(@NotNull PsiElement element) {
+  public @NotNull Iterable<? extends PsiSymbolReference> getReferences(@NotNull PsiElement element) {
     return CachedValuesManager.getCachedValue(element, () -> CachedValueProvider.Result.create(
       Collections.unmodifiableList(getReferences(element, EMPTY_HINTS)), PsiModificationTracker.MODIFICATION_COUNT)
     );
   }
 
-  @NotNull
+  @SuppressWarnings("unchecked")
   @Override
-  public List<PsiSymbolReference> getReferences(@NotNull PsiElement element, @NotNull PsiSymbolReferenceHints hints) {
+  public @NotNull <T extends PsiSymbolReference> Collection<T> getReferences(@NotNull PsiElement host, @NotNull Class<T> referenceClass) {
+    return (Collection<T>)getReferences(host, PsiSymbolReferenceHints.referenceClassHint(referenceClass));
+  }
+
+  @Override
+  public @NotNull List<PsiSymbolReference> getReferences(@NotNull PsiElement element, @NotNull PsiSymbolReferenceHints hints) {
     List<PsiSymbolReference> result = ContainerUtil.newArrayList(element.getOwnReferences());
-    if (element instanceof PsiExternalReferenceHost) {
-      result.addAll(getExternalReferences((PsiExternalReferenceHost)element, hints));
+    if (result.isEmpty() && element instanceof PsiExternalReferenceHost) {
+      result.addAll(doGetExternalReferences((PsiExternalReferenceHost)element, hints));
     }
     return applyHints(result, hints);
   }
 
-  @NotNull
-  private static Collection<? extends PsiSymbolReference> getExternalReferences(@NotNull PsiExternalReferenceHost element,
-                                                                                @NotNull PsiSymbolReferenceHints hints) {
-    final LanguageReferenceProviders languageReferenceProviders = ReferenceProviders.getInstance().byLanguage(element.getLanguage());
-    final List<PsiSymbolReferenceProvider> providers = languageReferenceProviders.getProviders(element);
-    final List<PsiSymbolReference> result = new SmartList<>();
-    for (PsiSymbolReferenceProvider provider : providers) {
-      result.addAll(provider.getReferences(element, hints));
+  @Override
+  public @NotNull Collection<? extends PsiSymbolReference> getExternalReferences(@NotNull PsiExternalReferenceHost element,
+                                                                                 @NotNull PsiSymbolReferenceHints hints) {
+    return applyHints(doGetExternalReferences(element, hints), hints);
+  }
+
+  private static @NotNull List<PsiSymbolReference> doGetExternalReferences(@NotNull PsiExternalReferenceHost element,
+                                                                           @NotNull PsiSymbolReferenceHints hints) {
+    List<PsiSymbolReferenceProviderBean> beans = ReferenceProviders.byLanguage(element.getLanguage()).byHostClass(element.getClass());
+    if (beans.isEmpty()) {
+      return Collections.emptyList();
+    }
+    Class<? extends PsiSymbolReference> requiredReferenceClass = hints.getReferenceClass();
+    List<PsiSymbolReference> result = new SmartList<>();
+    for (PsiSymbolReferenceProviderBean bean : beans) {
+      if (requiredReferenceClass == PsiSymbolReference.class // top required
+          || bean.anyReferenceClass // bottom provided
+          || requiredReferenceClass.isAssignableFrom(bean.getReferenceClass())) {
+        result.addAll(bean.getInstance().getReferences(element, hints));
+      }
     }
     return result;
   }
 
-  @NotNull
-  private static List<PsiSymbolReference> applyHints(@NotNull List<PsiSymbolReference> references,
-                                                     @NotNull PsiSymbolReferenceHints hints) {
+  private static @NotNull List<PsiSymbolReference> applyHints(@NotNull List<PsiSymbolReference> references,
+                                                              @NotNull PsiSymbolReferenceHints hints) {
     if (hints == EMPTY_HINTS) {
       return references;
     }
     List<PsiSymbolReference> result = references;
+
+    Class<? extends PsiSymbolReference> referenceClass = hints.getReferenceClass();
+    if (referenceClass != PsiSymbolReference.class) {
+      result = ContainerUtil.filterIsInstance(result, referenceClass);
+    }
+
     Integer offsetInElement = hints.getOffsetInElement();
     if (offsetInElement != null) {
       result = ContainerUtil.filter(result, it -> ReferenceRange.containsOffsetInElement(it, offsetInElement));

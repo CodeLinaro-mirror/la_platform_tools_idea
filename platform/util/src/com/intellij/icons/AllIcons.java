@@ -40,6 +40,8 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Commit = load("/actions/commit.svg");
     /** 16x16 */ public static final @NotNull Icon Compile = load("/actions/compile.svg");
     /** 16x16 */ public static final @NotNull Icon Copy = load("/actions/copy.svg");
+    /** 16x16 */ public static final @NotNull Icon DeleteTag = load("/actions/deleteTag.svg");
+    /** 16x16 */ public static final @NotNull Icon DeleteTagHover = load("/actions/deleteTagHover.svg");
     /** 16x16 */ public static final @NotNull Icon DiagramDiff = load("/actions/diagramDiff.svg");
     /** 16x16 */ public static final @NotNull Icon Diff = load("/actions/diff.svg");
     /** 16x16 */ public static final @NotNull Icon DiffWithClipboard = load("/actions/diffWithClipboard.svg");
@@ -53,7 +55,9 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Expandall = load("/actions/expandall.svg");
     /** 16x16 */ public static final @NotNull Icon Find = load("/actions/find.svg");
     /** 16x16 */ public static final @NotNull Icon FindAndShowNextMatches = load("/actions/findAndShowNextMatches.svg");
+    /** 16x16 */ public static final @NotNull Icon FindAndShowNextMatchesSmall = load("/actions/findAndShowNextMatchesSmall.svg");
     /** 16x16 */ public static final @NotNull Icon FindAndShowPrevMatches = load("/actions/findAndShowPrevMatches.svg");
+    /** 16x16 */ public static final @NotNull Icon FindAndShowPrevMatchesSmall = load("/actions/findAndShowPrevMatchesSmall.svg");
     /** 16x16 */ public static final @NotNull Icon FindBackward = load("/actions/findBackward.svg");
     /** 16x16 */ public static final @NotNull Icon FindEntireFile = load("/actions/findEntireFile.svg");
     /** 16x16 */ public static final @NotNull Icon FindForward = load("/actions/findForward.svg");
@@ -71,6 +75,11 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon GroupByTestProduction = load("/actions/groupByTestProduction.svg");
     /** 16x16 */ public static final @NotNull Icon Help = load("/actions/help.svg");
     /** 16x16 */ public static final @NotNull Icon Highlighting = load("/actions/highlighting.svg");
+    /** 12x12 */ public static final @NotNull Icon InlayGear = load("/actions/inlayGear.svg");
+    /** 12x12 */ public static final @NotNull Icon InlayRenameInComments = load("/actions/inlayRenameInComments.svg");
+    /** 12x12 */ public static final @NotNull Icon InlayRenameInCommentsActive = load("/actions/inlayRenameInCommentsActive.svg");
+    /** 12x12 */ public static final @NotNull Icon InlayRenameInNoCodeFiles = load("/actions/inlayRenameInNoCodeFiles.svg");
+    /** 12x12 */ public static final @NotNull Icon InlayRenameInNoCodeFilesActive = load("/actions/inlayRenameInNoCodeFilesActive.svg");
     /** 16x16 */ public static final @NotNull Icon InSelection = load("/actions/inSelection.svg");
     /** 16x16 */ public static final @NotNull Icon Install = load("/actions/install.svg");
     /** 16x16 */ public static final @NotNull Icon IntentionBulb = load("/actions/intentionBulb.svg");
@@ -197,6 +206,20 @@ public class AllIcons {
 
   public final static class CodeStyle {
     /** 16x16 */ public static final @NotNull Icon AddNewSectionRule = load("/codeStyle/AddNewSectionRule.svg");
+
+  }
+
+  public final static class CodeWithMe {
+    /** 16x16 */ public static final @NotNull Icon CwmFollow = load("/codeWithMe/cwmFollow.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmFollowMe = load("/codeWithMe/cwmFollowMe.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmForceFollowMe = load("/codeWithMe/cwmForceFollowMe.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmFullSync = load("/codeWithMe/cwmFullSync.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmInvite = load("/codeWithMe/cwmInvite.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmJoin = load("/codeWithMe/cwmJoin.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmJump = load("/codeWithMe/cwmJump.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmKick = load("/codeWithMe/cwmKick.svg");
+    /** 16x16 */ public static final @NotNull Icon CwmTerminate = load("/codeWithMe/cwmTerminate.svg");
+    /** 16x16 */ public static final @NotNull Icon Users = load("/codeWithMe/users.svg");
 
   }
 
@@ -398,12 +421,15 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon InlineAddHover = load("/general/inlineAddHover.svg");
     /** 16x16 */ public static final @NotNull Icon InlineVariables = load("/general/inlineVariables.svg");
     /** 16x16 */ public static final @NotNull Icon InlineVariablesHover = load("/general/inlineVariablesHover.svg");
-    /** 14x14 */ public static final @NotNull Icon InspectionsError = load("/general/inspectionsError.svg");
-    /** 14x14 */ public static final @NotNull Icon InspectionsEye = load("/general/inspectionsEye.svg");
-    /** 14x14 */ public static final @NotNull Icon InspectionsOK = load("/general/inspectionsOK.svg");
-    /** 14x14 */ public static final @NotNull Icon InspectionsPause = load("/general/inspectionsPause.svg");
-    /** 14x14 */ public static final @NotNull Icon InspectionsTrafficOff = load("/general/inspectionsTrafficOff.svg");
-    /** 14x14 */ public static final @NotNull Icon InspectionsTypos = load("/general/inspectionsTypos.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsError = load("/general/inspectionsError.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsEye = load("/general/inspectionsEye.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsMixed = load("/general/inspectionsMixed.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsOK = load("/general/inspectionsOK.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsPause = load("/general/inspectionsPause.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsPowerSaveMode = load("/general/inspectionsPowerSaveMode.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsTrafficOff = load("/general/inspectionsTrafficOff.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsTypos = load("/general/inspectionsTypos.svg");
+    /** 16x16 */ public static final @NotNull Icon InspectionsWarning = load("/general/inspectionsWarning.svg");
     /** 16x16 */ public static final @NotNull Icon Layout = load("/general/layout.svg");
     /** 16x16 */ public static final @NotNull Icon LayoutEditorOnly = load("/general/layoutEditorOnly.svg");
     /** 16x16 */ public static final @NotNull Icon LayoutEditorPreview = load("/general/layoutEditorPreview.svg");
@@ -511,17 +537,19 @@ public class AllIcons {
   }
 
   public final static class Ide {
+    /** 16x16 */ public static final @NotNull Icon ConfigFile = load("/ide/configFile.svg");
     /** 6x6 */ public static final @NotNull Icon ErrorPoint = load("/ide/errorPoint.svg");
     /** 14x14 */ public static final @NotNull Icon External_link_arrow = load("/ide/external_link_arrow.svg");
     /** 16x16 */ public static final @NotNull Icon FatalError_read = load("/ide/fatalError-read.svg");
     /** 16x16 */ public static final @NotNull Icon FatalError = load("/ide/fatalError.svg");
     /** 16x16 */ public static final @NotNull Icon Gift = load("/ide/gift.svg");
-    /** 16x16 */ public static final Icon HectorOff = load("/ide/hectorOff.svg");
+    /** 16x16 */ public static final @NotNull Icon HectorOff = load("/ide/hectorOff.svg");
     /** 16x16 */ public static final @NotNull Icon HectorOn = load("/ide/hectorOn.svg");
     /** 16x16 */ public static final @NotNull Icon HectorSyntax = load("/ide/hectorSyntax.svg");
     /** 16x16 */ public static final @NotNull Icon IncomingChangesOn = load("/ide/incomingChangesOn.svg");
     /** 12x12 */ public static final @NotNull Icon Link = load("/ide/link.svg");
     /** 16x16 */ public static final @NotNull Icon LocalScope = load("/ide/localScope.svg");
+    /** 16x16 */ public static final @NotNull Icon LocalScopeAction = load("/ide/localScopeAction.svg");
 
     public final static class Macro {
       /** 16x16 */ public static final @NotNull Icon Recording_1 = load("/ide/macro/recording_1.svg");
@@ -551,6 +579,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon OutgoingChangesOn = load("/ide/outgoingChangesOn.svg");
     /** 16x16 */ public static final @NotNull Icon Pipette = load("/ide/pipette.svg");
     /** 16x16 */ public static final @NotNull Icon Pipette_rollover = load("/ide/pipette_rollover.svg");
+    /** 16x16 */ public static final @NotNull Icon PowerSaveMode = load("/ide/powerSaveMode.svg");
     /** 11x11 */ public static final @NotNull Icon Rating = load("/ide/rating.svg");
     /** 11x11 */ public static final @NotNull Icon Rating1 = load("/ide/rating1.svg");
     /** 11x11 */ public static final @NotNull Icon Rating2 = load("/ide/rating2.svg");
@@ -902,6 +931,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Apache = load("/providers/apache.svg");
     /** 16x16 */ public static final @NotNull Icon ApacheDerby = load("/providers/apacheDerby.svg");
     /** 16x16 */ public static final @NotNull Icon Azure = load("/providers/azure.svg");
+    /** 16x16 */ public static final @NotNull Icon BigQuery = load("/providers/bigQuery.svg");
     /** 16x16 */ public static final @NotNull Icon Cassandra = load("/providers/cassandra.svg");
     /** 16x16 */ public static final @NotNull Icon ClickHouse = load("/providers/clickHouse.svg");
     /** 16x16 */ public static final @NotNull Icon CockroachDB = load("/providers/cockroachDB.svg");
@@ -1035,6 +1065,8 @@ public class AllIcons {
     /** 13x13 */ public static final @NotNull Icon ToolWindowModuleDependencies = load("/toolwindows/toolWindowModuleDependencies.svg");
     /** 13x13 */ public static final @NotNull Icon ToolWindowPalette = load("/toolwindows/toolWindowPalette.svg");
     /** 13x13 */ public static final @NotNull Icon ToolWindowPreview = load("/toolwindows/toolWindowPreview.png");
+    /** 13x13 */ public static final @NotNull Icon ToolWindowProblems = load("/toolwindows/toolWindowProblems.svg");
+    /** 13x13 */ public static final @NotNull Icon ToolWindowProblemsEmpty = load("/toolwindows/toolWindowProblemsEmpty.svg");
     /** 13x13 */ public static final @NotNull Icon ToolWindowProfiler = load("/toolwindows/toolWindowProfiler.svg");
     /** 13x13 */ public static final @NotNull Icon ToolWindowProject = load("/toolwindows/toolWindowProject.svg");
     /** 13x13 */ public static final @NotNull Icon ToolWindowRun = load("/toolwindows/toolWindowRun.svg");
@@ -1051,11 +1083,13 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Arrow_left = load("/vcs/arrow_left.svg");
     /** 16x16 */ public static final @NotNull Icon Arrow_right = load("/vcs/arrow_right.svg");
     /** 16x16 */ public static final @NotNull Icon Branch = load("/vcs/branch.svg");
+    /** 16x16 */ public static final @NotNull Icon Branch_node = load("/vcs/branch_node.svg");
     /** 16x16 */ public static final @NotNull Icon Changelist = load("/vcs/changelist.svg");
     /** 16x16 */ public static final @NotNull Icon Clone = load("/vcs/clone.svg");
     /** 16x16 */ public static final @NotNull Icon CommitNode = load("/vcs/commitNode.svg");
     /** 16x16 */ public static final @NotNull Icon Equal = load("/vcs/equal.svg");
     /** 16x16 */ public static final @NotNull Icon Folders = load("/vcs/folders.svg");
+    /** 24x24 */ public static final @NotNull Icon FromVCSDialog = load("/vcs/fromVCSDialog.svg");
     /** 16x16 */ public static final @NotNull Icon History = load("/vcs/history.svg");
     /** 16x16 */ public static final @NotNull Icon HistoryInline = load("/vcs/historyInline.svg");
     /** 16x16 */ public static final @NotNull Icon HistoryInlineHovered = load("/vcs/historyInlineHovered.svg");
@@ -1090,11 +1124,19 @@ public class AllIcons {
   public final static class Welcome {
     /** 32x32 */ public static final @NotNull Icon CreateDesktopEntry = load("/welcome/createDesktopEntry.png");
     /** 16x16 */ public static final @NotNull Icon CreateNewProject = load("/welcome/createNewProject.svg");
+    /** 24x24 */ public static final @NotNull Icon CreateNewProjectTab = load("/welcome/createNewProjectTab.svg");
+    /** 24x24 */ public static final @NotNull Icon CreateNewProjectTabSelected = load("/welcome/createNewProjectTabSelected.svg");
     /** 16x16 */ public static final @NotNull Icon FromVCS = load("/welcome/fromVCS.svg");
+    /** 24x24 */ public static final @NotNull Icon FromVCSTab = load("/welcome/fromVCSTab.svg");
+    /** 24x24 */ public static final @NotNull Icon FromVCSTabSelected = load("/welcome/fromVCSTabSelected.svg");
+    /** 24x24 */ public static final @NotNull Icon Open = load("/welcome/open.svg");
+    /** 24x24 */ public static final @NotNull Icon OpenSelected = load("/welcome/openSelected.svg");
 
     public final static class Project {
       /** 10x10 */ public static final @NotNull Icon Remove_hover = load("/welcome/project/remove-hover.svg");
       /** 10x10 */ public static final @NotNull Icon Remove = load("/welcome/project/remove.svg");
+      /** 10x10 */ public static final @NotNull Icon RemoveDisabled_hover = load("/welcome/project/removeDisabled-hover.svg");
+      /** 10x10 */ public static final @NotNull Icon RemoveDisabled = load("/welcome/project/removeDisabled.svg");
 
     }
     /** 32x32 */ public static final @NotNull Icon Register = load("/welcome/register.png");

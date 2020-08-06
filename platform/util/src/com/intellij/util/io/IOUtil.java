@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.io;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -17,8 +17,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.IntFunction;
 
-public class IOUtil {
+public final class IOUtil {
   @SuppressWarnings("SpellCheckingInspection") public static final boolean BYTE_BUFFERS_USE_NATIVE_BYTE_ORDER =
     SystemProperties.getBooleanProperty("idea.bytebuffers.use.native.byte.order", true);
 
@@ -221,6 +222,9 @@ public class IOUtil {
     return factoryComputable.compute();
   }
 
+  /**
+   * Consider to use {@link com.intellij.util.io.externalizer.StringCollectionExternalizer}.
+   */
   public static void writeStringList(@NotNull DataOutput out, @NotNull Collection<String> list) throws IOException {
     DataInputOutputUtil.writeINT(out, list.size());
     for (String s : list) {
@@ -228,14 +232,25 @@ public class IOUtil {
     }
   }
 
+  /**
+   * Consider to use {@link com.intellij.util.io.externalizer.StringCollectionExternalizer}.
+   */
   @NotNull
-  public static List<String> readStringList(@NotNull DataInput in) throws IOException {
+  public static <C extends Collection<String>> C readStringCollection(@NotNull DataInput in, @NotNull IntFunction<C> generator) throws IOException {
     int size = DataInputOutputUtil.readINT(in);
-    List<String> strings = new ArrayList<>(size);
+    C strings = generator.apply(size);
     for (int i = 0; i < size; i++) {
       strings.add(readUTF(in));
     }
     return strings;
+  }
+
+  /**
+   * Consider to use {@link com.intellij.util.io.externalizer.StringCollectionExternalizer}.
+   */
+  @NotNull
+  public static List<String> readStringList(@NotNull DataInput in) throws IOException {
+    return readStringCollection(in, ArrayList::new);
   }
 
   public static void closeSafe(@NotNull Logger log, Closeable... closeables) {

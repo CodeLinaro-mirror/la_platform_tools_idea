@@ -7,6 +7,7 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.intellij.analytics.AndroidStudioAnalytics;
 import com.intellij.openapi.application.ApplicationNamesInfo;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
@@ -24,18 +25,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/**
- * @author Eugene Zhuravlev
- * Date: 05-Dec-17
- */
 public final class ConsentOptions {
   private static final Logger LOG = Logger.getInstance(ConsentOptions.class);
   private static final String CONSENTS_CONFIRMATION_PROPERTY = "jb.consents.confirmation.enabled";
   private static final String STATISTICS_OPTION_ID = "rsch.send.usage.stat";
   private final boolean myIsEAP;
 
-  @NotNull
-  private static String getBundledResourcePath() {
+  private static @NotNull String getBundledResourcePath() {
     final ApplicationInfoEx appInfo = ApplicationInfoImpl.getShadowInstance();
     return appInfo.isVendorJetBrains() ? "/consents.json" : "/consents-" + appInfo.getShortCompanyName() + ".json";
   }
@@ -45,8 +41,8 @@ public final class ConsentOptions {
     static {
       final ApplicationInfoEx appInfo = ApplicationInfoImpl.getShadowInstance();
       ourInstance = new ConsentOptions(new IOBackend() {
-        private final File DEFAULT_CONSENTS_FILE = new File(Locations.getDataRoot(), ApplicationNamesInfo.getInstance().getLowercaseProductName() + "/consentOptions/cached");
-        private final File CONFIRMED_CONSENTS_FILE = new File(Locations.getDataRoot(), "/consentOptions/accepted");
+        private final File DEFAULT_CONSENTS_FILE = PathManager.getCommonDataPath().resolve(ApplicationNamesInfo.getInstance().getLowercaseProductName()).resolve("consentOptions").resolve("cached").toFile();
+        private final File CONFIRMED_CONSENTS_FILE = PathManager.getCommonDataPath().resolve("consentOptions").resolve("accepted").toFile();
         private final String BUNDLED_CONSENTS_PATH = getBundledResourcePath();
 
         @Override
@@ -55,14 +51,12 @@ public final class ConsentOptions {
         }
 
         @Override
-        @NotNull
-        public String readDefaultConsents() throws IOException {
+        public @NotNull String readDefaultConsents() throws IOException {
           return loadText(new FileInputStream(DEFAULT_CONSENTS_FILE));
         }
 
         @Override
-        @NotNull
-        public String readBundledConsents() {
+        public @NotNull String readBundledConsents() {
           return loadText(ConsentOptions.class.getResourceAsStream(BUNDLED_CONSENTS_PATH));
         }
 
@@ -72,13 +66,11 @@ public final class ConsentOptions {
         }
 
         @Override
-        @NotNull
-        public String readConfirmedConsents() throws IOException {
+        public @NotNull String readConfirmedConsents() throws IOException {
           return loadText(new FileInputStream(CONFIRMED_CONSENTS_FILE));
         }
 
-        @NotNull
-        private String loadText(InputStream stream) {
+        private @NotNull String loadText(InputStream stream) {
           if (stream != null) {
             try (Reader reader = new InputStreamReader(CharsetToolkit.inputStreamSkippingBOM(new BufferedInputStream(stream)),
                                                        StandardCharsets.UTF_8)) {
@@ -114,8 +106,7 @@ public final class ConsentOptions {
     return myIsEAP;
   }
 
-  @Nullable
-  public Consent getUsageStatsConsent() {
+  public @Nullable Consent getUsageStatsConsent() {
     return loadDefaultConsents().get(STATISTICS_OPTION_ID);
   }
 
@@ -141,8 +132,7 @@ public final class ConsentOptions {
     return false;
   }
 
-  @Nullable
-  public String getConfirmedConsentsString() {
+  public @Nullable String getConfirmedConsentsString() {
     final Map<String, Consent> defaults = loadDefaultConsents();
     if (!defaults.isEmpty()) {
       final String str = confirmedConsentToExternalString(
@@ -208,8 +198,7 @@ public final class ConsentOptions {
     );
   }
 
-  @Nullable
-  private ConfirmedConsent getConfirmedConsent(String consentId) {
+  private @Nullable ConfirmedConsent getConfirmedConsent(String consentId) {
     final Consent defConsent = loadDefaultConsents().get(consentId);
     if (defConsent != null && defConsent.isDeleted()) {
       return null;
@@ -365,8 +354,7 @@ public final class ConsentOptions {
     return result;
   }
 
-  @NotNull
-  private Map<String, ConfirmedConsent> loadConfirmedConsents() {
+  private @NotNull Map<String, ConfirmedConsent> loadConfirmedConsents() {
     final Map<String, ConfirmedConsent> result = new HashMap<>();
     try {
       final StringTokenizer tokenizer = new StringTokenizer(myBackend.readConfirmedConsents(), ";", false);
@@ -393,6 +381,4 @@ public final class ConsentOptions {
     @NotNull
     String readConfirmedConsents() throws IOException;
   }
-
-
 }

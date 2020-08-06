@@ -6,10 +6,13 @@ import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.util.registry.Registry
 
-class FilePredictionEditorManagerListener : FileEditorManagerListener {
+internal class FilePredictionEditorManagerListener : FileEditorManagerListener {
   override fun selectionChanged(event: FileEditorManagerEvent) {
-    if (Registry.get("filePrediction.calculate.features").asBoolean() && ApplicationManager.getApplication().isEAP) {
-      event.newFile?.let { FileUsagePredictor.onFileOpened(event.manager.project, it, event.oldFile) }
+    val newFile = event.newFile ?: return
+    if (shouldRecord()) {
+      FilePredictionHandler.getInstance(event.manager.project)?.onFileSelected(newFile)
     }
   }
+
+  private fun shouldRecord() = ApplicationManager.getApplication().isEAP && Registry.get("filePrediction.calculate.features").asBoolean()
 }

@@ -24,8 +24,6 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
@@ -235,9 +233,6 @@ public class ExtractMethodProcessor implements MatchProvider {
       }
     }
 
-    if (PsiTreeUtil.getParentOfType(myElements[0], PsiAnnotation.class) != null) {
-      throw new PrepareFailedException("Unable to extract method from annotation value", myElements[0]);
-    }
     final PsiElement codeFragment = ControlFlowUtil.findCodeFragment(myElements[0]);
     myCodeFragmentMember = codeFragment.getUserData(ElementToWorkOn.PARENT);
     if (myCodeFragmentMember == null) {
@@ -247,6 +242,10 @@ public class ExtractMethodProcessor implements MatchProvider {
       PsiElement context = codeFragment.getContext();
       LOG.assertTrue(context != null, "code fragment context is null");
       myCodeFragmentMember = ControlFlowUtil.findCodeFragment(context).getParent();
+    }
+
+    if (PsiTreeUtil.getParentOfType(myElements[0].isPhysical() ? myElements[0] : myCodeFragmentMember, PsiAnnotation.class) != null) {
+      throw new PrepareFailedException("Unable to extract method from annotation value", myElements[0]);
     }
 
     myControlFlowWrapper = new ControlFlowWrapper(myProject, codeFragment, myElements);
@@ -801,6 +800,10 @@ public class ExtractMethodProcessor implements MatchProvider {
 
   @TestOnly
   public void testPrepare() {
+    prepareVariablesAndName();
+  }
+
+  protected void prepareVariablesAndName(){
     myInputVariables.setFoldingAvailable(myInputVariables.isFoldingSelectedByDefault());
     myMethodName = myInitialMethodName;
     myVariableDatum = new VariableData[myInputVariables.getInputVariables().size()];
@@ -909,7 +912,7 @@ public class ExtractMethodProcessor implements MatchProvider {
     myDuplicates = new ArrayList<>();
   }
 
-  private int estimateDuplicatesCount() {
+  protected int estimateDuplicatesCount() {
     PsiElement[] elements = getFilteredElements();
 
     ReturnValue value;
@@ -1711,8 +1714,10 @@ public class ExtractMethodProcessor implements MatchProvider {
     AddAnnotationPsiFix.removePhysicalAnnotations(owner, ArrayUtilRt.toStringArray(toRemove));
     PsiModifierList modifierList = owner.getModifierList();
     if (modifierList != null && !AnnotationUtil.isAnnotated(owner, toKeep, CHECK_TYPE)) {
-      PsiAnnotation annotation = AddAnnotationPsiFix.addPhysicalAnnotation(toAdd, PsiNameValuePair.EMPTY_ARRAY, modifierList);
-      JavaCodeStyleManager.getInstance(myProject).shortenClassReferences(annotation);
+      PsiAnnotation annotation = AddAnnotationPsiFix.addPhysicalAnnotationIfAbsent(toAdd, PsiNameValuePair.EMPTY_ARRAY, modifierList);
+      if (annotation != null) {
+        JavaCodeStyleManager.getInstance(myProject).shortenClassReferences(annotation);
+      }
     }
   }
 
@@ -2117,9 +2122,7 @@ public class ExtractMethodProcessor implements MatchProvider {
     if (myShowErrorDialogs) {
       HighlightManager highlightManager = HighlightManager.getInstance(myProject);
       PsiStatement[] exitStatementsArray = myExitStatements.toArray(PsiStatement.EMPTY_ARRAY);
-      EditorColorsManager manager = EditorColorsManager.getInstance();
-      TextAttributes attributes = manager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
-      highlightManager.addOccurrenceHighlights(myEditor, exitStatementsArray, attributes, true, null);
+      highlightManager.addOccurrenceHighlights(myEditor, exitStatementsArray, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
       String message = RefactoringBundle
         .getCannotRefactorMessage(JavaRefactoringBundle.message("there.are.multiple.exit.points.in.the.selected.code.fragment"));
       CommonRefactoringUtil.showErrorHint(myProject, myEditor, message, myRefactoringName, myHelpId);
@@ -2129,7 +2132,8 @@ public class ExtractMethodProcessor implements MatchProvider {
 
   protected void showMultipleOutputMessage(PsiType expressionType) throws PrepareFailedException {
     if (myShowErrorDialogs) {
-      String message = buildMultipleOutputMessageError(expressionType) + "\nWould you like to Extract Method Object?";
+      String message = buildMultipleOutputMessageError(expressionType) + "\n"
+                       + JavaRefactoringBundle.message("extract.method.object.suggestion");
 
       if (ApplicationManager.getApplication().isUnitTestMode()) throw new RuntimeException(message);
       RefactoringMessageDialog dialog = new RefactoringMessageDialog(myRefactoringName, message, myHelpId, "OptionPane.errorIcon", true,

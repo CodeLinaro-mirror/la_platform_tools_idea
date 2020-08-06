@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.mock;
 
 import com.intellij.openapi.Disposable;
@@ -154,15 +154,6 @@ public class MockApplication extends MockComponentManager implements Application
   }
 
   @Override
-  public boolean acquireWriteIntentLockIfNeeded() {
-    return false;
-  }
-
-  @Override
-  public void releaseWriteIntentLockIfNeeded(boolean needed) {
-  }
-
-  @Override
   public void invokeLaterOnWriteThread(@NotNull Runnable action) {
     action.run();
   }
@@ -174,16 +165,6 @@ public class MockApplication extends MockComponentManager implements Application
 
   @Override
   public void invokeLaterOnWriteThread(Runnable action, ModalityState modal, @NotNull Condition<?> expired) {
-    action.run();
-  }
-
-  @Override
-  public <T, E extends Throwable> T runUnlockingIntendedWrite(@NotNull ThrowableComputable<T, E> action) throws E {
-    return action.compute();
-  }
-
-  @Override
-  public void runIntendedWriteActionOnCurrentThread(@NotNull Runnable action) {
     action.run();
   }
 
@@ -354,29 +335,13 @@ public class MockApplication extends MockComponentManager implements Application
   }
 
   @Override
-  public boolean runProcessWithProgressSynchronously(@NotNull final Runnable process,
-                                                     @NotNull final String progressTitle,
-                                                     final boolean canBeCanceled,
-                                                     @Nullable final Project project,
-                                                     final JComponent parentComponent) {
-    return false;
-  }
-
-  @Override
   public boolean runProcessWithProgressSynchronously(@NotNull Runnable process,
                                                      @NotNull String progressTitle,
                                                      boolean canBeCanceled,
+                                                     boolean modal,
                                                      @Nullable Project project,
                                                      JComponent parentComponent,
                                                      String cancelText) {
-    return false;
-  }
-
-  @Override
-  public boolean runProcessWithProgressSynchronously(@NotNull Runnable process,
-                                                     @NotNull String progressTitle,
-                                                     boolean canBeCanceled,
-                                                     Project project) {
     return false;
   }
 

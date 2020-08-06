@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util;
 
 import com.intellij.ide.ui.UISettings;
@@ -31,6 +31,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.text.Matcher;
 import com.intellij.util.text.MatcherHolder;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,7 +45,8 @@ import java.util.regex.Pattern;
 import static com.intellij.openapi.vfs.newvfs.VfsPresentationUtil.getFileBackgroundColor;
 
 @DirtyUI
-public abstract class PsiElementListCellRenderer<T extends PsiElement> extends JPanel implements ListCellRenderer {
+// extends ListCellRenderer<Object> because it can render strings too
+public abstract class PsiElementListCellRenderer<T extends PsiElement> extends JPanel implements ListCellRenderer<Object> {
   private static final Logger LOG = Logger.getInstance(PsiElementListCellRenderer.class);
   private static final String LEFT = BorderLayout.WEST;
   private static final Pattern CONTAINER_PATTERN = Pattern.compile("(\\(in |\\()?([^)]*)(\\))?");
@@ -75,7 +77,7 @@ public abstract class PsiElementListCellRenderer<T extends PsiElement> extends J
     return accessibleContext;
   }
 
-  @Nullable
+  @NotNull
   protected static Color getBackgroundColor(@Nullable Object value) {
     PsiElement psiElement = NavigationItemListCellRenderer.getPsiElement(value);
     VirtualFile virtualFile = PsiUtilCore.getVirtualFile(psiElement);
@@ -93,7 +95,7 @@ public abstract class PsiElementListCellRenderer<T extends PsiElement> extends J
     }
   }
 
-  private class LeftRenderer extends ColoredListCellRenderer {
+  private class LeftRenderer extends ColoredListCellRenderer<Object> {
     private final String myModuleName;
     private final ItemMatchers myMatchers;
 
@@ -103,7 +105,7 @@ public abstract class PsiElementListCellRenderer<T extends PsiElement> extends J
     }
 
     @Override
-    protected void customizeCellRenderer(@NotNull JList list, Object value, int index, boolean selected, boolean hasFocus) {
+    protected void customizeCellRenderer(@NotNull JList<?> list, Object value, int index, boolean selected, boolean hasFocus) {
       Color bgColor = UIUtil.getListBackground();
       Color color = list.getForeground();
       setPaintFocusBorder(hasFocus && UIUtil.isToUseDottedCellBorder() && myFocusBorderEnabled);
@@ -214,7 +216,7 @@ public abstract class PsiElementListCellRenderer<T extends PsiElement> extends J
       myRightComponentWidth += spacer.getPreferredSize().width;
     }
 
-    ListCellRenderer leftRenderer = new LeftRenderer(null, value == null ? new ItemMatchers(null, null) : getItemMatchers(list, value));
+    ListCellRenderer<Object> leftRenderer = new LeftRenderer(null, value == null ? new ItemMatchers(null, null) : getItemMatchers(list, value));
     final Component leftCellRendererComponent = leftRenderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
     add(leftCellRendererComponent, LEFT);
     final Color bg = isSelected ? UIUtil.getListSelectionBackground(true) : leftCellRendererComponent.getBackground();
@@ -254,7 +256,8 @@ public abstract class PsiElementListCellRenderer<T extends PsiElement> extends J
     return null;
   }
 
-  private static DefaultListCellRenderer getModuleRenderer(Object value) {
+  @ApiStatus.Internal
+  public static @Nullable DefaultListCellRenderer getModuleRenderer(Object value) {
     final DefaultListCellRenderer renderer = ModuleRendererFactory.findInstance(value).getModuleRenderer();
     if (renderer instanceof PlatformModuleRendererFactory.PlatformModuleRenderer) {
       // it won't display any new information

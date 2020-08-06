@@ -98,7 +98,7 @@ public class GitBranchUtil {
   }
 
   /**
-   * Convert {@link git4idea.GitRemoteBranch GitRemoteBranches} to their names, and remove remote HEAD pointers: origin/HEAD.
+   * Convert {@link GitRemoteBranch GitRemoteBranches} to their names, and remove remote HEAD pointers: origin/HEAD.
    */
   @NotNull
   public static Collection<String> getBranchNamesWithoutRemoteHead(@NotNull Collection<? extends GitRemoteBranch> remoteBranches) {
@@ -146,7 +146,16 @@ public class GitBranchUtil {
                                                              @NotNull Collection<? extends GitRepository> repositories,
                                                              @NotNull String dialogTitle,
                                                              @Nullable String initialName) {
-    return new GitNewBranchDialog(project, repositories, dialogTitle, initialName, true, false).showAndGetOptions();
+    return getNewBranchNameFromUser(project, repositories, dialogTitle, initialName, false);
+  }
+
+  @Nullable
+  public static GitNewBranchOptions getNewBranchNameFromUser(@NotNull Project project,
+                                                             @NotNull Collection<? extends GitRepository> repositories,
+                                                             @NotNull String dialogTitle,
+                                                             @Nullable String initialName,
+                                                             boolean showTrackingOption) {
+    return new GitNewBranchDialog(project, repositories, dialogTitle, initialName, true, false, showTrackingOption).showAndGetOptions();
   }
 
   /**
@@ -248,7 +257,7 @@ public class GitBranchUtil {
 
   @NotNull
   public static <T> List<T> collectCommon(@NotNull Stream<? extends Collection<T>> groups,
-                                          @NotNull TObjectHashingStrategy<? super T> hashingStrategy) {
+                                          @NotNull TObjectHashingStrategy<T> hashingStrategy) {
     List<T> common = new ArrayList<>();
     boolean[] firstGroup = {true};
 
@@ -258,7 +267,8 @@ public class GitBranchUtil {
         common.addAll(values);
       }
       else {
-        common.retainAll(new THashSet<>(values, hashingStrategy));
+        THashSet<T> c = new THashSet<>(values, hashingStrategy);
+        common.retainAll(c);
       }
     });
 

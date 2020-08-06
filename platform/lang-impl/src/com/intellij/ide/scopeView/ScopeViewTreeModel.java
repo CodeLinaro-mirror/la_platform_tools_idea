@@ -79,7 +79,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 
-public final class ScopeViewTreeModel extends BaseTreeModel<AbstractTreeNode<?>> implements InvokerSupplier {
+final class ScopeViewTreeModel extends BaseTreeModel<AbstractTreeNode<?>> implements InvokerSupplier {
   private static final Logger LOG = Logger.getInstance(ScopeViewTreeModel.class);
   private volatile Comparator<? super NodeDescriptor<?>> comparator;
   private final ProjectFileTreeModel model;
@@ -1055,7 +1055,7 @@ public final class ScopeViewTreeModel extends BaseTreeModel<AbstractTreeNode<?>>
       Object id = roots.get(0).node.getRootID();
       if (roots.stream().anyMatch(root -> !root.node.getRootID().equals(id))) return AllIcons.Nodes.ModuleGroup;
       if (id instanceof Module) {
-        return ((ModuleType<?>)ModuleType.get((Module)id)).getIcon();
+        return ModuleType.get((Module)id).getIcon();
       }
       return AllIcons.Nodes.Module;
     }

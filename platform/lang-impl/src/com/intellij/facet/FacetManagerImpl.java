@@ -2,6 +2,7 @@
 
 package com.intellij.facet;
 
+import com.intellij.facet.impl.FacetEventsPublisher;
 import com.intellij.facet.impl.FacetModelBase;
 import com.intellij.facet.impl.FacetModelImpl;
 import com.intellij.facet.impl.FacetUtil;
@@ -33,6 +34,10 @@ import org.jetbrains.jps.model.serialization.facet.JpsFacetSerializer;
 import java.util.*;
 import java.util.function.Predicate;
 
+/**
+ * This class isn't used in the new implementation of project model, which is based on {@link com.intellij.workspaceModel.ide Workspace Model}.
+ * It shouldn't be used directly, its interface {@link FacetManager} should be used instead.
+ */
 @State(name = JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME, useLoadedStateAsExisting = false)
 @ApiStatus.Internal
 public final class FacetManagerImpl extends FacetManagerBase implements ModuleComponent, PersistentStateComponent<FacetManagerState> {
@@ -161,7 +166,7 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
       facet = createFacetFromState(getModule(), type, state, underlyingFacet);
       model.addFacet(facet);
     }
-    addFacets(state.getSubFacets(), facet, model);
+    addFacets(state.subFacets, facet, model);
   }
 
   @ApiStatus.Internal
@@ -223,8 +228,7 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
     return facet -> false;
   }
 
-  @NotNull
-  FacetManagerState saveState(Predicate<? super Facet<?>> filter) {
+  @NotNull FacetManagerState saveState(@NotNull Predicate<? super Facet<?>> filter) {
     FacetManagerState managerState = new FacetManagerState();
 
     final Facet<?>[] facets = getSortedFacets();
@@ -240,7 +244,7 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
       if (facetState == null) continue;
 
       getOrCreateTargetFacetList(underlyingFacet, states, myModule.getProject()).add(facetState);
-      states.put(facet, facetState.getSubFacets());
+      states.put(facet, facetState.subFacets);
     }
     return managerState;
   }
@@ -265,7 +269,7 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
     if (facetStateList == null) {
       FacetState state = createFacetState(underlyingFacet, project);
       getOrCreateTargetFacetList(underlyingFacet.getUnderlyingFacet(), states, project).add(state);
-      facetStateList = state.getSubFacets();
+      facetStateList = state.subFacets;
       states.put(underlyingFacet, facetStateList);
     }
     return facetStateList;
@@ -301,8 +305,6 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
     List<Facet<?>> toAdd = new ArrayList<>();
     List<FacetRenameInfo> toRename = new ArrayList<>();
 
-    final FacetManagerListener publisher = myModule.getMessageBus().syncPublisher(FACETS_TOPIC);
-
     try {
       myInsideCommit = true;
 
@@ -329,14 +331,15 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
       }
 
       if (fireEvents) {
+        FacetEventsPublisher publisher = FacetEventsPublisher.getInstance(myModule.getProject());
         for (Facet<?> facet : toAdd) {
-          publisher.beforeFacetAdded(facet);
+          publisher.fireBeforeFacetAdded(facet);
         }
         for (Facet<?> facet : toRemove) {
-          publisher.beforeFacetRemoved(facet);
+          publisher.fireBeforeFacetRemoved(facet);
         }
         for (FacetRenameInfo info : toRename) {
-          publisher.beforeFacetRenamed(info.myFacet);
+          publisher.fireBeforeFacetRenamed(info.myFacet);
         }
       }
 
@@ -359,14 +362,15 @@ public final class FacetManagerImpl extends FacetManagerBase implements ModuleCo
     }
 
     if (fireEvents) {
+      FacetEventsPublisher publisher = FacetEventsPublisher.getInstance(myModule.getProject());
       for (Facet<?> facet : toAdd) {
-        publisher.facetAdded(facet);
+        publisher.fireFacetAdded(facet);
       }
       for (Facet<?> facet : toRemove) {
-        publisher.facetRemoved(facet);
+        publisher.fireFacetRemoved(myModule, facet);
       }
       for (FacetRenameInfo info : toRename) {
-        publisher.facetRenamed(info.myFacet, info.myOldName);
+        publisher.fireFacetRenamed(info.myFacet, info.myOldName);
       }
     }
     for (Facet<?> facet : toAdd) {

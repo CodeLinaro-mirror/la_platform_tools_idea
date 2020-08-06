@@ -1,10 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.StoragePathMacros
 import com.intellij.openapi.diagnostic.runAndLogException
-import com.intellij.openapi.module.impl.ModuleManagerImpl
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.io.FileUtil
@@ -16,9 +15,9 @@ import com.intellij.util.io.exists
 import com.intellij.util.io.outputStream
 import com.intellij.util.isEmpty
 import com.intellij.util.write
-import gnu.trove.THashMap
-import gnu.trove.THashSet
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import org.jdom.Element
+import org.jetbrains.jps.model.serialization.JpsProjectLoader
 import java.nio.file.Path
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -44,7 +43,7 @@ internal fun normalizeDefaultProjectElement(defaultProject: Project, element: El
         writeProfileSettings(schemeDir, componentName, component)
       }
 
-      ModuleManagerImpl.COMPONENT_NAME -> {
+      JpsProjectLoader.MODULE_MANAGER_COMPONENT -> {
         iterator.remove()
       }
     }
@@ -81,15 +80,18 @@ private fun convertProfiles(profileIterator: MutableIterator<Element>, component
   }
 }
 
-internal fun moveComponentConfiguration(defaultProject: Project, element: Element, storagePathResolver: (storagePath: String) -> String, fileResolver: (name: String) -> Path) {
+internal fun moveComponentConfiguration(defaultProject: Project,
+                                        element: Element,
+                                        storagePathResolver: (storagePath: String) -> String,
+                                        fileResolver: (name: String) -> Path) {
   val componentElements = element.getChildren("component")
   if (componentElements.isEmpty()) {
     return
   }
 
-  val storageNameToComponentNames = THashMap<String, MutableSet<String>>()
-  val workspaceComponentNames = THashSet(listOf("GradleLocalSettings"))
-  val ignoredComponentNames = THashSet<String>(listOf("ProjectCodeStyleConfiguration")) // AndroidStudio: b/145210466
+  val storageNameToComponentNames = HashMap<String, MutableSet<String>>()
+  val workspaceComponentNames = HashSet(listOf("GradleLocalSettings"))
+  val ignoredComponentNames = HashSet<String>(listOf("ProjectCodeStyleConfiguration"))  // Android Studio: b/145210466
   storageNameToComponentNames.put("workspace.xml", workspaceComponentNames)
 
   fun processComponents(aClass: Class<*>) {
@@ -107,7 +109,7 @@ internal fun moveComponentConfiguration(defaultProject: Project, element: Elemen
         // ignore - this data should be not copied
         ignoredComponentNames.add(stateAnnotation.name)
       }
-      else -> storageNameToComponentNames.getOrPut(storagePathResolver(storagePath)) { THashSet() }.add(stateAnnotation.name)
+      else -> storageNameToComponentNames.getOrPut(storagePathResolver(storagePath)) { ObjectOpenHashSet() }.add(stateAnnotation.name)
     }
   }
 
@@ -123,7 +125,7 @@ internal fun moveComponentConfiguration(defaultProject: Project, element: Elemen
   }
 
   // fileResolver may return the same file for different storage names (e.g. for IPR project)
-  val storagePathToComponentStates = THashMap<Path, MutableList<Element>>()
+  val storagePathToComponentStates = HashMap<Path, MutableList<Element>>()
   val iterator = componentElements.iterator()
   cI@ for (componentElement in iterator) {
     iterator.remove()

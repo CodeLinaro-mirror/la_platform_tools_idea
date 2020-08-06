@@ -6,6 +6,7 @@ import com.intellij.codeInspection.dataFlow.value.RelationType;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.TypeConversionUtil;
+import com.intellij.util.MathUtil;
 import com.intellij.util.ThreeState;
 import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
@@ -44,7 +45,7 @@ public abstract class LongRangeSet {
   LongRangeSet() {}
 
   /**
-   * Subtracts given set from the current
+   * Subtracts given set from the current. May return bigger set (containing some additional elements) if exact subtraction is impossible.
    *
    * @param other set to subtract
    * @return a new set
@@ -73,7 +74,7 @@ public abstract class LongRangeSet {
   public abstract LongRangeSet intersect(@NotNull LongRangeSet other);
 
   /**
-   * Merge current set with other
+   * Merge current set with other. May return bigger set if exact representation is impossible.
    *
    * @param other other set to merge with
    * @return a new set
@@ -123,7 +124,7 @@ public abstract class LongRangeSet {
    * @param other a sub-set candidate
    * @return true if current set contains all the values from other
    */
-  public abstract boolean contains(LongRangeSet other);
+  public abstract boolean contains(@NotNull LongRangeSet other);
 
   /**
    * Creates a new set which contains all possible values satisfying given predicate regarding the current set.
@@ -963,7 +964,7 @@ public abstract class LongRangeSet {
     }
 
     @Override
-    public boolean contains(LongRangeSet other) {
+    public boolean contains(@NotNull LongRangeSet other) {
       return other.isEmpty();
     }
 
@@ -1158,7 +1159,7 @@ public abstract class LongRangeSet {
     }
 
     @Override
-    public boolean contains(LongRangeSet other) {
+    public boolean contains(@NotNull LongRangeSet other) {
       return other.isEmpty() || equals(other);
     }
 
@@ -1368,18 +1369,27 @@ public abstract class LongRangeSet {
         return new RangeSet(new long[]{myFrom, value - 1, value + 1, myTo});
       }
       if (other instanceof Range) {
+        LongRangeSet toJoin = Empty.EMPTY;
         long from = ((Range)other).myFrom;
         long to = ((Range)other).myTo;
         if (to < myFrom || from > myTo) return this;
-        if (from <= myFrom && to >= myTo) return Empty.EMPTY;
+        if (other instanceof ModRange) {
+          ModRange modRange = (ModRange)other;
+          long newBits = ~modRange.myBits;
+          if (modRange.myMod < 64) {
+            newBits &= (1L << modRange.myMod) - 1;
+          }
+          toJoin = modRange(Math.max(from, myFrom), Math.min(to, myTo), modRange.myMod, newBits);
+        }
+        if (from <= myFrom && to >= myTo) return toJoin;
         if (from > myFrom && to < myTo) {
-          return new RangeSet(new long[]{myFrom, from - 1, to + 1, myTo});
+          return new RangeSet(new long[]{myFrom, from - 1, to + 1, myTo}).unite(toJoin);
         }
         if (from <= myFrom) {
-          return range(to + 1, myTo);
+          return range(to + 1, myTo).unite(toJoin);
         }
         assert to >= myTo;
-        return range(myFrom, from - 1);
+        return range(myFrom, from - 1).unite(toJoin);
       }
       long[] ranges = ((RangeSet)other).myRanges;
       LongRangeSet result = this;
@@ -1503,7 +1513,7 @@ public abstract class LongRangeSet {
     }
 
     @Override
-    public boolean contains(LongRangeSet other) {
+    public boolean contains(@NotNull LongRangeSet other) {
       return other.isEmpty() || other.min() >= myFrom && other.max() <= myTo;
     }
 
@@ -1740,6 +1750,11 @@ public abstract class LongRangeSet {
       return super.contains(value) && isSet(myBits, remainder(value, myMod));
     }
 
+    @Override
+    public @NotNull LongRangeSet subtract(@NotNull LongRangeSet other) {
+      return super.subtract(other);
+    }
+
     @NotNull
     @Override
     public LongRangeSet intersect(@NotNull LongRangeSet other) {
@@ -1833,7 +1848,7 @@ public abstract class LongRangeSet {
     }
 
     @Override
-    public boolean contains(LongRangeSet other) {
+    public boolean contains(@NotNull LongRangeSet other) {
       if (other instanceof ModRange) {
         ModRange modRange = (ModRange)other;
         if (modRange.myFrom < myFrom || modRange.myTo > myTo) return false;
@@ -1894,8 +1909,8 @@ public abstract class LongRangeSet {
           int divisorValue = (int)((Point)divisor).myValue;
           int lcm = lcm(divisorValue);
           if (lcm <= Long.SIZE) {
-            long from = Math.min(0, Math.max(myFrom, -divisorValue + 1));
-            long to = Math.max(0, Math.min(myTo, divisorValue - 1));
+            long from = MathUtil.clamp(myFrom, -divisorValue + 1, 0);
+            long to = MathUtil.clamp(myTo, 0, divisorValue - 1);
             long possibleMods = widenBits(lcm);
             while (Long.SIZE - Long.numberOfLeadingZeros(possibleMods) > divisorValue) {
               possibleMods = extractBits(possibleMods, divisorValue, Long.SIZE) | 
@@ -2114,7 +2129,7 @@ public abstract class LongRangeSet {
     }
 
     @Override
-    public boolean contains(LongRangeSet other) {
+    public boolean contains(@NotNull LongRangeSet other) {
       if (other.isEmpty() || other == this) return true;
       if (other instanceof Point) {
         return contains(((Point)other).myValue);
@@ -2134,6 +2149,13 @@ public abstract class LongRangeSet {
         LongRangeSet diff = set.subtract(this);
         if (diff instanceof Point) {
           return "!= " + diff.min();
+        }
+        if (diff instanceof Range && !diff.intersects(this)) {
+          String min =
+            diff.min() == set.min() ? "" : diff.min() == set.min() + 1 ? formatNumber(set.min()) : "<= " + formatNumber(diff.min() - 1);
+          String max =
+            diff.max() == set.max() ? "" : diff.max() == set.max() - 1 ? formatNumber(set.max()) : ">= " + formatNumber(diff.max() + 1);
+          return StreamEx.of(min, max).without("").joining(" or ");
         }
       }
       if (myRanges.length == 4 && myRanges[0] == myRanges[1] && myRanges[2] == myRanges[3]) {

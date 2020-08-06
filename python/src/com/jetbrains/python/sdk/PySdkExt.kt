@@ -46,6 +46,7 @@ import com.jetbrains.python.psi.LanguageLevel
 import com.jetbrains.python.sdk.flavors.CondaEnvSdkFlavor
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
 import com.jetbrains.python.sdk.flavors.VirtualEnvSdkFlavor
+import com.jetbrains.python.ui.PyUiUtil
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -68,8 +69,8 @@ fun findAllPythonSdks(baseDir: Path?): List<Sdk> {
 }
 
 fun findBaseSdks(existingSdks: List<Sdk>, module: Module?, context: UserDataHolder): List<Sdk> {
-  val existing = filterSystemWideSdks(existingSdks)
-  val detected = detectSystemWideSdks(module, existingSdks, context)
+  val existing = filterSystemWideSdks(existingSdks).filterNot { PythonSdkUtil.isBaseConda(it.homePath) }
+  val detected = detectSystemWideSdks(module, existingSdks, context).filterNot { PythonSdkUtil.isBaseConda(it.homePath) }
   return existing + detected
 }
 
@@ -162,6 +163,7 @@ val Sdk.associatedModulePath: String?
   // TODO: Support .project associations
   get() = associatedPathFromAdditionalData /*?: associatedPathFromDotProject*/
 
+@Deprecated("Use Sdk.associatedModuleDir instead. There may be several Module objects opened in different projects for a single *.iml module file. To be removed in 2021.2")
 val Sdk.associatedModule: Module?
   get() {
     val associatedPath = associatedModulePath
@@ -170,6 +172,9 @@ val Sdk.associatedModule: Module?
       .flatMap { ModuleManager.getInstance(it).modules.asSequence() }
       .firstOrNull { it?.basePath == associatedPath }
   }
+
+val Sdk.associatedModuleDir: VirtualFile?
+  get() = associatedModulePath?.let { StandardFileSystems.local().findFileByPath(it) }
 
 fun Sdk.adminPermissionsNeeded(): Boolean {
   val pathToCheck = sitePackagesDirectory?.path ?: homePath ?: return false
@@ -191,6 +196,7 @@ var Module.pythonSdk: Sdk?
   get() = PythonSdkUtil.findPythonSdk(this)
   set(value) {
     ModuleRootModificationUtil.setModuleSdk(this, value)
+    PyUiUtil.clearFileLevelInspectionResults(project)
     fireActivePythonSdkChanged(value)
   }
 
@@ -244,6 +250,8 @@ private fun suggestAssociatedSdkName(sdkHome: String, associatedPath: String?): 
       PathUtil.getFileName(venvRoot)
     condaRoot != null && (associatedPath == null || !FileUtil.isAncestor(associatedPath, condaRoot, true)) ->
       PathUtil.getFileName(condaRoot)
+    PythonSdkUtil.isBaseConda(sdkHome) ->
+      "base"
     else ->
       associatedPath?.let { PathUtil.getFileName(associatedPath) } ?: return null
   }
@@ -316,8 +324,8 @@ private fun filterSuggestedPaths(suggestedPaths: MutableCollection<String>,
     .filterNot { it in existingPaths }
     .distinct()
     .map { PyDetectedSdk(it) }
-    .sortedWith(compareBy<PyDetectedSdk>({ it.isAssociatedWithModule(module) },
-                                         { it.homePath }).reversed())
+    .sortedWith(compareBy({ !it.isAssociatedWithModule(module) },
+                          { it.homePath }))
     .toList()
 }
 

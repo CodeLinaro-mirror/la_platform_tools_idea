@@ -25,13 +25,12 @@ import com.siyeh.ig.portability.mediatype.*;
 import com.siyeh.ig.psiutils.MethodCallUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.TypeUtils;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.TimeZone;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,6 +38,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
 
   private static final char BACKSLASH = '\\';
   private static final char SLASH = '/';
+  private static final Set<Character> FORBIDDEN_ESCAPE_SEQUENCES_IN_PATH = new THashSet<>(Arrays.asList('b', 'n', 't', 'r', 'f'));
   private static class Holder {
   /**
    * The regular expression pattern that matches strings which are likely to
@@ -98,7 +98,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
   /**
    * All {@link TimeZone} IDs.
    */
-  private static final Set<String> timeZoneIds = new HashSet();
+  private static final Set<String> timeZoneIds = new HashSet<>();
 
   static {
     ContainerUtil.addAll(timeZoneIds, TimeZone.getAvailableIDs());
@@ -165,7 +165,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
             }
           }
         }
-        registerErrorAtOffset(expression, 1, expression.getTextLength() - 2);
+        registerErrorInString(expression);
       }
       else if (type != null && type.equals(PsiType.CHAR)) {
         final Character value = (Character)expression.getValue();
@@ -195,8 +195,8 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
       if (string == null) {
         return false;
       }
-      if (string.indexOf((int)'/') == -1 &&
-          string.indexOf((int)'\\') == -1) {
+      if (string.indexOf(SLASH) == -1 &&
+          string.indexOf(BACKSLASH) == -1) {
         return false;
       }
       final char startChar = string.charAt(0);
@@ -216,6 +216,41 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
         return false;
       }
       return !isTimeZoneIdString(string);
+    }
+
+    /**
+     * Highlights the backward or forward slashes in a string literal except backward slashes inside particular escape sequences.
+     */
+    private void registerErrorInString(@NotNull PsiLiteralExpression expression) {
+      String text = expression.getText();
+      boolean existsSlash = false, existsBackslash = false;
+      int slashSequenceLength = 0;
+      List<Integer> slashIndexes = new ArrayList<>();
+      for (int slashInd = 0; slashInd < text.length(); slashInd++) {
+        if (existsSlash && existsBackslash) return;
+        char symbol = text.charAt(slashInd);
+        if (SLASH == symbol) {
+          slashSequenceLength++;
+          existsSlash = true;
+        }
+        else if (BACKSLASH == symbol) {
+          slashSequenceLength++;
+          if (slashInd < text.length() - 1) {
+            char nextSymbol = text.charAt(slashInd + 1);
+            if (isEscapeSequence(nextSymbol, slashSequenceLength)) {
+              if (FORBIDDEN_ESCAPE_SEQUENCES_IN_PATH.contains(nextSymbol)) return;
+              continue;
+            }
+          }
+          existsBackslash = true;
+        }
+        else {
+          slashSequenceLength = 0;
+          continue;
+        }
+        slashIndexes.add(slashInd);
+      }
+      slashIndexes.forEach(slashInd -> registerErrorAtOffset(expression, slashInd, 1));
     }
 
     /**
@@ -246,7 +281,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
       final int strLength = string.length();
       final char startChar = string.charAt(0);
       final char endChar = string.charAt(strLength - 1);
-      if (startChar == '/' || endChar == '/') {
+      if (startChar == SLASH || endChar == SLASH) {
         // Most likely it's a filename if the string starts or ends
         // with a slash.
         return false;
@@ -317,6 +352,10 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
      */
     private boolean isTimeZoneIdString(String string) {
       return Holder.timeZoneIds.contains(string);
+    }
+
+    private boolean isEscapeSequence(char symbol, int slashSequenceLength) {
+      return symbol != SLASH && symbol != BACKSLASH && slashSequenceLength % 2 != 0;
     }
   }
 }

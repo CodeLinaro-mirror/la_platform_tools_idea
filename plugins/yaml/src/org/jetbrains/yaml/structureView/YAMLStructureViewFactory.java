@@ -25,9 +25,9 @@ public class YAMLStructureViewFactory implements PsiStructureViewFactory {
   static final Icon ALIAS_ICON = AllIcons.Nodes.Alias;
 
   public YAMLStructureViewFactory() {
-    YAMLCustomStructureViewFactory.EP_NAME.addExtensionPointListener(
+    YAMLCustomStructureViewFactory.EP_NAME.addChangeListener(
         () -> ApplicationManager.getApplication().getMessageBus().syncPublisher(StructureViewWrapperImpl.STRUCTURE_CHANGED).run(),
-        ExtensionPointUtil.createKeyedExtensionDisposable(this, PsiStructureViewFactory.EP_NAME.getPoint(null)));
+        ExtensionPointUtil.createKeyedExtensionDisposable(this, PsiStructureViewFactory.EP_NAME.getPoint()));
   }
 
   @Override

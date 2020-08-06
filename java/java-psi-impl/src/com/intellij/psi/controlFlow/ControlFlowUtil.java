@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.controlFlow;
 
 import com.intellij.codeInsight.ExceptionUtil;
@@ -9,17 +9,17 @@ import com.intellij.psi.impl.source.DummyHolder;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.*;
-import com.intellij.util.containers.IntArrayList;
 import com.intellij.util.containers.IntStack;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
 import gnu.trove.TIntHashSet;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class ControlFlowUtil {
+public final class ControlFlowUtil {
   private static final Logger LOG = Logger.getInstance(ControlFlowUtil.class);
 
   private static class SSAInstructionState implements Cloneable {
@@ -70,7 +70,7 @@ public class ControlFlowUtil {
 
     variables:
     for (PsiVariable psiVariable : writtenVariables) {
-
+      PsiManager psiManager = psiVariable.getManager();
       final List<SSAInstructionState> queue = new ArrayList<>();
       queue.add(new SSAInstructionState(0, from));
       Set<SSAInstructionState> processedStates = new THashSet<>();
@@ -114,11 +114,11 @@ public class ControlFlowUtil {
             }
             else if (instruction instanceof WriteVariableInstruction) {
               WriteVariableInstruction write = (WriteVariableInstruction)instruction;
-              queue.add(new SSAInstructionState(state.getWriteCount() + (write.variable == psiVariable ? 1 : 0), i + 1));
+              queue.add(new SSAInstructionState(state.getWriteCount() + (psiManager.areElementsEquivalent(write.variable, psiVariable) ? 1 : 0), i + 1));
             }
             else if (instruction instanceof ReadVariableInstruction) {
               ReadVariableInstruction read = (ReadVariableInstruction)instruction;
-              if (read.variable == psiVariable && state.getWriteCount() == 0) continue variables;
+              if (psiManager.areElementsEquivalent(read.variable, psiVariable) && state.getWriteCount() == 0) continue variables;
               queue.add(new SSAInstructionState(state.getWriteCount(), i + 1));
             }
             else {
@@ -228,15 +228,17 @@ public class ControlFlowUtil {
     List<Instruction> instructions = flow.getInstructions();
     LOG.assertTrue(start >= 0, "flow start");
     LOG.assertTrue(end <= instructions.size(), "flow end");
+    
+    PsiManager psiManager = variable.getManager();
     for (int i = start; i < end; i++) {
       Instruction instruction = instructions.get(i);
       if (instruction instanceof ReadVariableInstruction) {
-        if (((ReadVariableInstruction)instruction).variable == variable) {
+        if (psiManager.areElementsEquivalent(((ReadVariableInstruction)instruction).variable, variable)) {
           return true;
         }
       }
       else if (instruction instanceof WriteVariableInstruction) {
-        if (((WriteVariableInstruction)instruction).variable == variable) {
+        if (psiManager.areElementsEquivalent(((WriteVariableInstruction)instruction).variable, variable)) {
           return true;
         }
       }
@@ -248,11 +250,12 @@ public class ControlFlowUtil {
     List<Instruction> instructions = flow.getInstructions();
     if (startOffset < 0 || endOffset < 0 || endOffset > instructions.size()) return -1;
 
+    PsiManager psiManager = variable.getManager();
     int readOffset = -1;
     for (int i = startOffset; i < endOffset; i++) {
       Instruction instruction = instructions.get(i);
       if (instruction instanceof ReadVariableInstruction) {
-        if (((ReadVariableInstruction)instruction).variable == variable) {
+        if (psiManager.areElementsEquivalent(((ReadVariableInstruction)instruction).variable, variable)) {
           if (readOffset < 0) {
             readOffset = i;
           }
@@ -262,7 +265,7 @@ public class ControlFlowUtil {
         }
       }
       else if (instruction instanceof WriteVariableInstruction) {
-        if (((WriteVariableInstruction)instruction).variable == variable) {
+        if (psiManager.areElementsEquivalent(((WriteVariableInstruction)instruction).variable, variable)) {
           return -1;
         }
       }
@@ -291,6 +294,7 @@ public class ControlFlowUtil {
                                                 @Nullable PsiElement startElement,
                                                 @NotNull PsiElement enclosingCodeFragment,
                                                 @NotNull PsiVariable variable) {
+    PsiManager psiManager = variable.getManager();
     for (PsiElement element = startElement; element != null && element != enclosingCodeFragment; element = element.getParent()) {
       if (element instanceof PsiCodeBlock) {
         final PsiElement parent = element.getParent();
@@ -306,7 +310,7 @@ public class ControlFlowUtil {
               LOG.assertTrue(endOffset <= instructions.size(), "flow end");
               for (int i = startOffset; i < endOffset; i++) {
                 final Instruction instruction = instructions.get(i);
-                if (instruction instanceof ReadVariableInstruction && ((ReadVariableInstruction)instruction).variable == variable) {
+                if (instruction instanceof ReadVariableInstruction && psiManager.areElementsEquivalent(((ReadVariableInstruction)instruction).variable, variable)) {
                   return true;
                 }
               }
@@ -557,7 +561,7 @@ public class ControlFlowUtil {
         for (PsiVariable variable : visibleReadOffsets.keySet()) {
           final Function<Integer, BitSet> calculator = getReachableInstructionsCalculator();
           final BitSet collectedOffsets = new BitSet(flowEnd);
-          for (final int writeOffset : writeOffsets.get(variable).toArray()) {
+          for (int writeOffset : writeOffsets.get(variable).toIntArray()) {
             LOG.assertTrue(writeOffset >= flowStart, "writeOffset");
             final BitSet reachableOffsets = calculator.fun(writeOffset);
             collectedOffsets.or(reachableOffsets);
@@ -612,9 +616,9 @@ public class ControlFlowUtil {
 
       private boolean isAnyReadOffsetReachableFrom(@Nullable IntArrayList readOffsets, @NotNull IntArrayList fromOffsets) {
         if (readOffsets != null && !readOffsets.isEmpty()) {
-          final int[] readOffsetsArray = readOffsets.toArray();
+          final int[] readOffsetsArray = readOffsets.toIntArray();
           for (int j = 0; j < fromOffsets.size(); j++) {
-            int fromOffset = fromOffsets.get(j);
+            int fromOffset = fromOffsets.getInt(j);
             if (areInstructionsReachable(flow, readOffsetsArray, fromOffset)) {
               LOG.debug("reachableFromOffset:", fromOffset);
               return true;
@@ -923,11 +927,11 @@ public class ControlFlowUtil {
   }
 
   public static boolean returnPresentBetween(@NotNull ControlFlow flow, final int startOffset, final int endOffset) {
-    class MyVisitor extends InstructionClientVisitor<Boolean> {
+    final class MyVisitor extends InstructionClientVisitor<Boolean> {
       // false if control flow at this offset terminates either by return called or exception thrown
       private final boolean[] isNormalCompletion = new boolean[flow.getSize() + 1];
 
-      MyVisitor() {
+      private MyVisitor() {
         int i;
         final int length = flow.getSize();
         for (i = 0; i < startOffset; i++) {
@@ -1236,7 +1240,7 @@ public class ControlFlowUtil {
    */
   public static boolean isDominator(ControlFlow flow, int maybeDominator, int target) {
     class MyVisitor extends InstructionClientVisitor<Boolean> {
-      final BitSet myReachedWithoutDominator = new BitSet();
+      private final BitSet myReachedWithoutDominator = new BitSet();
 
       @Override
       public void visitInstruction(Instruction instruction, int offset, int nextOffset) {
@@ -1274,6 +1278,8 @@ public class ControlFlowUtil {
    */
   public static boolean[] getVariablePossiblyUnassignedOffsets(@NotNull PsiVariable variable, @NotNull ControlFlow flow) {
     class MyVisitor extends InstructionClientVisitor<boolean[]> {
+      final PsiManager psiManager = variable.getManager();
+
       // true if from this point below there may be branch with no variable assignment
       private final boolean[] maybeUnassigned = new boolean[flow.getSize() + 1];
 
@@ -1283,7 +1289,7 @@ public class ControlFlowUtil {
 
       @Override
       public void visitWriteVariableInstruction(WriteVariableInstruction instruction, int offset, int nextOffset) {
-        if (instruction.variable == variable) {
+        if (psiManager.areElementsEquivalent(instruction.variable, variable)) {
           maybeUnassigned[offset] = false;
         }
         else {
@@ -1349,13 +1355,14 @@ public class ControlFlowUtil {
 
   public static boolean isVariableDefinitelyNotAssigned(@NotNull PsiVariable variable, @NotNull ControlFlow flow) {
     class MyVisitor extends InstructionClientVisitor<Boolean> {
+      final PsiManager psiManager = variable.getManager();
       // true if from this point below there may be branch with variable assignment
       private final boolean[] maybeAssigned = new boolean[flow.getSize() + 1];
 
       @Override
       public void visitWriteVariableInstruction(WriteVariableInstruction instruction, int offset, int nextOffset) {
         if (nextOffset > flow.getSize()) nextOffset = flow.getSize();
-        boolean assigned = instruction.variable == variable || maybeAssigned[nextOffset];
+        boolean assigned = psiManager.areElementsEquivalent(instruction.variable, variable) || maybeAssigned[nextOffset];
         maybeAssigned[offset] |= assigned;
       }
 
@@ -1410,6 +1417,7 @@ public class ControlFlowUtil {
     class MyVisitor extends InstructionClientVisitor<Boolean> {
       // true if value the variable has at given offset maybe referenced without going through stop instruction
       private final boolean[] maybeReferenced = new boolean[flow.getSize() + 1];
+      final PsiManager psiManager = variable.getManager();
 
       @Override
       public void visitInstruction(Instruction instruction, int offset, int nextOffset) {
@@ -1417,7 +1425,7 @@ public class ControlFlowUtil {
           maybeReferenced[offset] = false;
           return;
         }
-        if(instruction instanceof WriteVariableInstruction && ((WriteVariableInstruction)instruction).variable == variable) {
+        if(instruction instanceof WriteVariableInstruction && psiManager.areElementsEquivalent(((WriteVariableInstruction)instruction).variable, variable)) {
           maybeReferenced[offset] = false;
           return;
         }
@@ -1426,7 +1434,7 @@ public class ControlFlowUtil {
 
         boolean nextState = maybeReferenced[nextOffset];
         maybeReferenced[offset] =
-          nextState || instruction instanceof ReadVariableInstruction && ((ReadVariableInstruction)instruction).variable == variable;
+          nextState || instruction instanceof ReadVariableInstruction && psiManager.areElementsEquivalent(((ReadVariableInstruction)instruction).variable, variable);
       }
 
       @Override
@@ -1450,8 +1458,9 @@ public class ControlFlowUtil {
    */
   public static boolean isVariableAccess(@NotNull ControlFlow flow, int offset, @NotNull PsiVariable variable) {
     Instruction instruction = flow.getInstructions().get(offset);
-    return instruction instanceof ReadVariableInstruction && ((ReadVariableInstruction)instruction).variable == variable ||
-           instruction instanceof WriteVariableInstruction && ((WriteVariableInstruction)instruction).variable == variable;
+    PsiManager psiManager = variable.getManager();
+    return instruction instanceof ReadVariableInstruction && psiManager.areElementsEquivalent(((ReadVariableInstruction)instruction).variable, variable) ||
+           instruction instanceof WriteVariableInstruction && psiManager.areElementsEquivalent(((WriteVariableInstruction)instruction).variable, variable);
   }
 
   public static class ControlFlowEdge {
@@ -2061,8 +2070,9 @@ public class ControlFlowUtil {
     private static PsiElement getLatestWriteVarExpression(@Nullable CopyOnWriteList writeVars, @NotNull PsiVariable variable) {
       if (writeVars == null) return null;
 
+      PsiManager psiManager = variable.getManager();
       for (final VariableInfo variableInfo : writeVars.getList()) {
-        if (variableInfo.variable == variable) {
+        if (psiManager.areElementsEquivalent(variableInfo.variable, variable)) {
           return variableInfo.expression;
         }
       }
@@ -2086,8 +2096,8 @@ public class ControlFlowUtil {
    */
   @NotNull
   public static Map<PsiElement, PsiVariable> getWritesBeforeReads(@NotNull ControlFlow flow,
-                                                                  @NotNull Set<PsiVariable> writeVars,
-                                                                  @NotNull Set<PsiVariable> readVars,
+                                                                  @NotNull Set<? extends PsiVariable> writeVars,
+                                                                  @NotNull Set<? extends PsiVariable> readVars,
                                                                   final int stopPoint) {
     Map<PsiElement, PsiVariable> writes = new HashMap<>();
     List<Instruction> instructions = flow.getInstructions();
@@ -2111,7 +2121,7 @@ public class ControlFlowUtil {
    * @return true if it was read
    */
   private static boolean readBeforeStopPoint(@NotNull final ControlFlow flow,
-                                             @NotNull Set<PsiVariable> readVars,
+                                             @NotNull Set<? extends PsiVariable> readVars,
                                              final int startOffset,
                                              final int stopPoint) {
     class MyVisitor extends InstructionClientVisitor<Boolean> {
@@ -2372,7 +2382,7 @@ public class ControlFlowUtil {
         locationOffsetList.add(offset);
       }
     }
-    int[] locationOffsets = locationOffsetList.toArray();
+    int[] locationOffsets = locationOffsetList.toIntArray();
 
     for (int offset = startOffset; offset < endOffset; offset++) {
       Instruction instruction = instructions.get(offset);

@@ -19,7 +19,7 @@ import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.impl.scopes.ModuleScopeProviderImpl;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.impl.ProjectImpl;
+import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.roots.ExternalProjectSystemRegistry;
 import com.intellij.openapi.roots.ProjectModelElement;
 import com.intellij.openapi.roots.ProjectModelExternalSource;
@@ -87,7 +87,7 @@ public class ModuleImpl extends ComponentManagerImpl implements ModuleEx {
     // do not measure (activityNamePrefix method not overridden by this class)
     // because there are a lot of modules and no need to measure each one
     //noinspection unchecked
-    registerComponents((List<IdeaPluginDescriptorImpl>)PluginManagerCore.getLoadedPlugins(), false);
+    registerComponents((List<IdeaPluginDescriptorImpl>)PluginManagerCore.getLoadedPlugins());
     if (!isPersistent()) {
       registerService(IComponentStore.class,
                       NonPersistentModuleStore.class,
@@ -115,7 +115,7 @@ public class ModuleImpl extends ComponentManagerImpl implements ModuleEx {
   public final boolean isDisposed() {
     // in case of light project in tests when it's temporarily disposed, the module should be treated as disposed too.
     //noinspection TestOnlyProblems
-    return super.isDisposed() || ((ProjectImpl)myProject).isLight() && myProject.isDisposed();
+    return super.isDisposed() || ((ProjectEx)myProject).isLight() && myProject.isDisposed();
   }
 
   @Override
@@ -347,8 +347,9 @@ public class ModuleImpl extends ComponentManagerImpl implements ModuleEx {
     return getOptionManager().getModificationCount();
   }
 
+  @ApiStatus.Internal
   @State(name = "DeprecatedModuleOptionManager", useLoadedStateAsExisting = false /* doesn't make sense to check it */)
-  static class DeprecatedModuleOptionManager extends SimpleModificationTracker implements PersistentStateComponent<DeprecatedModuleOptionManager.State>,
+  public static class DeprecatedModuleOptionManager extends SimpleModificationTracker implements PersistentStateComponent<DeprecatedModuleOptionManager.State>,
                                                                                           ProjectModelElement {
     private final Module module;
 

@@ -37,11 +37,10 @@ public final class ClassPath {
   final boolean myPreloadJarContents;
   final boolean myCanHavePersistentIndex;
   final boolean myLazyClassloadingCaches;
-  @Nullable private final CachePoolImpl myCachePool;
-  @Nullable private final UrlClassLoader.CachingCondition myCachingCondition;
+  private final @Nullable CachePoolImpl myCachePool;
+  private final @Nullable UrlClassLoader.CachingCondition myCachingCondition;
   final boolean myLogErrorOnMissingJar;
-  @Nullable
-  private final LinkedHashSet<String> myJarAccessLog;
+  private final @Nullable LinkedHashSet<String> myJarAccessLog;
 
   public ClassPath(List<URL> urls,
                    boolean canLockJars,
@@ -69,10 +68,9 @@ public final class ClassPath {
     push(urls);
   }
 
-  /**
-   * @deprecated Adding additional urls to classpath at runtime could lead to hard-to-debug errors
-   */
+  /** @deprecated adding URLs to classpath at runtime could lead to hard-to-debug errors */
   @Deprecated
+  @SuppressWarnings("DeprecatedIsStillUsed")
   void addURL(URL url) {
     push(Collections.singletonList(url));
   }
@@ -284,7 +282,7 @@ public final class ClassPath {
     }
   }
 
-  private class MyEnumeration implements Enumeration<URL> {
+  private final class MyEnumeration implements Enumeration<URL> {
     private int myIndex;
     private Resource myRes;
     @NotNull
@@ -364,7 +362,7 @@ public final class ClassPath {
     }
   }
 
-  private static class ResourceStringLoaderIterator extends ClasspathCache.LoaderIterator<Resource, String, ClassPath> {
+  private static final class ResourceStringLoaderIterator extends ClasspathCache.LoaderIterator<Resource, String, ClassPath> {
     @Override
     Resource process(@NotNull Loader loader, @NotNull String s, @NotNull ClassPath classPath, @NotNull String shortName) {
       return loader.containsName(s, shortName) ? findInLoader(loader, s, classPath) : null;
@@ -430,7 +428,7 @@ public final class ClassPath {
 
   static final boolean ourClassLoadingInfo = Boolean.getBoolean("idea.log.classpath.info");
 
-  static final Set<String> ourLoadedClasses = ourClassLoadingInfo ? Collections.synchronizedSet(new LinkedHashSet<String>()) : null;
+  private static final Set<String> ourLoadedClasses = ourClassLoadingInfo ? Collections.synchronizedSet(new LinkedHashSet<String>()) : null;
   private static final AtomicLong ourTotalTime = new AtomicLong();
   private static final AtomicInteger ourTotalRequests = new AtomicInteger();
   private static final ThreadLocal<Boolean> ourDoingTiming = new ThreadLocal<Boolean>();

@@ -29,7 +29,7 @@ import org.jetbrains.jps.incremental.fs.BuildFSState;
 import org.jetbrains.jps.incremental.relativizer.PathRelativizerService;
 import org.jetbrains.jps.incremental.storage.BuildDataManager;
 import org.jetbrains.jps.incremental.storage.BuildTargetsState;
-import org.jetbrains.jps.incremental.storage.ProjectTimestamps;
+import org.jetbrains.jps.incremental.storage.ProjectStamps;
 import org.jetbrains.jps.indices.ModuleExcludeIndex;
 import org.jetbrains.jps.indices.impl.IgnoredFileIndexImpl;
 import org.jetbrains.jps.indices.impl.ModuleExcludeIndexImpl;
@@ -91,12 +91,6 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
     myDataStorageRoot = FileUtil.createTempDirectory("compile-server-" + getProjectName(), null);
     myLogger = new TestProjectBuilderLogger();
     myBuildParams = new HashMap<>();
-  }
-
-  @Override
-  protected void tearDown() throws Exception {
-    myProjectDir = null;
-    super.tearDown();
   }
 
   protected static void assertOutput(final String outputPath, TestFileSystemBuilder expected) {
@@ -205,9 +199,9 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
       BuildTargetIndexImpl targetIndex = new BuildTargetIndexImpl(targetRegistry, buildRootIndex);
       BuildTargetsState targetsState = new BuildTargetsState(dataPaths, myModel, buildRootIndex);
       PathRelativizerService relativizer = new PathRelativizerService(myModel.getProject());
-      ProjectTimestamps timestamps = new ProjectTimestamps(myDataStorageRoot, targetsState, relativizer);
+      ProjectStamps projectStamps = new ProjectStamps(myDataStorageRoot, targetsState, relativizer);
       BuildDataManager dataManager = new BuildDataManager(dataPaths, targetsState, relativizer);
-      return new ProjectDescriptor(myModel, new BuildFSState(true), timestamps, dataManager, buildLoggingManager, index, targetsState,
+      return new ProjectDescriptor(myModel, new BuildFSState(true), projectStamps, dataManager, buildLoggingManager, index, targetsState,
                                    targetIndex, buildRootIndex, ignoredFileIndex);
     }
     catch (IOException e) {
@@ -253,19 +247,7 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
                                                        @Nullable String testOutputPath,
                                                        JpsSdk<T> sdk) {
     JpsModule module = myProject.addModule(moduleName, JpsJavaModuleType.INSTANCE);
-    final JpsSdkType<T> sdkType = sdk.getSdkType();
-    final JpsSdkReferencesTable sdkTable = module.getSdkReferencesTable();
-    sdkTable.setSdkReference(sdkType, sdk.createReference());
-
-    if (sdkType instanceof JpsJavaSdkTypeWrapper) {
-      final JpsSdkReference<T> wrapperRef = sdk.createReference();
-      sdkTable.setSdkReference(JpsJavaSdkType.INSTANCE, JpsJavaExtensionService.
-        getInstance().createWrappedJavaSdkReference((JpsJavaSdkTypeWrapper)sdkType, wrapperRef));
-    }
-    // ensure jdk entry is the first one in dependency list
-    module.getDependenciesList().clear();
-    module.getDependenciesList().addSdkDependency(sdkType);
-    module.getDependenciesList().addModuleSourceDependency();
+    setupModuleSdk(module, sdk);
     if (srcPaths.length > 0 || outputPath != null) {
       for (String srcPath : srcPaths) {
         module.getContentRootsList().addUrl(JpsPathUtil.pathToUrl(srcPath));
@@ -286,6 +268,22 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
       }
     }
     return module;
+  }
+
+  protected  <T extends JpsElement> void setupModuleSdk(JpsModule module, JpsSdk<T> sdk) {
+    final JpsSdkType<T> sdkType = sdk.getSdkType();
+    final JpsSdkReferencesTable sdkTable = module.getSdkReferencesTable();
+    sdkTable.setSdkReference(sdkType, sdk.createReference());
+
+    if (sdkType instanceof JpsJavaSdkTypeWrapper) {
+      final JpsSdkReference<T> wrapperRef = sdk.createReference();
+      sdkTable.setSdkReference(JpsJavaSdkType.INSTANCE, JpsJavaExtensionService.
+        getInstance().createWrappedJavaSdkReference((JpsJavaSdkTypeWrapper)sdkType, wrapperRef));
+    }
+    // ensure jdk entry is the first one in dependency list
+    module.getDependenciesList().clear();
+    module.getDependenciesList().addSdkDependency(sdkType);
+    module.getDependenciesList().addModuleSourceDependency();
   }
 
   protected void rebuildAllModules() {
@@ -341,7 +339,7 @@ public abstract class JpsBuildTestCase extends UsefulTestCase {
   }
 
   protected BuildResult doBuild(final ProjectDescriptor descriptor, CompileScopeTestBuilder scopeBuilder) {
-    IncProjectBuilder builder = new IncProjectBuilder(descriptor, BuilderRegistry.getInstance(), myBuildParams, CanceledStatus.NULL, null, true);
+    IncProjectBuilder builder = new IncProjectBuilder(descriptor, BuilderRegistry.getInstance(), myBuildParams, CanceledStatus.NULL, true);
     BuildResult result = new BuildResult();
     builder.addMessageHandler(result);
     try {

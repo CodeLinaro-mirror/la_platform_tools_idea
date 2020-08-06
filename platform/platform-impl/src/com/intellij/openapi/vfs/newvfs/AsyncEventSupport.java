@@ -7,12 +7,15 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.util.PingProgress;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vfs.AsyncFileListener;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.impl.VirtualFileManagerImpl;
+import com.intellij.openapi.vfs.impl.VirtualFilePointerManagerImpl;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFS;
+import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -65,9 +68,11 @@ public final class AsyncEventSupport {
     }
 
     List<AsyncFileListener.ChangeApplier> appliers = new ArrayList<>();
-    List<AsyncFileListener> allListeners = ContainerUtil.concat(
-      EP_NAME.getExtensionList(),
-      ((VirtualFileManagerImpl)VirtualFileManager.getInstance()).getAsyncFileListeners());
+    List<AsyncFileListener> allListeners = new ArrayList<>();
+    // must be the first
+    ((VirtualFilePointerManagerImpl)VirtualFilePointerManager.getInstance()).addAsyncFileListenerTo(allListeners);
+    allListeners.addAll(EP_NAME.getExtensionList());
+    ((VirtualFileManagerImpl)VirtualFileManager.getInstance()).addAsyncFileListenersTo(allListeners);
     for (AsyncFileListener listener : allListeners) {
       ProgressManager.checkCanceled();
       long startNs = System.nanoTime();
@@ -94,6 +99,7 @@ public final class AsyncEventSupport {
 
   private static void beforeVfsChange(List<? extends AsyncFileListener.ChangeApplier> appliers) {
     for (AsyncFileListener.ChangeApplier applier : appliers) {
+      PingProgress.interactWithEdtProgress();
       try {
         applier.beforeVfsChange();
       }
@@ -103,8 +109,9 @@ public final class AsyncEventSupport {
     }
   }
 
-  private static void afterVfsChange(List<? extends AsyncFileListener.ChangeApplier> appliers) {
+  private static void afterVfsChange(@NotNull List<? extends AsyncFileListener.ChangeApplier> appliers) {
     for (AsyncFileListener.ChangeApplier applier : appliers) {
+      PingProgress.interactWithEdtProgress();
       try {
         applier.afterVfsChange();
       }
@@ -114,7 +121,8 @@ public final class AsyncEventSupport {
     }
   }
 
-  static void processEvents(List<? extends VFileEvent> events, @Nullable List<? extends AsyncFileListener.ChangeApplier> appliers) {
+  static void processEventsFromRefresh(@NotNull List<? extends VFileEvent> events,
+                                       @Nullable List<? extends AsyncFileListener.ChangeApplier> appliers) {
     ApplicationManager.getApplication().assertWriteAccessAllowed();
     if (appliers != null) {
       beforeVfsChange(appliers);

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application.ex;
 
 import com.intellij.openapi.application.Application;
@@ -14,27 +14,13 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.ui.UIUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class ApplicationUtil {
-  // Used in com.intellij.ide.instrument.LockWrappingClassVisitor
-  @SuppressWarnings("unused")
-  @ApiStatus.Internal
-  public static boolean acquireWriteIntentLockIfNeeded() {
-    return ApplicationManager.getApplication().acquireWriteIntentLockIfNeeded();
-  }
-
-  // Used in com.intellij.ide.instrument.LockWrappingClassVisitor
-  @SuppressWarnings("unused")
-  @ApiStatus.Internal
-  public static void releaseWriteIntentLockIfNeeded(boolean needed) {
-    ApplicationManager.getApplication().releaseWriteIntentLockIfNeeded(needed);
-  }
+public final class ApplicationUtil {
 
   // throws exception if can't grab read action right now
   public static <T> T tryRunReadAction(@NotNull final Computable<T> computable) throws CannotRunReadActionException {

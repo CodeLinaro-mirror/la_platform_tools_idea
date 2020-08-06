@@ -5,17 +5,16 @@ import com.intellij.JavaTestUtil
 import com.intellij.codeInsight.daemon.impl.HighlightInfoType
 import com.intellij.codeInsight.daemon.impl.IdentifierHighlighterPassFactory
 import com.intellij.codeInsight.highlighting.HighlightUsagesHandler
+import com.intellij.codeInsight.highlighting.HighlightUsagesHandlerBase
 import com.intellij.codeInspection.sillyAssignment.SillyAssignmentInspection
 import com.intellij.openapi.util.Segment
+import com.intellij.openapi.util.TextRange
 import com.intellij.pom.java.LanguageLevel
+import com.intellij.psi.PsiElement
 import com.intellij.psi.impl.source.tree.injected.MyTestInjector
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
-
-/**
- * @author cdr
- */
 class HighlightUsagesHandlerTest extends LightJavaCodeInsightFixtureTestCase {
   final String basePath = JavaTestUtil.relativeJavaTestDataPath
 
@@ -102,7 +101,7 @@ class HighlightUsagesHandlerTest extends LightJavaCodeInsightFixtureTestCase {
   }
 
   void testBreakInSwitchExpr() {
-    IdeaTestUtil.withLevel module, LanguageLevel.JDK_13_PREVIEW, {
+    IdeaTestUtil.withLevel module, LanguageLevel.JDK_14, {
       configureFile()
       ctrlShiftF7()
       assertRangeText 'switch', 'yield', 'yield'
@@ -364,5 +363,32 @@ class HighlightUsagesHandlerTest extends LightJavaCodeInsightFixtureTestCase {
   private void checkUnselect() {
     ctrlShiftF7()
     assertRangeText()
+  }
+
+  void testCaretOnExceptionInMethodThrowsDeclarationMustHighlightPlacesThrowingThisException() {
+    String s = '''
+      import java.io.*;
+      class A {
+        public static void deserialize(File file) throws <caret>IOException, java.lang.RuntimeException, ClassNotFoundException {
+          boolean length = file.createNewFile();
+          if (length == false) throw new RuntimeException();
+          file.getCanonicalPath();
+          if (length == true) throw new ClassNotFoundException();
+        }
+      }'''
+    myFixture.configureByText 'A.java', s.stripIndent()
+
+    HighlightUsagesHandlerBase<PsiElement> handler = HighlightUsagesHandler.createCustomHandler(myFixture.editor, myFixture.file)
+    assertNotNull(handler)
+    List<PsiElement> targets = handler.targets
+    assertEquals(1, targets.size())
+
+    handler.computeUsages(targets)
+    List<TextRange> readUsages = handler.readUsages
+    List<String> expected = Arrays.asList('IOException', 'file.createNewFile', 'file.getCanonicalPath')
+    assertEquals(expected.size(), readUsages.size())
+
+    List<String> textUsages = readUsages.collect { myFixture.file.text.substring(it.startOffset, it.endOffset) }
+    assertSameElements(expected, textUsages)
   }
 }

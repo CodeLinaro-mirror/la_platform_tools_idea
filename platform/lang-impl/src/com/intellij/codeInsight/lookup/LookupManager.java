@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.lookup;
 
@@ -50,7 +50,7 @@ public abstract class LookupManager {
   public abstract void hideActiveLookup();
 
   public static void hideActiveLookup(@NotNull Project project) {
-    LookupManager lookupManager = ServiceManager.getServiceIfCreated(project, LookupManager.class);
+    LookupManager lookupManager = project.getServiceIfCreated(LookupManager.class);
     if (lookupManager != null) {
       lookupManager.hideActiveLookup();
     }
@@ -61,8 +61,20 @@ public abstract class LookupManager {
 
   @NonNls public static final String PROP_ACTIVE_LOOKUP = "activeLookup";
 
+  /**
+   * @deprecated Use {@link LookupManagerListener.TOPIC}
+   */
+  @Deprecated
   public abstract void addPropertyChangeListener(@NotNull PropertyChangeListener listener);
+  /**
+   * @deprecated Use {@link LookupManagerListener.TOPIC}
+   */
+  @Deprecated
   public abstract void addPropertyChangeListener(@NotNull PropertyChangeListener listener, @NotNull Disposable disposable);
+  /**
+   * @deprecated Use {@link LookupManagerListener.TOPIC}
+   */
+  @Deprecated
   public abstract void removePropertyChangeListener(@NotNull PropertyChangeListener listener);
 
   @NotNull

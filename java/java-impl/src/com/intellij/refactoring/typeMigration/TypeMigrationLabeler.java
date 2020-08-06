@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.typeMigration;
 
 import com.intellij.codeInsight.generation.GenerateMembersUtil;
@@ -36,7 +36,6 @@ import com.intellij.util.containers.MultiMap;
 import com.intellij.util.graph.DFSTBuilder;
 import com.intellij.util.graph.GraphGenerator;
 import com.intellij.util.graph.InboundSemiGraph;
-import gnu.trove.THashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -279,15 +278,9 @@ public class TypeMigrationLabeler {
     return myRules.getConversionSettings(aClass);
   }
 
-  class MigrationProducer {
+  final class MigrationProducer {
     private final Map<UsageInfo, Object> myRemainConversions;
-    private final MultiMap<PsiTypeElement, TypeMigrationUsageInfo> myVariableMigration = new MultiMap<PsiTypeElement, TypeMigrationUsageInfo>() {
-      @NotNull
-      @Override
-      protected Map<PsiTypeElement, Collection<TypeMigrationUsageInfo>> createMap() {
-        return new THashMap<>();
-      }
-    };
+    private final MultiMap<PsiTypeElement, TypeMigrationUsageInfo> myVariableMigration = new MultiMap<PsiTypeElement, TypeMigrationUsageInfo>();
 
     private MigrationProducer(Map<UsageInfo, Object> conversions) {
       myRemainConversions = conversions;
@@ -799,7 +792,7 @@ public class TypeMigrationLabeler {
   public void clearStopException() {
     myException = null;
   }
-  
+
   boolean addRoot(final TypeMigrationUsageInfo usageInfo, final PsiType type, final PsiElement place, boolean alreadyProcessed) {
     if (myShowWarning && myMigrationRoots.size() > 10 && !ApplicationManager.getApplication().isUnitTestMode()) {
       myShowWarning = false;
@@ -863,7 +856,7 @@ public class TypeMigrationLabeler {
       usages.add(place);
     }
   }
-  
+
   public void setTypeUsage(final PsiElement element, final PsiElement place) {
     setTypeUsage(new TypeMigrationUsageInfo(element), place);
   }
@@ -918,7 +911,7 @@ public class TypeMigrationLabeler {
       validReferences.add(ref1);
     }
 
-    Collections.sort(validReferences, Comparator.comparingInt(o -> o.getElement().getTextOffset()));
+    validReferences.sort(Comparator.comparingInt(o -> o.getElement().getTextOffset()));
 
     return validReferences.toArray(PsiReference.EMPTY_ARRAY);
   }
@@ -1182,7 +1175,7 @@ public class TypeMigrationLabeler {
 
     final ArrayList<Pair<SmartPsiElementPointer<PsiExpression>, PsiType>>
       failsList = new ArrayList<>(myFailedConversions.keySet());
-    Collections.sort(failsList, (o1, o2) -> {
+    failsList.sort((o1, o2) -> {
       final PsiElement element1 = o1.getFirst().getElement();
       final PsiElement element2 = o2.getFirst().getElement();
       if (element1 == null || element2 == null) return 0;

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.analysis.AnalysisScope;
@@ -10,7 +10,6 @@ import com.intellij.codeInspection.ex.GlobalInspectionContextBase;
 import com.intellij.codeInspection.ex.GlobalInspectionContextImpl;
 import com.intellij.codeInspection.ex.InspectionToolWrapper;
 import com.intellij.codeInspection.ui.InspectionToolPresentation;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.testFramework.fixtures.impl.GlobalInspectionContextForTests;
 import com.intellij.util.containers.JBIterable;
@@ -26,7 +25,7 @@ import java.io.File;
 import java.io.StreamTokenizer;
 import java.util.*;
 
-public class InspectionTestUtil {
+public final class InspectionTestUtil {
   private InspectionTestUtil() {
   }
 
@@ -75,8 +74,8 @@ public class InspectionTestUtil {
     Element reportedTextRange = reportedProblem.getChild("entry_point");
     if (reportedTextRange == null) return false;
     Element expectedTextRange = expectedProblem.getChild("entry_point");
-    return Comparing.equal(reportedTextRange.getAttributeValue("TYPE"), expectedTextRange.getAttributeValue("TYPE")) &&
-           Comparing.equal(reportedTextRange.getAttributeValue("FQNAME"), expectedTextRange.getAttributeValue("FQNAME"));
+    return Objects.equals(reportedTextRange.getAttributeValue("TYPE"), expectedTextRange.getAttributeValue("TYPE")) &&
+           Objects.equals(reportedTextRange.getAttributeValue("FQNAME"), expectedTextRange.getAttributeValue("FQNAME"));
   }
 
   static boolean compareDescriptions(Element reportedProblem, Element expectedProblem) throws Exception {
@@ -108,7 +107,7 @@ public class InspectionTestUtil {
   }
 
   static boolean compareLines(Element reportedProblem, Element expectedProblem) {
-    return Comparing.equal(reportedProblem.getChildText("line"), expectedProblem.getChildText("line"));
+    return Objects.equals(reportedProblem.getChildText("line"), expectedProblem.getChildText("line"));
   }
 
   static boolean compareFiles(Element reportedProblem, Element expectedProblem) {
@@ -118,7 +117,7 @@ public class InspectionTestUtil {
     }
     File reportedFile = new File(reportedFileName);
 
-    return Comparing.equal(reportedFile.getName(), expectedProblem.getChildText("file"));
+    return Objects.equals(reportedFile.getName(), expectedProblem.getChildText("file"));
   }
 
   public static void compareToolResults(@NotNull GlobalInspectionContextImpl context,
@@ -175,7 +174,7 @@ public class InspectionTestUtil {
   public static <T extends InspectionProfileEntry> T instantiateTool(Class<? extends T> inspection) {
     return (T)instantiateTools(Collections.singleton(inspection)).get(0);
   }
-  
+
   @NotNull
   public static List<InspectionProfileEntry> instantiateTools(Set<String> classNames) {
     List<InspectionProfileEntry> tools = JBIterable.of(LocalInspectionEP.LOCAL_INSPECTION, InspectionEP.GLOBAL_INSPECTION)

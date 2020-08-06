@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.startup;
 
 import com.intellij.openapi.application.PathManager;
@@ -17,10 +17,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * @author cdr
- */
-public class StartupActionScriptManager {
+public final class StartupActionScriptManager {
   public static final String STARTUP_WIZARD_MODE = "StartupWizardMode";
   public static final String ACTION_SCRIPT_FILE = "action.script";
 
@@ -40,6 +37,12 @@ public class StartupActionScriptManager {
 
   public static synchronized void executeActionScript(@NotNull File scriptFile, @NotNull File oldTarget, @NotNull File newTarget) throws IOException {
     List<ActionCommand> commands = loadActionScript(scriptFile.toPath());
+    executeActionScriptCommands(commands, oldTarget, newTarget);
+  }
+
+  public static void executeActionScriptCommands(List<ActionCommand> commands,
+                                                 @NotNull File oldTarget,
+                                                 @NotNull File newTarget) throws IOException {
     for (ActionCommand command : commands) {
       ActionCommand toExecute = mapPaths(command, oldTarget, newTarget);
       if (toExecute != null) {
@@ -79,7 +82,7 @@ public class StartupActionScriptManager {
   }
 
   @NotNull
-  private static List<ActionCommand> loadActionScript(@NotNull Path scriptFile) throws IOException {
+  public static List<ActionCommand> loadActionScript(@NotNull Path scriptFile) throws IOException {
     if (!Files.isRegularFile(scriptFile)) {
       return new ArrayList<>();
     }
@@ -103,6 +106,11 @@ public class StartupActionScriptManager {
 
   private static void saveActionScript(@Nullable List<ActionCommand> commands) throws IOException {
     Path scriptFile = getActionScriptFile();
+    saveActionScript(commands, scriptFile);
+  }
+
+  public static void saveActionScript(@Nullable List<ActionCommand> commands, Path scriptFile)
+    throws IOException {
     if (commands != null) {
       Files.createDirectories(scriptFile.getParent());
       try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(scriptFile))) {
@@ -187,6 +195,10 @@ public class StartupActionScriptManager {
     public String toString() {
       return "copy[" + mySource + "," + myDestination + "]";
     }
+
+    public String getSource() {
+      return mySource;
+    }
   }
 
   public static class UnzipCommand implements Serializable, ActionCommand {
@@ -224,6 +236,10 @@ public class StartupActionScriptManager {
     @Override
     public String toString() {
       return "unzip[" + mySource + "," + myDestination + "]";
+    }
+
+    public String getSource() {
+      return mySource;
     }
   }
 

@@ -14,6 +14,7 @@ import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.speedSearch.SpeedSearchSupply;
 import com.intellij.ui.treeStructure.treetable.TreeTable;
 import com.intellij.ui.treeStructure.treetable.TreeTableModel;
+import com.intellij.util.MathUtil;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.accessibility.ScreenReader;
 import com.intellij.util.ui.update.Activatable;
@@ -1092,6 +1093,7 @@ public class JBTable extends JTable implements ComponentWithEmptyText, Component
     }
 
     protected boolean canMoveOrResizeColumn(int modelIndex) {
+      if (table.getRowCount() == 0) return false;
       return true;
     }
   }
@@ -1189,7 +1191,7 @@ public class JBTable extends JTable implements ComponentWithEmptyText, Component
 
       int deltaX = Math.abs(e.getX() - myStartXCoordinate);
       int deltaY = Math.abs(e.getY() - myStartYCoordinate);
-      Point point = new Point(Math.min(Math.max(e.getX(), 0), header.getTable().getWidth() - 1), e.getY());
+      Point point = new Point(MathUtil.clamp(e.getX(), 0, header.getTable().getWidth() - 1), e.getY());
       boolean sameColumn;
       if (header.getDraggedColumn() == null) {
         sameColumn = true;
@@ -1205,7 +1207,7 @@ public class JBTable extends JTable implements ComponentWithEmptyText, Component
 
     @Override
     public void mouseMoved(@NotNull MouseEvent e) {
-      if (isOnBorder(e)) return;
+      if (isOnBorder(e) || header.getTable().getRowCount() == 0) return;
       mouseInputListener.mouseMoved(convertMouseEvent(e));
     }
 

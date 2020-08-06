@@ -1,5 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.AppTopics;
@@ -18,7 +17,7 @@ import com.intellij.openapi.fileEditor.impl.FileDocumentManagerImpl;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectLocator;
-import com.intellij.openapi.project.impl.ProjectImpl;
+import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
@@ -84,9 +83,10 @@ public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
       if (myUnitTestMode) {
         myStopTrackingDocuments = true;
         try {
+          //noinspection TestOnlyProblems
           LOG.error("Too many uncommitted documents for " + myProject + "(" +myUncommittedDocuments.size()+")"+
                     ":\n" + StringUtil.join(myUncommittedDocuments, "\n") +
-                    (myProject instanceof ProjectImpl ? "\n\n Project creation trace: " + ((ProjectImpl)myProject).getCreationTrace() : ""));
+                    (myProject instanceof ProjectEx ? "\n\n Project creation trace: " + ((ProjectEx)myProject).getCreationTrace() : ""));
         }
         finally {
           //noinspection TestOnlyProblems
@@ -135,10 +135,14 @@ public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
 
   @Override
   public void doPostponedOperationsAndUnblockDocument(@NotNull Document doc) {
-    if (doc instanceof DocumentWindow) doc = ((DocumentWindow)doc).getDelegate();
-    final PostprocessReformattingAspect component = myProject.getComponent(PostprocessReformattingAspect.class);
-    final FileViewProvider viewProvider = getCachedViewProvider(doc);
-    if (viewProvider != null && component != null) component.doPostponedFormatting(viewProvider);
+    if (doc instanceof DocumentWindow) {
+      doc = ((DocumentWindow)doc).getDelegate();
+    }
+    PostprocessReformattingAspect component = PostprocessReformattingAspect.getInstance(myProject);
+    FileViewProvider viewProvider = getCachedViewProvider(doc);
+    if (viewProvider != null && component != null) {
+      component.doPostponedFormatting(viewProvider);
+    }
   }
 
   @NotNull

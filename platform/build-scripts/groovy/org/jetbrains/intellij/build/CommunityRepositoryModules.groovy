@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build
 
 import groovy.transform.CompileStatic
@@ -58,8 +58,9 @@ class CommunityRepositoryModules {
     "intellij.platform.editor.ex",
     "intellij.platform.indexing.impl",
     "intellij.platform.execution.impl",
+    "intellij.platform.inspect",
     "intellij.platform.lang.impl",
-    "intellij.platform.workspaceModel.core",
+    "intellij.platform.workspaceModel.storage",
     "intellij.platform.workspaceModel.ide",
     "intellij.platform.lvcs.impl",
     "intellij.platform.ide.impl",
@@ -88,6 +89,11 @@ class CommunityRepositoryModules {
     plugin("intellij.laf.macos") {
       bundlingRestrictions.supportedOs = [OsFamily.MACOS]
     },
+    plugin("intellij.webp"){
+      withResource("lib/libwebp/linux", "lib/libwebp/linux")
+      withResource("lib/libwebp/mac", "lib/libwebp/mac")
+      withResource("lib/libwebp/win", "lib/libwebp/win")
+    },
     plugin("intellij.laf.win10") {
       bundlingRestrictions.supportedOs = [OsFamily.WINDOWS]
     },
@@ -103,8 +109,6 @@ class CommunityRepositoryModules {
     plugin("intellij.properties.resource.bundle.editor"),
     plugin("intellij.vcs.git") {
       withModule("intellij.vcs.git.rt", "git4idea-rt.jar", null)
-      withModule("intellij.platform.remoteServers.git")
-      withModule("intellij.java.remoteServers.git", "remote-servers-git.jar")
     },
     plugin("intellij.vcs.cvs") {
       directoryName = "cvsIntegration"
@@ -114,7 +118,7 @@ class CommunityRepositoryModules {
       withModule("intellij.vcs.cvs.core", "cvs_util.jar")
     },
     plugin("intellij.xpath") {
-      withModule("intellij.xslt.debugger.rt", "rt/xslt-rt.jar")
+      withModule("intellij.xpath.rt", "rt/xslt-rt.jar")
     },
     plugin("intellij.platform.langInjection") {
       withModule("intellij.java.langInjection", "IntelliLang.jar")
@@ -131,15 +135,11 @@ class CommunityRepositoryModules {
       doNotCreateSeparateJarForLocalizableResources()
     },
     plugin("intellij.xslt.debugger") {
-      withModule("intellij.xslt.debugger.engine")
-      withModule("intellij.xslt.debugger.engine.impl", "rt/xslt-debugger-engine-impl.jar")
-      withModuleLibrary("Saxon-6.5.5", "intellij.xslt.debugger.engine.impl", "rt")
-      withModuleLibrary("Saxon-9HE", "intellij.xslt.debugger.engine.impl", "rt")
-      withModuleLibrary("Xalan-2.7.2", "intellij.xslt.debugger.engine.impl", "rt")
-      //todo[nik] unmark 'lib' directory as source root instead
-      excludeFromModule("intellij.xslt.debugger.engine.impl", "rmi-stubs.jar")
-      excludeFromModule("intellij.xslt.debugger.engine.impl", "saxon.jar")
-      excludeFromModule("intellij.xslt.debugger.engine.impl", "saxon9he.jar")
+      withModule("intellij.xslt.debugger.rt", "xslt-debugger-rt.jar")
+      withModule("intellij.xslt.debugger.impl.rt", "rt/xslt-debugger-impl-rt.jar")
+      withModuleLibrary("Saxon-6.5.5", "intellij.xslt.debugger.impl.rt", "rt")
+      withModuleLibrary("Saxon-9HE", "intellij.xslt.debugger.impl.rt", "rt")
+      withModuleLibrary("Xalan-2.7.2", "intellij.xslt.debugger.impl.rt", "rt")
     },
     plugin("intellij.maven") {
       withModule("intellij.maven.jps")
@@ -184,8 +184,7 @@ class CommunityRepositoryModules {
     },
     plugin("intellij.gradle.java.maven"),
     plugin("intellij.platform.testGuiFramework") {
-      mainJarName = "testGuiFramework"
-      withModule("intellij.platform.testGuiFramework")
+      mainJarName = "testGuiFramework.jar"
       withProjectLibrary("fest")
       withProjectLibrary("fest-swing")
     },
@@ -239,21 +238,26 @@ class CommunityRepositoryModules {
       withResource("resources/.zshrc", "")
       withResource("resources/jediterm-bash.in", "")
       withResource("resources/fish/config.fish", "fish")
-/* Android Studio: exclude
     },
     plugin("intellij.textmate") {
+      withModule("intellij.textmate.core")
       withResource("lib/bundles", "lib/bundles")
     },
+/* Android Studio: exclude Python
     PythonCommunityPluginModules.pythonCommunityPluginLayout(),
+Android Studio: exclude Python */
+/* Android Studio: exclude smali
     // required for android plugin
     plugin("intellij.android.smali") {
       withModule("intellij.android.smali")
     },
+Android Studio: exclude smali */
+/* Android Studio: exclude intellij.statsCollector
     plugin("intellij.statsCollector") {
       withModule("intellij.statsCollector.logEvents")
       withModule("intellij.statsCollector.completionRanker")
-*/
     },
+Android Studio: exclude intellij.statsCollector */
     plugin("intellij.jps.cache")
   ]
 
@@ -268,10 +272,13 @@ class CommunityRepositoryModules {
 
       withModule("intellij.android.core", "android.jar", null)
       withModule("intellij.android.adb", "android.jar")
+      withModule("intellij.android.app-inspection", "android.jar")
+      withModule("intellij.android.app-inspection.ide", "android.jar")
       withModule("intellij.android.databinding", "android.jar")
       withModule("intellij.android.debuggers", "android.jar")
       withModule("intellij.android.lang", "android.jar")
       withModule("intellij.android.lang-databinding", "android.jar")
+      withModule("intellij.android.mlkit", "android.jar")
       withModule("intellij.android.room", "android.jar")
       withModule("intellij.android.plugin", "android.jar")
       withModule("intellij.android.artwork")
@@ -283,18 +290,21 @@ class CommunityRepositoryModules {
       withModule("intellij.android.layout-ui", "android.jar")
       withModule("intellij.android.transport", "android.jar")
       withModule("intellij.android.designer", "android.jar")
+      withModule("intellij.android.compose-designer", "android.jar")
+      withModule("intellij.android.designer.customview", "android.jar")
+      withModule("intellij.android.naveditor", "android.jar")
       withModule("intellij.android.nav.editor", "android.jar")
       withModule("intellij.android.nav.safeargs", "android.jar")
       withModule("intellij.android.sdkUpdates", "android.jar")
       withModule("intellij.android.wizard", "android.jar")
       withModule("intellij.android.wizard.model", "android.jar")
-      withModuleLibrary("precompiled-intellij.android.wizardTemplate.plugin", "android.sdktools.wizardTemplate.plugin", "")
-      withModuleLibrary("precompiled-intellij.android.wizardTemplate.impl", "android.sdktools.wizardTemplate.impl", "")
+      withModuleLibrary("precompiled-wizardTemplate.plugin", "android.sdktools.wizardTemplate.plugin", "")
+      withModuleLibrary("precompiled-wizardTemplate.impl", "android.sdktools.wizardTemplate.impl", "")
       withModule("intellij.android.profilersAndroid", "android.jar")
-      withModule("intellij.android.gameToolsStarter", "android.jar")
       withModule("intellij.android.deploy", "android.jar")
       withModule("intellij.android.kotlin.idea", "android-kotlin.jar")
       withModule("intellij.android.kotlin.output.parser", "android-kotlin.jar")
+      withModule("intellij.android.kotlin.extensions.common", "android-extensions-ide.jar")
       withModule("intellij.android.kotlin.extensions", "android-extensions-ide.jar")
       withModule("intellij.android.transportDatabase", "android-profilers.jar")
       withModule("intellij.android.profilers", "android-profilers.jar")
@@ -309,6 +319,7 @@ class CommunityRepositoryModules {
       withModule("intellij.android.resources-base", "android.jar")
       withModule("intellij.android.android-layout-inspector", "android.jar")
       /* do not put into IJ android plugin: assistant, connection-assistant, whats-new-assistant */
+      withModule("intellij.lint", "lint-ide.jar")
       withModule("intellij.android.adt.ui", "adt-ui.jar")
       withModule("intellij.android.adt.ui.model", "adt-ui.jar")
       withModuleLibrary("precompiled-repository", "android.sdktools.repository", "")
@@ -325,7 +336,7 @@ class CommunityRepositoryModules {
 
       // from AOSP's plugin("intellij.android.layoutlib"). Force layoutlib-standard. //
       withModuleLibrary("precompiled-layoutlib-api", "android.sdktools.layoutlib-api", "")
-      withModuleLibrary("layoutlib-jre11-26.6.0.2.jar", "intellij.android.layoutlib", "")
+      withModuleLibrary("layoutlib-jre11-27.0.0.0.jar", "intellij.android.layoutlib", "")
       //////////////////////////////////////////////////////
 
       withModuleLibrary("precompiled-manifest-merger", "android.sdktools.manifest-merger", "")
@@ -337,9 +348,9 @@ class CommunityRepositoryModules {
       withModuleLibrary("precompiled-ddmlib", "android.sdktools.ddmlib", "")
       withModuleLibrary("precompiled-dvlib", "android.sdktools.dvlib", "")
       withModuleLibrary("precompiled-deployer", "android.sdktools.deployer", "")
-      withModuleLibrary("deploy-java-proto", "android.sdktools.deployer", "") // exported module library
-      withModuleLibrary("deploy-java-version", "android.sdktools.deployer", "") // exported module library
-      withModuleLibrary("r8-master", "android.sdktools.deployer", "") // exported module library
+      withModuleLibrary("deploy_java_proto", "android.sdktools.deployer", "") // exported module library
+      withModuleLibrary("libjava_version", "android.sdktools.deployer", "") // exported module library
+      withModuleLibrary("r8", "android.sdktools.deployer", "") // exported module library
 
       withModuleLibrary("precompiled-tracer", "android.sdktools.tracer", "")
       withModuleLibrary("precompiled-draw9patch", "android.sdktools.draw9patch", "")
@@ -359,19 +370,13 @@ class CommunityRepositoryModules {
 
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
 
-      withResourceFromModule("intellij.android.core", "lib/asm-5.0.3.jar", "lib")
-      withResourceFromModule("intellij.android.core", "lib/asm-analysis-5.0.3.jar", "lib")
-      withResourceFromModule("intellij.android.core", "lib/asm-tree-5.0.3.jar", "lib")
+      withProjectLibrary("asm-tools")
       withResourceFromModule("intellij.android.core", "lib/commons-compress-1.8.1.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/javawriter-2.2.1.jar", "lib")
 
       withResourceFromModule("intellij.android.artwork", "resources/device-art-resources", "lib/device-art-resources")
       withResourceFromModule("intellij.android.core", "lib/sampleData", "lib/sampleData")
       withResourceArchive("../android/annotations", "lib/androidAnnotations.jar")
-
-      withResourceFromModule("intellij.android.adt.ui", "lib/libwebp/linux", "lib/libwebp/linux")
-      withResourceFromModule("intellij.android.adt.ui", "lib/libwebp/mac", "lib/libwebp/mac")
-      withResourceFromModule("intellij.android.adt.ui", "lib/libwebp/win", "lib/libwebp/win")
 
       // here go some differences from original Android Studio layout
       def getSingleFile = { BuildContext context, String projectLibName ->
@@ -431,9 +436,7 @@ class CommunityRepositoryModules {
       withModule("intellij.javaFX", mainJarName)
       withModule("intellij.javaFX.jps")
       withModule("intellij.javaFX.common")
-      //todo[nik] move to module libraries
       withModule("intellij.javaFX.sceneBuilder", "rt/sceneBuilderBridge.jar")
-      withProjectLibrary("SceneBuilderKit", "rt/java8")
     }
   }
 

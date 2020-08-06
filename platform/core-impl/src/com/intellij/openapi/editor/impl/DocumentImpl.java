@@ -23,14 +23,11 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.reference.SoftReference;
 import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.IntArrayList;
 import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.ImmutableCharSequence;
 import gnu.trove.TIntIntHashMap;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.jetbrains.annotations.*;
 
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
@@ -42,7 +39,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
+public final class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   private static final Logger LOG = Logger.getInstance(DocumentImpl.class);
   private static final int STRIP_TRAILING_SPACES_BULK_MODE_LINES_LIMIT = 1000;
 
@@ -181,7 +178,9 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       this.virtualFile = virtualFile;
     }
   }
-  static void processQueue() {
+
+  @ApiStatus.Internal
+  public static void processQueue() {
     RMTreeReference ref;
     while ((ref = (RMTreeReference)rmTreeQueue.poll()) != null) {
       ref.virtualFile.replace(RANGE_MARKERS_KEY, ref, null);
@@ -516,16 +515,12 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   public void replaceText(@NotNull CharSequence chars, long newModificationStamp) {
-    replaceString(0, getTextLength(), chars, newModificationStamp, true); //TODO: optimization!!!
+    replaceString(0, getTextLength(), 0, chars, newModificationStamp, true); //TODO: optimization!!!
     clearLineModificationFlags();
   }
 
   @Override
   public void insertString(int offset, @NotNull CharSequence s) {
-    insertString(offset, s, offset);
-  }
-
-  private void insertString(int offset, @NotNull CharSequence s, int moveSrcOffset) {
     if (offset < 0) throw new IndexOutOfBoundsException("Wrong offset: " + offset);
     if (offset > getTextLength()) {
       throw new IndexOutOfBoundsException(
@@ -546,7 +541,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     ImmutableCharSequence newText = myText.insert(offset, s);
     ImmutableCharSequence newString = newText.subtext(offset, offset + s.length());
     updateText(newText, offset, "", newString, false, LocalTimeCounter.currentTime(),
-               offset, 0, moveSrcOffset);
+               offset, 0, offset);
     trimToSize();
   }
 
@@ -558,10 +553,6 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   public void deleteString(int startOffset, int endOffset) {
-    deleteString(startOffset, endOffset, startOffset);
-  }
-
-  public void deleteString(int startOffset, int endOffset, int moveDstOffset) {
     assertBounds(startOffset, endOffset);
 
     assertWriteAccess();
@@ -576,7 +567,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     ImmutableCharSequence newText = myText.delete(startOffset, endOffset);
     ImmutableCharSequence oldString = myText.subtext(startOffset, endOffset);
     updateText(newText, startOffset, oldString, "", false, LocalTimeCounter.currentTime(),
-               startOffset, endOffset - startOffset, moveDstOffset);
+               startOffset, endOffset - startOffset, startOffset);
   }
 
   @Override
@@ -589,16 +580,19 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     String replacement = getCharsSequence().subSequence(srcStart, srcEnd).toString();
     int shift = dstOffset < srcStart ? srcEnd - srcStart : 0;
 
-    insertString(dstOffset, replacement, srcStart + shift);
-    deleteString(srcStart + shift, srcEnd + shift, dstOffset);
+    // a pair of insert remove modifications
+    replaceString(dstOffset, dstOffset, srcStart + shift, replacement, LocalTimeCounter.currentTime(), false);
+    replaceString(srcStart + shift, srcEnd + shift, dstOffset, "", LocalTimeCounter.currentTime(), false);
   }
 
   @Override
   public void replaceString(int startOffset, int endOffset, @NotNull CharSequence s) {
-    replaceString(startOffset, endOffset, s, LocalTimeCounter.currentTime(), false);
+    replaceString(startOffset, endOffset, startOffset, s, LocalTimeCounter.currentTime(), false);
   }
 
-  public void replaceString(int startOffset, int endOffset, @NotNull CharSequence s, final long newModificationStamp, boolean wholeTextReplaced) {
+  @ApiStatus.Internal
+  public void replaceString(int startOffset, int endOffset, int moveOffset, @NotNull CharSequence s,
+                            final long newModificationStamp, boolean wholeTextReplaced) {
     assertBounds(startOffset, endOffset);
 
     assertWriteAccess();
@@ -606,6 +600,12 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
     if (!isWritable()) {
       throw new ReadOnlyModificationException(this);
+    }
+
+    if (moveOffset != startOffset && (startOffset != endOffset && s.length() != 0)) {
+      throw new IllegalArgumentException(
+        "moveOffset != startOffset for a modification which is neither an insert nor deletion." +
+        " startOffset: " + startOffset + "; endOffset: " + endOffset + ";" + "; moveOffset: " + moveOffset + ";");
     }
 
     int initialStartOffset = startOffset;
@@ -653,8 +653,9 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       newText = myText.delete(startOffset, endOffset).insert(startOffset, changedPart);
       changedPart = newText.subtext(startOffset, startOffset + changedPart.length());
     }
+    boolean wasOptimized = initialStartOffset != startOffset || endOffset - startOffset != initialOldLength;
     updateText(newText, startOffset, sToDelete, changedPart, wholeTextReplaced, newModificationStamp,
-               initialStartOffset, initialOldLength, startOffset);
+               initialStartOffset, initialOldLength, wasOptimized ? startOffset : moveOffset);
     trimToSize();
   }
 
@@ -800,7 +801,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     }
   }
 
-  private class DelayedExceptions {
+  private final class DelayedExceptions {
     Throwable myException;
 
     void register(Throwable e) {
@@ -1057,7 +1058,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   public void setText(@NotNull final CharSequence text) {
-    Runnable runnable = () -> replaceString(0, getTextLength(), text, LocalTimeCounter.currentTime(), true);
+    Runnable runnable = () -> replaceString(0, getTextLength(), 0, text, LocalTimeCounter.currentTime(), true);
     if (CommandProcessor.getInstance().isUndoTransparentActionInProgress()) {
       runnable.run();
     }
@@ -1197,10 +1198,11 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     if (myDoingBulkUpdate) throw new UnexpectedBulkUpdateStateException(myBulkUpdateEnteringTrace);
   }
 
-  private static class UnexpectedBulkUpdateStateException extends RuntimeException implements ExceptionWithAttachments {
+  private static final class UnexpectedBulkUpdateStateException extends RuntimeException implements ExceptionWithAttachments {
     private final Attachment[] myAttachments;
 
     private UnexpectedBulkUpdateStateException(Throwable enteringTrace) {
+      super("Current operation is not permitted in bulk mode, see Document.setInBulkUpdate javadoc");
       myAttachments = enteringTrace == null ? Attachment.EMPTY_ARRAY
                                             : new Attachment[] {new Attachment("enteringTrace.txt", enteringTrace)};
     }

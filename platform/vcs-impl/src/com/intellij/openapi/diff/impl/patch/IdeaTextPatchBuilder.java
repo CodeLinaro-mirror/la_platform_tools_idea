@@ -1,10 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.diff.impl.patch;
 
 import com.intellij.diff.util.Side;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.changes.*;
@@ -21,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class IdeaTextPatchBuilder {
+public final class IdeaTextPatchBuilder {
   private IdeaTextPatchBuilder() {
   }
 
@@ -82,8 +81,7 @@ public class IdeaTextPatchBuilder {
                                         convertRevision(change.getAfterRevision())));
       }
     }
-    return TextPatchBuilder.buildPatch(revisions, basePath, reversePatch, SystemInfo.isFileSystemCaseSensitive,
-                                       () -> ProgressManager.checkCanceled());
+    return TextPatchBuilder.buildPatch(revisions, basePath, reversePatch, () -> ProgressManager.checkCanceled());
   }
 
   @Nullable

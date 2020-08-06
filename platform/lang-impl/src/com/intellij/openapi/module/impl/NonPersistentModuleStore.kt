@@ -23,6 +23,8 @@ internal class NonPersistentModuleStore : ModuleStore {
   override fun isReloadPossible(componentNames: Set<String>): Boolean = true
   override suspend fun save(forceSavingAllSettings: Boolean): Unit = Unit
   override fun saveComponent(component: PersistentStateComponent<*>): Unit = Unit
+  override fun removeComponent(name: String) {
+  }
 }
 
 private object NonPersistentStateStorageManager : StateStorageManager {
@@ -39,5 +41,5 @@ private object NonPersistentStateStorage : StateStorage {
   override fun <T : Any> getState(component: Any?, componentName: String, stateClass: Class<T>, mergeInto: T?, reload: Boolean): T? = null
   override fun hasState(componentName: String, reloadData: Boolean): Boolean = false
   override fun createSaveSessionProducer(): SaveSessionProducer? = null
-  override fun analyzeExternalChangesAndUpdateIfNeeded(componentNames: MutableSet<in String>) = Unit
+  override fun analyzeExternalChangesAndUpdateIfNeeded(componentNames: MutableSet<String>) = Unit
 }

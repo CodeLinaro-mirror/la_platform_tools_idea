@@ -17,7 +17,6 @@ import com.intellij.openapi.editor.event.EditorMouseEvent;
 import com.intellij.openapi.editor.event.EditorMouseEventArea;
 import com.intellij.openapi.editor.event.EditorMouseMotionListener;
 import com.intellij.openapi.editor.ex.EditorEx;
-import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
@@ -45,11 +44,10 @@ class ShowEditorHighlighterTokensAction extends EditorAction {
     private static final EditorMouseMotionListener MOUSE_MOTION_LISTENER = new EditorMouseMotionListener() {
       @Override
       public void mouseMoved(@NotNull EditorMouseEvent e) {
-        if (e.getArea() != EditorMouseEventArea.EDITING_AREA) return;
+        if (e.getArea() != EditorMouseEventArea.EDITING_AREA || !e.isOverText()) return;
         Editor editor = e.getEditor();
-        LogicalPosition logicalPosition = editor.xyToLogicalPosition(e.getMouseEvent().getPoint());
-        if (EditorUtil.inVirtualSpace(editor, logicalPosition)) return;
-        int offset = editor.logicalPositionToOffset(logicalPosition);
+        LogicalPosition logicalPosition = e.getLogicalPosition();
+        int offset = e.getOffset();
         for (RangeHighlighter highlighter : editor.getMarkupModel().getAllHighlighters()) {
           String text = highlighter.getUserData(Holder.TOKEN_NAME);
           if (!StringUtil.isEmpty(text) && (highlighter.getStartOffset() < offset && highlighter.getEndOffset() > offset ||

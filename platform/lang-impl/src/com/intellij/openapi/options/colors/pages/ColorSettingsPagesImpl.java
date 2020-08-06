@@ -19,13 +19,13 @@ final class ColorSettingsPagesImpl extends ColorSettingsPages implements Disposa
     ConcurrentFactoryMap.createMap(this::getDescriptorImpl);
 
   ColorSettingsPagesImpl() {
-    ColorAndFontDescriptorsProvider.EP_NAME.addExtensionPointListener(myCache::clear, this);
-    ColorSettingsPage.EP_NAME.addExtensionPointListener(myCache::clear, this);
+    ColorAndFontDescriptorsProvider.EP_NAME.addChangeListener(myCache::clear, this);
+    ColorSettingsPage.EP_NAME.addChangeListener(myCache::clear, this);
   }
 
   @Override
   public void registerPage(ColorSettingsPage page) {
-    ColorSettingsPage.EP_NAME.getPoint(null).registerExtension(page);
+    ColorSettingsPage.EP_NAME.getPoint().registerExtension(page);
   }
 
   @Override

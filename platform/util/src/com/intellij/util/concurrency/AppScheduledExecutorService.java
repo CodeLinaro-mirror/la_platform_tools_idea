@@ -1,8 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.concurrency;
 
 import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.LowMemoryWatcherManager;
 import com.intellij.util.IncorrectOperationException;
@@ -40,11 +41,13 @@ public final class AppScheduledExecutorService extends SchedulingWrapper {
 
   private static class MyThreadFactory extends CountingThreadFactory {
     private Consumer<? super Thread> newThreadListener;
+    private final ThreadFactory myThreadFactory = Executors.privilegedThreadFactory();
 
     @NotNull
     @Override
     public Thread newThread(@NotNull final Runnable r) {
-      Thread thread = new Thread(r, POOLED_THREAD_PREFIX + counter.incrementAndGet());
+      Thread thread = myThreadFactory.newThread(r);
+      thread.setName(POOLED_THREAD_PREFIX + counter.incrementAndGet());
 
       thread.setPriority(Thread.NORM_PRIORITY - 1);
 
@@ -133,7 +136,7 @@ public final class AppScheduledExecutorService extends SchedulingWrapper {
 
     @Override
     protected void afterExecute(Runnable r, Throwable t) {
-      if (t != null) {
+      if (t != null && !(t instanceof ProcessCanceledException)) {
         Logger.getInstance(SchedulingWrapper.class).error("Worker exited due to exception", t);
       }
     }

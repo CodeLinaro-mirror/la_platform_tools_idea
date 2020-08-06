@@ -23,8 +23,9 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFileSystem;
 import com.intellij.util.PathUtil;
 import com.intellij.util.SystemProperties;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
-import gnu.trove.THashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -35,18 +36,20 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Set;
 
-public class VfsRootAccess {
-  private static final boolean SHOULD_PERFORM_ACCESS_CHECK = System.getenv("NO_FS_ROOTS_ACCESS_CHECK") == null && System.getProperty("NO_FS_ROOTS_ACCESS_CHECK")==null;
+public final class VfsRootAccess {
+  private static final boolean SHOULD_PERFORM_ACCESS_CHECK =
+    System.getenv("NO_FS_ROOTS_ACCESS_CHECK") == null && System.getProperty("NO_FS_ROOTS_ACCESS_CHECK") == null;
 
   // we don't want test subclasses to accidentally remove allowed files, added by base classes
-  private static final Set<String> ourAdditionalRoots = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
+  private static final Set<String> ourAdditionalRoots = Collections.synchronizedSet(CollectionFactory.createFilePathSet());
   private static boolean insideGettingRoots;
 
   @TestOnly
   static void assertAccessInTests(@NotNull VirtualFileSystemEntry child, @NotNull NewVirtualFileSystem delegate) {
-    final Application application = ApplicationManager.getApplication();
+    Application application = ApplicationManager.getApplication();
     if (SHOULD_PERFORM_ACCESS_CHECK &&
         application.isUnitTestMode() &&
         application instanceof ApplicationImpl &&
@@ -90,13 +93,13 @@ public class VfsRootAccess {
   }
 
   // null means we were unable to get roots, so do not check access
-  private static Set<String> allowedRoots() {
+  private static @Nullable Set<String> allowedRoots() {
     if (insideGettingRoots) return null;
 
     Project[] openProjects = ProjectManager.getInstance().getOpenProjects();
     if (openProjects.length == 0) return null;
 
-    final Set<String> allowed = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
+    Set<String> allowed = CollectionFactory.createFilePathSet();
     allowed.add(FileUtil.toSystemIndependentName(PathManager.getHomePath()));
 
     // In plugin development environment PathManager.getHomePath() returns path like "~/.IntelliJIdea/system/plugins-sandbox/test" when running tests
@@ -120,8 +123,8 @@ public class VfsRootAccess {
       allowed.add(FileUtil.toSystemIndependentName(new File(FileUtil.getTempDirectory()).getParent()));
       allowed.add(FileUtil.toSystemIndependentName(System.getProperty("java.io.tmpdir")));
       allowed.add(FileUtil.toSystemIndependentName(SystemProperties.getUserHome()));
-      ContainerUtil.addAllNotNull(allowed, findInUserHome(".m2"));
-      ContainerUtil.addAllNotNull(allowed, findInUserHome(".gradle"));
+      allowed.add(FileUtil.toSystemIndependentName(findInUserHome(".m2")));
+      allowed.add(FileUtil.toSystemIndependentName(findInUserHome(".gradle")));
 
       // see IDEA-167037 The assertion "File accessed outside allowed root" is triggered by files symlinked from the the JDK installation folder
       allowed.add("/etc"); // After recent update of Oracle JDK 1.8 under Ubuntu Certain files in the JDK installation are symlinked to /etc
@@ -145,6 +148,7 @@ public class VfsRootAccess {
     catch (Error ignored) {
       // sometimes library.getRoots() may crash if called from inside library modification
     }
+
     allowed.addAll(ourAdditionalRoots);
 
     return allowed;
@@ -161,56 +165,55 @@ public class VfsRootAccess {
     return javaHome;
   }
 
-  @Nullable
-  private static String findInUserHome(@NotNull String path) {
+  private static String findInUserHome(String path) {
+    File file = new File(SystemProperties.getUserHome(), path);
     try {
       // in case if we have a symlink like ~/.m2 -> /opt/.m2
-      return FileUtil.toSystemIndependentName(new File(SystemProperties.getUserHome(), path).getCanonicalPath());
+      return file.getCanonicalPath();
     }
     catch (IOException e) {
-      return null;
+      return file.getPath();
     }
   }
 
-  @NotNull
-  private static Collection<String> getAllRootUrls(@NotNull Project project) {
+  private static Collection<String> getAllRootUrls(Project project) {
     insideGettingRoots = true;
-    final Set<String> roots = new THashSet<>();
-
-    OrderEnumerator enumerator = ProjectRootManager.getInstance(project).orderEntries().using(new DefaultModulesProvider(project));
-    ContainerUtil.addAll(roots, enumerator.classes().getUrls());
-    ContainerUtil.addAll(roots, enumerator.sources().getUrls());
-
-    insideGettingRoots = false;
-    return roots;
+    try {
+      Set<String> roots = new ObjectOpenHashSet<>();
+      OrderEnumerator enumerator = ProjectRootManager.getInstance(project).orderEntries().using(new DefaultModulesProvider(project));
+      ContainerUtil.addAll(roots, enumerator.classes().getUrls());
+      ContainerUtil.addAll(roots, enumerator.sources().getUrls());
+      return roots;
+    }
+    finally {
+      insideGettingRoots = false;
+    }
   }
 
   @TestOnly
-  public static void allowRootAccess(@NotNull Disposable disposable, final String @NotNull ... roots) {
+  public static void allowRootAccess(@NotNull Disposable disposable, @NotNull String @NotNull ... roots) {
     if (roots.length == 0) return;
     allowRootAccess(roots);
     Disposer.register(disposable, () -> disallowRootAccess(roots));
   }
 
-  /**
-   * @deprecated Use {@link #allowRootAccess(Disposable, String...)} instead
-   */
+  /** @deprecated Use {@link #allowRootAccess(Disposable, String...)} instead */
   @Deprecated
   @TestOnly
+  @SuppressWarnings("DeprecatedIsStillUsed")
   public static void allowRootAccess(String @NotNull ... roots) {
     for (String root : roots) {
-      ourAdditionalRoots.add(StringUtil.trimEnd(FileUtil.toSystemIndependentName(root),'/'));
+      ourAdditionalRoots.add(StringUtil.trimEnd(FileUtil.toSystemIndependentName(root), '/'));
     }
   }
 
-  /**
-   * @deprecated Use {@link #allowRootAccess(Disposable, String...)} instead
-   */
+  /** @deprecated Use {@link #allowRootAccess(Disposable, String...)} instead */
   @Deprecated
   @TestOnly
+  @SuppressWarnings("DeprecatedIsStillUsed")
   public static void disallowRootAccess(String @NotNull ... roots) {
     for (String root : roots) {
-      ourAdditionalRoots.remove(StringUtil.trimEnd(FileUtil.toSystemIndependentName(root),'/'));
+      ourAdditionalRoots.remove(StringUtil.trimEnd(FileUtil.toSystemIndependentName(root), '/'));
     }
   }
 }

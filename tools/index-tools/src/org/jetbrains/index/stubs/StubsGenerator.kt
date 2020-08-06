@@ -1,14 +1,14 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.index.stubs
 
 import com.google.common.hash.HashCode
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.impl.DebugUtil
 import com.intellij.psi.stubs.*
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.TestApplicationManager
 import com.intellij.util.indexing.FileBasedIndex
 import com.intellij.util.indexing.FileBasedIndexExtension
@@ -50,12 +50,12 @@ open class StubsGenerator(private val stubsVersion: String, private val stubsSto
       return null
     }
 
-    return SerializedStubTree.serializeStub(stub, serializationManager, StubForwardIndexExternalizer.createFileLocalExternalizer(serializationManager))
+    return SerializedStubTree.serializeStub(stub, serializationManager, StubForwardIndexExternalizer.createFileLocalExternalizer())
   }
 
   override fun createStorage(stubsStorageFilePath: String): PersistentHashMap<HashCode, SerializedStubTree> {
     return PersistentHashMap(File("$stubsStorageFilePath.input").toPath(),
-                             HashCodeDescriptor.instance, FullStubExternalizer())
+                             HashCodeDescriptor.instance, GeneratingFullStubExternalizer())
   }
 
   open fun buildStubForFile(fileContent: FileContentImpl,
@@ -71,17 +71,17 @@ private fun writeStubsVersionFile(stubsStorageFilePath: String, stubsVersion: St
 
 fun mergeStubs(paths: List<String>, stubsFilePath: String, stubsFileName: String, projectPath: String, stubsVersion: String) {
   TestApplicationManager.getInstance()
-  ProjectManager.getInstance().loadAndOpenProject(projectPath)!!
+  PlatformTestUtil.loadAndOpenProject(Paths.get(projectPath))
   // we don't need a project here, but I didn't find a better way to wait until indices and components are initialized
 
-  val stubExternalizer = FullStubExternalizer()
+  val stubExternalizer = GeneratingFullStubExternalizer()
 
   val storageFile = File(stubsFilePath, "$stubsFileName.input")
   if (storageFile.exists()) {
     storageFile.delete()
   }
 
-  val storage = PersistentHashMap<HashCode, SerializedStubTree>(storageFile.toPath(), HashCodeDescriptor.instance, stubExternalizer)
+  val storage = PersistentHashMap(storageFile.toPath(), HashCodeDescriptor.instance, stubExternalizer)
 
   val stringEnumeratorFile = File(stubsFilePath, "$stubsFileName.names")
   if (stringEnumeratorFile.exists()) {
@@ -98,7 +98,7 @@ fun mergeStubs(paths: List<String>, stubsFilePath: String, stubsFileName: String
     println("Reading stubs from $path")
     var count = 0
     val fromStorageFile = File(path, "$stubsFileName.input")
-    val fromStorage = PersistentHashMap<HashCode, SerializedStubTree>(fromStorageFile, HashCodeDescriptor.instance, stubExternalizer)
+    val fromStorage = PersistentHashMap(fromStorageFile, HashCodeDescriptor.instance, stubExternalizer)
 
     val serializationManager = SerializationManagerImpl(File(path, "$stubsFileName.names").toPath(), true)
     try {
@@ -107,16 +107,17 @@ fun mergeStubs(paths: List<String>, stubsFilePath: String, stubsFileName: String
         val value = fromStorage.get(key)
 
         // re-serialize stub tree to correctly enumerate strings in the new string enumerator
-        val oldForwardIndexSerializer = StubForwardIndexExternalizer.createFileLocalExternalizer(serializationManager)
-        val newForwardIndexSerializer = StubForwardIndexExternalizer.createFileLocalExternalizer(newSerializationManager)
-        val newStubTree = value.reSerialize(serializationManager, newSerializationManager, oldForwardIndexSerializer, newForwardIndexSerializer)
+        val newForwardIndexSerializer = StubForwardIndexExternalizer.createFileLocalExternalizer()
+        val newStubTree = value.reSerialize(newSerializationManager, newForwardIndexSerializer)
 
         if (storage.containsMapping(key)) {
           if (newStubTree != storage.get(key)) { // TODO: why are they slightly different???
-            storage.get(key).getStub(newSerializationManager)
+            storage.get(key).stub
 
-            val stub = value.getStub(serializationManager)
-            val newStubTree2 = SerializedStubTree.serializeStub(stub, newSerializationManager, newForwardIndexSerializer)
+            val stub = value.stub
+            val newStubTree2 = SerializedStubTree.serializeStub(stub,
+                                                                newSerializationManager,
+                                                                newForwardIndexSerializer)
 
             TestCase.assertTrue(newStubTree == newStubTree2) // wtf!!! why are they equal now???
           }

@@ -12,6 +12,7 @@ import com.intellij.openapi.module.ModuleType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.changes.ChangeListManager;
 import com.intellij.openapi.vcs.changes.ui.PlusMinus;
@@ -31,7 +32,6 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.vcs.log.VcsLogBundle;
 import com.intellij.xml.util.XmlStringUtil;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -66,7 +66,7 @@ public class VcsStructureChooser extends DialogWrapper {
   private Tree myTree;
 
   public VcsStructureChooser(@NotNull Project project,
-                             @Nls(capitalization = Nls.Capitalization.Title) @NotNull String title,
+                             @NlsContexts.DialogTitle @NotNull String title,
                              @NotNull Collection<VirtualFile> initialSelection,
                              @NotNull List<VirtualFile> roots) {
     super(project, true);

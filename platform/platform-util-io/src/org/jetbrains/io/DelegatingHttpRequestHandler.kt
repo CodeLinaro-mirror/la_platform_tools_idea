@@ -12,8 +12,8 @@ import io.netty.handler.codec.http.FullHttpRequest
 import io.netty.handler.codec.http.QueryStringDecoder
 import io.netty.util.AttributeKey
 import org.jetbrains.ide.HttpRequestHandler
-import java.io.IOException
 import java.lang.ref.WeakReference
+import java.io.IOException
 
 private val PREV_HANDLER = AttributeKey.valueOf<WeakReference<HttpRequestHandler>>("DelegatingHttpRequestHandler.handler")
 
@@ -49,7 +49,7 @@ internal class DelegatingHttpRequestHandler : DelegatingHttpRequestHandlerBase()
     }
 
     return HttpRequestHandler.EP_NAME.findFirstSafe { handler ->
-        if (handler.checkAndProcess(updatedUrlDecoder)) {
+      if (handler.checkAndProcess(updatedUrlDecoder)) {
         prevHandlerAttribute.set(WeakReference(handler))
         true
       }

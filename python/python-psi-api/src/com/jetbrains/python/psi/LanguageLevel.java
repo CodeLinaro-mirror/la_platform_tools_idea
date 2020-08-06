@@ -16,10 +16,12 @@
 package com.jetbrains.python.psi;
 
 import com.google.common.collect.ImmutableList;
-import com.intellij.openapi.util.Key;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ArrayUtil;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -94,6 +96,7 @@ public enum LanguageLevel {
   private static final LanguageLevel DEFAULT2 = PYTHON27;
   private static final LanguageLevel DEFAULT3 = PYTHON39;
 
+  @ApiStatus.Internal
   public static LanguageLevel FORCE_LANGUAGE_LEVEL = null;
 
   @NotNull
@@ -151,7 +154,11 @@ public enum LanguageLevel {
     return myVersion >= other.myVersion;
   }
 
-  public static LanguageLevel fromPythonVersion(@NotNull String pythonVersion) {
+  @Nullable
+  @Contract("null->null;!null->!null")
+  public static LanguageLevel fromPythonVersion(@Nullable String pythonVersion) {
+    if (pythonVersion == null) return null;
+
     if (pythonVersion.startsWith("2")) {
       if (pythonVersion.startsWith("2.4")) {
         return PYTHON24;
@@ -168,6 +175,9 @@ public enum LanguageLevel {
       return DEFAULT2;
     }
     if (pythonVersion.startsWith("3")) {
+      if (pythonVersion.startsWith("3.10")) {
+        return PYTHON39;
+      }
       if (pythonVersion.startsWith("3.0")) {
         return PYTHON30;
       }
@@ -203,7 +213,13 @@ public enum LanguageLevel {
     return getDefault();
   }
 
-  public static final Key<LanguageLevel> KEY = new Key<>("python.language.level");
+  @Nullable
+  @Contract("null->null;!null->!null")
+  public static String toPythonVersion(@Nullable LanguageLevel level) {
+    if (level == null) return null;
+    final int version = level.getVersion();
+    return version / 10 + "." + version % 10;
+  }
 
   @NotNull
   public static LanguageLevel forElement(@NotNull PsiElement element) {
@@ -217,6 +233,6 @@ public enum LanguageLevel {
 
   @Override
   public String toString() {
-    return myVersion / 10 + "." + myVersion % 10;
+    return toPythonVersion(this);
   }
 }

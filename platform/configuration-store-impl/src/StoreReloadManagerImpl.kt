@@ -3,7 +3,7 @@ package com.intellij.configurationStore
 
 import com.intellij.configurationStore.schemeManager.SchemeChangeApplicator
 import com.intellij.configurationStore.schemeManager.SchemeChangeEvent
-import com.intellij.ide.impl.ProjectUtil
+import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.AppUIExecutor
 import com.intellij.openapi.application.ApplicationManager
@@ -32,9 +32,10 @@ import com.intellij.openapi.vfs.VirtualFileManagerListener
 import com.intellij.ui.AppUIUtil
 import com.intellij.util.ExceptionUtil
 import com.intellij.util.SingleAlarm
-import gnu.trove.THashSet
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
+import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -58,7 +59,7 @@ open class StoreReloadManagerImpl : StoreReloadManager, Disposable {
       return@Runnable
     }
 
-    val projectsToReload = THashSet<Project>()
+    val projectsToReload = ObjectOpenHashSet<Project>()
     processOpenedProjects { project ->
       val changedSchemes = CHANGED_SCHEMES_KEY.getAndClear(project as UserDataHolderEx)
       val changedStorages = CHANGED_FILES_KEY.getAndClear(project as UserDataHolderEx)
@@ -359,11 +360,11 @@ private fun doReloadProject(project: Project) {
     }
 
     // must compute here, before project dispose
-    val presentableUrl = project1.presentableUrl
+    val presentableUrl = project1.presentableUrl!!
     if (!ProjectManagerEx.getInstanceEx().closeAndDispose(project1)) {
       return@submit
     }
 
-    ProjectUtil.openProject(Objects.requireNonNull<String>(presentableUrl), null, true)
+    ProjectManagerEx.getInstanceEx().openProject(Paths.get(presentableUrl), OpenProjectTask())
   }
 }

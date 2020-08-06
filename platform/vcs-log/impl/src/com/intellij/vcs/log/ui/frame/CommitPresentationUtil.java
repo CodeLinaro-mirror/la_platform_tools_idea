@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.ui.frame;
 
 import com.intellij.openapi.project.Project;
@@ -10,11 +10,14 @@ import com.intellij.ui.JBColor;
 import com.intellij.util.containers.Convertor;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.text.DateFormatUtil;
+import com.intellij.util.ui.UIUtil;
 import com.intellij.vcs.commit.message.CommitMessageInspectionProfile;
 import com.intellij.vcs.commit.message.SubjectLimitInspection;
 import com.intellij.vcs.log.*;
 import com.intellij.vcs.log.util.VcsUserUtil;
 import com.intellij.vcsUtil.VcsUtil;
+import com.intellij.xml.CommonXmlStrings;
+import com.intellij.xml.util.XmlStringUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -34,7 +37,7 @@ import static com.intellij.openapi.vcs.changes.issueLinks.IssueLinkHtmlRenderer.
 import static com.intellij.openapi.vcs.ui.FontUtil.getCommitMessageFont;
 import static com.intellij.util.containers.ContainerUtil.getFirstItem;
 
-public class CommitPresentationUtil {
+public final class CommitPresentationUtil {
   @NotNull private static final Pattern HASH_PATTERN = Pattern.compile("[0-9a-f]{7,40}", Pattern.CASE_INSENSITIVE);
 
   @NotNull private static final String GO_TO_HASH = "go-to-hash:"; // NON-NLS
@@ -95,7 +98,7 @@ public class CommitPresentationUtil {
       String hash = matcher.group();
 
       if (resolvedHashes.contains(hash)) {
-        hash = "<a href=\"" + GO_TO_HASH + hash + "\">" + hash + "</a>";
+        hash = XmlStringUtil.formatLink(GO_TO_HASH + hash, hash);
       }
       matcher.appendReplacement(result, hash);
     }
@@ -177,18 +180,17 @@ public class CommitPresentationUtil {
 
   @NotNull
   @Nls
-  private static String getAuthorAndCommitterText(@NotNull VcsCommitMetadata commit) {
-    long authorTime = commit.getAuthorTime();
-    long commitTime = commit.getCommitTime();
+  private static String getAuthorAndCommitterText(@NotNull VcsUser author, long authorTime,
+                                                  @NotNull VcsUser committer, long commitTime) {
 
     String authorText = VcsLogBundle.message("vcs.log.details.author.on.date.at.time",
-                                             getAuthorName(commit.getAuthor()),
+                                             getAuthorName(author),
                                              DateFormatUtil.formatDate(authorTime),
                                              DateFormatUtil.formatTime(authorTime));
 
     String committerText = null;
-    if (!VcsUserUtil.isSamePerson(commit.getAuthor(), commit.getCommitter())) {
-      committerText = getCommitterText(commit.getCommitter(), commitTime != authorTime ? commitTime : null);
+    if (!VcsUserUtil.isSamePerson(author, committer)) {
+      committerText = getCommitterText(committer, commitTime != authorTime ? commitTime : null);
     }
     else if (authorTime != commitTime) {
       committerText = getCommitterText(null, commitTime);
@@ -244,14 +246,25 @@ public class CommitPresentationUtil {
   @NotNull
   @NonNls
   private static String getEmailText(@NotNull VcsUser user) {
-    return " <a href='mailto:" + user.getEmail() + "'>&lt;" + user.getEmail() + "&gt;</a>";
+    return " " + XmlStringUtil.formatLink("mailto:" + user.getEmail(), CommonXmlStrings.LT + user.getEmail() + CommonXmlStrings.GT);
   }
 
   @NotNull
-  @NonNls
+  @Nls
   private static String formatCommitHashAndAuthor(@NotNull VcsCommitMetadata commit) {
+    return formatCommitHashAndAuthor(commit.getId(),
+                                     commit.getAuthor(), commit.getAuthorTime(),
+                                     commit.getCommitter(), commit.getCommitTime());
+  }
+
+  @NotNull
+  @Nls
+  public static String formatCommitHashAndAuthor(@NotNull Hash commitId,
+                                                 @NotNull VcsUser author, long authorTime,
+                                                 @NotNull VcsUser committer, long commitTime) {
     Font font = FontUtil.getCommitMetadataFont();
-    return FontUtil.getHtmlWithFonts(commit.getId().toShortString() + " " + getAuthorAndCommitterText(commit), font.getStyle(), font);
+    return FontUtil.getHtmlWithFonts(commitId.toShortString() + " " + getAuthorAndCommitterText(author, authorTime, committer, commitTime),
+                                     font.getStyle(), font);
   }
 
   @NotNull
@@ -266,13 +279,11 @@ public class CommitPresentationUtil {
     String head = VcsLogBundle.message("vcs.log.details.in.branches", branches.size()) + " ";
 
     if (expanded) {
-      String hide = VcsLogBundle.message("vcs.log.details.in.branches.hide");
-      //noinspection HardCodedStringLiteral
-      return head + "<a href=\"" + SHOW_HIDE_BRANCHES + "\">" + hide + "</a><br/>" + StringUtil.join(branches, "<br/>");
+      return head + XmlStringUtil.formatLink(SHOW_HIDE_BRANCHES, VcsLogBundle.message("vcs.log.details.in.branches.hide")) +
+             UIUtil.BR + StringUtil.join(branches, UIUtil.BR);
     }
 
-    String showAll = VcsLogBundle.message("vcs.log.details.in.branches.show.all");
-    String tail = "… <a href=\"" + SHOW_HIDE_BRANCHES + "\">" + showAll + "</a>";
+    String tail = "… " + XmlStringUtil.formatLink(SHOW_HIDE_BRANCHES, VcsLogBundle.message("vcs.log.details.in.branches.show.all"));
     int headWidth = metrics.stringWidth(head);
     int tailWidth = metrics.stringWidth(StringUtil.removeHtmlTags(tail));
     if (availableWidth <= headWidth + tailWidth) {
@@ -302,7 +313,7 @@ public class CommitPresentationUtil {
       }
     }
 
-    return head + branchesText.toString();
+    return head + branchesText;
   }
 
   @NotNull

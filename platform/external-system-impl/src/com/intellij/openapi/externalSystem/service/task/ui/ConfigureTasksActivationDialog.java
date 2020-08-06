@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.task.ui;
 
 import com.intellij.icons.AllIcons;
@@ -36,11 +36,11 @@ import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.treeStructure.*;
 import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.Function;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.SwingHelper;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -318,7 +318,7 @@ public class ConfigureTasksActivationDialog extends DialogWrapper {
   }
 
   private void updateTree(@Nullable CachingSimpleNode nodeToUpdate) {
-    Set<CachingSimpleNode> toUpdate = ContainerUtil.newIdentityTroveSet();
+    Set<CachingSimpleNode> toUpdate = new ReferenceOpenHashSet<>();
     if (nodeToUpdate == null) {
       for (DefaultMutableTreeNode node : myTree.getSelectedNodes(DefaultMutableTreeNode.class, null)) {
         final Object userObject = node.getUserObject();
@@ -376,12 +376,12 @@ public class ConfigureTasksActivationDialog extends DialogWrapper {
 
   private class ChooseProjectStep extends BaseListPopupStep<ProjectPopupItem> {
     protected ChooseProjectStep(List<? extends ProjectPopupItem> values) {
-      super("Choose project", values);
+      super(ExternalSystemBundle.message("popup.title.choose.project"), values);
     }
 
     @Override
     public PopupStep onChosen(final ProjectPopupItem projectPopupItem, final boolean finalChoice) {
-      return new BaseListPopupStep<Phase>("Choose activation phase", Phase.values()) {
+      return new BaseListPopupStep<Phase>(ExternalSystemBundle.message("popup.title.choose.activation.phase"), Phase.values()) {
         @Override
         public PopupStep onChosen(final Phase selectedPhase, boolean finalChoice) {
           final Map<String, TaskActivationState> activationMap =
@@ -391,7 +391,7 @@ public class ConfigureTasksActivationDialog extends DialogWrapper {
 
           final List<String> tasksToSuggest = new ArrayList<>(projectPopupItem.myTasks);
           tasksToSuggest.removeAll(tasks);
-          return new BaseListPopupStep<String>("Choose task", tasksToSuggest) {
+          return new BaseListPopupStep<String>(ExternalSystemBundle.message("popup.title.choose.task"), tasksToSuggest) {
             @Override
             public PopupStep onChosen(final String taskName, boolean finalChoice) {
               return doFinalStep(() -> {
@@ -513,8 +513,7 @@ public class ConfigureTasksActivationDialog extends DialogWrapper {
 
     @Override
     public MyNode[] buildChildren() {
-      return ContainerUtil.map2Array(myTaskActivationState.getTasks(myPhase), MyNode.class,
-                                     (Function<String, MyNode>)taskName -> new TaskNode(taskName, this));
+      return ContainerUtil.map2Array(myTaskActivationState.getTasks(myPhase), MyNode.class, taskName -> new TaskNode(taskName, this));
     }
 
     @Override

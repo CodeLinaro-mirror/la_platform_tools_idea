@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.project;
 
 import com.intellij.CommonBundle;
@@ -10,13 +10,13 @@ import com.intellij.notification.*;
 import com.intellij.notification.impl.NotificationSettings;
 import com.intellij.notification.impl.NotificationsConfigurationImpl;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.compiler.CompileContext;
 import com.intellij.openapi.compiler.CompileTask;
 import com.intellij.openapi.compiler.CompilerManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager;
@@ -24,12 +24,14 @@ import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsPr
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProviderImpl;
 import com.intellij.openapi.externalSystem.service.project.autoimport.ExternalSystemProjectsWatcherImpl;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.impl.ModuleRootManagerImpl;
+import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
@@ -45,7 +47,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.PathKt;
 import com.intellij.util.ui.update.Update;
-import com.intellij.workspace.api.TypedEntityStorageBuilder;
+import com.intellij.workspaceModel.storage.WorkspaceEntityStorageBuilder;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.ApiStatus;
@@ -58,11 +60,10 @@ import org.jetbrains.idea.maven.buildtool.MavenSyncConsole;
 import org.jetbrains.idea.maven.importing.MavenFoldersImporter;
 import org.jetbrains.idea.maven.importing.MavenPomPathModuleService;
 import org.jetbrains.idea.maven.importing.MavenProjectImporter;
-import org.jetbrains.idea.maven.importing.worktree.LegacyBrigdeIdeModifiableModelsProvider;
+import org.jetbrains.idea.maven.importing.worktree.IdeModifiableModelsProviderBridge;
 import org.jetbrains.idea.maven.model.*;
 import org.jetbrains.idea.maven.project.MavenArtifactDownloader.DownloadResult;
 import org.jetbrains.idea.maven.server.MavenEmbedderWrapper;
-import org.jetbrains.idea.maven.server.MavenServerManager;
 import org.jetbrains.idea.maven.server.MavenServerProgressIndicator;
 import org.jetbrains.idea.maven.server.NativeMavenProjectHolder;
 import org.jetbrains.idea.maven.utils.*;
@@ -78,8 +79,8 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @State(name = "MavenProjectsManager")
-public class MavenProjectsManager extends MavenSimpleProjectComponent
-  implements PersistentStateComponent<MavenProjectsManagerState>, SettingsSavingComponentJavaAdapter, Disposable, ProjectComponent {
+public final class MavenProjectsManager extends MavenSimpleProjectComponent
+  implements PersistentStateComponent<MavenProjectsManagerState>, SettingsSavingComponentJavaAdapter, Disposable {
   private static final int IMPORT_DELAY = 1000;
   private static final String NON_MANAGED_POM_NOTIFICATION_GROUP_ID = "Maven: non-managed pom.xml";
   private static final NotificationGroup NON_MANAGED_POM_NOTIFICATION_GROUP =
@@ -125,7 +126,7 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
   private static final int SAVE_DELAY = 1000;
 
   public static MavenProjectsManager getInstance(@NotNull Project project) {
-    return project.getComponent(MavenProjectsManager.class);
+    return project.getService(MavenProjectsManager.class);
   }
 
   public MavenProjectsManager(@NotNull Project project) {
@@ -137,6 +138,7 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
     mySaveQueue = new MavenMergingUpdateQueue("Maven save queue", SAVE_DELAY, !isUnitTestMode(), this);
     myProgressListener = ServiceManager.getService(myProject, SyncViewManager.class);
     MavenRehighlighter.install(project, this);
+    Disposer.register(this, this::projectClosed);
   }
 
   @Override
@@ -186,17 +188,20 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
 
   @Override
   public void initializeComponent() {
-    if (!isNormalProject()) return;
+    if (!isNormalProject()) {
+      return;
+    }
 
-    StartupManagerEx startupManager = StartupManagerEx.getInstanceEx(myProject);
-
+    StartupManager startupManager = StartupManager.getInstance(myProject);
     startupManager.registerStartupActivity(() -> {
       boolean wasMavenized = !myState.originalFiles.isEmpty();
-      if (!wasMavenized) return;
+      if (!wasMavenized) {
+        return;
+      }
       initMavenized();
     });
 
-    startupManager.registerPostStartupActivity(() -> {
+    startupManager.runAfterOpened(() -> {
       if (!isMavenizedProject()) {
         showNotificationOrphanMavenProject(myProject);
       }
@@ -264,8 +269,9 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
 
   private void initNew(List<VirtualFile> files, MavenExplicitProfiles explicitProfiles) {
     myState.originalFiles = MavenUtil.collectPaths(files);
-    getWorkspaceSettings().setEnabledProfiles(explicitProfiles.getEnabledProfiles());
-    getWorkspaceSettings().setDisabledProfiles(explicitProfiles.getDisabledProfiles());
+    MavenWorkspaceSettings workspaceSettings = getWorkspaceSettings();
+    workspaceSettings.setEnabledProfiles(explicitProfiles.getEnabledProfiles());
+    workspaceSettings.setDisabledProfiles(explicitProfiles.getDisabledProfiles());
     doInit(true);
   }
 
@@ -277,7 +283,9 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
   private void doInit(final boolean isNew) {
     initLock.lock();
     try {
-      if (isInitialized.getAndSet(true)) return;
+      if (isInitialized.getAndSet(true)) {
+        return;
+      }
 
       initProjectsTree(!isNew);
 
@@ -285,6 +293,7 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
       listenForSettingsChanges();
       listenForProjectsTreeChanges();
       registerSyncConsoleListener();
+      updateTabTitles();
 
       MavenUtil.runWhenInitialized(myProject, (DumbAwareRunnable)() -> {
         if (!isUnitTestMode()) {
@@ -297,6 +306,28 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
     finally {
       initLock.unlock();
     }
+  }
+
+  private void updateTabTitles() {
+    Application app = ApplicationManager.getApplication();
+    if (app.isUnitTestMode() || app.isHeadlessEnvironment()) {
+      return;
+    }
+
+    addProjectsTreeListener(new MavenProjectsTree.Listener() {
+      @Override
+      public void projectsUpdated(@NotNull List<Pair<MavenProject, MavenProjectChanges>> updated, @NotNull List<MavenProject> deleted) {
+        updateTabName(MavenUtil.collectFirsts(updated), myProject);
+      }
+    });
+  }
+
+  private static void updateTabName(@NotNull List<MavenProject> projects, @NotNull Project project) {
+    MavenUtil.invokeLater(project, () -> {
+      for (MavenProject each : projects) {
+        FileEditorManagerEx.getInstanceEx(project).updateFilePresentation(each.getFile());
+      }
+    });
   }
 
   public synchronized MavenSyncConsole getSyncConsole() {
@@ -380,7 +411,7 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
 
     myWatcher = new MavenProjectsManagerWatcher(myProject, this, myProjectsTree, getGeneralSettings(), myReadingProcessor);
 
-    myImportingQueue = new MavenMergingUpdateQueue(getComponentName() + ": Importing queue", IMPORT_DELAY, !isUnitTestMode(), myProject);
+    myImportingQueue = new MavenMergingUpdateQueue(getClass().getName() + ": Importing queue", IMPORT_DELAY, !isUnitTestMode(), this);
 
     myImportingQueue.makeUserAware(myProject);
     myImportingQueue.makeDumbAware(myProject);
@@ -524,8 +555,7 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
     myWatcher.enableAutoImportInTests();
   }
 
-  @Override
-  public void projectClosed() {
+  private void projectClosed() {
     initLock.lock();
     try {
       if (!isInitialized.getAndSet(false)) return;
@@ -875,7 +905,6 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
    */
   public Promise<List<Module>> scheduleImportAndResolve() {
     getSyncConsole().startImport(myProgressListener);
-    MavenServerManager.getInstance().showMavenNotifications(getSyncConsole());
     MavenSyncConsole console = getSyncConsole();
     fireImportAndResolveScheduled();
     AsyncPromise<List<Module>> promise = scheduleResolve();
@@ -883,6 +912,10 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
       completeMavenSyncOnImportCompletion(console);
     });
     return promise;
+  }
+
+  public void showServerException(Throwable e) {
+    getSyncConsole().addException(e, myProgressListener);
   }
 
   public void terminateImport(int exitCode) {
@@ -1232,8 +1265,8 @@ public class MavenProjectsManager extends MavenSimpleProjectComponent
 
   public List<Module> importProjects() {
     if (MavenUtil.newModelEnabled(myProject)) {
-      TypedEntityStorageBuilder builder = TypedEntityStorageBuilder.Companion.create();
-      return importProjects(new LegacyBrigdeIdeModifiableModelsProvider(myProject, builder));
+      WorkspaceEntityStorageBuilder builder = WorkspaceEntityStorageBuilder.Companion.create();
+      return importProjects(new IdeModifiableModelsProviderBridge(myProject, builder));
     }
     else {
       return importProjects(new IdeModifiableModelsProviderImpl(myProject));

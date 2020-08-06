@@ -1,7 +1,7 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes.ignore.psi.util
 
-import com.intellij.openapi.application.invokeAndWaitIfNeeded
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runUndoTransparentWriteAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -70,7 +70,7 @@ private fun changeIgnoreFile(project: Project,
                              action: (IgnoredFileContentProvider) -> Unit) {
   val determinedVcs = (vcs ?: VcsUtil.getVcsFor(project, ignoreFile)?.keyInstanceMethod) ?: return
   val ignoredFileContentProvider = VcsImplUtil.findIgnoredFileContentProvider(project, determinedVcs) ?: return
-  invokeAndWaitIfNeeded {
+  ApplicationManager.getApplication().invokeAndWait {
     runUndoTransparentWriteAction {
       if (PsiManager.getInstance(project).findFile(ignoreFile)?.language !is IgnoreLanguage) return@runUndoTransparentWriteAction
       action(ignoredFileContentProvider)
@@ -178,6 +178,9 @@ private fun VirtualFile.save() {
   }
   val documentManager = FileDocumentManager.getInstance()
   if (documentManager.isFileModified(this)) {
-    documentManager.getDocument(this)?.let(documentManager::saveDocumentAsIs)
+    val document = documentManager.getDocument(this)
+    if (document != null) {
+      ApplicationManager.getApplication().invokeLaterOnWriteThread { documentManager.saveDocumentAsIs(document) }
+    }
   }
 }

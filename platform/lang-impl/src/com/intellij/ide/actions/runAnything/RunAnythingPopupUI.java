@@ -5,6 +5,7 @@ import com.intellij.execution.Executor;
 import com.intellij.execution.ExecutorRegistry;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.featureStatistics.FeatureUsageTracker;
+import com.intellij.find.FindBundle;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.actions.BigPopupUI;
@@ -355,7 +356,7 @@ public class RunAnythingPopupUI extends BigPopupUI {
     ApplicationManager.getApplication().assertIsDispatchThread();
 
     myListRenderingAlarm.cancelAllRequests();
-    myResultsList.getEmptyText().setText("Searching...");
+    myResultsList.getEmptyText().setText(FindBundle.message("empty.text.searching"));
 
     if (DumbService.getInstance(myProject).isDumb()) {
       myResultsList.setEmptyText(IdeBundle.message("run.anything.indexing.mode.not.supported"));
@@ -522,10 +523,9 @@ public class RunAnythingPopupUI extends BigPopupUI {
 
     textEditor.putClientProperty("StatusVisibleFunction", function);
     StatusText statusText = textEditor.getEmptyText();
-    statusText.setIsVerticalFlow(false);
     statusText.setShowAboveCenter(false);
     statusText.setText(leftText, SimpleTextAttributes.GRAY_ATTRIBUTES);
-    statusText.appendSecondaryText(rightText, SimpleTextAttributes.GRAY_ATTRIBUTES, null);
+    statusText.appendText(false, 0, rightText, SimpleTextAttributes.GRAY_ATTRIBUTES, null);
     statusText.setFont(UIUtil.getLabelFont(UIUtil.FontSize.SMALL));
   }
 

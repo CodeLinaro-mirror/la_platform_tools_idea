@@ -2,7 +2,9 @@
 package com.intellij.openapi.vfs.newvfs;
 
 import com.intellij.codeInsight.daemon.impl.FileStatusMap;
+import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.application.*;
+import com.intellij.openapi.application.impl.ApplicationImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.vfs.AsyncFileListener;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -52,11 +54,8 @@ class RefreshSessionImpl extends RefreshSession {
   }
 
   private Throwable rememberStartTrace() {
-    if (ApplicationManager.getApplication().isUnitTestMode() &&
-        (myIsAsync || !ApplicationManager.getApplication().isDispatchThread())) {
-      return new Throwable();
-    }
-    return null;
+    boolean trace = ApplicationManager.getApplication().isUnitTestMode() && (myIsAsync || !ApplicationManager.getApplication().isDispatchThread());
+    return trace ? new Throwable() : null;
   }
 
   RefreshSessionImpl(@NotNull List<? extends VFileEvent> events) {
@@ -172,9 +171,15 @@ class RefreshSessionImpl extends RefreshSession {
 
   void fireEvents(@NotNull List<? extends VFileEvent> events, @Nullable List<? extends AsyncFileListener.ChangeApplier> appliers) {
     try {
-      if ((myFinishRunnable != null || !events.isEmpty()) && !ApplicationManager.getApplication().isDisposed()) {
+      ApplicationImpl app = (ApplicationImpl)ApplicationManager.getApplication();
+      if ((myFinishRunnable != null || !events.isEmpty()) && !app.isDisposed()) {
         if (LOG.isDebugEnabled()) LOG.debug("events are about to fire: " + events);
-        WriteAction.run(() -> fireEventsInWriteAction(events, appliers));
+        WriteAction.run(() -> {
+          app.runWriteActionWithNonCancellableProgressInDispatchThread(IdeBundle.message("progress.title.file.system.synchronization"), null, null, indicator -> {
+            indicator.setText(IdeBundle.message("progress.text.processing.detected.file.changes", events.size()));
+            fireEventsInWriteAction(events, appliers);
+          });
+        });
       }
     }
     finally {
@@ -182,12 +187,13 @@ class RefreshSessionImpl extends RefreshSession {
     }
   }
 
-  private void fireEventsInWriteAction(List<? extends VFileEvent> events, @Nullable List<? extends AsyncFileListener.ChangeApplier> appliers) {
+  private void fireEventsInWriteAction(@NotNull List<? extends VFileEvent> events,
+                                       @Nullable List<? extends AsyncFileListener.ChangeApplier> appliers) {
     final VirtualFileManagerEx manager = (VirtualFileManagerEx)VirtualFileManager.getInstance();
 
     manager.fireBeforeRefreshStart(myIsAsync);
     try {
-      AsyncEventSupport.processEvents(events, appliers);
+      AsyncEventSupport.processEventsFromRefresh(events, appliers);
     }
     catch (AssertionError e) {
       if (FileStatusMap.CHANGES_NOT_ALLOWED_DURING_HIGHLIGHTING.equals(e.getMessage())) {

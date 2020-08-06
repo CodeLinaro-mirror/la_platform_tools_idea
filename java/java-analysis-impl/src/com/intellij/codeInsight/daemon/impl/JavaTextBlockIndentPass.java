@@ -1,8 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.application.options.CodeStyle;
 import com.intellij.codeHighlighting.TextEditorHighlightingPass;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.RangeMarker;
@@ -14,16 +15,14 @@ import com.intellij.openapi.editor.markup.CustomHighlighterRenderer;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
 import com.intellij.openapi.editor.markup.MarkupModel;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.JavaRecursiveElementWalkingVisitor;
-import com.intellij.psi.JavaTokenType;
 import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiLiteralExpression;
-import com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl;
+import com.intellij.psi.util.PsiLiteralUtil;
 import com.intellij.ui.paint.LinePainter2D;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -34,8 +33,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-
-import static com.intellij.util.ObjectUtils.tryCast;
 
 public class JavaTextBlockIndentPass extends TextEditorHighlightingPass {
 
@@ -84,7 +81,7 @@ public class JavaTextBlockIndentPass extends TextEditorHighlightingPass {
       }
       else {
         RangeHighlighter newHighlighter =
-          model.addRangeHighlighter(indent.startOffset, indent.endOffset, 0, null, HighlighterTargetArea.EXACT_RANGE);
+          model.addRangeHighlighter(null, indent.startOffset, indent.endOffset, 0, HighlighterTargetArea.EXACT_RANGE);
         newHighlighter.setCustomRenderer(RENDERER);
         StringContentIndentUtil.setIndent(newHighlighter, newIndent);
         newHighlighters.add(newHighlighter);
@@ -200,24 +197,23 @@ public class JavaTextBlockIndentPass extends TextEditorHighlightingPass {
 
       @Nullable
       private static TextBlockModel create(@Nullable PsiLiteralExpression expression) {
-        PsiLiteralExpressionImpl literal = tryCast(expression, PsiLiteralExpressionImpl.class);
-        if (literal == null || literal.getLiteralElementType() != JavaTokenType.TEXT_BLOCK_LITERAL) return null;
-        int baseIndent = getIndent(literal);
+        if (expression == null || !expression.isTextBlock()) return null;
+        int baseIndent = getIndent(expression);
         if (baseIndent == -1) return null;
-        TextRange range = literal.getTextRange();
+        TextRange range = expression.getTextRange();
         if (range == null) return null;
         return new TextBlockModel(baseIndent, range);
       }
 
-      private static int getIndent(@NotNull PsiLiteralExpressionImpl literal) {
-        int indent = literal.getTextBlockIndent();
-        if (indent <= 0) return indent;
-        String[] lines = literal.getTextBlockLines();
+      private static int getIndent(@NotNull PsiLiteralExpression literal) {
+        String[] lines = PsiLiteralUtil.getTextBlockLines(literal);
         if (lines == null) return -1;
+        int indent = PsiLiteralUtil.getTextBlockIndent(lines);
+        if (indent <= 0) return indent;
         IndentType indentType = findIndentType(lines, indent);
         if (indentType == null) return -1;
         if (indentType == IndentType.TABS) {
-          indent *= CodeStyle.getSettings(literal.getProject()).getTabSize(StdFileTypes.JAVA);
+          indent *= CodeStyle.getSettings(literal.getProject()).getTabSize(JavaFileType.INSTANCE);
         }
         return indent;
       }

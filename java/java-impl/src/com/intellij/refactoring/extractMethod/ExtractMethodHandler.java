@@ -29,8 +29,6 @@ import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.SelectionModel;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
@@ -59,7 +57,6 @@ import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -153,7 +150,27 @@ public class ExtractMethodHandler implements RefactoringActionHandler, ContextAw
     return expressions.toArray(PsiElement.EMPTY_ARRAY);
   }
 
+  public static boolean canUseNewImpl(@NotNull Project project, PsiFile file, PsiElement @NotNull [] elements){
+    final ExtractMethodProcessor processor = getProcessor(project, elements, file, false);
+    if (processor == null) return true;
+    try {
+      processor.prepare(null);
+      processor.prepareVariablesAndName();
+      processor.myMethodName = "extracted";
+    }
+    catch (PrepareFailedException e) {
+      return true;
+    }
+
+    return processor.estimateDuplicatesCount() == 0 && !processor.myInputVariables.isFoldable();
+  }
+
   public static void invokeOnElements(@NotNull Project project, final Editor editor, PsiFile file, PsiElement @NotNull [] elements) {
+    if (Registry.is("java.refactoring.extractMethod.newImplementation") && canUseNewImpl(project, file, elements)) {
+      new MethodExtractor().doExtract(editor, getRefactoringName(), HelpID.EXTRACT_METHOD);
+      return;
+    }
+
     getProcessor(elements, project, file, editor, true, new Pass<ExtractMethodProcessor>(){
       @Override
       public void pass(ExtractMethodProcessor processor) {
@@ -190,14 +207,6 @@ public class ExtractMethodHandler implements RefactoringActionHandler, ContextAw
   }
 
   private static void doRefactoring(@NotNull Project project, @NotNull ExtractMethodProcessor processor) {
-    if (Registry.is("java.refactoring.extractMethod.newImplementation")) {
-      final MethodExtractor extractor = MethodExtractor.getInstance(Arrays.asList(processor.myElements));
-      extractor
-        .methodName(processor.myMethodName)
-        .tryToRemapParameters(processor.myVariableDatum)
-        .extract();
-      return;
-    }
     try {
       final RefactoringEventData beforeData = new RefactoringEventData();
       beforeData.addElements(processor.myElements);
@@ -272,9 +281,8 @@ public class ExtractMethodHandler implements RefactoringActionHandler, ContextAw
     if (e.getFile() == file) {
       final TextRange textRange = e.getTextRange();
       final HighlightManager highlightManager = HighlightManager.getInstance(project);
-      EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-      TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
-      highlightManager.addRangeHighlight(editor, textRange.getStartOffset(), textRange.getEndOffset(), attributes, true, null);
+      highlightManager.addRangeHighlight(editor, textRange.getStartOffset(), textRange.getEndOffset(), 
+                                         EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
       final LogicalPosition logicalPosition = editor.offsetToLogicalPosition(textRange.getStartOffset());
       editor.getScrollingModel().scrollTo(logicalPosition, ScrollType.MAKE_VISIBLE);
       WindowManager.getInstance().getStatusBar(project).setInfo(RefactoringBundle.message("press.escape.to.remove.the.highlighting"));

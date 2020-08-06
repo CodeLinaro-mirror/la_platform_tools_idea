@@ -253,7 +253,7 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
   private final int myPositionChangeYShift;
   private boolean myDialogMode;
   private IdeFocusManager myFocusManager;
-  private final String myTitle;
+  private String myTitle;
   private JLabel myTitleLabel;
 
   private boolean myAnimationEnabled = true;
@@ -747,7 +747,7 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
 
         @Override
         public void layout(@NotNull Rectangle lpBounds) {
-          if (!myCloseButton.isVisible()) {
+          if (myCloseButton == null || !myCloseButton.isVisible()) {
             return;
           }
 
@@ -2110,8 +2110,13 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
     return myDisposed;
   }
 
+  public String getTitle() {
+    return myTitle;
+  }
+
   @Override
   public void setTitle(String title) {
+    myTitle = title;
     myTitleLabel.setText(title);
   }
 

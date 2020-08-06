@@ -9,7 +9,7 @@ import com.intellij.openapi.vfs.VirtualFileSystem;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class VFileCreateEvent extends VFileEvent {
+public final class VFileCreateEvent extends VFileEvent {
   private final @NotNull VirtualFile myParent;
   private final boolean myDirectory;
   private final FileAttributes myAttributes;
@@ -121,7 +121,7 @@ public class VFileCreateEvent extends VFileEvent {
   @Override
   public String toString() {
     String kind = myDirectory ? (isEmptyDirectory() ? "(empty) " : "") + "dir " : "file ";
-    return "VfsEvent[create " + kind + myParent.getUrl() + "/"+ getChildName() +"]"
+    return "VfsEvent[create " + kind + "'"+myParent.getUrl() + "/"+ getChildName() +"']"
            + (myChildren == null ? "" : " with "+myChildren.length+" children");
   }
 

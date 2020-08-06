@@ -22,7 +22,6 @@ import com.intellij.openapi.application.AppUIExecutor
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.Key
@@ -37,7 +36,6 @@ import com.intellij.util.ObjectUtils
 import com.intellij.util.SmartList
 import com.intellij.util.ui.EmptyIcon
 import com.intellij.util.ui.UIUtil
-import gnu.trove.THashMap
 import org.jetbrains.annotations.ApiStatus
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.function.Predicate
@@ -47,7 +45,7 @@ private val EXECUTOR_KEY: Key<Executor> = Key.create("Executor")
 private val CLOSE_LISTENER_KEY: Key<ContentManagerListener> = Key.create("CloseListener")
 
 class RunContentManagerImpl(private val project: Project) : RunContentManager {
-  private val toolWindowIdToBaseIcon: MutableMap<String, Icon> = THashMap()
+  private val toolWindowIdToBaseIcon: MutableMap<String, Icon> = HashMap()
   private val toolWindowIdZBuffer = ConcurrentLinkedDeque<String>()
 
   init {
@@ -542,8 +540,7 @@ private fun chooseReuseContentForDescriptor(contentManager: ContentManager,
     // stage two: try to get content from descriptor itself
     val attachedContent = descriptor.attachedContent
     if (attachedContent != null && attachedContent.isValid
-        && contentManager.getIndexOfContent(attachedContent) != -1 && (Comparing.equal(descriptor.displayName,
-                                                                                       attachedContent.displayName) || !attachedContent.isPinned)) {
+        && contentManager.getIndexOfContent(attachedContent) != -1 && (descriptor.displayName == attachedContent.displayName || !attachedContent.isPinned)) {
       content = attachedContent
     }
   }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.framework.detection.impl;
 
 import com.intellij.codeHighlighting.TextEditorHighlightingPass;
@@ -12,6 +12,7 @@ import com.intellij.framework.detection.impl.exclude.DetectionExcludesConfigurat
 import com.intellij.framework.detection.impl.ui.ConfigureDetectedFrameworksDialog;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.lang.LangBundle;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationGroup;
@@ -38,6 +39,9 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.indexing.FileBasedIndex;
 import com.intellij.util.ui.update.MergingUpdateQueue;
 import com.intellij.util.ui.update.Update;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 
@@ -53,7 +57,7 @@ public final class FrameworkDetectionManager implements FrameworkDetectionIndexL
       doRunDetection();
     }
   };
-  private final Set<Integer> myDetectorsToProcess = new HashSet<>();
+  private final IntSet myDetectorsToProcess = new IntOpenHashSet();
   private final Project myProject;
   private MergingUpdateQueue myDetectionQueue;
   private final Object myLock = new Object();
@@ -70,11 +74,11 @@ public final class FrameworkDetectionManager implements FrameworkDetectionIndexL
       doInitialize();
     }
 
-    StartupManager.getInstance(myProject).registerPostStartupActivity(() -> {
-      final Collection<Integer> ids = FrameworkDetectorRegistry.getInstance().getAllDetectorIds();
+    StartupManager.getInstance(myProject).runAfterOpened(() -> {
+      int[] ids = FrameworkDetectorRegistry.getInstance().getAllDetectorIds();
       synchronized (myLock) {
         myDetectorsToProcess.clear();
-        myDetectorsToProcess.addAll(ids);
+        myDetectorsToProcess.addAll(IntArrayList.wrap(ids));
       }
       queueDetection();
     });
@@ -131,7 +135,7 @@ public final class FrameworkDetectionManager implements FrameworkDetectionIndexL
   @Override
   public void fileUpdated(@NotNull VirtualFile file, @NotNull Integer detectorId) {
     synchronized (myLock) {
-      myDetectorsToProcess.add(detectorId);
+      myDetectorsToProcess.add(detectorId.intValue());
     }
     queueDetection();
   }
@@ -143,13 +147,14 @@ public final class FrameworkDetectionManager implements FrameworkDetectionIndexL
   }
 
   private void doRunDetection() {
-    Set<Integer> detectorsToProcess;
+    IntSet detectorsToProcess;
     synchronized (myLock) {
-      detectorsToProcess = new HashSet<>(myDetectorsToProcess);
-      detectorsToProcess.addAll(myDetectorsToProcess);
+      detectorsToProcess = new IntOpenHashSet(myDetectorsToProcess);
       myDetectorsToProcess.clear();
     }
-    if (detectorsToProcess.isEmpty()) return;
+    if (detectorsToProcess.isEmpty()) {
+      return;
+    }
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Starting framework detectors: " + detectorsToProcess);
@@ -228,12 +233,14 @@ public final class FrameworkDetectionManager implements FrameworkDetectionIndexL
     }
     catch (IndexNotReadyException e) {
       DumbService.getInstance(myProject)
-        .showDumbModeNotification("Information about detected frameworks is not available until indices are built");
+        .showDumbModeNotification(
+          LangBundle.message("popup.content.information.about.detected.frameworks"));
       return;
     }
 
     if (descriptions.isEmpty()) {
-      Messages.showInfoMessage(myProject, "No frameworks are detected", "Framework Detection");
+      Messages.showInfoMessage(myProject, LangBundle.message("dialog.message.no.frameworks.are.detected"),
+                               LangBundle.message("dialog.title.framework.detection"));
       return;
     }
     final ConfigureDetectedFrameworksDialog dialog = new ConfigureDetectedFrameworksDialog(myProject, descriptions);
@@ -269,7 +276,13 @@ public final class FrameworkDetectionManager implements FrameworkDetectionIndexL
     return getValidDetectedFrameworks();
   }
 
-  private static void ensureIndexIsUpToDate(@NotNull Project project, final Collection<Integer> detectors) {
+  private static void ensureIndexIsUpToDate(@NotNull Project project, int[] detectors) {
+    for (int detectorId : detectors) {
+      FileBasedIndex.getInstance().getValues(FrameworkDetectionIndex.NAME, detectorId, GlobalSearchScope.projectScope(project));
+    }
+  }
+
+  private static void ensureIndexIsUpToDate(@NotNull Project project, Collection<Integer> detectors) {
     for (Integer detectorId : detectors) {
       FileBasedIndex.getInstance().getValues(FrameworkDetectionIndex.NAME, detectorId, GlobalSearchScope.projectScope(project));
     }

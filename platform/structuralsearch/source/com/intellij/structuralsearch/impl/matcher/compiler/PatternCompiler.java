@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.impl.matcher.compiler;
 
 import com.intellij.codeInsight.template.Template;
@@ -6,8 +6,8 @@ import com.intellij.codeInsight.template.TemplateManager;
 import com.intellij.dupLocator.util.NodeFilter;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
@@ -45,41 +45,26 @@ import java.util.regex.Pattern;
 /**
  * Compiles the handlers for usability
  */
-public class PatternCompiler {
-  private static final Key<LastResult> SSR_LAST_COMPILED_PATTERN = new Key<>("SSR_LAST_COMPILED_PATTERN");
+public final class PatternCompiler {
 
+  private static final Logger LOG = Logger.getInstance(PatternCompiler.class);
   private static String ourLastSearchPlan;
 
   public static CompiledPattern compilePattern(Project project, MatchOptions options, boolean checkForErrors, boolean optimizeScope)
     throws MalformedPatternException, NoMatchFoundException {
-    if (!checkForErrors) {
-      final LastResult lastResult = SSR_LAST_COMPILED_PATTERN.get(project);
-      if (lastResult != null && options.equals(lastResult.options) &&
-          (!(options.getScope() instanceof GlobalSearchScope) || options.getScope() == lastResult.options.getScope())) {
-        return lastResult.pattern;
-      }
-    }
     return ReadAction.compute(() -> doCompilePattern(project, options, checkForErrors, optimizeScope));
   }
 
-  private static class LastResult {
-
-    public final MatchOptions options;
-    public final CompiledPattern pattern;
-
-    private LastResult(MatchOptions options, CompiledPattern pattern) {
-      this.options = options;
-      this.pattern = pattern;
-    }
-  }
-
-  @NotNull
+  @Nullable
   private static CompiledPattern doCompilePattern(Project project, MatchOptions options,
                                                   boolean checkForErrors, boolean optimizeScope)
     throws MalformedPatternException, NoMatchFoundException {
 
     final StructuralSearchProfile profile = StructuralSearchUtil.getProfileByFileType(options.getFileType());
-    assert profile != null : "no profile found for " + options.getFileType().getDescription();
+    if (profile == null) {
+      LOG.warn("no profile found for " + options.getFileType().getDescription());
+      return null;
+    }
     final CompiledPattern result = profile.createCompiledPattern();
 
     final String[] prefixes = result.getTypedVarPrefixes();
@@ -90,14 +75,10 @@ public class PatternCompiler {
     try {
       final List<PsiElement> elements = compileByAllPrefixes(project, options, result, context, prefixes, checkForErrors);
       final CompiledPattern pattern = context.getPattern();
-      try {
+      if (checkForErrors) {
         checkForUnknownVariables(pattern, elements);
-        pattern.setNodes(elements);
-        project.putUserData(SSR_LAST_COMPILED_PATTERN, new LastResult(options.copy(), result));
-      } catch (MalformedPatternException e) {
-        project.putUserData(SSR_LAST_COMPILED_PATTERN, new LastResult(options.copy(), null));
-        throw e;
       }
+      pattern.setNodes(elements);
       if (checkForErrors) {
         profile.checkSearchPattern(pattern);
       }
@@ -545,9 +526,9 @@ public class PatternCompiler {
 
     final PsiElement[] patternElements;
     try {
-      PatternContextInfo contextInfo = new PatternContextInfo(PatternTreeContext.Block,
-                                                              options.getPatternContext(),
-                                                              constraint != null ? constraint.getContextConstraint() : null);
+      final PatternContextInfo contextInfo = new PatternContextInfo(PatternTreeContext.Block,
+                                                                    options.getPatternContext(),
+                                                                    constraint != null ? constraint.getContextConstraint() : null);
       patternElements = MatcherImplUtil.createTreeFromText(buf.toString(), contextInfo, options.getFileType(),
                                                            options.getDialect(), project, false);
       if (patternElements.length == 0 && checkForErrors) throw new MalformedPatternException();
@@ -588,8 +569,9 @@ public class PatternCompiler {
                                           SubstitutionHandler handler, Set<String> variableNames, MatchOptions matchOptions,
                                           boolean checkForErrors)
     throws MalformedPatternException {
-    if (constraint.getScriptCodeConstraint()!= null && constraint.getScriptCodeConstraint().length() > 2) {
-      final String script = StringUtil.unquoteString(constraint.getScriptCodeConstraint());
+    final String scriptCodeConstraint = constraint.getScriptCodeConstraint();
+    if (scriptCodeConstraint.length() > 2) {
+      final String script = StringUtil.unquoteString(scriptCodeConstraint);
       if (checkForErrors) {
         final String problem = ScriptSupport.checkValidScript(script, matchOptions);
         if (problem != null) {

@@ -32,10 +32,12 @@ import com.intellij.util.ui.table.EditorTextFieldJBTableRowRenderer;
 import com.intellij.util.ui.table.JBTableRow;
 import com.intellij.util.ui.table.JBTableRowEditor;
 import com.intellij.util.ui.table.JBTableRowRenderer;
-import com.jetbrains.python.*;
-import com.jetbrains.python.psi.LanguageLevel;
-import com.jetbrains.python.psi.PyFunction;
-import com.jetbrains.python.psi.PyParameterList;
+import com.jetbrains.python.PyBundle;
+import com.jetbrains.python.PyPsiBundle;
+import com.jetbrains.python.PythonFileType;
+import com.jetbrains.python.PythonLanguage;
+import com.jetbrains.python.psi.*;
+import com.jetbrains.python.psi.impl.ParamHelper;
 import com.jetbrains.python.refactoring.introduce.IntroduceValidator;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -48,6 +50,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import static com.jetbrains.python.PyNames.CANONICAL_SELF;
 
 /**
  * User : ktisha
@@ -125,24 +129,30 @@ public class PyChangeSignatureDialog extends
       final PyParameterTableModelItem info = parameters.get(index);
       final PyParameterInfo parameter = info.parameter;
       final String name = parameter.getName();
-      final String nameWithoutStars = StringUtil.trimLeading(name, '*').trim();
-      if (parameterNames.contains(nameWithoutStars)) {
-        return PyPsiBundle.message("ANN.duplicate.param.name");
+      final boolean isMarkerParameter = name.equals(PySlashParameter.TEXT) || name.equals(PySingleStarParameter.TEXT);
+      if (!isMarkerParameter) {
+        final String nameWithoutStars = StringUtil.trimLeading(name, '*').trim();
+        if (parameterNames.contains(nameWithoutStars)) {
+          return PyPsiBundle.message("ANN.duplicate.param.name");
+        }
+        parameterNames.add(nameWithoutStars);
       }
-      parameterNames.add(nameWithoutStars);
 
-      if (name.equals("*")) {
+      if (name.equals(PySingleStarParameter.TEXT)) {
+        if (hadSingleStar) {
+          return PyBundle.message("refactoring.change.signature.dialog.validation.multiple.star");
+        }
         hadSingleStar = true;
         if (index == parametersLength - 1) {
           return PyPsiBundle.message("ANN.named.parameters.after.star");
         }
       }
-      else if (name.equals("/")) {
+      else if (name.equals(PySlashParameter.TEXT)) {
         if (hadSlash) {
           return PyPsiBundle.message("ANN.multiple.slash");
         }
         hadSlash = true;
-        if (hadPositionalContainer) {
+        if (hadPositionalContainer || hadSingleStar) {
           return PyPsiBundle.message("ANN.slash.param.after.vararg");
         }
         else if (hadKeywordContainer) {
@@ -152,7 +162,7 @@ public class PyChangeSignatureDialog extends
           return PyPsiBundle.message("ANN.named.parameters.before.slash");
         }
       }
-      else if (name.startsWith("*") && !name.startsWith("**")) {
+      else if (name.startsWith(PySingleStarParameter.TEXT) && !name.startsWith("**")) {
         if (hadKeywordContainer) {
           return PyPsiBundle.message("ANN.starred.param.after.kwparam");
         }
@@ -200,11 +210,11 @@ public class PyChangeSignatureDialog extends
         }
       }
       if (parameter.getOldIndex() < 0) {
-        if (!parameter.getName().startsWith("*")) {
+        if (ParamHelper.couldHaveDefaultValue(name)) {
           if (StringUtil.isEmpty(info.defaultValueCodeFragment.getText())) {
             return PyBundle.message("refactoring.change.signature.dialog.validation.default.missing");
           }
-          if (StringUtil.isEmptyOrSpaces(parameter.getName())) {
+          if (StringUtil.isEmptyOrSpaces(name)) {
             return PyBundle.message("refactoring.change.signature.dialog.validation.parameter.missing");
           }
         }
@@ -258,7 +268,7 @@ public class PyChangeSignatureDialog extends
     return new ParametersListTable() {
       @Override
       protected JBTableRowRenderer getRowRenderer(int row) {
-        return new EditorTextFieldJBTableRowRenderer(getProject(), getFileType(), getDisposable()) {
+        return new EditorTextFieldJBTableRowRenderer(getProject(), PythonLanguage.getInstance(), getDisposable()) {
           @Override
           protected String getText(JTable table, int row) {
             final PyParameterTableModelItem pyItem = getRowItem(row);
@@ -297,8 +307,9 @@ public class PyChangeSignatureDialog extends
             add(defaultValueCheckBox);
 
             final String nameText = myNameEditor.getText();
-            myDefaultValueEditor.setEnabled(!nameText.startsWith("*") && !PyNames.CANONICAL_SELF.equals(nameText));
-            myDefaultInSignature.setEnabled(!nameText.startsWith("*") && !PyNames.CANONICAL_SELF.equals(nameText));
+            final boolean couldHaveDefaultValue = ParamHelper.couldHaveDefaultValue(nameText) && !CANONICAL_SELF.equals(nameText);
+            myDefaultValueEditor.setEnabled(couldHaveDefaultValue);
+            myDefaultInSignature.setEnabled(couldHaveDefaultValue);
           }
 
           private JPanel createDefaultValueCheckBox() {
@@ -354,8 +365,9 @@ public class PyChangeSignatureDialog extends
             myNameEditor.addDocumentListener(new DocumentListener() {
               @Override
               public void documentChanged(@NotNull DocumentEvent event) {
-                myDefaultValueEditor.setEnabled(!myNameEditor.getText().startsWith("*"));
-                myDefaultInSignature.setEnabled(!myNameEditor.getText().startsWith("*"));
+                final boolean couldHaveDefaultValue = ParamHelper.couldHaveDefaultValue(myNameEditor.getText());
+                myDefaultValueEditor.setEnabled(couldHaveDefaultValue);
+                myDefaultInSignature.setEnabled(couldHaveDefaultValue);
               }
             });
 
@@ -420,5 +432,12 @@ public class PyChangeSignatureDialog extends
   @Override
   protected boolean postponeValidation() {
     return false;
+  }
+
+  @Override
+  protected JPanel createParametersPanel(boolean hasTabsInDialog) {
+    final JPanel panel = super.createParametersPanel(hasTabsInDialog);
+    myPropagateParamChangesButton.setVisible(false);
+    return panel;
   }
 }

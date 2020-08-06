@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project.wizard
 
 import com.intellij.ide.IdeBundle
@@ -11,8 +11,8 @@ import com.intellij.openapi.externalSystem.util.ui.DataView
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory.createSingleLocalFileDescriptor
 import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
 import com.intellij.openapi.observable.properties.PropertyGraph
-import com.intellij.openapi.observable.properties.PropertyView.Companion.comap
-import com.intellij.openapi.observable.properties.PropertyView.Companion.map
+import com.intellij.openapi.observable.properties.comap
+import com.intellij.openapi.observable.properties.map
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.util.io.FileUtil.*
@@ -28,21 +28,20 @@ import javax.swing.JTextField
 import javax.swing.ListCellRenderer
 
 abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardContext) : ModuleWizardStep() {
-
   abstract fun createView(data: Data): DataView<Data>
 
   abstract fun findAllParents(): List<Data>
 
   private val propertyGraph = PropertyGraph()
   private val entityNameProperty = propertyGraph.graphProperty(::suggestName)
-  private val locationProperty = propertyGraph.graphProperty { getUiPath(suggestLocationByName()) }
+  private val locationProperty = propertyGraph.graphProperty { suggestLocationByName() }
   private val parentProperty = propertyGraph.graphProperty(::suggestParentByLocation)
   private val groupIdProperty = propertyGraph.graphProperty(::suggestGroupIdByParent)
   private val artifactIdProperty = propertyGraph.graphProperty(::suggestArtifactIdByName)
   private val versionProperty = propertyGraph.graphProperty(::suggestVersionByParent)
 
   var entityName by entityNameProperty.map { it.trim() }
-  var location by locationProperty.map { getModelPath(it) }.comap { getUiPath(it) }
+  var location by locationProperty
   var parent by parentProperty
   var groupId by groupIdProperty.map { it.trim() }
   var artifactId by artifactIdProperty.map { it.trim() }
@@ -60,8 +59,8 @@ abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardConte
     entityNameProperty.dependsOn(locationProperty, ::suggestNameByLocation)
     entityNameProperty.dependsOn(artifactIdProperty, ::suggestNameByArtifactId)
     parentProperty.dependsOn(locationProperty, ::suggestParentByLocation)
-    locationProperty.dependsOn(parentProperty) { getUiPath(suggestLocationByParentAndName()) }
-    locationProperty.dependsOn(entityNameProperty) { getUiPath(suggestLocationByParentAndName()) }
+    locationProperty.dependsOn(parentProperty) { suggestLocationByParentAndName() }
+    locationProperty.dependsOn(entityNameProperty) { suggestLocationByParentAndName() }
     groupIdProperty.dependsOn(parentProperty, ::suggestGroupIdByParent)
     artifactIdProperty.dependsOn(entityNameProperty, ::suggestArtifactIdByName)
     versionProperty.dependsOn(parentProperty, ::suggestVersionByParent)
@@ -88,7 +87,8 @@ abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardConte
         val fileChooserDescriptor = createSingleLocalFileDescriptor().withFileFilter { it.isDirectory }
         val fileChosen = { file: VirtualFile -> getUiPath(file.path) }
         val title = IdeBundle.message("title.select.project.file.directory", context.presentationName)
-        textFieldWithBrowseButton(locationProperty, title, context.project, fileChooserDescriptor, fileChosen)
+        val property = locationProperty.map { getUiPath(it) }.comap { getModelPath(it) }
+        textFieldWithBrowseButton(property, title, context.project, fileChooserDescriptor, fileChosen)
           .withValidationOnApply { validateLocation() }
           .withValidationOnInput { validateLocation() }
       }
@@ -271,7 +271,7 @@ abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardConte
   override fun updateDataModel() {
     val location = location
     context.projectName = entityName
-    context.projectFileDirectory = location
+    context.setProjectFileDirectory(location)
     createDirectory(File(location))
     updateProjectData()
   }

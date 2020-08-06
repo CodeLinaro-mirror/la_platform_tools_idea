@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework.propertyBased;
 
 import com.intellij.codeInsight.intention.IntentionAction;
@@ -21,7 +21,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.impl.ProjectImpl;
+import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.TextRange;
@@ -187,7 +187,7 @@ public final class MadTestingUtil {
     manager.addProfile(profile);
     InspectionProfileImpl prev = manager.getCurrentProfile();
     manager.setCurrentProfile(profile);
-    Disposer.register(((ProjectImpl)project).getEarlyDisposable(), () -> {
+    Disposer.register(((ProjectEx)project).getEarlyDisposable(), () -> {
       InspectionProfileImpl.INIT_INSPECTIONS = false;
       manager.setCurrentProfile(prev);
       manager.deleteProfile(profile);
@@ -305,7 +305,7 @@ public final class MadTestingUtil {
       String path = FileUtil.getRelativePath(FileUtil.toCanonicalPath(rootPath),  FileUtil.toSystemIndependentName(ioFile.getPath()), '/');
       assert path != null;
 
-      Matcher rootPackageMatcher = Pattern.compile("/com/|/org/").matcher(path);
+      Matcher rootPackageMatcher = Pattern.compile("/com/|/org/|/onair/").matcher(path);
       if (rootPackageMatcher.find()) {
         path = path.substring(rootPackageMatcher.start() + 1);
       }
@@ -458,7 +458,7 @@ public final class MadTestingUtil {
                          Arrays.stream(histogram).sum(), report.toString().replaceFirst("[\\s|]+$", ""));
   }
 
-  private static class FileGenerator implements Function<GenerationEnvironment, File> {
+  private static final class FileGenerator implements Function<GenerationEnvironment, File> {
     private static final com.intellij.util.Function<File, JBIterable<File>> FS_TRAVERSAL =
       TreeTraversal.PRE_ORDER_DFS.traversal((File f) -> f.isDirectory() ? Arrays.asList(Objects.requireNonNull(f.listFiles())) : Collections.emptyList());
     private final File myRoot;
@@ -487,7 +487,7 @@ public final class MadTestingUtil {
         }
 
         List<File> toChoose = preferDirs(data, children);
-        Collections.sort(toChoose, Comparator.comparing(File::getName));
+        toChoose.sort(Comparator.comparing(File::getName));
         File chosen = data.generate(Generator.sampledFrom(toChoose));
         File generated = generateRandomFile(data, chosen, exhausted);
         if (generated != null) {
@@ -516,7 +516,7 @@ public final class MadTestingUtil {
     }
   }
 
-  private static class RouletteWheelFileGenerator implements Function<GenerationEnvironment, File> {
+  private static final class RouletteWheelFileGenerator implements Function<GenerationEnvironment, File> {
     private final File myRoot;
     private final FileFilter myFilter;
     private static final File[] EMPTY_DIRECTORY = new File[0];

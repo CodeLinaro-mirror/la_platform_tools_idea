@@ -15,6 +15,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.ui.popup.JBPopupListener
 import com.intellij.openapi.ui.popup.LightweightWindowEvent
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.SystemInfo.isMac
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.VcsBundle.message
 import com.intellij.openapi.vcs.changes.*
@@ -58,11 +59,20 @@ import javax.swing.border.Border
 import javax.swing.border.EmptyBorder
 import kotlin.properties.Delegates.observable
 
-private val DEFAULT_COMMIT_ACTION_SHORTCUT = CustomShortcutSet(getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK))
+private val CTRL_ENTER = KeyboardShortcut(getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK), null)
+private val META_ENTER = KeyboardShortcut(getKeyStroke(KeyEvent.VK_ENTER, InputEvent.META_DOWN_MASK), null)
+private val DEFAULT_COMMIT_ACTION_SHORTCUT: ShortcutSet =
+  if (isMac) CustomShortcutSet(CTRL_ENTER, META_ENTER) else CustomShortcutSet(CTRL_ENTER)
 
 private fun panel(layout: LayoutManager): JBPanel<*> = JBPanel<JBPanel<*>>(layout)
 
-private fun JBOptionButton.getBottomInset(): Int =
+fun showEmptyCommitMessageConfirmation() = Messages.YES == Messages.showYesNoDialog(
+  message("confirmation.text.check.in.with.empty.comment"),
+  message("confirmation.title.check.in.with.empty.comment"),
+  Messages.getWarningIcon()
+)
+
+fun JBOptionButton.getBottomInset(): Int =
   border?.getBorderInsets(this)?.bottom
   ?: (components.firstOrNull() as? JComponent)?.insets?.bottom
   ?: 0
@@ -94,7 +104,7 @@ open class ChangesViewCommitPanel(private val changesView: ChangesListView, priv
   private val inclusionEventDispatcher = EventDispatcher.create(InclusionListener::class.java)
 
   private val centerPanel = simplePanel()
-  private val buttonPanel = NonOpaquePanel(HorizontalLayout(0))
+  private val buttonPanel = simplePanel().apply { isOpaque = false }
   private val toolbarPanel = simplePanel().apply { isOpaque = false }
   private var verticalToolbarBorder: Border? = null
   private val actions = ActionManager.getInstance().getAction("ChangesView.CommitToolbar") as ActionGroup
@@ -116,7 +126,7 @@ open class ChangesViewCommitPanel(private val changesView: ChangesListView, priv
 
   private val commitMessage = CommitMessage(project, false, false, true).apply {
     editorField.addSettingsProvider { it.setBorder(emptyLeft(6)) }
-    editorField.setPlaceholder("Commit Message")
+    editorField.setPlaceholder(message("commit.message.placeholder"))
   }
   private val defaultCommitAction = object : AbstractAction() {
     override fun actionPerformed(e: ActionEvent) = fireDefaultExecutorCalled()
@@ -162,9 +172,11 @@ open class ChangesViewCommitPanel(private val changesView: ChangesListView, priv
     buttonPanel.apply {
       border = getButtonPanelBorder()
 
-      add(commitButton)
-      add(commitActionToolbar.component)
-      add(toolbarPanel)
+      addToLeft(commitButton)
+      addToRight(NonOpaquePanel(HorizontalLayout(0)).apply {
+        add(commitActionToolbar.component)
+        add(toolbarPanel)
+      })
     }
     centerPanel
       .addToCenter(commitMessage)
@@ -378,12 +390,7 @@ open class ChangesViewCommitPanel(private val changesView: ChangesListView, priv
   override fun addInclusionListener(listener: InclusionListener, parent: Disposable) =
     inclusionEventDispatcher.addListener(listener, parent)
 
-  override fun confirmCommitWithEmptyMessage(): Boolean =
-    Messages.YES == Messages.showYesNoDialog(
-      message("confirmation.text.check.in.with.empty.comment"),
-      message("confirmation.title.check.in.with.empty.comment"),
-      Messages.getWarningIcon()
-    )
+  override fun confirmCommitWithEmptyMessage(): Boolean = showEmptyCommitMessageConfirmation()
 
   override fun startBeforeCommitChecks() = Unit
   override fun endBeforeCommitChecks(result: CheckinHandler.ReturnResult) = Unit

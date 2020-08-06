@@ -22,7 +22,6 @@ import com.intellij.openapi.editor.ex.DocumentEx;
 import com.intellij.openapi.editor.impl.FrozenDocument;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.TextRange;
@@ -430,7 +429,7 @@ public class SmartPsiElementPointersTest extends JavaCodeInsightTestCase {
     String text = "class XXX{ void foo() { \n" +
                   " <caret>foo();\n" +
                   "}}";
-    PsiJavaFile file = (PsiJavaFile)configureByText(StdFileTypes.JAVA, text);
+    PsiJavaFile file = (PsiJavaFile)configureByText(JavaFileType.INSTANCE, text);
     PsiClass aClass = file.getClasses()[0];
     assertNotNull(aClass);
 
@@ -694,7 +693,7 @@ public class SmartPsiElementPointersTest extends JavaCodeInsightTestCase {
     }).setup(() -> {
       document.setText(text);
       assertEquals(range, pointer.getRange());
-    }).attempts(10).assertTiming());
+    }).reattemptUntilJitSettlesDown().assertTiming());
 
     PsiDocumentManager.getInstance(myProject).commitAllDocuments();
     assertEquals(range, pointer.getRange());
@@ -769,7 +768,7 @@ public class SmartPsiElementPointersTest extends JavaCodeInsightTestCase {
                   "    void m() {\n" +
                   "    }\n" +
                   "<caret>}\n";
-    PsiJavaFile file = (PsiJavaFile)configureByText(StdFileTypes.JAVA, text);
+    PsiJavaFile file = (PsiJavaFile)configureByText(JavaFileType.INSTANCE, text);
     PsiMethod method = file.getClasses()[0].getMethods()[0];
     TextRange originalRange = method.getTextRange();
     SmartPsiElementPointer pointer = createPointer(method);
@@ -1151,4 +1150,27 @@ public class SmartPsiElementPointersTest extends JavaCodeInsightTestCase {
     LeakHunter.checkLeak(LeakHunter.allRoots(), Document.class, d -> !(d instanceof FrozenDocument) && d.getUserData(key) != null);
   }
 
+  public void testNonPhysicalPointersSurviveLikePhysical() {
+    String text = "class Foo { }";
+    PsiFile file = PsiFileFactory.getInstance(myProject).createFileFromText("a.java", JavaLanguage.INSTANCE, text, false, false);
+    Document document = file.getViewProvider().getDocument();
+
+    PsiWhiteSpace whiteSpace = assertInstanceOf(file.findElementAt(text.indexOf('{') + 1), PsiWhiteSpace.class);
+    SmartPointerEx<PsiWhiteSpace> pointer = createPointer(whiteSpace);
+
+    whiteSpace.replace(PsiParserFacade.SERVICE.getInstance(myProject).createWhiteSpaceFromText("   "));
+    assertFalse(whiteSpace.isValid());
+    assertSame(file.findElementAt(text.indexOf('{') + 1), pointer.getElement());
+
+    assertEquals("class Foo {   }", document.getText());
+  }
+
+  public void testPointedBinaryFilesCanBeGcEd() throws Exception {
+    VirtualFile vFile = createFile("a.jar", "").getVirtualFile();
+    assertInstanceOf(getPsiManager().findFile(vFile), PsiBinaryFile.class);
+    SmartPointerEx<PsiFile> pointer = createPointer(getPsiManager().findFile(vFile));
+
+    GCWatcher.tracking(getPsiManager().findFile(vFile)).ensureCollected();
+    assertInstanceOf(pointer.getElement(), PsiBinaryFile.class);
+  }
 }

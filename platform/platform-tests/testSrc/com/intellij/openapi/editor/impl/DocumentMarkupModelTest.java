@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.lang.LanguageAnnotators;
@@ -18,12 +18,15 @@ import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.editor.markup.MarkupModel;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.editor.markup.TextAttributes;
+import com.intellij.openapi.extensions.DefaultPluginDescriptor;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
 import com.intellij.psi.PsiElement;
+import com.intellij.testFramework.ExtensionTestUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,7 +36,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class DocumentMarkupModelTest extends BasePlatformTestCase {
   public void testInfoTestAttributes() {
     LanguageExtensionPoint<Annotator> extension = new LanguageExtensionPoint<>("TEXT", new TestAnnotator());
-    LanguageAnnotators.EP_NAME.getPoint(null).registerExtension(extension, myFixture.getTestRootDisposable());
+    extension.setPluginDescriptor(new DefaultPluginDescriptor("DocumentMarkupModelTest"));
+    ExtensionTestUtil.maskExtensions(LanguageAnnotators.EP_NAME, Collections.singletonList(extension), myFixture.getTestRootDisposable());
     myFixture.configureByText(PlainTextFileType.INSTANCE, "foo");
     EditorColorsScheme scheme = new EditorColorsSchemeImpl(new DefaultColorsScheme()){{initFonts();}};
     scheme.setAttributes(HighlighterColors.TEXT, new TextAttributes(Color.black, Color.white, null, null, Font.PLAIN));
@@ -42,7 +46,7 @@ public class DocumentMarkupModelTest extends BasePlatformTestCase {
     MarkupModel model = DocumentMarkupModel.forDocument(myFixture.getEditor().getDocument(), getProject(), false);
     RangeHighlighter[] highlighters = model.getAllHighlighters();
     assertThat(highlighters).hasSize(1);
-    TextAttributes attributes = highlighters[0].getTextAttributes();
+    TextAttributes attributes = highlighters[0].getTextAttributes(scheme);
     assertThat(attributes).isNotNull();
     assertThat(attributes.getBackgroundColor()).isNull();
     assertThat(attributes.getForegroundColor()).isNull();
@@ -51,7 +55,7 @@ public class DocumentMarkupModelTest extends BasePlatformTestCase {
   public void testPersistentHighlighterUpdateOnPartialDocumentUpdate() {
     Document document = new DocumentImpl("line0\nline1\nline2");
     MarkupModelEx model = (MarkupModelEx)DocumentMarkupModel.forDocument(document, getProject(), true);
-    RangeHighlighterEx highlighter = model.addPersistentLineHighlighter(2, 0, null);
+    RangeHighlighterEx highlighter = model.addPersistentLineHighlighter(null, 2, 0);
     WriteCommandAction.runWriteCommandAction(getProject(), () -> document.deleteString(document.getLineStartOffset(1), document.getTextLength()));
     assertFalse(highlighter.isValid());
   }

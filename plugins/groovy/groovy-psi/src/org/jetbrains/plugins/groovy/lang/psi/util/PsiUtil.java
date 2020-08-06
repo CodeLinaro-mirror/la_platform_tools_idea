@@ -17,6 +17,7 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.VisibilityUtil;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.Stack;
 import gnu.trove.TIntStack;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -64,7 +65,10 @@ import org.jetbrains.plugins.groovy.lang.psi.api.toplevel.imports.GrImportStatem
 import org.jetbrains.plugins.groovy.lang.psi.api.util.GrNamedArgumentsOwner;
 import org.jetbrains.plugins.groovy.lang.psi.controlFlow.Instruction;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.types.TypeInferenceHelper;
-import org.jetbrains.plugins.groovy.lang.psi.impl.*;
+import org.jetbrains.plugins.groovy.lang.psi.impl.GrMapType;
+import org.jetbrains.plugins.groovy.lang.psi.impl.GrTupleType;
+import org.jetbrains.plugins.groovy.lang.psi.impl.GroovyPsiManager;
+import org.jetbrains.plugins.groovy.lang.psi.impl.PsiImplUtil;
 import org.jetbrains.plugins.groovy.lang.psi.impl.signatures.GrClosureSignatureUtil;
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil;
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.literals.GrLiteralImpl;
@@ -90,7 +94,7 @@ import static org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.
 /**
  * @author ven
  */
-public class PsiUtil {
+public final class PsiUtil {
   private static final Logger LOG = Logger.getInstance(PsiUtil.class);
 
   public static final Key<JavaIdentifier> NAME_IDENTIFIER = new Key<>("Java Identifier");
@@ -789,17 +793,6 @@ public class PsiUtil {
     return false;
   }
 
-  public static GroovyResolveResult @NotNull [] getConstructorCandidates(@NotNull PsiElement place,
-                                                                         @NotNull GroovyResolveResult classCandidate,
-                                                                         PsiType @Nullable [] argTypes) {
-    final PsiElement element = classCandidate.getElement();
-    if (!(element instanceof PsiClass)) return GroovyResolveResult.EMPTY_ARRAY;
-
-    PsiClass clazz = (PsiClass)element;
-    PsiSubstitutor substitutor = classCandidate.getSubstitutor();
-    return ResolveUtil.getAllClassConstructors(clazz, substitutor, argTypes, place);
-  }
-
   public static boolean isAccessedForReading(GrExpression expr) {
     return !isLValue(expr);
   }
@@ -846,20 +839,6 @@ public class PsiUtil {
         refExpr.replace(newRefExpr);
       }
     }
-  }
-
-  public static GroovyResolveResult[] getConstructorCandidates(PsiClassType classType, PsiType[] argTypes, GroovyPsiElement context) {
-    final PsiClassType.ClassResolveResult resolveResult = classType.resolveGenerics();
-    final PsiClass psiClass = resolveResult.getElement();
-    final PsiSubstitutor substitutor = resolveResult.getSubstitutor();
-    if (psiClass == null) {
-      return GroovyResolveResult.EMPTY_ARRAY;
-    }
-
-    final GroovyResolveResult grResult = resolveResult instanceof GroovyResolveResult
-                                         ? (GroovyResolveResult)resolveResult
-                                         : new GroovyResolveResultImpl(psiClass, context, null, substitutor, true, true);
-    return getConstructorCandidates(context, grResult, argTypes);
   }
 
   @Nullable
@@ -1151,7 +1130,6 @@ public class PsiUtil {
         return false;
       }
     }
-    //noinspection SuspiciousMethodCalls
     return ControlFlowUtils.collectReturns(controlFlowOwner, true).contains(statement);
   }
 

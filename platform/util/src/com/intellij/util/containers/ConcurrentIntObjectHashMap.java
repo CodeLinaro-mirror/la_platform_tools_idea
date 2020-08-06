@@ -209,7 +209,7 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
    * never be used in index calculations because of table bounds.
    */
   static int spread(int h) {
-    return (int)((h ^ (h >>> 16)) & HASH_BITS);
+    return (h ^ (h >>> 16)) & HASH_BITS;
   }
 
   /**
@@ -991,7 +991,7 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
    */
   public long mappingCount() {
     long n = sumCount();
-    return (n < 0L) ? 0L : n; // ignore transient negative values
+    return Math.max(n, 0L); // ignore transient negative values
   }
 
 
@@ -1174,7 +1174,7 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
       Node<V>[] tab = table;
       int n;
       if (tab == null || (n = tab.length) == 0) {
-        n = (sc > c) ? sc : c;
+        n = Math.max(sc, c);
         if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {
           try {
             if (table == tab) {

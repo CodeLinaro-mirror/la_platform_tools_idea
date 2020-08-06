@@ -250,7 +250,7 @@ public class JavaVariableInplaceIntroducer extends AbstractJavaInplaceIntroducer
     if (getVariable() instanceof PsiPatternVariable) return null;
     if (myCantChangeFinalModifier && !(myCanBeVarType && getVariable() instanceof PsiLocalVariable)) return null;
     if (!myCantChangeFinalModifier) {
-      myCanBeFinalCb = new NonFocusableCheckBox("Declare final");
+      myCanBeFinalCb = new NonFocusableCheckBox(JavaRefactoringBundle.message("declare.final"));
       myCanBeFinalCb.setSelected(createFinals());
       myCanBeFinalCb.setMnemonic('f');
       final FinalListener finalListener = new FinalListener(myEditor);
@@ -469,8 +469,9 @@ public class JavaVariableInplaceIntroducer extends AbstractJavaInplaceIntroducer
 
   @Nullable
   protected PsiVariable introduceVariable() {
-    PsiVariable variable = VariableExtractor
-      .introduce(myProject, myExpr, myEditor, myChosenAnchor.getElement(), getOccurrences(), mySettings);
+    PsiElement anchor = myChosenAnchor.getElement();
+    if (anchor == null) return null;
+    PsiVariable variable = VariableExtractor.introduce(myProject, myExpr, myEditor, anchor, getOccurrences(), mySettings);
     SmartPointerManager smartPointerManager = SmartPointerManager.getInstance(myProject);
     if (variable instanceof PsiField || variable instanceof PsiResourceVariable) {
       myPointer = smartPointerManager.createSmartPsiElementPointer(variable);
@@ -490,8 +491,9 @@ public class JavaVariableInplaceIntroducer extends AbstractJavaInplaceIntroducer
       }
     }
 
+    SmartPsiElementPointer<PsiVariable> pointer = variable == null ? null : smartPointerManager.createSmartPsiElementPointer(variable);
     PsiDocumentManager.getInstance(myProject).doPostponedOperationsAndUnblockDocument(myEditor.getDocument());
-    return variable;
+    return pointer == null ? null : pointer.getElement();
   }
 
   @Override

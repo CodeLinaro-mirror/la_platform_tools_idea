@@ -1,6 +1,7 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.eventLog
 
+import com.intellij.codeWithMe.ClientId
 import com.intellij.internal.statistic.eventLog.StatisticsEventEscaper.escapeFieldName
 import com.intellij.internal.statistic.utils.PluginInfo
 import com.intellij.internal.statistic.utils.StatisticsUtil
@@ -15,6 +16,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.Version
 import com.intellij.openapi.util.text.StringUtil
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NonNls
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
@@ -38,13 +40,37 @@ private val LOG = logger<FeatureUsageData>()
  * <br/>
  * </p>
  */
+@ApiStatus.Internal
 class FeatureUsageData {
   private var data: MutableMap<String, Any> = HashMap()
+
+  init {
+    val clientId = ClientId.currentOrNull
+    if (clientId != null && clientId != ClientId.defaultLocalId) {
+      addClientId(clientId.value)
+    }
+  }
 
   companion object {
     // don't list "version" as "platformDataKeys" because it format depends a lot on the tool
     val platformDataKeys: List<String> = listOf("plugin", "project", "os", "plugin_type", "lang", "current_file", "input_event", "place",
-                                                "file_path", "anonymous_id")
+                                                "file_path", "anonymous_id", "client_id")
+  }
+
+  fun addClientId(clientId: String?): FeatureUsageData {
+    clientId?.let {
+      val permanentClientId = parsePermanentClientId(clientId)
+      data["client_id"] = EventLogConfiguration.anonymize(permanentClientId)
+    }
+    return this
+  }
+
+  private fun parsePermanentClientId(clientId: String): String {
+    val separator = clientId.indexOf('-')
+    if (separator > 0) {
+      return clientId.substring(0, separator)
+    }
+    return clientId
   }
 
   /**
@@ -201,13 +227,12 @@ class FeatureUsageData {
     return this
   }
 
-  @FeatureUsageDataBuilder(additionalDataFields = ["value::0"])
   fun addAnonymizedValue(@NonNls key: String, @NonNls value: String?): FeatureUsageData {
     data[key] = value?.let { EventLogConfiguration.anonymize(value) } ?: "undefined"
     return this
   }
 
-  @FeatureUsageDataBuilder(additionalDataFields = ["value"])
+  @FeatureUsageDataBuilder(additionalDataFields = ["value::0"])
   fun addValue(value: Any): FeatureUsageData {
     if (value is String || value is Boolean || value is Int || value is Long || value is Float || value is Double) {
       return addDataInternal("value", value)
@@ -274,6 +299,14 @@ class FeatureUsageData {
    * @param key key can contain "-", "_", latin letters or digits. All not allowed symbols will be replaced with "_" or "?".
    */
   fun addData(@NonNls key: String, value: List<String>): FeatureUsageData {
+    return addDataInternal(key, value)
+  }
+
+  internal fun addObjectData(@NonNls key: String, value: Map<String, Any>): FeatureUsageData {
+    return addDataInternal(key, value)
+  }
+
+  internal fun addListObjectData(@NonNls key: String, value: List<Map<String, Any>>): FeatureUsageData {
     return addDataInternal(key, value)
   }
 

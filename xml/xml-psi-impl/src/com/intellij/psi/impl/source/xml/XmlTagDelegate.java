@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source.xml;
 
 import com.intellij.javaee.ExternalResourceManager;
@@ -531,7 +531,7 @@ public abstract class XmlTagDelegate {
     return myTag;
   }
 
-  private void processChildren(@NotNull PsiElementProcessor<PsiElement> processor) {
+  private void processChildren(@NotNull PsiElementProcessor<? super PsiElement> processor) {
     XmlPsiUtil.processXmlElementChildren(myTag, processor, false);
   }
 
@@ -889,7 +889,7 @@ public abstract class XmlTagDelegate {
   }
 
   XmlAttribute setAttribute(String name, String namespace, String value) throws IncorrectOperationException {
-    if (!Comparing.equal(namespace, "")) {
+    if (!Objects.equals(namespace, "")) {
       final String prefix = myTag.getPrefixByNamespace(namespace);
       if (prefix != null && !prefix.isEmpty()) name = prefix + ":" + name;
     }

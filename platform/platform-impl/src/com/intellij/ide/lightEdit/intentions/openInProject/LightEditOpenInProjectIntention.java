@@ -2,6 +2,8 @@
 package com.intellij.ide.lightEdit.intentions.openInProject;
 
 import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.codeInspection.util.IntentionFamilyName;
+import com.intellij.codeInspection.util.IntentionName;
 import com.intellij.ide.actions.OpenFileAction;
 import com.intellij.ide.lightEdit.*;
 import com.intellij.openapi.application.ApplicationBundle;
@@ -14,20 +16,19 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.platform.PlatformProjectOpenProcessor;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static com.intellij.ide.lightEdit.LightEditFeatureUsagesUtil.ProjectStatus.Open;
 
 public final class LightEditOpenInProjectIntention implements IntentionAction, LightEditCompatible, DumbAware {
-  @Nls(capitalization = Nls.Capitalization.Sentence)
+  @IntentionName
   @Override
   public @NotNull String getText() {
     return ApplicationBundle.message("light.edit.open.in.project.intention");
   }
 
-  @Nls(capitalization = Nls.Capitalization.Sentence)
+  @IntentionFamilyName
   @Override
   public @NotNull String getFamilyName() {
     return getText();
@@ -45,23 +46,23 @@ public final class LightEditOpenInProjectIntention implements IntentionAction, L
     performOn(file.getVirtualFile());
   }
 
-  public static void performOn(@NotNull VirtualFile currFile) throws IncorrectOperationException {
+  public static void performOn(@NotNull VirtualFile currentFile) throws IncorrectOperationException {
     LightEditorInfo editorInfo =
-      ((LightEditorManagerImpl)LightEditService.getInstance().getEditorManager()).findOpen(currFile);
+      ((LightEditorManagerImpl)LightEditService.getInstance().getEditorManager()).findOpen(currentFile);
     if (editorInfo != null) {
-      Project openProject = findOpenProject(currFile);
+      Project openProject = findOpenProject(currentFile);
       if (openProject != null) {
         LightEditFeatureUsagesUtil.logOpenFileInProject(Open);
       }
       else {
-        VirtualFile projectRoot = ProjectRootSearchUtil.findProjectRoot(currFile);
+        VirtualFile projectRoot = ProjectRootSearchUtil.findProjectRoot(currentFile);
         if (projectRoot != null) {
-          openProject = PlatformProjectOpenProcessor.getInstance().openProjectAndFile(projectRoot, -1, -1, false);
+          openProject = PlatformProjectOpenProcessor.getInstance().openProjectAndFile(projectRoot.toNioPath(), -1, -1, false);
         }
       }
       if (openProject != null) {
         ((LightEditServiceImpl)LightEditService.getInstance()).closeEditor(editorInfo);
-        OpenFileAction.openFile(currFile, openProject);
+        OpenFileAction.openFile(currentFile, openProject);
       }
     }
   }

@@ -7,13 +7,9 @@ import com.intellij.util.xmlb.annotations.Attribute;
 
 /**
  * Extension point to register a notification group ID which should be recorder in feature usage statistics.
+ * @deprecated use {@link NotificationAllowlistEP}
  */
-public class NotificationWhitelistEP extends AbstractExtensionPointBean {
-  public static final ExtensionPointName<NotificationWhitelistEP> EP_NAME = ExtensionPointName.create("com.intellij.notificationWhitelist");
-
-  /**
-   * Semicolon-separated list of groupIds.
-   */
-  @Attribute("groupIds")
-  public String groupIds;
+@Deprecated
+public class NotificationWhitelistEP extends NotificationAllowlistEP {
+  public static final ExtensionPointName<NotificationAllowlistEP> EP_NAME = ExtensionPointName.create("com.intellij.notificationWhitelist");
 }

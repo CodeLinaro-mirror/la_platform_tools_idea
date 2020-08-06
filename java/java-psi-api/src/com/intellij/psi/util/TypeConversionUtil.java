@@ -120,6 +120,7 @@ public class TypeConversionUtil {
         // 5.5. Casting Contexts
         if ((fromTypeRank == SHORT_RANK || fromTypeRank == BYTE_RANK) && toTypeRank == CHAR_RANK) return false;
 
+        fromType = uncapture(fromType); //starting from javac 9+
         if (fromType instanceof PsiClassType) {
           if (languageLevel == null) {
             languageLevel = ((PsiClassType)fromType).getLanguageLevel();
@@ -550,8 +551,10 @@ public class TypeConversionUtil {
         resultTypeRank = STRING_RANK;
       }
       else if (rtype.equalsToText(JAVA_LANG_STRING)) {
-        isApplicable = !isVoidType(ltype);
-        resultTypeRank = STRING_RANK;
+        if (isVoidType(ltype)) {
+          return false;
+        }
+        return !strict || ltype.isAssignableFrom(rtype);
       }
       else if (isPrimitiveAndNotNullOrWrapper(ltype) && isPrimitiveAndNotNullOrWrapper(rtype)) {
         resultTypeRank = Math.max(ltypeRank, rtypeRank);
@@ -839,8 +842,14 @@ public class TypeConversionUtil {
     }
     final PsiClassType.ClassResolveResult leftResult = PsiUtil.resolveGenericsClassInType(left);
     final PsiClassType.ClassResolveResult rightResult = PsiUtil.resolveGenericsClassInType(right);
-    if (leftResult.getElement() == null || rightResult.getElement() == null) {
-      if (leftResult.getElement() != rightResult.getElement()) return false;
+    PsiClass leftResultElement = leftResult.getElement();
+    PsiClass rightResultElement = rightResult.getElement();
+    if (leftResultElement == null || rightResultElement == null) {
+      if (leftResultElement == null && rightResultElement != null &&
+              left instanceof PsiClassType && left.equalsToText(JAVA_LANG_OBJECT)) {
+        return true;
+      }
+      if (leftResultElement != rightResultElement) return false;
       // let's suppose 2 unknown classes, which could be the same to be the same
       String lText = left.getPresentableText();
       String rText = right.getPresentableText();
@@ -1111,6 +1120,8 @@ public class TypeConversionUtil {
    */
   @NotNull
   public static PsiType binaryNumericPromotion(PsiType type1, PsiType type2) {
+    type1 = uncapture(type1);
+    type2 = uncapture(type2);
     if (isDoubleType(type1)) return unbox(type1);
     if (isDoubleType(type2)) return unbox(type2);
     if (isFloatType(type1)) return unbox(type1);
@@ -1261,7 +1272,7 @@ public class TypeConversionUtil {
   public static PsiType erasure(@Nullable PsiType type, @NotNull PsiSubstitutor beforeSubstitutor) {
     if (type == null) return null;
     return type.accept(new PsiTypeVisitor<PsiType>() {
-      @Nullable
+      @NotNull
       @Override
       public PsiType visitType(@NotNull PsiType type) {
         return type;
@@ -1402,10 +1413,10 @@ public class TypeConversionUtil {
     }
     if (sign == JavaTokenType.LTLT || sign == JavaTokenType.GTGT || sign == JavaTokenType.GTGTGT) {
       if (!accessLType) return NULL_TYPE;
+      if (lType instanceof PsiClassType) lType = PsiPrimitiveType.getUnboxedType(lType);
       if (PsiType.BYTE.equals(lType) || PsiType.CHAR.equals(lType) || PsiType.SHORT.equals(lType)) {
         return PsiType.INT;
       }
-      if (lType instanceof PsiClassType) lType = PsiPrimitiveType.getUnboxedType(lType);
       return lType;
     }
     if (PsiBinaryExpression.BOOLEAN_OPERATION_TOKENS.contains(sign)) {

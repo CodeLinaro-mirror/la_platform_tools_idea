@@ -3,6 +3,7 @@
 package com.intellij.codeInsight.intention.impl;
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
+import com.intellij.codeInsight.intention.FileModifier;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.IntentionActionDelegate;
 import com.intellij.openapi.actionSystem.ShortcutProvider;
@@ -26,9 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-/**
-* @author cdr
-*/
 public class IntentionActionWithTextCaching implements Comparable<IntentionActionWithTextCaching>, PossiblyDumbAware, ShortcutProvider, IntentionActionDelegate {
   private static final Logger LOG = Logger.getInstance(IntentionActionWithTextCaching.class);
   private final List<IntentionAction> myOptionIntentions = new ArrayList<>();
@@ -196,6 +194,11 @@ public class IntentionActionWithTextCaching implements Comparable<IntentionActio
     @Override
     public IntentionAction getDelegate() {
       return myAction;
+    }
+
+    @Override
+    public @Nullable FileModifier getFileModifierForPreview(@NotNull PsiFile target) {
+      return myAction.getFileModifierForPreview(target);
     }
 
     @Nullable

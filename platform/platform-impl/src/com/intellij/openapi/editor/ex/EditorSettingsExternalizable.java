@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.*;
 import com.intellij.openapi.editor.actions.CaretStopOptions;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapAppliancePlaces;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.serviceContainer.NonInjectable;
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider;
@@ -46,6 +47,7 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
     @NonNls public String STRIP_TRAILING_SPACES = STRIP_TRAILING_SPACES_CHANGED;
     public boolean IS_ENSURE_NEWLINE_AT_EOF = false;
     public boolean SHOW_QUICK_DOC_ON_MOUSE_OVER_ELEMENT = true;
+    public boolean SHOW_INSPECTION_WIDGET = true;
     public int TOOLTIPS_DELAY_MS = TOOLTIPS_DELAY_RANGE.initial;
     public boolean SHOW_INTENTION_BULB = true;
     public boolean IS_CARET_BLINKING = true;
@@ -83,9 +85,6 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
     public boolean SHOW_INLINE_DIALOG = true;
 
     public boolean REFRAIN_FROM_SCROLLING = false;
-
-    public boolean SHOW_NOTIFICATION_AFTER_REFORMAT_CODE_ACTION = true;
-    public boolean SHOW_NOTIFICATION_AFTER_OPTIMIZE_IMPORTS_ACTION = true;
 
     public boolean ADD_CARETS_ON_DOUBLE_CTRL = true;
 
@@ -481,6 +480,15 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
     myOptions.SHOW_QUICK_DOC_ON_MOUSE_OVER_ELEMENT = show;
   }
 
+
+  public boolean isShowInspectionWidget() {
+    return myOptions.SHOW_INSPECTION_WIDGET;
+  }
+
+  public void setShowInspectionWidget(boolean show) {
+    myOptions.SHOW_INSPECTION_WIDGET = show;
+  }
+
   /**
    * @deprecated Use {@link #getTooltipsDelay()} instead
    */
@@ -514,19 +522,11 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
   }
 
   public boolean isShowNotificationAfterReformat() {
-    return myOptions.SHOW_NOTIFICATION_AFTER_REFORMAT_CODE_ACTION;
-  }
-
-  public void setShowNotificationAfterReformat(boolean b) {
-    myOptions.SHOW_NOTIFICATION_AFTER_REFORMAT_CODE_ACTION = b;
+    return Registry.is("editor.show.notification.after.reformat");
   }
 
   public boolean isShowNotificationAfterOptimizeImports() {
-    return myOptions.SHOW_NOTIFICATION_AFTER_OPTIMIZE_IMPORTS_ACTION;
-  }
-
-  public void setShowNotificationAfterOptimizeImports(boolean b) {
-    myOptions.SHOW_NOTIFICATION_AFTER_OPTIMIZE_IMPORTS_ACTION = b;
+    return Registry.is("editor.show.notification.after.optimize.imports");
   }
 
   public boolean isWhitespacesShown() {

@@ -28,9 +28,6 @@ import com.intellij.util.ArrayUtilRt
 import com.intellij.util.SmartList
 import com.intellij.util.SystemProperties
 import com.intellij.util.ThreeState
-import com.intellij.util.containers.ContainerUtil
-import com.intellij.util.containers.SmartHashSet
-import com.intellij.util.containers.isNullOrEmpty
 import com.intellij.util.messages.MessageBus
 import com.intellij.util.xmlb.XmlSerializerUtil
 import kotlinx.coroutines.CancellationException
@@ -43,6 +40,7 @@ import org.jetbrains.annotations.TestOnly
 import java.io.IOException
 import java.nio.file.Paths
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 internal val LOG = logger<ComponentStoreImpl>()
@@ -77,7 +75,7 @@ internal fun setRoamableComponentSaveThreshold(thresholdInSeconds: Int) {
 
 @ApiStatus.Internal
 abstract class ComponentStoreImpl : IComponentStore {
-  private val components = ContainerUtil.newConcurrentMap<String, ComponentInfo>()
+  private val components = ConcurrentHashMap<String, ComponentInfo>()
 
   open val project: Project?
     get() = null
@@ -113,20 +111,21 @@ abstract class ComponentStoreImpl : IComponentStore {
       throw e
     }
     catch (e: Exception) {
-      LOG.error(PluginException("Cannot init $componentName component state", e, pluginId))
+      LOG.error(PluginException("Cannot init component state (componentName=$componentName, componentClass=${component.javaClass.simpleName})", e, pluginId))
     }
   }
 
-  override fun unloadComponent(component: Any) {
-    @Suppress("DEPRECATION") val name = when (component) {
+  final override fun unloadComponent(component: Any) {
+    @Suppress("DEPRECATION")
+    val name = when (component) {
       is PersistentStateComponent<*> -> getStateSpec(component).name
       is com.intellij.openapi.util.JDOMExternalizable -> getComponentName(component)
-      else -> null
+      else -> return
     }
-    name?.let { removeComponent(it) }
+    removeComponent(name)
   }
 
-  override fun initPersistencePlainComponent(component: Any, key: String) {
+  final override fun initPersistencePlainComponent(component: Any, key: String) {
     initPersistenceStateComponent(PersistenceStateAdapter(component),
                                   StateAnnotation(key, FileStorageAnnotation(StoragePathMacros.WORKSPACE_FILE, false)),
                                   serviceDescriptor = null)
@@ -202,7 +201,7 @@ abstract class ComponentStoreImpl : IComponentStore {
             continue
           }
         }
-
+        var modificationCountChanged = false
         if (info.isModificationTrackingSupported) {
           currentModificationCount = info.currentModificationCount
           if (currentModificationCount == info.lastModificationCount) {
@@ -211,9 +210,12 @@ abstract class ComponentStoreImpl : IComponentStore {
               continue
             }
           }
+          else {
+            modificationCountChanged = true
+          }
         }
 
-        commitComponent(session, info, name)
+        commitComponent(session, info, name, modificationCountChanged)
         info.updateModificationCount(currentModificationCount)
       }
       catch (e: Throwable) {
@@ -243,7 +245,7 @@ abstract class ComponentStoreImpl : IComponentStore {
     val stateSpec = getStateSpec(component)
     LOG.debug { "saveComponent is called for ${stateSpec.name}" }
     val saveManager = createSaveSessionProducerManager()
-    commitComponent(saveManager, ComponentInfoImpl(component, stateSpec), null)
+    commitComponent(saveManager, ComponentInfoImpl(component, stateSpec), null, false)
     val absolutePath = Paths.get(storageManager.expandMacros(findNonDeprecated(getStorageSpecs(component, stateSpec, StateStorageOperation.WRITE)).path)).toAbsolutePath().toString()
     Disposer.newDisposable().use {
       VfsRootAccess.allowRootAccess(it, absolutePath)
@@ -260,7 +262,10 @@ abstract class ComponentStoreImpl : IComponentStore {
 
   open fun createSaveSessionProducerManager() = SaveSessionProducerManager()
 
-  private fun commitComponent(session: SaveSessionProducerManager, info: ComponentInfo, componentName: String?) {
+  private fun commitComponent(session: SaveSessionProducerManager,
+                              info: ComponentInfo,
+                              componentName: String?,
+                              modificationCountChanged: Boolean) {
     val component = info.component
     @Suppress("DEPRECATION")
     if (component is com.intellij.openapi.util.JDOMExternalizable) {
@@ -304,6 +309,12 @@ abstract class ComponentStoreImpl : IComponentStore {
         if (!stateRequested) {
           stateRequested = true
           state = (info.component as PersistentStateComponent<*>).state
+        }
+
+        if (modificationCountChanged && state != null && isReportStatisticAllowed(stateSpec)) {
+          LOG.runAndLogException {
+            FeatureUsageSettingsEvents.logConfigurationChanged(effectiveComponentName, state, project)
+          }
         }
 
         setStateToSaveSessionProducer(state, info, effectiveComponentName, sessionProducer)
@@ -358,7 +369,7 @@ abstract class ComponentStoreImpl : IComponentStore {
   private fun initComponent(info: ComponentInfo, changedStorages: Set<StateStorage>?, reloadData: ThreeState): Boolean {
     @Suppress("UNCHECKED_CAST")
     val component = info.component as PersistentStateComponent<Any>
-    if (loadPolicy == StateLoadPolicy.NOT_LOAD) {
+    if (loadPolicy == StateLoadPolicy.NOT_LOAD && (info.stateSpec?.allowLoadInTests == false)) {
       @Suppress("UNCHECKED_CAST")
       component.noStateLoaded()
       return false
@@ -416,7 +427,7 @@ abstract class ComponentStoreImpl : IComponentStore {
 
         val storage = storageManager.getStateStorage(storageSpec)
 
-        // if storage marked as changed, it means that analyzeExternalChangesAndUpdateIfNeeded was called for it and storage is already reloaded
+        // if storage marked as  changed, it means that analyzeExternalChangesAndUpdateIfNeeded was called for it and storage is already reloaded
         val isReloadDataForStorage = if (reloadData == ThreeState.UNSURE) isStorageChanged(changedStorages!!, storage) else reloadData.toBoolean()
 
         val stateGetter = doCreateStateGetter(isReloadDataForStorage, storage, info, name, stateClass)
@@ -428,7 +439,7 @@ abstract class ComponentStoreImpl : IComponentStore {
             state = deserializeState(Element("state"), stateClass, null)!!
           }
           else {
-            if (stateSpec.reportStatistic) {
+            if (isReportStatisticAllowed(stateSpec)) {
               FeatureUsageSettingsEvents.logDefaultConfigurationState(name, stateClass, project)
             }
             continue
@@ -437,7 +448,7 @@ abstract class ComponentStoreImpl : IComponentStore {
 
         component.loadState(state)
         val stateAfterLoad = stateGetter.archiveState()
-        if (stateSpec.reportStatistic) {
+        if (isReportStatisticAllowed(stateSpec)) {
           LOG.runAndLogException {
             FeatureUsageSettingsEvents.logConfigurationState(name, stateAfterLoad ?: state, project)
           }
@@ -458,6 +469,8 @@ abstract class ComponentStoreImpl : IComponentStore {
     }
     return true
   }
+
+  protected open fun isReportStatisticAllowed(stateSpec: State) = stateSpec.reportStatistic
 
   private fun isStorageChanged(changedStorages: Set<StateStorage>, storage: StateStorage): Boolean {
     return changedStorages.contains(storage) || storage is ExternalStorageWithInternalPart && changedStorages.contains(storage.internalStorage)
@@ -566,7 +579,7 @@ abstract class ComponentStoreImpl : IComponentStore {
       return emptySet()
     }
 
-    val componentNames = SmartHashSet<String>()
+    val componentNames = HashSet<String>()
     for (storage in changedStorages) {
       LOG.runAndLogException {
         // we must update (reload in-memory storage data) even if non-reloadable component will be detected later
@@ -575,7 +588,7 @@ abstract class ComponentStoreImpl : IComponentStore {
       }
     }
 
-    if (componentNames.isEmpty) {
+    if (componentNames.isEmpty()) {
       return emptySet()
     }
 
@@ -598,7 +611,7 @@ abstract class ComponentStoreImpl : IComponentStore {
     }
   }
 
-  fun removeComponent(name: String) {
+  override fun removeComponent(name: String) {
     components.remove(name)
   }
 
@@ -651,7 +664,7 @@ private fun notifyUnknownMacros(store: IComponentStore, project: Project, compon
       notified.addAll(notification.macros)
     }
     if (!notified.isNullOrEmpty()) {
-      macros.removeAll(notified!!)
+      macros.removeAll(notified)
     }
 
     if (macros.isEmpty()) {

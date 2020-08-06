@@ -3,7 +3,6 @@ package com.intellij.openapi.keymap.impl;
 
 import com.intellij.diagnostic.EventWatcher;
 import com.intellij.diagnostic.LoadingState;
-import com.intellij.diagnostic.LoggableEventWatcher;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
@@ -49,8 +48,9 @@ import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.ui.speedSearch.SpeedSearchSupply;
 import com.intellij.util.Alarm;
 import com.intellij.util.ArrayUtilRt;
+import com.intellij.util.ReflectionUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.ui.KeyboardLayoutUtil;
+import com.intellij.util.text.KeyboardLayoutUtil;
 import com.intellij.util.ui.MacUIUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
@@ -78,8 +78,6 @@ import java.util.*;
  * @author Vladimir Kondratyev
  */
 public final class IdeKeyEventDispatcher implements Disposable {
-  @NonNls
-  private static final String GET_CACHED_STROKE_METHOD_NAME = "getCachedStroke";
   private static final Logger LOG = Logger.getInstance(IdeKeyEventDispatcher.class);
   private static final boolean JAVA11_ON_WINDOWS = SystemInfo.isWindows && SystemInfo.isJavaVersionAtLeast(11, 0, 0);
 
@@ -134,7 +132,10 @@ public final class IdeKeyEventDispatcher implements Disposable {
    */
   public boolean dispatchKeyEvent(final KeyEvent e){
     if (myDisposed) return false;
-    KeyboardLayoutUtil.storeAsciiForChar(e);
+
+    if (e.getID() == KeyEvent.KEY_PRESSED) {
+      storeAsciiForChar(e);
+    }
 
     if (e.isConsumed()) {
       return false;
@@ -242,6 +243,15 @@ public final class IdeKeyEventDispatcher implements Disposable {
     }
   }
 
+  private static void storeAsciiForChar(@NotNull KeyEvent e) {
+    char aChar = e.getKeyChar();
+    if (aChar == KeyEvent.CHAR_UNDEFINED) return;
+    int mods = e.getModifiers();
+    if ((mods & ~InputEvent.SHIFT_MASK & ~InputEvent.SHIFT_DOWN_MASK) != 0) return;
+
+    KeyboardLayoutUtil.storeAsciiForChar(e.getKeyCode(), aChar, KeyEvent.VK_A, KeyEvent.VK_Z);
+  }
+
   private static boolean isSpeedSearchEditing(KeyEvent e) {
     int keyCode = e.getKeyCode();
     if (keyCode == KeyEvent.VK_BACK_SPACE) {
@@ -306,6 +316,11 @@ public final class IdeKeyEventDispatcher implements Disposable {
     return true;
   }
 
+  private static final class ReflectionHolder {
+    static final Method getCachedStroke = Objects.requireNonNull(
+      ReflectionUtil.getDeclaredMethod(AWTKeyStroke.class, "getCachedStroke", char.class, int.class, int.class, boolean.class));
+  }
+
   /**
    * This is hack. AWT doesn't allow to create KeyStroke with specified key code and key char
    * simultaneously. Therefore we are using reflection.
@@ -315,21 +330,9 @@ public final class IdeKeyEventDispatcher implements Disposable {
                  ~InputEvent.BUTTON2_DOWN_MASK&~InputEvent.BUTTON2_MASK&
                  ~InputEvent.BUTTON3_DOWN_MASK&~InputEvent.BUTTON3_MASK;
     try {
-      Method[] methods=AWTKeyStroke.class.getDeclaredMethods();
-      Method getCachedStrokeMethod=null;
-      for (Method method : methods) {
-        if (GET_CACHED_STROKE_METHOD_NAME.equals(method.getName())) {
-          getCachedStrokeMethod = method;
-          getCachedStrokeMethod.setAccessible(true);
-          break;
-        }
-      }
-      if(getCachedStrokeMethod==null){
-        throw new IllegalStateException("not found method with name getCachedStrokeMethod");
-      }
-      Object[] getCachedStrokeMethodArgs=
-        {originalKeyStroke.getKeyChar(), originalKeyStroke.getKeyCode(), modifier, originalKeyStroke.isOnKeyRelease()};
-      return (KeyStroke)getCachedStrokeMethod.invoke(originalKeyStroke, getCachedStrokeMethodArgs);
+      return (KeyStroke)ReflectionHolder.getCachedStroke.invoke(originalKeyStroke,
+                                                                originalKeyStroke.getKeyChar(), originalKeyStroke.getKeyCode(),
+                                                                modifier, originalKeyStroke.isOnKeyRelease());
     }
     catch(Exception exc){
       throw new IllegalStateException(exc.getMessage());
@@ -416,8 +419,6 @@ public final class IdeKeyEventDispatcher implements Disposable {
 
   private boolean inInitState() {
     Component focusOwner = myContext.getFocusOwner();
-    boolean isModalContext = myContext.isModalContext();
-    DataContext dataContext = myContext.getDataContext();
     KeyEvent e = myContext.getInputEvent();
 
     if (JAVA11_ON_WINDOWS && KeyEvent.KEY_PRESSED == e.getID() && removeAltGraph(e) && e.isControlDown()) {
@@ -660,8 +661,7 @@ public final class IdeKeyEventDispatcher implements Disposable {
         ((DataManagerImpl.MyDataContext)context).setEventCount(IdeEventQueue.getInstance().getEventCount());
       }
       actionManager.fireBeforeActionPerformed(action, actionEvent.getDataContext(), actionEvent);
-      Component component = actionEvent.getData(PlatformDataKeys.CONTEXT_COMPONENT);
-      if (component != null && !component.isShowing()) {
+      if (isContextComponentNotVisible(actionEvent)) {
         logTimeMillis(startedAt, action);
         return true;
       }
@@ -690,6 +690,11 @@ public final class IdeKeyEventDispatcher implements Disposable {
 
     IdeEventQueue.getInstance().flushDelayedKeyEvents();
     return false;
+  }
+
+  private static boolean isContextComponentNotVisible(AnActionEvent actionEvent) {
+    Component component = actionEvent.getData(PlatformDataKeys.CONTEXT_COMPONENT);
+    return component != null && !component.isShowing();
   }
 
   private static void showDumbModeBalloonLaterIfNobodyConsumesEvent(@Nullable Project project,
@@ -947,7 +952,7 @@ public final class IdeKeyEventDispatcher implements Disposable {
     }
 
     private static ListPopupStep buildStep(@NotNull final List<? extends Pair<AnAction, KeyStroke>> actions, final DataContext ctx) {
-      return new BaseListPopupStep<Pair<AnAction, KeyStroke>>("Choose an action", ContainerUtil.findAll(actions, pair -> {
+      return new BaseListPopupStep<Pair<AnAction, KeyStroke>>(IdeBundle.message("popup.title.choose.action"), ContainerUtil.findAll(actions, pair -> {
         final AnAction action = pair.getFirst();
         final Presentation presentation = action.getTemplatePresentation().clone();
         AnActionEvent event = new AnActionEvent(null, ctx,
@@ -1028,8 +1033,8 @@ public final class IdeKeyEventDispatcher implements Disposable {
 
   private static void logTimeMillis(long startedAt, @NotNull AnAction action) {
     EventWatcher watcher = EventWatcher.getInstance();
-    if (watcher instanceof LoggableEventWatcher) {
-      ((LoggableEventWatcher)watcher).logTimeMillis(action.toString(), startedAt);
+    if (watcher != null) {
+      watcher.logTimeMillis(action.toString(), startedAt);
     }
   }
 

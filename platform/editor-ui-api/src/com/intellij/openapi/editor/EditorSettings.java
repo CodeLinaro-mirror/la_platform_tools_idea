@@ -162,6 +162,7 @@ public interface EditorSettings {
    * @see #getRightMargin(Project)
    * @see #getSoftMargins()
    * @see #isWrapWhenTypingReachesRightMargin(Project)
+   * @deprecated use {@link #setLanguageSupplier(Supplier)} instead
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
@@ -170,4 +171,7 @@ public interface EditorSettings {
   }
 
   void setLanguageSupplier(@Nullable Supplier<? extends Language> languageSupplier);
+
+  boolean isShowingSpecialChars();
+  void setShowingSpecialChars(boolean value);
 }

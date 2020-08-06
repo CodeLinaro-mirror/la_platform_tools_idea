@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.service.project;
 
 import com.intellij.openapi.externalSystem.model.DataNode;
@@ -15,6 +15,7 @@ import org.gradle.tooling.ProjectConnection;
 import org.gradle.tooling.model.build.BuildEnvironment;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.plugins.gradle.model.Build;
 import org.jetbrains.plugins.gradle.model.data.BuildParticipant;
 import org.jetbrains.plugins.gradle.model.data.BuildScriptClasspathData;
 import org.jetbrains.plugins.gradle.model.data.CompositeBuildData;
@@ -25,6 +26,7 @@ import org.jetbrains.plugins.gradle.util.GradleConstants;
 
 import java.io.File;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.*;
 import static com.intellij.openapi.util.text.StringUtil.isEmpty;
@@ -35,7 +37,7 @@ import static org.jetbrains.plugins.gradle.service.project.GradleProjectResolver
 /**
  * @author Vladislav.Soroka
  */
-public class GradleBuildSrcProjectsResolver {
+public final class GradleBuildSrcProjectsResolver {
   public static final String BUILD_SRC_MODULE_PROPERTY = "buildSrcModule";
   @NotNull
   private final GradleProjectResolver myProjectResolver;
@@ -87,7 +89,7 @@ public class GradleBuildSrcProjectsResolver {
       }
     }
 
-    MultiMap<String, DataNode<BuildScriptClasspathData>> buildClasspathNodesMap = MultiMap.createSmart();
+    MultiMap<String, DataNode<BuildScriptClasspathData>> buildClasspathNodesMap = new MultiMap<>();
     Map<String, ModuleData> includedModulesPaths = new HashMap<>();
     for (DataNode<ModuleData> moduleDataNode : findAll(mainBuildProjectDataNode, ProjectKeys.MODULE)) {
       String path = moduleDataNode.getData().getLinkedExternalProjectPath();
@@ -110,8 +112,10 @@ public class GradleBuildSrcProjectsResolver {
       jvmOptions.addAll(myMainBuildExecutionSettings.getJvmArguments());
     }
 
-    for (String buildPath : buildClasspathNodesMap.keySet()) {
-      Collection<DataNode<BuildScriptClasspathData>> buildClasspathNodes = buildClasspathNodesMap.get(buildPath);
+    Stream<Build> builds = new ToolingModelsProviderImpl(myResolverContext.getModels()).builds();
+    builds.forEach(build -> {
+      String buildPath = build.getBuildIdentifier().getRootDir().getPath();
+      Collection<DataNode<BuildScriptClasspathData>> buildClasspathNodes = buildClasspathNodesMap.getModifiable(buildPath);
 
       GradleExecutionSettings buildSrcProjectSettings;
       if (gradleHome != null) {
@@ -155,7 +159,7 @@ public class GradleBuildSrcProjectsResolver {
                             includedModulesPaths,
                             buildSrcResolverCtx,
                             myProjectResolver.getProjectDataFunction(buildSrcResolverCtx, myResolverChain, true));
-    }
+    });
   }
 
   private void handleBuildSrcProject(@NotNull DataNode<ProjectData> resultProjectDataNode,

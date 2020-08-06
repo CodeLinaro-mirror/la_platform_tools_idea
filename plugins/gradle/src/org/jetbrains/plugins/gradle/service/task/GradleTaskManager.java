@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.service.task;
 
 import com.google.gson.GsonBuilder;
@@ -49,11 +49,14 @@ import org.jetbrains.plugins.gradle.util.GradleConstants;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import static com.intellij.openapi.externalSystem.rt.execution.ForkedDebuggerHelper.DISPATCH_PORT_SYS_PROP;
 import static com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunnableState.BUILD_PROCESS_DEBUGGER_PORT_KEY;
 import static com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunnableState.DEBUGGER_DISPATCH_PORT_KEY;
-import static com.intellij.util.containers.ContainerUtil.*;
+import static com.intellij.util.containers.ContainerUtil.addAllNotNull;
+import static com.intellij.util.containers.ContainerUtil.set;
 import static org.jetbrains.plugins.gradle.util.GradleUtil.determineRootProject;
 
 /**
@@ -66,18 +69,18 @@ public class GradleTaskManager implements ExternalSystemTaskManager<GradleExecut
   private static final Logger LOG = Logger.getInstance(GradleTaskManager.class);
   private final GradleExecutionHelper myHelper = new GradleExecutionHelper();
 
-  private final Map<ExternalSystemTaskId, CancellationTokenSource> myCancellationMap = newConcurrentMap();
+  private final Map<ExternalSystemTaskId, CancellationTokenSource> myCancellationMap = new ConcurrentHashMap<>();
 
   public GradleTaskManager() {
   }
 
   @Override
-  public void executeTasks(@NotNull final ExternalSystemTaskId id,
-                           @NotNull final List<String> taskNames,
+  public void executeTasks(final @NotNull ExternalSystemTaskId id,
+                           final @NotNull List<String> taskNames,
                            @NotNull String projectPath,
                            @Nullable GradleExecutionSettings settings,
-                           @Nullable final String jvmParametersSetup,
-                           @NotNull final ExternalSystemTaskNotificationListener listener) throws ExternalSystemException {
+                           final @Nullable String jvmParametersSetup,
+                           final @NotNull ExternalSystemTaskNotificationListener listener) throws ExternalSystemException {
     final List<String> tasks = taskNames.stream()
       .flatMap(s -> ParametersListUtil.parse(s, false, true).stream())
       .collect(Collectors.toList());
@@ -98,6 +101,7 @@ public class GradleTaskManager implements ExternalSystemTaskManager<GradleExecut
     Function<ProjectConnection, Void> f = connection -> {
       try {
         setupGradleScriptDebugging(effectiveSettings);
+        setupDebuggerDispatchPort(effectiveSettings);
         appendInitScriptArgument(tasks, jvmParametersSetup, effectiveSettings);
         try {
           for (GradleBuildParticipant buildParticipant : effectiveSettings.getExecutionWorkspace().getBuildParticipants()) {
@@ -226,6 +230,13 @@ public class GradleTaskManager implements ExternalSystemTaskManager<GradleExecut
       boolean isJdk9orLater = ExternalSystemJdkUtil.isJdk9orLater(effectiveSettings.getJavaHome());
       String jvmOpt = ForkedDebuggerHelper.JVM_DEBUG_SETUP_PREFIX + (isJdk9orLater ? "127.0.0.1:" : "") + gradleScriptDebugPort;
       effectiveSettings.withVmOption(jvmOpt);
+    }
+  }
+
+  private static void setupDebuggerDispatchPort(@NotNull GradleExecutionSettings effectiveSettings) {
+    Integer dispatchPort = effectiveSettings.getUserData(DEBUGGER_DISPATCH_PORT_KEY);
+    if (dispatchPort != null) {
+      effectiveSettings.withVmOption(String.format("-D%s=%d", DISPATCH_PORT_SYS_PROP, dispatchPort));
     }
   }
 

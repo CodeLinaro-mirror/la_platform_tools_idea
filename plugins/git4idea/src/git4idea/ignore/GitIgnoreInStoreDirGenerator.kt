@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.ignore
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.application.runWriteAction
@@ -10,14 +11,13 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupActivity
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.IgnoredFileDescriptor
 import com.intellij.openapi.vcs.changes.IgnoredFileProvider
 import com.intellij.openapi.vcs.changes.ignore.IgnoredFileGeneratorImpl
 import com.intellij.openapi.vcs.changes.ignore.IgnoredFileGeneratorImpl.needGenerateInternalIgnoreFile
 import com.intellij.openapi.vcs.changes.ignore.psi.util.addNewElementsToIgnoreBlock
-import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl
-import com.intellij.openapi.vcs.impl.VcsInitObject
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -40,7 +40,7 @@ class GitIgnoreInStoreDirGeneratorActivity : StartupActivity.Background {
   override fun runActivity(project: Project) {
     if (!project.isDirectoryBased || project.isDefault) return
 
-    ProjectLevelVcsManagerImpl.getInstanceImpl(project).addInitializationRequest(VcsInitObject.AFTER_COMMON) {
+    ProjectLevelVcsManager.getInstance(project).runAfterInitialization {
       project.service<GitIgnoreInStoreDirGenerator>().run()
     }
   }
@@ -50,9 +50,11 @@ class GitIgnoreInStoreDirGeneratorActivity : StartupActivity.Background {
  * Generate .idea/.gitignore file silently after project create/open
  */
 @Service
-class GitIgnoreInStoreDirGenerator(private val project: Project) {
+class GitIgnoreInStoreDirGenerator(private val project: Project) : Disposable {
 
   private val needGenerate = AtomicBoolean(true)
+
+  override fun dispose() = Unit
 
   fun run() {
     val listenerRegistered = runReadAction { registerVfsListenerIfNeeded() }
@@ -77,7 +79,7 @@ class GitIgnoreInStoreDirGenerator(private val project: Project) {
     if (needRegister) {
       LOG.debug(
         "Project file or project config directory doesn't exist. Register VFS listener and try generate $GITIGNORE after files become available.")
-      AsyncVfsEventsPostProcessor.getInstance().addListener(VfsEventsListener(project), project)
+      AsyncVfsEventsPostProcessor.getInstance().addListener(VfsEventsListener(project), this)
     }
     return needRegister
   }
@@ -175,7 +177,7 @@ class GitIgnoreInStoreDirGenerator(private val project: Project) {
       Git.getInstance().untrackedFilePaths(project, vcsRootForProjectFile, listOf(projectFilePath)).isEmpty()
     }
     catch (e: VcsException) {
-      LOG.warn("Cannot check $projectFilePathStr for being unversioned", e)
+      LOG.debug("Cannot check $projectFilePathStr for being unversioned", e)
       false
     }
   }

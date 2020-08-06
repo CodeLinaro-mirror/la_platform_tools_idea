@@ -2,19 +2,17 @@
 package com.intellij.openapi.util;
 
 import com.intellij.openapi.application.PathManager;
-import com.intellij.openapi.util.text.StringUtil;
-import gnu.trove.TIntArrayList;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 
 public final class BuildNumber implements Comparable<BuildNumber> {
@@ -155,19 +153,18 @@ public final class BuildNumber implements Comparable<BuildNumber> {
         return null;
       }
 
-      List<String> stringComponents = StringUtil.split(code, ".");
-      TIntArrayList intComponentsList = new TIntArrayList();
-
-      for (String stringComponent : stringComponents) {
+      String[] stringComponents = code.split("\\.");
+      int[] intComponentsList = new int[stringComponents.length];
+      for (int i = 0, n = stringComponents.length; i < n; i++) {
+        String stringComponent = stringComponents[i];
         int comp = parseBuildNumber(version, stringComponent, pluginName);
-        intComponentsList.add(comp);
-        if (comp == SNAPSHOT_VALUE) {
+        intComponentsList[i] = comp;
+        if (comp == SNAPSHOT_VALUE && (i + 1) != n) {
+          intComponentsList = Arrays.copyOf(intComponentsList, i + 1);
           break;
         }
       }
-
-      int[] intComponents = intComponentsList.toNativeArray();
-      return new BuildNumber(productCode, intComponents);
+      return new BuildNumber(productCode, intComponentsList);
     }
     else {
       int buildNumber = parseBuildNumber(version, code, pluginName);
@@ -269,7 +266,7 @@ public final class BuildNumber implements Comparable<BuildNumber> {
       }
 
       String communityHomePath = PathManager.getCommunityHomePath();
-      if (communityHomePath != homePath) {
+      if (!communityHomePath.equals(homePath)) {
         result = readFile(Paths.get(communityHomePath, "build.txt"));
         if (result != null) {
           return result;
@@ -280,8 +277,8 @@ public final class BuildNumber implements Comparable<BuildNumber> {
     }
 
     private static @Nullable BuildNumber readFile(@NotNull Path path) {
-      try {
-        String text = Files.newBufferedReader(path).readLine();
+      try (BufferedReader reader = Files.newBufferedReader(path)) {
+        String text = reader.readLine();
         if (text != null) {
           return fromString(text);
         }

@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * @author peter
  */
-public class DependentGroovycRunner {
+public final class DependentGroovycRunner {
   public static final String TEMP_RESOURCE_SUFFIX = "___" + new Random().nextInt() + "_neverHappen";
   public static final String[] RESOURCES_TO_MASK = {
     "META-INF/services/org.codehaus.groovy.transform.ASTTransformation",
@@ -540,7 +540,7 @@ public class DependentGroovycRunner {
               aClass = super.loadClass(name, lookupScriptFiles, preferClassOverScript);
             }
             catch (NoClassDefFoundError e) {
-              throw new ClassNotFoundException(name);
+              throw new ClassNotFoundException(name, e);
             }
             catch (LinkageError e) {
               throw new RuntimeException("Problem loading class " + name, e);

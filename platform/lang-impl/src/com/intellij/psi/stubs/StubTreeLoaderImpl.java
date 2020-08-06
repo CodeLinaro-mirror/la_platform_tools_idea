@@ -92,8 +92,8 @@ final class StubTreeLoaderImpl extends StubTreeLoader {
       return null;
     }
 
-    final int id = SingleEntryFileBasedIndexExtension.getFileKey(vFile);
-    if (id <= 0) {
+    final int id = FileBasedIndex.getFileId(vFile);
+    if (id == 0) {
       return null;
     }
 
@@ -118,6 +118,9 @@ final class StubTreeLoaderImpl extends StubTreeLoader {
       }
       catch (SerializerNotFoundException e) {
         return processError(vFile, "No stub serializer: " + vFile.getPresentableUrl() + ": " + e.getMessage(), e);
+      }
+      if (stub == SerializedStubTree.NO_STUB) {
+        return null;
       }
       ObjectStubTree<?> tree =
         stub instanceof PsiFileStub ? new StubTree((PsiFileStub<?>)stub) : new ObjectStubTree((ObjectStubBase<?>)stub, true);
@@ -252,16 +255,13 @@ final class StubTreeLoaderImpl extends StubTreeLoader {
 
   @Override
   protected boolean isPrebuilt(@NotNull VirtualFile virtualFile) {
-    boolean canBePrebuilt = false;
     try {
-      PrebuiltStubsProvider provider = PrebuiltStubsKt.getPrebuiltStubsProvider().forFileType(virtualFile.getFileType());
-      if (provider != null) {
-        canBePrebuilt = provider.findStub(FileContentImpl.createByFile(virtualFile)) != null;
-      }
+      FileContent fileContent = FileContentImpl.createByFile(virtualFile);
+      SerializedStubTree prebuiltStub = StubUpdatingIndex.findPrebuiltSerializedStubTree(fileContent);
+      return prebuiltStub != null;
     }
-    catch (Exception e) {
-      // pass
+    catch (Exception ignored) {
     }
-    return canBePrebuilt;
+    return false;
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 import * as am4charts from "@amcharts/amcharts4/charts"
 import * as am4core from "@amcharts/amcharts4/core"
 import {ChartSettings} from "@/aggregatedStats/ChartSettings"
@@ -8,7 +8,7 @@ import {ChartConfigurator} from "@/aggregatedStats/ChartConfigurator"
 import * as am4plugins_annotation from "@amcharts/amcharts4/plugins/annotation"
 
 export class LineChartManager implements StatChartManager {
-  private readonly chart: am4charts.XYChart
+  readonly chart: am4charts.XYChart
 
   constructor(container: HTMLElement,
               private chartSettings: ChartSettings,
@@ -61,8 +61,7 @@ export class LineChartManager implements StatChartManager {
     chart.cursor = cursor
 
     // const dateAxis = chart.xAxes.push(new am4charts.DateAxis())
-    // @ts-ignore
-    const xAxis = configurator.configureXAxis(chart)
+    configurator.configureXAxis(chart)
     // xAxis.groupData = true
     // DurationAxis doesn't work due to some unclear bug
     const valueAxis = chart.yAxes.push(new am4charts.ValueAxis())
@@ -81,10 +80,6 @@ export class LineChartManager implements StatChartManager {
 
     // prevent Vue reactivity
     Object.seal(this)
-  }
-
-  get dateFormatter(): am4core.DateFormatter {
-    return this.chart.dateFormatter
   }
 
   private configureScrollbarXWithPreview(): am4charts.XYChartScrollbar {
@@ -140,7 +135,14 @@ export class LineChartManager implements StatChartManager {
   }
 
   private configureLineSeries(metric: MetricDescriptor, series: am4charts.LineSeries) {
-    series.name = metric.name
+    const metricPathEndDotIndex = metric.name.indexOf(".")
+    if (metricPathEndDotIndex == -1) {
+      series.name = metric.name
+    }
+    else {
+      series.name = metric.name.substring(metricPathEndDotIndex + 1)
+    }
+
     this.configurator.configureSeries(series)
     // duration
     series.dataFields.valueY = metric.key

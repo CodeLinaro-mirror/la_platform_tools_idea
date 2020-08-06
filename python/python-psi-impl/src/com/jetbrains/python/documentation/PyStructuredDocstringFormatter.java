@@ -1,7 +1,6 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.documentation;
 
-import com.google.common.collect.Lists;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationUtil;
 import com.intellij.openapi.diagnostic.Logger;
@@ -40,13 +39,8 @@ public class PyStructuredDocstringFormatter {
    */
   @Nullable
   public static List<String> formatDocstring(@NotNull final PsiElement element, @NotNull final String docstring) {
-    Module module = ModuleUtilCore.findModuleForPsiElement(element);
-    if (module == null) {
-      final Module[] modules = ModuleManager.getInstance(element.getProject()).getModules();
-      if (modules.length == 0) return Lists.newArrayList();
-      module = modules[0];
-    }
-    if (module == null) return Lists.newArrayList();
+    Module module = DocStringUtil.getModuleForElement(element);
+    if (module == null) return new ArrayList<>();
     final List<String> result = new ArrayList<>();
 
     final String preparedDocstring = PyIndentUtil.removeCommonIndent(docstring, true).trim();
@@ -64,9 +58,8 @@ public class PyStructuredDocstringFormatter {
 
     String output = null;
     try {
-      Module finalModule = module;
       output = ApplicationUtil.runWithCheckCanceled(
-        () -> PythonRuntimeService.getInstance().formatDocstring(finalModule, format, preparedDocstring),
+        () -> PythonRuntimeService.getInstance().formatDocstring(module, format, preparedDocstring),
         // It's supposed to be run inside a non-blocking read action and, thus, have an associated progress indicator
         ProgressManager.getInstance().getProgressIndicator()
       );

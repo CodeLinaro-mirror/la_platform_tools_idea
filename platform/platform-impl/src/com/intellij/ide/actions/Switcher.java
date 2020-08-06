@@ -30,7 +30,10 @@ import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.Iconable;
+import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
@@ -189,8 +192,8 @@ public final class Switcher extends AnAction implements DumbAware {
     return createAndShowSwitcher(e, title, "RecentFiles", pinned, vFiles != null);
   }
 
-  public static SwitcherPanel createAndShowSwitcher(@NotNull AnActionEvent e, @NotNull String title, @NotNull String actionId, boolean onlyEdited, boolean pinned) {
-    if (SWITCHER != null && Comparing.equal(SWITCHER.myTitle, title)) return null;
+  public static SwitcherPanel createAndShowSwitcher(@NotNull AnActionEvent e, @NotNull String title, @NonNls @NotNull String actionId, boolean onlyEdited, boolean pinned) {
+    if (SWITCHER != null && Objects.equals(SWITCHER.myTitle, title)) return null;
 
     Project project = e.getProject();
     boolean moveBack = e.getInputEvent() != null && e.getInputEvent().isShiftDown();
@@ -254,6 +257,8 @@ public final class Switcher extends AnAction implements DumbAware {
 
   public static class SwitcherPanel extends JPanel implements KeyListener, MouseListener, MouseMotionListener, DataProvider,
                                                               QuickSearchComponent, Disposable {
+    static final int SWITCHER_ELEMENTS_LIMIT = 30;
+
     static final Object RECENT_LOCATIONS = new Object();
     final JBPopup myPopup;
     final JBList<Object> toolWindows;
@@ -405,7 +410,7 @@ public final class Switcher extends AnAction implements DumbAware {
       }
       twShortcuts = createShortcuts(windows);
       final Map<ToolWindow, String> map = ContainerUtil.reverseMap(twShortcuts);
-      Collections.sort(windows, (o1, o2) -> StringUtil.compare(map.get(o1), map.get(o2), false));
+      windows.sort((o1, o2) -> StringUtil.compare(map.get(o1), map.get(o2), false));
       for (ToolWindow window : windows) {
         twModel.add(window);
       }
@@ -755,16 +760,26 @@ public final class Switcher extends AnAction implements DumbAware {
           editors.add(new FileInfo(pair.first, pair.second, project));
         }
       }
-      if (editors.size() < 2 || pinned) {
-        if (pinned && editors.size() > 1) {
-          for (FileInfo fileInfo : editors) {
-            if (addedFiles.add(fileInfo.first))
-              filesData.add(fileInfo);
+
+      List<VirtualFile> selectedFiles = Arrays.asList(editorManager.getSelectedFiles());
+      if (!pinned) {
+        for (VirtualFile file : selectedFiles) {
+          if (addedFiles.add(file)) {
+            filesData.add(new FileInfo(file, null, project));
           }
         }
+
+        for (FileInfo editor : editors) {
+          if (addedFiles.add(editor.first)) {
+            filesData.add(editor);
+            if (filesData.size() >= SWITCHER_ELEMENTS_LIMIT) break;
+          }
+        }
+      }
+
+      if (filesData.size() <= selectedFiles.size() || pinned) {
         int maxFiles = Math.max(editors.size(), filesForInit.size());
         int minIndex = pinned ? 0 : (filesForInit.size() - Math.min(toolWindowsCount, maxFiles));
-        List<VirtualFile> selectedFiles = Arrays.asList(editorManager.getSelectedFiles());
         for (int i = filesForInit.size() - 1; i >= minIndex; i--) {
           if (pinned
               && UISettings.getInstance().getEditorTabPlacement() != UISettings.TABS_NONE
@@ -791,12 +806,6 @@ public final class Switcher extends AnAction implements DumbAware {
         if (editors.size() == 1 && (filesData.isEmpty() || !editors.get(0).getFirst().equals(filesData.get(0).getFirst()))) {
           if (addedFiles.add(editors.get(0).first)) {
             filesData.add(0, editors.get(0));
-          }
-        }
-      } else {
-        for (int i = 0; i < Math.min(30, editors.size()); i++) {
-          if (addedFiles.add(editors.get(i).first)) {
-            filesData.add(editors.get(i));
           }
         }
       }
@@ -1356,7 +1365,7 @@ public final class Switcher extends AnAction implements DumbAware {
 
       @Nullable
       @Override
-      protected Object findElement(String s) {
+      protected Object findElement(@NotNull String s) {
         final List<SpeedSearchObjectWithWeight> elements = SpeedSearchObjectWithWeight.findElement(s, this);
         return elements.isEmpty() ? null : elements.get(0).node;
       }

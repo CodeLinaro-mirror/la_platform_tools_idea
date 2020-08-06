@@ -10,7 +10,21 @@ fragment commit on Commit {
             url
         }
     }
-    message
+    committer {
+        name
+        email
+        avatarUrl
+        date
+        user {
+            url
+        }
+    }
+    messageHeadline
     messageHeadlineHTML
     messageBodyHTML
+    parents(first: 100) {
+        nodes {
+            ...commitHash
+        }
+    }
 }

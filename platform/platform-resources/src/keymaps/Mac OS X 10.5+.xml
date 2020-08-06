@@ -181,9 +181,6 @@
   <action id="ContextHelp">
     <keyboard-shortcut first-keystroke="meta shift F1"/>
   </action>
-  <action id="ActivateMessagesToolWindow">
-    <keyboard-shortcut first-keystroke="meta 0"/>
-  </action>
   <action id="NewElement">
     <keyboard-shortcut first-keystroke="meta N"/>
     <keyboard-shortcut first-keystroke="control ENTER"/>
@@ -219,6 +216,9 @@
   <action id="ActivateVersionControlToolWindow">
     <keyboard-shortcut first-keystroke="meta 9"/>
   </action>
+  <action id="ActivateCommitToolWindow">
+    <keyboard-shortcut first-keystroke="meta 0"/>
+  </action>
   <action id="NextWindow">
     <keyboard-shortcut first-keystroke="meta BACK_QUOTE"/>
   </action>
@@ -251,6 +251,7 @@
     <keyboard-shortcut first-keystroke="meta B"/>
     <mouse-shortcut keystroke="meta button1"/>
     <mouse-shortcut keystroke="Force touch" />
+    <mouse-shortcut keystroke="button2" />
   </action>
   <action id="GotoTypeDeclaration">
     <keyboard-shortcut first-keystroke="meta shift B"/>

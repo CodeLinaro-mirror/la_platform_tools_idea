@@ -9,15 +9,16 @@ import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.impl.EditorTabTitleProvider
+import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.vcs.log.VcsLogBundle
-import com.intellij.vcs.log.impl.VcsLogTabsManager
-import com.intellij.vcs.log.ui.VcsLogPanel
+import com.intellij.vcs.log.ui.VcsLogUiEx
 import java.awt.BorderLayout
 import javax.swing.Icon
 import javax.swing.JComponent
@@ -37,7 +38,13 @@ class VcsLogFileType : FileType {
   }
 }
 
-class VcsLogFile(internal val vcsLogPanel: VcsLogPanel, name: String) : LightVirtualFile(name, VcsLogFileType.INSTANCE, "") {
+val VCS_LOG_FILE_DISPLAY_NAME_GENERATOR = Key.create<(List<VcsLogUiEx>) -> String>("VCS_LOG_FILE_GENERATE_DISPLAY_NAME")
+
+class VcsLogFile(
+  internal val rootComponent: JComponent,
+  internal val logUis: List<VcsLogUiEx>,
+  name: String
+) : LightVirtualFile(name, VcsLogFileType.INSTANCE, "") {
   init {
     putUserData(SplitAction.FORBID_TAB_SPLIT, true)
   }
@@ -47,33 +54,32 @@ class VcsLogIconProvider : FileIconProvider {
   override fun getIcon(file: VirtualFile, flags: Int, project: Project?): Icon? = (file as? VcsLogFile)?.fileType?.icon
 }
 
-class VcsLogEditor(file: VcsLogFile) : FileEditorBase() {
+class VcsLogEditor(val file: VcsLogFile) : FileEditorBase() {
   private val container: JComponent = JPanel(BorderLayout())
 
   private var vcsLogFile: VcsLogFile? = file
-  private val vcsLogPanel: VcsLogPanel?
-    get() = vcsLogFile?.vcsLogPanel
 
   init {
-    container.add(file.vcsLogPanel, BorderLayout.CENTER)
-    Disposer.register(this, file.vcsLogPanel.getUi())
+    container.add(file.rootComponent, BorderLayout.CENTER)
   }
 
-  fun beforeEditorClose() {
-    val ui = vcsLogPanel?.getUi()
+  fun beforeEditorClose(disposeLogUis: Boolean) {
+    val logUis = vcsLogFile?.logUis
 
     container.removeAll()
     vcsLogFile = null
 
-    if (ui != null) {
-      Disposer.dispose(ui)
+    if (disposeLogUis) {
+      logUis?.forEach(Disposer::dispose)
     }
   }
 
   override fun getComponent(): JComponent = container
-  override fun getPreferredFocusedComponent(): JComponent? = vcsLogPanel
+  override fun getPreferredFocusedComponent(): JComponent? = vcsLogFile?.logUis?.firstOrNull()?.mainComponent
   override fun getName(): String = "Vcs Log Editor"
-  override fun getFile(): VirtualFile? = vcsLogFile
+  override fun getFile(): VirtualFile {
+    return file
+  }
 }
 
 class VcsLogEditorProvider : FileEditorProvider, DumbAware {
@@ -85,10 +91,27 @@ class VcsLogEditorProvider : FileEditorProvider, DumbAware {
 
   override fun getEditorTypeId(): String = "VcsLogEditor"
   override fun getPolicy(): FileEditorPolicy = FileEditorPolicy.HIDE_DEFAULT_EDITOR
+
+  override fun disposeEditor(editor: FileEditor) {
+    val file = editor.file
+    val closingToReopen = file != null && file.getUserData(FileEditorManagerImpl.CLOSING_TO_REOPEN) == true
+    (editor as VcsLogEditor).beforeEditorClose(!closingToReopen)
+
+    super.disposeEditor(editor)
+  }
 }
 
 class VcsLogEditorTabTitleProvider : EditorTabTitleProvider {
+
+  override fun getEditorTabTooltipText(project: Project, file: VirtualFile): String? {
+    if (file !is VcsLogFile) return null
+    return getEditorTabTitle(project, file)
+  }
+
   override fun getEditorTabTitle(project: Project, file: VirtualFile): String? {
-    return (file as? VcsLogFile)?.vcsLogPanel?.getUi()?.let { VcsLogTabsManager.generateDisplayName(it) }
+    if (file !is VcsLogFile) return null
+    return file.getUserData(VCS_LOG_FILE_DISPLAY_NAME_GENERATOR)
+             ?.let { displayNameGenerator -> (file as? VcsLogFile)?.logUis?.run(displayNameGenerator) }
+           ?: file.name
   }
 }

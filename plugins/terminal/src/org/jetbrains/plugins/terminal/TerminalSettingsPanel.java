@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.terminal;
 
-import com.google.common.collect.Lists;
 import com.intellij.execution.configuration.EnvironmentVariablesTextFieldWithBrowseButton;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -32,6 +31,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -59,7 +59,7 @@ public class TerminalSettingsPanel {
   private TerminalOptionsProvider myOptionsProvider;
   private TerminalProjectOptionsProvider myProjectOptionsProvider;
 
-  private final java.util.List<UnnamedConfigurable> myConfigurables = Lists.newArrayList();
+  private final java.util.List<UnnamedConfigurable> myConfigurables = new ArrayList<>();
 
   public JComponent createPanel(@NotNull TerminalOptionsProvider provider, @NotNull TerminalProjectOptionsProvider projectOptionsProvider) {
     myOptionsProvider = provider;
@@ -118,7 +118,7 @@ public class TerminalSettingsPanel {
       FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
       TextComponentAccessor.TEXT_FIELD_WHOLE_TEXT
     );
-    setupTextFieldDefaultValue(myShellPathField.getTextField(), () -> myOptionsProvider.defaultShellPath());
+    setupTextFieldDefaultValue(myShellPathField.getTextField(), () -> myProjectOptionsProvider.defaultShellPath());
   }
 
   private void setupTextFieldDefaultValue(@NotNull JTextField textField, @NotNull Supplier<String> defaultValueSupplier) {
@@ -136,10 +136,9 @@ public class TerminalSettingsPanel {
   }
 
   public boolean isModified() {
-    return !Comparing.equal(TerminalOptionsProvider.getInstance().getEffectiveShellPath(myShellPathField.getText()),
-                            myOptionsProvider.getShellPath())
-           || !Comparing.equal(myStartDirectoryField.getText(), StringUtil.notNullize(myProjectOptionsProvider.getStartingDirectory()))
-           || !Comparing.equal(myTabNameTextField.getText(), myOptionsProvider.getTabName())
+    return !Objects.equals(myShellPathField.getText(), myProjectOptionsProvider.getShellPath())
+           || !Objects.equals(myStartDirectoryField.getText(), StringUtil.notNullize(myProjectOptionsProvider.getStartingDirectory()))
+           || !Objects.equals(myTabNameTextField.getText(), myOptionsProvider.getTabName())
            || (myCloseSessionCheckBox.isSelected() != myOptionsProvider.closeSessionOnLogout())
            || (myMouseReportCheckBox.isSelected() != myOptionsProvider.enableMouseReporting())
            || (mySoundBellCheckBox.isSelected() != myOptionsProvider.audibleBell())
@@ -154,7 +153,7 @@ public class TerminalSettingsPanel {
 
   public void apply() {
     myProjectOptionsProvider.setStartingDirectory(myStartDirectoryField.getText());
-    myOptionsProvider.setShellPath(myShellPathField.getText());
+    myProjectOptionsProvider.setShellPath(myShellPathField.getText());
     myOptionsProvider.setTabName(myTabNameTextField.getText());
     myOptionsProvider.setCloseSessionOnLogout(myCloseSessionCheckBox.isSelected());
     myOptionsProvider.setReportMouse(myMouseReportCheckBox.isSelected());
@@ -176,7 +175,7 @@ public class TerminalSettingsPanel {
   }
 
   public void reset() {
-    myShellPathField.setText(myOptionsProvider.getShellPath());
+    myShellPathField.setText(myProjectOptionsProvider.getShellPath());
     myStartDirectoryField.setText(myProjectOptionsProvider.getStartingDirectory());
     myTabNameTextField.setText(myOptionsProvider.getTabName());
     myCloseSessionCheckBox.setSelected(myOptionsProvider.closeSessionOnLogout());

@@ -4,6 +4,7 @@ package com.intellij.execution.impl
 import com.intellij.execution.ProgramRunnerUtil
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.configurations.RuntimeConfigurationException
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
 import com.intellij.openapi.project.DumbService
@@ -33,38 +34,42 @@ internal class TimedIconCache {
     }
   }
 
-  fun get(id: String, settings: RunnerAndConfigurationSettings, project: Project): Icon {
+  fun get(id: String, settings: RunnerAndConfigurationSettings, project: Project, runManagerImpl: RunManagerImpl): Icon {
     return lock.read { idToIcon.get(id) } ?: lock.write {
       idToIcon.get(id)?.let {
         return it
       }
 
-      val icon = IconDeferrer.getInstance().deferAutoUpdatable(settings.configuration.icon, project.hashCode() xor settings.hashCode()) {
-        if (project.isDisposed) {
-          return@deferAutoUpdatable null
-        }
-
-        lock.write {
-          iconCalcTime.remove(id)
-        }
-
-        val startTime = System.currentTimeMillis()
-        val iconToValid = try {
-          calcIcon(settings, project)
-        }
-        catch (e: ProcessCanceledException) {
-          return@deferAutoUpdatable null
-        }
-
-        lock.write {
-          iconCalcTime.put(id, System.currentTimeMillis() - startTime)
-          idToInvalid.set(id, iconToValid.second)
-        }
-        iconToValid.first
-      }
+      val icon = deferIcon(id, settings.configuration.icon, project.hashCode() xor settings.hashCode(), project, runManagerImpl)
 
       set(id, icon)
       icon
+    }
+  }
+
+  private fun deferIcon(id: String, baseIcon: Icon?, hash: Int, project: Project, runManagerImpl: RunManagerImpl): Icon {
+    return IconDeferrer.getInstance().deferAutoUpdatable(baseIcon, hash) {
+      if (project.isDisposed) {
+        return@deferAutoUpdatable null
+      }
+
+      lock.write {
+        iconCalcTime.remove(id)
+      }
+
+      val startTime = System.currentTimeMillis()
+      val iconToValid = try {
+        calcIcon(id, baseIcon, runManagerImpl)
+      }
+      catch (e: ProcessCanceledException) {
+        return@deferAutoUpdatable null
+      }
+
+      lock.write {
+        iconCalcTime.put(id, System.currentTimeMillis() - startTime)
+        idToInvalid.set(id, iconToValid.second)
+      }
+      return@deferAutoUpdatable iconToValid.first
     }
   }
 
@@ -73,9 +78,12 @@ internal class TimedIconCache {
     return false
   }
 
-  private fun calcIcon(settings: RunnerAndConfigurationSettings, project: Project): Pair<Icon, Boolean> {
+  private fun calcIcon(id: String, baseIcon: Icon?, runManagerImpl: RunManagerImpl): Pair<Icon, Boolean> {
+    val settings = runManagerImpl.getConfigurationById(id)
+    if (settings == null) return (baseIcon ?: AllIcons.Actions.Help) to false
+
     try {
-      BackgroundTaskUtil.runUnderDisposeAwareIndicator(project, Runnable {
+      BackgroundTaskUtil.runUnderDisposeAwareIndicator(runManagerImpl.project, Runnable {
         settings.checkSettings()
       })
       return ProgramRunnerUtil.getConfigurationIcon(settings, false) to false
@@ -84,7 +92,7 @@ internal class TimedIconCache {
       return ProgramRunnerUtil.getConfigurationIcon(settings, false) to false
     }
     catch (ignored: RuntimeConfigurationException) {
-      val invalid = !DumbService.isDumb(project)
+      val invalid = !DumbService.isDumb(runManagerImpl.project)
       return ProgramRunnerUtil.getConfigurationIcon(settings, invalid) to invalid
     }
   }

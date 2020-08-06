@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs;
 
 import com.intellij.concurrency.JobLauncher;
@@ -28,7 +28,7 @@ import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
-import gnu.trove.TIntHashSet;
+import it.unimi.dsi.fastutil.ints.IntSortedSets;
 import org.junit.Rule;
 import org.junit.Test;
 
@@ -53,7 +53,7 @@ public class VfsUtilPerformanceTest extends BareTestFixtureTestCase {
 
   @Test
   public void testFindChildByNamePerformance() throws IOException {
-    File tempDir = myTempDir.newFolder();
+    File tempDir = myTempDir.newDirectory();
     VirtualFile vDir = LocalFileSystem.getInstance().findFileByIoFile(tempDir);
     assertNotNull(vDir);
     assertTrue(vDir.isDirectory());
@@ -85,7 +85,7 @@ public class VfsUtilPerformanceTest extends BareTestFixtureTestCase {
   }
 
   @Test
-  public void testFindRootPerformance() throws IOException {
+  public void testFindRootPerformance() {
     File tempJar = IoTestUtil.createTestJar(myTempDir.newFile("test.jar"));
     VirtualFile jar = LocalFileSystem.getInstance().findFileByIoFile(tempJar);
     assertNotNull(jar);
@@ -109,7 +109,7 @@ public class VfsUtilPerformanceTest extends BareTestFixtureTestCase {
 
   @Test
   public void testGetParentPerformance() throws IOException {
-    File tempDir = myTempDir.newFolder();
+    File tempDir = myTempDir.newDirectory();
     VirtualFile vDir = LocalFileSystem.getInstance().findFileByIoFile(tempDir);
     assertNotNull(vDir);
     assertTrue(vDir.isDirectory());
@@ -149,7 +149,7 @@ public class VfsUtilPerformanceTest extends BareTestFixtureTestCase {
       for (int i = 0; i < 13; i++) {  /*13 is max length with THashMap capacity of 17, we get plenty collisions then*/
         dir1.createChildData(this, "a" + i + ".txt").move(this, dir2);
       }
-      PlatformTestUtil.startPerformanceTest("getParent after movement", time, checkPerformance).attempts(10).assertTiming();
+      PlatformTestUtil.startPerformanceTest("getParent after movement", time, checkPerformance).reattemptUntilJitSettlesDown().assertTiming();
     });
   }
 
@@ -203,7 +203,7 @@ public class VfsUtilPerformanceTest extends BareTestFixtureTestCase {
   private void doAsyncRefreshTest() throws Exception {
     byte[] xxx = "xxx".getBytes(StandardCharsets.UTF_8);
 
-    File temp = myTempDir.newFolder();
+    File temp = myTempDir.newDirectory();
     LocalFileSystem fs = LocalFileSystem.getInstance();
     VirtualFile vTemp = fs.findFileByIoFile(temp);
     assertNotNull(vTemp);
@@ -331,7 +331,7 @@ public class VfsUtilPerformanceTest extends BareTestFixtureTestCase {
       })
       .forEach(events::add);
     List<CharSequence> names = ContainerUtil.map(events, e -> ((VFileCreateEvent)e).getChildName());
-    temp.removeChildren(new TIntHashSet(), names);
+    temp.removeChildren(IntSortedSets.EMPTY_SET, names);
   }
 
   private void eventsForDeleting(List<? super VFileEvent> events, VirtualDirectoryImpl temp) {

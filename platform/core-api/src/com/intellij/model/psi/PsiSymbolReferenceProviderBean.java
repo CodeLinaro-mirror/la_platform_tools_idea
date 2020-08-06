@@ -11,8 +11,7 @@ import com.intellij.util.xmlb.annotations.Attribute;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class PsiSymbolReferenceProviderBean extends CustomLoadingExtensionPointBean<PsiSymbolReferenceProvider> {
-
+public final class PsiSymbolReferenceProviderBean extends CustomLoadingExtensionPointBean<PsiSymbolReferenceProvider> {
   /**
    * {@link Language#getID() id} of the language for which references are provided.<br/>
    * The references will be provided for the specified language and its {@linkplain Language#getBaseLanguage() base languages}.
@@ -30,6 +29,38 @@ public class PsiSymbolReferenceProviderBean extends CustomLoadingExtensionPointB
   public String hostElementClass;
 
   /**
+   * Fully qualified name of the class of the provided {@code PsiSymbolReference}.<br/>
+   * This attribute is ignored if {@link #anyReferenceClass} is set to {@code true}.<br/>
+   * <br/>
+   * When querying for references of some type the platform will only ask providers
+   * which specify this type or its subtype as a reference class. For example, given:
+   * <ul>
+   * <li>provider 1 specifies that it returns references of type R1;</li>
+   * <li>provider 2 specifies that it returns references of type R2;</li>
+   * <li>R2 extends R1 (which in turn extends {@link PsiSymbolReference}).</li>
+   * </ul>
+   * When querying for references of:
+   * <ul>
+   * <li>{@link PsiSymbolReference} type, the platform will ask all providers for references,
+   * since any external reference type is a subtype of {@code PsiSymbolReference};</li>
+   * <li>R1 type, the platform will ask both providers for references;</li>
+   * <li>R2 type, the platform will only ask the second provider,
+   * since only second provider has specified that it's capable of returning references of R2 type.</li>
+   * </ul>
+   */
+  @Attribute
+  public String referenceClass = PsiSymbolReference.class.getName();
+
+  /**
+   * Set this to {@code true} if provider can return references of any class.
+   * Effectively behaves as a bottom type, as if it could be set in {@link #referenceClass}.
+   * <p>
+   * Usually used in composite providers, which delegate to other providers/extensions/subsystems.
+   */
+  @Attribute
+  public boolean anyReferenceClass = false;
+
+  /**
    * Fully qualified name of the common supertype of all symbols that this provider's references could resolve to.
    */
   @Attribute
@@ -40,14 +71,12 @@ public class PsiSymbolReferenceProviderBean extends CustomLoadingExtensionPointB
   @RequiredElement
   public String implementationClass;
 
-  @Nullable
   @Override
-  protected String getImplementationClassName() {
+  protected @Nullable String getImplementationClassName() {
     return implementationClass;
   }
 
-  @NotNull
-  public Language getHostLanguage() {
+  public @NotNull Language getHostLanguage() {
     Language language = Language.findLanguageByID(hostLanguage);
     if (language == null) {
       throw new PluginException("Cannot find language '" + hostLanguage + "'", getPluginDescriptor().getPluginId());
@@ -55,13 +84,15 @@ public class PsiSymbolReferenceProviderBean extends CustomLoadingExtensionPointB
     return language;
   }
 
-  @NotNull
-  public Class<? extends PsiExternalReferenceHost> getHostElementClass() {
+  public @NotNull Class<? extends PsiExternalReferenceHost> getHostElementClass() {
     return loadClass(hostElementClass);
   }
 
-  @NotNull
-  public Class<? extends Symbol> getResolveTargetClass() {
+  public @NotNull Class<? extends PsiSymbolReference> getReferenceClass() {
+    return loadClass(referenceClass);
+  }
+
+  public @NotNull Class<? extends Symbol> getResolveTargetClass() {
     return loadClass(targetClass);
   }
 

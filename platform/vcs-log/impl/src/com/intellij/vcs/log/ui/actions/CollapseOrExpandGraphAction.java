@@ -38,10 +38,6 @@ abstract class CollapseOrExpandGraphAction extends DumbAwareAction {
   private final Supplier<String> myLinearBranchesDescription;
   private final Supplier<String> myMergesAction;
   private final Supplier<String> myMergesDescription;
-  //private static final String LINEAR_BRANCHES = "Linear Branches";
-  //private static final String LINEAR_BRANCHES_DESCRIPTION = "linear branches";
-  //private static final String MERGES = "Merges";
-  //private static final String MERGES_DESCRIPTION = "merges";
 
   protected CollapseOrExpandGraphAction(@NotNull Supplier<String> linearBranchesAction,
                                         @NotNull Supplier<String> linearBranchesDescription,
@@ -53,10 +49,6 @@ abstract class CollapseOrExpandGraphAction extends DumbAwareAction {
     myMergesAction = mergesAction;
     myMergesDescription = mergesDescription;
   }
-
-  //CollapseOrExpandGraphAction(@NotNull String mergesAction) {
-  //  super(mergesAction + " " + LINEAR_BRANCHES, mergesAction + " " + LINEAR_BRANCHES_DESCRIPTION, null);
-  //}
 
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
@@ -70,13 +62,12 @@ abstract class CollapseOrExpandGraphAction extends DumbAwareAction {
     MainVcsLogUi ui = e.getData(VcsLogInternalDataKeys.MAIN_UI);
     VcsLogUiProperties properties = e.getData(VcsLogInternalDataKeys.LOG_UI_PROPERTIES);
 
-    if (ui != null && !ui.getDataPack().isEmpty() && properties != null && properties.exists(MainVcsLogUiProperties.BEK_SORT_TYPE)) {
-      e.getPresentation().setEnabled(true);
-      if (!ui.getFilterUi().getFilters().getDetailsFilters().isEmpty()) {
-        e.getPresentation().setEnabled(false);
-      }
-
-      if (properties.get(MainVcsLogUiProperties.BEK_SORT_TYPE) == PermanentGraph.SortType.LinearBek) {
+    boolean visible = ui != null && ui.getDataPack().getVisibleGraph().getActionController().isActionSupported(getGraphAction());
+    e.getPresentation().setVisible(visible);
+    e.getPresentation().setEnabled(visible && !ui.getDataPack().isEmpty());
+    if (visible) {
+      if (properties != null && properties.exists(MainVcsLogUiProperties.BEK_SORT_TYPE) &&
+          properties.get(MainVcsLogUiProperties.BEK_SORT_TYPE) == PermanentGraph.SortType.LinearBek) {
         e.getPresentation().setText(myMergesAction.get());
         e.getPresentation().setDescription(myMergesDescription.get());
       }
@@ -85,15 +76,11 @@ abstract class CollapseOrExpandGraphAction extends DumbAwareAction {
         e.getPresentation().setDescription(myLinearBranchesDescription.get());
       }
     }
-    else {
-      e.getPresentation().setEnabled(false);
-    }
-
-    e.getPresentation().setText(myLinearBranchesAction.get());
-    e.getPresentation().setDescription(myLinearBranchesDescription.get());
   }
 
   protected abstract void executeAction(@NotNull MainVcsLogUi vcsLogUi);
+
+  protected abstract @NotNull GraphAction getGraphAction();
 
   protected void performLongAction(@NotNull MainVcsLogUi logUi, @NotNull GraphAction graphAction, @NotNull String title) {
     VisiblePack dataPack = logUi.getDataPack();

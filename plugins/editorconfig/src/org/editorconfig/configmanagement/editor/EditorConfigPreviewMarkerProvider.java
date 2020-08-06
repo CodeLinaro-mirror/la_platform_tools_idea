@@ -42,10 +42,9 @@ public class EditorConfigPreviewMarkerProvider extends LineMarkerProviderDescrip
     return EditorConfigBundle.message("line.marker.name.code.preview");
   }
 
-  @Nullable
   @Override
-  public LineMarkerInfo getLineMarkerInfo(@NotNull PsiElement element) {
-    if (element instanceof EditorConfigHeader) {
+  public LineMarkerInfo<?> getLineMarkerInfo(@NotNull PsiElement element) {
+    if ( element instanceof EditorConfigHeader && isEditorConfigEnabled(element)) {
       ActionGroup actionGroup = createActions((EditorConfigHeader)element);
       PsiElement child = element.getFirstChild();
       if (child != null && child.getNode().getElementType() == EditorConfigElementTypes.L_BRACKET) {
@@ -56,6 +55,10 @@ public class EditorConfigPreviewMarkerProvider extends LineMarkerProviderDescrip
       }
     }
     return null;
+  }
+
+  private static boolean isEditorConfigEnabled(@NotNull PsiElement element) {
+    return element.isValid() && Utils.isEnabled(element.getProject());
   }
 
   private static class SectionLineMarkerInfo extends LineMarkerInfo<PsiElement> {

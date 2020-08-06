@@ -18,7 +18,6 @@ package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeHighlighting.TextEditorHighlightingPass;
 import com.intellij.codeInspection.ex.GlobalInspectionContextBase;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -32,9 +31,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * @author cdr
- */
 public abstract class ProgressableTextEditorHighlightingPass extends TextEditorHighlightingPass {
   private volatile boolean myFinished;
   private volatile long myProgressLimit;
@@ -48,7 +44,7 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
   HighlightingSession myHighlightingSession;
 
   protected ProgressableTextEditorHighlightingPass(@NotNull Project project,
-                                                   @Nullable final Document document,
+                                                   @NotNull final Document document,
                                                    @NotNull String presentableName,
                                                    @Nullable PsiFile file,
                                                    @Nullable Editor editor,
@@ -77,8 +73,8 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
     GlobalInspectionContextBase.assertUnderDaemonProgress();
     myFinished = false;
     if (myFile != null) {
-      myHighlightingSession =
-        HighlightingSessionImpl.getOrCreateHighlightingSession(myFile, (DaemonProgressIndicator)ProgressWrapper.unwrapAll(progress), getColorsScheme());
+      DaemonProgressIndicator daemonProgressIndicator = (DaemonProgressIndicator)ProgressWrapper.unwrapAll(progress);
+      myHighlightingSession = HighlightingSessionImpl.getOrCreateHighlightingSession(myFile, daemonProgressIndicator, getColorsScheme());
     }
     try {
       collectInformationWithProgress(progress);
@@ -152,16 +148,8 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
     }
   }
 
-  void waitForHighlightInfosApplied() {
-    ApplicationManager.getApplication().assertIsDispatchThread();
-    HighlightingSessionImpl session = (HighlightingSessionImpl)myHighlightingSession;
-    if (session != null) {
-      session.waitForHighlightInfosApplied();
-    }
-  }
-
   static class EmptyPass extends TextEditorHighlightingPass {
-    EmptyPass(final Project project, @Nullable final Document document) {
+    EmptyPass(@NotNull Project project, @NotNull Document document) {
       super(project, document, false);
     }
 

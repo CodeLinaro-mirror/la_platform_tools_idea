@@ -1,8 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.objectTree;
 
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.concurrency.AtomicFieldUpdater;
 import com.intellij.util.containers.ContainerUtil;
@@ -13,6 +14,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Please don't look, there's nothing interesting here.
@@ -25,7 +27,7 @@ import java.util.Arrays;
  * The available method Throwable.getStackTrace() unfortunately can't be used for that because it's
  * 1) too slow and 2) explodes Throwable retained size by polluting Throwable.stackTrace fields.
  */
-public class ThrowableInterner {
+public final class ThrowableInterner {
   private static final Interner<Throwable> myTraceInterner = new WeakInterner<>(new TObjectHashingStrategy<Throwable>() {
     @Override
     public int computeHashCode(Throwable throwable) {
@@ -38,7 +40,7 @@ public class ThrowableInterner {
       if (o1 == null || o2 == null) return false;
 
       if (!Comparing.equal(o1.getClass(), o2.getClass())) return false;
-      if (!Comparing.equal(o1.getMessage(), o2.getMessage())) return false;
+      if (!Objects.equals(o1.getMessage(), o2.getMessage())) return false;
       if (!equals(o1.getCause(), o2.getCause())) return false;
       Object[] backtrace1 = getBacktrace(o1);
       Object[] backtrace2 = getBacktrace(o2);
@@ -111,8 +113,31 @@ public class ThrowableInterner {
     return backtrace instanceof Object[] && ((Object[])backtrace).length == BACKTRACE_INFO_LENGTH ? (Object[])backtrace : null;
   }
 
+  public static void clearBacktrace(@NotNull Throwable throwable) {
+    try {
+      throwable.setStackTrace(new StackTraceElement[0]);
+      if (BACKTRACE_FIELD != null) {
+        BACKTRACE_FIELD.set(throwable, null);
+      }
+      else if (BACKTRACE_FIELD_OFFSET != UNKNOWN) {
+        AtomicFieldUpdater.getUnsafe().putObject(throwable, (long)BACKTRACE_FIELD_OFFSET, null);
+      }
+    }
+    catch (Throwable e) {
+      //noinspection ConstantConditions
+      ExceptionUtil.rethrowAllAsUnchecked(e);
+    }
+  }
+
   @NotNull
   public static Throwable intern(@NotNull Throwable throwable) {
     return getBacktrace(throwable) == null ? throwable : myTraceInterner.intern(throwable);
+  }
+
+  public static void clearInternedBacktraces() {
+    for (Throwable t : myTraceInterner.getValues()) {
+      clearBacktrace(t);
+    }
+    myTraceInterner.clear();
   }
 }

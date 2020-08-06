@@ -21,15 +21,17 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.RangeMarker;
 import com.intellij.openapi.editor.SelectionModel;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
+import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.markup.HighlighterLayer;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.ProperTextRange;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.pom.PomTarget;
@@ -40,6 +42,7 @@ import com.intellij.psi.util.PsiUtilBase;
 import com.intellij.usages.UsageTarget;
 import com.intellij.usages.UsageTargetUtil;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -71,8 +74,14 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
     }
 
     DumbService.getInstance(project).withAlternativeResolveEnabled(() -> {
+      if (Registry.is("ide.symbol.find.usages")) {
+        if (!HighlightUsagesKt.highlightUsages(project, editor, file)) {
+          handleNoUsageTargets(file, editor, selectionModel, project);
+        }
+        return;
+      }
       UsageTarget[] usageTargets = getUsageTargets(editor, file);
-      if (usageTargets == null) {
+      if (usageTargets.length == 0) {
         handleNoUsageTargets(file, editor, selectionModel, project);
         return;
       }
@@ -84,10 +93,10 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
     });
   }
 
-  private static UsageTarget @Nullable [] getUsageTargets(@NotNull Editor editor, @NotNull PsiFile file) {
+  private static UsageTarget @NotNull[] getUsageTargets(@NotNull Editor editor, @NotNull PsiFile file) {
     UsageTarget[] usageTargets = UsageTargetUtil.findUsageTargets(editor, file);
 
-    if (usageTargets == null) {
+    if (usageTargets.length == 0) {
       PsiElement targetElement = getTargetElement(editor, file);
       if (targetElement != null && targetElement != file) {
         if (!(targetElement instanceof NavigationItem)) {
@@ -99,7 +108,7 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
       }
     }
 
-    if (usageTargets == null) {
+    if (usageTargets.length == 0) {
       PsiReference ref = TargetElementUtil.findReference(editor);
 
       if (ref instanceof PsiPolyVariantReference) {
@@ -229,14 +238,10 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
                                          @NotNull PsiElement element,
                                          @NotNull List<? extends PsiReference> refs,
                                          @NotNull Editor editor,
-                                         PsiFile file,
+                                         @NotNull PsiFile file,
                                          boolean clearHighlights) {
 
     HighlightManager highlightManager = HighlightManager.getInstance(project);
-    EditorColorsManager manager = EditorColorsManager.getInstance();
-    TextAttributes attributes = manager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
-    TextAttributes writeAttributes = manager.getGlobalScheme().getAttributes(EditorColors.WRITE_SEARCH_RESULT_ATTRIBUTES);
-
     setupFindModel(project);
 
     ReadWriteAccessDetector detector = ReadWriteAccessDetector.findDetector(element);
@@ -253,21 +258,32 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
           writeRefs.add(ref);
         }
       }
-      doHighlightRefs(highlightManager, editor, readRefs, attributes, clearHighlights);
-      doHighlightRefs(highlightManager, editor, writeRefs, writeAttributes, clearHighlights);
+      doHighlightRefs(highlightManager, editor, readRefs, EditorColors.SEARCH_RESULT_ATTRIBUTES, clearHighlights);
+      doHighlightRefs(highlightManager, editor, writeRefs, EditorColors.WRITE_SEARCH_RESULT_ATTRIBUTES, clearHighlights);
     }
     else {
-      doHighlightRefs(highlightManager, editor, refs, attributes, clearHighlights);
+      doHighlightRefs(highlightManager, editor, refs, EditorColors.SEARCH_RESULT_ATTRIBUTES, clearHighlights);
     }
 
     TextRange range = getNameIdentifierRange(file, element);
     if (range != null) {
-      TextAttributes nameAttributes = attributes;
-      if (detector != null && detector.isDeclarationWriteAccess(element)) {
-        nameAttributes = writeAttributes;
-      }
+      TextAttributesKey nameAttributes = detector != null && detector.isDeclarationWriteAccess(element)
+                                         ? EditorColors.WRITE_SEARCH_RESULT_ATTRIBUTES
+                                         : EditorColors.SEARCH_RESULT_ATTRIBUTES;
       highlightRanges(highlightManager, editor, nameAttributes, clearHighlights, Collections.singletonList(range));
     }
+  }
+
+  @ApiStatus.Experimental
+  public static void highlightUsages(@NotNull Project project,
+                                     @NotNull Editor editor,
+                                     @NotNull Couple<@NotNull List<@NotNull TextRange>> usages,
+                                     boolean clearHighlights) {
+    HighlightManager highlightManager = HighlightManager.getInstance(project);
+    setupFindModel(project);
+    highlightRanges(highlightManager, editor, EditorColors.SEARCH_RESULT_ATTRIBUTES, clearHighlights, usages.first);
+    highlightRanges(highlightManager, editor, EditorColors.WRITE_SEARCH_RESULT_ATTRIBUTES, clearHighlights, usages.second);
+    setStatusText(project, null, usages.first.size() + usages.second.size(), clearHighlights);
   }
 
   @Nullable
@@ -304,6 +320,10 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
     return null;
   }
 
+  /**
+   * @deprecated internal API
+   */
+  @Deprecated
   public static void doHighlightElements(@NotNull Editor editor, PsiElement @NotNull [] elements, @NotNull TextAttributes attributes, boolean clearHighlights) {
     HighlightManager highlightManager = HighlightManager.getInstance(editor.getProject());
     List<TextRange> textRanges = new ArrayList<>(elements.length);
@@ -313,19 +333,48 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
       range = InjectedLanguageManager.getInstance(element.getProject()).injectedToHost(element, range);
       textRanges.add(range);
     }
-    highlightRanges(highlightManager, editor, attributes, clearHighlights, textRanges);
+    highlightRanges(highlightManager, editor, attributes, null, clearHighlights, textRanges);
   }
 
+  /**
+   * @deprecated Use the overload with TextAttributesKey
+   */
+  @Deprecated
   public static void highlightRanges(@NotNull HighlightManager highlightManager, @NotNull Editor editor, @NotNull TextAttributes attributes,
                                      boolean clearHighlights,
                                      @NotNull List<? extends TextRange> textRanges) {
+    highlightRanges(highlightManager, editor, attributes, null, clearHighlights, textRanges);
+  }
+
+  public static void highlightRanges(@NotNull HighlightManager highlightManager,
+                                     @NotNull Editor editor,
+                                     @NotNull TextAttributesKey attributesKey,
+                                     boolean clearHighlights,
+                                     @NotNull List<? extends TextRange> textRanges) {
+    highlightRanges(highlightManager, editor, null, attributesKey, clearHighlights, textRanges);
+  }
+
+  private static void highlightRanges(@NotNull HighlightManager highlightManager,
+                                     @NotNull Editor editor,
+                                     @Nullable TextAttributes attributes,
+                                     @Nullable TextAttributesKey attributesKey,
+                                     boolean clearHighlights,
+                                     @NotNull List<? extends TextRange> textRanges) {
+    assert attributes != null || attributesKey != null : "Both attributes and attributesKey are null";
+
     if (clearHighlights) {
-      clearHighlights(editor, highlightManager, textRanges, attributes);
+      clearHighlights(editor, highlightManager, textRanges, attributes, attributesKey);
       return;
     }
     ArrayList<RangeHighlighter> highlighters = new ArrayList<>();
     for (TextRange range : textRanges) {
-      highlightManager.addRangeHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributes, false, highlighters);
+      if (attributes != null) {
+        //noinspection deprecation
+        highlightManager.addRangeHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributes, false, highlighters);
+        continue;
+      }
+      highlightManager.addRangeHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributesKey, false, highlighters);
+
     }
     for (RangeHighlighter highlighter : highlighters) {
       String tooltip = getLineTextErrorStripeTooltip(editor.getDocument(), highlighter.getStartOffset(), true);
@@ -349,19 +398,25 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
   private static void clearHighlights(@NotNull Editor editor,
                                       @NotNull HighlightManager highlightManager,
                                       @NotNull List<? extends TextRange> rangesToHighlight,
-                                      @NotNull TextAttributes attributes) {
+                                      @Nullable TextAttributes attributes,
+                                      @Nullable TextAttributesKey attributesKey
+  ) {
+    assert attributes != null || attributesKey != null : "Both attributes and attributesKey are null";
+
     if (editor instanceof EditorWindow) editor = ((EditorWindow)editor).getDelegate();
     RangeHighlighter[] highlighters = ((HighlightManagerImpl)highlightManager).getHighlighters(editor);
     Arrays.sort(highlighters, Comparator.comparingInt(RangeMarker::getStartOffset));
-    Collections.sort(rangesToHighlight, Comparator.comparingInt(TextRange::getStartOffset));
+    rangesToHighlight.sort(Comparator.comparingInt(TextRange::getStartOffset));
     int i = 0;
     int j = 0;
     while (i < highlighters.length && j < rangesToHighlight.size()) {
       RangeHighlighter highlighter = highlighters[i];
       TextRange highlighterRange = TextRange.create(highlighter);
       TextRange refRange = rangesToHighlight.get(j);
-      if (refRange.equals(highlighterRange) && attributes.equals(highlighter.getTextAttributes()) &&
-          highlighter.getLayer() == HighlighterLayer.SELECTION - 1) {
+      if (refRange.equals(highlighterRange) &&
+          highlighter.getLayer() == HighlighterLayer.SELECTION - 1 &&
+          (Objects.equals(attributesKey, highlighter.getTextAttributesKey()) ||
+           Objects.equals(attributes, highlighter.getTextAttributes(editor.getColorsScheme())))) {
         highlightManager.removeSegmentHighlighter(editor, highlighter);
         i++;
       }
@@ -379,12 +434,12 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
   }
 
   private static void doHighlightRefs(@NotNull HighlightManager highlightManager, @NotNull Editor editor, @NotNull List<? extends PsiReference> refs,
-                                      @NotNull TextAttributes attributes, boolean clearHighlights) {
+                                      @NotNull TextAttributesKey attributesKey, boolean clearHighlights) {
     List<TextRange> textRanges = new ArrayList<>(refs.size());
     for (PsiReference ref : refs) {
       collectHighlightRanges(ref, textRanges);
     }
-    highlightRanges(highlightManager, editor, attributes, clearHighlights, textRanges);
+    highlightRanges(highlightManager, editor, attributesKey, clearHighlights, textRanges);
   }
 
   @SuppressWarnings("unused") // NB don't deprecate this method while PsiSymbolReference is @Experimental
@@ -394,7 +449,7 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
     return result;
   }
 
-  public static void collectHighlightRanges(@NotNull PsiSymbolReference ref, @NotNull List<TextRange> result) {
+  public static void collectHighlightRanges(@NotNull PsiSymbolReference ref, @NotNull List<? super TextRange> result) {
     for (TextRange relativeRange : ReferenceRange.getRanges(ref)) {
       collectHighlightRanges(ref.getElement(), relativeRange, result);
     }
@@ -402,7 +457,7 @@ public class HighlightUsagesHandler extends HighlightHandlerBase {
 
   public static void collectHighlightRanges(@NotNull PsiElement element,
                                             @NotNull TextRange rangeInElement,
-                                            @NotNull List<TextRange> result) {
+                                            @NotNull List<? super TextRange> result) {
     TextRange range = safeCut(element.getTextRange(), rangeInElement);
     if (range.isEmpty()) return;
     // injection occurs

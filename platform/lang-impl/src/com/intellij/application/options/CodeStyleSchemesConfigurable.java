@@ -1,5 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.application.options;
 
 import com.intellij.ConfigurableFactory;
@@ -25,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.*;
 
-public class CodeStyleSchemesConfigurable extends SearchableConfigurable.Parent.Abstract
+public final class CodeStyleSchemesConfigurable extends SearchableConfigurable.Parent.Abstract
   implements Configurable.NoMargin, Configurable.NoScroll, Configurable.VariableProjectAppLevel, Configurable.WithEpDependencies {
 
   private CodeStyleSchemesPanel myRootSchemesPanel;
@@ -174,12 +173,14 @@ public class CodeStyleSchemesConfigurable extends SearchableConfigurable.Parent.
     super.apply();
     myModel.apply();
 
-    for (Configurable panel : myPanels) {
-      if (panel instanceof CodeStyleConfigurableWrapper) {
-        ((CodeStyleConfigurableWrapper)panel).applyPanel();
-      }
-      else {
-        panel.apply();
+    if (myPanels != null) {
+      for (Configurable panel : myPanels) {
+        if (panel instanceof CodeStyleConfigurableWrapper) {
+          ((CodeStyleConfigurableWrapper)panel).applyPanel();
+        }
+        else {
+          panel.apply();
+        }
       }
     }
 
@@ -255,8 +256,10 @@ public class CodeStyleSchemesConfigurable extends SearchableConfigurable.Parent.
   @Override
   public boolean isModified() {
     if (myModel.containsModifiedCodeStyleSettings()) return true;
-    for (Configurable panel : myPanels) {
-      if (panel.isModified()) return true;
+    if (myPanels != null) {
+      for (Configurable panel : myPanels) {
+        if (panel.isModified()) return true;
+      }
     }
     boolean schemeListModified = myModel.isSchemeListModified();
     if (schemeListModified) {

@@ -1,19 +1,28 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.usages;
 
-import com.intellij.openapi.util.Comparing;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.usageView.UsageViewBundle;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.regex.Pattern;
 
+import static org.jetbrains.annotations.Nls.Capitalization.Title;
+
 public class UsageViewPresentation {
+
+  private static final Logger LOG = Logger.getInstance(UsageViewPresentation.class);
+
   private String myTabText;
   private String myScopeText = ""; // Default value. to be overwritten in most cases.
-  private String myContextText = "";
   private String myUsagesString;
+  private String mySearchString;
   private String myTargetsNodeText = UsageViewBundle.message("node.targets"); // Default value. to be overwritten in most cases.
   private String myNonCodeUsagesString = UsageViewBundle.message("node.non.code.usages");
   private String myCodeUsagesString = UsageViewBundle.message("node.found.usages");
@@ -23,7 +32,7 @@ public class UsageViewPresentation {
   private boolean myOpenInNewTab = true;
   private boolean myCodeUsages = true;
   private boolean myUsageTypeFilteringAvailable;
-  private String myUsagesWord = UsageViewBundle.message("usage.name");
+  private IntFunction<String> myUsagesWordSupplier = count -> UsageViewBundle.message("usage.name", count);
 
   private String myTabName;
   private String myToolwindowTitle;
@@ -53,15 +62,6 @@ public class UsageViewPresentation {
     myScopeText = scopeText;
   }
 
-  @NotNull
-  public String getContextText() {
-    return myContextText;
-  }
-
-  public void setContextText(@NotNull String contextText) {
-    myContextText = contextText;
-  }
-
   public boolean isShowReadOnlyStatusAsRed() {
     return myShowReadOnlyStatusAsRed;
   }
@@ -70,12 +70,37 @@ public class UsageViewPresentation {
     myShowReadOnlyStatusAsRed = showReadOnlyStatusAsRed;
   }
 
+  /**
+   * @deprecated use {@link #getSearchString}
+   */
+  @Deprecated
   public String getUsagesString() {
     return myUsagesString;
   }
 
+  /**
+   * @deprecated use {@link #setSearchString}
+   */
+  @Deprecated
   public void setUsagesString(String usagesString) {
     myUsagesString = usagesString;
+  }
+
+  public @Nls(capitalization = Title) @NotNull String getSearchString() {
+    String searchString = mySearchString;
+    if (searchString != null) {
+      return searchString;
+    }
+    String usagesString = myUsagesString;
+    if (usagesString != null) {
+      return StringUtil.capitalize(myUsagesString);
+    }
+    LOG.error("search string must be set");
+    return "";
+  }
+
+  public void setSearchString(@Nls(capitalization = Title) @NotNull String searchString) {
+    mySearchString = searchString;
   }
 
   @Nullable("null means the targets node must not be visible")
@@ -129,13 +154,29 @@ public class UsageViewPresentation {
     myCodeUsages = codeUsages;
   }
 
+  /**
+   * Use {@link #getUsagesWord(int)} instead
+   */
+  @Deprecated
   @NotNull
   public String getUsagesWord() {
-    return myUsagesWord;
+    return myUsagesWordSupplier.apply(1);
   }
 
+  /**
+   * Use {@link #setUsagesWord(Function)} instead
+   */
+  @Deprecated
   public void setUsagesWord(@NotNull String usagesWord) {
-    myUsagesWord = usagesWord;
+    myUsagesWordSupplier = count -> usagesWord;
+  }
+
+  public String getUsagesWord(int count) {
+    return myUsagesWordSupplier.apply(count);
+  }
+
+  public void setUsagesWord(@NotNull IntFunction<String> usagesWordSupplier) {
+    myUsagesWordSupplier = usagesWordSupplier;
   }
 
   public String getTabName() {
@@ -245,14 +286,15 @@ public class UsageViewPresentation {
            && Objects.equals(myDynamicCodeUsagesString, that.myDynamicCodeUsagesString)
            && Objects.equals(myNonCodeUsagesString, that.myNonCodeUsagesString)
            && Objects.equals(myScopeText, that.myScopeText)
-           && Objects.equals(myContextText, that.myContextText)
            && Objects.equals(myTabName, that.myTabName)
            && Objects.equals(myTabText, that.myTabText)
            && Objects.equals(myTargetsNodeText, that.myTargetsNodeText)
            && Objects.equals(myToolwindowTitle, that.myToolwindowTitle)
            && Objects.equals(myUsagesInGeneratedCodeString, that.myUsagesInGeneratedCodeString)
            && Objects.equals(myUsagesString, that.myUsagesString)
-           && Objects.equals(myUsagesWord, that.myUsagesWord)
+           && Objects.equals(mySearchString, that.mySearchString)
+           && Objects.equals(myUsagesWordSupplier.apply(1), that.myUsagesWordSupplier.apply(1))
+           && Objects.equals(myUsagesWordSupplier.apply(2), that.myUsagesWordSupplier.apply(2))
            && arePatternsEqual(mySearchPattern, that.mySearchPattern)
            && arePatternsEqual(myReplacePattern, that.myReplacePattern);
   }
@@ -260,7 +302,7 @@ public class UsageViewPresentation {
   public static boolean arePatternsEqual(Pattern p1, Pattern p2) {
     if (p1 == null) return p2 == null;
     if (p2 == null) return false;
-    return Comparing.equal(p1.pattern(), p2.pattern()) && p1.flags() == p2.flags();
+    return Objects.equals(p1.pattern(), p2.pattern()) && p1.flags() == p2.flags();
   }
 
   public static int getHashCode(Pattern pattern) {
@@ -274,8 +316,8 @@ public class UsageViewPresentation {
     int result = Objects.hash(
       myTabText,
       myScopeText,
-      myContextText,
       myUsagesString,
+      mySearchString,
       myTargetsNodeText,
       myNonCodeUsagesString,
       myCodeUsagesString,
@@ -286,7 +328,8 @@ public class UsageViewPresentation {
       myCodeUsages,
       myUsageTypeFilteringAvailable,
       myExcludeAvailable,
-      myUsagesWord,
+      myUsagesWordSupplier.apply(1),
+      myUsagesWordSupplier.apply(2),
       myTabName,
       myToolwindowTitle,
       myDetachedMode,
@@ -303,8 +346,8 @@ public class UsageViewPresentation {
     UsageViewPresentation copyInstance = new UsageViewPresentation();
     copyInstance.myTabText = myTabText;
     copyInstance.myScopeText = myScopeText;
-    copyInstance.myContextText = myContextText;
     copyInstance.myUsagesString = myUsagesString;
+    copyInstance.mySearchString = mySearchString;
     copyInstance.myTargetsNodeText = myTargetsNodeText;
     copyInstance.myNonCodeUsagesString = myNonCodeUsagesString;
     copyInstance.myCodeUsagesString = myCodeUsagesString;
@@ -314,7 +357,7 @@ public class UsageViewPresentation {
     copyInstance.myOpenInNewTab = myOpenInNewTab;
     copyInstance.myCodeUsages = myCodeUsages;
     copyInstance.myUsageTypeFilteringAvailable = myUsageTypeFilteringAvailable;
-    copyInstance.myUsagesWord = myUsagesWord;
+    copyInstance.myUsagesWordSupplier = myUsagesWordSupplier;
     copyInstance.myTabName = myTabName;
     copyInstance.myToolwindowTitle = myToolwindowTitle;
     copyInstance.myDetachedMode = myDetachedMode;

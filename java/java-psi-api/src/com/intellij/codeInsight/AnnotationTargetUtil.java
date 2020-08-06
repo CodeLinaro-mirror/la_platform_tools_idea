@@ -171,12 +171,9 @@ public class AnnotationTargetUtil {
    */
   public static @Nullable TargetType findAnnotationTarget(@NotNull PsiAnnotation annotation, TargetType @NotNull ... types) {
     if (types.length != 0) {
-      PsiJavaCodeReferenceElement ref = annotation.getNameReferenceElement();
-      if (ref != null) {
-        PsiElement annotationType = ref.resolve();
-        if (annotationType instanceof PsiClass) {
-          return findAnnotationTarget((PsiClass)annotationType, types);
-        }
+      PsiClass annotationType = annotation.resolveAnnotationType();
+      if (annotationType != null) {
+        return findAnnotationTarget(annotationType, types);
       }
     }
 
@@ -227,7 +224,7 @@ public class AnnotationTargetUtil {
 
   /**
    * @param modifierListOwner modifier list owner
-   * @param annotation annotation to add
+   * @param annotation the qualified name of the annotation to add
    * @return a target annotation owner to add the annotation (either modifier list or type element depending on the annotation target)
    * Returns null if {@code modifierListOwner.getModifierList()} is null.
    */

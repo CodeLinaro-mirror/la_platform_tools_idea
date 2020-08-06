@@ -9,6 +9,7 @@ import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.StubBuilder;
 import com.intellij.psi.impl.DebugUtil;
+import com.intellij.psi.impl.java.stubs.PsiClassStub;
 import com.intellij.psi.impl.source.JavaLightStubBuilder;
 import com.intellij.psi.stubs.StubElement;
 import com.intellij.psi.util.PsiUtil;
@@ -21,8 +22,9 @@ import org.jetbrains.annotations.NotNull;
 import java.io.File;
 import java.io.IOException;
 import java.security.SecureRandom;
+import java.util.List;
 
-import static com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase.JAVA_14;
+import static com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase.JAVA_15;
 
 @SuppressWarnings("SpellCheckingInspection")
 public class JavaStubBuilderTest extends LightIdeaTestCase {
@@ -43,7 +45,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
 
   @Override
   protected @NotNull LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_14;
+    return JAVA_15;
   }
 
   public void testEmpty() {
@@ -66,6 +68,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "    IMPORT_STATIC_STATEMENT:PsiImportStatementStub[static java.util.Arrays.sort]\n");
   }
 
+  @SuppressWarnings("deprecation")
   public void testClassDeclaration() {
     doTest("package p;" +
            "class A implements I, J<I> { }\n" +
@@ -114,6 +117,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "    IMPLEMENTS_LIST:PsiRefListStub[IMPLEMENTS_LIST:]\n");
   }
 
+  @SuppressWarnings({"CStyleArrayDeclaration", "RedundantThrows", "UnnecessaryInterfaceModifier"})
   public void testMethods() {
     doTest("public @interface Anno {\n" +
            "  int i() default 42;\n" +
@@ -193,6 +197,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "      THROWS_LIST:PsiRefListStub[THROWS_LIST:]\n");
   }
 
+  @SuppressWarnings({"CStyleArrayDeclaration", "MultipleVariablesInDeclaration"})
   public void testFields() {
     doTest("static class C {\n" +
            "  strictfp float f;\n" +
@@ -284,6 +289,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "      MODIFIER_LIST:PsiModifierListStub[mask=0]\n");
   }
 
+  @SuppressWarnings({"MethodMayBeStatic", "Convert2Lambda", "override", "StatementWithEmptyBody", "EmptyTryBlock"})
   public void testLocalVariables() {
     doTest("class C {\n" +
            "  void m() {\n" +
@@ -328,6 +334,8 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "          THROWS_LIST:PsiRefListStub[THROWS_LIST:]\n");
   }
 
+  @SuppressWarnings({"StatementWithEmptyBody", "NullableProblems", "ConstantConditions", "EmptyTryBlock", "CatchMayIgnoreException",
+    "TryWithIdenticalCatches"})
   public void testNonListParameters() {
     doTest("class C {\n" +
            "  {\n" +
@@ -380,6 +388,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "    IMPLEMENTS_LIST:PsiRefListStub[IMPLEMENTS_LIST:]\n");
   }
 
+  @SuppressWarnings({"rawtypes", "InfiniteRecursion", "UnusedAssignment", "CStyleArrayDeclaration"})
   public void testTypeAnnotations() {
     doTest("import j.u.@A C;\n" +
            "import @A j.u.D;\n" +
@@ -474,6 +483,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "      THROWS_LIST:PsiRefListStub[THROWS_LIST:]\n");
   }
 
+  @SuppressWarnings("MethodMayBeStatic")
   public void testLocalClass() {
     doTest("class C {\n" +
            "  void m() {\n" +
@@ -572,6 +582,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
   }
 
 
+  @SuppressWarnings("MethodMayBeStatic")
   public void testLocalRecordIncorrect() {
     doTest("class A {\n" +
            "  void test() {\n" +
@@ -633,8 +644,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "      MODIFIER_LIST:PsiModifierListStub[mask=0]\n" +
            "      TYPE_PARAMETER_LIST:PsiTypeParameterListStub\n" +
            "      PARAMETER_LIST:PsiParameterListStub\n" +
-           "      THROWS_LIST:PsiRefListStub[THROW" +
-           "S_LIST:]\n" +
+           "      THROWS_LIST:PsiRefListStub[THROWS_LIST:]\n" +
            "      CLASS:PsiClassStub[record name=turn fqn=null]\n" +
            "        MODIFIER_LIST:PsiModifierListStub[mask=0]\n" +
            "        TYPE_PARAMETER_LIST:PsiTypeParameterListStub\n" +
@@ -674,6 +684,21 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
            "        EXTENDS_LIST:PsiRefListStub[EXTENDS_LIST:]\n" +
            "        IMPLEMENTS_LIST:PsiRefListStub[IMPLEMENTS_LIST:]\n");
   }
+  
+  public void testInterfaceKeywordInBody() {
+    String source = "class X {\n" +
+                    "  void test() {}interface\n" +
+                    "}";
+    PsiJavaFile file = (PsiJavaFile)createLightFile("test.java", source);
+    FileASTNode fileNode = file.getNode();
+    assertNotNull(fileNode);
+    assertFalse(fileNode.isParsed());
+    StubElement<?> element = myBuilder.buildStubTree(file);
+    List<StubElement> stubs = element.getChildrenStubs();
+    assertSize(2, stubs);
+    PsiClassStub<?> classStub = (PsiClassStub<?>)stubs.get(1);
+    assertFalse(classStub.isInterface());
+  }
 
   public void testSOEProof() {
     StringBuilder sb = new StringBuilder();
@@ -707,7 +732,7 @@ public class JavaStubBuilderTest extends LightIdeaTestCase {
     String text = FileUtil.loadFile(new File(path));
     PsiJavaFile file = (PsiJavaFile)createLightFile("test.java", text);
     String message = "Source file size: " + text.length();
-    PlatformTestUtil.startPerformanceTest(message, 700, () -> myBuilder.buildStubTree(file)).assertTiming();
+    PlatformTestUtil.startPerformanceTest(message, 700, () -> myBuilder.buildStubTree(file)).reattemptUntilJitSettlesDown().assertTiming();
   }
 
   private void doTest(@Language("JAVA") String source, @Language("TEXT") String expected) {

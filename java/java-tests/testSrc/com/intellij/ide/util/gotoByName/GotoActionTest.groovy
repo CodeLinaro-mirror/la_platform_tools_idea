@@ -1,9 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.gotoByName
 
 import com.intellij.ide.actions.searcheverywhere.ActionSearchEverywhereContributor
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereContributor
-import com.intellij.ide.ui.OptionsTopHitProvider
+import com.intellij.ide.ui.OptionsSearchTopHitProvider
 import com.intellij.ide.ui.search.BooleanOptionDescription
 import com.intellij.ide.ui.search.OptionDescription
 import com.intellij.ide.util.gotoByName.GotoActionModel.ActionWrapper
@@ -13,6 +13,7 @@ import com.intellij.java.navigation.ChooseByNameTest
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Computable
 import com.intellij.testFramework.PlatformTestUtil
@@ -23,7 +24,6 @@ import gnu.trove.Equality
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.NotNull
-import org.jetbrains.annotations.Nullable
 
 import java.awt.*
 import java.util.List
@@ -90,8 +90,19 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
     assert actionMatches('invalidate caches', action) == MatchMode.NAME
     assert actionMatches('cache invalid', action) == MatchMode.NAME
     assert actionMatches('rebuild of all caches', action) == MatchMode.DESCRIPTION
-    assert actionMatches('restart', action) == ApplicationManager.application.isRestartCapable() ? MatchMode.NAME : MatchMode.NONE
+    assert actionMatches('restart', action) == (ApplicationManager.application.isRestartCapable() ? MatchMode.NAME : MatchMode.NONE)
     assert actionMatches('invcach', action) == MatchMode.NAME
+  }
+
+  void "test fixing layout match"() {
+    def action = ActionManager.instance.getAction("InvalidateCaches")
+    assert actionMatches('штм', action) == MatchMode.NAME
+    assert actionMatches('штм сфср', action) == MatchMode.NAME
+    assert actionMatches('привет мир', new DumbAwareAction("привет, мир") {
+      @Override
+      void actionPerformed(@NotNull AnActionEvent e) {
+      }
+    }) == MatchMode.NAME
   }
 
   void "test CamelCase text in action names"() {
@@ -104,17 +115,16 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
       new TestBooleanOption("Just another boolean option"),
     ]
 
-    OptionsTopHitProvider provider = new OptionsTopHitProvider() {
-      @NotNull
-      @Override
-      Collection<OptionDescription> getOptions(@Nullable Project project) {
-        return options
-      }
-
+    OptionsSearchTopHitProvider.ApplicationLevelProvider provider = new OptionsSearchTopHitProvider.ApplicationLevelProvider() {
       @NotNull
       @Override
       String getId() {
         return "testprovider"
+      }
+
+      @Override
+      Collection<OptionDescription> getOptions() {
+        return options
       }
     }
 
@@ -272,7 +282,7 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
 
     patterns.forEach { String pattern ->
       def elements = ChooseByNameTest.calcContributorElements(contributor, pattern)
-      assert elements.any { matchedValue -> isNavigableOption(((MatchedValue) matchedValue).value)
+      assert elements.any { matchedValue -> isNavigableOption(((MatchedValue)matchedValue).value)
       }
     }
   }

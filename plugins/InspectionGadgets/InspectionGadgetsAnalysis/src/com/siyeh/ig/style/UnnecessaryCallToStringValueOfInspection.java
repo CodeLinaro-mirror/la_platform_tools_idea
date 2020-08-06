@@ -23,7 +23,10 @@ import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.dataFlow.NullabilityUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.intellij.psi.impl.source.resolve.graphInference.PsiPolyExpressionUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -37,6 +40,7 @@ import com.siyeh.ig.psiutils.TypeUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 import static com.intellij.psi.CommonClassNames.*;
@@ -137,7 +141,7 @@ public class UnnecessaryCallToStringValueOfInspection extends BaseInspection imp
   @Nullable
   private static PsiExpression tryUnwrapRedundantConversion(PsiMethodCallExpression call) {
     if (!STATIC_TO_STRING_CONVERTERS.test(call)) return null;
-    final PsiExpression argument = ParenthesesUtils.stripParentheses(call.getArgumentList().getExpressions()[0]);
+    final PsiExpression argument = PsiUtil.skipParenthesizedExprDown(call.getArgumentList().getExpressions()[0]);
     if (argument == null) return null;
     PsiType argumentType = argument.getType();
     if (argumentType instanceof PsiPrimitiveType) {
@@ -154,6 +158,22 @@ public class UnnecessaryCallToStringValueOfInspection extends BaseInspection imp
         return null;
       }
     }
+    if (isReplacementAmbiguous(call, argument)) return null;
     return argument;
+  }
+
+  private static boolean isReplacementAmbiguous(PsiMethodCallExpression call, PsiExpression argument) {
+    if (!PsiPolyExpressionUtil.isPolyExpression(argument)) return false;
+    PsiExpressionList exprList = ObjectUtils.tryCast(ParenthesesUtils.getParentSkipParentheses(call), PsiExpressionList.class);
+    if (exprList == null) return false;
+    PsiCallExpression parentCall = ObjectUtils.tryCast(exprList.getParent(), PsiCallExpression.class);
+    if (parentCall == null) return false;
+    PsiCallExpression copy = (PsiCallExpression)parentCall.copy();
+    int argIndex = ContainerUtil.indexOf(Arrays.asList(exprList.getExpressions()), expr -> PsiUtil.skipParenthesizedExprDown(expr) == call);
+    assert argIndex >= -1;
+    PsiExpression argCopy = Objects.requireNonNull(copy.getArgumentList()).getExpressions()[argIndex];
+    argCopy.replace(argument);
+    JavaResolveResult result = copy.resolveMethodGenerics();
+    return !result.isValidResult();
   }
 }

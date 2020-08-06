@@ -4,7 +4,6 @@ package com.intellij.openapi.roots.impl;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
@@ -54,9 +53,9 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
   protected boolean myStartupActivityPerformed;
   private boolean myStateLoaded = false;
 
-  private final RootProviderChangeListener myRootProviderChangeListener = new RootProviderChangeListener();
+  private final RootProvider.RootSetChangedListener myRootProviderChangeListener = new RootProviderChangeListener();
 
-  protected class BatchSession {
+  protected final class BatchSession {
     private final boolean myFileTypes;
     private int myBatchLevel;
     private boolean myChanged;
@@ -65,14 +64,14 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
       myFileTypes = fileTypes;
     }
 
-    protected void levelUp() {
+    void levelUp() {
       if (myBatchLevel == 0) {
         myChanged = false;
       }
       myBatchLevel += 1;
     }
 
-    protected void levelDown() {
+    void levelDown() {
       myBatchLevel -= 1;
       if (myChanged && myBatchLevel == 0) {
         try {
@@ -181,10 +180,8 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
   @Override
   public VirtualFile @NotNull [] getContentRootsFromAllModules() {
     List<VirtualFile> result = new ArrayList<>();
-    final Module[] modules = getModuleManager().getSortedModules();
-    for (Module module : modules) {
-      final VirtualFile[] files = ModuleRootManager.getInstance(module).getContentRoots();
-      ContainerUtil.addAll(result, files);
+    for (Module module : getModuleManager().getSortedModules()) {
+      Collections.addAll(result, ModuleRootManager.getInstance(module).getContentRoots());
     }
     ContainerUtil.addIfNotNull(result, myProject.getBaseDir());
     return VfsUtilCore.toVirtualFileArray(result);
@@ -231,13 +228,18 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     projectJdkChanged();
   }
 
-  private void projectJdkChanged() {
+  protected void projectJdkChanged() {
     incModificationCount();
-    mergeRootsChangesDuring(() -> myProjectJdkEventDispatcher.getMulticaster().projectJdkChanged());
+    mergeRootsChangesDuring(getActionToRunWhenProjectJdkChanges());
     Sdk sdk = getProjectSdk();
     for (ProjectExtension extension : ProjectExtension.EP_NAME.getExtensions(myProject)) {
       extension.projectSdkChanged(sdk);
     }
+  }
+
+  @NotNull
+  protected Runnable getActionToRunWhenProjectJdkChanges() {
+    return () -> myProjectJdkEventDispatcher.getMulticaster().projectJdkChanged();
   }
 
   @Override
@@ -529,7 +531,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     }
   }
 
-  private class LibraryTableMultiListener extends ListenerContainer<LibraryTable.Listener> implements LibraryTable.Listener {
+  private final class LibraryTableMultiListener extends ListenerContainer<LibraryTable.Listener> implements LibraryTable.Listener {
     private LibraryTableMultiListener() {
       super(new LibraryTable.Listener[0]);
     }
@@ -545,11 +547,11 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     }
 
     @Override
-    public void afterLibraryRenamed(@NotNull final Library library) {
+    public void afterLibraryRenamed(@NotNull Library library, @Nullable String oldName) {
       incModificationCount();
       mergeRootsChangesDuring(() -> {
         for (LibraryTable.Listener listener : getListeners()) {
-          listener.afterLibraryRenamed(library);
+          listener.afterLibraryRenamed(library, oldName);
         }
       });
     }
@@ -618,7 +620,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     }
   }
 
-  private final Map<RootProvider, Set<OrderEntry>> myRegisteredRootProviders = ContainerUtil.newIdentityTroveMap();
+  private final Map<RootProvider, Set<OrderEntry>> myRegisteredRootProviders = new IdentityHashMap<>();
 
   void addJdkTableListener(@NotNull ProjectJdkTable.Listener jdkTableListener, @NotNull Disposable parent) {
     myJdkTableMultiListener.addListener(jdkTableListener);

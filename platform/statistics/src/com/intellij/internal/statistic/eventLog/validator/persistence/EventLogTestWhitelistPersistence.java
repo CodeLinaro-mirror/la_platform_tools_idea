@@ -3,6 +3,7 @@ package com.intellij.internal.statistic.eventLog.validator.persistence;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.intellij.internal.statistic.eventLog.whitelist.LocalWhitelistGroup;
 import com.intellij.internal.statistic.service.fus.EventLogWhitelistParseException;
 import com.intellij.internal.statistic.service.fus.FUStatisticsWhiteListGroupsService;
 import com.intellij.internal.statistic.service.fus.FUStatisticsWhiteListGroupsService.WLGroup;
@@ -18,17 +19,17 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class EventLogTestWhitelistPersistence extends BaseEventLogWhitelistPersistence {
   private static final Logger LOG =
     Logger.getInstance(EventLogTestWhitelistPersistence.class);
 
-  private static final String TEST_RULE = "{util#fus_test_mode}";
-  public static final String TEST_WHITE_LIST_DATA_FILE = "test-white-list.json";
+  public static final String TEST_RULE = "{util#fus_test_mode}";
+
+  private static final String DEPRECATED_TEST_EVENTS_SCHEME_FILE = "test-white-list.json";
+  private static final String TEST_EVENTS_SCHEME_FILE = "test-events-scheme.json";
+
   @NotNull
   private final String myRecorderId;
 
@@ -38,7 +39,7 @@ public class EventLogTestWhitelistPersistence extends BaseEventLogWhitelistPersi
 
   @Override
   @Nullable
-  public String getCachedWhitelist() {
+  public String getCachedMetadata() {
     try {
       final File file = getWhitelistFile();
       if (file.exists()) {
@@ -60,12 +61,6 @@ public class EventLogTestWhitelistPersistence extends BaseEventLogWhitelistPersi
     }
   }
 
-  public static void addGroupWithCustomRules(@NotNull String recorderId, @NotNull String groupId, @NotNull String rules)
-    throws IOException {
-    final WLGroup newGroup = createGroupWithCustomRules(groupId, rules);
-    addNewGroup(recorderId, newGroup);
-  }
-
   @NotNull
   public static WLGroup createGroupWithCustomRules(@NotNull String groupId, @NotNull String rules) {
     final String content =
@@ -75,9 +70,12 @@ public class EventLogTestWhitelistPersistence extends BaseEventLogWhitelistPersi
     return new GsonBuilder().create().fromJson(content, WLGroup.class);
   }
 
-  public static void addTestGroup(@NotNull String recorderId, @NotNull String groupId) throws IOException {
-    final WLGroup group = createTestGroup(groupId, Collections.emptySet());
-    addNewGroup(recorderId, group);
+  public static void addTestGroup(@NotNull String recorderId, @NotNull LocalWhitelistGroup group) throws IOException {
+    String groupId = group.getGroupId();
+    WLGroup whitelistGroup = group.getUseCustomRules()
+                             ? createGroupWithCustomRules(groupId, group.getCustomRules())
+                             : createTestGroup(groupId, Collections.emptySet());
+    addNewGroup(recorderId, whitelistGroup);
   }
 
   private static void addNewGroup(@NotNull String recorderId,
@@ -101,7 +99,7 @@ public class EventLogTestWhitelistPersistence extends BaseEventLogWhitelistPersi
 
   @NotNull
   public static WLGroups loadTestWhitelist(@NotNull BaseEventLogWhitelistPersistence persistence) {
-    final String existing = persistence.getCachedWhitelist();
+    final String existing = persistence.getCachedMetadata();
     if (StringUtil.isNotEmpty(existing)) {
       try {
         return FUStatisticsWhiteListGroupsService.parseWhiteListContent(existing);
@@ -135,6 +133,21 @@ public class EventLogTestWhitelistPersistence extends BaseEventLogWhitelistPersi
 
   @NotNull
   public File getWhitelistFile() throws IOException {
-    return getDefaultWhitelistFile(myRecorderId, TEST_WHITE_LIST_DATA_FILE);
+    return getDefaultMetadataFile(myRecorderId, TEST_EVENTS_SCHEME_FILE, DEPRECATED_TEST_EVENTS_SCHEME_FILE);
+  }
+
+  public void updateTestGroups(@NotNull List<LocalWhitelistGroup> groups) throws IOException {
+    WLGroups whitelist = new WLGroups();
+    for (LocalWhitelistGroup group : groups) {
+      String groupId = group.getGroupId();
+      if (group.getUseCustomRules()) {
+        whitelist.groups.add(createGroupWithCustomRules(groupId, group.getCustomRules()));
+      }
+      else {
+        whitelist.groups.add(createTestGroup(groupId, Collections.emptySet()));
+      }
+    }
+    Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    FileUtil.writeToFile(getWhitelistFile(), gson.toJson(whitelist));
   }
 }

@@ -4,15 +4,14 @@ package com.intellij.debugger.ui.tree.render;
 import com.intellij.CommonBundle;
 import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.engine.DebugProcess;
+import com.intellij.debugger.engine.DebuggerUtils;
 import com.intellij.debugger.engine.FullValueEvaluatorProvider;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluationContext;
 import com.intellij.debugger.engine.evaluation.EvaluationContextImpl;
 import com.intellij.debugger.impl.ClassLoadingUtils;
-import com.intellij.debugger.ui.impl.watch.ValueDescriptorImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.rt.debugger.ImageSerializer;
-import com.intellij.xdebugger.frame.XFullValueEvaluator;
 import com.sun.jdi.ClassType;
 import com.sun.jdi.Method;
 import com.sun.jdi.StringReference;
@@ -26,25 +25,34 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.List;
 
-final class ImageObjectRenderer extends CompoundReferenceRenderer implements FullValueEvaluatorProvider {
+final class ImageObjectRenderer extends CompoundRendererProvider {
   private static final Logger LOG = Logger.getInstance(ImageObjectRenderer.class);
 
-  ImageObjectRenderer() {
-    super("Image", null, null);
-    setClassName("java.awt.Image");
-    setEnabled(true);
+  @Override
+  protected String getName() {
+    return "Image";
   }
 
   @Override
-  public @NotNull XFullValueEvaluator getFullValueEvaluator(final EvaluationContextImpl evaluationContext, final ValueDescriptorImpl valueDescriptor) {
-    return new IconPopupEvaluator(JavaDebuggerBundle.message("message.node.show.image"), evaluationContext) {
-      @Override
-      protected Icon getData() {
-        return getIcon(getEvaluationContext(), valueDescriptor.getValue(), "imageToBytes");
-      }
-    };
+  protected String getClassName() {
+    return "java.awt.Image";
+  }
+
+  @Override
+  protected boolean isEnabled() {
+    return true;
+  }
+
+  @Override
+  protected FullValueEvaluatorProvider getFullValueEvaluatorProvider() {
+    return (evaluationContext, valueDescriptor) ->
+      new IconPopupEvaluator(JavaDebuggerBundle.message("message.node.show.image"), evaluationContext) {
+        @Override
+        protected Icon getData() {
+          return getIcon(getEvaluationContext(), valueDescriptor.getValue(), "imageToBytes");
+        }
+      };
   }
 
   static JComponent createIconViewer(@Nullable Icon icon) {
@@ -81,10 +89,9 @@ final class ImageObjectRenderer extends CompoundReferenceRenderer implements Ful
     ClassType helperClass = ClassLoadingUtils.getHelperClass(ImageSerializer.class, copyContext);
 
     if (helperClass != null) {
-      List<Method> methods = helperClass.methodsByName(methodName);
-      if (!methods.isEmpty()) {
-        StringReference bytes =
-          (StringReference)process.invokeMethod(copyContext, helperClass, methods.get(0), Collections.singletonList(obj));
+      Method method = DebuggerUtils.findMethod(helperClass, methodName, null);
+      if (method != null) {
+        StringReference bytes = (StringReference)process.invokeMethod(copyContext, helperClass, method, Collections.singletonList(obj));
         if (bytes != null) {
           return bytes.value().getBytes(StandardCharsets.ISO_8859_1);
         }

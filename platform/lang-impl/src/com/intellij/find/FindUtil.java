@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.find;
 
@@ -27,7 +27,6 @@ import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.editor.markup.HighlighterLayer;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory;
 import com.intellij.openapi.keymap.KeymapUtil;
@@ -56,10 +55,13 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
 import java.util.stream.Stream;
 
-public class FindUtil {
+public final class FindUtil {
   private static final Key<Direction> KEY = Key.create("FindUtil.KEY");
 
   private FindUtil() {
@@ -596,7 +598,7 @@ public class FindUtil {
       else {
         CharSequence text = document.getCharsSequence();
         final StringBuilder newText = new StringBuilder(document.getTextLength());
-        Collections.sort(rangesToChange, Comparator.comparingInt(o -> o.getFirst().getStartOffset()));
+        rangesToChange.sort(Comparator.comparingInt(o -> o.getFirst().getStartOffset()));
         int offsetBefore = 0;
         for (Pair<TextRange, String> pair : rangesToChange) {
           TextRange range = pair.getFirst();
@@ -719,12 +721,12 @@ public class FindUtil {
       IdeDocumentHistory.getInstance(project).includeCurrentCommandAsNavigation();
 
       if (!model.isGlobal()) {
-        TextAttributes selectionAttributes = editor.getColorsScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
         final RangeHighlighterEx segmentHighlighter = (RangeHighlighterEx)editor.getMarkupModel().addRangeHighlighter(
+          EditorColors.SEARCH_RESULT_ATTRIBUTES,
           result.getStartOffset(),
           result.getEndOffset(),
           HighlighterLayer.SELECTION + 1,
-          selectionAttributes, HighlighterTargetArea.EXACT_RANGE);
+          HighlighterTargetArea.EXACT_RANGE);
         MyListener listener = new MyListener(editor, segmentHighlighter);
         caretModel.addCaretListener(listener);
       }

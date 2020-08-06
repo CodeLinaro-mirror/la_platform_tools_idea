@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.daemon.impl;
 
+import com.intellij.codeInsight.daemon.DaemonBundle;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.codeInsight.daemon.impl.analysis.FileHighlightingSetting;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightLevelUtil;
@@ -68,7 +69,7 @@ class HectorComponentImpl extends JPanel implements HectorComponent {
       !fileIndex.isInLibrary(virtualFile) || fileIndex.isInContent(virtualFile);
     final FileViewProvider viewProvider = myFile.getViewProvider();
     List<Language> languages = new ArrayList<>(viewProvider.getLanguages());
-    Collections.sort(languages, PsiUtilBase.LANGUAGE_COMPARATOR);
+    languages.sort(PsiUtilBase.LANGUAGE_COMPARATOR);
     for (Language language : languages) {
       @SuppressWarnings("UseOfObsoleteCollectionType")
       final Hashtable<Integer, JComponent> sliderLabels = new Hashtable<>();
@@ -119,7 +120,7 @@ class HectorComponentImpl extends JPanel implements HectorComponent {
     gc.gridy = GridBagConstraints.RELATIVE;
     gc.weighty = 0;
 
-    final HyperlinkLabel configurator = new HyperlinkLabel(EditorBundle.message("hector.configure.inspections"));
+    HyperlinkLabel configurator = new HyperlinkLabel(DaemonBundle.message("popup.action.configure.inspections"));
     gc.insets.right = 5;
     gc.insets.bottom = 10;
     gc.weightx = 0;

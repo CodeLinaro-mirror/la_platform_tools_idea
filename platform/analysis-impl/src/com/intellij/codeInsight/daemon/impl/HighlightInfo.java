@@ -34,13 +34,19 @@ import com.intellij.util.BitUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.util.XmlStringUtil;
 import org.intellij.lang.annotations.MagicConstant;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+
+import static com.intellij.openapi.util.NlsContexts.DetailedDescription;
+import static com.intellij.openapi.util.NlsContexts.Tooltip;
 
 public class HighlightInfo implements Segment {
   private static final Logger LOG = Logger.getInstance(HighlightInfo.class);
@@ -187,6 +193,7 @@ public class HighlightInfo implements Segment {
   }
 
   @Nullable
+  @NonNls
   public String getInspectionToolId() {
     return inspectionToolId;
   }
@@ -259,7 +266,7 @@ public class HighlightInfo implements Segment {
 
   @Nullable
   @SuppressWarnings("deprecation")
-  Color getErrorStripeMarkColor(@NotNull PsiElement element, @Nullable("when null, a global scheme will be used") EditorColorsScheme colorsScheme) {
+  Color getErrorStripeMarkColor(@NotNull PsiElement element, @Nullable("when null, the global scheme will be used") EditorColorsScheme colorsScheme) {
     if (forcedTextAttributes != null) {
       return forcedTextAttributes.getErrorStripeColor();
     }
@@ -306,7 +313,7 @@ public class HighlightInfo implements Segment {
     return unescapedTooltip == null ? null : XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(unescapedTooltip));
   }
 
-  boolean needUpdateOnTyping() {
+  public boolean needUpdateOnTyping() {
     return isFlagSet(NEEDS_UPDATE_ON_TYPING_MASK);
   }
 
@@ -396,16 +403,16 @@ public class HighlightInfo implements Segment {
     @NotNull Builder inspectionToolId(@NotNull String inspectionTool);
 
     // only one allowed
-    @NotNull Builder description(@NotNull String description);
-    @NotNull Builder descriptionAndTooltip(@NotNull String description);
+    @NotNull Builder description(@DetailedDescription @NotNull String description);
+    @NotNull Builder descriptionAndTooltip(@DetailedDescription @NotNull String description);
 
     // only one allowed
     @NotNull Builder textAttributes(@NotNull TextAttributes attributes);
     @NotNull Builder textAttributes(@NotNull TextAttributesKey attributesKey);
 
     // only one allowed
-    @NotNull Builder unescapedToolTip(@NotNull String unescapedToolTip);
-    @NotNull Builder escapedToolTip(@NotNull String escapedToolTip);
+    @NotNull Builder unescapedToolTip(@Tooltip @NotNull String unescapedToolTip);
+    @NotNull Builder escapedToolTip(@Tooltip @NotNull String escapedToolTip);
 
     @NotNull Builder endOfLine();
     @NotNull Builder needsUpdateOnTyping(boolean update);

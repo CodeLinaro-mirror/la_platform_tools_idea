@@ -23,12 +23,14 @@ Includes the following features:</p>
 
   <extensionPoints>
     <extensionPoint qualifiedName="org.intellij.markdown.html.panel.provider"
-                    interface="org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanelProvider" />
+                    interface="org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanelProvider"
+                    dynamic="true"/>
     <extensionPoint qualifiedName="org.intellij.markdown.fenceLanguageProvider"
                     interface="org.intellij.plugins.markdown.injection.CodeFenceLanguageProvider"
                     dynamic="true"/>
     <extensionPoint qualifiedName="org.intellij.markdown.codeFencePluginGeneratingProvider"
-                    interface="org.intellij.plugins.markdown.extensions.MarkdownCodeFencePluginGeneratingProvider" />
+                    interface="org.intellij.plugins.markdown.extensions.MarkdownCodeFencePluginGeneratingProvider"
+                    dynamic="true"/>
   </extensionPoints>
 
   <extensions defaultExtensionNs="com.intellij">
@@ -101,14 +103,30 @@ Includes the following features:</p>
       <className>org.intellij.plugins.markdown.injection.MarkdownCodeFenceErrorHighlightingIntention</className>
       <category>Markdown</category>
     </intentionAction>
-    <notificationWhitelist groupIds="Markdown headers group;Markdown"/>
+    <notificationAllowlist groupIds="Markdown headers group;Markdown"/>
+
+    <registryKey key="markdown.clear.cache.interval"
+                 defaultValue="600000"
+                 description="Interval in milliseconds defining how often Markdown plugin caches (e.g. PlantUML diagrams) should be cleared"/>
+    <registryKey key="markdown.plantuml.download.link"
+                 defaultValue="https://download.jetbrains.com/grazie/markdown/extensions/plantuml/plantuml-1.jar"
+                 description="Link which Markdown plugin will use to download PlantUML JAR"/>
+    <registryKey key="markdown.open.link.in.external.browser"
+                 defaultValue="true"
+                 description="Open Markdown link in an external browser (otherwise open in the IDE viewer)"/>
   </extensions>
+
+  <applicationListeners>
+    <listener topic="org.intellij.plugins.markdown.settings.MarkdownApplicationSettings$SettingsChangedListener"
+              class="org.intellij.plugins.markdown.injection.MarkdownCodeFenceErrorHighlightingIntention$SettingsListener"/>
+  </applicationListeners>
 
   <extensions defaultExtensionNs="org.intellij.markdown">
     <html.panel.provider implementation="org.intellij.plugins.markdown.ui.preview.javafx.JavaFxHtmlPanelProvider" />
     <html.panel.provider implementation="org.intellij.plugins.markdown.ui.preview.jcef.JCEFHtmlPanelProvider" />
     <fenceLanguageProvider implementation="org.intellij.plugins.markdown.extensions.plantuml.PlantUMLCodeFenceLanguageProvider"/>
-    <codeFencePluginGeneratingProvider implementation="org.intellij.plugins.markdown.extensions.plantuml.PlantUMLProvider"/>
+    <codeFencePluginGeneratingProvider implementation="org.intellij.plugins.markdown.extensions.plantuml.PlantUMLCodeGeneratingProvider"/>
+    <codeFencePluginGeneratingProvider implementation="org.intellij.plugins.markdown.extensions.highlighter.MarkdownCodeFencePreviewHighlighter"/>
   </extensions>
 
   <actions>

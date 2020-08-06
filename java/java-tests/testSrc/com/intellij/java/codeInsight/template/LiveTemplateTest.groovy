@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight.template
 
 import com.intellij.JavaTestUtil
@@ -17,6 +17,7 @@ import com.intellij.codeInsight.template.macro.CompleteMacro
 import com.intellij.codeInsight.template.macro.ConcatMacro
 import com.intellij.codeInsight.template.macro.FilePathMacroBase
 import com.intellij.codeInsight.template.macro.SplitWordsMacro
+import com.intellij.internal.statistic.FUCounterCollectorTestCase
 import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.command.WriteCommandAction
@@ -285,7 +286,7 @@ class Foo {
 
   void testPreferStartMatchesInLookups() throws Throwable {
     configure()
-    startTemplate("iter", "iterations")
+    startTemplate("iter", "Java")
     myFixture.type('ese\n') //for entrySet
     assert myFixture.lookupElementStrings == ['barGooStringBuilderEntry', 'gooStringBuilderEntry', 'stringBuilderEntry', 'builderEntry', 'entry']
     myFixture.type('e')
@@ -296,7 +297,7 @@ class Foo {
   void testClassNameDotInTemplate() {
     CodeInsightSettings.instance.COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
     configure()
-    startTemplate("soutv", "output")
+    startTemplate("soutv", "Java")
     myFixture.type('File')
     assert myFixture.lookupElementStrings == ['file']
     myFixture.type('.')
@@ -307,7 +308,7 @@ class Foo {
   void testFinishTemplateVariantWithDot() {
     CodeInsightSettings.instance.selectAutopopupSuggestionsByChars = true
     configure()
-    startTemplate("soutv", "output")
+    startTemplate("soutv", "Java")
     myFixture.type('fil')
     assert myFixture.lookupElementStrings == ['file']
     myFixture.type('.')
@@ -317,7 +318,7 @@ class Foo {
 
   void testAllowTypingRandomExpressionsWithLookupOpen() {
     configure()
-    startTemplate("iter", "iterations")
+    startTemplate("iter", "Java")
     myFixture.type('file.')
     checkResult()
     assert !state.finished
@@ -329,7 +330,7 @@ class Foo {
 
     try {
       configure()
-      startTemplate("iter", "iterations")
+      startTemplate("iter", "Java")
       checkResult()
     }
     finally {
@@ -340,12 +341,14 @@ class Foo {
   void testOtherContext() throws IOException {
     configureFromFileText("a.java", "class Foo { <caret>xxx }")
     assertInstanceOf(
-      assertOneElement(TemplateManagerImpl.getApplicableContextTypes(myFixture.getFile(), getEditor().getCaretModel().getOffset())),
+      assertOneElement(TemplateManagerImpl.getApplicableContextTypes(TemplateActionContext.expanding(myFixture.getFile(),
+                                                                                                     getEditor()))),
       JavaCodeContextType.Declaration.class)
 
     configureFromFileText("a.txt", "class Foo { <caret>xxx }")
     assertInstanceOf(
-      assertOneElement(TemplateManagerImpl.getApplicableContextTypes(myFixture.getFile(), getEditor().getCaretModel().getOffset())),
+      assertOneElement(TemplateManagerImpl.getApplicableContextTypes(TemplateActionContext.expanding(myFixture.getFile(),
+                                                                                                     getEditor()))),
       EverywhereContextType.class)
   }
 
@@ -354,7 +357,7 @@ class Foo {
 
     configureFromFileText("a.java", "class Foo {{ iter<caret>  }}")
 
-    TemplateImpl template = TemplateSettings.instance.getTemplate("iter", "iterations")
+    TemplateImpl template = TemplateSettings.instance.getTemplate("iter", "Java")
     assert (template in templateManager.findMatchingTemplates(myFixture.file, editor, Lookup.REPLACE_SELECT_CHAR, TemplateSettings.instance)?.keySet())
 
     assert template.templateContext.getOwnValue(stmtContext)
@@ -584,7 +587,7 @@ class A {{
                           "} }")
   }
 
-  void "test stop at SELECTION when invoked surround template by tab"() {
+  void "test stop at END when invoked surround template by tab"() {
     myFixture.configureByText "a.txt", "<caret>"
 
     final TemplateManager manager = TemplateManager.getInstance(getProject())
@@ -595,7 +598,21 @@ class A {{
     myFixture.type('arg')
     state.nextTab()
     assert !state
-    checkResultByText 'foo arg bar  goo <caret> after'
+    checkResultByText 'foo arg bar <caret> goo  after'
+  }
+
+  void "test stop at SELECTION when invoked surround template by tab and END missing"() {
+    myFixture.configureByText "a.txt", "<caret>"
+
+    final TemplateManager manager = TemplateManager.getInstance(getProject())
+    final Template template = manager.createTemplate("xxx", "user", 'foo $ARG$ bar goo $SELECTION$ after')
+    template.addVariable("ARG", "", "", true)
+
+    startTemplate(template)
+    myFixture.type('arg')
+    state.nextTab()
+    assert !state
+    checkResultByText 'foo arg bar goo <caret> after'
   }
 
   void "test concat macro"() {
@@ -1243,20 +1260,35 @@ class Foo {
 
   void "test completion in dumb mode"() {
     TemplateManager manager = TemplateManager.getInstance(getProject())
-    Template template = manager.createTemplate('hello_world', 'user', 'Hello, World')
+    Template template = manager.createTemplate('helloWorld', 'user', '"Hello, World"')
     TemplateContextType contextType = contextType(JavaCodeContextType.class)
     ((TemplateImpl)template).getTemplateContext().setEnabled(contextType, true)
     CodeInsightTestUtil.addTemplate(template, myFixture.getTestRootDisposable())
 
-    myFixture.configureByText "a.java", "class Foo {{ hello_<caret> }}"
+    myFixture.configureByText "a.java", "class Foo {{ System.out.println(helloW<caret>) }}"
     LiveTemplateCompletionContributor.setShowTemplatesInTests(true, myFixture.getTestRootDisposable())
     DumbServiceImpl.getInstance(getProject()).runInDumbMode(new Runnable() {
       @Override
       void run() {
         myFixture.completeBasic()
         assert myFixture.lookup
-        assert myFixture.lookupElementStrings.contains('hello_world')
+        assert myFixture.lookupElementStrings.contains('helloWorld')
+        myFixture.type('\t')
+        myFixture.checkResult "class Foo {{ System.out.println(\"Hello, World\") }}"
       }
     })
+  }
+
+  void "test log livetemplate started event"() {
+    def events = FUCounterCollectorTestCase.INSTANCE.collectLogEvents {
+      configureFromFileText("empty.java", "")
+      TemplateManager manager = TemplateManager.getInstance(getProject())
+      Template template = manager.createTemplate("empty", "user", '$VAR$')
+      template.addVariable("VAR", "", "", false)
+      startTemplate(template)
+    }
+    def logEvent = events.find { it.group.id == "live.templates" }
+    assert logEvent
+    assert logEvent.event.id == "started"
   }
 }

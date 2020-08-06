@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.lang.ASTNode;
@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Set;
 
 @SuppressWarnings({"UtilityClassWithoutPrivateConstructor", "UnusedDeclaration", "TestOnlyProblems"})
-public class DebugUtil {
+public final class DebugUtil {
   private static final Logger LOG = Logger.getInstance(DebugUtil.class);
 
   public static /*final*/ boolean CHECK;
@@ -413,8 +413,8 @@ public class DebugUtil {
       new TreeToBuffer(buffer, 0, true, false, false, false, null) {
         @Override
         protected boolean shouldSkipNode(TreeElement node) {
-          return super.shouldSkipNode(node) || node instanceof PsiErrorElement || node instanceof PsiComment || 
-                 node instanceof LeafPsiElement && StringUtil.isEmptyOrSpaces(node.getText()) || 
+          return super.shouldSkipNode(node) || node instanceof PsiErrorElement || node instanceof PsiComment ||
+                 node instanceof LeafPsiElement && StringUtil.isEmptyOrSpaces(node.getText()) ||
                  node instanceof OuterLanguageElement;
         }
 
@@ -612,12 +612,18 @@ public class DebugUtil {
     return currentInvalidationTrace();
   }
 
-  @NotNull
+  @Nullable
   private static Object currentInvalidationTrace() {
     Object trace = ourPsiModificationTrace.get();
-    if (trace == null) {
-      trace = new Throwable();
-      ourErrorLogger.info("PSI invalidated outside transaction", (Throwable)trace);
+    return trace != null || ApplicationInfoImpl.isInStressTest() ? trace : handleUnspecifiedTrace();
+  }
+
+  private static Throwable handleUnspecifiedTrace() {
+    Throwable trace = new Throwable();
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      ourErrorLogger.error("PSI invalidated outside transaction", trace);
+    } else {
+      ourErrorLogger.info("PSI invalidated outside transaction", trace);
     }
     return trace;
   }

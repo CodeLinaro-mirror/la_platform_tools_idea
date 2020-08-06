@@ -2,6 +2,7 @@
 package org.jetbrains.intellij.build
 
 import com.intellij.openapi.util.MultiValuesMap
+import com.intellij.openapi.util.text.StringUtil
 import groovy.transform.CompileStatic
 import org.jetbrains.intellij.build.impl.DistributionJARsBuilder
 import org.jetbrains.intellij.build.impl.PlatformLayout
@@ -29,10 +30,8 @@ class ProductModulesLayout {
   List<String> productImplementationModules = []
 
   /**
-   * Names of the main modules (containing META-INF/plugin.xml) of the plugins which need to be bundled with the product. It may also
-   * includes names of optional modules (added via {@link org.jetbrains.intellij.build.impl.PluginLayout.PluginLayoutSpec#withOptionalModule})
-   * from these plugins which need to be included into the plugin distribution for this product. Layouts of the bundled plugins are specified
-   * in {@link #allNonTrivialPlugins} list.
+   * Names of the main modules (containing META-INF/plugin.xml) of the plugins which need to be bundled with the product. Layouts of the
+   * bundled plugins are specified in {@link #allNonTrivialPlugins} list.
    */
   List<String> bundledPluginModules = new ArrayList<>(DEFAULT_BUNDLED_PLUGINS)
 
@@ -131,11 +130,18 @@ class ProductModulesLayout {
   String classesLoadingOrderFilePath = null
 
   /**
+   * Module names which should be excluded from this product.
+   * Allows to filter out default platform modules (both api and implementation) as well as product modules.
+   * This API is experimental, use with care
+   */
+  List<String> excludedModuleNames = []
+
+  /**
    * @return list of all modules which output is included into the plugin's JARs
    */
   List<String> getIncludedPluginModules(Set<String> enabledPluginModules) {
     def modulesFromNonTrivialPlugins = allNonTrivialPlugins.findAll { enabledPluginModules.contains(it.mainModule) }.
-      collectMany { it.getActualModules(enabledPluginModules).values() }
+      collectMany { it.moduleJars.values() }
     (enabledPluginModules + modulesFromNonTrivialPlugins) as List<String>
   }
 

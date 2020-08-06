@@ -8,17 +8,17 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.ExceptionUtil;
-import com.intellij.util.containers.IntArrayList;
 import com.intellij.util.containers.Queue;
 import com.intellij.util.containers.Stack;
 import gnu.trove.THashMap;
 import gnu.trove.THashSet;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class DefUseUtil {
+public final class DefUseUtil {
   private static final Logger LOG = Logger.getInstance(DefUseUtil.class);
 
   private DefUseUtil() { }
@@ -259,6 +259,7 @@ public class DefUseUtil {
   public static PsiElement @NotNull [] getDefs(@NotNull PsiCodeBlock body, @NotNull PsiVariable def, @NotNull PsiElement ref, boolean rethrow) {
     try {
       RefsDefs refsDefs = new RefsDefs(body) {
+        final PsiManager psiManager = def.getManager();
         private final IntArrayList[] myBackwardTraces = getBackwardTraces(instructions);
 
         @Override
@@ -268,7 +269,7 @@ public class DefUseUtil {
 
         @Override
         protected int getNext(int index, int no) {
-          return myBackwardTraces[index].get(no);
+          return myBackwardTraces[index].getInt(no);
         }
 
         @Override
@@ -280,8 +281,7 @@ public class DefUseUtil {
         protected void processInstruction(@NotNull final Set<? super PsiElement> res, @NotNull final Instruction instruction, int index) {
           if (instruction instanceof WriteVariableInstruction) {
             WriteVariableInstruction instructionW = (WriteVariableInstruction)instruction;
-            if (instructionW.variable == def) {
-
+            if (psiManager.areElementsEquivalent(instructionW.variable, def)) {
               final PsiElement element = flow.getElement(index);
               element.accept(new JavaRecursiveElementWalkingVisitor() {
                 @Override
@@ -295,7 +295,7 @@ public class DefUseUtil {
 
                 @Override
                 public void visitVariable(PsiVariable var) {
-                  if (var == def && (var instanceof PsiParameter || var.hasInitializer())) {
+                  if (psiManager.areElementsEquivalent(var, def) && (var instanceof PsiParameter || var.hasInitializer())) {
                     res.add(var);
                   }
                 }
@@ -321,6 +321,7 @@ public class DefUseUtil {
   public static PsiElement[] getRefs(@NotNull PsiCodeBlock body, @NotNull PsiVariable def, @NotNull PsiElement ref, boolean rethrow) {
     try {
       RefsDefs refsDefs = new RefsDefs(body) {
+        final PsiManager psiManager = def.getManager();
         @Override
         protected int nNext(int index) {
           return instructions.get(index).nNext();
@@ -340,13 +341,13 @@ public class DefUseUtil {
         protected void processInstruction(@NotNull final Set<? super PsiElement> res, @NotNull final Instruction instruction, int index) {
           if (instruction instanceof ReadVariableInstruction) {
             ReadVariableInstruction instructionR = (ReadVariableInstruction)instruction;
-            if (instructionR.variable == def) {
+            if (psiManager.areElementsEquivalent(instructionR.variable, def)) {
 
               final PsiElement element = flow.getElement(index);
               element.accept(new JavaRecursiveElementWalkingVisitor() {
                 @Override
                 public void visitReferenceExpression(PsiReferenceExpression ref) {
-                  if (ref.resolve() == def) {
+                  if (ref.isReferenceTo(def)) {
                     res.add(ref);
                   }
                 }
@@ -391,7 +392,8 @@ public class DefUseUtil {
 
       final boolean [] visited = new boolean[instructions.size() + 1];
       visited [visited.length-1] = true; // stop on the code end
-      int elem = defs() ? flow.getStartOffset(refOrDef) : flow.getEndOffset(refOrDef);
+      final boolean defs = defs();
+      int elem = defs ? flow.getStartOffset(refOrDef) : flow.getEndOffset(refOrDef);
 
       // hack: ControlFlow doesn't contains parameters initialization
       if (elem == -1 && def instanceof PsiParameter) {
@@ -399,62 +401,66 @@ public class DefUseUtil {
       }
 
       if (elem != -1) {
-        if (!defs () && instructions.get(elem) instanceof ReadVariableInstruction) {
+        if (!defs && instructions.get(elem) instanceof ReadVariableInstruction) {
           LOG.assertTrue(nNext(elem) == 1);
           LOG.assertTrue(getNext(elem,0) == elem+1);
           elem += 1;
         }
 
         final Set<@NotNull PsiElement> res = new THashSet<>();
-        class Inner {
-          private void traverse(int index) {
-            if (visited[index]) {
-              return;
-            }
-            visited [index] = true;
+        // hack: ControlFlow doesn't contains parameters initialization
+        int startIndex = elem;
 
-            if (defs ()) {
-              final Instruction instruction = instructions.get(index);
-              processInstruction(res, instruction, index);
-              if (instruction instanceof WriteVariableInstruction) {
-                WriteVariableInstruction instructionW = (WriteVariableInstruction)instruction;
-                if (instructionW.variable == def) {
-                  return;
-                }
-              }
+        IntArrayList workQueue = new IntArrayList();
+        workQueue.add(startIndex);
+        PsiManager psiManager = body.getManager();
 
-              // hack: ControlFlow doesn't contains parameters initialization
-              if (index == 0 && def instanceof PsiParameter) {
-                PsiIdentifier identifier = def.getNameIdentifier();
-                if (identifier != null) {
-                  res.add(identifier);
-                }
+        while (!workQueue.isEmpty()) {
+          int index = workQueue.removeInt(workQueue.size() - 1);
+          if (visited[index]) {
+            continue;
+          }
+          visited [index] = true;
+
+          if (defs) {
+            final Instruction instruction = instructions.get(index);
+            processInstruction(res, instruction, index);
+            if (instruction instanceof WriteVariableInstruction) {
+              WriteVariableInstruction instructionW = (WriteVariableInstruction)instruction;
+              if (psiManager.areElementsEquivalent(instructionW.variable, def)) {
+                continue;
               }
             }
 
-            final int nNext = nNext (index);
-            for (int i = 0; i < nNext; i++) {
-              final int prev = getNext(index, i);
-              if (!visited [prev]) {
-                if (!defs ()) {
-                  final Instruction instruction = instructions.get(prev);
-                  if (instruction instanceof WriteVariableInstruction) {
-                    WriteVariableInstruction instructionW = (WriteVariableInstruction)instruction;
-                    if (instructionW.variable == def) {
-                      continue;
-                    }
-                  }
-                  else {
-                    processInstruction(res, instruction, prev);
-                  }
-                }
-                traverse (prev);
-
+            // hack: ControlFlow doesn't contains parameters initialization
+            if (index == 0 && def instanceof PsiParameter) {
+              PsiIdentifier identifier = def.getNameIdentifier();
+              if (identifier != null) {
+                res.add(identifier);
               }
             }
           }
+
+          final int nNext = nNext (index);
+          for (int i = 0; i < nNext; i++) {
+            final int prev = getNext(index, i);
+            if (!visited [prev]) {
+              if (!defs) {
+                final Instruction instruction = instructions.get(prev);
+                if (instruction instanceof WriteVariableInstruction) {
+                  WriteVariableInstruction instructionW = (WriteVariableInstruction)instruction;
+                  if (psiManager.areElementsEquivalent(instructionW.variable, def)) {
+                    continue;
+                  }
+                }
+                else {
+                  processInstruction(res, instruction, prev);
+                }
+              }
+              workQueue.add(prev);
+            }
+          }
         }
-        new Inner ().traverse(elem);
         return PsiUtilCore.toPsiElementArray(res);
       }
       return PsiElement.EMPTY_ARRAY;
@@ -521,7 +527,7 @@ public class DefUseUtil {
     }
   }
 
-  private static class InstructionStateWalker {
+  private static final class InstructionStateWalker {
     private final Map<InstructionKey, InstructionState> myStates;
     private final WalkThroughStack myWalkThroughStack;
     private final List<? extends Instruction> myInstructions;

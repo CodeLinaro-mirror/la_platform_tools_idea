@@ -46,9 +46,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-/**
- * @author cdr
- */
 public class ChangeMethodSignatureFromUsageFix implements IntentionAction/*, HighPriorityAction*/ {
   final PsiMethod myTargetMethod;
   final PsiExpression[] myExpressions;
@@ -108,7 +105,7 @@ public class ChangeMethodSignatureFromUsageFix implements IntentionAction/*, Hig
                                       p.getTypeText());
       }
     }
-    return "<html> Change signature of " + targetMethodName + "(" + buf.toString() + ")</html>";
+    return "<html> Change signature of " + targetMethodName + "(" + buf + ")</html>";
   }
 
   @Nullable

@@ -17,8 +17,8 @@ import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.extensions.ExtensionPointListener;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.wm.ToolWindowAllowlistEP;
 import com.intellij.openapi.wm.ToolWindowEP;
-import com.intellij.openapi.wm.ToolWindowWhitelistEP;
 import com.intellij.openapi.wm.ext.LibraryDependentToolWindow;
 import com.intellij.openapi.wm.impl.WindowInfoImpl;
 import org.jetbrains.annotations.NotNull;
@@ -33,7 +33,15 @@ import static com.intellij.internal.statistic.utils.PluginInfoDetectorKt.getUnkn
 import static com.intellij.openapi.wm.ToolWindowId.*;
 
 /**
- * @author Konstantin Bulenkov
+ * <p>
+ *   Toolwindows registered in plugin.xml are whitelisted by default.<br/>
+ *   See: {@link ToolWindowEP#EP_NAME}, {@link LibraryDependentToolWindow#EP_NAME}, {@link FacetDependentToolWindow#EP_NAME}
+ * </p>
+ *
+ * <p>
+ *   If toolwindow is registered dynamically is <b>should</b> be explicitly whitelisted
+ *   in plugin.xml {@link ToolWindowAllowlistEP#EP_NAME} or here in {@link ToolWindowCollector#ourToolwindowWhitelist}
+ * </p>
  */
 public final class ToolWindowCollector {
   private static final ToolWindowInfo UNKNOWN = new ToolWindowInfo("unknown", getUnknownPlugin());
@@ -42,17 +50,15 @@ public final class ToolWindowCollector {
     return ServiceManager.getService(ToolWindowCollector.class);
   }
 
-  public static final Map<String, ToolWindowInfo> ourToolwindowWhitelist = new HashMap<>();
+  /**
+   * Use this set to whitelist dynamically registered platform toolwindows.<br/><br/>
+   *
+   * If toolwindow is registered in plugin.xml, it's whitelisted automatically. <br/>
+   * To whitelist dynamically registered plugin toolwindow use {@link ToolWindowAllowlistEP#EP_NAME}
+   */
+  private static final Map<String, ToolWindowInfo> ourToolwindowWhitelist = new HashMap<>();
   static {
-    // Constants from ToolWindowId can be changed by localization plugins, therefore
-    // we need to remember a link to a bundled message (which can be changed by localization)
-    // and a constant id for recording.
-    ourToolwindowWhitelist.put(COMMANDER, new ToolWindowInfo("Commander"));
     ourToolwindowWhitelist.put(MESSAGES_WINDOW, new ToolWindowInfo("Messages"));
-    ourToolwindowWhitelist.put(PROJECT_VIEW, new ToolWindowInfo("Project"));
-    ourToolwindowWhitelist.put(STRUCTURE_VIEW, new ToolWindowInfo("Structure"));
-    ourToolwindowWhitelist.put(FAVORITES_VIEW, new ToolWindowInfo("Favorites"));
-    ourToolwindowWhitelist.put(ANT_BUILD, new ToolWindowInfo("Ant"));
     ourToolwindowWhitelist.put(DEBUG, new ToolWindowInfo("Debug"));
     ourToolwindowWhitelist.put(RUN, new ToolWindowInfo("Run"));
     ourToolwindowWhitelist.put(BuildContentManager.TOOL_WINDOW_ID, new ToolWindowInfo("Build"));
@@ -60,35 +66,30 @@ public final class ToolWindowCollector {
     ourToolwindowWhitelist.put("CVS", new ToolWindowInfo("CVS"));
     ourToolwindowWhitelist.put(HIERARCHY, new ToolWindowInfo("Hierarchy"));
     ourToolwindowWhitelist.put(INSPECTION, new ToolWindowInfo("Inspection_Results"));
-    ourToolwindowWhitelist.put(TODO_VIEW, new ToolWindowInfo("TODO"));
     ourToolwindowWhitelist.put(DEPENDENCIES, new ToolWindowInfo("Dependency_Viewer"));
-    ourToolwindowWhitelist.put(VCS, new ToolWindowInfo("Version_Control"));
     ourToolwindowWhitelist.put(MODULES_DEPENDENCIES, new ToolWindowInfo("Module_Dependencies"));
     ourToolwindowWhitelist.put(DUPLICATES, new ToolWindowInfo("Duplicates"));
     ourToolwindowWhitelist.put(EXTRACT_METHOD, new ToolWindowInfo("Extract_Method"));
     ourToolwindowWhitelist.put(DOCUMENTATION, new ToolWindowInfo("Documentation"));
-    ourToolwindowWhitelist.put(TASKS, new ToolWindowInfo("Time_Tracking"));
-    ourToolwindowWhitelist.put(DATABASE_VIEW, new ToolWindowInfo("Database"));
     ourToolwindowWhitelist.put(PREVIEW, new ToolWindowInfo("Preview"));
     ourToolwindowWhitelist.put(RUN_DASHBOARD, new ToolWindowInfo("Run_Dashboard"));
     ourToolwindowWhitelist.put(SERVICES, new ToolWindowInfo("Services"));
-    ourToolwindowWhitelist.put("Statistics Event Log", new ToolWindowInfo("Statistics_Event_Log"));
     ourToolwindowWhitelist.put(ENDPOINTS, new ToolWindowInfo("Endpoints"));
   }
 
   private ToolWindowCollector() {
-    for (ToolWindowWhitelistEP extension : ToolWindowWhitelistEP.EP_NAME.getExtensionList()) {
+    for (ToolWindowAllowlistEP extension : ToolWindowAllowlistEP.EP_NAME.getExtensionList()) {
       addToolwindowToWhitelist(extension);
     }
-    ToolWindowWhitelistEP.EP_NAME.addExtensionPointListener(new ExtensionPointListener<ToolWindowWhitelistEP>() {
+    ToolWindowAllowlistEP.EP_NAME.addExtensionPointListener(new ExtensionPointListener<ToolWindowAllowlistEP>() {
       @Override
-      public void extensionAdded(@NotNull ToolWindowWhitelistEP extension, @NotNull PluginDescriptor pluginDescriptor) {
+      public void extensionAdded(@NotNull ToolWindowAllowlistEP extension, @NotNull PluginDescriptor pluginDescriptor) {
         addToolwindowToWhitelist(extension);
       }
     }, ApplicationManager.getApplication());
   }
 
-  private static void addToolwindowToWhitelist(ToolWindowWhitelistEP extension) {
+  private static void addToolwindowToWhitelist(ToolWindowAllowlistEP extension) {
     PluginDescriptor pluginDescriptor = extension == null ? null : extension.getPluginDescriptor();
     PluginInfo info = pluginDescriptor != null ? PluginInfoDetectorKt.getPluginInfoByDescriptor(pluginDescriptor) : null;
     if (info != null && info.isDevelopedByJetBrains()) {
@@ -96,20 +97,20 @@ public final class ToolWindowCollector {
     }
   }
 
-  public static void recordActivation(@Nullable String toolWindowId, @Nullable WindowInfoImpl info) {
+  public void recordActivation(@Nullable String toolWindowId, @Nullable WindowInfoImpl info) {
     record(toolWindowId, ACTIVATED, info);
   }
 
-  public static void recordHidden(@NotNull WindowInfoImpl info) {
+  public void recordHidden(@NotNull WindowInfoImpl info) {
     record(info.getId(), HIDDEN, info);
   }
 
-  public static void recordShown(@NotNull WindowInfoImpl info) {
+  public void recordShown(@NotNull WindowInfoImpl info) {
     record(info.getId(), SHOWN, info);
   }
 
   //todo[kb] provide a proper way to track activations by clicks
-  public static void recordClick(String toolWindowId, @Nullable WindowInfoImpl info) {
+  public void recordClick(String toolWindowId, @Nullable WindowInfoImpl info) {
     record(toolWindowId, CLICKED, info);
   }
 

@@ -12,7 +12,6 @@ import com.intellij.ide.startup.StartupManagerEx;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
@@ -26,7 +25,6 @@ import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.ui.content.TabbedContent;
 import com.intellij.util.ContentUtilEx;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,6 +34,7 @@ import java.awt.*;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.intellij.util.ContentUtilEx.getFullName;
@@ -52,15 +51,14 @@ public final class BuildContentManagerImpl implements BuildContentManager {
   private static final Key<Map<Object, CloseListener>> CONTENT_CLOSE_LISTENERS = Key.create("CONTENT_CLOSE_LISTENERS");
 
   private final Project myProject;
-  private final Map<Content, Pair<Icon, AtomicInteger>> liveContentsMap = ContainerUtil.newConcurrentMap();
+  private final Map<Content, Pair<Icon, AtomicInteger>> liveContentsMap = new ConcurrentHashMap<>();
 
   public BuildContentManagerImpl(@NotNull Project project) {
     myProject = project;
   }
 
   @Override
-  @NotNull
-  public ToolWindow getOrCreateToolWindow() {
+  public @NotNull ToolWindow getOrCreateToolWindow() {
     ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
     ToolWindow toolWindow = toolWindowManager.getToolWindow(TOOL_WINDOW_ID);
     if (toolWindow != null) {
@@ -88,17 +86,13 @@ public final class BuildContentManagerImpl implements BuildContentManager {
     return toolWindow;
   }
 
-  private void invokeLaterIfNeeded(@NotNull DumbAwareRunnable runnable) {
+  private void invokeLaterIfNeeded(@NotNull Runnable runnable) {
     if (myProject.isDefault()) {
       return;
     }
-    if (!StartupManagerEx.getInstanceEx(myProject).startupActivityPassed()) {
-      StartupManagerEx.getInstanceEx(myProject).registerPostStartupDumbAwareActivity(
-        () -> GuiUtils.invokeLaterIfNeeded(runnable, ModalityState.defaultModalityState(), myProject.getDisposed()));
-    }
-    else {
+    StartupManagerEx.getInstanceEx(myProject).runAfterOpened(() -> {
       GuiUtils.invokeLaterIfNeeded(runnable, ModalityState.defaultModalityState(), myProject.getDisposed());
-    }
+    });
   }
 
   @Override
@@ -117,7 +111,7 @@ public final class BuildContentManagerImpl implements BuildContentManager {
       }
       final Content[] existingContents = contentManager.getContents();
       if (idx != -1) {
-        final MultiMap<String, String> existingCategoriesNames = MultiMap.createSmart();
+        MultiMap<String, String> existingCategoriesNames = new MultiMap<>();
         for (Content existingContent : existingContents) {
           String tabName = existingContent.getTabName();
           existingCategoriesNames.putValue(StringUtil.trimEnd(StringUtil.split(tabName, " ").get(0), ':'), tabName);
@@ -212,17 +206,19 @@ public final class BuildContentManagerImpl implements BuildContentManager {
       }
       closeListenerMap.put(buildDescriptor.getId(), new CloseListener(content, processHandler));
     }
+    Pair<Icon, AtomicInteger> pair = liveContentsMap.computeIfAbsent(content, c -> Pair.pair(c.getIcon(), new AtomicInteger(0)));
+    pair.second.incrementAndGet();
+    content.putUserData(ToolWindow.SHOW_CONTENT_ICON, Boolean.TRUE);
+    if (pair.first == null) {
+      content.putUserData(Content.TAB_LABEL_ORIENTATION_KEY, ComponentOrientation.RIGHT_TO_LEFT);
+    }
+    content.setIcon(ExecutionUtil.getLiveIndicator(pair.first, 0, 13));
     invokeLaterIfNeeded(() -> {
-      Pair<Icon, AtomicInteger> pair = liveContentsMap.computeIfAbsent(content, c -> Pair.pair(c.getIcon(), new AtomicInteger(0)));
-      pair.second.incrementAndGet();
-      content.putUserData(ToolWindow.SHOW_CONTENT_ICON, Boolean.TRUE);
-      if (pair.first == null) {
-        content.putUserData(Content.TAB_LABEL_ORIENTATION_KEY, ComponentOrientation.RIGHT_TO_LEFT);
-      }
-      content.setIcon(ExecutionUtil.getLiveIndicator(pair.first, 0, 13));
       JComponent component = content.getComponent();
       component.invalidate();
-      getOrCreateToolWindow().setIcon(ExecutionUtil.getLiveIndicator(AllIcons.Toolwindows.ToolWindowBuild));
+      if (!liveContentsMap.isEmpty()) {
+        getOrCreateToolWindow().setIcon(ExecutionUtil.getLiveIndicator(AllIcons.Toolwindows.ToolWindowBuild));
+      }
     });
   }
 
@@ -237,26 +233,27 @@ public final class BuildContentManagerImpl implements BuildContentManager {
         }
       }
     }
+
+    Pair<Icon, AtomicInteger> pair = liveContentsMap.get(content);
+    if (pair != null && pair.second.decrementAndGet() == 0) {
+      content.setIcon(pair.first);
+      if (pair.first == null) {
+        content.putUserData(ToolWindow.SHOW_CONTENT_ICON, Boolean.FALSE);
+      }
+      liveContentsMap.remove(content);
+    }
+
     invokeLaterIfNeeded(() -> {
-      Pair<Icon, AtomicInteger> pair = liveContentsMap.get(content);
-      if (pair != null && pair.second.decrementAndGet() == 0) {
-        content.setIcon(pair.first);
-        if (pair.first == null) {
-          content.putUserData(ToolWindow.SHOW_CONTENT_ICON, Boolean.FALSE);
-        }
-        liveContentsMap.remove(content);
-        if (liveContentsMap.isEmpty()) {
-          getOrCreateToolWindow().setIcon(AllIcons.Toolwindows.ToolWindowBuild);
-        }
+      if (liveContentsMap.isEmpty()) {
+        getOrCreateToolWindow().setIcon(AllIcons.Toolwindows.ToolWindowBuild);
       }
     });
   }
 
-  private class CloseListener extends BaseContentCloseListener {
-    @Nullable
-    private BuildProcessHandler myProcessHandler;
+  private final class CloseListener extends BaseContentCloseListener {
+    private @Nullable BuildProcessHandler myProcessHandler;
 
-    private CloseListener(@NotNull final Content content, @NotNull BuildProcessHandler processHandler) {
+    private CloseListener(final @NotNull Content content, @NotNull BuildProcessHandler processHandler) {
       super(content, myProject);
       myProcessHandler = processHandler;
     }

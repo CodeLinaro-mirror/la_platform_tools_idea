@@ -12,12 +12,14 @@ import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.XmlHighlighterColors;
-import com.intellij.openapi.editor.colors.CodeInsightColors;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.MarkupModelEx;
 import com.intellij.openapi.editor.impl.DocumentMarkupModel;
-import com.intellij.openapi.editor.markup.*;
+import com.intellij.openapi.editor.markup.HighlighterTargetArea;
+import com.intellij.openapi.editor.markup.MarkupModel;
+import com.intellij.openapi.editor.markup.RangeHighlighter;
+import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
@@ -49,7 +51,7 @@ import java.util.List;
 public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
   private static final Key<List<RangeHighlighter>> TAG_TREE_HIGHLIGHTERS_IN_EDITOR_KEY = Key.create("TAG_TREE_HIGHLIGHTERS_IN_EDITOR_KEY");
 
-  private static final TextAttributesKey TAG_TREE_HIGHLIGHTING_KEY = TextAttributesKey.createTextAttributesKey("TAG_TREE_HIGHLIGHTING_KEY");
+  public static final TextAttributesKey TAG_TREE_HIGHLIGHTING_KEY = TextAttributesKey.createTextAttributesKey("TAG_TREE_HIGHLIGHTING_KEY");
   private static final HighlightInfoType TYPE = new HighlightInfoType.HighlightInfoTypeImpl(HighlightSeverity.INFORMATION,
                                                                                             TAG_TREE_HIGHLIGHTING_KEY);
 
@@ -59,11 +61,11 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
 
   private final List<Pair<TextRange, TextRange>> myPairsToHighlight = new ArrayList<>();
 
-  public XmlTagTreeHighlightingPass(@NotNull PsiFile file, @NotNull EditorEx editor) {
+  XmlTagTreeHighlightingPass(@NotNull PsiFile file, @NotNull EditorEx editor) {
     super(file.getProject(), editor.getDocument(), true);
     myFile = file;
     myEditor = editor;
-    final FileViewProvider viewProvider = file.getManager().findViewProvider(file.getVirtualFile());
+    FileViewProvider viewProvider = file.getManager().findViewProvider(file.getVirtualFile());
     myInfoProvider = BreadcrumbsUtilEx.findProvider(false, viewProvider);
   }
 
@@ -77,13 +79,13 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
       return;
     }
 
-    final int offset = myEditor.getCaretModel().getOffset();
+    int offset = myEditor.getCaretModel().getOffset();
     PsiElement[] elements =
       PsiFileBreadcrumbsCollector.getLinePsiElements(myEditor.getDocument(), offset, myFile.getVirtualFile(), myProject, myInfoProvider);
 
     if (elements == null || elements.length == 0 || !XmlTagTreeHighlightingUtil.containsTagsWithSameName(elements)) {
       elements = PsiElement.EMPTY_ARRAY;
-      final FileViewProvider provider = myFile.getViewProvider();
+      FileViewProvider provider = myFile.getViewProvider();
       for (Language language : provider.getLanguages()) {
         PsiElement element = provider.findElementAt(offset, language);
         if (!isTagStartOrEnd(element)) {
@@ -94,7 +96,7 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
           if (!isTagStartOrEnd(element)) element = null;
         }
 
-        final XmlTag tag = PsiTreeUtil.getParentOfType(element, XmlTag.class);
+        XmlTag tag = PsiTreeUtil.getParentOfType(element, XmlTag.class);
         if (tag != null) {
           elements = new PsiElement[] {tag};
         }
@@ -110,20 +112,20 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
 
   private static boolean isTagStartOrEnd(@Nullable PsiElement element) {
     if (element == null) return false;
-    final IElementType type = element.getNode().getElementType();
+    IElementType type = element.getNode().getElementType();
     if (type == XmlTokenType.XML_NAME || type == XmlTokenType.XML_TAG_NAME) return isTagStartOrEnd(element.getNextSibling()) || isTagStartOrEnd(element.getPrevSibling());
     return type == XmlTokenType.XML_START_TAG_START || type == XmlTokenType.XML_END_TAG_START || type == XmlTokenType.XML_TAG_END;
   }
 
   @NotNull
   private static Pair<TextRange, TextRange> getTagRanges(XmlTag tag) {
-    final ASTNode tagNode = tag.getNode();
+    ASTNode tagNode = tag.getNode();
     return Pair.create(getStartTagRange(tagNode), getEndTagRange(tagNode));
   }
 
   @Nullable
   private static TextRange getStartTagRange(ASTNode tagNode) {
-    final ASTNode startTagStart = XmlChildRole.START_TAG_START_FINDER.findChild(tagNode);
+    ASTNode startTagStart = XmlChildRole.START_TAG_START_FINDER.findChild(tagNode);
     if (startTagStart == null) {
       return null;
     }
@@ -143,7 +145,7 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
 
   @Nullable
   private static TextRange getEndTagRange(ASTNode tagNode) {
-    final ASTNode endTagStart = XmlChildRole.CLOSING_TAG_START_FINDER.findChild(tagNode);
+    ASTNode endTagStart = XmlChildRole.CLOSING_TAG_START_FINDER.findChild(tagNode);
     if (endTagStart == null) {
       return null;
     }
@@ -162,25 +164,23 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
 
   @Override
   public void doApplyInformationToEditor() {
-    if (myDocument != null) {
-      final List<HighlightInfo> infos = getHighlights();
-      UpdateHighlightersUtil.setHighlightersToSingleEditor(myProject, myEditor, 0, myFile.getTextLength(), infos, getColorsScheme(), getId());
-    }
+    List<HighlightInfo> infos = getHighlights();
+    UpdateHighlightersUtil.setHighlightersToSingleEditor(myProject, myEditor, 0, myFile.getTextLength(), infos, getColorsScheme(), getId());
   }
 
   public List<HighlightInfo> getHighlights() {
     clearLineMarkers(myEditor);
 
-    final int count = myPairsToHighlight.size();
-    final List<HighlightInfo> highlightInfos = new ArrayList<>(count * 2);
-    final MarkupModel markupModel = myEditor.getMarkupModel();
+    int count = myPairsToHighlight.size();
+    List<HighlightInfo> highlightInfos = new ArrayList<>(count * 2);
+    MarkupModel markupModel = myEditor.getMarkupModel();
 
-    final Color[] baseColors = XmlTagTreeHighlightingUtil.getBaseColors();
-    final Color[] colorsForEditor = count > 1 ? toColorsForEditor(baseColors) :
+    Color[] baseColors = XmlTagTreeHighlightingUtil.getBaseColors();
+    Color[] colorsForEditor = count > 1 ? toColorsForEditor(baseColors) :
                                     new Color[] {myEditor.getColorsScheme().getAttributes(XmlHighlighterColors.MATCHED_TAG_NAME).getBackgroundColor()};
-    final Color[] colorsForLineMarkers = toColorsForLineMarkers(baseColors);
+    Color[] colorsForLineMarkers = toColorsForLineMarkers(baseColors);
 
-    final List<RangeHighlighter> newHighlighters = new ArrayList<>();
+    List<RangeHighlighter> newHighlighters = new ArrayList<>();
 
     assert colorsForEditor.length > 0;
 
@@ -205,12 +205,12 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
         highlightInfos.add(createHighlightInfo(color, pair.second));
       }
 
-      final int start = pair.first != null ? pair.first.getStartOffset() : pair.second.getStartOffset();
-      final int end = pair.second != null ? pair.second.getEndOffset() : pair.first.getEndOffset();
+      int start = pair.first != null ? pair.first.getStartOffset() : pair.second.getStartOffset();
+      int end = pair.second != null ? pair.second.getEndOffset() : pair.first.getEndOffset();
 
-      final Color lineMarkerColor = colorsForLineMarkers[i];
+      Color lineMarkerColor = colorsForLineMarkers[i];
       if (count > 1 && lineMarkerColor != null && start != end) {
-        final RangeHighlighter highlighter = createHighlighter(markupModel, new TextRange(start, end), lineMarkerColor);
+        RangeHighlighter highlighter = createHighlighter(markupModel, new TextRange(start, end), lineMarkerColor);
         newHighlighters.add(highlighter);
       }
     }
@@ -221,10 +221,10 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
   }
 
   private static void clearLineMarkers(Editor editor) {
-    final List<RangeHighlighter> oldHighlighters = editor.getUserData(TAG_TREE_HIGHLIGHTERS_IN_EDITOR_KEY);
+    List<RangeHighlighter> oldHighlighters = editor.getUserData(TAG_TREE_HIGHLIGHTERS_IN_EDITOR_KEY);
 
     if (oldHighlighters != null) {
-      final MarkupModelEx markupModel = (MarkupModelEx)editor.getMarkupModel();
+      MarkupModelEx markupModel = (MarkupModelEx)editor.getMarkupModel();
 
       for (RangeHighlighter highlighter : oldHighlighters) {
         if (markupModel.containsHighlighter(highlighter)) {
@@ -242,16 +242,13 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
   }
 
   @NotNull
-  private static RangeHighlighter createHighlighter(final MarkupModel mm, @NotNull final TextRange range, final Color color) {
-    final RangeHighlighter highlighter =
-      mm.addRangeHighlighter(range.getStartOffset(), range.getEndOffset(), 0, null, HighlighterTargetArea.LINES_IN_RANGE);
+  private static RangeHighlighter createHighlighter(MarkupModel mm, @NotNull TextRange range, Color color) {
+    RangeHighlighter highlighter =
+      mm.addRangeHighlighter(null, range.getStartOffset(), range.getEndOffset(), 0, HighlighterTargetArea.LINES_IN_RANGE);
 
-    highlighter.setLineMarkerRenderer(new LineMarkerRenderer() {
-      @Override
-      public void paint(Editor editor, Graphics g, Rectangle r) {
-        g.setColor(color);
-        g.fillRect(r.x - 1, r.y, 2, r.height);
-      }
+    highlighter.setLineMarkerRenderer((__, g, r) -> {
+      g.setColor(color);
+      g.fillRect(r.x - 1, r.y, 2, r.height);
     });
     return highlighter;
   }
@@ -266,11 +263,11 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
 
   private static int toLineMarkerColor(int gray, int color) {
     int value = (int)(gray * 0.6 + 0.32 * color);
-    return value < 0 ? 0 : value > 255 ? 255 : value;
+    return value < 0 ? 0 : Math.min(value, 255);
   }
 
   private static Color[] toColorsForLineMarkers(Color[] baseColors) {
-    final Color[] colors = new Color[baseColors.length];
+    Color[] colors = new Color[baseColors.length];
     for (int i = 0; i < colors.length; i++) {
       colors[i] = toLineMarkerColor(239, baseColors[i]);
     }
@@ -278,20 +275,16 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
   }
 
   private Color[] toColorsForEditor(Color[] baseColors) {
-    final Color tagBackground = myEditor.getBackgroundColor();
+    Color tagBackground = myEditor.getBackgroundColor();
 
-    if (tagBackground == null) {
-      return baseColors;
-    }
-
-    final Color[] resultColors = new Color[baseColors.length];
+    Color[] resultColors = new Color[baseColors.length];
     // todo: make configurable
-    final double transparency = WebEditorOptions.getInstance().getTagTreeHighlightingOpacity() * 0.01;
+    double transparency = WebEditorOptions.getInstance().getTagTreeHighlightingOpacity() * 0.01;
 
     for (int i = 0; i < resultColors.length; i++) {
-      final Color color = baseColors[i];
+      Color color = baseColors[i];
 
-      final Color color1 = color != null
+      Color color1 = color != null
                            ? UIUtil.makeTransparent(color, tagBackground, transparency)
                            : null;
       resultColors[i] = color1;
@@ -300,8 +293,8 @@ public class XmlTagTreeHighlightingPass extends TextEditorHighlightingPass {
     return resultColors;
   }
 
-  public static void clearHighlightingAndLineMarkers(final Editor editor, @NotNull Project project) {
-    final MarkupModel markupModel = DocumentMarkupModel.forDocument(editor.getDocument(), project, true);
+  public static void clearHighlightingAndLineMarkers(Editor editor, @NotNull Project project) {
+    MarkupModel markupModel = DocumentMarkupModel.forDocument(editor.getDocument(), project, true);
 
     for (RangeHighlighter highlighter : markupModel.getAllHighlighters()) {
       HighlightInfo info = HighlightInfo.fromRangeHighlighter(highlighter);

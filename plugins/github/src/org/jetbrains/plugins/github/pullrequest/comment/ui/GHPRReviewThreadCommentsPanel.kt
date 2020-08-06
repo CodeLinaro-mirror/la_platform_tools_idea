@@ -19,14 +19,14 @@ import javax.swing.event.ListDataListener
 
 object GHPRReviewThreadCommentsPanel {
 
-  private const val FOLD_THRESHOLD = 2
+  private const val FOLD_THRESHOLD = 3
 
   fun create(commentsModel: ListModel<GHPRReviewCommentModel>,
              commentComponentFactory: (GHPRReviewCommentModel) -> JComponent): JComponent {
 
     if (commentsModel.size < 1) throw IllegalStateException("Thread cannot be empty")
 
-    val panel = JPanel(VerticalLayout(8)).apply {
+    val panel = JPanel(VerticalLayout(UI.scale(8))).apply {
       isOpaque = false
       putClientProperty(UIUtil.HIDE_EDITOR_FROM_DATA_CONTEXT_PROPERTY, true)
     }
@@ -65,7 +65,7 @@ object GHPRReviewThreadCommentsPanel {
 
         override fun intervalAdded(e: ListDataEvent) {
           for (i in e.index0..e.index1) {
-            panel.add(componentFactory(model.getElementAt(i)), VerticalLayout.FILL_HORIZONTAL, i + 1)
+            panel.add(componentFactory(model.getElementAt(i)), i + 1)
           }
           panel.validate()
           panel.repaint()
@@ -78,11 +78,11 @@ object GHPRReviewThreadCommentsPanel {
       })
       foldModel.addValueChangedListener { updateFolding() }
 
-      panel.add(componentFactory(model.getElementAt(0)), VerticalLayout.FILL_HORIZONTAL)
-      panel.add(unfoldButtonPanel, VerticalLayout.FILL_HORIZONTAL)
+      panel.add(componentFactory(model.getElementAt(0)))
+      panel.add(unfoldButtonPanel)
 
       for (i in 1 until model.size) {
-        panel.add(componentFactory(model.getElementAt(i)), VerticalLayout.FILL_HORIZONTAL)
+        panel.add(componentFactory(model.getElementAt(i)))
       }
       updateFolding()
     }

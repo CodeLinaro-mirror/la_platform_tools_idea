@@ -42,6 +42,7 @@ public class I18NInspectionTest extends LightJavaCodeInsightFixtureTestCase {
   public void testConstructorCallOfNonNlsVariable() { doTest(); }
   public void _testConstructorChains() { doTest(); }
   public void testSwitchOnNonNlsString() { doTest(); }
+  public void testNestedArrayParenthesized() { doTest(); }
   public void testNonNlsComment() {
     myTool.nonNlsCommentPattern = "MYNON-NLS";
     myTool.cacheNonNlsCommentPattern();
@@ -49,6 +50,16 @@ public class I18NInspectionTest extends LightJavaCodeInsightFixtureTestCase {
   }
 
   public void testNlsOnly() {
+    boolean old = myTool.setIgnoreForAllButNls(true);
+    try {
+      doTest();
+    }
+    finally {
+      myTool.setIgnoreForAllButNls(old);
+    }
+  }
+  
+  public void testNlsOnlyFields() {
     boolean old = myTool.setIgnoreForAllButNls(true);
     try {
       doTest();
@@ -98,6 +109,34 @@ public class I18NInspectionTest extends LightJavaCodeInsightFixtureTestCase {
   }
   
   public void testNlsTypeUse() {
+    boolean old = myTool.setIgnoreForAllButNls(true);
+    try {
+      doTest();
+    }
+    finally {
+      myTool.setIgnoreForAllButNls(old);
+    }
+  }
+
+  public void testNonNlsIndirect() {
+    doTest();
+  }
+
+  public void testNlsIndirect() {
+    boolean old = myTool.setIgnoreForAllButNls(true);
+    try {
+      doTest();
+    }
+    finally {
+      myTool.setIgnoreForAllButNls(old);
+    }
+  }
+
+  public void testNonNlsMeta() {
+    doTest();
+  }
+  
+  public void testNlsMeta() {
     boolean old = myTool.setIgnoreForAllButNls(true);
     try {
       doTest();

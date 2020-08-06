@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.util
 
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.ElementManipulators
 import com.intellij.psi.PsiElement
@@ -33,6 +34,17 @@ class PartiallyKnownString(val segments: List<StringEntry>) {
       return stringBuffer.toString()
     }
 
+  val concatenationOfKnown: String
+    get() {
+      (segments.singleOrNull() as? StringEntry.Known)?.let { return it.value }
+
+      val stringBuffer = StringBuffer()
+      for (segment in segments) {
+        if (segment is StringEntry.Known) stringBuffer.append(segment.value)
+      }
+      return stringBuffer.toString()
+    }
+
   override fun toString(): String = segments.joinToString { segment ->
     when (segment) {
       is StringEntry.Known -> segment.value
@@ -45,12 +57,18 @@ class PartiallyKnownString(val segments: List<StringEntry>) {
   constructor(string: String, sourcePsi: PsiElement?, textRange: TextRange) : this(
     StringEntry.Known(string, sourcePsi, textRange))
 
-  fun findIndexOfInKnown(pattern: String): Int {
+  constructor(string: String) : this(string, null, TextRange.EMPTY_RANGE)
+
+  constructor(host: PsiLanguageInjectionHost) : this(
+    StringEntry.Known(ElementManipulators.getValueText(host), host, ElementManipulators.getValueTextRange(host)))
+
+  @JvmOverloads
+  fun findIndexOfInKnown(pattern: String, startFrom: Int = 0): Int {
     var accumulated = 0
     for (segment in segments) {
       when (segment) {
         is StringEntry.Known -> {
-          val i = segment.value.indexOf(pattern)
+          val i = segment.value.indexOf(pattern, startFrom - accumulated)
           if (i >= 0) return accumulated + i
           accumulated += segment.value.length
         }
@@ -147,18 +165,22 @@ class PartiallyKnownString(val segments: List<StringEntry>) {
    * NOTE: currently supports only single-segment [rangeInPks]
    */
   fun mapRangeToHostRange(host: PsiLanguageInjectionHost, rangeInPks: TextRange): TextRange? {
-    val hostValueTextRange = ElementManipulators.getValueTextRange(host)
 
-    fun getHostRangeEscapeAware(inSegmentStart: Int, inSegmentEnd: Int): TextRange {
+    fun getHostRangeEscapeAware(segmentRange: TextRange, inSegmentEnd: Int, inSegmentStart: Int): TextRange {
       val escaper = host.createLiteralTextEscaper()
-      val decode = escaper.decode(hostValueTextRange, StringBuilder())
+      val decode = escaper.decode(segmentRange, StringBuilder())
       if (decode) {
-        return TextRange(
-          escaper.getOffsetInHost(inSegmentStart, hostValueTextRange),
-          escaper.getOffsetInHost(inSegmentEnd, hostValueTextRange))
+        val start = escaper.getOffsetInHost(inSegmentStart, segmentRange)
+        val end = escaper.getOffsetInHost(inSegmentEnd, segmentRange)
+        if (start != -1 && end != -1)
+          return TextRange(start, end)
+        else {
+          logger<PartiallyKnownString>().warn("decoding of ${segmentRange} failed for ${host.text} : [$start, $end]")
+          return TextRange(inSegmentStart, inSegmentEnd)
+        }
       }
       else
-        return TextRange(inSegmentStart, inSegmentEnd).shiftRight(hostValueTextRange.startOffset)
+        return TextRange(inSegmentStart, inSegmentEnd)
     }
 
     var accumulated = 0
@@ -173,11 +195,10 @@ class PartiallyKnownString(val segments: List<StringEntry>) {
 
         val sourcePsi = segment.sourcePsi
         if (sourcePsi == host) {
-          return getHostRangeEscapeAware(inSegmentStart, inSegmentEnd)
+          return getHostRangeEscapeAware(segment.range, inSegmentEnd, inSegmentStart)
         }
         if (sourcePsi?.parent == host) { // The Kotlin case
-          return getHostRangeEscapeAware(sourcePsi.startOffsetInParent - hostValueTextRange.startOffset + inSegmentStart,
-                                         sourcePsi.startOffsetInParent - hostValueTextRange.startOffset + inSegmentEnd)
+          return getHostRangeEscapeAware(segment.range.shiftRight(sourcePsi.startOffsetInParent), inSegmentEnd, inSegmentStart)
         }
         else return null // no idea what to do, feel free to extend
       }

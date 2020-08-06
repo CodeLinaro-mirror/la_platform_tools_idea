@@ -1,8 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
 package com.intellij.testFramework.fixtures.impl;
 
-import com.intellij.ProjectTopics;
 import com.intellij.ide.IdeView;
 import com.intellij.ide.highlighter.ProjectFileType;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
@@ -21,7 +19,6 @@ import com.intellij.openapi.fileTypes.impl.FileTypeManagerImpl;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.ModuleListener;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
@@ -59,7 +56,6 @@ final class HeavyIdeaTestFixtureImpl extends BaseFixture implements HeavyIdeaTes
   private Project myProject;
   private volatile Module myModule;
   private final Set<Path> myFilesToDelete = new HashSet<>();
-  private TestApplicationManager myTestAppManager;
   private final Set<ModuleFixtureBuilder<?>> myModuleFixtureBuilders = new LinkedHashSet<>();
   private EditorListenerTracker myEditorListenerTracker;
   private ThreadTracker myThreadTracker;
@@ -101,7 +97,7 @@ final class HeavyIdeaTestFixtureImpl extends BaseFixture implements HeavyIdeaTes
       runAll = runAll
         .append(
           () -> {
-            TestApplicationManagerKt.tearDownProjectAndApp(myProject, myTestAppManager);
+            TestApplicationManagerKt.tearDownProjectAndApp(myProject);
             myProject = null;
           },
           () -> {
@@ -109,7 +105,6 @@ final class HeavyIdeaTestFixtureImpl extends BaseFixture implements HeavyIdeaTes
               moduleFixtureBuilder.getFixture().tearDown();
             }
           },
-          () -> EdtTestUtil.runInEdtAndWait(() -> ProjectRule.checkThatNoOpenProjects()),
           () -> InjectedLanguageManagerImpl.checkInjectorsAreDisposed(project)
         );
     }
@@ -167,13 +162,7 @@ final class HeavyIdeaTestFixtureImpl extends BaseFixture implements HeavyIdeaTes
   }
 
   private void setUpProject() {
-    Path tempDirectory = myProjectPath != null ? myProjectPath : TemporaryDirectory.generateTemporaryPath(myName);
-    HeavyPlatformTestCase.synchronizeTempDirVfs(tempDirectory);
-    if (myProjectPath == null) {
-      myFilesToDelete.add(tempDirectory);
-    }
-    myProject = HeavyPlatformTestCase.createProject(generateProjectPath(tempDirectory));
-    myProject.getMessageBus().connect(getTestRootDisposable()).subscribe(ProjectTopics.MODULES, new ModuleListener() {
+    myProject = HeavyTestHelper.openHeavyTestFixtureProject(generateProjectPath(), new ModuleListener() {
       @Override
       public void moduleAdded(@NotNull Project project, @NotNull Module module) {
         if (myModule == null) {
@@ -183,8 +172,6 @@ final class HeavyIdeaTestFixtureImpl extends BaseFixture implements HeavyIdeaTes
     });
 
     EdtTestUtil.runInEdtAndWait(() -> {
-      ProjectManagerEx.getInstanceEx().openTestProject(myProject);
-
       for (ModuleFixtureBuilder<?> moduleFixtureBuilder : myModuleFixtureBuilders) {
         moduleFixtureBuilder.getFixture().setUp();
       }
@@ -195,14 +182,20 @@ final class HeavyIdeaTestFixtureImpl extends BaseFixture implements HeavyIdeaTes
   }
 
   @NotNull
-  private Path generateProjectPath(@NotNull Path tempDirectory) {
-    String suffix = myIsDirectoryBasedProject ? "" : ProjectFileType.DOT_DEFAULT_EXTENSION;
-    return tempDirectory.resolve(myName + suffix);
+  private Path generateProjectPath() {
+    Path tempDirectory;
+    if (myProjectPath == null) {
+      tempDirectory = TemporaryDirectory.generateTemporaryPath(myName);
+      myFilesToDelete.add(tempDirectory);
+    }
+    else {
+      tempDirectory = myProjectPath;
+    }
+    return tempDirectory.resolve(myName + (myIsDirectoryBasedProject ? "" : ProjectFileType.DOT_DEFAULT_EXTENSION));
   }
 
   private void initApplication() {
-    myTestAppManager = TestApplicationManager.getInstance();
-    myTestAppManager.setDataProvider(new MyDataProvider());
+    TestApplicationManager.getInstance().setDataProvider(new MyDataProvider());
   }
 
   @Override

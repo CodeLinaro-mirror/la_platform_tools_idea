@@ -6,7 +6,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.extensions.ExtensionNotApplicableException;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Disposer;
@@ -16,13 +15,14 @@ import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ToolWindowType;
-import com.intellij.openapi.wm.ex.ToolWindowManagerEx;
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener;
 import com.intellij.util.PlatformUtils;
 import org.jetbrains.annotations.NotNull;
 
-public final class PlatformProjectViewOpener implements DirectoryProjectConfigurator {
-  public PlatformProjectViewOpener() {
+import java.util.List;
+
+final class PlatformProjectViewOpener implements DirectoryProjectConfigurator {
+  PlatformProjectViewOpener() {
     if (PlatformUtils.isPyCharmEducational() || PlatformUtils.isDataGrip()) {
       throw ExtensionNotApplicableException.INSTANCE;
     }
@@ -32,7 +32,7 @@ public final class PlatformProjectViewOpener implements DirectoryProjectConfigur
   public void configureProject(@NotNull Project project,
                                @NotNull VirtualFile baseDir,
                                @NotNull Ref<Module> moduleRef,
-                               boolean newProject) {
+                               boolean isProjectCreatedWithWizard) {
     ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW);
     if (toolWindow == null) {
       MyListener listener = new MyListener(project);
@@ -40,7 +40,7 @@ public final class PlatformProjectViewOpener implements DirectoryProjectConfigur
       project.getMessageBus().connect(listener).subscribe(ToolWindowManagerListener.TOPIC, listener);
     }
     else {
-      StartupManager.getInstance(project).runWhenProjectIsInitialized((DumbAwareRunnable)() -> {
+      StartupManager.getInstance(project).runAfterOpened(() -> {
         activateProjectToolWindow(project, toolWindow);
       });
     }
@@ -63,10 +63,10 @@ public final class PlatformProjectViewOpener implements DirectoryProjectConfigur
     }
 
     @Override
-    public void toolWindowRegistered(@NotNull String id) {
-      if (id.equals(ToolWindowId.PROJECT_VIEW)) {
+    public void toolWindowsRegistered(@NotNull List<String> id) {
+      if (id.contains(ToolWindowId.PROJECT_VIEW)) {
         Disposer.dispose(this);
-        activateProjectToolWindow(myProject, ToolWindowManagerEx.getInstanceEx(myProject).getToolWindow(id));
+        activateProjectToolWindow(myProject, ToolWindowManager.getInstance(myProject).getToolWindow(ToolWindowId.PROJECT_VIEW));
       }
     }
 

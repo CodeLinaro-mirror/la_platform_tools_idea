@@ -7,17 +7,17 @@ import java.awt.Point
 import java.awt.event.MouseEvent
 
 /**
- * Presentation, that allow to setup reaction to mouse actions.
+ * Presentation that allow to setup reaction to mouse actions.
  */
 @ApiStatus.Experimental
 class MouseHandlingPresentation(
   presentation: InlayPresentation,
-  private val clickListener: ((MouseEvent, Point) -> Unit)?,
+  private val clickListener: InlayPresentationFactory.ClickListener?,
   private val hoverListener: InlayPresentationFactory.HoverListener?
 ) : StaticDelegatePresentation(presentation) {
   override fun mouseClicked(event: MouseEvent, translated: Point) {
     super.mouseClicked(event, translated)
-    clickListener?.invoke(event, translated)
+    clickListener?.onClick(event, translated)
   }
 
   override fun mouseMoved(event: MouseEvent, translated: Point) {

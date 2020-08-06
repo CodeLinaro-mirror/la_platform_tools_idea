@@ -37,10 +37,7 @@ import org.jetbrains.jps.incremental.fs.BuildFSState;
 import org.jetbrains.jps.incremental.messages.BuildMessage;
 import org.jetbrains.jps.incremental.messages.CompilerMessage;
 import org.jetbrains.jps.incremental.relativizer.PathRelativizerService;
-import org.jetbrains.jps.incremental.storage.BuildDataManager;
-import org.jetbrains.jps.incremental.storage.BuildTargetsState;
-import org.jetbrains.jps.incremental.storage.ProjectTimestamps;
-import org.jetbrains.jps.incremental.storage.StampsStorage;
+import org.jetbrains.jps.incremental.storage.*;
 import org.jetbrains.jps.indices.ModuleExcludeIndex;
 import org.jetbrains.jps.indices.impl.IgnoredFileIndexImpl;
 import org.jetbrains.jps.indices.impl.ModuleExcludeIndexImpl;
@@ -85,10 +82,10 @@ public class BuildRunner {
 
     PathRelativizerService relativizer = new PathRelativizerService(jpsModel.getProject());
 
-    ProjectTimestamps projectStamps = null;
+    ProjectStamps projectStamps = null;
     BuildDataManager dataManager = null;
     try {
-      projectStamps = new ProjectTimestamps(dataStorageRoot, targetsState, relativizer);
+      projectStamps = new ProjectStamps(dataStorageRoot, targetsState, relativizer);
       dataManager = new BuildDataManager(dataPaths, targetsState, relativizer);
       if (dataManager.versionDiffers()) {
         myForceCleanCaches = true;
@@ -107,7 +104,7 @@ public class BuildRunner {
       myForceCleanCaches = true;
       FileUtil.delete(dataStorageRoot);
       targetsState = new BuildTargetsState(dataPaths, jpsModel, buildRootIndex);
-      projectStamps = new ProjectTimestamps(dataStorageRoot, targetsState, relativizer);
+      projectStamps = new ProjectStamps(dataStorageRoot, targetsState, relativizer);
       dataManager = new BuildDataManager(dataPaths, targetsState, relativizer);
       // second attempt succeeded
       msgHandler.processMessage(new CompilerMessage("build", BuildMessage.Kind.INFO, "Project rebuild forced: " + e.getMessage()));
@@ -130,7 +127,7 @@ public class BuildRunner {
     for (int attempt = 0; attempt < 2 && !cs.isCanceled(); attempt++) {
       final boolean forceClean = myForceCleanCaches && myFilePaths.isEmpty();
       final CompileScope compileScope = createCompilationScope(pd, scopes, myFilePaths, forceClean, includeDependenciesToScope);
-      final IncProjectBuilder builder = new IncProjectBuilder(pd, BuilderRegistry.getInstance(), myBuilderParams, cs, constantSearch, Utils.IS_TEST_MODE);
+      final IncProjectBuilder builder = new IncProjectBuilder(pd, BuilderRegistry.getInstance(), myBuilderParams, cs, Utils.IS_TEST_MODE);
       builder.addMessageHandler(msgHandler);
       try {
         switch (buildType) {

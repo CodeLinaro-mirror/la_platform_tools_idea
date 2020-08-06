@@ -234,10 +234,6 @@ class LookupUi {
     }
     if (isPositionedAboveCaret()) {
       location.y -= dim.height + editor.getLineHeight();
-      if (pos.line == 0) {
-        location.y += 1;
-        //otherwise the lookup won't intersect with the editor and every editor's resize (e.g. after typing in console) will close the lookup
-      }
     }
 
     if (!screenRectangle.contains(location)) {
@@ -279,7 +275,7 @@ class LookupUi {
       setLayout(new AbstractLayoutManager() {
         @Override
         public Dimension preferredLayoutSize(@Nullable Container parent) {
-          int maxCellWidth = myLookup.myLookupTextWidth + myLookup.myCellRenderer.getTextIndent();
+          int maxCellWidth = myLookup.myCellRenderer.getLookupTextWidth() + myLookup.myCellRenderer.getTextIndent();
           int scrollBarWidth = myScrollPane.getVerticalScrollBar().getWidth();
           int listWidth = Math.min(scrollBarWidth + maxCellWidth, UISettings.getInstance().getMaxLookupWidth());
 

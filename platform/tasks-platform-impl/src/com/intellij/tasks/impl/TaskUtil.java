@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.tasks.impl;
 
@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
 /**
  * @author Dmitry Avdeev
  */
-public class TaskUtil {
+public final class TaskUtil {
 
   // Almost ISO-8601 strict except date parts may be separated by '/'
   // and date only also allowed just in case
@@ -156,13 +156,13 @@ public class TaskUtil {
     if (t1.isIssue() != t2.isIssue()) return false;
     if (!Comparing.equal(t1.getState(), t2.getState())) return false;
     if (!Comparing.equal(t1.getType(), t2.getType())) return false;
-    if (!Comparing.equal(t1.getDescription(), t2.getDescription())) return false;
+    if (!Objects.equals(t1.getDescription(), t2.getDescription())) return false;
     if (!Comparing.equal(t1.getCreated(), t2.getCreated())) return false;
     if (!Comparing.equal(t1.getUpdated(), t2.getUpdated())) return false;
-    if (!Comparing.equal(t1.getIssueUrl(), t2.getIssueUrl())) return false;
+    if (!Objects.equals(t1.getIssueUrl(), t2.getIssueUrl())) return false;
     if (!Arrays.equals(t1.getComments(), t2.getComments())) return false;
     if (!Comparing.equal(t1.getIcon(), t2.getIcon())) return false;
-    if (!Comparing.equal(t1.getCustomIcon(), t2.getCustomIcon())) return false;
+    if (!Objects.equals(t1.getCustomIcon(), t2.getCustomIcon())) return false;
     return Comparing.equal(t1.getRepository(), t2.getRepository());
   }
 

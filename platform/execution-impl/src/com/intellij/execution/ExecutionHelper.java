@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.execution;
 
@@ -53,7 +53,7 @@ import java.util.function.BooleanSupplier;
 /**
  * @author Roman Chernyatchik
  */
-public class ExecutionHelper {
+public final class ExecutionHelper {
   private static final Logger LOG = Logger.getInstance(ExecutionHelper.class);
 
   private ExecutionHelper() {
@@ -160,7 +160,9 @@ public class ExecutionHelper {
     ApplicationManager.getApplication().invokeLater(() -> {
       if (myProject.isDisposed()) return;
 
+      //noinspection HardCodedStringLiteral
       final String stdOutTitle = "[Stdout]:";
+      //noinspection HardCodedStringLiteral
       final String stderrTitle = "[Stderr]:";
       final ErrorViewPanel errorTreeView = new ErrorViewPanel(myProject);
       try {
@@ -348,7 +350,7 @@ public class ExecutionHelper {
       return;
     }
 
-    final String title = mode.getTitle() != null ? mode.getTitle() : "Please wait...";
+    final String title = mode.getTitle() != null ? mode.getTitle() : ExecutionBundle.message("progress.title.please.wait");
     final Runnable process;
     if (mode.cancelable()) {
       process = createCancelableExecutionProcess(processHandler, mode.shouldCancelFun());
@@ -384,8 +386,11 @@ public class ExecutionHelper {
     }
   }
 
-  private static Runnable createCancelableExecutionProcess(final ProcessHandler processHandler,
-                                                           final BooleanSupplier cancelableFun) {
+  /**
+   * @param cancelableFun supplier indicating that process should be terminated
+   */
+  private static Runnable createCancelableExecutionProcess(@NotNull ProcessHandler processHandler,
+                                                           @Nullable BooleanSupplier cancelableFun) {
     return new Runnable() {
       private ProgressIndicator myProgressIndicator;
       private final Semaphore mySemaphore = new Semaphore();

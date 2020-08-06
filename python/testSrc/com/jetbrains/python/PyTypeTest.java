@@ -636,7 +636,7 @@ public class PyTypeTest extends PyTestCase {
   }
 
   public void testUpperBoundGeneric() {
-    doTest("Union[int, str]",
+    doTest("Union[Union[int, str], Any]",
            "def foo(x):\n" +
            "    '''\n" +
            "    :type x: T <= int or str\n" +
@@ -3663,7 +3663,7 @@ public class PyTypeTest extends PyTestCase {
   public void testSlicingHomogeneousTuple() {
     runWithLanguageLevel(
       LanguageLevel.getLatest(),
-      () -> doTest("Tuple[int, ...]",
+      () -> doTest("tuple[int, ...]",
                    "from typing import Tuple\n" +
                    "x: Tuple[int, ...]\n" +
                    "expr = x[0:]")
@@ -3875,6 +3875,33 @@ public class PyTypeTest extends PyTestCase {
            "    \"\"\"Example Docstring\"\"\"\n" +
            "    return 0\n" +
            "expr = example.__doc__");
+  }
+
+  // PY-38786
+  public void testParticularTypeAgainstTypeVarBoundedWithBuiltinType() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTest("Type[MyClass]",
+                   "from typing import TypeVar, Type\n" +
+                   "\n" +
+                   "T = TypeVar(\"T\", bound=type)\n" +
+                   "\n" +
+                   "def foo(t: T) -> T:\n" +
+                   "    pass\n" +
+                   "\n" +
+                   "class MyClass:\n" +
+                   "    pass\n" +
+                   "\n" +
+                   "expr = foo(MyClass)")
+    );
+  }
+
+  // PY-38786
+  public void testDunderSubclasses() {
+    doTest("List[Type[Base]]",
+           "class Base(object):\n" +
+           "    pass\n" +
+           "expr = Base.__subclasses__()");
   }
 
   private static List<TypeEvalContext> getTypeEvalContexts(@NotNull PyExpression element) {

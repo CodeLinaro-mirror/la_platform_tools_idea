@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.incremental.java;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -11,9 +11,9 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
-import com.intellij.util.containers.ObjectLinkedOpenHashSet;
 import com.intellij.util.containers.SmartHashSet;
 import com.intellij.util.execution.ParametersListUtil;
 import com.intellij.util.io.PersistentEnumeratorBase;
@@ -23,7 +23,6 @@ import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.ModuleChunk;
-import org.jetbrains.jps.PathUtils;
 import org.jetbrains.jps.ProjectPaths;
 import org.jetbrains.jps.api.GlobalOptions;
 import org.jetbrains.jps.backwardRefs.JavaBackwardReferenceIndexWriter;
@@ -55,8 +54,7 @@ import org.jetbrains.jps.model.serialization.PathMacroUtil;
 import org.jetbrains.jps.service.JpsServiceManager;
 import org.jetbrains.jps.service.SharedThreadPool;
 
-import javax.tools.Diagnostic;
-import javax.tools.JavaFileObject;
+import javax.tools.*;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -76,7 +74,7 @@ import static com.intellij.openapi.util.Pair.pair;
 /**
  * @author Eugene Zhuravlev
  */
-public class JavaBuilder extends ModuleLevelBuilder {
+public final class JavaBuilder extends ModuleLevelBuilder {
   private static final Logger LOG = Logger.getInstance(JavaBuilder.class);
   private static final String JAVA_EXTENSION = "java";
 
@@ -229,7 +227,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
                           @NotNull OutputConsumer outputConsumer,
                           @NotNull JavaCompilingTool compilingTool) throws ProjectBuildException, IOException {
     try {
-      final Set<File> filesToCompile = new ObjectLinkedOpenHashSet<>(FileUtil.FILE_HASHING_STRATEGY);
+      final Set<File> filesToCompile = CollectionFactory.createFileLinkedSet();
 
       dirtyFilesHolder.processDirtyFiles((target, file, descriptor) -> {
         if (JAVA_SOURCES_FILTER.accept(file) && ourCompilableModuleTypes.contains(target.getModule().getModuleType())) {
@@ -501,7 +499,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
         final CompilationPaths paths = CompilationPaths.create(platformCp, classPath, upgradeModulePath, modulePath, sourcePath);
         rc = server.forkJavac(
           forkSdk.getFirst(), Utils.suggestForkedCompilerHeapSize(),
-          vmOptions, options, paths, files, outs, diagnosticSink, classesConsumer, compilingTool, context.getCancelStatus(), false
+          vmOptions, options, paths, files, outs, diagnosticSink, classesConsumer, compilingTool, context.getCancelStatus(), true
         ).get();
       }
       return rc;
@@ -716,7 +714,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
       return server;
     }
     final int listenPort = findFreePort();
-    server = new ExternalJavacManager(Utils.getSystemRoot(), SharedThreadPool.getInstance()) {
+    server = new ExternalJavacManager(Utils.getSystemRoot(), SharedThreadPool.getInstance(), 2 * 60 * 1000L /*keep idle builds for 2 minutes*/) {
       @Override
       protected ExternalJavacProcessHandler createProcessHandler(UUID processId, @NotNull Process process, @NotNull String commandLine, boolean keepProcessAlive) {
         return new ExternalJavacProcessHandler(processId, process, commandLine, keepProcessAlive) {
@@ -1101,6 +1099,10 @@ public class JavaBuilder extends ModuleLevelBuilder {
   @Override
   public void chunkBuildFinished(CompileContext context, ModuleChunk chunk) {
     JavaBuilderUtil.cleanupChunkResources(context);
+    ExternalJavacManager extJavacManager = ExternalJavacManager.KEY.get(context);
+    if (extJavacManager != null) {
+      extJavacManager.shutdownIdleProcesses();
+    }
   }
 
   private static Map<File, Set<File>> buildOutputDirectoriesMap(CompileContext context, ModuleChunk chunk) {
@@ -1119,7 +1121,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
     return map;
   }
 
-  private static class DiagnosticSink implements DiagnosticOutputConsumer {
+  private static final class DiagnosticSink implements DiagnosticOutputConsumer {
     private final CompileContext myContext;
     private final AtomicInteger myErrorCount = new AtomicInteger(0);
     private final AtomicInteger myWarningCount = new AtomicInteger(0);
@@ -1164,10 +1166,16 @@ public class JavaBuilder extends ModuleLevelBuilder {
         if (line.startsWith(ExternalJavacManager.STDOUT_LINE_PREFIX)) {
           //noinspection UseOfSystemOutOrSystemErr
           System.out.println(line);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(line);
+          }
         }
         else if (line.startsWith(ExternalJavacManager.STDERR_LINE_PREFIX)) {
           //noinspection UseOfSystemOutOrSystemErr
           System.err.println(line);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(line);
+          }
         }
         else if (line.contains("\\bjava.lang.OutOfMemoryError\\b")) {
           myContext.processMessage(new CompilerMessage(BUILDER_NAME, BuildMessage.Kind.ERROR, "OutOfMemoryError: insufficient memory"));
@@ -1206,7 +1214,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
         // for eclipse compiler just an attempt to call getSource() may lead to an NPE,
         // so calling this method under try/catch to avoid induced compiler errors
         final JavaFileObject source = diagnostic.getSource();
-        sourceFile = source != null ? PathUtils.convertToFile(source.toUri()) : null;
+        sourceFile = source != null ? new File(source.toUri()) : null;
       }
       catch (Exception e) {
         LOG.info(e);
@@ -1273,7 +1281,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
     }
   }
 
-  private class ClassProcessingConsumer implements OutputFileConsumer {
+  private final class ClassProcessingConsumer implements OutputFileConsumer {
     private final CompileContext myContext;
     private final OutputFileConsumer myDelegateOutputFileSink;
 

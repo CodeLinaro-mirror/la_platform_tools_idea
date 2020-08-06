@@ -3,10 +3,7 @@ package com.intellij.openapi.roots.ui.configuration.projectRoot;
 
 import com.google.common.collect.Sets;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.TransactionGuard;
-import com.intellij.openapi.application.WriteAction;
+import com.intellij.openapi.application.*;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.*;
 import com.intellij.openapi.progress.util.ProgressIndicatorBase;
@@ -30,7 +27,7 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class SdkDownloadTracker implements Disposable {
+public class SdkDownloadTracker {
   private static final Logger LOG = Logger.getInstance(SdkDownloadTracker.class);
 
   @NotNull
@@ -41,19 +38,13 @@ public class SdkDownloadTracker implements Disposable {
   private final List<PendingDownload> myPendingTasks = new CopyOnWriteArrayList<>();
 
   public SdkDownloadTracker() {
-    ApplicationManager.getApplication().getMessageBus()
-      .connect(this)
-      .subscribe(ProjectJdkTable.JDK_TABLE_TOPIC,
-                 new ProjectJdkTable.Adapter() {
-                   @Override
-                   public void jdkRemoved(@NotNull Sdk jdk) {
-                     onSdkRemoved(jdk);
-                   }
-                 });
-  }
-
-  @Override
-  public void dispose() {
+    ApplicationManager.getApplication().getMessageBus().simpleConnect()
+      .subscribe(ProjectJdkTable.JDK_TABLE_TOPIC, new ProjectJdkTable.Listener() {
+        @Override
+        public void jdkRemoved(@NotNull Sdk jdk) {
+          onSdkRemoved(jdk);
+        }
+      });
   }
 
   public void onSdkRemoved(@NotNull Sdk sdk) {
@@ -307,9 +298,11 @@ public class SdkDownloadTracker implements Disposable {
           catch (Throwable e) {
             if (!myProgressIndicator.isCanceled()) {
               LOG.warn("SDK Download failed. " + e.getMessage(), e);
-              myModalityTracker.invokeLater(() -> {
-                Messages.showErrorDialog(ProjectBundle.message("error.message.sdk.download.failed", type.getPresentableName()), getTitle());
-              });
+              if (!ApplicationManager.getApplication().isUnitTestMode()) {
+                myModalityTracker.invokeLater(() -> {
+                  Messages.showErrorDialog(ProjectBundle.message("error.message.sdk.download.failed", type.getPresentableName()), getTitle());
+                });
+              }
             }
             onSdkDownloadCompleted(true);
           }

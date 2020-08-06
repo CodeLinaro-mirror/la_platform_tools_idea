@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.framework.detection.impl;
 
 import com.intellij.framework.FrameworkType;
@@ -27,11 +13,12 @@ import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.util.Pair;
 import com.intellij.patterns.ElementPattern;
 import com.intellij.util.containers.MultiMap;
-import com.intellij.util.indexing.FileBasedIndex;
 import com.intellij.util.indexing.FileContent;
 import com.intellij.util.io.PathKt;
-import gnu.trove.TIntObjectHashMap;
-import gnu.trove.TObjectIntHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.*;
@@ -40,11 +27,11 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry implements Disposable {
+public final class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry implements Disposable {
   private static final Logger LOG = Logger.getInstance(FrameworkDetectorRegistryImpl.class);
   private static final int REGISTRY_VERSION = 0;
-  private TObjectIntHashMap<String> myDetectorIds;
-  private TIntObjectHashMap<FrameworkDetector> myDetectorById;
+  private Object2IntMap<String> myDetectorIds;
+  private Int2ObjectMap<FrameworkDetector> myDetectorById;
   private MultiMap<FileType, Integer> myDetectorsByFileType;
   private int myDetectorsVersion;
   private volatile MultiMap<FileType, Pair<ElementPattern<FileContent>, Integer>> myDetectorsMap;
@@ -53,7 +40,7 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
 
   public FrameworkDetectorRegistryImpl() {
     loadDetectors();
-    FrameworkDetector.EP_NAME.getPoint(null).addExtensionPointListener(new ExtensionPointListener<FrameworkDetector>() {
+    FrameworkDetector.EP_NAME.getPoint().addExtensionPointListener(new ExtensionPointListener<FrameworkDetector>() {
       @Override
       public void extensionAdded(@NotNull FrameworkDetector detector, @NotNull PluginDescriptor pluginDescriptor) {
         int id = myNextId.getAndIncrement();
@@ -65,8 +52,8 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
 
       @Override
       public void extensionRemoved(@NotNull FrameworkDetector detector, @NotNull PluginDescriptor pluginDescriptor) {
-        if (myDetectorIds.contains(detector.getDetectorId())) {
-          int id = myDetectorIds.remove(detector.getDetectorId());
+        if (myDetectorIds.containsKey(detector.getDetectorId())) {
+          int id = myDetectorIds.removeInt(detector.getDetectorId());
           myDetectorById.remove(id);
           myDetectorsByFileType.remove(detector.getFileType(), id);
           onDetectorsChanged();
@@ -82,7 +69,7 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
       newDetectors.put(detector.getDetectorId(), detector);
     }
 
-    myDetectorIds = new TObjectIntHashMap<>();
+    myDetectorIds = new Object2IntOpenHashMap<>();
     final Path file = getDetectorsRegistryFile();
     int maxId = REGISTRY_VERSION;
     if (Files.exists(file)) {
@@ -129,10 +116,10 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
     for (String newDetector : newDetectors.keySet()) {
       myDetectorIds.put(newDetector, myNextId.getAndIncrement());
     }
-    myDetectorById = new TIntObjectHashMap<>();
+    myDetectorById = new Int2ObjectOpenHashMap<>();
     myDetectorsByFileType = new MultiMap<>();
     for (FrameworkDetector detector : FrameworkDetector.EP_NAME.getExtensions()) {
-      final int id = myDetectorIds.get(detector.getDetectorId());
+      final int id = myDetectorIds.getInt(detector.getDetectorId());
       myDetectorsByFileType.putValue(detector.getFileType(), id);
       myDetectorById.put(id, detector);
       LOG.debug("'" + detector.getDetectorId() + "' framework detector: id = " + id);
@@ -152,7 +139,7 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
       output.writeInt(detectors.length);
       for (FrameworkDetector detector : detectors) {
         output.writeUTF(detector.getDetectorId());
-        output.writeInt(myDetectorIds.get(detector.getDetectorId()));
+        output.writeInt(myDetectorIds.getInt(detector.getDetectorId()));
         output.writeInt(detector.getDetectorVersion());
       }
     }
@@ -194,7 +181,6 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
     myDetectorsMap = null;
     myDetectorsVersion++;
     saveDetectors();
-    ApplicationManager.getApplication().invokeLater(() -> FileBasedIndex.getInstance().requestRebuild(FrameworkDetectionIndex.NAME));
   }
 
   private static Path getDetectorsRegistryFile() {
@@ -219,7 +205,7 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
   @NotNull
   @Override
   public List<? extends FrameworkType> getFrameworkTypes() {
-    final List<FrameworkType> types = new ArrayList<>();
+    List<FrameworkType> types = new ArrayList<>();
     for (FrameworkDetector detector : FrameworkDetector.EP_NAME.getExtensions()) {
       types.add(detector.getFrameworkType());
     }
@@ -233,7 +219,7 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
 
   @Override
   public int getDetectorId(@NotNull FrameworkDetector detector) {
-    return myDetectorIds.get(detector.getDetectorId());
+    return myDetectorIds.getInt(detector.getDetectorId());
   }
 
   @Override
@@ -248,13 +234,8 @@ public class FrameworkDetectorRegistryImpl extends FrameworkDetectorRegistry imp
   }
 
   @Override
-  public Collection<Integer> getAllDetectorIds() {
-    final int[] ids = myDetectorIds.getValues();
-    final List<Integer> result = new ArrayList<>();
-    for (int id : ids) {
-      result.add(id);
-    }
-    return result;
+  public int[] getAllDetectorIds() {
+    return myDetectorIds.values().toIntArray();
   }
 
   @Override

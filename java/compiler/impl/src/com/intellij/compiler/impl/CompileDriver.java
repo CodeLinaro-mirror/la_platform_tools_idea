@@ -2,7 +2,9 @@
 package com.intellij.compiler.impl;
 
 import com.intellij.CommonBundle;
+import com.intellij.build.BuildContentManager;
 import com.intellij.compiler.*;
+import com.intellij.compiler.progress.CompilerMessagesService;
 import com.intellij.compiler.progress.CompilerTask;
 import com.intellij.compiler.server.BuildManager;
 import com.intellij.compiler.server.DefaultMessageHandler;
@@ -30,6 +32,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFileManager;
@@ -41,10 +44,9 @@ import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.util.Chunk;
 import com.intellij.util.ThrowableRunnable;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.MultiMap;
 import com.intellij.util.text.DateFormatUtil;
-import gnu.trove.THashSet;
 import org.jetbrains.annotations.*;
 import org.jetbrains.jps.api.*;
 import org.jetbrains.jps.model.java.JavaSourceRootType;
@@ -65,6 +67,7 @@ public final class CompileDriver {
   private static final Key<Boolean> COMPILATION_STARTED_AUTOMATICALLY = Key.create("compilation_started_automatically");
   private static final Key<ExitStatus> COMPILE_SERVER_BUILD_STATUS = Key.create("COMPILE_SERVER_BUILD_STATUS");
   private static final long ONE_MINUTE_MS = 60L * 1000L;
+  public static final String CLASSES_UP_TO_DATE_CHECK = "Classes up-to-date check";
 
   private final Project myProject;
   private final Map<Module, String> myModuleOutputPaths = new HashMap<>();
@@ -100,7 +103,7 @@ public final class CompileDriver {
       LOG.debug("isUpToDate operation started");
     }
 
-    final CompilerTask task = new CompilerTask(myProject, "Classes up-to-date check", true, false, false, isCompilationStartedAutomatically(scope));
+    final CompilerTask task = new CompilerTask(myProject, CLASSES_UP_TO_DATE_CHECK, true, false, false, isCompilationStartedAutomatically(scope));
     final CompileContextImpl compileContext = new CompileContextImpl(myProject, task, scope, true, false);
 
     final Ref<ExitStatus> result = new Ref<>();
@@ -124,7 +127,9 @@ public final class CompileDriver {
         LOG.error(e);
       }
       finally {
-        result.set(COMPILE_SERVER_BUILD_STATUS.get(compileContext));
+        ExitStatus exitStatus = COMPILE_SERVER_BUILD_STATUS.get(compileContext);
+        task.setEndCompilationStamp(exitStatus, System.currentTimeMillis());
+        result.set(exitStatus);
         if (!myProject.isDisposed()) {
           CompilerCacheManager.getInstance(myProject).flushCaches();
         }
@@ -235,7 +240,7 @@ public final class CompileDriver {
       builderParams.put(BuildParametersKeys.LOAD_UNLOADED_MODULES, Boolean.TRUE.toString());
     }
 
-    final MultiMap<String, Artifact> outputToArtifact = ArtifactCompilerUtil.containsArtifacts(scopes) ? ArtifactCompilerUtil.createOutputToArtifactMap(myProject) : null;
+    Map<String, List<Artifact>> outputToArtifact = ArtifactCompilerUtil.containsArtifacts(scopes) ? ArtifactCompilerUtil.createOutputToArtifactMap(myProject) : null;
     final BuildManager buildManager = BuildManager.getInstance();
     buildManager.cancelAutoMakeTasks(myProject);
     return buildManager.scheduleBuild(myProject, compileContext.isRebuild(), compileContext.isMake(), onlyCheckUpToDate, scopes, paths, builderParams, new DefaultMessageHandler(myProject) {
@@ -301,7 +306,7 @@ public final class CompileDriver {
           case FILES_GENERATED:
             final List<CmdlineRemoteProto.Message.BuilderMessage.BuildEvent.GeneratedFile> generated = event.getGeneratedFilesList();
             CompilationStatusListener publisher = myProject.isDisposed() ? null : myProject.getMessageBus().syncPublisher(CompilerTopics.COMPILATION_STATUS);
-            Set<String> writtenArtifactOutputPaths = outputToArtifact != null ? new THashSet<>(FileUtil.PATH_HASHING_STRATEGY) : null;
+            Set<String> writtenArtifactOutputPaths = outputToArtifact != null ? CollectionFactory.createFilePathSet() : null;
             for (CmdlineRemoteProto.Message.BuilderMessage.BuildEvent.GeneratedFile generatedFile : generated) {
               final String root = FileUtil.toSystemIndependentName(generatedFile.getOutputRoot());
               final String relativePath = FileUtil.toSystemIndependentName(generatedFile.getRelativePath());
@@ -474,7 +479,9 @@ public final class CompileDriver {
 
   /** @noinspection SSBasedInspection*/
   private long notifyCompilationCompleted(final CompileContextImpl compileContext, final CompileStatusNotification callback, final ExitStatus _status) {
-    final long duration = System.currentTimeMillis() - compileContext.getStartCompilationStamp();
+    long endCompilationStamp = System.currentTimeMillis();
+    compileContext.getBuildSession().setEndCompilationStamp(_status, endCompilationStamp);
+    final long duration = endCompilationStamp - compileContext.getStartCompilationStamp();
     if (!myProject.isDisposed()) {
       // refresh on output roots is required in order for the order enumerator to see all roots via VFS
       final Module[] affectedModules = compileContext.getCompileScope().getAffectedModules();
@@ -507,14 +514,16 @@ public final class CompileDriver {
         final String statusMessage = createStatusMessage(_status, warningCount, errorCount, duration);
         final MessageType messageType = errorCount > 0 ? MessageType.ERROR : warningCount > 0 ? MessageType.WARNING : MessageType.INFO;
         if (duration > ONE_MINUTE_MS && CompilerWorkspaceConfiguration.getInstance(myProject).DISPLAY_NOTIFICATION_POPUP) {
-          ToolWindowManager.getInstance(myProject).notifyByBalloon(ToolWindowId.MESSAGES_WINDOW, messageType, statusMessage);
+          String toolWindowId = Registry.is("ide.jps.use.build.tool.window", true) ?
+                                BuildContentManager.TOOL_WINDOW_ID : ToolWindowId.MESSAGES_WINDOW;
+          ToolWindowManager.getInstance(myProject).notifyByBalloon(toolWindowId, messageType, statusMessage);
         }
 
         final String wrappedMessage = _status != ExitStatus.UP_TO_DATE? "<a href='#'>" + statusMessage + "</a>" : statusMessage;
         final Notification notification = CompilerManager.NOTIFICATION_GROUP.createNotification(
           "", wrappedMessage,
           messageType.toNotificationType(),
-          new MessagesActivationListener(compileContext)
+          new BuildToolWindowActivationListener(compileContext)
         ).setImportant(false);
         compileContext.getBuildSession().registerCloseAction(notification::expire);
         notification.notify(myProject);
@@ -792,11 +801,11 @@ public final class CompileDriver {
     }
   }
 
-  private static class MessagesActivationListener extends NotificationListener.Adapter {
+  private static class BuildToolWindowActivationListener extends NotificationListener.Adapter {
     private final WeakReference<Project> myProjectRef;
     private final Object myContentId;
 
-    MessagesActivationListener(CompileContextImpl compileContext) {
+    BuildToolWindowActivationListener(CompileContextImpl compileContext) {
       myProjectRef = new WeakReference<>(compileContext.getProject());
       myContentId = compileContext.getBuildSession().getContentId();
     }
@@ -804,10 +813,17 @@ public final class CompileDriver {
     @Override
     protected void hyperlinkActivated(@NotNull Notification notification, @NotNull HyperlinkEvent e) {
       final Project project = myProjectRef.get();
-      if (project != null && !project.isDisposed() && CompilerTask.showCompilerContent(project, myContentId)) {
-        final ToolWindow tw = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.MESSAGES_WINDOW);
-        if (tw != null) {
-          tw.activate(null, false);
+      boolean useBuildToolwindow = Registry.is("ide.jps.use.build.tool.window", true);
+      String toolWindowId = useBuildToolwindow ? BuildContentManager.TOOL_WINDOW_ID : ToolWindowId.MESSAGES_WINDOW;
+      if (project != null && !project.isDisposed()) {
+        if (useBuildToolwindow || CompilerMessagesService.showCompilerContent(project, myContentId)) {
+          final ToolWindow tw = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId);
+          if (tw != null) {
+            tw.activate(null, false);
+          }
+        }
+        else {
+          notification.expire();
         }
       }
       else {

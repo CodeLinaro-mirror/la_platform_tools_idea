@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.ex;
 
@@ -8,6 +8,7 @@ import com.intellij.codeInspection.*;
 import com.intellij.codeInspection.deadCode.UnusedDeclarationInspectionBase;
 import com.intellij.codeInspection.reference.*;
 import com.intellij.codeInspection.ui.InspectionToolPresentation;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.java.JavaBundle;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.application.ApplicationManager;
@@ -15,7 +16,6 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.module.JavaModuleType;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
@@ -228,7 +228,7 @@ public class GlobalJavaInspectionContextImpl extends GlobalJavaInspectionContext
           return true;
         }
         //e.g. xml files were not included in the graph, so usages there should be processed as external
-        boolean inGraph = processedReferences ? refManager.isInGraph(file) : FileTypeRegistry.getInstance().isFileOfType(file, StdFileTypes.JAVA);
+        boolean inGraph = processedReferences ? refManager.isInGraph(file) : FileTypeRegistry.getInstance().isFileOfType(file, JavaFileType.INSTANCE);
         return !inGraph;
       }
 
@@ -263,7 +263,7 @@ public class GlobalJavaInspectionContextImpl extends GlobalJavaInspectionContext
       for (SmartPsiElementPointer sortedID : sortedIDs) {
         final UMethod uMethod = ReadAction.compute(() -> UastContextKt.toUElement(dereferenceInReadAction(sortedID), UMethod.class));
         if (uMethod == null) continue;
-        final RefMethod refMethod = (RefMethod)refManager.getReference(uMethod.getSourcePsi());
+        final RefMethod refMethod = ReadAction.compute(() -> (RefMethod)refManager.getReference(uMethod.getSourcePsi()));
 
         context.incrementJobDoneAmount(context.getStdJobDescriptors().FIND_EXTERNAL_USAGES, refManager.getQualifiedName(refMethod));
 
@@ -413,7 +413,7 @@ public class GlobalJavaInspectionContextImpl extends GlobalJavaInspectionContext
           result.add(id);
         }
       }
-      Collections.sort(result, (o1, o2) -> {
+      result.sort((o1, o2) -> {
         PsiFile psiFile1 = o1.getContainingFile();
         LOG.assertTrue(psiFile1 != null);
         PsiFile psiFile2 = o2.getContainingFile();
@@ -425,7 +425,7 @@ public class GlobalJavaInspectionContextImpl extends GlobalJavaInspectionContext
     return result;
   }
 
-  private static PsiReferenceProcessor createReferenceProcessor(@NotNull final List<UsagesProcessor> processors,
+  private static PsiReferenceProcessor createReferenceProcessor(final @NotNull List<UsagesProcessor> processors,
                                                                 final GlobalInspectionContext context) {
     return reference -> {
       AnalysisScope scope = context.getRefManager().getScope();
@@ -448,9 +448,9 @@ public class GlobalJavaInspectionContextImpl extends GlobalJavaInspectionContext
   }
 
   @Override
-  public void performPreRunActivities(@NotNull final List<Tools> globalTools,
-                                      @NotNull final List<Tools> localTools,
-                                      @NotNull final GlobalInspectionContext context) {
+  public void performPreRunActivities(final @NotNull List<Tools> globalTools,
+                                      final @NotNull List<Tools> localTools,
+                                      final @NotNull GlobalInspectionContext context) {
     if (globalTools.stream().anyMatch(tools -> {
       InspectionProfileEntry tool = tools.getTool().getTool();
       return tool instanceof GlobalInspectionTool && ((GlobalInspectionTool)tool).isGraphNeeded();
@@ -470,7 +470,7 @@ public class GlobalJavaInspectionContextImpl extends GlobalJavaInspectionContext
 
 
   @Override
-  public void performPostRunActivities(@NotNull List<InspectionToolWrapper> needRepeatSearchRequest, @NotNull final GlobalInspectionContext context) {
+  public void performPostRunActivities(@NotNull List<InspectionToolWrapper<?, ?>> needRepeatSearchRequest, final @NotNull GlobalInspectionContext context) {
     JobDescriptor progress = context.getStdJobDescriptors().FIND_EXTERNAL_USAGES;
     progress.setTotalAmount(getRequestCount());
 

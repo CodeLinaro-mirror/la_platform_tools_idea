@@ -146,7 +146,9 @@ public class IntroduceVariableTest extends LightJavaCodeInsightTestCase {
   public void testIfConditionAndChain() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
   public void testReturnAndChain() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
   public void testReturnOrChain() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
+  public void testReturnOrAndChain() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
   public void testReturnTernary() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
+  public void testFieldInitializer() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
   public void testAssignTernary() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
   public void testEnsureCodeBlockAroundBreakStatement() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
   public void testEnsureCodeBlockForThrows() { doTest("temp", true, false, false, JAVA_LANG_STRING); }
@@ -394,6 +396,14 @@ public class IntroduceVariableTest extends LightJavaCodeInsightTestCase {
   public void testTooPopularNameOfTheFollowingCall() { doTest("l", false, false, false, "java.util.List<java.lang.String>"); }
   public void testChooseTypeExpressionWhenNotDenotable() { doTest("m", false, false, false, "Foo"); }
   public void testChooseTypeExpressionWhenNotDenotable1() { doTest("m", false, false, false, "Foo<?>"); }
+
+  public void testNullabilityAnnotationConflict() {
+    doTest("x", true, false, false, "java.lang.@org.eclipse.jdt.annotation.Nullable String"); 
+  }
+
+  public void testNullabilityAnnotationNoConflict() {
+    doTest("x", true, false, false, "java.lang.@org.eclipse.jdt.annotation.NonNull String"); 
+  }
 
   private void doTestWithVarType(IntroduceVariableBase testMe) {
     Boolean asVarType = JavaRefactoringSettings.getInstance().INTRODUCE_LOCAL_CREATE_VAR_TYPE;

@@ -12,7 +12,6 @@ import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.SmartList;
 import com.intellij.util.text.ByteArrayCharSequence;
 import gnu.trove.THashMap;
-import gnu.trove.TObjectObjectProcedure;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -122,7 +121,7 @@ public abstract class ArchiveHandler {
     return map;
   }
 
-  private AddonlyKeylessHash<EntryInfo, Object> createParentChildrenMap() {
+  private @NotNull AddonlyKeylessHash<EntryInfo, Object> createParentChildrenMap() {
     THashMap<EntryInfo, List<EntryInfo>> map = new THashMap<>();
     for (EntryInfo info : getEntriesMap().values()) {
       if (info.isDirectory && !map.containsKey(info)) map.put(info, new SmartList<>());
@@ -133,19 +132,16 @@ public abstract class ArchiveHandler {
       }
     }
 
-    final AddonlyKeylessHash<EntryInfo, Object> result = new AddonlyKeylessHash<>(map.size(), ourKeyValueMapper);
-    map.forEachEntry(new TObjectObjectProcedure<EntryInfo, List<EntryInfo>>() {
-      @Override
-      public boolean execute(EntryInfo a, List<EntryInfo> b) {
-        int numberOfChildren = b.size();
-        if (numberOfChildren == 1) {
-          result.add(b.get(0));
-        }
-        else if (numberOfChildren > 1) {
-          result.add(b.toArray(new EntryInfo[numberOfChildren]));
-        }
-        return true;
+    AddonlyKeylessHash<EntryInfo, Object> result = new AddonlyKeylessHash<>(map.size(), ourKeyValueMapper);
+    map.forEachEntry((parent, children) -> {
+      int numberOfChildren = children.size();
+      if (numberOfChildren == 1) {
+        result.add(children.get(0));
       }
+      else if (numberOfChildren > 1) {
+        result.add(children.toArray(new EntryInfo[numberOfChildren]));
+      }
+      return true;
     });
     return result;
   }
@@ -234,17 +230,17 @@ public abstract class ArchiveHandler {
    */
   @NotNull
   protected Trinity<String, String, String> splitPathAndFix(@NotNull String entryName) {
-    int p = entryName.lastIndexOf('/');
+    int slashP = entryName.lastIndexOf('/');
     // There are crazy jar files with backslash-containing entries inside (IDEA-228441)
     // Under Windows we can't create files with backslash in the name
     // and although in Unix we can, we prefer not to, to maintain consistency to avoid subtle bugs when the code which confuses file separators with slashes
-    p = Math.max(p, entryName.lastIndexOf('\\'));
+    int p = Math.max(slashP, entryName.lastIndexOf('\\'));
 
     String parentName = p > 0 ? entryName.substring(0, p) : "";
     String shortName = p > 0 ? entryName.substring(p + 1) : entryName;
     String fixedParent = parentName.replace('\\', '/');
     //noinspection StringEquality
-    if (fixedParent != parentName) {
+    if (fixedParent != parentName || slashP == -1 && p != -1) {
       parentName = fixedParent;
       entryName = parentName + '/' + shortName;
     }

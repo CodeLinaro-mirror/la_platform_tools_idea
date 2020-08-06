@@ -9,6 +9,7 @@ import com.intellij.openapi.application.JetBrainsProtocolHandler;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.util.ArrayUtilRt;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import java.awt.*;
@@ -48,7 +49,8 @@ public final class Main {
   private static final String PLATFORM_PREFIX_PROPERTY = "idea.platform.prefix";
   private static final String[] NO_ARGS = ArrayUtilRt.EMPTY_STRING_ARRAY;
   private static final List<String> HEADLESS_COMMANDS = Arrays.asList(
-    "ant", "duplocate", "traverseUI", "buildAppcodeCache", "format", "keymap", "update", "inspections", "intentions");
+    "ant", "duplocate", "dump-shared-index", "traverseUI", "buildAppcodeCache", "format", "keymap", "update", "inspections", "intentions",
+    "rdserver-headless", "thinClient-headless");
   private static final List<String> GUI_COMMANDS = Arrays.asList("diff", "merge");
 
   private static boolean isHeadless;
@@ -148,7 +150,23 @@ public final class Main {
     if (isHeadless) {
       System.setProperty(AWT_HEADLESS, Boolean.TRUE.toString());
     }
-    isLightEdit = "LightEdit".equals(System.getProperty(PLATFORM_PREFIX_PROPERTY)) || (args.length > 0 && Files.isRegularFile(Paths.get(args[0])));
+
+    boolean isFirstArgRegularFile;
+    try {
+      isFirstArgRegularFile = args.length > 0 && Files.isRegularFile(Paths.get(args[0]));
+    }
+    catch (Throwable t) {
+      isFirstArgRegularFile = false;
+    }
+
+    isLightEdit = "LightEdit".equals(System.getProperty(PLATFORM_PREFIX_PROPERTY)) || isFirstArgRegularFile;
+  }
+
+  @TestOnly
+  public static void setHeadlessInTestMode(boolean isHeadless) {
+    Main.isHeadless = isHeadless;
+    isCommandLine = true;
+    isLightEdit = false;
   }
 
   public static boolean isHeadless(String @NotNull [] args) {

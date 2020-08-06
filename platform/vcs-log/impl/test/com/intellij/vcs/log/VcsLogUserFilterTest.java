@@ -193,8 +193,9 @@ public abstract class VcsLogUserFilterTest {
 
     MultiMap<VcsUser, String> commits = generateHistory(users);
     List<VcsCommitMetadata> metadata = generateMetadata(commits);
-    VcsLogUserFilter filter =
-      VcsLogFilterObject.fromUserNames(singleton(VcsLogFilterObject.ME), singletonMap(myProject.getBaseDir(), petrov), new HashSet<>(users));
+    VcsLogUserFilter filter = VcsLogFilterObject.fromUserNames(singleton(VcsLogFilterObject.ME),
+                                                               singletonMap(myProject.getBaseDir(), petrov),
+                                                               new HashSet<>(users));
 
     StringBuilder builder = new StringBuilder();
     checkFilter(filter, "me", commits.get(petrov), metadata, builder);
@@ -286,7 +287,7 @@ public abstract class VcsLogUserFilterTest {
   }
 
   private static void assertFilteredCorrectly(@NotNull StringBuilder builder) {
-    TestCase.assertTrue("Incorrectly filtered log for\n" + builder.toString(), builder.toString().isEmpty());
+    TestCase.assertTrue("Incorrectly filtered log for\n" + builder, builder.toString().isEmpty());
   }
 
   private void recordCommit(@NotNull MultiMap<VcsUser, String> commits, @NotNull VcsUser user) throws IOException {

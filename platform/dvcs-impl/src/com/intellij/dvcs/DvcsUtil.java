@@ -46,7 +46,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.Callable;
 
-public class DvcsUtil {
+public final class DvcsUtil {
 
   private static final Logger LOG = Logger.getInstance(DvcsUtil.class);
 
@@ -349,7 +349,7 @@ public class DvcsUtil {
 
   public static <T extends Repository> List<T> sortRepositories(@NotNull Collection<? extends T> repositories) {
     List<T> validRepositories = ContainerUtil.filter(repositories, t -> t.getRoot().isValid());
-    Collections.sort(validRepositories, REPOSITORY_COMPARATOR);
+    validRepositories.sort(REPOSITORY_COMPARATOR);
     return validRepositories;
   }
 

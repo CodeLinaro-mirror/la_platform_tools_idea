@@ -1,13 +1,7 @@
-# Stubs for fcntl
 from array import array
-from io import IOBase
-from typing import IO, Any, Union, overload
-from _types import FileDescriptorLike
-import sys
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Any, Union, overload
+from typing_extensions import Literal
+from _typeshed import FileDescriptorLike
 
 FASYNC: int
 FD_CLOEXEC: int
@@ -111,7 +105,7 @@ def ioctl(__fd: FileDescriptorLike,
 def ioctl(__fd: FileDescriptorLike,
           __request: int,
           __arg: _ReadOnlyBuffer,
-          __mutate_flag: bool) -> bytes: ...
+          __mutate_flag: bool = ...) -> bytes: ...
 def flock(__fd: FileDescriptorLike, __operation: int) -> None: ...
 def lockf(__fd: FileDescriptorLike,
           __cmd: int,

@@ -4,8 +4,6 @@ package com.intellij.codeInsight.daemon.impl.quickfix;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.QuickFixFactory;
 import com.intellij.psi.*;
-import com.intellij.psi.search.LocalSearchScope;
-import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.IncorrectOperationException;
@@ -26,6 +24,7 @@ public class MethodReturnFixFactory extends ArgumentFixerActionFactory {
     PsiMethod method = call.resolveMethod();
     if (method == null) return null;
     PsiType type = GenericsUtil.getVariableTypeByExpressionType(toType);
+    if (PsiType.NULL.equals(type)) return null;
 
     return JavaPsiFacade.getElementFactory(expression.getProject())
       .createExpressionFromText("(" + type.getCanonicalText() + ")null", expression);
@@ -35,7 +34,7 @@ public class MethodReturnFixFactory extends ArgumentFixerActionFactory {
   public boolean areTypesConvertible(@NotNull final PsiType exprType,
                                      @NotNull final PsiType parameterType,
                                      @NotNull final PsiElement context) {
-    return !PsiType.VOID.equals(exprType) && exprType.equalsToText(exprType.getCanonicalText());
+    return true;
   }
 
   @Override

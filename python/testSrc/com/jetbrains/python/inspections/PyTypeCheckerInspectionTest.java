@@ -906,6 +906,16 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
     );
   }
 
+  // PY-35235, PY-42281
+  public void testExpectedTypingLiteralReturnType() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTestByText("from typing import Literal\n" +
+                         "def foo() -> Literal[\"ok\"]:\n" +
+                         "    return \"ok\"")
+    );
+  }
+
   // PY-33500
   public void testImplicitGenericDunderCallCallOnTypedElement() {
     runWithLanguageLevel(
@@ -941,7 +951,7 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
                          "    year: int\n" +
                          "def record_movie(movie: Movie) -> None: ...\n" +
                          "record_movie({'name': 'Blade Runner', 'year': 1982})\n" +
-                         "record_movie(<warning descr=\"Expected type 'Movie', got 'Dict[str, int]' instead\">{'name': 1984}</warning>)")
+                         "record_movie(<warning descr=\"Expected type 'Movie', got 'dict[str, int]' instead\">{'name': 1984}</warning>)")
     );
   }
 
@@ -972,9 +982,9 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
                          "    name: str\n" +
                          "    year: int\n" +
                          "m1: Movie = dict(name='Alien', year=1979)\n" +
-                         "m2: Movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, str]' instead\">dict(name='Alien', year='1979')</warning>\n" +
+                         "m2: Movie = <warning descr=\"Expected type 'Movie', got 'dict[str, str]' instead\">dict(name='Alien', year='1979')</warning>\n" +
                          "m3: Movie = typing.cast(Movie, dict(zip(['name', 'year'], ['Alien', 1979])))\n" +
-                         "m4: Movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, str]' instead\">{'name': 'Alien', 'year': '1979'}</warning>\n" +
+                         "m4: Movie = <warning descr=\"Expected type 'Movie', got 'dict[str, str]' instead\">{'name': 'Alien', 'year': '1979'}</warning>\n" +
                          "m5 = Movie(name='Garden State', year=2004)"));
   }
 
@@ -985,9 +995,9 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
       () -> doTestByText("from typing import TypedDict\n" +
                          "Movie = TypedDict('Movie', {'name': str, 'year': int})\n" +
                          "m1: Movie = dict(name='Alien', year=1979)\n" +
-                         "m2: Movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, str]' instead\">dict(name='Alien', year='1979')</warning>\n" +
+                         "m2: Movie = <warning descr=\"Expected type 'Movie', got 'dict[str, str]' instead\">dict(name='Alien', year='1979')</warning>\n" +
                          "m3: Movie = typing.cast(Movie, dict(zip(['name', 'year'], ['Alien', 1979])))\n" +
-                         "m4: Movie = <warning descr=\"Expected type 'Movie', got 'Dict[str, str]' instead\">{'name': 'Alien', 'year': '1979'}</warning>\n" +
+                         "m4: Movie = <warning descr=\"Expected type 'Movie', got 'dict[str, str]' instead\">{'name': 'Alien', 'year': '1979'}</warning>\n" +
                          "m5 = Movie(name='Garden State', year=2004)"));
   }
 
@@ -1082,5 +1092,40 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
   // PY-38412
   public void testTypedDictInStub() {
     runWithLanguageLevel(LanguageLevel.getLatest(), this::doMultiFileTest);
+  }
+
+  // PY-28364
+  public void testDefinitionAgainstCallableInstance() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTestByText("class B:\n" +
+                         "    def __call__(self, *args, **kwargs):\n" +
+                         "        pass\n" +
+                         "\n" +
+                         "def some_fn(arg: B):\n" +
+                         "    pass\n" +
+                         "\n" +
+                         "some_fn(<warning descr=\"Expected type 'B', got 'Type[B]' instead\">B</warning>)")
+    );
+  }
+
+  // PY-29993
+  public void testCallableInstanceAgainstOtherCallableInstance() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTestByText("class MyCls:\n" +
+                         "    def __call__(self):\n" +
+                         "        return True\n" +
+                         "\n" +
+                         "class DifferentCls:\n" +
+                         "    def __call__(self):\n" +
+                         "        return True\n" +
+                         "\n" +
+                         "def foo(arg: MyCls):\n" +
+                         "    pass\n" +
+                         "\n" +
+                         "foo(MyCls())\n" +
+                         "foo(<warning descr=\"Expected type 'MyCls', got 'DifferentCls' instead\">DifferentCls()</warning>)")
+    );
   }
 }

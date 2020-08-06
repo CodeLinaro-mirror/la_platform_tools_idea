@@ -1,14 +1,13 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.scopeChooser;
 
+import com.intellij.find.impl.FindInProjectExtension;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.scratch.ScratchesSearchScope;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.packageDependencies.ChangeListsScopesProvider;
 import com.intellij.psi.search.*;
-import com.intellij.psi.search.GlobalSearchScopesCore;
 import com.intellij.psi.search.scope.ProjectFilesScope;
 import com.intellij.psi.search.scope.packageSet.NamedScope;
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder;
@@ -19,7 +18,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-public class ScopeChooserUtils {
+public final class ScopeChooserUtils {
   private ScopeChooserUtils() {
   }
 
@@ -59,9 +58,11 @@ public class ScopeChooserUtils {
       }
     }
 
-    for (NamedScope scope: ChangeListsScopesProvider.getInstance(project).getFilteredScopes()) {
-      if (scope.getName().equals(scopeName)) {
-        return intersectWithContentScope(project, GlobalSearchScopesCore.filterScope(project, scope));
+    for (FindInProjectExtension extension : FindInProjectExtension.EP_NAME.getExtensionList()) {
+      for (NamedScope scope: extension.getFilteredNamedScopes(project)) {
+        if (scope.getName().equals(scopeName)) {
+          return intersectWithContentScope(project, GlobalSearchScopesCore.filterScope(project, scope));
+        }
       }
     }
 

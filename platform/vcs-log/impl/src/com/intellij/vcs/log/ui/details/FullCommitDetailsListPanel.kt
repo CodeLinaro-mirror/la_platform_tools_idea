@@ -144,5 +144,5 @@ private class ChangesLoadingController(
     return SingleTaskImpl(future, indicator)
   }
 
-  override fun cancelRunningTasks(requests: Array<out List<VcsCommitMetadata>>) = true
+  override fun cancelRunningTasks(requests: List<List<VcsCommitMetadata>>) = true
 }

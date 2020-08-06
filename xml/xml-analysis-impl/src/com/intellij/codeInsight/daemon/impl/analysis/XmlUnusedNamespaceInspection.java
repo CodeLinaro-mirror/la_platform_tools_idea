@@ -1,11 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.codeInsight.daemon.ImplicitUsageProvider;
 import com.intellij.codeInspection.*;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
@@ -23,10 +22,12 @@ import com.intellij.xml.util.XmlUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
+
 /**
  * @author Dmitry Avdeev
  */
-public class XmlUnusedNamespaceInspection extends XmlSuppressableInspectionTool {
+public final class XmlUnusedNamespaceInspection extends XmlSuppressableInspectionTool {
   @NotNull
   @Override
   public PsiElementVisitor buildVisitor(@NotNull final ProblemsHolder holder, boolean isOnTheFly) {
@@ -300,7 +301,7 @@ public class XmlUnusedNamespaceInspection extends XmlSuppressableInspectionTool 
     @Override
     public boolean equals(Object obj) {
       return obj instanceof RemoveNamespaceDeclarationFix &&
-             Comparing.equal(myPrefix, ((RemoveNamespaceDeclarationFix)obj).myPrefix) &&
+             Objects.equals(myPrefix, ((RemoveNamespaceDeclarationFix)obj).myPrefix) &&
              (myLocationFix || ((RemoveNamespaceDeclarationFix)obj).myLocationFix);
     }
 
@@ -310,8 +311,7 @@ public class XmlUnusedNamespaceInspection extends XmlSuppressableInspectionTool 
     }
   }
 
-  public static class RemoveNamespaceLocationFix extends RemoveNamespaceDeclarationFix {
-
+  public static final class RemoveNamespaceLocationFix extends RemoveNamespaceDeclarationFix {
     public static final String NAME = "Remove unused namespace location";
 
     private RemoveNamespaceLocationFix(String namespace) {

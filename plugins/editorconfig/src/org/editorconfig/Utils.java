@@ -22,7 +22,7 @@ import com.intellij.psi.search.FileTypeIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.LineSeparator;
 import org.editorconfig.configmanagement.EditorConfigIndentOptionsProvider;
-import org.editorconfig.configmanagement.EncodingManager;
+import org.editorconfig.configmanagement.ConfigEncodingManager;
 import org.editorconfig.configmanagement.LineEndingsManager;
 import org.editorconfig.configmanagement.StandardEditorConfigProperties;
 import org.editorconfig.core.EditorConfig.OutPair;
@@ -47,6 +47,8 @@ public class Utils {
 
   public static final  String FULL_SETTINGS_SUPPORT_REG_KEY = "editor.config.full.settings.support";
 
+  public static final String PLUGIN_ID = "org.editorconfig.editorconfigjetbrains";
+
   private static boolean ourIsFullSettingsSupportEnabledInTest;
 
   public static String configValueForKey(List<? extends OutPair> outPairs, String key) {
@@ -61,6 +63,10 @@ public class Utils {
 
   public static boolean isEnabled(CodeStyleSettings currentSettings) {
     return currentSettings != null && currentSettings.getCustomSettings(EditorConfigSettings.class).ENABLED;
+  }
+
+  public static boolean isEnabled(@NotNull Project project) {
+    return isEnabled(CodeStyle.getSettings(project));
   }
 
   public static boolean isFullIntellijSettingsSupport() {
@@ -120,7 +126,7 @@ public class Utils {
     final VirtualFile baseDir = project.getBaseDir();
     final VirtualFile child = baseDir.findChild(".editorconfig");
     if (child != null) {
-      final String message = ".editorconfig already present in " + baseDir.getPath() + "\nOverwrite?";
+      final String message = EditorConfigBundle.message("dialog.message.editorconfig.already.present.in.overwrite", baseDir.getPath());
       if (Messages.showYesNoDialog(project, message, EditorConfigBundle.message("dialog.title.editorconfig.exists"), null) == Messages.NO) return;
     }
     ApplicationManager.getApplication().runWriteAction(() -> {
@@ -173,13 +179,13 @@ public class Utils {
   @NotNull
   public static String getEncodingLine(@NotNull Project project) {
     String encoding = getEncoding(project);
-    return encoding != null ? EncodingManager.charsetKey + "=" + encoding + "\n" : "";
+    return encoding != null ? ConfigEncodingManager.charsetKey + "=" + encoding + "\n" : "";
   }
 
   @Nullable
   public static String getEncoding(@NotNull Project project) {
     final Charset charset = EncodingProjectManager.getInstance(project).getDefaultCharset();
-    for (Map.Entry<String, Charset> entry : EncodingManager.encodingMap.entrySet()) {
+    for (Map.Entry<String, Charset> entry : ConfigEncodingManager.encodingMap.entrySet()) {
       if (entry.getValue() == charset) {
         return entry.getKey();
       }

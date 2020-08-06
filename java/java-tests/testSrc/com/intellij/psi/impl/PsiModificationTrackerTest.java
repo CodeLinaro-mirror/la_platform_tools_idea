@@ -405,13 +405,13 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
     PsiModificationTracker tracker = (PsiModificationTracker)getTracker();
     long mc = tracker.getModificationCount();
     long js = getJavaTracker().getModificationCount();
-    long ocb = tracker.getOutOfCodeBlockModificationCount();
+    long ocb = tracker.getModificationCount();
 
     WriteAction.run(() -> ProjectRootManagerEx.getInstanceEx(getProject()).makeRootsChange(EmptyRunnable.INSTANCE, false, true));
 
     assertTrue(mc != tracker.getModificationCount());
     assertTrue(js != getJavaTracker().getModificationCount());
-    assertTrue(ocb != tracker.getOutOfCodeBlockModificationCount());
+    assertTrue(ocb != tracker.getModificationCount());
   }
 
   public void testNoIncrementOnWorkspaceFileChange() {
@@ -448,32 +448,6 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
 
     WriteAction.run(() -> file.setWritable(true));
     assertEquals(mc, tracker.getModificationCount());
-  }
-
-  public void testJavaStructureModCountMustNotBeAdvancedOnJavadocChange() {
-    configureByText(JavaFileType.INSTANCE, "/* <selection>abc</selection> */ class A{}");
-
-    PsiModificationTracker tracker = (PsiModificationTracker)getTracker();
-    long javaCount = getJavaTracker().getModificationCount();
-    long codeBlockCount = tracker.getOutOfCodeBlockModificationCount();
-
-    WriteCommandAction.runWriteCommandAction(getProject(), () -> replaceSelection("cde"));
-
-    assertEquals(javaCount, getJavaTracker().getModificationCount());
-    assertFalse(codeBlockCount == tracker.getOutOfCodeBlockModificationCount());
-  }
-
-  public void testJavaStructureModCountMustNotBeAdvancedOnAddingSpace() {
-    configureByText(JavaFileType.INSTANCE, "class A{ <selection></selection> }");
-
-    PsiModificationTracker tracker = (PsiModificationTracker)getTracker();
-    long javaCount = getJavaTracker().getModificationCount();
-    long codeBlockCount = tracker.getOutOfCodeBlockModificationCount();
-
-    WriteCommandAction.runWriteCommandAction(getProject(), () -> replaceSelection(" "));
-
-    assertEquals(javaCount, getJavaTracker().getModificationCount());
-    assertFalse(codeBlockCount == tracker.getOutOfCodeBlockModificationCount());
   }
 
   public void testChangeBothInsideAnonymousAndOutsideShouldAdvanceJavaModStructureAndClearCaches() {
@@ -542,7 +516,7 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
 
   @NotNull
   ModificationTracker getJavaTracker() {
-    return PsiModificationTracker.SERVICE.getInstance(getProject()).getJavaStructureModificationTracker();
+    return PsiModificationTracker.SERVICE.getInstance(getProject());
   }
 
   public static class JavaLanguageTrackerTest extends PsiModificationTrackerTest {
@@ -552,8 +526,5 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
       return ((PsiModificationTrackerImpl)PsiModificationTracker.SERVICE.getInstance(getProject()))
         .forLanguage(JavaLanguage.INSTANCE);
     }
-
-    public void testJavaStructureModCountMustNotBeAdvancedOnJavadocChange() {}
-    public void testJavaStructureModCountMustNotBeAdvancedOnAddingSpace() {}
   }
 }

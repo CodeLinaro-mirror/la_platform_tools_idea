@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python
 
 import com.intellij.concurrency.SensitiveProgressWrapper
@@ -20,18 +20,20 @@ import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.projectRoots.impl.SdkConfigurationUtil
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.ui.configuration.projectRoot.ProjectSdksModel
+import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.UserDataHolder
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.DirectoryProjectConfigurator
 import com.jetbrains.python.sdk.*
+import com.jetbrains.python.sdk.conda.PyCondaSdkCustomizer
 import com.jetbrains.python.sdk.pipenv.detectAndSetupPipEnv
 
 /**
  * @author vlan
  */
-class PythonSdkConfigurator : DirectoryProjectConfigurator {
+internal class PythonSdkConfigurator : DirectoryProjectConfigurator {
   companion object {
     private val BALLOON_NOTIFICATIONS = NotificationGroup("Python interpreter configuring", NotificationDisplayType.BALLOON, true)
     private val LOGGER = Logger.getInstance(PythonSdkConfigurator::class.java)
@@ -67,16 +69,20 @@ class PythonSdkConfigurator : DirectoryProjectConfigurator {
     }
   }
 
-  override fun configureProject(project: Project, baseDir: VirtualFile, moduleRef: Ref<Module>, newProject: Boolean) {
+  override fun configureProject(project: Project, baseDir: VirtualFile, moduleRef: Ref<Module>, isProjectCreatedWithWizard: Boolean) {
     val sdk = project.pythonSdk
-    LOGGER.debug { "Input: $sdk, $newProject" }
-    if (sdk != null || newProject) return
+    LOGGER.debug { "Input: $sdk, $isProjectCreatedWithWizard" }
+    if (sdk != null || isProjectCreatedWithWizard) {
+      return
+    }
 
-    ProgressManager.getInstance().run(
-      object : Task.Backgroundable(project, PyBundle.message("configuring.python.interpreter"), true) {
-        override fun run(indicator: ProgressIndicator) = configureSdk(project, indicator)
-      }
-    )
+    StartupManager.getInstance(project).runWhenProjectIsInitialized {
+      ProgressManager.getInstance().run(
+        object : Task.Backgroundable(project, PyBundle.message("configuring.python.interpreter"), true) {
+          override fun run(indicator: ProgressIndicator) = configureSdk(project, indicator)
+        }
+      )
+    }
   }
 
   private fun configureSdk(project: Project, indicator: ProgressIndicator) {
@@ -136,6 +142,34 @@ class PythonSdkConfigurator : DirectoryProjectConfigurator {
     }
 
     if (indicator.isCanceled) return
+
+    if (PyCondaSdkCustomizer.instance.suggestSharedCondaEnvironments) {
+      indicator.text = PyBundle.message("looking.for.shared.conda.environment")
+      guardIndicator(indicator) {
+        existingSdks
+          .asSequence()
+          .filter { it.sdkType is PythonSdkType && PythonSdkUtil.isConda(it) && !it.isAssociatedWithAnotherModule(module) }
+          .firstOrNull()
+      }?.let {
+        onEdt(project) {
+          SdkConfigurationUtil.setDirectoryProjectSdk(project, it)
+          notifyAboutConfiguredSdk(project, module, it)
+        }
+        return
+      }
+
+      guardIndicator(indicator) { detectCondaEnvs(module, existingSdks, context).firstOrNull() }?.let {
+        val newSdk = it.setupAssociated(existingSdks, module.basePath) ?: return
+        onEdt(project) {
+          SdkConfigurationUtil.addSdk(newSdk)
+          SdkConfigurationUtil.setDirectoryProjectSdk(project, newSdk)
+          notifyAboutConfiguredSdk(project, module, newSdk)
+        }
+        return
+      }
+
+      if (indicator.isCanceled) return
+    }
 
     indicator.text = PyBundle.message("looking.for.default.interpreter")
     LOGGER.debug("Looking for the default interpreter setting for a new project")

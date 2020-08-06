@@ -16,9 +16,11 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.templateLanguages.OuterLanguageElement;
@@ -61,7 +63,12 @@ public class ShShellcheckExternalAnnotator extends ExternalAnnotator<ShShellchec
   @Override
   public CollectedInfo collectInformation(@NotNull PsiFile file) {
     if (!(file instanceof ShFile)) return null;
-    return new CollectedInfo(file.getText(), file.getModificationStamp(), getShellcheckExecutionParams(file));
+    VirtualFile virtualFile = file.getVirtualFile();
+    if (virtualFile == null) return null;
+    VirtualFile parent = virtualFile.getParent();
+    if (parent == null) return null;
+    return new CollectedInfo(file.getProject(), parent.getPath(), file.getText(), file.getModificationStamp(),
+                             getShellcheckExecutionParams(file));
   }
 
   @Nullable
@@ -73,12 +80,14 @@ public class ShShellcheckExternalAnnotator extends ExternalAnnotator<ShShellchec
 
     String shellcheckExecutable = ShSettings.getShellcheckPath();
     if (!ShShellcheckUtil.isExecutionValidPath(shellcheckExecutable)) return null;
+    ShShellcheckUtil.checkShellCheckForUpdate(fileInfo.project);
 
     try {
       GeneralCommandLine commandLine = new GeneralCommandLine()
         .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
         .withExePath(shellcheckExecutable)
         .withParameters(fileInfo.executionParams);
+      if (!ApplicationManager.getApplication().isUnitTestMode()) commandLine.withWorkDirectory(fileInfo.workDirectory);
       long timestamp = fileInfo.modificationStamp;
       OSProcessHandler handler = new OSProcessHandler(commandLine);
       Ref<ShellcheckResponse> response = Ref.create();
@@ -230,12 +239,16 @@ public class ShShellcheckExternalAnnotator extends ExternalAnnotator<ShShellchec
     String replacement;
   }
 
-  class CollectedInfo {
+  static class CollectedInfo {
+    private final Project project;
+    private final String workDirectory;
     private final String fileContent;
     private final long modificationStamp;
     private final List<String> executionParams;
 
-    CollectedInfo(String fileContent, long modificationStamp, List<String> executionParams) {
+    CollectedInfo(Project project, String workDirectory, String fileContent, long modificationStamp, List<String> executionParams) {
+      this.project = project;
+      this.workDirectory = workDirectory;
       this.fileContent = fileContent;
       this.modificationStamp = modificationStamp;
       this.executionParams = executionParams;

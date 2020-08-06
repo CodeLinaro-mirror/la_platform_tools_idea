@@ -2,6 +2,7 @@
 package com.intellij.ui;
 
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -22,7 +23,8 @@ public final class ComponentUtil {
   }
 
   public static boolean isDisableAutoRequestFocus() {
-    return Registry.is("suppress.focus.stealing.disable.auto.request.focus", true);
+    return Registry.is("suppress.focus.stealing.disable.auto.request.focus", true)
+           && !(SystemInfo.isXfce || SystemInfo.isI3);
   }
 
   public static boolean isMinimized(@Nullable Window window) {
@@ -34,8 +36,7 @@ public final class ComponentUtil {
     return frame.getExtendedState() == Frame.ICONIFIED;
   }
 
-  @NotNull
-  public static Window getActiveWindow() {
+  public static @NotNull Window getActiveWindow() {
     for (Window each : Window.getWindows()) {
       if (each.isVisible() && each.isActive()) {
         return each;
@@ -44,14 +45,14 @@ public final class ComponentUtil {
     return JOptionPane.getRootFrame();
   }
 
-  @NotNull
-  public static Component findUltimateParent(@NotNull Component c) {
-    Component eachParent = c;
+  public static @NotNull Component findUltimateParent(@NotNull Component c) {
+    Component parent = c;
     while (true) {
-      if (eachParent.getParent() == null) {
-        return eachParent;
+      Container nextParent = parent.getParent();
+      if (nextParent == null) {
+        return parent;
       }
-      eachParent = eachParent.getParent();
+      parent = nextParent;
     }
   }
 
@@ -63,16 +64,14 @@ public final class ComponentUtil {
    * @return the first window ancestor of the component; or {@code null}
    * if the component is not a window and is not contained inside a window
    */
-  @Nullable
-  public static Window getWindow(@Nullable Component component) {
+  public static @Nullable Window getWindow(@Nullable Component component) {
     if (component == null) {
       return null;
     }
     return component instanceof Window ? (Window)component : SwingUtilities.getWindowAncestor(component);
   }
 
-  @Nullable
-  public static Component findParentByCondition(@Nullable Component c, @NotNull Predicate<? super Component> condition) {
+  public static @Nullable Component findParentByCondition(@Nullable Component c, @NotNull Predicate<? super Component> condition) {
     Component eachParent = c;
     while (eachParent != null) {
       if (condition.test(eachParent)) return eachParent;
@@ -90,9 +89,8 @@ public final class ComponentUtil {
    * @return a component of the specified type, or {@code null} if the search is failed
    * @see SwingUtilities#getAncestorOfClass
    */
-  @Nullable
   @Contract(pure = true)
-  public static <T> T getParentOfType(@NotNull Class<? extends T> type, Component component) {
+  public static @Nullable <T> T getParentOfType(@NotNull Class<? extends T> type, Component component) {
     while (component != null) {
       if (type.isInstance(component)) {
         //noinspection unchecked

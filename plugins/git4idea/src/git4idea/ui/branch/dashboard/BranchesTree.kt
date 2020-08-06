@@ -18,7 +18,6 @@ import com.intellij.util.EditSourceOnDoubleClickHandler.isToggleEvent
 import com.intellij.util.PlatformIcons
 import com.intellij.util.ThreeState
 import com.intellij.util.containers.SmartHashSet
-import com.intellij.util.ui.EmptyIcon
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import git4idea.config.GitVcsSettings
@@ -79,7 +78,7 @@ internal class BranchesTreeComponent(project: Project) : DnDAwareTree() {
           AllIcons.Nodes.Favorite
         }
         isBranchNode -> {
-          EmptyIcon.ICON_16
+          AllIcons.Vcs.Branch_node
         }
         isGroupNode -> {
           PlatformIcons.FOLDER_ICON
@@ -140,11 +139,10 @@ internal class FilteringBranchesTree(project: Project,
 
   private val localBranchesNode = BranchTreeNode(BranchNodeDescriptor(NodeType.LOCAL_ROOT))
   private val remoteBranchesNode = BranchTreeNode(BranchNodeDescriptor(NodeType.REMOTE_ROOT))
-  private val nodeDescriptorFilter: (BranchNodeDescriptor) -> Boolean =
-    { descriptor -> descriptor.type == NodeType.GROUP_NODE || !uiController.showOnlyMy || descriptor.branchInfo?.isMy == ThreeState.YES }
+  private val branchFilter: (BranchInfo) -> Boolean =
+    { branch -> !uiController.showOnlyMy || branch.isMy == ThreeState.YES }
   private val nodeDescriptorsModel = NodeDescriptorsModel(localBranchesNode.getNodeDescriptor(),
-                                                          remoteBranchesNode.getNodeDescriptor(),
-                                                          nodeDescriptorFilter)
+                                                          remoteBranchesNode.getNodeDescriptor())
 
   private var localNodeExist = false
   private var remoteNodeExist = false
@@ -273,7 +271,7 @@ internal class FilteringBranchesTree(project: Project,
       localNodeExist = localBranches.isNotEmpty()
       remoteNodeExist = remoteBranches.isNotEmpty()
 
-      nodeDescriptorsModel.populateFrom(localBranches.asSequence() + remoteBranches.asSequence(), useDirectoryGrouping)
+      nodeDescriptorsModel.populateFrom((localBranches.asSequence() + remoteBranches.asSequence()).filter(branchFilter), useDirectoryGrouping)
     }
   }
 
@@ -302,7 +300,7 @@ private val BRANCH_TREE_TRANSFER_HANDLER = object : TransferHandler() {
   override fun getSourceActions(c: JComponent) = COPY_OR_MOVE
 }
 
-@State(name = "BranchesTreeState", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+@State(name = "BranchesTreeState", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)], reportStatistic = false)
 internal class BranchesTreeStateHolder : PersistentStateComponent<TreeState> {
   private lateinit var branchesTree: FilteringBranchesTree
   private lateinit var treeState: TreeState

@@ -15,12 +15,14 @@ import com.intellij.openapi.vcs.changes.ChangesViewManager;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcs.log.util.StopWatch;
+import git4idea.GitDisposable;
 import git4idea.GitLocalBranch;
 import git4idea.GitUtil;
 import git4idea.GitVcs;
 import git4idea.branch.GitBranchesCollection;
 import git4idea.commands.Git;
 import git4idea.ignore.GitRepositoryIgnoredFilesHolder;
+import git4idea.status.GitStagingAreaHolder;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -43,8 +45,8 @@ public class GitRepositoryImpl extends RepositoryImpl implements GitRepository {
   @NotNull private final GitRepositoryFiles myRepositoryFiles;
 
   @Nullable private final GitUntrackedFilesHolder myUntrackedFilesHolder;
+  @Nullable private final GitStagingAreaHolder myStagingAreaHolder;
   @Nullable private final GitRepositoryIgnoredFilesHolder myIgnoredRepositoryFilesHolder;
-  @Nullable private final GitConflictsHolder myConflictsHolder;
 
   @NotNull private volatile GitRepoInfo myInfo;
 
@@ -61,6 +63,8 @@ public class GitRepositoryImpl extends RepositoryImpl implements GitRepository {
     myInfo = readRepoInfo();
 
     if (!light) {
+      myStagingAreaHolder = new GitStagingAreaHolder(this);
+
       myUntrackedFilesHolder = new GitUntrackedFilesHolder(this, myRepositoryFiles);
       Disposer.register(this, myUntrackedFilesHolder);
 
@@ -68,15 +72,13 @@ public class GitRepositoryImpl extends RepositoryImpl implements GitRepository {
         new GitRepositoryIgnoredFilesHolder(project, this, GitRepositoryManager.getInstance(project), Git.getInstance());
       Disposer.register(this, myIgnoredRepositoryFilesHolder);
       myIgnoredRepositoryFilesHolder.addUpdateStateListener(new MyRepositoryIgnoredHolderUpdateListener(project));
-      myIgnoredRepositoryFilesHolder.addUpdateStateListener(new IgnoredToExcludedSynchronizer(project, this));
-
-      myConflictsHolder = new GitConflictsHolder(this);
-      Disposer.register(this, myConflictsHolder);
+      IgnoredToExcludedSynchronizer ignoredToExcludedSynchronizer = project.getService(IgnoredToExcludedSynchronizer.class);
+      myIgnoredRepositoryFilesHolder.addUpdateStateListener(ignoredToExcludedSynchronizer);
     }
     else {
+      myStagingAreaHolder = null;
       myUntrackedFilesHolder = null;
       myIgnoredRepositoryFilesHolder = null;
-      myConflictsHolder = null;
     }
   }
 
@@ -89,7 +91,7 @@ public class GitRepositoryImpl extends RepositoryImpl implements GitRepository {
                                           @NotNull Project project,
                                           boolean listenToRepoChanges) {
     GitRepository repository = GitRepositoryManager.getInstance(project).getRepositoryForRoot(root);
-    return notNull(repository, () -> createInstance(root, project, project, listenToRepoChanges));
+    return notNull(repository, () -> createInstance(root, project, GitDisposable.getInstance(project), listenToRepoChanges));
   }
 
   /**
@@ -144,21 +146,20 @@ public class GitRepositoryImpl extends RepositoryImpl implements GitRepository {
   }
 
   @Override
+  public @NotNull GitStagingAreaHolder getStagingAreaHolder() {
+    if (myStagingAreaHolder == null) {
+      throw new IllegalStateException("Using staging area holder with light git repository instance " + this);
+    }
+    return myStagingAreaHolder;
+  }
+
+  @Override
   @NotNull
   public GitUntrackedFilesHolder getUntrackedFilesHolder() {
     if (myUntrackedFilesHolder == null) {
       throw new IllegalStateException("Using untracked files holder with light git repository instance " + this);
     }
     return myUntrackedFilesHolder;
-  }
-
-  @NotNull
-  @Override
-  public GitConflictsHolder getConflictsHolder() {
-    if (myConflictsHolder == null) {
-      throw new IllegalStateException("Using conflicts holder with light git repository instance " + this);
-    }
-    return myConflictsHolder;
   }
 
   @Override

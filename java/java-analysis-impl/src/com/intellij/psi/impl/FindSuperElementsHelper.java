@@ -18,6 +18,7 @@ package com.intellij.psi.impl;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.psi.*;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
+import com.intellij.psi.search.searches.SuperMethodsSearch;
 import com.intellij.psi.util.MethodSignatureUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.JavaPsiConstructorUtil;
@@ -47,7 +48,8 @@ public class FindSuperElementsHelper {
         }
       }
       else {
-        PsiMethod[] superMethods = method.findSuperMethods(false);
+        PsiMethod[] superMethods = MethodSignatureUtil.convertMethodSignaturesToMethods(new ArrayList<>(
+          SuperMethodsSearch.search(method, null, true, false).findAll()));
         if (superMethods.length == 0) {
           PsiMethod superMethod = getSiblingInheritedViaSubClass(method);
           if (superMethod != null) {
@@ -166,10 +168,6 @@ public class FindSuperElementsHelper {
     @Nullable
     private SiblingInfo findSibling(@NotNull PsiClass inheritor, @NotNull PsiClass anInterface, @NotNull PsiMethod method) {
       for (PsiMethod superMethod : anInterface.findMethodsByName(method.getName(), true)) {
-        PsiElement navigationElement = superMethod.getNavigationElement();
-        if (!(navigationElement instanceof PsiMethod)) continue; // Kotlin
-        superMethod = (PsiMethod)navigationElement;
-        ProgressManager.checkCanceled();
         PsiClass superInterface = superMethod.getContainingClass();
         if (superInterface == null || myContainingClass.isInheritor(superInterface, true)) {
           // if containingClass implements the superInterface then it's not a sibling inheritance but a pretty boring the usual one
@@ -177,7 +175,10 @@ public class FindSuperElementsHelper {
         }
 
         if (isOverridden(inheritor, method, superMethod, superInterface)) {
-          return new SiblingInfo(superMethod, inheritor);
+          PsiElement navigationElement = superMethod.getNavigationElement();
+          if (!(navigationElement instanceof PsiMethod)) continue; // Kotlin
+
+          return new SiblingInfo((PsiMethod)navigationElement, inheritor);
         }
       }
       return null;

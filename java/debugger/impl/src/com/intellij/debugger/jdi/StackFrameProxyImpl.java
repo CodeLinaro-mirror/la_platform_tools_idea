@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * @author Eugene Zhuravlev
@@ -9,7 +9,7 @@ import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.engine.DebuggerManagerThreadImpl;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluateExceptionUtil;
-import com.intellij.debugger.engine.jdi.StackFrameProxy;
+import com.intellij.debugger.engine.jdi.LocalVariableProxy;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.ThreeState;
@@ -25,9 +25,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxy {
+public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxyEx {
   private static final Logger LOG = Logger.getInstance(StackFrameProxyImpl.class);
-  private static final int FRAMES_BATCH_MAX = 10;
+  public static final int FRAMES_BATCH_MAX = 20;
   private final ThreadReferenceProxyImpl myThreadProxy;
   private final int myFrameFromBottomIndex; // 1-based
 
@@ -210,6 +210,7 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxy {
   }
 
   @Nullable
+  @Override
   public ObjectReference thisObject() throws EvaluateException {
     DebuggerManagerThreadImpl.assertIsManagerThread();
     checkValid();
@@ -305,6 +306,14 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxy {
       }
     }
     throw new EvaluateException(error.getMessage(), error);
+  }
+  
+  @Override
+  public Value getVariableValue(@NotNull LocalVariableProxy localVariable) throws EvaluateException {
+    if (localVariable instanceof LocalVariableProxyImpl) {
+      return getValue((LocalVariableProxyImpl)localVariable);
+    }
+    throw new EvaluateException("Variable doesn't belong to this frame: " + localVariable);
   }
 
   public Value getValue(LocalVariableProxyImpl localVariable) throws EvaluateException {
@@ -404,7 +413,7 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxy {
       try {
         final LocalVariable variable = localVariable.getVariable();
         final StackFrame stackFrame = getStackFrame();
-        stackFrame.setValue(variable, (value instanceof ObjectReference)? ((ObjectReference)value) : value);
+        stackFrame.setValue(variable, value);
         if (myAllValues != null) {
           // update cached data if any
           // re-read the value just set from the stackframe to be 100% sure

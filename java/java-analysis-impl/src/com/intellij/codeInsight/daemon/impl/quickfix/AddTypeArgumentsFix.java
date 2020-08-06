@@ -16,10 +16,12 @@
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.QuickFixBundle;
+import com.intellij.codeInsight.intention.FileModifier;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiTypesUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
@@ -33,7 +35,7 @@ import java.util.Objects;
 public class AddTypeArgumentsFix extends MethodArgumentFix {
   private static final Logger LOG = Logger.getInstance(AddTypeArgumentsFix.class);
 
-  private AddTypeArgumentsFix(PsiExpressionList list, int i, PsiType toType, final ArgumentFixerActionFactory factory) {
+  private AddTypeArgumentsFix(@NotNull PsiExpressionList list, int i, @NotNull PsiType toType, @NotNull ArgumentFixerActionFactory factory) {
     super(list, i, toType, factory);
   }
 
@@ -65,7 +67,7 @@ public class AddTypeArgumentsFix extends MethodArgumentFix {
   }
 
   @Nullable
-  public static PsiExpression addTypeArguments(PsiExpression expression, PsiType toType) {
+  public static PsiExpression addTypeArguments(@NotNull PsiExpression expression, @Nullable PsiType toType) {
     if (!PsiUtil.isLanguageLevel5OrHigher(expression)) return null;
 
     PsiExpression orig = expression;
@@ -111,10 +113,11 @@ public class AddTypeArgumentsFix extends MethodArgumentFix {
           if (methodExpression.getQualifierExpression() == null) {
             final PsiExpression qualifierExpression;
             final PsiClass containingClass = method.getContainingClass();
-            LOG.assertTrue(containingClass != null);
+            if (containingClass == null) return null; // not actual method but some copy in DummyHolder, ignore
             if (method.hasModifierProperty(PsiModifier.STATIC)) {
               qualifierExpression = factory.createReferenceExpression(containingClass);
-            } else {
+            }
+            else {
               qualifierExpression = RefactoringChangeUtil.createThisExpression(method.getManager(), null);
             }
             methodExpression.setQualifierExpression(qualifierExpression);
@@ -131,6 +134,12 @@ public class AddTypeArgumentsFix extends MethodArgumentFix {
       }
     }
     return null;
+  }
+
+  @Override
+  public @NotNull FileModifier getFileModifierForPreview(@NotNull PsiFile target) {
+    return new AddTypeArgumentsFix(PsiTreeUtil.findSameElementInCopy(myArgList, target), myIndex, myToType,
+                                   myArgumentFixerActionFactory);
   }
 
   public static final ArgumentFixerActionFactory REGISTRAR = new AddTypeArgumentsFix.MyFixerActionFactory();

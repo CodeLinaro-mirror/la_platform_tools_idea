@@ -46,12 +46,12 @@ public abstract class ServerType<C extends ServerConfiguration> {
   }
 
   /**
-   * This method must be overriden and a proper ID must be returned from it (it'll be used as a key in run configuration file).
+   * This method must be overridden and a proper ID must be returned from it (it'll be used as a key in run configuration file).
    */
   @NotNull @NonNls
   public String getDeploymentConfigurationFactoryId() {
-    DeprecatedMethodException.reportDefaultImplementation("ServerType.getDeploymentConfigurationFactoryId",
-                                                          "The default implementation delegates to 'getDeploymentConfigurationTypePresentableName' which is supposed to be localized but return value of this method must not be localized.", getClass());
+    DeprecatedMethodException.reportDefaultImplementation(getClass(), "getDeploymentConfigurationFactoryId",
+      "The default implementation delegates to 'getDeploymentConfigurationTypePresentableName' which is supposed to be localized but return value of this method must not be localized.");
     return getDeploymentConfigurationTypePresentableName();
   }
 
@@ -84,7 +84,7 @@ public abstract class ServerType<C extends ServerConfiguration> {
   }
 
   /**
-   * @deprecated override {@link #createServerConfigurable(com.intellij.remoteServer.configuration.ServerConfiguration)} instead
+   * @deprecated override {@link #createServerConfigurable(ServerConfiguration)} instead
    */
   @Deprecated
   @NotNull

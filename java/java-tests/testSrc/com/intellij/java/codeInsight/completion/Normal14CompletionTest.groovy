@@ -2,6 +2,7 @@
 package com.intellij.java.codeInsight.completion
 
 import com.intellij.testFramework.LightProjectDescriptor
+import com.intellij.testFramework.NeedsIndex
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NotNull
 
@@ -24,7 +25,8 @@ class Normal14CompletionTest extends NormalCompletionTestCase {
     myFixture.completeBasic()
     myFixture.checkResult("record X() cla")
   }
-  
+
+  @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants works in smart mode only (for getters generation)")
   void testRecordAccessorDeclaration() {
     doTest()
   }

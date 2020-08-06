@@ -1,4 +1,5 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+@file:Suppress("HardCodedStringLiteral")
 package com.intellij.ui.layout
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -249,6 +250,21 @@ fun withVerticalButtons(): JPanel {
   }
 }
 
+fun withSingleVerticalButton(): JPanel {
+  return panel {
+    row {
+      label("<html>Merging branch <b>foo</b> into <b>bar</b>")
+    }
+    row {
+      scrollPane(JTextArea()).constraints(pushX)
+
+      cell(isVerticalFlow = true) {
+        button("Merge ...") {}.constraints(growX)
+      }
+    }
+  }
+}
+
 fun titledRows(): JPanel {
   return panel {
     titledRow("Async Profiler") {
@@ -299,6 +315,53 @@ fun spannedCheckbox(): JPanel {
 
       row {
         RadioButton("Do not save, forget passwords after restart")()
+      }
+    }
+  }
+}
+
+fun checkboxRowsWithBigComponents(): JPanel {
+  return panel {
+    row {
+      CheckBox("Sample checkbox label")()
+    }
+    row {
+      CheckBox("Sample checkbox label")()
+    }
+    row {
+      CheckBox("Sample checkbox label")()
+      ComboBox(DefaultComboBoxModel(arrayOf("asd", "asd")))()
+    }
+    row {
+      CheckBox("Sample checkbox label")()
+    }
+    row {
+      CheckBox("Sample checkbox label")()
+      ComboBox(DefaultComboBoxModel(arrayOf("asd", "asd")))()
+    }
+    row {
+      CheckBox("Sample checkbox label")()
+      ComboBox(DefaultComboBoxModel(arrayOf("asd", "asd")))()
+    }
+    row {
+      CheckBox("Sample checkbox label")()
+      JBTextField()()
+    }
+    row {
+      cell(isFullWidth = true) {
+        CheckBox("Sample checkbox label")()
+      }
+    }
+    row {
+      cell(isFullWidth = true) {
+        CheckBox("Sample checkbox label")()
+        JBTextField()()
+      }
+    }
+    row {
+      cell(isFullWidth = true) {
+        CheckBox("Sample checkbox label")()
+        comment("commentary")
       }
     }
   }

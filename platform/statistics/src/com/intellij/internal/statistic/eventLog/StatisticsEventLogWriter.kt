@@ -1,14 +1,12 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.eventLog
 
-import com.intellij.openapi.application.PathManager
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.log4j.PatternLayout
 import java.io.File
 import java.io.IOException
 import java.nio.file.Path
-import java.nio.file.Paths
 
 interface StatisticsEventLogWriter {
   fun log(logEvent: LogEvent)
@@ -49,13 +47,7 @@ class StatisticsEventLogFileWriter(private val recorderId: String,
   }
 
   private fun getEventLogDir(): Path {
-    return if (recorderId == "FUS") {
-      // don't move FUS logs for backward compatibility
-      Paths.get(PathManager.getSystemPath()).resolve("event-log")
-    }
-    else {
-      Paths.get(PathManager.getSystemPath()).resolve("plugins-event-log").resolve(recorderId)
-    }
+    return EventLogConfiguration.getEventLogDataPath().resolve("logs").resolve(recorderId)
   }
 
   override fun log(logEvent: LogEvent) {

@@ -20,7 +20,7 @@ import com.intellij.util.io.systemIndependentPath
 internal class SchemeFileTracker(private val schemeManager: SchemeManagerImpl<Any, Any>, private val project: Project) : BulkFileListener {
   private val applicator = SchemeChangeApplicator(schemeManager)
 
-  override fun after(events: MutableList<out VFileEvent>) {
+  override fun after(events: List<VFileEvent>) {
     val list = SmartList<SchemeChangeEvent>()
     for (event in events) {
       if (event.requestor is SchemeManagerImpl<*, *>) {
@@ -30,7 +30,7 @@ internal class SchemeFileTracker(private val schemeManager: SchemeManagerImpl<An
       when (event) {
         is VFileContentChangeEvent -> {
           val file = event.file
-          if (isMyFileWithoutParentCheck(file) && isMyDirectory(file.parent)) {
+          if (isMyFileWithoutParentCheck(file) && file.parent != null && isMyDirectory(file.parent)) {
             LOG.debug { "CHANGED ${file.path}" }
             list.add(UpdateScheme(file))
           }

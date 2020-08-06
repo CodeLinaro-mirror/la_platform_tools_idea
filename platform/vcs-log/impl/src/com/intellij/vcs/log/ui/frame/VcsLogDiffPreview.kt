@@ -11,12 +11,13 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.DiffPreviewProvider
 import com.intellij.openapi.vcs.changes.EditorTabPreview
 import com.intellij.openapi.vcs.changes.PreviewDiffVirtualFile
+import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager
 import com.intellij.openapi.wm.IdeFocusManager
-import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.vcs.log.VcsLogBundle
 import com.intellij.vcs.log.impl.CommonUiProperties
+import com.intellij.vcs.log.impl.MainVcsLogUiProperties
 import com.intellij.vcs.log.impl.VcsLogUiProperties
 import com.intellij.vcs.log.impl.VcsLogUiProperties.PropertiesChangeListener
 import com.intellij.vcs.log.impl.VcsLogUiProperties.VcsLogUiProperty
@@ -24,13 +25,26 @@ import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
 import javax.swing.JComponent
 
-fun toggleDiffPreviewOnPropertyChange(uiProperties: VcsLogUiProperties,
-                                      parent: Disposable,
-                                      showDiffPreview: (Boolean) -> Unit) {
+private fun toggleDiffPreviewOnPropertyChange(uiProperties: VcsLogUiProperties,
+                                              parent: Disposable,
+                                              showDiffPreview: (Boolean) -> Unit) =
+  onBooleanPropertyChange(uiProperties, CommonUiProperties.SHOW_DIFF_PREVIEW, parent, showDiffPreview)
+
+
+private fun toggleDiffPreviewOrientationOnPropertyChange(uiProperties: VcsLogUiProperties,
+                                                         parent: Disposable,
+                                                         changeShowDiffPreviewOrientation: (Boolean) -> Unit) =
+  onBooleanPropertyChange(uiProperties, MainVcsLogUiProperties.DIFF_PREVIEW_VERTICAL_SPLIT, parent, changeShowDiffPreviewOrientation)
+
+
+private fun onBooleanPropertyChange(uiProperties: VcsLogUiProperties,
+                                    property: VcsLogUiProperty<Boolean>,
+                                    parent: Disposable,
+                                    onPropertyChangeAction: (Boolean) -> Unit) {
   val propertiesChangeListener: PropertiesChangeListener = object : PropertiesChangeListener {
-    override fun <T> onPropertyChanged(property: VcsLogUiProperty<T>) {
-      if (CommonUiProperties.SHOW_DIFF_PREVIEW == property) {
-        showDiffPreview(uiProperties.get(CommonUiProperties.SHOW_DIFF_PREVIEW))
+    override fun <T> onPropertyChanged(p: VcsLogUiProperty<T>) {
+      if (property == p) {
+        onPropertyChangeAction(uiProperties.get(property))
       }
     }
   }
@@ -53,7 +67,8 @@ abstract class FrameDiffPreview<D : DiffRequestProcessor>(protected val previewD
     previewDiffSplitter.setHonorComponentsMinimumSize(false)
     previewDiffSplitter.firstComponent = mainComponent
 
-    toggleDiffPreviewOnPropertyChange(uiProperties, previewDiff, this::showDiffPreview)
+    toggleDiffPreviewOnPropertyChange(uiProperties, previewDiff, ::showDiffPreview)
+    toggleDiffPreviewOrientationOnPropertyChange(uiProperties, previewDiff, ::changeDiffPreviewOrientation)
     invokeLater { showDiffPreview(uiProperties.get(CommonUiProperties.SHOW_DIFF_PREVIEW)) }
   }
 
@@ -62,6 +77,10 @@ abstract class FrameDiffPreview<D : DiffRequestProcessor>(protected val previewD
   private fun showDiffPreview(state: Boolean) {
     previewDiffSplitter.secondComponent = if (state) previewDiff.component else null
     updatePreview(state)
+  }
+
+  private fun changeDiffPreviewOrientation(bottom: Boolean) {
+    previewDiffSplitter.orientation = bottom
   }
 }
 
@@ -124,7 +143,7 @@ class VcsLogEditorDiffPreview(project: Project, uiProperties: VcsLogUiProperties
 
 private fun openPreviewInEditor(project: Project, diffPreviewProvider: DiffPreviewProvider, componentToFocus: JComponent) {
   val escapeHandler = Runnable {
-    val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.VCS)
+    val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ChangesViewContentManager.TOOLWINDOW_ID)
     toolWindow?.activate({ IdeFocusManager.getInstance(project).requestFocus(componentToFocus, true) }, false)
   }
   EditorTabPreview.openPreview(project, PreviewDiffVirtualFile(diffPreviewProvider), false, escapeHandler)

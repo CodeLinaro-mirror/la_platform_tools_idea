@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.memory.ui;
 
 import com.intellij.icons.AllIcons;
@@ -17,6 +17,8 @@ import com.intellij.ui.speedSearch.SpeedSearchUtil;
 import com.intellij.ui.table.JBTable;
 import com.intellij.util.containers.FList;
 import com.intellij.util.ui.JBDimension;
+import com.intellij.util.ui.update.MergingUpdateQueue;
+import com.intellij.util.ui.update.Update;
 import com.intellij.xdebugger.memory.component.InstancesTracker;
 import com.intellij.xdebugger.memory.tracking.TrackerForNewInstancesBase;
 import com.intellij.xdebugger.memory.tracking.TrackingType;
@@ -72,6 +74,9 @@ public class ClassesTable extends JBTable implements DataProvider, Disposable {
   private boolean myOnlyWithInstances;
   private MinusculeMatcher myMatcher = NameUtil.buildMatcher("*").build();
   private String myFilteringPattern = "";
+  private final MergingUpdateQueue myFilterTypingMergeQueue = new MergingUpdateQueue(
+    "Classes table typing merging queue", 500, true,
+    this, this, this, true).setRestartTimerOnAdd(true);
 
   private volatile List<TypeInfo> myItems = Collections.unmodifiableList(new ArrayList<>());
   private boolean myIsShowCounts = true;
@@ -276,11 +281,20 @@ public class ClassesTable extends JBTable implements DataProvider, Disposable {
   void setFilterPattern(String pattern) {
     if (!myFilteringPattern.equals(pattern)) {
       myFilteringPattern = pattern;
-      myMatcher = NameUtil.buildMatcher("*" + pattern).build();
-      fireTableDataChanged();
-      if (getSelectedClass() == null && getRowCount() > 0) {
-        getSelectionModel().setSelectionInterval(0, 0);
-      }
+      myFilterTypingMergeQueue.queue(new Update(myMatcher, true) {
+        @Override
+        public void run() {
+          String newPattern = "*" + myFilteringPattern;
+          if (myMatcher.getPattern().equals(newPattern)) {
+            return;
+          }
+          myMatcher = NameUtil.buildMatcher(newPattern).build();
+          fireTableDataChanged();
+          if (getSelectedClass() == null && getRowCount() > 0) {
+            getSelectionModel().setSelectionInterval(0, 0);
+          }
+        }
+      });
     }
   }
 

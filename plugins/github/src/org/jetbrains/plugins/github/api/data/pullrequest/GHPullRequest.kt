@@ -23,16 +23,18 @@ class GHPullRequest(id: String,
                     @JsonProperty("reviewRequests") reviewRequests: GHNodes<GHPullRequestReviewRequest>,
                     val baseRefName: String,
                     val baseRefOid: String,
-                    headRefName: String,
+                    val baseRepository: Repository?,
+                    val headRefName: String,
                     val headRefOid: String,
-                    headRepository: Repository?)
+                    val headRepository: HeadRepository?)
   : GHPullRequestShort(id, url, number, title, state, author, createdAt, assignees, labels, viewerDidAuthor) {
 
   @JsonIgnore
   val reviewRequests = reviewRequests.nodes
 
-  @JsonIgnore
-  val headLabel = headRepository?.nameWithOwner.orEmpty() + ":" + headRefName
+  open class Repository(val owner: Owner, val isFork: Boolean)
 
-  class Repository(val nameWithOwner: String)
+  class HeadRepository(owner: Owner, isFork: Boolean, val url: String, val sshUrl: String) : Repository(owner, isFork)
+
+  class Owner(val login: String)
 }

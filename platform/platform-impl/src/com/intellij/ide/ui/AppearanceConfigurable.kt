@@ -9,6 +9,7 @@ import com.intellij.ide.actions.QuickChangeLookAndFeel
 import com.intellij.ide.ui.search.OptionDescription
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.PlatformEditorBundle
 import com.intellij.openapi.editor.colors.EditorColorsManager
@@ -37,31 +38,26 @@ import com.intellij.util.ui.UIUtil
 import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.Window
-import java.util.*
-import javax.swing.*
+import javax.swing.DefaultComboBoxModel
+import javax.swing.JComponent
+import javax.swing.JLabel
+import javax.swing.JList
 
 // @formatter:off
 private val settings get() = UISettings.instance
 private val generalSettings get() = GeneralSettings.getInstance()
 private val lafManager get() = LafManager.getInstance()
 
-private val cdAnimateWindows                          get() = CheckboxDescriptor(message("checkbox.animate.windows"), settings::animateWindows, groupName = windowOptionGroupName)
 private val cdShowToolWindowBars                      get() = CheckboxDescriptor(message("checkbox.show.tool.window.bars"), PropertyBinding({ !settings.hideToolStripes }, { settings.hideToolStripes = !it }), groupName = windowOptionGroupName)
 private val cdShowToolWindowNumbers                   get() = CheckboxDescriptor(message("checkbox.show.tool.window.numbers"), settings::showToolWindowsNumbers, groupName = windowOptionGroupName)
-private val cdDisableMenuMnemonics                    get() = CheckboxDescriptor(KeyMapBundle.message("disable.mnemonic.in.menu.check.box"), settings::disableMnemonics, groupName = windowOptionGroupName)
-private val cdDisableControlsMnemonics                get() = CheckboxDescriptor(KeyMapBundle.message("disable.mnemonic.in.controls.check.box"), settings::disableMnemonicsInControls, groupName = windowOptionGroupName)
-private val cdAllowMergingButtons                     get() = CheckboxDescriptor(message("allow.merging.dialog.buttons"), settings::allowMergeButtons, groupName = windowOptionGroupName)
+private val cdEnableMenuMnemonics                     get() = CheckboxDescriptor(KeyMapBundle.message("enable.mnemonic.in.menu.check.box"), PropertyBinding({ !settings.disableMnemonics }, { settings.disableMnemonics = !it }), groupName = windowOptionGroupName)
+private val cdEnableControlsMnemonics                 get() = CheckboxDescriptor(KeyMapBundle.message("enable.mnemonic.in.controls.check.box"), PropertyBinding({ !settings.disableMnemonicsInControls }, { settings.disableMnemonicsInControls = !it }), groupName = windowOptionGroupName)
 private val cdSmoothScrolling                         get() = CheckboxDescriptor(message("checkbox.smooth.scrolling"), settings::smoothScrolling, groupName = uiOptionGroupName)
-private val cdShowMenuIcons                           get() = CheckboxDescriptor(message("checkbox.show.icons.in.menu.items"), settings::showIconsInMenus, groupName = windowOptionGroupName)
 private val cdWidescreenToolWindowLayout              get() = CheckboxDescriptor(message("checkbox.widescreen.tool.window.layout"), settings::wideScreenSupport, groupName = windowOptionGroupName)
 private val cdLeftToolWindowLayout                    get() = CheckboxDescriptor(message("checkbox.left.toolwindow.layout"), settings::leftHorizontalSplit, groupName = windowOptionGroupName)
 private val cdRightToolWindowLayout                   get() = CheckboxDescriptor(message("checkbox.right.toolwindow.layout"), settings::rightHorizontalSplit, groupName = windowOptionGroupName)
-private val cdCyclicListScrolling                     get() = CheckboxDescriptor(message("checkboox.cyclic.scrolling.in.lists"), settings::cycleScrolling, groupName = uiOptionGroupName)
-private val cdShowQuickNavigationIcons                get() = CheckboxDescriptor(message("checkbox.show.icons.in.quick.navigation"), settings::showIconInQuickNavigation, groupName = uiOptionGroupName)
 private val cdUseCompactTreeIndents                   get() = CheckboxDescriptor(message("checkbox.compact.tree.indents"), settings::compactTreeIndents, groupName = uiOptionGroupName)
 private val cdShowTreeIndents                         get() = CheckboxDescriptor(message("checkbox.show.tree.indent.guides"), settings::showTreeIndentGuides, groupName = uiOptionGroupName)
-private val cdMoveCursorOnButton                      get() = CheckboxDescriptor(message("checkbox.position.cursor.on.default.button"), settings::moveMouseOnDefaultButton, groupName = uiOptionGroupName)
-private val cdHideNavigationPopups                    get() = CheckboxDescriptor(message("hide.navigation.popups.on.focus.loss"), settings::hideNavigationOnFocusLoss, groupName = uiOptionGroupName)
 private val cdDnDWithAlt                              get() = CheckboxDescriptor(message("dnd.with.alt.pressed.only"), settings::dndWithPressedAltOnly, groupName = uiOptionGroupName)
 
 private val cdUseTransparentMode                      get() = CheckboxDescriptor(message("checkbox.use.transparent.mode.for.floating.windows"), PropertyBinding({ settings.state.enableAlphaMode }, { settings.state.enableAlphaMode = it }))
@@ -70,29 +66,23 @@ private val cdUseContrastToolbars                     get() = CheckboxDescriptor
 private val cdFullPathsInTitleBar                     get() = CheckboxDescriptor(message("checkbox.full.paths.in.window.header"), settings::fullPathsInWindowHeader)
 // @formatter:on
 
-internal val appearanceOptionDescriptors: List<OptionDescription> = listOf(
-  cdAnimateWindows,
-  cdShowToolWindowBars,
-  cdShowToolWindowNumbers,
-  cdDisableMenuMnemonics,
-  cdDisableControlsMnemonics,
-  cdAllowMergingButtons,
-  cdSmoothScrolling,
-  cdShowMenuIcons,
-  cdWidescreenToolWindowLayout,
-  cdLeftToolWindowLayout,
-  cdRightToolWindowLayout,
-  cdCyclicListScrolling,
-  cdShowQuickNavigationIcons,
-  cdUseCompactTreeIndents,
-  cdShowTreeIndents,
-  cdMoveCursorOnButton,
-  cdHideNavigationPopups,
-  cdDnDWithAlt,
-  cdFullPathsInTitleBar
-).map(CheckboxDescriptor::asOptionDescriptor)
+internal val appearanceOptionDescriptors: List<OptionDescription>
+  get() = listOf(
+    cdShowToolWindowBars,
+    cdShowToolWindowNumbers,
+    cdEnableMenuMnemonics,
+    cdEnableControlsMnemonics,
+    cdSmoothScrolling,
+    cdWidescreenToolWindowLayout,
+    cdLeftToolWindowLayout,
+    cdRightToolWindowLayout,
+    cdUseCompactTreeIndents,
+    cdShowTreeIndents,
+    cdDnDWithAlt,
+    cdFullPathsInTitleBar
+  ).map(CheckboxDescriptor::asUiOptionDescriptor)
 
-class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appearance"), "preferences.lookFeel") {
+internal class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appearance"), "preferences.lookFeel") {
   private var shouldUpdateLaF = false
 
   override fun createPanel(): DialogPanel {
@@ -145,8 +135,11 @@ class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appear
         if (supportedValues.isNotEmpty()) {
           val modelBinding = PropertyBinding({ settings.colorBlindness }, { settings.colorBlindness = it })
           val onApply = {
-            DefaultColorSchemesManager.getInstance().reload()
-            (EditorColorsManager.getInstance() as EditorColorsManagerImpl).schemeChangedOrSwitched(null)
+            // callback executed not when all changes are applied, but one component by one, so, reload later when everything were applied
+            ApplicationManager.getApplication().invokeLater(Runnable {
+              DefaultColorSchemesManager.getInstance().reload()
+              (EditorColorsManager.getInstance() as EditorColorsManagerImpl).schemeChangedOrSwitched(null)
+            })
           }
 
           fullRow {
@@ -178,13 +171,24 @@ class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appear
         }
       }
       titledRow(message("group.ui.options")) {
-        fullRow { checkBox(cdCyclicListScrolling) }
-        fullRow { checkBox(cdShowQuickNavigationIcons) }
-        fullRow { checkBox(cdUseCompactTreeIndents) }
-        fullRow { checkBox(cdShowTreeIndents) }
-        fullRow { checkBox(cdMoveCursorOnButton) }
-        fullRow { checkBox(cdHideNavigationPopups) }
-        fullRow { checkBox(cdDnDWithAlt) }
+        twoColumnRow(
+          { checkBox(cdShowTreeIndents) },
+          {
+            checkBox(cdSmoothScrolling)
+            ContextHelpLabel.create(message("checkbox.smooth.scrolling.description"))()
+          }
+        )
+        twoColumnRow(
+          { checkBox(cdUseCompactTreeIndents) },
+          { checkBox(cdDnDWithAlt) }
+        )
+        twoColumnRow(
+          { checkBox(cdEnableMenuMnemonics) },
+          { checkBox(cdFullPathsInTitleBar) }
+        )
+        fullRow {
+          checkBox(cdEnableControlsMnemonics)
+        }
         val backgroundImageAction = ActionManager.getInstance().getAction("Images.SetBackgroundImage")
         if (backgroundImageAction != null) {
           fullRow {
@@ -227,7 +231,12 @@ class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appear
         twoColumnRow(
           {
             label(message("label.text.antialiasing.scope.ide"))
-            comboBox(DefaultComboBoxModel(AntialiasingType.values()), settings::ideAAType, renderer = AAListCellRenderer(false))
+            val ideAAOptions =
+              if (!AntialiasingType.canUseSubpixelAAForIDE())
+                arrayOf(AntialiasingType.GREYSCALE, AntialiasingType.OFF)
+              else
+                AntialiasingType.values()
+            comboBox(DefaultComboBoxModel(ideAAOptions), settings::ideAAType, renderer = AAListCellRenderer(false))
               .shouldUpdateLaF()
               .onApply {
                 for (w in Window.getWindows()) {
@@ -246,32 +255,16 @@ class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appear
       }
       titledRow(message("group.window.options")) {
         twoColumnRow(
-          { checkBox(cdAnimateWindows) },
-          { checkBox(cdShowToolWindowBars) }
-        )
-        twoColumnRow(
-          { checkBox(cdShowToolWindowNumbers) },
-          { checkBox(cdDisableMenuMnemonics) }
-        )
-        twoColumnRow(
-          { checkBox(cdAllowMergingButtons) },
-          { checkBox(cdDisableControlsMnemonics) }
-        )
-        twoColumnRow(
-          {
-            checkBox(cdSmoothScrolling)
-            ContextHelpLabel.create(message("checkbox.smooth.scrolling.description"))()
-          },
-          { checkBox(cdShowMenuIcons) }
+          { checkBox(cdShowToolWindowBars) },
+          { checkBox(cdShowToolWindowNumbers) }
         )
         twoColumnRow(
           { checkBox(cdLeftToolWindowLayout) },
           { checkBox(cdRightToolWindowLayout) }
         )
-        twoColumnRow(
-          { checkBox(cdWidescreenToolWindowLayout) },
-          { checkBox(cdFullPathsInTitleBar) }
-        )
+        row {
+          checkBox(cdWidescreenToolWindowLayout)
+        }
       }
       titledRow(message("group.presentation.mode")) {
         fullRow {
@@ -303,13 +296,13 @@ class AppearanceConfigurable : BoundSearchableConfigurable(message("title.appear
   private fun <T : JComponent> CellBuilder<T>.shouldUpdateLaF(): CellBuilder<T> = onApply { shouldUpdateLaF = true }
 }
 
-private fun Cell.fontSizeComboBox(getter: () -> Int, setter: (Int) -> Unit, defaultValue: Int): CellBuilder<ComboBox<String>> {
+fun Cell.fontSizeComboBox(getter: () -> Int, setter: (Int) -> Unit, defaultValue: Int): CellBuilder<ComboBox<String>> {
   val model = DefaultComboBoxModel(UIUtil.getStandardFontSizes())
   return comboBox(model, { getter().toString() }, { setter(getIntValue(it, defaultValue)) })
     .applyToComponent { isEditable = true }
 }
 
-private fun RowBuilder.fullRow(init: InnerCell.() -> Unit): Row = row { cell(isFullWidth = true, init = init) }
+fun RowBuilder.fullRow(init: InnerCell.() -> Unit): Row = row { cell(isFullWidth = true, init = init) }
 private fun RowBuilder.twoColumnRow(column1: InnerCell.() -> Unit, column2: InnerCell.() -> Unit): Row = row {
   cell {
     column1()

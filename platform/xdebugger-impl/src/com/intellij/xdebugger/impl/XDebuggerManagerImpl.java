@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl;
 
 import com.intellij.AppTopics;
@@ -27,14 +27,12 @@ import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.event.*;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.impl.EditorImpl;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileDocumentManagerListener;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
@@ -141,7 +139,7 @@ public class XDebuggerManagerImpl extends XDebuggerManager implements Persistent
     messageBusConnection.subscribe(RunContentManager.TOPIC, new RunContentWithExecutorListener() {
       @Override
       public void contentSelected(@Nullable RunContentDescriptor descriptor, @NotNull Executor executor) {
-        if (descriptor != null && executor.equals(DefaultDebugExecutor.getDebugExecutorInstance())) {
+        if (descriptor != null && ToolWindowId.DEBUG.equals(executor.getToolWindowId())) {
           XDebugSessionImpl session = mySessions.get(descriptor.getProcessHandler());
           if (session != null) {
             session.activateSession();
@@ -154,7 +152,7 @@ public class XDebuggerManagerImpl extends XDebuggerManager implements Persistent
 
       @Override
       public void contentRemoved(@Nullable RunContentDescriptor descriptor, @NotNull Executor executor) {
-        if (descriptor != null && executor.equals(DefaultDebugExecutor.getDebugExecutorInstance())) {
+        if (descriptor != null && ToolWindowId.DEBUG.equals(executor.getToolWindowId())) {
           mySessions.remove(descriptor.getProcessHandler());
         }
       }
@@ -420,11 +418,10 @@ public class XDebuggerManagerImpl extends XDebuggerManager implements Persistent
         return;
       }
 
-      TextAttributes attributes = EditorColorsManager.getInstance().getGlobalScheme().getAttributes(DebuggerColors.NOT_TOP_FRAME_ATTRIBUTES);
       Editor editor = e.getEditor();
-      myCurrentHighlighter = editor.getMarkupModel().addLineHighlighter(lineNumber,
-                                                                        DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER,
-                                                                        attributes);
+      myCurrentHighlighter = editor.getMarkupModel().addLineHighlighter(DebuggerColors.NOT_TOP_FRAME_ATTRIBUTES,
+                                                                        lineNumber,
+                                                                        DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER);
 
       HintHint hint = new HintHint(e.getMouseEvent()).setAwtTooltip(true).setPreferredPosition(Balloon.Position.above);
       String text = UIUtil.removeMnemonic(ActionsBundle.actionText(XDebuggerActions.RUN_TO_CURSOR));
@@ -451,12 +448,10 @@ public class XDebuggerManagerImpl extends XDebuggerManager implements Persistent
 
     private int getLineNumber(EditorMouseEvent event) {
       Editor editor = event.getEditor();
-      int line = editor.yToVisualLine(event.getMouseEvent().getY());
-      if (line >= ((EditorImpl)editor).getVisibleLineCount()) {
+      if (event.getVisualPosition().line >= ((EditorImpl)editor).getVisibleLineCount()) {
         return -1;
       }
-      int offset = ((EditorImpl)editor).visualLineStartOffset(line);
-      int lineStartOffset = EditorUtil.getNotFoldedLineStartOffset(editor, offset);
+      int lineStartOffset = EditorUtil.getNotFoldedLineStartOffset(editor, event.getOffset());
       return editor.getDocument().getLineNumber(lineStartOffset);
     }
 

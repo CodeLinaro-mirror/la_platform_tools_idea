@@ -23,6 +23,7 @@ import java.util.List;
 /**
  * @author Bas Leijdekkers
  */
+@SuppressWarnings("ComponentNotRegistered")
 public class ScriptFilter extends FilterAction {
 
   public ScriptFilter(FilterTable filterTable) {
@@ -46,7 +47,7 @@ public class ScriptFilter extends FilterAction {
 
   @Override
   protected void setLabel(SimpleColoredComponent component) {
-    component.append("script=").append(StringUtil.unquoteString(myTable.getVariable().getScriptCodeConstraint()));
+    component.append(SSRBundle.message("script.0.label", StringUtil.unquoteString(myTable.getVariable().getScriptCodeConstraint())));
   }
 
   @Override

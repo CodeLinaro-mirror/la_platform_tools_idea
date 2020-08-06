@@ -10,9 +10,11 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+
 @ApiStatus.Internal
 public interface FileBasedIndexInfrastructureExtension {
-  ExtensionPointName<FileBasedIndexInfrastructureExtension> EP_NAME =  ExtensionPointName.create("com.intellij.fileBasedIndexInfrastructureExtension");
+  ExtensionPointName<FileBasedIndexInfrastructureExtension> EP_NAME = ExtensionPointName.create("com.intellij.fileBasedIndexInfrastructureExtension");
 
   /**
    * This notification is sent from the IDE to let the extension point implementation
@@ -22,12 +24,22 @@ public interface FileBasedIndexInfrastructureExtension {
    */
   void processIndexingProject(@NotNull Project project, @NotNull ProgressIndicator indexingIndicator);
 
+  /**
+   * This notification is sent when the indexing is started and there are no files detected to index
+   */
+  void noFilesFoundToProcessIndexingProject(@NotNull Project project, @NotNull ProgressIndicator indexingIndicator);
 
   interface FileIndexingStatusProcessor {
     /**
      * Processes up to date file while "scanning files to index" in progress.
      */
     void processUpToDateFile(@NotNull VirtualFile file, int inputId, @NotNull ID<?, ?> indexId);
+
+    /**
+     * Whether the given file has index provided by this extension.
+     */
+    @ApiStatus.Experimental
+    boolean hasIndexForFile(@NotNull VirtualFile file, int inputId, @NotNull ID<?, ?> indexId);
   }
 
   @Nullable
@@ -42,7 +54,7 @@ public interface FileBasedIndexInfrastructureExtension {
    */
   @Nullable
   <K, V> UpdatableIndex<K, V, FileContent> combineIndex(@NotNull FileBasedIndexExtension<K, V> indexExtension,
-                                                        @NotNull UpdatableIndex<K, V, FileContent> baseIndex);
+                                                        @NotNull UpdatableIndex<K, V, FileContent> baseIndex) throws IOException;
 
 
   /**
@@ -69,7 +81,8 @@ public interface FileBasedIndexInfrastructureExtension {
    * This method and {@link FileBasedIndexInfrastructureExtension#shutdown()} synchronize
    * lifecycle of an extension with {@link FileBasedIndexImpl}.
    **/
-  void initialize();
+  @NotNull
+  InitializationResult initialize();
 
   /**
    * Executed when IntelliJ is shutting down it's indexes (IDE shutdown or plugin load/unload). It is the best time
@@ -85,4 +98,8 @@ public interface FileBasedIndexInfrastructureExtension {
    * all indexed data should be invalidate and full index rebuild will be requested
    */
   int getVersion();
+
+  enum InitializationResult {
+    SUCCESSFULLY, INDEX_REBUILD_REQUIRED
+  }
 }

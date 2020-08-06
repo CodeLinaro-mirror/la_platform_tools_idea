@@ -29,15 +29,12 @@ import java.awt.*;
 import java.awt.event.*;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.text.AttributedCharacterIterator;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 import static com.intellij.ide.ui.laf.darcula.DarculaUIUtil.MINIMUM_WIDTH;
 import static com.intellij.openapi.util.text.StringUtil.isEmpty;
-import static java.awt.font.TextAttribute.KERNING;
-import static java.util.Collections.singletonMap;
+import static com.intellij.util.FontUtil.disableKerning;
 
 /**
  * @author Konstantin Bulenkov
@@ -49,7 +46,6 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
   private static final String POPUP = "JTextField.Search.FindPopup";
   private static final String INPLACE_HISTORY = "JTextField.Search.InplaceHistory";
   private static final String ON_CLEAR = "JTextField.Search.CancelAction";
-  private static final Map<AttributedCharacterIterator.Attribute, Integer> DISABLE_KERNING = singletonMap(KERNING, null);
 
   protected final LinkedHashMap<String, IconHolder> icons = new LinkedHashMap<>();
   private final Handler handler = new Handler();
@@ -167,12 +163,6 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
     }
   }
 
-  @NotNull
-  private static Font disableKerning(@NotNull Font oldFont) {
-    Font newFont = oldFont.deriveFont(DISABLE_KERNING);
-    return oldFont instanceof UIResource ? new FontUIResource(newFont) : newFont;
-  }
-
   /**
    * Adds listeners to the current text component and sets its variant.
    */
@@ -229,11 +219,11 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
   }
 
   public static boolean isSearchField(Component c) {
-    return c instanceof JTextField && "search".equals(((JTextField)c).getClientProperty("JTextField.variant"));
+    return c instanceof JTextField && "search".equals(((JTextField)c).getClientProperty(VARIANT));
   }
 
   public static boolean isSearchFieldWithHistoryPopup(Component c) {
-    return isSearchField(c) && ((JTextField)c).getClientProperty("JTextField.Search.FindPopup") instanceof JPopupMenu;
+    return isSearchField(c) && ((JTextField)c).getClientProperty(POPUP) instanceof JPopupMenu;
   }
 
   @Nullable
@@ -365,7 +355,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
               showSearchPopup();
               break;
             case CLEAR:
-              Object listener = getComponent().getClientProperty("JTextField.Search.CancelAction");
+              Object listener = getComponent().getClientProperty(ON_CLEAR);
               if (listener instanceof ActionListener) {
                 ((ActionListener)listener).actionPerformed(new ActionEvent(getComponent(), ActionEvent.ACTION_PERFORMED, "action"));
               }
@@ -587,7 +577,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
           font = UIManager.getFont(getPropertyPrefix() + ".font");
           component.setFont(!monospaced
                             ? !SystemInfo.isMacOSCatalina ? font : disableKerning(font)
-                            : new FontUIResource("monospaced", font.getStyle(), font.getSize()));
+                            : new FontUIResource(MONOSPACED, font.getStyle(), font.getSize()));
         }
       }
     }

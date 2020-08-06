@@ -18,12 +18,25 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
 
+/**
+ * This class is intended to simplify implementation of dummy editors needed only to pass to places which expect {@link Editor}
+ * but do nothing complicated with it, only simple things like getting document/project/caret/selection.<p></p>
+ *
+ * Since Imaginary* classes are intended to be used by multiple parties,
+ * they should be as free as possible of simplified versions of any real Editor's logic.
+ * Simplification involves making some assumptions what the clients would need, and different clients may disagree on that.
+ * Having a simplified version that "almost always" works would make it hard to notice when it's not enough,
+ * so the default implementation of most methods is to throw an exception to make the problem obvious immediately.
+ * Clients can add simplified logic themselves via subclassing, if they really need to.
+ */
 public class ImaginaryEditor extends UserDataHolderBase implements Editor {
   private final ImaginaryCaretModel myCaretModel;
   private final ImaginarySelectionModel mySelectionModel;
+  private final Project myProject;
   @NotNull private final Document myDocument;
 
-  public ImaginaryEditor(@NotNull Document document) {
+  public ImaginaryEditor(@NotNull Project project, @NotNull Document document) {
+    myProject = project;
     myDocument = document;
     myCaretModel = new ImaginaryCaretModel(this);
     mySelectionModel = new ImaginarySelectionModel(this);
@@ -94,7 +107,7 @@ public class ImaginaryEditor extends UserDataHolderBase implements Editor {
   @NotNull
   @Override
   public ScrollingModel getScrollingModel() {
-    throw notImplemented();
+    return new ImaginaryScrollingModel(this);
   }
 
   @NotNull
@@ -164,13 +177,13 @@ public class ImaginaryEditor extends UserDataHolderBase implements Editor {
   @NotNull
   @Override
   public VisualPosition offsetToVisualPosition(int offset) {
-    throw notImplemented();
+    return logicalToVisualPosition(offsetToLogicalPosition(offset));
   }
 
   @NotNull
   @Override
   public VisualPosition offsetToVisualPosition(int offset, boolean leanForward, boolean beforeSoftWrap) {
-    throw notImplemented();
+    return offsetToVisualPosition(offset);
   }
 
   @NotNull
@@ -213,23 +226,23 @@ public class ImaginaryEditor extends UserDataHolderBase implements Editor {
 
   @Override
   public boolean isDisposed() {
-    throw notImplemented();
+    return false;
   }
 
   @Nullable
   @Override
   public Project getProject() {
-    throw notImplemented();
+    return myProject;
   }
 
   @Override
   public boolean isInsertMode() {
-    throw notImplemented();
+    return false;
   }
 
   @Override
   public boolean isColumnMode() {
-    throw notImplemented();
+    return false;
   }
 
   @Override

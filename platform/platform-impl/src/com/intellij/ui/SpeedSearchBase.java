@@ -19,6 +19,7 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener;
 import com.intellij.ui.border.CustomLineBorder;
@@ -56,7 +57,14 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
   private final ToolWindowManagerListener myWindowManagerListener = new ToolWindowManagerListener() {
     @Override
     public void stateChanged(@NotNull ToolWindowManager toolWindowManager) {
-      manageSearchPopup(null);
+        if (!isInsideActiveToolWindow(toolWindowManager)) {
+          manageSearchPopup(null);
+        }
+    }
+
+    private boolean isInsideActiveToolWindow(@NotNull ToolWindowManager toolWindowManager) {
+      ToolWindow toolWindow = toolWindowManager.getToolWindow(toolWindowManager.getActiveToolWindowId());
+      return toolWindow != null && SwingUtilities.isDescendingFrom(myComponent, toolWindow.getComponent());
     }
   };
   private final PropertyChangeSupport myChangeSupport = new PropertyChangeSupport(this);
@@ -66,7 +74,7 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
 
   private Disposable myListenerDisposable;
 
-  public SpeedSearchBase(Comp component) {
+  public SpeedSearchBase(@NotNull Comp component) {
     myComponent = component;
 
     myComponent.addComponentListener(new ComponentAdapter() {
@@ -248,7 +256,7 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
   }
 
   @Nullable
-  private Object findPreviousElement(String s) {
+  private Object findPreviousElement(@NotNull String s) {
     final int selectedIndex = getSelectedIndex();
     if (selectedIndex < 0) return null;
     final ListIterator<?> it = getElementIterator(selectedIndex);
@@ -278,7 +286,7 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
   }
 
   @Nullable
-  protected Object findElement(String s) {
+  protected Object findElement(@NotNull String s) {
     int selectedIndex = getSelectedIndex();
     if (selectedIndex < 0) {
       selectedIndex = 0;
@@ -393,7 +401,7 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
   }
 
   @Nullable
-  private Object findTargetElement(int keyCode, String searchPrefix) {
+  private Object findTargetElement(int keyCode, @NotNull String searchPrefix) {
     if (keyCode == KeyEvent.VK_UP) {
       return findPreviousElement(searchPrefix);
     }

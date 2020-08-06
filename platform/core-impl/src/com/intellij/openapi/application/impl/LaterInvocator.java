@@ -1,9 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application.impl;
 
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.*;
+import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.ActionCallback;
@@ -32,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class LaterInvocator {
+public final class LaterInvocator {
   private static final Logger LOG = Logger.getInstance(LaterInvocator.class);
 
   private LaterInvocator() { }
@@ -44,12 +45,13 @@ public class LaterInvocator {
   private static final Map<Project, List<Dialog>> projectToModalEntities = ContainerUtil.createWeakMap();
   private static final Map<Project, Stack<ModalityState>> projectToModalEntitiesStack = ContainerUtil.createWeakMap();
   private static final Stack<ModalityStateEx> ourModalityStack = new Stack<>((ModalityStateEx)ModalityState.NON_MODAL);
-  private static final EventDispatcher<ModalityStateListener> ourModalityStateMulticaster = EventDispatcher.create(ModalityStateListener.class);
+  private static final EventDispatcher<ModalityStateListener> ourModalityStateMulticaster =
+    EventDispatcher.create(ModalityStateListener.class);
 
   private static final Executor ourWriteThreadExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("Write Thread", 1);
   private static final FlushQueue ourEdtQueue = new FlushQueue(SwingUtilities::invokeLater);
-  private static final FlushQueue ourWtQueue = new FlushQueue(r ->
-    ourWriteThreadExecutor.execute(() -> ApplicationManager.getApplication().runIntendedWriteActionOnCurrentThread(r)));
+  private static final FlushQueue ourWtQueue = new FlushQueue(r -> ourWriteThreadExecutor.execute(() -> ApplicationManagerEx
+    .getApplicationEx().runIntendedWriteActionOnCurrentThread(r)));
 
 
   public static void addModalityStateListener(@NotNull ModalityStateListener listener, @NotNull Disposable parentDisposable) {
@@ -108,8 +110,7 @@ public class LaterInvocator {
       return;
     }
     FlushQueue.RunnableInfo runnableInfo = new FlushQueue.RunnableInfo(runnable, modalityState, expired, callback);
-    getRunnableQueue(onEdt).push(runnableInfo);
-    requestFlush();
+    pushRunnableToQueue(onEdt, runnableInfo);
   }
 
   static void invokeAndWait(@NotNull final Runnable runnable, @NotNull ModalityState modalityState, boolean onEdt) {
@@ -170,7 +171,7 @@ public class LaterInvocator {
       LOG.debug("enterModal:" + modalEntity);
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(true);
+    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(true, modalEntity);
 
     ourModalEntities.add(modalEntity);
     synchronized (ourModalityStack) {
@@ -182,11 +183,10 @@ public class LaterInvocator {
       guard.enteredModality(appendedState);
     }
 
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
-  public static void enterModal(Project project, Dialog dialog) {
+  public static void enterModal(Project project, @NotNull Dialog dialog) {
     LOG.assertTrue(isDispatchThread(), "enterModal() should be invoked in event-dispatch thread");
 
     if (LOG.isDebugEnabled()) {
@@ -198,7 +198,7 @@ public class LaterInvocator {
       return;
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(true);
+    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(true, dialog);
 
     List<Dialog> modalEntitiesList = projectToModalEntities.getOrDefault(project, ContainerUtil.createLockFreeCopyOnWriteList());
     projectToModalEntities.put(project, modalEntitiesList);
@@ -217,18 +217,17 @@ public class LaterInvocator {
   @ApiStatus.Internal
   public static void markTransparent(@NotNull ModalityState state) {
     ((ModalityStateEx)state).markTransparent();
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
-  public static void leaveModal(Project project, Dialog dialog) {
+  public static void leaveModal(Project project, @NotNull Dialog dialog) {
     LOG.assertTrue(isWriteThread(), "leaveModal() should be invoked in write thread");
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("leaveModal:" + dialog.getName() + " ; for project: " + project.getName());
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(false);
+    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(false, dialog);
 
     int index = ourModalEntities.indexOf(dialog);
 
@@ -246,8 +245,7 @@ public class LaterInvocator {
       }
     }
 
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   private static void removeModality(@NotNull Object modalEntity, int index) {
@@ -269,14 +267,13 @@ public class LaterInvocator {
       LOG.debug("leaveModal:" + modalEntity);
     }
 
-    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(false);
+    ourModalityStateMulticaster.getMulticaster().beforeModalityStateChanged(false, modalEntity);
 
     int index = ourModalEntities.indexOf(modalEntity);
     LOG.assertTrue(index >= 0);
     removeModality(modalEntity, index);
 
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   @TestOnly
@@ -285,8 +282,7 @@ public class LaterInvocator {
       leaveModal(ourModalEntities.get(ourModalEntities.size() - 1));
     }
     LOG.assertTrue(getCurrentModalityState() == ModalityState.NON_MODAL, getCurrentModalityState());
-    reincludeSkippedItems();
-    requestFlush();
+    reincludeSkippedItemsAndRequestFlush();
   }
 
   public static Object @NotNull [] getCurrentModalEntities() {
@@ -404,14 +400,21 @@ public class LaterInvocator {
     return ourWtQueue.getQueue();
   }
 
-  private static void reincludeSkippedItems() {
+  private static void pushRunnableToQueue(boolean onEdt, FlushQueue.RunnableInfo runnableInfo) {
+    getRunnableQueue(onEdt).push(runnableInfo);
+    requestFlush();
+  }
+
+  private static void reincludeSkippedItemsAndRequestFlush() {
     ourEdtQueue.reincludeSkippedItems();
     ourWtQueue.reincludeSkippedItems();
+    requestFlush();
   }
 
   public static void purgeExpiredItems() {
     ourEdtQueue.purgeExpiredItems();
     ourWtQueue.purgeExpiredItems();
+    requestFlush();
   }
 
   @TestOnly

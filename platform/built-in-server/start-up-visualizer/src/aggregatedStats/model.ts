@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 export type Metrics = { [key: string]: number; }
 
 export interface InfoResponse {
@@ -22,6 +22,8 @@ export interface GroupedMetricResponse {
 }
 
 export interface DataQuery {
+  db: string
+
   fields?: Array<string | DataQueryDimension>
 
   filters?: Array<DataQueryFilter>
@@ -55,10 +57,20 @@ export interface MetricDescriptor {
 }
 
 export interface DataRequest {
+  db: string
   product: string
   project: string
   machine: Array<string>
-  infoResponse: InfoResponse
+}
+
+export function getFilters(request: DataRequest): Array<DataQueryFilter> {
+  const result: Array<DataQueryFilter> = []
+  if (request.db == "ij") {
+    result.push({field: "product", value: request.product})
+  }
+  result.push({field: "project", value: request.project})
+  result.push({field: "machine", value: request.machine})
+  return result
 }
 
 const rison: { encode: (o: any) => string } = require("rison-node")
@@ -67,17 +79,16 @@ export function encodeQuery(query: DataQuery): string {
   return rison.encode(query)
 }
 
-export function expandMachineAsFilterValue(request: DataRequest): string | Array<string> {
-  if (request.machine.length > 1) {
-    return request.machine
+export function expandMachineAsFilterValue(product: string, machine: Array<string>, infoResponse: InfoResponse): Array<string> {
+  if (machine.length > 1) {
+    return machine
   }
 
-  const groupName = request.machine[0]
-  const infoResponse = request.infoResponse
-  for (const machineGroup of infoResponse.productToMachine[request.product]) {
+  const groupName = machine[0]
+  for (const machineGroup of infoResponse.productToMachine[product]) {
     if (machineGroup.name === groupName) {
       return machineGroup.children.map(it => it.name)
     }
   }
-  return groupName
+  return [groupName]
 }

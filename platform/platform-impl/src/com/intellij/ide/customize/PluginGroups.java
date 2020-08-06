@@ -3,17 +3,15 @@ package com.intellij.ide.customize;
 
 import com.intellij.ide.WelcomeWizardUtil;
 import com.intellij.ide.cloudConfig.CloudConfigProvider;
-import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.ide.plugins.PluginManagerCore;
-import com.intellij.ide.plugins.RepositoryHelper;
+import com.intellij.ide.plugins.*;
+import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.extensions.PluginId;
-import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Pair;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.containers.ContainerUtil;
 import icons.PlatformImplIcons;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,6 +20,7 @@ import java.io.File;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 public class PluginGroups {
   static final String CORE = "Core";
@@ -34,20 +33,32 @@ public class PluginGroups {
 
   private final Map<String, List<IdSet>> myGroups = new LinkedHashMap<>();
   private final Map<String, String> myDescriptions = new LinkedHashMap<>();
-  private final List<IdeaPluginDescriptor> myPluginsFromRepository = new ArrayList<>();
+  private final List<PluginNode> myPluginsFromRepository = new ArrayList<>();
   private final Collection<PluginId> myDisabledPluginIds = new HashSet<>();
-  private final List<? extends IdeaPluginDescriptor> myAllPlugins;
+  private final List<IdeaPluginDescriptorImpl> myAllPlugins;
   private boolean myInitialized;
   private final Set<String> myFeaturedIds = new HashSet<>();
   private Runnable myLoadingCallback;
 
   public PluginGroups() {
-    myAllPlugins = PluginManagerCore.loadUncachedDescriptors();
-    SwingWorker worker = new SwingWorker<List<IdeaPluginDescriptor>, Object>() {
+    myAllPlugins = PluginDescriptorLoader.loadUncachedDescriptors();
+    SwingWorker worker = new SwingWorker<List<PluginNode>, Object>() {
       @Override
-      protected List<IdeaPluginDescriptor> doInBackground() {
+      protected List<PluginNode> doInBackground() {
         try {
-          return RepositoryHelper.loadPlugins(null);
+          List<String> featuresPluginIds = ContainerUtil.map(getFeaturedPlugins().values(), value -> parsePluginId(value));
+          List<PluginNode> featuredPlugins = MarketplaceRequests.getInstance().loadLastCompatiblePluginDescriptors(featuresPluginIds);
+          List<@NotNull String> dependsIds =
+            featuredPlugins.stream()
+              .map(p -> p.getDepends())
+              .filter(Objects::nonNull)
+              .flatMap(Collection::stream)
+              .map(id -> id.getIdString())
+              .filter(id -> !id.startsWith("(optional)"))
+              .collect(Collectors.toList());
+          List<PluginNode> dependsPlugins = MarketplaceRequests.getInstance().loadLastCompatiblePluginDescriptors(dependsIds);
+          featuredPlugins.addAll(dependsPlugins);
+          return featuredPlugins;
         }
         catch (Exception e) {
           //OK, it's offline
@@ -66,15 +77,14 @@ public class PluginGroups {
         }
       }
     };
-    worker.execute();
-    PluginManagerCore.loadDisabledPlugins(new File(PathManager.getConfigPath()).getPath(), myDisabledPluginIds);
 
     Map<String, Pair<Icon, List<String>>> treeMap = new LinkedHashMap<>();
     initGroups(treeMap, myFeaturedPlugins);
     for (Entry<String, Pair<Icon, List<String>>> entry : treeMap.entrySet()) {
       myTree.add(new Group(entry.getKey(), entry.getValue().getFirst(), null, entry.getValue().getSecond()));
     }
-
+    worker.execute();
+    DisabledPluginsState.loadDisabledPlugins(new File(PathManager.getConfigPath()).getPath(), myDisabledPluginIds);
     initCloudPlugins();
   }
 
@@ -160,17 +170,11 @@ public class PluginGroups {
       "com.intellij.quarkus",
       "com.intellij.helidon",
 
-      "com.intellij.gwt",
-      "JBoss Seam:com.intellij.seam,com.intellij.seam.pages,com.intellij.seam.pageflow",
-      "JBoss jBPM:JBPM",
-      "Struts:com.intellij.struts2",
-      "com.intellij.tapestry",
       "com.intellij.guice",
 
       "com.intellij.freemarker",
       "com.intellij.velocity",
-      "com.intellij.aspectj",
-      "Osmorc"
+      "com.intellij.aspectj"
     )));
     groups.add(new Group("Build Tools", PlatformImplIcons.BuildTools, null, Arrays.asList(
       "AntSupport",
@@ -192,7 +196,6 @@ public class PluginGroups {
       "AngularJS",
 
       "org.coffeescript",
-      "com.intellij.flex",
       "com.jetbrains.restClient",
 
       "com.intellij.swagger"
@@ -213,11 +216,9 @@ public class PluginGroups {
       "GlassFish",
       "JBoss",
       "Jetty",
-      "Resin",
       "Tomcat",
       "Weblogic",
       "WebSphere",
-      "com.intellij.dmserver",
       "JSR45Plugin"
     )));
     //myTree.put("Groovy", Arrays.asList("org.intellij.grails"));
@@ -257,6 +258,13 @@ public class PluginGroups {
                         "Tools Integration:Integration for Atlassian JIRA, Bamboo, Crucible, FishEye:atlassian-idea-plugin");
     addTrainingPlugin(featuredPlugins);
   }
+
+  static String parsePluginId(String string) {
+    int i = string.indexOf(':');
+    int j = string.indexOf(':', i + 1);
+    return string.substring(j + 1);
+  }
+
 
   protected static void addVcsGroup(@NotNull List<Group> groups) {
     groups.add(new Group("Version Controls", PlatformImplIcons.VersionControls, null, Arrays.asList(
@@ -349,7 +357,6 @@ public class PluginGroups {
   }
 
   Map<String, String> getFeaturedPlugins() {
-    initIfNeeded();
     return myFeaturedPlugins;
   }
 
@@ -363,8 +370,7 @@ public class PluginGroups {
     return myGroups.get(group);
   }
 
-  @Nullable
-  IdeaPluginDescriptor findPlugin(@NotNull PluginId id) {
+  final @Nullable IdeaPluginDescriptor findPlugin(@NotNull PluginId id) {
     for (IdeaPluginDescriptor pluginDescriptor : myAllPlugins) {
       if (pluginDescriptor.getPluginId() == id) {
         return pluginDescriptor;
@@ -393,7 +399,7 @@ public class PluginGroups {
     return Collections.unmodifiableCollection(myDisabledPluginIds);
   }
 
-  List<IdeaPluginDescriptor> getPluginsFromRepository() {
+  List<PluginNode> getPluginsFromRepository() {
     return myPluginsFromRepository;
   }
 
@@ -429,7 +435,12 @@ public class PluginGroups {
   void setPluginEnabledWithDependencies(@NotNull PluginId pluginId, boolean enabled) {
     initIfNeeded();
     Set<PluginId> ids = new HashSet<>();
-    collectInvolvedIds(pluginId, enabled, ids);
+    Map<PluginId, IdeaPluginDescriptorImpl> idToDescriptor = new HashMap<>(myAllPlugins.size());
+    for (IdeaPluginDescriptorImpl pluginDescriptor : myAllPlugins) {
+      idToDescriptor.put(pluginDescriptor.getPluginId(), pluginDescriptor);
+    }
+
+    collectInvolvedIds(pluginId, enabled, ids, idToDescriptor);
     Set<IdSet> sets = new HashSet<>();
     for (PluginId id : ids) {
       IdSet set = getSet(id);
@@ -450,71 +461,58 @@ public class PluginGroups {
     }
   }
 
-  private void collectInvolvedIds(PluginId pluginId, boolean toEnable, Set<PluginId> ids) {
+  private void collectInvolvedIds(@NotNull PluginId pluginId,
+                                  boolean toEnable,
+                                  @NotNull Set<PluginId> ids,
+                                  @NotNull Map<PluginId, IdeaPluginDescriptorImpl> idToDescriptor) {
     ids.add(pluginId);
     if (toEnable) {
-      for (PluginId id : getNonOptionalDependencies(pluginId)) {
-        collectInvolvedIds(id, true, ids);
+      IdeaPluginDescriptorImpl descriptor = idToDescriptor.get(pluginId);
+      if (descriptor != null) {
+        for (PluginDependency dependency : descriptor.getPluginDependencies()) {
+          if (!dependency.isOptional && dependency.id != PluginManagerCore.CORE_ID) {
+            collectInvolvedIds(dependency.id, true, ids, idToDescriptor);
+          }
+        }
       }
     }
     else {
-      Condition<PluginId> condition = id -> pluginId == id;
-      for (final IdeaPluginDescriptor plugin : myAllPlugins) {
-        if (null != ContainerUtil.find(plugin.getDependentPluginIds(), condition) &&
-            null == ContainerUtil.find(plugin.getOptionalDependentPluginIds(), condition)) {
-          collectInvolvedIds(plugin.getPluginId(), false, ids);
+      for (IdeaPluginDescriptorImpl plugin : myAllPlugins) {
+        for (PluginDependency dependency : plugin.getPluginDependencies()) {
+          if (!dependency.isOptional && dependency.id == pluginId) {
+            collectInvolvedIds(plugin.getPluginId(), false, ids, idToDescriptor);
+          }
         }
       }
     }
   }
 
-  @NotNull
-  private List<PluginId> getNonOptionalDependencies(PluginId id) {
-    List<PluginId> result = new ArrayList<>();
-    IdeaPluginDescriptor descriptor = findPlugin(id);
-    if (descriptor != null) {
-      for (PluginId pluginId : descriptor.getDependentPluginIds()) {
-        if (pluginId == PluginManagerCore.CORE_ID) {
-          continue;
-        }
-        if (!ArrayUtil.contains(pluginId, descriptor.getOptionalDependentPluginIds())) {
-          result.add(pluginId);
-        }
-      }
-    }
-    return result;
-  }
-
-  public static class Group {
+  public static final class Group {
     private final String myName;
     private final Icon myIcon;
     private final String myDescription;
     private final List<String> myPluginIdDescription;
 
-    public Group(@NotNull String name, @Nullable Icon icon, @Nullable String description, @NotNull List<String> pluginIdDescription) {
+    public Group(@NonNls @NotNull String name, @Nullable Icon icon, @Nullable String description, @NonNls @NotNull List<String> pluginIdDescription) {
       myName = name;
       myIcon = icon;
       myDescription = description;
       myPluginIdDescription = pluginIdDescription;
     }
 
-    @NotNull
-    public String getName() {
+    public @NotNull String getName() {
       return myName;
     }
 
-    @Nullable
-    public Icon getIcon() {
+    public @Nullable Icon getIcon() {
       return myIcon;
     }
 
-    @Nullable
-    public String getDescription() {
+    public @Nullable String getDescription() {
       return myDescription;
     }
 
-    @NotNull
-    public List<String> getPluginIdDescription() {
+    public @NotNull List<String> getPluginIdDescription() {
       return myPluginIdDescription;
     }
   }

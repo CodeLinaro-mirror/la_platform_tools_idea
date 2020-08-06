@@ -21,6 +21,7 @@ import com.intellij.vcs.log.data.RefsModel;
 import com.intellij.vcs.log.data.VcsLogData;
 import com.intellij.vcs.log.impl.MainVcsLogUiProperties;
 import com.intellij.vcs.log.impl.VcsChangesLazilyParsedDetails;
+import com.intellij.vcs.log.impl.VcsLogManager;
 import com.intellij.vcs.log.impl.VcsLogUiProperties;
 import com.intellij.vcs.log.ui.VcsLogInternalDataKeys;
 import com.intellij.vcsUtil.VcsUtil;
@@ -38,7 +39,7 @@ import static com.intellij.util.containers.ContainerUtil.getFirstItem;
 import static com.intellij.vcs.log.impl.VcsLogManager.findLogProviders;
 import static java.util.Collections.singletonList;
 
-public class VcsLogUtil {
+public final class VcsLogUtil {
   public static final int MAX_SELECTED_COMMITS = 1000;
   public static final int FULL_HASH_LENGTH = 40;
   public static final int SHORT_HASH_LENGTH = 8;
@@ -349,5 +350,10 @@ public class VcsLogUtil {
                                                         provider -> VcsUtil.findVcsByKey(project, provider.getSupportedVcs()));
     if (vcs.size() != 1) return VcsLogBundle.message("vcs");
     return Objects.requireNonNull(getFirstItem(vcs)).getDisplayName();
+  }
+
+  @NotNull
+  public static String getVcsDisplayName(@NotNull Project project, @NotNull VcsLogManager logManager) {
+    return getVcsDisplayName(project, logManager.getDataManager().getLogProviders().values());
   }
 }

@@ -120,8 +120,9 @@ class ApplyPatchChange {
     MarkupModelEx markupModel = patchEditor.getMarkupModel();
     TextRange textRange = DiffUtil.getLinesRange(document, line1, line2);
 
-    RangeHighlighter highlighter = markupModel.addRangeHighlighter(textRange.getStartOffset(), textRange.getEndOffset(),
-                                                                   HighlighterLayer.LAST, null, HighlighterTargetArea.LINES_IN_RANGE);
+    RangeHighlighter highlighter = markupModel
+      .addRangeHighlighter(null, textRange.getStartOffset(), textRange.getEndOffset(), HighlighterLayer.LAST,
+                           HighlighterTargetArea.LINES_IN_RANGE);
 
     highlighter.setLineMarkerRenderer(new MyGutterRenderer(line1, line2, color, tooltip));
 
@@ -332,7 +333,7 @@ class ApplyPatchChange {
     }
 
     @Override
-    public void paint(Editor editor, Graphics g, Rectangle r) {
+    public void paint(@NotNull Editor editor, @NotNull Graphics g, @NotNull Rectangle r) {
       LineStatusMarkerRenderer.paintSimpleRange(g, editor, myLine1, myLine2, myColor);
     }
 

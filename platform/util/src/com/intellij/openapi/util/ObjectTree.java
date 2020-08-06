@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util;
 
 import com.intellij.openapi.Disposable;
@@ -9,6 +9,8 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -23,8 +25,9 @@ final class ObjectTree {
   private static final ThreadLocal<Throwable> ourTopmostDisposeTrace = new ThreadLocal<>();
 
   // identity used here to prevent problems with hashCode/equals overridden by not very bright minds
-  private final Set<Disposable> myRootObjects = ContainerUtil.newIdentityTroveSet(); // guarded by treeLock
-  private final Map<Disposable, ObjectNode> myObject2NodeMap = ContainerUtil.newIdentityTroveMap(); // guarded by treeLock
+  private final Set<Disposable> myRootObjects = new ReferenceOpenHashSet<>(); // guarded by treeLock
+  // guarded by treeLock
+  private final Map<Disposable, ObjectNode> myObject2NodeMap = new Reference2ObjectOpenHashMap<>();
   // Disposable to trace or boolean marker (if trace unavailable)
   private final Map<Disposable, Object> myDisposedObjects = ContainerUtil.createWeakMap(100, 0.5f, ContainerUtil.identityStrategy()); // guarded by treeLock
 
@@ -176,7 +179,9 @@ final class ObjectTree {
   static <T> void executeActionWithRecursiveGuard(@NotNull T object, @NotNull List<T> recursiveGuard, @NotNull Consumer<? super T> action) {
     //noinspection SynchronizationOnLocalVariableOrMethodParameter
     synchronized (recursiveGuard) {
-      if (ArrayUtil.indexOf(recursiveGuard, object, ContainerUtil.identityStrategy()) != -1) return;
+      if (ArrayUtil.indexOf(recursiveGuard, object, (t, t2) -> t == t2) != -1) {
+        return;
+      }
       recursiveGuard.add(object);
     }
 
@@ -186,7 +191,7 @@ final class ObjectTree {
     finally {
       //noinspection SynchronizationOnLocalVariableOrMethodParameter
       synchronized (recursiveGuard) {
-        int i = ArrayUtil.lastIndexOf(recursiveGuard, object, ContainerUtil.identityStrategy());
+        int i = ArrayUtil.lastIndexOf(recursiveGuard, object, (t, t2) -> t == t2);
         assert i != -1;
         recursiveGuard.remove(i);
       }
@@ -248,6 +253,11 @@ final class ObjectTree {
 
   void clearDisposedObjectTraces() {
     myDisposedObjects.clear();
+    synchronized (treeLock) {
+      for (ObjectNode value : myObject2NodeMap.values()) {
+        value.clearTrace();
+      }
+    }
   }
 
   @Nullable

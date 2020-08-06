@@ -45,7 +45,7 @@ public final class MavenShortcutsManager implements Disposable {
 
   @NotNull
   public static MavenShortcutsManager getInstance(Project project) {
-    return project.getComponent(MavenShortcutsManager.class);
+    return project.getService(MavenShortcutsManager.class);
   }
 
   public MavenShortcutsManager(@NotNull Project project) {
@@ -141,7 +141,7 @@ public final class MavenShortcutsManager implements Disposable {
   private class MyProjectsTreeListener implements MavenProjectsManager.Listener, MavenProjectsTree.Listener {
     private final Map<MavenProject, Boolean> mySheduledProjects = new THashMap<>();
     private final MergingUpdateQueue myUpdateQueue = new MavenMergingUpdateQueue("MavenShortcutsManager: Keymap Update",
-                                                                                 500, true, myProject).usePassThroughInUnitTestMode();
+                                                                                 500, true, MavenShortcutsManager.this).usePassThroughInUnitTestMode();
 
     @Override
     public void activated() {

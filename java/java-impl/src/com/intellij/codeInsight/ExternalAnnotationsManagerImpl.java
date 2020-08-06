@@ -19,11 +19,9 @@ import com.intellij.openapi.command.undo.UndoUtil;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
@@ -59,6 +57,7 @@ import com.intellij.psi.xml.XmlTag;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.Processor;
+import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.MessageBus;
 import com.intellij.util.messages.MessageBusConnection;
@@ -211,29 +210,38 @@ public final class ExternalAnnotationsManagerImpl extends ReadableExternalAnnota
     
     if (annotationsByFiles.isEmpty()) return;
 
-    WriteCommandAction.writeCommandAction(project).run(() -> {
-      try {
-        for (Map.Entry<Optional<XmlFile>, List<ExternalAnnotation>> entry : annotationsByFiles.entrySet()) {
-          XmlFile annotationsFile = entry.getKey().orElse(null);
-          List<ExternalAnnotation> fileAnnotations = entry.getValue();
-          annotateExternally(annotationsFile, fileAnnotations);
+    WriteCommandAction.writeCommandAction(project).run(new ThrowableRunnable<RuntimeException>() {
+      @Override
+      public void run() throws RuntimeException {
+        if (project.isDisposed()) return;
+        if (DumbService.isDumb(project)) {
+          DumbService.getInstance(project).runWhenSmart(() -> WriteCommandAction.writeCommandAction(project).run(this));
+          return;
         }
-
-        UndoManager.getInstance(project).undoableActionPerformed(new BasicUndoableAction() {
-          @Override
-          public void undo() {
-            dropAnnotationsCache();
-            notifyChangedExternally();
+        try {
+          for (Map.Entry<Optional<XmlFile>, List<ExternalAnnotation>> entry : annotationsByFiles.entrySet()) {
+            XmlFile annotationsFile = entry.getKey().orElse(null);
+            List<ExternalAnnotation> fileAnnotations = entry.getValue();
+            annotateExternally(annotationsFile, fileAnnotations);
           }
 
-          @Override
-          public void redo() {
-            dropAnnotationsCache();
-            notifyChangedExternally();
-          }
-        });
-      } finally {
-        dropAnnotationsCache();
+          UndoManager.getInstance(project).undoableActionPerformed(new BasicUndoableAction() {
+            @Override
+            public void undo() {
+              dropAnnotationsCache();
+              notifyChangedExternally();
+            }
+
+            @Override
+            public void redo() {
+              dropAnnotationsCache();
+              notifyChangedExternally();
+            }
+          });
+        }
+        finally {
+          dropAnnotationsCache();
+        }
       }
     });
   }
@@ -489,7 +497,7 @@ public final class ExternalAnnotationsManagerImpl extends ReadableExternalAnnota
 
   private void chooseRootAndAnnotateExternally(VirtualFile @NotNull [] roots, @NotNull ExternalAnnotation annotation) {
     if (roots.length > 1) {
-      JBPopupFactory.getInstance().createListPopup(new BaseListPopupStep<VirtualFile>("Annotation Roots", roots) {
+      JBPopupFactory.getInstance().createListPopup(new BaseListPopupStep<VirtualFile>(JavaBundle.message("external.annotations.roots"), roots) {
         @Override
         public void canceled() {
           notifyAfterAnnotationChanging(annotation.getOwner(), annotation.getAnnotationFQName(), false);
@@ -724,12 +732,10 @@ public final class ExternalAnnotationsManagerImpl extends ReadableExternalAnnota
         editor != null && editor.getDocument() == PsiDocumentManager.getInstance(project).getDocument(containingFile);
       try {
         if (highlight) { //do not highlight for batch inspections
-          final EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-          final TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
           final TextRange textRange = highlightElement.getTextRange();
           HighlightManager.getInstance(project).addRangeHighlight(editor,
                                                                   textRange.getStartOffset(), textRange.getEndOffset(),
-                                                                  attributes, true, highlighters);
+                                                                  EditorColors.SEARCH_RESULT_ATTRIBUTES, true, highlighters);
           final LogicalPosition logicalPosition = editor.offsetToLogicalPosition(textRange.getStartOffset());
           editor.getScrollingModel().scrollTo(logicalPosition, ScrollType.CENTER);
         }

@@ -4,6 +4,16 @@ package com.intellij.codeInsight.daemon.impl.analysis;
 public class JavaLensSettings {
   private boolean showUsages;
   private boolean showImplementations;
+  private boolean showRelatedProblems = true;
+
+  public JavaLensSettings(boolean showUsages, boolean showImplementations, boolean showRelatedProblems) {
+    this.showUsages = showUsages;
+    this.showImplementations = showImplementations;
+    this.showRelatedProblems = showRelatedProblems;
+  }
+
+  public JavaLensSettings() {
+  }
 
   public boolean isShowUsages() {
     return showUsages;
@@ -21,6 +31,14 @@ public class JavaLensSettings {
     this.showImplementations = showImplementations;
   }
 
+  public boolean isShowRelatedProblems() {
+    return showRelatedProblems;
+  }
+
+  public void setShowRelatedProblems(boolean showRelatedProblems) {
+    this.showRelatedProblems = showRelatedProblems;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -28,7 +46,7 @@ public class JavaLensSettings {
 
     JavaLensSettings settings = (JavaLensSettings)o;
 
-    if (showUsages != settings.showUsages) return false;
+    if (showUsages != settings.showUsages || showRelatedProblems != settings.showRelatedProblems) return false;
     return showImplementations == settings.showImplementations;
   }
 
@@ -36,6 +54,7 @@ public class JavaLensSettings {
   public int hashCode() {
     int result = showUsages ? 1 : 0;
     result = 31 * result + (showImplementations ? 1 : 0);
+    result = 31 * result + (showRelatedProblems ? 1 : 0);
     return result;
   }
 }

@@ -1,10 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.hints
 
 import com.intellij.codeHighlighting.EditorBoundHighlightingPass
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingLevelManager
 import com.intellij.codeInsight.hints.presentation.PresentationFactory
-import com.intellij.codeInsight.hints.presentation.PresentationListener
 import com.intellij.concurrency.JobLauncher
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.Inlay
@@ -17,14 +16,11 @@ import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
 import com.intellij.psi.SyntaxTraverser
 import com.intellij.util.Processor
-import gnu.trove.TIntHashSet
-import gnu.trove.TIntObjectHashMap
-import org.jetbrains.annotations.NotNull
-import java.awt.Dimension
-import java.awt.Rectangle
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.stream.IntStream
-
 
 class InlayHintsPass(
   private val rootElement: PsiElement,
@@ -35,6 +31,7 @@ class InlayHintsPass(
 
   override fun doCollectInformation(progress: ProgressIndicator) {
     if (!HighlightingLevelManager.getInstance(myFile.project).shouldHighlight(myFile)) return
+    if (enabledCollectors.isEmpty()) return
     val buffers = ConcurrentLinkedQueue<HintsBuffer>()
     JobLauncher.getInstance().invokeConcurrentlyUnderProgress(
       enabledCollectors,
@@ -68,18 +65,6 @@ class InlayHintsPass(
     positionKeeper.restorePosition(false)
     if (rootElement === myFile) {
       InlayHintsPassFactory.putCurrentModificationStamp(myEditor, myFile)
-    }
-  }
-
-
-  class InlayContentListener(private val inlay: Inlay<out PresentationContainerRenderer<*>>) : PresentationListener {
-    // TODO more precise redraw, requires changes in Inlay
-    override fun contentChanged(area: Rectangle) {
-      inlay.repaint()
-    }
-
-    override fun sizeChanged(previous: Dimension, current: Dimension) {
-      inlay.update()
     }
   }
 
@@ -128,32 +113,32 @@ class InlayHintsPass(
     }
 
 
-    private fun addInlineHints(hints: HintsBuffer,
-                               inlayModel: @NotNull InlayModel) {
-      hints.inlineHints.forEachEntry { offset, presentations ->
-        val renderer = InlineInlayRenderer(presentations)
-        val inlay = inlayModel.addInlineElement(offset, renderer) ?: return@forEachEntry false
+    private fun addInlineHints(hints: HintsBuffer, inlayModel: InlayModel) {
+      for (entry in Int2ObjectMaps.fastIterable(hints.inlineHints)) {
+        val renderer = InlineInlayRenderer(entry.value)
+        val inlay = inlayModel.addInlineElement(entry.intKey, renderer) ?: break
         postprocessInlay(inlay)
-        true
       }
     }
 
-    private fun addBlockHints(inlayModel: @NotNull InlayModel,
-                              map: TIntObjectHashMap<MutableList<ConstrainedPresentation<*, BlockConstraints>>>,
+    private fun addBlockHints(inlayModel: InlayModel,
+                              map: Int2ObjectMap<MutableList<ConstrainedPresentation<*, BlockConstraints>>>,
                               showAbove: Boolean
     ) {
-      map.forEachEntry { offset, presentations ->
-        val renderer = BlockInlayRenderer(presentations)
+      for (entry in Int2ObjectMaps.fastIterable(map)) {
+        val presentations = entry.value
         val constraints = presentations.first().constraints
         val inlay = inlayModel.addBlockElement(
-          offset,
+          entry.intKey,
           constraints?.relatesToPrecedingText ?: true,
           showAbove,
           constraints?.priority ?: 0,
-          renderer
-        ) ?: return@forEachEntry false
+          BlockInlayRenderer(presentations)
+        ) ?: break
         postprocessInlay(inlay)
-        showAbove
+        if (!showAbove) {
+          break
+        }
       }
     }
 
@@ -197,11 +182,9 @@ class InlayHintsPass(
     /**
      *  Estimates count of changes (removal, addition) for inlays
      */
-    fun estimateChangesCountForPlacement(existingInlayOffsets: IntStream,
-                                         collected: HintsBuffer,
-                                         placement: Inlay.Placement): Int {
+    fun estimateChangesCountForPlacement(existingInlayOffsets: IntStream, collected: HintsBuffer, placement: Inlay.Placement): Int {
       var count = 0
-      val offsetsWithExistingHints = TIntHashSet()
+      val offsetsWithExistingHints = IntOpenHashSet()
       for (offset in existingInlayOffsets) {
         if (!collected.contains(offset, placement)) {
           count++

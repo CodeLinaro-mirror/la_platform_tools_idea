@@ -4,7 +4,6 @@ package com.intellij.util.indexing;
 import com.intellij.diagnostic.Activity;
 import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.ide.plugins.PluginManagerCore;
-import com.intellij.notification.NotificationDisplayType;
 import com.intellij.notification.NotificationGroup;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.Disposable;
@@ -19,7 +18,6 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl;
-import com.intellij.psi.stubs.SerializationManagerEx;
 import com.intellij.util.io.DataOutputStream;
 import com.intellij.util.io.IOUtil;
 import gnu.trove.THashSet;
@@ -34,22 +32,27 @@ import java.util.Set;
 import static com.intellij.serviceContainer.ComponentManagerImplKt.handleComponentError;
 
 class FileBasedIndexDataInitialization extends IndexInfrastructure.DataInitialization<IndexConfiguration> {
-  private static final NotificationGroup NOTIFICATIONS = new NotificationGroup("Indexing", NotificationDisplayType.BALLOON, false, null, null,
-                                                                               null, PluginManagerCore.CORE_ID);
+  private static final NotificationGroup NOTIFICATIONS = NotificationGroup.balloonGroup("Indexing", PluginManagerCore.CORE_ID);
   private static final Logger LOG = Logger.getInstance(FileBasedIndexDataInitialization.class);
 
   private final IndexConfiguration state = new IndexConfiguration();
-  private final IndicesRegistrationResult registrationResultSink = new IndicesRegistrationResult();
+  private final IndexVersionRegistrationSink registrationResultSink = new IndexVersionRegistrationSink();
   private boolean currentVersionCorrupted;
+  @NotNull
   private final FileBasedIndexImpl myFileBasedIndex;
+  @NotNull
+  private final RegisteredIndexes myRegisteredIndexes;
 
-  FileBasedIndexDataInitialization(@NotNull FileBasedIndexImpl index) {myFileBasedIndex = index;}
+  FileBasedIndexDataInitialization(@NotNull FileBasedIndexImpl index, @NotNull RegisteredIndexes registeredIndexes) {
+    myFileBasedIndex = index;
+    myRegisteredIndexes = registeredIndexes;
+  }
 
   private void initAssociatedDataForExtensions() {
     Activity activity = StartUpMeasurer.startActivity("file index extensions iteration");
     Iterator<FileBasedIndexExtension<?, ?>> extensions =
       IndexInfrastructure.hasIndices() ?
-      ((ExtensionPointImpl<FileBasedIndexExtension<?, ?>>)FileBasedIndexExtension.EXTENSION_POINT_NAME.getPoint(null)).iterator() :
+      ((ExtensionPointImpl<FileBasedIndexExtension<?, ?>>)FileBasedIndexExtension.EXTENSION_POINT_NAME.getPoint()).iterator() :
       Collections.emptyIterator();
 
     // todo: init contentless indices first ?
@@ -59,7 +62,7 @@ class FileBasedIndexDataInitialization extends IndexInfrastructure.DataInitializ
       ID<?, ?> name = extension.getName();
       RebuildStatus.registerIndex(name);
 
-      myFileBasedIndex.getRegisteredIndexes().registerIndexExtension(extension);
+      myRegisteredIndexes.registerIndexExtension(extension);
 
       addNestedInitializationTask(() -> {
         try {
@@ -74,7 +77,7 @@ class FileBasedIndexDataInitialization extends IndexInfrastructure.DataInitializ
       });
     }
 
-    myFileBasedIndex.getRegisteredIndexes().extensionsDataWasLoaded();
+    myRegisteredIndexes.extensionsDataWasLoaded();
     activity.end();
   }
 
@@ -92,23 +95,15 @@ class FileBasedIndexDataInitialization extends IndexInfrastructure.DataInitializ
 
     initAssociatedDataForExtensions();
 
-    File indexRoot = PathManager.getIndexRoot();
-
     PersistentIndicesConfiguration.loadConfiguration();
 
-    final File corruptionMarker = new File(indexRoot, FileBasedIndexImpl.CORRUPTION_MARKER_NAME);
-    currentVersionCorrupted = IndexInfrastructure.hasIndices() && corruptionMarker.exists();
-    if (currentVersionCorrupted) {
-      FileUtil.deleteWithRenaming(indexRoot);
-      indexRoot.mkdirs();
-      // serialization manager is initialized before and use removed index root so we need to reinitialize it
-      SerializationManagerEx.getInstanceEx().reinitializeNameStorage();
-      ID.reinitializeDiskStorage();
-      PersistentIndicesConfiguration.saveConfiguration();
-      FileUtil.delete(corruptionMarker);
-    }
+    currentVersionCorrupted = CorruptionMarker.invalidateIndexesIfNeeded();
 
-    FileBasedIndexInfrastructureExtension.EP_NAME.extensions().forEach(ex -> ex.initialize());
+    for (FileBasedIndexInfrastructureExtension ex : FileBasedIndexInfrastructureExtension.EP_NAME.getExtensions()) {
+      FileBasedIndexInfrastructureExtension.InitializationResult result = ex.initialize();
+      currentVersionCorrupted = currentVersionCorrupted &&
+                                result == FileBasedIndexInfrastructureExtension.InitializationResult.INDEX_REBUILD_REQUIRED;
+    }
   }
 
   @Override
@@ -121,29 +116,16 @@ class FileBasedIndexDataInitialization extends IndexInfrastructure.DataInitializ
     try {
       state.finalizeFileTypeMappingForIndices();
 
-      String changedIndicesText = registrationResultSink.changedIndices();
-      String rebuildNotification = null;
-
-      if (currentVersionCorrupted) {
-        rebuildNotification = "Index files on disk are corrupted. Indices will be rebuilt.";
-      }
-      else if (!changedIndicesText.isEmpty()) {
-        rebuildNotification = "Index file format has changed for " + changedIndicesText + " indices. These indices will be rebuilt.";
-      }
+      showChangedIndexesNotification();
 
       registrationResultSink.logChangedAndFullyBuiltIndices(
         FileBasedIndexImpl.LOG,
-        "Indices to be rebuilt after version change:",
-        currentVersionCorrupted ? "Indices to be rebuilt after corruption:":"Indices to be built:"
+        "Indexes to be rebuilt after version change:",
+        currentVersionCorrupted ? "Indexes to be rebuilt after corruption:" : "Indices to be built:"
       );
-      if (rebuildNotification != null
-          && !ApplicationManager.getApplication().isHeadlessEnvironment()
-          && Registry.is("ide.showIndexRebuildMessage")) {
-        NOTIFICATIONS.createNotification("Index Rebuild", rebuildNotification, NotificationType.INFORMATION, null).notify(null);
-      }
 
       state.freeze();
-      myFileBasedIndex.getRegisteredIndexes().setState(state); // memory barrier
+      myRegisteredIndexes.setState(state); // memory barrier
       // check if rebuild was requested for any index during registration
       for (ID<?, ?> indexId : state.getIndexIDs()) {
         try {
@@ -161,9 +143,26 @@ class FileBasedIndexDataInitialization extends IndexInfrastructure.DataInitializ
     finally {
 
       myFileBasedIndex.setUpFlusher();
-      myFileBasedIndex.getRegisteredIndexes().ensureLoadedIndexesUpToDate();
-      myFileBasedIndex.getRegisteredIndexes().markInitialized();  // this will ensure that all changes to component's state will be visible to other threads
+      myRegisteredIndexes.ensureLoadedIndexesUpToDate();
+      myRegisteredIndexes.markInitialized();  // this will ensure that all changes to component's state will be visible to other threads
       saveRegisteredIndicesAndDropUnregisteredOnes(state.getIndexIDs());
+    }
+  }
+
+  private void showChangedIndexesNotification() {
+    if (ApplicationManager.getApplication().isHeadlessEnvironment() || !Registry.is("ide.showIndexRebuildMessage")) return;
+
+    String rebuildNotification = null;
+
+    if (currentVersionCorrupted) {
+      rebuildNotification = IndexingBundle.message("index.corrupted.notification.text");
+    }
+    else if (registrationResultSink.hasChangedIndexes()) {
+      rebuildNotification = IndexingBundle.message("index.format.changed.notification.text", registrationResultSink.changedIndices());
+    }
+
+    if (rebuildNotification != null) {
+      NOTIFICATIONS.createNotification(IndexingBundle.message("index.rebuild.notification.title"), rebuildNotification, NotificationType.INFORMATION, null).notify(null);
     }
   }
 

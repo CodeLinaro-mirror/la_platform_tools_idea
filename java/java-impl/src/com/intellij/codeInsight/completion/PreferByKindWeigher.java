@@ -158,6 +158,7 @@ public class PreferByKindWeigher extends LookupElementWeigher {
     castVariable,
     expectedTypeVariable,
     lambda,
+    likelyMethodRef,
     methodRef,
     variable,
     getter,
@@ -169,6 +170,7 @@ public class PreferByKindWeigher extends LookupElementWeigher {
     getterQualifiedByMethod,
     accessibleFieldGetter,
     normal,
+    basicChain,
     collectionFactory,
     expectedTypeMethod,
     verySuitableClass,
@@ -212,8 +214,9 @@ public class PreferByKindWeigher extends LookupElementWeigher {
     if (item.getUserData(FunctionalExpressionCompletionProvider.LAMBDA_ITEM) != null) {
       return MyResult.lambda;
     }
-    if (item.getUserData(FunctionalExpressionCompletionProvider.METHOD_REF_ITEM) != null) {
-      return MyResult.methodRef;
+    Boolean methodRefPreference = item.getUserData(FunctionalExpressionCompletionProvider.METHOD_REF_PREFERRED);
+    if (methodRefPreference != null) {
+      return methodRefPreference ? MyResult.likelyMethodRef : MyResult.methodRef;
     }
 
     if (object instanceof PsiMethod) {
@@ -236,6 +239,9 @@ public class PreferByKindWeigher extends LookupElementWeigher {
     }
     final JavaChainLookupElement chain = item.as(JavaChainLookupElement.CLASS_CONDITION_KEY);
     if (chain != null) {
+      if (myCompletionType == CompletionType.BASIC) {
+        return MyResult.basicChain;
+      }
       Object qualifier = chain.getQualifier().getObject();
       if (qualifier instanceof PsiVariable && PsiUtil.isJvmLocalVariable((PsiVariable)qualifier)) {
         return MyResult.variable;

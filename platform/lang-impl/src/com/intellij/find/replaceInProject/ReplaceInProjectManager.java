@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.find.replaceInProject;
 
@@ -176,7 +176,7 @@ public class ReplaceInProjectManager {
     @Override
     public String getLongDescriptiveName() {
       UsageViewPresentation presentation = FindInProjectUtil.setupViewPresentation(myFindModel);
-      return "Replace " + StringUtil.decapitalize(presentation.getToolwindowTitle()) + " with '" + myFindModel.getStringToReplace() + "'";
+      return StringUtil.decapitalize(presentation.getToolwindowTitle());
     }
 
     @Override
@@ -231,10 +231,18 @@ public class ReplaceInProjectManager {
   }
 
   public boolean showReplaceAllConfirmDialog(@NotNull String usagesCount, @NotNull String stringToFind, @NotNull String filesCount, @NotNull String stringToReplace) {
+    String message = stringToFind.length() < 400 && stringToReplace.length() < 400
+                     ? FindBundle.message("find.replace.all.confirmation", usagesCount,
+                                          StringUtil.escapeXmlEntities(stringToFind),
+                                          filesCount,
+                                          StringUtil.escapeXmlEntities(stringToReplace))
+                     : FindBundle.message("find.replace.all.confirmation.long.text", usagesCount,
+                                          StringUtil.trimMiddle(StringUtil.escapeXmlEntities(stringToFind), 400),
+                                          filesCount,
+                                          StringUtil.trimMiddle(StringUtil.escapeXmlEntities(stringToReplace), 400));
     return Messages.YES == MessageDialogBuilder.yesNo(
       FindBundle.message("find.replace.all.confirmation.title"),
-      FindBundle.message("find.replace.all.confirmation", usagesCount, StringUtil.escapeXmlEntities(stringToFind), filesCount,
-                         StringUtil.escapeXmlEntities(stringToReplace)))
+      message)
                                                .yesText(FindBundle.message("find.replace.command"))
                                                .project(myProject)
                                                .noText(Messages.getCancelButton()).show();
@@ -522,7 +530,7 @@ public class ReplaceInProjectManager {
     }
 
     final List<Usage> usages = new ArrayList<>(usagesSet);
-    Collections.sort(usages, UsageViewImpl.USAGE_COMPARATOR);
+    usages.sort(UsageViewImpl.USAGE_COMPARATOR);
 
     if (!ensureUsagesWritable(replaceContext, usages)) return;
 

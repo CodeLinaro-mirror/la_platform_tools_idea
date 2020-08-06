@@ -13,9 +13,6 @@ import java.util.Comparator;
 
 import static com.intellij.openapi.util.text.StringUtil.naturalCompare;
 
-/**
- * @author cdr
- */
 public class GroupByTypeComparator implements Comparator<NodeDescriptor<?>> {
   private ProjectView myProjectView;
   private String myPaneId;
@@ -114,11 +111,11 @@ public class GroupByTypeComparator implements Comparator<NodeDescriptor<?>> {
     return myForceSortByType;
   }
 
-  private boolean isAbbreviateQualifiedNames() {
+  protected boolean isAbbreviateQualifiedNames() {
     return myProjectView != null && myProjectView.isAbbreviatePackageNames(myPaneId);
   }
 
-  private boolean isFoldersAlwaysOnTop() {
+  protected boolean isFoldersAlwaysOnTop() {
     return myProjectView == null || myProjectView.isFoldersAlwaysOnTop(myPaneId);
   }
 

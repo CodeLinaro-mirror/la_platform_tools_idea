@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs;
 
 import com.intellij.core.CoreBundle;
@@ -10,7 +10,6 @@ import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.vfs.encoding.EncodingRegistry;
-import com.intellij.openapi.vfs.newvfs.BulkFileListener;
 import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.LineSeparator;
@@ -26,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 
 /**
  * <p>Represents a file in {@link VirtualFileSystem}. A particular file is represented by equal
@@ -105,11 +105,9 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    *
    * @see #getNameSequence()
    */
-  @NotNull
-  public abstract String getName();
+  public abstract @NotNull String getName();
 
-  @NotNull
-  public CharSequence getNameSequence() {
+  public @NotNull CharSequence getNameSequence() {
     return getName();
   }
 
@@ -118,8 +116,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    *
    * @return the {@link VirtualFileSystem}
    */
-  @NotNull
-  public abstract VirtualFileSystem getFileSystem();
+  public abstract @NotNull VirtualFileSystem getFileSystem();
 
   /**
    * Gets the path of this file. Path is a string that uniquely identifies a file within a given
@@ -128,9 +125,27 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * ({@link File#separatorChar}) replaced to the forward slash ({@code '/'}).
    *
    * @return the path
+   * @see #toNioPath()
    */
-  @NotNull
-  public abstract String getPath();
+  public abstract @NotNull String getPath();
+
+  /**
+   * @return a related {@link Path} for a given virtual file where possible otherwise an
+   * exception is thrown.
+   * The returned {@link Path} may not have a default filesystem behind.
+   * <br/>
+   * Use {@link #getFileSystem()} and {@link VirtualFileSystem#getNioPath(VirtualFile)}
+   * to avoid the exception
+   *
+   * @throws UnsupportedOperationException if this VirtualFile does not have an associated {@link Path}
+   */
+  public @NotNull Path toNioPath() {
+    Path path = getFileSystem().getNioPath(this);
+    if (path == null) {
+      throw new UnsupportedOperationException("Failed to map " + this + " (filesystem " + getFileSystem() + ") into nio Path");
+    }
+    return path;
+  }
 
   /**
    * <p>Returns the URL of this file. The URL is a string that uniquely identifies a file in all file systems.
@@ -145,8 +160,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @see VirtualFile#getPath
    * @see VirtualFileSystem#getProtocol
    */
-  @NotNull
-  public String getUrl() {
+  public @NotNull String getUrl() {
     return VirtualFileManager.constructUrl(getFileSystem().getProtocol(), getPath());
   }
 
@@ -157,8 +171,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @return the presentable URL.
    * @see VirtualFileSystem#extractPresentableUrl
    */
-  @NotNull
-  public final String getPresentableUrl() {
+  public final @NotNull String getPresentableUrl() {
     return getFileSystem().extractPresentableUrl(getPath());
   }
 
@@ -168,8 +181,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    *
    * @return the extension or null if file name doesn't contain '.'
    */
-  @Nullable
-  public String getExtension() {
+  public @Nullable String getExtension() {
     CharSequence extension = FileUtilRt.getExtension(getNameSequence(), null);
     return extension == null ? null : extension.toString();
   }
@@ -180,8 +192,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    *
    * @return the name without extension
    */
-  @NotNull
-  public String getNameWithoutExtension() {
+  public @NotNull String getNameWithoutExtension() {
     return FileUtilRt.getNameWithoutExtension(getNameSequence()).toString();
   }
 
@@ -244,8 +255,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    *         {@code getCanonicalFile().getPath()} if the link was successfully resolved;
    *         {@code null} otherwise
    */
-  @Nullable
-  public String getCanonicalPath() {
+  public @Nullable String getCanonicalPath() {
     return getPath();
   }
 
@@ -259,8 +269,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    *         instance of {@code VirtualFile} if the link was successfully resolved;
    *         {@code null} otherwise
    */
-  @Nullable
-  public VirtualFile getCanonicalFile() {
+  public @Nullable VirtualFile getCanonicalFile() {
     return this;
   }
 
@@ -296,8 +305,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @param name the file name to search by
    * @return the file if found any, {@code null} otherwise
    */
-  @Nullable
-  public VirtualFile findChild(@NotNull @NonNls String name) {
+  public @Nullable VirtualFile findChild(@NotNull @NonNls String name) {
     VirtualFile[] children = getChildren();
     if (children == null) return null;
     for (VirtualFile child : children) {
@@ -308,8 +316,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
     return null;
   }
 
-  @NotNull
-  public VirtualFile findOrCreateChildData(Object requestor, @NotNull @NonNls String name) throws IOException {
+  public @NotNull VirtualFile findOrCreateChildData(Object requestor, @NotNull @NonNls String name) throws IOException {
     final VirtualFile child = findChild(name);
     if (child != null) return child;
     return createChildData(requestor, name);
@@ -319,14 +326,11 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * Returns the {@link FileType} of this file, or {@link com.intellij.openapi.fileTypes.FileTypes#UNKNOWN} if a type cannot be determined
    * (i.e. file type is not registered via {@link FileTypeRegistry}).
    *
-   * <p> Performance notice: consider using {@link FileTypeRegistry#isFileOfType} or {@link FileTypeRegistry#getFileTypeByFileName}
-   * if this method is to be called for massive file collections, e.g. in {@link BulkFileListener}. See {@code FileTypeRegistry} javadoc
-   * for the details.
+   * <p> Performance notice: this method can be slow. See {@link FileTypeRegistry} javadoc for the details.
    *
    * @see FileTypeRegistry
    */
-  @NotNull
-  public FileType getFileType() {
+  public @NotNull FileType getFileType() {
     return FileTypeRegistry.getInstance().getFileTypeByFile(this);
   }
 
@@ -336,8 +340,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @param relPath the relative path with / used as separators
    * @return the file if found any, {@code null} otherwise
    */
-  @Nullable
-  public VirtualFile findFileByRelativePath(@NotNull @NonNls String relPath) {
+  public @Nullable VirtualFile findFileByRelativePath(@NotNull @NonNls String relPath) {
     VirtualFile child = this;
 
     int off = CharArrayUtil.shiftForward(relPath, 0, "/");
@@ -376,8 +379,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @return {@code VirtualFile} representing the created directory
    * @throws IOException if directory failed to be created
    */
-  @NotNull
-  public VirtualFile createChildDirectory(Object requestor, @NotNull @NonNls String name) throws IOException {
+  public @NotNull VirtualFile createChildDirectory(Object requestor, @NotNull @NonNls String name) throws IOException {
     if (!isDirectory()) {
       throw new IOException(CoreBundle.message("directory.create.wrong.parent.error"));
     }
@@ -407,8 +409,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @return {@code VirtualFile} representing the created file
    * @throws IOException if file failed to be created
    */
-  @NotNull
-  public VirtualFile createChildData(Object requestor, @NotNull @NonNls String name) throws IOException {
+  public @NotNull VirtualFile createChildData(Object requestor, @NotNull @NonNls String name) throws IOException {
     if (!isDirectory()) {
       throw new IOException(CoreBundle.message("file.create.wrong.parent.error"));
     }
@@ -453,7 +454,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @param newParent the directory to move this file to
    * @throws IOException if file failed to be moved
    */
-  public void move(final Object requestor, @NotNull final VirtualFile newParent) throws IOException {
+  public void move(final Object requestor, final @NotNull VirtualFile newParent) throws IOException {
     ApplicationManager.getApplication().assertWriteAccessAllowed();
 
     if (getFileSystem() != newParent.getFileSystem()) {
@@ -466,8 +467,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
     });
   }
 
-  @NotNull
-  public VirtualFile copy(final Object requestor, @NotNull final VirtualFile newParent, @NotNull @NonNls String copyName) throws IOException {
+  public @NotNull VirtualFile copy(final Object requestor, final @NotNull VirtualFile newParent, @NotNull @NonNls String copyName) throws IOException {
     if (getFileSystem() != newParent.getFileSystem()) {
       throw new IOException(CoreBundle.message("file.copy.error", newParent.getPresentableUrl()));
     }
@@ -483,8 +483,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
   /**
    * @return Retrieve the charset file has been loaded with (if loaded) and would be saved with (if would).
    */
-  @NotNull
-  public Charset getCharset() {
+  public @NotNull Charset getCharset() {
     Charset charset = getStoredCharset();
     if (charset == null) {
       charset = EncodingRegistry.getInstance().getDefaultCharset();
@@ -493,8 +492,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
     return charset;
   }
 
-  @Nullable
-  private Charset getStoredCharset() {
+  private @Nullable Charset getStoredCharset() {
     return getUserData(CHARSET_KEY);
   }
 
@@ -580,8 +578,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * @throws IOException if an I/O error occurs
    * @see #getModificationStamp()
    */
-  @NotNull
-  public abstract OutputStream getOutputStream(Object requestor, long newModificationStamp, long newTimeStamp) throws IOException;
+  public abstract @NotNull OutputStream getOutputStream(Object requestor, long newModificationStamp, long newTimeStamp) throws IOException;
 
   /**
    * Returns file content as an array of bytes.
@@ -605,7 +602,6 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
   public byte @NotNull [] contentsToByteArray(boolean cacheContent) throws IOException {
     return contentsToByteArray();
   }
-
 
   /**
    * Gets modification stamp value. Modification stamp is a value changed by any modification
@@ -722,8 +718,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * It is always null for directories and binaries, and possibly null if a separator isn't yet known.
    * @see LineSeparator
    */
-  @Nullable
-  public String getDetectedLineSeparator() {
+  public @Nullable String getDetectedLineSeparator() {
     return getUserData(DETECTED_LINE_SEPARATOR_KEY);
   }
 
@@ -737,7 +732,7 @@ public abstract class VirtualFile extends UserDataHolderBase implements Modifica
    * Returns {@code true} if this file is a symlink that is either <i>recursive</i> (i.e. points to this file' parent) or
    * <i>circular</i> (i.e. its path has a form of "/.../linkX/.../linkX").
    */
-  public boolean isRecursiveOrCircularSymLink() {
+  public boolean isRecursiveOrCircularSymlink() {
     if (!is(VFileProperty.SYMLINK)) return false;
     VirtualFile resolved = getCanonicalFile();
     // invalid symlink

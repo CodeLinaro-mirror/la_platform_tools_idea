@@ -22,7 +22,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.wm.WindowManager;
@@ -96,7 +95,19 @@ public class AddOnDemandStaticImportAction extends BaseElementAtCaretIntentionAc
       final PsiJavaCodeReferenceElement copy = JavaPsiFacade.getElementFactory(refNameElement.getProject())
         .createReferenceFromText(refNameElement.getText(), refExpr);
       final PsiElement target = copy.resolve();
-      if (target != null && PsiTreeUtil.getParentOfType(target, PsiClass.class) != psiClass) return null;
+      if (target != null) {
+        PsiClass parentClass = PsiTreeUtil.getParentOfType(target, PsiClass.class);
+        if (parentClass != psiClass) {
+          if (parentClass == null || parentClass.isPhysical()) {
+            return null;
+          }
+          // In preview mode we could resolve to real class instead of non-physical one
+          String qualifiedName = parentClass.getQualifiedName();
+          if (qualifiedName == null || !qualifiedName.equals(psiClass.getQualifiedName())) {
+            return null;
+          }
+        }
+      }
       PsiElement resolve = ((PsiJavaCodeReferenceElement)gParent).resolve();
       if (resolve instanceof PsiMember && !((PsiMember)resolve).hasModifierProperty(PsiModifier.STATIC)) return null;
     }
@@ -216,11 +227,9 @@ public class AddOnDemandStaticImportAction extends BaseElementAtCaretIntentionAc
     for (PsiJavaCodeReferenceElement expression : expressionsToDequalify) {
       if (!expression.isValid()) continue;
       found = true;
-      HighlightManager.getInstance(project)
-        .addRangeHighlight(editor, expression.getTextRange().getStartOffset(), expression.getTextRange().getEndOffset(),
-                           EditorColorsManager.getInstance().getGlobalScheme()
-                             .getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES),
-                           true, null);
+      HighlightManager.getInstance(project).addRangeHighlight(
+        editor, expression.getTextRange().getStartOffset(), expression.getTextRange().getEndOffset(),
+        EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
     }
     return found;
   }

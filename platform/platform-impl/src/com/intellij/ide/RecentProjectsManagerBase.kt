@@ -16,14 +16,13 @@ import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ProjectManagerListener
+import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.openapi.util.ModificationTracker
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.impl.*
-import com.intellij.platform.PlatformProjectOpenProcessor
 import com.intellij.platform.ProjectSelfieUtil
 import com.intellij.project.stateStore
 import com.intellij.util.PathUtil
@@ -33,6 +32,7 @@ import com.intellij.util.io.outputStream
 import com.intellij.util.io.systemIndependentPath
 import com.intellij.util.io.write
 import com.intellij.util.pooledThreadSingleAlarm
+import com.intellij.util.text.nullize
 import com.intellij.util.ui.UIUtil
 import gnu.trove.THashMap
 import gnu.trove.THashSet
@@ -59,7 +59,7 @@ import kotlin.collections.component2
 /**
  * Used directly by IntelliJ IDEA.
  */
-@State(name = "RecentProjectsManager", storages = [Storage(value = "recentProjects.xml", roamingType = RoamingType.DISABLED)])
+@State(name = "RecentProjectsManager", storages = [Storage(value = "recentProjects.xml", roamingType = RoamingType.DISABLED)], reportStatistic = false)
 open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateComponent<RecentProjectManagerState>, ModificationTracker {
   companion object {
     const val MAX_PROJECTS_IN_MAIN_MENU = 6
@@ -72,6 +72,9 @@ open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateC
     fun isFileSystemPath(path: String): Boolean {
       return path.indexOf('/') != -1 || path.indexOf('\\') != -1
     }
+
+    @JvmField
+    var dontReopenProjects = false
   }
 
   private val modCounter = AtomicLong()
@@ -216,7 +219,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateC
   }
 
   override fun setLastProjectCreationLocation(value: String?) {
-    val newValue = PathUtil.toSystemIndependentName(StringUtil.nullize(value, true))
+    val newValue = PathUtil.toSystemIndependentName(value.nullize(nullizeSpaces = true))
     synchronized(stateLock) {
       state.lastProjectLocation = newValue
     }
@@ -230,7 +233,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateC
       }
 
       for (project in openProjects) {
-        val path = getProjectPath(project!!)
+        val path = getProjectPath(project)
         val info = if (path == null) null else state.additionalInfo.get(path)
         if (info != null) {
           info.opened = true
@@ -297,19 +300,16 @@ open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateC
 
   // open for Rider
   open fun openProject(projectFile: Path, openProjectOptions: OpenProjectTask): Project? {
-    val existing = ProjectUtil.findAndFocusExistingProjectForPath(projectFile)
-    return when {
-      existing != null -> existing
-      ProjectUtil.isValidProjectPath(projectFile) -> {
-        PlatformProjectOpenProcessor.openExistingProject(projectFile, projectFile, openProjectOptions)
-      }
-      else -> {
-        // If .idea is missing in the recent project's dir; this might mean, for instance, that 'git clean' was called.
-        // Reopening such a project should be similar to opening the dir first time (and trying to import known project formats)
-        // IDEA-144453 IDEA rejects opening recent project if there are no .idea subfolder
-        // CPP-12106 Auto-load CMakeLists.txt on opening from Recent projects when .idea and cmake-build-debug were deleted
-        ProjectUtil.openOrImport(projectFile, openProjectOptions)
-      }
+    if (ProjectUtil.isValidProjectPath(projectFile)) {
+      return ProjectUtil.findAndFocusExistingProjectForPath(projectFile)
+             ?: ProjectManagerEx.getInstanceEx().openProject(projectFile, openProjectOptions)
+    }
+    else {
+      // If .idea is missing in the recent project's dir; this might mean, for instance, that 'git clean' was called.
+      // Reopening such a project should be similar to opening the dir first time (and trying to import known project formats)
+      // IDEA-144453 IDEA rejects opening recent project if there are no .idea subfolder
+      // CPP-12106 Auto-load CMakeLists.txt on opening from Recent projects when .idea and cmake-build-debug were deleted
+      return ProjectUtil.openOrImport(projectFile, openProjectOptions)
     }
   }
 
@@ -346,7 +346,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateC
       val openProjects = ProjectManager.getInstance().openProjects
       if (openProjects.isNotEmpty()) {
         val openProject = openProjects[openProjects.size - 1]
-        val path = manager.getProjectPath(openProject!!)
+        val path = manager.getProjectPath(openProject)
         if (path != null) {
           manager.markPathRecent(path, openProject)
         }
@@ -384,7 +384,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager(), PersistentStateC
   }
 
   override fun willReopenProjectOnStart(): Boolean {
-    if (!GeneralSettings.getInstance().isReopenLastProject) {
+    if (!GeneralSettings.getInstance().isReopenLastProject || dontReopenProjects) {
       return false
     }
 
@@ -609,9 +609,11 @@ private fun convertToSystemIndependentPaths(list: MutableList<String>) {
 }
 
 @Service
-@State(name = "RecentDirectoryProjectsManager", storages = [Storage(value = "recentProjectDirectories.xml", roamingType = RoamingType.DISABLED, deprecated = true)])
+@State(name = "RecentDirectoryProjectsManager",
+       storages = [Storage(value = "recentProjectDirectories.xml", roamingType = RoamingType.DISABLED, deprecated = true)],
+       reportStatistic = false)
 private class OldRecentDirectoryProjectsManager : PersistentStateComponent<RecentProjectManagerState> {
-  internal var loadedState: RecentProjectManagerState? = null
+  var loadedState: RecentProjectManagerState? = null
 
   companion object {
     private val emptyState = RecentProjectManagerState()

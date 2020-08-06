@@ -486,7 +486,7 @@ open class KeymapImpl @JvmOverloads constructor(private var dataHolder: SchemeDa
       if (parentScheme == null) {
         LOG.warn("Cannot find parent scheme $parentSchemeName for scheme $name")
         unknownParentName = parentSchemeName
-        notifyAboutMissingKeymap(parentSchemeName, "Cannot find parent keymap \"$parentSchemeName\" for \"$name\"")
+        notifyAboutMissingKeymap(parentSchemeName, "Cannot find parent keymap \"$parentSchemeName\" for \"$name\"", true)
       }
       else {
         parent = parentScheme as KeymapImpl
@@ -744,8 +744,9 @@ private val visualStudioKeymap = "com.intellij.plugins.visualstudiokeymap"
 private val xcodeKeymap = "com.intellij.plugins.xcodekeymap"
 private val visualAssistKeymap = "com.intellij.plugins.visualassistkeymap"
 private val riderKeymap = "com.intellij.plugins.riderkeymap"
+private val vsCodeKeymap = "com.intellij.plugins.vscodekeymap"
 
-internal fun notifyAboutMissingKeymap(keymapName: String, message: String) {
+internal fun notifyAboutMissingKeymap(keymapName: String, message: String, isParent: Boolean) {
   val connection = ApplicationManager.getApplication().messageBus.connect()
   connection.subscribe(ProjectManager.TOPIC, object : ProjectManagerListener {
     override fun projectOpened(project: Project) {
@@ -775,6 +776,8 @@ internal fun notifyAboutMissingKeymap(keymapName: String, message: String) {
             "Xcode" -> xcodeKeymap
             "Rider",
             "Rider OSX"-> riderKeymap
+            "VSCode",
+            "VSCode OSX"-> vsCodeKeymap
             else -> null
           }
           val action: AnAction? = when (pluginId) {
@@ -792,10 +795,15 @@ internal fun notifyAboutMissingKeymap(keymapName: String, message: String) {
                     ApplicationManager.getApplication().invokeLater {
                       if (keymap.name == keymapName) {
                         connect.disconnect()
-                        KeymapManagerEx.getInstanceEx().activeKeymap = keymap
+                        var successMessage = IdeBundle.message("notification.content.keymap.successfully.installed", keymapName)
+                        if (!isParent)
+                        {
+                          KeymapManagerEx.getInstanceEx().activeKeymap = keymap
+                          successMessage = IdeBundle.message("notification.content.keymap.successfully.activated", keymapName)
+                        }
                         val group = NotificationGroup("Keymap", NotificationDisplayType.BALLOON, true)
                         val notificationManager = SingletonNotificationManager(group, NotificationType.INFORMATION)
-                        notificationManager.notify(IdeBundle.message("notification.content.keymap.successfully.activated", keymapName), project)
+                        notificationManager.notify(successMessage, project)
                       }
                     }
                   }

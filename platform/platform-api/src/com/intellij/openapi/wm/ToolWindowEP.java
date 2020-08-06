@@ -30,7 +30,11 @@ public class ToolWindowEP implements PluginAware {
   @Attribute
   public String anchor;
 
+  /**
+   * @deprecated Use {@link #secondary}
+   */
   @Attribute
+  @Deprecated
   public boolean side;
 
   /**
@@ -74,8 +78,7 @@ public class ToolWindowEP implements PluginAware {
   private volatile ToolWindowFactory myFactory;
 
   @Transient
-  @NotNull
-  public final PluginDescriptor getPluginDescriptor() {
+  public final @NotNull PluginDescriptor getPluginDescriptor() {
     return pluginDescriptor;
   }
 
@@ -88,11 +91,11 @@ public class ToolWindowEP implements PluginAware {
    * @deprecated Do not use ToolWindowEP.
    */
   @Deprecated
-  public ToolWindowFactory getToolWindowFactory() {
+  public @Nullable ToolWindowFactory getToolWindowFactory() {
     return getToolWindowFactory(getPluginDescriptor());
   }
 
-  public ToolWindowFactory getToolWindowFactory(@NotNull PluginDescriptor pluginDescriptor) {
+  public @Nullable ToolWindowFactory getToolWindowFactory(@NotNull PluginDescriptor pluginDescriptor) {
     ToolWindowFactory factory = myFactory;
     if (factory != null) {
       return factory;

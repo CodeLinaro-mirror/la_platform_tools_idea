@@ -85,7 +85,7 @@ public class JavaDocExternalFilter extends AbstractExternalFilter {
     String externalDoc = null;
     myElement = element;
 
-    String projectPath = "/" + BuiltinWebServerAccess.getUserAuthenticationToken() + myProject.getName() + "/";  // Android Studio: BuiltinWebServerAccess
+    String projectPath = "/" + BuiltinWebServerAccess.getUserAuthenticationToken() + "/" + myProject.getName() + "/";  // Android Studio: BuiltinWebServerAccess
     String builtInServer = "http://localhost:" + BuiltInServerOptions.getInstance().getEffectiveBuiltInServerPort() + projectPath;
     if (docURL.startsWith(builtInServer)) {
       Url url = Urls.parseFromIdea(docURL);

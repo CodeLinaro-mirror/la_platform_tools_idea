@@ -12,12 +12,15 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.NlsActions;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiNameIdentifierOwner;
 import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,8 +34,8 @@ import java.util.function.Supplier;
 public abstract class CreateFromTemplateAction<T extends PsiElement> extends AnAction implements WriteActionAware {
   protected static final Logger LOG = Logger.getInstance(CreateFromTemplateAction.class);
 
-  public CreateFromTemplateAction(@Nls(capitalization = Nls.Capitalization.Title) String text,
-                                  @Nls(capitalization = Nls.Capitalization.Sentence) String description, Icon icon) {
+  public CreateFromTemplateAction(@NlsActions.ActionText String text,
+                                  @NlsActions.ActionDescription String description, Icon icon) {
     super(text, description, icon);
   }
 
@@ -102,20 +105,23 @@ public abstract class CreateFromTemplateAction<T extends PsiElement> extends AnA
     return CreateFileFromTemplateDialog.createDialog(project);
   }
 
-  protected void postProcess(T createdElement, String templateName, Map<String,String> customProperties) {
+  protected void postProcess(@NotNull T createdElement, String templateName, Map<String, String> customProperties) {
   }
 
   @Nullable
   protected abstract T createFile(String name, String templateName, PsiDirectory dir);
 
-  protected abstract void buildDialog(Project project, PsiDirectory directory, CreateFileFromTemplateDialog.Builder builder);
+  protected abstract void buildDialog(@NotNull Project project, @NotNull PsiDirectory directory,
+                                      @NotNull CreateFileFromTemplateDialog.Builder builder);
 
+  @NonNls
   @Nullable
   protected String getDefaultTemplateName(@NotNull PsiDirectory dir) {
     String property = getDefaultTemplateProperty();
     return property == null ? null : PropertiesComponent.getInstance(dir.getProject()).getValue(property);
   }
 
+  @NonNls
   @Nullable
   protected String getDefaultTemplateProperty() {
     return null;
@@ -137,8 +143,10 @@ public abstract class CreateFromTemplateAction<T extends PsiElement> extends AnA
     return project != null && view != null && view.getDirectories().length != 0;
   }
 
-  protected abstract String getActionName(PsiDirectory directory, @NotNull String newName, String templateName);
+  @NlsContexts.Command
+  protected abstract String getActionName(PsiDirectory directory, @NonNls @NotNull String newName, @NonNls String templateName);
 
+  @Nls(capitalization = Nls.Capitalization.Title)
   @NotNull
   protected String getErrorTitle() {
     return CommonBundle.getErrorTitle();

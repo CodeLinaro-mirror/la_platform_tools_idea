@@ -90,7 +90,7 @@ public class PyMultiFileResolveTest extends PyMultiFileResolveTestCase {
   }
 
   public void testCustomPackageIdentifier() {
-    PyCustomPackageIdentifier.EP_NAME.getPoint(null).registerExtension(new PyCustomPackageIdentifier() {
+    PyCustomPackageIdentifier.EP_NAME.getPoint().registerExtension(new PyCustomPackageIdentifier() {
       @Override
       public boolean isPackage(PsiDirectory directory) {
         return true;
@@ -515,7 +515,7 @@ public class PyMultiFileResolveTest extends PyMultiFileResolveTestCase {
     runWithSourceRoots(Lists.newArrayList(myFixture.findFileInTempDir("root")), () -> {
       final PsiFile extSource = myFixture.getPsiManager().findFile(vf);
       PyImportResolver foreignResolver = (name, context, withRoots) -> name.toString().equals("m1") ? extSource : null;
-      PyImportResolver.EP_NAME.getPoint(null).registerExtension(foreignResolver, getTestRootDisposable());
+      PyImportResolver.EP_NAME.getPoint().registerExtension(foreignResolver, getTestRootDisposable());
 
       final PsiFile psiFile = myFixture.configureByFile("a.py");
       final PsiReference ref = PyResolveTestCase.findReferenceByMarker(psiFile);
@@ -597,5 +597,20 @@ public class PyMultiFileResolveTest extends PyMultiFileResolveTestCase {
   // EA-121262
   public void testIncompleteFromImport() {
     assertUnresolved();
+  }
+
+  // PY-38322
+  public void testDunderAllDynamicallyBuiltInHelperFunction() {
+    assertResolvesTo(PyTargetExpression.class, "bar");
+  }
+
+  // PY-38322 PY-39171
+  public void testImportOfNestedBinarySubModule() {
+    final String testDir = getTestName(true);
+    runWithAdditionalClassEntryInSdkRoots(testDir + "/site-packages", () -> {
+      runWithAdditionalClassEntryInSdkRoots(testDir + "/python_stubs", () -> {
+        assertResolvesTo(PyFunction.class, "func");
+      });
+    });
   }
 }

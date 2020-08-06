@@ -2,6 +2,7 @@
 package com.intellij.java.editor;
 
 import com.intellij.ide.highlighter.HighlighterFactory;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
@@ -11,7 +12,7 @@ import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
-import com.intellij.openapi.fileTypes.StdFileTypes;
+import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.JavaDocTokenType;
 import com.intellij.psi.JavaTokenType;
 import com.intellij.testFramework.LightJavaCodeInsightTestCase;
@@ -23,6 +24,11 @@ public class JavaHighlighterTest extends LightJavaCodeInsightTestCase {
   private EditorHighlighter myHighlighter;
   private Document myDocument;
   private final ArrayList<Editor> myEditorsToRelease = new ArrayList<>();
+
+  @Override
+  protected LanguageLevel getLanguageLevel() {
+    return LanguageLevel.JDK_15_PREVIEW;
+  }
 
   @Override
   protected void tearDown() throws Exception {
@@ -164,8 +170,8 @@ public class JavaHighlighterTest extends LightJavaCodeInsightTestCase {
     final Editor editor = editorFactory.createEditor(myDocument, getProject());
 
     myHighlighter = HighlighterFactory
-      .createHighlighter(StdFileTypes.JAVA, EditorColorsManager.getInstance().getGlobalScheme(), getProject());
-    ((EditorEx) editor).setHighlighter(myHighlighter);
+      .createHighlighter(JavaFileType.INSTANCE, EditorColorsManager.getInstance().getGlobalScheme(), getProject());
+    ((EditorEx)editor).setHighlighter(myHighlighter);
 
     myEditorsToRelease.add(editor);
     return editor;

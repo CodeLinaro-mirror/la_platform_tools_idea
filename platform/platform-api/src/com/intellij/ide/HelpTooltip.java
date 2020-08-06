@@ -1,9 +1,11 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide;
 
 import com.intellij.openapi.ui.popup.ComponentPopupBuilder;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.NlsContexts.Tooltip;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ColorUtil;
@@ -115,13 +117,15 @@ public class HelpTooltip {
 
   private BooleanSupplier masterPopupOpenCondition;
 
-  private ComponentPopupBuilder myPopupBuilder;
+  protected ComponentPopupBuilder myPopupBuilder;
   private Dimension myPopupSize;
   private JBPopup myPopup;
   private final Alarm popupAlarm = new Alarm();
   private boolean isOverPopup;
   private boolean isMultiline;
   private int myDismissDelay;
+  private String myToolTipText;
+  private boolean initialShowScheduled;
 
   protected MouseAdapter myMouseListener;
 
@@ -180,7 +184,7 @@ public class HelpTooltip {
    * @param title text for title.
    * @return {@code this}
    */
-  public HelpTooltip setTitle(@Nullable String title) {
+  public HelpTooltip setTitle(@Nullable @TooltipTitle String title) {
     this.title = title;
     return this;
   }
@@ -202,7 +206,7 @@ public class HelpTooltip {
    * @param description text for description.
    * @return {@code this}
    */
-  public HelpTooltip setDescription(@Nullable String description) {
+  public HelpTooltip setDescription(@Nullable @Tooltip String description) {
     this.description = description;
     return this;
   }
@@ -214,7 +218,7 @@ public class HelpTooltip {
    * @param linkAction action to execute when link is clicked.
    * @return {@code this}
    */
-  public HelpTooltip setLink(String linkText, Runnable linkAction) {
+  public HelpTooltip setLink(@NlsContexts.LinkLabel String linkText, Runnable linkAction) {
     link = LinkLabel.create(linkText, () -> {
       hidePopup(true);
       linkAction.run();
@@ -270,6 +274,7 @@ public class HelpTooltip {
         if (myPopup != null && !myPopup.isDisposed()){
           myPopup.cancel();
         }
+        initialShowScheduled = true;
         scheduleShow(e, Registry.intValue("ide.tooltip.initialReshowDelay"));
       }
 
@@ -278,7 +283,7 @@ public class HelpTooltip {
       }
 
       @Override public void mouseMoved(MouseEvent e) {
-        if (myPopup == null || myPopup.isDisposed()) {
+        if (!initialShowScheduled) {
           scheduleShow(e, Registry.intValue("ide.tooltip.reshowDelay"));
         }
       }
@@ -441,10 +446,17 @@ public class HelpTooltip {
   private void scheduleShow(MouseEvent e, int delay) {
     popupAlarm.cancelAllRequests();
     popupAlarm.addRequest(() -> {
+      initialShowScheduled = false;
       if (masterPopupOpenCondition == null || masterPopupOpenCondition.getAsBoolean()) {
-        myPopup = myPopupBuilder.createPopup();
-
         Component owner = e.getComponent();
+        String text = owner instanceof JComponent ? ((JComponent)owner).getToolTipText(e) : null;
+        if (myPopup != null && !myPopup.isDisposed()) {
+          if (StringUtil.isEmpty(text) && StringUtil.isEmpty(myToolTipText)) return; // do nothing if a tooltip become empty
+          if (StringUtil.equals(text, myToolTipText)) return; // do nothing if a tooltip is not changed
+          myPopup.cancel(); // cancel previous popup before showing a new one
+        }
+        myToolTipText = text;
+        myPopup = myPopupBuilder.createPopup();
         myPopup.show(new RelativePoint(owner, alignment.getPointFor(owner, myPopupSize, e.getPoint())));
         if (!neverHide) {
           scheduleHide(true, myDismissDelay);
@@ -463,6 +475,7 @@ public class HelpTooltip {
     if (myPopup != null && myPopup.isVisible() && (!isOverPopup || force)) {
       myPopup.cancel();
       myPopup = null;
+      myToolTipText = null;
     }
   }
 
