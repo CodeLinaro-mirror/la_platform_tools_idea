@@ -22,7 +22,7 @@
   <depends optional="true" config-file="github-tracker.xml">com.intellij.tasks</depends>
 
   <extensions defaultExtensionNs="com.intellij">
-    <registryKey key="github.use.oauth" description="Use OAuth to log in to github.com" defaultValue="false"/>
+    <registryKey key="github.use.oauth" description="Use OAuth to log in to github.com" defaultValue="true"/>
     <httpRequestHandler implementation="org.jetbrains.plugins.github.authentication.GHOAuthCallbackHandler"/>
 
     <applicationService serviceImplementation="org.jetbrains.plugins.github.util.GithubSettings"/>
@@ -37,7 +37,7 @@
     <applicationService serviceImplementation="org.jetbrains.plugins.github.util.CachingGithubUserAvatarLoader"/>
     <applicationService serviceImplementation="org.jetbrains.plugins.github.util.GithubImageResizer"/>
 
-    <projectService serviceImplementation="org.jetbrains.plugins.github.extensions.GithubAccountGitAuthenticationFailureManager"/>
+    <projectService serviceImplementation="org.jetbrains.plugins.github.extensions.GHGitAuthenticationFailureManager"/>
     <projectService serviceImplementation="org.jetbrains.plugins.github.util.GithubProjectSettings"/>
     <projectService serviceImplementation="org.jetbrains.plugins.github.util.GithubSharedProjectSettings"/>
     <projectService serviceImplementation="org.jetbrains.plugins.github.authentication.accounts.GithubProjectDefaultAccountHolder"/>
@@ -47,6 +47,10 @@
                          instance="org.jetbrains.plugins.github.ui.GithubSettingsConfigurable"/>
     <statistics.applicationUsagesCollector
       implementation="org.jetbrains.plugins.github.authentication.accounts.GithubAccountsStatisticsCollector"/>
+    <statistics.projectUsagesCollector
+      implementation="org.jetbrains.plugins.github.pullrequest.GHPRStatisticsCollector$ProjectState"/>
+    <statistics.counterUsagesCollector
+      implementationClass="org.jetbrains.plugins.github.pullrequest.GHPRStatisticsCollector$Counters"/>
 
     <diff.DiffExtension implementation="org.jetbrains.plugins.github.pullrequest.comment.GHPRReviewThreadsDiffExtension"/>
     <openapi.vcs.ui.cloneDialog.VcsCloneDialogExtension
@@ -76,12 +80,11 @@
               topic="org.jetbrains.plugins.github.authentication.accounts.AccountTokenChangedListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
 
-    <listener class="org.jetbrains.plugins.github.pullrequest.GHPRToolWindowTabsManager$AccountsListener"
-              topic="org.jetbrains.plugins.github.authentication.accounts.AccountRemovedListener"
-              activeInHeadlessMode="false" activeInTestMode="false"/>
-    <listener class="org.jetbrains.plugins.github.pullrequest.GHPRToolWindowTabsManager$AccountsListener"
-              topic="org.jetbrains.plugins.github.authentication.accounts.AccountTokenChangedListener"
-              activeInHeadlessMode="false" activeInTestMode="false"/>
+    <listener class="org.jetbrains.plugins.github.util.GHProjectRepositoriesManager$AccountsListener"
+              topic="org.jetbrains.plugins.github.authentication.accounts.AccountRemovedListener"/>
+    <listener class="org.jetbrains.plugins.github.util.GHProjectRepositoriesManager$AccountsListener"
+              topic="org.jetbrains.plugins.github.authentication.accounts.AccountTokenChangedListener"/>
+
     <listener class="org.jetbrains.plugins.github.pullrequest.GHPRToolWindowTabsManager$BeforeProjectCloseListener"
               topic="com.intellij.openapi.project.ProjectManagerListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
@@ -91,24 +94,24 @@
     <listener class="org.jetbrains.plugins.github.authentication.accounts.GithubProjectDefaultAccountHolder$RemovalListener"
               topic="org.jetbrains.plugins.github.authentication.accounts.AccountRemovedListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
-    <listener class="org.jetbrains.plugins.github.extensions.GithubAccountGitAuthenticationFailureManager$AccountTokenListener"
+    <listener class="org.jetbrains.plugins.github.extensions.GHGitAuthenticationFailureManager$AccountTokenListener"
               topic="org.jetbrains.plugins.github.authentication.accounts.AccountTokenChangedListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
 
-    <listener class="org.jetbrains.plugins.github.pullrequest.GHPRToolWindowTabsManager$RemoteUrlsListener"
-              topic="com.intellij.dvcs.repo.VcsRepositoryMappingListener"
-              activeInHeadlessMode="false" activeInTestMode="false"/>
-    <listener class="org.jetbrains.plugins.github.pullrequest.GHPRToolWindowTabsManager$RemoteUrlsListener"
-              topic="git4idea.repo.GitRepositoryChangeListener"
-              activeInHeadlessMode="false" activeInTestMode="false"/>
+    <listener class="org.jetbrains.plugins.github.util.GHProjectRepositoriesManager$RemoteUrlsListener"
+              topic="com.intellij.dvcs.repo.VcsRepositoryMappingListener"/>
+    <listener class="org.jetbrains.plugins.github.util.GHProjectRepositoriesManager$RemoteUrlsListener"
+              topic="git4idea.repo.GitRepositoryChangeListener"/>
+
     <listener class="org.jetbrains.plugins.github.pullrequest.GHPRToolWindowTabsManager$BeforePluginUnloadListener"
               topic="com.intellij.ide.plugins.DynamicPluginListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
   </projectListeners>
 
   <extensions defaultExtensionNs="Git4Idea">
-    <GitHttpAuthDataProvider implementation="org.jetbrains.plugins.github.extensions.GithubHttpAuthDataProvider"/>
-    <gitRepositoryHostingService implementation="org.jetbrains.plugins.github.extensions.GithubRepositoryHostingService"/>
+    <GitHttpAuthDataProvider implementation="org.jetbrains.plugins.github.extensions.GHHttpAuthDataProvider"/>
+    <GitHttpAuthDataProvider implementation="org.jetbrains.plugins.github.extensions.GHComHttpAuthDataProvider"/>
+    <gitRepositoryHostingService implementation="org.jetbrains.plugins.github.extensions.GHRepositoryHostingService"/>
   </extensions>
 
   <actions>

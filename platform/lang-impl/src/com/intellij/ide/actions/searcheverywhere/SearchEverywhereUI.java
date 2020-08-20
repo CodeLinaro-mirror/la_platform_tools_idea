@@ -1398,7 +1398,6 @@ public final class SearchEverywhereUI extends SearchEverywhereUIBase implements 
       Collection<SearchEverywhereContributor<?>> contributorsForAdditionalSearch;
       contributorsForAdditionalSearch = ContainerUtil.filter(contributors, contributor -> myListModel.hasMoreElements(contributor));
 
-      closePopup();
       if (!contributorsForAdditionalSearch.isEmpty()) {
         ProgressManager.getInstance().run(new Task.Modal(myProject, tabCaptionText, true) {
           private final ProgressIndicator progressIndicator = new ProgressIndicatorBase();
@@ -1438,9 +1437,7 @@ public final class SearchEverywhereUI extends SearchEverywhereUIBase implements 
               tooManyUsagesStatus.pauseProcessingIfTooManyUsages();
               if (foundElements.size() + alreadyFoundCount >= UsageLimitUtil.USAGES_LIMIT &&
                   tooManyUsagesStatus.switchTooManyUsagesStatus()) {
-                int usageCount = foundElements.size() + alreadyFoundCount;
-                UsageViewManagerImpl.showTooManyUsagesWarningLater(
-                  getProject(), tooManyUsagesStatus, progressIndicator, presentation, usageCount, null);
+                UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, progressIndicator, null);
                 return !progressIndicator.isCanceled();
               }
               return true;
@@ -1459,6 +1456,7 @@ public final class SearchEverywhereUI extends SearchEverywhereUIBase implements 
 
           @Override
           public void onThrowable(@NotNull Throwable error) {
+            super.onThrowable(error);
             progressIndicator.cancel();
           }
         });
@@ -1466,6 +1464,7 @@ public final class SearchEverywhereUI extends SearchEverywhereUIBase implements 
       else {
         showInFindWindow(targets, usages, presentation);
       }
+      closePopup();
     }
 
     private void fillUsages(Collection<Object> foundElements, Collection<? super Usage> usages, Collection<? super PsiElement> targets) {

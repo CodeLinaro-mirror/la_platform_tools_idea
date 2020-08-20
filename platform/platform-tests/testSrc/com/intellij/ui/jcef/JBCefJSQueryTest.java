@@ -18,11 +18,10 @@ import org.junit.Test;
 import javax.swing.*;
 import java.awt.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
- * Tests {@link JBCefBrowser.JBCEFJSQUERY_POOL_SIZE_PROP} and "ide.browser.jcef.jsQueryPoolSize" (used for testing purposes).
+ * Tests {@link JBCefClient#JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP} and "ide.browser.jcef.jsQueryPoolSize" (used for testing purposes).
  *
  * @author tav
  */
@@ -52,8 +51,8 @@ public class JBCefJSQueryTest {
   public void test1() {
     TestScaleHelper.assumeStandalone();
 
-    test(browser -> {
-      browser.addProperty(JBCefBrowser.JBCEFBROWSER_JSQUERY_POOL_SIZE_PROP, 1);
+    test(client -> {
+      client.addProperty(JBCefClient.JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP, 1);
       return null;
     });
   }
@@ -70,15 +69,15 @@ public class JBCefJSQueryTest {
   public void test3() {
     TestScaleHelper.assumeStandalone();
 
-    test(browser -> {
-      browser.addProperty(JBCefBrowser.JBCEFBROWSER_JSQUERY_POOL_SIZE_PROP, Integer.MAX_VALUE); // stress test
+    test(client -> {
+      client.addProperty(JBCefClient.JBCEFCLIENT_JSQUERY_POOL_SIZE_PROP, Integer.MAX_VALUE); // stress test
       return null;
     });
   }
 
-  public void test(@NotNull Function<JBCefBrowser, Void> setProperty) {
+  public void test(@NotNull Function<JBCefClient, Void> setProperty) {
     JBCefBrowser browser = new JBCefBrowser("chrome:version");
-    setProperty.apply(browser);
+    setProperty.apply(browser.getJBCefClient());
 
     browser.getJBCefClient().addLoadHandler(new CefLoadHandler() {
       @Override
@@ -115,7 +114,7 @@ public class JBCefJSQueryTest {
       frame.setVisible(true);
     });
 
-    wait(LATCH_LOAD);
+    TestCase.assertTrue(JBCefTestHelper.wait(LATCH_LOAD));
 
     JBCefJSQuery jsQuery_after = JBCefJSQuery.create(browser);
     jsQuery_after.addHandler(result -> {
@@ -128,23 +127,12 @@ public class JBCefJSQueryTest {
       browser.getCefBrowser().executeJavaScript(jsQuery_before.inject("'query_before'"), "about:blank", 0);
     });
 
-    wait(LATCH_JS_BEFORE);
+    TestCase.assertTrue(JBCefTestHelper.wait(LATCH_JS_BEFORE));
 
     SwingUtilities.invokeLater(() -> {
       browser.getCefBrowser().executeJavaScript(jsQuery_after.inject("'query_after'"), "about:blank", 0);
     });
 
-    wait(LATCH_JS_AFTER);
-  }
-
-  private static void wait(@NotNull CountDownLatch latch) {
-    boolean success = false;
-    try {
-      success = latch.await(20, TimeUnit.SECONDS);
-    }
-    catch (InterruptedException e) {
-      e.printStackTrace();
-    }
-    TestCase.assertTrue(success);
+    TestCase.assertTrue(JBCefTestHelper.wait(LATCH_JS_AFTER));
   }
 }

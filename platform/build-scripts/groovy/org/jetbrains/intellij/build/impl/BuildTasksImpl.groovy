@@ -174,6 +174,14 @@ idea.fatal.error.notification=disabled
   File patchApplicationInfo() {
     def sourceFile = BuildContextImpl.findApplicationInfoInSources(buildContext.project, buildContext.productProperties, buildContext.messages)
     def targetFile = new File(buildContext.paths.temp, sourceFile.name)
+
+    // Android Studio: Don't patch application info
+    if (buildContext.options.studioSdk) {
+      FileUtil.createParentDirs(targetFile)
+      targetFile.text = sourceFile.text
+      return targetFile
+    }
+
     def date = ZonedDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("uuuuMMddHHmm"))
 
     def artifactsServer = buildContext.proprietaryBuildTools.artifactsServer
@@ -494,11 +502,9 @@ idea.fatal.error.notification=disabled
 
 
   private def copyDependenciesFile() {
-    if (buildContext.gradle.forceRun('Preparing dependencies file', 'dependenciesFile')) {
-      def outputFile = "$buildContext.paths.artifacts/dependencies.txt"
-      buildContext.ant.copy(file: "$buildContext.paths.communityHome/build/dependencies/build/dependencies.properties", tofile: outputFile)
-      buildContext.notifyArtifactBuilt(outputFile)
-    }
+    def outputFile = "$buildContext.paths.artifacts/dependencies.txt"
+    buildContext.ant.copy(file: buildContext.dependenciesProperties.file.absolutePath, tofile: outputFile)
+    buildContext.notifyArtifactBuilt(outputFile)
   }
 
   private void scramble() {
@@ -732,22 +738,25 @@ idea.fatal.error.notification=disabled
       }
     }
 
-    new LayoutBuilder(buildContext, false).layout("$buildContext.paths.buildOutputRoot/sdk-patcher") {
-      jar(name: "patcher.jar", duplicate: "preserve") {  // Android Studio: libraries can have conflicting files in META-INF especially
-        module("intellij.android.updater.ui")
-        module("intellij.platform.updater")
-        libraryFiles.each { file ->
-          ant.zipfileset(src: file.absolutePath)
+    // Android Studio: Build sdk-patcher
+    if (!buildContext.options.studioSdk) {
+      new LayoutBuilder(buildContext, false).layout("$buildContext.paths.buildOutputRoot/sdk-patcher") {
+        jar(name: "patcher.jar", duplicate: "preserve") {
+          module("intellij.android.updater.ui")
+          module("intellij.platform.updater")
+          libraryFiles.each { file ->
+            ant.zipfileset(src: file.absolutePath)
+          }
         }
       }
+      def modulePath = new URI(buildContext.findModule("intellij.android.updater.ui").getContentRootsList().getUrls().get(0)).getPath()
+      buildContext.ant.copy(file: "$modulePath/source.properties", todir: "$buildContext.paths.buildOutputRoot/sdk-patcher")
+      buildContext.ant.zip(
+          destfile: "$buildContext.paths.artifacts/sdk-patcher.zip",
+          basedir: "$buildContext.paths.buildOutputRoot",
+          includes: "sdk-patcher/*",
+      )
     }
-    def modulePath = new URI(buildContext.findModule("intellij.android.updater.ui").getContentRootsList().getUrls().get(0)).getPath()
-    buildContext.ant.copy(file: "$modulePath/source.properties", todir: "$buildContext.paths.buildOutputRoot/sdk-patcher")
-    buildContext.ant.zip(
-        destfile: "$buildContext.paths.artifacts/sdk-patcher.zip",
-        basedir: "$buildContext.paths.buildOutputRoot",
-        includes: "sdk-patcher/*",
-    )
   }
 
   @Override

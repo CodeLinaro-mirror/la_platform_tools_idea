@@ -38,13 +38,12 @@ abstract class SuggestedRefactoringUI {
     return model.improvePresentation()
   }
 
-  data class NewParameterData(
+  data class NewParameterData @JvmOverloads constructor(
     val presentableName: String,
     val valueFragment: PsiCodeFragment,
-    val offerToUseAnyVariable: Boolean  /* Android Studio: b/162426982
+    val offerToUseAnyVariable: Boolean,
     @Nls(capitalization = Nls.Capitalization.Sentence) val placeholderText: String? = null,
     val additionalData: NewParameterAdditionalData? = null
-Android Studio: b/162426982 */
   )
 
   /**

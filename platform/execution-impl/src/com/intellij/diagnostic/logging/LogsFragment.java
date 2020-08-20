@@ -69,6 +69,7 @@ public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroup
     myFilesTable.setShowHorizontalLines(false);
     myFilesTable.setShowVerticalLines(false);
     myFilesTable.setIntercellSpacing(new Dimension(0, 0));
+    myFilesTable.setupEasyFocusTraversing();
 
     myComponent = ToolbarDecorator.createDecorator(myFilesTable)
       .setToolbarPosition(ActionToolbarPosition.BOTTOM)
@@ -156,7 +157,7 @@ public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroup
     super.applyEditorTo(configuration);
     configuration.removeAllLogFiles();
     configuration.removeAllPredefinedLogFiles();
-
+    if (!isSelected()) return;
     for (int i = 0; i < myModel.getRowCount(); i++) {
       LogFileOptions options = myModel.getItem(i);
       if (Objects.equals(options.getPathPattern(), "")) {

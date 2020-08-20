@@ -2,7 +2,10 @@
 package com.intellij.psi.util;
 
 import com.intellij.psi.*;
+import com.intellij.psi.impl.light.LightRecordCanonicalConstructor;
 import com.intellij.psi.impl.light.LightRecordField;
+import com.intellij.psi.impl.source.DummyHolder;
+import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,6 +21,12 @@ public class JavaPsiRecordUtil {
   @Nullable
   public static PsiRecordComponent getRecordComponentForAccessor(@NotNull PsiMethod accessor) {
     PsiClass aClass = accessor.getContainingClass();
+    if (aClass == null) {
+      PsiElement parent = accessor.getParent();
+      if (parent instanceof DummyHolder) {
+        aClass = ObjectUtils.tryCast(parent.getContext(), PsiClass.class);
+      }
+    }
     if (aClass == null || !aClass.isRecord()) return null;
     if (!accessor.getParameterList().isEmpty()) return null;
     String name = accessor.getName();
@@ -74,6 +83,18 @@ public class JavaPsiRecordUtil {
     PsiClass aClass = method.getContainingClass();
     if (aClass == null || !aClass.isRecord()) return false;
     return hasCanonicalSignature(method, aClass.getRecordComponents());
+  }
+
+  /**
+   * @param method method to check
+   * @return true if given method is a canonical constructor for a record class (either compact, or non-compact, or implicit constructor)
+   */
+  public static boolean isCanonicalConstructor(@NotNull PsiMethod method) {
+    if (method instanceof LightRecordCanonicalConstructor) return true;
+    if (!method.isConstructor()) return false;
+    PsiClass aClass = method.getContainingClass();
+    if (aClass == null || !aClass.isRecord()) return false;
+    return method.getParameterList().getText() == null || hasCanonicalSignature(method, aClass.getRecordComponents());
   }
 
   private static boolean hasCanonicalSignature(@NotNull PsiMethod method, PsiRecordComponent[] components) {

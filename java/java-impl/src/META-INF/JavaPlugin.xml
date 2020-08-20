@@ -664,10 +664,6 @@
     <runConfigurationProducer implementation="com.intellij.execution.scratch.JavaScratchConfigurationProducer"/>
     <configurationType implementation="com.intellij.execution.remote.RemoteConfigurationType"/>
 
-    <experimentalFeature id="ide.new.run.config" percentOfUsers="0">
-      <description>Enable new run configuration UI (for Java Application run configurations)</description>
-    </experimentalFeature>
-
     <executionTargetLanguageRuntimeType implementation="com.intellij.execution.target.java.JavaLanguageRuntimeType" />
     <applicationService serviceInterface="com.intellij.execution.target.java.JavaLanguageRuntimeUIFactory"
                         serviceImplementation="com.intellij.execution.target.java.JavaLanguageRuntimeUIFactoryImpl"/>
@@ -2049,6 +2045,7 @@
 
     <compiler.task implementation="com.intellij.execution.scratch.JavaScratchCompilationSupport"/>
     <registryKey key="load.maven.dependencies.timeout" defaultValue="120" description="How long (in minutes) idea will wait for results of synchronized maven dependencies resolution"/>
+    <readerModeProvider implementation="com.intellij.ide.impl.JavaInlaysReaderModeProvider"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains">

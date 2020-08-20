@@ -50,11 +50,10 @@ public class PluginGroups {
           List<PluginNode> featuredPlugins = MarketplaceRequests.getInstance().loadLastCompatiblePluginDescriptors(featuresPluginIds);
           List<@NotNull String> dependsIds =
             featuredPlugins.stream()
-              .map(p -> p.getDepends())
-              .filter(Objects::nonNull)
+              .map(p -> p.getDependencies())
               .flatMap(Collection::stream)
-              .map(id -> id.getIdString())
-              .filter(id -> !id.startsWith("(optional)"))
+              .filter(dep -> !dep.isOptional())
+              .map(dep -> dep.getPluginId().getIdString())
               .collect(Collectors.toList());
           List<PluginNode> dependsPlugins = MarketplaceRequests.getInstance().loadLastCompatiblePluginDescriptors(dependsIds);
           featuredPlugins.addAll(dependsPlugins);
@@ -314,6 +313,10 @@ public class PluginGroups {
   public static void addTeamCityPlugin(Map<String, String> featuredPlugins) {
     featuredPlugins.put("TeamCity Integration",
                         "Tools Integration:Integration with JetBrains TeamCity - innovative solution for continuous integration and build management:JetBrains TeamCity Plugin");
+  }
+
+  public static void addBigDataToolsPlugin(@NotNull Map<String, String> featuredPlugins) {
+    featuredPlugins.put("Big Data Tools", "Tools Integration:Zeppelin notebooks and Spark applications support:com.intellij.bigdatatools");
   }
 
   private void initIfNeeded() {

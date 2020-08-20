@@ -29,7 +29,7 @@ iml_module(
         "//tools/idea/java/plugin:intellij.java.plugin",
         "//tools/idea/java/compiler/instrumentation-util-8:intellij.java.compiler.instrumentationUtil.java8",
         "//tools/idea/java/ide-resources:intellij.java.ide.resources",
-        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/201.11:jar",
+        "//prebuilts/tools/common/m2/repository/com/jetbrains/intellij/documentation/tips-intellij-idea-community/202.13:jar",
         "//tools/idea/.idea/libraries:precompiled_jshell-frontend",
     ],
     test_srcs = ["test"],
@@ -77,7 +77,7 @@ iml_module(
         "//tools/idea:intellij.platform.jps.build_and_others[module, test]",
         "//tools/idea/platform/statistics:intellij.platform.statistics[module]",
         "//tools/idea/.idea/libraries:Trove4j",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/filePrediction/model/file-prediction-model/0.0.1:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/intellij/deps/filePrediction/model/file-prediction-model/0.1.1:jar",
         "//tools/idea/.idea/libraries:fastutil-min",
     ],
 )

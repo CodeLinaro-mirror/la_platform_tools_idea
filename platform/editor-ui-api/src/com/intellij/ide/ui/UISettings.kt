@@ -50,10 +50,10 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   val allowMergeButtons: Boolean
-    get() = Registry.`is`("ide.allow.merge.buttons")
+    get() = Registry.`is`("ide.allow.merge.buttons", true)
 
   val animateWindows: Boolean
-    get() = Registry.`is`("ide.animate.toolwindows")
+    get() = Registry.`is`("ide.animate.toolwindows", false)
 
   @Deprecated("use StatusBarWidgetSettings#isEnabled(MemoryUsagePanel.WIDGET_ID)")
   var showMemoryIndicator: Boolean
@@ -81,7 +81,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   val hideNavigationOnFocusLoss: Boolean
-    get() = Registry.`is`("ide.hide.navigation.on.focus.loss")
+    get() = Registry.`is`("ide.hide.navigation.on.focus.loss", false)
 
   var reuseNotModifiedTabs: Boolean
     get() = state.reuseNotModifiedTabs
@@ -132,7 +132,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     get() = state.closeTabButtonOnTheRight
 
   val cycleScrolling: Boolean
-    get() = Registry.`is`("ide.cycle.scrolling")
+    get() = Registry.`is`("ide.cycle.scrolling", false)
 
   var navigateToPreview: Boolean
     get() = state.navigateToPreview
@@ -186,7 +186,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   val showIconInQuickNavigation: Boolean
-    get() = Registry.`is`("ide.show.icons.in.quick.navigation")
+    get() = Registry.`is`("ide.show.icons.in.quick.navigation", false)
 
   var showTreeIndentGuides: Boolean
     get() = state.showTreeIndentGuides
@@ -214,8 +214,11 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       state.showMainToolbar = value
     }
 
-  val showIconsInMenus: Boolean
-    get() = Registry.`is`("ide.show.icons.in.menus")
+  var showIconsInMenus: Boolean
+    get() = state.showIconsInMenus
+    set(value) {
+      state.showIconsInMenus = value
+    }
 
   var sortLookupElementsLexicographically: Boolean
     get() = state.sortLookupElementsLexicographically
@@ -224,7 +227,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   val hideTabsIfNeeded: Boolean
-    get() = state.hideTabsIfNeeded
+    get() = state.hideTabsIfNeeded || editorTabPlacement == SwingConstants.LEFT || editorTabPlacement == SwingConstants.RIGHT
   var showFileIconInTabs: Boolean
     get() = state.showFileIconInTabs
     set(value) {
@@ -652,6 +655,10 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     if (state.moveMouseOnDefaultButton) {
       Registry.get("ide.settings.move.mouse.on.default.button").setValue(true)
       state.moveMouseOnDefaultButton = false
+    }
+    if (!state.allowMergeButtons) {
+      Registry.get("ide.allow.merge.buttons").setValue(false)
+      state.allowMergeButtons = true
     }
   }
 

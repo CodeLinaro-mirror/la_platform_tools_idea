@@ -147,8 +147,10 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
       return StringUtil.contains(file.getViewProvider().getContents(), name);
     }
 
-    Map<IdIndexEntry, Integer> entries = FileBasedIndex.getInstance().getFileData(IdIndex.NAME, file.getVirtualFile(), file.getProject());
-    return entries.containsKey(new IdIndexEntry(name, true));
+    // TODO: direct forward index access is not used right now since IdIndex shared index doesn't have forward index
+    GlobalSearchScope fileScope = GlobalSearchScope.fileScope(file);
+    IdIndexEntry key = new IdIndexEntry(name, true);
+    return !FileBasedIndex.getInstance().getContainingFiles(IdIndex.NAME, key, fileScope).isEmpty();
   }
 
   @NotNull
@@ -340,8 +342,9 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
         }
       };
 
-      List<VirtualFile> directoryNearTargetFiles =
-        ContainerUtil.filter(allFiles, f -> directoryNearTargetScope.contains(f) && !targets.contains(f));
+      List<VirtualFile> directoryNearTargetFiles = ReadAction.compute(() ->
+        ContainerUtil.filter(allFiles, f -> directoryNearTargetScope.contains(f) && !targets.contains(f))
+      );
       if (!directoryNearTargetFiles.isEmpty()) {
         priorities.add(directoryNearTargetFiles);
         allFiles.removeAll(directoryNearTargetFiles);

@@ -4,6 +4,7 @@ package com.intellij.ide.plugins.marketplace
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.intellij.ide.plugins.PluginNode
+import com.intellij.ide.plugins.RepositoryHelper
 import com.intellij.ide.plugins.newui.Tags
 
 /**
@@ -56,7 +57,17 @@ data class IntellijUpdateMetadata(
     pluginNode.version = version
     pluginNode.url = url
     pluginNode.size = size.toString()
-    for (dep in dependencies) pluginNode.addDepends(dep)
+    for (dep in dependencies) {
+      if (dep.startsWith("(optional)")) {
+        pluginNode.addDepends(dep.removePrefix("(optional)").trim(), true)
+      }
+      else {
+        pluginNode.addDepends(dep, false)
+      }
+    }
+
+    RepositoryHelper.addMarketplacePluginDependencyIfRequired(pluginNode)
+
     return pluginNode
   }
 }

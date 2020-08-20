@@ -7,6 +7,7 @@ import com.intellij.execution.ui.layout.LayoutAttractionPolicy
 import com.intellij.execution.ui.layout.PlaceInGrid
 import com.intellij.icons.AllIcons
 import com.intellij.icons.AllIcons.Actions.StartDebugger
+import com.intellij.ide.actions.TabListAction
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
@@ -182,8 +183,12 @@ class XDebugSessionTab2(
     splitter.revalidate()
     splitter.repaint()
 
-    focusTraversalPolicy.components = getComponents().asSequence().toList()
+    updateTraversalPolicy()
     session.rebuildViews()
+  }
+
+  private fun updateTraversalPolicy() {
+    focusTraversalPolicy.components = getComponents().asSequence().toList()
   }
 
   override fun initDebuggerTab(session: XDebugSessionImpl) {
@@ -224,7 +229,9 @@ class XDebugSessionTab2(
   }
   private fun getComponents(): Iterator<Component> {
     return iterator {
-      yield(xThreadsFramesView.threads)
+      if (threadsIsVisible)
+        yield(xThreadsFramesView.threads)
+
       yield(xThreadsFramesView.frames)
       val vars = variables ?: return@iterator
 
@@ -242,7 +249,7 @@ class XDebugSessionTab2(
       val headerVisible = toolWindow.isHeaderVisible
       val topRightToolbar = DefaultActionGroup().apply {
         if (headerVisible) return@apply
-        addAll(toolWindow.decorator.headerToolbar.actions)
+        addAll(toolWindow.decorator.headerToolbar.actions.filter { it != null && it !is TabListAction })
       }
       myUi.options.setTopRightToolbar(topRightToolbar, ActionPlaces.DEBUGGER_TOOLBAR)
 
@@ -283,7 +290,10 @@ class XDebugSessionTab2(
 
       add(object : ToggleAction() {
         override fun setSelected(e: AnActionEvent, state: Boolean) {
-          threadsIsVisible = state
+          if (threadsIsVisible != state) {
+            threadsIsVisible = state
+            updateTraversalPolicy()
+          }
           xThreadsFramesView.setThreadsVisible(state)
           Toggleable.setSelected(e.presentation, state)
         }

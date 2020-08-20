@@ -305,7 +305,17 @@ public abstract class FilteringTree<T extends DefaultMutableTreeNode, U> {
       }
       myNodeCache = newNodes;
       for (N node : oldNodes) {
-        if (node.getParent() != null) removeNodeFromParent(node);
+        if (!myNodeCache.containsKey(node.getUserObject())) continue;
+        //noinspection unchecked
+        // In Java 11 DefaultMutableTreeNode.children returns incompatible generic type Enumeration<TreeNode>
+        // so its return value is cast back to raw Enumeration as in Java 8.
+        List<N> children = ContainerUtil.toList((Enumeration)node.children());
+        node.removeAllChildren();
+        for (N child : children) {
+          if (myNodeCache.containsKey(child.getUserObject())) {
+            node.add(child);
+          }
+        }
       }
       refilter();
     }

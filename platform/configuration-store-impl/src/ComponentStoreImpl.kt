@@ -118,7 +118,7 @@ abstract class ComponentStoreImpl : IComponentStore {
   final override fun unloadComponent(component: Any) {
     @Suppress("DEPRECATION")
     val name = when (component) {
-      is PersistentStateComponent<*> -> getStateSpec(component).name
+      is PersistentStateComponent<*> -> getStateSpec(component.javaClass)?.name ?: return
       is com.intellij.openapi.util.JDOMExternalizable -> getComponentName(component)
       else -> return
     }
@@ -439,7 +439,7 @@ abstract class ComponentStoreImpl : IComponentStore {
             state = deserializeState(Element("state"), stateClass, null)!!
           }
           else {
-            if (isReportStatisticAllowed(stateSpec)) {
+            if (isReportStatisticAllowed(stateSpec) && !storageSpec.deprecated) {
               FeatureUsageSettingsEvents.logDefaultConfigurationState(name, stateClass, project)
             }
             continue

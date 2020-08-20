@@ -6,25 +6,28 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.impl.text.PsiAwareTextEditorImpl
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.FileIndexFacade
+import com.intellij.openapi.util.Pair
 import com.intellij.openapi.vfs.VirtualFile
 
 class ReaderModeFileEditorListener : FileEditorManagerListener {
-  override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
+  override fun fileOpenedSync(source: FileEditorManager, file: VirtualFile, editors: Pair<Array<FileEditor>, Array<FileEditorProvider>>) {
+    if (!instance(source.project).enabled) return
     applyReaderMode(source.project, source.getSelectedEditor(file))
   }
 
   companion object {
     private var EP_READER_MODE_PROVIDER = ExtensionPointName<ReaderModeProvider>("com.intellij.readerModeProvider")
 
-    fun applyReaderMode(project: Project, selectedEditor: FileEditor?, alreadyOpenedFilesOnly: Boolean = false) {
+    fun applyReaderMode(project: Project, selectedEditor: FileEditor?, fileIsOpenAlready: Boolean = false) {
       if (selectedEditor is PsiAwareTextEditorImpl) {
         val file = selectedEditor.file
         if (matchMode(project, file)) {
           EP_READER_MODE_PROVIDER.extensions().forEach {
-            it.applyModeChanged(project, selectedEditor.editor, instance(project).enabled, alreadyOpenedFilesOnly)
+            it.applyModeChanged(project, selectedEditor.editor, instance(project).enabled, fileIsOpenAlready)
           }
         }
       }

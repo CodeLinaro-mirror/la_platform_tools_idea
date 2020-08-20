@@ -109,6 +109,11 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
     return moduleContainerDescriptor;
   }
 
+  @Override
+  public @NotNull List<IdeaPluginDependency> getDependencies() {
+    return pluginDependencies == null ? Collections.emptyList() : (List) pluginDependencies;
+  }
+
   @ApiStatus.Internal
   public @NotNull List<PluginDependency> getPluginDependencies() {
     return pluginDependencies == null ? Collections.emptyList() : pluginDependencies;
@@ -132,11 +137,12 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
 
     XmlReader.readIdAndName(this, element);
 
+    //some information required for "incomplete" plugins can be in included files
+    PathBasedJdomXIncluder.resolveNonXIncludeElement(element, basePath, context, pathResolver);
     if (myId != null && context.isPluginDisabled(myId)) {
       markAsIncomplete(context, null, null);
     }
     else {
-      PathBasedJdomXIncluder.resolveNonXIncludeElement(element, basePath, context, pathResolver);
       if (myId == null || myName == null) {
         // read again after resolve
         XmlReader.readIdAndName(this, element);
@@ -161,6 +167,10 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
       Element productElement = element.getChild("product-descriptor");
       if (productElement != null) {
         readProduct(context, productElement);
+      }
+      List<Element> moduleElements = element.getChildren("module");
+      for (Element moduleElement : moduleElements) {
+        readModule(moduleElement);
       }
       return false;
     }
@@ -188,6 +198,10 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
     doRead(element, DescriptorListLoadingContext.createSingleDescriptorContext(Collections.emptySet()), this);
   }
 
+  /**
+   * @return {@code true} - if there are compatibility problems with IDE (`depends`, `since-until`).
+   * <br>{@code false} - otherwise
+   */
   private boolean doRead(@NotNull Element element,
                         @NotNull DescriptorListLoadingContext context,
                         @NotNull IdeaPluginDescriptorImpl mainDescriptor) {
@@ -218,20 +232,7 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
           break;
 
         case "module":
-          String moduleName = child.getAttributeValue("value");
-          if (moduleName != null) {
-            if (myModules == null) {
-              myModules = Collections.singletonList(PluginId.getId(moduleName));
-            }
-            else {
-              if (myModules.size() == 1) {
-                List<PluginId> singleton = myModules;
-                myModules = new ArrayList<>(4);
-                myModules.addAll(singleton);
-              }
-              myModules.add(PluginId.getId(moduleName));
-            }
-          }
+          readModule(child);
           break;
 
         case "application-components":
@@ -314,6 +315,24 @@ public final class IdeaPluginDescriptorImpl implements IdeaPluginDescriptor {
       }
     }
     return false;
+  }
+
+  private void readModule(Element child) {
+    String moduleName = child.getAttributeValue("value");
+    if (moduleName != null) {
+      if (myModules == null) {
+        myModules = Collections.singletonList(PluginId.getId(moduleName));
+      }
+      else {
+        if (myModules.size() == 1) {
+          List<PluginId> singleton = myModules;
+          myModules = new ArrayList<>(4);
+          myModules.addAll(singleton);
+        }
+        myModules.add(PluginId.getId(moduleName));
+      }
+    }
+    return;
   }
 
   private void readProduct(@NotNull DescriptorListLoadingContext context, @NotNull Element child) {

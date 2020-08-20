@@ -27,6 +27,11 @@ import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.editor.ex.EditorEventMulticasterEx;
+import com.intellij.openapi.editor.ex.FocusChangeListener;
+import com.intellij.openapi.extensions.ExtensionPointListener;
+import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
@@ -543,7 +548,22 @@ public class ProjectViewImpl extends ProjectView implements PersistentStateCompo
       }
     });
 
-    AbstractProjectViewPane.EP.addChangeListener(project, this::reloadPanes, project);
+    AbstractProjectViewPane.EP.addExtensionPointListener(project, new ExtensionPointListener<AbstractProjectViewPane>() {
+      @Override
+      public void extensionAdded(@NotNull AbstractProjectViewPane extension, @NotNull PluginDescriptor pluginDescriptor) {
+        reloadPanes();
+      }
+
+      @Override
+      public void extensionRemoved(@NotNull AbstractProjectViewPane extension, @NotNull PluginDescriptor pluginDescriptor) {
+        if (myId2Pane.containsKey(extension.getId()) || myUninitializedPanes.contains(extension)) {
+          reloadPanes();
+        }
+        else {
+          Disposer.dispose(extension);
+        }
+      }
+    }, project);
   }
 
   private void constructUi() {
@@ -844,6 +864,36 @@ public class ProjectViewImpl extends ProjectView implements PersistentStateCompo
       }
     });
     viewSelectionChanged();
+
+    Object multicaster = EditorFactory.getInstance().getEventMulticaster();
+    if (multicaster instanceof EditorEventMulticasterEx) {
+      EditorEventMulticasterEx ex = (EditorEventMulticasterEx)multicaster;
+      ex.addFocusChangeListener(new FocusChangeListener() {
+        @Override
+        public void focusGained(@NotNull Editor editor) {
+          if (isAutoscrollFromSourceAllowedHere()) {
+            FileEditorManager manager = myProject.isDisposed() ? null : FileEditorManager.getInstance(myProject);
+            if (manager != null) {
+              JComponent component = editor.getComponent();
+              for (FileEditor fileEditor : manager.getAllEditors()) {
+                if (SwingUtilities.isDescendingFrom(component, fileEditor.getComponent())) {
+                  myAutoScrollFromSourceHandler.scrollFromSource();
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        private boolean isAutoscrollFromSourceAllowedHere() {
+          if (!Registry.is("ide.autoscroll.from.source.on.focus.gained")) return false;
+          if (!isAutoscrollFromSource(getCurrentViewId())) return false;
+          AbstractProjectViewPane pane = getCurrentProjectViewPane();
+          JTree tree = pane == null ? null : pane.getTree();
+          return tree != null && tree.isShowing();
+        }
+      }, myProject);
+    }
   }
 
   private synchronized void reloadPanes() {

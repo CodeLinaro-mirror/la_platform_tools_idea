@@ -366,7 +366,7 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
 
     final SearchScope searchScope = actionHandler.getSelectedScope();
     final AtomicInteger outOfScopeUsages = new AtomicInteger();
-    ShowUsagesTable table = new ShowUsagesTable(new ShowUsagesTableCellRenderer(usageView, outOfScopeUsages, searchScope));
+    ShowUsagesTable table = new ShowUsagesTable(new ShowUsagesTableCellRenderer(usageView, outOfScopeUsages, searchScope), usageView);
     AsyncProcessIcon processIcon = new AsyncProcessIcon("xxx");
     TitlePanel statusPanel = new TitlePanel();
     statusPanel.add(processIcon, BorderLayout.EAST);
@@ -699,6 +699,7 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
 
     toolbar.add(UsageGroupingRuleProviderImpl.createGroupByFileStructureAction(usageView));
     ActionToolbar actionToolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.USAGE_VIEW_TOOLBAR, toolbar, true);
+    actionToolbar.setTargetComponent(table);
     actionToolbar.setReservePlaceAutoPopupIcon(false);
     JComponent toolBar = actionToolbar.getComponent();
     toolBar.setOpaque(false);
@@ -920,9 +921,9 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
                                            @NotNull RelativePoint popupPosition,
                                            @NotNull IntRef minWidth,
                                            @NotNull List<? extends UsageNode> data) {
-    if (!(popup instanceof AbstractPopup)) {
-      return;
-    }
+
+    if (isCodeWithMeClientInstance(popup)) return;
+
     JComponent content = popup.getContent();
     Window window = SwingUtilities.windowForComponent(content);
     Dimension d = window.getSize();
@@ -956,6 +957,11 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
 
     window.validate();
     window.repaint();
+  }
+
+  private static boolean isCodeWithMeClientInstance(@NotNull JBPopup popup) {
+    JComponent content = popup.getContent();
+    return content.getClientProperty("THIN_CLIENT") != null;
   }
 
   @NotNull

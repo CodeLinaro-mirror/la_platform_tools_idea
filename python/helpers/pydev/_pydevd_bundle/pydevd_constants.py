@@ -76,7 +76,7 @@ elif IS_IRONPYTHON:
 
 IS_64BIT_PROCESS = sys.maxsize > (2 ** 32)
 
-IS_LINUX = sys.platform in ('linux', 'linux2')
+IS_LINUX = sys.platform.startswith('linux')
 IS_MACOS = sys.platform == 'darwin'
 
 IS_PYTHON_STACKLESS = "stackless" in sys.version.lower()
@@ -170,6 +170,9 @@ ASYNC_EVAL_TIMEOUT_SEC = 60
 NEXT_VALUE_SEPARATOR = "__pydev_val__"
 BUILTINS_MODULE_NAME = '__builtin__' if IS_PY2 else 'builtins'
 SHOW_DEBUG_INFO_ENV = os.getenv('PYCHARM_DEBUG') == 'True' or os.getenv('PYDEV_DEBUG') == 'True'
+
+# If True, CMD_SET_NEXT_STATEMENT and CMD_RUN_TO_LINE commands have responses indicating success or failure.
+GOTO_HAS_RESPONSE = IS_PYCHARM
 
 if SHOW_DEBUG_INFO_ENV:
     # show debug info before the debugger start

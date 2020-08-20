@@ -27,6 +27,7 @@ class GHPRChangesProviderImpl(private val repository: GitRepository,
 
   override val changes = mutableListOf<Change>()
   override val changesByCommits = mutableMapOf<GHCommit, List<Change>>()
+  override val linearHistory: Boolean
 
   private val diffDataByChange = THashMap<Change, GHPRChangeDiffData>(object : TObjectHashingStrategy<Change> {
     override fun equals(o1: Change?, o2: Change?) = o1 == o2 &&
@@ -38,6 +39,12 @@ class GHPRChangesProviderImpl(private val repository: GitRepository,
 
   override fun findChangeDiffData(change: Change) = diffDataByChange[change]
 
+  override fun findCumulativeChange(commitSha: String, filePath: String): Change? {
+    return diffDataByChange.entries.find {
+      it.value is GHPRChangeDiffData.Cumulative && it.value.contains(commitSha, filePath)
+    }?.key
+  }
+
   init {
     val commitsBySha = LinkedHashMap<String, GHCommitWithPatches>()
     Traverser.forGraph(commitsGraph).depthFirstPostOrder(lastCommit).forEach {
@@ -46,7 +53,7 @@ class GHPRChangesProviderImpl(private val repository: GitRepository,
     }
 
     // One or more merge commit for changes that are included into PR (master merges are ignored)
-    val linearHistory = commitsBySha.values.all { commit ->
+    linearHistory = commitsBySha.values.all { commit ->
       commit.parents.count { commitsBySha.contains(it) } <= 1
     }
 
