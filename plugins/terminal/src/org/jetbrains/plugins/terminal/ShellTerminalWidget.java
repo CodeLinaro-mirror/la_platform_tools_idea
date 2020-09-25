@@ -55,9 +55,9 @@ public class ShellTerminalWidget extends JBTerminalWidget {
         myPromptUpdateNeeded = false;
       }
 
-      if (e.getKeyCode() == KeyEvent.VK_ENTER || TerminalShellCommandHandlerHelper.matchedExecutorAction(e) != null) {
+      if (e.getKeyCode() == KeyEvent.VK_ENTER || TerminalShellCommandHandlerHelper.matchedExecutor(e) != null) {
         TerminalUsageTriggerCollector.Companion.triggerCommandExecuted(myProject);
-        if (myShellCommandHandlerHelper.processEnterKeyPressed(getTypedShellCommand(), e)) {
+        if (myShellCommandHandlerHelper.processEnterKeyPressed(e)) {
           e.consume();
         }
         if (!e.isConsumed()) {
