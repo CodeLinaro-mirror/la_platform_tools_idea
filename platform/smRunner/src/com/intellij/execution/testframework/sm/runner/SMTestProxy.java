@@ -1,9 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.testframework.sm.runner;
 
 import com.intellij.execution.Location;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessOutputTypes;
+import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.testframework.*;
 import com.intellij.execution.testframework.sm.SMStacktraceParser;
 import com.intellij.execution.testframework.sm.SMStacktraceParserEx;
@@ -12,6 +13,8 @@ import com.intellij.execution.testframework.sm.runner.events.TestFailedEvent;
 import com.intellij.execution.testframework.sm.runner.states.*;
 import com.intellij.execution.testframework.sm.runner.ui.TestsPresentationUtil;
 import com.intellij.execution.testframework.stacktrace.DiffHyperlink;
+import com.intellij.ide.DataManager;
+import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
@@ -29,6 +32,7 @@ import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -954,6 +958,7 @@ public class SMTestProxy extends AbstractTestProxy {
   }
 
   public static class SMRootTestProxy extends SMTestProxy implements TestProxyRoot {
+    private final JComponent myConsole;
     private boolean myTestsReporterAttached; // false by default
 
     private String myPresentation;
@@ -961,16 +966,17 @@ public class SMTestProxy extends AbstractTestProxy {
     private String myRootLocationUrl;
     private ProcessHandler myHandler;
     private boolean myShouldPrintOwnContentOnly = false;
-    private long myExecutionId;
+    private long myExecutionId = -1;
     @NotNull
     private TestDurationStrategy myDurationStrategy = TestDurationStrategy.AUTOMATIC;
 
     public SMRootTestProxy() {
-      this(false);
+      this(false, null);
     }
 
-    public SMRootTestProxy(boolean preservePresentableName) {
+    public SMRootTestProxy(boolean preservePresentableName, @Nullable JComponent console) {
       super("[root]", true, null, preservePresentableName);
+      myConsole = console;
     }
 
     public void setTestsReporterAttached() {
@@ -1005,11 +1011,13 @@ public class SMTestProxy extends AbstractTestProxy {
     }
 
     public long getExecutionId() {
-      return myExecutionId;
-    }
-
-    public void setExecutionId(long executionId) {
-      myExecutionId = executionId;
+      long result = myExecutionId;
+      if (result == -1) {
+        ExecutionEnvironment executionEnvironment = myConsole != null ? LangDataKeys.EXECUTION_ENVIRONMENT.getData(DataManager.getInstance().getDataContext(myConsole))
+                                                                      : null;
+        myExecutionId = result = executionEnvironment != null ? executionEnvironment.getExecutionId() : 0;
+      }
+      return result;
     }
 
     @Override

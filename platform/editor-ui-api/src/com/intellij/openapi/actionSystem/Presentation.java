@@ -142,6 +142,11 @@ public final class Presentation implements Cloneable {
     return textWithMnemonic == null ? null : textWithMnemonic.getText();
   }
 
+  public @ActionText String getText(boolean withSuffix) {
+    TextWithMnemonic textWithMnemonic = myTextWithMnemonicSupplier.get();
+    return textWithMnemonic == null ? null : textWithMnemonic.getText(withSuffix);
+  }
+
   /**
    * Sets the presentation text.
    *
@@ -224,17 +229,6 @@ public final class Presentation implements Cloneable {
 
   public void restoreTextWithMnemonic(Presentation presentation) {
     setTextWithMnemonic(presentation.getTextWithPossibleMnemonic());
-  }
-
-  public static String restoreTextWithMnemonic(@Nullable String text, final int mnemonic) {
-    if (text == null) return null;
-    TextWithMnemonic textWithMnemonic = TextWithMnemonic.fromPlainText(text);
-    for (int i = 0; i < text.length(); i++) {
-      if (Character.toUpperCase(text.charAt(i)) == mnemonic) {
-        return textWithMnemonic.setMnemonicAt(i).toString();
-      }
-    }
-    return textWithMnemonic.toString();
   }
 
   public @ActionDescription String getDescription() {
