@@ -21,6 +21,7 @@ import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
+import com.intellij.openapi.externalSystem.service.execution.*;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.module.Module;
@@ -30,8 +31,12 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.projectRoots.JavaSdk;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.projectRoots.impl.JavaAwareProjectJdkTableImpl;
 import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.io.FileUtil;
@@ -58,6 +63,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.buildtool.MavenSyncConsole;
 import org.jetbrains.idea.maven.dom.MavenDomUtil;
+import org.jetbrains.idea.maven.execution.MavenRunnerSettings;
 import org.jetbrains.idea.maven.model.MavenArtifact;
 import org.jetbrains.idea.maven.model.MavenConstants;
 import org.jetbrains.idea.maven.model.MavenId;
@@ -1284,5 +1290,34 @@ public class MavenUtil {
       path = new File(mavenProject.getDirectory(), path).getPath();
     }
     return new Path(path);
+  }
+
+  public static @NotNull Sdk getJdk(@NotNull Project project, @NotNull String name) throws ExternalSystemJdkException {
+    if (name.equals(MavenRunnerSettings.USE_INTERNAL_JAVA) || project.isDefault()) {
+      return JavaAwareProjectJdkTableImpl.getInstanceEx().getInternalJdk();
+    }
+
+    if (name.equals(MavenRunnerSettings.USE_PROJECT_JDK)) {
+        Sdk res = ProjectRootManager.getInstance(project).getProjectSdk();
+        if (res != null) {
+          return res;
+        }
+      throw new ProjectJdkNotFoundException();
+    }
+
+    if (name.equals(MavenRunnerSettings.USE_JAVA_HOME)) {
+      final String javaHome = ExternalSystemJdkUtil.getJavaHome();
+      if (StringUtil.isEmptyOrSpaces(javaHome)) {
+        throw new InvalidJavaHomeException(javaHome);
+      }
+      return JavaSdk.getInstance().createJdk("", javaHome);
+    }
+
+    for (Sdk projectJdk : ProjectJdkTable.getInstance().getAllJdks()) {
+      if (projectJdk.getName().equals(name)) {
+        return projectJdk;
+      }
+    }
+    throw new InvalidSdkException(name);
   }
 }
