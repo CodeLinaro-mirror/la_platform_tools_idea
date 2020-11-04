@@ -139,7 +139,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       withCustomVersion({pluginXmlFile, ideVersion ->
         def text = pluginXmlFile.text
         def declaredVersion = text.substring(text.indexOf("<version>") + "<version>".length(), text.indexOf("</version>"))
-        return "$declaredVersion.$ideVersion"
+        return "$declaredVersion"
       })
       withModule("intellij.android.common", "android-common.jar", false)
       withModule("intellij.android.buildCommon", "build-common.jar", false)
