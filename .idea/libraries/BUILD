@@ -270,17 +270,17 @@ java_library(
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
     exports = [
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.4.10:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.4.20:jar",
     ],
     # do not sort: must match IML order
     runtime_deps = [
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.4.10:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.4.20:jar",
     ],
 )
 
@@ -288,8 +288,8 @@ java_library(
 java_library(
     name = "kotlin-reflect",
     visibility = ["//visibility:public"],
-    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-reflect/1.4.10:jar"],
-    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-reflect/1.4.10:jar"],
+    exports = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-reflect/1.4.20:jar"],
+    runtime_deps = ["//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-reflect/1.4.20:jar"],
 )
 
 # managed by go/iml_to_build
@@ -802,13 +802,13 @@ java_library(
     visibility = ["//visibility:public"],
     # do not sort: must match IML order
     exports = [
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test-common/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test/1.4.10:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test-common/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test/1.4.20:jar",
     ],
     # do not sort: must match IML order
     runtime_deps = [
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test-common/1.4.10:jar",
-        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test/1.4.10:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test-common/1.4.20:jar",
+        "//prebuilts/tools/common/m2/repository/org/jetbrains/kotlin/kotlin-test/1.4.20:jar",
     ],
 )
 
@@ -1521,6 +1521,8 @@ java_library(
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/kotlinx-serialization-compiler-plugin",
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/markdown-0.1.25",
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/noarg-ide-plugin",
+        "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/parcelize-compiler",
+        "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/parcelize-ide",
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/sam-with-receiver-ide-plugin",
     ],
     # do not sort: must match IML order
@@ -1566,6 +1568,8 @@ java_library(
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/kotlinx-serialization-compiler-plugin",
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/markdown-0.1.25",
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/noarg-ide-plugin",
+        "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/parcelize-compiler",
+        "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/parcelize-ide",
         "//prebuilts/tools/common/kotlin-plugin:Kotlin/lib/sam-with-receiver-ide-plugin",
     ],
 )
