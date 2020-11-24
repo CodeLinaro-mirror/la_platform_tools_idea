@@ -87,7 +87,7 @@ open class ProjectManagerExImpl : ProjectManagerImpl() {
             projectToClose = openProjects[openProjects.size - 1]
           }
         }
-        if (checkExistingProjectOnOpen(projectToClose, options.callback, projectStoreBaseDir, this)) {
+        if (checkExistingProjectOnOpen(projectToClose!!, options.callback, projectStoreBaseDir, this)) {
           return null
         }
       }
