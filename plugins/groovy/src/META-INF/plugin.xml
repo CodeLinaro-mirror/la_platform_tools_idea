@@ -20,10 +20,6 @@
   <depends optional="true" config-file="ant.xml">AntSupport</depends>
   <depends optional="true" config-file="groovy-byte-code-viewer.xml">ByteCodeViewer</depends>
   <!--suppress PluginXmlValidity -->
-  <depends optional="true" config-file="duplicates-groovy.xml">com.intellij.modules.ultimate</depends>
-  <!--suppress PluginXmlValidity -->
-  <depends optional="true" config-file="duplicates-detection-groovy.xml">com.intellij.modules.duplicatesDetector</depends>
-  <!--suppress PluginXmlValidity -->
   <depends optional="true" config-file="groovy-structural-search.xml">com.intellij.modules.structuralsearch</depends>
 
   <resource-bundle>messages.GroovyBundle</resource-bundle>
