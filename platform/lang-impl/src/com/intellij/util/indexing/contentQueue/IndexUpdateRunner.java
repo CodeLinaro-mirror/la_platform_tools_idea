@@ -106,8 +106,11 @@ public final class IndexUpdateRunner {
           numberOfRunningWorkers.incrementAndGet();
         }
         while (!project.isDisposed() && !indexingJob.areAllFilesProcessed() && indexingJob.myError.get() == null) {
-          // Add a worker if the previous died for whatever reason, to avoid waiting for nothing.
-          if (numberOfRunningWorkers.get() < myNumberOfIndexingThreads) {
+          // Internally checks for suspension of the indexing and blocks the current thread if necessary.
+          indicator.checkCanceled();
+          // Add workers if the previous have stopped for whatever reason.
+          int toAddWorkersNumber = myNumberOfIndexingThreads - numberOfRunningWorkers.get();
+          for (int i = 0; i < toAddWorkersNumber; i++) {
             myIndexingExecutor.execute(worker);
             numberOfRunningWorkers.incrementAndGet();
           }
