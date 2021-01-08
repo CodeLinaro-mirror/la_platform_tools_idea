@@ -10,13 +10,16 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 
-import java.io.File;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A utility to garbage-collect specified objects in tests. Create a GCWatcher using {@link #tracking} or {@link #fromClearedRef}
@@ -24,9 +27,9 @@ import java.util.Set;
  * so, if you pass fields or local variables there, nullify them before calling {@link #ensureCollected()}.
  *
  */
-public class GCWatcher {
+public final class GCWatcher {
   private final ReferenceQueue<Object> myQueue = new ReferenceQueue<>();
-  private final Set<Reference<?>> myReferences = ContainerUtil.newConcurrentSet();
+  private final Set<Reference<?>> myReferences = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
   private GCWatcher(@NotNull Collection<?> objects) {
     for (Object o : objects) {
@@ -83,26 +86,27 @@ public class GCWatcher {
   @TestOnly
   public void ensureCollected() {
     StringBuilder log = new StringBuilder();
-    if (!GCUtil.allocateTonsOfMemory(log, this::isEverythingCollected)) {
-      String message = "Couldn't garbage-collect some objects, they might still be reachable from GC roots: " +
-                       ContainerUtil.mapNotNull(myReferences, SoftReference::dereference);
-
-      try {
-        File file = new File(System.getProperty("teamcity.build.tempDir", System.getProperty("java.io.tmpdir")), "GCWatcher.hprof.zip");
-        MemoryDumpHelper.captureMemoryDumpZipped(file);
-
-        //noinspection UseOfSystemOutOrSystemErr
-        System.out.println("##teamcity[publishArtifacts '" + file.getPath() + "']");
-      }
-      catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-      if (isEverythingCollected()) {
-        message += "\nEverything is collected after taking the heap dump.";
-      }
-      message += "Log:\n" + log;
-      throw new IllegalStateException(message);
+    if (GCUtil.allocateTonsOfMemory(log, this::isEverythingCollected)) {
+      return;
     }
-  }
 
+    String message = "Couldn't garbage-collect some objects, they might still be reachable from GC roots: " +
+                     ContainerUtil.mapNotNull(myReferences, SoftReference::dereference);
+
+    try {
+      Path file = Paths.get(System.getProperty("teamcity.build.tempDir", System.getProperty("java.io.tmpdir")), "GCWatcher.hprof.zip");
+      MemoryDumpHelper.captureMemoryDumpZipped(file);
+
+      //noinspection UseOfSystemOutOrSystemErr
+      System.out.println("##teamcity[publishArtifacts '" + file + "']");
+    }
+    catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    if (isEverythingCollected()) {
+      message += "\nEverything is collected after taking the heap dump.";
+    }
+    message += "Log:\n" + log;
+    throw new IllegalStateException(message);
+  }
 }

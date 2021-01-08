@@ -9,18 +9,20 @@ import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ex.ProjectEx
 import com.intellij.openapi.project.ex.ProjectNameProvider
 import com.intellij.openapi.project.impl.ProjectStoreFactory
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.ReadonlyStatusHandler
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.util.PathUtilRt
 import com.intellij.serviceContainer.ComponentManagerImpl
 import com.intellij.util.SmartList
 import com.intellij.util.io.delete
 import com.intellij.util.io.isDirectory
 import com.intellij.util.io.write
+import com.intellij.workspaceModel.ide.WorkspaceModel
+import com.intellij.workspaceModel.ide.configLocation
+import com.intellij.workspaceModel.ide.impl.jps.serialization.JpsFileContentReaderWithCache
+import com.intellij.workspaceModel.ide.impl.jps.serialization.ProjectStoreWithJpsContentReader
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.annotations.ApiStatus
@@ -29,12 +31,10 @@ import org.jetbrains.jps.util.JpsPathUtil
 import java.nio.file.AccessDeniedException
 import java.nio.file.Path
 
-internal val IProjectStore.nameFile: Path
-  get() = directoryStorePath.resolve(ProjectEx.NAME_FILE)
-
 @ApiStatus.Internal
 open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
   private var lastSavedProjectName: String? = null
+  protected val moduleSavingCustomizer: ModuleSavingCustomizer? = if (WorkspaceModel.isEnabled) ProjectStoreBridge(project) else null
 
   init {
     assert(!project.isDefault)
@@ -53,21 +53,20 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
 
   override fun getProjectName(): String {
     if (!isDirectoryBased) {
-      return PathUtilRt.getFileName(projectFilePath).removeSuffix(ProjectFileType.DOT_DEFAULT_EXTENSION)
+      return storageManager.expandMacro(PROJECT_FILE).fileName.toString().removeSuffix(ProjectFileType.DOT_DEFAULT_EXTENSION)
     }
 
-    val projectDir = nameFile.parent
+    val projectDir = directoryStorePath!!
     val storedName = JpsPathUtil.readProjectName(projectDir)
     if (storedName != null) {
       lastSavedProjectName = storedName
       return storedName
     }
 
-    val computedName = ProjectNameProvider.EP_NAME.iterable.asSequence()
-      .map { LOG.runAndLogException { it.getDefaultName(project) } }
-      .find { it != null }
-
-    return computedName ?: JpsPathUtil.getDefaultProjectName(projectDir)
+    for (projectNameProvider in ProjectNameProvider.EP_NAME.iterable) {
+      LOG.runAndLogException { projectNameProvider.getDefaultName(project)?.let { return it } }
+    }
+    return JpsPathUtil.getDefaultProjectName(projectDir)
   }
 
   private suspend fun saveProjectName() {
@@ -87,10 +86,10 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
     fun doSave() {
       if (currentProjectName == basePath.fileName.toString()) {
         // name equals to base path name - just remove name
-        nameFile.delete()
+        getNameFile().delete()
       }
       else if (basePath.isDirectory()) {
-        nameFile.write(currentProjectName.toByteArray())
+        getNameFile().write(currentProjectName.toByteArray())
       }
     }
 
@@ -98,7 +97,7 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
       doSave()
     }
     catch (e: AccessDeniedException) {
-      val status = ensureFilesWritable(project, listOf(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(nameFile)!!))
+      val status = ensureFilesWritable(project, listOf(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(getNameFile())!!))
       if (status.hasReadonlyFiles()) {
         throw e
       }
@@ -122,7 +121,6 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
           .appendTo(result)
       }
 
-      val projectSaved = project.messageBus.syncPublisher(ProjectEx.ProjectSaved.TOPIC)
       launch {
         try {
           saveProjectName()
@@ -130,8 +128,6 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
         catch (e: Throwable) {
           LOG.error("Unable to store project name", e)
         }
-
-        projectSaved.duringSave(project)
       }
     }
   }
@@ -142,7 +138,9 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
     return emptyList()
   }
 
-  override fun createSaveSessionProducerManager() = ProjectSaveSessionProducerManager(project)
+  final override fun createSaveSessionProducerManager(): ProjectSaveSessionProducerManager {
+    return moduleSavingCustomizer?.createSaveSessionProducerManager() ?: ProjectSaveSessionProducerManager(project)
+  }
 
   final override fun commitObsoleteComponents(session: SaveSessionProducerManager, isProjectLevel: Boolean) {
     if (isDirectoryBased) {
@@ -152,10 +150,20 @@ open class ProjectStoreImpl(project: Project) : ProjectStoreBase(project) {
 }
 
 @ApiStatus.Internal
-open class ProjectWithModulesStoreImpl(project: Project) : ProjectStoreImpl(project) {
-  override suspend fun saveModules(errors: MutableList<Throwable>,
-                                   isForceSavingAllSettings: Boolean,
-                                   projectSaveSessionManager: SaveSessionProducerManager): List<SaveSession> {
+interface ModuleSavingCustomizer {
+  fun createSaveSessionProducerManager(): ProjectSaveSessionProducerManager
+  fun saveModules(projectSaveSessionManager: SaveSessionProducerManager, store: IProjectStore)
+  fun commitModuleComponents(projectSaveSessionManager: SaveSessionProducerManager,
+                             moduleStore: ComponentStoreImpl,
+                             moduleSaveSessionManager: SaveSessionProducerManager)
+}
+
+@ApiStatus.Internal
+open class ProjectWithModulesStoreImpl(project: Project) : ProjectStoreImpl(project), ProjectStoreWithJpsContentReader {
+  final override suspend fun saveModules(errors: MutableList<Throwable>,
+                                         isForceSavingAllSettings: Boolean,
+                                         projectSaveSessionManager: SaveSessionProducerManager): List<SaveSession> {
+    moduleSavingCustomizer?.saveModules(projectSaveSessionManager, this)
     val modules = ModuleManager.getInstance(project)?.modules ?: Module.EMPTY_ARRAY
     if (modules.isEmpty()) {
       return emptyList()
@@ -176,10 +184,15 @@ open class ProjectWithModulesStoreImpl(project: Project) : ProjectStoreImpl(proj
     }
   }
 
-  protected open fun commitModuleComponents(moduleStore: ComponentStoreImpl, moduleSaveSessionManager: SaveSessionProducerManager,
-                                            projectSaveSessionManager: SaveSessionProducerManager, isForceSavingAllSettings: Boolean,
-                                            errors: MutableList<Throwable>) {
+  override fun createContentReader(): JpsFileContentReaderWithCache {
+    return StorageJpsConfigurationReader(project, project.configLocation!!.baseDirectoryUrlString)
+  }
+
+  private fun commitModuleComponents(moduleStore: ComponentStoreImpl, moduleSaveSessionManager: SaveSessionProducerManager,
+                                     projectSaveSessionManager: SaveSessionProducerManager, isForceSavingAllSettings: Boolean,
+                                     errors: MutableList<Throwable>) {
     moduleStore.commitComponents(isForceSavingAllSettings, moduleSaveSessionManager, errors)
+    moduleSavingCustomizer?.commitModuleComponents(projectSaveSessionManager, moduleStore, moduleSaveSessionManager)
   }
 }
 

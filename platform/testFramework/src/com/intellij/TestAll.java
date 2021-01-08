@@ -1,22 +1,20 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij;
 
 import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory;
 import com.intellij.idea.Bombed;
 import com.intellij.idea.RecordExecution;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.testFramework.TeamCityLogger;
 import com.intellij.testFramework.TestFrameworkUtil;
 import com.intellij.testFramework.TestLoggerFactory;
 import com.intellij.tests.ExternalClasspathClassLoader;
 import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.FileCollectionFactory;
 import com.intellij.util.lang.UrlClassLoader;
-import gnu.trove.THashSet;
 import junit.framework.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -35,6 +33,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static com.intellij.TestCaseLoader.*;
 
@@ -46,7 +45,7 @@ public class TestAll implements Test {
 
   private static final String MAX_FAILURE_TEST_COUNT_FLAG = "idea.max.failure.test.count";
 
-  private static final int MAX_FAILURE_TEST_COUNT = Integer.parseInt(ObjectUtils.chooseNotNull(
+  private static final int MAX_FAILURE_TEST_COUNT = Integer.parseInt(Objects.requireNonNullElse(
     System.getProperty(MAX_FAILURE_TEST_COUNT_FLAG),
     "150"
   ));
@@ -108,8 +107,10 @@ public class TestAll implements Test {
   public TestAll(String rootPackage, List<? extends File> classesRoots) throws ClassNotFoundException {
     String classFilterName = "tests/testGroups.properties";
     myTestCaseLoader = new TestCaseLoader(classFilterName);
-    myTestCaseLoader.addFirstTest(Class.forName("_FirstInSuiteTest"));
-    myTestCaseLoader.addLastTest(Class.forName("_LastInSuiteTest"));
+    if (shouldAddFirstAndLastTests()) {
+      myTestCaseLoader.addFirstTest(Class.forName("_FirstInSuiteTest"));
+      myTestCaseLoader.addLastTest(Class.forName("_LastInSuiteTest"));
+    }
     myTestCaseLoader.fillTestCases(rootPackage, classesRoots);
 
     outClassLoadingProblems.addAll(myTestCaseLoader.getClassLoadingErrors());
@@ -131,7 +132,7 @@ public class TestAll implements Test {
       if (excludeRoots != null) {
         System.out.println("Skipping tests from " + excludeRoots.size() + " roots");
         roots = new ArrayList<>(roots);
-        roots.removeAll(new THashSet<>(excludeRoots, FileUtil.FILE_HASHING_STRATEGY));
+        roots.removeAll(FileCollectionFactory.createCanonicalFileSet(excludeRoots));
       }
 
       System.out.println("Collecting tests from roots specified by classpath.file property: " + roots);
@@ -243,6 +244,10 @@ public class TestAll implements Test {
 
   private static boolean shouldRecord(@NotNull Class<?> aClass) {
     return aClass.getAnnotation(RecordExecution.class) != null;
+  }
+
+  private static boolean shouldAddFirstAndLastTests() {
+    return !"true".equals(System.getProperty("intellij.build.test.ignoreFirstAndLastTests"));
   }
 
   private void loadTestRecorder() {

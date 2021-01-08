@@ -8,7 +8,9 @@ import com.intellij.openapi.projectRoots.JdkUtil;
 import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.impl.jdkDownloader.JdkInstaller;
+import com.intellij.openapi.projectRoots.impl.jdkDownloader.JdkInstallerStore;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.EnvironmentUtil;
@@ -17,13 +19,21 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.nio.file.Files.isDirectory;
+import static java.util.Collections.emptySet;
+
 public class JavaHomeFinderBasic {
-  private final Logger LOG = Logger.getInstance(getClass());
+
+  private final Logger log = Logger.getInstance(getClass());
   private final List<Supplier<Set<String>>> myFinders = new ArrayList<>();
 
   JavaHomeFinderBasic(boolean forceEmbeddedJava, String... paths) {
@@ -37,11 +47,8 @@ public class JavaHomeFinderBasic {
     }
   }
 
-  @NotNull
-  private Set<String> findInSpecifiedPaths(String[] paths) {
-    return scanAll(
-      Stream.of(paths).map(it -> new File(it)).collect(Collectors.toList()),
-      true);
+  private @NotNull Set<String> findInSpecifiedPaths(String[] paths) {
+    return scanAll(Stream.of(paths).map(it -> Paths.get(it)).collect(Collectors.toList()), true);
   }
 
   protected void registerFinder(@NotNull Supplier<Set<String>> finder) {
@@ -57,26 +64,31 @@ public class JavaHomeFinderBasic {
         result.addAll(action.get());
       }
       catch (Exception e) {
-        LOG.warn("Failed to find Java Home. " + e.getMessage(), e);
+        log.warn("Failed to find Java Home. " + e.getMessage(), e);
       }
     }
 
     return result;
   }
 
-  @NotNull
-  private Set<String> findInPATH() {
+  private @NotNull Set<String> findInPATH() {
     try {
       String pathVarString = EnvironmentUtil.getValue("PATH");
-      if (pathVarString == null || pathVarString.isEmpty()) return Collections.emptySet();
+      if (pathVarString == null || pathVarString.isEmpty()) {
+        return emptySet();
+      }
 
-      Set<File> dirsToCheck = new HashSet<>();
+      Set<Path> dirsToCheck = new HashSet<>();
       for (String p : pathVarString.split(File.pathSeparator)) {
-        File dir = new File(p);
-        if (!StringUtilRt.equal(dir.getName(), "bin", SystemInfo.isFileSystemCaseSensitive)) continue;
+        Path dir = Paths.get(p);
+        if (!StringUtilRt.equal(dir.getFileName().toString(), "bin", SystemInfoRt.isFileSystemCaseSensitive)) {
+          continue;
+        }
 
-        File parentFile = dir.getParentFile();
-        if (parentFile == null) continue;
+        Path parentFile = dir.getParent();
+        if (parentFile == null) {
+          continue;
+        }
 
         dirsToCheck.addAll(listPossibleJdkInstallRootsFromHomes(parentFile));
       }
@@ -84,41 +96,48 @@ public class JavaHomeFinderBasic {
       return scanAll(dirsToCheck, false);
     }
     catch (Exception e) {
-      LOG.warn("Failed to scan PATH for JDKs. " + e.getMessage(), e);
-      return Collections.emptySet();
+      log.warn("Failed to scan PATH for JDKs. " + e.getMessage(), e);
+      return emptySet();
     }
   }
 
   @NotNull
   private Set<String> checkDefaultLocations() {
-    if (ApplicationManager.getApplication() == null) return Collections.emptySet();
+    if (ApplicationManager.getApplication() == null) {
+      return emptySet();
+    }
 
-    Set<File> paths = new HashSet<>();
+    Set<Path> paths = new HashSet<>();
     paths.add(JdkInstaller.getInstance().defaultInstallDir());
+    paths.addAll(JdkInstallerStore.getInstance().listJdkInstallHomes());
 
     for (Sdk jdk : ProjectJdkTable.getInstance().getAllJdks()) {
-      if (!(jdk.getSdkType() instanceof JavaSdkType) || jdk.getSdkType() instanceof DependentSdkType) continue;
+      if (!(jdk.getSdkType() instanceof JavaSdkType) || jdk.getSdkType() instanceof DependentSdkType) {
+        continue;
+      }
 
       String homePath = jdk.getHomePath();
-      if (homePath == null) continue;
+      if (homePath == null) {
+        continue;
+      }
 
-      paths.addAll(listPossibleJdkInstallRootsFromHomes(new File(homePath)));
+      paths.addAll(listPossibleJdkInstallRootsFromHomes(Paths.get(homePath)));
     }
 
     return scanAll(paths, true);
   }
 
-  @NotNull
-  protected Set<String> scanAll(@Nullable File file, boolean includeNestDirs) {
-    if (file == null) return Collections.emptySet();
+  protected @NotNull Set<String> scanAll(@Nullable Path file, boolean includeNestDirs) {
+    if (file == null) {
+      return emptySet();
+    }
     return scanAll(Collections.singleton(file), includeNestDirs);
   }
 
-  @NotNull
-  protected Set<String> scanAll(@NotNull Collection<File> files, boolean includeNestDirs) {
+  protected @NotNull Set<String> scanAll(@NotNull Collection<Path> files, boolean includeNestDirs) {
     Set<String> result = new HashSet<>();
-    for (File root : new HashSet<>(files)) {
-      scanFolder(root, includeNestDirs, result);
+    for (Path root : new HashSet<>(files)) {
+      scanFolder(root.toFile(), includeNestDirs, result);
     }
     return result;
   }
@@ -145,49 +164,57 @@ public class JavaHomeFinderBasic {
     return Collections.singletonList(file);
   }
 
-  @NotNull
-  protected List<File> listPossibleJdkInstallRootsFromHomes(@NotNull File file) {
+  protected @NotNull List<Path> listPossibleJdkInstallRootsFromHomes(@NotNull Path file) {
     return Collections.singletonList(file);
   }
 
-  @Nullable
-  protected static File getJavaHome() {
+  protected static @Nullable Path getJavaHome() {
     String property = SystemProperties.getJavaHome();
-    if (property == null) return null;
+    if (property == null || property.isEmpty()) {
+      return null;
+    }
 
-    File javaHome = new File(property).getParentFile();//actually java.home points to to jre home
-    return javaHome == null || !javaHome.isDirectory() ? null : javaHome;
+    // actually java.home points to to jre home
+    Path javaHome = Path.of(property).getParent();
+    return javaHome == null || !isDirectory(javaHome) ? null : javaHome;
   }
 
 
   /**
    * Finds Java home directories installed by SDKMAN: https://github.com/sdkman
    */
-  @NotNull
-  private Set<String> findJavaInstalledBySdkMan() {
-    File candidatesDir = findSdkManCandidatesDir();
-    if (candidatesDir == null) return Collections.emptySet();
-    File javasDir = new File(candidatesDir, "java");
-    if (javasDir.isDirectory()) return scanAll(javasDir, true);
-    else return Collections.emptySet();
+  private @NotNull Set<@NotNull String> findJavaInstalledBySdkMan() {
+    try {
+      Path candidatesDir = findSdkManCandidatesDir();
+      if (candidatesDir == null) return emptySet();
+      Path javasDir = candidatesDir.resolve("java");
+      if (!isDirectory(javasDir)) return emptySet();
+      //noinspection UnnecessaryLocalVariable
+      var homes = listJavaHomeDirsInstalledBySdkMan(javasDir);
+      return homes;
+    }
+    catch (Exception e) {
+      log.warn("Unexpected exception while looking for Sdkman directory: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+      return emptySet();
+    }
   }
 
   @Nullable
-  private static File findSdkManCandidatesDir() {
+  private static Path findSdkManCandidatesDir() {
     // first, try the special environment variable
     String candidatesPath = EnvironmentUtil.getValue("SDKMAN_CANDIDATES_DIR");
     if (candidatesPath != null) {
-      File candidatesDir = new File(candidatesPath);
-      if (candidatesDir.isDirectory()) return candidatesDir;
+      Path candidatesDir = Path.of(candidatesPath);
+      if (isDirectory(candidatesDir)) return candidatesDir;
     }
 
     // then, try to use its 'primary' variable
     String primaryPath = EnvironmentUtil.getValue("SDKMAN_DIR");
     if (primaryPath != null) {
-      File primaryDir = new File(primaryPath);
-      if (primaryDir.isDirectory()) {
-        File candidatesDir = new File(primaryDir, "candidates");
-        if (candidatesDir.isDirectory()) return candidatesDir;
+      Path primaryDir = Path.of(primaryPath);
+      if (isDirectory(primaryDir)) {
+        Path candidatesDir = primaryDir.resolve("candidates");
+        if (isDirectory(candidatesDir)) return candidatesDir;
       }
     }
 
@@ -195,14 +222,79 @@ public class JavaHomeFinderBasic {
     if (!SystemInfo.isWindows) {
       String homePath = System.getProperty("user.home");
       if (homePath != null) {
-        File homeDir = new File(homePath);
-        File primaryDir = new File(homeDir, ".sdkman");
-        File candidatesDir = new File(primaryDir, "candidates");
-        if (candidatesDir.isDirectory()) return candidatesDir;
+        Path homeDir = Path.of(homePath);
+        Path primaryDir = homeDir.resolve(".sdkman");
+        Path candidatesDir = primaryDir.resolve("candidates");
+        if (isDirectory(candidatesDir)) return candidatesDir;
       }
     }
 
     // no chances
     return null;
   }
+
+  private @NotNull Set<@NotNull String> listJavaHomeDirsInstalledBySdkMan(@NotNull Path javasDir) {
+    var mac = SystemInfo.isMac;
+    var result = new HashSet<@NotNull String>();
+
+    try {
+      var innerDirectories = Files.list(javasDir).filter(d -> isDirectory(d)).collect(Collectors.toList());
+      for (Path innerDir: innerDirectories) {
+        var home = innerDir;
+        var releaseFile = home.resolve("release");
+        if (!safeExists(releaseFile)) continue;
+
+        if (mac) {
+          // Zulu JDK on MacOS has a rogue layout, with which Gradle failed to operate (see the bugreport IDEA-253051),
+          // and in order to get Gradle working with Zulu JDK we should use it's second home (when symbolic links are resolved).
+          try {
+            if (Files.isSymbolicLink(releaseFile)) {
+              var realReleaseFile = releaseFile.toRealPath();
+              if (!safeExists(realReleaseFile)) {
+                log.warn("Failed to resolve the target file (it doesn't exist) for: " + releaseFile.toString());
+                continue;
+              }
+              var realHome = realReleaseFile.getParent();
+              if (realHome == null) {
+                log.warn("Failed to resolve the target file (it has no parent dir) for: " + releaseFile.toString());
+                continue;
+              }
+              home = realHome;
+            }
+          }
+          catch (IOException ioe) {
+            log.warn("Failed to resolve the target file for: " + releaseFile.toString() + ": " + ioe.getMessage());
+            continue;
+          }
+          catch (Exception e) {
+            log.warn("Failed to resolve the target file for: " + releaseFile.toString() + ": Unexpected exception " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            continue;
+          }
+        }
+
+        result.add(home.toString());
+      }
+    }
+    catch (IOException ioe) {
+      log.warn("I/O exception while listing Java home directories installed by Sdkman: "+ioe.getMessage(), ioe);
+      return emptySet();
+    }
+    catch (Exception e) {
+      log.warn("Unexpected exception while listing Java home directories installed by Sdkman: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+      return emptySet();
+    }
+
+    return result;
+  }
+
+  private boolean safeExists(@NotNull Path path) {
+    try {
+      return Files.exists(path);
+    }
+    catch (Exception e) {
+      log.debug("Failed to check file existence: unexpected exception " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+      return false;
+    }
+  }
+
 }

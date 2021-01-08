@@ -3,12 +3,14 @@ package com.intellij.ide.actions.searcheverywhere;
 
 import com.intellij.codeInsight.navigation.NavigationUtil;
 import com.intellij.ide.DataManager;
+import com.intellij.ide.IdeBundle;
 import com.intellij.ide.actions.GotoActionBase;
 import com.intellij.ide.actions.QualifiedNameProviderUtil;
 import com.intellij.ide.actions.SearchEverywherePsiRenderer;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.util.EditSourceUtil;
+import com.intellij.ide.util.ElementsChooser;
 import com.intellij.ide.util.gotoByName.*;
 import com.intellij.ide.util.scopeChooser.ScopeChooserCombo;
 import com.intellij.ide.util.scopeChooser.ScopeDescriptor;
@@ -33,6 +35,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
@@ -69,7 +72,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public abstract class AbstractGotoSEContributor implements WeightedSearchEverywhereContributor<Object> {
+public abstract class AbstractGotoSEContributor implements WeightedSearchEverywhereContributor<Object>, ScopeSupporting {
   private static final Logger LOG = Logger.getInstance(AbstractGotoSEContributor.class);
   private static final Key<Map<String, String>> SE_SELECTED_SCOPES = Key.create("SE_SELECTED_SCOPES");
 
@@ -139,7 +142,7 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
   @Nullable
   @Override
   public String getAdvertisement() {
-    return DumbService.isDumb(myProject) ? "Results might be incomplete. The project is being indexed." : null;
+    return DumbService.isDumb(myProject) ? IdeBundle.message("dumb.mode.results.might.be.incomplete") : null;
   }
 
   @NotNull
@@ -154,8 +157,16 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
   }
 
   @NotNull
-  protected List<AnAction> doGetActions(@NotNull String everywhereText,
-                                        @Nullable PersistentSearchEverywhereContributorFilter<?> filter,
+  protected List<AnAction> doGetActions(@NotNull @NlsContexts.Checkbox String everywhereText,
+                                            @Nullable PersistentSearchEverywhereContributorFilter<?> filter,
+                                            @NotNull Runnable onChanged) {
+    return doGetActions(everywhereText, filter, null, onChanged);
+  }
+
+  @NotNull
+  protected <T> List<AnAction> doGetActions(@NotNull @NlsContexts.Checkbox String everywhereText,
+                                        @Nullable PersistentSearchEverywhereContributorFilter<T> filter,
+                                        @Nullable ElementsChooser.StatisticsCollector<T> statisticsCollector,
                                         @NotNull Runnable onChanged) {
     if (myProject == null || filter == null) return Collections.emptyList();
     ArrayList<AnAction> result = new ArrayList<>();
@@ -218,7 +229,7 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
         }
       });
     }
-    result.add(new SearchEverywhereUIBase.FiltersAction(filter, onChanged));
+    result.add(new SearchEverywhereFiltersAction<>(filter, onChanged, statisticsCollector));
     return result;
   }
 
@@ -250,10 +261,13 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
   }
 
   @Override
-  public void fetchWeightedElements(@NotNull String pattern,
+  public void fetchWeightedElements(@NotNull String rawPattern,
                                     @NotNull ProgressIndicator progressIndicator,
                                     @NotNull Processor<? super FoundItemDescriptor<Object>> consumer) {
     if (myProject == null) return; //nowhere to search
+
+    String pattern = removeCommandFromPattern(rawPattern);
+
     if (!isEmptyPatternSupported() && pattern.isEmpty()) return;
 
     Runnable fetchRunnable = () -> {
@@ -316,18 +330,58 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
     return consumer.process(new FoundItemDescriptor<>(element, degree));
   }
 
+  @Override
+  public ScopeDescriptor getScope() {
+    return myScopeDescriptor;
+  }
+
+  @Override
+  public void setScope(ScopeDescriptor scope) {
+    setSelectedScope(scope);
+  }
+
+  @Override
+  public List<ScopeDescriptor> getSupportedScopes() {
+    return createScopes();
+  }
+
+  @Override
+  public @NotNull List<SearchEverywhereCommandInfo> getSupportedCommands() {
+    if (Registry.is("search.everywhere.group.contributors.by.type")) {
+      SearchEverywhereCommandInfo command = getFilterCommand();
+      return command == null ? Collections.emptyList() : Collections.singletonList(command);
+    }
+
+    return Collections.emptyList();
+  }
+
   @NotNull
   protected abstract FilteringGotoByModel<?> createModel(@NotNull Project project);
+
+  @Nullable
+  protected SearchEverywhereCommandInfo getFilterCommand() {
+    return null;
+  }
 
   @NotNull
   @Override
   public String filterControlSymbols(@NotNull String pattern) {
+    pattern = removeCommandFromPattern(pattern);
+
     if (StringUtil.containsAnyChar(pattern, ":,;@[( #") ||
         pattern.contains(" line ") ||
         pattern.contains("?l=")) { // quick test if reg exp should be used
       return applyPatternFilter(pattern, ourPatternToDetectLinesAndColumns);
     }
 
+    return pattern;
+  }
+
+  private String removeCommandFromPattern(@NotNull String pattern) {
+    SearchEverywhereCommandInfo command = getFilterCommand();
+    if (command != null && pattern.startsWith(command.getCommandWithPrefix())) {
+      pattern = pattern.substring(command.getCommandWithPrefix().length()).stripLeading();
+    }
     return pattern;
   }
 
@@ -463,7 +517,7 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
       if (element instanceof NavigationItem) {
         return Optional.ofNullable(((NavigationItem)element).getPresentation())
           .map(presentation -> presentation.getPresentableText())
-          .orElse(super.getElementText(element));
+          .orElseGet(() -> super.getElementText(element));
       }
       return super.getElementText(element);
     }
@@ -604,7 +658,7 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
     }
   }
 
-  private static class MyViewModel implements ChooseByNameViewModel {
+  private static final class MyViewModel implements ChooseByNameViewModel {
     private final Project myProject;
     private final ChooseByNameModel myModel;
 

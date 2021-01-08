@@ -1,8 +1,4 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
-/*
- * @author max
- */
 package com.intellij.openapi.fileEditor.impl.text;
 
 import com.intellij.codeHighlighting.BackgroundEditorHighlighter;
@@ -101,7 +97,7 @@ public class PsiAwareTextEditorImpl extends TextEditorImpl {
     return myBackgroundHighlighter;
   }
 
-  private static class PsiAwareTextEditorComponent extends TextEditorComponent {
+  private static final class PsiAwareTextEditorComponent extends TextEditorComponent {
     private final Project myProject;
     private final VirtualFile myFile;
 

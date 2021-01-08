@@ -34,11 +34,11 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.Functions;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
@@ -55,12 +55,14 @@ final class PassExecutorService implements Disposable {
 
   private final Map<ScheduledPass, Job<Void>> mySubmittedPasses = new ConcurrentHashMap<>();
   private final Project myProject;
+  private final FileEditorManagerEx myFileEditorManager;
   private volatile boolean isDisposed;
   private final AtomicInteger nextAvailablePassId; // used to assign random id to a pass if not set
 
   PassExecutorService(@NotNull Project project) {
     myProject = project;
     nextAvailablePassId = ((TextEditorHighlightingPassRegistrarImpl)TextEditorHighlightingPassRegistrar.getInstance(myProject)).getNextAvailableId();
+    myFileEditorManager = (FileEditorManagerEx)FileEditorManager.getInstance(project);
   }
 
   @Override
@@ -106,7 +108,7 @@ final class PassExecutorService implements Disposable {
     MultiMap<Document, FileEditor> documentToEditors = MultiMap.createSet();
     MultiMap<FileEditor, TextEditorHighlightingPass> documentBoundPasses = new MultiMap<>();
     MultiMap<FileEditor, EditorBoundHighlightingPass> editorBoundPasses = new MultiMap<>();
-    Map<FileEditor, Int2ObjectMap<TextEditorHighlightingPass>> id2Pass = new Object2ObjectOpenHashMap<>();
+    Map<FileEditor, Int2ObjectMap<TextEditorHighlightingPass>> id2Pass = CollectionFactory.createSmallMemoryFootprintMap();
 
     List<ScheduledPass> freePasses = new ArrayList<>(documentToEditors.size() * 5);
     AtomicInteger threadsToStartCountdown = new AtomicInteger(0);
@@ -143,7 +145,7 @@ final class PassExecutorService implements Disposable {
 
     List<ScheduledPass> dependentPasses = new ArrayList<>(documentToEditors.size() * 10);
     // fileEditor-> (passId -> created pass)
-    Map<FileEditor, Int2ObjectMap<ScheduledPass>> toBeSubmitted = new Object2ObjectOpenHashMap<>(passesMap.size());
+    Map<FileEditor, Int2ObjectMap<ScheduledPass>> toBeSubmitted = CollectionFactory.createSmallMemoryFootprintMap(passesMap.size());
 
     for (Map.Entry<Document, Collection<FileEditor>> entry : documentToEditors.entrySet()) {
       Collection<FileEditor> fileEditors = entry.getValue();
@@ -173,7 +175,7 @@ final class PassExecutorService implements Disposable {
     }
 
     if (LOG.isDebugEnabled()) {
-      Set<VirtualFile> vFiles = ContainerUtil.map2Set(passesMap.keySet(), fe -> ((FileEditorManagerEx)FileEditorManager.getInstance(myProject)).getFile(fe));
+      Set<VirtualFile> vFiles = ContainerUtil.map2Set(passesMap.keySet(), fe -> myFileEditorManager.getFile(fe));
 
       log(updateProgress, null, vFiles + " ----- starting " + threadsToStartCountdown.get(), freePasses);
     }
@@ -199,7 +201,7 @@ final class PassExecutorService implements Disposable {
                                  @NotNull Map<FileEditor, Int2ObjectMap<ScheduledPass>> toBeSubmitted,
                                  @NotNull AtomicInteger threadsToStartCountdown) {
     assert threadsToStartCountdown.get() == toBeSubmitted.values().stream().mapToInt(m->m.size()).sum();
-    Int2ObjectOpenHashMap<Pair<ScheduledPass, Integer>> id2Visits = new Int2ObjectOpenHashMap<>();
+    Int2ObjectMap<Pair<ScheduledPass, Integer>> id2Visits = new Int2ObjectOpenHashMap<>();
     for (ScheduledPass freePass : freePasses) {
       HighlightingPass pass = freePass.myPass;
       if (pass instanceof TextEditorHighlightingPass) {
@@ -207,8 +209,7 @@ final class PassExecutorService implements Disposable {
         checkConsistency(freePass, id2Visits);
       }
     }
-    for (Iterator<Int2ObjectMap.Entry<Pair<ScheduledPass, Integer>>> iterator = id2Visits.int2ObjectEntrySet().fastIterator(); iterator.hasNext(); ) {
-      Int2ObjectMap.Entry<Pair<ScheduledPass, Integer>> entry = iterator.next();
+    for (Int2ObjectMap.Entry<Pair<ScheduledPass, Integer>> entry : id2Visits.int2ObjectEntrySet()) {
       int count = entry.getValue().second;
       assert count == 0 : entry.getIntKey();
     }
@@ -241,7 +242,7 @@ final class PassExecutorService implements Disposable {
 
     final VirtualFile file = FileDocumentManager.getInstance().getFile(document);
     if (file != null) {
-      final FileEditor selected = FileEditorManager.getInstance(myProject).getSelectedEditor(file);
+      final FileEditor selected = myFileEditorManager.getSelectedEditor(file);
       if (selected != null && fileEditors.contains(selected)) {
         return selected;
       }
@@ -481,7 +482,8 @@ final class PassExecutorService implements Disposable {
         throw e;
       }
       catch (RuntimeException e) {
-        VirtualFile file = FileEditorManagerEx.getInstanceEx(myProject).getFile(fileEditor);
+        FileEditorManagerEx fileEditorManagerEx = FileEditorManagerEx.getInstanceEx(myProject);
+        VirtualFile file = fileEditorManagerEx == null ? null : fileEditorManagerEx.getFile(fileEditor);
         FileType fileType = file == null ? null : file.getFileType();
         String message = "Exception while applying information to " + fileEditor + "("+fileType+")";
         log(updateProgress, pass, message + e);
@@ -497,7 +499,7 @@ final class PassExecutorService implements Disposable {
         log(updateProgress, pass, "Finished but there are passes in the queue: " + threadsToStartCountdown.get());
       }
       callbackOnApplied.run();
-    }, updateProgress.getModalityState());
+    }, updateProgress.getModalityState(), pass.getExpiredCondition());
   }
 
   private void clearStaleEntries() {

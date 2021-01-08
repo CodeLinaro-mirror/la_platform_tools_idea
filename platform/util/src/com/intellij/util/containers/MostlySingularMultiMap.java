@@ -1,15 +1,9 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
-/*
- * @author max
- */
 package com.intellij.util.containers;
 
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.Processor;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jetbrains.annotations.Debug;
 import org.jetbrains.annotations.NotNull;
 
@@ -23,7 +17,7 @@ public class MostlySingularMultiMap<K, V> implements Serializable {
   protected final Map<K, Object> myMap;
 
   public MostlySingularMultiMap() {
-    myMap = new Object2ObjectOpenHashMap<>();
+    myMap = CollectionFactory.createSmallMemoryFootprintMap();
   }
 
   public MostlySingularMultiMap(@NotNull Map<K, Object> map) {
@@ -144,13 +138,7 @@ public class MostlySingularMultiMap<K, V> implements Serializable {
   }
 
   public void compact() {
-    if (myMap instanceof Object2ObjectOpenHashMap) {
-      ((Object2ObjectOpenHashMap<K, Object>)myMap).trim();
-    }
-    else if (myMap instanceof Object2ObjectOpenCustomHashMap) {
-      ((Object2ObjectOpenCustomHashMap<K, Object>)myMap).trim();
-    }
-
+    CollectionFactory.trimMap(myMap);
     for (Object eachValue : myMap.values()) {
       if (eachValue instanceof ValueList) {
         //noinspection unchecked

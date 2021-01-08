@@ -13,7 +13,7 @@ import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Ref;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.concurrency.Semaphore;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.EdtInvocationManager;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -123,7 +123,7 @@ public final class ApplicationUtil {
         if (!SwingUtilities.isEventDispatchThread() && ApplicationManager.getApplication().isWriteThread()) {
           Logger.getInstance(ApplicationUtil.class).error("Can't invokeAndWait from WT to EDT: probably leads to deadlock");
         }
-        UIUtil.invokeAndWaitIfNeeded(r);
+        EdtInvocationManager.invokeAndWaitIfNeeded(r);
         break;
       case WT:
         if (ApplicationManager.getApplication().isWriteThread()) {
@@ -162,7 +162,7 @@ public final class ApplicationUtil {
     }
   }
 
-  public static class CannotRunReadActionException extends ProcessCanceledException {
+  public static final class CannotRunReadActionException extends ProcessCanceledException {
     // When ForkJoinTask joins task which was exceptionally completed from the other thread
     // it tries to re-create that exception (by reflection) and sets its cause to the original exception.
     // That horrible hack causes all sorts of confusion when we try to analyze the exception cause, e.g. in GlobalInspectionContextImpl.inspectFile().

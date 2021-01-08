@@ -102,6 +102,7 @@ final class ProjectStartupConfigurable implements SearchableConfigurable, Config
   public JComponent createComponent() {
     myModel = new ProjectStartupTasksTableModel();
     myTable = new JBTable(myModel);
+    myTable.setShowGrid(false);
     myTable.getEmptyText().setText(ExecutionBundle.message("settings.project.startup.add.run.configurations.with.the.button"));
     new TableSpeedSearch(myTable);
     DefaultCellEditor defaultEditor = (DefaultCellEditor)myTable.getDefaultEditor(Object.class);
@@ -353,7 +354,7 @@ final class ProjectStartupConfigurable implements SearchableConfigurable, Config
     final TableColumn nameColumn = myTable.getColumnModel().getColumn(ProjectStartupTasksTableModel.NAME_COLUMN);
     nameColumn.setCellRenderer(new ColoredTableCellRenderer() {
       @Override
-      protected void customizeCellRenderer(JTable table, @Nullable Object value, boolean selected, boolean hasFocus, int row, int column) {
+      protected void customizeCellRenderer(@NotNull JTable table, @Nullable Object value, boolean selected, boolean hasFocus, int row, int column) {
         final RunnerAndConfigurationSettings settings = myModel.getAllConfigurations().get(row);
         setIcon(settings.getConfiguration().getIcon());
         append(settings.getName());

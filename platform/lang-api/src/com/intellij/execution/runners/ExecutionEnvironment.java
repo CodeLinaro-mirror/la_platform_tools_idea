@@ -13,7 +13,6 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.DataKey;
 import com.intellij.openapi.application.Experiments;
-import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.UserDataHolderBase;
@@ -44,6 +43,7 @@ public final class ExecutionEnvironment extends UserDataHolderBase implements Di
   private final ProgramRunner<?> myRunner;
   private long myExecutionId = 0;
   @Nullable private DataContext myDataContext;
+  @Nullable private String myModulePath;
 
   @Nullable
   private ProgramRunner.Callback callback;
@@ -109,7 +109,7 @@ public final class ExecutionEnvironment extends UserDataHolderBase implements Di
         Experiments.getInstance().isFeatureEnabled("run.targets")) {
       String targetName = ((TargetEnvironmentAwareRunProfile)myRunProfile).getDefaultTargetName();
       if (targetName != null) {
-        TargetEnvironmentConfiguration config = TargetEnvironmentsManager.getInstance().getTargets().findByName(targetName);
+        TargetEnvironmentConfiguration config = TargetEnvironmentsManager.getInstance(myProject).getTargets().findByName(targetName);
         if (config != null) {
           return config.createEnvironmentFactory(myProject);
         }
@@ -119,24 +119,33 @@ public final class ExecutionEnvironment extends UserDataHolderBase implements Di
   }
 
   @ApiStatus.Experimental
-  public @NotNull TargetEnvironment getPreparedTargetEnvironment(@NotNull RunProfileState runProfileState, @NotNull ProgressIndicator progressIndicator)
+  public @NotNull TargetEnvironment getPreparedTargetEnvironment(@NotNull RunProfileState runProfileState,
+                                                                 TargetEnvironmentAwareRunProfileState.@NotNull TargetProgressIndicator targetProgressIndicator)
     throws ExecutionException {
     if (myPrepareRemoteEnvironment != null) {
+      // In a correct implementation that uses the new API this condition is always true.
       return myPrepareRemoteEnvironment;
     }
-    return prepareTargetEnvironment(runProfileState, progressIndicator);
+    // Warning: this method executes in EDT!
+    return prepareTargetEnvironment(runProfileState, targetProgressIndicator);
   }
 
   @ApiStatus.Experimental
-  public @NotNull TargetEnvironment prepareTargetEnvironment(@NotNull RunProfileState runProfileState, @NotNull ProgressIndicator progressIndicator)
+  public @NotNull TargetEnvironment prepareTargetEnvironment(@NotNull RunProfileState runProfileState,
+                                                             TargetEnvironmentAwareRunProfileState.@NotNull TargetProgressIndicator targetProgressIndicator)
     throws ExecutionException {
     TargetEnvironmentFactory factory = getTargetEnvironmentFactory();
     TargetEnvironmentRequest request = factory.createRequest();
     if (runProfileState instanceof TargetEnvironmentAwareRunProfileState) {
       ((TargetEnvironmentAwareRunProfileState)runProfileState)
-        .prepareTargetEnvironmentRequest(request, factory.getTargetConfiguration(), progressIndicator);
+        .prepareTargetEnvironmentRequest(request, factory.getTargetConfiguration(), targetProgressIndicator);
     }
-    return myPrepareRemoteEnvironment = factory.prepareRemoteEnvironment(request, progressIndicator);
+    myPrepareRemoteEnvironment = factory.prepareRemoteEnvironment(request, targetProgressIndicator);
+    if (runProfileState instanceof TargetEnvironmentAwareRunProfileState) {
+      ((TargetEnvironmentAwareRunProfileState)runProfileState)
+        .handleCreatedTargetEnvironment(myPrepareRemoteEnvironment, targetProgressIndicator);
+    }
+    return myPrepareRemoteEnvironment;
   }
 
   @ApiStatus.Internal
@@ -255,7 +264,17 @@ public final class ExecutionEnvironment extends UserDataHolderBase implements Di
     return myDataContext;
   }
 
-  private static class CachingDataContext implements DataContext {
+
+  void setModulePath(@NotNull String modulePath) {
+    this.myModulePath = modulePath;
+  }
+
+  @Nullable
+  public String getModulePath() {
+    return myModulePath;
+  }
+
+  private static final class CachingDataContext implements DataContext {
     private static final DataKey[] keys = {PROJECT, PROJECT_FILE_DIRECTORY, EDITOR, VIRTUAL_FILE, MODULE, PSI_FILE};
     private final Map<String, Object> values = new HashMap<>();
 

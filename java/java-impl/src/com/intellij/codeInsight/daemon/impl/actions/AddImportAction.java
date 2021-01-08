@@ -10,6 +10,7 @@ import com.intellij.codeInsight.daemon.QuickFixBundle;
 import com.intellij.codeInsight.hint.QuestionAction;
 import com.intellij.codeInsight.navigation.NavigationUtil;
 import com.intellij.ide.util.DefaultPsiElementCellRenderer;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -35,6 +36,7 @@ import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.accessibility.AccessibleContext;
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
@@ -73,10 +75,10 @@ public class AddImportAction implements QuestionAction {
       }
     }
 
-    if (myTargetClasses.length == 1){
+    if (myTargetClasses.length == 1) {
       addImport(myReference, myTargetClasses[0]);
     }
-    else{
+    else {
       chooseClassAndImport();
     }
     return true;
@@ -86,7 +88,7 @@ public class AddImportAction implements QuestionAction {
     CodeInsightUtil.sortIdenticalShortNamedMembers(myTargetClasses, myReference);
 
     final BaseListPopupStep<PsiClass> step =
-      new BaseListPopupStep<PsiClass>(QuickFixBundle.message("class.to.import.chooser.title"), myTargetClasses) {
+      new BaseListPopupStep<>(QuickFixBundle.message("class.to.import.chooser.title"), myTargetClasses) {
         @Override
         public boolean isAutoSelectionEnabled() {
           return false;
@@ -135,8 +137,18 @@ public class AddImportAction implements QuestionAction {
         PopupListElementRenderer baseRenderer = (PopupListElementRenderer)super.getListElementRenderer();
         ListCellRenderer<Object> psiRenderer = new DefaultPsiElementCellRenderer();
         return (list, value, index, isSelected, cellHasFocus) -> {
-          JPanel panel = new JPanel(new BorderLayout());
           baseRenderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+          JPanel panel = new JPanel(new BorderLayout()) {
+            private final AccessibleContext myAccessibleContext = baseRenderer.getAccessibleContext();
+
+            @Override
+            public AccessibleContext getAccessibleContext() {
+              if (myAccessibleContext == null) {
+                return super.getAccessibleContext();
+              }
+              return myAccessibleContext;
+            }
+          };
           panel.add(baseRenderer.getNextStepLabel(), BorderLayout.EAST);
           panel.add(psiRenderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus));
           return panel;
@@ -153,11 +165,11 @@ public class AddImportAction implements QuestionAction {
 
     List<String> toExclude = getAllExcludableStrings(qname);
 
-    return new BaseListPopupStep<String>(null, toExclude) {
+    return new BaseListPopupStep<>(null, toExclude) {
       @NotNull
       @Override
       public String getTextFor(String value) {
-        return "Exclude '" + value + "' from auto-import";
+        return JavaBundle.message("exclude.0.from.auto.import", value);
       }
 
       @Override
@@ -209,7 +221,7 @@ public class AddImportAction implements QuestionAction {
   }
 
   private void doAddImport(@NotNull PsiReference ref, @NotNull PsiClass targetClass) {
-    try{
+    try {
       bindReference(ref, targetClass);
       if (CodeInsightWorkspaceSettings.getInstance(myProject).isOptimizeImportsOnTheFly()) {
         Document document = myEditor.getDocument();
@@ -217,7 +229,7 @@ public class AddImportAction implements QuestionAction {
         new OptimizeImportsProcessor(myProject, psiFile).runWithoutProgress();
       }
     }
-    catch(IncorrectOperationException e){
+    catch (IncorrectOperationException e) {
       LOG.error(e);
     }
     myEditor.getScrollingModel().scrollToCaret(ScrollType.RELATIVE);

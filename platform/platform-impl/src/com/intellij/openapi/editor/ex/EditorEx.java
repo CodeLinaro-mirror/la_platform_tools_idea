@@ -30,12 +30,12 @@ import com.intellij.openapi.editor.highlighter.EditorHighlighter;
 import com.intellij.openapi.editor.impl.TextDrawingCallback;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ui.ButtonlessScrollBarUI;
 import org.intellij.lang.annotations.MagicConstant;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -70,7 +70,7 @@ public interface EditorEx extends Editor {
    *
    * @return the markup model instance.
    * @see com.intellij.openapi.editor.markup.MarkupEditorFilter
-   * @see com.intellij.openapi.editor.impl.EditorImpl#setHighlightingFilter(Condition)
+   * @see com.intellij.openapi.editor.impl.EditorImpl#setHighlightingPredicate(java.util.function.Predicate)
    * @see com.intellij.openapi.editor.impl.DocumentMarkupModel#forDocument(Document, Project, boolean)
    */
   @NotNull
@@ -197,7 +197,7 @@ public interface EditorEx extends Editor {
    *
    * @param text    virtual text to show until user data is entered or the editor is focused
    */
-  void setPlaceholder(@Nullable CharSequence text);
+  void setPlaceholder(@Nullable @Nls CharSequence text);
 
   /**
    * Sets text attributes for a placeholder. Font style and color are currently supported. 

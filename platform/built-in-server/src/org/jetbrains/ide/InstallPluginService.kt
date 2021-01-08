@@ -6,7 +6,6 @@ import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.application.ex.ApplicationInfoEx
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginsAdvertiser
@@ -26,14 +25,14 @@ import java.io.OutputStream
 import java.net.URI
 import java.net.URISyntaxException
 
+@Suppress("HardCodedStringLiteral")
 internal class InstallPluginService : RestService() {
-  private val LOG = logger<InstallPluginService>()
-
   override fun getServiceName() = "installPlugin"
 
-  override fun isAccessible(request: HttpRequest) = true
+  override fun isOriginAllowed(request: HttpRequest) = OriginCheckResult.ASK_CONFIRMATION
 
   var isAvailable = true
+  private val trustedHosts = System.getProperty("idea.api.install.hosts.trusted", "").split(",")
 
   override fun execute(urlDecoder: QueryStringDecoder, request: FullHttpRequest, context: ChannelHandlerContext): String? {
     val pluginId = getStringParameter("pluginId", urlDecoder)
@@ -133,6 +132,7 @@ internal class InstallPluginService : RestService() {
 
     return (originHost != null && (
       listOf("plugins.jetbrains.com", "package-search.services.jetbrains.com", "package-search.jetbrains.com").contains(originHost) ||
+      trustedHosts.contains(originHost) ||
       originHost.endsWith(".dev.marketplace.intellij.net") ||
       NetUtils.isLocalhost(originHost))) || super.isHostTrusted(request, urlDecoder)
   }

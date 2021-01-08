@@ -244,7 +244,7 @@ public class ExternalJavacManager extends ProcessAdapter {
     }
   }
 
-  private static <T> void debug(T data, Function<T, String> message) {
+  private static <T> void debug(T data, Function<? super T, String> message) {
     if (LOG.isDebugEnabled()) {
       LOG.debug(message.apply(data));
     }
@@ -335,7 +335,6 @@ public class ExternalJavacManager extends ProcessAdapter {
     appendParam(cmdLine, "-Djava.awt.headless=true");
 
     //appendParam(cmdLine, "-XX:MaxPermSize=150m");
-    //appendParam(cmdLine, "-XX:ReservedCodeCacheSize=64m");
     if (heapSize > 0) {
       // if the value is zero or negative, use JVM default memory settings
       final int xms = heapSize / 2;

@@ -42,7 +42,6 @@ import com.intellij.util.ThreeState
 import com.intellij.util.containers.*
 import com.intellij.util.getAttributeBooleanValue
 import com.intellij.util.text.UniqueNameGenerator
-import gnu.trove.THashMap
 import org.jdom.Element
 import org.jetbrains.annotations.TestOnly
 import java.util.*
@@ -133,7 +132,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   @Suppress("LeakingThis")
   private val listManager = RunConfigurationListManagerHelper(this)
 
-  private val templateIdToConfiguration = THashMap<String, RunnerAndConfigurationSettingsImpl>()
+  private val templateIdToConfiguration = HashMap<String, RunnerAndConfigurationSettingsImpl>()
 
   // template configurations are not included here
   private val idToSettings: LinkedHashMap<String, RunnerAndConfigurationSettings>
@@ -219,11 +218,16 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     messageBusConnection.subscribe(DynamicPluginListener.TOPIC, object : DynamicPluginListener {
       override fun beforePluginUnload(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
         iconCache.clear()
+      }
+
+      override fun pluginUnloaded(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
+        iconCache.clear()
+        // must be on unload and not before, since load must not be able to use unloaded plugin classes
         reloadSchemes()
       }
     })
 
-    BeforeRunTaskProvider.EP_NAME.getPoint(project).addChangeListener(Runnable(stringIdToBeforeRunProvider::drop), project)
+    BeforeRunTaskProvider.EP_NAME.getPoint(project).addChangeListener(stringIdToBeforeRunProvider::drop, project)
   }
 
   private fun clearSelectedConfigurationIcon() {
@@ -259,9 +263,6 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   private fun createConfiguration(configuration: RunConfiguration, template: RunnerAndConfigurationSettingsImpl): RunnerAndConfigurationSettings {
     val settings = RunnerAndConfigurationSettingsImpl(this, configuration)
     settings.importRunnerAndConfigurationSettings(template)
-    if (!settings.isShared) {
-      shareConfiguration(settings, template.isShared)
-    }
     configuration.beforeRunTasks = template.configuration.beforeRunTasks
     return settings
   }
@@ -284,7 +285,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
       val configuration = settings.configuration
       if (type.id == configuration.type.id) {
         if (result == null) {
-          result = SmartList<RunConfiguration>()
+          result = SmartList()
         }
         result.add(configuration)
       }
@@ -370,6 +371,8 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
         for (runConfig in deletedAndAddedRunConfigs.addedRunConfigs) {
           addConfiguration(runConfig)
 
+          if (runConfig.isTemplate) continue
+
           if (!StartupManager.getInstance(project).postStartupActivityPassed()) {
             // Empty string means that there's no information about initially selected RC in workspace.xml => IDE should select any.
             if (!selectedRCSetupScheduled && (notYetAppliedInitialSelectedConfigurationId == runConfig.uniqueID ||
@@ -403,8 +406,13 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   }
 
   private fun doAddConfiguration(settings: RunnerAndConfigurationSettingsImpl, isCheckRecentsLimit: Boolean) {
+    if (settings.isTemplate) {
+      addOrUpdateTemplateConfiguration(settings)
+      return
+    }
+
     val newId = settings.uniqueID
-    var existingId: String? = null
+    var existingId: String?
     lock.write {
       listManager.immutableSortedSettingsList = null
 
@@ -426,31 +434,8 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
       if (existingId == null) {
         refreshUsagesList(settings)
       }
-      else {
-        // storage changed, need to remove from old storages
-        when {
-          settings.isStoredInDotIdeaFolder -> {
-            rcInArbitraryFileManager.removeRunConfiguration(settings)
-            workspaceSchemeManager.removeScheme(settings)
-          }
-          settings.isStoredInArbitraryFileInProject -> {
-            rcInArbitraryFileManager.removeRunConfiguration(settings, true) // path could change: need to remove and add again
-            projectSchemeManager.removeScheme(settings)
-            workspaceSchemeManager.removeScheme(settings)
-          }
-          else -> {
-            rcInArbitraryFileManager.removeRunConfiguration(settings)
-            projectSchemeManager.removeScheme(settings)
-          }
-        }
-      }
 
-      // scheme level can be changed (workspace -> project), so, ensure that scheme is added to corresponding scheme manager (if exists, doesn't harm)
-      when {
-        settings.isStoredInDotIdeaFolder -> projectSchemeManager.addScheme(settings)
-        settings.isStoredInArbitraryFileInProject -> rcInArbitraryFileManager.addRunConfiguration(settings)
-        else -> workspaceSchemeManager.addScheme(settings)
-      }
+      ensureSettingsAreTrackedByCorrectManager(settings, existingId != null)
     }
 
     if (existingId == null) {
@@ -461,6 +446,47 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     }
     else {
       eventPublisher.runConfigurationChanged(settings, existingId)
+    }
+  }
+
+  private fun addOrUpdateTemplateConfiguration(settings: RunnerAndConfigurationSettingsImpl) {
+    val factory = settings.factory
+    // do not register unknown RC type templates (it is saved in any case in the scheme manager, so, not lost on save)
+    if (factory == UnknownConfigurationType.getInstance()) return
+
+    lock.write {
+      val key = getFactoryKey(factory)
+      val existing = templateIdToConfiguration.put(key, settings)
+      ensureSettingsAreTrackedByCorrectManager(settings, existing != null)
+    }
+  }
+
+  private fun ensureSettingsAreTrackedByCorrectManager(settings: RunnerAndConfigurationSettingsImpl,
+                                                       ensureSettingsAreRemovedFromOtherManagers: Boolean) {
+    if (ensureSettingsAreRemovedFromOtherManagers) {
+      // storage could change, need to remove from old storages
+      when {
+        settings.isStoredInDotIdeaFolder -> {
+          rcInArbitraryFileManager.removeRunConfiguration(settings)
+          workspaceSchemeManager.removeScheme(settings)
+        }
+        settings.isStoredInArbitraryFileInProject -> {
+          rcInArbitraryFileManager.removeRunConfiguration(settings, true) // path could change: need to remove and add again
+          projectSchemeManager.removeScheme(settings)
+          workspaceSchemeManager.removeScheme(settings)
+        }
+        else -> {
+          rcInArbitraryFileManager.removeRunConfiguration(settings)
+          projectSchemeManager.removeScheme(settings)
+        }
+      }
+    }
+
+    // storage could change, need to make sure the RC is added to the corresponding scheme manager (no harm if it's already there)
+    when {
+      settings.isStoredInDotIdeaFolder -> projectSchemeManager.addScheme(settings)
+      settings.isStoredInArbitraryFileInProject -> rcInArbitraryFileManager.addRunConfiguration(settings)
+      else -> workspaceSchemeManager.addScheme(settings)
     }
   }
 
@@ -504,7 +530,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
       for (settings in idToSettings.values) {
         if (settings.isTemporary && !recentlyUsedTemporaries.contains(settings)) {
           if (removed == null) {
-            removed = SmartList<RunnerAndConfigurationSettings>()
+            removed = SmartList()
           }
           removed!!.add(settings)
           if (--excess <= 0) {
@@ -556,9 +582,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
   internal fun selectConfigurationStoredInFile(file: VirtualFile) {
     val runConfigs = rcInArbitraryFileManager.getRunConfigsFromFiles(listOf(file.path))
-    if (!runConfigs.isEmpty()) {
-      selectedConfiguration = runConfigs.first()
-    }
+    runConfigs.find { idToSettings.containsKey(it.uniqueID) }?.let { selectedConfiguration = it }
   }
 
   fun requestSort() {
@@ -639,7 +663,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     settings.forEach { parentNode.addContent((it as RunnerAndConfigurationSettingsImpl).writeScheme()) }
   }
 
-  internal fun writeBeforeRunTasks(configuration: RunConfiguration): Element? {
+  internal fun writeBeforeRunTasks(configuration: RunConfiguration): Element {
     val tasks = configuration.beforeRunTasks
     val methodElement = Element(METHOD)
     methodElement.setAttribute("v", "2")
@@ -701,7 +725,9 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
           }
         }
 
-        lock.write {  templateIdToConfiguration.retainEntries { _, settings -> settings.type != extension } }
+        lock.write {
+          templateIdToConfiguration.values.removeIf(java.util.function.Predicate { it.type == extension })
+        }
       }
     }, this)
 
@@ -826,7 +852,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
     if (selectedConfiguration == null) {
       // Empty string means that there's no information about initially selected RC in workspace.xml => IDE should select any.
-      notYetAppliedInitialSelectedConfigurationId = selectedConfigurationId ?: "";
+      notYetAppliedInitialSelectedConfigurationId = selectedConfigurationId ?: ""
       selectedConfiguration = allSettings.firstOrNull { it.type.isManaged }
     }
   }
@@ -915,33 +941,10 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   }
 
   internal fun addConfiguration(element: Element, settings: RunnerAndConfigurationSettingsImpl, isCheckRecentsLimit: Boolean = true) {
-    if (settings.isTemplate) {
-      val factory = settings.factory
-      // do not register unknown RC type templates (it is saved in any case in the scheme manager, so, not lost on save)
-      if (factory !== UnknownConfigurationType.getInstance()) {
-        val key = getFactoryKey(factory)
-        val old = lock.write {
-          templateIdToConfiguration.put(key, settings)
-        }
-
-        if (old != null) {
-          val message = "Template $key already registered, old: $old, new: $settings"
-          // https://youtrack.jetbrains.com/issue/IDEA-205510
-          if (old.configuration.id == "AndroidRunConfigurationType") {
-            LOG.warn(message)
-          }
-          else {
-            LOG.error(message)
-          }
-        }
-      }
-    }
-    else {
-      doAddConfiguration(settings, isCheckRecentsLimit)
-      if (element.getAttributeBooleanValue(SELECTED_ATTR)) {
-        // to support old style
-        selectedConfiguration = settings
-      }
+    doAddConfiguration(settings, isCheckRecentsLimit)
+    if (element.getAttributeBooleanValue(SELECTED_ATTR) && !settings.isTemplate) {
+      // to support old style
+      selectedConfiguration = settings
     }
   }
 
@@ -1069,7 +1072,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     if (selectedConfiguration?.uniqueID == uniqueId) {
       iconCache.checkValidity(uniqueId)
     }
-    var icon = iconCache.get(uniqueId, settings, project, this)
+    var icon = iconCache.get(uniqueId, settings, project)
     if (withLiveIndicator) {
       val runningDescriptors = ExecutionManagerImpl.getInstance(project).getRunningDescriptors(Condition { it === settings })
       when {
@@ -1118,7 +1121,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     for (task in getBeforeRunTasks(settings)) {
       if (task.providerId === taskProviderId) {
         if (result == null) {
-          result = SmartList<T>()
+          result = SmartList()
         }
         @Suppress("UNCHECKED_CAST")
         result.add(task as T)
@@ -1186,10 +1189,14 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
   fun removeConfigurations(toRemove: Collection<RunnerAndConfigurationSettings>) = removeConfigurations(toRemove, true)
 
-  private fun removeConfigurations(toRemove: Collection<RunnerAndConfigurationSettings>, deleteFileIfStoredInArbitraryFile: Boolean) {
-    if (toRemove.isEmpty()) {
+  internal fun removeConfigurations(_toRemove: Collection<RunnerAndConfigurationSettings>,
+                                    deleteFileIfStoredInArbitraryFile: Boolean = true,
+                                    onSchemeManagerDeleteEvent: Boolean = false) {
+    if (_toRemove.isEmpty()) {
       return
     }
+
+    val toRemove = removeTemplatesAndReturnRemaining(_toRemove, deleteFileIfStoredInArbitraryFile, onSchemeManagerDeleteEvent)
 
     val changedSettings = SmartList<RunnerAndConfigurationSettings>()
     val removed = SmartList<RunnerAndConfigurationSettings>()
@@ -1205,15 +1212,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
           }
 
           iterator.remove()
-
-          settings as RunnerAndConfigurationSettingsImpl
-          when {
-            settings.isStoredInDotIdeaFolder -> projectSchemeManager.removeScheme(settings)
-            settings.isStoredInArbitraryFileInProject -> rcInArbitraryFileManager.removeRunConfiguration(settings,
-                                                                                                         false,
-                                                                                                         deleteFileIfStoredInArbitraryFile)
-            else -> workspaceSchemeManager.removeScheme(settings)
-          }
+          removeSettingsFromCorrespondingManager(settings as RunnerAndConfigurationSettingsImpl, deleteFileIfStoredInArbitraryFile)
 
           recentlyUsedTemporaries.remove(settings)
           removed.add(settings)
@@ -1246,6 +1245,39 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
     removed.forEach { eventPublisher.runConfigurationRemoved(it) }
     changedSettings.forEach { eventPublisher.runConfigurationChanged(it, null) }
+  }
+
+  private fun removeTemplatesAndReturnRemaining(toRemove: Collection<RunnerAndConfigurationSettings>,
+                                                deleteFileIfStoredInArbitraryFile: Boolean,
+                                                onSchemeManagerDeleteEvent: Boolean): Collection<RunnerAndConfigurationSettings> {
+    val result = mutableListOf<RunnerAndConfigurationSettings>()
+
+    for (settings in toRemove) {
+      if (settings.isTemplate) {
+        templateIdToConfiguration.remove(getFactoryKey(settings.factory))
+        if (!onSchemeManagerDeleteEvent) {
+          removeSettingsFromCorrespondingManager(settings as RunnerAndConfigurationSettingsImpl, deleteFileIfStoredInArbitraryFile)
+        }
+      }
+      else {
+        result.add(settings)
+      }
+    }
+
+    return result
+  }
+
+  private fun removeSettingsFromCorrespondingManager(settings: RunnerAndConfigurationSettingsImpl,
+                                                     deleteFileIfStoredInArbitraryFile: Boolean) {
+    when {
+      settings.isStoredInDotIdeaFolder -> projectSchemeManager.removeScheme(settings)
+      settings.isStoredInArbitraryFileInProject -> {
+        rcInArbitraryFileManager.removeRunConfiguration(settings,
+                                                        removeRunConfigOnlyIfFileNameChanged = false,
+                                                        deleteContainingFile = deleteFileIfStoredInArbitraryFile)
+      }
+      else -> workspaceSchemeManager.removeScheme(settings)
+    }
   }
 
   @TestOnly

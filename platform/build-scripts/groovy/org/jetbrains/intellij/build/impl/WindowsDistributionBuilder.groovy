@@ -1,6 +1,7 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileFilters
 import com.intellij.openapi.util.io.FileUtil
 import groovy.xml.XmlUtil
@@ -41,6 +42,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
     }
     BuildTasksImpl.unpackPty4jNative(buildContext, winDistPath, "win")
     BuildTasksImpl.generateBuildTxt(buildContext, winDistPath)
+    SVGPreBuilder.copyIconDb(buildContext, winDistPath)
 
     buildContext.ant.copy(file: ideaProperties.path, todir: "$winDistPath/bin")
     buildContext.ant.fixcrlf(file: "$winDistPath/bin/idea.properties", eol: "dos")
@@ -71,25 +73,66 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       buildContext.bundledJreManager.repackageX86Jre(OsFamily.WINDOWS)
     }
 
-    def jreDirectoryPath = buildContext.bundledJreManager.extractJre(OsFamily.WINDOWS)
+    String zipPath = null, exePath = null
+
     if (customizer.buildZipArchive) {
-      // Android Studio: we build a single artifact for win64.
-      buildWinZip(buildContext.bundledJreManager.extractJre("win"), ".win", winDistPath, [])
+      def jreDirectoryPaths = customizer.zipArchiveWithBundledJre ? [buildContext.bundledJreManager.extractJre(OsFamily.WINDOWS)] : []
+      zipPath = buildWinZip(jreDirectoryPaths, ".win", winDistPath)
     }
 
     /* Android Studio: this is handled by ADRT?
     buildContext.executeStep("Build Windows Exe Installer", BuildOptions.WINDOWS_EXE_INSTALLER_STEP) {
+      def jreDirectoryPath = buildContext.bundledJreManager.extractJre(OsFamily.WINDOWS)
       def productJsonDir = new File(buildContext.paths.temp, "win.dist.product-info.json.exe").absolutePath
       generateProductJson(productJsonDir, jreDirectoryPath != null)
       new ProductInfoValidator(buildContext).validateInDirectory(productJsonDir, "", [winDistPath, jreDirectoryPath], [])
-      new WinExeInstallerBuilder(buildContext, customizer, jreDirectoryPath)
+      exePath = new WinExeInstallerBuilder(buildContext, customizer, jreDirectoryPath)
         .buildInstaller(winDistPath, productJsonDir, '', buildContext.windowsDistributionCustomizer.include32BitLauncher)
     } */
+
+    if (!buildContext.options.isInDevelopmentMode && zipPath != null && exePath != null) {
+      if (SystemInfo.isLinux) {
+        buildContext.messages.info("Comparing ${new File(zipPath).name} vs. ${new File(exePath).name} ...")
+
+        File tempZip = new File(buildContext.paths.temp, "__zip")
+        buildContext.ant.mkdir(dir: tempZip)
+        buildContext.ant.exec(executable: "unzip", dir: tempZip, failOnError: true) {
+          arg(value: "-qq")
+          arg(value: zipPath)
+        }
+
+        File tempExe = new File(buildContext.paths.temp, "__exe")
+        buildContext.ant.mkdir(dir: tempExe)
+        buildContext.ant.exec(executable: "7z", dir: tempExe, failOnError: true) {
+          arg(value: "x")
+          arg(value: "-bd")
+          arg(value: exePath)
+        }
+        if (new File("${tempExe}/\$PLUGINSDIR").exists()) {
+          buildContext.ant.delete(dir: "${tempExe}/\$PLUGINSDIR")
+        }
+
+        buildContext.ant.exec(executable: "diff", failOnError: true) {
+          arg(value: "-q")
+          arg(value: "-r")
+          arg(value: tempZip.path)
+          arg(value: tempExe.path)
+        }
+
+        buildContext.ant.delete(dir: tempZip)
+        buildContext.ant.delete(dir: tempExe)
+      }
+      else {
+        buildContext.messages.warning("Comparing .zip and .exe is not supported on ${SystemInfo.OS_NAME}")
+      }
+    }
   }
 
   private void generateScripts(String winDistPath) {
     String fullName = buildContext.applicationInfo.productName
-    String vmOptionsFileName = "${buildContext.productProperties.baseFileName}%BITS%.exe"
+    String baseName = buildContext.productProperties.baseFileName
+    String scriptName = "${baseName}.bat"
+    String vmOptionsFileName = "${baseName}%BITS%.exe"
 
     String classPath = "SET CLASS_PATH=%IDE_HOME%\\lib\\${buildContext.bootClassPathJarNames[0]}\n"
     classPath += buildContext.bootClassPathJarNames[1..-1].collect { "SET CLASS_PATH=%CLASS_PATH%;%IDE_HOME%\\lib\\$it" }.join("\n")
@@ -97,7 +140,6 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       classPath += "\nSET CLASS_PATH=%CLASS_PATH%;%JDK%\\lib\\tools.jar"
     }
 
-    def batName = "${buildContext.productProperties.baseFileName}.bat"
     buildContext.ant.copy(todir: "$winDistPath/bin") {
       fileset(dir: "$buildContext.paths.communityHome/platform/build-scripts/resources/win/scripts")
 
@@ -110,11 +152,12 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
         filter(token: "system_selector", value: buildContext.systemSelector)
         filter(token: "ide_jvm_args", value: buildContext.additionalJvmArguments)
         filter(token: "class_path", value: classPath)
-        filter(token: "script_name", value: batName)
+        filter(token: "script_name", value: scriptName)
+        filter(token: "base_name", value: baseName)
       }
     }
 
-    buildContext.ant.move(file: "$winDistPath/bin/executable-template.bat", tofile: "$winDistPath/bin/$batName")
+    buildContext.ant.move(file: "$winDistPath/bin/executable-template.bat", tofile: "$winDistPath/bin/$scriptName")
 
     String inspectScript = buildContext.productProperties.inspectCommandName
     if (inspectScript != "inspect") {
@@ -151,6 +194,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
       filterset(begintoken: "@@", endtoken: "@@") {
         filter(token: "product_full", value: fullName + "GameTools")
         filter(token: "product_uc", value: buildContext.productProperties.getEnvironmentVariableBaseName(buildContext.applicationInfo))
+        filter(token: "product_vendor", value: buildContext.applicationInfo.shortCompanyName)
         filter(token: "vm_options", value: vmOptionsFileName)
         filter(token: "isEap", value: buildContext.applicationInfo.isEAP)
         filter(token: "system_selector", value: "AndroidGameDevelopmentTools")
@@ -174,7 +218,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
     architectures.each {
       def fileName = "${buildContext.productProperties.baseFileName}${it.fileSuffix}.exe.vmoptions"
       def vmOptions = VmOptionsGenerator.computeVmOptions(it, buildContext.applicationInfo.isEAP, buildContext.productProperties)
-      new File(winDistPath, "bin/$fileName").text = vmOptions.join("\n") + "\n"
+      new File(winDistPath, "bin/$fileName").text = vmOptions.join('\n') + '\n'
     }
 
     buildContext.ant.fixcrlf(srcdir: "$winDistPath/bin", includes: "*.vmoptions", eol: "dos")
@@ -182,10 +226,9 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
 
   private void buildWinLauncher(JvmArchitecture arch, String winDistPath) {
     buildContext.messages.block("Build Windows executable ${arch.name()}") {
-      String exeFileName = "${buildContext.productProperties.baseFileName}${arch.fileSuffix}.exe"
+      def executableBaseName = "${buildContext.productProperties.baseFileName}${arch.fileSuffix}"
       def launcherPropertiesPath = "${buildContext.paths.temp}/launcher${arch.fileSuffix}.properties"
       def upperCaseProductName = buildContext.applicationInfo.upperCaseProductName
-      def lowerCaseProductName = buildContext.applicationInfo.shortProductName.toLowerCase()
       String vmOptions = (buildContext.additionalJvmArguments +
                           " -Dide.native.launcher=true" +
                           " -Didea.vendor.name=${buildContext.applicationInfo.shortCompanyName}" +
@@ -203,8 +246,8 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
         IDS_JDK_ENV_VAR=${envVarBaseName}_JDK$jdkEnvVarSuffix
         IDS_APP_TITLE=$productName Launcher
         IDS_VM_OPTIONS_PATH=%APPDATA%\\\\${buildContext.applicationInfo.shortCompanyName}\\\\${buildContext.systemSelector}
-        IDS_VM_OPTION_ERRORFILE=-XX:ErrorFile=%USERPROFILE%\\\\java_error_in_${lowerCaseProductName}_%p.log
-        IDS_VM_OPTION_HEAPDUMPPATH=-XX:HeapDumpPath=%USERPROFILE%\\\\java_error_in_${lowerCaseProductName}.hprof
+        IDS_VM_OPTION_ERRORFILE=-XX:ErrorFile=%USERPROFILE%\\\\java_error_in_${executableBaseName}_%p.log
+        IDS_VM_OPTION_HEAPDUMPPATH=-XX:HeapDumpPath=%USERPROFILE%\\\\java_error_in_${executableBaseName}.hprof
         IDC_WINLAUNCHER=${upperCaseProductName}_LAUNCHER
         IDS_PROPS_ENV_VAR=${envVarBaseName}_PROPERTIES
         IDS_VM_OPTIONS_ENV_VAR=$envVarBaseName${vmOptionsEnvVarSuffix}_VM_OPTIONS
@@ -214,7 +257,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
 
       def communityHome = "$buildContext.paths.communityHome"
       String inputPath = "$communityHome/bin/WinLauncher/WinLauncher${arch.fileSuffix}.exe"
-      def outputPath = "$winDistPath/bin/$exeFileName"
+      def outputPath = "${winDistPath}/bin/${executableBaseName}.exe"
       def resourceModules = [buildContext.findApplicationInfoModule(), buildContext.findModule("intellij.platform.icons")]
       buildContext.ant.java(classname: "com.pme.launcher.LauncherGeneratorMain", fork: "true", failonerror: "true") {
         sysproperty(key: "java.awt.headless", value: "true")
@@ -269,7 +312,7 @@ class WindowsDistributionBuilder extends OsSpecificDistributionBuilder {
   }
 
   // Android Studio: modified by Change Idc07b110 / commit f20681e
-  private void buildWinZip(String jdkDirectoryPath, String zipNameSuffix, String winDistPath, List<String> excludeList = [] ) {
+  private void buildWinZip(List<String> jdkDirectoryPaths, String zipNameSuffix, String winDistPath, List<String> excludeList = [] ) {
     buildContext.messages.block("Build Windows ${zipNameSuffix}.zip distribution") {
       def baseName = buildContext.productProperties.getBaseArtifactName(buildContext.applicationInfo, buildContext.buildNumber)
       def targetPath = "${buildContext.paths.artifacts}/${baseName}${zipNameSuffix}.zip"
@@ -291,6 +334,7 @@ TODO(b/118034991): generate product-info.json files (or not) */
       new ProductInfoValidator(buildContext).checkInArchive(targetPath, zipPrefix)
 TODO(b/118034991): generate product-info.json files (or not) */
       buildContext.notifyArtifactBuilt(targetPath)
+      return targetPath
     }
   }
 

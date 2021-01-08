@@ -3,6 +3,7 @@ package com.intellij.codeInspection;
 
 import com.google.common.base.Predicates;
 import com.google.common.collect.Lists;
+import com.intellij.ProjectTopics;
 import com.intellij.analysis.AnalysisScope;
 import com.intellij.codeInspection.ex.*;
 import com.intellij.codeInspection.reference.RefElement;
@@ -28,7 +29,11 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.util.ProgressIndicatorBase;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.project.ProjectManagerListener;
 import com.intellij.openapi.project.ex.ProjectManagerEx;
+import com.intellij.openapi.roots.ModuleRootEvent;
+import com.intellij.openapi.roots.ModuleRootListener;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
@@ -58,12 +63,13 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Predicate;
+
+import static com.intellij.codeInspection.WritersKt.writeProjectDescription;
+import static com.intellij.codeInspection.targets.TargetsKt.runAnalysisByTargets;
 
 @SuppressWarnings("UseOfSystemOutOrSystemErr")
 public final class InspectionApplication implements CommandLineInspectionProgressReporter {
@@ -77,7 +83,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
   String myProfileName;
   String myProfilePath;
   public boolean myRunWithEditorSettings;
-  boolean myRunGlobalToolsOnly;
+  public boolean myRunGlobalToolsOnly;
   boolean myAnalyzeChanges;
   boolean myPathProfiling;
   private int myVerboseLevel;
@@ -85,8 +91,9 @@ public final class InspectionApplication implements CommandLineInspectionProgres
   private final MultiMap<Pair<String, Integer>, String> originalWarnings = MultiMap.createConcurrent();
   private final AsyncPromise<Void> isMappingLoaded = new AsyncPromise<>();
   public String myOutputFormat;
-  private InspectionProfileImpl myInspectionProfile;
+  public InspectionProfileImpl myInspectionProfile;
 
+  public String myTargets;
   public boolean myErrorCodeRequired = true;
   public String myScopePattern;
   Map<Path, Long> myCompleteProfile;
@@ -206,6 +213,13 @@ public final class InspectionApplication implements CommandLineInspectionProgres
       }
     }
 
+    if ("sa".equals(myOutputFormat)) {
+      InspectionsReportConverter reportConverter = ReportConverterUtil.getReportConverter(myOutputFormat);
+      if (reportConverter != null) {
+        addRootChangesListener(parentDisposable, reportConverter);
+      }
+    }
+
     Project project = ProjectUtil.openOrImport(projectPath);
     if (project == null) {
       reportError("Unable to open project");
@@ -216,7 +230,6 @@ public final class InspectionApplication implements CommandLineInspectionProgres
 
     MessageBusConnection connection = project.getMessageBus().connect();
     connection.subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, () -> isMappingLoaded.setResult(null));
-
     Disposer.register(parentDisposable, () -> closeProject(project));
 
     ApplicationManager.getApplication().invokeAndWait(() -> VirtualFileManager.getInstance().refreshWithoutFileWatcher(false));
@@ -229,25 +242,14 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     myInspectionProfile = loadInspectionProfile(project);
     if (myInspectionProfile == null) return;
 
-    final AnalysisScope scope;
     if (myAnalyzeChanges) {
-      ChangeListManager changeListManager = ChangeListManager.getInstance(project);
-      changeListManager.invokeAfterUpdate(() -> {
-        List<VirtualFile> files = changeListManager.getAffectedFiles();
-        for (VirtualFile file : files) {
-          reportMessage(0, "modified file" + file.getPath());
-        }
-        try {
-          runAnalysisOnScope(projectPath,
-                             parentDisposable, project, myInspectionProfile,
-                             new AnalysisScope(project, files));
-        }
-        catch (IOException e) {
-          LOG.error(e);
-        }
-      }, InvokeAfterUpdateMode.SYNCHRONOUS_NOT_CANCELLABLE, null, null);
+      List<VirtualFile> files = getChangedFiles(project);
+      runAnalysisOnScope(projectPath,
+                         parentDisposable, project, myInspectionProfile,
+                         new AnalysisScope(project, files));
     }
     else {
+      final AnalysisScope scope;
       if (myScopePattern != null) {
         try {
           PackageSet packageSet = PackageSetFactory.getInstance().compile(myScopePattern);
@@ -281,8 +283,58 @@ public final class InspectionApplication implements CommandLineInspectionProgres
         scope = new AnalysisScope(Objects.requireNonNull(psiDirectory));
       }
       LOG.info("Used scope: " + scope.toString());
-      runAnalysisOnScope(projectPath, parentDisposable, project, myInspectionProfile, scope);
+      if (myTargets != null) {
+        runAnalysisByTargets(this, projectPath, project, myInspectionProfile, scope);
+      } else {
+        runAnalysisOnScope(projectPath, parentDisposable, project, myInspectionProfile, scope);
+      }
     }
+  }
+
+  private void addRootChangesListener(Disposable parentDisposable, InspectionsReportConverter reportConverter) {
+    MessageBusConnection applicationBus = ApplicationManager.getApplication().getMessageBus().connect(parentDisposable);
+    applicationBus.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
+      @Override
+      public void projectOpened(@NotNull Project project) {
+        subscribeToRootChanges(project, reportConverter);
+      }
+    });
+  }
+
+  private void subscribeToRootChanges(Project project, InspectionsReportConverter reportConverter) {
+    Path rootLogDir = Paths.get(myOutPath).resolve("log/projectStructureChanges");
+    rootLogDir.toFile().mkdirs();
+    AtomicInteger counter = new AtomicInteger(0);
+    reportConverter.projectData(project, rootLogDir.resolve("state0"));
+
+    MessageBusConnection connection = project.getMessageBus().connect();
+    connection.subscribe(ProjectTopics.PROJECT_ROOTS, new ModuleRootListener() {
+      @Override
+      public void rootsChanged(@NotNull ModuleRootEvent event) {
+        int i = counter.incrementAndGet();
+        reportConverter.projectData(project, rootLogDir.resolve("state" + i));
+        LOG.info("Project structure update written. Change number " + i);
+      }
+    });
+  }
+
+  private List<VirtualFile> getChangedFiles(@NotNull Project project) throws ExecutionException, InterruptedException {
+    ChangeListManager changeListManager = ChangeListManager.getInstance(project);
+    CompletableFuture<List<VirtualFile>> future = new CompletableFuture<>();
+    changeListManager.invokeAfterUpdate(() -> {
+      try {
+        List<VirtualFile> files = changeListManager.getAffectedFiles();
+        for (VirtualFile file : files) {
+          reportMessage(0, "modified file" + file.getPath());
+        }
+        future.complete(files);
+      }
+      catch (Throwable e) {
+        future.completeExceptionally(e);
+      }
+    }, InvokeAfterUpdateMode.SYNCHRONOUS_NOT_CANCELLABLE, null, null);
+
+    return future.get();
   }
 
   private static void waitAllStartupActivitiesPassed(@NotNull Project project) throws InterruptedException, ExecutionException {
@@ -301,7 +353,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     }
   }
 
-  private @NotNull GlobalInspectionContextEx createGlobalInspectionContext(Project project) {
+  public @NotNull GlobalInspectionContextEx createGlobalInspectionContext(Project project) {
     final InspectionManagerBase im = (InspectionManagerBase)InspectionManager.getInstance(project);
     GlobalInspectionContextEx context = (GlobalInspectionContextEx)im.createNewGlobalContext();
     context.setExternalProfile(myInspectionProfile);
@@ -312,7 +364,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     return context;
   }
 
-  private void runAnalysisOnScope(Path projectPath,
+  public void runAnalysisOnScope(Path projectPath,
                                   @NotNull Disposable parentDisposable,
                                   Project project,
                                   InspectionProfileImpl inspectionProfile, AnalysisScope scope)
@@ -343,7 +395,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     runAnalysis(project, projectPath, inspectionProfile, scope, reportConverter, resultsDataPath);
   }
 
-  private void configureProject(@NotNull Path projectPath, @NotNull Project project, @NotNull AnalysisScope scope) {
+  public void configureProject(@NotNull Path projectPath, @NotNull Project project, @NotNull AnalysisScope scope) {
     for (CommandLineInspectionProjectConfigurator configurator : CommandLineInspectionProjectConfigurator.EP_NAME.getIterable()) {
       CommandLineInspectionProjectConfigurator.ConfiguratorContext context = configuratorContext(projectPath, scope);
       if (configurator.isApplicable(context)) {
@@ -380,9 +432,18 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     // convert report
     if (reportConverter != null) {
       try {
+        List<File> results = ContainerUtil.map2List(inspectionsResults, path -> path.toFile());
         reportConverter.convert(resultsDataPath.toString(), myOutPath, context.getTools(),
-                                ContainerUtil.map2List(inspectionsResults, path -> path.toFile()));
-        reportConverter.projectData(project, myOutPath);
+                                results);
+        InspectResultsConsumer.runConsumers(context.getTools(), results, project);
+        if (myOutPath != null) {
+          reportConverter.projectData(project, Paths.get(myOutPath).resolve("projectStructure"));
+
+          //for backward compatibility with teamcity plugin
+          if ("sa".equals(myOutputFormat)) {
+            writeProjectDescription(Paths.get(myOutPath).resolve("projectDescription.json"), project);
+          }
+        }
       }
       catch (InspectionsReportConverter.ConversionException e) {
         reportError("\n" + e.getMessage());
@@ -526,7 +587,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
   private boolean secondAnalysisFilter(ChangeListManager changeListManager, String text, VirtualFile file, int line) {
     List<Range> ranges = getOrComputeUnchangedRanges(file, changeListManager);
     Optional<Range> first = StreamEx.of(ranges).findFirst(it -> it.start1 <= line && line < it.end1);
-    if (!first.isPresent()) {
+    if (first.isEmpty()) {
       logNotFiltered(text, file, line, -1);
       return true;
     }
@@ -586,7 +647,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     }, createProcessIndicator());
   }
 
-  private @NotNull ProgressIndicatorBase createProcessIndicator() {
+  private  @NotNull ProgressIndicatorBase createProcessIndicator() {
     return new ProgressIndicatorBase() {
       private String lastPrefix = "";
       private int myLastPercent = -1;
@@ -643,7 +704,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     VcsPreservingExecutor.executeOperation(project, versionedRoots, message, progressIndicator, afterShelve);
   }
 
-  private void gracefulExit() {
+  public void gracefulExit() {
     if (myErrorCodeRequired) {
       System.exit(1);
     }
@@ -736,10 +797,10 @@ public final class InspectionApplication implements CommandLineInspectionProgres
       }
 
       @Override
-      public void successfullyConverted(@NotNull File backupDir) {
+      public void successfullyConverted(@NotNull Path backupDir) {
         reportMessage(1, InspectionsBundle.message(
           "inspection.application.project.was.succesfully.converted.old.project.files.were.saved.to.0",
-          backupDir.getAbsolutePath()));
+          backupDir.toString()));
       }
 
       @Override
@@ -748,10 +809,10 @@ public final class InspectionApplication implements CommandLineInspectionProgres
       }
 
       @Override
-      public void cannotWriteToFiles(@NotNull List<? extends File> readonlyFiles) {
+      public void cannotWriteToFiles(@NotNull List<Path> readonlyFiles) {
         StringBuilder files = new StringBuilder();
-        for (File file : readonlyFiles) {
-          files.append(file.getAbsolutePath()).append("; ");
+        for (Path file : readonlyFiles) {
+          files.append(file.toString()).append("; ");
         }
         reportError(InspectionsBundle
                       .message("inspection.application.cannot.convert.the.project.the.following.files.are.read.only.0", files.toString()));
@@ -759,7 +820,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     };
   }
 
-  private static @Nullable String getPrefix(final @NotNull String text) {
+  public static @Nullable String getPrefix(final @NotNull String text) {
     int idx = text.indexOf(" in ");
     if (idx == -1) {
       idx = text.indexOf(" of ");

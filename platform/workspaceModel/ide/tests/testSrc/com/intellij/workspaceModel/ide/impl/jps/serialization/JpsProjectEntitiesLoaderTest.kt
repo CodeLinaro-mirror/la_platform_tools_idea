@@ -1,3 +1,4 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.workspaceModel.ide.impl.jps.serialization
 
 import com.intellij.openapi.application.WriteAction
@@ -7,10 +8,14 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.ModuleSourceOrderEntry
+import com.intellij.project.stateStore
 import com.intellij.testFramework.HeavyPlatformTestCase
+import com.intellij.util.io.write
 import com.intellij.workspaceModel.ide.getInstance
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.*
+import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
+import com.intellij.workspaceModel.storage.impl.url.toVirtualFileUrl
 import org.jetbrains.jps.util.JpsPathUtil
 import org.junit.Test
 import java.io.File
@@ -32,14 +37,14 @@ class JpsProjectEntitiesLoaderTest : HeavyPlatformTestCase() {
 
   @Test
   fun `test load module without NewModuleRootManager component`() {
-    val moduleFile = File(project.basePath, "xxx.iml")
-    moduleFile.writeText("""
+    val moduleFile = project.stateStore.projectBasePath.resolve("xxx.iml")
+    moduleFile.write("""
       <?xml version="1.0" encoding="UTF-8"?>
       <module type="JAVA_MODULE" version="4">
       </module>
     """.trimIndent())
 
-    val module = WriteAction.computeAndWait<Module, Exception> { ModuleManager.getInstance(project).loadModule(moduleFile.path) }
+    val module = WriteAction.computeAndWait<Module, Exception> { ModuleManager.getInstance(project).loadModule(moduleFile) }
     val orderEntries = ModuleRootManager.getInstance(module).orderEntries
     assertEquals(1, orderEntries.size)
     assertTrue(orderEntries[0] is ModuleSourceOrderEntry)
@@ -47,15 +52,15 @@ class JpsProjectEntitiesLoaderTest : HeavyPlatformTestCase() {
 
   @Test
   fun `test load module with empty NewModuleRootManager component`() {
-    val moduleFile = File(project.basePath, "xxx.iml")
-    moduleFile.writeText("""
+    val moduleFile = project.stateStore.projectBasePath.resolve("xxx.iml")
+    moduleFile.write("""
       <?xml version="1.0" encoding="UTF-8"?>
       <module type="JAVA_MODULE" version="4">
         <component name="NewModuleRootManager" />
       </module>
     """.trimIndent())
 
-    val module = runWriteActionAndWait { ModuleManager.getInstance(project).loadModule(moduleFile.path) }
+    val module = runWriteActionAndWait { ModuleManager.getInstance(project).loadModule(moduleFile) }
     val orderEntries = ModuleRootManager.getInstance(module).orderEntries
     assertEquals(1, orderEntries.size)
     assertTrue(orderEntries[0] is ModuleSourceOrderEntry)

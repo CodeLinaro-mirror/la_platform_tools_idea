@@ -37,9 +37,7 @@ public class UrlClassLoaderTest {
 
   @Test
   public void testBootstrapResources() {
-    //noinspection SpellCheckingInspection
-    String name = JavaVersion.current().feature > 8 ? "META-INF/services/java.nio.file.spi.FileSystemProvider"
-                                                    : "com/sun/xml/internal/messaging/saaj/soap/LocalStrings.properties";
+    String name = "META-INF/services/java.nio.file.spi.FileSystemProvider";
     assertNotNull(ClassLoader.getSystemResourceAsStream(name));
     assertNull(UrlClassLoader.build().get().getResourceAsStream(name));
     assertNotNull(UrlClassLoader.build().allowBootstrapResources().get().getResourceAsStream(name));

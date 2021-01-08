@@ -19,8 +19,8 @@ import com.intellij.openapi.projectRoots.*;
 import com.intellij.openapi.projectRoots.impl.SdkConfigurationUtil;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectRootManager;
-import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TestDialog;
+import com.intellij.openapi.ui.TestDialogManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
@@ -90,7 +90,8 @@ public class GradleProjectWizardTest extends NewProjectWizardTestCase {
     assertNotNull(buildScript);
     assertEquals("plugins {\n" +
                  "    id 'java'\n" +
-                 "}\n\n" +
+                 "}\n" +
+                 "\n" +
                  "version '1.0-SNAPSHOT'\n" +
                  "\n" +
                  "repositories {\n" +
@@ -98,8 +99,13 @@ public class GradleProjectWizardTest extends NewProjectWizardTestCase {
                  "}\n" +
                  "\n" +
                  "dependencies {\n" +
-                 "    testCompile group: 'junit', name: 'junit', version: '4.12'\n" +
-                 "}\n",
+                 "    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'\n" +
+                 "    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'\n" +
+                 "}\n" +
+                 "\n" +
+                 "test {\n" +
+                 "    useJUnitPlatform()\n" +
+                 "}",
                  StringUtil.convertLineSeparators(VfsUtilCore.loadText(buildScript)));
 
     Module childModule = createModuleFromTemplate("Gradle", null, project, step -> {
@@ -213,7 +219,7 @@ public class GradleProjectWizardTest extends NewProjectWizardTestCase {
         });
       },
       () -> {
-        Messages.setTestDialog(TestDialog.DEFAULT);
+        TestDialogManager.setTestDialog(TestDialog.DEFAULT);
       },
       super::tearDown
     ).run();

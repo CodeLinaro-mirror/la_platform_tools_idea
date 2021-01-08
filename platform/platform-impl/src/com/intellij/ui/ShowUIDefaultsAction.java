@@ -43,11 +43,13 @@ import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.*;
 
+import static com.intellij.ui.render.RenderingUtil.PAINT_HOVERED_BACKGROUND;
 import static com.intellij.util.ui.JBUI.Panels.simplePanel;
 
 /**
  * @author Konstantin Bulenkov
  */
+@SuppressWarnings("HardCodedStringLiteral")
 public class ShowUIDefaultsAction extends AnAction implements DumbAware {
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
@@ -214,6 +216,7 @@ public class ShowUIDefaultsAction extends AnAction implements DumbAware {
 
         new TableSpeedSearch(table, (o, cell) -> cell.column == 1 ? null : String.valueOf(o));
         table.setShowGrid(false);
+        table.putClientProperty(PAINT_HOVERED_BACKGROUND, false);
         myTable = table;
         TableUtil.ensureSelectionExists(myTable);
         mySearchField.getDocument().addDocumentListener(new DocumentAdapter() {

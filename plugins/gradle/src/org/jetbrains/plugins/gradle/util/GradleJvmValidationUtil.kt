@@ -13,6 +13,7 @@ import com.intellij.notification.NotificationType.INFORMATION
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
+import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.io.FileUtil.*
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiManager
@@ -57,16 +58,39 @@ fun validateGradleJavaHome(gradleVersion: GradleVersion, javaHome: String?): Jav
 /**
  * @see org.jetbrains.plugins.gradle.util.suggestGradleVersion
  */
-fun isSupported(gradleVersion: GradleVersion, javaVersionString: String): Boolean {
-  val version = JavaVersion.tryParse(javaVersionString) ?: return false
+fun isSupported(gradleVersion: GradleVersion, javaVersion: JavaVersion): Boolean {
   return when {
-    gradleVersion >= GradleVersion.version("6.3") -> version.feature >= 8 // ..14
-    gradleVersion >= GradleVersion.version("6.0") -> version.feature in 8..13
-    gradleVersion >= GradleVersion.version("5.4.1") -> version.feature in 8..12
-    gradleVersion >= GradleVersion.version("5.0") -> version.feature in 8..11
-    gradleVersion >= GradleVersion.version("4.1") -> version.feature in 7..9
-    gradleVersion >= GradleVersion.version("4.0") -> version.feature in 7..8
-    else -> version.feature in 6..8
+    gradleVersion >= GradleVersion.version("6.7") -> javaVersion.feature >= 8 //..15 https://docs.gradle.org/6.7/release-notes.html#java-15
+    gradleVersion >= GradleVersion.version("6.3") -> javaVersion.feature in 8..14 // many builds might work with Java 15 but there are some known issues https://github.com/gradle/gradle/issues/13532
+    gradleVersion >= GradleVersion.version("6.0") -> javaVersion.feature in 8..13
+    gradleVersion >= GradleVersion.version("5.4.1") -> javaVersion.feature in 8..12
+    gradleVersion >= GradleVersion.version("5.0") -> javaVersion.feature in 8..11
+    gradleVersion >= GradleVersion.version("4.1") -> javaVersion.feature in 7..9
+    gradleVersion >= GradleVersion.version("4.0") -> javaVersion.feature in 7..8
+    else -> javaVersion.feature in 7..8
+  }
+}
+
+fun isSupported(gradleVersion: GradleVersion, javaVersionString: String): Boolean {
+  val javaVersion = JavaVersion.tryParse(javaVersionString) ?: return false
+  return isSupported(gradleVersion, javaVersion)
+}
+
+fun suggestJavaVersion(gradleVersion: GradleVersion): JavaVersion {
+  return when {
+    gradleVersion <= GradleVersion.version("4.7") -> JavaVersion.compose(8)
+    gradleVersion <= GradleVersion.version("5.0") -> JavaVersion.compose(11)
+    gradleVersion <= GradleVersion.version("5.4.1") -> JavaVersion.compose(12)
+    gradleVersion <= GradleVersion.version("6.0") -> JavaVersion.compose(13)
+    gradleVersion <= GradleVersion.version("6.3") -> JavaVersion.compose(14)
+    else -> JavaVersion.compose(15)
+  }
+}
+
+fun suggestOldestCompatibleJavaVersion(gradleVersion: GradleVersion): JavaVersion {
+  return when {
+    gradleVersion >= GradleVersion.version("5.0") -> JavaVersion.compose(8)
+    else -> JavaVersion.compose(7)
   }
 }
 
@@ -97,7 +121,7 @@ private fun createLinkToFile(project: Project, path: String): String {
   return "<a href='$path'>$presentablePath</a>"
 }
 
-private fun notifyInvalidGradleJvmInfo(project: Project, notificationHint: String, reason: JavaHomeValidationStatus) {
+private fun notifyInvalidGradleJvmInfo(project: Project, @NlsContexts.HintText notificationHint: String, reason: JavaHomeValidationStatus) {
   val notificationTitle = GradleBundle.message("gradle.notifications.java.home.invalid.title")
   var notificationContent = notificationHint
   if (reason is JavaHomeValidationStatus.Unsupported) {

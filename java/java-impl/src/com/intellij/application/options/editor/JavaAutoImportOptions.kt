@@ -9,6 +9,7 @@ import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings
 import com.intellij.ide.DataManager
 import com.intellij.ide.JavaLanguageCodeStyleSettingsProvider
 import com.intellij.java.JavaBundle
+import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.application.ApplicationBundle
 import com.intellij.openapi.options.DslConfigurableBase
 import com.intellij.openapi.options.ex.Settings
@@ -25,12 +26,13 @@ class JavaAutoImportOptions(val project: Project) : DslConfigurableBase(), AutoI
   private val excludeTable = ExcludeTable(project)
 
   override fun createPanel(): DialogPanel {
+    excludeTable.tableView.setShowGrid(false)
     val dcaSettings = DaemonCodeAnalyzerSettings.getInstance()
     val ciSettings = CodeInsightSettings.getInstance()
     val ciWorkspaceSettings = CodeInsightWorkspaceSettings.getInstance(project)
     lateinit var dataContextOwner: JComponent
     return panel {
-      titledRow("Java") {
+      titledRow(JavaLanguage.INSTANCE.displayName) {
         row {
           cell {
             label(JavaBundle.message("label.show.import.popup.for"))

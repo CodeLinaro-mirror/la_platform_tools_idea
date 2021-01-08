@@ -97,7 +97,7 @@ class JdkAuto : UnknownSdkResolver, JdkDownloaderBase {
     return object : UnknownSdkLookup {
       val lazyDownloadModel: List<JdkItem> by lazy {
         indicator.pushState()
-        indicator.text = ProjectBundle.message("progress.title.downloading.jdk.list")
+        indicator.text = ProjectBundle.message("progress.text.downloading.jdk.list")
         try {
           JdkListDownloader.getInstance().downloadModelForJdkInstaller(indicator)
         } catch(e: ProcessCanceledException) {
@@ -162,6 +162,7 @@ class JdkAuto : UnknownSdkResolver, JdkDownloaderBase {
 
         //we select the newest matching version for a possible fix
         val jdkToDownload = lazyDownloadModel
+                              .asSequence()
                               .filter { req.matches(it) }
                               .mapNotNull {
                                 val v = JavaVersion.tryParse(it.versionString)
@@ -236,7 +237,7 @@ class JdkAuto : UnknownSdkResolver, JdkDownloaderBase {
           if (it !is MockSdk && runCatching { sdkType.isValidSdkHome(it.homePath) }.getOrNull() != true) continue
           if (runCatching { req.matches(it) }.getOrNull() != true) continue
 
-          result += JavaLocalSdkFix(homeDir, version, suggestedName)
+          result += JavaLocalSdkFix(homeDir, version, suggestedName, prototype = it)
         }
 
         return result
@@ -248,12 +249,14 @@ class JdkAuto : UnknownSdkResolver, JdkDownloaderBase {
     val homeDir: String,
     val version: JavaVersion,
     val suggestedName: String,
-    val includeJars: List<String> = emptyList()
+    val includeJars: List<String> = emptyList(),
+    val prototype: Sdk? = null
   ) : UnknownSdkLocalSdkFix, UnknownSdkFixConfigurator by JarSdkConfigurator(includeJars) {
 
     override fun getExistingSdkHome() = homeDir
     override fun getVersionString() = JdkVersionDetector.formatVersionString(version)
     override fun getPresentableVersionString() = version.toFeatureMinorUpdateString()
     override fun getSuggestedSdkName() : String = suggestedName
+    override fun getRegisteredSdkPrototype(): Sdk? = prototype
   }
 }

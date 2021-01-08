@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diagnostic;
 
 import com.intellij.execution.ExecutionException;
@@ -9,11 +9,12 @@ import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.impl.local.NativeFileWatcherImpl;
 import com.intellij.util.Restarter;
@@ -47,7 +48,7 @@ public class WindowsDefenderChecker {
   }
 
   public static WindowsDefenderChecker getInstance() {
-    return ServiceManager.getService(WindowsDefenderChecker.class);
+    return ApplicationManager.getApplication().getService(WindowsDefenderChecker.class);
   }
 
   public static class CheckResult {
@@ -323,7 +324,7 @@ public class WindowsDefenderChecker {
     });
   }
 
-  public String getNotificationText(Set<? extends Path> nonExcludedPaths) {
+  public @NlsContexts.NotificationContent String getNotificationText(Set<? extends Path> nonExcludedPaths) {
     return DiagnosticBundle.message("virus.scanning.warn.message", StringUtil.join(nonExcludedPaths, "<br/>"));
   }
 

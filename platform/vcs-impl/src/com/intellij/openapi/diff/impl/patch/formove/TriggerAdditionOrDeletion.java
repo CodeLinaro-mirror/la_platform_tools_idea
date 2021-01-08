@@ -48,6 +48,16 @@ public class TriggerAdditionOrDeletion {
     return myAffected;
   }
 
+  /**
+   * Prepare files to be added|deleted in VCS
+   * <p/>
+   * For VCS with async file listeners (see {@link AbstractVcs#fileListenerIsSynchronous}),<br/>
+   * should be always called inside {@link com.intellij.openapi.command.CommandProcessor#executeCommand}<br/>
+   * This will ensure that added files will be correctly filtered in {@link VcsVFSListener.MyCommandAdapter#commandFinished}<br/>
+   * and {@link VcsVFSListener.MyAsyncVfsListener#prepareChange} for deleted files<br/>
+   *
+   * @see VcsFileListenerContextHelper
+   */
   public void prepare() {
     if (!myExisting.isEmpty()) {
       processAddition();
@@ -55,6 +65,10 @@ public class TriggerAdditionOrDeletion {
     if (!myDeleted.isEmpty()) {
       processDeletion();
     }
+  }
+
+  public void cleanup() {
+    myVcsFileListenerContextHelper.clearContext();
   }
 
   public void processIt() {
@@ -100,7 +114,9 @@ public class TriggerAdditionOrDeletion {
   private void notifyAndLogFiles(@NotNull List<FilePath> incorrectFilePath) {
     String message = VcsBundle.message("patch.apply.incorrectly.processed.warning", incorrectFilePath.size(), incorrectFilePath);
     LOG.warn(message);
-    VcsNotifier.getInstance(myProject).notifyImportantWarning(VcsBundle.message("patch.apply.new.files.warning"), message);
+    VcsNotifier.getInstance(myProject).notifyImportantWarning("vcs.patch.apply.new.files.error",
+                                                              VcsBundle.message("patch.apply.new.files.warning"),
+                                                              message);
   }
 
   private void processDeletion() {
@@ -181,7 +197,7 @@ public class TriggerAdditionOrDeletion {
     }
   }
 
-  private static class RecursiveCheckAdder {
+  private static final class RecursiveCheckAdder {
     private final Set<FilePath> myToBeAdded = new HashSet<>();
     private final VirtualFile myRoot;
 

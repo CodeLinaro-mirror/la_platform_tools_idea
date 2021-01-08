@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.deadCode;
 
 import com.intellij.analysis.AnalysisBundle;
@@ -44,10 +44,7 @@ import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
 import gnu.trove.TObjectIntHashMap;
 import org.jdom.Element;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import javax.swing.event.HyperlinkEvent;
@@ -64,6 +61,7 @@ import java.net.URL;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class UnusedDeclarationPresentation extends DefaultInspectionToolPresentation {
@@ -73,7 +71,7 @@ public class UnusedDeclarationPresentation extends DefaultInspectionToolPresenta
 
   private final WeakUnreferencedFilter myFilter;
   private DeadHTMLComposer myComposer;
-  private final AtomicNotNullLazyValue<InspectionToolWrapper> myDummyWrapper = new AtomicNotNullLazyValue<InspectionToolWrapper>() {
+  private final AtomicNotNullLazyValue<InspectionToolWrapper> myDummyWrapper = new AtomicNotNullLazyValue<>() {
     @NotNull
     @Override
     protected InspectionToolWrapper compute() {
@@ -87,17 +85,17 @@ public class UnusedDeclarationPresentation extends DefaultInspectionToolPresenta
   @NonNls private static final String COMMENT = "comment";
 
   private enum UnusedDeclarationHint {
-    COMMENT("Commented out"),
-    DELETE("Deleted");
+    COMMENT("inspection.dead.code.commented.hint"),
+    DELETE("inspection.dead.code.deleted.hint");
 
-    private final String myDescription;
+    private final Supplier<@Nls String> myDescription;
 
-    UnusedDeclarationHint(String description) {
-      myDescription = description;
+    UnusedDeclarationHint(String descriptionKey) {
+      myDescription = AnalysisBundle.messagePointer(descriptionKey);
     }
 
-    public String getDescription() {
-      return myDescription;
+    public @Nls String getDescription() {
+      return myDescription.get();
     }
   }
 
@@ -112,7 +110,7 @@ public class UnusedDeclarationPresentation extends DefaultInspectionToolPresenta
   public RefFilter getFilter() {
     return myFilter;
   }
-  private static class WeakUnreferencedFilter extends UnreferencedFilter {
+  private static final class WeakUnreferencedFilter extends UnreferencedFilter {
     private WeakUnreferencedFilter(@NotNull UnusedDeclarationInspectionBase tool, @NotNull GlobalInspectionContextImpl context) {
       super(tool, context);
     }
@@ -335,7 +333,7 @@ public class UnusedDeclarationPresentation extends DefaultInspectionToolPresenta
     }
   }
 
-  private static class CommentOutFix implements QuickFix {
+  private static final class CommentOutFix implements QuickFix {
     private final RefElement myElement;
 
     private CommentOutFix(RefElement element) {
@@ -556,7 +554,7 @@ public class UnusedDeclarationPresentation extends DefaultInspectionToolPresenta
     return null;
   }
 
-  private static class PermanentDeleteFix implements QuickFix {
+  private static final class PermanentDeleteFix implements QuickFix {
     private final RefElement myElement;
 
     private PermanentDeleteFix(@Nullable RefElement element) {
@@ -638,6 +636,7 @@ public class UnusedDeclarationPresentation extends DefaultInspectionToolPresenta
     css.addRule("div.problem-description {margin-left: " + JBUIScale.scale(9) + "px;}");
     css.addRule("ul {margin-left:" + JBUIScale.scale(10) + "px;text-indent: 0}");
     css.addRule("code {font-family:" + StartupUiUtil.getLabelFont().getFamily() + "}");
+    @Nls
     final StringBuilder buf = new StringBuilder();
     getComposer().compose(buf, entity, false);
     final String text = buf.toString();

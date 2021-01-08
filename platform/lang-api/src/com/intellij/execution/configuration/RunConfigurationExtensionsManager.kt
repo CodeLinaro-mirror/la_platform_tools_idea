@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.configuration
 
 import com.intellij.execution.ExecutionException
@@ -113,16 +113,16 @@ open class RunConfigurationExtensionsManager<U : RunConfigurationBase<*>, T : Ru
 
   fun createFragments(configuration: U): List<SettingsEditorFragment<U, *>> {
     val list = ArrayList<SettingsEditorFragment<U, *>>()
-    processApplicableExtensions(configuration) {
-      val fragments = it.createFragments(configuration)
+    processApplicableExtensions(configuration) { t ->
+      val fragments = t.createFragments(configuration)
       if (fragments != null) {
-        list.addAll(fragments);
+        list.addAll(fragments)
       }
       else {
-        val editor = it.createEditor(configuration)
+        val editor = t.createEditor(configuration)
         if (editor != null) {
-          val wrapper = SettingsEditorFragment.createWrapper(it.serializationId, it.editorTitle, null, editor)
-          wrapper.isSelected = it.isEnabledFor(configuration, null)
+          val wrapper = SettingsEditorFragment.createWrapper(t.serializationId, t.editorTitle, null, editor)
+          { t.isEnabledFor(configuration, null) }
           list.add(wrapper)
         }
       }

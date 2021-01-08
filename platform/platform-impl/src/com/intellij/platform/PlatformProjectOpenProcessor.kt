@@ -118,8 +118,11 @@ class PlatformProjectOpenProcessor : ProjectOpenProcessor(), CommandLineProjectO
       }
 
       var options = originalOptions
-      if (LightEditUtil.openFile(file)) {
-        return LightEditUtil.getProject()
+      if (LightEditUtil.isForceOpenInLightEditMode()) {
+        val lightEditProject = LightEditUtil.openFile(file)
+        if (lightEditProject != null) {
+          return lightEditProject
+        }
       }
 
       var baseDirCandidate = file.parent

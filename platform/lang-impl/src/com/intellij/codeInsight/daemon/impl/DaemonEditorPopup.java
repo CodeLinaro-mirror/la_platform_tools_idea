@@ -1,8 +1,4 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
-/*
- * @author max
- */
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -10,7 +6,6 @@ import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.ui.UISettings;
-import com.intellij.internal.statistic.service.fus.collectors.UIEventId;
 import com.intellij.internal.statistic.service.fus.collectors.UIEventLogger;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
@@ -75,7 +70,7 @@ public class DaemonEditorPopup extends PopupHandler {
     }
     ActionPopupMenu editorPopup = actionManager.createActionPopupMenu(ActionPlaces.RIGHT_EDITOR_GUTTER_POPUP, actionGroup);
     if (DaemonCodeAnalyzer.getInstance(myProject).isHighlightingAvailable(file)) {
-      UIEventLogger.logUIEvent(UIEventId.DaemonEditorPopupInvoked);
+      UIEventLogger.DaemonEditorPopupInvoked.log(myProject);
       editorPopup.getComponent().show(comp, x, y);
     }
   }

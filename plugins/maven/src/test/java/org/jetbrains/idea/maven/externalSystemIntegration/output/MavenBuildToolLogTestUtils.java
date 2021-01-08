@@ -1,8 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.externalSystemIntegration.output;
 
 import com.intellij.build.DefaultBuildDescriptor;
+import com.intellij.build.FilePosition;
 import com.intellij.build.events.*;
+import com.intellij.build.events.impl.FileMessageEventImpl;
 import com.intellij.build.events.impl.StartBuildEventImpl;
 import com.intellij.build.output.BuildOutputInstantReader;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId;
@@ -22,7 +24,6 @@ import org.hamcrest.SelfDescribing;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.utils.MavenUtil;
-import org.junit.Before;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,6 +32,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import static com.intellij.build.events.MessageEvent.Kind.ERROR;
 import static com.intellij.build.events.MessageEvent.Kind.WARNING;
 import static com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskType.EXECUTE_TASK;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -60,7 +62,6 @@ public abstract class MavenBuildToolLogTestUtils extends UsefulTestCase {
     }
   }
 
-  @Before
   @Override
   public void setUp() throws Exception {
     super.setUp();
@@ -205,9 +206,7 @@ public abstract class MavenBuildToolLogTestUtils extends UsefulTestCase {
 
     private List<BuildEvent> collect() {
       CollectConsumer collectConsumer = new CollectConsumer();
-      MavenLogOutputParser parser =
-        new MavenLogOutputParser(myTaskId, myParsers);
-
+      MavenLogOutputParser parser = new MavenLogOutputParser(myTaskId, myParsers);
 
       collectConsumer.accept(new StartBuildEventImpl(
         new DefaultBuildDescriptor(myTaskId, "Maven Run", System.getProperty("user.dir"), System.currentTimeMillis()), "Maven Run"));
@@ -318,7 +317,8 @@ public abstract class MavenBuildToolLogTestUtils extends UsefulTestCase {
 
     @Override
     public void describeTo(@NotNull Description description) {
-      description.appendText("Expected FileMessageEventImpl \"" + myMessage + "\" at " + myFileName + ":" + myLine + ":" + myColumn);
+      description.appendText("Expected \n" + new FileMessageEventImpl("EXECUTE_TASK:0", ERROR, "Error", myMessage, myMessage,
+                                                                      new FilePosition(new File(myFileName), myLine,myColumn)));
     }
   }
 

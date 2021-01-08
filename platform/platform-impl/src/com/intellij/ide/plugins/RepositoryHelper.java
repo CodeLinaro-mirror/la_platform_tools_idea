@@ -107,7 +107,7 @@ public final class RepositoryHelper {
     if (repositoryUrl == null) {
       LOG.error("Using deprecated API for getting plugins from Marketplace");
       String base = ApplicationInfoImpl.getShadowInstance().getPluginsListUrl();
-      url = Urls.newFromEncoded(base).addParameters(singletonMap("uuid", PermanentInstallationID.get()));
+      url = Urls.newFromEncoded(base).addParameters(singletonMap("uuid", PermanentInstallationID.get()));  // NON-NLS
       pluginListFile = new File(PathManager.getPluginsPath(), PLUGIN_LIST_FILE);
     }
     else {
@@ -162,7 +162,7 @@ public final class RepositoryHelper {
     for (PluginNode node : list) {
       PluginId pluginId = node.getPluginId();
 
-      if (pluginId == null || repositoryUrl != null && node.getDownloadUrl() == null) {
+      if (repositoryUrl != null && node.getDownloadUrl() == null) {
         LOG.debug("Malformed plugin record (id:" + pluginId + " repository:" + repositoryUrl + ")");
         continue;
       }

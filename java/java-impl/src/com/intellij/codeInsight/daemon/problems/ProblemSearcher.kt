@@ -9,9 +9,24 @@ import com.intellij.pom.Navigatable
 import com.intellij.psi.*
 import com.intellij.psi.util.PsiTreeUtil
 
-internal data class Problem(val reportedElement: PsiElement, val context: PsiElement)
+class Problem(val reportedElement: PsiElement, val context: PsiElement) {
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (javaClass != other?.javaClass) return false
 
-internal class ProblemSearcher(private val file: PsiFile) : JavaElementVisitor() {
+    other as Problem
+
+    if (context != other.context) return false
+
+    return true
+  }
+
+  override fun hashCode(): Int {
+    return context.hashCode()
+  }
+}
+
+internal class ProblemSearcher(private val file: PsiFile, private val memberType: MemberType) : JavaElementVisitor() {
 
   private val problems = mutableSetOf<Problem>()
   private var seenReference = false
@@ -22,7 +37,7 @@ internal class ProblemSearcher(private val file: PsiFile) : JavaElementVisitor()
   }
 
   override fun visitReferenceElement(reference: PsiJavaCodeReferenceElement) {
-    if (seenReference && reference.resolve() != null) return
+    if (seenReference && reference.resolve() != null && memberType != MemberType.FIELD) return
     seenReference = true
     super.visitReferenceElement(reference)
   }
@@ -120,10 +135,10 @@ internal class ProblemSearcher(private val file: PsiFile) : JavaElementVisitor()
 
   companion object {
 
-    internal fun getProblems(usage: PsiElement, targetFile: PsiFile): Set<Problem> {
+    internal fun getProblems(usage: PsiElement, targetFile: PsiFile, memberType: MemberType): Set<Problem> {
       val startElement = getSearchStartElement(usage, targetFile) ?: return emptySet()
       val psiFile = startElement.containingFile
-      val searcher = ProblemSearcher(psiFile)
+      val searcher = ProblemSearcher(psiFile, memberType)
       startElement.accept(searcher)
       return searcher.problems
     }

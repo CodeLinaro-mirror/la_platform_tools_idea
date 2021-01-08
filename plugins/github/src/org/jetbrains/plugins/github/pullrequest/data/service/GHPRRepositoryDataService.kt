@@ -2,25 +2,20 @@
 package org.jetbrains.plugins.github.pullrequest.data.service
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.progress.ProgressIndicator
-import org.jetbrains.annotations.CalledInAny
-import org.jetbrains.annotations.CalledInAwt
-import org.jetbrains.annotations.CalledInBackground
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import org.jetbrains.plugins.github.api.data.GHLabel
 import org.jetbrains.plugins.github.api.data.GHUser
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestRequestedReviewer
 import org.jetbrains.plugins.github.api.data.pullrequest.GHTeam
-import org.jetbrains.plugins.github.pullrequest.data.GHPRIdentifier
-import org.jetbrains.plugins.github.util.CollectionDelta
 import java.util.concurrent.CompletableFuture
 
 interface GHPRRepositoryDataService : Disposable {
-  val collaboratorsWithPushAccess: CompletableFuture<List<GHUser>>
+  val collaborators: CompletableFuture<List<GHUser>>
   val teams: CompletableFuture<List<GHTeam>>
   val potentialReviewers: CompletableFuture<List<GHPullRequestRequestedReviewer>>
   val issuesAssignees: CompletableFuture<List<GHUser>>
   val labels: CompletableFuture<List<GHLabel>>
 
-  @CalledInAwt
+  @RequiresEdt
   fun resetData()
 }

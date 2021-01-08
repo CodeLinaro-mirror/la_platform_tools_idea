@@ -58,9 +58,18 @@ public class PasteHandler extends EditorActionHandler implements EditorTextInser
     execute(editor, dataContext, null);
   }
 
+  private static Transferable getContentsToPasteToEditor(@Nullable Producer<Transferable> producer) {
+    if (producer == null) {
+      return CopyPasteManager.getInstance().getContents();
+    }
+    else {
+      return producer.produce();
+    }
+  }
+
   @Override
   public void execute(Editor editor, DataContext dataContext, @Nullable Producer<Transferable> producer) {
-    final Transferable transferable = EditorModificationUtil.getContentsToPasteToEditor(producer);
+    final Transferable transferable = getContentsToPasteToEditor(producer);
     if (transferable == null) return;
 
     if (!EditorModificationUtil.checkModificationAllowed(editor)) return;
@@ -226,7 +235,8 @@ public class PasteHandler extends EditorActionHandler implements EditorTextInser
               break;
 
             case CodeInsightSettings.REFORMAT_BLOCK:
-              indentEachLine(project, editor, bounds.getStartOffset(), bounds.getEndOffset()); // this is needed for example when inserting a comment before method
+              indentEachLine(project, editor, bounds.getStartOffset(),
+                             bounds.getEndOffset()); // this is needed for example when inserting a comment before method
               reformatBlock(project, editor, bounds.getStartOffset(), bounds.getEndOffset());
               break;
           }

@@ -24,6 +24,7 @@ class CommunityRepositoryModules {
     "intellij.platform.vcs.dvcs",
     "intellij.platform.editor",
     "intellij.platform.externalSystem",
+    "intellij.platform.codeStyle",
     "intellij.platform.indexing",
     "intellij.platform.jps.model",
     "intellij.platform.lang",
@@ -56,6 +57,7 @@ class CommunityRepositoryModules {
     "intellij.platform.core.impl",
     "intellij.platform.diff.impl",
     "intellij.platform.editor.ex",
+    "intellij.platform.codeStyle.impl",
     "intellij.platform.indexing.impl",
     "intellij.platform.execution.impl",
     "intellij.platform.inspect",
@@ -100,7 +102,7 @@ class CommunityRepositoryModules {
     plugin("intellij.java.guiForms.designer") {
       directoryName = "uiDesigner"
       mainJarName = "uiDesigner.jar"
-      withModule("intellij.java.guiForms.jps", "jps/ui-designer-jps-plugin.jar")
+      withModule("intellij.java.guiForms.jps", "jps/java-guiForms-jps.jar", null)
     },
     plugin("intellij.properties") {
       withModule("intellij.properties.psi", "properties.jar")
@@ -110,20 +112,13 @@ class CommunityRepositoryModules {
     plugin("intellij.vcs.git") {
       withModule("intellij.vcs.git.rt", "git4idea-rt.jar", null)
     },
-    plugin("intellij.vcs.cvs") {
-      directoryName = "cvsIntegration"
-      mainJarName = "cvsIntegration.jar"
-      withModule("intellij.vcs.cvs.javacvs")
-      withModule("intellij.vcs.cvs.smartcvs")
-      withModule("intellij.vcs.cvs.core", "cvs_util.jar")
-    },
     plugin("intellij.xpath") {
       withModule("intellij.xpath.rt", "rt/xslt-rt.jar")
     },
     plugin("intellij.platform.langInjection") {
       withModule("intellij.java.langInjection", "IntelliLang.jar")
       withModule("intellij.xml.langInjection", "IntelliLang.jar")
-      withModule("intellij.java.langInjection.jps", "intellilang-jps-plugin.jar")
+      withModule("intellij.java.langInjection.jps")
       doNotCreateSeparateJarForLocalizableResources()
     },
     plugin("intellij.tasks.core") {
@@ -176,7 +171,6 @@ class CommunityRepositoryModules {
       withModule("intellij.gradle.common")
       withModule("intellij.gradle.toolingExtension")
       withModule("intellij.gradle.toolingExtension.impl")
-      withModule("intellij.gradle.toolingLoaderRt")
       withProjectLibrary("Gradle")
     },
     plugin("intellij.gradle.java") {
@@ -205,7 +199,7 @@ class CommunityRepositoryModules {
       withModule("intellij.devkit.jps")
     },
     plugin("intellij.eclipse") {
-      withModule("intellij.eclipse.jps", "eclipse-jps-plugin.jar", null)
+      withModule("intellij.eclipse.jps", "eclipse-jps.jar", null)
       withModule("intellij.eclipse.common")
     },
     plugin("intellij.java.coverage") {
@@ -213,7 +207,7 @@ class CommunityRepositoryModules {
       withProjectLibrary("JaCoCo") //todo[nik] convert to module library
     },
     plugin("intellij.errorProne") {
-      withModule("intellij.errorProne.jps", "jps/error-prone-jps-plugin.jar")
+      withModule("intellij.errorProne.jps", "jps/errorProne-jps.jar")
     },
     plugin("intellij.cucumber.java") {
       withModule("intellij.cucumber.jvmFormatter")
@@ -235,9 +229,12 @@ class CommunityRepositoryModules {
     javaFXPlugin("intellij.javaFX.community"),
 */
     plugin("intellij.terminal") {
-      withResource("resources/.zshrc", "")
+      withResource("resources/.zshenv", "")
       withResource("resources/jediterm-bash.in", "")
       withResource("resources/fish/config.fish", "fish")
+    },
+    plugin("intellij.emojipicker") {
+      bundlingRestrictions.supportedOs = [OsFamily.LINUX]
     },
     plugin("intellij.textmate") {
       withModule("intellij.textmate.core")
@@ -252,16 +249,33 @@ Android Studio: exclude Python */
       withModule("intellij.android.smali")
     },
 Android Studio: exclude smali */
+    plugin("intellij.completionMlRanking"),
+    plugin("intellij.completionMlRankingModels") {
+      bundlingRestrictions.includeInEapOnly = true
+    },
 /* Android Studio: exclude intellij.statsCollector
     plugin("intellij.statsCollector") {
-      withModule("intellij.statsCollector.logEvents")
-      withModule("intellij.statsCollector.completionRanker")
+      bundlingRestrictions.includeInEapOnly = true
     },
 Android Studio: exclude intellij.statsCollector */
     plugin("intellij.jps.cache"),
     plugin("intellij.space") {
       withProjectLibrary("space-idea-sdk")
       withProjectLibrary("jackson-datatype-joda")
+      withProjectLibrary("ktor-server-jetty")
+      withProjectLibrary("org.jetbrains.kotlinx:kotlinx-serialization-core")
+      withGeneratedResources(new ResourcesGenerator() {
+        @Override
+        File generateResources(BuildContext context) {
+          def gradleRunner = context.getGradle()
+          gradleRunner.run("Download Space Automation definitions", "setupSpaceAutomationDefinitions")
+          return new File("${context.paths.communityHome}/build/dependencies/build/space")
+        }
+      }, "lib")
+    },
+    plugin("intellij.gauge"),
+    plugin("intellij.lombok") {
+      withModule("intellij.lombok.generated")
     }
   ]
 
@@ -329,7 +343,7 @@ Android Studio: exclude intellij.statsCollector */
       withModule("intellij.android.resources-base", "android.jar")
       withModule("intellij.android.android-layout-inspector", "android.jar")
       /* do not put into IJ android plugin: assistant, connection-assistant, whats-new-assistant */
-      withModule("intellij.lint", "lint-ide.jar")
+      withModule("intellij.android.lint", "lint-ide.jar")
       withModule("intellij.android.adt.ui", "adt-ui.jar")
       withModule("intellij.android.adt.ui.model", "adt-ui.jar")
       withModuleLibrary("precompiled-repository", "android.sdktools.repository", "")
@@ -377,6 +391,7 @@ Android Studio: exclude intellij.statsCollector */
       withModuleLibrary("precompiled-usb-devices", "android.sdktools.usb-devices", "")
 
       withModule("intellij.android.jps", "jps/android-jps-plugin.jar", null)
+      withModule("intellij.android.jps.model")
 
       withProjectLibrary("kxml2") //todo[nik] move to module libraries
 
@@ -384,6 +399,7 @@ Android Studio: exclude intellij.statsCollector */
       withResourceFromModule("intellij.android.core", "lib/commons-compress-1.8.1.jar", "lib")
       withResourceFromModule("intellij.android.core", "lib/javawriter-2.2.1.jar", "lib")
 
+      withResourceFromModule("intellij.android.core", "lib/androidWidgets", "lib/androidWidgets")
       withResourceFromModule("intellij.android.artwork", "resources/device-art-resources", "lib/device-art-resources")
       withResourceFromModule("intellij.android.core", "lib/sampleData", "lib/sampleData")
       withResourceArchive("../android/annotations", "lib/androidAnnotations.jar")

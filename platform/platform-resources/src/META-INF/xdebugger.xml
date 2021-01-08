@@ -1,4 +1,11 @@
 <idea-plugin>
+  <applicationListeners>
+    <listener topic="com.intellij.execution.ExecutionListener"
+              class="com.intellij.xdebugger.impl.ui.DebuggerFocusManager"
+              os="windows"
+              activeInHeadlessMode="false"/>
+  </applicationListeners>
+
   <extensionPoints>
     <extensionPoint name="xdebugger.settings" interface="com.intellij.xdebugger.settings.XDebuggerSettings" dynamic="true"/>
     <extensionPoint name="xdebugger.breakpointType" interface="com.intellij.xdebugger.breakpoints.XBreakpointType" dynamic="true"/>
@@ -26,6 +33,7 @@
                     serviceImplementation="com.intellij.xdebugger.impl.XDebuggerManagerImpl"
                     preload="notLightEdit"/>
     <projectService serviceImplementation="com.intellij.xdebugger.impl.evaluate.quick.common.ValueLookupManager"/>
+    <projectService serviceImplementation="com.intellij.xdebugger.impl.inline.DebuggerInlayListener"/>
 
     <projectService serviceImplementation="com.intellij.xdebugger.impl.breakpoints.ui.BreakpointsDialogFactory"/>
 
@@ -72,7 +80,9 @@
     <projectService serviceImplementation="com.intellij.xdebugger.memory.component.InstancesTracker" />
 
     <titleInfoProvider implementation="com.intellij.xdebugger.impl.ui.DebuggerTitleInfoProvider"/>
-    <notificationAllowlist groupIds="Debugger messages;Attach to Process action"/>
+    <notificationGroup id="Debugger messages" displayType="TOOL_WINDOW" toolWindowId="Debug" isLogByDefault="false"/>
+    <notificationGroup id="Breakpoint hit" displayType="NONE" toolWindowId="Debug" isLogByDefault="false"/>
+    <notificationGroup id="Attach to Process action" displayType="BALLOON"/>
   </extensions>
 
   <actions>
@@ -89,6 +99,10 @@
 
     <action id="XDebugger.PinToTop" class="com.intellij.xdebugger.impl.pinned.items.actions.XDebuggerPinToTopAction">
       <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
+    </action>
+
+    <action class="com.intellij.execution.actions.ActivateDebugToolWindowAction" id="ActivateDebugToolWindow">
+      <add-to-group group-id="ActivateToolWindowActions"/>
     </action>
   </actions>
 </idea-plugin>

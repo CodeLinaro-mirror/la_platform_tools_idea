@@ -3,16 +3,33 @@ package org.jetbrains.jps.javac;
 
 import com.intellij.util.BooleanFunction;
 import com.intellij.util.Function;
+import com.intellij.util.Functions;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 public class Iterators {
 
+  @SuppressWarnings("rawtypes")
+  private static final BooleanFunction NOT_NULL_FILTER = new BooleanFunction() {
+    @Override
+    public boolean fun(Object s) {
+      return s != null;
+    }
+  };
+
+  public static <T> boolean isEmpty(Iterable<T> iterable) {
+    return iterable == null || (iterable instanceof Collection && ((Collection<?>)iterable).isEmpty());
+  }
+
+  @SuppressWarnings("unchecked")
   public static <T> Iterable<T> flat(final Iterable<? extends T> first, final Iterable<? extends T> second) {
+    if (isEmpty(first)) {
+      return isEmpty(second)? Collections.<T>emptyList() : (Iterable<T>)second;
+    }
+    if (isEmpty(second)) {
+      return (Iterable<T>)first;
+    }
     return new Iterable<T>() {
       @Override
       @NotNull
@@ -22,7 +39,7 @@ public class Iterators {
     };
   }
 
-  static <T> Iterator<T> flat(final Iterator<? extends T> first, final Iterator<? extends T> second) {
+  public static <T> Iterator<T> flat(final Iterator<? extends T> first, final Iterator<? extends T> second) {
     return new BaseIterator<T>() {
       @Override
       public boolean hasNext() {
@@ -47,7 +64,7 @@ public class Iterators {
   }
 
   public static <T> Iterable<T> flat(final Iterable<? extends Iterable<? extends T>> parts) {
-    return new Iterable<T>() {
+    return isEmpty(parts)? Collections.<T>emptyList() : new Iterable<T>() {
       @NotNull
       @Override
       public Iterator<T> iterator() {
@@ -67,19 +84,19 @@ public class Iterators {
 
       @Override
       public boolean hasNext() {
-        return findNextUnprocessed() != null;
+        return findNext() != null;
       }
 
       @Override
       public T next() {
-        Iterator<T> group = findNextUnprocessed();
+        Iterator<T> group = findNext();
         if (group != null) {
           return group.next();
         }
         throw new NoSuchElementException();
       }
 
-      private Iterator<T> findNextUnprocessed() {
+      private Iterator<T> findNext() {
         if (currentGroup == null || !currentGroup.hasNext()) {
           do {
             currentGroup = groupsIterator.hasNext() ? groupsIterator.next() : null;
@@ -92,16 +109,42 @@ public class Iterators {
   }
 
   public static <I> Iterator<I> asIterator(final Iterable<? extends I> from) {
-    return map(from.iterator(), new Function<I, I>() {
+    return map(from.iterator(), Functions.<I, I>identity());
+  }
+
+  public static <T> Iterable<T> asIterable(final T elem) {
+    return new Iterable<T>() {
+      @NotNull
       @Override
-      public I fun(I i) {
-        return i;
+      public Iterator<T> iterator() {
+        return asIterator(elem);
       }
-    });
+    };
+  }
+
+  public static <T> Iterator<T> asIterator(final T elem) {
+    return new BaseIterator<T>() {
+      T _elem = elem;
+
+      @Override
+      public boolean hasNext() {
+        return _elem != null;
+      }
+
+      @Override
+      public T next() {
+        T element = _elem;
+        if (element != null) {
+          _elem = null;
+          return element;
+        }
+        throw new NoSuchElementException();
+      }
+    };
   }
 
   public static <I,O> Iterable<O> map(final Iterable<? extends I> from, final Function<? super I, ? extends O> mapper) {
-    return new Iterable<O>() {
+    return isEmpty(from)? Collections.<O>emptyList() : new Iterable<O>() {
       @NotNull
       @Override
       public Iterator<O> iterator() {
@@ -125,7 +168,7 @@ public class Iterators {
   }
 
   public static <T> Iterable<T> filter(final Iterable<? extends T> it, final BooleanFunction<? super T> predicate) {
-    return new Iterable<T>() {
+    return isEmpty(it)? Collections.<T>emptyList() : new Iterable<T>() {
       @NotNull
       @Override
       public Iterator<T> iterator() {
@@ -177,6 +220,48 @@ public class Iterators {
         }
       }
     };
+  }
+
+  public static <T> Iterable<T> filterWithOrder(final Iterable<? extends T> from, final Iterable<BooleanFunction<? super T>> predicates) {
+    return isEmpty(predicates) || isEmpty(from)? Collections.<T>emptyList() : new Iterable<T>() {
+      @NotNull
+      @Override
+      public Iterator<T> iterator() {
+        return filterWithOrder(from.iterator(), predicates.iterator());
+      }
+    };
+  }
+
+  public static <T> Iterator<T> filterWithOrder(final Iterator<? extends T> from, final Iterator<BooleanFunction<? super T>> predicates) {
+    return flat(map(predicates, new Function<BooleanFunction<? super T>, Iterator<T>>() {
+      final List<T> buffer = new LinkedList<T>();
+      @Override
+      public Iterator<T> fun(BooleanFunction<? super T> pred) {
+        if (!buffer.isEmpty()) {
+          for (Iterator<T> it = buffer.iterator(); it.hasNext(); ) {
+            final T elem = it.next();
+            if (pred.fun(elem)) {
+              it.remove();
+              return asIterator(elem);
+            }
+          }
+        }
+        while(from.hasNext()) {
+          final T elem = from.next();
+          if (pred.fun(elem)) {
+            return asIterator(elem);
+          }
+          buffer.add(elem);
+        }
+        buffer.clear();
+        return Collections.<T>emptyList().iterator();
+      }
+    }));
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> BooleanFunction<? super T> notNullFilter() {
+    return (BooleanFunction<T>)NOT_NULL_FILTER;
   }
 
   private static abstract class BaseIterator<T> implements Iterator<T> {

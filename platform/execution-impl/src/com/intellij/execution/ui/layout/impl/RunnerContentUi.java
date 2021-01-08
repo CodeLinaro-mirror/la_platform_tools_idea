@@ -68,7 +68,7 @@ import javax.swing.border.Border;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.RoundRectangle2D;
+import java.awt.geom.Rectangle2D;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.util.List;
@@ -414,8 +414,10 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     }
     else if (Content.PROP_DISPLAY_NAME.equals(property)
              || Content.PROP_ICON.equals(property)
+             || Content.PROP_PINNED.equals(property)
              || Content.PROP_ACTIONS.equals(property)
-             || Content.PROP_DESCRIPTION.equals(property)) {
+             || Content.PROP_DESCRIPTION.equals(property)
+             || Content.PROP_TAB_COLOR.equals(property)) {
       cell.updateTabPresentation(content);
       updateTabsUI(false);
     }
@@ -1398,7 +1400,6 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
 
   private static class MyDropAreaPainter extends AbstractPainter {
     private Shape myBoundingBox;
-    private final Color myColor = ColorUtil.mix(JBColor.BLUE, JBColor.WHITE, .3);
 
     @Override
     public boolean needsRepaint() {
@@ -1409,10 +1410,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     public void executePaint(Component component, Graphics2D g) {
       if (myBoundingBox == null) return;
       GraphicsUtil.setupAAPainting(g);
-      g.setColor(ColorUtil.toAlpha(myColor, 200));
-      g.setStroke(new BasicStroke(2));
-      g.draw(myBoundingBox);
-      g.setColor(ColorUtil.toAlpha(myColor, 40));
+      g.setColor(JBColor.namedColor("DragAndDrop.areaBackground", 0x3d7dcc, 0x404a57));
       g.fill(myBoundingBox);
     }
 
@@ -1470,7 +1468,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
         r = new RelativeRectangle(cellWrapper).getRectangleOn(component);
         break;
       }
-      myBoundingBox = new RoundRectangle2D.Double(r.x, r.y, r.width, r.height, 16, 16);
+      myBoundingBox = new Rectangle2D.Double(r.x, r.y, r.width, r.height);
     }
   }
 
@@ -1720,7 +1718,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     });
   }
 
-  private static class TwoSideComponent extends NonOpaquePanel {
+  private static final class TwoSideComponent extends NonOpaquePanel {
     private TwoSideComponent(JComponent left, JComponent right) {
       setLayout(new CommonToolbarLayout(left, right));
       add(left);
@@ -1985,7 +1983,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     }
   }
 
-  private static class TopToolbarContextActions {
+  private static final class TopToolbarContextActions {
     public final AnAction[] left;
     public final AnAction[] middle;
     public final AnAction[] right;
@@ -1997,7 +1995,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     }
   }
 
-  private static class TopToolbarWrappers {
+  private static final class TopToolbarWrappers {
     public final Wrapper left;
     public final Wrapper middle;
     public final Wrapper right;

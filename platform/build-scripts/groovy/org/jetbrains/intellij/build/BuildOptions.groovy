@@ -87,12 +87,22 @@ class BuildOptions {
    * Note: skipping this step won't affect publication of 'Artifact paths' in TeamCity build settings and vice versa
    */
   static final String TEAMCITY_ARTIFACTS_PUBLICATION = "teamcity_artifacts_publication"
+  /**
+   * @see org.jetbrains.intellij.build.fus.StatisticsRecorderBundledMetadataProvider
+   */
+  static final String FUS_METADATA_BUNDLE_STEP = "fus_metadata_bundle_step"
 
   /**
    * Pass 'true' to this system property to produce an additional .dmg archive for macOS without bundled JRE.
    */
   public static final String BUILD_DMG_WITHOUT_BUNDLED_JRE = "intellij.build.dmg.without.bundled.jre"
   boolean buildDmgWithoutBundledJre = SystemProperties.getBooleanProperty(BUILD_DMG_WITHOUT_BUNDLED_JRE, SystemProperties.getBooleanProperty("artifact.mac.no.jdk", false))
+
+  /**
+   * Pass 'false' to this system property to skip building .dmg with bundled JRE.
+   */
+  public static final String BUILD_DMG_WITH_BUNDLED_JRE = "intellij.build.dmg.with.bundled.jre"
+  boolean buildDmgWithBundledJre = SystemProperties.getBooleanProperty(BUILD_DMG_WITH_BUNDLED_JRE, true)
 
   /**
    * Pass 'true' to this system property to produce .snap packages.
@@ -138,6 +148,9 @@ class BuildOptions {
    * change the output directory.
    */
   String outputRootPath = System.getProperty("intellij.build.output.root")
+
+  static final String CLEAN_OUTPUT_FOLDER_PROPERTY = "intellij.build.clean.output.root"
+  boolean cleanOutputFolder = SystemProperties.getBooleanProperty(CLEAN_OUTPUT_FOLDER_PROPERTY, true)
 
   /**
    * If {@code true} the build is running in 'Development mode' i.e. its artifacts aren't supposed to be used in production. In development

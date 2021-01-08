@@ -1,8 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
 
@@ -97,6 +97,7 @@ public class TextRange implements Segment, Serializable {
   }
 
   @NotNull
+  @Contract(pure = true)
   public String substring(@NotNull String str) {
     return str.substring(myStartOffset, myEndOffset);
   }
@@ -183,7 +184,6 @@ public class TextRange implements Segment, Serializable {
     return Math.max(myStartOffset, startOffset) < Math.min(myEndOffset, endOffset);
   }
 
-  @Nullable
   public TextRange intersection(@NotNull TextRange range) {
     int newStart = Math.max(myStartOffset, range.getStartOffset());
     int newEnd = Math.min(myEndOffset, range.getEndOffset());
@@ -222,7 +222,7 @@ public class TextRange implements Segment, Serializable {
     }
   }
 
-  private static boolean isProperRange(int startOffset, int endOffset) {
+  public static boolean isProperRange(int startOffset, int endOffset) {
     return startOffset <= endOffset && startOffset >= 0;
   }
 }

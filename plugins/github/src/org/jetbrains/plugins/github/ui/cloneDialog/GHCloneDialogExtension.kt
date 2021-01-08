@@ -49,7 +49,7 @@ class GHCloneDialogExtension : BaseCloneDialogExtension() {
     GHCloneDialogExtensionComponent(project)
 }
 
-private class GHCloneDialogExtensionComponent(project: Project) : BaseCloneDialogExtensionComponent(
+private class GHCloneDialogExtensionComponent(project: Project) : GHCloneDialogExtensionComponentBase(
   project,
   GithubAuthenticationManager.getInstance(),
   GithubApiRequestExecutorManager.getInstance(),
@@ -132,7 +132,11 @@ private class GHCloneDialogLoginPanel(account: GithubAccount?) :
       add(JBLabel(message("label.login.option.separator")).apply { border = empty(0, 6, 0, 4) })
       add(useTokenLink)
     }
-  val loginPanel = CloneDialogLoginPanel(account).apply { setServer(GithubServerPath.DEFAULT_HOST, false) }
+  val loginPanel = CloneDialogLoginPanel(account).apply {
+    Disposer.register(this@GHCloneDialogLoginPanel, this)
+
+    setServer(GithubServerPath.DEFAULT_HOST, false)
+  }
 
   init {
     add(titlePanel.apply { border = JBEmptyBorder(getRegularPanelInsets().apply { bottom = 0 }) })

@@ -8,7 +8,8 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem
 import com.intellij.util.indexing.diagnostic.dump.paths.providers.*
 import com.intellij.util.indexing.diagnostic.dump.paths.resolvers.*
-import java.io.PrintWriter
+import java.io.StringWriter
+import java.io.Writer
 
 object PortableFilePaths {
 
@@ -41,64 +42,9 @@ object PortableFilePaths {
 
 }
 
-object PortableFilePathsPersistence {
-
-  private val jacksonMapper = jacksonObjectMapper()
-
-  fun serializeToString(portableFilePath: PortableFilePath): String =
-    jacksonMapper.writeValueAsString(portableFilePath)
-
-  fun deserializeFromString(string: String): PortableFilePath =
-    jacksonMapper.readValue<PortableFilePath>(string)
-}
-
-class PortableFilesDumpCollector(private val project: Project) {
-  private val myBrokenFiles = mutableSetOf<PortableFilePath>()
-  private val myExistingFiles = mutableSetOf<PortableFilePath>()
-
-  fun addFiles(files: Iterable<VirtualFile>) = apply {
-    files.forEach { addFile(it) }
+fun PortableFilePath.hasPresentablePathMatching(pattern: String): Boolean =
+  when {
+    pattern.startsWith("*") -> presentablePath.endsWith(pattern.substring(1))
+    pattern.endsWith("*") -> presentablePath.startsWith(pattern.dropLast(1))
+    else -> presentablePath == pattern
   }
-
-  fun addFile(file: VirtualFile) = apply {
-    val portable = PortableFilePaths.getPortableFilePath(file, project)
-
-    val targetSet = when {
-      file.exists() && file.isValid -> myExistingFiles
-      else -> myBrokenFiles
-    }
-
-    targetSet += portable
-  }
-
-  private data class SerializableData(
-    val broken: List<String>,
-    val files: List<String>
-  )
-
-  private fun snapshot(files: Collection<PortableFilePath>): List<String> {
-    return files
-      .map { it.presentablePath }
-      .toSortedSet()
-      .toList()
-  }
-
-  private fun snapshot()  = SerializableData(
-    broken = snapshot(myBrokenFiles),
-    files = snapshot(myExistingFiles)
-  )
-
-  fun writeTo(printWriter: PrintWriter, indent: String) {
-    val snapshot = snapshot()
-    snapshot.broken.forEach { printWriter.append("${indent}BROKEN: ").append(it).appendln() }
-    snapshot.files.forEach { printWriter.append("${indent}$it").appendln() }
-  }
-
-  fun serializeToText() : String {
-    val snapshot = snapshot()
-    return buildString {
-      snapshot.broken.forEach { append("BROKEN: ").append(it).appendln() }
-      snapshot.files.forEach { append(it).appendln() }
-    }
-  }
-}

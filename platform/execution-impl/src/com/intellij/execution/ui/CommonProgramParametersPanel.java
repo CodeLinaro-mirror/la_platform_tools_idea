@@ -30,6 +30,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -43,6 +44,7 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
 
   private Module myModuleContext = null;
   private boolean myHasModuleMacro;
+  protected final Map<String, String> myMacrosMap = new HashMap<>();
 
   public CommonProgramParametersPanel() {
     this(true);
@@ -88,7 +90,7 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
     myWorkingDirectoryComponent = LabeledComponent.create(myWorkingDirectoryField,
                                                           ExecutionBundle.message("run.configuration.working.directory.label"));
 
-    myEnvVariablesComponent = new EnvironmentVariablesComponent();
+    myEnvVariablesComponent = createEnvironmentVariablesComponent();
 
     myEnvVariablesComponent.setLabelLocation(BorderLayout.WEST);
     myProgramParametersComponent.setLabelLocation(BorderLayout.WEST);
@@ -104,6 +106,11 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
     copyDialogCaption(myProgramParametersComponent);
   }
 
+  @NotNull
+  protected EnvironmentVariablesComponent createEnvironmentVariablesComponent() {
+    return new EnvironmentVariablesComponent();
+  }
+
   /**
    * @deprecated use {@link MacroComboBoxWithBrowseButton}
    */
@@ -114,7 +121,7 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
     button.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
-        final List<String> macros = ContainerUtil.map(getPathMacros().keySet(), s -> s.startsWith("%") ? s : "$" + s + "$");
+        final List<String> macros = ContainerUtil.map(myMacrosMap.keySet(), s -> s.startsWith("%") ? s : "$" + s + "$");
         JBPopupFactory.getInstance()
           .createPopupChooserBuilder(macros)
           .setItemChosenCallback((value) -> textAccessor.setText(value))
@@ -148,8 +155,9 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
   }
 
   protected void initMacroSupport() {
-    addMacroSupport(myProgramParametersComponent.getComponent().getEditorField(), MacrosDialog.Filters.ALL, getPathMacros());
-    addMacroSupport((ExtendableTextField)myWorkingDirectoryField.getTextField(), MacrosDialog.Filters.DIRECTORY_PATH, getPathMacros());
+    updatePathMacros();
+    addMacroSupport(myProgramParametersComponent.getComponent().getEditorField(), MacrosDialog.Filters.ALL);
+    addMacroSupport((ExtendableTextField)myWorkingDirectoryField.getTextField(), MacrosDialog.Filters.DIRECTORY_PATH);
   }
 
   public static void addMacroSupport(@NotNull ExtendableTextField textField) {
@@ -157,10 +165,9 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
   }
 
   protected void addMacroSupport(@NotNull ExtendableTextField textField,
-                                 @NotNull Predicate<? super Macro> macroFilter,
-                                 @Nullable Map<String, String> userMacros) {
+                                 @NotNull Predicate<? super Macro> macroFilter) {
     final Predicate<? super Macro> commonMacroFilter = getCommonMacroFilter();
-    doAddMacroSupport(textField, t -> commonMacroFilter.test(t) && macroFilter.test(t), userMacros);
+    doAddMacroSupport(textField, t -> commonMacroFilter.test(t) && macroFilter.test(t), myMacrosMap);
   }
 
   protected @NotNull Predicate<? super Macro> getCommonMacroFilter() {
@@ -173,10 +180,6 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
     if (Registry.is("allow.macros.for.run.configurations")) {
       MacrosDialog.addTextFieldExtension(textField, macroFilter.and(macro -> !(macro instanceof EditorMacro)), userMacros);
     }
-  }
-
-  protected @NotNull Map<String, String> getPathMacros() {
-    return MacrosDialog.getPathMacros(myModuleContext != null || myHasModuleMacro);
   }
 
   protected void copyDialogCaption(final LabeledComponent<RawCommandLineEditor> component) {
@@ -204,11 +207,19 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
 
   public void setModuleContext(Module moduleContext) {
     myModuleContext = moduleContext;
+    updatePathMacros();
   }
 
   public void setHasModuleMacro() {
     myHasModuleMacro = true;
+    updatePathMacros();
   }
+
+  protected void updatePathMacros() {
+    myMacrosMap.clear();
+    myMacrosMap.putAll(MacrosDialog.getPathMacros(myModuleContext != null || myHasModuleMacro));
+  }
+
 
   public LabeledComponent<RawCommandLineEditor> getProgramParametersComponent() {
     return myProgramParametersComponent;
@@ -231,8 +242,7 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
     configuration.setProgramParameters(fromTextField(myProgramParametersComponent.getComponent(), configuration));
     configuration.setWorkingDirectory(fromTextField(myWorkingDirectoryField, configuration));
 
-    configuration.setEnvs(myEnvVariablesComponent.getEnvs());
-    configuration.setPassParentEnvs(myEnvVariablesComponent.isPassParentEnvs());
+    myEnvVariablesComponent.apply(configuration);
   }
 
   @Nullable
@@ -244,7 +254,6 @@ public class CommonProgramParametersPanel extends JPanel implements PanelWithAnc
     setProgramParameters(configuration.getProgramParameters());
     setWorkingDirectory(PathUtil.toSystemDependentName(configuration.getWorkingDirectory()));
 
-    myEnvVariablesComponent.setEnvs(configuration.getEnvs());
-    myEnvVariablesComponent.setPassParentEnvs(configuration.isPassParentEnvs());
+    myEnvVariablesComponent.reset(configuration);
   }
 }

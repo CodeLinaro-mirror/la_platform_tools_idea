@@ -11,7 +11,7 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.jetbrains.python.codeInsight.PyInjectionUtil;
 import com.jetbrains.python.codeInsight.PyInjectorBase;
 import com.jetbrains.python.codeInsight.functionTypeComments.PyFunctionTypeAnnotationDialect;
-import com.jetbrains.python.documentation.doctest.PyDocstringLanguageDialect;
+import com.jetbrains.python.codeInsight.typeHints.PyTypeHintDialect;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.types.PyLiteralType;
 import com.jetbrains.python.psi.types.PyType;
@@ -61,10 +61,21 @@ public class PyTypingAnnotationInjector extends PyInjectorBase {
       }
       if (PsiTreeUtil.getParentOfType(context, PyAnnotation.class, true, PyCallExpression.class) != null &&
           isTypingAnnotation(expr.getStringValue())) {
-        return PyDocstringLanguageDialect.getInstance();
+        return PyTypeHintDialect.INSTANCE;
+      }
+      if (isInsideValueOfExplicitTypeAnnotation(expr)) {
+        return PyTypeHintDialect.INSTANCE;
       }
     }
     return null;
+  }
+
+  private static boolean isInsideValueOfExplicitTypeAnnotation(@NotNull PyStringLiteralExpression expr) {
+    PyAssignmentStatement assignment = PsiTreeUtil.getParentOfType(expr, PyAssignmentStatement.class);
+    if (assignment == null || !PsiTreeUtil.isAncestor(assignment.getAssignedValue(), expr, false)) {
+      return false;
+    }
+    return PyTypingTypeProvider.isExplicitTypeAlias(assignment, TypeEvalContext.codeAnalysis(expr.getProject(), expr.getContainingFile()));
   }
 
   @NotNull
@@ -81,7 +92,7 @@ public class PyTypingAnnotationInjector extends PyInjectorBase {
         language = PyFunctionTypeAnnotationDialect.INSTANCE;
       }
       else {
-        language = PyDocstringLanguageDialect.getInstance();
+        language = PyTypeHintDialect.INSTANCE;
       }
       if (language != null) {
         registrar.startInjecting(language);

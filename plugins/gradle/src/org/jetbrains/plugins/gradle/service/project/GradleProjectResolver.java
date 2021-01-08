@@ -13,6 +13,7 @@ import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotifica
 import com.intellij.openapi.externalSystem.service.project.ExternalSystemProjectResolver;
 import com.intellij.openapi.externalSystem.service.project.PerformanceTrace;
 import com.intellij.openapi.externalSystem.util.ExternalSystemDebugEnvironment;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.util.Factory;
 import com.intellij.openapi.util.Key;
@@ -23,6 +24,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.Function;
 import com.intellij.util.SmartList;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import gnu.trove.THashMap;
@@ -320,11 +322,9 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
     final Map<String /* module id */, Pair<DataNode<GradleSourceSetData>, ExternalSourceSet>> sourceSetsMap = new HashMap<>();
     projectDataNode.putUserData(RESOLVED_SOURCE_SETS, sourceSetsMap);
 
-    final Map<String/* output path */, Pair<String /* module id*/, ExternalSystemSourceType>> moduleOutputsMap =
-      new THashMap<>(FileUtil.PATH_HASHING_STRATEGY);
+    final Map<String/* output path */, Pair<String /* module id*/, ExternalSystemSourceType>> moduleOutputsMap = CollectionFactory.createFilePathMap();
     projectDataNode.putUserData(MODULES_OUTPUTS, moduleOutputsMap);
-    final Map<String/* artifact path */, String /* module id*/> artifactsMap =
-      new THashMap<>(FileUtil.PATH_HASHING_STRATEGY);
+    final Map<String/* artifact path */, String /* module id*/> artifactsMap = CollectionFactory.createFilePathMap();
     projectDataNode.putUserData(CONFIGURATION_ARTIFACTS, artifactsMap);
 
     // import modules data
@@ -401,6 +401,10 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
           }
         }
       }
+    }
+    // reuse same gradle home (for auto-discovered buildSrc projects) also for partial imports which doesn't request BuildScriptClasspathModel
+    if (gradleHomeDir == null && executionSettings.getGradleHome() != null) {
+      gradleHomeDir = new File(executionSettings.getGradleHome());
     }
     resolverCtx.putUserData(GRADLE_HOME_DIR, gradleHomeDir);
 
@@ -717,7 +721,7 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
     }
   }
 
-  private class ProjectConnectionDataNodeFunction implements Function<ProjectConnection, DataNode<ProjectData>> {
+  private final class ProjectConnectionDataNodeFunction implements Function<ProjectConnection, DataNode<ProjectData>> {
     @NotNull private final GradleProjectResolverExtension myProjectResolverChain;
     private final boolean myIsBuildSrcProject;
     private final DefaultProjectResolverContext myResolverContext;
@@ -735,6 +739,9 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
         myCancellationMap.putValue(myResolverContext.getExternalSystemTaskId(), myResolverContext.getCancellationTokenSource());
         myResolverContext.setConnection(connection);
         return doResolveProjectInfo(myResolverContext, myProjectResolverChain, myIsBuildSrcProject);
+      }
+      catch (ProcessCanceledException e) {
+        throw e;
       }
       catch (RuntimeException e) {
         LOG.info("Gradle project resolve error", e);

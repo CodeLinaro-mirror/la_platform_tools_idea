@@ -10,7 +10,7 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
-import org.jetbrains.annotations.Nls;
+import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,11 +35,11 @@ public abstract class Task implements TaskInfo, Progressive {
   private static final Logger LOG = Logger.getInstance(Task.class);
 
   protected final Project myProject;
-  protected String myTitle;
+  protected @NlsContexts.ProgressTitle String myTitle;
   private final boolean myCanBeCancelled;
 
-  private String myCancelText = CoreBundle.message("button.cancel");
-  private String myCancelTooltipText = CoreBundle.message("button.cancel");
+  private @NlsContexts.Button String myCancelText = CoreBundle.message("button.cancel");
+  private @NlsContexts.Tooltip String myCancelTooltipText = CoreBundle.message("button.cancel");
 
   private Task(@Nullable Project project, @NlsContexts.ProgressTitle @NotNull String title, boolean canBeCancelled) {
     myProject = project;
@@ -117,7 +117,7 @@ public abstract class Task implements TaskInfo, Progressive {
   }
 
   @NotNull
-  public final Task setTitle(@Nls@NlsContexts.ProgressTitle @NotNull String title) {
+  public final Task setTitle(@NlsContexts.ProgressTitle @NotNull String title) {
     myTitle = title;
     return this;
   }
@@ -182,14 +182,15 @@ public abstract class Task implements TaskInfo, Progressive {
   }
 
   public abstract static class Backgroundable extends Task implements PerformInBackgroundOption {
-    protected final PerformInBackgroundOption myBackgroundOption;
+    @NotNull
+    private final PerformInBackgroundOption myBackgroundOption;
 
     public Backgroundable(@Nullable Project project, @NlsContexts.ProgressTitle @NotNull String title) {
       this(project, title, true);
     }
 
     public Backgroundable(@Nullable Project project, @NlsContexts.ProgressTitle @NotNull String title, boolean canBeCancelled) {
-      this(project, title, canBeCancelled, null);
+      this(project, title, canBeCancelled, ALWAYS_BACKGROUND);
     }
 
     public Backgroundable(@Nullable Project project,
@@ -197,7 +198,7 @@ public abstract class Task implements TaskInfo, Progressive {
                           boolean canBeCancelled,
                           @Nullable PerformInBackgroundOption backgroundOption) {
       super(project, title, canBeCancelled);
-      myBackgroundOption = backgroundOption;
+      myBackgroundOption = ObjectUtils.notNull(backgroundOption, ALWAYS_BACKGROUND);
       if (StringUtil.isEmptyOrSpaces(title)) {
         LOG.warn("Empty title for backgroundable task.", new Throwable());
       }
@@ -205,14 +206,12 @@ public abstract class Task implements TaskInfo, Progressive {
 
     @Override
     public boolean shouldStartInBackground() {
-      return myBackgroundOption == null || myBackgroundOption.shouldStartInBackground();
+      return myBackgroundOption.shouldStartInBackground();
     }
 
     @Override
     public void processSentToBackground() {
-      if (myBackgroundOption != null) {
-        myBackgroundOption.processSentToBackground();
-      }
+      myBackgroundOption.processSentToBackground();
     }
 
     @Override
@@ -228,6 +227,7 @@ public abstract class Task implements TaskInfo, Progressive {
 
   public abstract static class Modal extends Task {
     public Modal(@Nullable Project project, @NlsContexts.DialogTitle @NotNull String title, boolean canBeCancelled) {
+      //noinspection DialogTitleCapitalization
       super(project, title, canBeCancelled);
     }
 
@@ -253,8 +253,8 @@ public abstract class Task implements TaskInfo, Progressive {
 
   public static class NotificationInfo {
     private final String myNotificationName;
-    private final String myNotificationTitle;
-    private final String myNotificationText;
+    private final @NlsContexts.SystemNotificationTitle String myNotificationTitle;
+    private final @NlsContexts.SystemNotificationText String myNotificationText;
     private final boolean myShowWhenFocused;
 
     public NotificationInfo(@NotNull String notificationName,
@@ -299,7 +299,7 @@ public abstract class Task implements TaskInfo, Progressive {
     private final Ref<T> myResult = Ref.create();
     private final Ref<Throwable> myError = Ref.create();
 
-    public WithResult(@Nullable Project project, @NlsContexts.ProgressTitle @NotNull String title, boolean canBeCancelled) {
+    public WithResult(@Nullable Project project, @NlsContexts.DialogTitle @NotNull String title, boolean canBeCancelled) {
       super(project, title, canBeCancelled);
     }
 

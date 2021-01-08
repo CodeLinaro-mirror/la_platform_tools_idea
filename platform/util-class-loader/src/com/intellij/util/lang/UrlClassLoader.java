@@ -5,6 +5,7 @@ import com.intellij.ReviseWhenPortedToJDK;
 import com.intellij.openapi.diagnostic.LoggerRt;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.util.PathUtilRt;
+import com.intellij.util.UrlUtilRt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +26,8 @@ import java.util.*;
  */
 public class UrlClassLoader extends ClassLoader {
   static final String CLASS_EXTENSION = ".class";
+  private static final ThreadLocal<Boolean> ourSkipFindingResource = new ThreadLocal<Boolean>();
+  private static final boolean ourClassPathIndexEnabled = Boolean.parseBoolean(System.getProperty("idea.classpath.index.enabled", "true"));
 
   private static final Set<Class<?>> ourParallelCapableLoaders;
   static {
@@ -71,13 +74,11 @@ public class UrlClassLoader extends ClassLoader {
     try {
       URL url = new File(jar).toURI().toURL();
       //noinspection deprecation
-      getClassPath().addURL(internProtocol(url));
+      getClassPath().addURL(UrlUtilRt.internProtocol(url));
       myURLs.add(url);
     }
     catch (MalformedURLException ignore) { }
   }
-
-  private static final boolean ourClassPathIndexEnabled = Boolean.parseBoolean(System.getProperty("idea.classpath.index.enabled", "true"));
 
   @NotNull
   protected ClassPath getClassPath() {
@@ -279,7 +280,7 @@ public class UrlClassLoader extends ClassLoader {
     else {
       myURLs = new ArrayList<URL>(builder.myURLs.size());
       for (URL url : builder.myURLs) {
-        URL internedUrl = internProtocol(url);
+        URL internedUrl = UrlUtilRt.internProtocol(url);
         if (internedUrl != null) {
           myURLs.add(internedUrl);
         }
@@ -305,38 +306,18 @@ public class UrlClassLoader extends ClassLoader {
   }
 
   /**
-   * Interns a value of the {@link URL#protocol} ("file" or "jar") and {@link URL#host} (empty string) fields.
-   * @return interned URL or null if URL was malformed
+   * @deprecated Use {@link UrlUtilRt#internProtocol(URL)}
    */
+  @Deprecated
   @Nullable
   public static URL internProtocol(@NotNull URL url) {
-    String protocol = url.getProtocol();
-    boolean interned = false;
-    if ("file".equals(protocol) || "jar".equals(protocol)) {
-      protocol = protocol.intern();
-      interned = true;
-    }
-    String host = url.getHost();
-    if (host != null && host.isEmpty()) {
-      host = "";
-      interned = true;
-    }
-    try {
-      if (interned) {
-        url = new URL(protocol, host, url.getPort(), url.getFile());
-      }
-      return url;
-    }
-    catch (MalformedURLException e) {
-      LoggerRt.getInstance(UrlClassLoader.class).error(e);
-      return null;
-    }
+    return UrlUtilRt.internProtocol(url);
   }
 
   /** @deprecated adding URLs to a classloader at runtime could lead to hard-to-debug errors */
   @Deprecated
   public void addURL(@NotNull URL url) {
-    getClassPath().addURL(internProtocol(url));
+    getClassPath().addURL(UrlUtilRt.internProtocol(url));
     myURLs.add(url);
   }
 
@@ -351,7 +332,7 @@ public class UrlClassLoader extends ClassLoader {
   }
 
   @Override
-  protected Class<?> findClass(final String name) throws ClassNotFoundException {
+  protected Class<?> findClass(@NotNull String name) throws ClassNotFoundException {
     Class<?> clazz = _findClass(name);
     if (clazz == null) {
       throw new ClassNotFoundException(name);
@@ -359,14 +340,14 @@ public class UrlClassLoader extends ClassLoader {
     return clazz;
   }
 
-  @Nullable
-  protected final Class<?> _findClass(@NotNull String name) {
-    Resource res = getClassPath().getResource(name.replace('.', '/') + CLASS_EXTENSION);
-    if (res == null) {
+  protected @Nullable final Class<?> _findClass(@NotNull String name) {
+    Resource resource = getClassPath().getResource(name.replace('.', '/') + CLASS_EXTENSION);
+    if (resource == null) {
       return null;
     }
+
     try {
-      return defineClass(name, res);
+      return defineClass(name, resource);
     }
     catch (IOException e) {
       LoggerRt.getInstance(UrlClassLoader.class).error(e);
@@ -423,13 +404,13 @@ public class UrlClassLoader extends ClassLoader {
     return defineClass(name, b, 0, b.length, protectionDomain);
   }
 
-  private static final ThreadLocal<Boolean> ourSkipFindingResource = new ThreadLocal<Boolean>();
-
   @Override
   public URL findResource(String name) {
-    if (ourSkipFindingResource.get() != null) return null;
+    if (ourSkipFindingResource.get() != null) {
+      return null;
+    }
     Resource res = findResourceImpl(name);
-    return res != null ? res.getURL() : null;
+    return res == null ? null : res.getURL();
   }
 
   @Nullable
@@ -449,14 +430,17 @@ public class UrlClassLoader extends ClassLoader {
       ourSkipFindingResource.set(Boolean.TRUE);
       try {
         InputStream stream = super.getResourceAsStream(name);
-        if (stream != null) return stream;
-      } finally {
+        if (stream != null) {
+          return stream;
+        }
+      }
+      finally {
         ourSkipFindingResource.set(null);
       }
     }
     try {
       Resource res = findResourceImpl(name);
-      return res != null ? res.getInputStream() : null;
+      return res == null ? null : res.getInputStream();
     }
     catch (IOException e) {
       return null;
@@ -471,7 +455,7 @@ public class UrlClassLoader extends ClassLoader {
   // called by a parent class on Java 7+
   @NotNull
   protected Object getClassLoadingLock(String className) {
-    return myClassLoadingLocks != null ? myClassLoadingLocks.getOrCreateLock(className) : this;
+    return myClassLoadingLocks == null ? this : myClassLoadingLocks.getOrCreateLock(className);
   }
 
   /**

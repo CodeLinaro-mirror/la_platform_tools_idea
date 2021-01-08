@@ -3,6 +3,7 @@ package com.intellij.openapi.application
 
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.util.Computable
+import com.intellij.util.lang.CompoundRuntimeException
 
 inline fun <T> runWriteAction(crossinline runnable: () -> T): T {
   return ApplicationManager.getApplication().runWriteAction(Computable { runnable() })
@@ -29,7 +30,9 @@ fun <T> invokeAndWaitIfNeeded(modalityState: ModalityState? = null, runnable: ()
     return runnable()
   }
   else {
-    return computeDelegated { app.invokeAndWait({ it (runnable()) }, modalityState ?: ModalityState.defaultModalityState()) }
+    return computeDelegated {
+      app.invokeAndWait({ it (runnable()) }, modalityState ?: ModalityState.defaultModalityState())
+    }
   }
 }
 

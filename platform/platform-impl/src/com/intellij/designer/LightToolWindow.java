@@ -25,6 +25,7 @@ import com.intellij.ui.tabs.TabsUtil;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -55,7 +56,6 @@ public final class LightToolWindow extends JPanel {
   private final String myWidthKey;
   private final JPanel myMinimizeComponent;
   private final AnchoredButton myMinimizeButton;
-  private final JPanel myActionPanel;
 
   private final ComponentListener myWidthListener = new ComponentAdapter() {
     @Override
@@ -69,7 +69,7 @@ public final class LightToolWindow extends JPanel {
   };
 
   public LightToolWindow(@NotNull LightToolWindowContent content,
-                         @NotNull String title,
+                         @NotNull @Nls(capitalization = Nls.Capitalization.Title) String title,
                          @NotNull Icon icon,
                          @NotNull JComponent component,
                          @NotNull JComponent focusedComponent,
@@ -101,22 +101,21 @@ public final class LightToolWindow extends JPanel {
     titleLabel.setFont(UIUtil.getLabelFont(UIUtil.FontSize.SMALL));
     header.add(titleLabel, BorderLayout.CENTER);
 
-    // Android Studio: modified by Change Ib6a22fff / commit 421e74a
-    myActionPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
-    myActionPanel.setBorder(JBUI.Borders.empty(3, 0, 2, 0));
-    myActionPanel.setOpaque(false);
-    header.add(myActionPanel, BorderLayout.EAST);
+    JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
+    actionPanel.setBorder(JBUI.Borders.empty(3, 0, 2, 0));
+    actionPanel.setOpaque(false);
+    header.add(actionPanel, BorderLayout.EAST);
 
     if (actions != null) {
       for (AnAction action : actions) {
-        addAction(myActionPanel, action);
+        addAction(actionPanel, action);
       }
 
-      myActionPanel.add(new JLabel(AllIcons.General.Divider));
+      actionPanel.add(new JLabel(AllIcons.General.Divider));
     }
 
-    addAction(myActionPanel, new GearAction());
-    addAction(myActionPanel, new HideAction());
+    addAction(actionPanel, new GearAction());
+    addAction(actionPanel, new HideAction());
 
     JPanel contentWrapper = new JPanel(new BorderLayout());
     contentWrapper.setBorder(IdeBorderFactory.createBorder(SideBorder.TOP));
@@ -228,15 +227,16 @@ public final class LightToolWindow extends JPanel {
         setContentComponent(null);
       }
     }
-    String key = getMinKey();
-    if (minimizeParent.getClientProperty(key) == myMinimizeComponent) {
-      minimizeParent.putClientProperty(key, null);
+    else {
+      String key = getMinKey();
+      if (minimizeParent.getClientProperty(key) == myMinimizeComponent) {
+        minimizeParent.putClientProperty(key, null);
+      }
+      minimizeParent.putClientProperty(isLeft() ? RIGHT_MIN_KEY : LEFT_MIN_KEY, myMinimizeComponent);
+      minimizeParent.revalidate();
     }
-    minimizeParent.putClientProperty(isLeft() ? RIGHT_MIN_KEY : LEFT_MIN_KEY, myMinimizeComponent);
-    minimizeParent.revalidate();
 
     myAnchor = newAnchor;
-    updateHideIcons();
     configureBorder();
     updateWidth();
 
@@ -245,11 +245,6 @@ public final class LightToolWindow extends JPanel {
     }
 
     minimizeParent.putClientProperty(IGNORE_WIDTH_KEY, null);
-  }
-
-  private void updateHideIcons() {
-    myActionPanel.remove(myActionPanel.getComponentCount() - 1);
-    addAction(myActionPanel, new HideAction());
   }
 
   private void updateContent(boolean show, boolean flag) {
@@ -333,7 +328,7 @@ public final class LightToolWindow extends JPanel {
     group.add(myManager.createGearActions());
     if (myManager.getAnchor() == null) {
       group.addSeparator();
-      DefaultActionGroup viewModeGroup = DefaultActionGroup.createPopupGroup(() -> ActionsBundle.groupText("ViewMode"));
+      DefaultActionGroup viewModeGroup = DefaultActionGroup.createPopupGroup(() -> ActionsBundle.groupText("TW.ViewModeGroup"));
       for (ToolWindowViewModeAction.ViewMode viewMode : ToolWindowViewModeAction.ViewMode.values()) {
         viewModeGroup.add(new MyViewModeAction(viewMode));
       }
@@ -369,10 +364,6 @@ public final class LightToolWindow extends JPanel {
     }
   }
 
-  public void minimize() {
-    updateContent(false, true);
-  }
-
   private class HideAction extends AnAction {
     HideAction() {
       Presentation presentation = getTemplatePresentation();
@@ -386,7 +377,7 @@ public final class LightToolWindow extends JPanel {
     }
   }
 
-  private class MyViewModeAction extends ToolWindowViewModeAction {
+  private final class MyViewModeAction extends ToolWindowViewModeAction {
     private MyViewModeAction(@NotNull ViewMode mode) {
       super(mode);
       ActionUtil.copyFrom(this, mode.getActionID());

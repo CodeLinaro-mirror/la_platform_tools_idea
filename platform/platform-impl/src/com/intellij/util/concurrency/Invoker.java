@@ -15,6 +15,7 @@ import org.jetbrains.concurrency.AsyncPromise;
 import org.jetbrains.concurrency.CancellablePromise;
 import org.jetbrains.concurrency.Obsolescent;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +27,6 @@ import java.util.function.Supplier;
 import static com.intellij.openapi.application.ApplicationManager.getApplication;
 import static com.intellij.openapi.progress.util.ProgressIndicatorUtils.runInReadActionWithWriteActionPriority;
 import static com.intellij.openapi.util.Disposer.register;
-import static com.intellij.util.containers.ContainerUtil.newConcurrentSet;
 import static java.awt.EventQueue.isDispatchThread;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
@@ -184,7 +184,7 @@ public abstract class Invoker implements Disposable {
     }
     catch (RejectedExecutionException exception) {
       count.decrementAndGet();
-      LOG.debug("Executor is shutdown");
+      if (LOG.isTraceEnabled()) LOG.debug("Executor is shutdown");
       task.promise.setError("shutdown");
     }
   }
@@ -232,7 +232,7 @@ public abstract class Invoker implements Disposable {
   private void offerRestart(@NotNull Task<?> task, int attempt) {
     if (task.canRestart(disposed, attempt)) {
       offerSafely(task, attempt + 1, 10);
-      LOG.debug("Task is restarted");
+      if (LOG.isTraceEnabled()) LOG.debug("Task is restarted");
     }
   }
 
@@ -279,7 +279,7 @@ public abstract class Invoker implements Disposable {
     }
 
     boolean canRestart(boolean disposed, int attempt) {
-      LOG.debug("Task is canceled");
+      if (LOG.isTraceEnabled()) LOG.debug("Task is canceled");
       if (attempt < THRESHOLD) return canInvoke(disposed);
       LOG.warn("Task is always canceled: " + supplier);
       promise.setError("timeout");
@@ -288,18 +288,18 @@ public abstract class Invoker implements Disposable {
 
     boolean canInvoke(boolean disposed) {
       if (promise.isDone()) {
-        LOG.debug("Promise is cancelled: ", promise.isCancelled());
+        if (LOG.isTraceEnabled()) LOG.debug("Promise is cancelled: ", promise.isCancelled());
         return false; // the given promise is already done or cancelled
       }
       if (disposed) {
-        LOG.debug("Invoker is disposed");
+        if (LOG.isTraceEnabled()) LOG.debug("Invoker is disposed");
         promise.setError("disposed");
         return false; // the current invoker is disposed
       }
       if (supplier instanceof Obsolescent) {
         Obsolescent obsolescent = (Obsolescent)supplier;
         if (obsolescent.isObsolete()) {
-          LOG.debug("Task is obsolete");
+          if (LOG.isTraceEnabled()) LOG.debug("Task is obsolete");
           promise.setError("obsolete");
           return false; // the specified task is obsolete
         }
@@ -440,7 +440,7 @@ public abstract class Invoker implements Disposable {
   }
 
   public static final class Background extends Invoker {
-    private final Set<Thread> threads = newConcurrentSet();
+    private final Set<Thread> threads = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final ScheduledExecutorService executor;
 
     /**

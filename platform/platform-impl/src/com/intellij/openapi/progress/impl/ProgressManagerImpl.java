@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.*;
 import com.intellij.openapi.progress.util.PingProgress;
 import com.intellij.openapi.progress.util.ProgressIndicatorBase;
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
+import com.intellij.openapi.progress.util.ProgressWindow;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.wm.WindowManager;
@@ -20,13 +21,15 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 
 public class ProgressManagerImpl extends CoreProgressManager implements Disposable {
   private static final Key<Boolean> SAFE_PROGRESS_INDICATOR = Key.create("SAFE_PROGRESS_INDICATOR");
-  private final Set<CheckCanceledHook> myHooks = ContainerUtil.newConcurrentSet();
+  private final Set<CheckCanceledHook> myHooks = Collections.newSetFromMap(new ConcurrentHashMap<>());
   private final CheckCanceledHook mySleepHook = __ -> sleepIfNeededToGivePriorityToAnotherThread();
 
   public ProgressManagerImpl() {
@@ -38,7 +41,7 @@ public class ProgressManagerImpl extends CoreProgressManager implements Disposab
     return super.hasUnsafeProgressIndicator() || ContainerUtil.exists(getCurrentIndicators(), ProgressManagerImpl::isUnsafeIndicator);
   }
 
-  private static boolean isUnsafeIndicator(ProgressIndicator indicator) {
+  private static boolean isUnsafeIndicator(@NotNull ProgressIndicator indicator) {
     return indicator instanceof ProgressIndicatorBase && ((ProgressIndicatorBase)indicator).getUserData(SAFE_PROGRESS_INDICATOR) == null;
   }
 
@@ -52,15 +55,19 @@ public class ProgressManagerImpl extends CoreProgressManager implements Disposab
   @Override
   public void executeProcessUnderProgress(@NotNull Runnable process, ProgressIndicator progress) throws ProcessCanceledException {
     CheckCanceledHook hook = progress instanceof PingProgress && ApplicationManager.getApplication().isDispatchThread()
-                             ? p -> { ((PingProgress)progress).interact(); return true; } 
+                             ? p -> { ((PingProgress)progress).interact(); return true; }
                              : null;
-    if (hook != null) addCheckCanceledHook(hook);
+    if (hook != null) {
+      addCheckCanceledHook(hook);
+    }
 
     try {
       super.executeProcessUnderProgress(process, progress);
     }
     finally {
-      if (hook != null) removeCheckCanceledHook(hook);
+      if (hook != null) {
+        removeCheckCanceledHook(hook);
+      }
     }
   }
 
@@ -78,15 +85,15 @@ public class ProgressManagerImpl extends CoreProgressManager implements Disposab
   }
 
   @Override
-  public boolean runProcessWithProgressSynchronously(@NotNull final Task task, @Nullable final JComponent parentComponent) {
-    final long start = System.currentTimeMillis();
-    final boolean result = super.runProcessWithProgressSynchronously(task, parentComponent);
+  public boolean runProcessWithProgressSynchronously(@NotNull Task task, @Nullable JComponent parentComponent) {
+    long start = System.currentTimeMillis();
+    boolean result = super.runProcessWithProgressSynchronously(task, parentComponent);
     if (result) {
-      final long end = System.currentTimeMillis();
-      final Task.NotificationInfo notificationInfo = task.notifyFinished();
+      long end = System.currentTimeMillis();
+      Task.NotificationInfo notificationInfo = task.notifyFinished();
       long time = end - start;
       if (notificationInfo != null && time > 5000) { // show notification only if process took more than 5 secs
-        final JFrame frame = WindowManager.getInstance().getFrame(task.getProject());
+        JFrame frame = WindowManager.getInstance().getFrame(task.getProject());
         if (frame != null && !frame.hasFocus()) {
           systemNotify(notificationInfo);
         }
@@ -97,6 +104,21 @@ public class ProgressManagerImpl extends CoreProgressManager implements Disposab
 
   private static void systemNotify(@NotNull Task.NotificationInfo info) {
     SystemNotifications.getInstance().notify(info.getNotificationName(), info.getNotificationTitle(), info.getNotificationText());
+  }
+
+  @Override
+  protected @NotNull TaskRunnable createTaskRunnable(@NotNull Task task,
+                                                     @NotNull ProgressIndicator indicator,
+                                                     @Nullable Runnable continuation) {
+    try {
+      return super.createTaskRunnable(task, indicator, continuation);
+    }
+    finally {
+      if (indicator instanceof ProgressWindow) {
+        ApplicationManager.getApplication().getMessageBus().syncPublisher(TOPIC)
+          .onTaskRunnableCreated(task, indicator, continuation);
+      }
+    }
   }
 
   @Override
@@ -117,12 +139,23 @@ public class ProgressManagerImpl extends CoreProgressManager implements Disposab
 
   @Override
   void notifyTaskFinished(@NotNull Task.Backgroundable task, long elapsed) {
-    final Task.NotificationInfo notificationInfo = task.notifyFinished();
+    Task.NotificationInfo notificationInfo = task.notifyFinished();
     if (notificationInfo != null && elapsed > 5000) { // snow notification if process took more than 5 secs
-      final Component window = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
+      Component window = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
       if (window == null || notificationInfo.isShowWhenFocused()) {
         systemNotify(notificationInfo);
       }
+    }
+  }
+
+  @Override
+  protected void finishTask(@NotNull Task task, boolean canceled, @Nullable Throwable error) {
+    try {
+      super.finishTask(task, canceled, error);
+    }
+    finally {
+      ApplicationManager.getApplication().getMessageBus().syncPublisher(TOPIC)
+        .onTaskFinished(task, canceled, error);
     }
   }
 

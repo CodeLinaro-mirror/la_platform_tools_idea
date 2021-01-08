@@ -5,7 +5,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.DataProvider;
-import com.intellij.openapi.components.ServiceManager;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.MessageType;
 import com.intellij.openapi.ui.popup.Balloon;
@@ -24,7 +24,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import javax.swing.event.HyperlinkListener;
 import java.awt.*;
 import java.awt.event.InputEvent;
 import java.util.List;
@@ -112,11 +111,7 @@ public class ToolWindowHeadlessManagerImpl extends ToolWindowManager {
   }
 
   @Override
-  public void notifyByBalloon(final @NotNull String toolWindowId,
-                              final @NotNull MessageType type,
-                              final @NotNull String text,
-                              final @Nullable Icon icon,
-                              final @Nullable HyperlinkListener listener) {
+  public void notifyByBalloon(@NotNull ToolWindowBalloonShowOptions options) {
   }
 
   @Override
@@ -133,8 +128,9 @@ public class ToolWindowHeadlessManagerImpl extends ToolWindowManager {
   public void setMaximized(@NotNull ToolWindow window, boolean maximized) {
   }
 
+  @Nullable
   @Override
-  public @Nullable ToolWindow getLastActiveToolWindow(@Nullable Predicate<JComponent> condition) {
+  public ToolWindow getLastActiveToolWindow(@Nullable Predicate<? super JComponent> condition) {
     return null;
   }
 
@@ -377,6 +373,7 @@ public class ToolWindowHeadlessManagerImpl extends ToolWindowManager {
     }
   }
 
+  @SuppressWarnings({"HardCodedStringLiteral", "DialogTitleCapitalization"})
   private static class MockContentManager implements ContentManager {
     private final EventDispatcher<ContentManagerListener> myDispatcher = EventDispatcher.create(ContentManagerListener.class);
     private final List<Content> myContents = new ArrayList<>();
@@ -633,6 +630,6 @@ public class ToolWindowHeadlessManagerImpl extends ToolWindowManager {
 
     @Override
     public @NotNull ContentFactory getFactory() {
-      return ServiceManager.getService(ContentFactory.class);
+      return ApplicationManager.getApplication().getService(ContentFactory.class);
     }
   }}

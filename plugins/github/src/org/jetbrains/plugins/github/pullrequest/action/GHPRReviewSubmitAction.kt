@@ -12,15 +12,17 @@ import com.intellij.openapi.editor.actions.IncrementalFindAction
 import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.ui.ComponentContainer
-import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.IdeBorderFactory
 import com.intellij.ui.SideBorder
 import com.intellij.ui.components.panels.HorizontalBox
 import com.intellij.util.ui.*
-import icons.GithubIcons
+import com.intellij.util.ui.codereview.InlineIconButton
+import icons.VcsCodeReviewIcons
 import net.miginfocom.layout.CC
 import net.miginfocom.layout.LC
 import net.miginfocom.swing.MigLayout
@@ -30,7 +32,6 @@ import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRReviewDataProvider
 import org.jetbrains.plugins.github.ui.GHHtmlErrorPanel
 import org.jetbrains.plugins.github.ui.GHSimpleErrorPanelModel
-import org.jetbrains.plugins.github.ui.InlineIconButton
 import org.jetbrains.plugins.github.util.errorOnEdt
 import org.jetbrains.plugins.github.util.successOnEdt
 import java.awt.FlowLayout
@@ -69,6 +70,7 @@ class GHPRReviewSubmitAction : JButtonAction(StringUtil.ELLIPSIS, GithubBundle.m
   private fun getPrefix(place: String) = if (place == ActionPlaces.DIFF_TOOLBAR) GithubBundle.message("pull.request.review.submit")
   else GithubBundle.message("pull.request.review.submit.review")
 
+  @NlsSafe
   private fun getText(pendingComments: Int?): String {
     val builder = StringBuilder()
     if (pendingComments != null) builder.append(" ($pendingComments)")
@@ -165,16 +167,15 @@ class GHPRReviewSubmitAction : JButtonAction(StringUtil.ELLIPSIS, GithubBundle.m
 
       init {
         discardButton = pendingReview?.let { review ->
-          InlineIconButton(GithubIcons.Delete, GithubIcons.DeleteHovered,
-                           tooltip = GithubBundle.message("pull.request.discard.pending.comments")).apply {
-            actionListener = ActionListener {
-              if (Messages.showConfirmationDialog(this, GithubBundle.message("pull.request.discard.pending.comments.dialog.msg"),
-                                                  GithubBundle.message("pull.request.discard.pending.comments.dialog.title"),
-                                                  Messages.getYesButton(), Messages.getNoButton()) == Messages.YES) {
-                reviewDataProvider.deleteReview(EmptyProgressIndicator(), review.id)
-              }
+          val button = InlineIconButton(icon = VcsCodeReviewIcons.Delete, hoveredIcon = VcsCodeReviewIcons.DeleteHovered,
+                                        tooltip = GithubBundle.message("pull.request.discard.pending.comments"))
+          button.actionListener = ActionListener {
+            if (MessageDialogBuilder.yesNo(GithubBundle.message("pull.request.discard.pending.comments.dialog.title"),
+                                           GithubBundle.message("pull.request.discard.pending.comments.dialog.msg")).ask(button)) {
+              reviewDataProvider.deleteReview(EmptyProgressIndicator(), review.id)
             }
           }
+          button
         }
       }
 
@@ -247,13 +248,14 @@ class GHPRReviewSubmitAction : JButtonAction(StringUtil.ELLIPSIS, GithubBundle.m
     }
   }
 
-  override fun createButton(): JButton {
-    return object : JButton() {
-      override fun isDefaultButton(): Boolean {
-        return getClientProperty(PROP_DEFAULT) as? Boolean ?: super.isDefaultButton()
+  override fun createButton(): JButton =
+    object : JButton() {
+      init {
+        configureForToolbar()
       }
+
+      override fun isDefaultButton(): Boolean = getClientProperty(PROP_DEFAULT) as? Boolean ?: super.isDefaultButton()
     }
-  }
 
   override fun updateButtonFromPresentation(button: JButton, presentation: Presentation) {
     super.updateButtonFromPresentation(button, presentation)

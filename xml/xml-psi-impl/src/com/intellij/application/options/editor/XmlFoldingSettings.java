@@ -2,22 +2,19 @@
 package com.intellij.application.options.editor;
 
 import com.intellij.lang.XmlCodeFoldingSettings;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 
-@State(name = "XmlFoldingSettings", storages = {
-  @Storage("editor.xml"),
-  @Storage(value = "editor.codeinsight.xml", deprecated = true),
-})
-public class XmlFoldingSettings implements XmlCodeFoldingSettings, PersistentStateComponent<XmlFoldingSettings.State> {
+@State(name = "XmlFoldingSettings", storages = @Storage("editor.xml"))
+public final class XmlFoldingSettings implements XmlCodeFoldingSettings, PersistentStateComponent<XmlFoldingSettings.State> {
   private final XmlFoldingSettings.State myState = new State();
 
   public static XmlFoldingSettings getInstance() {
-    return ServiceManager.getService(XmlFoldingSettings.class);
+    return ApplicationManager.getApplication().getService(XmlFoldingSettings.class);
   }
 
   @Override

@@ -3,9 +3,9 @@ package com.intellij.ide.impl
 
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.wm.impl.FrameInfo
 import com.intellij.projectImport.ProjectOpenedCallback
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.TestOnly
 import java.util.function.Predicate
 
 data class OpenProjectTask(val forceOpenInNewFrame: Boolean = false,
@@ -26,7 +26,7 @@ data class OpenProjectTask(val forceOpenInNewFrame: Boolean = false,
                            val showWelcomeScreen: Boolean = true,
                            @set:Deprecated(message = "Pass to constructor", level = DeprecationLevel.ERROR)
                            var callback: ProjectOpenedCallback? = null,
-                           val frame: FrameInfo? = null,
+                           internal val frameManager: Any? = null,
                            val line: Int = -1,
                            val column: Int = -1,
                            val isRefreshVfsNeeded: Boolean = true,
@@ -37,7 +37,8 @@ data class OpenProjectTask(val forceOpenInNewFrame: Boolean = false,
                            val runConversionBeforeOpen: Boolean = true,
                            internal val projectWorkspaceId: String? = null,
                            internal val isProjectCreatedWithWizard: Boolean = false,
-                           internal val sendFrameBack: Boolean = false,
+                           @TestOnly
+                           internal val preloadServices: Boolean = true,
                            internal val beforeInit: ((Project) -> Unit)? = null,
                            /**
                             * Ignored if project is explicitly set.
@@ -55,6 +56,9 @@ data class OpenProjectTask(val forceOpenInNewFrame: Boolean = false,
 
   @ApiStatus.Internal
   fun withRunConfigurators() = copy(runConfigurators = true)
+
+  @ApiStatus.Internal
+  fun withForceOpenInNewFrame(value: Boolean) = copy(forceOpenInNewFrame = value)
 
   companion object {
     @JvmStatic

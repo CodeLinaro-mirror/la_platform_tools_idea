@@ -65,6 +65,10 @@ public final class StartUpMeasurer {
     return System.nanoTime();
   }
 
+  public static long getCurrentTimeIfEnabled() {
+    return isEnabled ? System.nanoTime() : -1;
+  }
+
   /**
    * Since start in ms.
    */
@@ -77,7 +81,7 @@ public final class StartUpMeasurer {
    * The instant events correspond to something that happens but has no duration associated with it.
    * See https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#heading=h.lenwiilchoxp
    *
-   * Scope is not supported — reported as global.
+   * Scope is not supported, reported as global.
    */
   public static void addInstantEvent(@NonNls @NotNull String name) {
     if (!isEnabled) {
@@ -154,7 +158,7 @@ public final class StartUpMeasurer {
   public static void setCurrentState(@NotNull LoadingState state) {
     LoadingState old = currentState.getAndSet(state);
     if (old.compareTo(state) > 0) {
-      BiConsumer<String, Throwable> errorHandler = LoadingState.getErrorHandler();
+      BiConsumer<? super String, ? super Throwable> errorHandler = LoadingState.getErrorHandler();
       if (errorHandler != null) {
         errorHandler.accept("New state " + state + " cannot precede old " + old, new Throwable());
       }
@@ -192,7 +196,9 @@ public final class StartUpMeasurer {
   }
 
   static void addActivity(@NotNull ActivityImpl activity) {
-    items.add(activity);
+    if (isEnabled) {
+      items.add(activity);
+    }
   }
 
   @ApiStatus.Internal

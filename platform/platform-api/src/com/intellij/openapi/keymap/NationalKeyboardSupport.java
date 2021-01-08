@@ -3,7 +3,6 @@ package com.intellij.openapi.keymap;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.SystemInfo;
@@ -17,7 +16,7 @@ import java.util.Locale;
 
 @State(name = "KeyboardSettings", storages = @Storage("keyboard.xml"))
 public class NationalKeyboardSupport implements PersistentStateComponent<NationalKeyboardSupport.OptionSet> {
-  private static final String[] MAC_SUPPORTED_LOCALES = {"de", "fr", "it", "no"};
+  private static final String[] MAC_SUPPORTED_LOCALES = {"de", "fr", "it", "no", "sk"};
   private static final String[] WIN_SUPPORTED_LOCALES = {"be", "ru", "uk", "bg", "sr"};
 
   public static final String VMOption = getVMOption();
@@ -85,7 +84,7 @@ public class NationalKeyboardSupport implements PersistentStateComponent<Nationa
       return new NationalKeyboardSupport();
     }
     else {
-      return ServiceManager.getService(NationalKeyboardSupport.class);
+      return ApplicationManager.getApplication().getService(NationalKeyboardSupport.class);
     }
   }
 

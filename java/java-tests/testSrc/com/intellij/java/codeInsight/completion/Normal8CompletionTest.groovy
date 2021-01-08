@@ -17,7 +17,6 @@ package com.intellij.java.codeInsight.completion
 
 import com.intellij.JavaTestUtil
 import com.intellij.codeInsight.CodeInsightSettings
-import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.psi.PsiClass
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.NeedsIndex
@@ -66,7 +65,7 @@ class Test {
   }
 }"""
     def items = myFixture.completeBasic()
-    assert LookupElementPresentation.renderElement(items[0]).itemText == 'x1 -> {}'
+    assert renderElement(items[0]).itemText == 'x1 -> {}'
   }
 
   @NeedsIndex.ForStandardLibrary
@@ -93,7 +92,7 @@ class Smth<T> {
 class InterestingClass {}
 """
     def items = myFixture.completeBasic()
-    assert LookupElementPresentation.renderElement(items[0]).itemText == 'interestingClass -> {}'
+    assert renderElement(items[0]).itemText == 'interestingClass -> {}'
   }
 
   void "test suggest this method references"() {
@@ -109,8 +108,8 @@ class Test {
   void bar(int i) {}
 }"""
     def items = myFixture.completeBasic()
-    assert items.any { LookupElementPresentation.renderElement(it).itemText == 'x -> {}' }
-    assert items.any { LookupElementPresentation.renderElement(it).itemText.contains('this::bar') }
+    assert items.any { renderElement(it).itemText == 'x -> {}' }
+    assert items.any { renderElement(it).itemText.contains('this::bar') }
   }
 
   void "test suggest receiver method reference"() {
@@ -135,7 +134,7 @@ class MethodRef {
 }
 """
     def items = myFixture.completeBasic()
-    assert items.find {LookupElementPresentation.renderElement(it).itemText.contains('MethodRef::boo')}
+    assert items.find {renderElement(it).itemText.contains('MethodRef::boo')}
   }
 
   @NeedsIndex.ForStandardLibrary
@@ -151,7 +150,7 @@ class MethodRef {
 }
 """
     def items = myFixture.completeBasic()
-    assert items.find {LookupElementPresentation.renderElement(it).itemText.contains('Entry::getKey')}
+    assert items.find {renderElement(it).itemText.contains('Entry::getKey')}
   }
 
   void "test constructor ref"() {
@@ -196,7 +195,7 @@ class Test88 {
     myFixture.assertPreferredCompletionItems 0, 'ArrayList::new', 'ArrayList', 'CopyOnWriteArrayList::new'
 
     def constructorRef = myFixture.lookupElements[0]
-    def p = LookupElementPresentation.renderElement(constructorRef)
+    def p = renderElement(constructorRef)
     assert p.tailText == ' (java.util)'
     assert p.tailFragments[0].grayed
 
@@ -220,7 +219,7 @@ class Test88 {
 }
 """
     def items = myFixture.completeBasic()
-    assert items.find {LookupElementPresentation.renderElement(it).itemText.contains('Bar::new')}
+    assert items.find {renderElement(it).itemText.contains('Bar::new')}
   }
 
   @NeedsIndex.ForStandardLibrary
@@ -237,7 +236,7 @@ class Test88 {
 }
 """
     def items = myFixture.completeBasic()
-    assert items.find {LookupElementPresentation.renderElement(it).itemText.contains('String[]::new')}
+    assert items.find {renderElement(it).itemText.contains('String[]::new')}
   }
 
   @NeedsIndex.ForStandardLibrary
@@ -299,7 +298,7 @@ class Test88 {
   @NeedsIndex.ForStandardLibrary
   void testLambdaInAmbiguousCall() {
     configureByTestName()
-    myFixture.assertPreferredCompletionItems(0, 'toString', 'wait')
+    myFixture.assertPreferredCompletionItems(0, 'toString', 'getClass')
   }
 
   @NeedsIndex.ForStandardLibrary
@@ -355,7 +354,7 @@ class Test88 {
   @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants works in smart mode only (for overriding method completion)")
   void testOverrideMethodAsDefault() {
     configureByTestName()
-    assert LookupElementPresentation.renderElement(myFixture.lookupElements[0]).itemText == 'default void run'
+    assert renderElement(myFixture.lookupElements[0]).itemText == 'default void run'
     myFixture.type('\t')
     checkResultByFileName()
   }
@@ -377,7 +376,7 @@ class Test88 {
   @NeedsIndex.ForStandardLibrary
   void testOnlyAccessibleClassesInChainedMethodReference() {
     configureByTestName()
-    def p = LookupElementPresentation.renderElement(assertOneElement(myFixture.lookupElements))
+    def p = renderElement(assertOneElement(myFixture.lookupElements))
     assert p.itemText == 'Entry::getKey'
     assert p.tailText == ' java.util.Map'
     assert !p.typeText
@@ -448,11 +447,11 @@ class Test88 {
   void testStreamMethodsOnCollection() {
     configureByTestName()
     myFixture.assertPreferredCompletionItems 0, 'filter'
-    assert LookupElementPresentation.renderElement(myFixture.lookupElements[0]).itemText == 'filter'
+    assert renderElement(myFixture.lookupElements[0]).itemText == 'filter'
 
     myFixture.type('ma')
     myFixture.assertPreferredCompletionItems 0, 'map', 'mapToDouble'
-    assert LookupElementPresentation.renderElement(myFixture.lookupElements[0]).itemText == 'stream().map'
+    assert renderElement(myFixture.lookupElements[0]).itemText == 'stream().map'
 
     myFixture.type('\n')
     checkResultByFileName()
@@ -464,7 +463,7 @@ class Test88 {
   void testStreamMethodsOnArray() {
     configureByTestName()
     myFixture.assertPreferredCompletionItems 0, 'length', 'clone'
-    assert !myFixture.lookupElements.find { LookupElementPresentation.renderElement(it).itemText.contains('stream().toString') }
+    assert !myFixture.lookupElements.find { renderElement(it).itemText.contains('stream().toString') }
 
     myFixture.type('ma')
     myFixture.assertPreferredCompletionItems 0, 'map', 'mapToDouble'
@@ -488,5 +487,42 @@ class Test88 {
   void testNoStreamSuggestionsOnBrokenCode() { doAntiTest() }
 
   void testNoStreamSuggestionsInMethodReference() { doAntiTest() }
+
+  @NeedsIndex.ForStandardLibrary
+  void testToLowerCase() {
+    myFixture.configureByText 'a.java', 'class C { String s = "hello".toUp<caret> }'
+    myFixture.completeBasic()
+    assert myFixture.lookupElementStrings == ['toUpperCase(Locale.ROOT)', 'toUpperCase', 'toUpperCase']
+    myFixture.type('\n')
+    myFixture.checkResult('import java.util.Locale;\n\n' +
+            'class C { String s = "hello".toUpperCase(Locale.ROOT) }')
+  }
+
+  @NeedsIndex.ForStandardLibrary
+  void testGetBytes() {
+    myFixture.configureByText 'a.java', 'class C { byte[] s = "hello".getB<caret> }'
+    myFixture.completeBasic()
+    assert myFixture.lookupElementStrings == ['getBytes(StandardCharsets.UTF_8)', 'getBytes', 'getBytes', 'getBytes', 'getBytes']
+    myFixture.type('\n')
+    myFixture.checkResult('class C { byte[] s = "hello".getBytes(java.nio.charset.StandardCharsets.UTF_8) }')
+  }
+  
+  @NeedsIndex.ForStandardLibrary
+  void testDotAfterMethodRef() {
+    myFixture.configureByText 'a.java', """import java.util.HashSet;
+import java.util.stream.Collectors;
+
+class Scratch {
+    public static void main(String[] args) {
+      HashSet<String> set = new HashSet<>();
+      set
+        .stream()
+        .filter(String::isEmpty.<caret>)
+        .collect(Collectors.joining());
+    }
+}"""
+    myFixture.completeBasic()
+    assert myFixture.lookupElementStrings == []
+  }
 
 }

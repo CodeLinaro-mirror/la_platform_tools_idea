@@ -2,11 +2,13 @@
 package com.intellij.openapi.util;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.*;
 
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * <p>Manages a parent-child relation of chained objects requiring cleanup.</p>
@@ -37,7 +39,7 @@ public final class Disposer {
 
   @NotNull
   @Contract(pure = true, value = "_->new")
-  public static Disposable newDisposable(@NotNull String debugName) {
+  public static Disposable newDisposable(@NotNull @NonNls String debugName) {
     // must not be lambda because we care about identity in ObjectTree.myObject2NodeMap
     return new Disposable() {
       @Override
@@ -61,12 +63,13 @@ public final class Disposer {
 
   /**
    * Registers {@code child} so it is disposed right before its {@code parent}. See {@link Disposer class JavaDoc} for more details.
+   * This overrides parent disposable for {@code child}, i.e. if {@code child} is already registered with {@code oldParent},
+   * it's unregistered from {@code oldParent} before registering with {@code parent}.
    *
    * @throws com.intellij.util.IncorrectOperationException If {@code child} has been registered with {@code parent} before;
-   *                                                       if {@code parent} is being disposed ({@link #isDisposing(Disposable)}) or
-   *                                                       already disposed ({@link #isDisposed(Disposable)}.
+   *                                                       if {@code parent} is being disposed or already disposed ({@link #isDisposed(Disposable)}.
    */
-  public static void register(@NotNull Disposable parent, @NotNull Disposable child) {
+  public static void register(@NotNull Disposable parent, @NotNull Disposable child) throws IncorrectOperationException {
     RuntimeException e = ourTree.register(parent, child);
     if (e != null) throw e;
   }
@@ -87,7 +90,7 @@ public final class Disposer {
     register(child, new KeyDisposable(key));
   }
 
-  private static class KeyDisposable implements Disposable {
+  private static final class KeyDisposable implements Disposable {
     @NotNull
     private final String myKey;
 
@@ -104,12 +107,19 @@ public final class Disposer {
     }
   }
 
+  /**
+   * @return true if {@code disposable} is disposed or being disposed (i.e. its {@link Disposable#dispose()} method is executing).
+   */
   public static boolean isDisposed(@NotNull Disposable disposable) {
     return ourTree.getDisposalInfo(disposable) != null;
   }
 
+  /**
+   * @deprecated use {@link #isDisposed(Disposable)} instead
+   */
+  @Deprecated
   public static boolean isDisposing(@NotNull Disposable disposable) {
-    return ourTree.isDisposing(disposable);
+    return isDisposed(disposable);
   }
 
   public static Disposable get(@NotNull String key) {
@@ -120,14 +130,16 @@ public final class Disposer {
     dispose(disposable, true);
   }
 
+  /**
+   * {@code predicate} is used only for direct children.
+   */
   @ApiStatus.Internal
-  @ApiStatus.Experimental
-  public static void disposeChildren(@NotNull Disposable disposable) {
-    ourTree.executeAll(disposable, false, /* onlyChildren */ true);
+  public static void disposeChildren(@NotNull Disposable disposable, @Nullable Predicate<? super Disposable> predicate) {
+    ourTree.executeAllChildren(disposable, predicate);
   }
 
   public static void dispose(@NotNull Disposable disposable, boolean processUnregistered) {
-    ourTree.executeAll(disposable, processUnregistered, /* onlyChildren */ false);
+    ourTree.executeAll(disposable, processUnregistered);
   }
 
   @NotNull
@@ -173,6 +185,7 @@ public final class Disposer {
     return ObjectUtils.tryCast(getTree().getDisposalInfo(disposable), Throwable.class);
   }
 
+  @ApiStatus.Internal
   public static void clearDisposalTraces() {
     ourTree.clearDisposedObjectTraces();
   }

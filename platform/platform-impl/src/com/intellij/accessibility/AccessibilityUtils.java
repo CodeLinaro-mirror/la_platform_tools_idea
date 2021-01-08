@@ -15,16 +15,19 @@ import com.sun.jna.platform.win32.WinDef.UINT;
 public final class AccessibilityUtils {
   public static void enableScreenReaderSupportIfNecessary() {
     if (GeneralSettings.isSupportScreenReadersOverridden()) {
+      AccessibilityUsageTrackerCollector.featureTriggered(AccessibilityUsageTrackerCollector.SCREEN_READER_SUPPORT_ENABLED_VM);
       return;
     }
 
     if (isScreenReaderDetected()) {
+      AccessibilityUsageTrackerCollector.featureTriggered(AccessibilityUsageTrackerCollector.SCREEN_READER_DETECTED);
       String appName = ApplicationInfoImpl.getShadowInstance().getVersionName();
       int answer = Messages.showYesNoDialog(ApplicationBundle.message("confirmation.screen.reader.enable", appName),
                                             ApplicationBundle.message("title.screen.reader.support"),
                                             ApplicationBundle.message("button.enable"), Messages.getCancelButton(),
                                             Messages.getQuestionIcon());
       if (answer == Messages.YES) {
+        AccessibilityUsageTrackerCollector.featureTriggered(AccessibilityUsageTrackerCollector.SCREEN_READER_SUPPORT_ENABLED);
         System.setProperty(GeneralSettings.SCREEN_READERS_DETECTED_PROPERTY, "true");
       }
     }
@@ -54,7 +57,7 @@ public final class AccessibilityUtils {
         Foundation.nsString("com.apple.universalaccess")
       );
       ID voiceOverEnabledKey = Foundation.invoke(universalAccess, "boolForKey:", Foundation.nsString("voiceOverOnOffKey"));
-      return voiceOverEnabledKey.intValue() != 0;
+      return voiceOverEnabledKey.booleanValue();
     }
     finally {
       if (universalAccess != null) Foundation.cfRelease(universalAccess);

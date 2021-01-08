@@ -15,15 +15,15 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
 
 /**
  * @author Eugene Zhuravlev
- * Date: 01-Oct-18
  */
-public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaFileManager> implements StandardJavaFileManager {
+public final class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaFileManager> implements StandardJavaFileManager {
   private static final String _OS_NAME = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
   private static final boolean isWindows = _OS_NAME.startsWith("windows");
   private static final boolean isOS2 = _OS_NAME.startsWith("os/2") || _OS_NAME.startsWith("os2");
@@ -44,10 +44,12 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
       return file.getName();
     }
   });
+
   private final Context myContext;
   private final boolean myJavacBefore9;
   private final Collection<? extends JavaSourceTransformer> mySourceTransformers;
   private final FileOperations myFileOperations = new DefaultFileOperations();
+  private final Map<String, Collection<String>> myGeneratedToOriginatingMap = new HashMap<String, Collection<String>>();
 
   private final Function<File, JavaFileObject> myFileToInputFileObjectConverter = new Function<File, JavaFileObject>() {
     @Override
@@ -66,6 +68,9 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   @Nullable
   private String myEncodingName;
   private int myChecksCounter = 0;
+
+  private Iterable<? extends JavaFileObject> myInputSources = Collections.emptyList();
+  private final Map<String, JavaFileObject> myInputSourcesIndex = new HashMap<String, JavaFileObject>();
 
   public JpsJavacFileManager(final Context context, boolean javacBefore9, Collection<? extends JavaSourceTransformer> transformers) {
     super(context.getStandardFileManager());
@@ -115,6 +120,18 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     });
   }
 
+  public Iterable<? extends JavaFileObject> setInputSources(Iterable<? extends File> sources) {
+    List<JavaFileObject> allSources = new ArrayList<JavaFileObject>();
+    for (JavaFileObject file : getJavaFileObjectsFromFiles(sources)) {
+      allSources.add(file);
+    }
+    return myInputSources = allSources;
+  }
+
+  public Iterable<? extends JavaFileObject> getInputSources() {
+    return myInputSources;
+  }
+
   @Override
   public JavaFileObject getJavaFileForInput(Location location, String className, JavaFileObject.Kind kind) throws IOException {
     checkCanceled();
@@ -134,34 +151,38 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     if (kind != JavaFileObject.Kind.SOURCE && kind != JavaFileObject.Kind.CLASS) {
       throw new IllegalArgumentException("Invalid kind " + kind);
     }
-    return getFileForOutput(location, kind, externalizeFileName(className, kind), className, sibling);
+    return getFileForOutput(location, kind, externalizeFileName(className, kind.extension), className, sibling);
   }
 
   @Override
   public FileObject getFileForOutput(Location location, String packageName, String relativeName, FileObject sibling) throws IOException {
-    final StringBuilder name = new StringBuilder();
-    if (packageName.isEmpty()) {
-      name.append(relativeName);
-    }
-    else {
-      name.append(externalizeFileName(packageName)).append(File.separatorChar).append(relativeName);
-    }
-    final String fileName = name.toString();
-    return getFileForOutput(location, getKind(fileName), fileName, null, sibling);
+    final String fileName = packageName.isEmpty()? relativeName : externalizeFileName(packageName, File.separator, relativeName);
+    return getFileForOutput(location, JpsFileObject.findKind(fileName), fileName, null, sibling);
   }
 
   private OutputFileObject getFileForOutput(Location location, JavaFileObject.Kind kind, String fileName, @Nullable String className, FileObject sibling) throws IOException {
     checkCanceled();
 
-    JavaFileObject src = null;
+    Iterable<URI> originatingSources = null;
     if (sibling instanceof JavaFileObject) {
       final JavaFileObject javaFileObject = (JavaFileObject)sibling;
       if (javaFileObject.getKind() == JavaFileObject.Kind.SOURCE) {
-        src = javaFileObject;
+        originatingSources = Iterators.asIterable(javaFileObject.toUri());
+      }
+    }
+    if (originatingSources == null) {
+      final Collection<String> originating = myGeneratedToOriginatingMap.get(className != null? className : fileName);
+      if (originating != null) {
+        for (String origQName : originating) {
+          JavaFileObject found = lookupInputSource(origQName);
+          if (found != null) {
+            originatingSources = Iterators.flat(originatingSources, Iterators.asIterable(found.toUri()));
+          }
+        }
       }
     }
 
-    File dir = getSingleOutputDirectory(location, src);
+    File dir = findOutputDir(location, originatingSources);
 
     if (location == StandardLocation.CLASS_OUTPUT) {
       if (dir == null) {
@@ -170,14 +191,61 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     }
     else if (location == StandardLocation.SOURCE_OUTPUT) {
       if (dir == null) {
-        dir = getSingleOutputDirectory(StandardLocation.CLASS_OUTPUT, src);
+        if (originatingSources != null) {
+          dir = findOutputDir(StandardLocation.CLASS_OUTPUT, originatingSources);
+        }
         if (dir == null) {
           throw new IOException("Neither class output directory nor source output are specified");
         }
       }
     }
     final File file = (dir == null? new File(fileName).getAbsoluteFile() : new File(dir, fileName));
-    return new OutputFileObject(myContext, dir, fileName, file, kind, className, src != null? src.toUri() : null, myEncodingName, location);
+    final boolean isGenerated = (sibling instanceof OutputFileObject && ((OutputFileObject)sibling).getKind() == JavaFileObject.Kind.SOURCE) /*created from generated source*/ ||
+                                myGeneratedToOriginatingMap.containsKey(className != null? className : fileName);
+    return new OutputFileObject(
+      myContext, dir, fileName, file, kind, className, originatingSources == null? Collections.<URI>emptyList() : originatingSources, myEncodingName, null, location, isGenerated
+    );
+  }
+
+  @Nullable
+  private File findOutputDir(Location location, @Nullable Iterable<URI> sources) {
+    File dir = null;
+    if (sources != null && location == StandardLocation.CLASS_OUTPUT) {
+      for (URI uri : sources) {
+        dir = getSingleOutputDirectory(location, uri);
+        if (dir != null) {
+          break;
+        }
+      }
+    }
+    if (dir == null) {
+      dir = getSingleOutputDirectory(location, null);
+    }
+    return dir;
+  }
+
+  @Nullable
+  private JavaFileObject lookupInputSource(String qName) {
+    final JavaFileObject result = myInputSourcesIndex.get(qName);
+    if (result != null) {
+      return result;
+    }
+    if (!Iterators.isEmpty(myInputSources)) {
+      // the logic assumes the source is located in the directory structure reflecting the package name.
+      // todo: repeatedly cut prefixes and try shorter suffixes
+      final String uriSuffix = "/" + qName.replace('.', '/') + JavaFileObject.Kind.SOURCE.extension;
+      for (JavaFileObject source : myInputSources) {
+        final URI uri = source.toUri();
+        if (uri != null) {
+          final String path = uri.getPath();
+          if (path != null && path.endsWith(uriSuffix)) {
+            myInputSourcesIndex.put(qName, source);
+            return source;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   @Override
@@ -199,11 +267,11 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     return new URLClassLoader(urls.toArray(new URL[0]), myContext.getStandardFileManager().getClass().getClassLoader());
   }
 
-  private File getSingleOutputDirectory(final Location loc, final JavaFileObject sourceFile) {
+  private File getSingleOutputDirectory(final Location loc, final URI sourceUri) {
     if (loc == StandardLocation.CLASS_OUTPUT) {
-      if (myOutputsMap.size() > 1 && sourceFile != null) {
+      if (myOutputsMap.size() > 1 && sourceUri != null) {
         // multiple outputs case
-        final File outputDir = findOutputDir(new File(sourceFile.toUri()));
+        final File outputDir = findOutputDir(new File(sourceUri));
         if (outputDir != null) {
           return outputDir;
         }
@@ -241,31 +309,22 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     }
   }
 
-  private static JavaFileObject.Kind getKind(String name) {
-    if (name.endsWith(JavaFileObject.Kind.CLASS.extension)){
-      return JavaFileObject.Kind.CLASS;
+  private static String externalizeFileName(CharSequence classOrPackageName, CharSequence... suffix) {
+    StringBuilder buf = new StringBuilder();
+    for (int i = 0, len = classOrPackageName.length(); i < len; i++) {
+      char ch = classOrPackageName.charAt(i);
+      buf.append(ch == '.'? File.separatorChar : ch);
     }
-    if (name.endsWith(JavaFileObject.Kind.SOURCE.extension)) {
-      return JavaFileObject.Kind.SOURCE;
+    for (CharSequence s : suffix) {
+      buf.append(s);
     }
-    if (name.endsWith(JavaFileObject.Kind.HTML.extension)) {
-      return JavaFileObject.Kind.HTML;
-    }
-    return JavaFileObject.Kind.OTHER;
-  }
-
-  private static String externalizeFileName(CharSequence cs, JavaFileObject.Kind kind) {
-    return externalizeFileName(cs) + kind.extension;
-  }
-
-  private static String externalizeFileName(CharSequence name) {
-    return name.toString().replace('.', File.separatorChar);
+    return buf.toString();
   }
 
   public interface Context {
     @Nullable
     String getExplodedAutomaticModuleName(File pathElement);
-    
+
     boolean isCanceled();
 
     @NotNull
@@ -408,8 +467,8 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   }
 
   @Override
-  public Iterable<JavaFileObject> list(Location location, String packageName, final Set<JavaFileObject.Kind> kinds, final boolean recurse) throws IOException {
-    Iterable<JavaFileObject> allFiles;
+  public Iterable<JavaFileObject> list(final Location location, final String packageName, final Set<JavaFileObject.Kind> kinds, final boolean recurse) throws IOException {
+    Iterable<JavaFileObject> result;
     try {
       if (isFileSystemLocation(location)) {
         // we consider here only locations that are known to be file-based
@@ -417,62 +476,68 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
         if (locationRoots == null) {
           return Collections.emptyList();
         }
-
-        final List<Iterable<JavaFileObject>> result = new ArrayList<Iterable<JavaFileObject>>();
-        for (File root : locationRoots) {
-          final boolean isFile;
-
-          FileOperations.Archive archive = myFileOperations.lookupArchive(root);
-          if (archive != null) {
-            isFile = true;
-          }
-          else {
-            isFile = myFileOperations.isFile(root);
-          }
-
-          if (isFile) {
-            // Not a directory; either a file or non-existent, create the archive
+        result = Iterators.flat(Iterators.map(locationRoots, new Function<File, Iterable<JavaFileObject>>() {
+          @Override
+          public Iterable<JavaFileObject> fun(File root) {
             try {
-              if (archive == null) {
-                archive = myFileOperations.openArchive(root, myEncodingName, location);
-              }
+              final boolean isFile;
+
+              FileOperations.Archive archive = myFileOperations.lookupArchive(root);
               if (archive != null) {
-                result.add(archive.list(packageName.replace('.', '/'), kinds, recurse));
+                isFile = true;
               }
               else {
-                // fallback to default implementation
-                result.add(super.list(location, packageName, kinds, recurse));
+                isFile = myFileOperations.isFile(root);
               }
+
+              if (isFile) {
+                // Not a directory; either a file or non-existent, create the archive
+                try {
+                  if (archive == null) {
+                    archive = myFileOperations.openArchive(root, myEncodingName, location);
+                  }
+                  if (archive != null) {
+                    return archive.list(packageName.replace('.', '/'), kinds, recurse);
+                  }
+                  // fallback to default implementation
+                  return JpsJavacFileManager.super.list(location, packageName, kinds, recurse);
+                }
+                catch (IOException ex) {
+                  throw new IOException("Error reading file " + root + ": " + ex.getMessage(), ex);
+                }
+              }
+
+              // is a directory or does not exist
+              final File dir = new File(root, packageName.replace('.', '/'));
+
+              // Generally, no directories should be included in result. If recurse:= false,
+              // the fileOperations.listFiles(dir, recurse) output may contain children directories, so the filter should skip them too
+              final BooleanFunction<File> kindsMatcher = ourKindFilter.getFor(kinds);
+              final BooleanFunction<File> filter = recurse || !kinds.contains(JavaFileObject.Kind.OTHER) ? kindsMatcher : new BooleanFunction<File>() {
+                @Override
+                public boolean fun(File file) {
+                  return kindsMatcher.fun(file) && (
+                    !(kinds.size() == 1 || JpsFileObject.findKind(file.getName()) == JavaFileObject.Kind.OTHER) /* the kind != OTHER */ || myFileOperations.isFile(file)
+                  );
+                }
+              };
+              return Iterators.map(Iterators.filter(myFileOperations.listFiles(dir, recurse), filter), myFileToInputFileObjectConverter);
             }
-            catch (IOException ex) {
-              throw new IOException("Error reading file " + root + ": " + ex.getMessage(), ex);
+            catch (IOException e) {
+              throw new RuntimeException(e);
             }
           }
-          else {
-            // is a directory or does not exist
-            final File dir = new File(root, packageName.replace('.', '/'));
-            final BooleanFunction<File> kindsFilter = ourKindFilter.getFor(kinds);
-            final boolean acceptUnknownFiles = kinds.contains(JavaFileObject.Kind.OTHER);
-            final BooleanFunction<File> filter = recurse || !acceptUnknownFiles? kindsFilter : new BooleanFunction<File>() {
-              @Override
-              public boolean fun(File file) {
-                return kindsFilter.fun(dir) && myFileOperations.isFile(file);
-              }
-            };
-            result.add(Iterators.map(Iterators.filter(myFileOperations.listFiles(dir, recurse), filter), myFileToInputFileObjectConverter));
-          }
-        }
-        allFiles = Iterators.flat(result);
+        }));
       }
       else {
         // locations, not supported by this class should be handled by default javac file manager
-        allFiles = super.list(location, packageName, kinds, recurse);
+        result = super.list(location, packageName, kinds, recurse);
       }
     }
     catch (IllegalStateException e) {
       if (e.getCause() instanceof UnsupportedOperationException) {
         // fallback
-        allFiles = super.list(location, packageName, kinds, recurse);
+        result = super.list(location, packageName, kinds, recurse);
       }
       else {
         throw e;
@@ -480,10 +545,10 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     }
     catch (UnsupportedOperationException e) {
       // fallback
-      allFiles = super.list(location, packageName, kinds, recurse);
+      result = super.list(location, packageName, kinds, recurse);
     }
     //noinspection unchecked
-    return kinds.contains(JavaFileObject.Kind.SOURCE) ? (Iterable<JavaFileObject>)wrapJavaFileObjects(allFiles) : allFiles;
+    return kinds.contains(JavaFileObject.Kind.SOURCE) ? (Iterable<JavaFileObject>)wrapJavaFileObjects(result) : result;
   }
 
   // this method overrides corresponding API method since javac 9
@@ -514,6 +579,8 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     }
     finally {
       myOutputsMap = Collections.emptyMap();
+      myInputSources = Collections.emptyList();
+      myInputSourcesIndex.clear();
       myFileOperations.clearCaches(null);
     }
   }
@@ -526,11 +593,30 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     myOutputsMap = outputDirToSrcRoots;
   }
 
+  // methods for collecting dependency information from annotation processing environment
+
+  public void addAnnotationProcessingClassMapping(String classOrResourceName, Iterable<String> originatingClassnames) {
+    if (classOrResourceName != null) {
+      Collection<String> names = null;
+      for (String cn : originatingClassnames) {
+        if (names == null) {
+          names = myGeneratedToOriginatingMap.get(classOrResourceName);
+          if (names == null) {
+            myGeneratedToOriginatingMap.put(classOrResourceName, names = new HashSet<String>());
+          }
+        }
+        names.add(cn);
+      }
+    }
+  }
+
+  //-----------------------------------------------------------------------------------
+
   private final DelegateCallHandler<StandardJavaFileManager, Void> mySetLocationForModuleCall = new DelegateCallHandler<StandardJavaFileManager, Void>(
     StandardJavaFileManager.class, "setLocationForModule", Location.class, String.class, Collection.class
   );
   private final DelegateCallHandler<File, Object> myToPathCall = new DelegateCallHandler<File, Object>(File.class, "toPath");
-  
+
   private void initExplodedModuleNames(final Location modulePathLocation, Iterable<? extends File> path) throws IOException {
     if (mySetLocationForModuleCall.isAvailable() && myToPathCall.isAvailable()) {
       for (File pathEntry : path) {
@@ -545,7 +631,7 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   }
 
   @SuppressWarnings("unchecked")
-  private static class DelegateCallHandler<T, R> {
+  private static final class DelegateCallHandler<T, R> {
     private final Method myMethod;
     private final String myUnsupportedMessage;
 

@@ -29,10 +29,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-@State(name = "CodeInsightSettings", storages = {
-  @Storage("editor.xml"),
-  @Storage(value = "editor.codeinsight.xml", deprecated = true),
-})
+@State(name = "CodeInsightSettings", storages = @Storage("editor.xml"))
 public class CodeInsightSettings implements PersistentStateComponent<Element>, Cloneable {
   private static final Logger LOG = Logger.getInstance(CodeInsightSettings.class);
   private final List<PropertyChangeListener> myListeners = new CopyOnWriteArrayList<>();
@@ -205,9 +202,9 @@ public class CodeInsightSettings implements PersistentStateComponent<Element>, C
   private void setDefaults() {
     try {
       ReflectionUtil.copyFields(CodeInsightSettings.class.getDeclaredFields(), new CodeInsightSettings(), this,
-                                new DifferenceFilter<Object>(null, null) {
+                                new DifferenceFilter<>(null, null) {
                                   @Override
-                                  public boolean isAccept(@NotNull Field field) {
+                                  public boolean test(@NotNull Field field) {
                                     return !field.getName().equals("EXCLUDED_PACKAGES");
                                   }
                                 });

@@ -7,11 +7,6 @@
       <option name="url" value="https://cache-redirector.jetbrains.com/maven-central" />
     </remote-repository>
     <remote-repository>
-      <option name="id" value="gmaven" />
-      <option name="name" value="Google's Maven Repository" />
-      <option name="url" value="https://maven.google.com/" />
-    </remote-repository>
-    <remote-repository>
       <option name="id" value="intellij-third-party-dependencies" />
       <option name="name" value="IntelliJ Dependencies on Bintray" />
       <option name="url" value="https://cache-redirector.jetbrains.com/intellij-third-party-dependencies" />
@@ -44,11 +39,6 @@
     <remote-repository>
       <option name="id" value="a93311a0-6b4a-43ad-94e7-90f6ea1986ee" />
       <option name="name" value="a93311a0-6b4a-43ad-94e7-90f6ea1986ee" />
-      <option name="url" value="https://cache-redirector.jetbrains.com/jetbrains.bintray.com/markdown" />
-    </remote-repository>
-    <remote-repository>
-      <option name="id" value="e585af2a-f558-424b-a8e6-3a1365d5b046" />
-      <option name="name" value="e585af2a-f558-424b-a8e6-3a1365d5b046" />
       <option name="url" value="https://cache-redirector.jetbrains.com/jetbrains.bintray.com/markdown" />
     </remote-repository>
     <remote-repository>

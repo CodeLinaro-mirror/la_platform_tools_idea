@@ -69,7 +69,7 @@ import com.intellij.ui.*;
 import com.intellij.ui.components.JBLayeredPane;
 import com.intellij.ui.components.JBScrollBar;
 import com.intellij.ui.components.JBScrollPane;
-import com.intellij.ui.mac.MacGestureSupportForEditor;
+import com.intellij.ui.mac.MacGestureSupportInstaller;
 import com.intellij.ui.mac.touchbar.TouchBarsManager;
 import com.intellij.ui.paint.PaintUtil;
 import com.intellij.ui.paint.PaintUtil.RoundingMode;
@@ -120,6 +120,7 @@ import java.util.*;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 
 public final class EditorImpl extends UserDataHolderBase implements EditorEx, HighlighterClient, Queryable, Dumpable,
                                                                     CodeStyleSettingsListener, FocusListener {
@@ -276,7 +277,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
 
   private EditorDropHandler myDropHandler;
 
-  private Condition<RangeHighlighter> myHighlightingFilter;
+  private Predicate<? super RangeHighlighter> myHighlightingFilter;
 
   @NotNull private final IndentsModel myIndentsModel;
 
@@ -385,9 +386,6 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       }
     };
 
-    ErrorStripeMarkersModel errorStripeMarkersModel = myMarkupModel.getErrorStripeMarkersModel();
-    myDocumentMarkupModel.addMarkupModelListener(myCaretModel, errorStripeMarkersModel);
-    myMarkupModel.addMarkupModelListener(myCaretModel, errorStripeMarkersModel);
     myMarkupModel.addErrorMarkerListener(new ErrorStripeListener() {
       @Override
       public void errorMarkerChanged(@NotNull ErrorStripeEvent e) {
@@ -531,7 +529,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     updateCaretCursor();
 
     if (SystemInfo.isMacIntel64 && SystemInfo.isJetBrainsJvm) {
-      new MacGestureSupportForEditor(getComponent());
+      MacGestureSupportInstaller.installOnComponent(getComponent());
     }
 
     myScrollingModel.addVisibleAreaListener(this::moveCaretIntoViewIfCoveredByToolWindowBelow);
@@ -793,7 +791,6 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
     if (myProject != null && myVirtualFile != null) {
       for (EditorLinePainter painter : EditorLinePainter.EP_NAME.getExtensions()) {
-        //noinspection InstanceofIncompatibleInterface
         if (LightEdit.owns(myProject) && !(painter instanceof LightEditCompatible)) {
           continue;
         }
@@ -1303,6 +1300,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     ActionManagerEx.getInstanceEx().fireBeforeEditorTyping(c, context);
     EditorUIUtil.hideCursorInEditor(this);
     processKeyTypedNormally(c, context);
+    ActionManagerEx.getInstanceEx().fireAfterEditorTyping(c, context);
 
     return true;
   }
@@ -1484,7 +1482,12 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
 
   // optimization: do not do column calculations here since we are interested in line number only
   public int offsetToVisualLine(int offset) {
-    return myView.offsetToVisualLine(offset, false);
+    return offsetToVisualLine(offset, false);
+  }
+
+  @Override
+  public int offsetToVisualLine(int offset, boolean beforeSoftWrap) {
+    return myView.offsetToVisualLine(offset, beforeSoftWrap);
   }
 
   public int visualLineStartOffset(int visualLine) {
@@ -2403,9 +2406,8 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
   private void requestFocus() {
-    final IdeFocusManager focusManager = IdeFocusManager.getInstance(myProject);
-    if (focusManager.getFocusOwner() != myEditorComponent) { //IDEA-64501
-      focusManager.requestFocus(myEditorComponent, true);
+    if (!myEditorComponent.hasFocus()) {
+      IdeFocusManager.getInstance(myProject).requestFocus(myEditorComponent, true);
     }
   }
 
@@ -2883,7 +2885,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     reinitSettings();
   }
 
-  public static class CaretRectangle {
+  public static final class CaretRectangle {
     public final Point2D myPoint;
     public final float myWidth;
     public final Caret myCaret;
@@ -2897,7 +2899,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
   }
 
-  class CaretCursor {
+  final class CaretCursor {
     private CaretRectangle[] myLocations;
     private boolean myEnabled;
 
@@ -3096,7 +3098,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   private static final Field decrButtonField = ReflectionUtil.getDeclaredField(BasicScrollBarUI.class, "decrButton");
   private static final Field incrButtonField = ReflectionUtil.getDeclaredField(BasicScrollBarUI.class, "incrButton");
 
-  class MyScrollBar extends OpaqueAwareScrollBar {
+  final class MyScrollBar extends OpaqueAwareScrollBar {
     @NonNls private static final String APPLE_LAF_AQUA_SCROLL_BAR_UI_CLASS = "apple.laf.AquaScrollBarUI";
     private ScrollBarUI myPersistentUI;
 
@@ -3449,27 +3451,32 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     myDropHandler = dropHandler;
   }
 
-  public void setHighlightingFilter(@Nullable Condition<RangeHighlighter> filter) {
+  /**
+   * @deprecated use {@link #setHighlightingPredicate(Predicate)} instead
+   */
+  @Deprecated
+  public void setHighlightingFilter(@Nullable Condition<? super RangeHighlighter> filter) {
+    setHighlightingPredicate(filter == null ? null : highlighter -> filter.value(highlighter));
+    DeprecatedMethodException.report("Use setHighlightingPredicate() instead");
+  }
+  public void setHighlightingPredicate(@Nullable Predicate<? super RangeHighlighter> filter) {
     if (myHighlightingFilter == filter) return;
-    Condition<RangeHighlighter> oldFilter = myHighlightingFilter;
+    Predicate<? super RangeHighlighter> oldFilter = myHighlightingFilter;
     myHighlightingFilter = filter;
 
     for (RangeHighlighter highlighter : myDocumentMarkupModel.getDelegate().getAllHighlighters()) {
-      boolean oldAvailable = oldFilter == null || oldFilter.value(highlighter);
-      boolean newAvailable = filter == null || filter.value(highlighter);
+      boolean oldAvailable = oldFilter == null || oldFilter.test(highlighter);
+      boolean newAvailable = filter == null || filter.test(highlighter);
       if (oldAvailable != newAvailable) {
         boolean styleOrColorChanged = EditorUtil.attributesImpactFontStyleOrColor(highlighter.getTextAttributes(getColorsScheme()));
-        myMarkupModelListener.attributesChanged((RangeHighlighterEx)highlighter, true,
-                                                styleOrColorChanged);
-        myMarkupModel.getErrorStripeMarkersModel().attributesChanged(
-          (RangeHighlighterEx)highlighter, true,
-          styleOrColorChanged);
+        myMarkupModelListener.attributesChanged((RangeHighlighterEx)highlighter, true, styleOrColorChanged);
+        myMarkupModel.getErrorStripeMarkersModel().attributesChanged((RangeHighlighterEx)highlighter, true);
       }
     }
   }
 
   boolean isHighlighterAvailable(@NotNull RangeHighlighter highlighter) {
-    return myHighlightingFilter == null || myHighlightingFilter.value(highlighter);
+    return myHighlightingFilter == null || myHighlightingFilter.test(highlighter);
   }
 
   private boolean hasBlockInlay(@NotNull Point point) {
@@ -3478,7 +3485,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
 
-  private static class MyInputMethodHandleSwingThreadWrapper implements InputMethodRequests {
+  private static final class MyInputMethodHandleSwingThreadWrapper implements InputMethodRequests {
     private final InputMethodRequests myDelegate;
 
     private MyInputMethodHandleSwingThreadWrapper(InputMethodRequests delegate) {
@@ -3986,7 +3993,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
           Caret caret = getCaretModel().getCaretAt(visualPosition);
           if (e.getClickCount() == 1) {
             if (caret == null) {
-              myLastPressCreatedCaret = getCaretModel().addCaret(visualPosition) != null;
+              myLastPressCreatedCaret = !EditorUtil.checkMaxCarets(EditorImpl.this) && getCaretModel().addCaret(visualPosition) != null;
             }
             else {
               getCaretModel().removeCaret(caret);
@@ -4037,7 +4044,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       }
 
       if (moveCaret) {
-        if (e.isShiftDown() && !e.isControlDown() && !e.isAltDown()) {
+        if (e.isShiftDown() && !e.isControlDown() && !e.isAltDown() && !e.isMetaDown()) {
           if (getMouseSelectionState() != MOUSE_SELECTION_STATE_NONE) {
             if (caretOffset < mySavedSelectionStart) {
               mySelectionModel.setSelection(mySavedSelectionEnd, caretOffset);
@@ -4095,7 +4102,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
 
     private boolean isPointAfterSelectionEnd(Point p) {
-      VisualPosition selectionEndPosition = mySelectionModel.getSelectionEndPosition();
+      VisualPosition selectionEndPosition = myCaretModel.getCurrentCaret().getSelectionEndPosition();
       Point selectionEnd = visualPositionToXY(selectionEndPosition);
       return p.y >= selectionEnd.y + getLineHeight() ||
              p.y >= selectionEnd.y && p.x > selectionEnd.x && xyToVisualPosition(p).column > selectionEndPosition.column;
@@ -4308,7 +4315,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
   }
 
-  private class MyColorSchemeDelegate extends DelegateColorScheme {
+  private final class MyColorSchemeDelegate extends DelegateColorScheme {
     private final FontPreferencesImpl myFontPreferences = new FontPreferencesImpl();
     private final FontPreferencesImpl myConsoleFontPreferences = new FontPreferencesImpl();
     private final Map<TextAttributesKey, TextAttributes> myOwnAttributes   = new HashMap<>();
@@ -4837,7 +4844,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
   @DirtyUI
-  private class MyScrollPane extends JBScrollPane {
+  private final class MyScrollPane extends JBScrollPane {
     private MyScrollPane() {
       super(0);
       setupCorners();
@@ -4894,7 +4901,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
   }
 
-  private class TablessBorder extends SideBorder {
+  private final class TablessBorder extends SideBorder {
     private TablessBorder() {
       super(JBColor.border(), SideBorder.ALL);
     }
@@ -4942,7 +4949,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
   }
 
-  private class MyHeaderPanel extends JPanel {
+  private final class MyHeaderPanel extends JPanel {
     private int myOldHeight;
 
     private MyHeaderPanel() {

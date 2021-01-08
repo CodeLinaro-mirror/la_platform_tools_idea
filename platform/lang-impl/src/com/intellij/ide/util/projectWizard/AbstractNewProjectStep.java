@@ -24,8 +24,10 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.impl.welcomeScreen.ActionsWithPanelProvider;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeFrame;
+import com.intellij.openapi.wm.impl.welcomeScreen.NewWelcomeScreen;
 import com.intellij.platform.*;
 import com.intellij.platform.templates.ArchivedTemplatesFactory;
 import com.intellij.platform.templates.LocalArchivedTemplate;
@@ -45,7 +47,7 @@ import java.util.List;
 
 import static com.intellij.platform.ProjectTemplatesFactory.CUSTOM_GROUP;
 
-public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup implements DumbAware {
+public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup implements DumbAware, ActionsWithPanelProvider {
   static final ExtensionPointName<DirectoryProjectGenerator<?>> EP_NAME = new ExtensionPointName<>("com.intellij.directoryProjectGenerator");
 
   private static final Logger LOG = Logger.getInstance(AbstractNewProjectStep.class);
@@ -61,6 +63,7 @@ public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup imple
   @Override
   public void update(@NotNull AnActionEvent e) {
     super.update(e);
+    NewWelcomeScreen.updateNewProjectIconIfWelcomeScreen(e);
     updateActions();
   }
 

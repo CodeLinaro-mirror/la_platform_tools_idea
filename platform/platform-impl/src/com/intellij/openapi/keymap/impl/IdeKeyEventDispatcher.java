@@ -3,10 +3,7 @@ package com.intellij.openapi.keymap.impl;
 
 import com.intellij.diagnostic.EventWatcher;
 import com.intellij.diagnostic.LoadingState;
-import com.intellij.ide.DataManager;
-import com.intellij.ide.IdeBundle;
-import com.intellij.ide.IdeEventQueue;
-import com.intellij.ide.ProhibitAWTEvents;
+import com.intellij.ide.*;
 import com.intellij.ide.impl.DataManagerImpl;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.MnemonicHelper;
@@ -33,6 +30,7 @@ import com.intellij.openapi.ui.popup.ListPopupStep;
 import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
@@ -141,6 +139,16 @@ public final class IdeKeyEventDispatcher implements Disposable {
       return false;
     }
 
+    var focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+    var focusOwner = focusManager.getFocusOwner();
+
+    if (focusOwner instanceof KeyboardAwareFocusOwner && ((KeyboardAwareFocusOwner)focusOwner).skipKeyEventDispatcher(e)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(String.format("Key event not processed because %s is in focus and implements %s", focusOwner, KeyboardAwareFocusOwner.class));
+      }
+      return false;
+    }
+
     int id = e.getID();
     if (myIgnoreNextKeyTypedEvent) {
       if (KeyEvent.KEY_TYPED == id) return true;
@@ -168,9 +176,6 @@ public final class IdeKeyEventDispatcher implements Disposable {
         myRightAltPressed = false;
       }
     }
-
-    KeyboardFocusManager focusManager=KeyboardFocusManager.getCurrentKeyboardFocusManager();
-    Component focusOwner = focusManager.getFocusOwner();
 
     // shortcuts should not work in shortcut setup fields
     if (focusOwner instanceof ShortcutTextField) {
@@ -480,7 +485,7 @@ public final class IdeKeyEventDispatcher implements Disposable {
       final ArrayList<Pair<AnAction, KeyStroke>> secondKeyStrokes = getSecondKeystrokeActions();
 
       final Project project = CommonDataKeys.PROJECT.getData(dataContext);
-      StringBuilder message = new StringBuilder();
+      @NlsContexts.StatusBarText StringBuilder message = new StringBuilder();
       message.append(KeyMapBundle.message("prefix.key.pressed.message"));
       message.append(' ');
       for (int i = 0; i < secondKeyStrokes.size(); i++) {
@@ -751,10 +756,18 @@ public final class IdeKeyEventDispatcher implements Disposable {
   /**
    * This method fills {@code myActions} list.
    */
+  KeyEvent lastKeyEventForCurrentContext;
   public void updateCurrentContext(Component component, @NotNull Shortcut sc) {
+    KeyEvent keyEvent = myContext.getInputEvent();
     myContext.setFoundComponent(null);
     myContext.setHasSecondStroke(false);
     myContext.getActions().clear();
+
+    if (Registry.is("ide.edt.update.context.only.on.key.pressed.event")) {
+      if (keyEvent == null || keyEvent.getID() != KeyEvent.KEY_PRESSED) return;
+      if (keyEvent == lastKeyEventForCurrentContext) return;
+      lastKeyEventForCurrentContext = keyEvent;
+    }
 
     if (isControlEnterOnDialog(component, sc)) return;
 
@@ -951,7 +964,7 @@ public final class IdeKeyEventDispatcher implements Disposable {
       return new ActionListCellRenderer();
     }
 
-    private static ListPopupStep buildStep(@NotNull final List<? extends Pair<AnAction, KeyStroke>> actions, final DataContext ctx) {
+    private static ListPopupStep<?> buildStep(@NotNull final List<? extends Pair<AnAction, KeyStroke>> actions, final DataContext ctx) {
       return new BaseListPopupStep<Pair<AnAction, KeyStroke>>(IdeBundle.message("popup.title.choose.action"), ContainerUtil.findAll(actions, pair -> {
         final AnAction action = pair.getFirst();
         final Presentation presentation = action.getTemplatePresentation().clone();

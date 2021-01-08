@@ -210,9 +210,11 @@ def generate_imports_tip_for_module(obj_to_complete, dir_comps=None, getattr=get
         args = ''
 
         try:
-            # Fix for PY-38151: do not try to get `d` from the class, as it could be a descriptor
             with suppress_warnings():
-                obj = getattr(obj_to_complete, d)
+                try:
+                    obj = getattr(obj_to_complete.__class__, d)
+                except:
+                    obj = getattr(obj_to_complete, d)
         except: #just ignore and get it without additional info
             ret.append((d, '', args, TYPE_BUILTIN))
         else:
@@ -240,14 +242,7 @@ def generate_imports_tip_for_module(obj_to_complete, dir_comps=None, getattr=get
                         except: #may happen on jython when checking java classes (so, just ignore it)
                             doc = ''
 
-                    if inspect.isclass(obj_to_complete) and (
-                            inspect.ismethoddescriptor(obj) or inspect.isdatadescriptor(obj)
-                            or inspect.isgetsetdescriptor(obj) or inspect.ismemberdescriptor(obj)):
-                        # Fix for PY-38151: `obj` is a descriptor definition, not a called descriptor
-                        # (`obj_to_complete` is the class defining it).
-                        retType = TYPE_ATTR
-
-                    elif inspect.ismethod(obj) or inspect.isbuiltin(obj) or inspect.isfunction(obj) or inspect.isroutine(obj):
+                    if inspect.ismethod(obj) or inspect.isbuiltin(obj) or inspect.isfunction(obj) or inspect.isroutine(obj):
                         try:
                             args, vargs, kwargs, defaults, kwonly_args, kwonly_defaults = getargspec(obj)
 

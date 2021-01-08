@@ -4,6 +4,7 @@ package com.intellij.openapi.vcs.impl;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -16,6 +17,7 @@ import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.startup.StartupActivity;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.vcs.VcsBundle;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.QueueProcessor;
 import com.intellij.util.containers.ContainerUtil;
@@ -32,6 +34,7 @@ import java.util.function.Predicate;
 
 public final class VcsInitialization {
   private static final Logger LOG = Logger.getInstance(VcsInitialization.class);
+  private static final ExtensionPointName<VcsStartupActivity> EP_NAME = new ExtensionPointName<>("com.intellij.vcsStartupActivity");
 
   private final Object myLock = new Object();
   @NotNull private final Project myProject;
@@ -62,7 +65,7 @@ public final class VcsInitialization {
 
   private void startInitialization() {
     myFuture = ((CoreProgressManager)ProgressManager.getInstance())
-      .runProcessWithProgressAsynchronously(new Task.Backgroundable(myProject, "VCS Initialization") {
+      .runProcessWithProgressAsynchronously(new Task.Backgroundable(myProject, VcsBundle.message("impl.vcs.initialization")) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           execute();
@@ -123,7 +126,7 @@ public final class VcsInitialization {
                            @NotNull Status next,
                            @NotNull Condition<VcsStartupActivity> extensionFilter,
                            @NotNull List<VcsStartupActivity> pendingActivities) {
-    List<VcsStartupActivity> epActivities = ContainerUtil.filter(VcsStartupActivity.EP_NAME.getExtensionList(), extensionFilter);
+    List<VcsStartupActivity> epActivities = ContainerUtil.filter(EP_NAME.getExtensionList(), extensionFilter);
 
     List<VcsStartupActivity> activities = new ArrayList<>();
     synchronized (myLock) {
@@ -229,7 +232,7 @@ public final class VcsInitialization {
     }
   }
 
-  private static class ProxyVcsStartupActivity implements VcsStartupActivity {
+  private static final class ProxyVcsStartupActivity implements VcsStartupActivity {
     @NotNull private final Runnable myRunnable;
     private final int myOrder;
 
@@ -250,7 +253,7 @@ public final class VcsInitialization {
 
     @Override
     public String toString() {
-      return String.format("ProxyVcsStartupActivity{runnable=%s, order=%s}", myRunnable, myOrder);
+      return String.format("ProxyVcsStartupActivity{runnable=%s, order=%s}", myRunnable, myOrder); //NON-NLS
     }
   }
 }

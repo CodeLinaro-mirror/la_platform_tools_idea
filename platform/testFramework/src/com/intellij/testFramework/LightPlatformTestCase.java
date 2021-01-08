@@ -18,7 +18,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.command.WriteCommandAction;
-import com.intellij.openapi.command.impl.StartMarkAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -47,6 +46,7 @@ import com.intellij.openapi.roots.impl.ProjectRootManagerImpl;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.encoding.EncodingManager;
 import com.intellij.openapi.vfs.encoding.EncodingManagerImpl;
@@ -63,7 +63,6 @@ import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
 import com.intellij.psi.codeStyle.CustomCodeStyleSettings;
 import com.intellij.psi.impl.PsiDocumentManagerImpl;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageManagerImpl;
-import com.intellij.refactoring.rename.inplace.InplaceRefactoring;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.LocalTimeCounter;
 import com.intellij.util.ThrowableRunnable;
@@ -72,6 +71,7 @@ import com.intellij.util.io.PathKt;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.workspaceModel.ide.impl.legacyBridge.LegacyBridgeProjectLifecycleListener;
+import com.intellij.workspaceModel.ide.impl.legacyBridge.LegacyBridgeTestFilePointersTracker;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -106,6 +106,7 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
     PlatformTestUtil.registerProjectCleanup(LightPlatformTestCase::closeAndDeleteProject);
   }
 
+  private LegacyBridgeTestFilePointersTracker myLegacyBridgeTestFilePointersTracker;
   private VirtualFilePointerTracker myVirtualFilePointerTracker;
   private CodeStyleSettingsTracker myCodeStyleSettingsTracker;
 
@@ -186,7 +187,7 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
     ApplicationManager.getApplication().runWriteAction(LightPlatformTestCase::cleanPersistedVFSContent);
 
     Path tempDirectory = TemporaryDirectory.generateTemporaryPath(ProjectImpl.LIGHT_PROJECT_NAME + ProjectFileType.DOT_DEFAULT_EXTENSION);
-    ourProject = Objects.requireNonNull(ProjectManagerEx.getInstanceEx().newProject(tempDirectory, FixtureRuleKt.createTestOpenProjectOptions()));
+    ourProject = Objects.requireNonNull(ProjectManagerEx.getInstanceEx().newProject(tempDirectory, new OpenProjectTaskBuilder().build()));
     HeavyPlatformTestCase.synchronizeTempDirVfs(tempDirectory);
     ourPsiManager = null;
 
@@ -246,6 +247,8 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
 
       myThreadTracker = new ThreadTracker();
       ModuleRootManager.getInstance(ourModule).orderEntries().getAllLibrariesAndSdkClassesRoots();
+      myLegacyBridgeTestFilePointersTracker = new LegacyBridgeTestFilePointersTracker(getProject());
+      myLegacyBridgeTestFilePointersTracker.startTrackPointersCreatedInTest();
       myVirtualFilePointerTracker = new VirtualFilePointerTracker();
     });
   }
@@ -369,10 +372,6 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
         }
       },
       () -> {
-        StartMarkAction.checkCleared(project);
-        InplaceRefactoring.checkCleared();
-      },
-      () -> {
         if (project != null) {
           TestApplicationManagerKt.tearDownProjectAndApp(project);
         }
@@ -405,9 +404,21 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
         }
       },
       () -> {
+        myLegacyBridgeTestFilePointersTracker.disposePointersCreatedInTest();
+        myLegacyBridgeTestFilePointersTracker = null;
+      },
+      () -> {
         if (myVirtualFilePointerTracker != null) {
           myVirtualFilePointerTracker.assertPointersAreDisposed();
         }
+      },
+      () -> {
+        if (ApplicationManager.getApplication() instanceof ApplicationEx) {
+          HeavyPlatformTestCase.cleanupApplicationCaches(getProject());
+        }
+      },
+      () -> {
+        resetAllFields();
       }
     );
   }
@@ -480,42 +491,8 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
   }
 
   @Override
-  public final void runBare() throws Throwable {
-    runBareImpl(this::startRunAndTear);
-  }
-
-  protected void runBareImpl(ThrowableRunnable<?> start) throws Throwable {
-    if (!shouldRunTest()) {
-      return;
-    }
-
-    TestRunnerUtil.replaceIdeEventQueueSafely();
-    ThrowableRunnable<Throwable> testRunnable = () -> {
-      try {
-        start.run();
-      }
-      finally {
-        EdtTestUtil.runInEdtAndWait(() -> {
-          try {
-            Application application = ApplicationManager.getApplication();
-            if (application instanceof ApplicationEx) {
-              HeavyPlatformTestCase.cleanupApplicationCaches(getProject());
-            }
-            resetAllFields();
-          }
-          catch (Throwable e) {
-            //noinspection CallToPrintStackTrace
-            e.printStackTrace();
-          }
-        });
-      }
-    };
-    if (runInDispatchThread()) {
-      EdtTestUtil.runInEdtAndWait(testRunnable);
-    }
-    else {
-      testRunnable.run();
-    }
+  protected void runBare(@NotNull ThrowableRunnable<Throwable> testRunnable) throws Throwable {
+    super.runBare(testRunnable);
 
     // just to make sure all deferred Runnables to finish
     SwingUtilities.invokeAndWait(EmptyRunnable.getInstance());
@@ -526,21 +503,16 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
   }
 
   @SuppressWarnings("AssignmentToStaticFieldFromInstanceMethod")
-  private void startRunAndTear() throws Throwable {
-    setUp();
-    try {
-      ourAssertionsInTestDetected = true;
-      runTest();
-      ourAssertionsInTestDetected = false;
-    }
-    finally {
-      //try{
-      EdtTestUtil.runInEdtAndWait(() -> tearDown());
-      //}
-      //catch(Throwable th){
-      //th.printStackTrace();
-      //}
-    }
+  @Override
+  protected void runTestRunnable(@NotNull ThrowableRunnable<Throwable> testRunnable) throws Throwable {
+    ourAssertionsInTestDetected = true;
+    super.runTestRunnable(testRunnable);
+    ourAssertionsInTestDetected = false;
+  }
+
+  @Override
+  protected void invokeTearDown() throws Exception {
+    EdtTestUtil.runInEdtAndWait(super::invokeTearDown);
   }
 
   @Override
@@ -590,8 +562,7 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
   @Override
   protected String getTestName(boolean lowercaseFirstLetter) {
     String name = getName();
-    assertTrue("Test name should start with 'test': " + name, name.startsWith("test"));
-    name = name.substring("test".length());
+    name = StringUtil.trimStart(name, "test");
     if (!name.isEmpty() && lowercaseFirstLetter && !PlatformTestUtil.isAllUppercaseName(name)) {
       name = Character.toLowerCase(name.charAt(0)) + name.substring(1);
     }
@@ -651,14 +622,17 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
       }
     }
 
-    assertTrue(ProjectManagerEx.getInstanceEx().forceCloseProject(project));
-    assertTrue(project.isDisposed());
+    try {
+      assertTrue(ProjectManagerEx.getInstanceEx().forceCloseProject(project));
+      assertTrue(project.isDisposed());
 
-    setProject(null);
-    assertTrue(ourModule.isDisposed());
-    ourModule = null;
-    if (ourPsiManager != null) {
-      assertTrue(ourPsiManager.isDisposed());
+      assertTrue(ourModule.isDisposed());
+      if (ourPsiManager != null) {
+        assertTrue(ourPsiManager.isDisposed());
+      }
+    } finally {
+      setProject(null);
+      ourModule = null;
       ourPsiManager = null;
     }
   }

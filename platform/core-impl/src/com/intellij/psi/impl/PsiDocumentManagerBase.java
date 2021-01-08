@@ -38,7 +38,7 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.*;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.EdtInvocationManager;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
@@ -74,7 +74,6 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     myPsiManager = PsiManager.getInstance(project);
     myDocumentCommitProcessor = ApplicationManager.getApplication().getService(DocumentCommitProcessor.class);
     mySynchronizer = new PsiToDocumentSynchronizer(this, project.getMessageBus());
-    myPsiManager.addPsiTreeChangeListener(mySynchronizer, this);
   }
 
   @Override
@@ -99,7 +98,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     return psiFile;
   }
 
-  private static @NotNull PsiFile ensureValidFile(@NotNull PsiFile psiFile, @NotNull String debugInfo) {
+  private static @NotNull PsiFile ensureValidFile(@NotNull PsiFile psiFile, @NotNull @NonNls String debugInfo) {
     if (!psiFile.isValid()) throw new PsiInvalidElementAccessException(psiFile, debugInfo);
     return psiFile;
   }
@@ -211,7 +210,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
       }
     }
 
-    assertEverythingCommitted();
+    LOG.assertTrue(!hasEventSystemEnabledUncommittedDocuments(), myUncommittedDocuments);
   }
 
   @Override
@@ -236,9 +235,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     final Runnable commitAllDocumentsRunnable = () -> {
       Semaphore semaphore = new Semaphore(1);
       AppUIExecutor.onWriteThread().later().submit(() -> {
-        PsiDocumentManager.getInstance(myProject).performWhenAllCommitted(() -> {
-          semaphore.up();
-        });
+        PsiDocumentManager.getInstance(myProject).performWhenAllCommitted(() -> semaphore.up());
       });
       while (!semaphore.waitFor(semaphoreTimeoutInMs)) {
         ProgressManager.checkCanceled();
@@ -247,10 +244,6 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     return ProgressManager.getInstance().runProcessWithProgressSynchronously(commitAllDocumentsRunnable,
                                                                              CoreBundle.message("progress.title.processing.documents"),
                                                                              true, myProject);
-  }
-
-  private void assertEverythingCommitted() {
-    LOG.assertTrue(!hasUncommitedDocuments(), myUncommittedDocuments);
   }
 
   @VisibleForTesting
@@ -616,7 +609,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
       whenAllCommitted.run();
     }
     else {
-      UIUtil.invokeLaterIfNeeded(() -> { if (!myProject.isDisposed()) performWhenAllCommitted(whenAllCommitted);});
+      EdtInvocationManager.invokeLaterIfNeeded(() -> { if (!myProject.isDisposed()) performWhenAllCommitted(whenAllCommitted);});
     }
   }
 
@@ -1116,7 +1109,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     }
   }
 
-  private static class UncommittedInfo {
+  private static final class UncommittedInfo {
     private final FrozenDocument myFrozen;
     private final ArrayList<DocumentEvent> myEvents = new ArrayList<>();
     private final ConcurrentMap<DocumentWindow, DocumentWindow> myFrozenWindows = new ConcurrentHashMap<>();

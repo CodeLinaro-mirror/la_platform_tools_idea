@@ -1,6 +1,7 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.workspaceModel.storage.impl
 
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.workspaceModel.storage.WorkspaceEntity
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.ints.IntSet
@@ -40,7 +41,11 @@ internal class MutableEntityFamily<E : WorkspaceEntity>(
   private val copiedToModify: IntSet = IntOpenHashSet()
 
   fun remove(id: Int) {
-    if (availableSlots.contains(id)) error("id $id is already removed")
+    if (availableSlots.contains(id)) {
+      thisLogger().error("id $id is already removed")
+      return
+    }
+
     startWrite()
 
     copiedToModify.remove(id)
@@ -67,9 +72,39 @@ internal class MutableEntityFamily<E : WorkspaceEntity>(
     copiedToModify.add(other.id)
   }
 
+  fun book(): Int {
+    startWrite()
+
+    val bookedId = if (availableSlots.isEmpty()) {
+      entities.add(null)
+      entities.lastIndex
+    }
+    else {
+      val emptySlot = availableSlots.pop()
+      entities[emptySlot] = null
+      amountOfGapsInEntities--
+      emptySlot
+    }
+    copiedToModify.add(bookedId)
+    return bookedId
+  }
+
+  fun insertAtId(data: WorkspaceEntityData<E>) {
+    startWrite()
+
+    entities[data.id] = data
+    if (availableSlots.remove(data.id)) amountOfGapsInEntities--
+
+    copiedToModify.add(data.id)
+  }
+
   fun replaceById(entity: WorkspaceEntityData<E>) {
     val id = entity.id
-    if (availableSlots.contains(id)) error("Nothing to replace")
+    if (entities[id] == null) {
+      thisLogger().error("Nothing to replace. EntityData: $entity")
+      return
+    }
+
     startWrite()
 
     entities[id] = entity
@@ -124,7 +159,7 @@ internal class MutableEntityFamily<E : WorkspaceEntity>(
   companion object {
     // Do not remove parameter. Kotlin fails with compilation without it
     @Suppress("RemoveExplicitTypeArguments")
-    fun createEmptyMutable() = MutableEntityFamily<WorkspaceEntity>(ArrayList(), false)
+    fun <T: WorkspaceEntity> createEmptyMutable() = MutableEntityFamily<T>(ArrayList(), false)
   }
 }
 

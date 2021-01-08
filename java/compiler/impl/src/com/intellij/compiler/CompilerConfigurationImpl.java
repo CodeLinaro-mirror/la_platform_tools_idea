@@ -299,6 +299,25 @@ public class CompilerConfigurationImpl extends CompilerConfiguration implements 
   }
 
   @Override
+  public boolean isParallelCompilationEnabled() {
+    // returns parallel compilation flag first by looking into workspace.xml and then intellij.yaml
+
+    //noinspection deprecation
+    Boolean workspaceParallelCompilation = CompilerWorkspaceConfiguration.getInstance(myProject).PARALLEL_COMPILATION;
+    if (workspaceParallelCompilation != null) {
+      return workspaceParallelCompilation;
+    }
+
+    return CompilerConfigurationSettings.Companion.getInstance(myProject).isParallelCompilationEnabled();
+  }
+
+  @Override
+  public void setParallelCompilationEnabled(boolean enabled) {
+    //noinspection deprecation
+    CompilerWorkspaceConfiguration.getInstance(myProject).PARALLEL_COMPILATION = enabled;
+  }
+
+  @Override
   @Nullable
   public String getProjectBytecodeTarget() {
     return myBytecodeTargetLevel;
@@ -740,11 +759,6 @@ public class CompilerConfigurationImpl extends CompilerConfiguration implements 
           break;
         }
       }
-      if (myState.BUILD_PROCESS_HEAP_SIZE == DEFAULT_BUILD_PROCESS_HEAP_SIZE) {
-        final CompilerWorkspaceConfiguration workspace = CompilerWorkspaceConfiguration.getInstance(myProject);
-        // older version compatibility: as a fallback load this setting from workspace
-        myState.BUILD_PROCESS_HEAP_SIZE = workspace.COMPILER_PROCESS_HEAP_SIZE;
-      }
     }
 
     final Element notNullAssertions = parentNode.getChild(JpsJavaCompilerConfigurationSerializer.ADD_NOTNULL_ASSERTIONS);
@@ -1054,7 +1068,7 @@ public class CompilerConfigurationImpl extends CompilerConfiguration implements 
     return artifacts.isEmpty();
   }
 
-  private static class CompiledPattern {
+  private static final class CompiledPattern {
     @NotNull final Pattern fileName;
     @Nullable final Pattern dir;
     @Nullable final Pattern srcRoot;

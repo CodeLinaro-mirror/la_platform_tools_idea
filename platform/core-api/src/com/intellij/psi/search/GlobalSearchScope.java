@@ -16,12 +16,10 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.ArrayUtil;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashSet;
-import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import java.util.*;
 
@@ -42,9 +40,9 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     this(null);
   }
 
-  @Nullable
+  @ApiStatus.NonExtendable
   @Override
-  public Project getProject() {
+  public @Nullable Project getProject() {
     return myProject;
   }
 
@@ -68,7 +66,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
   }
 
   @Override
-  public final boolean accept(VirtualFile file) {
+  public final boolean accept(@NotNull VirtualFile file) {
     return contains(file);
   }
 
@@ -90,6 +88,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
   /**
    * @return a set of model branches whose copied files this scope might contain
    */
+  @ApiStatus.Experimental
   public @NotNull Collection<ModelBranch> getModelBranchesAffectingScope() {
     return Collections.emptySet();
   }
@@ -101,7 +100,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     if (scope instanceof IntersectionScope && ((IntersectionScope)scope).containsScope(this)) {
       return scope;
     }
-    return new IntersectionScope(this, scope, null);
+    return new IntersectionScope(this, scope);
   }
 
   @NotNull
@@ -348,16 +347,15 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
 
   @NotNull
   @Contract(pure = true)
-  public static GlobalSearchScope fileScope(@NotNull Project project, @Nullable VirtualFile virtualFile, @Nullable final String displayName) {
+  public static GlobalSearchScope fileScope(@NotNull Project project, @Nullable VirtualFile virtualFile, @Nullable final @Nls String displayName) {
     return new FileScope(project, virtualFile, displayName);
   }
 
   /**
-   * Please consider using {@link this#filesWithLibrariesScope} or {@link this#filesWithoutLibrariesScope} for optimization
+   * Please consider using {@link #filesWithLibrariesScope} or {@link #filesWithoutLibrariesScope} for optimization
    */
-  @NotNull
   @Contract(pure = true)
-  public static GlobalSearchScope filesScope(@NotNull Project project, @NotNull Collection<? extends VirtualFile> files) {
+  public static @NotNull GlobalSearchScope filesScope(@NotNull Project project, @NotNull Collection<? extends VirtualFile> files) {
     return filesScope(project, files, null);
   }
 
@@ -386,7 +384,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
    */
   @NotNull
   @Contract(pure = true)
-  public static GlobalSearchScope filesScope(@NotNull Project project, @NotNull Collection<? extends VirtualFile> files, @Nullable final String displayName) {
+  public static GlobalSearchScope filesScope(@NotNull Project project, @NotNull Collection<? extends VirtualFile> files, @Nullable final @Nls String displayName) {
     if (files.isEmpty()) return EMPTY_SCOPE;
     return files.size() == 1? fileScope(project, files.iterator().next(), displayName) : new FilesScope(project, files) {
       @NotNull
@@ -400,19 +398,17 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
   private static final class IntersectionScope extends GlobalSearchScope {
     private final GlobalSearchScope myScope1;
     private final GlobalSearchScope myScope2;
-    private final String myDisplayName;
 
-    private IntersectionScope(@NotNull GlobalSearchScope scope1, @NotNull GlobalSearchScope scope2, String displayName) {
+    private IntersectionScope(@NotNull GlobalSearchScope scope1, @NotNull GlobalSearchScope scope2) {
       super(scope1.getProject() == null ? scope2.getProject() : scope1.getProject());
       myScope1 = scope1;
       myScope2 = scope2;
-      myDisplayName = displayName;
     }
 
     @NotNull
     @Override
     public GlobalSearchScope intersectWith(@NotNull GlobalSearchScope scope) {
-      return containsScope(scope) ? this : new IntersectionScope(this, scope, null);
+      return containsScope(scope) ? this : new IntersectionScope(this, scope);
     }
 
     private boolean containsScope(@NotNull GlobalSearchScope scope) {
@@ -424,10 +420,7 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     @NotNull
     @Override
     public String getDisplayName() {
-      if (myDisplayName == null) {
-        return CoreBundle.message("psi.search.scope.intersection", myScope1.getDisplayName(), myScope2.getDisplayName());
-      }
-      return myDisplayName;
+      return CoreBundle.message("psi.search.scope.intersection", myScope1.getDisplayName(), myScope2.getDisplayName());
     }
 
     @Override
@@ -501,6 +494,10 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
 
     @NotNull
     static GlobalSearchScope create(GlobalSearchScope @NotNull [] scopes) {
+      if (scopes.length == 2) {
+        GlobalSearchScope unionScope = tryCreateUnionFor2Scopes(scopes);
+        if (unionScope != null) return unionScope;
+      }
       Set<GlobalSearchScope> result = new THashSet<>(scopes.length);
       Project project = null;
       for (GlobalSearchScope scope : scopes) {
@@ -517,6 +514,38 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
       if (result.isEmpty()) return EMPTY_SCOPE;
       if (result.size() == 1) return result.iterator().next();
       return new UnionScope(project, result.toArray(EMPTY_ARRAY));
+    }
+
+    @Nullable
+    private static GlobalSearchScope tryCreateUnionFor2Scopes(GlobalSearchScope @NotNull [] scopes) {
+      assert scopes.length == 2;
+      GlobalSearchScope scope0 = scopes[0];
+      GlobalSearchScope scope1 = scopes[1];
+      if (scope0 == EMPTY_SCOPE) return scope1;
+      if (scope1 == EMPTY_SCOPE) return scope0;
+      if (scope0 instanceof UnionScope && scope1 instanceof UnionScope) return null;
+      Project project = ObjectUtils.chooseNotNull(scope0.getProject(), scope1.getProject());
+
+      if (scope0 instanceof UnionScope) {
+        return unionWithUnionScope(scope0, scope1, project);
+      }
+
+      if (scope1 instanceof UnionScope) {
+        return unionWithUnionScope(scope1, scope0, project);
+      }
+
+      return new UnionScope(project, scopes);
+    }
+
+    @NotNull
+    private static GlobalSearchScope unionWithUnionScope(GlobalSearchScope scope0, GlobalSearchScope scope1, Project project) {
+      GlobalSearchScope[] scopes0 = ((UnionScope)scope0).myScopes;
+      if (ArrayUtil.contains(scope1, scopes0)) {
+        return scope0;
+      }
+      else {
+        return new UnionScope(project, ArrayUtil.append(scopes0, scope1));
+      }
     }
 
     private UnionScope(Project project, GlobalSearchScope @NotNull [] scopes) {
@@ -742,10 +771,10 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
 
   private static final class FileScope extends GlobalSearchScope implements Iterable<VirtualFile> {
     private final VirtualFile myVirtualFile; // files can be out of project roots
-    @Nullable private final String myDisplayName;
+    @Nullable private final @Nls String myDisplayName;
     private final Module myModule;
 
-    private FileScope(@NotNull Project project, @Nullable VirtualFile virtualFile, @Nullable String displayName) {
+    private FileScope(@NotNull Project project, @Nullable VirtualFile virtualFile, @Nullable @Nls String displayName) {
       super(project);
       myVirtualFile = virtualFile;
       myDisplayName = displayName;

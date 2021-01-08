@@ -58,7 +58,7 @@ public class InspectionProfileImpl extends NewInspectionProfile {
   protected final InspectionProfileImpl myBaseProfile;
   private volatile String myToolShortName;
   private String[] myScopesOrder;
-  private String myDescription;
+  private @NlsContexts.DetailedDescription String myDescription;
 
   private SchemeDataHolder<? super InspectionProfileImpl> myDataHolder;
 
@@ -373,6 +373,7 @@ public class InspectionProfileImpl extends NewInspectionProfile {
     myToolShortName = toolShortName;
   }
 
+  @NonNls
   @Override
   public @NotNull String getDisplayName() {
     return getName();
@@ -517,7 +518,7 @@ public class InspectionProfileImpl extends NewInspectionProfile {
       }
     }, project);
 
-    DFSTBuilder<String> builder = new DFSTBuilder<>(GraphGenerator.generate(new InboundSemiGraph<String>() {
+     DFSTBuilder<String> builder = new DFSTBuilder<>(GraphGenerator.generate(new InboundSemiGraph<>() {
       @Override
       public @NotNull Collection<String> getNodes() {
         return dependencies.keySet();
@@ -707,11 +708,12 @@ public class InspectionProfileImpl extends NewInspectionProfile {
   }
 
   @Tag
+  @NlsContexts.DetailedDescription
   public String getDescription() {
     return myDescription;
   }
 
-  public void setDescription(@Nullable String description) {
+  public void setDescription(@NlsContexts.DetailedDescription @Nullable String description) {
     myDescription = StringUtil.nullize(description);
     schemeState = SchemeState.POSSIBLY_CHANGED;
   }
@@ -903,7 +905,7 @@ public class InspectionProfileImpl extends NewInspectionProfile {
     }
   }
 
-  private static class MyInspectionElementsMerger extends InspectionElementsMergerBase {
+  private static final class MyInspectionElementsMerger extends InspectionElementsMergerBase {
 
     private final String myShortName;
     private final LocalInspectionToolWrapper myWrapper;

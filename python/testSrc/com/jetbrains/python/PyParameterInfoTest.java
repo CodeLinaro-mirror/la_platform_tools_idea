@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
 import com.intellij.lang.parameterInfo.CreateParameterInfoContext;
@@ -276,16 +276,16 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
   public void testRedefinedNewConstructorCall() {
     Map<String, PsiElement> marks = loadTest(2);
 
-    feignCtrlP(marks.get("<arg1>").getTextOffset()).check("cls: A, a, b", new String[]{"a, "}, new String[]{"cls: A, "});
-    feignCtrlP(marks.get("<arg2>").getTextOffset()).check("cls: A, a, b", new String[]{"b"}, new String[]{"cls: A, "});
+    feignCtrlP(marks.get("<arg1>").getTextOffset()).check("cls: Type[A], a, b", new String[]{"a, "}, new String[]{"cls: Type[A], "});
+    feignCtrlP(marks.get("<arg2>").getTextOffset()).check("cls: Type[A], a, b", new String[]{"b"}, new String[]{"cls: Type[A], "});
   }
 
   public void testRedefinedNewDirectCall() {
     Map<String, PsiElement> marks = loadTest(3);
 
-    feignCtrlP(marks.get("<arg1>").getTextOffset()).check("cls: A, a, b", new String[]{"cls: A, "});
-    feignCtrlP(marks.get("<arg2>").getTextOffset()).check("cls: A, a, b", new String[]{"a, "});
-    feignCtrlP(marks.get("<arg3>").getTextOffset()).check("cls: A, a, b", new String[]{"b"});
+    feignCtrlP(marks.get("<arg1>").getTextOffset()).check("cls: Type[A], a, b", new String[]{"cls: Type[A], "});
+    feignCtrlP(marks.get("<arg2>").getTextOffset()).check("cls: Type[A], a, b", new String[]{"a, "});
+    feignCtrlP(marks.get("<arg3>").getTextOffset()).check("cls: Type[A], a, b", new String[]{"b"});
   }
 
   public void testIgnoreNewInOldStyleClass() {
@@ -1176,7 +1176,7 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
   /**
    * Imitates the normal UI contexts to the extent we use it. Collects highlighting.
    */
-  private static class Collector implements ParameterInfoUIContextEx, CreateParameterInfoContext, UpdateParameterInfoContext {
+  private static final class Collector implements ParameterInfoUIContextEx, CreateParameterInfoContext, UpdateParameterInfoContext {
 
     @NotNull
     private final PsiFile myFile;

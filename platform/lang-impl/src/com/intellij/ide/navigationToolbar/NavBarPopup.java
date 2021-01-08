@@ -1,8 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.navigationToolbar;
 
+import com.intellij.ide.DataManager;
 import com.intellij.ide.navigationToolbar.ui.NavBarUIManager;
-import com.intellij.internal.statistic.service.fus.collectors.UIEventId;
 import com.intellij.internal.statistic.service.fus.collectors.UIEventLogger;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.DataProvider;
@@ -91,7 +91,7 @@ public class NavBarPopup extends LightweightHint implements Disposable{
   }
 
   private void show(final NavBarItem item, boolean checkRepaint) {
-    UIEventLogger.logUIEvent(UIEventId.NavBarShowPopup);
+    UIEventLogger.NavBarShowPopup.log(myPanel.getProject());
 
     final RelativePoint point = new RelativePoint(item, new Point(0, item.getHeight()));
     final Point p = point.getPoint(myPanel);
@@ -149,6 +149,7 @@ public class NavBarPopup extends LightweightHint implements Disposable{
       }
     }
     JBList<Object> list = new MyList<>();
+    DataManager.registerDataProvider(list, dataId -> panel.getDataImpl(dataId, list, () -> JBIterable.from(list.getSelectedValuesList())));
     list.setModel(new CollectionListModel<>(siblings));
     HintUpdateSupply.installSimpleHintUpdateSupply(list);
     List<NavBarItem> items = new ArrayList<>();

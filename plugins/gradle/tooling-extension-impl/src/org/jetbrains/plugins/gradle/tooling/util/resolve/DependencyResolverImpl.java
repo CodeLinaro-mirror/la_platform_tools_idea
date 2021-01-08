@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.tooling.util.resolve;
 
 import com.intellij.openapi.util.Getter;
@@ -265,8 +265,9 @@ public class DependencyResolverImpl implements DependencyResolver {
           }
 
           ProjectComponentIdentifier projectComponentIdentifier = (ProjectComponentIdentifier)artifact.getId().getComponentIdentifier();
+          String buildName = projectComponentIdentifier.getBuild().getName();
           String projectPath = projectComponentIdentifier.getProjectPath();
-          String key = projectPath + "_" + resolvedDependency.getConfiguration();
+          String key = buildName + "_" + projectPath + "_" + resolvedDependency.getConfiguration();
           DefaultExternalProjectDependency projectDependency = resolvedProjectDependencies.get(key);
           if (projectDependency != null) {
             Set<File> projectDependencyArtifacts = new LinkedHashSet<File>(projectDependency.getProjectDependencyArtifacts());
@@ -647,7 +648,7 @@ public class DependencyResolverImpl implements DependencyResolver {
     return new ModuleComponentIdentifierImpl(group, module, version);
   }
 
-  private static class MyModuleVersionSelector {
+  private static final class MyModuleVersionSelector {
     private final String name;
     private final String group;
     private final String version;

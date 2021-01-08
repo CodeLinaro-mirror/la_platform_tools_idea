@@ -20,6 +20,7 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiLanguageInjectionHost;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.LightProjectDescriptor;
 import com.jetbrains.python.fixtures.PyTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
@@ -444,6 +445,22 @@ public class PyTypingTest extends PyTestCase {
     doTestNoInjectedText("class C:\n" +
                          "    def foo(self, expr: '<caret>foo bar'):\n" +
                          "        pass\n");
+  }
+
+  // PY-42334
+  public void testStringLiteralInjectionForExplicitTypeAlias() {
+    doTestInjectedText("from typing import TypeAlias\n" +
+                       "\n" +
+                       "Alias: TypeAlias = 'any + <caret>text'",
+                       "any + text");
+  }
+
+  // PY-42334
+  public void testStringLiteralInjectionForExplicitTypeAliasUsingTypeComment() {
+    doTestInjectedText("from typing import TypeAlias\n" +
+                       "\n" +
+                       "Alias = 'any + <caret>text'  # type: TypeAlias",
+                       "any + text");
   }
 
   // PY-22620
@@ -1491,6 +1508,9 @@ public class PyTypingTest extends PyTestCase {
     doTestNoInjectedText("from typing import Literal\n" +
                          "MyType = Literal[42, \"f<caret>oo\", True]\n" +
                          "a: MyType\n");
+
+    doTestNoInjectedText("from typing import Literal, TypeAlias\n" +
+                         "MyType: TypeAlias = Literal[42, \"f<caret>oo\", True]\n");
   }
 
   // PY-41847
@@ -1526,6 +1546,24 @@ public class PyTypingTest extends PyTestCase {
     );
   }
 
+  // PY-35370
+  public void testAnyArgumentsCallableInTypeComment() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTestInjectedText("from typing import Callable\n" +
+                               "a = b  # type: Call<caret>able[..., int]",
+                               "Callable[..., int]")
+    );
+  }
+
+  // PY-42334
+  public void testExplicitTypeAliasItselfHasAnyType() {
+    doTest("Any",
+           "from typing import TypeAlias\n" +
+           "\n" +
+           "expr: TypeAlias = int\n");
+  }
+
   private void doTestNoInjectedText(@NotNull String text) {
     myFixture.configureByText(PythonFileType.INSTANCE, text);
     final InjectedLanguageManager languageManager = InjectedLanguageManager.getInstance(myFixture.getProject());
@@ -1543,6 +1581,7 @@ public class PyTypingTest extends PyTestCase {
     assertFalse(files.isEmpty());
     final PsiElement injected = files.get(0).getFirst();
     assertEquals(expected, injected.getText());
+    assertFalse(PsiTreeUtil.hasErrorElements(injected));
   }
 
   private void doTest(@NotNull String expectedType, @NotNull String text) {

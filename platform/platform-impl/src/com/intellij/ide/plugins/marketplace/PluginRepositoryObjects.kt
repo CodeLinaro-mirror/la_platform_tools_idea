@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.intellij.ide.plugins.PluginNode
 import com.intellij.ide.plugins.RepositoryHelper
 import com.intellij.ide.plugins.newui.Tags
+import com.intellij.openapi.extensions.PluginId
 
 /**
  * Object from Search Service for getting compatible updates for IDE.
@@ -37,6 +38,7 @@ data class IntellijUpdateMetadata(
   val version: String = "",
   val notes: String = "",
   val dependencies: Set<String> = emptySet(),
+  val optionalDependencies: Set<String> = emptySet(),
   val since: String? = null,
   val until: String? = null,
   val productCode: String? = null,
@@ -44,9 +46,7 @@ data class IntellijUpdateMetadata(
   val size: Int = 0
 ) {
   fun toPluginNode(): PluginNode {
-    val pluginNode = PluginNode()
-    pluginNode.setId(id)
-    pluginNode.name = name
+    val pluginNode = PluginNode(PluginId.getId(id), name, size.toString())
     pluginNode.description = description
     pluginNode.vendor = vendor
     pluginNode.tags = tags
@@ -56,14 +56,11 @@ data class IntellijUpdateMetadata(
     pluginNode.productCode = productCode
     pluginNode.version = version
     pluginNode.url = url
-    pluginNode.size = size.toString()
     for (dep in dependencies) {
-      if (dep.startsWith("(optional)")) {
-        pluginNode.addDepends(dep.removePrefix("(optional)").trim(), true)
-      }
-      else {
-        pluginNode.addDepends(dep, false)
-      }
+      pluginNode.addDepends(dep, false)
+    }
+    for (dep in optionalDependencies) {
+      pluginNode.addDepends(dep, true)
     }
 
     RepositoryHelper.addMarketplacePluginDependencyIfRequired(pluginNode)
@@ -88,8 +85,7 @@ internal class MarketplaceSearchPluginData(
   val downloads: String = ""
 ) {
   fun toPluginNode(): PluginNode {
-    val pluginNode = PluginNode()
-    pluginNode.setId(id)
+    val pluginNode = PluginNode(PluginId.getId(id))
     pluginNode.name = name
     pluginNode.rating = String.format("%.2f", rating)
     pluginNode.downloads = downloads
@@ -117,4 +113,14 @@ data class FeatureImpl(
   val version: String? = null,
   val implementationName: String? = null,
   val bundled: Boolean = false
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+class MarketplaceBrokenPlugin(
+  val id: String = "",
+  val version: String = "",
+  val since: String? = null,
+  val until: String? = null,
+  val originalSince: String? = null,
+  val originalUntil: String? = null
 )

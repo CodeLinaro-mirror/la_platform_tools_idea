@@ -26,6 +26,7 @@ import com.intellij.util.messages.MessageBus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.SystemIndependent;
+import org.jetbrains.annotations.TestOnly;
 import org.picocontainer.PicoContainer;
 
 import java.util.List;
@@ -43,6 +44,9 @@ final class DefaultProject extends UserDataHolderBase implements Project {
       DefaultProjectImpl project = new DefaultProjectImpl(DefaultProject.this);
       ProjectStoreFactory componentStoreFactory = ApplicationManager.getApplication().getService(ProjectStoreFactory.class);
       project.registerServiceInstance(IComponentStore.class, componentStoreFactory.createDefaultProjectStore(project), ComponentManagerImpl.getFakeCorePluginDescriptor());
+
+      Disposer.register(DefaultProject.this,this); // mark myDelegate as not disposed if someone cluelessly did Disposer.dispose(getDefaultProject())
+
       return project;
     }
 
@@ -102,7 +106,15 @@ final class DefaultProject extends UserDataHolderBase implements Project {
 
   @Override
   public void dispose() {
+    if (!ApplicationManager.getApplication().isDisposed()) {
+      throw new IllegalStateException("Must not dispose default project");
+    }
     Disposer.dispose(myDelegate);
+  }
+
+  @TestOnly
+  void disposeDefaultProjectAndCleanupComponentsForDynamicPluginTests() {
+    ApplicationManager.getApplication().runWriteAction(() -> Disposer.dispose(myDelegate));
   }
 
   private @NotNull Project getDelegate() {

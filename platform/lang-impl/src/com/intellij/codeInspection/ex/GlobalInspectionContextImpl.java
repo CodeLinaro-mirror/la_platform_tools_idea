@@ -17,6 +17,7 @@ import com.intellij.codeInspection.reference.RefEntity;
 import com.intellij.codeInspection.reference.RefGraphAnnotator;
 import com.intellij.codeInspection.reference.RefManagerImpl;
 import com.intellij.codeInspection.ui.DefaultInspectionToolPresentation;
+import com.intellij.codeInspection.ui.DelegatedInspectionToolPresentation;
 import com.intellij.codeInspection.ui.InspectionResultsView;
 import com.intellij.codeInspection.ui.InspectionToolPresentation;
 import com.intellij.concurrency.JobLauncher;
@@ -99,7 +100,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
   }
 
   public void addView(@NotNull InspectionResultsView view,
-                      @NotNull String title,
+                      @NotNull @NlsContexts.TabTitle String title,
                       boolean isOffline) {
     LOG.assertTrue(myContent == null, "GlobalInspectionContext is busy under other view now");
     myView = view;
@@ -289,7 +290,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
       ProgressManager.checkCanceled();
       Boolean readActionSuccess = DumbService.getInstance(getProject()).tryRunReadActionInSmartMode(() -> {
         long start = myProfile == null ? 0 : System.currentTimeMillis();
-        PsiFile file = psiManager.findFile(virtualFile);
+        PsiFile file = virtualFile.isValid() ? psiManager.findFile(virtualFile) : null;
         if (file == null) {
           return true;
         }
@@ -307,7 +308,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
           updateProfile(virtualFile, System.currentTimeMillis() - start);
         }
         return true;
-      }, "Inspect code is not available until indices are ready");
+      }, LangBundle.message("popup.content.inspect.code.not.available.until.indices.are.ready"));
       if (readActionSuccess == null || !readActionSuccess) {
         throw new ProcessCanceledException();
       }
@@ -921,7 +922,7 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
 
     Runnable runnable = () -> {
       if (!FileModificationService.getInstance().preparePsiElementsForWrite(files)) return;
-      CleanupInspectionUtil.getInstance().applyFixesNoSort(getProject(), "Code Cleanup", descriptors, null, false, searchScope instanceof GlobalSearchScope);
+      CleanupInspectionUtil.getInstance().applyFixesNoSort(getProject(), LangBundle.message("code.cleanup"), descriptors, null, false, searchScope instanceof GlobalSearchScope);
       if (postRunnable != null) {
         postRunnable.run();
       }
@@ -953,6 +954,9 @@ public class GlobalInspectionContextImpl extends GlobalInspectionContextEx {
     return myPresentationMap.computeIfAbsent(toolWrapper, __ -> {
       String presentationClass = toolWrapper.myEP == null ? null : toolWrapper.myEP.presentation;
       if (StringUtil.isEmpty(presentationClass)) {
+        if (myProblemConsumer !=  null) {
+          return new DelegatedInspectionToolPresentation(toolWrapper, this, myProblemConsumer);
+        }
         presentationClass = DefaultInspectionToolPresentation.class.getName();
       }
       try {

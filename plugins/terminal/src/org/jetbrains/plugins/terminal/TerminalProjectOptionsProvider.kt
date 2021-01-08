@@ -19,7 +19,7 @@ class TerminalProjectOptionsProvider(val project: Project) : PersistentStateComp
 
   private val state = State()
 
-  override fun getState(): State? {
+  override fun getState(): State {
     return state
   }
 
@@ -142,10 +142,8 @@ class TerminalProjectOptionsProvider(val project: Project) : PersistentStateComp
       val oldState = project.getService(TerminalProjectOptionsProviderOld::class.java).getAndClear()
       if (oldState != null &&
           provider.state.startingDirectory == null &&
-          provider.state.shellPath == null &&
           provider.state.envDataOptions.get() == EnvironmentVariablesData.DEFAULT) {
         provider.state.startingDirectory = oldState.myStartingDirectory
-        provider.state.shellPath = oldState.myShellPath
         provider.state.envDataOptions.set(oldState.envDataOptions.get())
       }
       return provider

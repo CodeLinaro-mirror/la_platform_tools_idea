@@ -13,7 +13,6 @@ import com.intellij.openapi.vcs.AbstractVcs;
 import com.intellij.openapi.vcs.ProjectLevelVcsManager;
 import com.intellij.openapi.vcs.VcsKey;
 import com.intellij.openapi.vcs.VcsNotifier;
-import com.intellij.openapi.vcs.changes.ChangeListManager;
 import com.intellij.openapi.vcs.changes.ChangeListManagerEx;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
@@ -25,11 +24,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class VcsCherryPickManager {
   private static final Logger LOG = Logger.getInstance(VcsCherryPickManager.class);
   @NotNull private final Project myProject;
-  @NotNull private final Set<CommitId> myIdsInProgress = ContainerUtil.newConcurrentSet();
+  @NotNull private final Set<CommitId> myIdsInProgress = Collections.newSetFromMap(new ConcurrentHashMap<>());
   @NotNull private final BackgroundTaskQueue myTaskQueue;
 
   public VcsCherryPickManager(@NotNull Project project) {
@@ -71,7 +71,7 @@ public final class VcsCherryPickManager {
     CherryPickingTask(@NotNull List<? extends VcsFullCommitDetails> detailsInReverseOrder) {
       super(VcsCherryPickManager.this.myProject, DvcsBundle.message("cherry.picking.process"));
       myAllDetailsInReverseOrder = detailsInReverseOrder;
-      myChangeListManager = (ChangeListManagerEx)ChangeListManager.getInstance(myProject);
+      myChangeListManager = ChangeListManagerEx.getInstanceEx(myProject);
       myChangeListManager.blockModalNotifications();
     }
 
@@ -97,7 +97,7 @@ public final class VcsCherryPickManager {
     }
 
     public void showError(@Nls @NotNull String message) {
-      VcsNotifier.getInstance(myProject).notifyWeakError(message);
+      VcsNotifier.getInstance(myProject).notifyWeakError("vcs.cherry.pick.error", message);
       LOG.warn(message);
     }
 

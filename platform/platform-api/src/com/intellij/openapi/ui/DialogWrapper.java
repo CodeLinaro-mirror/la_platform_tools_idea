@@ -43,10 +43,7 @@ import com.intellij.util.ui.*;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
 import org.intellij.lang.annotations.MagicConstant;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -148,7 +145,7 @@ public abstract class DialogWrapper {
 
   protected final @NotNull Disposable myDisposable = new Disposable() {
     @Override
-    public String toString() {
+    public @NonNls String toString() {
       return DialogWrapper.this.toString();
     }
 
@@ -176,8 +173,7 @@ public abstract class DialogWrapper {
   private JComponent myPreferredFocusedComponentFromPanel;
   private Computable<? extends Point> myInitialLocationCallback;
   private Dimension  myActualSize;
-  @NotNull
-  private List<ValidationInfo> myInfo = Collections.emptyList();
+  private @NotNull List<ValidationInfo> myInfo = Collections.emptyList();
   private @Nullable DoNotAskOption myDoNotAsk;
   private Action myYesAction;
   private Action myNoAction;
@@ -340,7 +336,7 @@ public abstract class DialogWrapper {
    * or validation description with component where problem has been found.
    *
    * @return {@code null} if everything is OK or validation descriptor
-   * 
+   *
    * @see <a href="https://jetbrains.design/intellij/principles/validation_errors/">Validation errors guidelines</a>
    */
   @Nullable
@@ -357,7 +353,7 @@ public abstract class DialogWrapper {
    *
    * @return {@code List<ValidationInfo>} of invalid fields. List
    * is empty if no errors found.
-   * 
+   *
    * @see <a href="https://jetbrains.design/intellij/principles/validation_errors/">Validation errors guidelines</a>
    */
   @NotNull
@@ -392,7 +388,6 @@ public abstract class DialogWrapper {
   protected void updateErrorInfo(@NotNull List<ValidationInfo> info) {
     boolean updateNeeded = isInplaceValidationToolTipEnabled() ? !myInfo.equals(info) : !myErrorText.isTextSet(info);
     if (updateNeeded) {
-      //noinspection SSBasedInspection
       SwingUtilities.invokeLater(() -> {
         if (myDisposed) return;
         setErrorInfoAll(info);
@@ -559,6 +554,8 @@ public abstract class DialogWrapper {
         HelpTooltip.dispose((JComponent)evt.getSource());
       }
     });
+    helpButton.getAccessibleContext().setAccessibleName(UIBundle.message("dialog.options.help.button.accessible.name"));
+    helpButton.getAccessibleContext().setAccessibleDescription(ActionsBundle.message("action.HelpTopics.description"));
     return helpButton;
   }
 
@@ -790,7 +787,7 @@ public abstract class DialogWrapper {
       button.putClientProperty("JButton.buttonType", "text");
     }
 
-    Pair<Integer, String> pair = extractMnemonic(button.getText());
+    Pair<Integer, @Nls String> pair = extractMnemonic(button.getText());
     button.setText(pair.second);
     int mnemonic = pair.first;
 
@@ -818,11 +815,11 @@ public abstract class DialogWrapper {
   }
 
   @NotNull
-  public static Pair<Integer, String> extractMnemonic(@Nullable String text) {
+  public static Pair<Integer, @Nls String> extractMnemonic(@Nullable @Nls String text) {
     if (text == null) return pair(0, null);
 
     int mnemonic = 0;
-    StringBuilder plainText = new StringBuilder();
+    @Nls StringBuilder plainText = new StringBuilder();
     for (int i = 0; i < text.length(); i++) {
       char ch = text.charAt(i);
       if (ch == '_' || ch == '&') {
@@ -994,7 +991,6 @@ public abstract class DialogWrapper {
     }
   }
 
-  @SuppressWarnings("SSBasedInspection")
   public static void cleanupWindowListeners(@Nullable Window window) {
     if (window == null) return;
     SwingUtilities.invokeLater(() -> {
@@ -1006,7 +1002,6 @@ public abstract class DialogWrapper {
       }
     });
   }
-
 
   /**
    * This method is invoked by default implementation of "Cancel" action. It just closes dialog
@@ -1187,7 +1182,7 @@ public abstract class DialogWrapper {
   }
 
   @Nullable
-  public final String getDimensionKey() {
+  public final @NonNls String getDimensionKey() {
     return getDimensionServiceKey();
   }
 
@@ -1269,7 +1264,7 @@ public abstract class DialogWrapper {
    * @return dialog title
    * @see Dialog#getTitle
    */
-  public String getTitle() {
+  public @NlsContexts.DialogTitle String getTitle() {
     return myPeer.getTitle();
   }
 
@@ -1417,7 +1412,6 @@ public abstract class DialogWrapper {
     }
   }
 
-  @SuppressWarnings("SSBasedInspection")
   protected void startTrackingValidation() {
     SwingUtilities.invokeLater(() -> {
       if (!myValidationStarted && !myDisposed) {
@@ -1468,9 +1462,26 @@ public abstract class DialogWrapper {
     myPeer.pack();
   }
 
+  /**
+   * Override to set default initial size of the window
+   *
+   * @return initial window size
+   */
   @Nullable
   public Dimension getInitialSize() {
-    return null;
+    List<JTable> tables = UIUtil.findComponentsOfType(getContentPanel(), JTable.class);
+    if (!tables.isEmpty()) {
+      Dimension size = getContentPanel().getPreferredSize();
+      for (JTable table : tables) {
+        Dimension tablePreferredSize = table.getPreferredSize();
+        size.width = Math.max(size.width, tablePreferredSize.width);
+        size.height = Math.max(size.height, size.height - table.getParent().getSize().height + tablePreferredSize.height);
+      }
+      size.width = Math.min(1000, Math.max(600, size.width));
+      size.height = Math.min(800, size.height);
+      return size;
+    }
+    return new Dimension(400, 0);
   }
 
   public Dimension getPreferredSize() {
@@ -1818,7 +1829,7 @@ public abstract class DialogWrapper {
      *
      * @param name the action name (see {@link Action#NAME})
      */
-    protected DialogWrapperAction(@NotNull String name) {
+    protected DialogWrapperAction(@NotNull @NlsContexts.Button String name) {
       super(name);
     }
 
@@ -1888,7 +1899,7 @@ public abstract class DialogWrapper {
     }
   }
 
-  protected class CancelAction extends DialogWrapperAction {
+  protected final class CancelAction extends DialogWrapperAction {
     private CancelAction() {
       super(CommonBundle.getCancelButtonText());
       addPropertyChangeListener(myRepaintOnNameChangeListener);
@@ -1916,7 +1927,7 @@ public abstract class DialogWrapper {
      * @param name     the action name
      * @param exitCode the exit code for dialog
      */
-    public DialogWrapperExitAction(String name, int exitCode) {
+    public DialogWrapperExitAction(@NlsContexts.Button String name, int exitCode) {
       super(name);
       myExitCode = exitCode;
     }
@@ -1929,7 +1940,7 @@ public abstract class DialogWrapper {
     }
   }
 
-  private class HelpAction extends AbstractAction {
+  private final class HelpAction extends AbstractAction {
     private HelpAction() {
       super(CommonBundle.getHelpButtonText());
     }
@@ -1974,7 +1985,6 @@ public abstract class DialogWrapper {
       clearErrorRunnable.run();
     }
     else {
-      //noinspection SSBasedInspection
       SwingUtilities.invokeLater(clearErrorRunnable);
     }
 
@@ -1999,7 +2009,6 @@ public abstract class DialogWrapper {
           }
         }
 
-        //noinspection SSBasedInspection
         SwingUtilities.invokeLater(() -> myErrorText.appendError(vi));
       });
     }
@@ -2018,7 +2027,7 @@ public abstract class DialogWrapper {
     }
   }
 
-  private boolean isInplaceValidationToolTipEnabled() {
+  private static boolean isInplaceValidationToolTipEnabled() {
     return Registry.is("ide.inplace.validation.tooltip", true);
   }
 
@@ -2052,7 +2061,7 @@ public abstract class DialogWrapper {
     return findInstance(KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner());
   }
 
-  private class ErrorText extends JPanel {
+  private final class ErrorText extends JPanel {
     private final JLabel myLabel = new JLabel();
     private final List<ValidationInfo> errors = new ArrayList<>();
 
@@ -2106,6 +2115,7 @@ public abstract class DialogWrapper {
       );
       sb.append("</html>");
 
+      //noinspection HardCodedStringLiteral
       myLabel.setText(sb.toString());
       setVisible(true);
       updateSize();

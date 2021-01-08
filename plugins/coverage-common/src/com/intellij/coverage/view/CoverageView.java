@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.coverage.view;
 
 import com.intellij.CommonBundle;
@@ -44,6 +44,7 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.List;
 
 public class CoverageView extends BorderLayoutPanel implements DataProvider, Disposable {
   @NonNls private static final String ACTION_DRILL_DOWN = "DrillDown";
@@ -107,7 +108,7 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
     }.installOn(myTable);
     final TableSpeedSearch speedSearch = new TableSpeedSearch(myTable);
     speedSearch.setClearSearchOnNavigateNoMatch(true);
-    PopupHandler.installUnknownPopupHandler(myTable, createPopupGroup(), ActionManager.getInstance());
+    PopupHandler.installUnknownPopupHandler(myTable, createPopupGroup());
     ScrollingUtil.installActions(myTable);
 
     myTable.registerKeyboardAction(new ActionListener() {
@@ -137,7 +138,7 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
     });
 
     final JComponent component =
-      ActionManager.getInstance().createActionToolbar("CoverageView", createToolbarActions(structure), false).getComponent();
+      ActionManager.getInstance().createActionToolbar("CoverageView", createToolbarActions(structure, suitesBundle), false).getComponent();
     addToLeft(component);
   }
 
@@ -158,7 +159,8 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
     return actionGroup;
   }
 
-  private ActionGroup createToolbarActions(final CoverageViewTreeStructure treeStructure) {
+  private ActionGroup createToolbarActions(final CoverageViewTreeStructure treeStructure,
+                                           final CoverageSuitesBundle suite) {
     final DefaultActionGroup actionGroup = new DefaultActionGroup();
     actionGroup.add(new GoUpAction(treeStructure));
     if (treeStructure.supportFlattenPackages()) {
@@ -169,6 +171,11 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
     installAutoScrollFromSource(actionGroup);
 
     actionGroup.add(ActionManager.getInstance().getAction("GenerateCoverageReport"));
+
+    CoverageViewExtension viewExtension = suite.getCoverageEngine().createCoverageViewExtension(myProject, suite, myStateBean);
+    List<AnAction> extraActions = viewExtension.createExtraToolbarActions();
+    extraActions.forEach(actionGroup::add);
+
     return actionGroup;
   }
 
@@ -271,7 +278,7 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
     }
   }
 
-  private class FlattenPackagesAction extends ToggleAction {
+  private final class FlattenPackagesAction extends ToggleAction {
 
     private FlattenPackagesAction() {
       super(IdeBundle.messagePointer("action.flatten.packages"), IdeBundle.messagePointer("action.flatten.packages"), AllIcons.ObjectBrowser.FlattenPackages);

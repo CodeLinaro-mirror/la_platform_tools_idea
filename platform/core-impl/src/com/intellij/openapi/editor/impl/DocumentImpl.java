@@ -25,8 +25,10 @@ import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.ImmutableCharSequence;
-import gnu.trove.TIntIntHashMap;
+import it.unimi.dsi.fastutil.ints.Int2IntMap;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.*;
 
 import java.beans.PropertyChangeListener;
@@ -296,9 +298,9 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
       return specialFilter == StripTrailingSpacesFilter.NOT_ALLOWED;
     }
 
-    TIntIntHashMap caretPositions = null;
+    Int2IntMap caretPositions = null;
     if (caretOffsets != null) {
-      caretPositions = new TIntIntHashMap(caretOffsets.length);
+      caretPositions = new Int2IntOpenHashMap(caretOffsets.length);
       for (int caretOffset : caretOffsets) {
         int line = getLineNumber(caretOffset);
         // need to remember only maximum caret offset on a line
@@ -755,7 +757,7 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
   }
 
   void clearLineModificationFlagsExcept(int @NotNull [] caretLines) {
-    IntArrayList modifiedLines = new IntArrayList(caretLines.length);
+    IntList modifiedLines = new IntArrayList(caretLines.length);
     LineSet lineSet = getLineSet();
     for (int line : caretLines) {
       if (line >= 0 && line < lineSet.getLineCount() && lineSet.isModified(line)) {
@@ -1059,7 +1061,7 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
   @Override
   public void setText(@NotNull final CharSequence text) {
     Runnable runnable = () -> replaceString(0, getTextLength(), 0, text, LocalTimeCounter.currentTime(), true);
-    if (CommandProcessor.getInstance().isUndoTransparentActionInProgress()) {
+    if (CommandProcessor.getInstance().isUndoTransparentActionInProgress() || !myAssertThreading) {
       runnable.run();
     }
     else {

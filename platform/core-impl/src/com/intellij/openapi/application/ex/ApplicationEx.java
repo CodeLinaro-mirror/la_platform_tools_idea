@@ -7,13 +7,13 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.ThrowableComputable;
-import com.intellij.util.Consumer;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.util.function.Consumer;
 
 public interface ApplicationEx extends Application {
   String LOCATOR_FILE_NAME = ".home";
@@ -24,15 +24,9 @@ public interface ApplicationEx extends Application {
   int ELEVATE = 0x08;
 
   /**
-   * Loads the application configuration from the specified path
-   *
-   * @param configPath Path to /config folder
+   * Loads the application configuration.
    */
-  void load(@Nullable String configPath);
-
-  default void load() {
-    load(null);
-  }
+  void load();
 
   /**
    * @return true if this thread is inside read action.
@@ -86,9 +80,9 @@ public interface ApplicationEx extends Application {
    * @return true if process run successfully and was not canceled.
    */
   boolean runProcessWithProgressSynchronouslyInReadAction(@Nullable Project project,
-                                                          @NotNull String progressTitle,
+                                                          @NotNull @NlsContexts.ProgressTitle String progressTitle,
                                                           boolean canBeCanceled,
-                                                          String cancelText,
+                                                          @NlsContexts.Button String cancelText,
                                                           JComponent parentComponent,
                                                           @NotNull Runnable process);
 
@@ -224,5 +218,10 @@ public interface ApplicationEx extends Application {
   @ApiStatus.Internal
   default void runIntendedWriteActionOnCurrentThread(@NotNull Runnable action) {
     action.run();
+  }
+
+  @ApiStatus.Internal
+  default boolean isExitInProgress() {
+    return false;
   }
 }

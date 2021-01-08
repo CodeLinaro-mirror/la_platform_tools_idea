@@ -6,8 +6,8 @@ import com.intellij.find.findUsages.FindUsagesHandler;
 import com.intellij.find.findUsages.FindUsagesManager;
 import com.intellij.find.findUsages.FindUsagesOptions;
 import com.intellij.find.impl.FindManagerImpl;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.compiler.CompilerPaths;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.externalSystem.importing.ImportSpec;
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder;
 import com.intellij.openapi.externalSystem.model.DataNode;
@@ -36,8 +36,8 @@ import com.intellij.openapi.projectRoots.impl.JavaAwareProjectJdkTableImpl;
 import com.intellij.openapi.roots.*;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
-import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TestDialog;
+import com.intellij.openapi.ui.TestDialogManager;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
@@ -308,7 +308,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
     assertModuleDeps(moduleName, LibraryOrderEntry.class, expectedDeps);
   }
 
-  protected void assertModuleLibDeps(BiPredicate<String, String> predicate, String moduleName, String... expectedDeps) {
+  protected void assertModuleLibDeps(BiPredicate<? super String, ? super String> predicate, String moduleName, String... expectedDeps) {
     assertModuleDeps(predicate, moduleName, LibraryOrderEntry.class, expectedDeps);
   }
 
@@ -340,7 +340,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
     assertModuleDeps(equalsPredicate(), moduleName, clazz, expectedDeps);
   }
 
-  private void assertModuleDeps(BiPredicate<String, String> predicate, String moduleName, Class clazz, String... expectedDeps) {
+  private void assertModuleDeps(BiPredicate<? super String, ? super String> predicate, String moduleName, Class clazz, String... expectedDeps) {
     assertOrderedElementsAreEqual(predicate, collectModuleDepsNames(moduleName, clazz), expectedDeps);
   }
 
@@ -360,7 +360,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
     return getModuleDep(moduleName, depName, ModuleOrderEntry.class);
   }
 
-  private List<String> collectModuleDepsNames(String moduleName, Predicate<OrderEntry> predicate) {
+  private List<String> collectModuleDepsNames(String moduleName, Predicate<? super OrderEntry> predicate) {
     List<String> actual = new ArrayList<>();
 
     for (OrderEntry e : getRootManager(moduleName).getOrderEntries()) {
@@ -457,7 +457,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
     for (DataNode<?> node : nodes) {
       node.visit(dataNode -> dataNode.setIgnored(ignored));
     }
-    ServiceManager.getService(ProjectDataManager.class).importData(projectDataNode, myProject, true);
+    ApplicationManager.getApplication().getService(ProjectDataManager.class).importData(projectDataNode, myProject, true);
   }
 
   protected void importProject(@NonNls String config) throws IOException {
@@ -491,7 +491,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
             System.err.println("Got null External project after import");
             return;
           }
-          ServiceManager.getService(ProjectDataManager.class).importData(externalProject, myProject, true);
+          ApplicationManager.getApplication().getService(ProjectDataManager.class).importData(externalProject, myProject, true);
           System.out.println("External project was successfully imported");
         }
 
@@ -503,7 +503,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
     }
 
     ExternalSystemProgressNotificationManager notificationManager =
-      ServiceManager.getService(ExternalSystemProgressNotificationManager.class);
+      ApplicationManager.getApplication().getService(ExternalSystemProgressNotificationManager.class);
     ExternalSystemTaskNotificationListenerAdapter listener = new ExternalSystemTaskNotificationListenerAdapter() {
       @Override
       public void onTaskOutput(@NotNull ExternalSystemTaskId id, @NotNull String text, boolean stdOut) {
@@ -562,7 +562,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
 
   protected static AtomicInteger configConfirmationForYesAnswer() {
     final AtomicInteger counter = new AtomicInteger();
-    Messages.setTestDialog(new TestDialog() {
+    TestDialogManager.setTestDialog(new TestDialog() {
       @Override
       public int show(@NotNull String message) {
         counter.set(counter.get() + 1);
@@ -574,7 +574,7 @@ public abstract class ExternalSystemImportingTestCase extends ExternalSystemTest
 
   protected static AtomicInteger configConfirmationForNoAnswer() {
     final AtomicInteger counter = new AtomicInteger();
-    Messages.setTestDialog(new TestDialog() {
+    TestDialogManager.setTestDialog(new TestDialog() {
       @Override
       public int show(@NotNull String message) {
         counter.set(counter.get() + 1);

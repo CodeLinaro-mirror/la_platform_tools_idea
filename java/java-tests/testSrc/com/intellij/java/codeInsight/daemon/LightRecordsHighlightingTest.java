@@ -23,6 +23,9 @@ public class LightRecordsHighlightingTest extends LightJavaCodeInsightFixtureTes
   public void testRecordBasics() {
     doTest();
   }
+  public void testRecordBasicsJava15() {
+    IdeaTestUtil.withLevel(getModule(), LanguageLevel.JDK_15_PREVIEW, this::doTest);
+  }
   public void testRecordAccessors() {
     doTest();
   }
@@ -46,6 +49,10 @@ public class LightRecordsHighlightingTest extends LightJavaCodeInsightFixtureTes
   }
 
   public void testRenameOnRecordComponent() {
+    doTestRename();
+  }
+
+  public void testRenameOnRecordCanonicalConstructor() {
     doTestRename();
   }
 

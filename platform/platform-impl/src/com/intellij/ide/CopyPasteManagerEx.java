@@ -90,6 +90,26 @@ public class CopyPasteManagerEx extends CopyPasteManager implements ClipboardOwn
 
   @Override
   public void stopKillRings() {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Kill ring reset", new Throwable());
+    }
+    doStopKillRings();
+  }
+
+  @Override
+  public void stopKillRings(@NotNull Document document) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Kill ring reset for " + document, new Throwable());
+    }
+    if (!myData.isEmpty()) {
+      Transferable top = myData.get(0);
+      if (top instanceof KillRingTransferable && document == ((KillRingTransferable)top).getDocument()) {
+        doStopKillRings();
+      }
+    }
+  }
+
+  private void doStopKillRings() {
     for (Transferable data : myData) {
       if (data instanceof KillRingTransferable) {
         ((KillRingTransferable)data).setReadyToCombine(false);
@@ -296,6 +316,7 @@ public class CopyPasteManagerEx extends CopyPasteManager implements ClipboardOwn
     }
     else if (t instanceof Sizeable) {
       int size = ((Sizeable)t).getSize();
+      //noinspection ConstantConditions
       if (size >= 0) {
         return size;
       }

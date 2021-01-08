@@ -93,6 +93,7 @@ import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.psi.impl.PsiManagerImpl;
 import com.intellij.psi.impl.source.PsiFileImpl;
 import com.intellij.psi.impl.source.tree.FileElement;
+import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.stubs.StubTextInconsistencyException;
@@ -117,6 +118,7 @@ import com.intellij.util.indexing.FileBasedIndexExtension;
 import com.intellij.util.indexing.FindSymbolParameters;
 import com.intellij.util.io.ReadOnlyAttributeUtil;
 import com.intellij.util.ui.UIUtil;
+import com.intellij.workspaceModel.ide.impl.legacyBridge.LegacyBridgeTestFilePointersTracker;
 import junit.framework.ComparisonFailure;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -125,6 +127,7 @@ import org.jetbrains.annotations.TestOnly;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.ref.Reference;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -137,7 +140,6 @@ import java.util.stream.Stream;
 import static com.intellij.openapi.util.io.FileUtil.toSystemDependentName;
 import static com.intellij.testFramework.RunAll.runAll;
 import static com.intellij.testFramework.UsefulTestCase.assertOneElement;
-import static com.intellij.testFramework.UsefulTestCase.assertSize;
 import static org.junit.Assert.*;
 
 /**
@@ -168,6 +170,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   private boolean myReadEditorMarkupModel;
   private VirtualFilePointerTracker myVirtualFilePointerTracker;
   private ResourceBundle[] myMessageBundles = new ResourceBundle[0];
+  private LegacyBridgeTestFilePointersTracker myLegacyBridgeTestFilePointersTracker;
 
   public CodeInsightTestFixtureImpl(@NotNull IdeaProjectTestFixture projectFixture, @NotNull TempDirTestFixture tempDirTestFixture) {
     myProjectFixture = projectFixture;
@@ -649,7 +652,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
   @NotNull
   private Editor getHostEditor() {
-    return InjectedLanguageUtil.getTopLevelEditor(getEditor());
+    return InjectedLanguageEditorUtil.getTopLevelEditor(getEditor());
   }
 
   private PsiFile getHostFileAtCaret() {
@@ -883,7 +886,9 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   @Override
   public Collection<Usage> testFindUsagesUsingAction(String @NotNull ... fileNames) {
     assertInitialized();
-    configureByFiles(fileNames);
+    if (fileNames.length > 0) { // don't change configured files if already configured
+      configureByFiles(fileNames);
+    }
     EdtTestUtil.runInEdtAndWait(() -> myEditorTestFixture.performEditorAction(IdeActions.ACTION_FIND_USAGES));
     Disposer.register(getTestRootDisposable(), () -> {
       UsageViewContentManager usageViewManager = UsageViewContentManager.getInstance(getProject());
@@ -1221,6 +1226,8 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     if (shouldTrackVirtualFilePointers()) {
       myVirtualFilePointerTracker = new VirtualFilePointerTracker();
     }
+    myLegacyBridgeTestFilePointersTracker = new LegacyBridgeTestFilePointersTracker(myProjectFixture.getProject());
+    myLegacyBridgeTestFilePointersTracker.startTrackPointersCreatedInTest();
   }
 
   protected boolean shouldTrackVirtualFilePointers() {
@@ -1275,6 +1282,12 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       () -> disposeRootDisposable(),
       () -> EdtTestUtil.runInEdtAndWait(() -> myProjectFixture.tearDown()),
       () -> EdtTestUtil.runInEdtAndWait(() -> myTempDirFixture.tearDown()),
+      () -> {
+        LegacyBridgeTestFilePointersTracker tracker = myLegacyBridgeTestFilePointersTracker;
+        if (tracker != null) {
+          tracker.disposePointersCreatedInTest();
+        }
+      },
       () -> super.tearDown(),
       () -> {
         if (myVirtualFilePointerTracker != null) {
@@ -1533,7 +1546,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       Document document = getDocument(getFile());
       data.checkLineMarkers(file, DaemonCodeAnalyzerImpl.getLineMarkers(document, getProject()), document.getText());
     }
-    ObjectUtils.reachabilityFence(hardRefToFileElement);
+    Reference.reachabilityFence(hardRefToFileElement);
     return elapsed;
   }
 
@@ -1999,13 +2012,13 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   }
 
   @NotNull
-  private String getUsageViewTreeTextRepresentation(@NotNull final UsageViewImpl usageView) {
+  public String getUsageViewTreeTextRepresentation(@NotNull final UsageViewImpl usageView) {
     Disposer.register(getTestRootDisposable(), usageView);
     usageView.expandAll();
     return TreeNodeTester.forNode(usageView.getRoot()).withPresenter(usageView::getNodeText).constructTextRepresentation();
   }
 
-  private static class SelectionAndCaretMarkupLoader {
+  private static final class SelectionAndCaretMarkupLoader {
     private final String fileText;
     private final String filePath;
     private final String newFileText;
@@ -2045,7 +2058,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     }
   }
 
-  private static class Border implements Comparable<Border> {
+  private static final class Border implements Comparable<Border> {
     private final boolean isLeftBorder;
     private final int offset;
     private final String text;

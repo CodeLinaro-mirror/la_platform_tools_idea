@@ -43,7 +43,6 @@ import com.intellij.psi.templateLanguages.TemplateLanguageUtil;
 import com.intellij.psi.xml.XmlTokenType;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.XmlExtension;
-import com.intellij.xml.util.HtmlUtil;
 import com.intellij.xml.util.XmlUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -55,7 +54,7 @@ import java.util.stream.Stream;
 public final class XmlTagNameSynchronizer implements EditorFactoryListener {
   private static final Key<Boolean> SKIP_COMMAND = Key.create("tag.name.synchronizer.skip.command");
   private static final Logger LOG = Logger.getInstance(XmlTagNameSynchronizer.class);
-  private static final Set<Language> SUPPORTED_LANGUAGES = ContainerUtil.set(HTMLLanguage.INSTANCE,
+  private static final Set<Language> SUPPORTED_LANGUAGES = Set.of(HTMLLanguage.INSTANCE,
                                                                              XMLLanguage.INSTANCE,
                                                                              XHTMLLanguage.INSTANCE);
 
@@ -99,8 +98,8 @@ public final class XmlTagNameSynchronizer implements EditorFactoryListener {
     final PsiFile psiFile = file != null && file.isValid() ? PsiManager.getInstance(project).findFile(file) : null;
     if (psiFile != null) {
       for (Language language : psiFile.getViewProvider().getLanguages()) {
-        if ((ContainerUtil.find(SUPPORTED_LANGUAGES, language::isKindOf) != null || HtmlUtil.supportsXmlTypedHandlers(psiFile)) &&
-            !(language instanceof TemplateLanguage)) {
+        if ((ContainerUtil.find(SUPPORTED_LANGUAGES, language::isKindOf) != null) && !(language instanceof TemplateLanguage) ||
+            XmlTypedHandlersAdditionalSupport.supportsTypedHandlers(psiFile, language)) {
           return language;
         }
       }

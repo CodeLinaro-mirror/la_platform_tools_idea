@@ -7,6 +7,7 @@ import com.intellij.internal.statistic.actions.*
 import com.intellij.internal.statistic.actions.scheme.AddGroupToTestSchemeAction
 import com.intellij.internal.statistic.actions.scheme.EditEventsTestSchemeAction
 import com.intellij.internal.statistic.eventLog.EventLogNotificationService
+import com.intellij.internal.statistic.eventLog.EventLogSystemEvents
 import com.intellij.internal.statistic.eventLog.LogEvent
 import com.intellij.internal.statistic.eventLog.validator.ValidationResultType.*
 import com.intellij.openapi.Disposable
@@ -35,7 +36,7 @@ internal class StatisticsEventLogToolWindow(project: Project, private val record
 
   init {
     val model = StatisticsLogFilterModel()
-    consoleLog = StatisticsEventLogConsole(project, model)
+    consoleLog = StatisticsEventLogConsole(project, model, recorderId)
     eventLogListener = { logEvent -> consoleLog.addLogLine(messageBuilder.buildLogMessage(logEvent)) }
 
     val topPanel = JPanel(FlowLayout(FlowLayout.LEFT))
@@ -89,6 +90,7 @@ internal class StatisticsEventLogToolWindow(project: Project, private val record
 
   companion object {
     val rejectedValidationTypes = setOf(REJECTED, INCORRECT_RULE, UNDEFINED_RULE, UNREACHABLE_METADATA, PERFORMANCE_ISSUE)
+    val alertEvents = setOf(EventLogSystemEvents.TOO_MANY_EVENTS_ALERT, EventLogSystemEvents.TOO_MANY_EVENTS)
   }
 }
 

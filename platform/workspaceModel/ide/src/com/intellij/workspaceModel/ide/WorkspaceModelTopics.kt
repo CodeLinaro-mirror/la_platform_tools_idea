@@ -4,18 +4,19 @@ package com.intellij.workspaceModel.ide
 import com.intellij.diagnostic.StartUpMeasurer
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.components.ServiceManager
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.messages.MessageBus
 import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.messages.Topic
-import com.intellij.workspaceModel.storage.VersionedStorageChanged
+import com.intellij.workspaceModel.ide.impl.finishModuleLoadingActivity
+import com.intellij.workspaceModel.storage.VersionedStorageChange
 import java.util.*
 
 interface WorkspaceModelChangeListener : EventListener {
-  fun beforeChanged(event: VersionedStorageChanged) {}
-  fun changed(event: VersionedStorageChanged) {}
+  fun beforeChanged(event: VersionedStorageChange) {}
+  fun changed(event: VersionedStorageChange) {}
 }
 
 /**
@@ -25,14 +26,15 @@ interface WorkspaceModelChangeListener : EventListener {
  */
 class WorkspaceModelTopics : Disposable {
   companion object {
+    /** Please use [subscribeImmediately] and [subscribeAfterModuleLoading] to subscribe to changes */
     private val CHANGED = Topic("Workspace Model Changed", WorkspaceModelChangeListener::class.java)
 
-    fun getInstance(project: Project): WorkspaceModelTopics = ServiceManager.getService(project, WorkspaceModelTopics::class.java)
+    fun getInstance(project: Project): WorkspaceModelTopics = project.service()
   }
 
   private val allEvents = ContainerUtil.createConcurrentList<EventsDispatcher>()
   private var sendToQueue = true
-  internal var modulesAreLoaded = false
+  var modulesAreLoaded = false
 
   /**
    * Subscribe to topic and start to receive changes immediately
@@ -60,7 +62,7 @@ class WorkspaceModelTopics : Disposable {
 
   fun syncPublisher(messageBus: MessageBus): WorkspaceModelChangeListener = messageBus.syncPublisher(CHANGED)
 
-  internal fun notifyModulesAreLoaded() {
+  fun notifyModulesAreLoaded() {
     val activity = StartUpMeasurer.startActivity("(wm) After modules are loaded")
     sendToQueue = false
     val application = ApplicationManager.getApplication()
@@ -68,6 +70,7 @@ class WorkspaceModelTopics : Disposable {
       application.runWriteAction {
         val innerActivity = activity.startChild("(wm) WriteAction. After modules are loaded")
         allEvents.forEach { queue ->
+          queue.collectToQueue = false
           queue.events.forEach { (isBefore, event) ->
             if (isBefore) queue.originalListener.beforeChanged(event)
             else queue.originalListener.changed(event)
@@ -77,18 +80,17 @@ class WorkspaceModelTopics : Disposable {
         innerActivity.end()
       }
     }
-    allEvents.forEach { it.collectToQueue = false }
     allEvents.clear()
     modulesAreLoaded = true
     activity.end()
+    finishModuleLoadingActivity()
   }
 
   private class EventsDispatcher(val originalListener: WorkspaceModelChangeListener) : WorkspaceModelChangeListener {
+    val events = mutableListOf<Pair<Boolean, VersionedStorageChange>>()
+    var collectToQueue = true
 
-    internal val events = mutableListOf<Pair<Boolean, VersionedStorageChanged>>()
-    internal var collectToQueue = true
-
-    override fun beforeChanged(event: VersionedStorageChanged) {
+    override fun beforeChanged(event: VersionedStorageChange) {
       if (collectToQueue) {
         events += true to event
       }
@@ -97,7 +99,7 @@ class WorkspaceModelTopics : Disposable {
       }
     }
 
-    override fun changed(event: VersionedStorageChanged) {
+    override fun changed(event: VersionedStorageChange) {
       if (collectToQueue) {
         events += false to event
       }

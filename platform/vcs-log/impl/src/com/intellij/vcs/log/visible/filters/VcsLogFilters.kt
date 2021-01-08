@@ -20,7 +20,7 @@ import java.util.*
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
-private val LOG = Logger.getInstance("#com.intellij.vcs.log.visible.filters.VcsLogFilters") // NON-NLS
+private val LOG = Logger.getInstance("#com.intellij.vcs.log.visible.filters.VcsLogFilters")
 
 object VcsLogFilterObject {
   const val ME = "*"
@@ -241,12 +241,12 @@ fun VcsLogFilterCollection.getPresentation(): String {
   if (get(HASH_FILTER) != null) {
     return get(HASH_FILTER)!!.displayText
   }
-  return filters.joinToString(" ") { filter ->
+  return StringUtil.join(filters, { filter: VcsLogFilter ->
     if (filters.size != 1) {
       filter.withPrefix()
     }
     else filter.displayText
-  }
+  }, " ")
 }
 
 @Nls
@@ -259,7 +259,7 @@ private fun VcsLogFilter.withPrefix(): String {
     is VcsLogRootFilter -> return VcsLogBundle.message("vcs.log.filter.root.presentation.with.prefix", displayText)
     is VcsLogStructureFilter -> return VcsLogBundle.message("vcs.log.filter.structure.presentation.with.prefix", displayText)
   }
-  return ""
+  return displayText
 }
 
 private fun createFilterSet() = OpenTHashSet(FilterByKeyHashingStrategy())

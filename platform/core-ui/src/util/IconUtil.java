@@ -18,10 +18,7 @@ import com.intellij.ui.icons.CompositeIcon;
 import com.intellij.ui.icons.CopyableIcon;
 import com.intellij.ui.scale.*;
 import com.intellij.util.ui.*;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import java.awt.*;
@@ -31,6 +28,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.RGBImageFilter;
 import java.lang.ref.WeakReference;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static com.intellij.ui.scale.ScaleType.OBJ_SCALE;
@@ -65,14 +63,17 @@ public class IconUtil {
       return icon;
     }
 
-    Image image = toImage(icon);
-    if (image == null) return icon;
+    Image image = IconLoader.toImage(icon, null);
+    if (image == null) {
+      return icon;
+    }
 
     double scale = 1f;
     if (image instanceof JBHiDPIScaledImage) {
       scale = ((JBHiDPIScaledImage)image).getScale();
       image = ((JBHiDPIScaledImage)image).getDelegate();
     }
+
     BufferedImage bi = ImageUtil.toBufferedImage(image);
     final Graphics2D g = bi.createGraphics();
 
@@ -135,15 +136,23 @@ public class IconUtil {
     };
   }
 
-  private static final NullableFunction<FileIconKey, Icon> ICON_NULLABLE_FUNCTION = key -> {
-    VirtualFile file = key.getFile();
-    int flags = filterFileIconFlags(file, key.getFlags());
-    Project project = key.getProject();
+  private static final Function<FileIconKey, Icon> ICON_NULLABLE_FUNCTION = key -> {
+    return computeFileIcon(key.getFile(), key.getFlags(), key.getProject());
+  };
 
-    if (!file.isValid() || project != null && (project.isDisposed() || !wasEverInitialized(project))) return null;
+  /**
+   * @return a deferred icon for the file, taking into account {@link FileIconProvider} and {@link FileIconPatcher} extensions.
+   */
+  @NotNull
+  public static Icon computeFileIcon(@NotNull VirtualFile file, @Iconable.IconFlags int flags, @Nullable Project project) {
+    if (!file.isValid() || project != null && (project.isDisposed() || !wasEverInitialized(project))) {
+      return AllIcons.FileTypes.Unknown;
+    }
+
+    flags = filterFileIconFlags(file, flags);
 
     Icon providersIcon = getProvidersIcon(file, flags, project);
-    Icon icon = providersIcon != null ? providersIcon : getBaseIcon(file);
+    Icon icon = providersIcon != null ? providersIcon : computeBaseFileIcon(file);
 
     boolean dumb = project != null && DumbService.getInstance(project).isDumb();
     for (FileIconPatcher patcher : FileIconPatcher.EP_NAME.getExtensionList()) {
@@ -166,7 +175,7 @@ public class IconUtil {
     Iconable.LastComputedIcon.put(file, icon, flags);
 
     return icon;
-  };
+  }
 
   @Iconable.IconFlags
   private static int filterFileIconFlags(@NotNull VirtualFile file, @Iconable.IconFlags int flags) {
@@ -177,22 +186,33 @@ public class IconUtil {
     return flags & ~flagIgnoreMask;
   }
 
-  public static Icon getIcon(@NotNull VirtualFile file, @Iconable.IconFlags int flags, @Nullable Project project) {
+  /**
+   * @return a deferred icon for the file, taking into account {@link FileIconProvider} and {@link FileIconPatcher} extensions.
+   * Use {@link #computeFileIcon} where possible (e.g. in background threads) to get a non-deferred icon.
+   */
+  public static @NotNull Icon getIcon(@NotNull VirtualFile file, @Iconable.IconFlags int flags, @Nullable Project project) {
     Icon lastIcon = Iconable.LastComputedIcon.get(file, flags);
-    Icon base = lastIcon != null ? lastIcon : getBaseIcon(file);
-    return IconDeferrer.getInstance().defer(base, new FileIconKey(file, project, flags), ICON_NULLABLE_FUNCTION);
+    Icon base = lastIcon != null ? lastIcon : computeBaseFileIcon(file);
+    return IconManager.getInstance().createDeferredIcon(base, new FileIconKey(file, project, flags), ICON_NULLABLE_FUNCTION);
   }
 
-  private static Icon getBaseIcon(@NotNull VirtualFile vFile) {
+  /**
+   * @return an icon for a file that's quick to calculate, most likely based on the file type
+   * @see #computeFileIcon(VirtualFile, int, Project)
+   * @see FileType#getIcon()
+   */
+  @NotNull
+  public static Icon computeBaseFileIcon(@NotNull VirtualFile vFile) {
     Icon icon = TypePresentationService.getService().getIcon(vFile);
     if (icon != null) {
       return icon;
     }
     FileType fileType = vFile.getFileType();
     if (vFile.isDirectory() && !(fileType instanceof DirectoryFileType)) {
-      return IconWithToolTip.tooltipOnlyIfComposite(PlatformIcons.FOLDER_ICON);
+      return IconManager.getInstance().tooltipOnlyIfComposite(PlatformIcons.FOLDER_ICON);
     }
-    return fileType.getIcon();
+    icon = fileType.getIcon();
+    return icon != null ? icon : getEmptyIcon(false);
   }
 
   @Nullable
@@ -206,7 +226,7 @@ public class IconUtil {
 
   @NotNull
   public static Icon getEmptyIcon(boolean showVisibility) {
-    RowIcon baseIcon = new RowIcon(2);
+    com.intellij.ui.icons.RowIcon baseIcon = new RowIcon(2);
     baseIcon.setIcon(EmptyIcon.create(PlatformIcons.CLASS_ICON), 0);
     if (showVisibility) {
       baseIcon.setIcon(EmptyIcon.create(PlatformIcons.PUBLIC_ICON), 1);
@@ -215,11 +235,11 @@ public class IconUtil {
   }
 
   public static Image toImage(@NotNull Icon icon) {
-    return toImage(icon, null);
+    return IconLoader.toImage(icon, null);
   }
 
-  public static Image toImage(@NotNull Icon icon, @Nullable ScaleContext ctx) {
-    return IconLoader.toImage(icon, ctx);
+  public static Image toImage(@NotNull Icon icon, @Nullable ScaleContext context) {
+    return IconLoader.toImage(icon, context);
   }
 
   @NotNull
@@ -282,9 +302,12 @@ public class IconUtil {
     return AllIcons.ToolbarDecorator.AddLink;
   }
 
-  @NotNull
-  public static Icon getAnalyzeIcon() {
-    return IconLoader.getIcon(getToolbarDecoratorIconsFolder() + "analyze.png");
+  /**
+   * @deprecated This icon is not used by platform anymore.
+   */
+  @Deprecated
+  public static @NotNull Icon getAnalyzeIcon() {
+    return IconLoader.getIcon(getToolbarDecoratorIconsFolder() + "analyze.png", IconUtil.class);
   }
 
   public static void paintInCenterOf(@NotNull Component c, @NotNull Graphics g, @NotNull Icon icon) {
@@ -294,8 +317,8 @@ public class IconUtil {
   }
 
   @NotNull
-  private static String getToolbarDecoratorIconsFolder() {
-    return "/toolbarDecorator/" + (SystemInfo.isMac ? "mac/" : "");
+  private static @NonNls String getToolbarDecoratorIconsFolder() {
+    return "/toolbarDecorator/" + (SystemInfoRt.isMac ? "mac/" : "");
   }
 
   /**

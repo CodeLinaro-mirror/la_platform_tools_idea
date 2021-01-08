@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion.scope;
 
 import com.intellij.codeInsight.daemon.impl.analysis.PsiMethodReferenceHighlightingUtil;
@@ -26,20 +26,21 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.hash.LinkedHashMap;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class JavaCompletionProcessor implements PsiScopeProcessor, ElementClassHint {
+public final class JavaCompletionProcessor implements PsiScopeProcessor, ElementClassHint {
   private static final Logger LOG = Logger.getInstance(JavaCompletionProcessor.class);
 
   private final boolean myInJavaDoc;
   private boolean myStatic;
   private PsiElement myDeclarationHolder;
   private final Map<CompletionElement, CompletionElement> myResults = new LinkedHashMap<>();
-  private final Set<CompletionElement> mySecondRateResults = ContainerUtil.newIdentityTroveSet();
+  private final Set<CompletionElement> mySecondRateResults = new ReferenceOpenHashSet<>();
   private final Set<String> myShadowedNames = new HashSet<>();
   private final Set<String> myCurrentScopeMethodNames = new HashSet<>();
   private final Set<String> myFinishedScopesMethodNames = new HashSet<>();
@@ -106,6 +107,12 @@ public class JavaCompletionProcessor implements PsiScopeProcessor, ElementClassH
   private static boolean allowStaticAfterInstanceQualifier(@NotNull PsiElement position) {
     return SuppressManager.getInstance().isSuppressedFor(position, AccessStaticViaInstanceBase.ACCESS_STATIC_VIA_INSTANCE) ||
            Registry.is("ide.java.completion.suggest.static.after.instance");
+  }
+
+  @ApiStatus.Internal
+  public static boolean seemsInternal(PsiClass clazz) {
+    String name = clazz.getName();
+    return name != null && name.startsWith("$");
   }
 
   @Override
@@ -180,12 +187,6 @@ public class JavaCompletionProcessor implements PsiScopeProcessor, ElementClassH
     }
 
     return true;
-  }
-
-  @ApiStatus.Internal
-  public static boolean seemsInternal(PsiClass clazz) {
-    String name = clazz.getName();
-    return name != null && name.contains("$");
   }
 
   @Nullable
@@ -378,7 +379,7 @@ public class JavaCompletionProcessor implements PsiScopeProcessor, ElementClassH
     return null;
   }
 
-  public static class Options {
+  public static final class Options {
     public static final Options DEFAULT_OPTIONS = new Options(true, true, false);
     public static final Options CHECK_NOTHING = new Options(false, false, false);
     final boolean checkAccess;

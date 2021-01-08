@@ -1,8 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
-/*
- * @author max
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.io.storage;
 
 import com.intellij.openapi.Disposable;
@@ -20,6 +16,7 @@ import com.intellij.util.io.DataOutputStream;
 import com.intellij.util.io.PagePool;
 import com.intellij.util.io.RecordDataOutput;
 import com.intellij.util.io.UnsyncByteArrayInputStream;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
@@ -27,10 +24,12 @@ import org.jetbrains.annotations.TestOnly;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-@SuppressWarnings({"HardCodedStringLiteral"})
 public abstract class AbstractStorage implements Disposable, Forceable {
   protected static final Logger LOG = Logger.getInstance(Storage.class);
 
@@ -41,6 +40,7 @@ public abstract class AbstractStorage implements Disposable, Forceable {
 
   @SuppressWarnings({"MissingDeprecatedAnnotation", "DeprecatedIsStillUsed"})
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
   protected final Object myLock = new Object();
   private final ReadWriteLock myScalableLock = new ReentrantReadWriteLock();
   private final boolean myUseScalableLock;
@@ -60,29 +60,41 @@ public abstract class AbstractStorage implements Disposable, Forceable {
     return deletedRecordsFile && deletedDataFile;
   }
 
-  /**
-   * @deprecated please use scalable lock
-   */
-  @Deprecated
-  protected AbstractStorage(String storageFilePath) throws IOException {
-    this(storageFilePath, PagePool.SHARED, false);
+  public static boolean deleteFiles(@NotNull Path storageFilePath) {
+    Path recordsFile = storageFilePath.getParent().resolve(storageFilePath.getFileName() + INDEX_EXTENSION);
+    Path dataFile = storageFilePath.getParent().resolve(storageFilePath.getFileName() + DATA_EXTENSION);
+
+    // ensure both files deleted
+    boolean deletedRecordsFile = false;
+    try {
+      deletedRecordsFile = Files.deleteIfExists(recordsFile);
+    }
+    catch (IOException ignore) {
+    }
+    boolean deletedDataFile = false;
+    try {
+      deletedDataFile = Files.deleteIfExists(dataFile);
+    }
+    catch (IOException ignore) {
+    }
+    return deletedRecordsFile && deletedDataFile;
   }
 
-  protected AbstractStorage(String storageFilePath, boolean useScalableLock) throws IOException {
+  protected AbstractStorage(@NotNull Path storageFilePath, boolean useScalableLock) throws IOException {
     this(storageFilePath, PagePool.SHARED, useScalableLock);
   }
 
-  protected AbstractStorage(String storageFilePath, PagePool pool, boolean useScalableLock) throws IOException {
+  protected AbstractStorage(@NotNull Path storageFilePath, PagePool pool, boolean useScalableLock) throws IOException {
     this(storageFilePath, pool, CapacityAllocationPolicy.DEFAULT, useScalableLock);
   }
 
-  protected AbstractStorage(String storageFilePath,
+  protected AbstractStorage(@NotNull Path storageFilePath,
                             CapacityAllocationPolicy capacityAllocationPolicy,
                             boolean useScalableLock) throws IOException {
     this(storageFilePath, PagePool.SHARED, capacityAllocationPolicy, useScalableLock);
   }
 
-  protected AbstractStorage(String storageFilePath,
+  protected AbstractStorage(@NotNull Path storageFilePath,
                             PagePool pool,
                             CapacityAllocationPolicy capacityAllocationPolicy,
                             boolean useScalableLock) throws IOException {
@@ -92,16 +104,29 @@ public abstract class AbstractStorage implements Disposable, Forceable {
     myUseScalableLock = useScalableLock;
   }
 
-  private void tryInit(String storageFilePath, PagePool pool, int retryCount) throws IOException {
-    final File recordsFile = new File(storageFilePath + INDEX_EXTENSION);
-    final File dataFile = new File(storageFilePath + DATA_EXTENSION);
+  private void tryInit(@NotNull Path storageFilePath, PagePool pool, int retryCount) throws IOException {
+    Path parentDir = storageFilePath.getParent();
+    Path recordsFile = parentDir.resolve(storageFilePath.getFileName() + INDEX_EXTENSION);
+    Path dataFile = parentDir.resolve(storageFilePath.getFileName() + DATA_EXTENSION);
 
-    if (recordsFile.exists() != dataFile.exists()) {
-      deleteFiles(storageFilePath);
+    boolean rFExists = Files.exists(recordsFile);
+    boolean dFExists = Files.exists(dataFile);
+    if (rFExists != dFExists) {
+      // ensure both files deleted
+      rFExists = false;
+      dFExists = false;
     }
 
-    FileUtil.createIfDoesntExist(recordsFile);
-    FileUtil.createIfDoesntExist(dataFile);
+    if (!rFExists) {
+      Files.createDirectories(parentDir);
+    }
+
+    if (!rFExists) {
+      createOrTruncateFile(recordsFile);
+    }
+    if (!dFExists) {
+      createOrTruncateFile(dataFile);
+    }
 
     AbstractRecordsTable recordsTable = null;
     DataTable dataTable;
@@ -136,19 +161,20 @@ public abstract class AbstractStorage implements Disposable, Forceable {
     }
   }
 
-  protected abstract AbstractRecordsTable createRecordsTable(PagePool pool, File recordsFile) throws IOException;
+  protected abstract AbstractRecordsTable createRecordsTable(PagePool pool, @NotNull Path recordsFile) throws IOException;
 
-  private void compact(final String path) {
+  private void compact(@NotNull Path path) {
     withWriteLock(() -> {
       LOG.info("Space waste in " + path + " is " + myDataTable.getWaste() + " bytes. Compacting now.");
       long start = System.currentTimeMillis();
 
       try {
-        File newDataFile = new File(path + ".storageData.backup");
-        FileUtil.delete(newDataFile);
-        FileUtil.createIfDoesntExist(newDataFile);
+        Path parentDir = path.getParent();
+        Path newDataFile = parentDir.resolve(path.getFileName() + ".storageData.backup");
+        Files.createDirectories(parentDir);
+        createOrTruncateFile(path);
 
-        File oldDataFile = new File(path + DATA_EXTENSION);
+        Path oldDataFile = parentDir.resolve(path.getFileName() + DATA_EXTENSION);
         DataTable newDataTable = new DataTable(newDataFile, myPool);
 
         RecordIdIterator recordIterator = myRecordsTable.createRecordIdIterator();
@@ -173,11 +199,8 @@ public abstract class AbstractStorage implements Disposable, Forceable {
         Disposer.dispose(myDataTable);
         Disposer.dispose(newDataTable);
 
-        if (!FileUtil.delete(oldDataFile)) {
-          throw new IOException("Can't delete file: " + oldDataFile);
-        }
-
-        newDataFile.renameTo(oldDataFile);
+        Files.delete(oldDataFile);
+        Files.move(newDataFile, oldDataFile);
         myDataTable = new DataTable(oldDataFile, myPool);
       }
       catch (IOException e) {
@@ -187,6 +210,10 @@ public abstract class AbstractStorage implements Disposable, Forceable {
       long timedelta = System.currentTimeMillis() - start;
       LOG.info("Done compacting in " + timedelta + "msec.");
     });
+  }
+
+  private static void createOrTruncateFile(@NotNull Path path) throws IOException {
+    Files.newByteChannel(path, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE).close();
   }
 
   public int getVersion() {
@@ -356,7 +383,7 @@ public abstract class AbstractStorage implements Disposable, Forceable {
     });
   }
 
-  public static class StorageDataOutput extends DataOutputStream implements RecordDataOutput {
+  public static final class StorageDataOutput extends DataOutputStream implements RecordDataOutput {
     private final AbstractStorage myStorage;
     private final int myRecordId;
     private final boolean myFixedSize;
@@ -375,7 +402,7 @@ public abstract class AbstractStorage implements Disposable, Forceable {
       myStorage.writeBytes(myRecordId, byteStream.toByteArraySequence(), myFixedSize);
     }
 
-    protected BufferExposingByteArrayOutputStream getByteStream() {
+    private BufferExposingByteArrayOutputStream getByteStream() {
       return ((BufferExposingByteArrayOutputStream)out);
     }
 
@@ -385,7 +412,7 @@ public abstract class AbstractStorage implements Disposable, Forceable {
     }
   }
 
-  public class AppenderStream extends DataOutputStream {
+  public final class AppenderStream extends DataOutputStream {
     private final int myRecordId;
 
     private AppenderStream(int recordId) {

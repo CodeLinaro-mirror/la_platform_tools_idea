@@ -770,7 +770,7 @@ public final class FindManagerImpl extends FindManager {
         String content = stringToFind + " produced stack overflow when matching content of the file";
         LOG.info(content);
         GROUP.createNotification(FindBundle.message("notification.title.regular.expression.failed.to.match"),
-                                     content + " " + file.getPath(),
+                                     content + " " + file.getPresentableUrl(),
                                  NotificationType.ERROR,
                                  null
                                    ).notify(myProject);
@@ -850,7 +850,8 @@ public final class FindManagerImpl extends FindManager {
     if (foundString.isEmpty() || toReplace.isEmpty()) return toReplace;
     StringBuilder buffer = new StringBuilder();
 
-    if (Character.isUpperCase(foundString.charAt(0))) {
+    char firstChar = foundString.charAt(0);
+    if (Character.isUpperCase(firstChar)) {
       buffer.append(Character.toUpperCase(toReplace.charAt(0)));
     }
     else {
@@ -876,12 +877,18 @@ public final class FindManagerImpl extends FindManager {
 
     boolean isTailUpper = true;
     boolean isTailLower = true;
+    boolean isTailChecked = false;
     for (int i = 1; i < foundString.length(); i++) {
       char foundChar = foundString.charAt(i);
       if (!Character.isLetter(foundChar)) continue;
       isTailUpper &= Character.isUpperCase(foundChar);
       isTailLower &= Character.isLowerCase(foundChar);
+      isTailChecked = true;
       if (!isTailUpper && !isTailLower) break;
+    }
+    if (!isTailChecked) {
+      isTailUpper = Character.isLetter(firstChar) && Character.isUpperCase(firstChar);
+      isTailLower = Character.isLetter(firstChar) && Character.isLowerCase(firstChar);
     }
 
     if (isTailUpper && (isReplacementLowercase || isReplacementUppercase)) {
@@ -893,6 +900,7 @@ public final class FindManagerImpl extends FindManager {
     else {
       buffer.append(toReplace.substring(1));
     }
+    System.out.println(foundString + "/"+toReplace+ "->" + buffer.toString());
     return buffer.toString();
   }
 

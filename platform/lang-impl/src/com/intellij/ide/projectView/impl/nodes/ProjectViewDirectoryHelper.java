@@ -6,7 +6,6 @@ import com.intellij.ide.projectView.ViewSettings;
 import com.intellij.ide.projectView.impl.ProjectRootsUtil;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.ide.util.treeView.AbstractTreeUi;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.module.Module;
@@ -39,14 +38,16 @@ import org.jetbrains.jps.model.java.JavaSourceRootProperties;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.intellij.openapi.project.ProjectUtil.isProjectOrWorkspaceFile;
+
 public class ProjectViewDirectoryHelper {
   protected static final Logger LOG = Logger.getInstance(ProjectViewDirectoryHelper.class);
 
   private final Project myProject;
   private final DirectoryIndex myIndex;
 
-  public static ProjectViewDirectoryHelper getInstance(Project project) {
-    return ServiceManager.getService(project, ProjectViewDirectoryHelper.class);
+  public static ProjectViewDirectoryHelper getInstance(@NotNull Project project) {
+    return project.getService(ProjectViewDirectoryHelper.class);
   }
 
   public ProjectViewDirectoryHelper(Project project) {
@@ -343,7 +344,9 @@ public class ProjectViewDirectoryHelper {
   private boolean shouldBeShown(@NotNull VirtualFile dir, ViewSettings settings) {
     if (!dir.isValid()) return false;
     DirectoryInfo directoryInfo = myIndex.getInfoForFile(dir);
-    return directoryInfo.isInProject(dir) || shouldShowExcludedFiles(settings) && directoryInfo.isExcluded(dir);
+    return directoryInfo.isInProject(dir)
+           ? shouldShowExcludedFiles(settings) || !isProjectOrWorkspaceFile(dir)
+           : shouldShowExcludedFiles(settings) && directoryInfo.isExcluded(dir);
   }
 
   private static boolean shouldShowExcludedFiles(ViewSettings settings) {

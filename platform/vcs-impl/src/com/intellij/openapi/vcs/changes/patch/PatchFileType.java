@@ -20,6 +20,9 @@ public class PatchFileType implements FileType {
 
   public static final String NAME = "PATCH"; //NON-NLS
 
+  private PatchFileType() {
+  }
+
   @Override
   @NotNull
   @NonNls
@@ -48,11 +51,6 @@ public class PatchFileType implements FileType {
 
   @Override
   public boolean isBinary() {
-    return false;
-  }
-
-  @Override
-  public boolean isReadOnly() {
     return false;
   }
 

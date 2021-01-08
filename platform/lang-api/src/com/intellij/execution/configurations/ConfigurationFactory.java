@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.configurations;
 
 import com.intellij.execution.BeforeRunTask;
@@ -6,8 +6,10 @@ import com.intellij.execution.RunManager;
 import com.intellij.openapi.components.BaseState;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.NlsSafe;
 import com.intellij.util.DeprecatedMethodException;
 import com.intellij.util.IconUtil;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,7 +40,7 @@ public abstract class ConfigurationFactory {
    * @return the new run configuration.
    */
   @NotNull
-  public RunConfiguration createConfiguration(@Nullable String name, @NotNull RunConfiguration template) {
+  public RunConfiguration createConfiguration(@NlsSafe @Nullable String name, @NotNull RunConfiguration template) {
     RunConfiguration newConfiguration = template.clone();
     newConfiguration.setName(name);
     return newConfiguration;
@@ -86,7 +88,7 @@ public abstract class ConfigurationFactory {
    * The name of the run configuration variant created by this factory.
    */
   @NotNull
-  public String getName() {
+  public @Nls String getName() {
     // null only if SimpleConfigurationType (but method overriden)
     //noinspection ConstantConditions
     return myType.getDisplayName();
@@ -142,6 +144,10 @@ public abstract class ConfigurationFactory {
   @NotNull
   public RunConfigurationSingletonPolicy getSingletonPolicy() {
     return RunConfigurationSingletonPolicy.SINGLE_INSTANCE;
+  }
+
+  public boolean isEditableInDumbMode() {
+    return false;
   }
 
   @Nullable

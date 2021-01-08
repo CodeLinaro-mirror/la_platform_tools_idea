@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.profile.codeInspection.ui.inspectionsTree;
 
 import com.intellij.analysis.AnalysisBundle;
@@ -22,6 +22,7 @@ import com.intellij.profile.codeInspection.ui.SingleInspectionProfilePanel;
 import com.intellij.profile.codeInspection.ui.table.ScopesAndSeveritiesTable;
 import com.intellij.profile.codeInspection.ui.table.ThreeStateCheckBoxRenderer;
 import com.intellij.ui.DoubleClickListener;
+import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.treeStructure.treetable.TreeTable;
 import com.intellij.ui.treeStructure.treetable.TreeTableModel;
@@ -55,7 +56,7 @@ import java.util.stream.Stream;
 /**
  * @author Dmitry Batkovich
  */
-public class InspectionsConfigTreeTable extends TreeTable {
+public final class InspectionsConfigTreeTable extends TreeTable {
   private static final Logger LOG = Logger.getInstance(InspectionsConfigTreeTable.class);
 
   private static final int TREE_COLUMN = 0;
@@ -79,7 +80,7 @@ public class InspectionsConfigTreeTable extends TreeTable {
       @Override
       public Component getTableCellRendererComponent(JTable table, Object value, boolean selected, boolean focus, int row, int column) {
         Component component = super.getTableCellRendererComponent(table, value, false, focus, row, column);
-        Color bg = selected ? table.getSelectionBackground() : table.getBackground();
+        Color bg = RenderingUtil.getBackground(table, selected);
         component.setBackground(bg);
         ((JLabel) component).setText("");
         return component;

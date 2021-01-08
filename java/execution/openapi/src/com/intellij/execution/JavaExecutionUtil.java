@@ -10,12 +10,15 @@ import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
+import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.ClassUtil;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.util.indexing.FileBasedIndex;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -68,7 +71,7 @@ public final class JavaExecutionUtil {
   }
 
   @Nullable
-  public static String getPresentableClassName(@Nullable String rtClassName) {
+  public static @NlsSafe String getPresentableClassName(@Nullable String rtClassName) {
     return getPresentableClassName(rtClassName, null);
   }
 
@@ -97,7 +100,12 @@ public final class JavaExecutionUtil {
 
   @Nullable
   public static PsiClass findMainClass(final Project project, final String mainClassName, final GlobalSearchScope scope) {
-    if (project.isDefault() || DumbService.isDumb(project) && !DumbService.getInstance(project).isAlternativeResolveEnabled()) return null;
+    if (project.isDefault() ||
+        (DumbService.isDumb(project) &&
+         FileBasedIndex.getInstance().getCurrentDumbModeAccessType() == null &&
+         !DumbService.getInstance(project).isAlternativeResolveEnabled())) {
+      return null;
+    }
     final PsiManager psiManager = PsiManager.getInstance(project);
     final String shortName = StringUtil.getShortName(mainClassName);
     final String packageName = StringUtil.getPackageName(mainClassName);
@@ -131,7 +139,7 @@ public final class JavaExecutionUtil {
 
   @SuppressWarnings("MissingDeprecatedAnnotation")
   @Deprecated
-  public static void showExecutionErrorMessage(ExecutionException e, String title, Project project) {
+  public static void showExecutionErrorMessage(ExecutionException e, @NlsContexts.DialogTitle String title, Project project) {
     ExecutionErrorDialog.show(e, title, project);
   }
 

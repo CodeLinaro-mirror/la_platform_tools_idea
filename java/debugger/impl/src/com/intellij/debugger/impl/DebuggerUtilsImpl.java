@@ -23,16 +23,14 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.ex.JavaSdkUtil;
-import com.intellij.openapi.util.JDOMExternalizerUtil;
-import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.util.ThrowableComputable;
+import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.PsiJavaParserFacadeImpl;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.rt.execution.CommandLineWrapper;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.net.NetUtils;
@@ -163,7 +161,7 @@ public class DebuggerUtilsImpl extends DebuggerUtilsEx{
   }
 
   @Override
-  public PsiClass chooseClassDialog(String title, Project project) {
+  public PsiClass chooseClassDialog(@NlsContexts.DialogTitle String title, Project project) {
     TreeClassChooser dialog = TreeClassChooserFactory.getInstance(project).createAllProjectScopeChooser(title);
     dialog.showDialog();
     return dialog.getSelected();
@@ -244,7 +242,16 @@ public class DebuggerUtilsImpl extends DebuggerUtilsEx{
     return defaultValue;
   }
 
-  public static String getConnectionDisplayName(RemoteConnection connection) {
+  public static @NlsContexts.Label String getConnectionWaitStatus(@NotNull RemoteConnection connection) {
+    String connectionName = ObjectUtils.doIfNotNull(connection, DebuggerUtilsImpl::getConnectionDisplayName);
+    return connection instanceof RemoteConnectionStub
+           ? JavaDebuggerBundle.message("status.waiting.attach")
+           : connection.isServerMode()
+             ? JavaDebuggerBundle.message("status.listening", connectionName)
+             : JavaDebuggerBundle.message("status.connecting", connectionName);
+  }
+
+  public static String getConnectionDisplayName(@NotNull RemoteConnection connection) {
     if (connection instanceof PidRemoteConnection) {
       return "pid " + ((PidRemoteConnection)connection).getPid();
     }

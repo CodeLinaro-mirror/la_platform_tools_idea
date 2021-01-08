@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
+import static com.intellij.codeInspection.DefaultInspectionToolResultExporter.INSPECTION_RESULTS_LANGUAGE;
 import static com.intellij.codeInspection.reference.SmartRefElementPointerImpl.*;
 
 public class JsonInspectionsReportConverter implements InspectionsReportConverter {
@@ -188,7 +189,7 @@ public class JsonInspectionsReportConverter implements InspectionsReportConverte
     jsonWriter.endObject();
   }
 
-  protected static void convertProblem(@NotNull JsonWriter writer, @NotNull Element problem) throws IOException {
+  public static void convertProblem(@NotNull JsonWriter writer, @NotNull Element problem) throws IOException {
     writer.beginObject();
     writer.name(FILE).value(problem.getChildText(FILE));
     writeInt(writer, problem, LINE);
@@ -213,6 +214,7 @@ public class JsonInspectionsReportConverter implements InspectionsReportConverte
     }
 
     writer.name(HIGHLIGHTED_ELEMENT).value(problem.getChildText(HIGHLIGHTED_ELEMENT));
+    writer.name(INSPECTION_RESULTS_LANGUAGE).value(problem.getChildText(INSPECTION_RESULTS_LANGUAGE));
     writer.name(DESCRIPTION).value(problem.getChildText(DESCRIPTION));
     writer.endObject();
   }
@@ -268,7 +270,7 @@ public class JsonInspectionsReportConverter implements InspectionsReportConverte
 
   protected static void convertDescriptionsContents(@NotNull JsonWriter writer,
                                                     @NotNull Document descriptions,
-                                                    @Nullable Predicate<String> inspectionFilter) throws IOException {
+                                                    @Nullable Predicate<? super String> inspectionFilter) throws IOException {
     Element inspectionsElement = descriptions.getRootElement();
     writer.name(InspectionsResultUtil.PROFILE).value(inspectionsElement.getAttributeValue(InspectionsResultUtil.PROFILE));
     writer.name(GROUPS);
@@ -279,7 +281,7 @@ public class JsonInspectionsReportConverter implements InspectionsReportConverte
     writer.endArray();
   }
 
-  private static void convertGroup(@NotNull JsonWriter writer, @NotNull Element group, @Nullable Predicate<String> inspectionFilter) throws IOException {
+  private static void convertGroup(@NotNull JsonWriter writer, @NotNull Element group, @Nullable Predicate<? super String> inspectionFilter) throws IOException {
     if (inspectionFilter != null) {
       boolean anyInspectionsInFilter = false;
       for (Element inspection : group.getChildren(INSPECTION)) {

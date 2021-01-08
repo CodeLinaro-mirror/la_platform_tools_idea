@@ -7,6 +7,7 @@ import com.intellij.history.LocalHistoryAction;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.DeleteProvider;
 import com.intellij.ide.IdeBundle;
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.LangDataKeys;
@@ -53,7 +54,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Stream;
 
 public final class DeleteHandler {
   private DeleteHandler() { }
@@ -110,7 +110,7 @@ public final class DeleteHandler {
 
     final PsiElement[] elements = PsiTreeUtil.filterAncestors(elementsToDelete);
 
-    boolean safeDeleteApplicable = Arrays.stream(elements).allMatch(SafeDeleteProcessor::validElement);
+    boolean safeDeleteApplicable = ContainerUtil.and(elements, SafeDeleteProcessor::validElement);
 
     final boolean dumb = DumbService.getInstance(project).isDumb();
     if (safeDeleteApplicable && !dumb) {
@@ -141,8 +141,7 @@ public final class DeleteHandler {
       }
     }
     else {
-      @SuppressWarnings({"UnresolvedPropertyKey"})
-      String warningMessage = DeleteUtil.generateWarningMessage(IdeBundle.message("prompt.delete.elements"), elements);
+      String warningMessage = DeleteUtil.generateWarningMessage("prompt.delete.elements", elements);
 
       boolean anyDirectories = false;
       String directoryName = null;
@@ -163,9 +162,8 @@ public final class DeleteHandler {
       }
 
       if (safeDeleteApplicable) {
-        warningMessage += "\n\nWarning:\n  Safe delete is not available while " +
-                          ApplicationNamesInfo.getInstance().getFullProductName() +
-                          " updates indices,\n  no usages will be checked.";
+        warningMessage +=
+          LangBundle.message("dialog.message.warning.safe.delete.not.available.while.updates.indices.no.usages.will.be.checked", ApplicationNamesInfo.getInstance().getFullProductName());
       }
 
       if (needConfirmation) {
@@ -203,7 +201,7 @@ public final class DeleteHandler {
         CommandProcessor.getInstance().markCurrentCommandAsGlobal(project);
       }
 
-      if (Stream.of(elements).allMatch(DeleteHandler::isLocalFile)) {
+      if (ContainerUtil.and(elements, DeleteHandler::isLocalFile)) {
         doDeleteFiles(project, elements);
       }
       else {
@@ -371,7 +369,7 @@ public final class DeleteHandler {
           Path path = Paths.get(file.getPath());
           indicator.setText(path.toString());
 
-          Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+          Files.walkFileTree(path, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
               if (SystemInfo.isWindows && attrs.isOther()) {  // a junction

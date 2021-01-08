@@ -10,7 +10,6 @@ import com.intellij.debugger.engine.evaluation.TextWithImports;
 import com.intellij.execution.ExecutionException;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
@@ -128,7 +127,7 @@ public abstract class DebuggerUtils {
 
   public static <R, T extends Value> R processCollectibleValue(
     @NotNull ThrowableComputable<? extends T, ? extends EvaluateException> valueComputable,
-    @NotNull Function<T, R> processor) throws EvaluateException {
+    @NotNull Function<? super T, ? extends R> processor) throws EvaluateException {
     int retries = 10;
     while (true) {
       T result = valueComputable.compute();
@@ -593,7 +592,7 @@ public abstract class DebuggerUtils {
   }
 
   public static DebuggerUtils getInstance() {
-    return ServiceManager.getService(DebuggerUtils.class);
+    return ApplicationManager.getApplication().getService(DebuggerUtils.class);
   }
 
   public abstract PsiExpression substituteThis(PsiExpression expressionWithThis, PsiExpression howToEvaluateThis, Value howToEvaluateThisValue, StackFrameContext context) throws EvaluateException;

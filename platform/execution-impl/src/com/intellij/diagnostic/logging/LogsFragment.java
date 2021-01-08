@@ -10,7 +10,6 @@ import com.intellij.execution.ui.NestedGroupFragment;
 import com.intellij.execution.ui.SettingsEditorFragment;
 import com.intellij.openapi.actionSystem.ActionToolbarPosition;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
-import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.ui.LabeledComponent;
 import com.intellij.openapi.ui.TextComponentAccessor;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
@@ -24,7 +23,6 @@ import com.intellij.util.SmartList;
 import com.intellij.util.ui.ColumnInfo;
 import com.intellij.util.ui.ListTableModel;
 import com.intellij.util.ui.LocalPathCellEditor;
-import gnu.trove.THashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,15 +31,17 @@ import java.awt.*;
 import java.util.List;
 import java.util.*;
 
-public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroupFragment<T> {
-
-  private final Map<LogFileOptions, PredefinedLogFile> myLog2Predefined = new THashMap<>();
+public final class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroupFragment<T> {
+  private final Map<LogFileOptions, PredefinedLogFile> myLog2Predefined = new HashMap<>();
   private final List<PredefinedLogFile> myUnresolvedPredefined = new SmartList<>();
   private final TableView<LogFileOptions> myFilesTable;
   private final ListTableModel<LogFileOptions> myModel;
 
   public LogsFragment() {
-    super("log.monitor", DiagnosticBundle.message("log.monitor.fragment.name"), DiagnosticBundle.message("log.monitor.fragment.group"), t -> !t.getLogFiles().isEmpty());
+    super("log.monitor",
+          DiagnosticBundle.message("log.monitor.fragment.name"), DiagnosticBundle.message("log.monitor.fragment.group"),
+          t -> !t.getLogFiles().isEmpty());
+    setActionHint(ExecutionBundle.message("the.ide.will.display.the.selected.logs.in.the.run.tool.window"));
 
     ColumnInfo<LogFileOptions, String> TAB_NAME = new TabNameColumnInfo();
     ColumnInfo<LogFileOptions, String> FILE = new FileColumnInfo();
@@ -74,7 +74,7 @@ public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroup
     myComponent = ToolbarDecorator.createDecorator(myFilesTable)
       .setToolbarPosition(ActionToolbarPosition.BOTTOM)
       .setAddAction(button -> {
-        ArrayList<LogFileOptions> newList = new ArrayList<>(myModel.getItems());
+        List<LogFileOptions> newList = new ArrayList<>(myModel.getItems());
         LogFileOptions newOptions = new LogFileOptions("", "", true);
         if (showEditorDialog(newOptions)) {
           newList.add(newOptions);
@@ -128,7 +128,7 @@ public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroup
   @Override
   protected void resetEditorFrom(@NotNull T configuration) {
     super.resetEditorFrom(configuration);
-    ArrayList<LogFileOptions> list = new ArrayList<>();
+    List<LogFileOptions> list = new ArrayList<>();
     final List<LogFileOptions> logFiles = configuration.getLogFiles();
     for (LogFileOptions setting : logFiles) {
       list.add(
@@ -153,7 +153,7 @@ public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroup
   }
 
   @Override
-  protected void applyEditorTo(@NotNull T configuration) throws ConfigurationException {
+  protected void applyEditorTo(@NotNull T configuration) {
     super.applyEditorTo(configuration);
     configuration.removeAllLogFiles();
     configuration.removeAllPredefinedLogFiles();
@@ -200,17 +200,20 @@ public class LogsFragment<T extends RunConfigurationBase<?>> extends NestedGroup
                                      t.setSaveOutputToFile(StringUtil.isNotEmpty(component.getComponent().getText()));
                                    },
                                    t -> t.isSaveOutputToFile());
+    fragment.setActionHint(ExecutionBundle.message("write.the.output.of.the.application.to.a.file.for.later.inspection"));
     SettingsEditorFragment<T, ?> stdOut = SettingsEditorFragment
       .createTag("logs.stdout", DiagnosticBundle.message("log.monitor.fragment.stdout"), null, t -> t.isShowConsoleOnStdOut(),
                  (t, value) -> t.setShowConsoleOnStdOut(value));
+    stdOut.setActionHint(ExecutionBundle.message("activate.the.console.when.the.application.writes.to.the.standard.output.stream"));
     SettingsEditorFragment<T, ?> stdErr = SettingsEditorFragment
       .createTag("logs.stderr", DiagnosticBundle.message("log.monitor.fragment.stderr"), null, t -> t.isShowConsoleOnStdErr(),
                  (t, value) -> t.setShowConsoleOnStdErr(value));
+    stdErr.setActionHint(ExecutionBundle.message("activate.the.console.when.the.application.writes.to.the.standard.error.stream"));
     return Arrays.asList(fragment, stdOut, stdErr);
   }
 
   @Override
-  public @Nullable String getChildrenGroupName() {
+  public String getChildrenGroupName() {
     return DiagnosticBundle.message("log.monitor.fragment.settings");
   }
 

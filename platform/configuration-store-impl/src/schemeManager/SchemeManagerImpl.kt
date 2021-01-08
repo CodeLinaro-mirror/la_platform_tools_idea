@@ -21,12 +21,10 @@ import com.intellij.openapi.vfs.SafeWriteRequestor
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile
 import com.intellij.util.*
-import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.containers.catch
 import com.intellij.util.containers.mapSmart
 import com.intellij.util.io.*
 import com.intellij.util.text.UniqueNameGenerator
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import org.jdom.Document
 import org.jdom.Element
 import java.io.File
@@ -35,9 +33,11 @@ import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.function.Function
 import java.util.function.Predicate
+import kotlin.collections.HashSet
 
 class SchemeManagerImpl<T : Any, MUTABLE_SCHEME : T>(val fileSpec: String,
                                                      processor: SchemeProcessor<T, MUTABLE_SCHEME>,
@@ -65,7 +65,7 @@ class SchemeManagerImpl<T : Any, MUTABLE_SCHEME : T>(val fileSpec: String,
   internal val schemeExtension: String
   private val updateExtension: Boolean
 
-  internal val filesToDelete = ContainerUtil.newConcurrentSet<String>()
+  internal val filesToDelete: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap())
 
   // scheme could be changed - so, hashcode will be changed - we must use identity hashing strategy
   internal val schemeToInfo = ConcurrentCollectionFactory.createConcurrentIdentityMap<T, ExternalInfo>()
@@ -162,7 +162,7 @@ class SchemeManagerImpl<T : Any, MUTABLE_SCHEME : T>(val fileSpec: String,
   }
 
   internal fun createSchemeLoader(isDuringLoad: Boolean = false): SchemeLoader<T, MUTABLE_SCHEME> {
-    val filesToDelete = ObjectOpenHashSet(filesToDelete)
+    val filesToDelete = HashSet(filesToDelete)
     // caller must call SchemeLoader.apply to bring back scheduled for delete files
     this.filesToDelete.removeAll(filesToDelete)
     // SchemeLoader can use retain list to bring back previously  scheduled for delete file,
@@ -308,7 +308,7 @@ class SchemeManagerImpl<T : Any, MUTABLE_SCHEME : T>(val fileSpec: String,
       }
     }
 
-    val filesToDelete = ObjectOpenHashSet(filesToDelete)
+    val filesToDelete = HashSet(filesToDelete)
     for (scheme in changedSchemes) {
       try {
         saveScheme(scheme, nameGenerator, filesToDelete)
@@ -318,7 +318,7 @@ class SchemeManagerImpl<T : Any, MUTABLE_SCHEME : T>(val fileSpec: String,
       }
     }
 
-    if (!filesToDelete.isEmpty()) {
+    if (filesToDelete.isNotEmpty()) {
       val iterator = schemeToInfo.values.iterator()
       for (info in iterator) {
         if (filesToDelete.contains(info.fileName)) {

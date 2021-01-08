@@ -10,6 +10,7 @@ import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.application.impl.ModalityStateEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.BlockingProgressIndicator;
+import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.TaskInfo;
 import com.intellij.openapi.project.Project;
@@ -19,17 +20,18 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsContexts.ProgressDetails;
 import com.intellij.openapi.util.NlsContexts.ProgressText;
 import com.intellij.openapi.util.NlsContexts.ProgressTitle;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.openapi.wm.ex.ProgressIndicatorEx;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.messages.Topic;
 import com.intellij.util.ui.EDT;
 import com.intellij.util.ui.TimerUtil;
 import com.intellij.util.ui.UIUtil;
-import org.jetbrains.annotations.CalledInAwt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -53,9 +55,9 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
 
   @Nullable protected final Project myProject;
   final boolean myShouldShowCancel;
-  String myCancelText;
+  @NlsContexts.Button String myCancelText;
 
-  private String myTitle;
+  @ProgressTitle private String myTitle;
 
   private boolean myStoppedAlready;
   protected boolean myBackgrounded;
@@ -67,7 +69,8 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
     void progressWindowCreated(@NotNull ProgressWindow pw);
   }
 
-  public static final Topic<Listener> TOPIC = new Topic<>("progress window", Listener.class, Topic.BroadcastDirection.NONE);
+  @Topic.AppLevel
+  public static final Topic<Listener> TOPIC = new Topic<>(Listener.class, Topic.BroadcastDirection.NONE, true);
 
   public ProgressWindow(boolean shouldShowCancel, @Nullable Project project) {
     this(shouldShowCancel, false, project);
@@ -107,13 +110,13 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
     ApplicationManager.getApplication().getMessageBus().syncPublisher(TOPIC).progressWindowCreated(this);
   }
 
-  @CalledInAwt
+  @RequiresEdt
   protected void initializeOnEdtIfNeeded() {
     EDT.assertIsEdt();
     initializeDialog();
   }
 
-  @CalledInAwt
+  @RequiresEdt
   private void initializeDialog() {
     Runnable initialization = myDialogInitialization;
     if (initialization == null) return;
@@ -198,7 +201,7 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
   }
 
   @Override
-  @CalledInAwt
+  @RequiresEdt
   public void startBlocking(@NotNull Runnable init) {
     EDT.assertIsEdt();
     synchronized (getLock()) {
@@ -214,10 +217,37 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
         pumpEventsForHierarchy();
         return null;
       });
+    } catch (Throwable t) {
+      if (isRunning()) {
+        LOG.warn("Exception while pumping messages in ProgressWindow#startBlocking. " +
+                 "The dialog modality state message processing is finished. " + t.getMessage(), new RuntimeException(t));
+      }
+      throw t;
     }
     finally {
       exitModality();
     }
+  }
+
+  @Override
+  public void initStateFrom(@NotNull ProgressIndicator indicator) {
+    var wasRunning = isRunning();
+    super.initStateFrom(indicator);
+    var newIsRunning = isRunning();
+    if (wasRunning == newIsRunning) return;
+
+    String extra = "";
+    if (wasRunning) {
+      extra = "It may cause the messages processing with the dialog ModalityState " +
+              "to exit faster and provoke deadlocks, especially when invokeLaterAndWait() alike " +
+              "methods were used under the progress. ";
+    }
+
+    LOG.warn("Calling ProgressWindow#initStateFrom() changed the isRunning() from " +
+             wasRunning + " to " + newIsRunning + ". " + extra +
+             "this=" + this + ", " +
+             "indicator=" + indicator, new RuntimeException()
+    );
   }
 
   public void pumpEventsForHierarchy() {
@@ -240,6 +270,10 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
 
   protected void showDialog() {
     if (!isRunning() || isCanceled()) {
+      return;
+    }
+
+    if (ApplicationManagerEx.getApplicationEx().isExitInProgress() && Registry.is("ide.instant.shutdown", true)) {
       return;
     }
 
@@ -334,11 +368,12 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
     }
   }
 
+  @ProgressTitle
   public String getTitle() {
     return myTitle;
   }
 
-  public void setCancelButtonText(@NotNull String text) {
+  public void setCancelButtonText(@NlsContexts.Button @NotNull String text) {
     if (myDialog != null) {
       myDialog.changeCancelButtonText(text);
     }

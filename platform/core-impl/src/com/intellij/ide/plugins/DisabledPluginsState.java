@@ -3,11 +3,11 @@ package com.intellij.ide.plugins;
 
 import com.intellij.openapi.application.JetBrainsProtocolHandler;
 import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.extensions.PluginId;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -43,7 +43,23 @@ public final class DisabledPluginsState {
       return;
     }
 
-    List<String> requiredPlugins = StringUtil.split(System.getProperty(JetBrainsProtocolHandler.REQUIRED_PLUGINS_KEY, ""), ",");
+    List<String> requiredPlugins = Arrays.asList(System.getProperty(JetBrainsProtocolHandler.REQUIRED_PLUGINS_KEY, "").split(","));
+    String[] suppressedPlugins = System.getProperty("idea.suppressed.plugins.id", "").split(",");
+    List<String> nonEssentialSuppressedPlugins;
+    if (suppressedPlugins.length == 0) {
+      nonEssentialSuppressedPlugins = Collections.emptyList();
+    }
+    else {
+      ApplicationInfoEx appInfo = ApplicationInfoImpl.getShadowInstance();
+      List<String> result = new ArrayList<>(suppressedPlugins.length);
+      for (String t : suppressedPlugins) {
+        if (!appInfo.isEssentialPlugin(t)) {
+          result.add(t);
+        }
+      }
+      nonEssentialSuppressedPlugins = result;
+    }
+
     try {
       boolean updateDisablePluginsList = false;
       try (BufferedReader reader = Files.newBufferedReader(file)) {
@@ -54,6 +70,12 @@ public final class DisabledPluginsState {
             disabledPlugins.add(PluginId.getId(id));
           }
           else {
+            updateDisablePluginsList = true;
+          }
+        }
+
+        for (String suppressedId : nonEssentialSuppressedPlugins) {
+          if (disabledPlugins.add(PluginId.getId(suppressedId))) {
             updateDisablePluginsList = true;
           }
         }
@@ -173,6 +195,16 @@ public final class DisabledPluginsState {
     trySaveDisabledPlugins(disabled);
   }
 
+  static boolean updateDisabledPluginsState(@NotNull Collection<PluginId> pluginIdsToEnable,
+                                            @NotNull Collection<PluginId> pluginIdsToDisable) {
+    Set<PluginId> disabledIds = getDisabledIds();
+
+    pluginIdsToEnable.forEach(disabledIds::remove);
+    disabledIds.addAll(pluginIdsToDisable);
+
+    return trySaveDisabledPlugins(disabledIds);
+  }
+
   static boolean trySaveDisabledPlugins(@NotNull Collection<PluginId> disabledPlugins) {
     try {
       saveDisabledPlugins(disabledPlugins, false);
@@ -185,11 +217,11 @@ public final class DisabledPluginsState {
   }
 
   public static void saveDisabledPlugins(@NotNull Collection<PluginId> ids, boolean append) throws IOException {
-    saveDisabledPlugins(PathManager.getConfigPath(), ids, append);
+    saveDisabledPlugins(PathManager.getConfigDir(), ids, append);
   }
 
-  public static void saveDisabledPlugins(@NotNull String configPath, @NotNull Collection<PluginId> ids, boolean append) throws IOException {
-    Path plugins = Paths.get(configPath, DISABLED_PLUGINS_FILENAME);
+  public static void saveDisabledPlugins(@NotNull Path configPath, @NotNull Collection<PluginId> ids, boolean append) throws IOException {
+    Path plugins = configPath.resolve(DISABLED_PLUGINS_FILENAME);
     PluginManagerCore.savePluginsList(ids, plugins, append);
     ourDisabledPlugins = null;
     fireEditDisablePlugins();

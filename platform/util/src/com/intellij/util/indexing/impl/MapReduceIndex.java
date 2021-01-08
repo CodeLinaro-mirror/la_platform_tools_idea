@@ -28,6 +28,7 @@ import com.intellij.util.indexing.impl.forward.IntForwardIndex;
 import com.intellij.util.indexing.impl.forward.IntForwardIndexAccessor;
 import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.DataOutputStream;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -219,7 +220,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
   }
 
   @Override
-  public final @NotNull Computable<Boolean> mapInputAndPrepareUpdate(int inputId, @Nullable Input content) throws MapInputException, ProcessCanceledException {
+  public @NotNull Computable<Boolean> mapInputAndPrepareUpdate(int inputId, @Nullable Input content) throws MapInputException, ProcessCanceledException {
     InputData<Key, Value> data;
     try {
       data = mapInput(inputId, content);
@@ -239,23 +240,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
       () -> updateForwardIndex(inputId, data)
     );
 
-    return () -> {
-      try {
-        updateWithMap(updateData);
-      }
-      catch (StorageException | ProcessCanceledException ex) {
-        String message = "An exception during updateWithMap(). Index " + myIndexId.getName() + " will be rebuilt.";
-        //noinspection InstanceofCatchParameter
-        if (ex instanceof ProcessCanceledException) {
-          LOG.error(message, ex);
-        } else {
-          LOG.info(message, ex);
-        }
-        requestRebuild(ex);
-        return false;
-      }
-      return true;
-    };
+    return new IndexUpdateComputable(updateData, data);
   }
 
   /**
@@ -335,8 +320,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
     @Override
     public void process(Key key, Value value, int inputId) throws StorageException {
       myModificationStamp.incrementAndGet();
-      myStorage.removeAllValues(key, inputId);
-      myStorage.addValue(key, inputId, value);
+      myStorage.updateValue(key, inputId, value);
     }
   };
 
@@ -350,6 +334,7 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
         if (hasDifference) updateData.updateForwardIndex();
       }
       catch (ProcessCanceledException e) {
+        LOG.error("ProcessCanceledException is not expected here!", e);
         throw e;
       }
       catch (Throwable e) { // e.g. IOException, AssertionError
@@ -390,6 +375,49 @@ public abstract class MapReduceIndex<Key,Value, Input> implements InvertedIndex<
           LOG.error(ex);
         }
       }
+    }
+  }
+
+  @ApiStatus.Internal
+  public class IndexUpdateComputable implements Computable<Boolean> {
+    @NotNull
+    private final UpdateData<Key, Value> myUpdateData;
+    @NotNull
+    private final InputData<Key, Value> myInputData;
+
+    private IndexUpdateComputable(@NotNull UpdateData<Key, Value> updateData, @NotNull InputData<Key, Value> inputData) {
+      myUpdateData = updateData;
+      myInputData = inputData;
+    }
+
+    @NotNull
+    public InputData<Key, Value> getInputData() {
+      return myInputData;
+    }
+
+    @Override
+    public Boolean compute() {
+      try {
+        MapReduceIndex.this.updateWithMap(myUpdateData);
+      }
+      catch (StorageException | ProcessCanceledException ex) {
+        String message = "An exception during updateWithMap(). Index " + myIndexId.getName() + " will be rebuilt.";
+        //noinspection InstanceofCatchParameter
+        if (ex instanceof ProcessCanceledException) {
+          LOG.error(message, ex);
+        }
+        else {
+          if (IndexDebugProperties.IS_UNIT_TEST_MODE) {
+            LOG.error(message, ex);
+          }
+          else {
+            LOG.info(message, ex);
+          }
+        }
+        MapReduceIndex.this.requestRebuild(ex);
+        return false;
+      }
+      return true;
     }
   }
 }

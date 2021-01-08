@@ -5,14 +5,14 @@ import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.vfs.newvfs.persistent.FSRecords;
-import com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl;
 import com.intellij.util.indexing.flavor.FileIndexingFlavorProvider;
 import com.intellij.util.indexing.flavor.HashBuilder;
+import com.intellij.util.io.DigestUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
@@ -21,50 +21,52 @@ public final class IndexedHashesSupport {
   // TODO replace with sha-256
   private static final HashFunction INDEXED_FILE_CONTENT_HASHER = Hashing.sha1();
 
+  public static final int HASH_SIZE_IN_BYTES = INDEXED_FILE_CONTENT_HASHER.bits() / Byte.SIZE;
+
   public static int getVersion() {
     return 3;
   }
 
   public static byte @NotNull [] getOrInitIndexedHash(@NotNull FileContentImpl content) {
-    byte[] hash = content.getHash();
-    if (hash == null) {
-      hash = calculateIndexedHashForFileContent(content);
-      content.setHashes(hash);
-    }
+    byte[] hash = content.getIndexedFileHash();
+    if (hash != null) return hash;
+    byte[] contentHash = getBinaryContentHash(content.getContent());
+    hash = calculateIndexedHash(content, contentHash, false);
+    content.setIndexedFileHash(hash);
     return hash;
   }
 
   public static byte @NotNull [] getBinaryContentHash(byte @NotNull [] content) {
-    MessageDigest digest = FSRecords.getContentHashDigest();
+    // TODO: simplify to calculating content hash of only the content[].
+    // Shared Indexes that are already available on CDN will have their hashes invalidated after it.
+    MessageDigest digest = DigestUtil.sha1();
     digest.update(String.valueOf(content.length).getBytes(StandardCharsets.UTF_8));
     digest.update("\u0000".getBytes(StandardCharsets.UTF_8));
     digest.update(content);
     return digest.digest();
   }
 
-  private static byte @NotNull [] calculateIndexedHashForFileContent(@NotNull FileContentImpl content) {
+  public static byte @NotNull [] calculateIndexedHash(@NotNull IndexedFile indexedFile, byte @NotNull [] contentHash, boolean isUtf8Forced) {
     Hasher hasher = INDEXED_FILE_CONTENT_HASHER.newHasher();
-
-    byte[] contentHash = PersistentFSImpl.getContentHashIfStored(content.getFile());
-    if (contentHash == null) {
-      contentHash = getBinaryContentHash(content.getContent());
-      // todo store content hash in FS
-    }
     hasher.putBytes(contentHash);
 
-    if (!content.getFileTypeWithoutSubstitution().isBinary()) {
-      hasher.putString(content.getCharset().name(), StandardCharsets.UTF_8);
+    if (!FileContentImpl.getFileTypeWithoutSubstitution(indexedFile).isBinary()) {
+      Charset charset = isUtf8Forced ? StandardCharsets.UTF_8 :
+                        indexedFile instanceof FileContentImpl
+                        ? ((FileContentImpl)indexedFile).getCharset()
+                        : indexedFile.getFile().getCharset();
+      hasher.putString(charset.name(), StandardCharsets.UTF_8);
     }
 
-    hasher.putString(content.getFileName(), StandardCharsets.UTF_8);
+    hasher.putString(indexedFile.getFileName(), StandardCharsets.UTF_8);
 
-    FileType fileType = content.getFileType();
+    FileType fileType = indexedFile.getFileType();
     hasher.putString(fileType.getName(), StandardCharsets.UTF_8);
 
     @Nullable
     FileIndexingFlavorProvider<?> provider = FileIndexingFlavorProvider.INSTANCE.forFileType(fileType);
     if (provider != null) {
-      buildFlavorHash(content, provider, new HashBuilder() {
+      buildFlavorHash(indexedFile, provider, new HashBuilder() {
         @Override
         public @NotNull HashBuilder putInt(int val) {
           hasher.putInt(val);
@@ -88,10 +90,10 @@ public final class IndexedHashesSupport {
     return hasher.hash().asBytes();
   }
 
-  private static <F> void buildFlavorHash(@NotNull FileContent content,
+  private static <F> void buildFlavorHash(@NotNull IndexedFile indexedFile,
                                           @NotNull FileIndexingFlavorProvider<F> flavorProvider,
                                           @NotNull HashBuilder hashBuilder) {
-    F flavor = flavorProvider.getFlavor(content);
+    F flavor = flavorProvider.getFlavor(indexedFile);
     hashBuilder.putString(flavorProvider.getId());
     hashBuilder.putInt(flavorProvider.getVersion());
     if (flavor != null) {

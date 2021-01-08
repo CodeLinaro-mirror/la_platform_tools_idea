@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 @State(name = "EditorSettings", storages = @Storage("editor.xml"))
-public final class EditorSettingsExternalizable implements PersistentStateComponent<EditorSettingsExternalizable.OptionSet> {
+public class EditorSettingsExternalizable implements PersistentStateComponent<EditorSettingsExternalizable.OptionSet> {
   @NonNls
   public static final String PROP_VIRTUAL_SPACE = "VirtualSpace";
 
@@ -33,7 +33,7 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
   public static final UINumericRange TOOLTIPS_DELAY_RANGE = new UINumericRange(500, 1, 5000);
 
   private static final String SOFT_WRAP_FILE_MASKS_ENABLED_DEFAULT = "*";
-  private static final String SOFT_WRAP_FILE_MASKS_DISABLED_DEFAULT = "*.md; *.txt; *.rst; *.adoc";
+  @NonNls private static final String SOFT_WRAP_FILE_MASKS_DISABLED_DEFAULT = "*.md; *.txt; *.rst; *.adoc";
 
   //Q: make it interface?
   public static final class OptionSet {
@@ -46,6 +46,7 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
     public boolean IS_CARET_INSIDE_TABS;
     @NonNls public String STRIP_TRAILING_SPACES = STRIP_TRAILING_SPACES_CHANGED;
     public boolean IS_ENSURE_NEWLINE_AT_EOF = false;
+    public boolean REMOVE_TRAILING_BLANK_LINES = false;
     public boolean SHOW_QUICK_DOC_ON_MOUSE_OVER_ELEMENT = true;
     public boolean SHOW_INSPECTION_WIDGET = true;
     public int TOOLTIPS_DELAY_MS = TOOLTIPS_DELAY_RANGE.initial;
@@ -156,7 +157,7 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
       return new EditorSettingsExternalizable(new OsSpecificState());
     }
     else {
-      return ServiceManager.getService(EditorSettingsExternalizable.class);
+      return ApplicationManager.getApplication().getService(EditorSettingsExternalizable.class);
     }
   }
 
@@ -461,6 +462,14 @@ public final class EditorSettingsExternalizable implements PersistentStateCompon
 
   public void setEnsureNewLineAtEOF(boolean ensure) {
     myOptions.IS_ENSURE_NEWLINE_AT_EOF = ensure;
+  }
+
+  public boolean isRemoveTrailingBlankLines() {
+    return myOptions.REMOVE_TRAILING_BLANK_LINES;
+  }
+
+  public void setRemoveTrailingBlankLines(boolean remove) {
+    myOptions.REMOVE_TRAILING_BLANK_LINES = remove;
   }
 
   @StripTrailingSpaces

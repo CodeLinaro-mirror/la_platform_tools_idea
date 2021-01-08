@@ -2,6 +2,7 @@
 
 package com.intellij.codeInsight.navigation;
 
+import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.ide.util.DefaultPsiElementCellRenderer;
 import com.intellij.ide.util.EditSourceUtil;
 import com.intellij.ide.util.PsiElementListCellRenderer;
@@ -288,7 +289,7 @@ public final class NavigationUtil {
   }
 
   private static JBPopup getPsiElementPopup(final List<Object> elements, final Map<PsiElement, GotoRelatedItem> itemsMap,
-                                           final String title, final boolean showContainingModules, final Processor<Object> processor) {
+                                            final @PopupTitle String title, final boolean showContainingModules, final Processor<Object> processor) {
 
     final Ref<Boolean> hasMnemonic = Ref.create(false);
     final DefaultPsiElementCellRenderer renderer = new DefaultPsiElementCellRenderer() {
@@ -377,7 +378,9 @@ public final class NavigationUtil {
           final GotoRelatedItem item = itemsMap.get(element);
           if (item != null && !StringUtil.equals(current, item.getGroup())) {
             current = item.getGroup();
-            separators.put(element, new ListSeparator(hasTitle && StringUtil.isEmpty(current) ? "Other" : current));
+            separators.put(element, new ListSeparator(
+              hasTitle && StringUtil.isEmpty(current) ? CodeInsightBundle.message("goto.related.items.separator.other") : current)
+            );
             if (!hasTitle && !StringUtil.isEmpty(current)) {
               hasTitle = true;
             }

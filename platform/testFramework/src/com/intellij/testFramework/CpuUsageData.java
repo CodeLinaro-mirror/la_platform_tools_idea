@@ -68,6 +68,12 @@ public final class CpuUsageData {
     return printLongestNames(myThreadTimes);
   }
 
+  public long getMemDelta() {
+    long usedBefore = myMemStart.total - myMemStart.free;
+    long usedAfter = myMemEnd.total - myMemEnd.free;
+    return usedAfter - usedBefore;
+  }
+
   public String getSummary(String indent) {
     return indent + "GC: " + getGcStats() + "\n" +
            indent + "Threads: " + getThreadStats() + "\n" +
@@ -97,12 +103,12 @@ public final class CpuUsageData {
   public static <E extends Throwable> CpuUsageData measureCpuUsage(ThrowableRunnable<E> runnable) throws E {
     FreeMemorySnapshot memStart = new FreeMemorySnapshot();
 
-    Object2LongOpenHashMap<GarbageCollectorMXBean> gcTimes = new Object2LongOpenHashMap<>();
+    Object2LongMap<GarbageCollectorMXBean> gcTimes = new Object2LongOpenHashMap<>();
     for (GarbageCollectorMXBean bean : ourGcBeans) {
       gcTimes.put(bean, bean.getCollectionTime());
     }
 
-    Long2LongOpenHashMap threadTimes = new Long2LongOpenHashMap();
+    Long2LongMap threadTimes = new Long2LongOpenHashMap();
     for (long id : ourThreadMXBean.getAllThreadIds()) {
       threadTimes.put(id, ourThreadMXBean.getThreadUserTime(id));
     }

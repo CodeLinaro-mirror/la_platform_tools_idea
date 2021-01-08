@@ -43,17 +43,12 @@ import static com.intellij.openapi.application.ApplicationManager.getApplication
 import static com.intellij.openapi.util.SystemInfo.isMac;
 import static com.intellij.openapi.util.registry.Registry.is;
 import static com.intellij.ui.paint.RectanglePainter.DRAW;
+import static com.intellij.util.EditSourceOnDoubleClickHandler.isExpandPreferable;
 import static com.intellij.util.ReflectionUtil.getMethod;
 import static com.intellij.util.containers.ContainerUtil.createWeakSet;
 
 @DirtyUI
 public final class DefaultTreeUI extends BasicTreeUI {
-  /**
-   * @deprecated use {@link RenderingHelper#SHRINK_LONG_RENDERER} instead
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
-  public static final Key<Boolean> SHRINK_LONG_RENDERER = Key.create("resize renderer component if it exceed a visible area");
   @ApiStatus.Internal
   public static final Key<Boolean> LARGE_MODEL_ALLOWED = Key.create("allows to use large model (only for synchronous tree models)");
   @ApiStatus.Internal
@@ -283,6 +278,13 @@ public final class DefaultTreeUI extends BasicTreeUI {
     super.installKeyboardActions();
     TreeAction.installTo(tree.getActionMap());
     TreeAction.installTo(tree.getInputMap(JComponent.WHEN_FOCUSED));
+  }
+
+  @Override
+  protected boolean isToggleEvent(MouseEvent event) {
+    if (!super.isToggleEvent(event)) return false;
+    JTree tree = getTree();
+    return tree != null && isExpandPreferable(tree, tree.getSelectionPath());
   }
 
   @Override

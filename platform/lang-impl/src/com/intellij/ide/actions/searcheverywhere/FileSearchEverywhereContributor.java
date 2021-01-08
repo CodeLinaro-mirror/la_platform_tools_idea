@@ -9,6 +9,7 @@ import com.intellij.ide.util.gotoByName.GotoFileModel;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -17,9 +18,12 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileSystemItem;
 import com.intellij.ui.IdeUICustomization;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.List;
+
+import static com.intellij.ide.actions.searcheverywhere.SearchEverywhereFiltersStatisticsCollector.*;
 
 /**
  * @author Konstantin Bulenkov
@@ -42,6 +46,7 @@ public class FileSearchEverywhereContributor extends AbstractGotoSEContributor {
     return IdeBundle.message("search.everywhere.group.name.files");
   }
 
+  @NlsContexts.Checkbox
   public String includeNonProjectItemsText() {
     return IdeUICustomization.getInstance().projectMessage("checkbox.include.non.project.files");
   }
@@ -66,10 +71,15 @@ public class FileSearchEverywhereContributor extends AbstractGotoSEContributor {
     return model;
   }
 
+  @Override
+  protected @Nullable SearchEverywhereCommandInfo getFilterCommand() {
+    return new SearchEverywhereCommandInfo("f", IdeBundle.message("search.everywhere.filter.files.description"), this);
+  }
+
   @NotNull
   @Override
   public List<AnAction> getActions(@NotNull Runnable onChanged) {
-    return doGetActions(includeNonProjectItemsText(), myFilter, onChanged);
+    return doGetActions(includeNonProjectItemsText(), myFilter, new FileTypeFilterCollector(), onChanged);
   }
 
   @NotNull

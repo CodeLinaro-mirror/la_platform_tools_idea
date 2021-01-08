@@ -199,9 +199,13 @@ public final class SMTestRunnerConnectionUtil {
       outputConsumer.setProcessor(eventsProcessor);
     });
 
-    outputConsumer.startTesting();
-
+    outputConsumer.setupProcessor();
     processHandler.addProcessListener(new ProcessAdapter() {
+      @Override
+      public void startNotified(@NotNull ProcessEvent event) {
+        outputConsumer.startTesting();
+      }
+
       @Override
       public void processTerminated(@NotNull final ProcessEvent event) {
         outputConsumer.flushBufferOnProcessTermination(event.getExitCode());
@@ -308,7 +312,7 @@ public final class SMTestRunnerConnectionUtil {
   @SuppressWarnings("rawtypes")
   @ApiStatus.ScheduledForRemoval()
   @Deprecated
-  private static class CompositeTestLocationProvider implements SMTestLocator {
+  private static final class CompositeTestLocationProvider implements SMTestLocator {
     private final TestLocationProvider myPrimaryLocator;
 
     private CompositeTestLocationProvider(@Nullable TestLocationProvider primaryLocator) {

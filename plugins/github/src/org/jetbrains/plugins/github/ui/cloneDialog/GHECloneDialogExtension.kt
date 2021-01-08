@@ -42,7 +42,7 @@ class GHECloneDialogExtension : BaseCloneDialogExtension() {
     GHECloneDialogExtensionComponent(project)
 }
 
-private class GHECloneDialogExtensionComponent(project: Project) : BaseCloneDialogExtensionComponent(
+private class GHECloneDialogExtensionComponent(project: Project) : GHCloneDialogExtensionComponentBase(
   project,
   GithubAuthenticationManager.getInstance(),
   GithubApiRequestExecutorManager.getInstance(),
@@ -96,6 +96,8 @@ private class GHECloneDialogLoginPanel(account: GithubAccount?) : BorderLayoutPa
       addToLeft(title)
     }
   val loginPanel = CloneDialogLoginPanel(account).apply {
+    Disposer.register(this@GHECloneDialogLoginPanel, this)
+
     if (account == null) setServer("", true)
     setTokenUi()
   }

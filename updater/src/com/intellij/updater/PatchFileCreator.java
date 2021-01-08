@@ -30,7 +30,7 @@ public class PatchFileCreator {
     List<PatchAction> actions = patchInfo.getActions();
     File olderDir = new File(spec.getOldFolder());
     File newerDir = new File(spec.getNewFolder());
-    ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1);
+    ExecutorService executor = Executors.newFixedThreadPool(Math.max(Runtime.getRuntime().availableProcessors() - 1, 1));
     Map<PatchAction, Future<Path>> tasks = new ConcurrentHashMap<>();
 
     for (int i = 0; i < actions.size(); i++) {
@@ -75,7 +75,13 @@ public class PatchFileCreator {
             }
           }
           catch (InterruptedException e) { throw new IOException(e); }
-          catch (ExecutionException e) { throw ((IOException)e.getCause()); }
+          catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException) throw (IOException)cause;
+            if (cause instanceof RuntimeException) throw (RuntimeException)cause;
+            if (cause instanceof Error) throw (Error)cause;
+            throw new RuntimeException(e);
+          }
         }
       }
     }

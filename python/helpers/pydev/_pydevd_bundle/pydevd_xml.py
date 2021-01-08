@@ -15,7 +15,7 @@ from _pydevd_bundle.pydevd_constants import dict_iter_items, dict_keys, IS_PY3K,
     MAXIMUM_VARIABLE_REPRESENTATION_SIZE, RETURN_VALUES_DICT, LOAD_VALUES_POLICY, DEFAULT_VALUES_DICT
 from _pydevd_bundle.pydevd_extension_api import TypeResolveProvider, StrPresentationProvider
 from _pydevd_bundle.pydevd_utils import take_first_n_coll_elements, is_numeric_container, is_pandas_container, is_string, pandas_to_str, \
-    should_evaluate_full_value, should_evaluate_shape, is_in_unittests_debugging_mode
+    should_evaluate_full_value, should_evaluate_shape
 
 try:
     import types
@@ -344,7 +344,7 @@ def var_to_xml(val, name, doTrim=True, additional_in_xml='', evaluate_full_value
         pass
 
     if is_pandas_container(type_qualifier, typeName, v):
-        value = pandas_to_str(v, typeName, pydevd_resolver.MAX_ITEMS_TO_HANDLE)
+        value = pandas_to_str(v, typeName, value, pydevd_resolver.MAX_ITEMS_TO_HANDLE)
     xml_value = ' value="%s"' % (make_valid_xml_value(quote(value, '/>_= ')))
 
     xml_shape = ''

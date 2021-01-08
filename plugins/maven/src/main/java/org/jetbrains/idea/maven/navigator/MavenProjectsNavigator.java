@@ -46,10 +46,7 @@ import java.awt.*;
 import java.util.Collections;
 import java.util.List;
 
-@State(name = "MavenProjectNavigator", storages = {
-  @Storage(StoragePathMacros.PRODUCT_WORKSPACE_FILE),
-  @Storage(value = StoragePathMacros.WORKSPACE_FILE, deprecated = true)
-})
+@State(name = "MavenProjectNavigator", storages = @Storage(StoragePathMacros.PRODUCT_WORKSPACE_FILE))
 public final class MavenProjectsNavigator extends MavenSimpleProjectComponent implements PersistentStateComponent<MavenProjectsNavigatorState>, Disposable {
   public static final String TOOL_WINDOW_ID = "Maven";
   public static final String TOOL_WINDOW_PLACE_ID = "Maven tool window";
@@ -230,7 +227,7 @@ public final class MavenProjectsNavigator extends MavenSimpleProjectComponent im
 
     myToolWindow = ToolWindowManager.getInstance(myProject).registerToolWindow(TOOL_WINDOW_ID, false, ToolWindowAnchor.RIGHT, this, true);
     myToolWindow.setIcon(MavenIcons.ToolWindowMaven);
-    final ContentFactory contentFactory = ServiceManager.getService(ContentFactory.class);
+    final ContentFactory contentFactory = ApplicationManager.getApplication().getService(ContentFactory.class);
     final Content content = contentFactory.createContent(panel, "", false);
     ContentManager contentManager = myToolWindow.getContentManager();
     contentManager.addContent(content);

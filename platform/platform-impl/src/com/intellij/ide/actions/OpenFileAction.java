@@ -26,11 +26,11 @@ import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.impl.welcomeScreen.FlatWelcomeFrame;
 import com.intellij.openapi.wm.impl.welcomeScreen.NewWelcomeScreen;
 import com.intellij.platform.PlatformProjectOpenProcessor;
 import com.intellij.projectImport.ProjectAttachProcessor;
@@ -46,7 +46,6 @@ import java.nio.file.Path;
 import java.util.Collections;
 
 import static com.intellij.ide.lightEdit.LightEditFeatureUsagesUtil.OpenPlace.LightEditOpenAction;
-import static com.intellij.ide.lightEdit.LightEditFeatureUsagesUtil.OpenPlace.WelcomeScreenOpenAction;
 
 public class OpenFileAction extends AnAction implements DumbAware, LightEditCompatible {
   @Override
@@ -84,13 +83,13 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
         presentation.setEnabledAndVisible(false);
         return;
       }
-      if (Registry.is("use.tabbed.welcome.screen")) {
+      if (FlatWelcomeFrame.USE_TABBED_WELCOME_SCREEN) {
         presentation.setIcon(AllIcons.Welcome.Open);
         presentation.setSelectedIcon(AllIcons.Welcome.OpenSelected);
         presentation.setText(ActionsBundle.message("action.Tabbed.WelcomeScreen.OpenProject.text"));
       }
       else {
-        presentation.setIcon(AllIcons.Actions.Menu_open);
+        presentation.setIcon(AllIcons.Actions.MenuOpen);
       }
     }
   }
@@ -103,7 +102,7 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
   @Override
   public void update(@NotNull AnActionEvent e) {
     if (NewWelcomeScreen.isNewWelcomeScreen(e)) {
-      e.getPresentation().setIcon(AllIcons.Actions.Menu_open);
+      e.getPresentation().setIcon(AllIcons.Actions.MenuOpen);
     }
   }
 
@@ -137,9 +136,6 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
 
     if (project != null && !project.isDefault()) {
       openFile(file, project);
-    }
-    else if (LightEdit.openFile(file)) {
-      LightEditFeatureUsagesUtil.logFileOpen(WelcomeScreenOpenAction);
     }
     else {
       PlatformProjectOpenProcessor.createTempProjectAndOpenFile(filePath, OpenProjectTask.withProjectToClose(project));
@@ -182,19 +178,18 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
     return provider.askConfirmationForOpeningProject(file, project);
   }
 
-  public static void openFile(String filePath, @NotNull Project project) {
+  public static void openFile(@NotNull String filePath, @NotNull Project project) {
     VirtualFile file = LocalFileSystem.getInstance().refreshAndFindFileByPath(filePath);
     if (file != null && file.isValid()) {
       openFile(file, project);
     }
   }
 
-  public static void openFile(VirtualFile file, @NotNull Project project) {
+  public static void openFile(@NotNull VirtualFile file, @NotNull Project project) {
     NonProjectFileWritingAccessProvider.allowWriting(Collections.singletonList(file));
     if (LightEdit.owns(project)) {
-      if (LightEditService.getInstance().openFile(file, true)) {
-        LightEditFeatureUsagesUtil.logFileOpen(LightEditOpenAction);
-      }
+      LightEditService.getInstance().openFile(file);
+      LightEditFeatureUsagesUtil.logFileOpen(LightEditOpenAction);
     }
     else {
       PsiNavigationSupport.getInstance().createNavigatable(project, file, -1).navigate(true);

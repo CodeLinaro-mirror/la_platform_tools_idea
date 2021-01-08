@@ -275,7 +275,7 @@ public class JBUI {
     }
 
     @NotNull
-    public static JBFont create(String fontFamily, int size) {
+    public static JBFont create(@NonNls String fontFamily, int size) {
       return JBFont.create(new Font(fontFamily, Font.PLAIN, size));
     }
 
@@ -504,6 +504,12 @@ public class JBUI {
       public static Color underlinedTabForeground() {
         return JBColor.namedColor("DefaultTabs.underlinedTabForeground", UIUtil.getLabelForeground());
       }
+
+      @NotNull
+      public static Color inactiveColoredTabBackground() {
+        return JBColor.namedColor("DefaultTabs.inactiveColoredTabBackground", new JBColor(ColorUtil.withAlpha(Color.BLACK, .07),
+                                                                                          ColorUtil.withAlpha(new Color(0x3C3F41), .60)));
+      }
     }
 
     public static final class DebuggerTabs {
@@ -535,6 +541,10 @@ public class JBUI {
         return UIManager.getColor("EditorTabs.underlinedTabBackground");
       }
 
+      public static Insets tabInsets() {
+        return insets("EditorTabs.tabInsets", insets(0, 8));
+      }
+
       @NotNull
       public static Color borderColor() {
         return JBColor.namedColor("EditorTabs.borderColor", DefaultTabs.borderColor());
@@ -552,8 +562,7 @@ public class JBUI {
 
       @NotNull
       public static Color inactiveColoredFileBackground() {
-        return JBColor.namedColor("EditorTabs.inactiveColoredFileBackground", new JBColor(ColorUtil.withAlpha(Color.BLACK, .07),
-                                                                              ColorUtil.withAlpha(new Color(0x3C3F41), .60)));
+        return JBColor.namedColor("EditorTabs.inactiveColoredFileBackground", DefaultTabs.inactiveColoredTabBackground());
       }
 
       @NotNull
@@ -1002,6 +1011,57 @@ public class JBUI {
         return getInt("NewClass.separatorWidth", JBUIScale.scale(10));
       }
     }
+
+    public static final class NotificationError {
+      @NotNull
+      public static Color backgroundColor() {
+        return JBColor.namedColor("Notification.ToolWindow.errorBackground", new JBColor(0xffcccc, 0x704745));
+      }
+
+      @NotNull
+      public static Color foregroundColor() {
+        return JBColor.namedColor("Notification.ToolWindow.errorForeground", UIUtil.getToolTipForeground());
+      }
+
+      @NotNull
+      public static Color borderColor() {
+        return JBColor.namedColor("Notification.ToolWindow.errorBorderColor", new JBColor(0xd69696, 0x998a8a));
+      }
+    }
+
+    public static final class NotificationInfo {
+      @NotNull
+      public static Color backgroundColor() {
+        return JBColor.namedColor("Notification.ToolWindow.informativeBackground", new JBColor(0xbaeeba, 0x33412E));
+      }
+
+      @NotNull
+      public static Color foregroundColor() {
+        return JBColor.namedColor("Notification.ToolWindow.informativeForeground", UIUtil.getToolTipForeground());
+      }
+
+      @NotNull
+      public static Color borderColor() {
+        return JBColor.namedColor("Notification.ToolWindow.informativeBorderColor", new JBColor(0xa0bf9d, 0x85997a));
+      }
+    }
+        public static final class NotificationWarning {
+      @NotNull
+      public static Color backgroundColor() {
+        return JBColor.namedColor("Notification.ToolWindow.warningBackground", new JBColor(0xf9f78e, 0x5a5221));
+      }
+
+      @NotNull
+      public static Color foregroundColor() {
+        return JBColor.namedColor("Notification.ToolWindow.warningForeground", UIUtil.getToolTipForeground());
+      }
+
+      @NotNull
+      public static Color borderColor() {
+        return JBColor.namedColor("Notification.ToolWindow.warningBorderColor", new JBColor(0xbab824, 0xa69f63));
+      }
+    }
+
   }
 
   public static int getInt(@NonNls @NotNull String propertyName, int defaultValue) {

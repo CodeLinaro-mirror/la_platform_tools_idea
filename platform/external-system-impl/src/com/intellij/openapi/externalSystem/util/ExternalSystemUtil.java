@@ -389,7 +389,8 @@ public final class ExternalSystemUtil {
           });
         }
 
-        ExternalSystemProcessingManager processingManager = ServiceManager.getService(ExternalSystemProcessingManager.class);
+        ExternalSystemProcessingManager processingManager =
+          ApplicationManager.getApplication().getService(ExternalSystemProcessingManager.class);
         if (processingManager.findTask(ExternalSystemTaskType.RESOLVE_PROJECT, externalSystemId, externalProjectPath) != null) {
           if (callback != null) {
             callback.onFailure(resolveProjectTask.getId(), ExternalSystemBundle.message("error.resolve.already.running", externalProjectPath), null);
@@ -472,7 +473,9 @@ public final class ExternalSystemUtil {
                   contentDescriptor.setActivateToolWindowWhenFailed(reportRefreshError);
                   contentDescriptor.setAutoFocusContent(reportRefreshError);
                   return contentDescriptor;
-                });
+                })
+                .withActions(consoleManager.getCustomActions(project, resolveProjectTask, null))
+                .withContextActions(consoleManager.getCustomContextActions(project, resolveProjectTask, null));
               Filter[] filters = consoleManager.getCustomExecutionFilters(project, resolveProjectTask, null);
               Arrays.stream(filters).forEach(buildDescriptor::withExecutionFilter);
               eventDispatcher.onEvent(id, new StartBuildEventImpl(buildDescriptor, BuildBundle.message("build.event.message.syncing")));
@@ -494,6 +497,14 @@ public final class ExternalSystemUtil {
                 createFailureResult(title, e, externalSystemId, project, dataProvider);
               finishSyncEventSupplier.set(() -> new FinishBuildEventImpl(id, null, System.currentTimeMillis(),
                                                                          BuildBundle.message("build.status.failed"), failureResult));
+              processHandler.notifyProcessTerminated(1);
+            }
+
+            @Override
+            public void onCancel(@NotNull ExternalSystemTaskId id) {
+              finishSyncEventSupplier.set(() -> new FinishBuildEventImpl(id, null, System.currentTimeMillis(),
+                                                                         BuildBundle.message("build.status.cancelled"),
+                                                                         new FailureResultImpl()));
               processHandler.notifyProcessTerminated(1);
             }
 
@@ -1014,7 +1025,7 @@ public final class ExternalSystemUtil {
           }
           return;
         }
-        ServiceManager.getService(ProjectDataManager.class).importData(externalProject, project, true);
+        ApplicationManager.getApplication().getService(ProjectDataManager.class).importData(externalProject, project, true);
         if (importResultCallback != null) {
           importResultCallback.consume(true);
         }
@@ -1126,7 +1137,7 @@ public final class ExternalSystemUtil {
       if (externalProject == null) {
         return;
       }
-      ServiceManager.getService(ProjectDataManager.class).importData(externalProject, myProject, true);
+      ApplicationManager.getApplication().getService(ProjectDataManager.class).importData(externalProject, myProject, true);
     }
 
     @Override

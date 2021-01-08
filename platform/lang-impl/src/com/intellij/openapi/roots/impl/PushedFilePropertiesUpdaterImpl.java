@@ -24,6 +24,7 @@ import com.intellij.openapi.roots.*;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileWithId;
 import com.intellij.openapi.vfs.newvfs.events.VFileCopyEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
@@ -31,7 +32,6 @@ import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent;
 import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.psi.impl.file.impl.FileManagerImpl;
 import com.intellij.ui.GuiUtils;
-import com.intellij.util.MathUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.*;
 import org.jetbrains.annotations.ApiStatus;
@@ -116,7 +116,7 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
       }
     }
     boolean pushingSomethingSynchronously =
-      !syncTasks.isEmpty() && syncTasks.size() < FileBasedIndexProjectHandler.ourMinFilesToStartDumMode;
+      !syncTasks.isEmpty() && syncTasks.size() < FileBasedIndexProjectHandler.ourMinFilesToStartDumbMode;
     if (pushingSomethingSynchronously) {
       // push synchronously to avoid entering dumb mode in the middle of a meaningful write action
       // when only a few files are created/moved
@@ -311,7 +311,7 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
     });
   }
 
-  public static void scanProject(@NotNull Project project, @NotNull Function<Module, ContentIteratorEx> iteratorProducer) {
+  public static void scanProject(@NotNull Project project, @NotNull Function<? super Module, ? extends ContentIteratorEx> iteratorProducer) {
     Module[] modules = ReadAction.compute(() -> ModuleManager.getInstance(project).getModules());
     List<Runnable> tasks = ContainerUtil.mapNotNull(modules, module -> {
       return ReadAction.compute(() -> {
@@ -327,29 +327,32 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
 
   public static void invokeConcurrentlyIfPossible(@NotNull List<? extends Runnable> tasks) {
     if (tasks.isEmpty()) return;
-    if (tasks.size() == 1 ||
-        ApplicationManager.getApplication().isWriteAccessAllowed()) {
+    if (tasks.size() == 1 || ApplicationManager.getApplication().isWriteAccessAllowed()) {
       for (Runnable r : tasks) r.run();
       return;
     }
 
     final ProgressIndicator progress = ProgressManager.getInstance().getProgressIndicator();
 
-    final ConcurrentLinkedQueue<Runnable> tasksQueue = new ConcurrentLinkedQueue<>(tasks);
-    List<Future<?>> results = new ArrayList<>();
-    if (tasks.size() > 1) {
-      int numThreads = MathUtil.clamp(tasks.size() - 1, 1, UnindexedFilesUpdater.getNumberOfIndexingThreads() - 1);
+    Runnable taskProcessor = new Runnable() {
+      final ConcurrentLinkedQueue<Runnable> tasksQueue = new ConcurrentLinkedQueue<>(tasks);
 
-      for (int i = 0; i < numThreads; ++i) {
-        results.add(ApplicationManager.getApplication().executeOnPooledThread(() -> ProgressManager.getInstance().runProcess(() -> {
-          Runnable runnable;
-          while ((runnable = tasksQueue.poll()) != null) runnable.run();
-        }, ProgressWrapper.wrap(progress))));
+      @Override
+      public void run() {
+        Runnable runnable;
+        while ((runnable = tasksQueue.poll()) != null) runnable.run();
       }
-    }
+    };
 
-    Runnable runnable;
-    while ((runnable = tasksQueue.poll()) != null) runnable.run();
+    List<Future<?>> results = new ArrayList<>();
+    int numThreads = Math.max(Math.min(UnindexedFilesUpdater.getNumberOfIndexingThreads() - 1, tasks.size() - 1), 1);
+
+    for (int i = 0; i < numThreads; ++i) {
+      results.add(ApplicationManager.getApplication().executeOnPooledThread(() -> {
+        ProgressManager.getInstance().runProcess(taskProcessor, ProgressWrapper.wrap(progress));
+      }));
+    }
+    taskProcessor.run();
 
     for (Future<?> result : results) {
       try {
@@ -374,7 +377,7 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
 
     ApplicationManager.getApplication().runReadAction(() -> {
       ProgressManager.checkCanceled();
-      if (!fileOrDir.isValid()) return;
+      if (!fileOrDir.isValid() || !(fileOrDir instanceof VirtualFileWithId)) return;
       doApplyPushersToFile(fileOrDir, pushers, moduleValues);
     });
   }

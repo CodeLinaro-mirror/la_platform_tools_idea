@@ -7,7 +7,7 @@ import com.intellij.diagnostic.StartUpMeasurer
 import com.intellij.diagnostic.ThreadNameManager
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl
 import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.ide.plugins.cl.PluginClassLoader
+import com.intellij.ide.plugins.cl.PluginAwareClassLoader
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.ui.icons.IconLoadMeasurer
@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 
 internal class IdeIdeaFormatWriter(activities: Map<String, MutableList<ActivityImpl>>,
                                    private val pluginCostMap: MutableMap<String, Object2LongMap<String>>,
-                                   threadNameManager: ThreadNameManager) : IdeaFormatWriter(activities, threadNameManager) {
+                                   threadNameManager: ThreadNameManager) : IdeaFormatWriter(activities, threadNameManager, StartUpPerformanceReporter.VERSION) {
   val publicStatMetrics = Object2IntOpenHashMap<String>()
 
   init {
@@ -88,9 +88,9 @@ private fun writeIcons(writer: JsonGenerator) {
   writer.array("icons") {
     for (stat in IconLoadMeasurer.getStats()) {
       writer.obj {
-        writer.writeStringField("name", stat.type)
-        writer.writeNumberField("count", stat.counter)
-        writer.writeNumberField("time", TimeUnit.NANOSECONDS.toMillis(stat.totalTime))
+        writer.writeStringField("name", stat.name)
+        writer.writeNumberField("count", stat.count)
+        writer.writeNumberField("time", TimeUnit.NANOSECONDS.toMillis(stat.totalDuration))
       }
     }
   }
@@ -122,9 +122,9 @@ private fun writeServiceStats(writer: JsonGenerator) {
     service.project += plugin.project.services.size
     service.module += plugin.module.services.size
 
-    component.app += plugin.app.components.size
-    component.project += plugin.project.components.size
-    component.module += plugin.module.components.size
+    component.app += plugin.app.components?.size ?: 0
+    component.project += plugin.project.components?.size ?: 0
+    component.module += plugin.module.components?.size ?: 0
   }
 
   writer.obj("stats") {
@@ -139,7 +139,7 @@ private fun writeServiceStats(writer: JsonGenerator) {
 
     writer.obj("loadedClasses") {
       for (plugin in plugins) {
-        val classLoader = (plugin as IdeaPluginDescriptorImpl).pluginClassLoader as? PluginClassLoader ?: continue
+        val classLoader = (plugin as IdeaPluginDescriptorImpl).pluginClassLoader as? PluginAwareClassLoader ?: continue
         val classCount = classLoader.loadedClassCount
         if (classCount > 0) {
           writer.writeNumberField(plugin.pluginId.idString, classCount)

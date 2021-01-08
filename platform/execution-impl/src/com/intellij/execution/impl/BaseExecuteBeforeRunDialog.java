@@ -5,6 +5,7 @@ import com.intellij.execution.*;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.configurations.ConfigurationType;
 import com.intellij.execution.configurations.RunConfiguration;
+import com.intellij.execution.configurations.VirtualConfigurationType;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -13,11 +14,11 @@ import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.SmartList;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.ThreeStateCheckBox;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -152,7 +153,7 @@ public abstract class BaseExecuteBeforeRunDialog<T extends BeforeRunTask<?>> ext
       GroupConfigurationDescriptor groupConfigurationDescriptor = new GroupConfigurationDescriptor(type, icon);
       DefaultMutableTreeNode typeNode = new DefaultMutableTreeNode(groupConfigurationDescriptor);
       root.add(typeNode);
-      Set<String> addedNames = new ObjectOpenHashSet<>();
+      Set<String> addedNames = CollectionFactory.createSmallMemoryFootprintSet();
       for (List<RunnerAndConfigurationSettings> list : entry.getValue().values()) {
         for (RunnerAndConfigurationSettings configuration : list) {
           final String configurationName = configuration.getName();
@@ -175,9 +176,11 @@ public abstract class BaseExecuteBeforeRunDialog<T extends BeforeRunTask<?>> ext
     DefaultMutableTreeNode node = new DefaultMutableTreeNode(TEMPLATE_ROOT);
     root.add(node);
     for (ConfigurationType type : ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()) {
-      Icon icon = type.getIcon();
-      DefaultMutableTreeNode typeNode = new DefaultMutableTreeNode(new ConfigurationTypeDescriptor(type, icon, isConfigurationAssigned(type)));
-      node.add(typeNode);
+      if (!(type instanceof VirtualConfigurationType)) {
+        Icon icon = type.getIcon();
+        DefaultMutableTreeNode typeNode = new DefaultMutableTreeNode(new ConfigurationTypeDescriptor(type, icon, isConfigurationAssigned(type)));
+        node.add(typeNode);
+      }
     }
   }
 

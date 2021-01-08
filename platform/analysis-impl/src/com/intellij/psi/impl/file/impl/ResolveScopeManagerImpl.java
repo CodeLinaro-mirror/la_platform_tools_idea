@@ -5,6 +5,7 @@ import com.intellij.ide.scratch.ScratchFileHelper;
 import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.model.ModelBranch;
 import com.intellij.model.ModelBranchImpl;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.project.Project;
@@ -12,11 +13,12 @@ import com.intellij.openapi.roots.*;
 import com.intellij.openapi.roots.impl.LibraryScopeCache;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
-import com.intellij.psi.impl.PsiManagerImpl;
+import com.intellij.psi.impl.AnyPsiChangeListener;
 import com.intellij.psi.impl.ResolveScopeManager;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiSearchScopeUtil;
 import com.intellij.psi.search.SearchScope;
+import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.containers.ConcurrentFactoryMap;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.AdditionalIndexableFileSet;
@@ -25,7 +27,9 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 import java.util.Map;
 
-public final class ResolveScopeManagerImpl extends ResolveScopeManager {
+import static com.intellij.psi.impl.PsiManagerImpl.ANY_PSI_CHANGE_TOPIC;
+
+public final class ResolveScopeManagerImpl extends ResolveScopeManager implements Disposable {
   private final Project myProject;
   private final ProjectRootManager myProjectRootManager;
   private final PsiManager myManager;
@@ -41,27 +45,41 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager {
 
     myDefaultResolveScopesCache = ConcurrentFactoryMap.create(
       key -> {
+        VirtualFile file = key;
+        VirtualFile original = key instanceof LightVirtualFile ? ((LightVirtualFile)key).getOriginalFile() : null;
+        if (original != null) {
+          file = original;
+        }
         GlobalSearchScope scope = null;
         for (ResolveScopeProvider resolveScopeProvider : ResolveScopeProvider.EP_NAME.getExtensionList()) {
-          scope = resolveScopeProvider.getResolveScope(key, myProject);
+          scope = resolveScopeProvider.getResolveScope(file, myProject);
           if (scope != null) break;
         }
-        if (scope == null) scope = getInherentResolveScope(key);
+        if (scope == null) scope = getInherentResolveScope(file);
         for (ResolveScopeEnlarger enlarger : ResolveScopeEnlarger.EP_NAME.getExtensions()) {
-          SearchScope extra = enlarger.getAdditionalResolveScope(key, myProject);
+          SearchScope extra = enlarger.getAdditionalResolveScope(file, myProject);
           if (extra != null) {
             scope = scope.union(extra);
           }
+        }
+        if (original != null && !scope.contains(key)) {
+          scope = scope.union(GlobalSearchScope.fileScope(myProject, key));
         }
         return scope;
       },
       ContainerUtil::createConcurrentWeakKeySoftValueMap);
 
-    ((PsiManagerImpl)myManager).registerRunnableToRunOnChange(myDefaultResolveScopesCache::clear);
+    myProject.getMessageBus().connect(this).subscribe(ANY_PSI_CHANGE_TOPIC, new AnyPsiChangeListener() {
+      @Override
+      public void beforePsiChanged(boolean isPhysical) {
+        if (isPhysical) myDefaultResolveScopesCache.clear();
+      }
+    });
+
     // Make it explicit that registering and removing ResolveScopeProviders needs to clear the resolve scope cache
     // (even though normally registerRunnableToRunOnChange would be enough to clear the cache)
-    ResolveScopeProvider.EP_NAME.addChangeListener(() -> myDefaultResolveScopesCache.clear(), project);
-    ResolveScopeEnlarger.EP_NAME.addChangeListener(() -> myDefaultResolveScopesCache.clear(), project);
+    ResolveScopeProvider.EP_NAME.addChangeListener(() -> myDefaultResolveScopesCache.clear(), this);
+    ResolveScopeEnlarger.EP_NAME.addChangeListener(() -> myDefaultResolveScopesCache.clear(), this);
   }
 
   private GlobalSearchScope getResolveScopeFromProviders(@NotNull final VirtualFile vFile) {
@@ -124,11 +142,10 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager {
     if (psiFile instanceof FileResolveScopeProvider) {
       return ((FileResolveScopeProvider)psiFile).getFileResolveScope();
     }
-    VirtualFile vFile = psiFile.getOriginalFile().getVirtualFile();
-    if (vFile == null) {
+    if (!psiFile.getOriginalFile().isPhysical()) {
       return withFile(psiFile, GlobalSearchScope.allScope(myProject));
     }
-    return getResolveScopeFromProviders(vFile);
+    return getResolveScopeFromProviders(psiFile.getViewProvider().getVirtualFile());
   }
 
   private GlobalSearchScope withFile(PsiFile containingFile, GlobalSearchScope scope) {
@@ -202,5 +219,10 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager {
       }
     }
     return false;
+  }
+
+  @Override
+  public void dispose() {
+
   }
 }

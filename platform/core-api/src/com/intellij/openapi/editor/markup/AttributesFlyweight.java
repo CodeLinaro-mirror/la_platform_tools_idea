@@ -1,8 +1,4 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
-/*
- * @author max
- */
 package com.intellij.openapi.editor.markup;
 
 import com.intellij.openapi.util.Comparing;
@@ -24,7 +20,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-public class AttributesFlyweight {
+public final class AttributesFlyweight {
   private static final ConcurrentMap<FlyweightKey, AttributesFlyweight> entries = new ConcurrentHashMap<>();
   private static final ThreadLocal<FlyweightKey> ourKey = new ThreadLocal<>();
 
@@ -38,7 +34,7 @@ public class AttributesFlyweight {
   private final @NotNull Map<EffectType, Color> myAdditionalEffects;
   private final Color myErrorStripeColor;
 
-  private static class FlyweightKey implements Cloneable {
+  private static final class FlyweightKey implements Cloneable {
     private Color foreground;
     private Color background;
     @JdkConstants.FontStyle

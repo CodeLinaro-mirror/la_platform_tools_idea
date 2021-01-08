@@ -18,7 +18,6 @@ import com.intellij.ide.projectView.impl.ProjectRootsUtil;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.ui.customization.CustomActionsSchema;
 import com.intellij.ide.util.DeleteHandler;
-import com.intellij.internal.statistic.service.fus.collectors.UIEventId;
 import com.intellij.internal.statistic.service.fus.collectors.UIEventLogger;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
@@ -42,6 +41,7 @@ import com.intellij.pom.Navigatable;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiDirectoryContainer;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.ui.*;
 import com.intellij.ui.awt.RelativePoint;
@@ -93,6 +93,7 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
   private Component myContextComponent;
 
   private final NavBarUpdateQueue myUpdateQueue;
+  private final Set<PsiFile> myForcedFileUpdateQueue = new HashSet<>();
 
   private NavBarItem myContextObject;
   private boolean myDisposed = false;
@@ -411,7 +412,15 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
           return true;
         }
 
+        if (eachLabel.getObject() instanceof PsiFile && myForcedFileUpdateQueue.remove(eachLabel.getObject())) {
+          return true;
+        }
+
         if (!StringUtil.equals(eachLabel.getText(), getPresentation().getPresentableText(eachElement, false))) {
+          return true;
+        }
+
+        if (!Objects.equals(eachLabel.getIcon(), getPresentation().getIcon(eachElement))) {
           return true;
         }
 
@@ -588,7 +597,7 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
   }
 
   protected void navigateInsideBar(int sourceItemIndex, final Object object) {
-    UIEventLogger.logUIEvent(UIEventId.NavBarNavigate);
+    UIEventLogger.NavBarNavigate.log(myProject);
 
     boolean restorePopup = shouldRestorePopupOnSelect(object, sourceItemIndex);
     Object obj = expandDirsWithJustOneSubdir(object);
@@ -924,5 +933,9 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
 
   boolean isUpdating() {
     return myUpdateQueue.isUpdating();
+  }
+
+  void queueFileUpdate(PsiFile psiFile) {
+    myForcedFileUpdateQueue.add(psiFile);
   }
 }

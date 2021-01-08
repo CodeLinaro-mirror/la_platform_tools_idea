@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight.daemon;
 
 import com.intellij.JavaTestUtil;
@@ -12,13 +12,10 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase;
 import com.intellij.util.ref.GCUtil;
-import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class PsiAugmentProviderTest extends LightJavaCodeInsightFixtureTestCase {
   private static final String AUGMENTED_FIELD = "augmented";
@@ -81,6 +78,30 @@ public class PsiAugmentProviderTest extends LightJavaCodeInsightFixtureTestCase 
     });
   }
 
+  public void testPassNameHintToAugmenter() {
+    PsiClass psiClass = myFixture.addClass("class C {}");
+
+    List<String> hints = new ArrayList<>();
+    PsiAugmentProvider.EP_NAME.getPoint().registerExtension(new PsiAugmentProvider() {
+      @Override
+      protected @NotNull <Psi extends PsiElement> List<Psi> getAugments(@NotNull PsiElement element,
+                                                                        @NotNull Class<Psi> type,
+                                                                        @Nullable String nameHint) {
+        if (element == psiClass) {
+          hints.add(nameHint);
+        }
+        return Collections.emptyList();
+      }
+    }, myFixture.getTestRootDisposable());
+
+    assertNotNull(psiClass.findFieldByName(AUGMENTED_FIELD, true));
+    assertNull(psiClass.findFieldByName("another", false));
+    assertSize(1, psiClass.getFields());
+    assertSize(2, psiClass.getAllFields());
+
+    assertOrderedEquals(hints, AUGMENTED_FIELD, "another", null);
+  }
+
   private static class TestAugmentProvider extends PsiAugmentProvider {
     private static final String LOMBOK_VAL_FQN = "lombok.val";
     private static final String LOMBOK_VAL_SHORT_NAME = "val";
@@ -129,8 +150,8 @@ public class PsiAugmentProviderTest extends LightJavaCodeInsightFixtureTestCase 
     protected @NotNull <Psi extends PsiElement> List<Psi> getAugments(@NotNull PsiElement element,
                                                                       @NotNull Class<Psi> type,
                                                                       @Nullable String nameHint) {
-      PsiManager manager = element.getManager();
-      long count = manager.getModificationTracker().getModificationCount();
+      var manager = element.getManager();
+      var count = manager.getModificationTracker().getModificationCount();
       if (type.equals(PsiField.class)) {
         //noinspection unchecked
         return (List<Psi>)Collections.singletonList(new LightFieldBuilder(manager, AUGMENTED_FIELD, PsiType.BOOLEAN) {
@@ -157,7 +178,7 @@ public class PsiAugmentProviderTest extends LightJavaCodeInsightFixtureTestCase 
     @Override
     protected Set<String> transformModifiers(@NotNull PsiModifierList modifierList, @NotNull final Set<String> modifiers) {
       if (isLombokVal(modifierList.getParent())) {
-        THashSet<String> result = new THashSet<>(modifiers);
+        Set<String> result = new HashSet<>(modifiers);
         result.add(PsiModifier.FINAL);
         return result;
       }

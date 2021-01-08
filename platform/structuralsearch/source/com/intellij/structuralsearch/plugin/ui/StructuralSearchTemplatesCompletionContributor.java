@@ -11,11 +11,10 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.codeInsight.template.impl.TemplateImplUtil;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.structuralsearch.MatchOptions;
 import com.intellij.ui.TextFieldWithAutoCompletionListProvider;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.LinkedHashSet;
+import java.util.Set;
 
 public class StructuralSearchTemplatesCompletionContributor extends CompletionContributor {
   @Override
@@ -34,7 +33,7 @@ public class StructuralSearchTemplatesCompletionContributor extends CompletionCo
     final CharSequence text = document.getCharsSequence();
     if (StringUtil.startsWithChar(shortPrefix, '$')) {
       shortPrefix = shortPrefix.substring(1);
-      final LinkedHashSet<String> variableNames = TemplateImplUtil.parseVariableNames(text);
+      Set<String> variableNames = TemplateImplUtil.parseVariableNames(text);
       for (String name : variableNames) {
         if (name.startsWith(shortPrefix) && !name.equals(shortPrefix)) {
           result.addElement(LookupElementBuilder.create('$' + name + '$')
@@ -62,23 +61,20 @@ public class StructuralSearchTemplatesCompletionContributor extends CompletionCo
     });
     CompletionResultSet insensitive = result.withPrefixMatcher(new CamelHumpMatcher(prefix));
     ConfigurationManager configurationManager = ConfigurationManager.getInstance(parameters.getPosition().getProject());
-    for (String configurationName: configurationManager.getAllConfigurationNames()) {
-      for (Configuration configuration: configurationManager.findConfigurationsByName(configurationName)) {
-        if (configuration == null) continue;
-        final MatchOptions matchOptions = configuration.getMatchOptions();
-        LookupElementBuilder element = LookupElementBuilder.create(configuration, matchOptions.getSearchPattern())
-          .withLookupString(configurationName)
-          .withTailText(" (" + StringUtil.toLowerCase(matchOptions.getFileType().getName()) +
-                        (configuration instanceof SearchConfiguration ? " search" : " replace") + " template" +
-                        (configuration.isPredefined() ? "" : ", user defined") + ")", true)
+    for (Configuration configuration: configurationManager.getAllConfigurations()) {
+
+        LookupElementBuilder element = LookupElementBuilder.create(configuration, configuration.getMatchOptions().getSearchPattern())
+          .withLookupString(configuration.getName())
+          .withTypeText(configuration.getTypeText(), true)
+          .withIcon(configuration.getIcon())
           .withCaseSensitivity(false)
-          .withPresentableText(configurationName);
+          .withPresentableText(configuration.getName());
+
         if (dialog != null)
           element = element.withInsertHandler((InsertionContext context, LookupElement item) -> context.setLaterRunnable(
-            () -> { dialog.loadConfiguration((Configuration)item.getObject()); }
+            () -> dialog.loadConfiguration((Configuration)item.getObject())
           ));
         insensitive.addElement(element);
-      }
     }
   }
 }

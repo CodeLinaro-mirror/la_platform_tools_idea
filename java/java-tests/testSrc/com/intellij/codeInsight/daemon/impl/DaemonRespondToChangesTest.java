@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl;
 
-import com.intellij.application.UtilKt;
 import com.intellij.application.options.editor.CodeFoldingConfigurable;
 import com.intellij.codeHighlighting.*;
 import com.intellij.codeInsight.EditorInfo;
@@ -25,6 +24,7 @@ import com.intellij.codeInspection.htmlInspections.RequiredAttributesInspectionB
 import com.intellij.codeInspection.varScopeCanBeNarrowed.FieldCanBeLocalInspection;
 import com.intellij.configurationStore.StorageUtilKt;
 import com.intellij.configurationStore.StoreUtil;
+import com.intellij.configurationStore.StoreUtilKt;
 import com.intellij.debugger.DebugException;
 import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.execution.filters.TextConsoleBuilderFactory;
@@ -32,6 +32,7 @@ import com.intellij.execution.ui.ConsoleView;
 import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.ide.highlighter.JavaFileType;
+import com.intellij.ide.highlighter.XmlFileType;
 import com.intellij.java.codeInsight.daemon.impl.DaemonRespondToChangesPerformanceTest;
 import com.intellij.javaee.ExternalResourceManagerExImpl;
 import com.intellij.lang.ExternalLanguageAnnotators;
@@ -70,7 +71,6 @@ import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileEditor.impl.text.PsiAwareTextEditorProvider;
 import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -101,7 +101,6 @@ import com.intellij.util.io.storage.HeavyProcessLatch;
 import com.intellij.util.ref.GCWatcher;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xml.util.CheckDtdReferencesInspection;
-import gnu.trove.THashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import kotlin.Unit;
 import org.intellij.lang.annotations.Language;
@@ -1073,7 +1072,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
         return new MyPass(myProject);
       }
 
-      class MyPass extends TextEditorHighlightingPass {
+      final class MyPass extends TextEditorHighlightingPass {
         private MyPass(final Project project) {
           super(project, getEditor().getDocument(), false);
           creation[0]++;
@@ -1251,7 +1250,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     GeneralSettings settings = GeneralSettings.getInstance();
     boolean frameSave = settings.isSaveOnFrameDeactivation();
     settings.setSaveOnFrameDeactivation(true);
-    UtilKt.runInAllowSaveMode(() -> {
+    StoreUtilKt.runInAllowSaveMode(true, () -> {
       try {
         StoreUtil.saveDocumentsAndProjectsAndApp(false);
 
@@ -1311,7 +1310,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
   public void testErrorInTheEndOutsideVisibleArea() {
     String text = "<xml> \n" + StringUtil.repeatSymbol('\n', 1000) + "</xml>\nxxxxx<caret>";
-    configureByText(StdFileTypes.XML, text);
+    configureByText(XmlFileType.INSTANCE, text);
 
     ProperTextRange visibleRange = makeEditorWindowVisible(new Point(0, 1000), myEditor);
     assertTrue(visibleRange.getStartOffset() > 0);
@@ -1459,7 +1458,8 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
     try {
       Module alienModule = doCreateRealModuleIn("x", alienProject, getModuleType());
-      final VirtualFile alienRoot = PsiTestUtil.createTestProjectStructure(alienProject, alienModule, myFilesToDelete);
+      VirtualFile alienRoot = createTestProjectStructure(alienModule, null, true, getTempDir());
+      PsiDocumentManager.getInstance(alienProject).commitAllDocuments();
       OpenFileDescriptor alienDescriptor = WriteAction.compute(() -> {
         VirtualFile alienFile = alienRoot.createChildData(this, "X.java");
         setFileText(alienFile, "class Alien { }");
@@ -1650,8 +1650,8 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
   }
 
   public void testCodeFoldingInSplittedWindowAppliesToAllEditors() {
-    final Set<Editor> applied = new THashSet<>();
-    final Set<Editor> collected = new THashSet<>();
+    final Set<Editor> applied = new HashSet<>();
+    final Set<Editor> collected = new HashSet<>();
     registerFakePass(applied, collected);
 
     configureByText(PlainTextFileType.INSTANCE, "");
@@ -1695,8 +1695,8 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     executeWithReparseDelay(0, () -> {
       runHeavyProcessing = false;
       try {
-        final Set<Editor> applied = Collections.synchronizedSet(new THashSet<>());
-        final Set<Editor> collected = Collections.synchronizedSet(new THashSet<>());
+        final Set<Editor> applied = Collections.synchronizedSet(new HashSet<>());
+        final Set<Editor> collected = Collections.synchronizedSet(new HashSet<>());
         registerFakePass(applied, collected);
 
         configureByText(PlainTextFileType.INSTANCE, "");
@@ -1804,7 +1804,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
     configureByText(JavaFileType.INSTANCE, "class X { int f() { int gg<caret> = 11; return 0;} }");
     final AtomicBoolean run = new AtomicBoolean();
     final int SLEEP = 2_000;
-    ExternalAnnotator<Integer, Integer> annotator = new ExternalAnnotator<Integer, Integer>() {
+    ExternalAnnotator<Integer, Integer> annotator = new ExternalAnnotator<>() {
       @Override
       public Integer collectInformation(@NotNull PsiFile file) {
         return 0;
@@ -1862,7 +1862,7 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
   public void testModificationInWorkspaceXmlDoesNotCauseRehighlight() {
     configureByText(JavaFileType.INSTANCE, "class X { <caret> }");
-    UtilKt.runInAllowSaveMode(() -> {
+    StoreUtilKt.runInAllowSaveMode(true, () -> {
       StoreUtil.saveDocumentsAndProjectsAndApp(true);
       VirtualFile workspaceFile = Objects.requireNonNull(getProject().getWorkspaceFile());
       PsiFile excluded = Objects.requireNonNull(PsiManager.getInstance(getProject()).findFile(workspaceFile));
@@ -2407,7 +2407,8 @@ public class DaemonRespondToChangesTest extends DaemonAnalyzerTestCase {
 
   private static final AtomicInteger toSleepMs = new AtomicInteger(0);
   public abstract static class MyRecordingAnnotator implements Annotator {
-    static final Set<Class<?>> done = ContainerUtil.newConcurrentSet();
+    static final Set<Class<?>> done = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
     protected void iDidIt() {
       done.add(getClass());
     }

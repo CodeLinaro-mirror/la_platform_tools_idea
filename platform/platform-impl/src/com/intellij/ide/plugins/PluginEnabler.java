@@ -2,14 +2,19 @@
 package com.intellij.ide.plugins;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.io.IOException;
 import java.util.*;
+import java.util.function.Predicate;
+
+import static com.intellij.openapi.util.text.StringUtil.join;
+import static java.util.Collections.emptyList;
+import static java.util.stream.Collectors.toSet;
 
 /**
  * @author yole
@@ -17,80 +22,105 @@ import java.util.*;
 public final class PluginEnabler {
   private static final Logger LOG = Logger.getInstance(PluginEnabler.class);
 
-  public static boolean enablePlugins(@Nullable Project project, Collection<IdeaPluginDescriptor> plugins, boolean enable) {
-    return updatePluginEnabledState(project, enable ? plugins : Collections.emptyList(),
-                                    enable ? Collections.emptyList() : plugins,
-                                    null);
+  private PluginEnabler() {
+  }
+
+  public static boolean enablePlugins(@Nullable Project project,
+                                      @NotNull List<? extends IdeaPluginDescriptor> plugins,
+                                      boolean enable) {
+    return updatePluginEnabledState(
+      project,
+      enable ? plugins : emptyList(),
+      enable ? emptyList() : plugins,
+      null,
+      true
+    );
   }
 
   /**
    * @return true if the requested enabled state was applied without restart, false if restart is required
    */
   public static boolean updatePluginEnabledState(@Nullable Project project,
-                                                 Collection<IdeaPluginDescriptor> pluginsToEnable,
-                                                 Collection<IdeaPluginDescriptor> pluginsToDisable,
-                                                 @Nullable JComponent parentComponent) {
-    List<IdeaPluginDescriptorImpl> pluginDescriptorsToEnable = loadFullDescriptors(pluginsToEnable);
-    List<IdeaPluginDescriptorImpl> pluginDescriptorsToDisable = loadFullDescriptors(pluginsToDisable);
-
-    Set<PluginId> disabledIds = DisabledPluginsState.getDisabledIds();
-    for (PluginDescriptor descriptor : pluginsToEnable) {
-      descriptor.setEnabled(true);
-      disabledIds.remove(descriptor.getPluginId());
-    }
-    for (PluginDescriptor descriptor : pluginsToDisable) {
-      if (!PluginManagerCore.getLoadedPlugins().contains(descriptor)) {
-        // don't try to unload plugin which wasn't loaded
-        pluginDescriptorsToDisable.removeIf(plugin -> plugin.getPluginId().equals(descriptor.getPluginId()));
-      }
-      descriptor.setEnabled(false);
-      disabledIds.add(descriptor.getPluginId());
+                                                 @NotNull List<? extends IdeaPluginDescriptor> pluginsToEnable,
+                                                 @NotNull List<? extends IdeaPluginDescriptor> pluginsToDisable,
+                                                 @Nullable JComponent parentComponent,
+                                                 boolean updateDisabledPluginsState) {
+    if (pluginsToEnable.isEmpty() &&
+        pluginsToDisable.isEmpty()) {
+      return true;
     }
 
-    try {
-      DisabledPluginsState.saveDisabledPlugins(disabledIds, false);
-    }
-    catch (IOException e) {
-      LOG.error(e);
-    }
+    Set<PluginId> pluginIdsToEnable = mapPluginId(pluginsToEnable);
+    LOG.info(getLogMessage(pluginIdsToEnable, true));
+    updateEnabledState(
+      pluginsToEnable,
+      __ -> true
+    );
 
-    if (DynamicPlugins.allowLoadUnloadAllWithoutRestart(pluginDescriptorsToDisable) &&
-        DynamicPlugins.allowLoadUnloadAllWithoutRestart(pluginDescriptorsToEnable)) {
+    Set<PluginId> pluginIdsToDisable = mapPluginId(pluginsToDisable);
+    LOG.info(getLogMessage(pluginIdsToDisable, false));
+    updateEnabledState(
+      pluginsToDisable,
+      updateDisabledPluginsState ? __ -> false : getEnabledState(project)
+    );
 
-      List<IdeaPluginDescriptorImpl> sortedDescriptorsToDisable = PluginManagerCore.getPluginsSortedByDependency(pluginDescriptorsToDisable, true);
-      Collections.reverse(sortedDescriptorsToDisable);
-      boolean needRestart = false;
-      for (IdeaPluginDescriptorImpl descriptor : sortedDescriptorsToDisable) {
-        if (!DynamicPlugins.unloadPluginWithProgress(project, parentComponent, descriptor, new DynamicPlugins.UnloadPluginOptions().withDisable(true))) {
-          needRestart = true;
-          break;
-        }
-      }
+    boolean requiresRestart =
+      updateDisabledPluginsState && !DisabledPluginsState.updateDisabledPluginsState(pluginIdsToEnable, pluginIdsToDisable) ||
+      !DynamicPlugins.loadUnloadPlugins(pluginsToEnable, pluginsToDisable, project, parentComponent);
 
-      if (!needRestart) {
-        List<IdeaPluginDescriptorImpl> sortedDescriptorsToEnable = PluginManagerCore.getPluginsSortedByDependency(pluginDescriptorsToEnable, true);
-        for (IdeaPluginDescriptor descriptor : sortedDescriptorsToEnable) {
-          if (!DynamicPlugins.loadPlugin((IdeaPluginDescriptorImpl)descriptor)) {
-            needRestart = true;
-            break;
-          }
-        }
-        if (!needRestart) {
-          return true;
-        }
-      }
+    if (requiresRestart) {
+      InstalledPluginsState.getInstance().setRestartRequired(true);
     }
-    InstalledPluginsState.getInstance().setRestartRequired(true);
-    return false;
+    return !requiresRestart;
   }
 
-  private static List<IdeaPluginDescriptorImpl> loadFullDescriptors(Collection<IdeaPluginDescriptor> pluginsToEnable) {
-    List<IdeaPluginDescriptorImpl> result = new ArrayList<>();
-    for (IdeaPluginDescriptor descriptor : pluginsToEnable) {
-      if (descriptor instanceof IdeaPluginDescriptorImpl) {
-        result.add(PluginDescriptorLoader.loadFullDescriptor((IdeaPluginDescriptorImpl) descriptor));
-      }
+  public static @NotNull Set<PluginId> mapPluginId(@NotNull List<? extends IdeaPluginDescriptor> descriptors) {
+    return descriptors
+      .stream()
+      .map(IdeaPluginDescriptor::getPluginId)
+      .filter(Objects::nonNull)
+      .collect(toSet());
+  }
+
+  private static @NotNull Predicate<PluginId> getEnabledState(@Nullable Project project) {
+    ProjectPluginTrackerManager manager = ProjectPluginTrackerManager.getInstance();
+
+    return pluginId -> Arrays
+      .stream(ProjectManager.getInstance().getOpenProjects())
+      .filter(openProject -> !openProject.equals(project))
+      .map(manager::createPluginTracker)
+      .anyMatch(pluginTracker -> pluginTracker.isEnabled(pluginId));
+  }
+
+  private static void updateEnabledState(@NotNull List<? extends IdeaPluginDescriptor> descriptors,
+                                         @NotNull Predicate<PluginId> predicate) {
+    for (IdeaPluginDescriptor descriptor : descriptors) {
+      boolean enabled = predicate.test(descriptor.getPluginId());
+      descriptor.setEnabled(enabled);
     }
-    return result;
+  }
+
+  private static @NotNull String getLogMessage(@NotNull Collection<PluginId> plugins,
+                                               boolean enable) {
+    return getLogMessage(
+      "Plugins to " + (enable ? "enable" : "disable"),
+      plugins
+    );
+  }
+
+  public static @NotNull String getLogMessage(@NotNull String message,
+                                              @NotNull Collection<PluginId> plugins) {
+    StringBuilder buffer = new StringBuilder(message)
+      .append(':')
+      .append(' ')
+      .append('[');
+
+    join(
+      plugins,
+      PluginId::getIdString,
+      ", ",
+      buffer
+    );
+    return buffer.append(']').toString();
   }
 }

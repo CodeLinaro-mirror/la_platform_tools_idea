@@ -4,6 +4,7 @@ package com.intellij.openapi.application.impl;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.diagnostic.DefaultLogger;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -62,7 +63,7 @@ public class LaterInvocatorTest extends HeavyPlatformTestCase {
   };
 
   @Override
-  protected void setUp() {
+  protected void setUp() throws Exception {
     myWindow1 = new Frame() {
       public String toString() {
         return "Window1";
@@ -92,7 +93,7 @@ public class LaterInvocatorTest extends HeavyPlatformTestCase {
   }
 
   @Override
-  protected void tearDown() {
+  protected void tearDown() throws Exception {
     myOrder.clear();
     flushSwingQueue();
     UIUtil.invokeAndWaitIfNeeded((Runnable)() -> LaterInvocator.leaveAllModals());
@@ -518,7 +519,7 @@ public class LaterInvocatorTest extends HeavyPlatformTestCase {
   }
 
   public void testModalityStateCurrentAllowedOnlyFromEDT() throws Exception {
-    LoggedErrorProcessor.getInstance().disableStderrDumping(getTestRootDisposable());
+    DefaultLogger.disableStderrDumping(getTestRootDisposable());
     Future<ModalityState> future = ApplicationManager.getApplication().executeOnPooledThread(() -> ModalityState.current());
     try {
       future.get(1000, TimeUnit.MILLISECONDS);

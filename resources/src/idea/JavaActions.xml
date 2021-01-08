@@ -6,7 +6,7 @@
     </action>
 
 
-    <group id="NewGroup1">
+    <group id="NewGroup1" searchable="false">
       <action id="NewModuleInGroup" class="com.intellij.openapi.roots.ui.configuration.actions.NewModuleInGroupAction"
               icon="AllIcons.Nodes.Module"/>
 
@@ -189,8 +189,12 @@
       <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
       <add-to-group group-id="NavbarPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
       <add-to-group group-id="FavoritesViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
-      <add-to-group group-id="EditorPopupMenu1" anchor="after" relative-to-action="FindUsages"/>
     </reference>
+
+    <group id="EditorPopupMenuAnalyze" class="com.intellij.ide.actions.EditorPopupNoSelectionGroup">
+      <reference ref="AnalyzeMenu"/>
+      <add-to-group group-id="EditorPopupMenu1" anchor="after" relative-to-action="FindUsages"/>
+    </group>
 
     <group id="ProjectViewAnalysisGroup">
       <add-to-group group-id="ProjectViewPopupMenuModifyGroup" anchor="first"/>
@@ -521,7 +525,10 @@
         <add-to-group group-id="DebuggingActionsGroup" anchor="after" relative-to-action="StepOut"/>
       </action>
 
-      <action id="Debugger.CreateRenderer" class="com.intellij.debugger.actions.CreateRendererAction"/>
+      <action id="Debugger.CreateRenderer" class="com.intellij.debugger.actions.CreateRendererAction">
+        <add-to-group group-id="XDebugger.Watches.Inline.Popup" anchor="last"/>
+        <override-text place="XDebuggerTreeInlayPopup"/>
+      </action>
       <action id="Debugger.AutoRenderer" class="com.intellij.debugger.actions.AutoRendererAction"/>
       <action id="Debugger.MuteRenderers" class="com.intellij.debugger.actions.ForceOnDemandRenderersAction">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
@@ -730,7 +737,9 @@
     <action id="MethodOverloadSwitchUp" class="com.intellij.codeInsight.editorActions.JavaMethodOverloadSwitchUpAction"/>
     <action id="MethodOverloadSwitchDown" class="com.intellij.codeInsight.editorActions.JavaMethodOverloadSwitchDownAction" />
 
-    <action class="com.intellij.find.findUsages.GroupByPackageAction" id="UsageGrouping.Package"/>
+    <action class="com.intellij.find.findUsages.GroupByPackageAction" id="UsageGrouping.Package" use-shortcut-of="UsageGrouping.Directory">
+      <add-to-group group-id="UsageGroupingActionGroup"/>
+    </action>
   </actions>
 </idea-plugin>
 

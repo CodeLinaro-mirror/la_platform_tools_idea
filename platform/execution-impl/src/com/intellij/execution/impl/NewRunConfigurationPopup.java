@@ -14,6 +14,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.DumbAwareAction;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.ListPopupStep;
@@ -164,7 +165,8 @@ public final class NewRunConfigurationPopup {
         values.clear();
         values.addAll(RunConfigurable.Companion.configurationTypeSorted(project,
                                                                         false,
-                                                                        ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList()));
+                                                                        ConfigurationType.CONFIGURATION_TYPE_EP.getExtensionList(),
+                                                                        true));
 
         getListModel().updateOriginalList();
         super.onSpeedSearchPatternChanged();
@@ -235,6 +237,11 @@ public final class NewRunConfigurationPopup {
         if (!(userData instanceof NodeDescriptor)) return false;
         if (getStructure().getChildElements(userData).length > 0) return false;
         userData = ((NodeDescriptor<?>)userData).getElement();
+        if (!project.isDefault() &&
+            DumbService.getInstance(project).isDumb() &&
+            !NewRunConfigurationTreePopupFactory.isEditableInDumbMode(userData)) {
+          return false;
+        }
         return isAutoSelectionPassed.get() || userData == selectedConfigurationType;
       }
 
