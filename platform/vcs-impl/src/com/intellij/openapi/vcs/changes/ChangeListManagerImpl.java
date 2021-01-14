@@ -650,15 +650,15 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
       myComposite.notifyVcsStarted(scope.getVcs());
     }
 
-    private void notifyDoneProcessingChanges() {
+    private void notifyDoneProcessingChanges(@NotNull VcsDirtyScope scope) {
       if (!myWasEverythingDirty) {
-        myChangeListUpdater.notifyDoneProcessingChanges(myDelayedNotificator);
+        myChangeListUpdater.notifyDoneProcessingChanges(myDelayedNotificator, scope);
       }
     }
 
     void notifyEnd() {
       if (myWasEverythingDirty) {
-        myChangeListUpdater.notifyDoneProcessingChanges(myDelayedNotificator);
+        myChangeListUpdater.notifyDoneProcessingChanges(myDelayedNotificator, null);
       }
     }
 
@@ -697,7 +697,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
     }
     finally {
       if (!myUpdater.isStopped()) {
-        dataHolder.notifyDoneProcessingChanges();
+        dataHolder.notifyDoneProcessingChanges(scope);
       }
     }
   }
@@ -826,7 +826,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
     });
   }
 
-  Map<VirtualFile, LogicalLock> getLogicallyLockedFolders() {
+  public Map<VirtualFile, LogicalLock> getLogicallyLockedFolders() {
     return ReadAction.compute(() -> {
       synchronized (myDataLock) {
         return new HashMap<>(myComposite.getLogicallyLockedFileHolder().getMap());
@@ -858,7 +858,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
     });
   }
 
-  MultiMap<String, VirtualFile> getSwitchedFilesMap() {
+  public MultiMap<String, VirtualFile> getSwitchedFilesMap() {
     return ReadAction.compute(() -> {
       synchronized (myDataLock) {
         return myComposite.getSwitchedFileHolder().getBranchToFileMap();
@@ -867,7 +867,7 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
   }
 
   @Nullable
-  Map<VirtualFile, String> getSwitchedRoots() {
+  public Map<VirtualFile, String> getSwitchedRoots() {
     return ReadAction.compute(() -> {
       synchronized (myDataLock) {
         return myComposite.getRootSwitchFileHolder().getFilesMapCopy();
@@ -1390,6 +1390,13 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
   }
 
   @TestOnly
+  public void waitEverythingDoneAndStopInTestMode() {
+    assert ApplicationManager.getApplication().isUnitTestMode();
+    myScheduler.awaitAllAndStop();
+    myUpdater.stop();
+  }
+
+  @TestOnly
   public void waitEverythingDoneInTestMode() {
     assert ApplicationManager.getApplication().isUnitTestMode();
     myScheduler.awaitAll();
@@ -1568,13 +1575,23 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
     private final ArrayDeque<Future<?>> myFutures = new ArrayDeque<>();
 
     public void schedule(@NotNull Runnable command, long delay, @NotNull TimeUnit unit) {
-      ScheduledFuture<?> future = myExecutor.schedule(new MyLoggingRunnable(command), delay, unit);
-      if (myUnitTestMode) addFuture(future);
+      try {
+        ScheduledFuture<?> future = myExecutor.schedule(new MyLoggingRunnable(command), delay, unit);
+        if (myUnitTestMode) addFuture(future);
+      }
+      catch (RejectedExecutionException e) {
+        LOG.warn(e);
+      }
     }
 
     public void submit(@NotNull Runnable command) {
-      Future<?> future = myExecutor.submit(new MyLoggingRunnable(command));
-      if (myUnitTestMode) addFuture(future);
+      try {
+        Future<?> future = myExecutor.submit(new MyLoggingRunnable(command));
+        if (myUnitTestMode) addFuture(future);
+      }
+      catch (RejectedExecutionException e) {
+        LOG.warn(e);
+      }
     }
 
     private void addFuture(Future<?> future) {
@@ -1591,6 +1608,15 @@ public class ChangeListManagerImpl extends ChangeListManagerEx implements Persis
           future.cancel(true);
         }
         myFutures.clear();
+      }
+    }
+
+    @TestOnly
+    public void awaitAllAndStop() {
+      awaitAll();
+      synchronized (myFutures) {
+        cancelAll(); //interrupt running
+        myExecutor.shutdownNow();
       }
     }
 

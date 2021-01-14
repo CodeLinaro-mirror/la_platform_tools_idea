@@ -2,9 +2,11 @@
 package com.intellij.openapi.wm.impl.welcomeScreen.learnIde
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.wm.InteractiveCourseData
 import com.intellij.ui.RoundedLineBorder
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import org.jetbrains.annotations.Nls
@@ -27,13 +29,13 @@ class InteractiveCoursePanel(private val data: InteractiveCourseData) : JPanel()
 
   val startLearningButton = JButton()
 
-  private val interactiveCourseDescription = HeightLimitedPane(data.getDescription(), -1, LearnIdeContentColorsAndFonts.REGULAR)
+  private val interactiveCourseDescription = HeightLimitedPane(data.getDescription(), -1, LearnIdeContentColorsAndFonts.HeaderColor)
   private val interactiveCourseContent = createInteractiveCourseContent()
 
   private var contentState: ContentState = ContentState.COLLAPSED
   private val expandCollapseListener: MouseListener = createExpandCollapseListener()
 
-  private val expandedCourseContent = data.getExpandContent()
+  private val expandedCourseContent: JComponent by lazy { data.getExpandContent() }
   private val chevronPanel = JPanel()
   private val chevronLabel = JLabel(AllIcons.General.ChevronDown)
   val pluginPanel = JPanel()
@@ -84,11 +86,20 @@ class InteractiveCoursePanel(private val data: InteractiveCourseData) : JPanel()
   }
 
   private fun createUnshrinkablePanel(_width: Int): JPanel {
-    return JPanel()
-      .apply { preferredSize = Dimension(_width, 1)
-        minimumSize = Dimension(_width, 1)
+    return object: JPanel() {
+      init {
+        preferredSize = Dimension(JBUIScale.scale(_width), 1)
+        minimumSize = Dimension(JBUIScale.scale(_width), 1)
         isOpaque = false
       }
+
+      override fun updateUI() {
+        super.updateUI()
+        preferredSize = Dimension(JBUIScale.scale(_width), 1)
+        minimumSize = Dimension(JBUIScale.scale(_width), 1)
+        isOpaque = false
+      }
+    }
   }
 
   override fun getMaximumSize(): Dimension {
@@ -106,7 +117,7 @@ class InteractiveCoursePanel(private val data: InteractiveCourseData) : JPanel()
     val learnIdeFeaturesHeader = DynamicFontLabel(data.getName())
 
     learnIdeFeaturesHeader.apply { val labelFont = UIUtil.getLabelFont()
-      font = labelFont.deriveFont(Font.BOLD).deriveFont(labelFont.size2D)
+      font = labelFont.deriveFont(Font.BOLD).deriveFont(labelFont.size2D + if (SystemInfo.isWindows) JBUIScale.scale(1) else 0 )
     }
     learnIdeFeaturesHeader.alignmentX = LEFT_ALIGNMENT
     panel.add(learnIdeFeaturesHeader)
@@ -234,7 +245,7 @@ class InteractiveCoursePanel(private val data: InteractiveCourseData) : JPanel()
     override fun setUI(ui: LabelUI?) {
       super.setUI(ui)
       if (font != null) {
-        font = FontUIResource(font.deriveFont(UIUtil.getLabelFont().size.toFloat()).deriveFont(Font.BOLD))
+        font = FontUIResource(font.deriveFont(UIUtil.getLabelFont().size.toFloat() + if (SystemInfo.isWindows) JBUIScale.scale(1) else 0 ).deriveFont(Font.BOLD))
       }
     }
   }

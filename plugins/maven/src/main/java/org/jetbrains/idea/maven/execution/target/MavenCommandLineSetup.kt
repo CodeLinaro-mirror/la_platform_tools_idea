@@ -203,15 +203,15 @@ class MavenCommandLineSetup(private val project: Project,
     val result = DeferredTargetValue(uploadPathString)
     dependingOnEnvironmentPromise += environmentPromise.then { (environment, progress) ->
       val volume = environment.uploadVolumes.getValue(uploadRoot)
-      result.resolve(volume.upload(uploadRelativePath, progress))
+      val resolvedTargetPath = volume.resolveTargetPath(uploadRelativePath)
+      volume.upload(uploadRelativePath, progress)
+      result.resolve(resolvedTargetPath)
     }
     return result
   }
 
   private fun createUploadRoot(volumeDescriptor: VolumeDescriptor, localRootPath: Path): TargetEnvironment.UploadRoot {
-    return defaultMavenRuntimeConfiguration?.createUploadRoot(volumeDescriptor, localRootPath)
-           ?: TargetEnvironment.UploadRoot(localRootPath = localRootPath,
-                                           targetRootPath = TargetEnvironment.TargetPath.Temporary())
+    return MavenRuntimeTargetConfiguration.createUploadRoot(defaultMavenRuntimeConfiguration, request, target, volumeDescriptor, localRootPath)
   }
 
   private fun setupTargetProjectDirectories(settings: MavenRunConfiguration.MavenSettings) {

@@ -31,6 +31,7 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.util.text.ImmutableCharSequence;
 import com.intellij.util.text.SingleCharSequence;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -44,6 +45,7 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
   private HighlighterClient myEditor;
   private final Lexer myLexer;
   private final Map<IElementType, TextAttributes> myAttributesMap = new HashMap<>();
+  private final Map<IElementType, TextAttributesKey[]> myKeysMap = new HashMap<>();
   private SegmentArrayWithData mySegments;
   private final SyntaxHighlighter myHighlighter;
   @NotNull
@@ -165,25 +167,27 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
   /**
    * @return last updated offset - used by LazyLexerEditorHighlighter to optimize bulk updates
    */
-  int incrementalUpdate(@NotNull DocumentEvent e, CharSequence text) {
+  int incrementalUpdate(final int eventOffset, final int eventOldLength, final int eventNewLength, Document document) {
+    CharSequence text = document.getImmutableCharSequence();
+    if (mySegments.getSegmentCount() == 0) {
+      setText(text);
+      return text.length();
+    }
     myText = text;
-    int oldStartOffset = e.getOffset();
 
-    final int segmentIndex = mySegments.findSegmentIndex(oldStartOffset) - 2;
+    final int segmentIndex = mySegments.findSegmentIndex(eventOffset) - 2;
     final int oldStartIndex = Math.max(0, segmentIndex);
     int startIndex = oldStartIndex;
 
-    int data = 0;
-    if (mySegments.getSegmentCount() > 0) {
-      do {
-        data = mySegments.getSegmentData(startIndex);
-        if (isInitialState(data) || startIndex == 0) break;
-        startIndex--;
-      }
-      while (true);
+    int data;
+    do {
+      data = mySegments.getSegmentData(startIndex);
+      if (isInitialState(data) || startIndex == 0) break;
+      startIndex--;
     }
+    while (true);
 
-    int startOffset = mySegments.getSegmentCount() > 0 ? mySegments.getSegmentStart(startIndex) : 0;
+    int startOffset = mySegments.getSegmentStart(startIndex);
 
     int initialState;
     int textLength = text.length();
@@ -258,14 +262,14 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
       }
     }
 
-    startOffset = mySegments.getSegmentCount() > 0 ? mySegments.getSegmentStart(startIndex) : 0;
+    startOffset = mySegments.getSegmentStart(startIndex);
     SegmentArrayWithData insertSegments = new SegmentArrayWithData(mySegments.createStorage());
 
     int repaintEnd = -1;
     int insertSegmentCount = 0;
     int oldEndIndex = -1;
-    int shift = e.getNewLength() - e.getOldLength();
-    int newEndOffset = e.getOffset() + e.getNewLength();
+    int shift = eventNewLength - eventOldLength;
+    int newEndOffset = eventOffset + eventNewLength;
     int lastSegmentOffset = mySegments.getLastValidOffset();
     for (IElementType tokenType = lexerWrapper.getTokenType(); tokenType != null; tokenType = lexerWrapper.getTokenType()) {
       int lexerState = lexerWrapper.getState();
@@ -321,19 +325,13 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
   public synchronized void documentChanged(@NotNull DocumentEvent e) {
     try {
       final Document document = e.getDocument();
-      CharSequence text = document.getImmutableCharSequence();
 
       if (document.isInBulkUpdate()) {
         myText = null;
         mySegments.removeAll();
         return;
       }
-
-      if (mySegments.getSegmentCount() == 0) {
-        setText(text);
-        return;
-      }
-      incrementalUpdate(e, text);
+      incrementalUpdate(e.getOffset(), e.getOldLength(), e.getNewLength(), document);
     }
     catch (ProcessCanceledException ex) {
       myText = null;
@@ -438,8 +436,8 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
     int textLength = text.length();
     Lexer lexerWrapper = new ValidatingLexerWrapper(myLexer);
 
-    lexerWrapper
-      .start(text, 0, textLength, myLexer instanceof RestartableLexer ? ((RestartableLexer)myLexer).getStartState() : myInitialState);
+    lexerWrapper.start(text, 0, textLength,
+                       myLexer instanceof RestartableLexer ? ((RestartableLexer)myLexer).getStartState() : myInitialState);
     int i = 0;
     while (true) {
       final IElementType tokenType = lexerWrapper.getTokenType();
@@ -483,10 +481,17 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
     TextAttributes attrs = myAttributesMap.get(tokenType);
     if (attrs == null) {
       // let's fetch syntax highlighter attributes for token and merge them with "TEXT" attribute of current color scheme
-      attrs = convertAttributes(myHighlighter.getTokenHighlights(tokenType));
+      attrs = convertAttributes(getAttributesKeys(tokenType));
       myAttributesMap.put(tokenType, attrs);
     }
     return attrs;
+  }
+
+  @ApiStatus.Internal
+  public TextAttributesKey @NotNull [] getAttributesKeys(@NotNull IElementType tokenType) {
+    return myKeysMap.computeIfAbsent(tokenType, type -> {
+      return myHighlighter.getTokenHighlights(type);
+    });
   }
 
   @NotNull
@@ -589,10 +594,16 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
 
   @NotNull
   TextAttributes convertAttributes(TextAttributesKey @NotNull [] keys) {
+    return convertAttributes(myScheme, keys);
+  }
+
+  @ApiStatus.Experimental
+  @ApiStatus.Internal
+  public static @NotNull TextAttributes convertAttributes(@NotNull EditorColorsScheme scheme, TextAttributesKey @NotNull [] keys) {
     TextAttributes resultAttributes = new TextAttributes();
     boolean firstPass = true;
     for (TextAttributesKey key : keys) {
-      TextAttributes attributesByKey = myScheme.getAttributes(key);
+      TextAttributes attributesByKey = scheme.getAttributes(key);
       if (attributesByKey == null) {
         continue;
       }
@@ -634,6 +645,11 @@ public class LexerEditorHighlighter implements EditorHighlighter, PrioritizedDoc
     @Override
     public TextAttributes getTextAttributes() {
       return getAttributes(getTokenType());
+    }
+
+    @Override
+    public TextAttributesKey @NotNull [] getTextAttributesKeys() {
+      return getAttributesKeys(getTokenType());
     }
 
     @Override

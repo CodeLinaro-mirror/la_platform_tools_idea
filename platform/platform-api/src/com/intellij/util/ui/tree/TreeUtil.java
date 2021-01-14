@@ -15,6 +15,7 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.pom.Navigatable;
+import com.intellij.ui.LoadingNode;
 import com.intellij.ui.ScrollingUtil;
 import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.awt.RelativePoint;
@@ -118,6 +119,48 @@ public final class TreeUtil {
 
   public static boolean hasManyNodes(@NotNull Tree tree, int threshold) {
     return treeTraverser(tree).traverse().take(threshold).size() >= threshold;
+  }
+
+  /**
+   * @param tree a tree, which nodes should be found
+   * @param x    a number of pixels from the left edge of the given tree
+   * @param y    a number of pixels from the top of the specified tree
+   * @return found visible tree path or {@code null}
+   */
+  public static @Nullable TreePath getPathForLocation(@NotNull JTree tree, int x, int y) {
+    TreePath path = tree.getClosestPathForLocation(x, y);
+    Rectangle bounds = tree.getPathBounds(path);
+    return bounds != null && bounds.y <= y && y < bounds.y + bounds.height ? path : null;
+  }
+
+  /**
+   * @param tree a tree, which nodes should be found
+   * @param x    a number of pixels from the left edge of the given tree
+   * @param y    a number of pixels from the top of the specified tree
+   * @return found row number or {@code -1}
+   */
+  public static int getRowForLocation(@NotNull JTree tree, int x, int y) {
+    return Math.max(-1, tree.getRowForPath(getPathForLocation(tree, x, y)));
+  }
+
+  /**
+   * @param tree a tree to repaint
+   * @param path a visible tree path to repaint
+   */
+  public static void repaintPath(@NotNull JTree tree, @Nullable TreePath path) {
+    assert EventQueue.isDispatchThread();
+    Rectangle bounds = tree.getPathBounds(path);
+    if (bounds != null) tree.repaint(0, bounds.y, tree.getWidth(), bounds.height);
+  }
+
+  /**
+   * @param tree a tree to repaint
+   * @param row  a row number to repaint
+   */
+  public static void repaintRow(@NotNull JTree tree, int row) {
+    assert EventQueue.isDispatchThread();
+    Rectangle bounds = tree.getRowBounds(row);
+    if (bounds != null) tree.repaint(0, bounds.y, tree.getWidth(), bounds.height);
   }
 
   /**
@@ -1312,6 +1355,19 @@ public final class TreeUtil {
     }
   }
 
+  public static boolean isLoadingPath(@Nullable TreePath path) {
+    return path != null && isLoadingNode(path.getLastPathComponent());
+  }
+
+  public static boolean isLoadingNode(@Nullable Object node) {
+    while (node != null) {
+      if (node instanceof LoadingNode) return true;
+      if (!(node instanceof DefaultMutableTreeNode)) return false;
+      node = ((DefaultMutableTreeNode)node).getUserObject();
+    }
+    return false;
+  }
+
   @Nullable
   public static Object getUserObject(@Nullable Object node) {
     return node instanceof DefaultMutableTreeNode ? ((DefaultMutableTreeNode)node).getUserObject() : node;
@@ -1930,6 +1986,18 @@ public final class TreeUtil {
    * @return {@code null} if next visible path cannot be found
    */
   public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, int row, @NotNull Predicate<TreePath> predicate) {
+    return nextVisiblePath(tree, row, isCyclicScrollingAllowed(), predicate);
+  }
+
+  /**
+   * @param tree      a tree, which nodes should be iterated
+   * @param row       a starting row number to iterate
+   * @param cyclic    {@code true} if cyclic searching is allowed, {@code false} otherwise
+   * @param predicate a predicate that allows to skip some paths
+   * @return {@code null} if next visible path cannot be found
+   */
+  public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, int row, boolean cyclic,
+                                                   @NotNull Predicate<TreePath> predicate) {
     assert EventQueue.isDispatchThread();
     if (row < 0) return null; // ignore illegal row
     int count = tree.getRowCount();
@@ -1937,7 +2005,7 @@ public final class TreeUtil {
     int stop = row;
     while (true) {
       row++; // NB!: increase row before checking for cycle scrolling
-      if (row == count && isCyclicScrollingAllowed()) row = 0;
+      if (row == count && cyclic) row = 0;
       if (row == count) return null; // stop scrolling on last node if no cyclic scrolling
       if (row == stop) return null; // stop scrolling when cyclic scrolling is done
       TreePath path = tree.getPathForRow(row);
@@ -1962,13 +2030,25 @@ public final class TreeUtil {
    * @return {@code null} if previous visible path cannot be found
    */
   public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, int row, @NotNull Predicate<TreePath> predicate) {
+    return previousVisiblePath(tree, row, isCyclicScrollingAllowed(), predicate);
+  }
+
+  /**
+   * @param tree      a tree, which nodes should be iterated
+   * @param row       a starting row number to iterate
+   * @param cyclic    {@code true} if cyclic searching is allowed, {@code false} otherwise
+   * @param predicate a predicate that allows to skip some paths
+   * @return {@code null} if previous visible path cannot be found
+   */
+  public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, int row, boolean cyclic,
+                                                       @NotNull Predicate<TreePath> predicate) {
     assert EventQueue.isDispatchThread();
     if (row < 0) return null; // ignore illegal row
     int count = tree.getRowCount();
     if (count <= row) return null; // ignore illegal row
     int stop = row;
     while (true) {
-      if (row == 0 && isCyclicScrollingAllowed()) row = count;
+      if (row == 0 && cyclic) row = count;
       if (row == 0) return null; // stop scrolling on first node if no cyclic scrolling
       row--; // NB!: decrease row after checking for cyclic scrolling
       if (row == stop) return null; // stop scrolling when cyclic scrolling is done

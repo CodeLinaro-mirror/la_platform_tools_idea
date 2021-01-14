@@ -1255,4 +1255,18 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
                          "func(42, <weak_warning descr=\"Expected type '(int) -> None' (matched generic type '(T) -> None'), got '(x: str) -> None' instead\">accepts_anything</weak_warning>)")
     );
   }
+
+  public void testCallByClass() {
+    doTest();
+  }
+
+  // PY-41806
+  public void testClassDefinitionAgainstProtocolDunderCall() {
+    runWithLanguageLevel(LanguageLevel.getLatest(), this::doTest);
+  }
+
+  // PY-41806
+  public void testClassInstanceAgainstProtocolDunderCall() {
+    runWithLanguageLevel(LanguageLevel.getLatest(), this::doTest);
+  }
 }

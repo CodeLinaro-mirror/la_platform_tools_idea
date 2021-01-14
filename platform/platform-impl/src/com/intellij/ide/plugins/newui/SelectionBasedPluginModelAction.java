@@ -14,8 +14,8 @@ import org.jetbrains.annotations.PropertyKey;
 import javax.swing.*;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 abstract class SelectionBasedPluginModelAction<C extends JComponent> extends DumbAwareAction {
 
@@ -49,16 +49,37 @@ abstract class SelectionBasedPluginModelAction<C extends JComponent> extends Dum
     }
 
     @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-      Set<IdeaPluginDescriptor> plugins = mySelection.stream()
-        .map(this::getPluginDescriptor)
-        .filter(Objects::nonNull)
-        .collect(Collectors.toSet());
+    public void update(@NotNull AnActionEvent e) {
+      List<PluginEnabledState> states = getAllDescriptors()
+        .map(myPluginModel::getState)
+        .collect(Collectors.toList());
 
+      boolean isForceEnableAll = myNewState == PluginEnabledState.ENABLED &&
+                                 !states.stream().allMatch(PluginEnabledState.ENABLED::equals);
+      boolean disabled = states.isEmpty() ||
+                         myNewState.isPerProject() && (e.getProject() == null || !PluginEnabledState.isPerProjectEnabled()) ||
+                         states.stream().anyMatch(this::isInvisible);
+
+      e.getPresentation().setEnabledAndVisible(isForceEnableAll || !disabled);
+    }
+
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
       myPluginModel.changeEnableDisable(
-        plugins,
+        getAllDescriptors().collect(Collectors.toSet()),
         myNewState
       );
+    }
+
+    protected boolean isInvisible(@NotNull PluginEnabledState oldState) {
+      return myNewState == oldState;
+    }
+
+    private @NotNull Stream<? extends IdeaPluginDescriptor> getAllDescriptors() {
+      return mySelection
+        .stream()
+        .map(this::getPluginDescriptor)
+        .filter(Objects::nonNull);
     }
 
     private static @NotNull @NonNls String getActionTextPropertyKey(@NotNull PluginEnabledState newState) {
@@ -66,11 +87,15 @@ abstract class SelectionBasedPluginModelAction<C extends JComponent> extends Dum
         case ENABLED_FOR_PROJECT:
           return "plugins.configurable.enable.for.current.project";
         case ENABLED:
-          return "plugins.configurable.enable.for.all.projects";
+          return PluginEnabledState.isPerProjectEnabled() ?
+                 "plugins.configurable.enable.for.all.projects" :
+                 "plugins.configurable.enable.button";
         case DISABLED_FOR_PROJECT:
           return "plugins.configurable.disable.for.current.project";
         case DISABLED:
-          return "plugins.configurable.disable.for.all.projects";
+          return PluginEnabledState.isPerProjectEnabled() ?
+                 "plugins.configurable.disable.for.all.projects" :
+                 "plugins.configurable.disable.button";
         default:
           throw new IllegalArgumentException();
       }

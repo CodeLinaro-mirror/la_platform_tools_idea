@@ -515,9 +515,11 @@
     <!-- PyQt -->
     <typeProvider implementation="com.jetbrains.pyqt.PyQtTypeProvider"/>
 
-    <!-- PyFunctionTypeAnnotation -->
+    <!-- PyFunctionTypeAnnotation and PyTypeHint -->
     <visitorFilter language="PyFunctionTypeComment"
-                   implementationClass="com.jetbrains.python.inspections.PyFunctionTypeAnnotationVisitorFilter"/>
+                   implementationClass="com.jetbrains.python.inspections.PyTypeAnnotationVisitorFilter"/>
+    <visitorFilter language="PyTypeHint"
+                   implementationClass="com.jetbrains.python.inspections.PyTypeAnnotationVisitorFilter"/>
 
     <!-- PyExpressionCodeFragment -->
     <visitorFilter language="Python"
@@ -664,4 +666,6 @@
   <applicationListeners>
     <listener activeInTestMode="false" class="com.jetbrains.python.testing.VFSTestFrameworkListenerImpl$Listener" topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
   </applicationListeners>
+
+  <depends optional="true" config-file="python-features-trainer.xml">training</depends>
 </idea-plugin>

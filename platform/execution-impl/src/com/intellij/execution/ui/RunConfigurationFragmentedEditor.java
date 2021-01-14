@@ -14,8 +14,8 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.popup.Balloon;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.GotItTooltip;
 import com.intellij.ui.IdeBorderFactory;
 import com.intellij.util.containers.ContainerUtil;
@@ -55,6 +55,12 @@ public abstract class RunConfigurationFragmentedEditor<Settings extends RunConfi
       fragments.add((SettingsEditorFragment<Settings, ?>)wrapper);
     }
     addRunnerSettingsEditors(fragments);
+//    dump fragment ids for FUS
+//    String ids = StringUtil.join(ContainerUtil.sorted(ContainerUtil.map(fragments, (f) -> "\"" + f.getId() + "\"")), ",");
+    String configId = mySettings.getType().getId();
+    for (SettingsEditorFragment<Settings, ?> fragment : fragments) {
+      fragment.setConfigId(configId);
+    }
     return fragments;
   }
 
@@ -168,7 +174,7 @@ public abstract class RunConfigurationFragmentedEditor<Settings extends RunConfi
         new GotItTooltip("fragment.hidden." + fragment.getId(), ExecutionBundle.message("gotIt.popup.message", fragment.getName()),
                          fragment).
           withHeader(ExecutionBundle.message("gotIt.popup.title")).
-          showAt(Balloon.Position.below, component, (c) -> new Point(GotItTooltip.ARROW_SHIFT, c.getHeight()));
+          show(component, (c) -> new Point(GotItTooltip.ARROW_SHIFT, c.getHeight()));
       }
     }
   }

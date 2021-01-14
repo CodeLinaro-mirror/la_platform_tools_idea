@@ -3,6 +3,7 @@ package com.intellij.execution.ui;
 
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.application.ApplicationManager;
@@ -14,6 +15,7 @@ import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.TextWithMnemonic;
@@ -40,11 +42,19 @@ public class FragmentedSettingsBuilder<Settings> implements CompositeSettingsBui
   public static final int TAG_VGAP = JBUI.scale(6);
   public static final int TAG_HGAP = JBUI.scale(2);
 
+  private Disposable myDisposable;
   private final JPanel myPanel = new JPanel(new GridBagLayout()) {
     @Override
     public void addNotify() {
       super.addNotify();
+      myDisposable = Disposer.newDisposable();
       registerShortcuts();
+    }
+
+    @Override
+    public void removeNotify() {
+      super.removeNotify();
+      Disposer.dispose(myDisposable);
     }
   };
   private final GridBagConstraints myConstraints =
@@ -163,10 +173,10 @@ public class FragmentedSettingsBuilder<Settings> implements CompositeSettingsBui
           @Override
           public void actionPerformed(@NotNull AnActionEvent e) {
             SettingsEditorFragment<?, ?> fragment = ((ToggleFragmentAction)action).myFragment;
-            fragment.toggle(true); // show or set focus
+            fragment.toggle(true, e); // show or set focus
             IdeFocusManager.getGlobalInstance().requestFocus(fragment.getEditorComponent(), false);
           }
-        }.registerCustomShortcutSet(shortcutSet, myPanel.getRootPane());
+        }.registerCustomShortcutSet(shortcutSet, myPanel.getRootPane(), myDisposable);
       }
     }
   }
@@ -183,7 +193,9 @@ public class FragmentedSettingsBuilder<Settings> implements CompositeSettingsBui
         }
       });
     };
-    ListPopup popup = JBPopupFactory.getInstance().createActionGroupPopup(IdeBundle.message("popup.title.add.run.options"),
+    String title = myMain != null ? IdeBundle.message("popup.title.add.group.options", myMain.getGroup()) :
+                   IdeBundle.message("popup.title.add.run.options");
+    ListPopup popup = JBPopupFactory.getInstance().createActionGroupPopup(title,
                                                                           group,
                                                                           dataContext,
                                                                           JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, true,
@@ -238,7 +250,12 @@ public class FragmentedSettingsBuilder<Settings> implements CompositeSettingsBui
   }
 
   private DefaultActionGroup buildGroup(Ref<JComponent> lastSelected) {
-    return buildGroup(ContainerUtil.filter(myFragments, fragment -> fragment.getName() != null), lastSelected);
+    DefaultActionGroup group = buildGroup(ContainerUtil.filter(myFragments, fragment -> fragment.getName() != null), lastSelected);
+    if (myMain != null) {
+      group.add(Separator.create(), Constraints.FIRST);
+      group.add(new ToggleFragmentAction(myMain, lastSelected), Constraints.FIRST);
+    }
+    return group;
   }
 
   private List<SettingsEditorFragment<Settings, ?>> restoreGroups(List<SettingsEditorFragment<Settings, ?>> fragments) {
@@ -285,7 +302,7 @@ public class FragmentedSettingsBuilder<Settings> implements CompositeSettingsBui
 
     @Override
     public void setSelected(@NotNull AnActionEvent e, boolean state) {
-      myFragment.toggle(state);
+      myFragment.toggle(state, e);
       if (state) {
         myLastSelected.set(myFragment.getEditorComponent());
       }

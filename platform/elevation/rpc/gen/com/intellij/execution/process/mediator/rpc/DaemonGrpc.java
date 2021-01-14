@@ -18,7 +18,7 @@ import static io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall;
 /**
  */
 @javax.annotation.Generated(
-    value = "by gRPC proto compiler (version 1.31.1)",
+    value = "by gRPC proto compiler (version 1.21.1)",  // Android Studio: b/176938468
     comments = "Source: processMediator.proto")
 public final class DaemonGrpc {
 
@@ -27,6 +27,37 @@ public final class DaemonGrpc {
   public static final String SERVICE_NAME = "intellij.process.mediator.rpc.Daemon";
 
   // Static method descriptors that strictly reflect the proto.
+  private static volatile io.grpc.MethodDescriptor<com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest,
+      com.google.protobuf.Empty> getAdjustQuotaMethod;
+
+  @io.grpc.stub.annotations.RpcMethod(
+      fullMethodName = SERVICE_NAME + '/' + "AdjustQuota",
+      requestType = com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest.class,
+      responseType = com.google.protobuf.Empty.class,
+      methodType = io.grpc.MethodDescriptor.MethodType.UNARY)
+  public static io.grpc.MethodDescriptor<com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest,
+      com.google.protobuf.Empty> getAdjustQuotaMethod() {
+    io.grpc.MethodDescriptor<com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest, com.google.protobuf.Empty> getAdjustQuotaMethod;
+    if ((getAdjustQuotaMethod = DaemonGrpc.getAdjustQuotaMethod) == null) {
+      synchronized (DaemonGrpc.class) {
+        if ((getAdjustQuotaMethod = DaemonGrpc.getAdjustQuotaMethod) == null) {
+          DaemonGrpc.getAdjustQuotaMethod = getAdjustQuotaMethod =
+              io.grpc.MethodDescriptor.<com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest, com.google.protobuf.Empty>newBuilder()
+              .setType(io.grpc.MethodDescriptor.MethodType.UNARY)
+              .setFullMethodName(generateFullMethodName("intellij.process.mediator.rpc.Daemon", "AdjustQuota"))  // Android Studio: b/176938468
+              .setSampledToLocalTracing(true)
+              .setRequestMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
+                  com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest.getDefaultInstance()))
+              .setResponseMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
+                  com.google.protobuf.Empty.getDefaultInstance()))
+              .setSchemaDescriptor(new DaemonMethodDescriptorSupplier("AdjustQuota"))
+              .build();
+        }
+      }
+    }
+    return getAdjustQuotaMethod;
+  }
+
   private static volatile io.grpc.MethodDescriptor<com.google.protobuf.Empty,
       com.google.protobuf.Empty> getShutdownMethod;
 
@@ -44,7 +75,7 @@ public final class DaemonGrpc {
           DaemonGrpc.getShutdownMethod = getShutdownMethod =
               io.grpc.MethodDescriptor.<com.google.protobuf.Empty, com.google.protobuf.Empty>newBuilder()
               .setType(io.grpc.MethodDescriptor.MethodType.UNARY)
-              .setFullMethodName(generateFullMethodName(SERVICE_NAME, "Shutdown"))
+              .setFullMethodName(generateFullMethodName("intellij.process.mediator.rpc.Daemon", "Shutdown"))  // Android Studio: b/176938468
               .setSampledToLocalTracing(true)
               .setRequestMarshaller(io.grpc.protobuf.ProtoUtils.marshaller(
                   com.google.protobuf.Empty.getDefaultInstance()))
@@ -62,6 +93,7 @@ public final class DaemonGrpc {
    * Creates a new async stub that supports all call types for the service
    */
   public static DaemonStub newStub(io.grpc.Channel channel) {
+    return new DaemonStub(channel);  /* Android Studio: b/176938468
     io.grpc.stub.AbstractStub.StubFactory<DaemonStub> factory =
       new io.grpc.stub.AbstractStub.StubFactory<DaemonStub>() {
         @java.lang.Override
@@ -70,6 +102,7 @@ public final class DaemonGrpc {
         }
       };
     return DaemonStub.newStub(factory, channel);
+    Android Studio: b/176938468 */
   }
 
   /**
@@ -77,6 +110,7 @@ public final class DaemonGrpc {
    */
   public static DaemonBlockingStub newBlockingStub(
       io.grpc.Channel channel) {
+    return new DaemonBlockingStub(channel);  /* Android Studio: b/176938468
     io.grpc.stub.AbstractStub.StubFactory<DaemonBlockingStub> factory =
       new io.grpc.stub.AbstractStub.StubFactory<DaemonBlockingStub>() {
         @java.lang.Override
@@ -85,6 +119,7 @@ public final class DaemonGrpc {
         }
       };
     return DaemonBlockingStub.newStub(factory, channel);
+    Android Studio: b/176938468 */
   }
 
   /**
@@ -92,6 +127,7 @@ public final class DaemonGrpc {
    */
   public static DaemonFutureStub newFutureStub(
       io.grpc.Channel channel) {
+    return new DaemonFutureStub(channel);  /* Android Studio: b/176938468
     io.grpc.stub.AbstractStub.StubFactory<DaemonFutureStub> factory =
       new io.grpc.stub.AbstractStub.StubFactory<DaemonFutureStub>() {
         @java.lang.Override
@@ -100,11 +136,19 @@ public final class DaemonGrpc {
         }
       };
     return DaemonFutureStub.newStub(factory, channel);
+    Android Studio: b/176938468 */
   }
 
   /**
    */
   public static abstract class DaemonImplBase implements io.grpc.BindableService {
+
+    /**
+     */
+    public void adjustQuota(com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest request,
+        io.grpc.stub.StreamObserver<com.google.protobuf.Empty> responseObserver) {
+      asyncUnimplementedUnaryCall(getAdjustQuotaMethod(), responseObserver);
+    }
 
     /**
      */
@@ -115,6 +159,13 @@ public final class DaemonGrpc {
 
     @java.lang.Override public final io.grpc.ServerServiceDefinition bindService() {
       return io.grpc.ServerServiceDefinition.builder(getServiceDescriptor())
+          .addMethod(
+            getAdjustQuotaMethod(),
+            asyncUnaryCall(
+              new MethodHandlers<
+                com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest,
+                com.google.protobuf.Empty>(
+                  this, METHODID_ADJUST_QUOTA)))
           .addMethod(
             getShutdownMethod(),
             asyncUnaryCall(
@@ -128,7 +179,12 @@ public final class DaemonGrpc {
 
   /**
    */
-  public static final class DaemonStub extends io.grpc.stub.AbstractAsyncStub<DaemonStub> {
+  // Android Studio: b/176938468
+  public static final class DaemonStub extends io.grpc.stub.AbstractStub<DaemonStub> {
+    private DaemonStub(io.grpc.Channel channel) {
+      super(channel);
+    }
+
     private DaemonStub(
         io.grpc.Channel channel, io.grpc.CallOptions callOptions) {
       super(channel, callOptions);
@@ -142,6 +198,14 @@ public final class DaemonGrpc {
 
     /**
      */
+    public void adjustQuota(com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest request,
+        io.grpc.stub.StreamObserver<com.google.protobuf.Empty> responseObserver) {
+      asyncUnaryCall(
+          getChannel().newCall(getAdjustQuotaMethod(), getCallOptions()), request, responseObserver);
+    }
+
+    /**
+     */
     public void shutdown(com.google.protobuf.Empty request,
         io.grpc.stub.StreamObserver<com.google.protobuf.Empty> responseObserver) {
       asyncUnaryCall(
@@ -151,7 +215,12 @@ public final class DaemonGrpc {
 
   /**
    */
-  public static final class DaemonBlockingStub extends io.grpc.stub.AbstractBlockingStub<DaemonBlockingStub> {
+  // Android Studio: b/176938468
+  public static final class DaemonBlockingStub extends io.grpc.stub.AbstractStub<DaemonBlockingStub> {
+    private DaemonBlockingStub(io.grpc.Channel channel) {
+      super(channel);
+    }
+
     private DaemonBlockingStub(
         io.grpc.Channel channel, io.grpc.CallOptions callOptions) {
       super(channel, callOptions);
@@ -165,6 +234,13 @@ public final class DaemonGrpc {
 
     /**
      */
+    public com.google.protobuf.Empty adjustQuota(com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest request) {
+      return blockingUnaryCall(
+          getChannel(), getAdjustQuotaMethod(), getCallOptions(), request);
+    }
+
+    /**
+     */
     public com.google.protobuf.Empty shutdown(com.google.protobuf.Empty request) {
       return blockingUnaryCall(
           getChannel(), getShutdownMethod(), getCallOptions(), request);
@@ -173,7 +249,12 @@ public final class DaemonGrpc {
 
   /**
    */
-  public static final class DaemonFutureStub extends io.grpc.stub.AbstractFutureStub<DaemonFutureStub> {
+  // Android Studio: b/176938468
+  public static final class DaemonFutureStub extends io.grpc.stub.AbstractStub<DaemonFutureStub> {
+    private DaemonFutureStub(io.grpc.Channel channel) {
+      super(channel);
+    }
+
     private DaemonFutureStub(
         io.grpc.Channel channel, io.grpc.CallOptions callOptions) {
       super(channel, callOptions);
@@ -187,6 +268,14 @@ public final class DaemonGrpc {
 
     /**
      */
+    public com.google.common.util.concurrent.ListenableFuture<com.google.protobuf.Empty> adjustQuota(
+        com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest request) {
+      return futureUnaryCall(
+          getChannel().newCall(getAdjustQuotaMethod(), getCallOptions()), request);
+    }
+
+    /**
+     */
     public com.google.common.util.concurrent.ListenableFuture<com.google.protobuf.Empty> shutdown(
         com.google.protobuf.Empty request) {
       return futureUnaryCall(
@@ -194,7 +283,8 @@ public final class DaemonGrpc {
     }
   }
 
-  private static final int METHODID_SHUTDOWN = 0;
+  private static final int METHODID_ADJUST_QUOTA = 0;
+  private static final int METHODID_SHUTDOWN = 1;
 
   private static final class MethodHandlers<Req, Resp> implements
       io.grpc.stub.ServerCalls.UnaryMethod<Req, Resp>,
@@ -213,6 +303,10 @@ public final class DaemonGrpc {
     @java.lang.SuppressWarnings("unchecked")
     public void invoke(Req request, io.grpc.stub.StreamObserver<Resp> responseObserver) {
       switch (methodId) {
+        case METHODID_ADJUST_QUOTA:
+          serviceImpl.adjustQuota((com.intellij.execution.process.mediator.rpc.AdjustQuotaRequest) request,
+              (io.grpc.stub.StreamObserver<com.google.protobuf.Empty>) responseObserver);
+          break;
         case METHODID_SHUTDOWN:
           serviceImpl.shutdown((com.google.protobuf.Empty) request,
               (io.grpc.stub.StreamObserver<com.google.protobuf.Empty>) responseObserver);
@@ -278,6 +372,7 @@ public final class DaemonGrpc {
         if (result == null) {
           serviceDescriptor = result = io.grpc.ServiceDescriptor.newBuilder(SERVICE_NAME)
               .setSchemaDescriptor(new DaemonFileDescriptorSupplier())
+              .addMethod(getAdjustQuotaMethod())
               .addMethod(getShutdownMethod())
               .build();
         }

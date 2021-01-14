@@ -4,6 +4,7 @@ package com.intellij.ide.actions.ui;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.HelpTooltip;
+import com.intellij.ide.actions.OpenInRightSplitAction;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.util.Condition;
@@ -18,7 +19,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
@@ -34,7 +34,16 @@ public class JBListWithOpenInRightSplit<T> extends JBList<T> {
   @NotNull
   public static <T> JBList<T> createListWithOpenInRightSplitter(@NotNull ListModel<T> dataModel,
                                                                 @Nullable Condition<? super T> checkRightSplitter) {
-    return Registry.is("lists.use.open.in.right.splitter") ? new JBListWithOpenInRightSplit<>(dataModel, checkRightSplitter) : new JBList<>(dataModel);
+    return createListWithOpenInRightSplitter(dataModel, checkRightSplitter, false);
+  }
+
+  @NotNull
+  public static <T> JBList<T> createListWithOpenInRightSplitter(@NotNull ListModel<T> dataModel,
+                                                                @Nullable Condition<? super T> checkRightSplitter,
+                                                                boolean showIconInVisibleArea) {
+    return Registry.is("lists.use.open.in.right.splitter")
+           ? new JBListWithOpenInRightSplit<>(dataModel, checkRightSplitter, showIconInVisibleArea)
+           : new JBList<>(dataModel);
   }
 
   private class JBFileMouseHandler extends MouseAdapter {
@@ -70,8 +79,7 @@ public class JBListWithOpenInRightSplit<T> extends JBList<T> {
       int index = locationToIndex(point);
       
       //alt + click is "OpenInRightSplit", or click the icon
-      if ((e.getModifiersEx() & InputEvent.ALT_DOWN_MASK) != 0 ||
-          index != -1 && getIconRectangle(index).contains(point)) {
+      if (index != -1 && getIconRectangle(index).contains(point)) {
         invokeAction();
         e.consume();
       }
@@ -93,10 +101,12 @@ public class JBListWithOpenInRightSplit<T> extends JBList<T> {
   private final HelpTooltip myTooltip;
   @Nullable
   private final Condition<? super T> myCheckRightSplitter;
+  private final boolean myShowIconInVisibleArea;
 
-  public JBListWithOpenInRightSplit(@NotNull ListModel<T> dataModel, @Nullable Condition<? super T> checkRightSplitter) {
+  public JBListWithOpenInRightSplit(@NotNull ListModel<T> dataModel, @Nullable Condition<? super T> checkRightSplitter, boolean showIconInVisibleArea) {
     super(dataModel);
     myCheckRightSplitter = checkRightSplitter;
+    myShowIconInVisibleArea = showIconInVisibleArea;
     JBFileMouseHandler handler = new JBFileMouseHandler();
 
     AnAction action = ActionManager.getInstance().getAction(getActionId());
@@ -111,9 +121,14 @@ public class JBListWithOpenInRightSplit<T> extends JBList<T> {
     else {
       myTooltip = null;
     }
+    if (action != null) {
+      OpenInRightSplitAction.Companion.overrideDoubleClickWithOneClick(this);
+    }
+
     addMouseListener(handler);
     addMouseMotionListener(handler);
   }
+
 
   @Override
   public void repaint(long tm, int x, int y, int width, int height) {
@@ -161,9 +176,14 @@ public class JBListWithOpenInRightSplit<T> extends JBList<T> {
 
   @NotNull
   protected Rectangle getIconRectangle(int index) {
-    final Rectangle bounds = getCellBounds(index, index);
+    Rectangle bounds = getCellBounds(index, index);
+    if (myShowIconInVisibleArea) {
+      Rectangle visibleRect = getVisibleRect();
+      visibleRect.setSize(visibleRect.width - getInsets().right, visibleRect.height);
+      bounds = bounds.intersection(visibleRect);
+    }
     Icon icon = toSize(getIcon());
-    return new Rectangle(bounds.width - icon.getIconWidth(),
+    return new Rectangle(((int) bounds.getMaxX()) - icon.getIconWidth(),
                          bounds.y + (bounds.height - icon.getIconHeight()) / 2,
                          icon.getIconWidth(), icon.getIconHeight());
   }

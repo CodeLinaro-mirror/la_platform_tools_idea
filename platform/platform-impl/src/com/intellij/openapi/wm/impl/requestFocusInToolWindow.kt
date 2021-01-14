@@ -45,7 +45,7 @@ internal class FocusTask(private val toolWindow: ToolWindowImpl) : Runnable {
 }
 
 private fun bringOwnerToFront(toolWindow: ToolWindowImpl) {
-  val owner = SwingUtilities.getWindowAncestor(toolWindow.component)
+  val owner = SwingUtilities.getWindowAncestor(toolWindow.component) ?: return
   val activeFrame = KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow
   if (activeFrame != null && activeFrame !== owner) {
     owner.toFront()
@@ -70,6 +70,9 @@ internal fun getShowingComponentToRequestFocus(toolWindow: ToolWindowImpl): Comp
   }
 
   val component: Component? = toolWindow.toolWindowManager.focusManager.getFocusTargetFor(container)
+  if (component == null && container.isFocusable) {
+    return container
+  }
   if (component == null || !component.isShowing) {
     LOG.debug { " tool window ${toolWindow.id} default component is hidden: $container" }
     return null

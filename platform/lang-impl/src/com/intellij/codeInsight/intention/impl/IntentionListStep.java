@@ -21,7 +21,6 @@ import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiUtilBase;
-import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -119,17 +118,15 @@ public class IntentionListStep implements ListPopupStep<IntentionActionWithTextC
         return;
       }
 
-      Runnable runnable = () -> {
-        ShowIntentionActionsHandler.chooseActionAndInvoke(file, myEditor, cachedAction.getAction(), cachedAction.getText(), myProject);
-      };
       Component focusable = myEditor == null ? null : myEditor.getContentComponent();
       if (focusable != null) {
-        IdeFocusManager manager = IdeFocusManager.getInstance(myProject);
-        manager.requestFocus(focusable, true).doWhenDone(() -> manager.doWhenFocusSettlesDown(runnable));
+        focusable.requestFocus();
       }
-      else {
-        runnable.run();
-      }
+      // hack until doWhenFocusSettlesDown will work as expected
+      ApplicationManager.getApplication().invokeLater(() -> {
+        IdeFocusManager.getInstance(myProject).doWhenFocusSettlesDown(() ->
+          ShowIntentionActionsHandler.chooseActionAndInvoke(file, myEditor, cachedAction.getAction(), cachedAction.getText(), myProject));
+      });
     };
   }
 

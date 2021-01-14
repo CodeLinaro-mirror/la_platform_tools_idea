@@ -8,7 +8,6 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.plugins.*;
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
-import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
@@ -874,13 +873,10 @@ public class PluginDetailsPageComponent extends MultiPanel {
     }
 
     @Override
-    public void update(@NotNull AnActionEvent e) {
-      PluginEnabledState state = myPluginModel.getState(myPlugin);
-
-      boolean invisible = myNewState == state ||
-                          myNewState.isPerProject() && (myRequiresRestart || e.getProject() == null) ||
-                          !myNewState.isEnabled() && myPluginIsRequired;
-      e.getPresentation().setVisible(!invisible);
+    protected boolean isInvisible(@NotNull PluginEnabledState oldState) {
+      return super.isInvisible(oldState) ||
+             myNewState.isPerProject() && myRequiresRestart ||
+             !myNewState.isEnabled() && myPluginIsRequired;
     }
   }
 
