@@ -1684,28 +1684,6 @@ java_library(
 
 # managed by go/iml_to_build
 java_library(
-    name = "kotlin-plugin-test",
-    visibility = ["//visibility:public"],
-    # do not sort: must match IML order
-    exports = [
-        "//prebuilts/tools/common/android-kotlin:android-extensions-compiler-tests",
-        "//prebuilts/tools/common/android-kotlin:idea-gradle-tests",
-        "//prebuilts/tools/common/android-kotlin:idea-test-framework-tests",
-        "//prebuilts/tools/common/android-kotlin:idea-tests",
-        "//prebuilts/tools/common/android-kotlin:tests-common-tests",
-    ],
-    # do not sort: must match IML order
-    runtime_deps = [
-        "//prebuilts/tools/common/android-kotlin:android-extensions-compiler-tests",
-        "//prebuilts/tools/common/android-kotlin:idea-gradle-tests",
-        "//prebuilts/tools/common/android-kotlin:idea-test-framework-tests",
-        "//prebuilts/tools/common/android-kotlin:idea-tests",
-        "//prebuilts/tools/common/android-kotlin:tests-common-tests",
-    ],
-)
-
-# managed by go/iml_to_build
-java_library(
     name = "error-prone-annotations",
     visibility = ["//visibility:public"],
     exports = ["//prebuilts/tools/common/m2/repository/com/google/errorprone/error_prone_annotations/2.3.1:jar"],
