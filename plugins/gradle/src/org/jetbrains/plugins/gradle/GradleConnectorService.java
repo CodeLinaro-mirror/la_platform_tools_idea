@@ -57,7 +57,7 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 @Service
-public class GradleConnectorService implements Disposable {
+public final class GradleConnectorService implements Disposable {
   private static final Logger LOG = Logger.getInstance(GradleConnectorService.class);
 
   /** disable stop IDLE Gradle daemons on IDE project close. Applicable for Gradle versions w/o disconnect support (older than 6.5). */
@@ -105,7 +105,7 @@ public class GradleConnectorService implements Disposable {
     ExternalSystemTaskNotificationListener listener,
     CancellationToken cancellationToken) {
     return connectorsMap.compute(connectorParams.projectPath, (key, conn) -> {
-      if (connectorParams == conn.params) {
+      if (connectorParams == (conn == null ? null : conn.params)) {
         return conn;
       }
       GradleConnector newConnector = createConnector(connectorParams);
