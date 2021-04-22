@@ -58,7 +58,6 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "intellij.vcs.changeReminder",
     "intellij.filePrediction",
     "intellij.webp",
-    "intellij.lombok"
     /* Disabled in Android Studio
     "intellij.android.plugin",
     "intellij.android.smali",
@@ -69,6 +68,7 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "intellij.gradle.java.maven",
     "intellij.grazie",
     "intellij.javaFX.community",
+    "intellij.lombok"
     "intellij.markdown"
     "intellij.maven",
     "intellij.java.guiForms.designer",
@@ -144,7 +144,6 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
 
         //this library is placed into subdirectory of 'lib' directory in Android plugin layout so we need to exclude it from the platform layout explicitly
         withoutProjectLibrary("layoutlib")
-        withoutProjectLibrary("kotlin-plugin") // Android Studio: we already copy Kotlin from prebuilts.
       }
     } as Consumer<PlatformLayout>
 
