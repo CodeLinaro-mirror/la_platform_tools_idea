@@ -16,11 +16,11 @@
 <component xmlns="http://jetbrains.org/intellij/schema/application-info"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
            xsi:schemaLocation="http://jetbrains.org/intellij/schema/application-info http://jetbrains.org/intellij/schema/ApplicationInfo.xsd">
-  <version major="2020" minor="3" micro="0" patch="15" full="{0}.{1} Canary {3}" eap="true"/>
+  <version major="2020" minor="3" micro="0" patch="0" full="dev build" eap="true"/>
   <company name="Google" url="http://developer.android.com"/>
   <build number="AI-__BUILD__" date="__BUILD_DATE__"/>
   <logo url="/artwork/studio_splash.png" textcolor="cccccc" progressColor="d7effe" progressY="397" progressHeight="3" />
-  <about url="/artwork/studio_about.png" foreground="cccccc"/>
+  <about url="/artwork/studio_about.png" foreground="073042"/>
   <icon svg="/artwork/androidstudio.svg" svg-small="/artwork/androidstudio-small.svg" ico="artwork/androidstudio.ico"/>
   <icon-eap svg="/artwork/preview/androidstudio.svg" svg-small="/artwork/preview/androidstudio-small.svg"/>
   <package code="AI"/> <!-- used only in adrt -->
@@ -42,6 +42,7 @@
   <whatsnew url="https://developer.android.com/r/studio-ui/menu-whats-new.html"/>
   <keymap win="https://www.jetbrains.com/idea/docs/IntelliJIDEA_ReferenceCard.pdf"
           mac="https://www.jetbrains.com/idea/docs/IntelliJIDEA_ReferenceCard_Mac.pdf"/>
+  <jetbrains-tv url="https://www.youtube.com/c/AndroidDevelopers"/>
 
   <!--
   Temporarily disabled: There is a bug in IDEA which prevents having a single plugins page extension.
