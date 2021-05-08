@@ -84,7 +84,13 @@ public final class AboutPopup {
     ApplicationInfoEx appInfo = (ApplicationInfoEx)ApplicationInfo.getInstance();
 
     final PopupPanel panel = new PopupPanel(new BorderLayout());
-    Icon image = IconLoader.getIcon(appInfo.getAboutImageUrl(), AboutPopup.class);
+
+    // Android Studio: inject custom splash screen
+    String aboutUrl = appInfo.getAboutImageUrl();
+    if (SystemInfo.isMac && SystemInfo.isArm64) {
+      aboutUrl = aboutUrl.replace(".png", "_arm64.png");
+    }
+    Icon image = IconLoader.getIcon(aboutUrl, AboutPopup.class);
     if (appInfo.showLicenseeInfo()) {
       final InfoSurface infoSurface = new InfoSurface(image, showDebugInfo);
       infoSurface.setPreferredSize(new Dimension(image.getIconWidth(), image.getIconHeight()));
