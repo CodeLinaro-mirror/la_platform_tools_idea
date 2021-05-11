@@ -6,6 +6,7 @@ import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.ui.scale.JBUIScale;
@@ -62,7 +63,13 @@ public final class Splash extends Window {
 
     setFocusableWindowState(false);
 
-    myImage = loadImage(info.getSplashImageUrl(), info);
+    // Android Studio: inject custom splash screen
+    String splashUrl = info.getSplashImageUrl();
+    if (SystemInfo.isMac && SystemInfo.isArm64) {
+      splashUrl = splashUrl.replace(".png", "_arm64.png");
+    }
+
+    myImage = loadImage(splashUrl, info);
     myWidth = myImage.getWidth(null);
     myHeight = myImage.getHeight(null);
     long rgba = info.getProgressColor();
