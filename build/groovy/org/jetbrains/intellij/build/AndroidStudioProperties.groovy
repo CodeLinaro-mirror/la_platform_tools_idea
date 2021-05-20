@@ -17,6 +17,7 @@ package org.jetbrains.intellij.build
 
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
+import java.nio.file.Path
 import org.jetbrains.intellij.build.impl.PluginLayout
 
 import static org.jetbrains.intellij.build.impl.PluginLayout.plugin
@@ -101,7 +102,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         withModule("intellij.cidr.modulemap.language", mainJarName)
       },
     ]
-    productLayout.classesLoadingOrderFilePath = "$home/build/order.txt"
   }
 
   @Override
@@ -186,7 +186,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
 
       @Override
       @CompileDynamic
-      void copyAdditionalFiles(BuildContext context, String targetDirectory) {
+      void copyAdditionalFiles(BuildContext context, Path targetDirectory) {
         def root = "$context.paths.communityHome/../.."
 
         context.ant.copy(todir: "$targetDirectory/plugins/c-plugin/bin/clang/linux") {
