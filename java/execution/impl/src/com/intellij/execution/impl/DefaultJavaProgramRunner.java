@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.impl;
 
 import com.intellij.debugger.engine.JavaDebugProcess;
@@ -6,12 +6,8 @@ import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.impl.attach.JavaDebuggerAttachUtil;
 import com.intellij.debugger.impl.attach.PidRemoteConnection;
 import com.intellij.debugger.settings.DebuggerSettings;
-import com.intellij.execution.ExecutionBundle;
-import com.intellij.execution.ExecutionException;
-import com.intellij.execution.ExecutionManager;
-import com.intellij.execution.ExecutionResult;
+import com.intellij.execution.*;
 import com.intellij.execution.configurations.*;
-import com.intellij.execution.executors.DefaultDebugExecutor;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.process.*;
 import com.intellij.execution.runners.*;
@@ -43,6 +39,7 @@ import com.intellij.unscramble.ThreadDumpConsoleFactory;
 import com.intellij.unscramble.ThreadDumpParser;
 import com.intellij.unscramble.ThreadState;
 import com.intellij.util.ArrayUtil;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.messages.MessageBusConnection;
@@ -112,9 +109,9 @@ public class DefaultJavaProgramRunner implements JvmPatchableProgramRunner<Runne
       });
     }
     else {
-      executionManager.startRunProfile(environment, currentState, (ignored) -> {
+      executionManager.startRunProfile(environment, currentState, (ignored) -> SlowOperations.allowSlowOperations(() -> {
         return doExecute(currentState, environment);
-      });
+      }));
     }
   }
 
@@ -173,10 +170,8 @@ public class DefaultJavaProgramRunner implements JvmPatchableProgramRunner<Runne
    * supported for execution on targets other than the local machine.
    */
   private static boolean isExecutorSupportedOnTarget(@NotNull ExecutionEnvironment env) {
-    String executorId = env.getExecutor().getId();
-    return env.getTargetEnvironmentFactory() instanceof LocalTargetEnvironmentFactory
-           || DefaultDebugExecutor.EXECUTOR_ID.equalsIgnoreCase(executorId)
-           || DefaultRunExecutor.EXECUTOR_ID.equalsIgnoreCase(executorId);
+    Executor executor = env.getExecutor();
+    return env.getTargetEnvironmentFactory() instanceof LocalTargetEnvironmentFactory || executor.isSupportedOnTarget();
   }
 
   private @Nullable RunContentDescriptor executeJavaState(@NotNull RunProfileState state,

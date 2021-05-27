@@ -407,7 +407,7 @@ public class PluginDetailsPageComponent extends MultiPanel {
 
     StyleSheet sheet = kit.getStyleSheet();
     sheet.addRule("ul { margin-left-ltr: 30; margin-right-rtl: 30; }");
-    sheet.addRule("a { color: " + ColorUtil.toHtmlColor(JBUI.CurrentTheme.Link.linkColor()) + "; }");
+    sheet.addRule("a { color: " + ColorUtil.toHtmlColor(JBUI.CurrentTheme.Link.Foreground.ENABLED) + "; }");
     sheet.addRule("h4 { font-weight: bold; }");
     sheet.addRule("strong { font-weight: bold; }");
     sheet.addRule("p { margin-bottom: 6px; }");
@@ -866,22 +866,19 @@ public class PluginDetailsPageComponent extends MultiPanel {
   }
 
   private @NotNull SelectionBasedPluginModelAction.EnableDisableAction<PluginDetailsPageComponent> createEnableDisableAction(@NotNull PluginEnableDisableAction action) {
-    return new SelectionBasedPluginModelAction.EnableDisableAction<>(
-      null,
-      myPluginModel,
-      action,
-      List.of(this),
-      PluginDetailsPageComponent::getPlugin
-    );
+    return new SelectionBasedPluginModelAction.EnableDisableAction<>(myPluginModel,
+                                                                     action,
+                                                                     false,
+                                                                     List.of(this),
+                                                                     PluginDetailsPageComponent::getPlugin);
   }
 
   private @NotNull SelectionBasedPluginModelAction.UninstallAction<PluginDetailsPageComponent> createUninstallAction() {
-    return new SelectionBasedPluginModelAction.UninstallAction<>(
-      null,
-      myPluginModel,
-      this,
-      List.of(this),
-      PluginDetailsPageComponent::getPlugin
+    return new SelectionBasedPluginModelAction.UninstallAction<>(myPluginModel,
+                                                                 false,
+                                                                 this,
+                                                                 List.of(this),
+                                                                 PluginDetailsPageComponent::getPlugin
     );
   }
 }

@@ -5,10 +5,13 @@ import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.ThrowableComputable;
-import com.intellij.openapi.util.io.*;
+import com.intellij.openapi.util.io.ByteArraySequence;
+import com.intellij.openapi.util.io.FileAttributes;
+import com.intellij.openapi.util.io.FileSystemUtil;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileSystem;
 import com.intellij.openapi.vfs.impl.ZipHandlerBase;
 import com.intellij.openapi.vfs.impl.local.LocalFileSystemImpl;
 import com.intellij.openapi.vfs.newvfs.FileAttribute;
@@ -16,23 +19,30 @@ import com.intellij.openapi.vfs.newvfs.events.ChildInfo;
 import com.intellij.openapi.vfs.newvfs.impl.FileNameCache;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualDirectoryImpl;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualFileSystemEntry;
-import com.intellij.util.*;
+import com.intellij.util.ExceptionUtil;
+import com.intellij.util.SystemProperties;
+import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.ConcurrentIntObjectMap;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.io.DataInputOutputUtil;
 import com.intellij.util.io.DataOutputStream;
-import com.intellij.util.io.*;
+import com.intellij.util.io.IOUtil;
+import com.intellij.util.io.PersistentHashMapValueStorage;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.*;
 
-import java.io.*;
-import java.util.*;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 
 @ApiStatus.Internal
 public final class FSRecords {
-  private static final Logger LOG = Logger.getInstance(FSRecords.class);
+
+  static final Logger LOG = Logger.getInstance(FSRecords.class);
 
   public static final boolean useContentHashes = SystemProperties.getBooleanProperty("idea.share.contents", true);
   static final boolean backgroundVfsFlush = SystemProperties.getBooleanProperty("idea.background.vfs.flush", true);
@@ -220,8 +230,17 @@ public final class FSRecords {
     return readAndHandleErrors(() -> ourTreeAccessor.wereChildrenAccessed(id, ourConnection));
   }
 
-  static <T> T readAndHandleErrors(@NotNull ThrowableComputable<T, ?> action) {
-    assert lock.getReadHoldCount() == 0; // otherwise DbConnection.handleError(e) (requires write lock) could fail
+  static <T> T readAndHandleErrors(@NotNull ThrowableComputable<T, ? extends Exception> action) {
+    // otherwise DbConnection.handleError(e) (requires write lock) could fail
+    if (lock.getReadHoldCount() != 0) {
+      try {
+        return action.compute();
+      }
+      catch (Exception ex) {
+        throw new RuntimeException(ex);
+      }
+    }
+
     r.lock();
     try {
       try {
@@ -280,7 +299,7 @@ public final class FSRecords {
   // If everything is still valid (i.e. no one changed the list in the meantime), commit.
   // Failing that, repeat pessimistically: retry converter inside write lock for fresh children and commit inside the same write lock
   @NotNull
-  static ListResult update(int parentId, @NotNull Function<? super ListResult, ? extends ListResult> childrenConvertor) {
+  static ListResult update(@NotNull VirtualFile parent, int parentId, @NotNull Function<? super ListResult, ? extends ListResult> childrenConvertor) {
     assert parentId > 0: parentId;
     ListResult children = list(parentId);
     ListResult result = childrenConvertor.apply(children);
@@ -299,7 +318,10 @@ public final class FSRecords {
       // optimization: when converter returned unchanged children (see e.g. PersistentFSImpl.findChildInfo())
       // then do not save them back again unnecessarily
       if (!toSave.equals(children)) {
-        updateSymlinksForNewChildren(parentId, children, toSave);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Update children for " + parent + " (id = " + parentId + "); old = " + children + ", new = " + toSave);
+        }
+        updateSymlinksForNewChildren(parent, children, toSave);
         ourTreeAccessor.doSaveChildren(parentId, toSave, ourConnection);
       }
       return toSave;
@@ -318,27 +340,27 @@ public final class FSRecords {
     }
   }
 
-  private static void updateSymlinksForNewChildren(int parentId, @NotNull ListResult oldChildren, @NotNull ListResult newChildren) {
+  private static void updateSymlinksForNewChildren(@NotNull VirtualFile parent,
+                                                   @NotNull ListResult oldChildren,
+                                                   @NotNull ListResult newChildren) {
     // find children which are added to the list and call updateSymlinkInfoForNewChild() on them (once)
     ContainerUtil.processSortedListsInOrder(oldChildren.children, newChildren.children, Comparator.comparingInt(ChildInfo::getId), true,
                                             (childInfo, isOldInfo) -> {
                                               if (!isOldInfo) {
-                                                updateSymlinkInfoForNewChild(parentId, childInfo);
+                                                updateSymlinkInfoForNewChild(parent, childInfo);
                                               }
                                             });
   }
 
-  private static void updateSymlinkInfoForNewChild(int parentId, @NotNull ChildInfo info) {
+  private static void updateSymlinkInfoForNewChild(@NotNull VirtualFile parent, @NotNull ChildInfo info) {
     int attributes = info.getFileAttributeFlags();
     if (attributes != -1 && PersistentFS.isSymLink(attributes)) {
       int id = info.getId();
       String symlinkTarget = info.getSymlinkTarget();
       storeSymlinkTarget(id, symlinkTarget);
       CharSequence name = info.getName();
-      LocalFileSystem fs = LocalFileSystem.getInstance();
+      VirtualFileSystem fs = parent.getFileSystem();
       if (fs instanceof LocalFileSystemImpl) {
-        VirtualFile parent = PersistentFS.getInstance().findFileById(parentId);
-        assert parent != null : parentId + '/' + id + ": " + name + " -> " + symlinkTarget;
         String linkPath = parent.getPath() + '/' + name;
         ((LocalFileSystemImpl)fs).symlinkUpdated(id, parent, name, linkPath, symlinkTarget);
       }
@@ -391,7 +413,7 @@ public final class FSRecords {
 
   @Nullable
   static VirtualFileSystemEntry findFileById(int id, @NotNull ConcurrentIntObjectMap<VirtualFileSystemEntry> idToDirCache) {
-    class ParentFinder implements ThrowableComputable<Void, Throwable> {
+    class ParentFinder implements ThrowableComputable<Void, Exception> {
       @Nullable private IntList path;
       private VirtualFileSystemEntry foundParent;
 

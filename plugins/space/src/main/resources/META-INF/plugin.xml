@@ -20,19 +20,20 @@
     <applicationService serviceImplementation="com.intellij.space.settings.SpaceSettings"/>
 
     <applicationConfigurable
+      id="settings.space"
       groupId="tools"
       groupWeight="239"
       key="configurable.name"
       instance="com.intellij.space.settings.SpaceSettingsPanel"/>
 
     <toolWindow id="Space Automation"
-                icon="SpaceIcons.MainToolwindow"
+                icon="SpaceIcons.SpaceToolWindow"
                 anchor="right"
                 canCloseContents="true"
                 factoryClass="com.intellij.space.tools.SpaceToolWindowFactory"/>
 
     <toolWindow id="Space Code Reviews"
-                icon="SpaceIcons.MainToolwindow"
+                icon="SpaceIcons.SpaceToolWindow"
                 anchor="left"
                 canCloseContents="true"
                 doNotActivateOnStart="true"
@@ -64,6 +65,9 @@
     />
 
     <statistics.notificationIdsHolder implementation="com.intellij.space.notification.SpaceNotificationIdsHolder"/>
+
+    <virtualFileSystem key="space-diff" implementationClass="com.intellij.space.editor.SpaceDiffComplexPathVirtualFileSystem"/>
+    <virtualFileSystem key="space-chat" implementationClass="com.intellij.space.editor.SpaceChatComplexPathVirtualFileSystem"/>
   </extensions>
 
   <actions>
@@ -71,9 +75,17 @@
       <separator/>
       <action id="com.intellij.space.actions.SpaceMainToolBarAction"
               class="com.intellij.space.actions.SpaceMainToolBarAction"
-              icon="SpaceIcons.MainToolwindow">
+              icon="SpaceIcons.SpaceToolWindow">
       </action>
       <add-to-group group-id="NavBarToolBar" anchor="last"/>
+      <add-to-group group-id="MainToolBar" anchor="last"/>
+    </group>
+
+    <group id="Internal.Space" internal="true" popup="true">
+      <action internal="true"
+              class="com.intellij.space.actions.internal.SpaceReceivedPacketsAction"
+              id="com.intellij.space.actions.internal.SpaceReceivedPacketsAction"/>
+      <add-to-group group-id="Internal" anchor="last"/>
     </group>
 
 
@@ -101,15 +113,29 @@
       <reference id="com.intellij.space.actions.SpaceLogoutAction"/>
     </group>
 
-    <group id="com.intellij.space.vcs.SpaceVcsOpenInBrowserActionGroup"
-           class="com.intellij.space.vcs.SpaceVcsOpenInBrowserActionGroup">
-      <add-to-group group-id="EditorPopupMenu"/>
-      <add-to-group group-id="ProjectViewPopupMenu"/>
-      <add-to-group group-id="EditorTabPopupMenu"/>
+    <action id="com.intellij.space.vcs.SpaceVcsOpenInBrowserActionGroup"
+            class="com.intellij.space.vcs.SpaceVcsOpenInBrowserActionGroup">
+      <override-text place="EditorTabPopup"/>
+      <override-text place="ProjectViewPopup" use-text-of-place="EditorTabPopup"/>
+      <override-text place="EditorPopup" use-text-of-place="EditorTabPopup"/>
+      <override-text place="FavoritesPopup" use-text-of-place="EditorTabPopup"/>
+      <add-to-group group-id="RevealGroup"/>
       <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
       <add-to-group group-id="VcsHistoryActionsGroup" anchor="last"/>
       <add-to-group group-id="VcsHistoryActionsGroup.Toolbar"/>
-    </group>
+      <add-to-group group-id="VcsSelectionHistoryDialog.Popup" anchor="last"/>
+    </action>
+
+    <action id="com.intellij.space.vcs.SpaceCopyLinkActionGroup"
+            class="com.intellij.space.vcs.SpaceCopyLinkActionGroup">
+      <add-to-group group-id="Copy.Paste.Special" relative-to-action="CopyReference" anchor="after"/>
+      <add-to-group group-id="CopyExternalReferenceGroup" anchor="last"/>
+      <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
+      <add-to-group group-id="VcsHistoryActionsGroup" anchor="last"/>
+      <add-to-group group-id="VcsHistoryActionsGroup.Toolbar"/>
+      <add-to-group group-id="VcsSelectionHistoryDialog.Popup" anchor="last"/>
+    </action>
+
     <action id="com.intellij.space.vcs.share.SpaceShareProjectAction"
             class="com.intellij.space.vcs.share.SpaceShareProjectAction">
       <add-to-group group-id="SpaceGroup" anchor="first"/>
@@ -127,8 +153,13 @@
       <separator/>
       <action id="com.intellij.space.vcs.review.list.SpaceReviewAuthorActionGroup"
               class="com.intellij.space.vcs.review.list.SpaceReviewAuthorActionGroup"/>
-
     </group>
+
+    <action id="com.intellij.space.vcs.review.details.SpaceReviewCheckoutBranchAction"
+            class="com.intellij.space.vcs.review.details.SpaceReviewCheckoutBranchAction"/>
+
+    <action id="com.intellij.space.vcs.review.details.SpaceReviewUpdateBranchAction"
+            class="com.intellij.space.vcs.review.details.SpaceReviewUpdateBranchAction"/>
 
     <group id="space.review.changes.toolbar">
       <reference id="Diff.ShowDiff"/>
@@ -139,6 +170,7 @@
       <reference id="Diff.ShowDiff"/>
       <reference id="EditSource"/>
     </group>
+
   </actions>
 
   <resource-bundle>messages.SpaceBundle</resource-bundle>

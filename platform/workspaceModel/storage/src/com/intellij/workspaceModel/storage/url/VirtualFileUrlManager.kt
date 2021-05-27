@@ -8,6 +8,7 @@ interface VirtualFileUrlManager {
   companion object
   fun fromUrl(url: String): VirtualFileUrl
   fun fromPath(path: String): VirtualFileUrl
+  fun getSubtreeVirtualUrlsById(vfu: VirtualFileUrl): List<VirtualFileUrl>
   fun getParentVirtualUrl(vfu: VirtualFileUrl): VirtualFileUrl?
 }
 

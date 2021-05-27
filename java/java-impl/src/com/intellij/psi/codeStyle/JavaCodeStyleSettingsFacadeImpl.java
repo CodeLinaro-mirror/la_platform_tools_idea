@@ -18,22 +18,8 @@ public final class JavaCodeStyleSettingsFacadeImpl extends JavaCodeStyleSettings
   }
 
   @Override
-  public boolean isJavaDocLeadingAsterisksEnabled() {
-    return myManager.getCurrentSettings().getCustomSettings(JavaCodeStyleSettings.class).JD_LEADING_ASTERISKS_ARE_ENABLED;
-  }
-
-  @Override
-  public int getIndentSize() {
-    return myManager.getCurrentSettings().getIndentSize(JavaFileType.INSTANCE);
-  }
-
-  @Override
   public boolean isGenerateFinalParameters() {
     return myManager.getCurrentSettings().getCustomSettings(JavaCodeStyleSettings.class).GENERATE_FINAL_PARAMETERS;
   }
 
-  @Override
-  public boolean isGenerateFinalLocals() {
-    return myManager.getCurrentSettings().getCustomSettings(JavaCodeStyleSettings.class).GENERATE_FINAL_LOCALS;
-  }
 }

@@ -1,20 +1,23 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.jcef;
 
 import com.intellij.application.options.RegistryManager;
 import com.intellij.execution.Platform;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.IdeBundle;
-import com.intellij.notification.*;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationDisplayType;
+import com.intellij.notification.NotificationGroup;
+import com.intellij.notification.NotificationType;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.ui.JBColor;
 import com.intellij.util.ArrayUtil;
 import com.jetbrains.cef.JCefAppConfig;
 import com.jetbrains.cef.JCefVersionDetails;
@@ -24,17 +27,15 @@ import org.cef.CefSettings.LogSeverity;
 import org.cef.callback.CefSchemeHandlerFactory;
 import org.cef.callback.CefSchemeRegistrar;
 import org.cef.handler.CefAppHandlerAdapter;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.ApiStatus;
 
-import java.awt.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
@@ -49,13 +50,14 @@ import java.util.function.Function;
 public final class JBCefApp {
   private static final Logger LOG = Logger.getInstance(JBCefApp.class);
 
-  static final NotificationGroup NOTIFICATION_GROUP =
-    NotificationGroup.create("JCEF errors", NotificationDisplayType.BALLOON, true, null, null, null, null);
+  static final @NotNull NotNullLazyValue<NotificationGroup> NOTIFICATION_GROUP = NotNullLazyValue.createValue(() -> {
+    return NotificationGroup.create("JCEF errors", NotificationDisplayType.BALLOON, true, null, null, null, null);
+  });
 
   private static final String MISSING_LIBS_SUPPORT_URL = "https://intellij-support.jetbrains.com/hc/en-us/articles/360016421559";
 
   // [tav] todo: retrieve the version at compile time from the "jcef" maven lib
-  private static final int MIN_SUPPORTED_CEF_MAJOR_VERSION = 77;
+  private static final int MIN_SUPPORTED_CEF_MAJOR_VERSION = 87;
 
   @NotNull private final CefApp myCefApp;
 
@@ -107,7 +109,7 @@ public final class JBCefApp {
             }
             if (proc.waitFor() == 0 && missingLibs.length() > 0) {
               String msg = IdeBundle.message("notification.content.jcef.missingLibs", missingLibs);
-              Notification notification = NOTIFICATION_GROUP.
+              Notification notification = NOTIFICATION_GROUP.getValue().
                 createNotification(IdeBundle.message("notification.title.jcef.startFailure"), msg, NotificationType.ERROR, null);
               //noinspection DialogTitleCapitalization
               notification.addAction(new AnAction(IdeBundle.message("action.jcef.followInstructions")) {
@@ -131,8 +133,8 @@ public final class JBCefApp {
     settings.log_severity = getLogLevel();
     settings.log_file = System.getProperty("ide.browser.jcef.log.path",
       System.getProperty("user.home") + Platform.current().fileSeparator + "jcef_" + ProcessHandle.current().pid() + ".log");
-    Color bg = JBColor.background();
-    settings.background_color = settings.new ColorType(bg.getAlpha(), bg.getRed(), bg.getGreen(), bg.getBlue());
+    //todo[tav] IDEA-260446 & IDEA-260344 However, without proper background the CEF component flashes white in dark themes
+    //settings.background_color = settings.new ColorType(bg.getAlpha(), bg.getRed(), bg.getGreen(), bg.getBlue());
     int port = Registry.intValue("ide.browser.jcef.debug.port");
     if (ApplicationManager.getApplication().isInternal() && port > 0) {
       settings.remote_debugging_port = port;
@@ -142,7 +144,7 @@ public final class JBCefApp {
       .getProviders()
       .stream()
       .flatMap(p -> {
-        LOG.debug("got options: [" + p.getOptions().toString() + "] from:" + p.getClass().getName());
+        LOG.debug("got options: [" + p.getOptions() + "] from:" + p.getClass().getName());
         return p.getOptions().stream();
       })
       .distinct()
@@ -213,7 +215,7 @@ public final class JBCefApp {
     static JBCefApp init() {
       ourInitialized.set(true);
       JCefAppConfig config = null;
-      if (isSupported(true)) {
+      if (isSupported()) {
         try {
           config = JCefAppConfig.getInstance();
         }
@@ -241,15 +243,6 @@ public final class JBCefApp {
    * In order to assuredly meet the above requirements the IDE should run with a bundled JBR.
    */
   public static boolean isSupported() {
-    return isSupported(false);
-  }
-
-  private static boolean isJavaFXAlreadyInitialized() {
-    return Thread.getAllStackTraces().keySet().stream()
-      .anyMatch(t -> t.getName().startsWith("JavaFX Application Thread"));
-  }
-
-  private static boolean isSupported(boolean logging) {
     boolean testModeEnabled = RegistryManager.getInstance().is("ide.browser.jcef.testMode.enabled");
     if (ourSupported != null && !testModeEnabled) {
       return ourSupported.get();
@@ -263,9 +256,7 @@ public final class JBCefApp {
       }
       Function<String, Boolean> unsupported = (msg) -> {
         ourSupported = new AtomicBoolean(false);
-        if (logging) {
-          LOG.warn(msg + (!msg.contains("disabled") ? " (Use JBR bundled with the IDE)" : ""));
-        }
+        LOG.warn(msg + (!msg.contains("disabled") ? " (Use JBR bundled with the IDE)" : ""));
         return false;
       };
       // warn: do not change to Registry.is(), the method used at startup

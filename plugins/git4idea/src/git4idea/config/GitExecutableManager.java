@@ -1,9 +1,9 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.config;
 
 import com.intellij.execution.wsl.WSLDistribution;
 import com.intellij.execution.wsl.WSLUtil;
-import com.intellij.execution.wsl.WslDistributionManager;
+import com.intellij.execution.wsl.WslPath;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.diagnostic.Logger;
@@ -11,10 +11,7 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsContexts;
-import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.ThrowableComputable;
-import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.util.ThreeState;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
@@ -83,7 +80,7 @@ public class GitExecutableManager {
     GitCommandResult result = Git.getInstance().runCommand(handler);
     String rawResult = result.getOutputOrThrow();
     GitVersion version = GitVersion.parse(rawResult, type);
-    LOG.info("Git version for " + executable + ": " + version.toString());
+    LOG.info("Git version for " + executable + ": " + version);
     return version;
   }
 
@@ -115,15 +112,9 @@ public class GitExecutableManager {
 
   @NotNull
   public GitExecutable getExecutable(@NotNull String pathToGit) {
-    Pair<String, WSLDistribution> pair = WslDistributionManager.getInstance().parseWslPath(pathToGit);
-    if (pair != null) {
-      if (pair.second != null) {
-        return new GitExecutable.Wsl(pair.first, pair.second);
-      }
-      else {
-        return new GitExecutable.Unknown("wsl-unknown", pair.first,
-                                         GitBundle.message("git.executable.unknown.wsl.distribution.error.message"));
-      }
+    WslPath wslPath = WslPath.parseWindowsUncPath(pathToGit);
+    if (wslPath != null) {
+      return new GitExecutable.Wsl(wslPath.getLinuxPath(), wslPath.getDistribution());
     }
 
     return new GitExecutable.Local(pathToGit);
@@ -139,8 +130,7 @@ public class GitExecutableManager {
     String basePath = project.getBasePath();
     if (basePath == null) return null;
 
-    Pair<String, WSLDistribution> pair = WslDistributionManager.getInstance().parseWslPath(FileUtil.toSystemDependentName(basePath));
-    return pair != null ? pair.second : null;
+    return WslPath.getDistributionByWindowsUncPath(basePath);
   }
 
   @NotNull
@@ -214,13 +204,13 @@ public class GitExecutableManager {
         throw new ProcessCanceledException();
       }
       return version;
-    }, GitBundle.getString("git.executable.version.progress.title"), true, project);
+    }, GitBundle.message("git.executable.version.progress.title"), true, project);
   }
 
   @CalledInAny
   @Nullable
   public GitVersion tryGetVersion(@NotNull Project project) {
-    return runUnderProgressIfNeeded(project, GitBundle.getString("git.executable.version.progress.title"), () -> {
+    return runUnderProgressIfNeeded(project, GitBundle.message("git.executable.version.progress.title"), () -> {
       try {
         GitExecutable executable = getExecutable(project);
         return identifyVersion(executable);

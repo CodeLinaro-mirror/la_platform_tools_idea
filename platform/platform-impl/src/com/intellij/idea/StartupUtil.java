@@ -51,6 +51,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.io.BuiltInServer;
+import sun.awt.AWTAutoShutdown;
 
 import javax.swing.*;
 import java.awt.*;
@@ -92,7 +93,7 @@ public final class StartupUtil {
   }
 
   // called by the app after startup
-  public static synchronized void addExternalInstanceListener(@Nullable Function<List<String>, Future<CliResult>> processor) {
+  public static synchronized void addExternalInstanceListener(@Nullable Function<? super List<String>, ? extends Future<CliResult>> processor) {
     if (ourSocketLock == null) throw new AssertionError("Not initialized yet");
     ourSocketLock.setCommandProcessor(processor);
   }
@@ -100,6 +101,7 @@ public final class StartupUtil {
   // used externally by TeamCity plugin (as TeamCity cannot use modern API to support old IDE versions)
   @SuppressWarnings("MissingDeprecatedAnnotation")
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static synchronized @Nullable BuiltInServer getServer() {
     return ourSocketLock == null ? null : ourSocketLock.getServer();
   }
@@ -186,6 +188,9 @@ public final class StartupUtil {
     activity = activity.endAndStart("LaF init scheduling");
     // EndUserAgreement.Document type is not specified to avoid class loading
     Future<Object> euaDocument = loadEuaDocument(executorService);
+    if (Main.isHeadless()) {
+      enableHeadlessAwtGuard();
+    }
     CompletableFuture<?> initUiTask = scheduleInitUi(args, executorService, euaDocument)
       .exceptionally(e -> {
         StartupAbortedException.processException(new StartupAbortedException("UI initialization failed", e));
@@ -246,7 +251,7 @@ public final class StartupUtil {
     startApp(args, initUiTask, log, configImportNeeded, appStarterFuture, euaDocument);
   }
 
-  private static @NotNull AppStarter getAppStarter(@NotNull Future<AppStarter> mainStartFuture)
+  private static @NotNull AppStarter getAppStarter(@NotNull Future<? extends AppStarter> mainStartFuture)
     throws InterruptedException, ExecutionException {
     Activity activity = mainStartFuture.isDone() ? null : StartUpMeasurer.startMainActivity("main class loading waiting");
     AppStarter result = mainStartFuture.get();
@@ -260,7 +265,7 @@ public final class StartupUtil {
                                @NotNull CompletableFuture<?> initUiTask,
                                @NotNull Logger log,
                                boolean configImportNeeded,
-                               @NotNull Future<AppStarter> appStarterFuture,
+                               @NotNull Future<? extends AppStarter> appStarterFuture,
                                @NotNull Future<@Nullable Object> euaDocument) throws Exception {
     if (!Main.isHeadless()) {
       Activity activity = StartUpMeasurer.startMainActivity("eua showing");
@@ -309,6 +314,21 @@ public final class StartupUtil {
     finally {
       EdtInvocationManager.restoreEdtInvocationManager(edtInvocationManager, oldEdtInvocationManager);
     }
+  }
+
+  /**
+   * This method should make EDT to always persist in a headless environment. Otherwise, it's possible to have EDT being
+   * terminated by {@link AWTAutoShutdown}, which will have negative impact on a ReadMostlyRWLock instance.
+   * <p/>
+   * This method works by calling {@link AWTAutoShutdown#notifyThreadBusy(Thread)} from a non-EDT thread. This will put a
+   * thread into the thread map forever, and thus will effectively disable auto shutdown behavior for this application.
+   * <p/>
+   * This should never be called from a EDT, since a EDT could remove itself from the busy map while there're no events in
+   * the event queue.
+   */
+  private static void enableHeadlessAwtGuard() {
+    if (EventQueue.isDispatchThread()) throw new AssertionError("Should not be called from EDT");
+    AWTAutoShutdown.getInstance().notifyThreadBusy(Thread.currentThread());
   }
 
   private static @NotNull CompletableFuture<?> scheduleInitUi(@NotNull String @NotNull [] args, @NotNull Executor executor, @NotNull Future<@Nullable Object> eulaDocument) {

@@ -76,7 +76,7 @@ public final class JavaSpacePropertyProcessor extends JavaElementVisitor {
 
   private JavaSpacePropertyProcessor(Block block, CommonCodeStyleSettings settings, JavaCodeStyleSettings javaSettings) {
     ASTNode child = AbstractJavaBlock.getTreeNode(block);
-    if (isErrorElement(child)) {
+    if (child == null || isErrorElement(child)) {
       myResult = Spacing.getReadOnlySpacing();
       return;
     }
@@ -1693,7 +1693,7 @@ public final class JavaSpacePropertyProcessor extends JavaElementVisitor {
     else if (myRole2 == ChildRole.REFERENCE_PARAMETER_LIST) {
       createSpaceInCode(mySettings.SPACE_BEFORE_TYPE_PARAMETER_LIST);
     }
-    else if (myRole2 == ChildRole.DOT) {
+    else if (myRole2 == ChildRole.DOT || myRole1 == ChildRole.DOT) {
       createSpaceInCode(false);
     }
     else if (myType1 == JavaElementType.ANNOTATION) {

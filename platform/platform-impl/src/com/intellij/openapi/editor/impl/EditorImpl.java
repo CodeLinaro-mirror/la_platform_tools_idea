@@ -81,10 +81,7 @@ import com.intellij.util.ui.update.Activatable;
 import com.intellij.util.ui.update.UiNotifyConnector;
 import org.intellij.lang.annotations.JdkConstants;
 import org.intellij.lang.annotations.MagicConstant;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
+import org.jetbrains.annotations.*;
 
 import javax.swing.Timer;
 import javax.swing.*;
@@ -104,6 +101,7 @@ import java.awt.dnd.DropTargetDropEvent;
 import java.awt.event.*;
 import java.awt.font.TextHitInfo;
 import java.awt.geom.Point2D;
+import java.awt.im.InputContext;
 import java.awt.im.InputMethodRequests;
 import java.awt.image.BufferedImage;
 import java.beans.PropertyChangeListener;
@@ -2068,6 +2066,11 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
            null : myInputMethodRequestsHandler.composedTextRange;
   }
 
+  private boolean composedTextExists() {
+    return myInputMethodRequestsHandler != null &&
+           myInputMethodRequestsHandler.composedText != null;
+  }
+
   @Override
   public int getMaxWidthInRange(int startOffset, int endOffset) {
     return myView.getMaxWidthInRange(startOffset, endOffset);
@@ -3709,6 +3712,9 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
         });
       }
 
+      boolean isCaretMoved = false;
+      int caretPositionToRestore = 0;
+
       int commitCount = e.getCommittedCharacterCount();
       AttributedCharacterIterator text = e.getText();
 
@@ -3724,6 +3730,15 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
               doc.deleteString(range.getStartOffset(), range.getEndOffset());
             }
           });
+          isCaretMoved = getCaretModel().getOffset() != composedTextRange.getStartOffset();
+          if (isCaretMoved) {
+            caretPositionToRestore = getCaretModel().getCurrentCaret().getOffset();
+            // if caret set furter in the doc, we should add commitCount
+            if (caretPositionToRestore > composedTextRange.getStartOffset()) {
+              caretPositionToRestore += commitCount;
+            }
+            getCaretModel().moveToOffset(composedTextRange.getStartOffset());
+          }
         }
         composedText = null;
       }
@@ -3751,6 +3766,10 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
             composedTextRange = ProperTextRange.from(getCaretModel().getOffset(), composedText.length());
           }
         }
+      }
+
+      if (isCaretMoved) {
+        getCaretModel().moveToOffset(caretPositionToRestore);
       }
     }
   }
@@ -3827,6 +3846,13 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       }
       finally {
         myExpectedCaretOffset = -1;
+      }
+
+      if (composedTextExists()) {
+        InputContext inputContext = myEditorComponent.getInputContext();
+        if (inputContext != null) {
+          inputContext.endComposition();
+        }
       }
 
       if (event.getArea() == EditorMouseEventArea.LINE_MARKERS_AREA ||
@@ -3972,6 +3998,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
         x = 0;
       }
 
+      Caret selectionCaret = null;
       int oldSelectionStart = mySelectionModel.getLeadSelectionOffset();
 
       final int oldStart = mySelectionModel.getSelectionStart();
@@ -4014,8 +4041,17 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
           mySelectionModel.setBlockSelection(anchor, pos);
         }
         else {
-          getCaretModel().removeSecondaryCarets();
-          getCaretModel().moveToVisualPosition(visualPosition);
+          selectionCaret = eventArea == EditorMouseEventArea.EDITING_AREA &&
+                           SwingUtilities.isRightMouseButton(e) &&
+                           getCaretModel().getCaretCount() > 1
+                           ? getSelectionCaret(pos) : null;
+          if (selectionCaret == null) {
+            getCaretModel().removeSecondaryCarets();
+            getCaretModel().moveToVisualPosition(visualPosition);
+          }
+          else {
+            selectionCaret.moveToVisualPosition(visualPosition);
+          }
         }
       }
 
@@ -4030,7 +4066,8 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
 
       Point p = new Point(x, y);
       myMouseSelectedRegion = myFoldingModel.getFoldingPlaceholderAt(p);
-      myKeepSelectionOnMousePress = mySelectionModel.hasSelection() &&
+      myKeepSelectionOnMousePress = selectionCaret != null ||
+                                    mySelectionModel.hasSelection() &&
                                     caretOffset >= mySelectionModel.getSelectionStart() &&
                                     caretOffset <= mySelectionModel.getSelectionEnd() &&
                                     !isPointAfterSelectionEnd(p) &&
@@ -4109,6 +4146,16 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       Point selectionEnd = visualPositionToXY(selectionEndPosition);
       return p.y >= selectionEnd.y + getLineHeight() ||
              p.y >= selectionEnd.y && p.x > selectionEnd.x && xyToVisualPosition(p).column > selectionEndPosition.column;
+    }
+
+    private Caret getSelectionCaret(LogicalPosition logicalPosition) {
+      int offset = logicalPositionToOffset(logicalPosition);
+      for (Caret caret : getCaretModel().getAllCarets()) {
+        if (offset >= caret.getSelectionStart() && offset <= caret.getSelectionEnd()) {
+          return caret;
+        }
+      }
+      return null;
     }
   }
 
@@ -4455,6 +4502,9 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       if (fontSize < MIN_FONT_SIZE) fontSize = MIN_FONT_SIZE;
       if (fontSize > myMaxFontSize) fontSize = myMaxFontSize;
       if (fontSize == myFontSize) return;
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Font size overridden for " + EditorImpl.this, new Throwable());
+      }
       myFontPreferencesAreSetExplicitly = false;
       myFontSize = fontSize;
       reinitFontsAndSettings();
@@ -4470,6 +4520,9 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     @Override
     public void setFontPreferences(@NotNull FontPreferences preferences) {
       if (myFontPreferencesAreSetExplicitly && Comparing.equal(preferences, myFontPreferences)) return;
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Font preferences overridden for " + EditorImpl.this, new Throwable());
+      }
       myFontPreferencesAreSetExplicitly = true;
       myFaceName = null;
       myFontSize = -1;
@@ -4505,6 +4558,9 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     @Override
     public void setEditorFontName(String fontName) {
       if (Objects.equals(fontName, myFaceName)) return;
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Font name overridden for " + EditorImpl.this, new Throwable());
+      }
       myFontPreferencesAreSetExplicitly = false;
       myFaceName = fontName;
       reinitFontsAndSettings();
@@ -4801,7 +4857,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
   @Override
-  public void putInfo(@NotNull Map<String, String> info) {
+  public void putInfo(@NotNull Map<? super String, ? super String> info) {
     final VisualPosition visual = getCaretModel().getVisualPosition();
     info.put("caret", visual.getLine() + ":" + visual.getColumn());
   }
@@ -4847,6 +4903,11 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     myFoldingModel.validateState();
     myCaretModel.validateState();
     myInlayModel.validateState();
+  }
+
+  @Override
+  public String toString() {
+    return "EditorImpl[" + FileDocumentManager.getInstance().getFile(myDocument) + "]";
   }
 
   private class DefaultPopupHandler extends ContextMenuPopupHandler {

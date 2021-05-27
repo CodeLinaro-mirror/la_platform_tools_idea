@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.ui.tree;
 
 import com.intellij.ide.ui.UISettings;
@@ -15,6 +15,7 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.pom.Navigatable;
+import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.LoadingNode;
 import com.intellij.ui.ScrollingUtil;
 import com.intellij.ui.SimpleColoredComponent;
@@ -370,6 +371,7 @@ public final class TreeUtil {
    * @deprecated use {@link #promiseSelectFirstLeaf}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @NotNull
   public static TreePath getFirstLeafNodePath(@NotNull JTree tree) {
     final TreeModel model = tree.getModel();
@@ -427,12 +429,14 @@ public final class TreeUtil {
 
   /** @deprecated use TreeUtil#treeTraverser() or TreeUtil#treeNodeTraverser() directly */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static boolean traverse(@NotNull TreeNode node, @NotNull Traverse traverse) {
     return treeNodeTraverser(node).traverse(TreeTraversal.POST_ORDER_DFS).processEach(traverse::accept);
   }
 
   /** @deprecated use TreeUtil#treeTraverser() or TreeUtil#treeNodeTraverser() directly */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static boolean traverseDepth(@NotNull TreeNode node, @NotNull Traverse traverse) {
     return treeNodeTraverser(node).traverse(TreeTraversal.PRE_ORDER_DFS).processEach(traverse::accept);
   }
@@ -1335,6 +1339,7 @@ public final class TreeUtil {
 
   /** @deprecated use TreeUtil#treePathTraverser() */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @FunctionalInterface
   public interface Traverse{
     boolean accept(Object node);
@@ -1625,9 +1630,9 @@ public final class TreeUtil {
   }
 
   private static void internalScroll(@NotNull JTree tree, @NotNull Rectangle bounds, boolean centered) {
-    Container parent = tree.getParent();
-    if (parent instanceof JViewport) {
-      int width = parent.getWidth();
+    JViewport viewport = ComponentUtil.getViewport(tree);
+    if (viewport != null) {
+      int width = viewport.getWidth();
       if (!centered && tree instanceof Tree && !((Tree)tree).isHorizontalAutoScrollingEnabled()) {
         bounds.x = -tree.getX();
         bounds.width = width;
@@ -1637,7 +1642,7 @@ public final class TreeUtil {
         bounds.x = Math.max(0, bounds.x - control);
         bounds.width = bounds.x > 0 ? Math.min(bounds.width + control, centered ? width : width / 2) : width;
       }
-      int height = parent.getHeight();
+      int height = viewport.getHeight();
       if (height > bounds.height && height < tree.getHeight()) {
         if (centered || height < bounds.height * 5) {
           bounds.y -= (height - bounds.height) / 2;
@@ -1893,7 +1898,7 @@ public final class TreeUtil {
    * @param predicate a predicate that allows to skip some paths
    * @return {@code null} if next visible path cannot be found
    */
-  public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, TreePath path, @NotNull Predicate<TreePath> predicate) {
+  public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, TreePath path, @NotNull Predicate<? super TreePath> predicate) {
     return nextVisiblePath(tree, tree.getRowForPath(path), predicate);
   }
 
@@ -1903,7 +1908,7 @@ public final class TreeUtil {
    * @param predicate a predicate that allows to skip some paths
    * @return {@code null} if next visible path cannot be found
    */
-  public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, int row, @NotNull Predicate<TreePath> predicate) {
+  public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, int row, @NotNull Predicate<? super TreePath> predicate) {
     return nextVisiblePath(tree, row, isCyclicScrollingAllowed(), predicate);
   }
 
@@ -1915,7 +1920,7 @@ public final class TreeUtil {
    * @return {@code null} if next visible path cannot be found
    */
   public static @Nullable TreePath nextVisiblePath(@NotNull JTree tree, int row, boolean cyclic,
-                                                   @NotNull Predicate<TreePath> predicate) {
+                                                   @NotNull Predicate<? super TreePath> predicate) {
     assert EventQueue.isDispatchThread();
     if (row < 0) return null; // ignore illegal row
     int count = tree.getRowCount();
@@ -1937,7 +1942,7 @@ public final class TreeUtil {
    * @param predicate a predicate that allows to skip some paths
    * @return {@code null} if previous visible path cannot be found
    */
-  public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, TreePath path, @NotNull Predicate<TreePath> predicate) {
+  public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, TreePath path, @NotNull Predicate<? super TreePath> predicate) {
     return previousVisiblePath(tree, tree.getRowForPath(path), predicate);
   }
 
@@ -1947,7 +1952,7 @@ public final class TreeUtil {
    * @param predicate a predicate that allows to skip some paths
    * @return {@code null} if previous visible path cannot be found
    */
-  public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, int row, @NotNull Predicate<TreePath> predicate) {
+  public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, int row, @NotNull Predicate<? super TreePath> predicate) {
     return previousVisiblePath(tree, row, isCyclicScrollingAllowed(), predicate);
   }
 
@@ -1959,7 +1964,7 @@ public final class TreeUtil {
    * @return {@code null} if previous visible path cannot be found
    */
   public static @Nullable TreePath previousVisiblePath(@NotNull JTree tree, int row, boolean cyclic,
-                                                       @NotNull Predicate<TreePath> predicate) {
+                                                       @NotNull Predicate<? super TreePath> predicate) {
     assert EventQueue.isDispatchThread();
     if (row < 0) return null; // ignore illegal row
     int count = tree.getRowCount();

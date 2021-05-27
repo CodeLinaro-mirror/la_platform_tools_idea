@@ -12,6 +12,7 @@ import com.intellij.vcs.log.impl.VcsLogUiProperties;
 import com.intellij.vcs.log.ui.table.VcsLogColumnDeprecated;
 import com.intellij.vcs.log.ui.table.column.Date;
 import com.intellij.vcs.log.ui.table.column.*;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -56,8 +57,11 @@ public class FileHistoryUiProperties implements VcsLogUiProperties, PersistentSt
       // visibility is not set, so we will get it from current/default order
       // otherwise column will be visible but not exist in order
       VcsLogColumn<?> column = visibilityProperty.getColumn();
-      if (get(COLUMN_ID_ORDER).contains(column.getId()) || column instanceof VcsLogCustomColumn) {
+      if (get(COLUMN_ID_ORDER).contains(column.getId())) {
         return (T)Boolean.TRUE;
+      }
+      if (column instanceof VcsLogCustomColumn) {
+        return (T)Boolean.valueOf(((VcsLogCustomColumn<?>)column).isEnabledByDefault());
       }
       return (T)Boolean.FALSE;
     }
@@ -168,9 +172,11 @@ public class FileHistoryUiProperties implements VcsLogUiProperties, PersistentSt
     public boolean SHOW_DETAILS = false;
     public boolean SHOW_OTHER_BRANCHES = false;
     @Deprecated
+    @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
     public Map<Integer, Integer> COLUMN_WIDTH = new HashMap<>();
     public Map<String, Integer> COLUMN_ID_WIDTH = new HashMap<>();
     @Deprecated
+    @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
     public List<Integer> COLUMN_ORDER = new ArrayList<>();
     public List<String> COLUMN_ID_ORDER = new ArrayList<>();
     public Map<String, Boolean> COLUMN_ID_VISIBILITY = new HashMap<>();

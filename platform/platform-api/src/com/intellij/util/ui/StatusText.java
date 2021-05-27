@@ -10,6 +10,7 @@ import com.intellij.ui.components.JBViewport;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +26,7 @@ public abstract class StatusText {
    * @deprecated Use {@link #getDefaultEmptyText()} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
   public static final String DEFAULT_EMPTY_TEXT = "Nothing to show";
 
   private static final int Y_GAP = 2;
@@ -39,13 +41,19 @@ public abstract class StatusText {
   private String myText = "";
 
   // Hardcoded layout manages two columns (primary and secondary) with vertically aligned components inside
-  protected static final class Column {
+  protected final class Column {
     List<Fragment> fragments = new ArrayList<>();
     private final Dimension preferredSize = new Dimension();
   }
 
-  protected static final class Fragment {
-    private final SimpleColoredComponent myComponent = new SimpleColoredComponent();
+  protected final class Fragment {
+    private final SimpleColoredComponent myComponent = new SimpleColoredComponent() {
+      @Override
+      protected void revalidateAndRepaint() {
+        super.revalidateAndRepaint();
+        updateBounds();
+      }
+    };
 
     private final Rectangle boundsInColumn = new Rectangle();
     private final List<ActionListener> myClickListeners = ContainerUtil.createLockFreeCopyOnWriteList();

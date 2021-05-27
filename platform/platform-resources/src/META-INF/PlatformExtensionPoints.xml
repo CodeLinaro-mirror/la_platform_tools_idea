@@ -181,12 +181,11 @@
     <extensionPoint name="welcomeFrameProvider" interface="com.intellij.openapi.wm.WelcomeFrameProvider" dynamic="true"/>
     <extensionPoint name="welcomeTabFactory" interface="com.intellij.openapi.wm.WelcomeTabFactory" dynamic="true"/>
     <extensionPoint name="interactiveCourseFactory" interface="com.intellij.openapi.wm.InteractiveCourseFactory" dynamic="true"/>
+    <extensionPoint name="startPagePromoter" interface="com.intellij.openapi.wm.StartPagePromoter" dynamic="true"/>
     <extensionPoint name="welcomeScreenCustomization" interface="com.intellij.openapi.wm.WelcomeScreenCustomization" dynamic="true"/>
 
     <extensionPoint name="statistic.eventLog.eventLoggerProvider" interface="com.intellij.internal.statistic.eventLog.StatisticsEventLoggerProvider"/>
     <extensionPoint name="statistic.eventLog.fusStateEventTracker" interface="com.intellij.internal.statistic.eventLog.fus.FeatureUsageStateEventTracker"/>
-
-    <extensionPoint name="uiDropperActions" interface="com.intellij.internal.inspector.UiDropperActionExtension"/>
 
     <extensionPoint name="productivityFeaturesProvider" interface="com.intellij.featureStatistics.ProductivityFeaturesProvider"/>
 
@@ -406,5 +405,6 @@
 
     <extensionPoint name="jcef.appRequiredArgumentsProvider" interface="com.intellij.ui.jcef.JBCefAppRequiredArgumentsProvider"/>
     <extensionPoint name="documentationActionProvider" interface="com.intellij.codeInsight.documentation.DocumentationActionProvider" dynamic="true"/>
+    <extensionPoint name="projectOriginInfoProvider" interface="com.intellij.ide.impl.ProjectOriginInfoProvider" dynamic="true"/>
   </extensionPoints>
 </idea-plugin>

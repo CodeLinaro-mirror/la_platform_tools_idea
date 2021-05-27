@@ -36,7 +36,7 @@ public class InstalledPluginsTableModel {
     myProject = project;
     myPluginTracker = myProject == null ?
                       null :
-                      ProjectPluginTrackerManager.getInstance().createPluginTracker(myProject);
+                      ProjectPluginTrackerManager.getInstance().getPluginTracker(myProject);
 
     ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
     for (IdeaPluginDescriptor plugin : PluginManagerCore.getPlugins()) {
@@ -60,10 +60,6 @@ public class InstalledPluginsTableModel {
     return myProject;
   }
 
-  protected final @Nullable ProjectPluginTracker getPluginTracker() {
-    return myPluginTracker;
-  }
-
   protected @NotNull List<IdeaPluginDescriptor> getAllPlugins() {
     return new ArrayList<>(view);
   }
@@ -80,7 +76,7 @@ public class InstalledPluginsTableModel {
   protected final void setEnabled(@NotNull IdeaPluginDescriptor ideaPluginDescriptor) {
     PluginId pluginId = ideaPluginDescriptor.getPluginId();
 
-    PluginEnabledState enabled = (myPluginTracker != null && myPluginTracker.isEnabled(pluginId)) ?
+    PluginEnabledState enabled = myPluginTracker != null && myPluginTracker.isEnabled(pluginId) ?
                                  PluginEnabledState.ENABLED_FOR_PROJECT :
                                  myPluginTracker != null && myPluginTracker.isDisabled(pluginId) ?
                                  PluginEnabledState.DISABLED_FOR_PROJECT :
@@ -210,7 +206,7 @@ public class InstalledPluginsTableModel {
       PluginEnabledState oldState = enabledMap.get(pluginId);
 
       PluginEnabledState newState = oldState == null ?
-                                    null :
+                                    PluginEnabledState.DISABLED :
                                     action.apply(oldState);
       if (newState != null) {
         beforeHandler.accept(descriptor, Pair.create(action, newState));

@@ -4,6 +4,7 @@ package com.intellij.internal.statistic.eventLog.uploader
 import com.google.gson.Gson
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.internal.statistic.eventLog.*
+import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupsFilterRules
 import com.intellij.internal.statistic.eventLog.uploader.EventLogUploadException.EventLogUploadErrorType.*
 import com.intellij.internal.statistic.uploader.EventLogUploaderOptions
 import com.intellij.internal.statistic.uploader.EventLogUploaderOptions.*
@@ -12,7 +13,6 @@ import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.ArrayUtil
-import com.intellij.util.io.exists
 import org.jetbrains.annotations.NotNull
 import java.io.File
 import java.nio.file.Files
@@ -67,7 +67,8 @@ object EventLogExternalUploader {
     }
 
     EventLogSystemLogger.logCreatingExternalSendCommand(recorderId)
-    val device = DeviceConfiguration(EventLogConfiguration.deviceId, EventLogConfiguration.bucket)
+    val config = EventLogConfiguration.getOrCreate(recorderId)
+    val device = DeviceConfiguration(config.deviceId, config.bucket)
     val application = EventLogInternalApplicationInfo(recorderId, isTest)
     try {
       val command = prepareUploadCommand(device, recorder, application)
@@ -97,6 +98,7 @@ object EventLogExternalUploader {
     libPaths.add(findLibraryByClass(NotNull::class.java))
     libPaths.add(findLibraryByClass(org.apache.log4j.Logger::class.java))
     libPaths.add(findLibraryByClass(Gson::class.java))
+    libPaths.add(findLibraryByClass(EventGroupsFilterRules::class.java))
     val classpath = joinAsClasspath(libPaths, uploader)
 
     val args = arrayListOf<String>()
@@ -139,7 +141,7 @@ object EventLogExternalUploader {
 
   private fun logsToSend(recorder: EventLogRecorderConfig): List<String> {
     val dir = recorder.getLogFilesProvider().getLogFilesDir()
-    if (dir != null && dir.exists()) {
+    if (dir != null && Files.exists(dir)) {
       return dir.toFile().listFiles()?.take(5)?.map { it.absolutePath } ?: emptyList()
     }
     return emptyList()

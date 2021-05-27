@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.find.actions;
 
 import com.intellij.codeInsight.TargetElementUtil;
@@ -63,10 +63,7 @@ import com.intellij.usageView.UsageViewUtil;
 import com.intellij.usages.*;
 import com.intellij.usages.impl.*;
 import com.intellij.usages.rules.UsageFilteringRuleProvider;
-import com.intellij.util.ArrayUtil;
-import com.intellij.util.BitUtil;
-import com.intellij.util.Processor;
-import com.intellij.util.SmartList;
+import com.intellij.util.*;
 import com.intellij.util.concurrency.EdtScheduledExecutorService;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.AsyncProcessIcon;
@@ -175,32 +172,23 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
       return;
     }
 
-    RelativePoint popupPosition = JBPopupFactory.getInstance().guessBestPopupLocation(e.getDataContext());
     PsiDocumentManager.getInstance(project).commitAllDocuments();
     FeatureUsageTracker.getInstance().triggerFeatureUsed("navigation.goto.usages");
-    if (Registry.is("ide.symbol.find.usages")) {
-      showSymbolUsages(project, e.getDataContext());
-    }
-    else {
-      showPsiUsages(project, e, popupPosition);
-    }
-  }
-
-  private static void showSymbolUsages(@NotNull Project project, @NotNull DataContext dataContext) {
+    DataContext dataContext = e.getDataContext();
     showUsages(project, dataContext, ResolverKt.allTargets(dataContext));
   }
 
   @ApiStatus.Internal
   public static void showUsages(@NotNull Project project,
                                 @NotNull DataContext dataContext,
-                                @NotNull List<@NotNull TargetVariant> targetVariants) {
+                                @NotNull List<? extends @NotNull TargetVariant> targetVariants) {
     Editor editor = dataContext.getData(CommonDataKeys.EDITOR);
     RelativePoint popupPosition = JBPopupFactory.getInstance().guessBestPopupLocation(dataContext);
     SearchScope searchScope = FindUsagesOptions.findScopeByName(project, dataContext, FindSettings.getInstance().getDefaultScopeName());
-    findShowUsages(
+    SlowOperations.allowSlowOperations(() -> findShowUsages(
       project, dataContext, targetVariants, FindBundle.message("show.usages.ambiguous.title"),
       createVariantHandler(project, editor, popupPosition, searchScope)
-    );
+    ));
   }
 
   @NotNull
@@ -239,23 +227,6 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
       project, searchScope, target,
       ShowUsagesParameters.initial(project, editor, popupPosition)
     );
-  }
-
-  private static void showPsiUsages(@NotNull Project project, @NotNull AnActionEvent e, @NotNull RelativePoint popupPosition) {
-    UsageTarget[] usageTargets = e.getData(UsageView.USAGE_TARGETS_KEY);
-    Editor editor = e.getData(CommonDataKeys.EDITOR);
-    if (usageTargets == null) {
-      FindUsagesAction.chooseAmbiguousTargetAndPerform(project, editor, element -> {
-        startFindUsages(element, popupPosition, editor);
-        return false;
-      });
-    }
-    else if (ArrayUtil.getFirstElement(usageTargets) instanceof PsiElementUsageTarget) {
-      PsiElement element = ((PsiElementUsageTarget)usageTargets[0]).getElement();
-      if (element != null) {
-        startFindUsages(element, popupPosition, editor);
-      }
-    }
   }
 
   private static void hideHints() {
@@ -606,7 +577,7 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
   }
 
   private static @Nullable FindUsagesOptions showDialog(@NotNull FindUsagesHandlerBase handler) {
-    UIEventLogger.ShowUsagesPopupShowSettings.log();
+    UIEventLogger.ShowUsagesPopupShowSettings.log(handler.getProject());
     AbstractFindUsagesDialog dialog;
     if (handler instanceof FindUsagesHandlerUi) {
       dialog = ((FindUsagesHandlerUi)handler).getFindUsagesDialog(false, false, false);

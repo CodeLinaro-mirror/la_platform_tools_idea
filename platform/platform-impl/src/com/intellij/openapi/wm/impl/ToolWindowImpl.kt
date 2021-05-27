@@ -20,6 +20,7 @@ import com.intellij.openapi.util.ActionCallback
 import com.intellij.openapi.util.BusyObject
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.NlsContexts
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.*
 import com.intellij.openapi.wm.ex.ToolWindowEx
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
@@ -38,6 +39,7 @@ import com.intellij.util.ui.StatusText
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.update.Activatable
 import com.intellij.util.ui.update.UiNotifyConnector
+import org.jetbrains.annotations.ApiStatus
 import java.awt.Color
 import java.awt.Component
 import java.awt.Rectangle
@@ -79,7 +81,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
 
   private var contentUi: ToolWindowContentUi? = null
 
-  private var decorator: InternalDecorator? = null
+  private var decorator: InternalDecoratorImpl? = null
 
   private var hideOnEmptyContent = false
   var isPlaceholderMode = false
@@ -129,7 +131,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
     addContentNotInHierarchyComponents(contentUi!!)
 
     val contentComponent = contentManager.component
-    InternalDecorator.installFocusTraversalPolicy(contentComponent, LayoutFocusTraversalPolicy())
+    InternalDecoratorImpl.installFocusTraversalPolicy(contentComponent, LayoutFocusTraversalPolicy())
     Disposer.register(parentDisposable, UiNotifyConnector(contentComponent, object : Activatable {
       override fun showNotify() {
         showing.onReady()
@@ -141,7 +143,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
       decoratorChild = DumbService.getInstance(toolWindowManager.project).wrapGently(decoratorChild, parentDisposable)
     }
 
-    val decorator = InternalDecorator(this, contentUi!!, decoratorChild)
+    val decorator = InternalDecoratorImpl(this, contentUi!!, decoratorChild)
     this.decorator = decorator
 
     decorator.applyWindowInfo(windowInfo)
@@ -194,6 +196,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
   }
 
   @Deprecated(message = "Do not use.", level = DeprecationLevel.ERROR)
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
   fun getContentUI() = contentUi
 
   override fun getDisposable() = parentDisposable
@@ -250,6 +253,18 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
 
   override fun getAnchor() = windowInfo.anchor
 
+  override fun getLargeStripeAnchor() = windowInfo.largeStripeAnchor
+
+  override fun setLargeStripeAnchor(anchor: ToolWindowAnchor) {
+    toolWindowManager.setLargeStripeAnchor(id, anchor)
+  }
+
+  override fun isVisibleOnLargeStripe() = windowInfo.isVisibleOnLargeStripe
+
+  override fun setVisibleOnLargeStripe(visible: Boolean) {
+    toolWindowManager.setVisibleOnLargeStripe(id, visible)
+  }
+
   override fun setAnchor(anchor: ToolWindowAnchor, runnable: Runnable?) {
     EDT.assertIsEdt()
     toolWindowManager.setToolWindowAnchor(id, anchor)
@@ -300,7 +315,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
     toolWindowManager.stretchHeight(this, value)
   }
 
-  override fun getDecorator() = decorator!!
+  override fun getDecorator(): InternalDecoratorImpl = decorator!!
 
   override fun setAdditionalGearActions(value: ActionGroup?) {
     additionalGearActions = value
@@ -387,7 +402,6 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
   fun canCloseContents() = canCloseContent
 
   override fun getIcon(): Icon? {
-    EDT.assertIsEdt()
     return icon
   }
 
@@ -493,6 +507,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
 
   @Suppress("DeprecatedCallableAddReplaceWith")
   @Deprecated("Do not use. Tool window content will be initialized automatically.", level = DeprecationLevel.ERROR)
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   fun ensureContentInitialized() {
     createContentIfNeeded()
   }
@@ -523,7 +538,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
 
   @JvmOverloads
   fun createPopupGroup(skipHideAction: Boolean = false): ActionGroup {
-    val group = GearActionGroup()
+    val group = GearActionGroup(this)
     if (!skipHideAction) {
       group.addSeparator()
       group.add(HideAction())
@@ -566,7 +581,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
     decorator?.background = color
   }
 
-  private inner class GearActionGroup : DefaultActionGroup(), DumbAware {
+  private inner class GearActionGroup(toolWindow: ToolWindow) : DefaultActionGroup(), DumbAware {
     init {
       templatePresentation.icon = AllIcons.General.GearPlain
       templatePresentation.text = IdeBundle.message("show.options.menu")
@@ -589,7 +604,11 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
       addAction(toggleToolbarGroup).setAsSecondary(true)
       addSeparator()
       add(ActionManager.getInstance().getAction("TW.ViewModeGroup"))
-      add(ToolWindowMoveAction.Group())
+      if (Registry.`is`("ide.new.stripes.ui")) {
+        add(SquareStripeButton.createMoveGroup(project, null, toolWindow))
+      } else {
+        add(ToolWindowMoveAction.Group())
+      }
       add(ResizeActionGroup())
       addSeparator()
       add(RemoveStripeButtonAction())
@@ -607,7 +626,7 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
     }
 
     init {
-      ActionUtil.copyFrom(this, InternalDecorator.HIDE_ACTIVE_WINDOW_ACTION_ID)
+      ActionUtil.copyFrom(this, InternalDecoratorImpl.HIDE_ACTIVE_WINDOW_ACTION_ID)
       templatePresentation.text = UIBundle.message("tool.window.hide.action.name")
     }
   }

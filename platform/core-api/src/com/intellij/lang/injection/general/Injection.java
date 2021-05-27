@@ -17,17 +17,18 @@ public interface Injection {
   String getInjectedLanguageId();
 
   /**
-   * @return a the code of the injected language, which is "implied" be a prefix of the code in the host literal
-   *
-   * For instance for the code "{@code String div = "<div>some html</div>";}" the prefix could be "{@code <html><body>}"
+   * @return a string (in the injected language), which is prepended to the code in the host literal to form a parseable code fragment.
+   * For instance, having the code {@code String div = "<div>some html</div>";} we could inject HTML language there
+   * with the prefix = {@code "<html><body>"} and the suffix = {@code "</body></html>"}
+   * to form correct HTML fragment:  {@code <html><body><div>some html</div></body></html>}
+   * @see #getSuffix()
    */
   @NotNull
   String getPrefix();
 
   /**
-   * @return a the code of the injected language, which is "implied" be a suffix of the code in the host literal
-   *
-   * For instance for the code "{@code String div = "<div>some html</div>";}" the prefix could be "{@code </body></html>}"
+   * @return a string (in the injected language), which is appended to the code in the host literal to form a parseable code fragment.
+   * @see #getPrefix()
    */
   @NotNull
   String getSuffix();
@@ -35,45 +36,10 @@ public interface Injection {
   /**
    * @return the ID of a tool which will provide UI utils to manage this injection.
    *
-   * If the <code>LanguageInjectionSupport</code> with such ID is registered it will be used
+   * If the {@code LanguageInjectionSupport} with such ID is registered it will be used
    * if {@link LanguageInjectionPerformer} will not force other implementation
    */
   @Nullable
   @NlsSafe String getSupportId();
-
-  class Data implements Injection {
-
-    private final String injectedId;
-    private final String prefix;
-    private final String suffix;
-    private final String supportId;
-
-    public Data(@NotNull String injectedId, @NotNull String prefix, @NotNull String suffix, @Nullable String supportId) {
-      this.injectedId = injectedId;
-      this.prefix = prefix;
-      this.suffix = suffix;
-      this.supportId = supportId;
-    }
-
-    @Override
-    public @NotNull @NlsSafe String getInjectedLanguageId() {
-      return injectedId;
-    }
-
-    @Override
-    public @NotNull String getPrefix() {
-      return prefix;
-    }
-
-    @Override
-    public @NotNull String getSuffix() {
-      return suffix;
-    }
-
-    @Override
-    public @Nullable @NlsSafe String getSupportId() {
-      return supportId;
-    }
-  }
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.layout
 
 import com.intellij.BundleBase
@@ -158,6 +158,7 @@ interface CellBuilder<out T : JComponent> {
   fun withLeftGap(): CellBuilder<T>
 
   @Deprecated("Prefer not to use hardcoded values")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   fun withLeftGap(gapLeft: Int): CellBuilder<T>
 }
 
@@ -240,15 +241,12 @@ abstract class Cell : BaseBuilder {
   fun link(@LinkLabel text: String,
            style: UIUtil.ComponentStyle? = null,
            action: () -> Unit): CellBuilder<JComponent> {
-    val result = Link(text, action = action)
-    style?.let { UIUtil.applyStyle(it, result) }
+    val result = Link(text, style, action)
     return component(result)
   }
 
   fun browserLink(@LinkLabel text: String, url: String): CellBuilder<JComponent> {
-    val result = HyperlinkLabel()
-    result.setHyperlinkText(text)
-    result.setHyperlinkTarget(url)
+    val result = BrowserLink(text, url)
     return component(result)
   }
 
@@ -424,16 +422,19 @@ abstract class Cell : BaseBuilder {
   }
 
   fun textFieldWithHistoryWithBrowseButton(
+    getter: () -> String,
+    setter: (String) -> Unit,
     @DialogTitle browseDialogTitle: String,
-    value: String? = null,
     project: Project? = null,
     fileChooserDescriptor: FileChooserDescriptor = FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
     historyProvider: (() -> List<String>)? = null,
     fileChosen: ((chosenFile: VirtualFile) -> String)? = null
   ): CellBuilder<TextFieldWithHistoryWithBrowseButton> {
     val textField = textFieldWithHistoryWithBrowseButton(project, browseDialogTitle, fileChooserDescriptor, historyProvider, fileChosen)
-    if (value != null) textField.text = value
+    val modelBinding = PropertyBinding(getter, setter)
+    textField.text = modelBinding.get()
     return component(textField)
+      .withBinding(TextFieldWithHistoryWithBrowseButton::getText, TextFieldWithHistoryWithBrowseButton::setText, modelBinding)
   }
 
   fun textFieldWithBrowseButton(

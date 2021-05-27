@@ -24,6 +24,7 @@ import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBList;
 import com.intellij.usages.UsageView;
 import com.intellij.util.Consumer;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -105,10 +106,9 @@ public final class PsiElementListNavigator {
                                                                                 final ListCellRenderer<? super T> listRenderer,
                                                                                 @Nullable final BackgroundUpdaterTask listUpdaterTask) {
     return navigateOrCreatePopup(targets, title, findUsagesTitle, listRenderer, listUpdaterTask, selectedElements -> {
-      for (Object element : selectedElements) {
-        PsiElement selected = (PsiElement)element;
+      for (NavigatablePsiElement selected : selectedElements) {
         if (selected.isValid()) {
-          ((NavigatablePsiElement)selected).navigate(true);
+          selected.navigate(true);
         }
       }
     });
@@ -124,7 +124,7 @@ public final class PsiElementListNavigator {
                                                                                 final ListCellRenderer<? super T> listRenderer,
                                                                                 @Nullable final BackgroundUpdaterTask listUpdaterTask,
                                                                                 @NotNull final Consumer<? super T[]> consumer) {
-    return new NavigateOrPopupHelper(targets, title)
+    return new NavigateOrPopupHelper<>(targets, title)
       .setFindUsagesTitle(findUsagesTitle)
       .setListRenderer(listRenderer)
       .setListUpdaterTask(listUpdaterTask)
@@ -156,9 +156,9 @@ public final class PsiElementListNavigator {
       myTargets = targets;
       myTitle = title;
       myTargetsConsumer = selectedElements -> {
-        for (PsiElement element : selectedElements) {
+        for (NavigatablePsiElement element : selectedElements) {
           if (element.isValid()) {
-            ((NavigatablePsiElement)element).navigate(true);
+            element.navigate(true);
           }
         }
       };
@@ -212,7 +212,7 @@ public final class PsiElementListNavigator {
       final IPopupChooserBuilder<T> builder = JBPopupFactory.getInstance().createPopupChooserBuilder(initialTargetsList);
       afterPopupBuilderCreated(builder);
       if (myListRenderer instanceof PsiElementListCellRenderer) {
-        ((PsiElementListCellRenderer)myListRenderer).installSpeedSearch(builder, true);
+        ((PsiElementListCellRenderer<?>)myListRenderer).installSpeedSearch(builder, true);
       }
 
       IPopupChooserBuilder<T> popupChooserBuilder = builder.
@@ -240,7 +240,7 @@ public final class PsiElementListNavigator {
 
       final JBPopup popup = popupChooserBuilder.createPopup();
       if (builder instanceof PopupChooserBuilder) {
-        JBList<NavigatablePsiElement> list = (JBList)((PopupChooserBuilder)builder).getChooserComponent();
+        JBList<NavigatablePsiElement> list = (JBList<NavigatablePsiElement>)((PopupChooserBuilder<?>)builder).getChooserComponent();
         list.setTransferHandler(new TransferHandler() {
           @Override
           protected Transferable createTransferable(JComponent c) {
@@ -258,7 +258,7 @@ public final class PsiElementListNavigator {
           }
         });
 
-        JScrollPane pane = ((PopupChooserBuilder)builder).getScrollPane();
+        JScrollPane pane = ((PopupChooserBuilder<?>)builder).getScrollPane();
         pane.setBorder(null);
         pane.setViewportBorder(null);
       }
@@ -303,6 +303,7 @@ public final class PsiElementListNavigator {
    * @deprecated use {@link #openTargets(MouseEvent, NavigatablePsiElement[], String, String, ListCellRenderer, BackgroundUpdaterTask)} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static void openTargets(MouseEvent e,
                                  NavigatablePsiElement[] targets,
                                  @Nls String title,

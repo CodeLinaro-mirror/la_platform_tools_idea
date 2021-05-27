@@ -22,6 +22,8 @@
   <extensions defaultExtensionNs="com.intellij">
     <fileType name="JSON" extensions="json;har" implementationClass="com.intellij.json.JsonFileType" fieldName="INSTANCE" language="JSON"/>
     <fileType name="JSON5" extensions="json5" implementationClass="com.intellij.json.json5.Json5FileType" fieldName="INSTANCE" language="JSON5"/>
+    <fileType name="JSON-lines" extensions="jsonl;jsonlines;ndjson;ldjson"
+              implementationClass="com.intellij.json.JsonLinesFileType" fieldName="INSTANCE"/>
     <fileIconProvider implementation="com.jetbrains.jsonSchema.JsonSchemaIconProvider"/>
     <lang.parserDefinition language="JSON" implementationClass="com.intellij.json.JsonParserDefinition"/>
     <lang.parserDefinition language="JSON5" implementationClass="com.intellij.json.json5.Json5ParserDefinition"/>
@@ -140,13 +142,19 @@
     <annotator language="JSONPath" implementationClass="com.intellij.jsonpath.JsonPathFunctionCallAnnotator"/>
     <colorSettingsPage implementation="com.intellij.jsonpath.JsonPathColorSettingsPage"/>
     <completion.contributor language="JSONPath" order="last" implementationClass="com.intellij.jsonpath.JsonPathCompletionContributor"/>
+    <spellchecker.support language="JSONPath" implementationClass="com.intellij.jsonpath.JsonPathSpellcheckerStrategy"/>
 
     <localInspection language="JSONPath" shortName="JsonPathUnknownFunction"
                      implementationClass="com.intellij.jsonpath.inspections.JsonPathUnknownFunctionInspection"
                      bundle="messages.JsonBundle" key="inspection.jsonpath.unknown.function"
                      groupBundle="messages.JsonBundle" groupKey="json.inspection.group"
                      level="WARNING" enabledByDefault="true"/>
-    <localInspection language="JSONPath" shortName="JsonPathEvaluateUnknownKeyInspection"
+    <localInspection language="JSONPath" shortName="JsonPathUnknownOperator"
+                     implementationClass="com.intellij.jsonpath.inspections.JsonPathUnknownOperatorInspection"
+                     bundle="messages.JsonBundle" key="inspection.jsonpath.unknown.operator"
+                     groupBundle="messages.JsonBundle" groupKey="json.inspection.group"
+                     level="WARNING" enabledByDefault="true"/>
+    <localInspection language="JSONPath" shortName="JsonPathEvaluateUnknownKey"
                      implementationClass="com.intellij.jsonpath.inspections.JsonPathEvaluateUnknownKeyInspection"
                      bundle="messages.JsonBundle" key="inspection.jsonpath.unknown.key"
                      groupBundle="messages.JsonBundle" groupKey="json.inspection.group"

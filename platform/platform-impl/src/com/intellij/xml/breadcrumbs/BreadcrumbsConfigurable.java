@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xml.breadcrumbs;
 
 import com.intellij.ide.DataManager;
@@ -11,7 +11,7 @@ import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.options.colors.pages.GeneralColorsPage;
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider;
-import com.intellij.ui.components.labels.LinkLabel;
+import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.panels.HorizontalLayout;
 import com.intellij.ui.components.panels.VerticalLayout;
 import com.intellij.ui.scale.JBUIScale;
@@ -82,7 +82,7 @@ final class BreadcrumbsConfigurable extends CompositeConfigurable<BreadcrumbsCon
 
       placement = new JLabel(message("label.breadcrumbs.placement"));
 
-      JPanel placementPanel = new JPanel(new HorizontalLayout(JBUIScale.scale(UIUtil.DEFAULT_HGAP)));
+      JPanel placementPanel = new JPanel(new HorizontalLayout(UIUtil.DEFAULT_HGAP));
       placementPanel.setBorder(JBUI.Borders.emptyLeft(24));
       placementPanel.add(placement);
       placementPanel.add(above);
@@ -90,16 +90,16 @@ final class BreadcrumbsConfigurable extends CompositeConfigurable<BreadcrumbsCon
 
       languages = new JLabel(message("label.breadcrumbs.languages"));
 
-      JPanel languagesPanel = new JPanel(new VerticalLayout(JBUIScale.scale(6)));
+      JPanel languagesPanel = new JPanel(new VerticalLayout(6));
       languagesPanel.setBorder(JBUI.Borders.empty(0, 24, 12, 0));
       languagesPanel.add(languages);
       languagesPanel.add(boxes);
 
-      component = new JPanel(new VerticalLayout(JBUIScale.scale(12), LEFT));
+      component = new JPanel(new VerticalLayout(12, LEFT));
       component.add(show);
       component.add(placementPanel);
       component.add(languagesPanel);
-      component.add(LinkLabel.create(message("configure.breadcrumbs.colors"), () -> {
+      component.add(new ActionLink(message("configure.breadcrumbs.colors"), e -> {
         DataContext context = DataManager.getInstance().getDataContext(component);
         selectOrEditColor(context, "Breadcrumbs//Current", GeneralColorsPage.class);
       }));

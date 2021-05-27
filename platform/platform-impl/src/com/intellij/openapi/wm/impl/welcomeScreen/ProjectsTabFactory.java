@@ -3,6 +3,7 @@ package com.intellij.openapi.wm.impl.welcomeScreen;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
+import com.intellij.ide.ProjectGroupActionGroup;
 import com.intellij.ide.RecentProjectListActionProvider;
 import com.intellij.ide.dnd.DnDEvent;
 import com.intellij.ide.dnd.DnDNativeTarget;
@@ -17,6 +18,7 @@ import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.wm.StartPagePromoter;
 import com.intellij.openapi.wm.WelcomeScreenTab;
 import com.intellij.openapi.wm.WelcomeTabFactory;
 import com.intellij.ui.DocumentAdapter;
@@ -30,6 +32,7 @@ import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.speedSearch.NameFilteringListModel;
 import com.intellij.ui.speedSearch.SpeedSearch;
 import com.intellij.util.BooleanFunction;
+import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
@@ -38,6 +41,8 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import static com.intellij.openapi.actionSystem.impl.ActionButton.HIDE_DROPDOWN_ICON;
@@ -56,12 +61,29 @@ final class ProjectsTabFactory implements WelcomeTabFactory {
     return new TabbedWelcomeScreen.DefaultWelcomeScreenTab(IdeBundle.message("welcome.screen.projects.title"),
                                                            WelcomeScreenEventCollector.TabType.TabNavProject) {
 
+      private JPanel createBottomPanelForEmptyState() {
+        JPanel vPanel = new NonOpaquePanel();
+        vPanel.setLayout(new BoxLayout(vPanel, BoxLayout.PAGE_AXIS));
+        StartPagePromoter[] extensions = StartPagePromoter.START_PAGE_PROMOTER_EP.getExtensions();
+        boolean hasPromotion = false;
+        for (StartPagePromoter x : extensions) {
+          JPanel promotion = x.getPromotionForInitialState();
+          if (promotion == null) continue;
+          vPanel.add(promotion);
+          hasPromotion = true;
+        }
+        JPanel notification = createNotificationsPanel(parentDisposable);
+        if (!hasPromotion) return notification;
+        vPanel.add(notification);
+        return vPanel;
+      }
+
       @Override
       protected JComponent buildComponent() {
         JPanel mainPanel;
         if (RecentProjectListActionProvider.getInstance().getActions(false, true).isEmpty()) {
           mainPanel = JBUI.Panels.simplePanel(new EmptyStateProjectsPanel(parentDisposable))
-            .addToBottom(createNotificationsPanel(parentDisposable))
+            .addToBottom(createBottomPanelForEmptyState())
             .withBackground(getMainAssociatedComponentBackground());
         }
         else {
@@ -107,7 +129,27 @@ final class ProjectsTabFactory implements WelcomeTabFactory {
 
             NameFilteringListModel<AnAction> model = new NameFilteringListModel<>(
               projectsList.getModel(), createProjectNameFunction(), speedSearch::shouldBeShowing,
-              () -> StringUtil.notNullize(speedSearch.getFilter()));
+              () -> StringUtil.notNullize(speedSearch.getFilter())) {
+              @Override
+              protected @NotNull Collection<AnAction> getElementsToFilter() {
+                if (projectSearch.getText().isEmpty()) {
+                  return super.getElementsToFilter();
+                }
+                ArrayList<AnAction> result = new ArrayList<>();
+                ListModel<AnAction> originalModel = getOriginalModel();
+                for (int i = 0; i < originalModel.getSize(); i++) {
+                  AnAction element = originalModel.getElementAt(i);
+                  result.add(element);
+                  if (element instanceof ProjectGroupActionGroup) {
+                    ProjectGroupActionGroup group = (ProjectGroupActionGroup)element;
+                    if (!group.getGroup().isExpanded()) {
+                      ContainerUtil.addAll(result, group.getChildActionsOrStubs());
+                    }
+                  }
+                }
+                return result;
+              }
+            };
             projectsList.setModel(model);
 
             projectSearch.addDocumentListener(new DocumentAdapter() {
@@ -204,6 +246,11 @@ final class ProjectsTabFactory implements WelcomeTabFactory {
         return notificationsPanel;
       }
     };
+  }
+
+  @Override
+  public boolean isApplicable() {
+    return !PlatformUtils.isPyCharmDs();
   }
 
   private static @NotNull DnDNativeTarget createDropFileTarget() {

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.keymap.impl.ui;
 
 import com.intellij.diagnostic.VMOptions;
@@ -31,10 +31,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.packageDependencies.ui.TreeExpansionMonitor;
-import com.intellij.ui.ColorUtil;
-import com.intellij.ui.DoubleClickListener;
-import com.intellij.ui.FilterComponent;
-import com.intellij.ui.ToggleActionButton;
+import com.intellij.ui.*;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.mac.foundation.NSDefaults;
@@ -217,10 +214,10 @@ public class KeymapPanel extends JPanel implements SearchableConfigurable, Confi
 
     return new HtmlBuilder()
       .append(HtmlChunk.head().child(HtmlChunk.styleTag(
-        "a, a:link {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.linkColor()) + ";}\n" +
-        "a:visited {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.linkVisitedColor()) + ";}\n" +
-        "a:hover {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.linkHoverColor()) + ";}\n" +
-        "a:active {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.linkPressedColor()) + ";}\n")))
+        "a, a:link {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.Foreground.ENABLED) + ";}\n" +
+        "a:visited {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.Foreground.VISITED) + ";}\n" +
+        "a:hover {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.Foreground.HOVERED) + ";}\n" +
+        "a:active {color:#" + ColorUtil.toHex(JBUI.CurrentTheme.Link.Foreground.PRESSED) + ";}\n")))
       .append(HtmlChunk.body().child(HtmlChunk.div().addRaw(htmlBody)))
       .wrapWith("html")
       .toString();
@@ -790,7 +787,7 @@ public class KeymapPanel extends JPanel implements SearchableConfigurable, Confi
   private class EditShortcutAction extends AnAction {
     private EditShortcutAction() {
       super(KeyMapBundle.message("edit.shortcut.action.text"), KeyMapBundle.message("edit.shortcut.action.description"),
-            AllIcons.Actions.Edit);
+            new LayeredIcon(AllIcons.Actions.Edit, AllIcons.General.Dropdown));
       registerCustomShortcutSet(CommonShortcuts.ENTER, myActionsTree.getTree());
     }
 

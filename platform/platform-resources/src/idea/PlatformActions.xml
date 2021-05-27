@@ -19,9 +19,9 @@
     <action id="RunConfigurationTemplatesForNewProjects"
             class="com.intellij.execution.actions.EditRunConfigurationTemplatesForNewProjectsAction"/>
 
-    <group id="Other.KeymapGroup"/> <!-- grouping for Settings -> Keymap -> Others -->
-    <group id="Vcs.KeymapGroup"/> <!-- grouping for Settings -> Keymap -> Version Control Systems -->
-    <group id="VcsGeneral.KeymapGroup"/> <!-- grouping for Settings -> Keymap -> Version Control Systems -->
+    <group id="Other.KeymapGroup" searchable="false"/> <!-- grouping for Settings -> Keymap -> Others -->
+    <group id="Vcs.KeymapGroup" searchable="false"/> <!-- grouping for Settings -> Keymap -> Version Control Systems -->
+    <group id="VcsGeneral.KeymapGroup" searchable="false"/> <!-- grouping for Settings -> Keymap -> Version Control Systems -->
 
     <group id="ListActions">
       <action id="List-selectFirstRow" class="com.intellij.ui.ListActions$Home" use-shortcut-of="EditorTextStart"/>
@@ -90,6 +90,7 @@
       <action id="Tree-selectPreviousExtendSelection" class="com.intellij.ui.TreeActions$ShiftUp" use-shortcut-of="EditorUpWithSelection"/>
       <action id="Tree-selectNext" class="com.intellij.ui.TreeActions$Down" use-shortcut-of="EditorDown"/>
       <action id="Tree-selectNextExtendSelection" class="com.intellij.ui.TreeActions$ShiftDown" use-shortcut-of="EditorDownWithSelection"/>
+      <action id="Tree-selectParentNoCollapse" class="com.intellij.ui.TreeActions$SelectParent"/>
       <action id="Tree-selectParent" class="com.intellij.ui.TreeActions$Left" use-shortcut-of="EditorLeft"/>
       <action id="Tree-selectParentExtendSelection" class="com.intellij.ui.TreeActions$ShiftLeft"
               use-shortcut-of="EditorLeftWithSelection"/>
@@ -303,7 +304,7 @@
     <action id="Refresh" class="com.intellij.ide.actions.RefreshAction" icon="AllIcons.Actions.Refresh"/>
     <action id="ForceRefresh" class="com.intellij.openapi.actionSystem.EmptyAction" icon="AllIcons.Actions.ForceRefresh"/>
 
-    <group id="Diff.KeymapGroup">
+    <group id="Diff.KeymapGroup" searchable="false">
       <action id="Diff.ShowDiff" class="com.intellij.diff.actions.ShowDiffAction"
               icon="AllIcons.Actions.Diff"/> <!-- CommonShortcuts.getDiff() -->
       <action id="CompareTwoFiles" class="com.intellij.diff.actions.CompareFilesAction" icon="AllIcons.Actions.Diff"/>
@@ -415,7 +416,10 @@
         <group id="FilePropertiesGroup" popup="true">
           <action id="ChangeFileEncodingAction" class="com.intellij.openapi.vfs.encoding.ChangeFileEncodingAction"/>
           <action id="AssociateWithFileType" class="com.intellij.ide.actions.AssociateFileTypeAction"/>
-          <action id="ToggleReadOnlyAttribute" class="com.intellij.ide.actions.ToggleReadOnlyAttributeAction"/>
+          <action id="ToggleReadOnlyAttribute" class="com.intellij.ide.actions.ToggleReadOnlyAttributeAction">
+            <synonym key="action.ToggleReadOnlyAttribute.synonym"/>
+            <synonym key="action.ToggleReadOnlyAttribute.synonym2"/>
+          </action>
 
           <group id="ChangeLineSeparators" popup="true" class="com.intellij.ide.actions.NonTrivialActionGroup">
             <action id="ConvertToWindowsLineSeparators" class="com.intellij.codeStyle.ConvertToWindowsLineSeparatorsAction"/>
@@ -729,6 +733,19 @@
             <synonym key="action.SplitHorizontally.synonym"/>
           </action>
           <action id="MoveTabDown" class="com.intellij.ide.actions.MoveTabDownAction"/>
+          <action id="SplitChooser" class="com.intellij.ide.actions.InteractiveSplitAction" internal="true"/>
+          <group id="SplitChooser.Actions" text="Split with Chooser Navigation" searchable="false" compact="true" popup="true" internal="true">
+            <action id="SplitChooser.NextWindow" class="com.intellij.ide.actions.InteractiveSplitAction$Key$NextWindow"/>
+            <action id="SplitChooser.PreviousWindow" class="com.intellij.ide.actions.InteractiveSplitAction$Key$PreviousWindow"/>
+            <action id="SplitChooser.Exit" class="com.intellij.ide.actions.InteractiveSplitAction$Key$Exit" use-shortcut-of="EditorEscape"/>
+            <action id="SplitChooser.Split" class="com.intellij.ide.actions.InteractiveSplitAction$Key$Split"/>
+            <action id="SplitChooser.Duplicate" class="com.intellij.ide.actions.InteractiveSplitAction$Key$Duplicate"/>
+            <action id="SplitChooser.SplitCenter" class="com.intellij.ide.actions.InteractiveSplitAction$Key$SplitCenter"/>
+            <action id="SplitChooser.SplitTop" class="com.intellij.ide.actions.InteractiveSplitAction$Key$SplitTop" use-shortcut-of="EditorUp"/>
+            <action id="SplitChooser.SplitLeft" class="com.intellij.ide.actions.InteractiveSplitAction$Key$SplitLeft" use-shortcut-of="EditorLeft"/>
+            <action id="SplitChooser.SplitDown" class="com.intellij.ide.actions.InteractiveSplitAction$Key$SplitDown" use-shortcut-of="EditorDown"/>
+            <action id="SplitChooser.SplitRight" class="com.intellij.ide.actions.InteractiveSplitAction$Key$SplitRight" use-shortcut-of="EditorRight"/>
+          </group>
           <action id="StretchSplitToTop" class="com.intellij.ide.actions.StretchSplitAction$StretchToTop"/>
           <action id="StretchSplitToLeft" class="com.intellij.ide.actions.StretchSplitAction$StretchToLeft"/>
           <action id="StretchSplitToBottom" class="com.intellij.ide.actions.StretchSplitAction$StretchToBottom"/>
@@ -1042,6 +1059,11 @@
       </group>
       <separator/>
       <action internal="true" id="ReloadProjectAction" class="com.intellij.internal.ReloadProjectAction"/>
+      <group id="Internal.Trust" popup="true">
+        <action id="UnsureProject" internal="true" class="com.intellij.internal.UnsureTrustAction"/>
+        <action id="TrustProject" internal="true" class="com.intellij.internal.YesTrustAction"/>
+        <action id="UntrustProject" internal="true" class="com.intellij.internal.NoTrustAction"/>
+      </group>
       <action internal="true" id="ShowMainMenu" class="com.intellij.internal.ui.ShowMainMenuAction"/>
       <action id="JBTabsDemo" internal="true" class="com.intellij.internal.JBTabsDemoAction"/>
       <action id="JTabbedPaneDemo" internal="true" class="com.intellij.internal.JTabbedPaneDemoAction"/>
@@ -1080,14 +1102,14 @@
           <action id="MacMessagesSequencesTest" internal="true" class="com.intellij.internal.validation.TestMacMessagesSequencesAction"/>
         </group>
         <action id="FocusDebugger" internal="true" class="com.intellij.internal.focus.FocusDebuggerAction"/>
-        <action id="FocusTracer" internal="true" class="com.intellij.internal.focus.FocusTracesAction">
-          <keyboard-shortcut first-keystroke="control shift F11" keymap="$default"/>
-        </action>
+        <action id="FocusTracer" internal="true" class="com.intellij.internal.focus.FocusTracesAction"/>
         <reference ref="LogFocusRequests"/>
         <action id="UiInspector" internal="true" class="com.intellij.internal.inspector.UiInspectorAction">
           <abbreviation value="uii"/>
+          <mouse-shortcut keymap="$default" keystroke="control alt button1"/>
         </action>
-        <action id="UiDropper" internal="true" class="com.intellij.internal.inspector.UiDropperAction"/>
+        <action id="ToggleUiInspectorHierarchyTrace" internal="true"
+                class="com.intellij.internal.inspector.UiInspectorAction$ToggleHierarchyTraceAction"/>
         <action id="GrayFilterConfig" internal="true" class="com.intellij.internal.GrayFilterConfig"/>
         <action id="TextGrayFilterConfig" internal="true" class="com.intellij.internal.TextGrayFilterConfig"/>
         <action id="ShowSplash" internal="true" class="com.intellij.ui.ShowSplashAction"/>
@@ -1141,6 +1163,10 @@
 
     <action id="DumpFocusableComponentHierarchyAction" internal="false"
             class="com.intellij.ui.DumpFocusableComponentHierarchyAction"/>
+
+    <action id="ChooseRuntime" class="com.intellij.openapi.projectRoots.impl.jdkDownloader.RuntimeChooserAction">
+      <synonym text="Choose Runtime"/>
+    </action>
 
     <group id="EditorContextBarMenu">
       <action id="EditorToggleUseSoftWrapsInPreview" class="com.intellij.openapi.editor.actions.ToggleUseSoftWrapsInPreviewAction"
@@ -1319,11 +1345,6 @@
     <action id="NextWindow" class="com.intellij.openapi.wm.impl.NextWindow"/>
     <action id="PreviousWindow" class="com.intellij.openapi.wm.impl.PreviousWindow"/>
 
-    <action id="CopyReferencePopup" class="com.intellij.ide.actions.CopyReferencePopup">
-      <add-to-group group-id="CutCopyPasteGroup" anchor="after" relative-to-action="CopyPaths"/>
-      <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="CopyPaths"/>
-    </action>
-
     <action id="CopyAbsolutePath" class="com.intellij.ide.actions.CopyAbsolutePathProvider" use-shortcut-of="CopyPaths" />
     <action id="CopyFileName" class="com.intellij.ide.actions.CopyFileNameProvider"/>
     <action id="CopyPathWithLineNumber" class="com.intellij.ide.actions.CopyFileWithLineNumberPathProvider"/>
@@ -1331,7 +1352,7 @@
     <action id="CopySourceRootPath" class="com.intellij.ide.actions.CopySourceRootPathProvider"/>
     <action id="CopyTBXReference" class="com.intellij.ide.actions.CopyTBXReferenceProvider" icon="AllIcons.Nodes.Toolbox"/>
 
-    <group id="CopyReferencePopupGroup">
+    <group id="CopyReferencePopupGroup" class="com.intellij.ide.actions.CopyReferencePopup" popup="true">
       <group id="CopyFileReference">
         <reference ref="CopyAbsolutePath" />
         <reference ref="CopyFileName" />
@@ -1344,6 +1365,8 @@
       <group id="CopyExternalReferenceGroup">
         <reference ref="CopyTBXReference" />
       </group>
+      <add-to-group group-id="CutCopyPasteGroup" anchor="after" relative-to-action="CopyPaths"/>
+      <add-to-group group-id="EditorTabPopupMenu" anchor="after" relative-to-action="CopyPaths"/>
     </group>
 
     <action id="OpenMouseWheelSmoothScrollSettings" class="com.intellij.ui.mouse.MouseWheelSmoothScrollOptionsAction"/>

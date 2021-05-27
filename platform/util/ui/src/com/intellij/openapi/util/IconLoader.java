@@ -134,6 +134,7 @@ public final class IconLoader {
    * @deprecated use {@link JBImageIcon}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static @NotNull Icon getIcon(@NotNull Image image) {
     return new JBImageIcon(image);
   }
@@ -196,6 +197,7 @@ public final class IconLoader {
    * @deprecated Use {@link #findIcon(String, Class, boolean, boolean)}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static @Nullable Icon findIcon(@NonNls @NotNull String path, boolean strict) {
     Class<?> callerClass = ReflectionUtil.getGrandCallerClass();
     if (callerClass == null) {
@@ -278,7 +280,7 @@ public final class IconLoader {
     // This use case for temp themes only. Here we want immediately replace existing icon to a local one
     if (path != null && path.startsWith("file:/")) {
       try {
-        ImageDataResolverImpl resolver = new ImageDataResolverImpl(new URL(path), path.substring(1), classLoader, false);
+        ImageDataResolverImpl resolver = new ImageDataResolverImpl(new URL(path), path, classLoader, false);
         resolver.resolve();
         return resolver;
       }
@@ -674,6 +676,7 @@ public final class IconLoader {
   public static class CachedImageIcon extends ScaleContextSupport implements CopyableIcon, ScalableIcon, DarkIconProvider, MenuBarIconProvider {
     @Nullable private final String originalPath;
     @Nullable private volatile ImageDataLoader resolver;
+    @Nullable private final ImageDataLoader originalResolver;
     @Nullable("when not overridden") private final Boolean isDarkOverridden;
     @SuppressWarnings("FieldAccessedSynchronizedAndUnsynchronized")
     private int pathTransformModCount = -1;
@@ -700,6 +703,7 @@ public final class IconLoader {
                               @Nullable Supplier<? extends RGBImageFilter> localFilterSupplier) {
       this.originalPath = originalPath;
       this.resolver = resolver;
+      originalResolver = resolver;
       isDarkOverridden = darkOverridden;
       this.localFilterSupplier = localFilterSupplier;
 
@@ -784,6 +788,7 @@ public final class IconLoader {
       }
       else {
         synchronized (lock) {
+          this.resolver = originalResolver;
           resolver = this.resolver;
           if (resolver == null) {
             return EMPTY_ICON;
@@ -1069,7 +1074,7 @@ public final class IconLoader {
       // This use case for temp themes only. Here we want immediately replace existing icon to a local one
       if (path != null && path.startsWith("file:/")) {
         try {
-          ImageDataResolverImpl resolver = new ImageDataResolverImpl(new URL(path), path.substring(1), classLoader, true);
+          ImageDataResolverImpl resolver = new ImageDataResolverImpl(new URL(path), path, classLoader, true);
           resolver.resolve();
           return resolver;
         }
@@ -1375,7 +1380,11 @@ public final class IconLoader {
       return getScaleContextSupport(((RetrievableIcon)icon).retrieveIcon());
     }
     if (icon instanceof CompositeIcon) {
-      return getScaleContextSupport(Objects.requireNonNull(((CompositeIcon)icon).getIcon(0)));
+      CompositeIcon compositeIcon = (CompositeIcon)icon;
+      if (compositeIcon.getIconCount() == 0) return null;
+      Icon innerIcon = compositeIcon.getIcon(0);
+      if (innerIcon == null) return null;
+      return getScaleContextSupport(innerIcon);
     }
     return null;
   }

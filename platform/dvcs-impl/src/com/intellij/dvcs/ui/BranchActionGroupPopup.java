@@ -49,6 +49,7 @@ import static com.intellij.util.ui.UIUtil.DEFAULT_VGAP;
 public final class BranchActionGroupPopup extends FlatSpeedSearchPopup {
   private static final DataKey<ListPopupModel> POPUP_MODEL = DataKey.create("VcsPopupModel");
   static final String BRANCH_POPUP = "BranchWidget";
+  private static final int BRANCH_POPUP_ROW_COUNT = 30;
   private Project myProject;
   private MyPopupListElementRenderer myListElementRenderer;
   private boolean myShown;
@@ -76,16 +77,16 @@ public final class BranchActionGroupPopup extends FlatSpeedSearchPopup {
     DataManager.registerDataProvider(getList(), dataId -> POPUP_MODEL.is(dataId) ? getListModel() : null);
     myKey = dimensionKey;
     if (myKey != null) {
-      Dimension storedSize = WindowStateService.getInstance(myProject).getSizeFor(myProject, myKey);
-      if (storedSize != null) {
-        //set forced size before component is shown
-        setSize(storedSize);
+      setDimensionServiceKey(myKey);
+      if (WindowStateService.getInstance(myProject).getSizeFor(myProject, myKey) != null) {
         myUserSizeChanged = true;
       }
       createTitlePanelToolbar(myKey);
     }
     setSpeedSearchAlwaysShown();
     myMeanRowHeight = getList().getCellBounds(0, 0).height + UIUtil.getListCellVPadding() * 2;
+    setMaxRowCount(BRANCH_POPUP_ROW_COUNT);
+    getList().setVisibleRowCount(BRANCH_POPUP_ROW_COUNT);
   }
 
   private void createTitlePanelToolbar(@NotNull String dimensionKey) {
@@ -161,11 +162,15 @@ public final class BranchActionGroupPopup extends FlatSpeedSearchPopup {
       @Override
       public void onClosed(@NotNull LightweightWindowEvent event) {
         popupWindow.removeComponentListener(windowListener);
-        if (dimensionKey != null && myUserSizeChanged) {
-          WindowStateService.getInstance(myProject).putSizeFor(myProject, dimensionKey, myPrevSize);
-        }
       }
     });
+  }
+
+  @Override
+  public void storeDimensionSize() {
+    if (myKey != null && myUserSizeChanged) {
+      super.storeDimensionSize();
+    }
   }
 
   private void processOnSizeChanged() {
@@ -360,7 +365,16 @@ public final class BranchActionGroupPopup extends FlatSpeedSearchPopup {
 
     @Override
     protected SeparatorWithText createSeparator() {
-      return new MyTextSeparator();
+      SeparatorWithText separator = super.createSeparator();
+      separator.setTextForeground(UIUtil.getListForeground());
+      separator.setCaptionCentered(false);
+      UIUtil.addInsets(separator, DEFAULT_VGAP, UIUtil.getListCellHPadding(), 0, 0);
+      return separator;
+    }
+
+    @Override
+    protected void setSeparatorFont(Font font) {
+      super.setSeparatorFont(RelativeFont.BOLD.derive(font));
     }
 
     @Override
@@ -370,6 +384,10 @@ public final class BranchActionGroupPopup extends FlatSpeedSearchPopup {
         myTextLabel.setForeground(JBColor.gray);
       }
       super.customizeComponent(list, value, isSelected);
+      if (mySeparatorComponent.isVisible()) {
+        ((GroupHeaderSeparator)mySeparatorComponent).setHideLine(myCurrentIndex == 0 || StringUtil.isNotEmpty(mySeparatorComponent.getCaption()));
+      }
+
       CustomIconProvider actionWithIconProvider = getSpecificAction(value, CustomIconProvider.class);
       if (actionWithIconProvider != null) {
         myTextLabel.setComponentOrientation(ComponentOrientation.RIGHT_TO_LEFT);
@@ -419,23 +437,6 @@ public final class BranchActionGroupPopup extends FlatSpeedSearchPopup {
       compoundTextPanel.add(textPanel, BorderLayout.CENTER);
       compoundPanel.add(compoundTextPanel, BorderLayout.CENTER);
       return layoutComponent(compoundPanel);
-    }
-  }
-
-  private static class MyTextSeparator extends SeparatorWithText {
-
-    MyTextSeparator() {
-      super();
-      setTextForeground(UIUtil.getListForeground());
-      setCaptionCentered(false);
-      UIUtil.addInsets(this, DEFAULT_VGAP, UIUtil.getListCellHPadding(), 0, 0);
-    }
-
-    @Override
-    protected void paintLine(Graphics g, int x, int y, int width) {
-      if (StringUtil.isEmptyOrSpaces(getCaption())) {
-        super.paintLine(g, x, y, width);
-      }
     }
   }
 

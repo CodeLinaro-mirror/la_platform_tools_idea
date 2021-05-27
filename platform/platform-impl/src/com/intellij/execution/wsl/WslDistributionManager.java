@@ -5,9 +5,7 @@ import com.intellij.ide.SaveAndSyncHandler;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.CaseInsensitiveStringHashingStrategy;
@@ -36,6 +34,13 @@ public abstract class WslDistributionManager implements Disposable {
   public void dispose() {
     myMsIdToDistributionCache.clear();
     myInstalledDistributions = null;
+  }
+
+  /**
+   * @return not-null if installed distribution list is up-to-date; otherwise, return null and initialize update in background.
+   */
+  public @Nullable List<WSLDistribution> getCachedInstalledDistributions() {
+    return getInstalledDistributionsFuture().getNow(null);
   }
 
   /**
@@ -79,7 +84,7 @@ public abstract class WslDistributionManager implements Disposable {
 
   private @NotNull WSLDistribution getOrCreateDistributionByMsId(@NonNls @NotNull String msId, boolean overrideCaseInsensitively) {
     if (msId.isEmpty()) {
-      throw new IllegalStateException("WSL msId is empty");
+      throw new IllegalArgumentException("WSL msId is empty");
     }
     // reuse previously created WSLDistribution instances to avoid re-calculating Host IP / WSL IP
     WSLDistribution d = myMsIdToDistributionCache.get(msId);
@@ -93,31 +98,6 @@ public abstract class WslDistributionManager implements Disposable {
       }
     }
     return d;
-  }
-
-  @Nullable
-  public Pair<String, @Nullable WSLDistribution> parseWslPath(@NotNull String path) {
-    if (!WSLUtil.isSystemCompatible()) return null;
-    path = FileUtil.toSystemDependentName(path);
-    if (!path.startsWith(WSLDistribution.UNC_PREFIX)) return null;
-
-    path = StringUtil.trimStart(path, WSLDistribution.UNC_PREFIX);
-    int index = path.indexOf('\\');
-    if (index == -1) return null;
-
-    String distName = path.substring(0, index);
-    String wslPath = FileUtil.toSystemIndependentName(path.substring(index));
-
-    return Pair.create(wslPath, getOrCreateDistributionByMsId(distName, false));
-  }
-
-  @Nullable
-  public WSLDistribution distributionFromPath(@NotNull String path) {
-    Pair<String, @Nullable WSLDistribution> pair = parseWslPath(path);
-    if (pair != null && pair.second != null) {
-      return pair.second;
-    }
-    return null;
   }
 
   public static boolean isWslPath(@NotNull String path) {
@@ -137,7 +117,7 @@ public abstract class WslDistributionManager implements Disposable {
     private final long myExternalChangesCount;
 
     private CachedDistributions(@NotNull List<WSLDistribution> installedDistributions) {
-      myInstalledDistributions = installedDistributions;
+      myInstalledDistributions = List.copyOf(installedDistributions);
       myExternalChangesCount = getCurrentExternalChangesCount();
     }
 

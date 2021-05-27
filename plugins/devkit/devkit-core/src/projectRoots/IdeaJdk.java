@@ -54,9 +54,10 @@ import java.util.zip.ZipFile;
 
 public final class IdeaJdk extends JavaDependentSdkType implements JavaSdkType {
   private static final Logger LOG = Logger.getInstance(IdeaJdk.class);
-  @NonNls private static final String LIB_DIR_NAME = "lib";
-  @NonNls private static final String SRC_DIR_NAME = "src";
-  @NonNls private static final String PLUGINS_DIR = "plugins";
+
+  private static final String LIB_DIR_NAME = "lib";
+  private static final String LIB_SRC_DIR_NAME = "lib/src";
+  private static final String PLUGINS_DIR = "plugins";
 
   public IdeaJdk() {
     super("IDEA JDK");
@@ -95,7 +96,7 @@ public final class IdeaJdk extends JavaDependentSdkType implements JavaSdkType {
   }
 
   @Override
-  public boolean isValidSdkHome(String path) {
+  public boolean isValidSdkHome(@NotNull String path) {
     if (PsiUtil.isPathToIntelliJIdeaSources(path)) {
       return true;
     }
@@ -132,7 +133,7 @@ public final class IdeaJdk extends JavaDependentSdkType implements JavaSdkType {
 
   @NotNull
   @Override
-  public String suggestSdkName(@Nullable String currentSdkName, String sdkHome) {
+  public String suggestSdkName(@Nullable String currentSdkName, @NotNull String sdkHome) {
     if (PsiUtil.isPathToIntelliJIdeaSources(sdkHome)) return "Local IDEA [" + sdkHome + "]"; //NON-NLS
     String buildNumber = getBuildNumber(sdkHome);
     return IntelliJPlatformProduct.fromBuildNumber(buildNumber).getName() + " " + (buildNumber != null ? buildNumber : "");
@@ -160,7 +161,8 @@ public final class IdeaJdk extends JavaDependentSdkType implements JavaSdkType {
     appendIdeaLibrary(home, result, "junit.jar");
     String plugins = home + File.separator + PLUGINS_DIR + File.separator;
     appendIdeaLibrary(plugins + "java", result);
-    appendIdeaLibrary(plugins + "JavaEE", result, "javaee-impl.jar", "jpa-console.jar");
+    appendIdeaLibrary(plugins + "JavaEE", result, "javaee-impl.jar", "jpa-javax-console.jar", "jpa-jakarta-console.jar",
+                      "jpa-console-common.jar");
     appendIdeaLibrary(plugins + "PersistenceSupport", result, "persistence-impl.jar");
     appendIdeaLibrary(plugins + "DatabaseTools", result, "database-impl.jar", "jdbc-console.jar");
     appendIdeaLibrary(plugins + "css", result, "css.jar");
@@ -405,22 +407,18 @@ public final class IdeaJdk extends JavaDependentSdkType implements JavaSdkType {
   }
 
   private static void addSources(File file, SdkModificator sdkModificator) {
-    final File src = new File(new File(file, LIB_DIR_NAME), SRC_DIR_NAME);
-    if (!src.exists()) return;
-    File[] srcs = src.listFiles(pathname -> {
-      @NonNls final String path = pathname.getPath();
-      //noinspection SimplifiableIfStatement
-      if (path.contains("generics")) return false;
-      return path.endsWith(".jar") || path.endsWith(".zip");
-    });
-    for (int i = 0; srcs != null && i < srcs.length; i++) {
-      File jarFile = srcs[i];
-      if (jarFile.exists()) {
-        JarFileSystem jarFileSystem = JarFileSystem.getInstance();
-        String path = jarFile.getAbsolutePath();
-        jarFileSystem.setNoCopyJarForPath(path);
-        VirtualFile vFile = jarFileSystem.findFileByPath(path);
-        sdkModificator.addRoot(vFile, OrderRootType.SOURCES);
+    File[] files = new File(file, LIB_SRC_DIR_NAME).listFiles();
+    if (files != null) {
+      JarFileSystem fs = JarFileSystem.getInstance();
+      for (File child : files) {
+        String path = child.getAbsolutePath();
+        if (!path.contains("generics") && (path.endsWith(".jar") || path.endsWith(".zip"))) {
+          fs.setNoCopyJarForPath(path);
+          VirtualFile vFile = fs.refreshAndFindFileByPath(path + JarFileSystem.JAR_SEPARATOR);
+          if (vFile != null) {
+            sdkModificator.addRoot(vFile, OrderRootType.SOURCES);
+          }
+        }
       }
     }
   }
@@ -456,14 +454,15 @@ public final class IdeaJdk extends JavaDependentSdkType implements JavaSdkType {
         else {
           String homePath = javaSdk.getHomePath();
           if (homePath == null) return;
-          final File jdkHome = new File(homePath).getParentFile();
-          @NonNls final String srcZip = "src.zip";
-          final File jarFile = new File(jdkHome, srcZip);
-          if (jarFile.exists()){
+          File jarFile = new File(new File(homePath).getParentFile(), "src.zip");
+          if (jarFile.exists()) {
             JarFileSystem jarFileSystem = JarFileSystem.getInstance();
             String path = jarFile.getAbsolutePath();
             jarFileSystem.setNoCopyJarForPath(path);
-            sdkModificator.addRoot(jarFileSystem.findFileByPath(path), OrderRootType.SOURCES);
+            VirtualFile vFile = jarFileSystem.refreshAndFindFileByPath(path + JarFileSystem.JAR_SEPARATOR);
+            if (vFile != null) {
+              sdkModificator.addRoot(vFile, OrderRootType.SOURCES);
+            }
           }
         }
       }

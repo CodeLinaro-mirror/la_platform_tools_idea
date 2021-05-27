@@ -4,6 +4,7 @@ package com.intellij.lang.java.parser;
 import com.intellij.core.JavaPsiBundle;
 import com.intellij.lang.PsiBuilder;
 import com.intellij.lang.PsiBuilderUtil;
+import com.intellij.lang.java.lexer.JavaLexer;
 import com.intellij.openapi.util.Pair;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.JavaTokenType;
@@ -153,6 +154,7 @@ public class DeclarationParser {
 
   private void parseEnumConstants(final PsiBuilder builder) {
     boolean first = true;
+    boolean seenCommaBefore = false;
     while (builder.getTokenType() != null) {
       if (expect(builder, JavaTokenType.SEMICOLON)) {
         return;
@@ -173,7 +175,15 @@ public class DeclarationParser {
 
       first = false;
 
-      if (!expect(builder, JavaTokenType.COMMA) &&
+      int commaCount = 0;
+      while (builder.getTokenType() == JavaTokenType.COMMA) {
+        if (commaCount > 0) {
+          error(builder, JavaPsiBundle.message("expected.identifier"));
+        }
+        builder.advanceLexer();
+        commaCount++;
+      }
+      if (commaCount == 0 &&
           builder.getTokenType() != null &&
           builder.getTokenType() != JavaTokenType.SEMICOLON) {
         error(builder, JavaPsiBundle.message("expected.comma.or.semicolon"));
@@ -425,13 +435,13 @@ public class DeclarationParser {
   }
 
   private static boolean isSealedToken(PsiBuilder builder, IElementType tokenType) {
-    return getLanguageLevel(builder).isAtLeast(LanguageLevel.JDK_15_PREVIEW) &&
+    return JavaLexer.isSealedAvailable(getLanguageLevel(builder)) &&
            tokenType == JavaTokenType.IDENTIFIER &&
            PsiKeyword.SEALED.equals(builder.getTokenText());
   }
 
   private static boolean isNonSealedToken(PsiBuilder builder, IElementType tokenType) {
-    if (!getLanguageLevel(builder).isAtLeast(LanguageLevel.JDK_15_PREVIEW) ||
+    if (!JavaLexer.isSealedAvailable(getLanguageLevel(builder)) ||
         tokenType != JavaTokenType.IDENTIFIER ||
         !"non".equals(builder.getTokenText()) ||
         builder.lookAhead(1) != JavaTokenType.MINUS ||

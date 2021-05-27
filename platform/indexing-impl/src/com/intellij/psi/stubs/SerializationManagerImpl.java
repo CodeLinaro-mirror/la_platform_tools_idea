@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.stubs;
 
 import com.intellij.openapi.Disposable;
@@ -18,7 +18,8 @@ import org.jetbrains.annotations.Nullable;
 import java.io.DataOutputStream;
 import java.io.*;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -36,7 +37,7 @@ public final class SerializationManagerImpl extends SerializationManagerEx imple
   private volatile boolean mySerializersLoaded;
 
   public SerializationManagerImpl() {
-    this(FileBasedIndex.USE_IN_MEMORY_INDEX ? null : PathManager.getIndexRoot().toPath().resolve("rep.names"), false);
+    this(FileBasedIndex.USE_IN_MEMORY_INDEX ? null : PathManager.getIndexRoot().resolve("rep.names"), false);
   }
 
   @NonInjectable
@@ -118,7 +119,7 @@ public final class SerializationManagerImpl extends SerializationManagerEx imple
   }
 
   @Override
-  public void flushNameStorage() {
+  public void flushNameStorage() throws IOException {
     mySerializerEnumerator.flush();
   }
 
@@ -208,7 +209,10 @@ public final class SerializationManagerImpl extends SerializationManagerEx imple
   protected void initSerializers() {
     //noinspection SynchronizeOnThis
     synchronized (this) {
-      if (mySerializersLoaded) return;
+      if (mySerializersLoaded) {
+        return;
+      }
+
       registerSerializer(PsiFileStubImpl.TYPE);
       List<StubFieldAccessor> lazySerializers = IStubElementType.loadRegisteredStubElementTypes();
       final IElementType[] stubElementTypes = IElementType.enumerate(type -> type instanceof StubSerializer);

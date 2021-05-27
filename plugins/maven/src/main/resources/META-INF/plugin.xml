@@ -290,8 +290,7 @@
     <notificationGroup id="Maven" displayType="BALLOON"/>
     <toolWindowAllowlist id="Maven"/>
     <compiler.buildIssueContributor implementation="org.jetbrains.idea.maven.externalSystemIntegration.output.quickfixes.JpsReleaseVersion5QuickFix" />
-
-    <toolWindowExtractor implementation="org.jetbrains.idea.maven.navigator.MavenToolWindowViewModelExtractor" />
+    <untrustedModeProvider implementation="org.jetbrains.idea.maven.project.MavenUntrustedModeProvider" />
   </extensions>
 
   <extensions defaultExtensionNs="com.intellij.properties">

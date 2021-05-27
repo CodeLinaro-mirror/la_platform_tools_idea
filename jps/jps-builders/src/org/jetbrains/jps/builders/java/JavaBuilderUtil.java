@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.builders.java;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -9,6 +9,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FileCollectionFactory;
 import gnu.trove.THashSet;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,6 +46,7 @@ public final class JavaBuilderUtil {
    * @deprecated This functionality is obsolete and is not used by dependency analysis anymore. To be removed in future releases
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static final Key<Callbacks.ConstantAffectionResolver> CONSTANT_SEARCH_SERVICE = Key.create("_constant_search_service_");
 
   private static final Logger LOG = Logger.getInstance(Builder.class);
@@ -250,7 +252,7 @@ public final class JavaBuilderUtil {
                     final File targetModuleInfo = moduleIndex.getModuleInfoFile(target.getModule(), target.isTests());
                     if (FileUtil.filesEqual(targetModuleInfo, file)) {
                       if (targetsToMark == null) {
-                        targetsToMark = new THashSet<>(); // lazy init
+                        targetsToMark = new HashSet<>(); // lazy init
                       }
                       targetsToMark.add(target);
                     }

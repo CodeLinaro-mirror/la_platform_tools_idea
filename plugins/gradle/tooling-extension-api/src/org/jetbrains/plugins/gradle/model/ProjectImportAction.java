@@ -2,6 +2,8 @@
 package org.jetbrains.plugins.gradle.model;
 
 import com.intellij.openapi.externalSystem.model.ExternalSystemException;
+import com.intellij.util.Consumer;
+import com.intellij.util.ReflectionUtilRt;
 import org.gradle.api.Action;
 import org.gradle.tooling.BuildAction;
 import org.gradle.tooling.BuildController;
@@ -13,20 +15,26 @@ import org.gradle.tooling.internal.gradle.DefaultBuildIdentifier;
 import org.gradle.tooling.internal.gradle.DefaultProjectIdentifier;
 import org.gradle.tooling.model.*;
 import org.gradle.tooling.model.build.BuildEnvironment;
+import org.gradle.tooling.model.build.JavaEnvironment;
 import org.gradle.tooling.model.gradle.BasicGradleProject;
 import org.gradle.tooling.model.gradle.GradleBuild;
 import org.gradle.tooling.model.idea.IdeaProject;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.gradle.model.ProjectImportModelProvider.BuildModelConsumer;
 import org.jetbrains.plugins.gradle.model.ProjectImportModelProvider.ProjectModelConsumer;
 import org.jetbrains.plugins.gradle.model.internal.TurnOffDefaultTasks;
+import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.InternalBuildIdentifier;
+import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.InternalJavaEnvironment;
+import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.Supplier;
+import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.build.InternalBuildEnvironment;
 
 import java.io.File;
 import java.io.Serializable;
-import java.lang.reflect.Field;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author Vladislav.Soroka
@@ -40,6 +48,7 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
   private final boolean myIsPreviewMode;
   private final boolean myIsCompositeBuildsSupported;
   private boolean myUseProjectsLoadedPhase;
+  private boolean myParallelModelsFetch;
   private AllModels myAllModels = null;
   @Nullable
   private transient GradleBuild myGradleBuild;
@@ -88,11 +97,12 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
     if (isProjectsLoadedAction || !myUseProjectsLoadedPhase) {
       long startTime = System.currentTimeMillis();
       myGradleBuild = controller.getBuildModel();
-      AllModels allModels = new AllModels(convert(myGradleBuild));
+      Build mainBuild = convert(myGradleBuild);
+      AllModels allModels = new AllModels(mainBuild);
       allModels.logPerformance("Get model GradleBuild", System.currentTimeMillis() - startTime);
       long startTimeBuildEnv = System.currentTimeMillis();
       BuildEnvironment buildEnvironment = controller.findModel(BuildEnvironment.class);
-      allModels.setBuildEnvironment(buildEnvironment);
+      allModels.setBuildEnvironment(convert(buildEnvironment));
       allModels.logPerformance("Get model BuildEnvironment", System.currentTimeMillis() - startTimeBuildEnv);
       myAllModels = allModels;
       myModelConverter = getToolingModelConverter(controller);
@@ -101,9 +111,7 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
     assert myGradleBuild != null;
     assert myModelConverter != null;
     final MyBuildController wrappedController = new MyBuildController(controller, myGradleBuild);
-    for (BasicGradleProject gradleProject : myGradleBuild.getProjects()) {
-      addProjectModels(wrappedController, myAllModels, gradleProject, isProjectsLoadedAction);
-    }
+    fetchProjectBuildModels(wrappedController, isProjectsLoadedAction, myGradleBuild);
     addBuildModels(wrappedController, myAllModels, myGradleBuild, isProjectsLoadedAction);
 
     if (myIsCompositeBuildsSupported) {
@@ -113,9 +121,7 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
           if (!isProjectsLoadedAction) {
             myAllModels.getIncludedBuilds().add(convert(includedBuild));
           }
-          for (BasicGradleProject project : includedBuild.getProjects()) {
-            addProjectModels(wrappedController, myAllModels, project, isProjectsLoadedAction);
-          }
+          fetchProjectBuildModels(wrappedController, isProjectsLoadedAction, includedBuild);
           addBuildModels(wrappedController, myAllModels, includedBuild, isProjectsLoadedAction);
         }
       });
@@ -124,6 +130,38 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
       wrappedController.getModel(TurnOffDefaultTasks.class);
     }
     return isProjectsLoadedAction && !myAllModels.hasModels() ? null : myAllModels;
+  }
+
+  @ApiStatus.Internal
+  public void setParallelModelsFetch(boolean parallelModelsFetch) {
+    myParallelModelsFetch = parallelModelsFetch;
+  }
+
+  @Contract("null -> null")
+  private static BuildEnvironment convert(final @Nullable BuildEnvironment buildEnvironment) {
+    if (buildEnvironment == null) return null;
+    return buildEnvironment instanceof InternalBuildEnvironment ? buildEnvironment :
+           new InternalBuildEnvironment(
+             new Supplier<InternalBuildIdentifier>() {
+               @Override
+               public InternalBuildIdentifier get() {
+                 return new InternalBuildIdentifier(buildEnvironment.getBuildIdentifier().getRootDir());
+               }
+             },
+             new Supplier<InternalJavaEnvironment>() {
+               @Override
+               public InternalJavaEnvironment get() {
+                 JavaEnvironment java = buildEnvironment.getJava();
+                 return new InternalJavaEnvironment(java.getJavaHome(), java.getJvmArguments());
+               }
+             },
+             new Supplier<File>() {
+               @Override
+               public File get() {
+                 return buildEnvironment.getGradle().getGradleUserHome();
+               }
+             },
+             buildEnvironment.getGradle().getGradleVersion());
   }
 
   private interface GradleBuildConsumer {
@@ -145,6 +183,39 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
     }
   }
 
+  private void fetchProjectBuildModels(BuildController controller, final boolean isProjectsLoadedAction, GradleBuild build) {
+    // Prepare nested build actions.
+    List<BuildAction<List<Runnable>>> buildActions = new ArrayList<BuildAction<List<Runnable>>>();
+    for (final BasicGradleProject gradleProject : build.getProjects()) {
+      buildActions.add(
+        new BuildAction<List<Runnable>>() {
+          @Override
+          public List<Runnable> execute(BuildController controller) {
+            return getProjectModels(controller, myAllModels, gradleProject, isProjectsLoadedAction);
+          }
+        }
+      );
+    }
+
+    // Execute nested build actions.
+    List<List<Runnable>> addFetchedModelActions = new ArrayList<List<Runnable>>(buildActions.size());
+    if (myParallelModelsFetch) {
+      addFetchedModelActions.addAll(controller.run(buildActions));
+    }
+    else {
+      for (BuildAction<List<Runnable>> buildAction : buildActions) {
+        addFetchedModelActions.addAll(controller.run(Collections.singleton(buildAction)));
+      }
+    }
+
+    // Execute returned actions sequentially in one thread to populate myAllModels.
+    for (List<Runnable> actions : addFetchedModelActions) {
+      for (Runnable action : actions) {
+        action.run();
+      }
+    }
+  }
+
   @NotNull
   private static Build convert(@NotNull GradleBuild build) {
     DefaultBuild rootProject = new DefaultBuild(build.getRootProject().getName(), build.getBuildIdentifier().getRootDir());
@@ -156,55 +227,51 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
 
   private void configureAdditionalTypes(BuildController controller) {
     if (myTargetTypes.isEmpty()) return;
-
     try {
-      Field adapterField;
-      try {
-        adapterField = controller.getClass().getDeclaredField("adapter");
-      }
-      catch (NoSuchFieldException e) {
-        // since v.4.4 there is a BuildControllerWithoutParameterSupport can be used
-        Field delegate = controller.getClass().getDeclaredField("delegate");
-        delegate.setAccessible(true);
-        Object wrappedController = delegate.get(controller);
-        adapterField = wrappedController.getClass().getDeclaredField("adapter");
-        controller = (BuildController)wrappedController;
-      }
-      adapterField.setAccessible(true);
-      ProtocolToModelAdapter adapter = (ProtocolToModelAdapter)adapterField.get(controller);
-
-      Field typeProviderField = adapter.getClass().getDeclaredField("targetTypeProvider");
-      typeProviderField.setAccessible(true);
-      TargetTypeProvider typeProvider = (TargetTypeProvider)typeProviderField.get(adapter);
-
-      Field targetTypesField = typeProvider.getClass().getDeclaredField("configuredTargetTypes");
-      targetTypesField.setAccessible(true);
+      ProtocolToModelAdapter modelAdapter =
+        ReflectionUtilRt.getField(controller.getClass(), controller, ProtocolToModelAdapter.class, "adapter");
+      if (modelAdapter == null) return;
+      TargetTypeProvider typeProvider =
+        ReflectionUtilRt.getField(ProtocolToModelAdapter.class, modelAdapter, TargetTypeProvider.class, "targetTypeProvider");
+      if (typeProvider == null) return;
       //noinspection unchecked
-      Map<String, Class<?>> targetTypes = (Map<String, Class<?>>)targetTypesField.get(typeProvider);
-
+      Map<String, Class<?>> targetTypes =
+        ReflectionUtilRt.getField(typeProvider.getClass(), typeProvider, Map.class, "configuredTargetTypes");
+      if (targetTypes == null) return;
       for (Class<?> targetType : myTargetTypes) {
         targetTypes.put(targetType.getCanonicalName(), targetType);
       }
     }
     catch (Exception ignore) {
-      // TODO handle error
     }
   }
 
-  private void addProjectModels(@NotNull BuildController controller,
-                                @NotNull final AllModels allModels,
-                                @NotNull final BasicGradleProject project,
-                                boolean isProjectsLoadedAction) {
+  /**
+   * Gets project level models for a given {@code project} and returns a collection of actions,
+   * which when executed add these models to {@code allModels}.
+   *
+   * <p>The actions returned by this method are supposed to be executed on a single thread.
+   */
+  private List<Runnable> getProjectModels(@NotNull BuildController controller,
+                                          @NotNull final AllModels allModels,
+                                          @NotNull final BasicGradleProject project,
+                                          boolean isProjectsLoadedAction) {
     try {
+      final List<Runnable> result = new ArrayList<Runnable>();
       Set<ProjectImportModelProvider> modelProviders = getModelProviders(isProjectsLoadedAction);
       for (ProjectImportModelProvider extension : modelProviders) {
         final Set<String> obtainedModels = new HashSet<String>();
         long startTime = System.currentTimeMillis();
         ProjectModelConsumer modelConsumer = new ProjectModelConsumer() {
           @Override
-          public void consume(@NotNull Object object, @NotNull Class clazz) {
-            object = myModelConverter.convert(object);
-            allModels.addModel(object, clazz, project);
+          public void consume(final @NotNull Object object, final @NotNull Class clazz) {
+            result.add(new Runnable() {
+              @Override
+              public void run() {
+                Object o = myModelConverter.convert(object);
+                allModels.addModel(o, clazz, project);
+              }
+            });
             obtainedModels.add(clazz.getName());
           }
         };
@@ -215,6 +282,7 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
           " obtained " + obtainedModels.size() + " model(s): " + joinClassNamesToString(obtainedModels),
           System.currentTimeMillis() - startTime);
       }
+      return result;
     }
     catch (Exception e) {
       // do not fail project import in a preview mode
@@ -222,6 +290,7 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
         throw new ExternalSystemException(e);
       }
     }
+    return Collections.emptyList();
   }
 
   private void addBuildModels(@NotNull BuildController controller,
@@ -297,9 +366,12 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
     Object convert(Object object);
   }
 
-  public static class AllModels extends ModelsHolder<BuildModel, ProjectModel> {
+  // Note: This class is NOT thread safe and it is supposed to be used from a single thread.
+  //       Performance logging related methods are thread safe.
+  public static final class AllModels extends ModelsHolder<BuildModel, ProjectModel> {
     @NotNull private final List<Build> includedBuilds = new ArrayList<Build>();
-    private final Map<String, Long> performanceTrace = new LinkedHashMap<String, Long>();
+    private final Map<String, Long> performanceTrace = new ConcurrentHashMap<String, Long>();
+    private transient Map<String, String> myBuildsKeyPrefixesMapping;
 
     public AllModels(@NotNull Build mainBuild) {
       super(mainBuild);
@@ -315,6 +387,7 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
      */
     @NotNull
     @Deprecated
+    @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
     public IdeaProject getIdeaProject() {
       IdeaProject ideaProject = getModel(IdeaProject.class);
       assert ideaProject != null;
@@ -348,6 +421,37 @@ public class ProjectImportAction implements BuildAction<ProjectImportAction.AllM
 
     public Map<String, Long> getPerformanceTrace() {
       return performanceTrace;
+    }
+
+    @Override
+    public void convertPaths(@NotNull Consumer<Object> pathsConverter) {
+      super.convertPaths(pathsConverter);
+      BuildEnvironment buildEnvironment = getBuildEnvironment();
+      if (buildEnvironment != null) {
+        pathsConverter.consume(buildEnvironment);
+      }
+      myBuildsKeyPrefixesMapping = new HashMap<String, String>();
+      convertPaths(pathsConverter, getMainBuild());
+      for (Build includedBuild : includedBuilds) {
+        convertPaths(pathsConverter, includedBuild);
+      }
+    }
+
+    private void convertPaths(@NotNull Consumer<Object> fileMapper, @NotNull Build build) {
+      String originalKey = getBuildKeyPrefix(build.getBuildIdentifier());
+      fileMapper.consume(build);
+      String currentKey = getBuildKeyPrefix(build.getBuildIdentifier());
+      if (!originalKey.equals(currentKey)) {
+        myBuildsKeyPrefixesMapping.put(currentKey, originalKey);
+      }
+    }
+
+    @NotNull
+    @Override
+    protected String getBuildKeyPrefix(@NotNull BuildIdentifier buildIdentifier) {
+      String currentKey = super.getBuildKeyPrefix(buildIdentifier);
+      String originalKey = myBuildsKeyPrefixesMapping == null ? null : myBuildsKeyPrefixesMapping.get(currentKey);
+      return originalKey == null ? currentKey : originalKey;
     }
   }
 

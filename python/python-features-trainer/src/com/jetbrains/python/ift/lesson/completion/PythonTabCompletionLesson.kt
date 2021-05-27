@@ -1,18 +1,14 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.ift.lesson.completion
 
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.util.Key
 import com.jetbrains.python.ift.PythonLessonsBundle
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskRuntimeContext
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.*
-import training.learn.lesson.kimpl.LessonUtil.checkExpectedStateOfEditor
+import training.dsl.*
+import training.dsl.LessonUtil.checkExpectedStateOfEditor
+import training.learn.course.KLesson
 import javax.swing.JList
 
-class PythonTabCompletionLesson(module: Module)
-  : KLesson("Tab completion", PythonLessonsBundle.message("python.tab.completion.lesson.name"), module, "Python") {
+class PythonTabCompletionLesson
+  : KLesson("Tab completion", PythonLessonsBundle.message("python.tab.completion.lesson.name")) {
   private val template = parseLessonSample("""
     class Calculator:
         def __init__(self):
@@ -69,7 +65,7 @@ class PythonTabCompletionLesson(module: Module)
           restoreAfterStateBecomeFalse {
             selectNeededItem()?.not() ?: true
           }
-          test { GuiTestUtil.shortcut(Key.TAB) }
+          test { invokeActionViaShortcut("TAB") }
         }
       }
     }

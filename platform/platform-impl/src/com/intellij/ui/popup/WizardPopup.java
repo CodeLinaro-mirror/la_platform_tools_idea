@@ -13,6 +13,7 @@ import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.popup.async.AsyncPopupImpl;
 import com.intellij.ui.popup.async.AsyncPopupStep;
+import com.intellij.ui.popup.list.ComboBoxPopup;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.ui.popup.tree.TreePopupImpl;
 import com.intellij.ui.popup.util.MnemonicsSearch;
@@ -21,6 +22,7 @@ import com.intellij.ui.speedSearch.SpeedSearch;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.TimerUtil;
 import org.intellij.lang.annotations.JdkConstants;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -61,6 +63,7 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
    * @deprecated use {@link #WizardPopup(Project, JBPopup, PopupStep)}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public WizardPopup(@NotNull PopupStep<Object> aStep) {
     this(CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext()), null, aStep);
   }
@@ -350,13 +353,12 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
       final KeyStroke stroke = KeyStroke.getKeyStroke(event.getKeyCode(), event.getModifiers(), false);
       if (proceedKeyEvent(event, stroke)) return true;
     }
-    else if (!myKeyPressedReceived) {
+    else if (!myKeyPressedReceived && !(this instanceof ComboBoxPopup)) {
       // key was pressed while this popup wasn't active, ignore the event
       return false;
     }
 
     if (event.getID() == KeyEvent.KEY_RELEASED) {
-      myKeyPressedReceived = false;
       final KeyStroke stroke = KeyStroke.getKeyStroke(event.getKeyCode(), event.getModifiers(), true);
       return proceedKeyEvent(event, stroke);
     }

@@ -5,7 +5,6 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.idea.ActionsBundle;
 import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.editor.impl.EditorHeaderComponent;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
@@ -173,18 +172,14 @@ public final class ToggleToolbarAction extends ToggleAction implements DumbAware
     return UIUtil.uiTraverser(null).withRoots(roots).preOrderDfsTraversal().filter(ActionToolbar.class);
   }
 
-  private static class OptionsGroup extends ActionGroup implements DumbAware {
+  private static class OptionsGroup extends NonTrivialActionGroup implements DumbAware {
 
     private final ToolWindow myToolWindow;
 
     OptionsGroup(ToolWindow toolWindow) {
-      super(IdeBundle.message("group.view.options"), true);
+      getTemplatePresentation().setText(IdeBundle.message("group.view.options"));
+      setPopup(true);
       myToolWindow = toolWindow;
-    }
-
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-      e.getPresentation().setVisible(!ActionGroupUtil.isGroupEmpty(this, e, LaterInvocator.isInModalContext()));
     }
 
     @Override
@@ -204,7 +199,7 @@ public final class ToggleToolbarAction extends ToggleAction implements DumbAware
         List<AnAction> actions = toolbar.getActions();
         for (AnAction action : actions) {
           if (action instanceof ToggleAction && !result.contains(action) &&
-              ActionGroupUtil.isActionEnabledAndVisible(action, e, LaterInvocator.isInModalContext())) {
+              ActionGroupUtil.isActionEnabledAndVisible(action, e)) {
             result.add(action);
           }
           else if (action instanceof Separator) {

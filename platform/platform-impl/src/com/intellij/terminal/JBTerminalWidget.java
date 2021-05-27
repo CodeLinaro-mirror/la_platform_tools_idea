@@ -83,6 +83,9 @@ public class JBTerminalWidget extends JediTermWidget implements Disposable, Data
   @Nullable
   private LinkResult runFilters(@NotNull Project project, @NotNull String line) {
     Filter.Result r = ReadAction.compute(() -> {
+      if (project.isDisposed()) {
+        return null;
+      }
       try {
         return myCompositeFilterWrapper.getCompositeFilter().applyFilter(line, line.length());
       }
@@ -139,7 +142,13 @@ public class JBTerminalWidget extends JediTermWidget implements Disposable, Data
 
   @Override
   protected JScrollBar createScrollBar() {
-    JBScrollBar bar = new JBScrollBar();
+    JBScrollBar bar = new JBScrollBar() {
+      @Override
+      public Color getBackground() {
+        return myTerminalPanel.getBackground();
+      }
+    };
+    bar.setOpaque(true);
     bar.putClientProperty(JBScrollPane.Alignment.class, JBScrollPane.Alignment.RIGHT);
     bar.putClientProperty(JBScrollBar.TRACK, (RegionPainter<Object>)(g, x, y, width, height, object) -> {
       SubstringFinder.FindResult result = myTerminalPanel.getFindResult();
@@ -148,7 +157,7 @@ public class JBTerminalWidget extends JediTermWidget implements Disposable, Data
 
         TerminalColor backgroundColor = mySettingsProvider.getFoundPatternColor().getBackground();
         if (backgroundColor != null) {
-          g.setColor(mySettingsProvider.getTerminalColorPalette().getColor(backgroundColor));
+          g.setColor(mySettingsProvider.getTerminalColorPalette().getBackground(backgroundColor));
         }
         int anchorHeight = Math.max(2, height / modelHeight);
         for (SubstringFinder.FindResult.FindItem r : result.getItems()) {

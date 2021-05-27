@@ -10,13 +10,14 @@ import com.intellij.internal.statistic.eventLog.StatisticsEventLoggerProvider;
 import com.intellij.internal.statistic.eventLog.connection.StatisticsService;
 import com.intellij.internal.statistic.eventLog.fus.FeatureUsageLogger;
 import com.intellij.internal.statistic.eventLog.uploader.EventLogExternalUploader;
-import com.intellij.internal.statistic.eventLog.validator.SensitiveDataValidator;
+import com.intellij.internal.statistic.eventLog.validator.IntellijSensitiveDataValidator;
 import com.intellij.internal.statistic.service.fus.collectors.FUStateUsagesLogger;
 import com.intellij.internal.statistic.utils.StatisticsUploadAssistant;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.extensions.ExtensionNotApplicableException;
 import com.intellij.openapi.extensions.InternalIgnoreDependencyViolation;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectManagerListener;
@@ -37,9 +38,9 @@ final class StatisticsJobsScheduler implements ApplicationInitializedListener {
   private static final int CHECK_STATISTICS_PROVIDERS_DELAY_IN_MIN = 1;
   private static final int CHECK_EXTERNAL_UPLOADER_DELAY_IN_MIN = 3;
 
-  public static final int LOG_APPLICATION_STATES_INITIAL_DELAY_IN_MIN = 15;
+  public static final int LOG_APPLICATION_STATES_INITIAL_DELAY_IN_MIN = 10;
   public static final int LOG_APPLICATION_STATES_DELAY_IN_MIN = 24 * 60;
-  public static final int LOG_PROJECTS_STATES_INITIAL_DELAY_IN_MIN = 30;
+  public static final int LOG_PROJECTS_STATES_INITIAL_DELAY_IN_MIN = 15;
   public static final int LOG_PROJECTS_STATES_DELAY_IN_MIN = 12 * 60;
 
   private static final Map<Project, Future<?>> myPersistStatisticsSessionsMap = Collections.synchronizedMap(new HashMap<>());
@@ -71,7 +72,7 @@ final class StatisticsJobsScheduler implements ApplicationInitializedListener {
         final List<StatisticsEventLoggerProvider> providers = StatisticsEventLoggerKt.getEventLogProviders();
         for (StatisticsEventLoggerProvider provider : providers) {
           if (provider.isRecordEnabled()) {
-            SensitiveDataValidator.getInstance(provider.getRecorderId()).update();
+            IntellijSensitiveDataValidator.getInstance(provider.getRecorderId()).update();
           }
         }
       }, 3, 180, TimeUnit.MINUTES);
@@ -109,11 +110,16 @@ final class StatisticsJobsScheduler implements ApplicationInitializedListener {
     connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectOpened(@NotNull Project project) {
-        ScheduledFuture<?> future = JobScheduler.getScheduler().scheduleWithFixedDelay(
-          () -> FUStateUsagesLogger.create().logProjectStates(project, new EmptyProgressIndicator()),
-          LOG_PROJECTS_STATES_INITIAL_DELAY_IN_MIN,
-          LOG_PROJECTS_STATES_DELAY_IN_MIN, TimeUnit.MINUTES);
-        myPersistStatisticsSessionsMap.put(project, future);
+        ScheduledFuture<?> scheduledFuture = JobScheduler.getScheduler().schedule(() -> {
+          //wait until initial indexation will be finished
+          DumbService.getInstance(project).runWhenSmart(() -> {
+            ScheduledFuture<?> future = JobScheduler.getScheduler()
+              .scheduleWithFixedDelay(() -> FUStateUsagesLogger.create().logProjectStates(project, new EmptyProgressIndicator()),
+                                      0, LOG_PROJECTS_STATES_DELAY_IN_MIN, TimeUnit.MINUTES);
+            myPersistStatisticsSessionsMap.put(project, future);
+          });
+        }, LOG_PROJECTS_STATES_INITIAL_DELAY_IN_MIN, TimeUnit.MINUTES);
+        myPersistStatisticsSessionsMap.put(project, scheduledFuture);
       }
 
       @Override

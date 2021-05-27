@@ -1,5 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.indexing;
 
 import com.intellij.ide.plugins.PluginUtil;
@@ -36,9 +35,8 @@ public class ID<K, V> extends IndexId<K,V> {
 
   private final short myUniqueId;
 
-  @NotNull
-  private static Path getEnumFile() {
-    return PathManager.getIndexRoot().toPath().resolve("indices.enum");
+  private static @NotNull Path getEnumFile() {
+    return PathManager.getIndexRoot().resolve("indices.enum");
   }
 
   @ApiStatus.Internal
@@ -85,14 +83,12 @@ public class ID<K, V> extends IndexId<K,V> {
     if (checkCallerPlugin && id != null) {
       PluginId actualPluginId = ourIdToPluginId.get(id);
 
-      String actualPluginIdStr = actualPluginId == null ? null : actualPluginId.getIdString();
-      String requiredPluginIdStr = requiredPluginId == null ? null : requiredPluginId.getIdString();
+      String actualPluginIdStr = actualPluginId == null ? "IDEA Core" : actualPluginId.getIdString();
+      String requiredPluginIdStr = requiredPluginId == null ? "IDEA Core" : requiredPluginId.getIdString();
 
       if (!Objects.equals(actualPluginIdStr, requiredPluginIdStr)) {
         Throwable registrationStackTrace = ourIdToRegistrationStackTrace.get(id);
-        String message = "ID with name '" + name +
-                         "' requested for plugin " + requiredPluginIdStr +
-                         " but registered for " + actualPluginIdStr + (registrationStackTrace == null ? " registration stack trace: " : "");
+        String message = getInvalidIdAccessMessage(name, actualPluginIdStr, requiredPluginIdStr, registrationStackTrace);
         if (registrationStackTrace != null) {
           throw new AssertionError(message, registrationStackTrace);
         } else {
@@ -101,6 +97,18 @@ public class ID<K, V> extends IndexId<K,V> {
       }
     }
     return id;
+  }
+
+  @NotNull
+  private static String getInvalidIdAccessMessage(@NotNull String name,
+                                                  @Nullable String actualPluginIdStr,
+                                                  @Nullable String requiredPluginIdStr,
+                                                  @Nullable Throwable registrationStackTrace) {
+    return "ID with name '" + name +
+           "' requested for plugin " + requiredPluginIdStr +
+           " but registered for " + actualPluginIdStr + " plugin. " +
+           "Please use an instance field to access corresponding ID." +
+           (registrationStackTrace == null ? " Registration stack trace: " : "");
   }
 
   @ApiStatus.Internal

@@ -260,7 +260,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     document.putUserData(STRUCTURAL_SEARCH_PATTERN_CONTEXT_ID, (myPatternContext == null) ? "" : myPatternContext.getId());
 
     final EditorTextField textField = new MyEditorTextField(document, replace);
-    textField.setFont(EditorFontType.PLAIN.getGlobalFont());
+    textField.setFont(EditorFontType.getGlobalPlainFont());
     textField.setPreferredSize(new Dimension(550, 150));
     textField.setMinimumSize(new Dimension(200, 50));
     return textField;
@@ -291,6 +291,10 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
       return (template == null) ? new ReplaceConfiguration(getUserDefined(), getUserDefined()) : new ReplaceConfiguration(template);
     }
     return (template == null) ? new SearchConfiguration(getUserDefined(), getUserDefined()) : new SearchConfiguration(template);
+  }
+
+  static @Nls(capitalization = Nls.Capitalization.Sentence) String getUserDefined() {
+    return SSRBundle.message("new.template.defaultname");
   }
 
   private void setTextFromContext() {
@@ -363,7 +367,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     mySearchCriteriaEdit = createEditor(false);
     mySearchEditorPanel.setFirstComponent(mySearchCriteriaEdit);
 
-    final JPanel wrapper = new JPanel(new BorderLayout());
+    final JPanel wrapper = new JPanel(new BorderLayout()); // needed for border
     final Color color = UIManager.getColor("Borders.ContrastBorderColor");
     wrapper.setBorder(IdeBorderFactory.createBorder(color));
     wrapper.add(mySearchEditorPanel, BorderLayout.CENTER);
@@ -429,7 +433,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     final ToolbarLabel replacementTemplateLabel = new ToolbarLabel(SSRBundle.message("replacement.template.label"));
     final DefaultActionGroup labelGroup = new DefaultActionGroup(new Spacer(), replacementTemplateLabel);
     final ActionManager actionManager = ActionManager.getInstance();
-    final ActionToolbar labelToolbar = actionManager.createActionToolbar("StructuralSearchDialog", labelGroup, true);
+    final ActionToolbar labelToolbar = actionManager.createActionToolbar("StructuralReplaceDialog", labelGroup, true);
 
     final CheckboxAction shortenFqn = new CheckboxAction(SSRBundle.message("shorten.fully.qualified.names.checkbox")) {
 
@@ -513,8 +517,8 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
       layout.createSequentialGroup().
         addGroup(
           layout.createParallelGroup(GroupLayout.Alignment.CENTER)
-            .addComponent(labelToolbar.getComponent())
-            .addComponent(replacementToolbar.getComponent())
+            .addComponent(labelToolbar.getComponent(), GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
+            .addComponent(replacementToolbar.getComponent(), GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
         )
         .addGap(4)
         .addComponent(wrapper)
@@ -554,6 +558,15 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     final ActionToolbar historyToolbar = actionManager.createActionToolbar("StructuralSearchDialog", historyActionGroup, true);
 
     final CheckboxAction injected = new CheckboxAction(SSRBundle.message("search.in.injected.checkbox")) {
+
+      @Override
+      public void update(@NotNull AnActionEvent e) {
+        if (myEditConfigOnly) {
+          e.getPresentation().setVisible(false);
+        }
+        super.update(e);
+      }
+
       @Override
       public boolean isSelected(@NotNull AnActionEvent e) {
         return myConfiguration.getMatchOptions().isSearchInjectedCode();
@@ -663,6 +676,11 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
           }
           final Configuration[] configurations = dialog.getSelectedConfigurations();
           if (configurations.length == 1) {
+            final MatchOptions source = myConfiguration.getMatchOptions();
+            final MatchOptions sink = configurations[0].getMatchOptions();
+            sink.setSearchInjectedCode(source.isSearchInjectedCode());
+            sink.setRecursiveSearch(source.isRecursiveSearch());
+            sink.setCaseSensitiveMatch(source.isCaseSensitiveMatch());
             loadConfiguration(configurations[0]);
           }
         }
@@ -670,7 +688,6 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
       Separator.getInstance(),
       mySwitchAction
     );
-
 
     templateActionGroup.setPopup(true);
     final Presentation presentation = templateActionGroup.getTemplatePresentation();
@@ -920,6 +937,11 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
   @Override
   protected boolean continuousValidation() {
     return false;
+  }
+
+  @Override
+  protected @NotNull Alarm.ThreadToUse getValidationThreadToUse() {
+    return Alarm.ThreadToUse.POOLED_THREAD;
   }
 
   @Override
@@ -1328,10 +1350,6 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     }
   }
 
-  public static @Nls(capitalization = Nls.Capitalization.Sentence) String getUserDefined() {
-    return SSRBundle.message("new.template.defaultname");
-  }
-
   private class MyEditorTextField extends EditorTextField {
     private final boolean myReplace;
 
@@ -1341,7 +1359,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     }
 
     @Override
-    protected EditorEx createEditor() {
+    protected @NotNull EditorEx createEditor() {
       final EditorEx editor = super.createEditor();
       editor.setHorizontalScrollbarVisible(true);
       editor.setVerticalScrollbarVisible(true);

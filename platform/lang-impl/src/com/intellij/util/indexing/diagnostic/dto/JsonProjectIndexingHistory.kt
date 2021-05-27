@@ -6,11 +6,7 @@ import com.fasterxml.jackson.annotation.JsonInclude
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class JsonProjectIndexingHistory(
   val projectName: String,
-  val numberOfFileProviders: Int,
-  val totalNumberOfFiles: Int,
-  val totalNumberOfUpToDateFiles: Int,
   val times: JsonProjectIndexingHistoryTimes,
-  val totalNumberOfTooLargeForIndexingFiles: Int,
   val totalStatsPerFileType: List<JsonStatsPerFileType>,
   val totalStatsPerIndexer: List<JsonStatsPerIndexer>,
   val scanningStatistics: List<JsonScanningStatistics>,
@@ -40,6 +36,13 @@ data class JsonProjectIndexingHistory(
     val totalNumberOfFiles: Int,
     val totalNumberOfFilesIndexedByExtensions: Int,
     val totalFilesSize: JsonFileSize,
-    val indexingSpeed: JsonProcessingSpeed
-  )
+    val indexingSpeed: JsonProcessingSpeed,
+    val snapshotInputMappingStats: JsonSnapshotInputMappingStats
+  ) {
+    data class JsonSnapshotInputMappingStats(
+      val totalRequests: Long,
+      val totalMisses: Long,
+      val totalHits: Long
+    )
+  }
 }

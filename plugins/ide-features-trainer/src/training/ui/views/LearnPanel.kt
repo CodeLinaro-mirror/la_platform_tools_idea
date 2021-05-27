@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package training.ui.views
 
 import com.intellij.ide.IdeBundle
@@ -14,7 +14,7 @@ import org.intellij.lang.annotations.Language
 import org.jetbrains.annotations.Nls
 import training.learn.CourseManager
 import training.learn.LearnBundle
-import training.learn.interfaces.Lesson
+import training.learn.course.Lesson
 import training.learn.lesson.LessonManager
 import training.ui.*
 import training.util.getNextLessonForCurrent
@@ -38,7 +38,7 @@ class LearnPanel(val learnToolWindow: LearnToolWindow) : JPanel() {
   private val lessonNameLabel = JLabel() //Name of the current lesson
   val lessonMessagePane = LessonMessagePane()
   private val buttonPanel = JPanel()
-  private val nextButton = JButton(LearnBundle.message("learn.ui.button.skip"))
+  private val nextButton = JButton()
   private val prevButton = JButton()
 
   private val footer = JPanel()
@@ -86,7 +86,7 @@ class LearnPanel(val learnToolWindow: LearnToolWindow) : JPanel() {
 
     val footerContent = JPanel()
     footerContent.isOpaque = false
-    footerContent.layout = VerticalLayout(JBUI.scale(5))
+    footerContent.layout = VerticalLayout(5)
     footerContent.add(JLabel(IdeBundle.message("welcome.screen.learnIde.help.and.resources.text")).also {
       it.font = UISettings.instance.getFont(1).deriveFont(Font.BOLD)
     })
@@ -184,7 +184,13 @@ class LearnPanel(val learnToolWindow: LearnToolWindow) : JPanel() {
   fun addMessages(messageParts: List<MessagePart>, state: LessonMessagePane.MessageState = LessonMessagePane.MessageState.NORMAL) {
     val needToShow = lessonMessagePane.addMessage(messageParts, state)
     adjustMessagesArea()
-    if (scrollToNewMessages && state != LessonMessagePane.MessageState.INACTIVE && needToShow != null) {
+    if (state != LessonMessagePane.MessageState.INACTIVE) {
+      scrollToMessage(needToShow)
+    }
+  }
+
+  private fun scrollToMessage(needToShow: Rectangle?) {
+    if (scrollToNewMessages && needToShow != null) {
       lessonMessagePane.scrollRectToVisible(needToShow)
     }
   }
@@ -201,8 +207,9 @@ class LearnPanel(val learnToolWindow: LearnToolWindow) : JPanel() {
   }
 
   fun resetMessagesNumber(number: Int) {
-    lessonMessagePane.resetMessagesNumber(number)
+    val needToShow = lessonMessagePane.resetMessagesNumber(number)
     adjustMessagesArea()
+    scrollToMessage(needToShow)
   }
 
   fun removeInactiveMessages(number: Int) {
@@ -302,7 +309,8 @@ class LearnPanel(val learnToolWindow: LearnToolWindow) : JPanel() {
   }
 
   fun clearRestoreMessage() {
-    lessonMessagePane.clearRestoreMessages()
+    val needToShow = lessonMessagePane.clearRestoreMessages()
+    scrollToMessage(needToShow)
   }
 
   class LinkLabelWithBackArrow<T>(linkListener: LinkListener<T>) : LinkLabel<T>("", null, linkListener) {

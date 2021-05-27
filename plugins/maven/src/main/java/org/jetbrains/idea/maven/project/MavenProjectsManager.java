@@ -1,9 +1,12 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.project;
 
 import com.intellij.build.BuildProgressListener;
 import com.intellij.build.SyncViewManager;
 import com.intellij.configurationStore.SettingsSavingComponentJavaAdapter;
+import com.intellij.execution.wsl.WSLDistribution;
+import com.intellij.ide.impl.TrustChangeNotifier;
+import com.intellij.ide.impl.TrustedProjects;
 import com.intellij.ide.startup.StartupManagerEx;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
@@ -18,6 +21,7 @@ import com.intellij.openapi.externalSystem.service.project.autoimport.ExternalSy
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.module.Module;
+import com.intellij.openapi.progress.impl.CoreProgressManager;
 import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
@@ -26,7 +30,10 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.ex.ProjectRootManagerEx;
 import com.intellij.openapi.roots.impl.ModuleRootManagerImpl;
 import com.intellij.openapi.startup.StartupManager;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.ModificationTracker;
+import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.psi.util.CachedValueProvider;
@@ -175,11 +182,13 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public MavenGeneralSettings getGeneralSettings() {
-    return getWorkspaceSettings().generalSettings;
+    MavenGeneralSettings generalSettings = getWorkspaceSettings().getGeneralSettings();
+    generalSettings.setProject(myProject);
+    return generalSettings;
   }
 
   public MavenImportingSettings getImportingSettings() {
-    return getWorkspaceSettings().importingSettings;
+    return getWorkspaceSettings().getImportingSettings();
   }
 
   private MavenWorkspaceSettings getWorkspaceSettings() {
@@ -191,7 +200,14 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public File getLocalRepository() {
-    return getGeneralSettings().getEffectiveLocalRepository();
+    WSLDistribution wslDistribution = MavenWslUtil.tryGetWslDistribution(myProject);
+    if (wslDistribution == null) {
+      return getGeneralSettings().getEffectiveLocalRepository();
+    }
+    return MavenWslUtil.resolveLocalRepository(wslDistribution,
+                                               null,
+                                               null,
+                                               null);
   }
 
   @ApiStatus.Internal
@@ -994,13 +1010,18 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
                                                      public void run(MavenEmbedderWrapper embedder) throws MavenProcessCanceledException {
                                                        try {
                                                          MavenExplicitProfiles profiles = mavenProject.getActivatedProfilesIds();
+                                                         VirtualFile virtualFile = mavenProject.getFile();
+                                                         File projectFile = MavenWslUtil.resolveWslAware(myProject,
+                                                                                                         () -> new File(virtualFile.getPath()),
+                                                                                                         wsl -> MavenWslUtil.getWslFile(wsl,new File(virtualFile.getPath())));
                                                          String res =
                                                            embedder
-                                                             .evaluateEffectivePom(mavenProject.getFile(), profiles.getEnabledProfiles(),
+                                                             .evaluateEffectivePom(projectFile, profiles.getEnabledProfiles(),
                                                                                    profiles.getDisabledProfiles());
                                                          consumer.consume(res);
                                                        }
                                                        catch (UnsupportedOperationException e) {
+                                                         e.printStackTrace();
                                                          consumer.consume(null); // null means UnsupportedOperationException
                                                        }
                                                      }
@@ -1206,7 +1227,9 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   private void waitForTasksCompletion(MavenProjectsProcessor processor) {
-    FileDocumentManager.getInstance().saveAllDocuments();
+    if (ApplicationManager.getApplication().isDispatchThread()) {
+      FileDocumentManager.getInstance().saveAllDocuments();
+    }
 
     myReadingProcessor.waitForCompletion();
     if (processor != null) processor.waitForCompletion();
@@ -1223,7 +1246,7 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
 
   public List<Module> importProjects() {
     if (MavenUtil.newModelEnabled(myProject)) {
-      WorkspaceEntityStorageBuilder builder = WorkspaceEntityStorageBuilder.Companion.create();
+      WorkspaceEntityStorageBuilder builder = WorkspaceEntityStorageBuilder.create();
       return importProjects(new IdeModifiableModelsProviderBridge(myProject, builder));
     }
     else {
@@ -1282,11 +1305,11 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
 
 
     VirtualFileManager fm = VirtualFileManager.getInstance();
-    if (isNormalProject()) {
-      fm.asyncRefresh(null);
+    if (isNoBackgroundMode() && !CoreProgressManager.shouldKeepTasksAsynchronousInHeadlessMode()) {
+      ApplicationManager.getApplication().invokeAndWait(() -> fm.syncRefresh());
     }
     else {
-      ApplicationManager.getApplication().invokeAndWait(()->fm.syncRefresh());
+      fm.asyncRefresh(null);
     }
 
     if (postTasks.get() != null /*may be null if importing is cancelled*/) {
@@ -1322,6 +1345,11 @@ public final class MavenProjectsManager extends MavenSimpleProjectComponent
 
   public void addManagerListener(Listener listener) {
     myManagerListeners.add(listener);
+  }
+
+  public void addManagerListener(Listener listener, @NotNull Disposable parentDisposable) {
+    myManagerListeners.add(listener);
+    Disposer.register(parentDisposable, () -> myManagerListeners.remove(listener));
   }
 
   public void addProjectsTreeListener(MavenProjectsTree.Listener listener) {

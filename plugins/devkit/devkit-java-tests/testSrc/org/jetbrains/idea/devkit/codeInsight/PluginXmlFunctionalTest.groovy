@@ -147,6 +147,13 @@ class PluginXmlFunctionalTest extends JavaCodeInsightFixtureTestCase {
                        " @com.intellij.util.xmlb.annotations.Attribute " +
                        " @Experimental public String experimentalAttribute; " +
                        "}")
+    myFixture.addClass("package foo; import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval; " +
+                       "@ScheduledForRemoval(inVersion = \"removeVersion\") @Deprecated public class MyScheduledForRemovalEP {}")
+    myFixture.addClass("package foo; import org.jetbrains.annotations.ApiStatus.Internal; " +
+                       "@Internal public class MyInternalEP {" +
+                       " @com.intellij.util.xmlb.annotations.Attribute " +
+                       " @Internal public String internalAttribute; " +
+                       "}")
     myFixture.addClass("package foo; " +
                        "import com.intellij.util.xmlb.annotations.Attribute; " +
                        "import com.intellij.openapi.extensions.RequiredElement; " +
@@ -213,6 +220,18 @@ class PluginXmlFunctionalTest extends JavaCodeInsightFixtureTestCase {
                        'com.intellij.modules.vcs',
                        'com.intellij.modules.lang', 'com.intellij.modules.lang.another',
                        'com.intellij.custom')
+  }
+
+  void testContentDescriptorHighlighting() {
+    doHighlightingTest("ContentDescriptorHighlighting.xml")
+  }
+
+  void testDependencyDescriptorHighlighting() {
+    doHighlightingTest("DependencyDescriptorHighlighting.xml")
+  }
+
+  void testDependenciesContentDescriptorNonJetbrains() {
+    doHighlightingTest("DependenciesContentDescriptorNonJetbrains.xml")
   }
 
   private void configureByFile() {

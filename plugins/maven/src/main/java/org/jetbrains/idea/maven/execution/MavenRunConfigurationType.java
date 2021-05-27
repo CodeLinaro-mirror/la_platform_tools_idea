@@ -10,8 +10,14 @@ import com.intellij.execution.configurations.ConfigurationTypeUtil;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.impl.DefaultJavaProgramRunner;
+import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ProgramRunner;
+import com.intellij.execution.ui.RunContentDescriptor;
+import com.intellij.execution.wsl.WslDistributionManager;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NlsSafe;
@@ -25,6 +31,7 @@ import org.jetbrains.idea.maven.execution.build.DelegateBuildRunner;
 import org.jetbrains.idea.maven.project.MavenGeneralSettings;
 import org.jetbrains.idea.maven.project.MavenProject;
 import org.jetbrains.idea.maven.project.MavenProjectsManager;
+import org.jetbrains.idea.maven.project.MavenWorkspaceSettingsComponent;
 import org.jetbrains.idea.maven.utils.MavenUtil;
 
 import javax.swing.*;
@@ -172,17 +179,14 @@ public final class MavenRunConfigurationType implements ConfigurationType {
     Executor executor = DefaultRunExecutor.getRunExecutorInstance();
     ExecutionEnvironment environment = new ExecutionEnvironment(executor, runner, configSettings, project);
     environment.putUserData(IS_DELEGATE_BUILD, isDelegateBuild);
+    environment.setCallback(callback);
     try {
-      if (callback != null) {
-        environment.setCallback(callback);
-      }
       runner.execute(environment);
     }
     catch (ExecutionException e) {
       MavenUtil.showError(project, RunnerBundle.message("notification.title.failed.to.execute.maven.goal"), e);
     }
   }
-
 
   @NotNull
 
@@ -208,9 +212,17 @@ public final class MavenRunConfigurationType implements ConfigurationType {
     if (isDelegate) {
       runConfiguration.setBeforeRunTasks(Collections.emptyList());
     }
+    MavenGeneralSettings generalSettingsToRun =
+      generalSettings != null ? generalSettings : MavenWorkspaceSettingsComponent.getInstance(project).getSettings().generalSettings;
     runConfiguration.setRunnerParameters(params);
-    runConfiguration.setGeneralSettings(generalSettings);
-    runConfiguration.setRunnerSettings(runnerSettings);
+    runConfiguration.setGeneralSettings(generalSettingsToRun);
+    MavenRunnerSettings runnerSettingsToRun =
+      runnerSettings != null ? runnerSettings : new MavenRunnerSettings();
+    runConfiguration.setRunnerSettings(runnerSettingsToRun);
+    if (WslDistributionManager.isWslPath(params.getWorkingDirPath())) {
+      //todo: find appropriate WSL distribution
+      runConfiguration.setDefaultTargetName("WSL");
+    }
     return settings;
   }
 

@@ -6,25 +6,20 @@ import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.editor.impl.EditorComponentImpl
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.refactoring.RefactoringBundle
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.impl.button
-import com.intellij.testGuiFramework.util.Key
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.table.JBTableRow
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.ift.PythonLessonsBundle
 import com.jetbrains.python.inspections.quickfix.PyChangeSignatureQuickFix
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskTestContext
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.*
-import training.learn.lesson.kimpl.LessonUtil.checkExpectedStateOfEditor
+import training.dsl.*
+import training.dsl.LessonUtil.checkExpectedStateOfEditor
+import training.learn.course.KLesson
 import java.util.regex.Pattern
 import javax.swing.JDialog
 import javax.swing.JTable
 
-class PythonQuickFixesRefactoringLesson(module: Module)
-  : KLesson("refactoring.quick.fix", PythonLessonsBundle.message("python.quick.fix.refactoring.lesson.name"), module, "Python") {
+class PythonQuickFixesRefactoringLesson
+  : KLesson("refactoring.quick.fix", PythonLessonsBundle.message("python.quick.fix.refactoring.lesson.name")) {
   private val sample = parseLessonSample("""
     def foo(x):
         print("Hello ", x)
@@ -53,7 +48,7 @@ class PythonQuickFixesRefactoringLesson(module: Module)
       restoreState {
         !editor.document.text.contains(it)
       }
-      test { GuiTestUtil.shortcut(Key.ESCAPE) }
+      test(waitEditorToBeReady = false) { invokeActionViaShortcut("ESCAPE") }
     }
 
     prepareRuntimeTask { // restore point
@@ -88,7 +83,7 @@ class PythonQuickFixesRefactoringLesson(module: Module)
         else null
       }
       restoreByUi(delayMillis = defaultRestoreDelay)
-      test {
+      test(waitEditorToBeReady = false) {
         ideFrame {
           jListContains(quickFixItemText).clickItem(Pattern.compile(".*$quickFixItemText.*"))
         }
@@ -105,12 +100,12 @@ class PythonQuickFixesRefactoringLesson(module: Module)
         UIUtil.getParentOfType(JDialog::class.java, editor) != null
       }
       restoreByUi()
-      test {
+      test(waitEditorToBeReady = false) {
         invokeAndWaitIfNeeded(ModalityState.any()) {
           val ui = previous.ui ?: return@invokeAndWaitIfNeeded
           IdeFocusManager.getInstance(project).requestFocus(ui, true)
         }
-        GuiTestUtil.shortcut(Key.ENTER)
+        invokeActionViaShortcut("ENTER")
       }
     }
     task {
@@ -120,12 +115,12 @@ class PythonQuickFixesRefactoringLesson(module: Module)
       stateCheck {
         (previous.ui as? EditorComponentImpl)?.text == "0"
       }
-      test {
+      test(waitEditorToBeReady = false) {
         invokeAndWaitIfNeeded(ModalityState.any()) {
           val ui = previous.ui ?: return@invokeAndWaitIfNeeded
           IdeFocusManager.getInstance(project).requestFocus(ui, true)
         }
-        GuiTestUtil.shortcut(Key.BACK_SPACE)
+        invokeActionViaShortcut("BACK_SPACE")
         type("0")
       }
     }
@@ -146,11 +141,9 @@ class PythonQuickFixesRefactoringLesson(module: Module)
         !stackInsideDialogRefactoring()
       }
 
-      test {
-        with(TaskTestContext.guiTestCase) {
-          dialog("Change Signature") {
-            button("Refactor").click()
-          }
+      test(waitEditorToBeReady = false) {
+        dialog("Change Signature") {
+          button("Refactor").click()
         }
       }
     }

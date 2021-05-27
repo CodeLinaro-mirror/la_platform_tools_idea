@@ -2803,17 +2803,13 @@
                      key="junit5.converter.display.name"
                      groupBundle="messages.InspectionsBundle" groupKey="group.names.junit.issues" enabledByDefault="false" level="WARNING"
                      implementationClass="com.siyeh.ig.junit.JUnit5ConverterInspection"/>
-    <localInspection groupPath="Java" language="JAVA" shortName="JUnit5Platform" bundle="messages.InspectionGadgetsBundle"
-                     key="junit5.platform.runner.display.name"
-                     groupBundle="messages.InspectionsBundle" groupKey="group.names.junit.issues" enabledByDefault="true" level="WARNING"
-                     implementationClass="com.siyeh.ig.junit.JUnit5PlatformInspection"/>
     <localInspection groupPathKey="group.path.names.java.language.level.specific.issues.and.migration.aids" language="JAVA" shortName="RedundantExplicitVariableType" enabledByDefault="true" level="INFORMATION"
                      bundle="messages.InspectionGadgetsBundle" key="redundant.explicit.var.type.display.name"
                      groupBundle="messages.InspectionsBundle" groupKey="group.names.language.level.specific.issues.and.migration.aids10"
                      implementationClass="com.intellij.codeInspection.RedundantExplicitVariableTypeInspection"/>
     <localInspection groupPathKey="group.path.names.java.language.level.specific.issues.and.migration.aids" language="JAVA" shortName="PatternVariableCanBeUsed" enabledByDefault="true" level="WARNING"
                      bundle="messages.InspectionGadgetsBundle" key="inspection.pattern.variable.can.be.used.display.name"
-                     groupBundle="messages.InspectionsBundle" groupKey="group.names.language.level.specific.issues.and.migration.aids14"
+                     groupBundle="messages.InspectionsBundle" groupKey="group.names.language.level.specific.issues.and.migration.aids15"
                      implementationClass="com.intellij.codeInspection.PatternVariableCanBeUsedInspection"/>
     <localInspection groupPathKey="group.path.names.java.language.level.specific.issues.and.migration.aids" language="JAVA" shortName="VariableTypeCanBeExplicit" enabledByDefault="true" level="INFORMATION"
                      bundle="messages.InspectionGadgetsBundle" key="variable.type.can.be.explicit.display.name"

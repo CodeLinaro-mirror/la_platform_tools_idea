@@ -3,7 +3,7 @@ package com.intellij.openapi.keymap.impl;
 
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeEventQueue;
-import com.intellij.ide.actions.ActionsCollector;
+import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsCollectorImpl;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.actionSystem.ex.AnActionListener;
@@ -14,7 +14,6 @@ import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.wm.IdeFocusManager;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
@@ -39,7 +38,7 @@ import static com.intellij.openapi.keymap.KeymapUtil.getActiveKeymapShortcuts;
  */
 public final class ModifierKeyDoubleClickHandler {
   private static final Logger LOG = Logger.getInstance(ModifierKeyDoubleClickHandler.class);
-  private static final Int2IntOpenHashMap KEY_CODE_TO_MODIFIER_MAP = new Int2IntOpenHashMap();
+  private static final Int2IntMap KEY_CODE_TO_MODIFIER_MAP=new Int2IntOpenHashMap();
 
   static {
     KEY_CODE_TO_MODIFIER_MAP.put(KeyEvent.VK_ALT, InputEvent.ALT_MASK);
@@ -189,8 +188,7 @@ public final class ModifierKeyDoubleClickHandler {
 
     private boolean hasOtherModifiers(KeyEvent keyEvent) {
       int modifiers = keyEvent.getModifiers();
-      for (ObjectIterator<Int2IntMap.Entry> iterator = KEY_CODE_TO_MODIFIER_MAP.int2IntEntrySet().fastIterator(); iterator.hasNext(); ) {
-        Int2IntMap.Entry entry = iterator.next();
+      for (Int2IntMap.Entry entry : KEY_CODE_TO_MODIFIER_MAP.int2IntEntrySet()) {
         if (!(entry.getIntKey() == myModifierKeyCode || (modifiers & entry.getIntValue()) == 0)) {
           return true;
         }
@@ -266,7 +264,8 @@ public final class ModifierKeyDoubleClickHandler {
         ex.fireBeforeActionPerformed(action, anActionEvent.getDataContext(), anActionEvent);
         action.actionPerformed(anActionEvent);
         ex.fireAfterActionPerformed(action, anActionEvent.getDataContext(), anActionEvent);
-        ActionsCollector.getInstance().record("DoubleShortcut", anActionEvent.getInputEvent(), action.getClass());
+        ActionsCollectorImpl
+          .recordCustomActionInvoked(anActionEvent.getProject(), "DoubleShortcut", anActionEvent.getInputEvent(), action.getClass());
         return true;
       }
       finally {

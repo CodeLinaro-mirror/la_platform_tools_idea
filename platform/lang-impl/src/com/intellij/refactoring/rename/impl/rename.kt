@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.rename.impl
 
 import com.intellij.codeInsight.actions.VcsFacade
@@ -8,7 +8,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.undo.UndoManager
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -34,19 +33,21 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.flow.map
-import org.jetbrains.annotations.TestOnly
 import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
 
 
 internal typealias UsagePointer = Pointer<out RenameUsage>
 
-internal fun rename(project: Project, target: RenameTarget) {
+/**
+ * Entry point to perform rename with a dialog initialized with [targetName].
+ */
+internal fun showDialogAndRename(project: Project, target: RenameTarget, targetName: String = target.targetName) {
   ApplicationManager.getApplication().assertIsDispatchThread()
   val canRenameTextOccurrences = !target.textTargets(IN_PLAIN_TEXT).isEmpty()
   val canRenameCommentAndStringOccurrences = !target.textTargets(IN_COMMENTS_AND_STRINGS).isEmpty()
   val initOptions = RenameDialog.Options(
-    targetName = target.targetName,
+    targetName = targetName,
     renameOptions = RenameOptions(
       renameTextOccurrences = if (canRenameTextOccurrences) true else null,
       renameCommentsStringsOccurrences = if (canRenameCommentAndStringOccurrences) true else null,
@@ -59,8 +60,20 @@ internal fun rename(project: Project, target: RenameTarget) {
     return
   }
   val (newName: String, options: RenameOptions) = dialog.result()
-  val preview: Boolean = dialog.preview
-  val targetPointer: Pointer<out RenameTarget> = target.createPointer()
+  rename(project, target.createPointer(), newName, options, dialog.preview)
+}
+
+/**
+ * Entry point to perform rename without a dialog.
+ * @param preview whether the user explicitly requested the Preview
+ */
+internal fun rename(
+  project: Project,
+  targetPointer: Pointer<out RenameTarget>,
+  newName: String,
+  options: RenameOptions,
+  preview: Boolean = false
+) {
   CoroutineScope(CoroutineName("root rename coroutine")).launch(Dispatchers.Default) {
     rename(this, project, targetPointer, newName, options, preview)
   }
@@ -136,7 +149,7 @@ private suspend fun processUsages(usageChannel: ReceiveChannel<UsagePointer>, ne
     usagePointers += pointer
     val forcePreview: Boolean? = readAction {
       pointer.dereference()?.let { renameUsage ->
-        renameUsage is TextUsage || renameUsage.conflicts(newName).isNotEmpty()
+        renameUsage is TextRenameUsage || renameUsage.conflicts(newName).isNotEmpty()
       }
     }
     if (forcePreview == true) {

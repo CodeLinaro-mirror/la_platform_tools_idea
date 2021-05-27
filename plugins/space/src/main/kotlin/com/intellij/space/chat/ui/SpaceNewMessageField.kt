@@ -1,8 +1,9 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.space.chat.ui
 
 import circlet.m2.channel.M2ChannelVm
 import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.space.components.SpaceWorkspaceComponent
 import com.intellij.space.messages.SpaceBundle
 import com.intellij.space.ui.SpaceAvatarProvider
@@ -22,7 +23,8 @@ internal fun createNewMessageField(
   chatVM: M2ChannelVm,
   avatarType: SpaceChatAvatarType,
   pendingStateProvider: () -> Boolean = { false },
-  onCancel: (() -> Unit)? = null
+  onCancel: (() -> Unit)? = null,
+  onSend: (() -> Unit)? = null
 ): JComponent {
   val submittableModel = object : SubmittableTextFieldModelBase("") {
     override fun submit() {
@@ -30,6 +32,7 @@ internal fun createNewMessageField(
       runWriteAction {
         document.setText("")
       }
+      onSend?.invoke()
     }
   }
   return SpaceChatNewMessageWithAvatarComponent(chatVM.lifetime, avatarType, submittableModel, onCancel)
@@ -57,7 +60,17 @@ internal class SpaceChatNewMessageWithAvatarComponent(
     val submittableTextField = SubmittableTextField(
       SpaceBundle.message("chat.comment.action.text"),
       submittableModel,
-      onCancel = onCancel
+      onCancel = {
+        if (
+          submittableModel.document.text.isBlank() ||
+          MessageDialogBuilder.yesNo(
+            SpaceBundle.message("chat.message.new.discard.changes.title"),
+            SpaceBundle.message("chat.message.new.discard.changes.text")
+          ).ask(this)
+        ) {
+          onCancel?.invoke()
+        }
+      }
     )
     add(avatarComponent, CC().pushY())
     add(submittableTextField, CC().growX().pushX().alignY("center"))

@@ -2,7 +2,6 @@
 package com.intellij.vcs.log.ui.actions;
 
 import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.actionSystem.impl.AutoPopupSupportingListener;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
@@ -21,6 +20,7 @@ import icons.VcsLogIcons;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
+import java.awt.event.InputEvent;
 
 public class IntelliSortChooserPopupAction extends DumbAwareAction {
   public IntelliSortChooserPopupAction() {
@@ -41,13 +41,18 @@ public class IntelliSortChooserPopupAction extends DumbAwareAction {
     ListPopup popup = JBPopupFactory.getInstance()
       .createActionGroupPopup(null, settingsGroup, e.getDataContext(), JBPopupFactory.ActionSelectionAid.MNEMONICS, true,
                               ActionPlaces.TOOLWINDOW_POPUP);
-    AutoPopupSupportingListener.installOn(popup);
-    Component component = e.getInputEvent().getComponent();
-    if (component instanceof ActionButtonComponent) {
-      popup.showUnderneathOf(component);
-    }
-    else {
-      popup.showInCenterOf(component);
+
+    InputEvent inputEvent = e.getInputEvent();
+    if (inputEvent != null) {
+      Component component = inputEvent.getComponent();
+      if (component instanceof ActionButtonComponent) {
+        popup.showUnderneathOf(component);
+      }
+      else {
+        popup.showInCenterOf(component);
+      }
+    } else {
+      popup.showInFocusCenter();
     }
   }
 

@@ -16,12 +16,14 @@
 package com.intellij.openapi.vcs.ex
 
 import com.intellij.diff.util.DiffUtil
+import com.intellij.diff.util.DiffUtil.executeWriteCommand
 import com.intellij.diff.util.Side
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.WriteThread
 import com.intellij.openapi.command.CommandProcessor
-import com.intellij.openapi.command.undo.UndoConstants
+import com.intellij.openapi.command.UndoConfirmationPolicy
+import com.intellij.openapi.command.undo.UndoUtil
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diff.DiffBundle
 import com.intellij.openapi.editor.Document
@@ -277,10 +279,11 @@ abstract class LineStatusTrackerBase<R : Range>(
     @JvmStatic
     protected val LOG: Logger = Logger.getInstance(LineStatusTrackerBase::class.java)
     private val VCS_DOCUMENT_KEY: Key<Boolean> = Key.create("LineStatusTrackerBase.VCS_DOCUMENT_KEY")
+    val SEPARATE_UNDO_STACK: Key<Boolean> = Key.create("LineStatusTrackerBase.SEPARATE_UNDO_STACK")
 
     fun createVcsDocument(originalDocument: Document): Document {
       val result = DocumentImpl(originalDocument.immutableCharSequence, true)
-      result.putUserData(UndoConstants.DONT_RECORD_UNDO, true)
+      UndoUtil.disableUndoFor(result)
       result.putUserData(VCS_DOCUMENT_KEY, true)
       result.setReadOnly(true)
       return result
@@ -304,7 +307,9 @@ abstract class LineStatusTrackerBase<R : Range>(
         }
       }
       else {
-        return DiffUtil.executeWriteCommand(document, project, commandName) { task(document) }
+        val isSeparateUndoStack = DiffUtil.isUserDataFlagSet(SEPARATE_UNDO_STACK, document)
+        return executeWriteCommand(project, document, commandName, null, UndoConfirmationPolicy.DEFAULT, false,
+                                   !isSeparateUndoStack) { task(document) }
       }
     }
   }

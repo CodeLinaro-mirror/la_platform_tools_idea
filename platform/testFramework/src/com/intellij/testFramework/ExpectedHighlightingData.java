@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.AbstractBundle;
@@ -29,7 +29,6 @@ import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.DocumentUtil;
 import com.intellij.util.ThreeState;
 import com.intellij.util.containers.ContainerUtil;
-import gnu.trove.THashMap;
 import gnu.trove.THashSet;
 import gnu.trove.TObjectHashingStrategy;
 import org.intellij.lang.annotations.JdkConstants;
@@ -83,12 +82,12 @@ public class ExpectedHighlightingData {
       this.severity = severity;
       this.endOfLine = endOfLine;
       this.enabled = enabled;
-      this.infos = new THashSet<>();
+      this.infos = new HashSet<>();
     }
   }
 
   private final Map<String, ExpectedHighlightingSet> myHighlightingTypes = new LinkedHashMap<>();
-  private final Map<RangeMarker, LineMarkerInfo<?>> myLineMarkerInfos = new THashMap<>();
+  private final Map<RangeMarker, LineMarkerInfo<?>> myLineMarkerInfos = new HashMap<>();
   private final Document myDocument;
   private final String myText;
   private boolean myIgnoreExtraHighlighting;

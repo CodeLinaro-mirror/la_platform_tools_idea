@@ -3,11 +3,14 @@ package com.intellij.terminal;
 
 import com.intellij.execution.process.BaseProcessHandler;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.util.ObjectUtils;
 import com.jediterm.terminal.Questioner;
 import com.jediterm.terminal.TtyConnector;
 import com.pty4j.PtyProcess;
 import com.pty4j.WinSize;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.io.IOException;
@@ -16,21 +19,33 @@ import java.nio.charset.Charset;
 
 public class ProcessHandlerTtyConnector implements TtyConnector {
 
-  private final BaseProcessHandler<?> myProcessHandler;
+  private static final Logger LOG = Logger.getInstance(ProcessHandlerTtyConnector.class);
+
+  private final ProcessHandler myProcessHandler;
   private final Process myPtyProcess;
   private final Charset myCharset;
 
   public ProcessHandlerTtyConnector(@NotNull ProcessHandler processHandler, @NotNull Charset charset) {
-    if (!(processHandler instanceof BaseProcessHandler)) {
-      throw new IllegalArgumentException("Works currently only with BaseProcessHandler");
-    }
-    myProcessHandler = (BaseProcessHandler<?>)processHandler;
-    myPtyProcess = myProcessHandler.getProcess();
-    //noinspection InstanceofIncompatibleInterface
-    if (!(myPtyProcess instanceof PtyBasedProcess) && !(myPtyProcess instanceof PtyProcess)) {
-      throw new IllegalArgumentException("Not a PTY based process: " + myPtyProcess.getClass());
-    }
+    myProcessHandler = processHandler;
+    myPtyProcess = getPtyProcess(processHandler);
     myCharset = charset;
+  }
+
+  private static @Nullable Process getPtyProcess(@NotNull ProcessHandler processHandler) {
+    if (!(processHandler instanceof BaseProcessHandler)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("ProcessHandler doesn't support terminal window resizing: " + processHandler.getClass());
+      }
+      return null;
+    }
+    Process process = ((BaseProcessHandler<?>)processHandler).getProcess();
+    //noinspection InstanceofIncompatibleInterface
+    if (!(process instanceof PtyProcess) && !(process instanceof PtyBasedProcess)) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Process doesn't support terminal window resizing: " + process.getClass());
+      }
+    }
+    return process;
   }
 
   @Override
@@ -44,17 +59,16 @@ public class ProcessHandlerTtyConnector implements TtyConnector {
   }
 
   @Override
-  public void resize(Dimension termSize, Dimension pixelSize) {
-    if (termSize != null && pixelSize != null) {
-      if (myPtyProcess instanceof PtyProcess) {
-        PtyProcess ptyProcess = (PtyProcess)myPtyProcess;
-        if (ptyProcess.isRunning()) {
-          ptyProcess.setWinSize(new WinSize(termSize.width, termSize.height));
-        }
+  public void resize(@NotNull Dimension termSize) {
+    if (myPtyProcess instanceof PtyProcess) {
+      PtyProcess ptyProcess = (PtyProcess)myPtyProcess;
+      if (ptyProcess.isRunning()) {
+        ptyProcess.setWinSize(new WinSize(termSize.width, termSize.height));
       }
-      else {
-        //noinspection InstanceofIncompatibleInterface
-        assert myPtyProcess instanceof PtyBasedProcess;
+    }
+    else {
+      //noinspection InstanceofIncompatibleInterface
+      if (myPtyProcess instanceof PtyBasedProcess) {
         ((PtyBasedProcess)myPtyProcess).setWindowSize(termSize.width, termSize.height);
       }
     }
@@ -92,11 +106,17 @@ public class ProcessHandlerTtyConnector implements TtyConnector {
 
   private void writeBytes(byte[] bytes) throws IOException {
     OutputStream input = myProcessHandler.getProcessInput();
-    input.write(bytes);
-    input.flush();
+    if (input != null) {
+      input.write(bytes);
+      input.flush();
+    }
   }
 
-  public @NotNull BaseProcessHandler<?> getProcessHandler() {
+  public @NotNull ProcessHandler getProcessHandler() {
     return myProcessHandler;
+  }
+
+  public @Nullable PtyProcess getPtyProcess() {
+    return ObjectUtils.tryCast(myPtyProcess, PtyProcess.class);
   }
 }

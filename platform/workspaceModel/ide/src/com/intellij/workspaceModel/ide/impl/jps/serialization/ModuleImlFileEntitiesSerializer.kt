@@ -105,7 +105,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       externalSystemId = pair.second
 
       customRootsSerializer = moduleOptions[JpsProjectLoader.CLASSPATH_ATTRIBUTE]?.let { customSerializerId ->
-        val serializer = CUSTOM_ROOTS_SERIALIZER_EP.extensions().filter { it.id == customSerializerId }.findAny().orElse(null)
+        val serializer = CustomModuleRootsSerializer.EP_NAME.extensions().filter { it.id == customSerializerId }.findAny().orElse(null)
         if (serializer == null) {
           LOG.warn("Classpath storage provider $customSerializerId not found")
         }
@@ -370,7 +370,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
     val moduleOptions = customImlData?.customModuleOptions
     val customSerializerId = moduleOptions?.get(JpsProjectLoader.CLASSPATH_ATTRIBUTE)
     if (customSerializerId != null) {
-      val serializer = CUSTOM_ROOTS_SERIALIZER_EP.extensions().filter { it.id == customSerializerId }.findAny().orElse(null)
+      val serializer = CustomModuleRootsSerializer.EP_NAME.extensions().filter { it.id == customSerializerId }.findAny().orElse(null)
       if (serializer != null) {
         val customDir = moduleOptions[JpsProjectLoader.CLASSPATH_DIR_ATTRIBUTE]
         serializer.saveRoots(module, entities, writer, customDir, fileUrl, storage, virtualFileManager)
@@ -592,6 +592,8 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
   override val additionalEntityTypes: List<Class<out WorkspaceEntity>>
     get() = listOf(SourceRootOrderEntity::class.java)
 
+  override fun toString(): String = "ModuleImlFileEntitiesSerializer($fileUrl)"
+
   companion object {
     private val LOG = logger<ModuleImlFileEntitiesSerializer>()
 
@@ -608,7 +610,6 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       orderOfKnownAttributes.indexOf(o1.name).compareTo(orderOfKnownAttributes.indexOf(o2.name))
     }.reversed()
 
-    private val CUSTOM_ROOTS_SERIALIZER_EP = ExtensionPointName.create<CustomModuleRootsSerializer>("com.intellij.workspaceModel.customModuleRootsSerializer")
     private val CUSTOM_MODULE_COMPONENT_SERIALIZER_EP = ExtensionPointName.create<CustomModuleComponentSerializer>("com.intellij.workspaceModel.customModuleComponentSerializer")
   }
 }
@@ -705,6 +706,8 @@ internal open class ModuleListSerializerImpl(override val fileUrl: String,
 
   private fun getModuleFileUrl(source: JpsFileEntitySource.FileInDirectory,
                                module: ModuleEntity) = source.directory.url + "/" + module.name + ".iml"
+
+  override fun toString(): String = "ModuleListSerializerImpl($fileUrl)"
 }
 
 fun storeSourceRootsOrder(orderOfItems: List<VirtualFileUrl>,

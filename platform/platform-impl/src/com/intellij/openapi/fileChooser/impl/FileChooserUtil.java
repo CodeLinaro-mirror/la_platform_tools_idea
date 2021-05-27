@@ -12,8 +12,8 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.util.NullableFunction;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,6 +39,7 @@ public final class FileChooserUtil {
    * @deprecated Use {@link #setLastOpenedFile(Project, Path)}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static void setLastOpenedFile(@Nullable Project project, @Nullable VirtualFile file) {
     if (file == null) {
       return;
@@ -99,6 +100,6 @@ public final class FileChooserUtil {
   @NotNull
   public static List<VirtualFile> getChosenFiles(@NotNull final FileChooserDescriptor descriptor,
                                                  @NotNull final List<? extends VirtualFile> selectedFiles) {
-    return ContainerUtil.mapNotNull(selectedFiles, (NullableFunction<VirtualFile, VirtualFile>)file -> file != null && file.isValid() ? descriptor.getFileToSelect(file) : null);
+    return ContainerUtil.mapNotNull(selectedFiles, file -> file != null && file.isValid() ? descriptor.getFileToSelect(file) : null);
   }
 }

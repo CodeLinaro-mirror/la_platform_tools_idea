@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection;
 
 import com.google.common.base.Predicates;
@@ -72,6 +72,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Predicate;
 
@@ -168,7 +169,8 @@ public final class InspectionApplication implements CommandLineInspectionProgres
   }
 
   @NotNull
-  private CommandLineInspectionProjectConfigurator.ConfiguratorContext configuratorContext(@NotNull Path projectPath, @Nullable AnalysisScope scope) {
+  private CommandLineInspectionProjectConfigurator.ConfiguratorContext configuratorContext(@NotNull Path projectPath,
+                                                                                           @Nullable AnalysisScope scope) {
     return new CommandLineInspectionProjectConfigurator.ConfiguratorContext() {
       @Override
       public @NotNull ProgressIndicator getProgressIndicator() {
@@ -230,7 +232,14 @@ public final class InspectionApplication implements CommandLineInspectionProgres
       }
     }
 
-    Project project = ProjectUtil.openOrImport(projectPath);
+    AtomicReference<Project> projectRef = new AtomicReference<>();
+    ProgressManager.getInstance().runProcess(
+      () -> {
+        projectRef.set(ProjectUtil.openOrImport(projectPath));
+      },
+      createProcessIndicator()
+    );
+    Project project = projectRef.get();
     if (project == null) {
       reportError("Unable to open project");
       gracefulExit();
@@ -250,27 +259,28 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     reportMessageNoLineBreak(1, InspectionsBundle.message("inspection.application.initializing.project"));
 
     loadQodanaConfig(projectPath);
-    myInspectionProfile = loadInspectionProfile(project);
+    if (myInspectionProfile == null) {
+      myInspectionProfile = loadInspectionProfile(project);
+    }
 
-    if (myInspectionProfile == null) return;
     myQodanaConfig.updateToolsScopes(myInspectionProfile, project);
 
     AnalysisScope scope = getAnalysisScope(project);
     if (scope == null) return;
-    LOG.info("Used scope: " + scope.toString());
+    LOG.info("Used scope: " + scope);
     if (myQodanaRun) {
       runAnalysisByQodana(this, projectPath, project, myInspectionProfile, scope);
     } else {
       runAnalysisOnScope(projectPath, parentDisposable, project, myInspectionProfile, scope);
     }
-
   }
 
   private void loadQodanaConfig(Path projectPath) {
     if (myQodanaRun) {
       myQodanaConfig = QodanaConfig.Companion.load(projectPath);
       myQodanaConfig.copyToLog(projectPath);
-    } else {
+    }
+    else {
       myQodanaConfig = QodanaConfig.EMPTY;
     }
   }
@@ -396,9 +406,9 @@ public final class InspectionApplication implements CommandLineInspectionProgres
   }
 
   public void runAnalysisOnScope(Path projectPath,
-                                  @NotNull Disposable parentDisposable,
-                                  Project project,
-                                  InspectionProfileImpl inspectionProfile, AnalysisScope scope)
+                                 @NotNull Disposable parentDisposable,
+                                 Project project,
+                                 InspectionProfileImpl inspectionProfile, AnalysisScope scope)
     throws IOException {
     reportMessage(1, InspectionsBundle.message("inspection.done"));
 
@@ -499,8 +509,8 @@ public final class InspectionApplication implements CommandLineInspectionProgres
   }
 
   public @NotNull AnalysisScope runAnalysisOnCodeWithoutChanges(Project project,
-                                                                 GlobalInspectionContextEx context,
-                                                                 Runnable analysisRunner) {
+                                                                GlobalInspectionContextEx context,
+                                                                Runnable analysisRunner) {
     VirtualFile[] changes = ChangesUtil.getFilesFromChanges(ChangeListManager.getInstance(project).getAllChanges());
     setupFirstAnalysisHandler(context);
     DumbService dumbService = DumbService.getInstance(project);
@@ -678,7 +688,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     }, createProcessIndicator());
   }
 
-  private  @NotNull ProgressIndicatorBase createProcessIndicator() {
+  private @NotNull ProgressIndicatorBase createProcessIndicator() {
     return new ProgressIndicatorBase() {
       private String lastPrefix = "";
       private int myLastPercent = -1;
@@ -790,7 +800,10 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     if (profileName != null && !profileName.isEmpty()) {
       InspectionProfileImpl inspectionProfile = loadProfileByName(project, profileName);
       if (inspectionProfile == null) {
-        reportError("Profile with configured name (" + profileName + ") was not found (neither in project nor in config directory). Configured by: " + configSource);
+        reportError("Profile with configured name (" +
+                    profileName +
+                    ") was not found (neither in project nor in config directory). Configured by: " +
+                    configSource);
         gracefulExit();
         return null;
       }
@@ -809,7 +822,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
     return null;
   }
 
-  public  @Nullable InspectionProfileImpl loadProfileByPath(@NotNull String profilePath) throws IOException, JDOMException {
+  public @Nullable InspectionProfileImpl loadProfileByPath(@NotNull String profilePath) throws IOException, JDOMException {
     InspectionProfileImpl inspectionProfile = ApplicationInspectionProfileManagerBase.getInstanceBase().loadProfile(profilePath);
     if (inspectionProfile != null) {
       reportMessage(1, "Loaded profile '" + inspectionProfile.getName() + "' from file '" + profilePath + "'");
@@ -859,7 +872,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
       }
 
       @Override
-      public void cannotWriteToFiles(@NotNull List<Path> readonlyFiles) {
+      public void cannotWriteToFiles(@NotNull List<? extends Path> readonlyFiles) {
         StringBuilder files = new StringBuilder();
         for (Path file : readonlyFiles) {
           files.append(file.toString()).append("; ");
@@ -876,7 +889,7 @@ public final class InspectionApplication implements CommandLineInspectionProgres
       idx = text.indexOf(" of ");
     }
 
-    return idx == -1 ? null : text.substring(0, idx);
+    return idx == -1 ? text : text.substring(0, idx);
   }
 
   public void setVerboseLevel(int verboseLevel) {

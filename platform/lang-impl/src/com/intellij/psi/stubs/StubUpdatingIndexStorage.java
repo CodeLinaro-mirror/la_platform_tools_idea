@@ -1,12 +1,12 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.stubs;
 
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.Computable;
 import com.intellij.util.indexing.*;
 import com.intellij.util.indexing.impl.InputDataDiffBuilder;
+import com.intellij.util.indexing.impl.MapReduceIndexMappingException;
 import com.intellij.util.indexing.impl.storage.TransientFileContentIndex;
 import com.intellij.util.indexing.impl.storage.VfsAwareIndexStorageLayout;
 import org.jetbrains.annotations.NotNull;
@@ -56,14 +56,14 @@ final class StubUpdatingIndexStorage extends TransientFileContentIndex<Integer, 
 
   @Override
   public @NotNull Computable<Boolean> mapInputAndPrepareUpdate(int inputId, @Nullable FileContent content)
-    throws MapInputException, ProcessCanceledException {
+    throws MapReduceIndexMappingException, ProcessCanceledException {
     Computable<Boolean> indexUpdateComputable = super.mapInputAndPrepareUpdate(inputId, content);
     IndexingStampInfo indexingStampInfo = content == null ? null : StubUpdatingIndex.calculateIndexingStamp(content);
 
     return () -> {
       try {
         Boolean result = indexUpdateComputable.compute();
-        if (Boolean.TRUE.equals(result)) {
+        if (Boolean.TRUE.equals(result) && !StaleIndexesChecker.isStaleIdDeletion()) {
           StubUpdatingIndex.saveIndexingStampInfo(indexingStampInfo, inputId);
         }
         return result;
@@ -118,9 +118,6 @@ final class StubUpdatingIndexStorage extends TransientFileContentIndex<Integer, 
 
   @Override
   protected void doDispose() throws StorageException {
-    if (ApplicationManager.getApplication().isUnitTestMode()) {
-      StubUpdatingIndex.checkStubIndexDontContainDeletedRecords(this, false);
-    }
     try {
       super.doDispose();
     }

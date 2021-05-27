@@ -1,16 +1,12 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.eventLog.validator.storage;
 
-import com.intellij.internal.statistic.eventLog.EventLogBuild;
-import com.intellij.internal.statistic.eventLog.EventLogConfigOptionsService;
-import com.intellij.internal.statistic.eventLog.EventLogConfiguration;
-import com.intellij.internal.statistic.eventLog.EventLogSystemLogger;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupRemoteDescriptors;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataLoadException;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataParseException;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataUtils;
-import com.intellij.internal.statistic.eventLog.validator.storage.persistence.EventLogMetadataPersistence;
+import com.intellij.internal.statistic.eventLog.*;
+import com.intellij.internal.statistic.eventLog.connection.metadata.*;
 import com.intellij.internal.statistic.eventLog.validator.rules.beans.EventGroupRules;
+import com.intellij.internal.statistic.eventLog.validator.rules.utils.CustomRuleProducer;
+import com.intellij.internal.statistic.eventLog.validator.rules.utils.ValidationSimpleRuleFactory;
+import com.intellij.internal.statistic.eventLog.validator.storage.persistence.EventLogMetadataPersistence;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.concurrency.Semaphore;
@@ -21,8 +17,10 @@ import org.jetbrains.annotations.TestOnly;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
-public class ValidationRulesPersistedStorage extends BaseValidationRulesPersistedStorage {
+public class ValidationRulesPersistedStorage implements IntellijValidationRulesStorage {
   private static final Logger LOG = Logger.getInstance(ValidationRulesPersistedStorage.class);
 
   protected final ConcurrentMap<String, EventGroupRules> eventsValidators = new ConcurrentHashMap<>();
@@ -31,8 +29,10 @@ public class ValidationRulesPersistedStorage extends BaseValidationRulesPersiste
   private @Nullable String myVersion;
   private final @NotNull EventLogMetadataPersistence myMetadataPersistence;
   private final @NotNull EventLogMetadataLoader myMetadataLoader;
+  private final @NotNull AtomicBoolean myIsInitialized;
 
   ValidationRulesPersistedStorage(@NotNull String recorderId) {
+    myIsInitialized = new AtomicBoolean(false);
     myRecorderId = recorderId;
     mySemaphore = new Semaphore();
     myMetadataPersistence = new EventLogMetadataPersistence(recorderId);
@@ -44,6 +44,7 @@ public class ValidationRulesPersistedStorage extends BaseValidationRulesPersiste
   protected ValidationRulesPersistedStorage(@NotNull String recorderId,
                                             @NotNull EventLogMetadataPersistence persistence,
                                             @NotNull EventLogMetadataLoader loader) {
+    myIsInitialized = new AtomicBoolean(false);
     myRecorderId = recorderId;
     mySemaphore = new Semaphore();
     myMetadataPersistence = persistence;
@@ -77,11 +78,11 @@ public class ValidationRulesPersistedStorage extends BaseValidationRulesPersiste
       EventGroupRemoteDescriptors groups = EventLogMetadataUtils.parseGroupRemoteDescriptors(rawEventsScheme);
       EventLogBuild build = EventLogBuild.fromString(EventLogConfiguration.INSTANCE.getBuild());
       Map<String, EventGroupRules> result = createValidators(build, groups);
-      isInitialized.set(false);
+      myIsInitialized.set(false);
       eventsValidators.clear();
       eventsValidators.putAll(result);
 
-      isInitialized.set(true);
+      myIsInitialized.set(true);
       return groups.version;
     }
     finally {
@@ -125,5 +126,29 @@ public class ValidationRulesPersistedStorage extends BaseValidationRulesPersiste
   @Override
   public void reload() {
     myVersion = loadValidatorsFromLocalCache(myRecorderId);
+  }
+
+  @Override
+  public boolean isUnreachable() {
+    return !myIsInitialized.get();
+  }
+
+  @NotNull
+  protected Map<String, EventGroupRules> createValidators(@Nullable EventLogBuild build, @NotNull EventGroupRemoteDescriptors groups) {
+    GlobalRulesHolder globalRulesHolder = new GlobalRulesHolder(groups.rules);
+    return createValidators(build, groups, globalRulesHolder, myRecorderId);
+  }
+
+  @NotNull
+  public static Map<String, EventGroupRules> createValidators(@Nullable EventLogBuild build,
+                                                              @NotNull EventGroupRemoteDescriptors groups,
+                                                              @NotNull GlobalRulesHolder globalRulesHolder,
+                                                              @NotNull String recorderId) {
+    ValidationSimpleRuleFactory ruleFactory = new ValidationSimpleRuleFactory(new CustomRuleProducer(recorderId));
+    return groups.groups.stream()
+      .filter(group -> EventGroupFilterRules.create(group, EventLogBuild.EVENT_LOG_BUILD_PRODUCER).accepts(build))
+      .collect(Collectors.toMap(group -> group.id, group -> {
+        return EventGroupRules.create(group, globalRulesHolder, ruleFactory, FeatureUsageData.Companion.getPlatformDataKeys());
+      }));
   }
 }

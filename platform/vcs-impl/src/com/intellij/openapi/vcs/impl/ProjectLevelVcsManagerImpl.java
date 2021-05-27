@@ -55,10 +55,7 @@ import com.intellij.vcs.console.VcsConsoleView;
 import org.jdom.Attribute;
 import org.jdom.DataConversionException;
 import org.jdom.Element;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
+import org.jetbrains.annotations.*;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -532,7 +529,7 @@ public final class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx i
   @Override
   public String getConsolidatedVcsName() {
     AbstractVcs singleVcs = getSingleVCS();
-    return singleVcs != null ? singleVcs.getShortName() : VcsBundle.message("vcs.generic.name");
+    return singleVcs != null ? singleVcs.getShortNameWithMnemonic() : VcsBundle.message("vcs.generic.name.with.mnemonic");
   }
 
   @Override
@@ -684,6 +681,7 @@ public final class ProjectLevelVcsManagerImpl extends ProjectLevelVcsManagerEx i
    * @deprecated use {@link BackgroundableActionLock}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public BackgroundableActionEnabledHandler getBackgroundableActionHandler(final VcsBackgroundableActions action) {
     ApplicationManager.getApplication().assertIsDispatchThread();
     return new BackgroundableActionEnabledHandler(myProject, action);

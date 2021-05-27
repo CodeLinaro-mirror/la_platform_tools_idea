@@ -9,29 +9,22 @@ import com.intellij.find.impl.FindInProjectSettingsBase
 import com.intellij.find.impl.FindPopupPanel
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.impl.ActionButton
-import com.intellij.testGuiFramework.fixtures.extended.ExtendedTableFixture
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.impl.actionButton
-import com.intellij.testGuiFramework.impl.button
-import com.intellij.testGuiFramework.impl.findComponentWithTimeout
-import com.intellij.testGuiFramework.util.Key
 import com.intellij.usages.UsagePresentation
 import com.intellij.util.ui.UIUtil
 import org.fest.swing.core.MouseClickInfo
 import org.fest.swing.data.TableCell
+import org.fest.swing.fixture.JTableFixture
 import org.fest.swing.fixture.JTextComponentFixture
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskRuntimeContext
-import training.commands.kotlin.TaskTestContext
+import training.dsl.*
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.*
+import training.learn.course.KLesson
+import training.ui.LearningUiUtil.findComponentWithTimeout
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.*
 
-class FindInFilesLesson(module: Module, lang: String, override val existedFile: String)
-  : KLesson("Find in files", LessonsBundle.message("find.in.files.lesson.name"), module, lang) {
+class FindInFilesLesson(override val existedFile: String)
+  : KLesson("Find in files", LessonsBundle.message("find.in.files.lesson.name")) {
 
   override val lessonContent: LessonContext.() -> Unit = {
     resetFindSettings()
@@ -45,7 +38,6 @@ class FindInFilesLesson(module: Module, lang: String, override val existedFile: 
         !popup.helper.isReplaceState
       }
       test {
-        Thread.sleep(300)
         actions(it)
       }
     }
@@ -64,7 +56,7 @@ class FindInFilesLesson(module: Module, lang: String, override val existedFile: 
                                  LessonUtil.rawKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.ALT_DOWN_MASK))))
       highlightAndTriggerWhenButtonSelected(wholeWordsButtonText)
       showWarningIfPopupClosed(false)
-      test {
+      test(waitEditorToBeReady = false) {
         ideFrame {
           actionButton(wholeWordsButtonText).click()
         }
@@ -87,9 +79,8 @@ class FindInFilesLesson(module: Module, lang: String, override val existedFile: 
       restoreByUi(restoreId = showPopupTaskId)
       test {
         ideFrame {
-          Thread.sleep(300)
           val table = findComponentWithTimeout { table: JTable -> table.findLastRowIndexOfItemWithText(it) != -1 }
-          val tableFixture = ExtendedTableFixture(robot(), table)
+          val tableFixture = JTableFixture(robot(), table)
           val rowIndex = table.findLastRowIndexOfItemWithText(it)
           tableFixture.click(TableCell.row(rowIndex).column(0), MouseClickInfo.leftButton())
         }
@@ -100,7 +91,7 @@ class FindInFilesLesson(module: Module, lang: String, override val existedFile: 
       text(LessonsBundle.message("find.in.files.go.to.file", LessonUtil.rawEnter()))
       stateCheck { virtualFile.name != existedFile.substringAfterLast('/') }
       restoreByUi(restoreId = showPopupTaskId)
-      test { GuiTestUtil.shortcut(Key.ENTER) }
+      test { invokeActionViaShortcut("ENTER") }
     }
 
     task("ReplaceInPath") {
@@ -160,7 +151,6 @@ class FindInFilesLesson(module: Module, lang: String, override val existedFile: 
       showWarningIfPopupClosed(true)
       test {
         ideFrame {
-          Thread.sleep(300)
           button(replaceAllButtonText).click()
         }
       }
@@ -171,10 +161,9 @@ class FindInFilesLesson(module: Module, lang: String, override val existedFile: 
       text(LessonsBundle.message("find.in.files.confirm.replace", strong(replaceButtonText)))
       stateCheck { editor.document.charsSequence.contains("orange") }
       restoreByUi(delayMillis = defaultRestoreDelay)
-      test {
-        ideFrame {
-          Thread.sleep(300)
-          findMessageDialog(replaceAllDialogTitle).click(replaceButtonText)
+      test(waitEditorToBeReady = false) {
+        dialog(title = "Replace All") {
+          button(replaceButtonText).click()
         }
       }
     }

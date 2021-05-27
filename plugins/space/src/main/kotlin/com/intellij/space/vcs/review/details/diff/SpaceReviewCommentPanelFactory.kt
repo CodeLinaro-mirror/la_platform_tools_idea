@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.space.vcs.review.details.diff
 
 import circlet.code.api.CodeDiscussionRecord
@@ -8,14 +8,18 @@ import circlet.platform.client.resolve
 import circlet.workspaces.Workspace
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
-import com.intellij.space.chat.ui.SpaceChatAvatarType
+import com.intellij.space.chat.model.api.SpaceChatItemAdditionalFeature
+import com.intellij.space.chat.model.impl.SpaceChatItemImpl.Companion.convertToChatItem
 import com.intellij.space.chat.ui.discussion.SpaceChatDiscussionActionsFactory
+import com.intellij.space.chat.ui.getLink
 import com.intellij.space.chat.ui.thread.SpaceChatStandaloneThreadComponent
+import com.intellij.space.messages.SpaceBundle
 import com.intellij.space.vcs.review.details.SpaceReviewChange
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.codereview.comment.wrapComponentUsingRoundedPanel
 import libraries.coroutines.extra.Lifetime
 import runtime.reactive.Property
+import runtime.reactive.property.map
 import javax.swing.JComponent
 
 internal class SpaceReviewCommentPanelFactory(
@@ -52,10 +56,20 @@ internal class SpaceReviewCommentPanelFactory(
       parent,
       workspace.chatVm.channels,
       discussionRecord.value.channel,
-      SpaceChatDiscussionActionsFactory(
-        discussionRecord,
-        avatarType = SpaceChatAvatarType.THREAD,
-        pendingStateProvider = pendingStateProvider
-      )
-    )
+      pendingStateProvider,
+      SpaceChatDiscussionActionsFactory(lifetime, workspace.client, discussionRecord),
+      messageConverter = { index, message ->
+        message.convertToChatItem(
+          message.getLink(),
+          additionalFeatures = if (index == 0) {
+            setOf(SpaceChatItemAdditionalFeature.ShowResolvedState(discussionRecord.map(lifetime) { it.resolved }))
+          }
+          else {
+            setOf()
+          }
+        )
+      }
+    ).apply {
+      setLoadingText(SpaceBundle.message("review.diff.loading.discussion.text"))
+    }
 }

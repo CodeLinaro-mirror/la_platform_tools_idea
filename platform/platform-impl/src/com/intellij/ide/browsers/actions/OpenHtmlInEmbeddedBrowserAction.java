@@ -18,14 +18,14 @@ import org.jetbrains.annotations.NotNull;
  */
 class OpenHtmlInEmbeddedBrowserAction extends DumbAwareAction {
   OpenHtmlInEmbeddedBrowserAction() {
-    super(IdeBundle.message("action.open.web.preview.text"), null, AppUIUtil.loadSmallApplicationIcon(ScaleContext.create()));
+    super(IdeBundle.message("action.open.web.preview.text"), null, AppUIUtil.loadSmallApplicationIconForRelease(ScaleContext.create(), 16));
   }
 
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
     Project project = e.getRequiredData(CommonDataKeys.PROJECT);
     PsiFile psiFile = e.getRequiredData(CommonDataKeys.PSI_FILE);
-    OpenInRightSplitAction.Companion.openInRightSplit(project, new WebPreviewVirtualFile(psiFile.getVirtualFile()), null);
+    OpenInRightSplitAction.Companion.openInRightSplit(project, new WebPreviewVirtualFile(psiFile.getVirtualFile()), null, false);
   }
 
   @Override

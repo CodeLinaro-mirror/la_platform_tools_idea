@@ -1,15 +1,17 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package training.learn.lesson.general.refactorings
 
-import com.intellij.testGuiFramework.impl.jList
 import com.intellij.ui.components.JBList
+import training.dsl.LessonContext
+import training.dsl.LessonSample
+import training.dsl.LessonUtil
+import training.dsl.LessonUtil.restoreIfModifiedOrMoved
+import training.dsl.restoreAfterStateBecomeFalse
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.*
-import training.learn.lesson.kimpl.LessonUtil.restoreIfModifiedOrMoved
+import training.learn.course.KLesson
 
-class ExtractVariableFromBubbleLesson(module: Module, lang: String, private val sample: LessonSample)
-  : KLesson("Extract variable", LessonsBundle.message("extract.variable.lesson.name"), module, lang) {
+class ExtractVariableFromBubbleLesson(private val sample: LessonSample)
+  : KLesson("Extract variable", LessonsBundle.message("extract.variable.lesson.name")) {
   override val lessonContent: LessonContext.() -> Unit
     get() = {
       prepareSample(sample)
@@ -37,9 +39,13 @@ class ExtractVariableFromBubbleLesson(module: Module, lang: String, private val 
         }
       }
 
-      actionTask("NextTemplateVariable") {
+      task("NextTemplateVariable") {
         //TODO: fix the shortcut: it should be ${action(it)} but with preference for Enter
-        LessonsBundle.message("extract.variable.choose.name", LessonUtil.rawEnter())
+        text(LessonsBundle.message("extract.variable.choose.name", LessonUtil.rawEnter()))
+        trigger(it)
+        test(waitEditorToBeReady = false) {
+          actions(it)
+        }
       }
     }
 }

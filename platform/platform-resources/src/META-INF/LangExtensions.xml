@@ -8,6 +8,7 @@
 
     <appStarter implementation="com.intellij.ide.ui.search.TraverseUIStarter"/>
     <appStarter implementation="com.intellij.formatting.commandLine.FormatterStarter"/>
+    <appStarter implementation="com.intellij.ide.script.IdeScriptStarter"/>
 
     <applicationService serviceInterface="com.intellij.util.Queries"
                         serviceImplementation="com.intellij.util.QueriesImpl"/>
@@ -24,13 +25,6 @@
 
     <searcher forClass="com.intellij.model.search.PsiSymbolReferenceSearchParameters"
               implementationClass="com.intellij.model.search.impl.DefaultReferenceSearcher"/>
-    <searcher forClass="com.intellij.model.search.PsiSymbolReferenceSearchParameters"
-              implementationClass="com.intellij.model.search.impl.PsiToSymbolSearcher"
-              order="last"/>
-    <searcher forClass="com.intellij.find.usages.api.UsageSearchParameters"
-              implementationClass="com.intellij.find.usages.impl.DefaultUsageSearcher"/>
-    <searcher forClass="com.intellij.refactoring.rename.api.RenameUsageSearchParameters"
-              implementationClass="com.intellij.refactoring.rename.impl.DefaultRenameUsageSearcher"/>
     <referencesSearch implementation="com.intellij.psi.impl.search.SearcherQueryExecutor"/>
     <referencesSearch implementation="com.intellij.psi.impl.search.CachesBasedRefSearcher"/>
     <referencesSearch implementation="com.intellij.psi.impl.search.NonPhysicalReferenceSearcher"/>
@@ -59,6 +53,8 @@
                         serviceImplementation="com.intellij.util.indexing.FileBasedIndexImpl" preload="notLightEdit"/>
     <vfs.asyncListener implementation="com.intellij.util.indexing.events.ChangedFilesCollector"/>
     <applicationInitializedListener implementation="com.intellij.util.indexing.FileBasedIndexLoader"/>
+    <applicationService serviceImplementation="com.intellij.util.indexing.diagnostic.IndexDiagnosticDumper" preload="notLightEdit"/>
+    <applicationService serviceImplementation="com.intellij.util.indexing.roots.ModuleIndexableFilesPolicy"/>
 
     <!-- required for any persistence state component (pathMacroSubstitutor.expandPaths), so, preload -->
     <applicationService serviceInterface="com.intellij.openapi.application.PathMacros"
@@ -835,7 +831,7 @@
     <editorActionHandler action="EditorCopy" implementationClass="com.intellij.codeInsight.editorActions.CopyHandler"/>
     <editorActionHandler action="EditorCopy" implementationClass="com.intellij.codeInsight.documentation.render.DocRenderCopyHandler"
                          id="docRender" order="first"/>
-    <editorActionHandler action="EditorCut" implementationClass="com.intellij.codeInsight.editorActions.CutHandler"/>
+    <editorActionHandler action="EditorCut" implementationClass="com.intellij.codeInsight.editorActions.CutHandler" id="editorCut"/>
     <editorActionHandler action="EditorJoinLines" implementationClass="com.intellij.codeInsight.editorActions.JoinLinesHandler"/>
     <editorActionHandler action="EditorBackSpace" implementationClass="com.intellij.codeInsight.editorActions.BackspaceHandler" id="backspace.lang"/>
     <editorActionHandler action="EditorDeleteToWordStart"
@@ -990,7 +986,7 @@
     <statistics.counterUsagesCollector groupId="move.refactoring" version="1"/>
     <statistics.counterUsagesCollector groupId="refactoring" version="1"/>
     <statistics.counterUsagesCollector groupId="package.management.ui" version="1"/>
-    <statistics.counterUsagesCollector groupId="completion" version="5"/>
+    <statistics.counterUsagesCollector groupId="completion" version="6"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.find.findUsages.FindUsagesStatisticsCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.usages.impl.UsageViewStatisticsCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.openapi.fileTypes.impl.FileTypeConfigurableInteractions"/>
@@ -1033,11 +1029,11 @@
     <statistics.counterUsagesCollector groupId="searchEverywhere" version="4"/>
     <statistics.counterUsagesCollector groupId="actions.runAnything" version="2"/>
     <statistics.counterUsagesCollector groupId="surround.with" version="2"/>
-    <statistics.counterUsagesCollector groupId="find" version="3"/>
-    <statistics.counterUsagesCollector groupId="create.directory.dialog" version="1"/>
-    <statistics.counterUsagesCollector groupId="refactoring.dialog" version="1"/>
+    <statistics.counterUsagesCollector groupId="find" version="4"/>
+    <statistics.counterUsagesCollector groupId="create.directory.dialog" version="2"/>
+    <statistics.counterUsagesCollector groupId="refactoring.dialog" version="2"/>
     <statistics.counterUsagesCollector groupId="project.view.pane.changes" version="1"/>
-    <statistics.counterUsagesCollector groupId="run.configuration.exec" version="58"/>
+    <statistics.counterUsagesCollector groupId="run.configuration.exec" version="59"/>
     <statistics.counterUsagesCollector groupId="intentions" version="57"/>
     <statistics.counterUsagesCollector groupId="completion.postfix" version="57"/>
 
@@ -1134,7 +1130,8 @@
     <projectService serviceInterface="com.intellij.execution.ExecutionTargetManager" serviceImplementation="com.intellij.execution.ExecutionTargetManagerImpl"/>
 
     <projectService serviceInterface="com.intellij.execution.dashboard.RunDashboardManager" serviceImplementation="com.intellij.execution.dashboard.RunDashboardManagerImpl"/>
-    <notificationGroup id="Run Dashboard" displayType="STICKY_BALLOON" isLogByDefault="false"/>
+    <notificationGroup id="Run Dashboard" displayType="STICKY_BALLOON" isLogByDefault="false"
+                       notificationIds="run.dashboard.multiple.run.configurations"/>
     <projectService serviceInterface="com.intellij.execution.services.ServiceViewManager" serviceImplementation="com.intellij.execution.services.ServiceViewManagerImpl"/>
     <postStartupActivity implementation="com.intellij.execution.services.ServiceViewStartupActivity"/>
     <runDashboardGroupingRule implementation="com.intellij.execution.dashboard.tree.ConfigurationTypeDashboardGroupingRule"
@@ -1377,6 +1374,12 @@
 
     <fileSetDescriptorFactory implementation="com.intellij.application.options.codeStyle.excludedFiles.NamedScopeDescriptor$Factory"/>
     <fileSetDescriptorFactory implementation="com.intellij.application.options.codeStyle.excludedFiles.PatternDescriptor$Factory"/>
+
+    <fileBasedIndexLayout id="in-memory"
+                          presentableNameKey="in.memory.storage.presentable.name"
+                          bundleName="messages.LangBundle"
+                          providerClass="com.intellij.util.indexing.impl.storage.InMemoryStorageLayoutProvider"
+                          version="0"/>
   </extensions>
   <applicationListeners>
     <listener class="com.intellij.util.indexing.FileBasedIndexPluginListener" topic="com.intellij.ide.plugins.DynamicPluginListener"/>

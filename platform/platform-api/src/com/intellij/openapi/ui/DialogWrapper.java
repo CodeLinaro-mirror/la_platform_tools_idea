@@ -173,7 +173,7 @@ public abstract class DialogWrapper {
   private JComponent myPreferredFocusedComponentFromPanel;
   private Computable<? extends Point> myInitialLocationCallback;
   private Dimension  myActualSize;
-  private @NotNull List<ValidationInfo> myInfo = Collections.emptyList();
+  private List<? extends ValidationInfo> myInfo = Collections.emptyList();
   private @Nullable DoNotAskOption myDoNotAsk;
   private Action myYesAction;
   private Action myNoAction;
@@ -406,7 +406,7 @@ public abstract class DialogWrapper {
         myErrorPainter.setValidationInfo(info);
         setErrorInfoAll(info);
         myPeer.getRootPane().getGlassPane().repaint();
-        getOKAction().setEnabled(info.isEmpty() || info.stream().allMatch(info1 -> info1.okEnabled));
+        getOKAction().setEnabled(ContainerUtil.all(info, info1 -> info1.okEnabled));
       });
     }
   }
@@ -606,6 +606,7 @@ public abstract class DialogWrapper {
    * @deprecated Do not use. Always returns false
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public boolean isTypeAheadEnabled() {
       return false;
   }
@@ -623,16 +624,7 @@ public abstract class DialogWrapper {
   private JPanel createSouthPanel(@NotNull List<? extends JButton> leftSideButtons,
                                   @NotNull List<? extends JButton> rightSideButtons,
                                   boolean addHelpToLeftSide) {
-    JPanel panel = new JPanel(new BorderLayout()) {
-      @Override
-      public Color getBackground() {
-        final Color bg = UIManager.getColor("DialogWrapper.southPanelBackground");
-        if (getStyle() == DialogStyle.COMPACT && bg != null) {
-          return bg;
-        }
-        return super.getBackground();
-      }
-    };
+    JPanel panel = new SouthPanel(getStyle());
 
     if (myDoNotAsk != null) {
       myCheckBoxDoNotShowDialog = new JCheckBox(myDoNotAsk.getDoNotShowMessage());
@@ -1496,14 +1488,10 @@ public abstract class DialogWrapper {
   }
 
   /**
-   * Sets horizontal alignment of dialog's buttons.
-   *
-   * @param alignment alignment of the buttons. Acceptable values are
-   *                  {@code SwingConstants.CENTER} and {@code SwingConstants.RIGHT}.
-   *                  The {@code SwingConstants.RIGHT} is the default value.
-   * @throws IllegalArgumentException if {@code alignment} isn't acceptable
+   * @deprecated Dialog action buttons should be right-aligned.
    */
-  protected final void setButtonsAlignment(@MagicConstant(intValues = {SwingConstants.CENTER, SwingConstants.RIGHT}) int alignment) {
+  @Deprecated
+protected final void setButtonsAlignment(@MagicConstant(intValues = {SwingConstants.CENTER, SwingConstants.RIGHT}) int alignment) {
     if (SwingConstants.CENTER != alignment && SwingConstants.RIGHT != alignment) {
       throw new IllegalArgumentException("unknown alignment: " + alignment);
     }
@@ -1512,6 +1500,7 @@ public abstract class DialogWrapper {
 
   /** @deprecated button margins aren't used anymore. Button style is standardized. */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public final void setButtonsMargin(@SuppressWarnings("unused") Insets insets) { }
 
   public final void setCrossClosesWindow(boolean crossClosesWindow) {
@@ -1520,6 +1509,7 @@ public abstract class DialogWrapper {
 
   /** @deprecated button icons aren't used anymore (except "OK" action). Button style is standardized. */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   protected final void setCancelButtonIcon(@SuppressWarnings("unused") Icon icon) { }
 
   protected final void setCancelButtonText(@NlsContexts.Button @NotNull String text) {
@@ -1710,7 +1700,7 @@ public abstract class DialogWrapper {
     ensureEventDispatchThread();
     registerKeyboardShortcuts();
 
-    Disposable uiParent = Disposer.get("ui");
+    Disposable uiParent = ApplicationManager.getApplication();
     if (uiParent != null) { // may be null if no app yet (license agreement)
       Disposer.register(uiParent, myDisposable); // ensure everything is disposed on app quit
     }
@@ -1894,7 +1884,7 @@ public abstract class DialogWrapper {
         }
         updateErrorInfo(infoList);
         startTrackingValidation();
-        if(infoList.stream().anyMatch(info1 -> !info1.okEnabled)) return;
+        if (ContainerUtil.exists(infoList, info1 -> !info1.okEnabled)) return;
       }
       doOKAction();
     }
@@ -1976,7 +1966,7 @@ public abstract class DialogWrapper {
                     Collections.singletonList(new ValidationInfo(text, component)));
   }
 
-  protected void setErrorInfoAll(@NotNull List<ValidationInfo> info) {
+  protected void setErrorInfoAll(@NotNull List<? extends ValidationInfo> info) {
     if (myInfo.equals(info)) return;
 
     Application application = ApplicationManager.getApplication();
@@ -1985,7 +1975,7 @@ public abstract class DialogWrapper {
     myErrorTextAlarm.cancelAllRequests();
     Runnable clearErrorRunnable = () -> {
       if (myErrorText != null) {
-        myErrorText.clearError(info.stream().noneMatch(i -> StringUtil.isNotEmpty(i.message)));
+        myErrorText.clearError(ContainerUtil.all(info, i -> StringUtil.isEmpty(i.message)));
       }
     };
     if (headless) {
@@ -1995,11 +1985,12 @@ public abstract class DialogWrapper {
       SwingUtilities.invokeLater(clearErrorRunnable);
     }
 
-    List<ValidationInfo> corrected = ContainerUtil.filter(myInfo, vi -> !info.contains(vi));
     if (isInplaceValidationToolTipEnabled()) {
-      corrected.stream().filter(vi -> vi.component != null).
-        map(vi -> ComponentValidator.getInstance(vi.component)).
-        forEach(c -> c.ifPresent(vi -> vi.updateInfo(null)));
+      myInfo.stream()
+        .filter(vi -> !info.contains(vi))
+        .filter(vi -> vi.component != null)
+        .map(vi -> ComponentValidator.getInstance(vi.component))
+        .forEach(c -> c.ifPresent(vi -> vi.updateInfo(null)));
     }
 
     myInfo = info;
@@ -2042,7 +2033,7 @@ public abstract class DialogWrapper {
    * Check if component is in error state validation-wise
    */
   protected boolean hasErrors(@NotNull JComponent component) {
-    return myInfo.stream().anyMatch(i -> component.equals(i.component) && !i.warning);
+    return ContainerUtil.exists(myInfo, i -> component.equals(i.component) && !i.warning);
   }
 
   private void updateSize() {
@@ -2275,6 +2266,24 @@ public abstract class DialogWrapper {
       }
       catch (Exception ignore) {
       }
+    }
+  }
+
+  private static class SouthPanel extends JPanel {
+    private final DialogStyle myStyle;
+
+    SouthPanel(@NotNull DialogStyle style) {
+      super(new BorderLayout());
+      myStyle = style;
+    }
+
+    @Override
+    public Color getBackground() {
+      final Color bg = UIManager.getColor("DialogWrapper.southPanelBackground");
+      if (myStyle == DialogStyle.COMPACT && bg != null) {
+        return bg;
+      }
+      return super.getBackground();
     }
   }
 }

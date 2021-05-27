@@ -1,6 +1,5 @@
 package de.plushnikov.intellij.plugin.processor.field;
 
-import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.psi.*;
 import de.plushnikov.intellij.plugin.LombokBundle;
@@ -35,6 +34,8 @@ public class WitherFieldProcessor extends AbstractFieldProcessor {
 
   @Override
   protected boolean validate(@NotNull PsiAnnotation psiAnnotation, @NotNull PsiField psiField, @NotNull ProblemBuilder builder) {
+    validateOnXAnnotations(psiAnnotation, psiField, builder, "onParam");
+
     boolean valid = validateVisibility(psiAnnotation);
     valid &= validName(psiField, builder);
     valid &= validNonStatic(psiField, builder);
@@ -98,6 +99,7 @@ public class WitherFieldProcessor extends AbstractFieldProcessor {
     final String psiFieldName = psiField.getName();
     if (fieldContainingClass != null) {
       final Collection<PsiMethod> classMethods = PsiClassUtil.collectClassMethodsIntern(fieldContainingClass);
+      filterToleratedElements(classMethods);
 
       final AccessorsInfo accessorsInfo = buildAccessorsInfo(psiField);
       final Collection<String> possibleWitherNames = LombokUtils.toAllWitherNames(accessorsInfo, psiFieldName, PsiType.BOOLEAN.equals(psiField.getType()));
@@ -178,14 +180,14 @@ public class WitherFieldProcessor extends AbstractFieldProcessor {
         .withModifier(methodModifier);
 
       PsiAnnotation witherAnnotation = PsiAnnotationSearchUtil.findAnnotation(psiField, LombokClassNames.WITHER, LombokClassNames.WITH);
-      addOnXAnnotations(witherAnnotation, methodBuilder.getModifierList(), "onMethod");
+      copyOnXAnnotations(witherAnnotation, methodBuilder.getModifierList(), "onMethod");
 
-      final LombokLightParameter methodParameter = new LombokLightParameter(psiFieldName, psiFieldType, methodBuilder, JavaLanguage.INSTANCE);
-      PsiModifierList methodParameterModifierList = methodParameter.getModifierList();
-      copyAnnotations(psiField, methodParameterModifierList,
-        LombokUtils.NON_NULL_PATTERN, LombokUtils.NULLABLE_PATTERN, LombokUtils.DEPRECATED_PATTERN);
-      addOnXAnnotations(witherAnnotation, methodParameterModifierList, "onParam");
+      final LombokLightParameter methodParameter = new LombokLightParameter(psiFieldName, psiFieldType, methodBuilder);
       methodBuilder.withParameter(methodParameter);
+
+      PsiModifierList methodParameterModifierList = methodParameter.getModifierList();
+      copyCopyableAnnotations(psiField, methodParameterModifierList, LombokUtils.BASE_COPYABLE_ANNOTATIONS);
+      copyOnXAnnotations(witherAnnotation, methodParameterModifierList, "onParam");
 
       if (psiFieldContainingClass.hasModifierProperty(PsiModifier.ABSTRACT)) {
         methodBuilder.withModifier(PsiModifier.ABSTRACT);

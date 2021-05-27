@@ -9,6 +9,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.vcs.log.ui.table.VcsLogColumnDeprecated;
 import com.intellij.vcs.log.ui.table.column.Date;
 import com.intellij.vcs.log.ui.table.column.*;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -55,8 +56,11 @@ public class VcsLogApplicationSettings implements PersistentStateComponent<VcsLo
       // visibility is not set, so we will get it from current/default order
       // otherwise column will be visible but not exist in order
       VcsLogColumn<?> column = visibilityProperty.getColumn();
-      if (get(COLUMN_ID_ORDER).contains(column.getId()) || column instanceof VcsLogCustomColumn) {
+      if (get(COLUMN_ID_ORDER).contains(column.getId())) {
         return (T)Boolean.TRUE;
+      }
+      if (column instanceof VcsLogCustomColumn) {
+        return (T)Boolean.valueOf(((VcsLogCustomColumn<?>)column).isEnabledByDefault());
       }
       return (T)Boolean.FALSE;
     }
@@ -152,6 +156,7 @@ public class VcsLogApplicationSettings implements PersistentStateComponent<VcsLo
     public boolean DIFF_PREVIEW_VERTICAL_SPLIT = true;
     public boolean PREFER_COMMIT_DATE = false;
     @Deprecated
+    @ApiStatus.ScheduledForRemoval(inVersion = "2022.1")
     public List<Integer> COLUMN_ORDER = new ArrayList<>();
     public List<String> COLUMN_ID_ORDER = new ArrayList<>();
     public Map<String, Boolean> COLUMN_ID_VISIBILITY = new HashMap<>();

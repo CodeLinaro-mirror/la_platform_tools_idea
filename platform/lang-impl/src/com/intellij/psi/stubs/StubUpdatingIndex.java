@@ -5,8 +5,8 @@ import com.intellij.index.PrebuiltIndexProvider;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageParserDefinitions;
 import com.intellij.lang.ParserDefinition;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Attachment;
+import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.diagnostic.RuntimeExceptionWithAttachments;
 import com.intellij.openapi.extensions.impl.ExtensionPointImpl;
@@ -18,7 +18,6 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.util.KeyedExtensionCollector;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.FileAttribute;
 import com.intellij.openapi.vfs.newvfs.persistent.FSRecords;
@@ -26,9 +25,10 @@ import com.intellij.psi.impl.DebugUtil;
 import com.intellij.psi.tree.IFileElementType;
 import com.intellij.psi.tree.IStubFileElementType;
 import com.intellij.util.BitUtil;
+import com.intellij.util.ExceptionUtil;
 import com.intellij.util.KeyedLazyInstance;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.*;
+import com.intellij.util.indexing.impl.MapReduceIndexMappingException;
 import com.intellij.util.indexing.impl.IndexDebugProperties;
 import com.intellij.util.indexing.impl.IndexStorage;
 import com.intellij.util.indexing.impl.forward.ForwardIndex;
@@ -36,10 +36,6 @@ import com.intellij.util.indexing.impl.forward.ForwardIndexAccessor;
 import com.intellij.util.indexing.impl.storage.TransientChangesIndexStorage;
 import com.intellij.util.indexing.impl.storage.VfsAwareIndexStorageLayout;
 import com.intellij.util.io.*;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,7 +43,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -94,7 +89,7 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
       }
 
       final IFileElementType elementType = parserDefinition.getFileNodeType();
-      if (elementType instanceof IStubFileElementType && ((IStubFileElementType)elementType).shouldBuildStubFor(file)) {
+      if (elementType instanceof IStubFileElementType && ((IStubFileElementType<?>)elementType).shouldBuildStubFor(file)) {
         return true;
       }
     }
@@ -165,30 +160,36 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
           LOG.error("Error while indexing: " + inputData.getFileName() + " using prebuilt stub index", e);
         }
 
+        Stub stub;
         try {
-          Stub stub = StubTreeBuilder.buildStubTree(inputData, type);
-          if (stub == null) {
-            if (LOG.isDebugEnabled()) {
-              LOG.debug("No stub present for " + inputData.getFile() + ", " + calculateIndexingStamp(inputData));
-            }
-            return null;
+          stub = StubTreeBuilder.buildStubTree(inputData, type);
+        } catch (Exception e) {
+          if (e instanceof ControlFlowException) ExceptionUtil.rethrowUnchecked(e);
+          throw new MapReduceIndexMappingException(e, type.getClassToBlameInCaseOfException());
+        }
+        if (stub == null) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("No stub present for " + inputData.getFile() + ", " + calculateIndexingStamp(inputData));
           }
-          SerializedStubTree serializedStubTree = SerializedStubTree.serializeStub(stub, mySerializationManager, myStubIndexesExternalizer);
+          return null;
+        }
+
+        SerializedStubTree serializedStubTree;
+        try {
+          serializedStubTree = SerializedStubTree.serializeStub(stub, mySerializationManager, myStubIndexesExternalizer);
           if (IndexDebugProperties.DEBUG) {
             assertDeserializedStubMatchesOriginalStub(serializedStubTree, stub);
           }
           if (LOG.isDebugEnabled()) {
-            LOG.debug("Indexing stubs for " + inputData.getFile() + ", " + calculateIndexingStamp(inputData));
+            LOG.debug("Stub is built for " + inputData.getFile() + ", " + calculateIndexingStamp(inputData));
           }
-          return serializedStubTree;
+        } catch (Exception e) {
+          if (e instanceof ControlFlowException) ExceptionUtil.rethrowUnchecked(e);
+          ObjectStubSerializer<?, ? extends Stub> stubType = stub.getStubType();
+          Class<?> classToBlame = stubType != null ? stubType.getClass() : stub.getClass();
+          throw new MapReduceIndexMappingException(e, classToBlame);
         }
-        catch (ProcessCanceledException pce) {
-          throw pce;
-        }
-        catch (Throwable t) {
-          LOG.error("Error indexing:" + inputData.getFile(), t);
-          return null;
-        }
+        return serializedStubTree;
       }
     };
   }
@@ -399,7 +400,6 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
         }
       });
     }
-    checkStubIndexDontContainDeletedRecords(index, true);
     return index;
   }
 
@@ -426,42 +426,12 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
     getExtensions(LanguageParserDefinitions.INSTANCE, ParserDefinition::getFileNodeType);
   }
 
-  private static <T> void getExtensions(@NotNull KeyedExtensionCollector<T, ?> collector, @NotNull Consumer<T> consumer) {
+  private static <T> void getExtensions(@NotNull KeyedExtensionCollector<T, ?> collector, @NotNull Consumer<? super T> consumer) {
     ExtensionPointImpl<KeyedLazyInstance<T>> point = (ExtensionPointImpl<KeyedLazyInstance<T>>)collector.getPoint();
     if (point != null) {
       for (KeyedLazyInstance<T> instance : point) {
         consumer.accept(instance.getInstance());
       }
-    }
-  }
-
-  static void checkStubIndexDontContainDeletedRecords(@NotNull StubUpdatingIndexStorage stubIndex, boolean onStartup) throws StorageException {
-    if (!ApplicationManager.getApplication().isInternal()) {
-      return;
-    }
-
-    Int2ObjectMap<String> staleTrees = new Int2ObjectOpenHashMap<>();
-    for (int freeRecord : onStartup ? FSRecords.getRemainFreeRecords() : FSRecords.getNewFreeRecords()) {
-      Map<Integer, SerializedStubTree> data = stubIndex.getIndexedFileData(freeRecord);
-      SerializedStubTree stubTree = ContainerUtil.getFirstItem(data.values());
-      if (stubTree != null) {
-        String name;
-        try {
-          name = FSRecords.getName(freeRecord);
-        }
-        catch (Exception e) {
-          name = e.getMessage();
-        }
-        staleTrees.put(freeRecord, name);
-      }
-    }
-
-    if (!staleTrees.isEmpty()) {
-      LOG.error("Stub index contains several stale file ids (size = "
-                + staleTrees.size()
-                + "). Ids & filenames: "
-                + StringUtil.first(staleTrees.toString(), 300, true)
-                + ".");
     }
   }
 }

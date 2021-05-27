@@ -19,12 +19,7 @@ import org.jetbrains.idea.maven.aether.ProgressConsumer
 import org.jetbrains.intellij.build.*
 import org.jetbrains.jps.model.artifact.JpsArtifactService
 import org.jetbrains.jps.model.jarRepository.JpsRemoteRepositoryService
-import org.jetbrains.jps.model.java.JavaResourceRootProperties
-import org.jetbrains.jps.model.java.JavaResourceRootType
-import org.jetbrains.jps.model.java.JavaSourceRootProperties
-import org.jetbrains.jps.model.java.JavaSourceRootType
-import org.jetbrains.jps.model.java.JpsJavaClasspathKind
-import org.jetbrains.jps.model.java.JpsJavaExtensionService
+import org.jetbrains.jps.model.java.*
 import org.jetbrains.jps.model.library.JpsLibrary
 import org.jetbrains.jps.model.library.JpsOrderRootType
 import org.jetbrains.jps.model.library.JpsRepositoryLibraryType
@@ -39,11 +34,7 @@ import java.nio.file.StandardCopyOption
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.Callable
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
+import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Function
 
@@ -181,7 +172,8 @@ final class BuildTasksImpl extends BuildTasks {
                                     List<String> arguments,
                                     Map<String, Object> systemProperties = Collections.emptyMap(),
                                     List<String> vmOptions = List.of("-Xmx512m"),
-                                    List<String> pluginsToDisable = Collections.emptyList()) {
+                                    List<String> pluginsToDisable = Collections.emptyList(),
+                                    long timeoutMillis = TimeUnit.MINUTES.toMillis(10L)) {
     Files.createDirectories(tempDir)
 
     Set<String> ideClasspath = new LinkedHashSet<String>()
@@ -224,7 +216,8 @@ final class BuildTasksImpl extends BuildTasks {
       "com.intellij.idea.Main",
       arguments,
       jvmArgs,
-      ideClasspath)
+      ideClasspath,
+      timeoutMillis)
   }
 
   private static void disableCompatibleIgnoredPlugins(@NotNull BuildContext context,
@@ -281,6 +274,12 @@ idea.fatal.error.notification=disabled
   @NotNull Path patchApplicationInfo() {
     Path sourceFile = BuildContextImpl.findApplicationInfoInSources(buildContext.project, buildContext.productProperties, buildContext.messages)
     Path targetFile = Paths.get(buildContext.paths.temp).resolve(sourceFile.fileName)
+
+    // Android Studio: don't patch ApplicationInfo.xml
+    FileUtil.createParentDirs(targetFile.toFile())
+    targetFile.text = sourceFile.text
+    return targetFile
+
     def date = ZonedDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("uuuuMMddHHmm"))
 
     def artifactsServer = buildContext.proprietaryBuildTools.artifactsServer
@@ -367,8 +366,7 @@ idea.fatal.error.notification=disabled
       }
 
       return context.messages.block("Build $builder.targetOs.osName Distribution") {
-        Path osSpecificDistDirectory = Paths.get(context.paths.buildOutputRoot, "dist.$builder.targetOs.distSuffix")
-        builder.copyFilesForOsDistribution(osSpecificDistDirectory)
+        Path osSpecificDistDirectory = DistributionJARsBuilder.getOsSpecificDistDirectory(builder.targetOs, context)
         builder.buildArtifacts(osSpecificDistDirectory)
         osSpecificDistDirectory
       }
@@ -958,9 +956,16 @@ idea.fatal.error.notification=disabled
     setupBundledMaven()
     Path patchedApplicationInfo = patchApplicationInfo()
     compileModulesForDistribution(patchedApplicationInfo).buildJARs(true)
+    def osSpecificPlugins = DistributionJARsBuilder.getOsSpecificDistDirectory(currentOs, buildContext).resolve("plugins")
+    if (Files.isDirectory(osSpecificPlugins)) {
+      Files.newDirectoryStream(osSpecificPlugins).withCloseable { children ->
+        children.each { Files.move(it, buildContext.paths.distAllDir.resolve("plugins").resolve(it.fileName)) }
+      }
+    }
+
     DistributionJARsBuilder.reorderJars(buildContext)
+    JvmArchitecture arch = SystemInfo.isArm64 ? JvmArchitecture.aarch64 : SystemInfo.is64Bit ? JvmArchitecture.x64 : JvmArchitecture.x32
     if (includeBinAndRuntime) {
-      JvmArchitecture arch = SystemInfo.isArm64 ? JvmArchitecture.aarch64 : SystemInfo.is64Bit ? JvmArchitecture.x64 : JvmArchitecture.x32
       setupJBre(arch.name())
     }
     layoutShared()
@@ -979,7 +984,7 @@ idea.fatal.error.notification=disabled
           builder = new MacDistributionBuilder(buildContext, buildContext.macDistributionCustomizer, propertiesFile)
           break
       }
-      builder.copyFilesForOsDistribution(targetDirectory)
+      builder.copyFilesForOsDistribution(targetDirectory, arch)
       /* Android Studio: Don't include JBR to unpacked distribution.
       Path jbrTargetDir = buildContext.bundledJreManager.extractJre(currentOs)
       if (currentOs == OsFamily.WINDOWS) {

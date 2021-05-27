@@ -71,12 +71,7 @@ public class FormBuilder {
 
   @NotNull
   private static JLabel createLabelForComponent(@NotNull @NlsContexts.Label String labelText, @NotNull JComponent component) {
-    JLabel label = new JLabel(UIUtil.removeMnemonic(labelText));
-    final int index = UIUtil.getDisplayMnemonicIndex(labelText);
-    if (index != -1) {
-      label.setDisplayedMnemonic(labelText.charAt(index + 1));
-      label.setDisplayedMnemonicIndex(index);
-    }
+    JLabel label = new JLabel(UIUtil.replaceMnemonicAmpersand(labelText));
     label.setLabelFor(component);
     return label;
   }

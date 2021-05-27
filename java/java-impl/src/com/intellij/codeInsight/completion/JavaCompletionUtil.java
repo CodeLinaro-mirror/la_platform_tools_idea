@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
 import com.intellij.codeInsight.*;
@@ -12,7 +12,6 @@ import com.intellij.codeInsight.editorActions.TabOutScopesTracker;
 import com.intellij.codeInsight.guess.GuessManager;
 import com.intellij.codeInsight.lookup.*;
 import com.intellij.codeInspection.java15api.Java15APIUsageInspection;
-import com.intellij.lang.StdLanguages;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -33,6 +32,7 @@ import com.intellij.psi.impl.FakePsiElement;
 import com.intellij.psi.impl.light.LightVariableBuilder;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
 import com.intellij.psi.impl.source.PsiImmediateClassType;
+import com.intellij.psi.jsp.JspxLanguage;
 import com.intellij.psi.scope.ElementClassHint;
 import com.intellij.psi.scope.NameHint;
 import com.intellij.psi.scope.PsiScopeProcessor;
@@ -47,7 +47,6 @@ import com.intellij.util.ThreeState;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.siyeh.ig.psiutils.SideEffectChecker;
-import gnu.trove.THashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Contract;
@@ -82,7 +81,7 @@ public final class JavaCompletionUtil {
   public static Set<PsiType> getExpectedTypes(final CompletionParameters parameters) {
     final PsiExpression expr = PsiTreeUtil.getContextOfType(parameters.getPosition(), PsiExpression.class, true);
     if (expr != null) {
-      final Set<PsiType> set = new THashSet<>();
+      final Set<PsiType> set = new HashSet<>();
       for (final ExpectedTypeInfo expectedInfo : JavaSmartCompletionContributor.getExpectedTypes(parameters)) {
         set.add(expectedInfo.getType());
       }
@@ -300,7 +299,7 @@ public final class JavaCompletionUtil {
 
     Set<PsiType> expectedTypes = ObjectUtils.coalesce(getExpectedTypes(parameters), Collections.emptySet());
 
-    final Set<PsiMember> mentioned = new THashSet<>();
+    final Set<PsiMember> mentioned = new HashSet<>();
     for (CompletionElement completionElement : processor.getResults()) {
       for (LookupElement item : createLookupElements(completionElement, javaReference)) {
         item.putUserData(QUALIFIER_TYPE_ATTR, plainQualifier);
@@ -959,7 +958,7 @@ public final class JavaCompletionUtil {
 
   @NotNull
   public static String escapeXmlIfNeeded(InsertionContext context, @NotNull String generics) {
-    if (context.getFile().getViewProvider().getBaseLanguage() == StdLanguages.JSPX) {
+    if (context.getFile().getViewProvider().getBaseLanguage() instanceof JspxLanguage) {
       return StringUtil.escapeXmlEntities(generics);
     }
     return generics;

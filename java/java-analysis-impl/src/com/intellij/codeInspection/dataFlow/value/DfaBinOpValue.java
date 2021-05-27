@@ -11,11 +11,13 @@ import com.intellij.psi.PsiPrimitiveType;
 import com.intellij.psi.PsiType;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.TypeConversionUtil;
+import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Represents a value like "variable+var/const", "variable-var/const", or "variable % const".
@@ -111,7 +113,7 @@ public final class DfaBinOpValue extends DfaValue {
   }
 
   private static long extractLong(DfaTypeValue right) {
-    return ((Number)((DfConstantType<?>)right.getDfType()).getValue()).longValue();
+    return Objects.requireNonNull(right.getDfType().getConstantOfType(Number.class)).longValue();
   }
 
   public static class Factory {
@@ -129,32 +131,35 @@ public final class DfaBinOpValue extends DfaValue {
       if (value != null) {
         return value;
       }
-      LongRangeSet leftRange = DfLongType.extractRange(state.getDfType(left));
-      LongRangeSet rightRange = DfLongType.extractRange(state.getDfType(right));
+      DfIntegralType leftType = ObjectUtils.tryCast(state.getDfType(left), DfIntegralType.class);
+      DfIntegralType rightType = ObjectUtils.tryCast(state.getDfType(right), DfIntegralType.class);
+      if (leftType == null || rightType == null) {
+        return myFactory.fromDfType(isLong ? DfTypes.LONG : DfTypes.INT);
+      }
       if (op == LongRangeBinOp.MUL) {
-        if (LongRangeSet.point(1).equals(leftRange)) return right;
-        if (LongRangeSet.point(1).equals(rightRange)) return left;
+        if (LongRangeSet.point(1).equals(leftType.getRange())) return right;
+        if (LongRangeSet.point(1).equals(rightType.getRange())) return left;
       }
       if (op == LongRangeBinOp.DIV) {
-        if (LongRangeSet.point(1).equals(rightRange)) return left;
+        if (LongRangeSet.point(1).equals(rightType.getRange())) return left;
       }
       if (op == LongRangeBinOp.SHL || op == LongRangeBinOp.SHR || op == LongRangeBinOp.USHR) {
-        if (LongRangeSet.point(0).equals(rightRange)) return left;
+        if (LongRangeSet.point(0).equals(rightType.getRange())) return left;
       }
-      LongRangeSet result = op.eval(leftRange, rightRange, isLong);
-      return myFactory.fromDfType(DfTypes.rangeClamped(result, isLong));
+      DfType resType = leftType.eval(rightType, op);
+      return myFactory.fromDfType(resType);
     }
 
     @Nullable
     private DfaValue doCreate(DfaValue left, DfaValue right, DfaMemoryState state, boolean isLong, LongRangeBinOp op) {
       if (op != LongRangeBinOp.PLUS && op != LongRangeBinOp.MINUS && op != LongRangeBinOp.MOD) return null;
       DfType leftDfType = state.getDfType(left);
-      Number leftConst = DfConstantType.getConstantOfType(leftDfType, Number.class);
+      Number leftConst = leftDfType.getConstantOfType(Number.class);
       if (leftConst != null) {
         left = left.getFactory().fromDfType(leftDfType);
       }
       DfType rightDfType = state.getDfType(right);
-      Number rightConst = DfConstantType.getConstantOfType(rightDfType, Number.class);
+      Number rightConst = rightDfType.getConstantOfType(Number.class);
       if (rightConst != null) {
         right = right.getFactory().fromDfType(rightDfType);
       }

@@ -23,11 +23,6 @@ import java.awt.datatransfer.StringSelection
 
 abstract class CopyPathProvider : DumbAwareAction() {
   override fun update(e: AnActionEvent) {
-    if (!CopyPathsAction.isCopyReferencePopupAvailable()) {
-      e.presentation.isEnabledAndVisible = false
-      return
-    }
-
     val dataContext = e.dataContext
     val editor = CommonDataKeys.EDITOR.getData(dataContext)
     val project = e.project
@@ -58,9 +53,11 @@ abstract class CopyPathProvider : DumbAwareAction() {
     val file = component.info.`object`
     if (file !is VirtualFile) return dataContext
 
-    return SimpleDataContext.getSimpleContext(
-      mapOf(LangDataKeys.VIRTUAL_FILE.name to file, CommonDataKeys.VIRTUAL_FILE_ARRAY.name to arrayOf(file)),
-      dataContext)
+    return SimpleDataContext.builder()
+      .setParent(dataContext)
+      .add(LangDataKeys.VIRTUAL_FILE, file)
+      .add(CommonDataKeys.VIRTUAL_FILE_ARRAY, arrayOf(file))
+      .build()
   }
 
   @NlsSafe

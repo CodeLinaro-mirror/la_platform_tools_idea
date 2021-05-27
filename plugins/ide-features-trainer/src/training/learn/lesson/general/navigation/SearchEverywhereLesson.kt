@@ -8,26 +8,16 @@ import com.intellij.openapi.editor.impl.EditorComponentImpl
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.psi.search.EverythingGlobalScope
 import com.intellij.psi.search.ProjectScope
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.util.Key
-import com.intellij.testGuiFramework.util.Modifier
-import com.intellij.testGuiFramework.util.Shortcut
 import com.intellij.ui.components.fields.ExtendableTextField
 import com.intellij.util.ui.UIUtil
-import training.commands.kotlin.TaskRuntimeContext
-import training.commands.kotlin.TaskTestContext
+import training.dsl.*
 import training.learn.LessonsBundle
-import training.learn.interfaces.LessonType
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.KLesson
-import training.learn.lesson.kimpl.LessonContext
-import training.learn.lesson.kimpl.LessonUtil
-import training.learn.lesson.kimpl.restoreAfterStateBecomeFalse
+import training.learn.course.KLesson
+import training.learn.course.LessonType
 import java.awt.event.KeyEvent
 import javax.swing.JList
 
-abstract class SearchEverywhereLesson(module: Module, lang: String)
-  : KLesson("Search everywhere", LessonsBundle.message("search.everywhere.lesson.name"), module, lang) {
+abstract class SearchEverywhereLesson : KLesson("Search everywhere", LessonsBundle.message("search.everywhere.lesson.name")) {
   abstract override val existedFile: String?
 
   abstract val resultFileName: String
@@ -58,7 +48,7 @@ abstract class SearchEverywhereLesson(module: Module, lang: String)
         !checkInsideSearchEverywhere()
       }
       test {
-        GuiTestUtil.shortcut(Key.ENTER)
+        invokeActionViaShortcut("ENTER")
       }
     }
 
@@ -85,7 +75,7 @@ abstract class SearchEverywhereLesson(module: Module, lang: String)
         !checkInsideSearchEverywhere() && focusOwner !is JList<*>
       }
       test {
-        GuiTestUtil.shortcut(Shortcut(HashSet(setOf(Modifier.ALT)), Key.P))
+        invokeActionViaShortcut("ALT P")
       }
     }
 
@@ -99,7 +89,7 @@ abstract class SearchEverywhereLesson(module: Module, lang: String)
     task {
       text(LessonsBundle.message("search.everywhere.close.documentation.popup", LessonUtil.rawKeyStroke(KeyEvent.VK_ESCAPE)))
       stateCheck { previous.ui?.isShowing != true }
-      test { GuiTestUtil.shortcut(Key.ESCAPE) }
+      test { invokeActionViaShortcut("ENTER") }
     }
 
     task {
@@ -109,8 +99,8 @@ abstract class SearchEverywhereLesson(module: Module, lang: String)
     if (TaskTestContext.inTestMode) task {
       stateCheck { focusOwner is EditorComponentImpl }
       test {
-        GuiTestUtil.shortcut(Key.ESCAPE)
-        GuiTestUtil.shortcut(Key.ESCAPE)
+        invokeActionViaShortcut("ESCAPE")
+        invokeActionViaShortcut("ESCAPE")
       }
     }
 

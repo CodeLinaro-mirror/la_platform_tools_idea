@@ -7,33 +7,23 @@ import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.IdeFrame
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.util.Key
 import com.intellij.ui.SearchTextField
-import com.intellij.ui.UIBundle
 import com.intellij.ui.components.JBList
+import com.intellij.ui.components.fields.ExtendableTextField
 import com.intellij.ui.speedSearch.SpeedSearchSupply
 import com.intellij.util.ui.UIUtil
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskRuntimeContext
-import training.commands.kotlin.TaskTestContext
+import icons.FeaturesTrainerIcons
+import training.dsl.*
+import training.dsl.LessonUtil.restoreIfModifiedOrMoved
 import training.learn.LearnBundle
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
+import training.learn.course.KLesson
 import training.learn.lesson.LessonManager
-import training.learn.lesson.kimpl.KLesson
-import training.learn.lesson.kimpl.LessonContext
-import training.learn.lesson.kimpl.LessonUtil
-import training.learn.lesson.kimpl.LessonUtil.restoreIfModifiedOrMoved
-import training.learn.lesson.kimpl.defaultRestoreDelay
 import java.awt.event.KeyEvent
 import javax.swing.JComponent
-import javax.swing.JLabel
 import kotlin.random.Random
 
-abstract class RecentFilesLesson(module: Module, lang: String)
-  : KLesson("Recent Files and Locations", LessonsBundle.message("recent.files.lesson.name"), module, lang) {
-
+abstract class RecentFilesLesson : KLesson("Recent Files and Locations", LessonsBundle.message("recent.files.lesson.name")) {
   abstract override val existedFile: String
   abstract val transitionMethodName: String
   abstract val transitionFileName: String
@@ -62,7 +52,7 @@ abstract class RecentFilesLesson(module: Module, lang: String)
           LessonsBundle.message("recent.files.dialog.title"),
           CommonBundle.message("button.ok"),
           LearnBundle.message("learn.stop.lesson"),
-          null
+          FeaturesTrainerIcons.Img.PluginIcon
         )
         if(userDecision != Messages.OK) {
           LessonManager.instance.stopLesson()
@@ -78,9 +68,8 @@ abstract class RecentFilesLesson(module: Module, lang: String)
 
     task("rfd") {
       text(LessonsBundle.message("recent.files.search.typing", code(it)))
-      val searchLabelText = UIBundle.message("search.popup.search.for.label")
-      triggerByUiComponentAndHighlight(false, false) { ui: JLabel ->
-        ui.text?.contains(searchLabelText) == true  // needed in next task to restore if search field closed
+      triggerByUiComponentAndHighlight(false, false) { ui: ExtendableTextField ->
+        ui.javaClass.name.contains("SpeedSearchBase\$SearchField")
       }
       stateCheck { checkRecentFilesSearch(it) }
       restoreIfRecentFilesPopupClosed()
@@ -98,7 +87,9 @@ abstract class RecentFilesLesson(module: Module, lang: String)
       restoreState {
         !checkRecentFilesSearch("rfd") || previous.ui?.isShowing != true
       }
-      test { GuiTestUtil.shortcut(Key.ENTER) }
+      test(waitEditorToBeReady = false) {
+        invokeActionViaShortcut("ENTER")
+      }
     }
 
     actionTask("RecentFiles") {
@@ -121,7 +112,7 @@ abstract class RecentFilesLesson(module: Module, lang: String)
       restoreIfRecentFilesPopupClosed()
       test {
         repeat(countOfFilesToDelete) {
-          GuiTestUtil.shortcut(Key.DELETE)
+          invokeActionViaShortcut("DELETE")
         }
       }
     }
@@ -129,7 +120,7 @@ abstract class RecentFilesLesson(module: Module, lang: String)
     task {
       text(LessonsBundle.message("recent.files.close.popup", LessonUtil.rawKeyStroke(KeyEvent.VK_ESCAPE)))
       stateCheck { focusOwner is IdeFrame }
-      test { GuiTestUtil.shortcut(Key.ESCAPE) }
+      test { invokeActionViaShortcut("ESCAPE") }
     }
 
     actionTask("RecentLocations") {
@@ -155,7 +146,7 @@ abstract class RecentFilesLesson(module: Module, lang: String)
       restoreState {
         !checkRecentLocationsSearch(stringForRecentFilesSearch) || previous.ui?.isShowing != true
       }
-      test { GuiTestUtil.shortcut(Key.ENTER) }
+      test { invokeActionViaShortcut("ENTER") }
     }
   }
 

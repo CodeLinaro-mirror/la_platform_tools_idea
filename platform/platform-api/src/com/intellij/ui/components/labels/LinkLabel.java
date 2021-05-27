@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.components.labels;
 
 import com.intellij.icons.AllIcons;
@@ -6,8 +6,10 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.ui.ScreenUtil;
+import com.intellij.ui.paint.RectanglePainter;
 import com.intellij.util.ui.JBRectangle;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -25,7 +27,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
+ * A {@link JLabel}-based link that does not support mnemonics.
+ * Prefer using {@link com.intellij.ui.components.ActionLink} instead.
  * @author kir
+ * @see https://jetbrains.github.io/ui/controls/link/
  */
 public class LinkLabel<T> extends JLabel {
   protected boolean myUnderline;
@@ -44,27 +49,58 @@ public class LinkLabel<T> extends JLabel {
   private boolean myClickIsBeingProcessed;
   protected boolean myPaintUnderline = true;
 
+  /**
+   * Creates a {@link JLabel}-based link that does not support mnemonics.
+   * Prefer using {@link com.intellij.ui.components.ActionLink} instead.
+   * Note that this constructor sets inappropriate icon.
+   * @see https://jetbrains.github.io/ui/controls/link/
+   */
   public LinkLabel() {
     this("", AllIcons.Ide.Link);
   }
 
+  /**
+   * Creates a {@link JLabel}-based link that does not support mnemonics.
+   * Prefer using {@link com.intellij.ui.components.ActionLink} instead.
+   * @see https://jetbrains.github.io/ui/controls/link/
+   */
   public LinkLabel(@NlsContexts.LinkLabel String text, @Nullable Icon icon) {
     this(text, icon, null, null, null);
   }
 
+  /**
+   * Creates a {@link JLabel}-based link that does not support mnemonics.
+   * Prefer using {@link com.intellij.ui.components.ActionLink} instead.
+   * @see https://jetbrains.github.io/ui/controls/link/
+   */
   public LinkLabel(@NlsContexts.LinkLabel String text, @Nullable Icon icon, @Nullable LinkListener<T> aListener) {
     this(text, icon, aListener, null, null);
   }
 
+  /**
+   * @see https://jetbrains.github.io/ui/controls/link/
+   * @deprecated use {@link com.intellij.ui.components.ActionLink} instead
+   */
+  @Deprecated
   @NotNull
   public static LinkLabel<?> create(@Nullable @NlsContexts.LinkLabel String text, @Nullable Runnable action) {
     return new LinkLabel<>(text, null, action == null ? null : (__, ___) -> action.run(), null, null);
   }
 
+  /**
+   * Creates a {@link JLabel}-based link that does not support mnemonics.
+   * Prefer using {@link com.intellij.ui.components.ActionLink} instead.
+   * @see https://jetbrains.github.io/ui/controls/link/
+   */
   public LinkLabel(@NlsContexts.LinkLabel String text, @Nullable Icon icon, @Nullable LinkListener<T> aListener, @Nullable T aLinkData) {
     this(text, icon, aListener, aLinkData, null);
   }
 
+  /**
+   * @see https://jetbrains.github.io/ui/controls/link/
+   * @deprecated use {@link com.intellij.ui.components.ActionLink} instead
+   */
+  @Deprecated
   public LinkLabel(@NlsContexts.LinkLabel String text,
                    @Nullable Icon icon,
                    @Nullable LinkListener<T> aListener,
@@ -165,9 +201,11 @@ public class LinkLabel<T> extends JLabel {
         g.drawLine(bounds.x, lineY, bounds.x + bounds.width, lineY);
       }
 
-      if (isFocusOwner()) {
-        g.setColor(UIUtil.getTreeSelectionBorderColor());
-        UIUtil.drawLabelDottedRectangle(this, g, getTextBounds());
+      if (g instanceof Graphics2D && isFocusOwner()) {
+        g.setColor(JBUI.CurrentTheme.Link.FOCUSED_BORDER_COLOR);
+        Rectangle bounds = getTextBounds();
+        int round = Registry.intValue("ide.link.button.focus.round.arc", 4);
+        RectanglePainter.DRAW.paint((Graphics2D)g, bounds.x, bounds.y, bounds.width, bounds.height, JBUI.scale(round));
       }
     }
   }
@@ -281,19 +319,19 @@ public class LinkLabel<T> extends JLabel {
   }
 
   protected Color getVisited() {
-    return JBUI.CurrentTheme.Link.linkVisitedColor();
+    return JBUI.CurrentTheme.Link.Foreground.VISITED;
   }
 
   protected Color getActive() {
-    return JBUI.CurrentTheme.Link.linkPressedColor();
+    return JBUI.CurrentTheme.Link.Foreground.PRESSED;
   }
 
   protected Color getNormal() {
-    return JBUI.CurrentTheme.Link.linkColor();
+    return JBUI.CurrentTheme.Link.Foreground.ENABLED;
   }
 
   protected Color getHover() {
-    return JBUI.CurrentTheme.Link.linkHoverColor();
+    return JBUI.CurrentTheme.Link.Foreground.HOVERED;
   }
 
   public void entered(MouseEvent e) {

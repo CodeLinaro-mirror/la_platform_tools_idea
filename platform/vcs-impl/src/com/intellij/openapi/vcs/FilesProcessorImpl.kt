@@ -6,6 +6,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.vcsUtil.VcsUtil
 
 abstract class FilesProcessorImpl(protected val project: Project, parentDisposable: Disposable) : FilesProcessor {
   private val files = mutableSetOf<VirtualFile>()
@@ -28,7 +29,7 @@ abstract class FilesProcessorImpl(protected val project: Project, parentDisposab
     Disposer.register(parentDisposable, this)
   }
 
-  override fun processFiles(files: List<VirtualFile>): List<VirtualFile> {
+  override fun processFiles(files: Collection<VirtualFile>): Collection<VirtualFile> {
     val filteredFiles = doFilterFiles(files)
 
     if (filteredFiles.isEmpty()) return files
@@ -52,7 +53,9 @@ abstract class FilesProcessorImpl(protected val project: Project, parentDisposab
   }
 
   @Synchronized
-  protected fun removeFiles(filesToRemove: Collection<VirtualFile>): Boolean = files.removeAll(filesToRemove)
+  protected fun removeFiles(filesToRemove: Collection<VirtualFile>): Boolean {
+    return VcsUtil.removeAllFromSet(files, filesToRemove)
+  }
 
   @Synchronized
   protected fun isFilesEmpty() = files.isEmpty()

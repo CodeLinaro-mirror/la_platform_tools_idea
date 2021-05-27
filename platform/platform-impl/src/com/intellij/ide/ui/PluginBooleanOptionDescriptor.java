@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui;
 
 import com.intellij.ide.IdeBundle;
@@ -26,12 +26,7 @@ import java.util.stream.Stream;
 /**
  * @author Konstantin Bulenkov
  */
-final class PluginBooleanOptionDescriptor extends NotABooleanOptionDescription implements BooleanOptionDescription.RequiresRebuild {
-  private static final NotificationGroup PLUGINS_LIST_CHANGED_GROUP =
-    new NotificationGroup("Plugins updates", NotificationDisplayType.STICKY_BALLOON, true, null, null, null, PluginManagerCore.CORE_ID);
-  private static final NotificationGroup PLUGINS_AUTO_SWITCH_GROUP =
-    new NotificationGroup("Plugins AutoSwitch", NotificationDisplayType.BALLOON, true, null, null, null, PluginManagerCore.CORE_ID);
-
+final class PluginBooleanOptionDescriptor extends BooleanOptionDescription implements BooleanOptionDescription.RequiresRebuild, NotABooleanOptionDescription {
   private static final Notifier ourRestartNeededNotifier = new Notifier();
 
   private final IdeaPluginDescriptor plugin;
@@ -66,7 +61,7 @@ final class PluginBooleanOptionDescriptor extends NotABooleanOptionDescription i
     }
   }
 
-  private void showAutoSwitchNotification(@NotNull Collection<IdeaPluginDescriptor> autoSwitchedPlugins, boolean enabled) {
+  private void showAutoSwitchNotification(@NotNull Collection<? extends IdeaPluginDescriptor> autoSwitchedPlugins, boolean enabled) {
     StringBuilder builder = new StringBuilder();
     for (IdeaPluginDescriptor autoSwitchedPlugin : autoSwitchedPlugins) {
       if (builder.length() > 0) {
@@ -79,7 +74,7 @@ final class PluginBooleanOptionDescriptor extends NotABooleanOptionDescription i
     String titleKey = enabled ? "plugins.auto.enabled.notification.title" : "plugins.auto.disabled.notification.title";
     String contentKey = enabled ? "plugins.auto.enabled.notification.content" : "plugins.auto.disabled.notification.content";
     String pluginString = '"' + getOption() + '"';
-    Notification switchNotification = PLUGINS_AUTO_SWITCH_GROUP
+    Notification switchNotification = NotificationGroupManager.getInstance().getNotificationGroup("Plugins AutoSwitch")
       .createNotification(IdeBundle.message(contentKey, pluginString, dependenciesString), NotificationType.INFORMATION)
       .setTitle(IdeBundle.message(titleKey))
       .addAction(new UndoPluginsSwitchAction(autoSwitchedPlugins, enabled));
@@ -155,10 +150,10 @@ final class PluginBooleanOptionDescriptor extends NotABooleanOptionDescription i
   }
 
   private static final class UndoPluginsSwitchAction extends NotificationAction {
-    private final Collection<IdeaPluginDescriptor> myDescriptors;
+    private final @NotNull Collection<? extends IdeaPluginDescriptor> myDescriptors;
     private final boolean myEnabled;
 
-    UndoPluginsSwitchAction(@NotNull Collection<IdeaPluginDescriptor> descriptors, boolean enabled) {
+    UndoPluginsSwitchAction(@NotNull Collection<? extends IdeaPluginDescriptor> descriptors, boolean enabled) {
       super(IdeBundle.message("plugins.auto.switch.action.name"));
 
       myDescriptors = descriptors;
@@ -184,7 +179,7 @@ final class PluginBooleanOptionDescriptor extends NotABooleanOptionDescription i
         return;
       }
 
-      Notification next = PLUGINS_LIST_CHANGED_GROUP
+      Notification next = NotificationGroupManager.getInstance().getNotificationGroup("Plugins updates")
         .createNotification(
           IdeBundle.message("plugins.changed.notification.content", ApplicationNamesInfo.getInstance().getFullProductName()),
           NotificationType.INFORMATION)

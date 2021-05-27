@@ -34,6 +34,7 @@ import com.intellij.util.io.systemIndependentPath
 import com.intellij.workspaceModel.ide.*
 import com.intellij.workspaceModel.ide.impl.executeOrQueueOnDispatchThread
 import com.intellij.workspaceModel.ide.impl.legacyBridge.facet.FacetEntityChangeListener
+import com.intellij.workspaceModel.ide.impl.legacyBridge.watcher.VirtualFileUrlWatcher
 import com.intellij.workspaceModel.ide.impl.legacyBridge.library.LibraryBridgeImpl
 import com.intellij.workspaceModel.ide.impl.legacyBridge.library.ProjectLibraryTableBridgeImpl
 import com.intellij.workspaceModel.ide.impl.legacyBridge.library.ProjectLibraryTableBridgeImpl.Companion.libraryMap
@@ -125,7 +126,10 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
             }
           }
 
-          rootsChangeListener.beforeChanged(event)
+          if (!VirtualFileUrlWatcher.getInstance(project).isInsideFilePointersUpdate) {
+            //the old implementation doesn't fire rootsChanged event when roots are moved or renamed, let's keep this behavior for now
+            rootsChangeListener.beforeChanged(event)
+          }
         }
 
         override fun changed(event: VersionedStorageChange) {
@@ -175,10 +179,18 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
             }
           }
 
-          rootsChangeListener.changed(event)
+          // Roots changed should be sent after syncing with legacy bridge
+          if (!VirtualFileUrlWatcher.getInstance(project).isInsideFilePointersUpdate) {
+            //the old implementation doesn't fire rootsChanged event when roots are moved or renamed, let's keep this behavior for now
+            rootsChangeListener.changed(event)
+          }
         }
       })
     }
+  }
+
+  override fun areModulesLoaded(): Boolean {
+    return WorkspaceModelTopics.getInstance(project).modulesAreLoaded
   }
 
   private fun postProcessModules(oldModuleNames: MutableMap<Module, String>,
@@ -226,7 +238,7 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
             return
           }
 
-          if (!WorkspaceModelTopics.getInstance(project).modulesAreLoaded) return
+          if (!areModulesLoaded()) return
 
           addModule(change.entity)
         }
@@ -280,7 +292,7 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
         if (moduleEntity.name !in unloadedModules) {
 
           val library = event.storageAfter.libraryMap.getDataByEntity(change.entity)
-          if (library == null && WorkspaceModelTopics.getInstance(project).modulesAreLoaded) {
+          if (library == null && areModulesLoaded()) {
             val module = entityStore.current.findModuleByEntity(moduleEntity)
                          ?: error("Could not find module bridge for module entity $moduleEntity")
             val moduleRootComponent = ModuleRootComponentBridge.getInstance(module)
@@ -598,12 +610,12 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
     internal fun hasModuleGroups(entityStorage: VersionedEntityStorage) =
       entityStorage.current.entities(ModuleGroupPathEntity::class.java).firstOrNull() != null
 
-    private const val INDEX_ID = "moduleBridge"
+    private const val MODULE_BRIDGE_MAPPING_ID = "intellij.modules.bridge"
 
     internal val WorkspaceEntityStorage.moduleMap: ExternalEntityMapping<ModuleBridge>
-      get() = getExternalMapping(INDEX_ID)
+      get() = getExternalMapping(MODULE_BRIDGE_MAPPING_ID)
     internal val WorkspaceEntityStorageDiffBuilder.mutableModuleMap: MutableExternalEntityMapping<ModuleBridge>
-      get() = getMutableExternalMapping(INDEX_ID)
+      get() = getMutableExternalMapping(MODULE_BRIDGE_MAPPING_ID)
 
     @JvmStatic
     fun WorkspaceEntityStorage.findModuleEntity(module: ModuleBridge) =

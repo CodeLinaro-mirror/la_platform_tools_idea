@@ -10,7 +10,6 @@ import com.intellij.debugger.impl.DebuggerContextImpl;
 import com.intellij.debugger.impl.DebuggerSession;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.jdi.VirtualMachineProxyImpl;
-import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.ApplicationManager;
@@ -22,6 +21,7 @@ import com.intellij.unscramble.ThreadState;
 import com.intellij.util.SmartList;
 import com.intellij.xdebugger.XDebugSession;
 import com.sun.jdi.*;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -31,7 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class ThreadDumpAction extends DumbAwareAction implements AnAction.TransparentUpdate {
+public final class ThreadDumpAction extends DumbAwareAction {
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
     final Project project = e.getProject();
@@ -158,10 +158,11 @@ public final class ThreadDumpAction extends DumbAwareAction implements AnAction.
         final List<StackFrame> frames = threadReference.frames();
         hasEmptyStack = frames.size() == 0;
 
-        final Int2ObjectOpenHashMap<List<ObjectReference>> lockedAt = new Int2ObjectOpenHashMap<>();
+        final Int2ObjectMap<List<ObjectReference>> lockedAt = new Int2ObjectOpenHashMap<>();
         if (vmProxy.canGetMonitorFrameInfo()) {
           for (Object m : threadReference.ownedMonitorsAndFrames()) {
             if (m instanceof MonitorInfo) { // see JRE-937
+              //noinspection CastCanBeRemovedNarrowingVariableType
               MonitorInfo info = (MonitorInfo)m;
               final int stackDepth = info.stackDepth();
               List<ObjectReference> monitors;

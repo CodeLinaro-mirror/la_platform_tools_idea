@@ -18,8 +18,8 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.util.Function;
-import com.intellij.util.NullableFunction;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -116,6 +116,7 @@ public class FileReferenceSet {
    * @deprecated use {@link FileReference#getContexts()} instead.
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   protected Collection<PsiFileSystemItem> getExtraContexts() {
     return emptyList();
   }
@@ -427,7 +428,7 @@ public class FileReferenceSet {
     return filterLocalFsContexts(targetContexts);
   }
 
-  private static Collection<FileTargetContext> filterLocalFsContexts(Collection<FileTargetContext> contexts) {
+  private static Collection<FileTargetContext> filterLocalFsContexts(Collection<? extends FileTargetContext> contexts) {
     return ContainerUtil.filter(contexts, c -> {
       VirtualFile file = c.getFileSystemItem().getVirtualFile();
       return file != null && c.getFileSystemItem().isDirectory() && file.isInLocalFileSystem();
@@ -608,7 +609,7 @@ public class FileReferenceSet {
   @NotNull
   protected Collection<PsiFileSystemItem> toFileSystemItems(@NotNull Collection<? extends VirtualFile> files) {
     final PsiManager manager = getElement().getManager();
-    return ContainerUtil.mapNotNull(files, (NullableFunction<VirtualFile, PsiFileSystemItem>)file -> file != null && file.isValid() ? manager.findDirectory(file) : null);
+    return ContainerUtil.mapNotNull(files, file -> file != null && file.isValid() ? manager.findDirectory(file) : null);
   }
 
   protected Condition<PsiFileSystemItem> getReferenceCompletionFilter() {

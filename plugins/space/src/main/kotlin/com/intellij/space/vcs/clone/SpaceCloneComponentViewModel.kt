@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.space.vcs.clone
 
 import circlet.client.api.*
@@ -8,15 +8,16 @@ import circlet.client.repoService
 import circlet.client.ssh
 import circlet.client.star
 import circlet.platform.api.Ref
+import circlet.platform.client.XPagedListOnFlux
 import circlet.platform.client.resolve
 import circlet.platform.client.resolveRefsOrFetch
 import circlet.platform.client.xTransformedPagedListOnFlux
-import com.intellij.space.settings.SpaceSettings
+import circlet.workspaces.Workspace
 import com.intellij.space.settings.CloneType
-import com.intellij.space.settings.CloneType.HTTP
+import com.intellij.space.settings.CloneType.HTTPS
+import com.intellij.space.settings.SpaceSettings
 import com.intellij.space.vcs.SpaceHttpPasswordState
 import com.intellij.space.vcs.SpaceKeysState
-import circlet.workspaces.Workspace
 import com.intellij.util.ui.cloneDialog.SearchableListItem
 import libraries.coroutines.extra.Lifetime
 import libraries.coroutines.extra.Lifetimed
@@ -26,8 +27,8 @@ import runtime.UiDispatch
 import runtime.dispatchInterval
 import runtime.reactive.MutableProperty
 import runtime.reactive.Property
-import runtime.reactive.mapInit
 import runtime.reactive.mutableProperty
+import runtime.reactive.property.mapInit
 import runtime.utils.mapToSet
 
 internal class SpaceCloneComponentViewModel(
@@ -39,11 +40,11 @@ internal class SpaceCloneComponentViewModel(
   private val starService: Star = workspace.client.star
   private val ssh: SshKeys = workspace.client.ssh
 
-  val isLoading: MutableProperty<Boolean> = Property.createMutable(false)
+  val isLoading: MutableProperty<Boolean> = mutableProperty(false)
 
   val me: MutableProperty<TD_MemberProfile> = workspace.me
 
-  val repos = xTransformedPagedListOnFlux<Ref<PR_Project>, List<SpaceCloneListItem>>(
+  val repos: XPagedListOnFlux<List<SpaceCloneListItem>> = xTransformedPagedListOnFlux(
     client = workspace.client,
     batchSize = 10,
     keyFn = { it.id },
@@ -75,12 +76,11 @@ internal class SpaceCloneComponentViewModel(
     projectService.projectsBatch(batch, "", "")
   }
 
-  val cloneType: MutableProperty<CloneType> = Property.createMutable(SpaceSettings.getInstance().cloneType)
+  val cloneType: MutableProperty<CloneType> = mutableProperty(SpaceSettings.getInstance().cloneType)
 
-  val selectedUrl: MutableProperty<String?> = Property.createMutable(null)
+  val selectedCloneListItem: MutableProperty<SpaceCloneListItem?> = mutableProperty(null)
 
-  val spaceHttpPasswordState: MutableProperty<SpaceHttpPasswordState> = lifetime.mapInit<CloneType, SpaceHttpPasswordState>(cloneType,
-                                                                                                                            SpaceHttpPasswordState.NotChecked) { cloneType ->
+  val spaceHttpPasswordState: MutableProperty<SpaceHttpPasswordState> = lifetime.mapInit(cloneType, SpaceHttpPasswordState.NotChecked) { cloneType ->
     if (cloneType == CloneType.SSH) return@mapInit SpaceHttpPasswordState.NotChecked
 
     workspace.client.api.vcsPasswords().getVcsPassword(me.value.identifier).let {
@@ -99,15 +99,19 @@ internal class SpaceCloneComponentViewModel(
   }
 
   private suspend fun loadSshState(cloneType: CloneType): SpaceKeysState {
-    if (cloneType == HTTP) return SpaceKeysState.NotChecked
+    if (cloneType == HTTPS) return SpaceKeysState.NotChecked
 
     return ssh.sshKeys(me.value.identifier).let {
       if (it.isNullOrEmpty()) SpaceKeysState.NotSet else SpaceKeysState.Set(it)
     }
   }
 
-  val readyToClone: Property<Boolean> = lifetime.mapInit(selectedUrl, spaceHttpPasswordState, circletKeysState, false) { url, http, ssh ->
-    url != null && (http is SpaceHttpPasswordState.Set || ssh is SpaceKeysState.Set)
+  suspend fun loadDetails(spaceCloneListItem: SpaceCloneListItem): RepoDetails {
+    return repositoryService.repositoryDetails(spaceCloneListItem.project.key, spaceCloneListItem.repoInfo.name)
+  }
+
+  val readyToClone: Property<Boolean> = lifetime.mapInit(selectedCloneListItem, spaceHttpPasswordState, circletKeysState, false) { repo, http, ssh ->
+    repo != null && (http is SpaceHttpPasswordState.Set || ssh is SpaceKeysState.Set)
   }
 }
 

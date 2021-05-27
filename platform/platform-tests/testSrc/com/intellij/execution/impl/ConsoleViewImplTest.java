@@ -8,6 +8,7 @@ import com.intellij.execution.process.AnsiEscapeDecoderTest;
 import com.intellij.execution.process.NopProcessHandler;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessOutputType;
+import com.intellij.execution.ui.ConsoleView;
 import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.ui.UISettings;
@@ -158,12 +159,11 @@ public class ConsoleViewImplTest extends LightPlatformTestCase {
   }
 
   public void testTypingAfterMultipleCR() {
-    final EditorActionManager actionManager = EditorActionManager.getInstance();
     final TypedAction typedAction = TypedAction.getInstance();
-    final TestDataProvider dataContext = new TestDataProvider(getProject());
 
     final ConsoleViewImpl console = myConsole;
     final Editor editor = console.getEditor();
+    final DataContext dataContext = ((EditorEx)editor).getDataContext();
     console.print("System output\n", ConsoleViewContentType.SYSTEM_OUTPUT);
     console.print("\r\r\r\r\r\r\r", ConsoleViewContentType.NORMAL_OUTPUT);
     console.flushDeferredText();
@@ -525,6 +525,30 @@ public class ConsoleViewImplTest extends LightPlatformTestCase {
     myConsole.waitAllRequests();
     assertEquals(expectedText.toString(), myConsole.getText());
     assertEquals(expectedRegisteredTokens, registered);
+  }
+
+  public void testConsoleDependentInputFilter() {
+    Disposer.dispose(myConsole); // have to re-init extensions
+    ConsoleDependentInputFilterProvider filterProvider = new ConsoleDependentInputFilterProvider() {
+      @Override
+      public @NotNull List<InputFilter> getDefaultFilters(@NotNull ConsoleView consoleView,
+                                                          @NotNull Project project,
+                                                          @NotNull GlobalSearchScope scope) {
+        return List.of((text, contentType) -> Collections.singletonList(Pair.create("!" + text + "!", contentType)));
+      }
+    };
+    ExtensionTestUtil.maskExtensions(
+      ConsoleInputFilterProvider.INPUT_FILTER_PROVIDERS,
+      ContainerUtil.newArrayList(filterProvider),
+      getTestRootDisposable());
+
+    myConsole = createConsole(true, getProject());
+    myConsole.print("Foo", ConsoleViewContentType.USER_INPUT);
+    myConsole.print("Bar", ConsoleViewContentType.NORMAL_OUTPUT);
+    myConsole.print("Baz", ConsoleViewContentType.ERROR_OUTPUT);
+    myConsole.flushDeferredText();
+    myConsole.waitAllRequests();
+    assertEquals("!Foo!!Bar!!Baz!", myConsole.getText());
   }
 
   public void testCustomFiltersPrecedence() {

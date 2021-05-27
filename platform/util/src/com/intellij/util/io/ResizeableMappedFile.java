@@ -22,7 +22,11 @@ package com.intellij.util.io;
 import com.intellij.openapi.Forceable;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.util.ExceptionUtil;
+import com.intellij.util.SmartList;
 import com.intellij.util.SystemProperties;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.lang.CompoundRuntimeException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 
 public class ResizeableMappedFile implements Forceable {
   private static final Logger LOG = Logger.getInstance(ResizeableMappedFile.class);
@@ -126,29 +131,17 @@ public class ResizeableMappedFile implements Forceable {
     final Path lengthFile = getLengthFile();
     DataOutputStream stream = null;
     try {
-      stream = FileUtilRt.doIOOperation(new FileUtilRt.RepeatableIOOperation<DataOutputStream, IOException>() {
-        boolean parentWasCreated;
-        
-        @Nullable
-        @Override
-        public DataOutputStream execute(boolean lastAttempt) throws IOException {
-          try {
-            return new DataOutputStream(Files.newOutputStream(lengthFile));
+      stream = FileUtilRt.doIOOperation(lastAttempt -> {
+        try {
+          return new DataOutputStream(Files.newOutputStream(lengthFile));
+        }
+        catch (NoSuchFileException ex) {
+          Path parent = lengthFile.getParent();
+          if (!Files.exists(parent)) {
+            Files.createDirectories(parent);
           }
-          catch (NoSuchFileException ex) {
-            Path parent = lengthFile.getParent();
-            if (!Files.exists(parent)) {
-              if (!parentWasCreated) {
-                Files.createDirectories(parent);
-                parentWasCreated = true;
-              }
-              else {
-                throw new IOException("Parent file still doesn't exist:" + lengthFile);
-              }
-            }
-            if (!lastAttempt) return null;
-            throw ex;
-          }
+          if (!lastAttempt) return null;
+          throw ex;
         }
       });
       if (stream != null) stream.writeLong(len);
@@ -174,7 +167,7 @@ public class ResizeableMappedFile implements Forceable {
   }
 
   @Override
-  public void force() {
+  public void force() throws IOException {
     if (isDirty()) {
       if (myLastWrittenLogicalSize != myLogicalSize) {
         writeLength(myLogicalSize);
@@ -230,18 +223,17 @@ public class ResizeableMappedFile implements Forceable {
     myStorage.put(index, src, offset, length);
   }
 
-  public void close() {
-    try {
+  public void close() throws IOException {
+    List<Exception> exceptions = new SmartList<>();
+    ContainerUtil.addIfNotNull(exceptions, ExceptionUtil.runAndCatch(() -> {
       force();
       if (truncateOnClose && myLogicalSize < myStorage.length()) {
         myStorage.resize(myLogicalSize);
       }
-    }
-    catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-    finally {
-      myStorage.close();
+    }));
+    ContainerUtil.addIfNotNull(exceptions, ExceptionUtil.runAndCatch(() -> myStorage.close()));
+    if (!exceptions.isEmpty()) {
+      throw new IOException(new CompoundRuntimeException(exceptions));
     }
   }
 

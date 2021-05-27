@@ -119,7 +119,7 @@ public final class PluginLogo {
     return Default;
   }
 
-  static @NotNull Icon reloadIcon(@NotNull Icon icon, int width, int height, @Nullable Logger logger) {
+  public static @NotNull Icon reloadIcon(@NotNull Icon icon, int width, int height, @Nullable Logger logger) {
     URL url = icon instanceof IconLoader.CachedImageIcon ? ((IconLoader.CachedImageIcon)icon).getURL() : null;
     if (url == null) {
       return icon;
@@ -184,7 +184,7 @@ public final class PluginLogo {
     return lazyIcons;
   }
 
-  private static void runLoadTask(@NotNull List<Pair<IdeaPluginDescriptor, LazyPluginLogoIcon>> loadInfo) {
+  private static void runLoadTask(@NotNull List<? extends Pair<IdeaPluginDescriptor, LazyPluginLogoIcon>> loadInfo) {
     Application application = ApplicationManager.getApplication();
     application.executeOnPooledThread(() -> {
       for (Pair<IdeaPluginDescriptor, LazyPluginLogoIcon> info : loadInfo) {

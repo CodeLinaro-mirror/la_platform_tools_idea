@@ -160,7 +160,7 @@ public class PyDataViewerPanel extends JPanel {
   private EditorTextField createEditorField() {
     return new EditorTextField(EditorFactory.getInstance().createDocument(""), myProject, PythonFileType.INSTANCE, false, true) {
       @Override
-      protected EditorEx createEditor() {
+      protected @NotNull EditorEx createEditor() {
         EditorEx editor = super.createEditor();
         editor.getContentComponent().addKeyListener(new KeyAdapter() {
           @Override
@@ -358,7 +358,7 @@ public class PyDataViewerPanel extends JPanel {
     private List<PyDebugValue> getAvailableValues() {
       List<PyDebugValue> values = new ArrayList<>();
       try {
-        XValueChildrenList list = myFrameAccessor.loadFrame();
+        XValueChildrenList list = myFrameAccessor.loadFrame(null);
         if (list == null) {
           return values;
         }

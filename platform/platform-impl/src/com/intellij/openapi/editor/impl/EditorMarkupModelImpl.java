@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings;
@@ -7,7 +7,6 @@ import com.intellij.codeInsight.daemon.impl.HighlightInfoType;
 import com.intellij.codeInsight.hint.*;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.ActivityTracker;
-import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.actions.ActionsCollector;
 import com.intellij.ide.ui.LafManagerListener;
@@ -201,7 +200,6 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
                                                           @NotNull Dimension minimumSize) {
 
         ActionButton actionButton = new ActionButton(action, presentation, place, minimumSize) {
-
           @Override
           public void updateIcon() {
             super.updateIcon();
@@ -300,7 +298,6 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
       public void mouseExited(MouseEvent event) {
         myPopupManager.scheduleHide();
       }
-
     });
     smallIconLabel.setOpaque(false);
     smallIconLabel.setBackground(new JBColor(() -> myEditor.getColorsScheme().getDefaultBackground()));
@@ -321,7 +318,9 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
         if (action instanceof HintManagerImpl.ActionToIgnore) {
           return;
         }
-        myPopupManager.hidePopup();
+        if (myPopupManager != null) {
+          myPopupManager.hidePopup();
+        }
       }
     });
 
@@ -337,7 +336,7 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
     });
     myStatusUpdates = new MergingUpdateQueue(getClass().getName(), 50, true, MergingUpdateQueue.ANY_COMPONENT, resourcesDisposable);
 
-    myErrorStripeMarkersModel = new ErrorStripeMarkersModel(myEditor);
+    myErrorStripeMarkersModel = new ErrorStripeMarkersModel(myEditor, resourcesDisposable);
   }
 
   @Override
@@ -363,6 +362,7 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
   private void doUpdateTrafficLightVisibility() {
     if (trafficLightVisible) {
       if (showToolbar && myEditor.myView != null) {
+        statusToolbar.setTargetComponent(myEditor.getContentComponent());
         VisualPosition pos = myEditor.getCaretModel().getPrimaryCaret().getVisualPosition();
         Point point = myEditor.visualPositionToXY(pos);
         point = SwingUtilities.convertPoint(myEditor.getContentComponent(), point, myEditor.getScrollPane());
@@ -593,7 +593,8 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
         return true;
       }
       return false;
-    } else {
+    }
+    else {
       float rowRatio = (float)visualLine /(myEditor.getVisibleLineCount() - 1);
       int y = myRowAdjuster != 0 ? (int)(rowRatio * myEditor.getVerticalScrollBar().getHeight()) : me.getY();
       me = new MouseEvent(me.getComponent(), me.getID(), me.getWhen(), me.getModifiers(), me.getX(), y, me.getClickCount(), me.isPopupTrigger());
@@ -781,6 +782,9 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
       Disposer.dispose((Disposable)myErrorStripeRenderer);
     }
     myErrorStripeRenderer = renderer;
+    if (renderer instanceof Disposable) {
+      Disposer.register(resourcesDisposable, (Disposable)renderer);
+    }
     //try to not cancel tooltips here, since it is being called after every writeAction, even to the console
     //HintManager.getInstance().getTooltipController().cancelTooltips();
   }
@@ -792,12 +796,9 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
 
   @Override
   public void dispose() {
-    myErrorStripeMarkersModel.dispose();
-    disposeErrorPanel();
+    Disposer.dispose(resourcesDisposable);
 
-    if (myErrorStripeRenderer instanceof Disposable) {
-      Disposer.dispose((Disposable)myErrorStripeRenderer);
-    }
+    disposeErrorPanel();
 
     statusToolbar.getComponent().removeComponentListener(toolbarComponentListener);
     ((JBScrollPane)myEditor.getScrollPane()).setStatusComponent(null);
@@ -809,8 +810,6 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
     myPopupManager.hidePopup();
     myPopupManager = null;
     extensionActions.clear();
-
-    Disposer.dispose(resourcesDisposable);
 
     super.dispose();
   }
@@ -1333,7 +1332,7 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
     return getErrorPanel() != null;
   }
 
-  private static class BasicTooltipRendererProvider implements ErrorStripTooltipRendererProvider {
+  private static final class BasicTooltipRendererProvider implements ErrorStripTooltipRendererProvider {
     @Override
     public TooltipRenderer calcTooltipRenderer(final @NotNull Collection<? extends RangeHighlighter> highlighters) {
       LineTooltipRenderer bigRenderer = null;
@@ -1554,7 +1553,7 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
             manager.queueActionPerformedEvent(action, context, event);
             ActionsCollector.getInstance().record(event.getProject(), action, event, null);
 
-            ActionToolbar toolbar = getActionToolbar();
+            ActionToolbar toolbar = ActionToolbar.findToolbarBy(StatusButton.this);
             if (toolbar != null) {
               toolbar.updateActionsImmediately();
             }
@@ -1637,12 +1636,7 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
     }
 
     private DataContext getDataContext() {
-      ActionToolbar actionToolbar = getActionToolbar();
-      return actionToolbar != null ? actionToolbar.getToolbarDataContext() : DataManager.getInstance().getDataContext(this);
-    }
-
-    private ActionToolbar getActionToolbar() {
-      return ComponentUtil.getParentOfType((Class<? extends ActionToolbar>)ActionToolbar.class, this);
+      return ActionToolbar.getDataContextFor(this);
     }
 
     private void updateContents(@NotNull List<StatusItem> status) {

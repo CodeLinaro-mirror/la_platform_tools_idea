@@ -8,17 +8,17 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.editor.SpellCheckingEditorCustomizationProvider
 import com.intellij.openapi.editor.event.BulkAwareDocumentListener
 import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.openapi.fileTypes.PlainTextLanguage
 import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.ui.ComboBoxCompositeEditor
-import com.intellij.ui.EditorTextField
-import com.intellij.ui.LanguageTextField
+import com.intellij.openapi.util.Disposer
+import com.intellij.ui.*
 import com.intellij.ui.TextFieldWithAutoCompletion.installCompletion
-import com.intellij.ui.TextFieldWithAutoCompletionListProvider
 import org.jetbrains.annotations.Nls
 import javax.swing.ComboBoxModel
 import javax.swing.JComponent
@@ -67,7 +67,10 @@ class ComboBoxWithAutoCompletion<E>(model: ComboBoxModel<E>,
     myEditableComponent?.requestFocus()
   }
 
-  fun getText() = myEditor?.document?.text
+  @Nls
+  fun getText(): String? {
+    return myEditor?.document?.text
+  }
 
   fun setPlaceholder(@Nls placeHolder: String) {
     myPlaceHolder = placeHolder
@@ -78,6 +81,14 @@ class ComboBoxWithAutoCompletion<E>(model: ComboBoxModel<E>,
 
   fun selectAll() {
     myEditableComponent?.selectAll()
+  }
+
+  fun addDocumentListener(listener: DocumentListener) {
+    myEditableComponent?.addDocumentListener(listener)
+  }
+
+  fun removeDocumentListener(listener: DocumentListener) {
+    myEditableComponent?.removeDocumentListener(listener)
   }
 
   private fun initEditor() {
@@ -116,14 +127,17 @@ class ComboBoxWithAutoCompletion<E>(model: ComboBoxModel<E>,
 
   private fun getCompletionShortcuts() = KeymapManager.getInstance().activeKeymap.getShortcuts(IdeActions.ACTION_CODE_COMPLETION)
 
-  private fun createEditableComponent() = object : LanguageTextField(PlainTextLanguage.INSTANCE, project, "") {
+  private fun createEditableComponent(): EditorTextField = object : LanguageTextField(PlainTextLanguage.INSTANCE, project, "") {
     override fun createEditor(): EditorEx {
-      myEditor = super.createEditor().apply {
-        setShowPlaceholderWhenFocused(true)
-        setPlaceholder(myPlaceHolder)
-        SpellCheckingEditorCustomizationProvider.getInstance().disabledCustomization?.customize(this)
+      val editor = super.createEditor()
+      myEditor = editor;
+      editor.setShowPlaceholderWhenFocused(true)
+      editor.setPlaceholder(myPlaceHolder)
+      SpellCheckingEditorCustomizationProvider.getInstance().disabledCustomization?.customize(editor)
+      Disposer.register((editor as EditorImpl).disposable) {
+        GuiUtils.removePotentiallyLeakingReferences(this@ComboBoxWithAutoCompletion)
       }
-      return myEditor!!
+      return editor
     }
   }
 

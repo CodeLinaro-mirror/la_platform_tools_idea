@@ -7,15 +7,14 @@ import com.intellij.java.ift.JavaLessonsBundle
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx
-import training.learn.interfaces.Module
+import training.dsl.LessonContext
+import training.dsl.LessonSample
+import training.dsl.checkToolWindowState
+import training.dsl.dropMnemonic
 import training.learn.lesson.general.run.CommonRunConfigurationLesson
-import training.learn.lesson.kimpl.LessonContext
-import training.learn.lesson.kimpl.LessonSample
-import training.learn.lesson.kimpl.dropMnemonic
-import training.learn.lesson.kimpl.toolWindowShowed
 import java.awt.Rectangle
 
-class JavaRunConfigurationLesson(module: Module) : CommonRunConfigurationLesson(module, "java.run.configuration", "JAVA") {
+class JavaRunConfigurationLesson : CommonRunConfigurationLesson("java.run.configuration") {
   override val sample: LessonSample = JavaRunLessonsUtils.demoSample
   override val demoConfigurationName: String = JavaRunLessonsUtils.demoClassName
 
@@ -32,7 +31,7 @@ class JavaRunConfigurationLesson(module: Module) : CommonRunConfigurationLesson(
       text(JavaLessonsBundle.message("java.run.configuration.lets.run", icon(AllIcons.Actions.Execute), action(it),
                                      strong(ExecutionBundle.message("default.runner.start.action.text").dropMnemonic())))
       //Wait toolwindow
-      toolWindowShowed("Run")
+      checkToolWindowState("Run", true)
       stateCheck {
         configurations().isNotEmpty()
       }

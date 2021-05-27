@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
 import com.intellij.application.options.CodeStyle;
@@ -65,6 +65,7 @@ import com.intellij.util.ProcessingContext;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashSet;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
@@ -78,7 +79,7 @@ import static com.intellij.util.ObjectUtils.tryCast;
 /**
  * @author peter
  */
-public class JavaCompletionContributor extends CompletionContributor implements DumbAware {
+public final class JavaCompletionContributor extends CompletionContributor implements DumbAware {
   private static final ElementPattern<PsiElement> UNEXPECTED_REFERENCE_AFTER_DOT = or(
       // dot at the statement beginning
       psiElement().afterLeaf(".").insideStarting(psiExpressionStatement()),
@@ -1037,6 +1038,7 @@ public class JavaCompletionContributor extends CompletionContributor implements 
    * @deprecated use {@link #semicolonNeeded(PsiFile, int)}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static boolean semicolonNeeded(@Nullable Editor editor, PsiFile file, int startOffset) {
     PsiJavaCodeReferenceElement ref = PsiTreeUtil.findElementOfClassAtOffset(file, startOffset, PsiJavaCodeReferenceElement.class, false);
     if (ref != null && !(ref instanceof PsiReferenceExpression)) {

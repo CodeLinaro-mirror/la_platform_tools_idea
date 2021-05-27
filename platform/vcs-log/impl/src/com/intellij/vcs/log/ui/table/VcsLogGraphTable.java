@@ -176,7 +176,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   }
 
   protected void appendActionToEmptyText(@Nls @NotNull String text, @NotNull Runnable action) {
-    getEmptyText().appendSecondaryText(text, VcsLogUiUtil.getLinkAttributes(), e -> action.run());
+    getEmptyText().appendSecondaryText(text, SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES, e -> action.run());
   }
 
   public void updateDataPack(@NotNull VisiblePack visiblePack, boolean permGraphChanged) {
@@ -267,7 +267,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   }
 
   private void resetColumnWidth(@NotNull VcsLogColumn<?> column) {
-    VcsLogUsageTriggerCollector.triggerUsage(VcsLogUsageTriggerCollector.VcsLogEvent.COLUMN_RESET, null);
+    VcsLogUsageTriggerCollector.triggerUsage(VcsLogUsageTriggerCollector.VcsLogEvent.COLUMN_RESET, null, myLogData.getProject());
     if (VcsLogColumnUtilKt.getWidth(column, myProperties) != -1) {
       setWidth(column, myProperties, -1);
     }

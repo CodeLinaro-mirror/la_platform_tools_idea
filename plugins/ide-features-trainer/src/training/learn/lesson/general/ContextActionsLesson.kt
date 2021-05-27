@@ -3,16 +3,12 @@ package training.learn.lesson.general
 
 import com.intellij.codeInsight.intention.impl.ShowIntentionActionsHandler
 import com.intellij.openapi.editor.impl.EditorComponentImpl
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskRuntimeContext
+import training.dsl.*
+import training.dsl.LessonUtil.restoreIfModifiedOrMovedIncorrectly
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.*
-import training.learn.lesson.kimpl.LessonUtil.restoreIfModifiedOrMovedIncorrectly
+import training.learn.course.KLesson
 
-abstract class ContextActionsLesson(module: Module, lang: String) :
-  KLesson("context.actions", LessonsBundle.message("context.actions.lesson.name"), module, lang) {
-
+abstract class ContextActionsLesson : KLesson("context.actions", LessonsBundle.message("context.actions.lesson.name")) {
   abstract val sample: LessonSample
   abstract val warningQuickFix: String
   abstract val warningPossibleArea: String
@@ -20,6 +16,8 @@ abstract class ContextActionsLesson(module: Module, lang: String) :
   abstract val intentionText: String
   abstract val intentionCaret: String
   abstract val intentionPossibleArea: String
+
+  override val testScriptProperties = TaskTestContext.TestScriptProperties(skipTesting = true)
 
   override val lessonContent: LessonContext.() -> Unit = {
     prepareSample(sample)

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.featureStatistics.fusCollectors
 
 import com.intellij.concurrency.JobScheduler
@@ -13,8 +13,8 @@ import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.internal.statistic.eventLog.fus.FeatureUsageLogger
 import com.intellij.internal.statistic.eventLog.fus.FeatureUsageStateEventTracker
 import com.intellij.internal.statistic.eventLog.fus.MachineIdManager
-import com.intellij.internal.statistic.eventLog.validator.rules.impl.TestModeValidationRule
 import com.intellij.internal.statistic.service.fus.collectors.FUStateUsagesLogger
+import com.intellij.internal.statistic.utils.StatisticsRecorderUtil
 import com.intellij.internal.statistic.utils.StatisticsUploadAssistant.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.SystemInfo
@@ -22,7 +22,7 @@ import java.time.OffsetDateTime
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
-class SystemStateMonitor : FeatureUsageStateEventTracker {
+internal class SystemStateMonitor : FeatureUsageStateEventTracker {
   private val OS_GROUP = EventLogGroup("system.os", 5)
   private val INITIAL_DELAY = 5
   private val PERIOD_DELAY = 24 * 60
@@ -75,7 +75,7 @@ class SystemStateMonitor : FeatureUsageStateEventTracker {
     val app = ApplicationManager.getApplication()
     events.add(DEBUG.metric(DebugAttachDetector.isDebugEnabled()))
     events.add(REPORT.metric(isSuppressStatisticsReport(), isLocalStatisticsWithoutReport()))
-    events.add(TEST.metric(TestModeValidationRule.isTestModeEnabled(), app.isInternal, isTeamcityDetected()))
+    events.add(TEST.metric(StatisticsRecorderUtil.isTestModeEnabled("FUS"), app.isInternal, isTeamcityDetected()))
     events.add(HEADLESS.metric(app.isHeadlessEnvironment, app.isCommandLine))
     FUStateUsagesLogger.logStateEventsAsync(SESSION_GROUP, events)
   }

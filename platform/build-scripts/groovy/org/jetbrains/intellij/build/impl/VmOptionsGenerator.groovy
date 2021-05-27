@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import groovy.transform.CompileStatic
@@ -44,13 +44,14 @@ Android Studio: removed by Change Ie7351d92 */
 
   private static List<String> vmMemoryOptions(JvmArchitecture arch, ProductProperties productProperties) {
     switch (arch) {
+      case JvmArchitecture.x32:
+        return ['-Xms128m', '-Xmx512m', '-XX:ReservedCodeCacheSize=384m']
       // when changing, please review usages of `ProductProperties#getCustomJvmMemoryOptionsX64` and synchronize if necessary
-      // Android Studio: modified by Change Ie7351d92
-      case JvmArchitecture.x32: return ['-server', '-Xms256m', '-Xmx768m', '-XX:ReservedCodeCacheSize=384m']
-      case JvmArchitecture.x64: return productProperties.customJvmMemoryOptionsX64?.split(' ')?.toList() ?: ['-Xms256m', '-Xmx1280m', defaultCodeCacheSetting]
-      case JvmArchitecture.aarch64: return productProperties.customJvmMemoryOptionsX64?.split(' ')?.toList() ?: ['-Xms128m', '-Xmx750m', defaultCodeCacheSetting]
-      // todo review options for aarch64
+      case JvmArchitecture.x64:
+      case JvmArchitecture.aarch64:
+        return productProperties.customJvmMemoryOptionsX64?.split(' ')?.toList() ?: ['-Xms256m', '-Xmx1280m', defaultCodeCacheSetting]  // Android Studio: modified by Change Ie7351d92
+      default:
+        throw new AssertionError(arch)
     }
-    throw new AssertionError(arch)
   }
 }

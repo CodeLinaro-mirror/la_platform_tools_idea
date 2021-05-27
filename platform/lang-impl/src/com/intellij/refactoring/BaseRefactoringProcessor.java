@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring;
 
 import com.intellij.codeInsight.actions.VcsFacade;
@@ -27,6 +27,7 @@ import com.intellij.openapi.module.UnloadedModuleDescription;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogBuilder;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -61,6 +62,7 @@ import com.intellij.usages.impl.UnknownUsagesInUnloadedModules;
 import com.intellij.usages.impl.UsageViewImpl;
 import com.intellij.usages.rules.PsiElementUsage;
 import com.intellij.util.Processor;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.MultiMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -189,6 +191,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
     final Ref<Language> refErrorLanguage = new Ref<>();
     final Ref<Boolean> refProcessCanceled = new Ref<>();
     final Ref<Boolean> anyException = new Ref<>();
+    final Ref<Boolean> indexNotReadyException = new Ref<>();
 
     DumbService.getInstance(myProject).completeJustSubmittedTasks();
 
@@ -201,6 +204,9 @@ public abstract class BaseRefactoringProcessor implements Runnable {
       }
       catch (ProcessCanceledException e) {
         refProcessCanceled.set(Boolean.TRUE);
+      }
+      catch (IndexNotReadyException e) {
+        indexNotReadyException.set(Boolean.TRUE);
       }
       catch (Throwable e) {
         anyException.set(Boolean.TRUE);
@@ -217,7 +223,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
       Messages.showErrorDialog(myProject, RefactoringBundle.message("unsupported.refs.found", refErrorLanguage.get().getDisplayName()), RefactoringBundle.message("error.title"));
       return;
     }
-    if (DumbService.isDumb(myProject)) {
+    if (!indexNotReadyException.isNull() || DumbService.isDumb(myProject)) {
       DumbService.getInstance(myProject).showDumbModeNotification(RefactoringBundle.message("refactoring.dumb.mode.notification"));
       return;
     }
@@ -422,7 +428,7 @@ public abstract class BaseRefactoringProcessor implements Runnable {
   }
 
   private void showUsageView(@NotNull UsageViewDescriptor viewDescriptor,
-                             @NotNull Factory<UsageSearcher> factory,
+                             @NotNull Factory<? extends UsageSearcher> factory,
                              UsageInfo @NotNull [] usageInfos) {
     UsageViewManager viewManager = UsageViewManager.getInstance(myProject);
 
@@ -627,10 +633,10 @@ public abstract class BaseRefactoringProcessor implements Runnable {
 
   @Override
   public final void run() {
-    Runnable runnable = this::doRun;
-    if (shouldDisableAccessChecks()) {
-      runnable = () -> NonProjectFileWritingAccessProvider.disableChecksDuring(this::doRun);
-    }
+    Runnable baseRunnable = () -> SlowOperations.allowSlowOperations(this::doRun);
+    Runnable runnable = shouldDisableAccessChecks() ?
+                        () -> NonProjectFileWritingAccessProvider.disableChecksDuring(baseRunnable) :
+                        baseRunnable;
     if (ApplicationManager.getApplication().isUnitTestMode()) {
       ApplicationManager.getApplication().assertIsWriteThread();
       runnable.run();

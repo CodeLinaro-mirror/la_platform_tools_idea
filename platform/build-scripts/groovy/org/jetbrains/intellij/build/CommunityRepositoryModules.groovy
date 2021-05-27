@@ -67,7 +67,6 @@ final class CommunityRepositoryModules {
     "intellij.platform.elevation.client",
     "intellij.platform.elevation.common",
     "intellij.platform.elevation.daemon",
-    "intellij.platform.elevation.rpc",
     "intellij.platform.execution.impl",
     "intellij.platform.inspect",
     "intellij.platform.lang.impl",
@@ -93,7 +92,8 @@ final class CommunityRepositoryModules {
     "intellij.platform.diagnostic",
     "intellij.platform.core.ui",
     "intellij.platform.credentialStore",
-    "intellij.platform.rd.community"
+    "intellij.platform.rd.community",
+    "intellij.platform.ml.impl"
   ]
 
   /**
@@ -127,6 +127,9 @@ final class CommunityRepositoryModules {
     plugin("intellij.properties.resource.bundle.editor"),
     plugin("intellij.vcs.git") {
       withModule("intellij.vcs.git.rt", "git4idea-rt.jar", null)
+    },
+    plugin("intellij.vcs.svn"){
+      withProjectLibrary("sqlite")
     },
     plugin("intellij.xpath") {
       withModule("intellij.xpath.rt", "rt/xslt-rt.jar")
@@ -187,6 +190,7 @@ final class CommunityRepositoryModules {
       withModule("intellij.gradle.common")
       withModule("intellij.gradle.toolingExtension")
       withModule("intellij.gradle.toolingExtension.impl")
+      withModule("intellij.gradle.toolingProxy")
       withProjectLibrary("Gradle")
     },
 /* Android Studio: exclude dependencyUpdater
@@ -194,9 +198,10 @@ final class CommunityRepositoryModules {
     plugin("intellij.gradle.dependencyUpdater"),
 Android Studio: exclude dependencyUpdater */
 /* Android Studio: exclude intellij.gradle.dsl
-    plugin("intellij.gradle.dsl") {
-      withModule("intellij.gradle.dsl.impl")
-      withModule("intellij.gradle.dsl.kotlin.impl")
+    plugin("intellij.android.gradle.dsl") {
+      withModule("intellij.android.gradle.dsl")
+      withModule("intellij.android.gradle.dsl.kotlin.impl")
+      withModule("intellij.android.gradle.dsl.impl")
     },
 Android Studio: exclude intellij.gradle.dsl */
     plugin("intellij.gradle.java") {
@@ -232,7 +237,6 @@ Android Studio: exclude intellij.platform.testGuiFramework */
     },
     plugin("intellij.java.coverage") {
       withModule("intellij.java.coverage.rt")
-      withProjectLibrary("JaCoCo") //todo[nik] convert to module library
     },
     plugin("intellij.java.decompiler") {
       directoryName = "java-decompiler"
@@ -273,17 +277,25 @@ Android Studio: exclude smali */
       bundlingRestrictions.includeInEapOnly = true
     },
 Android Studio: exclude intellij.statsCollector */
+    plugin("intellij.ml.models.local") {
+      bundlingRestrictions.includeInEapOnly = true
+    },
     plugin("intellij.jps.cache"),
 /* Android Studio: exclude intellij.space
     plugin("intellij.space") {
       withProjectLibrary("space-idea-sdk")
       withProjectLibrary("jackson-datatype-joda")
-      withProjectLibrary("ktor-server-jetty")
     },
 Android Studio: exclude intellij.space */
     plugin("intellij.lombok") {
       withModule("intellij.lombok.generated")
+    },
+/* Android Studio: exclude intellij.android.jpsBuildPlugin
+    plugin("intellij.android.jpsBuildPlugin") {
+      withModule("intellij.android.jpsBuildPlugin.common")
+      withModule("intellij.android.jpsBuildPlugin.jps", "jps/android-jps-plugin.jar", null)
     }
+Android Studio: exclude intellij.android.jpsBuildPlugin */
   ]
 
   static List<PluginLayout> CONTRIB_REPOSITORY_PLUGINS = [
@@ -316,7 +328,6 @@ Android Studio: exclude intellij.space */
 
       withModule("intellij.android.common", "android-common.jar", null)
       withModule("intellij.android.buildCommon", "build-common.jar", null)
-      withModule("intellij.android.rt", "android-rt.jar", null)
 
       withModule("intellij.android.core", "android.jar", null)
       withModule("intellij.android.adb", "android.jar")
@@ -412,7 +423,6 @@ Android Studio: exclude intellij.space */
       withModule("android.sdktools.layoutinspector", "sdk-tools.jar")
       withModule("android.sdktools.usb-devices", "sdk-tools.jar")
 
-      withModule("intellij.android.jps", "jps/android-jps-plugin.jar", null)
       withModule("intellij.android.jps.model")
 
       withProjectLibrary("kxml2") //todo[nik] move to module libraries

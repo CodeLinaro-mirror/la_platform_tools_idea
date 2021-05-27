@@ -34,7 +34,10 @@ import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.profile.codeInspection.ProjectInspectionProfileManager;
 import com.intellij.psi.*;
@@ -53,7 +56,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import static com.intellij.codeInspection.ex.InspectListener.InspectionKind.*;
+import static com.intellij.codeInspection.ex.InspectListener.InspectionKind.LOCAL;
+import static com.intellij.codeInspection.ex.InspectListener.InspectionKind.LOCAL_PRIORITY;
 import static com.intellij.codeInspection.ex.InspectionEventsKt.reportWhenInspectionFinished;
 
 public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass {
@@ -138,10 +142,17 @@ public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass
       for (ProblemDescriptor descriptor : inspectionResult.foundProblems) {
         if (descriptor.getHighlightType() == ProblemHighlightType.INFORMATION) {
           if (ourToolsWithInformationProblems.add(shortName)) {
-            LOG.error("Tool #" + shortName + " registers INFORMATION level problem in batch mode on " + getFile() + ". " +
-                      "INFORMATION level 'warnings' are invisible in the editor and should not become visible in batch mode. " +
-                      "Moreover, cause INFORMATION level fixes act more like intention actions, they could e.g. change semantics and " +
-                      "thus should not be suggested for batch transformations");
+            String message = "Tool #" + shortName + " registers INFORMATION level problem in batch mode on " + getFile() + ". " +
+                             "INFORMATION level 'warnings' are invisible in the editor and should not become visible in batch mode. " +
+                             "Moreover, cause INFORMATION level fixes act more like intention actions, they could e.g. change semantics and " +
+                             "thus should not be suggested for batch transformations";
+            LocalInspectionEP extension = toolWrapper.getExtension();
+            if (extension != null) {
+              LOG.error(new PluginException(message, extension.getPluginDescriptor().getPluginId()));
+            }
+            else {
+              LOG.error(message);
+            }
           }
           continue;
         }
@@ -190,24 +201,19 @@ public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass
     setProgressLimit(toolWrappers.size() * 2L);
     final LocalInspectionToolSession session = new LocalInspectionToolSession(getFile(), myRestrictRange.getStartOffset(), myRestrictRange.getEndOffset());
 
-    try {
-      List<InspectionContext> init = visitPriorityElementsAndInit(
-        InspectionEngine.filterToolsApplicableByLanguage(toolWrappers, InspectionEngine.calcElementDialectIds(inside, outside)),
-        iManager, isOnTheFly, progress, inside, session);
-      Set<PsiFile> alreadyVisitedInjected =
-        inspectInjectedPsi(inside, isOnTheFly, progress, iManager, true, toolWrappers, Collections.emptySet());
-      visitRestElementsAndCleanup(progress, outside, session, init);
-      inspectInjectedPsi(outside, isOnTheFly, progress, iManager, false, toolWrappers, alreadyVisitedInjected);
-      ProgressManager.checkCanceled();
+    List<InspectionContext> init = visitPriorityElementsAndInit(
+      InspectionEngine.filterToolsApplicableByLanguage(toolWrappers, InspectionEngine.calcElementDialectIds(inside, outside)),
+      iManager, isOnTheFly, progress, inside, session);
+    Set<PsiFile> alreadyVisitedInjected = inspectInjectedPsi(inside, isOnTheFly, progress, iManager, true, toolWrappers, Collections.emptySet());
+    visitRestElementsAndCleanup(progress, outside, session, init, isOnTheFly);
+    inspectInjectedPsi(outside, isOnTheFly, progress, iManager, false, toolWrappers, alreadyVisitedInjected);
+    ProgressManager.checkCanceled();
 
-      myInfos = new ArrayList<>();
-      addHighlightsFromResults(myInfos);
+    myInfos = new ArrayList<>();
+    addHighlightsFromResults(myInfos);
 
-      if (isOnTheFly) {
-        highlightRedundantSuppressions(toolWrappers, iManager, inside, outside);
-      }
-    } catch (Throwable e) {
-      throw e;
+    if (isOnTheFly) {
+      highlightRedundantSuppressions(toolWrappers, iManager, inside, outside);
     }
   }
 
@@ -267,10 +273,9 @@ public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass
     final List<InspectionContext> init = new ArrayList<>();
 
     PsiFile file = session.getFile();
-
     Processor<LocalInspectionToolWrapper> processor = toolWrapper ->
       AstLoadingFilter.disallowTreeLoading(() -> AstLoadingFilter.<Boolean, RuntimeException>forceAllowTreeLoading(file, () -> {
-        if (elements.isEmpty()) {
+        if (elements.isEmpty() || isOnTheFly) {
           runToolOnElements(toolWrapper, iManager, isOnTheFly, indicator, elements, session, init);
         } else {
           reportWhenInspectionFinished(
@@ -278,7 +283,7 @@ public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass
             toolWrapper,
             LOCAL_PRIORITY,
             () -> {
-              runToolOnElements(toolWrapper, iManager, isOnTheFly, indicator, elements, session, init);
+              runToolOnElements(toolWrapper, iManager, false, indicator, elements, session, init);
             });
         }
 
@@ -330,20 +335,24 @@ public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass
   private void visitRestElementsAndCleanup(final @NotNull ProgressIndicator indicator,
                                            final @NotNull List<? extends PsiElement> elements,
                                            final @NotNull LocalInspectionToolSession session,
-                                           @NotNull List<? extends InspectionContext> init) {
+                                           @NotNull List<? extends InspectionContext> init,
+                                           final boolean isOnTheFly) {
 
     Processor<InspectionContext> processor =
       context -> {
         ProgressManager.checkCanceled();
         ApplicationManager.getApplication().assertReadAccessAllowed();
-        reportWhenInspectionFinished(
-          myInspectTopicPublisher,
-          context.tool,
-          LOCAL,
-          () -> {
-            AstLoadingFilter.disallowTreeLoading(() -> InspectionEngine.acceptElements(elements, context.visitor));
-          });
-
+        if (isOnTheFly) {
+          AstLoadingFilter.disallowTreeLoading(() -> InspectionEngine.acceptElements(elements, context.visitor));
+        } else {
+          reportWhenInspectionFinished(
+            myInspectTopicPublisher,
+            context.tool,
+            LOCAL,
+            () -> {
+              AstLoadingFilter.disallowTreeLoading(() -> InspectionEngine.acceptElements(elements, context.visitor));
+            });
+        }
         advanceProgress(1);
         context.tool.getTool().inspectionFinished(session, context.holder);
 
@@ -835,7 +844,7 @@ public class LocalInspectionsPass extends ProgressableTextEditorHighlightingPass
     }
   }
 
-  public static final class InspectionContext extends UserDataHolderBase {
+  private static final class InspectionContext {
     private InspectionContext(@NotNull LocalInspectionToolWrapper tool,
                               @NotNull ProblemsHolder holder,
                               int problemsSize, // need this to diff between found problems in visible part and the rest

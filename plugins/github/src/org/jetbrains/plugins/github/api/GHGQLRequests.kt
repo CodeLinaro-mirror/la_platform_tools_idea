@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.api
 
 import com.intellij.diff.util.Side
@@ -11,6 +11,7 @@ import org.jetbrains.plugins.github.api.data.graphql.query.GHGQLSearchQueryRespo
 import org.jetbrains.plugins.github.api.data.pullrequest.*
 import org.jetbrains.plugins.github.api.data.pullrequest.timeline.GHPRTimelineItem
 import org.jetbrains.plugins.github.api.data.request.GHPullRequestDraftReviewComment
+import org.jetbrains.plugins.github.api.data.request.GHPullRequestDraftReviewThread
 import org.jetbrains.plugins.github.api.util.GHSchemaPreview
 
 object GHGQLRequests {
@@ -44,11 +45,11 @@ object GHGQLRequests {
   }
 
   object Repo {
-    fun findPermission(repository: GHRepositoryCoordinates): GQLQuery<GHRepositoryPermission?> {
-      return GQLQuery.OptionalTraversedParsed(repository.serverPath.toGraphQLUrl(), GHGQLQueries.findRepositoryPermission,
+    fun find(repository: GHRepositoryCoordinates): GQLQuery<GHRepository?> {
+      return GQLQuery.OptionalTraversedParsed(repository.serverPath.toGraphQLUrl(), GHGQLQueries.findRepository,
                                               mapOf("repoOwner" to repository.repositoryPath.owner,
                                                     "repoName" to repository.repositoryPath.repository),
-                                              GHRepositoryPermission::class.java,
+                                              GHRepository::class.java,
                                               "repository")
     }
 
@@ -88,6 +89,26 @@ object GHGQLRequests {
   }
 
   object PullRequest {
+    fun create(repository: GHRepositoryCoordinates,
+               repositoryId: String,
+               baseRefName: String,
+               headRefName: String,
+               title: String,
+               body: String? = null,
+               draft: Boolean? = false): GQLQuery<GHPullRequestShort> {
+      return GQLQuery.TraversedParsed(repository.serverPath.toGraphQLUrl(), GHGQLQueries.createPullRequest,
+                                      mapOf("repositoryId" to repositoryId,
+                                            "baseRefName" to baseRefName,
+                                            "headRefName" to headRefName,
+                                            "title" to title,
+                                            "body" to body,
+                                            "draft" to draft),
+                                      GHPullRequestShort::class.java,
+                                      "createPullRequest", "pullRequest").apply {
+        acceptMimeType = GHSchemaPreview.PR_DRAFT.mimeType
+      }
+    }
+
     fun findOne(repository: GHRepositoryCoordinates, number: Long): GQLQuery<GHPullRequest?> {
       return GQLQuery.OptionalTraversedParsed(repository.serverPath.toGraphQLUrl(), GHGQLQueries.findPullRequest,
                                               mapOf("repoOwner" to repository.repositoryPath.owner,
@@ -199,12 +220,14 @@ object GHGQLRequests {
 
       fun create(server: GithubServerPath, pullRequestId: String,
                  event: GHPullRequestReviewEvent?, body: String?, commitSha: String?,
-                 comments: List<GHPullRequestDraftReviewComment>?): GQLQuery<GHPullRequestPendingReview> =
+                 comments: List<GHPullRequestDraftReviewComment>?,
+                 threads: List<GHPullRequestDraftReviewThread>?): GQLQuery<GHPullRequestPendingReview> =
         GQLQuery.TraversedParsed(server.toGraphQLUrl(), GHGQLQueries.createReview,
                                  mapOf("pullRequestId" to pullRequestId,
                                        "event" to event,
                                        "commitOid" to commitSha,
                                        "comments" to comments,
+                                       "threads" to threads,
                                        "body" to body),
                                  GHPullRequestPendingReview::class.java,
                                  "addPullRequestReview", "pullRequestReview")
@@ -276,13 +299,12 @@ object GHGQLRequests {
                                  GHPullRequestReviewComment::class.java,
                                  "updatePullRequestReviewComment", "pullRequestReviewComment")
 
-      fun addThread(server: GithubServerPath, pullRequestId: String, reviewId: String?,
+      fun addThread(server: GithubServerPath, reviewId: String,
                     body: String, line: Int, side: Side, startLine: Int, fileName: String): GQLQuery<GHPullRequestReviewThread> =
         GQLQuery.TraversedParsed(server.toGraphQLUrl(), GHGQLQueries.addPullRequestReviewThread,
                                  mapOf("body" to body,
                                        "line" to line,
                                        "path" to fileName,
-                                       "pullRequestId" to pullRequestId,
                                        "pullRequestReviewId" to reviewId,
                                        "side" to side.name,
                                        "startSide" to side.name,

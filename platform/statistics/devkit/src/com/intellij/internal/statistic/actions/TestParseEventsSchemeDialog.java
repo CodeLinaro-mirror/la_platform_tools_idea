@@ -1,17 +1,15 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.actions;
 
 import com.intellij.ide.scratch.RootType;
 import com.intellij.ide.scratch.ScratchFileService;
-import com.intellij.internal.statistic.eventLog.DataCollectorDebugLogger;
-import com.intellij.internal.statistic.eventLog.EventLogConfiguration;
-import com.intellij.internal.statistic.eventLog.LogEventRecordRequest;
-import com.intellij.internal.statistic.eventLog.LogEventSerializer;
+import com.intellij.internal.statistic.eventLog.*;
+import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupRemoteDescriptors;
+import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataUtils;
 import com.intellij.internal.statistic.eventLog.filters.LogEventFilter;
 import com.intellij.internal.statistic.eventLog.filters.LogEventMetadataFilter;
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupsFilterRules;
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataParseException;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataUtils;
 import com.intellij.lang.Language;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
@@ -193,7 +191,8 @@ public class TestParseEventsSchemeDialog extends DialogWrapper {
     updateResultRequest("{}");
 
     try {
-      EventGroupsFilterRules scheme = EventLogMetadataUtils.parseGroupFilterRules(myEventsSchemeEditor.getDocument().getText());
+      EventGroupRemoteDescriptors groups = EventLogMetadataUtils.parseGroupRemoteDescriptors(myEventsSchemeEditor.getDocument().getText());
+      EventGroupsFilterRules<EventLogBuild> scheme = EventGroupsFilterRules.create(groups, EventLogBuild.EVENT_LOG_BUILD_PRODUCER);
       String parsed = parseLogAndFilter(new LogEventMetadataFilter(scheme), myEventLogPanel.getText());
       updateResultRequest(parsed.trim());
     }
@@ -219,11 +218,10 @@ public class TestParseEventsSchemeDialog extends DialogWrapper {
     final File log = FileUtil.createTempFile("feature-event-log", ".log");
     try {
       FileUtil.writeToFile(log, text);
-      String deviceId = EventLogConfiguration.INSTANCE.getDeviceId();
       final String productCode = ApplicationInfo.getInstance().getBuild().getProductCode();
       final TestDataCollectorDebugLogger logger = new TestDataCollectorDebugLogger();
       final LogEventRecordRequest request = LogEventRecordRequest.Companion.create(
-        log, "FUS", productCode, deviceId, filter, true, logger
+        log, "FUS", productCode, "test.device.id", filter, true, logger
       );
 
       if (request == null) {

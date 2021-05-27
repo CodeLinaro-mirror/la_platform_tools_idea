@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util;
 
 import com.intellij.openapi.Disposable;
@@ -82,6 +82,10 @@ public final class Disposer {
     return ourTree.register(parent, child) == null;
   }
 
+  /**
+   * @deprecated Use {@link #register(Disposable, Disposable)} instead
+   */
+  @Deprecated
   public static void register(@NotNull Disposable parent, @NotNull Disposable child, @NonNls @NotNull final String key) {
     register(parent, child);
     Disposable v = get(key);
@@ -108,6 +112,9 @@ public final class Disposer {
   }
 
   /**
+   * <b>Note</b>: This method may return wrong result after dynamic plugin unload (see {@link #clearDisposalTraces}).<br/>
+   * If this method is intent to be used in such cases, consider to use own <b>myDisposed</b> flag instead.
+   *
    * @return true if {@code disposable} is disposed or being disposed (i.e. its {@link Disposable#dispose()} method is executing).
    */
   public static boolean isDisposed(@NotNull Disposable disposable) {
@@ -122,6 +129,10 @@ public final class Disposer {
     return isDisposed(disposable);
   }
 
+  /**
+   * @deprecated Store and use your own Disposable instead. Instead of {@code Disposer.get("ui")} use {@link com.intellij.openapi.application.ApplicationManager#getApplication()}
+   */
+  @Deprecated
   public static Disposable get(@NotNull String key) {
     return ourKeyDisposables.get(key);
   }

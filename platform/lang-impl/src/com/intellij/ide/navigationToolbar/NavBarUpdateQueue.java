@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.navigationToolbar;
 
 import com.intellij.ide.DataManager;
@@ -15,6 +15,7 @@ import com.intellij.ui.LightweightHint;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.util.Alarm;
 import com.intellij.util.Consumer;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.ui.update.MergingUpdateQueue;
 import com.intellij.util.ui.update.Update;
 import org.jetbrains.annotations.Nullable;
@@ -75,10 +76,10 @@ public class NavBarUpdateQueue extends MergingUpdateQueue {
         }
         final Window window = SwingUtilities.getWindowAncestor(myPanel);
         if (window != null && !window.isFocused()) {
-          model.updateModel(DataManager.getInstance().getDataContext(myPanel));
+          model.updateModelAsync(DataManager.getInstance().getDataContext(myPanel), null);
         }
         else {
-          model.updateModel(dataContext);
+          model.updateModelAsync(dataContext, null);
         }
       }
       else {
@@ -162,7 +163,7 @@ public class NavBarUpdateQueue extends MergingUpdateQueue {
     queue(new AfterModelUpdate(ID.UI) {
       @Override
       protected void after() {
-        rebuildUi();
+        SlowOperations.allowSlowOperations(() -> rebuildUi());
       }
     });
     queueRevalidate(null);

@@ -117,11 +117,13 @@ public abstract class JavaLikeLangLineIndentProvider implements LineIndentProvid
       }
       else if (getPosition(editor, offset).beforeOptional(Whitespace).isAt(BlockClosingBrace)) {
         SemanticEditorPosition position = getPosition(editor, offset).beforeOptional(Whitespace).before();
+        boolean isOnNewLine = position.isAtMultiline(Whitespace);
         position.moveToLeftParenthesisBackwardsSkippingNested(BlockOpeningBrace, BlockClosingBrace);
         position.moveBefore();
         int statementStart = getStatementStartOffset(position, true);
         position = getPosition(editor, statementStart);
         if (!isStartOfStatementWithOptionalBlock(position)) {
+          if (!isOnNewLine) return null;
           return myFactory.createIndentCalculator(getBlockIndentType(editor, language), IndentCalculator.LINE_BEFORE);
         }
         else {
@@ -163,7 +165,10 @@ public abstract class JavaLikeLangLineIndentProvider implements LineIndentProvid
       }
       else if (getPosition(editor, offset).before().matchesRule(
         position -> isColonAfterLabelOrCase(position) || position.isAtAnyOf(ElseKeyword, DoKeyword))) {
-        return myFactory.createIndentCalculator(NORMAL, IndentCalculator.LINE_BEFORE);
+        Type indentType = getPosition(editor, offset).afterOptional(Whitespace).isAt(BlockOpeningBrace) ?
+                          NONE : // e.g. else <caret> {
+                          NORMAL;
+        return myFactory.createIndentCalculator(indentType, IndentCalculator.LINE_BEFORE);
       }
       else if (getPosition(editor, offset).matchesRule(
         position -> {

@@ -18,6 +18,7 @@ import com.intellij.psi.impl.AnyPsiChangeListener;
 import com.intellij.psi.impl.PsiManagerImpl;
 import com.intellij.ui.jcef.JCEFHtmlPanel;
 import com.intellij.util.Alarm;
+import org.cef.browser.CefBrowser;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

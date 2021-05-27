@@ -114,6 +114,19 @@ fun <T : UElement> PsiElement?.findContaining(clazz: Class<T>): T? {
   return null
 }
 
+fun <T : UElement> PsiElement?.findAnyContaining(vararg types: Class<out T>): T? = findAnyContaining(Int.Companion.MAX_VALUE, *types)
+
+fun <T : UElement> PsiElement?.findAnyContaining(depthLimit: Int, vararg types: Class<out T>): T? {
+  var element = this
+  var i = 0
+  while (i < depthLimit && element != null && element !is PsiFileSystemItem) {
+    element.toUElementOfExpectedTypes(*types)?.let { return it }
+    element = element.parent
+    i++
+  }
+  return null
+}
+
 fun isPsiAncestor(ancestor: UElement, child: UElement): Boolean {
   val ancestorPsi = ancestor.sourcePsi ?: return false
   val childPsi = child.sourcePsi ?: return false
@@ -172,6 +185,7 @@ fun skipParenthesizedExprUp(elem: UElement?): UElement? {
 fun UFile.getIoFile(): File? = sourcePsi.virtualFile?.let { VfsUtilCore.virtualToIoFile(it) }
 
 @Deprecated("use UastFacade", ReplaceWith("UastFacade"))
+@ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
 @Suppress("Deprecation")
 tailrec fun UElement.getUastContext(): UastContext {
   val psi = this.sourcePsi

@@ -7,8 +7,8 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.FileType.CharsetHint.ForcedCharset;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.objectTree.ThrowableInterner;
 import com.intellij.openapi.vfs.*;
 import com.intellij.openapi.vfs.encoding.EncodingManager;
 import com.intellij.openapi.vfs.encoding.EncodingRegistry;
@@ -425,7 +425,7 @@ public abstract class VirtualFileSystemEntry extends NewVirtualFile {
       String oldReason = getUserData(DebugInvalidation.INVALIDATION_REASON);
       String newReason = source + ": " + reason;
       if (oldReason == null) {
-        putUserData(DebugInvalidation.INVALIDATION_TRACE, new Throwable());
+        putUserData(DebugInvalidation.INVALIDATION_TRACE, ThrowableInterner.intern(new Throwable()));
       }
       putUserData(DebugInvalidation.INVALIDATION_REASON, oldReason == null ? newReason : oldReason + "; " + newReason);
     }
@@ -460,18 +460,12 @@ public abstract class VirtualFileSystemEntry extends NewVirtualFile {
         return super.getCharset();
       }
       try {
-        FileType.CharsetHint charsetHint = fileType.getCharsetHint();
-        if (charsetHint instanceof ForcedCharset) {
-          charset = ((ForcedCharset)charsetHint).getCharset();
+        byte[] content = VfsUtilCore.loadBytes(this);
+        if (isCharsetSet()) {
+          // loadBytes() may have cached the charset (see VirtualFileImpl.contentsToByteArray(boolean))
+          return super.getCharset();
         }
-        else {
-          byte[] content = VfsUtilCore.loadBytes(this);
-          if (isCharsetSet()) {
-            // loadBytes() may have cached the charset (see VirtualFileImpl.contentsToByteArray(boolean))
-            return super.getCharset();
-          }
-          charset = LoadTextUtil.detectCharsetAndSetBOM(this, content, fileType);
-        }
+        charset = LoadTextUtil.detectCharsetAndSetBOM(this, content, fileType);
       }
       catch (IOException e) {
         return super.getCharset();

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.updateSettings.impl;
 
 import com.intellij.ide.IdeBundle;
@@ -25,7 +25,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.openapi.wm.impl.welcomeScreen.WelcomeFrame;
 import com.intellij.ui.OnePixelSplitter;
-import com.intellij.ui.components.labels.LinkLabel;
+import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.labels.LinkListener;
 import com.intellij.ui.components.panels.OpaquePanel;
 import com.intellij.ui.components.panels.Wrapper;
@@ -48,7 +48,7 @@ import java.util.*;
  * @author Alexander Lobas
  */
 public class PluginUpdateDialog extends DialogWrapper {
-  private final Collection<PluginDownloader> myDownloaders;
+  private final Collection<? extends PluginDownloader> myDownloaders;
 
   private final MyPluginModel myPluginModel;
   private final PluginsGroupComponent myPluginsPanel;
@@ -56,19 +56,19 @@ public class PluginUpdateDialog extends DialogWrapper {
   private final PluginDetailsPageComponent myDetailsPage;
   private final JLabel myTotalLabel = new JLabel();
 
-  private final JLabel myIgnoreAction;
+  private final ActionLink myIgnoreAction;
 
   private Runnable myFinishCallback;
 
   public PluginUpdateDialog(@Nullable Project project,
-                            @NotNull Collection<PluginDownloader> updatedPlugins,
-                            @Nullable Collection<IdeaPluginDescriptor> customRepositoryPlugins) {
+                            @NotNull Collection<? extends PluginDownloader> updatedPlugins,
+                            @Nullable Collection<? extends IdeaPluginDescriptor> customRepositoryPlugins) {
     super(true);
     setTitle(IdeBundle.message("dialog.title.plugin.updates"));
 
     myDownloaders = updatedPlugins;
 
-    myIgnoreAction = new LinkLabel<>(IdeBundle.message("updates.ignore.updates.button", updatedPlugins.size()), null, (__, ___) -> {
+    myIgnoreAction = new ActionLink(IdeBundle.message("updates.ignore.updates.button", updatedPlugins.size()), e -> {
       close(CANCEL_EXIT_CODE);
       ignorePlugins(ContainerUtil.map(myGroup.ui.plugins, component -> component.getPluginDescriptor()));
     });
@@ -82,7 +82,7 @@ public class PluginUpdateDialog extends DialogWrapper {
       @Override
       @NotNull
       protected Collection<IdeaPluginDescriptor> getCustomRepoPlugins() {
-        return customRepositoryPlugins == null ? super.getCustomRepoPlugins() : customRepositoryPlugins;
+        return customRepositoryPlugins == null ? super.getCustomRepoPlugins() : Collections.unmodifiableCollection(customRepositoryPlugins);
       }
     };
 
@@ -301,7 +301,7 @@ public class PluginUpdateDialog extends DialogWrapper {
     return myIgnoredPluginsWithVersions;
   }
 
-  static void ignorePlugins(@NotNull List<IdeaPluginDescriptor> descriptors) {
+  static void ignorePlugins(@NotNull List<? extends IdeaPluginDescriptor> descriptors) {
     Set<String> ignoredPlugins = getIgnoredPlugins();
 
     for (IdeaPluginDescriptor descriptor : descriptors) {

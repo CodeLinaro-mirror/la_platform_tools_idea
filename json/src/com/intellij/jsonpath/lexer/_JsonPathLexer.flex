@@ -62,8 +62,6 @@ FLOATING_POINT_LITERAL2="."({DIGIT})+({EXPONENT_PART})?
 FLOATING_POINT_LITERAL3=({DIGIT})+({EXPONENT_PART})
 EXPONENT_PART=[Ee]["+""-"]?({DIGIT})*
 
-IN_OP=[iI][nN]
-
 %eof{
   resetInternal();
 %eof}
@@ -72,22 +70,30 @@ IN_OP=[iI][nN]
 %state REGEX_EXPECTED
 %state SEGMENT_EXPRESSION
 %state SCRIPT_EXPRESSION
+%state NESTED_PATH
 
 %%
 
-<YYINITIAL> {
+<YYINITIAL, NESTED_PATH> {
   "."                                  { pushState(WILDCARD_EXPECTED); return JsonPathTypes.DOT; }
   ".."                                 { pushState(WILDCARD_EXPECTED); return JsonPathTypes.RECURSIVE_DESCENT; }
   "["                                  { pushState(SEGMENT_EXPRESSION); return JsonPathTypes.LBRACKET; }
   {ROOT_CONTEXT}                       { return JsonPathTypes.ROOT_CONTEXT; }
   {EVAL_CONTEXT}                       { return JsonPathTypes.EVAL_CONTEXT; }
   {IDENTIFIER}                         { return JsonPathTypes.IDENTIFIER; }
+  ")"                                  {
+    if (myStateStack.isEmpty()) {
+      return TokenType.BAD_CHARACTER;
+    }
+    yypushback(1);
+    popState();
+  }
   {WHITE_SPACE}                        {
     if (myStateStack.isEmpty()) {
       return TokenType.BAD_CHARACTER;
     }
+    yypushback(1);
     popState();
-    return TokenType.WHITE_SPACE;
   }
 }
 
@@ -98,28 +104,37 @@ IN_OP=[iI][nN]
 <SEGMENT_EXPRESSION> {
   "*"                                  { return JsonPathTypes.WILDCARD; }
   {INDEX_LITERAL}                      { return JsonPathTypes.INTEGER_NUMBER; }
+  "["                                  { return JsonPathTypes.LBRACKET; }
   "]"                                  { popState(); return JsonPathTypes.RBRACKET; }
 }
 
 <SCRIPT_EXPRESSION> {
-  {ROOT_CONTEXT}                       { pushState(YYINITIAL); return JsonPathTypes.ROOT_CONTEXT; }
-  {EVAL_CONTEXT}                       { pushState(YYINITIAL); return JsonPathTypes.EVAL_CONTEXT; }
-}
-
-<YYINITIAL, SEGMENT_EXPRESSION, SCRIPT_EXPRESSION> {
-  "."                                  { return JsonPathTypes.DOT; }
-  ".."                                 { return JsonPathTypes.RECURSIVE_DESCENT; }
+  {ROOT_CONTEXT}                       { pushState(NESTED_PATH); return JsonPathTypes.ROOT_CONTEXT; }
+  {EVAL_CONTEXT}                       { pushState(NESTED_PATH); return JsonPathTypes.EVAL_CONTEXT; }
   "["                                  { return JsonPathTypes.LBRACKET; }
   "]"                                  { return JsonPathTypes.RBRACKET; }
+  "null"                               { return JsonPathTypes.NULL; }
+  "true"                               { return JsonPathTypes.TRUE; }
+  "false"                              { return JsonPathTypes.FALSE; }
+  {IDENTIFIER}                         { return JsonPathTypes.NAMED_OP; }
+}
+
+<YYINITIAL, NESTED_PATH, SEGMENT_EXPRESSION, SCRIPT_EXPRESSION> {
+  "."                                  { return JsonPathTypes.DOT; }
+  ".."                                 { return JsonPathTypes.RECURSIVE_DESCENT; }
+  "{"                                  { return JsonPathTypes.LBRACE; }
+  "}"                                  { return JsonPathTypes.RBRACE; }
   "("                                  { pushState(SCRIPT_EXPRESSION); return JsonPathTypes.LPARENTH; }
   ")"                                  { popState(); return JsonPathTypes.RPARENTH; }
 
   "!"                                  { return JsonPathTypes.NOT_OP; }
 
+  "==="                                { return JsonPathTypes.EEQ_OP; }
+  "!=="                                { return JsonPathTypes.ENE_OP; }
   "=="                                 { return JsonPathTypes.EQ_OP; }
   "!="                                 { return JsonPathTypes.NE_OP; }
   "=~"                                 { pushState(REGEX_EXPECTED); return JsonPathTypes.RE_OP; }
-  {IN_OP}                              { return JsonPathTypes.IN_OP; } // todo nin, subsetof, anyof, noneof, size, empty
+
   ">"                                  { return JsonPathTypes.GT_OP; }
   "<"                                  { return JsonPathTypes.LT_OP; }
   ">="                                 { return JsonPathTypes.GE_OP; }
@@ -138,6 +153,7 @@ IN_OP=[iI][nN]
   "null"                               { return JsonPathTypes.NULL; }
   "true"                               { return JsonPathTypes.TRUE; }
   "false"                              { return JsonPathTypes.FALSE; }
+
   {INTEGER_LITERAL}                    { return JsonPathTypes.INTEGER_NUMBER; }
   {DOUBLE_LITERAL}                     { return JsonPathTypes.DOUBLE_NUMBER; }
   {SINGLE_QUOTED_STRING}               { return JsonPathTypes.SINGLE_QUOTED_STRING; }

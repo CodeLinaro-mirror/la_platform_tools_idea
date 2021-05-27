@@ -3,16 +3,19 @@ package com.intellij.refactoring.actions;
 
 import com.intellij.navigation.TargetPopupPresentation;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiNamedElement;
 import com.intellij.psi.SyntheticElement;
+import com.intellij.refactoring.InplaceRefactoringContinuation;
 import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.refactoring.rename.PsiElementRenameHandler;
 import com.intellij.refactoring.rename.Renamer;
 import com.intellij.refactoring.rename.RenamerFactory;
 import com.intellij.refactoring.util.CommonRefactoringUtil;
+import com.intellij.util.SlowOperations;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -35,8 +38,15 @@ public class RenameElementAction extends AnAction implements UpdateInBackground 
 
   @ApiStatus.Internal
   public boolean isAvailable(@NotNull DataContext dataContext) {
-    return dataContext.getData(CommonDataKeys.PROJECT) != null
-           && getAvailableRenamers(dataContext).findAny().isPresent();
+    Project project = dataContext.getData(CommonDataKeys.PROJECT);
+    if (project == null) {
+      return false;
+    }
+    Editor editor = dataContext.getData(CommonDataKeys.EDITOR);
+    if (editor != null && InplaceRefactoringContinuation.hasInplaceContinuation(editor, RenameElementAction.class)) {
+      return true;
+    }
+    return SlowOperations.allowSlowOperations(() -> getAvailableRenamers(dataContext).findAny().isPresent());
   }
 
   @Override
@@ -46,12 +56,16 @@ public class RenameElementAction extends AnAction implements UpdateInBackground 
     if (project == null) {
       return;
     }
+    Editor editor = dataContext.getData(CommonDataKeys.EDITOR);
+    if (editor != null && InplaceRefactoringContinuation.tryResumeInplaceContinuation(project, editor, RenameElementAction.class)) {
+      return;
+    }
 
     if (!PsiDocumentManager.getInstance(project).commitAllDocumentsUnderProgress()) {
       return;
     }
 
-    List<Renamer> renamers = getAvailableRenamers(dataContext).collect(Collectors.toList());
+    List<Renamer> renamers = SlowOperations.allowSlowOperations(() -> getAvailableRenamers(dataContext).collect(Collectors.toList()));
     if (renamers.isEmpty()) {
       String message = RefactoringBundle.getCannotRefactorMessage(
         RefactoringBundle.message("error.wrong.caret.position.symbol.to.refactor")

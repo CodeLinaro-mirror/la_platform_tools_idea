@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins.cl;
 
 import com.intellij.diagnostic.PluginException;
@@ -29,6 +29,8 @@ import java.security.cert.Certificate;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 @ApiStatus.Internal
 @ApiStatus.NonExtendable
@@ -127,17 +129,25 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
   private final int instanceId;
   private volatile int state = ACTIVE;
 
+  private final @Nullable ResolveScopeManager resolveScopeManager;
+
+  public interface ResolveScopeManager {
+    boolean isDefinitelyAlienClass(String name, String packagePrefix);
+  }
+
   public PluginClassLoader(@NotNull UrlClassLoader.Builder builder,
                            @NotNull ClassLoader @NotNull [] parents,
                            @NotNull PluginDescriptor pluginDescriptor,
                            @Nullable Path pluginRoot,
                            @NotNull ClassLoader coreLoader,
+                           @Nullable ResolveScopeManager resolveScopeManager,
                            @Nullable String packagePrefix,
                            @Nullable ClassPath.ResourceFileFactory resourceFileFactory) {
     super(builder, resourceFileFactory, isParallelCapable);
 
     instanceId = instanceIdProducer.incrementAndGet();
 
+    this.resolveScopeManager = resolveScopeManager;
     this.parents = parents;
     this.pluginDescriptor = pluginDescriptor;
     pluginId = pluginDescriptor.getPluginId();
@@ -218,11 +228,23 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
     }
 
     long startTime = StartUpMeasurer.measuringPluginStartupCosts ? StartUpMeasurer.getCurrentTime() : -1;
-    Class<?> c = loadClassInsideSelf(name, forceLoadFromSubPluginClassloader);
+    Class<?> c;
+    try {
+      c = loadClassInsideSelf(name, forceLoadFromSubPluginClassloader);
+    }
+    catch (IOException e) {
+      throw new ClassNotFoundException(name, e);
+    }
+
     if (c == null) {
       for (ClassLoader classloader : getAllParents()) {
         if (classloader instanceof UrlClassLoader) {
-          c = ((UrlClassLoader)classloader).loadClassInsideSelf(name, false);
+          try {
+            c = ((UrlClassLoader)classloader).loadClassInsideSelf(name, false);
+          }
+          catch (IOException e) {
+            throw new ClassNotFoundException(name, e);
+          }
           if (c != null) {
             break;
           }
@@ -300,8 +322,8 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
   }
 
   @Override
-  public @Nullable Class<?> loadClassInsideSelf(@NotNull String name, boolean forceLoadFromSubPluginClassloader) {
-    if (packagePrefix != null && isDefinitelyAlienClass(name, packagePrefix)) {
+  public @Nullable Class<?> loadClassInsideSelf(@NotNull String name, boolean forceLoadFromSubPluginClassloader) throws IOException {
+    if (resolveScopeManager != null && resolveScopeManager.isDefinitelyAlienClass(name, packagePrefix)) {
       return null;
     }
 
@@ -340,108 +362,94 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
   private void logClass(@NotNull String name, @NotNull Writer logStream, @Nullable LinkageError exception) {
     try {
       // must be as one write call since write is performed from multiple threads
-      String specifier = getClass() == PluginClassLoader.class ? "m" : "s = " + ((IdeaPluginDescriptor)pluginDescriptor).getDescriptorPath();
-      logStream.write(name + " [" + specifier + "] " + pluginId.getIdString() + (packagePrefix == null ? "" : (':' + packagePrefix)) + '\n' + (exception == null ? "" : exception.getMessage()));
+      String descriptorPath = ((IdeaPluginDescriptor)pluginDescriptor).getDescriptorPath();
+      String specifier = descriptorPath == null ? "m" : "sub = " + descriptorPath;
+      logStream.write(name + " [" + specifier + "] " + pluginId.getIdString() + (packagePrefix == null ? "" : (':' + packagePrefix))
+                      + '\n' + (exception == null ? "" : exception.getMessage()));
     }
     catch (IOException ignored) {
     }
   }
 
-  protected boolean isDefinitelyAlienClass(@NotNull String name, @NotNull String packagePrefix) {
-    // packed into plugin jar
-    return !name.startsWith(packagePrefix) && !name.startsWith("com.intellij.ultimate.PluginVerifier");
+  @Override
+  public final @Nullable URL findResource(@NotNull String name) {
+    return findResource(name, Resource::getURL, ClassLoader::getResource);
   }
 
   @Override
-  public final URL findResource(String name) {
-    URL resource = findOwnResource(name);
-    if (resource != null) {
-      return resource;
-    }
-
-    for (ClassLoader classloader : getAllParents()) {
-      if (classloader instanceof PluginClassLoader) {
-        resource = ((PluginClassLoader)classloader).findOwnResource(name);
+  public final @Nullable InputStream getResourceAsStream(@NotNull String name) {
+    Function<Resource, InputStream> f1 = resource -> {
+      try {
+        return resource.getInputStream();
       }
-      else {
-        resource = classloader.getResource(name);
+      catch (IOException e) {
+        Logger.getInstance(PluginClassLoader.class).error(e);
+        return null;
       }
-
-      if (resource != null) {
-        return resource;
+    };
+    BiFunction<ClassLoader, String, InputStream> f2 = (cl, path) -> {
+      try {
+        return cl.getResourceAsStream(path);
       }
-    }
-
-    return null;
+      catch (Exception e) {
+        Logger.getInstance(PluginClassLoader.class).error(e);
+        return null;
+      }
+    };
+    return findResource(name, f1, f2);
   }
 
-  private @Nullable URL findOwnResource(String name) {
-    return super.findResource(name);
-  }
-
-  @Override
-  public final InputStream getResourceAsStream(String name) {
+  private <T> @Nullable T findResource(String name, Function<Resource, T> f1, BiFunction<ClassLoader, String, T> f2) {
     String canonicalPath = toCanonicalPath(name);
 
-    InputStream stream = getOwnResourceAsStreamByCanonicalPath(canonicalPath);
-    if (stream != null) {
-      return stream;
+    if (canonicalPath.startsWith("/")) {
+      canonicalPath = canonicalPath.substring(1);
+      //noinspection SpellCheckingInspection
+      if (!canonicalPath.startsWith("/org/bridj/")) {
+        String message = "Do not request resource from classloader using path with leading slash";
+        Logger.getInstance(PluginClassLoader.class).error(message, new PluginException(name, pluginId));
+      }
+    }
+
+    Resource resource = classPath.findResource(canonicalPath);
+    if (resource != null) {
+      return f1.apply(resource);
     }
 
     for (ClassLoader classloader : getAllParents()) {
       if (classloader instanceof PluginClassLoader) {
-        stream = ((PluginClassLoader)classloader).getOwnResourceAsStreamByCanonicalPath(canonicalPath);
+        resource = ((PluginClassLoader)classloader).classPath.findResource(canonicalPath);
+        if (resource != null) {
+          return f1.apply(resource);
+        }
       }
       else {
-        stream = classloader.getResourceAsStream(canonicalPath);
-      }
-
-      if (stream != null) {
-        return stream;
+        T t = f2.apply(classloader, canonicalPath);
+        if (t != null) {
+          return t;
+        }
       }
     }
 
     return null;
   }
 
-  private @Nullable InputStream getOwnResourceAsStreamByCanonicalPath(String canonicalPath) {
-    try {
-      Resource resource = classPath.getResource(canonicalPath);
-      if (resource == null && canonicalPath.startsWith("/")) {
-        throw new IllegalArgumentException("Do not request resource from classloader using path with leading slash");
-      }
-      return resource == null ? null : resource.getInputStream();
-    }
-    catch (IOException e) {
-      return null;
-    }
-  }
-
   @Override
-  public final Enumeration<URL> findResources(String name) throws IOException {
+  public final @NotNull Enumeration<URL> findResources(@NotNull String name) throws IOException {
     List<Enumeration<URL>> resources = new ArrayList<>();
-    resources.add(findOwnResources(name));
+    resources.add(classPath.getResources(name));
     for (ClassLoader classloader : getAllParents()) {
       if (classloader instanceof PluginClassLoader) {
-        try {
-          resources.add(((PluginClassLoader)classloader).findOwnResources(name));
-        }
-        catch (IOException ignore) {
-        }
+        resources.add(((PluginClassLoader)classloader).classPath.getResources(name));
       }
       else {
         try {
           resources.add(classloader.getResources(name));
         }
-        catch (IOException ignore) {
-        }
+        catch (IOException ignore) { }
       }
     }
     return new DeepEnumeration(resources);
-  }
-
-  private Enumeration<URL> findOwnResources(String name) throws IOException {
-    return super.findResources(name);
   }
 
   @SuppressWarnings("UnusedDeclaration")
@@ -484,10 +492,10 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
   }
 
   private static final class DeepEnumeration implements Enumeration<URL> {
-    private final List<Enumeration<URL>> list;
+    private final @NotNull List<? extends Enumeration<URL>> list;
     private int myIndex;
 
-    DeepEnumeration(@NotNull List<Enumeration<URL>> enumerations) {
+    DeepEnumeration(@NotNull List<? extends Enumeration<URL>> enumerations) {
       list = enumerations;
     }
 
@@ -560,8 +568,7 @@ public class PluginClassLoader extends UrlClassLoader implements PluginAwareClas
       try {
         logStream.flush();
       }
-      catch (IOException ignore) {
-      }
+      catch (IOException ignore) { }
     }
   }
 }

@@ -150,11 +150,11 @@ public final class ExternalSystemApiUtil {
 
   /**
    * @param path target path
-   * @return absolute path that points to the same location as the given one and that uses only slashes
+   * @return path that points to the same location as the given one and that uses only slashes
    */
   @NotNull
   public static String toCanonicalPath(@NotNull String path) {
-    String p = normalizePath(new File(path).getAbsolutePath());
+    String p = normalizePath(path);
     assert p != null;
     return FileUtil.toCanonicalPath(p);
   }
@@ -180,12 +180,12 @@ public final class ExternalSystemApiUtil {
     return ExternalSystemManager.EP_NAME.getExtensionList();
   }
 
-  public static MultiMap<Key<?>, DataNode<?>> recursiveGroup(@NotNull Collection<DataNode<?>> nodes) {
+  public static MultiMap<Key<?>, DataNode<?>> recursiveGroup(@NotNull Collection<? extends DataNode<?>> nodes) {
     MultiMap<Key<?>, DataNode<?>> result = new ContainerUtil.KeyOrderedMultiMap<>();
-    Queue<Collection<DataNode<?>>> queue = new LinkedList<>();
+    Queue<Collection<? extends DataNode<?>>> queue = new LinkedList<>();
     queue.add(nodes);
     while (!queue.isEmpty()) {
-      Collection<DataNode<?>> _nodes = queue.remove();
+      Collection<? extends DataNode<?>> _nodes = queue.remove();
       result.putAllValues(group(_nodes));
       for (DataNode<?> _node : _nodes) {
         queue.add(_node.getChildren());
@@ -423,7 +423,7 @@ public final class ExternalSystemApiUtil {
 
   @Nullable
   public static String normalizePath(@Nullable String s) {
-    return StringUtil.isEmpty(s) ? null : s.replace('\\', ExternalSystemConstants.PATH_SEPARATOR);
+    return s == null ? null : s.replace('\\', ExternalSystemConstants.PATH_SEPARATOR);
   }
 
   /**
@@ -694,9 +694,10 @@ public final class ExternalSystemApiUtil {
     ExternalProjectSettings linkedProjectSettings = settings.getLinkedProjectSettings(projectPath);
     if (linkedProjectSettings == null) return Collections.emptyList();
 
-    ExternalProjectInfo projectInfo = ProjectDataManager.getInstance().getExternalProjectsData(project, systemId).stream()
-      .filter(info -> FileUtil.pathsEqual(linkedProjectSettings.getExternalProjectPath(), info.getExternalProjectPath()))
-      .findFirst().orElse(null);
+    ExternalProjectInfo projectInfo = ContainerUtil.find(
+      ProjectDataManager.getInstance().getExternalProjectsData(project, systemId),
+      info -> FileUtil.pathsEqual(linkedProjectSettings.getExternalProjectPath(), info.getExternalProjectPath())
+    );
 
     if (projectInfo == null) return Collections.emptyList();
     DataNode<ProjectData> projectStructure = projectInfo.getExternalProjectStructure();
@@ -704,9 +705,10 @@ public final class ExternalSystemApiUtil {
 
     List<TaskData> tasks = new SmartList<>();
 
-    DataNode<ModuleData> moduleDataNode = findAll(projectStructure, ProjectKeys.MODULE).stream()
-      .filter(moduleNode -> FileUtil.pathsEqual(projectPath, moduleNode.getData().getLinkedExternalProjectPath()))
-      .findFirst().orElse(null);
+    DataNode<ModuleData> moduleDataNode = ContainerUtil.find(
+      findAll(projectStructure, ProjectKeys.MODULE),
+      moduleNode -> FileUtil.pathsEqual(projectPath, moduleNode.getData().getLinkedExternalProjectPath())
+    );
     if (moduleDataNode == null) return Collections.emptyList();
 
     findAll(moduleDataNode, ProjectKeys.TASK).stream().map(DataNode::getData).forEach(tasks::add);

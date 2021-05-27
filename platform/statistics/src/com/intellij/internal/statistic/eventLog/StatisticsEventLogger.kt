@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.util.Disposer
+import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -17,11 +18,13 @@ private val EP_NAME = ExtensionPointName<StatisticsEventLoggerProvider>("com.int
 
 interface StatisticsEventLogger {
   @Deprecated("Use StatisticsEventLogger.logAsync()", ReplaceWith("logAsync(group, eventId, isState)"))
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   fun log(group: EventLogGroup, eventId: String, isState: Boolean) {
     logAsync(group, eventId, isState)
   }
 
   @Deprecated("Use StatisticsEventLogger.logAsync", ReplaceWith("logAsync(group, eventId, data, isState)"))
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   fun log(group: EventLogGroup, eventId: String, data: Map<String, Any>, isState: Boolean) {
     logAsync(group, eventId, data, isState)
   }
@@ -61,8 +64,8 @@ abstract class StatisticsEventLoggerProvider(val recorderId: String,
     val app = ApplicationManager.getApplication()
     val isEap = app != null && app.isEAP
     val isHeadless = app != null && app.isHeadlessEnvironment
-    val config = EventLogConfiguration
-    val writer = StatisticsEventLogFileWriter(recorderId, maxFileSize, isEap, config.build)
+    val config = EventLogConfiguration.getOrCreate(recorderId)
+    val writer = StatisticsEventLogFileWriter(recorderId, maxFileSize, isEap, EventLogConfiguration.build)
 
     val configService = EventLogConfigOptionsService.getInstance()
     val throttledWriter = StatisticsEventLogThrottleWriter(
@@ -70,7 +73,7 @@ abstract class StatisticsEventLoggerProvider(val recorderId: String,
     )
 
     val logger = StatisticsFileEventLogger(
-      recorderId, config.sessionId, isHeadless, config.build, config.bucket.toString(), version.toString(), throttledWriter,
+      recorderId, config.sessionId, isHeadless, EventLogConfiguration.build, config.bucket.toString(), version.toString(), throttledWriter,
       UsageStatisticsPersistenceComponent.getInstance()
     )
     Disposer.register(ApplicationManager.getApplication(), logger)

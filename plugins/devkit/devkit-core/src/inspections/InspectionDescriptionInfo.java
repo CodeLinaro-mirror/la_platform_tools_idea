@@ -3,6 +3,7 @@ package org.jetbrains.idea.devkit.inspections;
 
 import com.intellij.codeInspection.InspectionEP;
 import com.intellij.codeInspection.InspectionProfileEntry;
+import com.intellij.lang.xml.XMLLanguage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
@@ -15,9 +16,9 @@ import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.InheritanceUtil;
-import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.psi.xml.XmlAttribute;
 import com.intellij.psi.xml.XmlAttributeValue;
+import com.intellij.uast.UastModificationTracker;
 import com.intellij.util.Query;
 import com.intellij.util.xml.DomElement;
 import com.intellij.util.xml.DomFileElement;
@@ -93,7 +94,9 @@ public final class InspectionDescriptionInfo {
     return CachedValuesManager.getCachedValue(psiClass, () -> {
       Module module = ModuleUtilCore.findModuleForPsiElement(psiClass);
       Extension extension = module == null ? null : doFindExtension(module, psiClass);
-      return CachedValueProvider.Result.create(extension, PsiModificationTracker.MODIFICATION_COUNT);
+      return CachedValueProvider.Result.create(extension,
+                                               UastModificationTracker.getInstance(psiClass.getProject()),
+                                               psiClass.getManager().getModificationTracker().forLanguage(XMLLanguage.INSTANCE));
     });
   }
 

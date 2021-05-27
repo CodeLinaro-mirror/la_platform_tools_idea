@@ -3,7 +3,6 @@ package org.jetbrains.plugins.terminal.fixture;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
 import com.jediterm.pty.PtyProcessTtyConnector;
 import com.jediterm.terminal.TtyConnector;
 import com.pty4j.PtyProcess;
@@ -12,6 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.terminal.JBTerminalSystemSettingsProvider;
 import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner;
 import org.jetbrains.plugins.terminal.ShellTerminalWidget;
+import org.jetbrains.plugins.terminal.TerminalProcessOptions;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,12 +25,12 @@ public class TestShellSession {
   public final TestTerminalBufferWatcher myWatcher;
 
   public TestShellSession(@NotNull Project project, @NotNull Disposable parentDisposable) throws ExecutionException {
-    LocalTerminalDirectRunner runner = LocalTerminalDirectRunner.createTerminalRunner(project);
-    PtyProcess process = runner.createProcess(project.getBasePath());
-    TtyConnector connector = new PtyProcessTtyConnector(process, StandardCharsets.UTF_8);
     JBTerminalSystemSettingsProvider settingsProvider = new JBTerminalSystemSettingsProvider();
     myWidget = new ShellTerminalWidget(project, settingsProvider, parentDisposable);
-    Disposer.register(myWidget, settingsProvider);
+
+    LocalTerminalDirectRunner runner = LocalTerminalDirectRunner.createTerminalRunner(project);
+    PtyProcess process = runner.createProcess(new TerminalProcessOptions(project.getBasePath(), null, null), myWidget);
+    TtyConnector connector = new PtyProcessTtyConnector(process, StandardCharsets.UTF_8);
     myWidget.start(connector);
     myWatcher = new TestTerminalBufferWatcher(myWidget.getTerminalTextBuffer(), myWidget.getTerminal());
   }

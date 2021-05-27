@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.build;
 
 import com.intellij.build.process.BuildProcessHandler;
@@ -6,12 +6,10 @@ import com.intellij.execution.runners.ExecutionUtil;
 import com.intellij.execution.ui.BaseContentCloseListener;
 import com.intellij.execution.ui.RunContentManagerImpl;
 import com.intellij.icons.AllIcons;
-import com.intellij.ide.DataManager;
 import com.intellij.ide.impl.ContentManagerWatcher;
 import com.intellij.ide.startup.StartupManagerEx;
 import com.intellij.lang.LangBundle;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
@@ -46,7 +44,7 @@ import static com.intellij.util.ContentUtilEx.getFullName;
 /**
  * @author Vladislav.Soroka
  */
-public final class BuildContentManagerImpl implements BuildContentManager {
+public final class BuildContentManagerImpl implements BuildContentManager, Disposable {
   /**
    * @deprecated use Build_Tab_Title_Supplier instead
    */
@@ -72,6 +70,10 @@ public final class BuildContentManagerImpl implements BuildContentManager {
   }
 
   @Override
+  public void dispose() {
+  }
+
+  @Override
   public @NotNull ToolWindow getOrCreateToolWindow() {
     ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
     ToolWindow toolWindow = toolWindowManager.getToolWindow(TOOL_WINDOW_ID);
@@ -82,21 +84,6 @@ public final class BuildContentManagerImpl implements BuildContentManager {
     toolWindow = toolWindowManager.registerToolWindow(RegisterToolWindowTask.closable(
       TOOL_WINDOW_ID, UIBundle.messagePointer("tool.window.name.build"), AllIcons.Toolwindows.ToolWindowBuild));
     ContentManager contentManager = toolWindow.getContentManager();
-    contentManager.addDataProvider(new DataProvider() {
-      private int myInsideGetData = 0;
-
-      @Override
-      public Object getData(@NotNull String dataId) {
-        myInsideGetData++;
-        try {
-          return myInsideGetData == 1 ? DataManager.getInstance().getDataContext(contentManager.getComponent()).getData(dataId) : null;
-        }
-        finally {
-          myInsideGetData--;
-        }
-      }
-    });
-
     ContentManagerWatcher.watchContentManager(toolWindow, contentManager);
     return toolWindow;
   }
@@ -242,7 +229,7 @@ public final class BuildContentManagerImpl implements BuildContentManager {
     if (closeListenerMap != null) {
       CloseListener closeListener = closeListenerMap.remove(buildDescriptor.getId());
       if (closeListener != null) {
-        closeListener.dispose();
+        Disposer.dispose(closeListener);
         if (closeListenerMap.isEmpty()) {
           content.putUserData(CONTENT_CLOSE_LISTENERS, null);
         }
@@ -269,7 +256,7 @@ public final class BuildContentManagerImpl implements BuildContentManager {
     private @Nullable BuildProcessHandler myProcessHandler;
 
     private CloseListener(final @NotNull Content content, @NotNull BuildProcessHandler processHandler) {
-      super(content, myProject);
+      super(content, myProject, BuildContentManagerImpl.this);
       myProcessHandler = processHandler;
     }
 

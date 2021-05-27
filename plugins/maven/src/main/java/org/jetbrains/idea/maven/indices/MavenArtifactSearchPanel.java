@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.indices;
 
 import com.intellij.CommonBundle;
@@ -9,7 +9,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.Pair;
 import com.intellij.ui.*;
-import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.Alarm;
@@ -293,7 +292,7 @@ public class MavenArtifactSearchPanel extends JPanel {
       add(myLeftComponent);
       add(myRightComponent);
 
-      Font font = EditorFontType.PLAIN.getGlobalFont();
+      Font font = EditorFontType.getGlobalPlainFont();
       myLeftComponent.setFont(font);
       myRightComponent.setFont(font);
 
@@ -324,7 +323,7 @@ public class MavenArtifactSearchPanel extends JPanel {
           Insets insets = tree.getInsets();
           w -= insets.left + insets.right;
 
-          JScrollPane scrollPane = JBScrollPane.findScrollPane(tree);
+          JScrollPane scrollPane = ComponentUtil.getScrollPane(tree);
           if (scrollPane != null) {
             JScrollBar sb = scrollPane.getVerticalScrollBar();
             if (sb != null) {

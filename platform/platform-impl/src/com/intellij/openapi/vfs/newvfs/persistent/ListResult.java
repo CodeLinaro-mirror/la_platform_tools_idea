@@ -1,10 +1,11 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs.newvfs.persistent;
 
 import com.intellij.openapi.vfs.newvfs.ChildInfoImpl;
 import com.intellij.openapi.vfs.newvfs.events.ChildInfo;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.FastUtilHashingStrategies;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenCustomHashMap;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Objects;
 
 // stores result of various FSRecords.list*() methods and the current FSRecords.localModCount for optimistic locking support
-class ListResult {
+final class ListResult {
   private final int modStamp;
   // sorted by getId()
   final List<? extends ChildInfo> children;
@@ -94,8 +95,8 @@ class ListResult {
     // typically, when `newChildren` contains 5K entries + couple absent from `oldChildren`, and `oldChildren` contains 5K+couple entries, these maps will contain a couple of entries absent from each other
 
     // name -> index in result
-    Object2IntOpenCustomHashMap<CharSequence>
-      nameToIndex = new Object2IntOpenCustomHashMap<>(Math.max(oldChildren.size(), newChildren.size()), FastUtilHashingStrategies
+    Object2IntMap<CharSequence> nameToIndex =
+      new Object2IntOpenCustomHashMap<>(Math.max(oldChildren.size(), newChildren.size()), FastUtilHashingStrategies
       .getCharSequenceStrategy(isCaseSensitive));
     // distinguish between absence and the 0th index
     nameToIndex.defaultReturnValue(-1);

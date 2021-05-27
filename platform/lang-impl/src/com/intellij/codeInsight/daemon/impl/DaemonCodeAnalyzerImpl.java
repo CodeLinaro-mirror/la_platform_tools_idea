@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeHighlighting.*;
@@ -27,7 +27,6 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.RangeMarker;
 import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.fileEditor.FileEditor;
-import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.fileEditor.impl.text.AsyncEditorLoader;
@@ -74,7 +73,8 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
   private final Project myProject;
   private final DaemonCodeAnalyzerSettings mySettings;
   @NotNull private final PsiDocumentManager myPsiDocumentManager;
-  private final FileEditorManager myFileEditorManager;
+  private final FileEditorManagerEx myFileEditorManager;
+  private final EditorTracker myEditorTracker;
   private DaemonProgressIndicator myUpdateProgress = new DaemonProgressIndicator(); //guarded by this
 
   private final UpdateRunnable myUpdateRunnable;
@@ -134,7 +134,8 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
       myDisposed = true;
       myLastSettings = null;
     });
-    myFileEditorManager = FileEditorManager.getInstance(myProject);
+    myFileEditorManager = FileEditorManagerEx.getInstanceEx(myProject);
+    myEditorTracker = EditorTracker.getInstance(project);
   }
 
   @Override
@@ -445,11 +446,10 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
 
   @Override
   public void settingsChanged() {
-    DaemonCodeAnalyzerSettings settings = DaemonCodeAnalyzerSettings.getInstance();
-    if (settings.isCodeHighlightingChanged(myLastSettings)) {
+    if (mySettings.isCodeHighlightingChanged(myLastSettings)) {
       restart();
     }
-    myLastSettings = ((DaemonCodeAnalyzerSettingsImpl)settings).clone();
+    myLastSettings = ((DaemonCodeAnalyzerSettingsImpl)mySettings).clone();
   }
 
   @Override
@@ -629,6 +629,10 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
       return true;
     }
     return false;
+  }
+
+  void cancelSubmittedPasses() {
+    myPassExecutorService.cancelAll(true);
   }
 
 
@@ -907,9 +911,16 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
     }
 
     @Override
+    public void dispose() {
+      super.dispose();
+      myFileEditors = null;
+    }
+
+    @Override
     public void stopIfRunning() {
+      Collection<? extends FileEditor> editors = myFileEditors;
       super.stopIfRunning();
-      myProject.getMessageBus().syncPublisher(DAEMON_EVENT_TOPIC).daemonFinished(myFileEditors);
+      myProject.getMessageBus().syncPublisher(DAEMON_EVENT_TOPIC).daemonFinished(editors);
       myFileEditors = null;
       HighlightingSessionImpl.clearProgressIndicator(this);
     }
@@ -935,8 +946,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
     app.assertIsDispatchThread();
 
     // editors in modal context
-    EditorTracker editorTracker = myProject.getServiceIfCreated(EditorTracker.class);
-    List<Editor> editors = editorTracker == null ? Collections.emptyList() : editorTracker.getActiveEditors();
+    List<Editor> editors = myEditorTracker.getActiveEditors();
     Collection<FileEditor> activeTextEditors;
     if (editors.isEmpty()) {
       activeTextEditors = Collections.emptyList();
@@ -958,10 +968,9 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
     Collection<VirtualFile> files = new HashSet<>(activeTextEditors.size());
     if (!app.isUnitTestMode()) {
       // editors in tabs
-      FileEditorManagerEx fileEditorManager = FileEditorManagerEx.getInstanceEx(myProject);
-      for (FileEditor tabEditor : fileEditorManager.getSelectedEditorWithRemotes()) {
+      for (FileEditor tabEditor : myFileEditorManager.getSelectedEditorWithRemotes()) {
         if (!tabEditor.isValid()) continue;
-        VirtualFile file = fileEditorManager.getFile(tabEditor);
+        VirtualFile file = tabEditor.getFile();
         if (file != null) {
           files.add(file);
         }
@@ -971,9 +980,8 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
 
     // do not duplicate documents
     if (!activeTextEditors.isEmpty()) {
-      FileEditorManagerEx fileEditorManager = FileEditorManagerEx.getInstanceEx(myProject);
       for (FileEditor fileEditor : activeTextEditors) {
-        VirtualFile file = fileEditorManager.getFile(fileEditor);
+        VirtualFile file = fileEditor.getFile();
         if (file != null && files.contains(file)) {
           continue;
         }
@@ -988,6 +996,7 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
    */
   @Deprecated
   @ApiStatus.Internal
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
   public void runLocalInspectionPassAfterCompletionOfGeneralHighlightPass(boolean flag) {
     serializeCodeInsightPasses(flag);
   }

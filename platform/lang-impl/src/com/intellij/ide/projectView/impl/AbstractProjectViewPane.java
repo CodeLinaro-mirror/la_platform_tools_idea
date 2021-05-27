@@ -175,6 +175,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
    * @deprecated unused
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   protected final void fireTreeChangeListener() {
   }
 
@@ -471,6 +472,7 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
 
   /** @deprecated use {@link AbstractProjectViewPane#getValueFromNode(Object)} **/
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   protected Object exhumeElementFromNode(DefaultMutableTreeNode node) {
     return getValueFromNode(node);
   }
@@ -529,10 +531,14 @@ public abstract class AbstractProjectViewPane implements DataProvider, Disposabl
     }
   }
 
+  protected @NotNull TreeState createTreeState(@NotNull JTree tree) {
+    return TreeState.createOn(tree);
+  }
+
   protected void saveExpandedPaths() {
     myTreeStateRestored.set(false);
     if (myTree != null) {
-      TreeState treeState = TreeState.createOn(myTree);
+      TreeState treeState = createTreeState(myTree);
       if (!treeState.isEmpty()) {
         myReadTreeState.put(getSubId(), treeState);
       }

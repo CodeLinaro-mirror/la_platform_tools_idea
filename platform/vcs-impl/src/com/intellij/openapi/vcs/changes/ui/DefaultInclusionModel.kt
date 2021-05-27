@@ -5,10 +5,10 @@ import com.intellij.openapi.vcs.changes.InclusionListener
 import com.intellij.openapi.vcs.changes.InclusionModel
 import com.intellij.util.EventDispatcher
 import com.intellij.util.ui.ThreeStateCheckBox
+import com.intellij.vcsUtil.VcsUtil
 import it.unimi.dsi.fastutil.Hash
 import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet
 import java.util.*
-import kotlin.collections.HashSet
 
 abstract class BaseInclusionModel : InclusionModel {
   private val inclusionEventDispatcher = EventDispatcher.create(InclusionListener::class.java)
@@ -51,7 +51,7 @@ class DefaultInclusionModel(
   }
 
   override fun removeInclusion(items: Collection<Any>) {
-    if (inclusion.removeAll(items)) fireInclusionChanged()
+    if (VcsUtil.removeAllFromSet(inclusion, items)) fireInclusionChanged()
   }
 
   override fun setInclusion(items: Collection<Any>) {

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.navigation;
 
@@ -35,6 +35,8 @@ import com.intellij.usages.UsageView;
 import com.intellij.util.Alarm;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.Consumer;
+import com.intellij.util.SlowOperations;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -139,7 +141,9 @@ public abstract class GotoTargetHandler implements CodeInsightActionHandler {
           return myActionElementRenderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
         }
         PsiElementListCellRenderer renderer = getRenderer(value, gotoData);
-        return renderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+        return SlowOperations.allowSlowOperations(
+          () -> renderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+        );
       }
     }).
       setItemsChosenCallback(selectedElements -> {
@@ -251,6 +255,7 @@ public abstract class GotoTargetHandler implements CodeInsightActionHandler {
    * @deprecated, use getChooserTitle(PsiElement, String, int, boolean) instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @NotNull
   protected @NlsContexts.PopupTitle String getChooserTitle(PsiElement sourceElement, String name, int length) {
     LOG.warn("Please override getChooserTitle(PsiElement, String, int, boolean) instead");

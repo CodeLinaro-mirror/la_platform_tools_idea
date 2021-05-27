@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.net;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -6,9 +6,10 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.io.StreamUtil;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.io.CountingGZIPInputStream;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,10 +32,9 @@ public final class NetUtils {
     }
   }
 
-  /**
-   * @deprecated use {@link InetAddress#getLoopbackAddress()}
-   */
+  /** @deprecated use {@link InetAddress#getLoopbackAddress()} */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static InetAddress getLoopbackAddress() {
     return InetAddress.getLoopbackAddress();
   }
@@ -163,7 +163,7 @@ public final class NetUtils {
       indicator.setIndeterminate(expectedContentLength <= 0);
     }
     CountingGZIPInputStream gzipStream = inputStream instanceof CountingGZIPInputStream ? (CountingGZIPInputStream)inputStream : null;
-    final byte[] buffer = FileUtilRt.getThreadLocalBuffer();
+    byte[] buffer = new byte[StreamUtil.BUFFER_SIZE];
     int count;
     int bytesWritten = 0;
     long bytesRead = 0;

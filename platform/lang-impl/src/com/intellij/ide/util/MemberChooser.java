@@ -25,10 +25,7 @@ import com.intellij.util.PlatformIcons;
 import com.intellij.util.containers.FactoryMap;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.tree.TreeUtil;
-import org.jetbrains.annotations.Nls;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import javax.swing.event.TreeSelectionEvent;
@@ -45,7 +42,7 @@ import static com.intellij.ui.tree.TreePathUtil.toTreePathArray;
 import static java.util.Comparator.comparing;
 import static java.util.Comparator.nullsLast;
 
-public class MemberChooser<T extends ClassMember> extends DialogWrapper implements TypeSafeDataProvider {
+public class MemberChooser<T extends ClassMember> extends DialogWrapper implements DataProvider {
   protected Tree myTree;
   private DefaultTreeModel myTreeModel;
   protected JComponent[] myOptionControls;
@@ -63,7 +60,7 @@ public class MemberChooser<T extends ClassMember> extends DialogWrapper implemen
   private final JComponent myHeaderPanel;
 
   protected T[] myElements;
-  protected Comparator<ElementNode> myComparator = new OrderComparator();
+  protected Comparator<? super ElementNode> myComparator = new OrderComparator();
 
   protected final HashMap<MemberNode,ParentNode> myNodeToParentMap = new HashMap<>();
   protected final HashMap<ClassMember, MemberNode> myElementToNodeMap = new HashMap<>();
@@ -136,12 +133,11 @@ public class MemberChooser<T extends ClassMember> extends DialogWrapper implemen
     resetElements(elements, null, false);
   }
 
-  @SuppressWarnings("unchecked")
-  public void resetElements(T[] elements, final @Nullable Comparator<T> sortComparator, final boolean restoreSelectedElements) {
+  public void resetElements(T[] elements, final @Nullable Comparator<? super T> sortComparator, final boolean restoreSelectedElements) {
     final List<T> selectedElements  = restoreSelectedElements && mySelectedElements != null ? new ArrayList<>(mySelectedElements) : null;
     myElements = elements;
     if (sortComparator != null) {
-      myComparator = new ElementNodeComparatorWrapper(sortComparator);
+      myComparator = new ElementNodeComparatorWrapper<>(sortComparator);
     }
     mySelectedNodes.clear();
     myNodeToParentMap.clear();
@@ -495,12 +491,11 @@ public class MemberChooser<T extends ClassMember> extends DialogWrapper implemen
     return myAlphabeticallySorted;
   }
 
-  @SuppressWarnings("unchecked")
-  protected void changeSortComparator(final Comparator<T> comparator) {
-    setSortComparator(new ElementNodeComparatorWrapper(comparator));
+  protected void changeSortComparator(final Comparator<? super T> comparator) {
+    setSortComparator(new ElementNodeComparatorWrapper<>(comparator));
   }
 
-  private void setSortComparator(Comparator<ElementNode> sortComparator) {
+  private void setSortComparator(Comparator<? super ElementNode> sortComparator) {
     if (myComparator.equals(sortComparator)) return;
     myComparator = sortComparator;
     doSort();
@@ -662,16 +657,17 @@ public class MemberChooser<T extends ClassMember> extends DialogWrapper implemen
     super.dispose();
   }
 
+  @Nullable
   @Override
-  public void calcData(@NotNull final DataKey key, @NotNull final DataSink sink) {
-    if (key.equals(CommonDataKeys.PSI_ELEMENT)) {
+  public Object getData(@NotNull String dataId) {
+    if (CommonDataKeys.PSI_ELEMENT.is(dataId)) {
       if (mySelectedElements != null && !mySelectedElements.isEmpty()) {
         T selectedElement = mySelectedElements.iterator().next();
-        if (selectedElement instanceof ClassMemberWithElement) {
-          sink.put(CommonDataKeys.PSI_ELEMENT, ((ClassMemberWithElement)selectedElement).getElement());
-        }
+        return selectedElement instanceof ClassMemberWithElement ?
+               ((ClassMemberWithElement)selectedElement).getElement() : null;
       }
     }
+    return null;
   }
 
   private class MyTreeSelectionListener implements TreeSelectionListener {
@@ -828,6 +824,7 @@ public class MemberChooser<T extends ClassMember> extends DialogWrapper implemen
      * @deprecated use {@linkplain #ShowContainersAction(Supplier, Icon)} instead
      */
     @Deprecated
+    @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
     public ShowContainersAction(@NlsActions.ActionText String text, final Icon icon) {
       this(() -> text, icon);
     }

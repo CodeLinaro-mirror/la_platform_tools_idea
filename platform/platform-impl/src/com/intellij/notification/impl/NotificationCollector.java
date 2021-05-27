@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.notification.impl;
 
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsCollectorImpl;
@@ -104,14 +104,16 @@ public final class NotificationCollector {
     return null;
   }
 
-  public void logNotificationBalloonClosedByUser(@Nullable String notificationId,
+  public void logNotificationBalloonClosedByUser(@Nullable Project project,
+                                                 @Nullable String notificationId,
                                                  @Nullable String notificationDisplayId,
                                                  @Nullable String groupId) {
     if (notificationId == null) return;
-    CLOSED_BY_USER.log(createNotificationData(groupId, notificationId, notificationDisplayId));
+    CLOSED_BY_USER.log(project, createNotificationData(groupId, notificationId, notificationDisplayId));
   }
 
-  public void logNotificationActionInvoked(@NotNull Notification notification,
+  public void logNotificationActionInvoked(@Nullable Project project,
+                                           @NotNull Notification notification,
                                            @NotNull AnAction action,
                                            @NotNull NotificationPlace notificationPlace) {
     List<EventPair<?>> data = createNotificationData(notification.getGroupId(), notification.id, notification.displayId);
@@ -125,15 +127,15 @@ public final class NotificationCollector {
     else {
       ActionsCollectorImpl.addActionClass(data, action, PluginInfoDetectorKt.getPluginInfo(action.getClass()));
     }
-    ACTION_INVOKED.log(data);
+    ACTION_INVOKED.log(project, data);
   }
 
   public void logHyperlinkClicked(@NotNull Notification notification) {
     HYPERLINK_CLICKED.log(createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
   }
 
-  public void logBalloonShownFromEventLog(@NotNull Notification notification) {
-    EVENT_LOG_BALLOON_SHOWN.log(createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
+  public void logBalloonShownFromEventLog(@Nullable Project project, @NotNull Notification notification) {
+    EVENT_LOG_BALLOON_SHOWN.log(project, createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
   }
 
   public void logNotificationSettingsClicked(@NotNull String notificationId,
@@ -142,12 +144,12 @@ public final class NotificationCollector {
     SETTINGS_CLICKED.log(createNotificationData(groupId, notificationId, notificationDisplayId));
   }
 
-  public void logNotificationBalloonExpanded(@NotNull Notification notification) {
-    BALLOON_EXPANDED.log(createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
+  public void logNotificationBalloonExpanded(@Nullable Project project, @NotNull Notification notification) {
+    BALLOON_EXPANDED.log(project, createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
   }
 
-  public void logNotificationBalloonCollapsed(@NotNull Notification notification) {
-    BALLOON_COLLAPSED.log(createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
+  public void logNotificationBalloonCollapsed(@Nullable Project project, @NotNull Notification notification) {
+    BALLOON_COLLAPSED.log(project, createNotificationData(notification.getGroupId(), notification.id, notification.displayId));
   }
 
   private static @NotNull List<EventPair<?>> createNotificationData(@Nullable String groupId,
@@ -252,7 +254,9 @@ public final class NotificationCollector {
 
     @Override
     protected @NotNull ValidationResultType doValidate(@NotNull String data, @NotNull EventContext context) {
-      if (UNKNOWN.equals(data)) return ValidationResultType.ACCEPTED;
+      if (UNKNOWN.equals(data)) {
+        return ValidationResultType.ACCEPTED;
+      }
       if (NotificationGroupManager.getInstance().isRegisteredNotificationId(data)) {
         return ValidationResultType.ACCEPTED;
       }

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.treeView;
 
 import com.intellij.ide.IdeBundle;
@@ -24,7 +24,6 @@ import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.util.ui.update.Activatable;
 import com.intellij.util.ui.update.UiNotifyConnector;
-import gnu.trove.THashSet;
 import org.jetbrains.annotations.*;
 import org.jetbrains.concurrency.AsyncPromise;
 import org.jetbrains.concurrency.Promise;
@@ -120,7 +119,7 @@ public class AbstractTreeUi {
   private UpdaterTreeState myUpdaterState;
   private AbstractTreeBuilder myBuilder;
 
-  private final Set<DefaultMutableTreeNode> myUpdatingChildren = new THashSet<>();
+  private final Set<DefaultMutableTreeNode> myUpdatingChildren = new HashSet<>();
 
   private boolean myCanYield;
 
@@ -3737,7 +3736,7 @@ public class AbstractTreeUi {
           }
 
           clearSelection();
-          Set<Object> toSelect = new THashSet<>();
+          Set<Object> toSelect = new HashSet<>();
           ContainerUtil.addAllNotNull(toSelect, elements);
           if (addToSelection) {
             ContainerUtil.addAllNotNull(toSelect, currentElements);

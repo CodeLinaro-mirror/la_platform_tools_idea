@@ -7,11 +7,11 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.runBackgroundableTask
 import com.intellij.openapi.project.Project
 import org.jetbrains.concurrency.AsyncPromise
-import training.commands.kotlin.TaskTestContext
+import training.dsl.TaskTestContext
 import training.learn.CourseManager
-import training.learn.interfaces.Lesson
+import training.learn.course.KLesson
+import training.learn.course.Lesson
 import training.learn.lesson.LessonListener
-import training.learn.lesson.kimpl.KLesson
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -39,7 +39,7 @@ class LearningLessonsAutoExecutor(val project: Project, private val progress: Pr
     val lessons = CourseManager.instance.lessonsForModules
 
     for (lesson in lessons) {
-      if (lesson !is KLesson) continue
+      if (lesson !is KLesson || lesson.testScriptProperties.skipTesting) continue
       progress.checkCanceled()
       runSingleLesson(lesson)
     }

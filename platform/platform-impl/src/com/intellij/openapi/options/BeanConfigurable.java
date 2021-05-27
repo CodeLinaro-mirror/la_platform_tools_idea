@@ -14,10 +14,7 @@ import com.intellij.util.containers.JBIterable;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.components.BorderLayoutPanel;
 import kotlin.reflect.KMutableProperty0;
-import org.jetbrains.annotations.Nls;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import java.awt.*;
@@ -244,6 +241,7 @@ public abstract class BeanConfigurable<T> implements UnnamedConfigurable, Config
    * @deprecated use {@link #checkBox(String, Getter, Setter)} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   protected void checkBox(@NonNls String fieldName, @NlsContexts.Checkbox String title) {
     myFields.add(new CheckboxField(fieldName, title));
   }
@@ -253,7 +251,7 @@ public abstract class BeanConfigurable<T> implements UnnamedConfigurable, Config
    * Initial checkbox value is obtained from {@code getter}.
    * After the apply, the value from the check box is written back to model via {@code setter}.
    */
-  protected void checkBox(@NlsContexts.Checkbox @NotNull String title, @NotNull Getter<Boolean> getter, @NotNull Setter<Boolean> setter) {
+  protected void checkBox(@NlsContexts.Checkbox @NotNull String title, @NotNull Getter<Boolean> getter, @NotNull Setter<? super Boolean> setter) {
     CheckboxField field = new CheckboxField(new BeanMethodAccessor<>(getter, setter), title);
     myFields.add(field);
   }

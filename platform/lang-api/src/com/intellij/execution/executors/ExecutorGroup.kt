@@ -5,6 +5,7 @@ import com.intellij.execution.Executor
 import com.intellij.execution.Executor.shortenNameIfNeeded
 import com.intellij.execution.configurations.RunProfile
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.NlsActions
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.util.text.TextWithMnemonic
@@ -21,6 +22,9 @@ abstract class ExecutorGroup<Settings : RunExecutorSettings> : Executor() {
   private val executorId2customSettings = mutableMapOf<String, Settings>() //guarded by lock
   private val customSettings2Executor = mutableMapOf<Settings, ProxyExecutor>() //guarded by lock
   private val nextCustomExecutorId = AtomicLong()
+
+  abstract fun getStateWidgetActionText(param: String): @NlsActions.ActionText String
+  abstract fun getStateWidgetChooserText(): @NlsActions.ActionText String
 
   protected fun registerSettings(settings: Settings) {
     customSettingsLock.write {
@@ -88,6 +92,8 @@ abstract class ExecutorGroup<Settings : RunExecutorSettings> : Executor() {
     override fun getHelpId(): String? = null
 
     override fun isApplicable(project: Project): Boolean = settings.isApplicable(project)
+
+    override fun isSupportedOnTarget(): Boolean = group().isSupportedOnTarget
 
     fun group() = this@ExecutorGroup
   }

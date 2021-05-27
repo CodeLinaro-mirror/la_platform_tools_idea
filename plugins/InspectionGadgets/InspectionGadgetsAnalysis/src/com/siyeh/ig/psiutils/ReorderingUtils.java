@@ -337,7 +337,7 @@ public final class ReorderingUtils {
         List<? extends MethodContract> contracts = DfaUtil.addRangeContracts(method, JavaMethodContractUtil.getMethodCallContracts(call));
         contracts = ContainerUtil.filter(contracts, c -> c.getReturnValue().isFail() && c.getConditions().size() == 1);
         if (contracts.isEmpty()) return null;
-        DfaValueFactory factory = new DfaValueFactory(expression.getProject(), null, false);
+        DfaValueFactory factory = new DfaValueFactory(expression.getProject(), null);
         List<DfaRelation> conditions = new ArrayList<>();
         for (MethodContract contract : contracts) {
           ContractValue condition = contract.getConditions().get(0);
@@ -427,6 +427,12 @@ public final class ReorderingUtils {
         return false;
       }
       if (element instanceof PsiExpression && PsiUtil.isAccessedForWriting((PsiExpression)element)) {
+        return false;
+      }
+      if (element instanceof PsiSwitchExpression) {
+        // We cannot correctly process possible NPE in switch selector expression inside 
+        // ConditionCoveredByFurtherConditionInspection.computeOperandValues, 
+        // so let's conservatively assume that the exception is possible
         return false;
       }
       if (element instanceof PsiReferenceExpression) {

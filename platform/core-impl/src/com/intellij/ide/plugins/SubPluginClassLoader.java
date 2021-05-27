@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins;
 
 import com.intellij.ide.plugins.cl.PluginClassLoader;
@@ -7,8 +7,14 @@ import com.intellij.util.lang.UrlClassLoader;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+
 final class SubPluginClassLoader extends PluginClassLoader {
   private final String[] packagePrefixes;
+
+  static {
+    registerAsParallelCapable();
+  }
 
   SubPluginClassLoader(@NotNull IdeaPluginDescriptorImpl pluginDescriptor,
                        @NotNull UrlClassLoader.Builder urlClassLoaderBuilder,
@@ -16,14 +22,14 @@ final class SubPluginClassLoader extends PluginClassLoader {
                        @NotNull String @NotNull [] packagePrefixes,
                        @NotNull ClassLoader coreLoader,
                        @Nullable ClassPath.ResourceFileFactory resourceFileFactory) {
-    super(urlClassLoaderBuilder, parents, pluginDescriptor, pluginDescriptor.getPluginPath(), coreLoader, pluginDescriptor.packagePrefix,
-          resourceFileFactory);
+    super(urlClassLoaderBuilder, parents, pluginDescriptor, pluginDescriptor.getPluginPath(), coreLoader, null, null, resourceFileFactory);
 
+    assert pluginDescriptor.packagePrefix == null;
     this.packagePrefixes = packagePrefixes;
   }
 
   @Override
-  public @Nullable Class<?> loadClassInsideSelf(@NotNull String name, boolean forceLoadFromSubPluginClassloader) {
+  public @Nullable Class<?> loadClassInsideSelf(@NotNull String name, boolean forceLoadFromSubPluginClassloader) throws IOException {
     if (forceLoadFromSubPluginClassloader) {
       return super.loadClassInsideSelf(name, true);
     }

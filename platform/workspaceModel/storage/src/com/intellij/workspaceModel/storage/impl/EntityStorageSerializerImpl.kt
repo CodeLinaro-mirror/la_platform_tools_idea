@@ -15,6 +15,7 @@ import com.intellij.util.SmartList
 import com.intellij.util.containers.*
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.impl.containers.*
+import com.intellij.workspaceModel.storage.impl.containers.BidirectionalMap
 import com.intellij.workspaceModel.storage.impl.indices.*
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
@@ -37,7 +38,7 @@ private val LOG = logger<EntityStorageSerializerImpl>()
 class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver,
                                   private val virtualFileManager: VirtualFileUrlManager) : EntityStorageSerializer {
   companion object {
-    const val SERIALIZER_VERSION = "v8"
+    const val SERIALIZER_VERSION = "v10"
   }
 
   private val KRYO_BUFFER_SIZE = 64 * 1024
@@ -54,14 +55,11 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
     kryo.addDefaultSerializer(VirtualFileUrl::class.java, object : Serializer<VirtualFileUrl>(false, true) {
       override fun write(kryo: Kryo, output: Output, obj: VirtualFileUrl) {
         // TODO Write IDs only
-        val fileUrl = obj.url
-        if (fileUrl.isEmpty()) error("Cannot serialize workspace model because of disposed file pointers")
-        output.writeString(fileUrl)
+        output.writeString(obj.url)
       }
 
       override fun read(kryo: Kryo, input: Input, type: Class<VirtualFileUrl>): VirtualFileUrl {
         val url = input.readString()
-        if (url.isNullOrEmpty()) error("Cannot deserialize workspace model because of broken file pointers")
         return virtualFileManager.fromUrl(url)
       }
     })
@@ -331,6 +329,7 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
 
       kryo.writeClassAndObject(output, storage.indexes.virtualFileIndex.entityId2VirtualFileUrl)
       kryo.writeClassAndObject(output, storage.indexes.virtualFileIndex.vfu2EntityId)
+      kryo.writeObject(output, storage.indexes.virtualFileIndex.entityId2JarDir)
 
       kryo.writeClassAndObject(output, storage.indexes.entitySourceIndex)
       kryo.writeClassAndObject(output, storage.indexes.persistentIdIndex)
@@ -444,15 +443,16 @@ class EntityStorageSerializerImpl(private val typesResolver: EntityTypesResolver
 
         val entityId2VirtualFileUrlInfo = kryo.readClassAndObject(input) as EntityId2Vfu
         val vfu2VirtualFileUrlInfo = kryo.readClassAndObject(input) as Vfu2EntityId
-        val virtualFileIndex = VirtualFileIndex(entityId2VirtualFileUrlInfo, vfu2VirtualFileUrlInfo)
+        val entityId2JarDir = kryo.readObject(input, BidirectionalMultiMap::class.java) as BidirectionalMultiMap<EntityId, VirtualFileUrl>
+        val virtualFileIndex = VirtualFileIndex(entityId2VirtualFileUrlInfo, vfu2VirtualFileUrlInfo, entityId2JarDir)
 
         val entitySourceIndex = kryo.readClassAndObject(input) as EntityStorageInternalIndex<EntitySource>
         val persistentIdIndex = kryo.readClassAndObject(input) as EntityStorageInternalIndex<PersistentEntityId<*>>
         val storageIndexes = StorageIndexes(softLinks, virtualFileIndex, entitySourceIndex, persistentIdIndex)
 
-
-        val storage = WorkspaceEntityStorageImpl(entitiesBarrel, refsTable, storageIndexes)
-        val builder = WorkspaceEntityStorageBuilderImpl.from(storage)
+        val checkingMode = ConsistencyCheckingMode.default()
+        val storage = WorkspaceEntityStorageImpl(entitiesBarrel, refsTable, storageIndexes, checkingMode)
+        val builder = WorkspaceEntityStorageBuilderImpl.from(storage, checkingMode)
 
         builder.entitiesByType.entityFamilies.forEach { family ->
           family?.entities?.asSequence()?.filterNotNull()?.forEach { entityData -> builder.createAddEvent(entityData) }

@@ -28,9 +28,9 @@ import com.intellij.psi.search.scope.packageSet.NamedScopeManager;
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder;
 import com.intellij.psi.search.scope.packageSet.PackageSet;
 import com.intellij.ui.CommonActionsPanel;
+import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.util.IconUtil;
-import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.util.xmlb.annotations.XCollection;
 import org.jetbrains.annotations.NonNls;
@@ -43,8 +43,6 @@ import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
-import java.awt.*;
-import java.util.List;
 import java.util.*;
 
 public class ScopeChooserConfigurable extends MasterDetailsComponent implements SearchableConfigurable {
@@ -67,11 +65,6 @@ public class ScopeChooserConfigurable extends MasterDetailsComponent implements 
   @Override
   protected String getComponentStateKey() {
     return SCOPE_CHOOSER_CONFIGURABLE_UI_KEY;
-  }
-
-  @Override
-  protected Dimension getPanelPreferredSize() {
-    return JBUI.size(400, 200);
   }
 
   @Override
@@ -355,7 +348,7 @@ public class ScopeChooserConfigurable extends MasterDetailsComponent implements 
       super(IdeBundle.message("add.scope.popup.title"), true);
       myFromPopup = fromPopup;
       final Presentation presentation = getTemplatePresentation();
-      presentation.setIcon(IconUtil.getAddIcon());
+      presentation.setIcon(new LayeredIcon(AllIcons.General.Add, AllIcons.General.Dropdown));
       registerCustomShortcutSet(CommonActionsPanel.getCommonShortcut(CommonActionsPanel.Buttons.ADD), myTree);
     }
 

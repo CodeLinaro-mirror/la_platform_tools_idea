@@ -4,6 +4,10 @@ package com.intellij.vcs.log.ui.table.column
 import com.intellij.openapi.extensions.ExtensionPointName
 
 interface VcsLogCustomColumn<T> : VcsLogColumn<T> {
+
+  @JvmDefault
+  fun isEnabledByDefault() = true
+
   companion object {
     @JvmField
     val KEY = ExtensionPointName<VcsLogCustomColumn<*>>("com.intellij.vcsLogCustomColumn")

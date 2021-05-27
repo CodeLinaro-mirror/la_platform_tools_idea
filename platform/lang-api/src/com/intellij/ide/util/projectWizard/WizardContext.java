@@ -5,7 +5,6 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.RecentProjectsManager;
 import com.intellij.ide.wizard.AbstractWizard;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.components.StorageScheme;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
@@ -13,8 +12,8 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.ui.configuration.ModulesProvider;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.platform.ProjectTemplate;
-import com.intellij.util.SystemProperties;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -54,6 +53,7 @@ public class WizardContext extends UserDataHolderBase {
    * @deprecated useless
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public boolean isNewWizard() {
     return true;
   }
@@ -112,15 +112,7 @@ public class WizardContext extends UserDataHolderBase {
     if (myProjectFileDirectory != null) {
       return myProjectFileDirectory;
     }
-
-    String lastProjectLocation = RecentProjectsManager.getInstance().getLastProjectCreationLocation();
-    if (lastProjectLocation != null) {
-      return Paths.get(lastProjectLocation);
-    }
-
-    String userHome = SystemProperties.getUserHome();
-    String productName = ApplicationNamesInfo.getInstance().getLowercaseProductName();
-    return Paths.get(userHome, productName.replace(" ", "") + "Projects");
+    return Paths.get(RecentProjectsManager.getInstance().suggestNewProjectLocation());
   }
 
   public boolean isProjectFileDirectorySet() {

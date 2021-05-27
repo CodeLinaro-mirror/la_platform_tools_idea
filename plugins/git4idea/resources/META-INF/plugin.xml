@@ -83,14 +83,12 @@
     </group>
 
     <group id="Git.MainMenu.RebaseActions" class="git4idea.actions.GitRepositoryStateActionGroup$Rebase" popup="true">
-      <action id="Git.ResolveConflicts" class="git4idea.actions.GitResolveConflictsAction"/>
       <action id="Git.Rebase.Abort" class="git4idea.actions.GitRebaseAbort"/>
       <action id="Git.Rebase.Continue" class="git4idea.actions.GitRebaseContinue"/>
       <action id="Git.Rebase.Skip" class="git4idea.actions.GitRebaseSkip"/>
     </group>
 
-    <group id="Git.MainMenu.MergeActions" class="git4idea.actions.GitRepositoryStateActionGroup$Merge" popup="true">
-      <reference ref="Git.ResolveConflicts"/>
+    <group id="Git.MainMenu.MergeActions" class="git4idea.actions.GitRepositoryStateActionGroup$Merge" icon="AllIcons.Vcs.Merge">
       <action id="Git.Merge.Abort" class="git4idea.actions.GitAbortOperationAction$Merge"/>
     </group>
 
@@ -115,6 +113,7 @@
       <reference ref="Git.MainMenu.MergeActions"/>
       <action id="Git.Rebase" class="git4idea.actions.GitRebase"/>
       <reference ref="Git.MainMenu.RebaseActions"/>
+      <action id="Git.ResolveConflicts" class="git4idea.actions.GitResolveConflictsAction"/>
       <separator/>
       <action id="Git.Branches" class="git4idea.ui.branch.GitBranchesAction" icon="AllIcons.Vcs.Branch">
         <keyboard-shortcut first-keystroke="control shift BACK_QUOTE" keymap="$default" />
@@ -274,6 +273,12 @@
     <action id="Git.Stage.ToggleIgnored" class="git4idea.index.actions.GitToggleIgnoredFilesAction"/>
     <action id="Git.Stage.Add.All" class="git4idea.index.actions.GitStageAllAction"/>
     <action id="Git.Stage.Add.Tracked" class="git4idea.index.actions.GitStageTrackedAction"/>
+    <action id="Git.Stage.Show.Staged" class="git4idea.index.actions.GitShowStagedVersionAction"/>
+    <action id="Git.Stage.Show.Local" class="git4idea.index.actions.GitShowLocalVersionAction"/>
+    <action id="Git.Stage.Compare.Local.Staged" class="git4idea.index.actions.GitStageCompareLocalWithStagedAction"/>
+    <action id="Git.Stage.Compare.Staged.Local" class="git4idea.index.actions.GitStageCompareStagedWithLocalAction"/>
+    <action id="Git.Stage.Compare.Staged.Head" class="git4idea.index.actions.GitStageCompareStagedWithHeadAction"/>
+    <action id="Git.Stage.Compare.Three.Versions" class="git4idea.index.actions.GitStageCompareThreeVersionsAction"/>
 
     <action id="Git.Stash.Silently" class="git4idea.index.actions.GitStashSilentlyAction" icon="AllIcons.Vcs.ShelveSilent"/>
 
@@ -290,19 +295,34 @@
       <reference id="Git.Stage.AcceptTheirs"/>
       <reference id="Git.Stage.AcceptYours"/>
       <reference id="Git.Stage.Add"/>
-      <reference id="Git.Stage.ThreeSideDiff"/>
       <reference id="Git.Stage.Reset"/>
       <reference id="Git.Stage.Revert"/>
       <reference id="$Delete"/>
       <reference id="Git.Ignore.File"/>
       <separator/>
       <reference id="Diff.ShowDiff"/>
+      <reference id="Git.Stage.ThreeSideDiff"/>
       <reference ref="EditSource"/>
       <reference ref="ChangesView.CreatePatchFromChanges"/>
       <reference ref="ChangesView.CreatePatchToClipboard"/>
       <separator/>
       <reference id="Vcs.ShowTabbedFileHistory"/>
       <reference id="LocalHistory"/>
+    </group>
+    <group id="Git.Stage.Local.File.Menu" popup="false">
+      <reference id="Git.Stage.Show.Staged"/>
+      <reference id="Git.Stage.Compare.Local.Staged"/>
+      <reference id="Git.Stage.Compare.Three.Versions"/>
+
+      <add-to-group group-id="Git.ContextMenu" relative-to-action="ChangesView.RevertFiles" anchor="after"/>
+    </group>
+    <group id="Git.Stage.Index.File.Menu" popup="true" class="git4idea.index.actions.GitStageIndexFileMenuGroup">
+      <reference id="Git.Stage.Show.Local"/>
+      <reference id="Git.Stage.Compare.Staged.Head"/>
+      <reference id="Git.Stage.Compare.Staged.Local"/>
+      <reference id="Git.Stage.Compare.Three.Versions"/>
+
+      <add-to-group group-id="EditorPopupMenu"/>
     </group>
 
     <action id="Git.Stash.Pop" class="git4idea.stash.ui.GitPopStashAction"/>
@@ -421,6 +441,8 @@
                  description="Show toolwindow tab with stashes"/>
     <registryKey key="git.can.use.restore.command" defaultValue="true"
                  description="Use 'git restore --staged --worktree --source=HEAD -- paths' instead of 'git reset --hard' to speedup worktree cleanup."/>
+    <registryKey key="git.stage.separate.undo.stack" defaultValue="true"
+                 description="Do not record stage operations in the undo stack of the document" />
 
     <search.projectOptionsTopHitProvider implementation="git4idea.config.GitOptionsTopHitProvider"/>
     <vcs name="Git" vcsClass="git4idea.GitVcs" displayName="Git" administrativeAreaName=".git"/>
@@ -558,6 +580,7 @@
     <vcs.baseContentProvider implementation="git4idea.index.vfs.GitIndexVirtualFileBaseContentProvider"/>
     <editorNotificationProvider implementation="git4idea.index.vfs.GitIndexVirtualFileEditorNotificationProvider"/>
     <editorTabTitleProvider implementation="git4idea.index.vfs.GitIndexVirtualFileTabTitleProvider"/>
+    <vcs.fileStatusProvider implementation="git4idea.index.vfs.GitIndexVirtualFileStatusProvider"/>
 
     <diff.actions.ShowDiffAction.ExtensionProvider implementation="git4idea.index.actions.GitStageDiffAction"/>
     <openapi.vcs.changes.actions.CreatePatchFromChangesAction.Dialog.ExtensionProvider
@@ -581,6 +604,12 @@
     <console.folding implementation="git4idea.console.GitProgressOutputConsoleFolding"/>
 
     <searchEverywhereContributor implementation="git4idea.search.GitSearchEverywhereContributor$Companion$Factory"/>
+    <projectOriginInfoProvider implementation="git4idea.repo.GitProjectOriginInfoProvider"/>
+
+    <vcsStartupActivity implementation="git4idea.repo.GitCommitTemplateTracker$GitCommitTemplateTrackerStartupActivity"/>
+
+    <vcs.delayedCommitMessageProvider implementation="git4idea.commit.GitDelayedCommitTemplateMessageProvider" order="first"/>
+    <vcs.commitMessageProvider implementation="git4idea.commit.GitCommitTemplateMessageProvider" order="first"/>
   </extensions>
 
   <extensionPoints>

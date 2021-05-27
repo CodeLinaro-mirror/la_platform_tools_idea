@@ -18,6 +18,11 @@ internal class FilePredictionHistoryFeatures : FilePredictionFeatureProvider {
       "bi_mle_to_min",
       "position",
       "size",
+      "tri_max",
+      "tri_min",
+      "tri_mle",
+      "tri_mle_to_max",
+      "tri_mle_to_min",
       "uni_max",
       "uni_min",
       "uni_mle",
@@ -44,6 +49,10 @@ internal class FilePredictionHistoryFeatures : FilePredictionFeatureProvider {
     }
     addNGramFeatures(uniGram, "uni", result)
     addNGramFeatures(biGram, "bi", result)
+
+    cache.nGrams.calculateFileFeatures(newFile.url)?.let {
+      addNGramFeatures(it, "tri", result)
+    }
     return result
   }
 

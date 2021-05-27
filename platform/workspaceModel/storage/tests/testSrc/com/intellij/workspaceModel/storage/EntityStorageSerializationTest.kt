@@ -16,7 +16,7 @@ import java.io.ByteArrayOutputStream
 class EntityStorageSerializationTest {
   @Test
   fun `simple model serialization`() {
-    val builder = WorkspaceEntityStorageBuilder.create()
+    val builder = createEmptyBuilder()
     builder.addSampleEntity("MyEntity")
 
     SerializationRoundTripChecker.verifyPSerializationRoundTrip(builder.toStorage(), VirtualFileUrlManagerImpl())
@@ -24,7 +24,7 @@ class EntityStorageSerializationTest {
 
   @Test
   fun `serialization with version changing`() {
-    val builder = WorkspaceEntityStorageBuilder.create() as WorkspaceEntityStorageBuilderImpl
+    val builder = createEmptyBuilder()
     builder.addSampleEntity("MyEntity")
 
     val serializer = EntityStorageSerializerImpl(TestEntityTypesResolver(), VirtualFileUrlManagerImpl())
@@ -56,7 +56,7 @@ class EntityStorageSerializationTest {
     val virtualFileManager = VirtualFileUrlManagerImpl()
     val serializer = EntityStorageSerializerImpl(TestEntityTypesResolver(), virtualFileManager)
 
-    val builder = WorkspaceEntityStorageBuilder.create() as WorkspaceEntityStorageBuilderImpl
+    val builder = createEmptyBuilder()
 
     // Do not replace ArrayList() with emptyList(). This must be a new object for this test
     builder.addLibraryEntity("myName", LibraryTableId.ProjectLibraryTableId, ArrayList(), ArrayList(), MySource)
@@ -66,29 +66,11 @@ class EntityStorageSerializationTest {
   }
 
   @Test
-  fun `serialize disposed point`() {
-    val virtualFileManager = VirtualFileUrlManagerImpl()
-    val serializer = EntityStorageSerializerImpl(TestEntityTypesResolver(), virtualFileManager)
-
-    val builder = WorkspaceEntityStorageBuilder.create() as WorkspaceEntityStorageBuilderImpl
-
-    // Disposed file pointers return empty string
-    val pointer = virtualFileManager.fromUrl("")
-
-    builder.addSampleEntity("myString", fileProperty = pointer)
-
-    val stream = ByteArrayOutputStream()
-    val result = serializer.serializeCache(stream, builder.toStorage())
-
-    assertTrue(result is SerializationResult.Fail<*>)
-  }
-
-  @Test
   fun `serialize abstract`() {
     val virtualFileManager = VirtualFileUrlManagerImpl()
     val serializer = EntityStorageSerializerImpl(TestEntityTypesResolver(), virtualFileManager)
 
-    val builder = WorkspaceEntityStorageBuilder.create() as WorkspaceEntityStorageBuilderImpl
+    val builder = createEmptyBuilder()
 
     builder.addSampleEntity("myString")
 
@@ -103,7 +85,7 @@ class EntityStorageSerializationTest {
     val virtualFileManager = VirtualFileUrlManagerImpl()
     val serializer = EntityStorageSerializerImpl(TestEntityTypesResolver(), virtualFileManager)
 
-    val builder = WorkspaceEntityStorageBuilder.create() as WorkspaceEntityStorageBuilderImpl
+    val builder = createEmptyBuilder()
 
     builder.addSampleEntity("myString")
 
@@ -130,7 +112,7 @@ private val expectedKryoRegistration = """
   [16, java.util.HashMap]
   [17, com.intellij.util.SmartList]
   [18, java.util.LinkedHashMap]
-  [19, com.intellij.util.containers.BidirectionalMap]
+  [19, com.intellij.workspaceModel.storage.impl.containers.BidirectionalMap]
   [20, com.intellij.workspaceModel.storage.impl.containers.BidirectionalSetMap]
   [21, java.util.HashSet]
   [22, com.intellij.util.containers.BidirectionalMultiMap]

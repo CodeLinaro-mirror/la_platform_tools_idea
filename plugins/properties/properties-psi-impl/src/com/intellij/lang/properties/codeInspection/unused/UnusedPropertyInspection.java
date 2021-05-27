@@ -5,9 +5,11 @@ import com.intellij.codeInspection.LocalInspectionToolSession;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
+import com.intellij.codeInspection.ui.InspectionOptionsPanel;
 import com.intellij.lang.ASTNode;
 import com.intellij.lang.properties.*;
 import com.intellij.lang.properties.psi.Property;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.module.Module;
@@ -34,7 +36,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.*;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -56,19 +57,19 @@ public final class UnusedPropertyInspection extends PropertiesInspectionBase {
 
   @Override
   public @NotNull JComponent createOptionsPanel() {
-    JPanel panel = new JPanel(new GridBagLayout());
-    final GridBagConstraints constraints = new GridBagConstraints();
-    constraints.gridx = 0;
-    constraints.gridy = 0;
-    constraints.weightx = 1.0;
-    constraints.weighty = 1.0;
-    constraints.anchor = GridBagConstraints.FIRST_LINE_START;
-    constraints.fill = GridBagConstraints.HORIZONTAL;
-    panel.add(new JBLabel(PropertiesBundle.message("label.analyze.only.property.files.whose.name.matches")), constraints);
+    Disposable disposable = Disposer.newDisposable();
+    InspectionOptionsPanel panel = new InspectionOptionsPanel() {
+      @Override
+      public void removeNotify() {
+        super.removeNotify();
+        Disposer.dispose(disposable);
+      }
+    };
+    panel.add(new JBLabel(PropertiesBundle.message("label.analyze.only.property.files.whose.name.matches")));
     JBTextField textField = new JBTextField(fileNameMask);
-    constraints.gridy++;
-    panel.add(textField, constraints);
-    ComponentValidator validator = new ComponentValidator(Disposer.newDisposable()).withValidator(() -> {
+    panel.add(textField, "growx");
+    
+    ComponentValidator validator = new ComponentValidator(disposable).withValidator(() -> {
       String text = textField.getText();
       fileNameMask = text.isEmpty() ? ".*" : text;
       String errorMessage = null;

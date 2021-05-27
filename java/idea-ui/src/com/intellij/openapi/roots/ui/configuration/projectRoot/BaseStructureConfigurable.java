@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.ui.configuration.projectRoot;
 
 import com.intellij.facet.Facet;
@@ -12,6 +12,7 @@ import com.intellij.openapi.keymap.KeymapManager;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ui.configuration.ProjectStructureConfigurable;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.daemon.ProjectStructureDaemonAnalyzerListener;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.daemon.ProjectStructureElement;
 import com.intellij.openapi.ui.MasterDetailsComponent;
@@ -19,7 +20,6 @@ import com.intellij.openapi.ui.MasterDetailsState;
 import com.intellij.openapi.ui.MasterDetailsStateService;
 import com.intellij.openapi.ui.NamedConfigurable;
 import com.intellij.openapi.util.ActionCallback;
-import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.ui.TreeSpeedSearch;
@@ -37,11 +37,13 @@ import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
+import java.util.function.Predicate;
 
 public abstract class BaseStructureConfigurable extends MasterDetailsComponent implements SearchableConfigurable, Disposable, Place.Navigator {
   protected StructureConfigurableContext myContext;
 
   protected final Project myProject;
+  protected final ProjectStructureConfigurable myProjectStructureConfigurable;
 
   protected boolean myUiDisposed = true;
 
@@ -49,13 +51,18 @@ public abstract class BaseStructureConfigurable extends MasterDetailsComponent i
 
   protected boolean myAutoScrollEnabled = true;
 
-  protected BaseStructureConfigurable(Project project, MasterDetailsState state) {
+  protected BaseStructureConfigurable(@NotNull ProjectStructureConfigurable projectStructureConfigurable, MasterDetailsState state) {
     super(state);
-    myProject = project;
+    myProject = projectStructureConfigurable.getProject();
+    myProjectStructureConfigurable = projectStructureConfigurable;
   }
 
-  protected BaseStructureConfigurable(@NotNull Project project) {
-    myProject = project;
+  protected BaseStructureConfigurable(@NotNull ProjectStructureConfigurable projectStructureConfigurable) {
+    this(projectStructureConfigurable, new MasterDetailsState());
+  }
+
+  public ProjectStructureConfigurable getProjectStructureConfigurable() {
+    return myProjectStructureConfigurable;
   }
 
   public void init(StructureConfigurableContext context) {
@@ -69,6 +76,7 @@ public abstract class BaseStructureConfigurable extends MasterDetailsComponent i
         myTree.repaint();
       }
     });
+    Disposer.register(myProjectStructureConfigurable, this);
   }
 
   @Override
@@ -90,15 +98,8 @@ public abstract class BaseStructureConfigurable extends MasterDetailsComponent i
 
     if (node == null && nodeByName == null) return ActionCallback.DONE;
 
-    final NamedConfigurable config;
-    if (node != null) {
-      config = node.getConfigurable();
-    } else {
-      config = nodeByName.getConfigurable();
-    }
-
-    final ActionCallback result = new ActionCallback().doWhenDone(() -> myAutoScrollEnabled = true);
-
+    NamedConfigurable<?> config = Objects.requireNonNullElse(node, nodeByName).getConfigurable();
+    ActionCallback result = new ActionCallback().doWhenDone(() -> myAutoScrollEnabled = true);
     myAutoScrollEnabled = false;
     myAutoScrollHandler.cancelAllRequests();
     final MyNode nodeToSelect = node != null ? node : nodeByName;
@@ -176,7 +177,7 @@ public abstract class BaseStructureConfigurable extends MasterDetailsComponent i
   private class MyFindUsagesAction extends FindUsagesInProjectStructureActionBase {
 
     MyFindUsagesAction(JComponent parentComponent) {
-      super(parentComponent, myProject);
+      super(parentComponent, myProjectStructureConfigurable);
     }
 
     @Override
@@ -188,11 +189,6 @@ public abstract class BaseStructureConfigurable extends MasterDetailsComponent i
       } else {
         return false;
       }
-    }
-
-    @Override
-    protected StructureConfigurableContext getContext() {
-      return myContext;
     }
 
     @Override
@@ -311,12 +307,11 @@ public abstract class BaseStructureConfigurable extends MasterDetailsComponent i
     return null;
   }
 
-  protected class MyRemoveAction extends MyDeleteAction {
-    public MyRemoveAction() {
-      //noinspection Convert2Lambda
-      super(new Condition<>() {
+  final class MyRemoveAction extends MyDeleteAction {
+    MyRemoveAction() {
+      super(new Predicate<>() {
         @Override
-        public boolean value(final Object[] objects) {
+        public boolean test(final Object[] objects) {
           List<MyNode> nodes = new ArrayList<>();
           for (Object object : objects) {
             if (!(object instanceof MyNode)) return false;

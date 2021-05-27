@@ -17,12 +17,12 @@ import com.intellij.openapi.roots.ui.CellAppearanceEx;
 import com.intellij.openapi.roots.ui.OrderEntryAppearanceService;
 import com.intellij.openapi.roots.ui.configuration.LibraryTableModifiableModelProvider;
 import com.intellij.openapi.roots.ui.configuration.ModuleConfigurationState;
+import com.intellij.openapi.roots.ui.configuration.ModulesConfigurator;
 import com.intellij.openapi.roots.ui.configuration.ProjectStructureConfigurable;
 import com.intellij.openapi.roots.ui.configuration.libraries.LibraryEditingUtil;
 import com.intellij.openapi.roots.ui.configuration.libraryEditor.EditExistingLibraryDialog;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.ConvertModuleLibraryToRepositoryLibraryAction;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.FindUsagesInProjectStructureActionBase;
-import com.intellij.openapi.roots.ui.configuration.projectRoot.ModuleStructureConfigurable;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.StructureConfigurableContext;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.daemon.LibraryProjectStructureElement;
 import com.intellij.openapi.roots.ui.configuration.projectRoot.daemon.ModuleProjectStructureElement;
@@ -44,6 +44,7 @@ import com.intellij.util.IconUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.TextTransferable;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -140,18 +141,13 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
       }
 
       @Override
-      protected int convertIndexToModel(int viewIndex) {
-        return myEntryTable.convertRowIndexToModel(viewIndex);
+      protected int getElementCount() {
+        return myModel.getRowCount();
       }
 
       @Override
-      public Object @NotNull [] getAllElements() {
-        final int count = myModel.getRowCount();
-        Object[] elements = new Object[count];
-        for (int idx = 0; idx < count; idx++) {
-          elements[idx] = myModel.getItem(idx);
-        }
-        return elements;
+      protected Object getElementAt(int viewIndex) {
+        return myModel.getItem(myEntryTable.convertRowIndexToModel(viewIndex));
       }
 
       @Override
@@ -312,7 +308,7 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
   @Override
   public void navigate(boolean openLibraryEditor) {
     final OrderEntry entry = getSelectedEntry();
-    final ProjectStructureConfigurable rootConfigurable = ProjectStructureConfigurable.getInstance(myState.getProject());
+    final ProjectStructureConfigurable rootConfigurable = getProjectStructureConfigurable();
     if (entry instanceof ModuleOrderEntry){
       Module module = ((ModuleOrderEntry)entry).getModule();
       if (module != null) {
@@ -448,7 +444,7 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
     dialog.setContextModule(getRootModel().getModule());
     dialog.show();
     myEntryTable.repaint();
-    ModuleStructureConfigurable.getInstance(myState.getProject()).getTree().repaint();
+    getProjectStructureConfigurable().getModulesConfig().getTree().repaint();
   }
 
   private void removeSelectedItems(final List<Object[]> removedRows) {
@@ -467,8 +463,12 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
     final int[] selectedRows = myEntryTable.getSelectedRows();
     myModel.fireTableDataChanged();
     TableUtil.selectRows(myEntryTable, selectedRows);
-    final StructureConfigurableContext context = ModuleStructureConfigurable.getInstance(myState.getProject()).getContext();
+    final StructureConfigurableContext context = getProjectStructureConfigurable().getContext();
     context.getDaemonAnalyzer().queueUpdate(new ModuleProjectStructureElement(context, getRootModel().getModule()));
+  }
+
+  private ProjectStructureConfigurable getProjectStructureConfigurable() {
+    return ((ModulesConfigurator)myState.getModulesProvider()).getProjectStructureConfigurable();
   }
 
   @Override
@@ -505,20 +505,20 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
     for (ClasspathTableItem<?> item : toAdd) {
       myModel.addRow(item);
     }
-    IntArrayList toSelect = new IntArrayList();
+    IntList toSelect = new IntArrayList();
     for (int i = myModel.getRowCount() - toAdd.size(); i < myModel.getRowCount(); i++) {
       toSelect.add(myEntryTable.convertRowIndexToView(i));
     }
     TableUtil.selectRows(myEntryTable, toSelect.toIntArray());
     TableUtil.scrollSelectionToVisible(myEntryTable);
 
-    final StructureConfigurableContext context = ModuleStructureConfigurable.getInstance(myState.getProject()).getContext();
+    final StructureConfigurableContext context = getProjectStructureConfigurable().getContext();
     context.getDaemonAnalyzer().queueUpdate(new ModuleProjectStructureElement(context, getRootModel().getModule()));
   }
 
   @Override
   public ModifiableRootModel getRootModel() {
-    return myState.getRootModel();
+    return myState.getModifiableRootModel();
   }
 
   @Override
@@ -555,7 +555,7 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
   }
 
   private StructureConfigurableContext getStructureConfigurableContext() {
-    return ProjectStructureConfigurable.getInstance(myState.getProject()).getContext();
+    return getProjectStructureConfigurable().getContext();
   }
 
 
@@ -634,7 +634,7 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
     myModel.clear();
     myModel.init();
     myModel.fireTableDataChanged();
-    IntArrayList newSelection = new IntArrayList();
+    IntList newSelection = new IntArrayList();
     for (int i = 0; i < myModel.getRowCount(); i++) {
       if (oldSelection.contains(getItemAt(i))) {
         newSelection.add(i);
@@ -699,7 +699,7 @@ public final class ClasspathPanelImpl extends JPanel implements ClasspathPanel {
 
   private final class MyFindUsagesAction extends FindUsagesInProjectStructureActionBase {
     private MyFindUsagesAction() {
-      super(myEntryTable, myState.getProject());
+      super(myEntryTable, getProjectStructureConfigurable());
     }
 
     @Override

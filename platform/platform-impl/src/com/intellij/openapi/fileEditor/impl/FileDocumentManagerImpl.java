@@ -60,6 +60,7 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.FileContentUtilCore;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -259,11 +260,11 @@ public class FileDocumentManagerImpl extends FileDocumentManagerBase implements 
   }
 
   @Override
-  public void saveDocuments(@NotNull Predicate<Document> filter) {
+  public void saveDocuments(@NotNull Predicate<? super Document> filter) {
     saveDocuments(filter, true);
   }
 
-  private void saveDocuments(@Nullable Predicate<Document> filter, boolean isExplicit) {
+  private void saveDocuments(@Nullable Predicate<? super Document> filter, boolean isExplicit) {
     ApplicationManager.getApplication().assertIsDispatchThread();
     ((TransactionGuardImpl)TransactionGuard.getInstance()).assertWriteActionAllowed();
 
@@ -845,6 +846,7 @@ public class FileDocumentManagerImpl extends FileDocumentManagerBase implements 
   /** @deprecated another dirty Rider hack; don't use */
   @Deprecated
   @SuppressWarnings("StaticNonFinalField")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static boolean ourConflictsSolverEnabled = true;
 
   @Override

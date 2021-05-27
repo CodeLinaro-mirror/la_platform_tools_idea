@@ -1,17 +1,14 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.ift.lesson.completion
 
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.util.Key
 import com.jetbrains.python.ift.PythonLessonsBundle
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.KLesson
-import training.learn.lesson.kimpl.LessonContext
-import training.learn.lesson.kimpl.LessonUtil.checkExpectedStateOfEditor
-import training.learn.lesson.kimpl.parseLessonSample
+import training.dsl.LessonContext
+import training.dsl.LessonUtil.checkExpectedStateOfEditor
+import training.dsl.parseLessonSample
+import training.learn.course.KLesson
 
-class FStringCompletionLesson(module: Module)
-  : KLesson("completion.f.string", PythonLessonsBundle.message("python.f.string.completion.lesson.name"), module, "Python") {
+class FStringCompletionLesson
+  : KLesson("completion.f.string", PythonLessonsBundle.message("python.f.string.completion.lesson.name")) {
   private val template = """
     import sys
     
@@ -50,11 +47,11 @@ class FStringCompletionLesson(module: Module)
 
   override val lessonContent: LessonContext.() -> Unit = {
     prepareSample(sample)
-    task("\${my") {
+    task("{my") {
       text(PythonLessonsBundle.message("python.f.string.completion.type.prefix", code(it)))
       runtimeText {
         val prefixTyped = checkExpectedStateOfEditor(sample) { change ->
-          "\${my_car".startsWith(change) && change.startsWith(it)
+          "{my_car".startsWith(change) && change.startsWith(it)
         } == null
         if (prefixTyped) PythonLessonsBundle.message("python.f.string.completion.invoke.manually", action("CodeCompletion")) else null
       }
@@ -63,19 +60,19 @@ class FStringCompletionLesson(module: Module)
       }
       proposeRestore {
         checkExpectedStateOfEditor(sample) { change ->
-          "\${my_car".startsWith(change)
+          "{my_car".startsWith(change)
         }
       }
       test { type(it) }
     }
     task {
       text(PythonLessonsBundle.message("python.f.string.completion.complete.it", code(completionItem), action("EditorChooseLookupItem")))
-      val result = template.replace("<f-place>", "f").replace("<caret>", "\${$completionItem}")
+      val result = template.replace("<f-place>", "f").replace("<caret>", "{$completionItem}")
       restoreByUi()
       stateCheck {
         editor.document.text == result
       }
-      test { GuiTestUtil.shortcut(Key.ENTER) }
+      test(waitEditorToBeReady = false) { invokeActionViaShortcut("ENTER") }
     }
     text(PythonLessonsBundle.message("python.f.string.completion.result.message"))
   }

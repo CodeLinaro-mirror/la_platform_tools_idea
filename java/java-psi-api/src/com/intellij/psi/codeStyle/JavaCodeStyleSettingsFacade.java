@@ -33,29 +33,10 @@ public abstract class JavaCodeStyleSettingsFacade {
   public abstract boolean useFQClassNames();
 
   /**
-   * @deprecated Use {@link JavaFileCodeStyleFacade#isJavaDocLeadingAsterisksEnabled()}
-   */
-  @Deprecated
-  public abstract boolean isJavaDocLeadingAsterisksEnabled();
-
-  /**
-   * @deprecated Use {@link JavaFileCodeStyleFacade#getIndentSize()}
-   */
-  @Deprecated
-  public abstract int getIndentSize();
-
-  /**
    * @deprecated Use {@link JavaFileCodeStyleFacade#isGenerateFinalParameters()}
    */
   @Deprecated
   public abstract boolean isGenerateFinalParameters();
-
-  /**
-   * @deprecated Use {@link JavaFileCodeStyleFacade#isGenerateFinalLocals()}
-   */
-  @Deprecated
-  public abstract boolean isGenerateFinalLocals();
-
 
   /**
    * @deprecated Use {@link JavaFileCodeStyleFacade#forContext(PsiFile)} instead.

@@ -10,7 +10,6 @@ import com.intellij.codeInspection.dataFlow.NullabilityProblemKind.NullabilityPr
 import com.intellij.codeInspection.dataFlow.fix.*;
 import com.intellij.codeInspection.dataFlow.instructions.InstanceofInstruction;
 import com.intellij.codeInspection.dataFlow.instructions.Instruction;
-import com.intellij.codeInspection.dataFlow.types.DfConstantType;
 import com.intellij.codeInspection.dataFlow.types.DfType;
 import com.intellij.codeInspection.dataFlow.types.DfTypes;
 import com.intellij.codeInspection.dataFlow.value.DfaValue;
@@ -92,8 +91,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
         if (aClass instanceof PsiTypeParameter) return;
         if (PsiUtil.isLocalOrAnonymousClass(aClass) && !(aClass instanceof PsiEnumConstantInitializer)) return;
 
-        final DataFlowRunner runner = new DataFlowRunner(holder.getProject(), aClass, TREAT_UNKNOWN_MEMBERS_AS_NULLABLE, 
-                                                         ThreeState.fromBoolean(IGNORE_ASSERT_STATEMENTS));
+        final DataFlowRunner runner = new DataFlowRunner(holder.getProject(), aClass, ThreeState.fromBoolean(IGNORE_ASSERT_STATEMENTS));
         DataFlowInstructionVisitor visitor =
           analyzeDfaWithNestedClosures(aClass, holder, runner, Collections.singletonList(runner.createMemoryState()));
         List<DfaMemoryState> states = visitor.getEndOfInitializerStates();
@@ -118,7 +116,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
       public void visitMethod(PsiMethod method) {
         if (method.isConstructor()) return;
         final DataFlowRunner runner = new DataFlowRunner(
-          holder.getProject(), method.getBody(), TREAT_UNKNOWN_MEMBERS_AS_NULLABLE, ThreeState.fromBoolean(IGNORE_ASSERT_STATEMENTS));
+          holder.getProject(), method.getBody(), ThreeState.fromBoolean(IGNORE_ASSERT_STATEMENTS));
         analyzeMethod(method, runner, Collections.singletonList(runner.createMemoryState()));
       }
 
@@ -202,7 +200,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
                                                                   ProblemsHolder holder,
                                                                   DataFlowRunner dfaRunner,
                                                                   Collection<? extends DfaMemoryState> initialStates) {
-    final DataFlowInstructionVisitor visitor = new DataFlowInstructionVisitor();
+    final DataFlowInstructionVisitor visitor = new DataFlowInstructionVisitor(TREAT_UNKNOWN_MEMBERS_AS_NULLABLE);
     final RunnerResult rc = dfaRunner.analyzeMethod(scope, visitor, initialStates);
     if (rc == RunnerResult.OK) {
       if (dfaRunner.wasForciblyMerged() &&
@@ -439,9 +437,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
                                              JavaAnalysisBundle.message("inspection.data.flow.turn.off.true.asserts.quickfix"), true));
       }
     }
-    if (reporter.isOnTheFly()) {
-      ContainerUtil.addIfNotNull(fixes, createExplainFix(ref, new TrackingRunner.ValueDfaProblemType(value)));
-    }
+    ContainerUtil.addIfNotNull(fixes, createExplainFix(ref, new TrackingRunner.ValueDfaProblemType(value)));
 
     ProblemHighlightType type;
     String message;
@@ -683,15 +679,14 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
     PsiJavaCodeReferenceElement annoName = annotation.getNameReferenceElement();
     assert annoName != null;
     String msg = JavaAnalysisBundle
-      .message("dataflow.message.return.notnull.from.nullable", NullableStuffInspectionBase.getPresentableAnnoName(annotation), method.getName());
-    LocalQuickFix[] fixes = {AddAnnotationPsiFix.createAddNotNullFix(method)};
-    if (holder.isOnTheFly()) {
-      fixes = ArrayUtil.append(fixes, new SetInspectionOptionFix(this, "REPORT_NULLABLE_METHODS_RETURNING_NOT_NULL",
-                                                                 JavaAnalysisBundle
-                                                                   .message(
-                                                                     "inspection.data.flow.turn.off.nullable.returning.notnull.quickfix"),
-                                                                 false));
-    }
+      .message("dataflow.message.return.notnull.from.nullable", NullableStuffInspectionBase.getPresentableAnnoName(annotation),
+               method.getName());
+    LocalQuickFix[] fixes = {AddAnnotationPsiFix.createAddNotNullFix(method),
+      new SetInspectionOptionFix(this, "REPORT_NULLABLE_METHODS_RETURNING_NOT_NULL",
+                                 JavaAnalysisBundle
+                                   .message(
+                                     "inspection.data.flow.turn.off.nullable.returning.notnull.quickfix"),
+                                 false)};
     holder.registerProblem(annoName, msg, fixes);
   }
 
@@ -702,7 +697,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
   private void reportAlwaysFailingCalls(ProblemReporter reporter, DataFlowInstructionVisitor visitor) {
     visitor.alwaysFailingCalls().remove(TestUtils::isExceptionExpected).forEach(call -> {
       String message = getContractMessage(JavaMethodContractUtil.getMethodCallContracts(call));
-      LocalQuickFix causeFix = reporter.isOnTheFly() ? createExplainFix(call, new TrackingRunner.FailingCallDfaProblemType()) : null;
+      LocalQuickFix causeFix = createExplainFix(call, new TrackingRunner.FailingCallDfaProblemType());
       reporter.registerProblem(getElementToHighlight(call), message, causeFix);
     });
   }
@@ -804,9 +799,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
       assert castType != null;
       assert operand != null;
       List<LocalQuickFix> fixes = new ArrayList<>(createCastFixes(typeCast, realType, reporter.isOnTheFly(), alwaysFails));
-      if (reporter.isOnTheFly()) {
-        fixes.add(createExplainFix(typeCast, new TrackingRunner.CastDfaProblemType()));
-      }
+      fixes.add(createExplainFix(typeCast, new TrackingRunner.CastDfaProblemType()));
       String text = PsiExpressionTrimRenderer.render(operand);
       String message = alwaysFails ?
                        JavaAnalysisBundle.message("dataflow.message.cce.always", text) :
@@ -843,7 +836,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
       }
       ContainerUtil.addIfNotNull(fixes, createReplaceWithNullCheckFix(psiAnchor, evaluatesToTrue));
     }
-    if (reporter.isOnTheFly() && psiAnchor instanceof PsiExpression) {
+    if (psiAnchor instanceof PsiExpression) {
       ContainerUtil.addIfNotNull(fixes, createExplainFix(
         (PsiExpression)psiAnchor, new TrackingRunner.ValueDfaProblemType(evaluatesToTrue)));
     }
@@ -1144,9 +1137,15 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
   private static boolean isConstantOfType(PsiElement element, PsiPrimitiveType... types) {
     PsiElement resolved = element instanceof PsiReferenceExpression ? ((PsiReferenceExpression)element).resolve() : null;
     if (!(resolved instanceof PsiField)) return false;
-    PsiVariable field = (PsiVariable)resolved;
-    return field.hasModifierProperty(PsiModifier.STATIC) && PsiUtil.isCompileTimeConstant(field) &&
-           ArrayUtil.contains(field.getType(), types);
+    PsiField field = (PsiField)resolved;
+    PsiModifierList modifierList = field.getModifierList();
+    if (modifierList == null ||
+        !modifierList.hasModifierProperty(PsiModifier.STATIC) ||
+        !modifierList.hasModifierProperty(PsiModifier.FINAL)) {
+      return false;
+    }
+    if (!ArrayUtil.contains(field.getType(), types)) return false;
+    return field.hasInitializer() && PsiUtil.isConstantExpression(field.getInitializer());
   }
 
   private static boolean isNullLiteralExpression(PsiElement expr) {
@@ -1230,7 +1229,7 @@ public abstract class DataFlowInspectionBase extends AbstractBaseJavaLocalInspec
       if (dfType == DfTypes.NULL) return NULL;
       if (dfType == DfTypes.TRUE) return TRUE;
       if (dfType == DfTypes.FALSE) return FALSE;
-      if (DfConstantType.isConst(dfType, 0) || DfConstantType.isConst(dfType, 0L)) return ZERO;
+      if (dfType.isConst(0) || dfType.isConst(0L)) return ZERO;
       return UNKNOWN;
     }
 

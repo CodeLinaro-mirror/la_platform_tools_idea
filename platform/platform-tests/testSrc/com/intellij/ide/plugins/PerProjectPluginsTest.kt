@@ -15,24 +15,20 @@ import kotlin.test.assertTrue
 @RunsInEdt
 class PerProjectPluginsTest {
 
-  companion object {
-    @JvmField
-    val projectRule = ProjectRule()
-  }
-
-  private val inMemoryFs = InMemoryFsRule()
+  private val inMemoryFsRule = InMemoryFsRule()
+  private val projectRule = ProjectRule()
 
   @Rule
   @JvmField
   val chain = RuleChain(
-    inMemoryFs,
-    ProjectRule(),
+    inMemoryFsRule,
+    projectRule,
     EdtRule(),
   )
 
   @Test
   fun enabledAndDisablePerProject() {
-    val path = inMemoryFs.fs.getPath("/plugin")
+    val path = inMemoryFsRule.fs.getPath("/plugin")
     PluginBuilder()
       .randomId("enabledAndDisablePerProject")
       .build(path)
@@ -41,7 +37,7 @@ class PerProjectPluginsTest {
     assertThat(descriptor).isNotNull
 
     val project = projectRule.project
-    val pluginTrackerManager = ProjectPluginTrackerManager.getInstance()
+    val pluginTrackerManager = ProjectPluginTrackerManager.instance
 
     val loaded = pluginTrackerManager.updatePluginsState(
       listOf(descriptor),

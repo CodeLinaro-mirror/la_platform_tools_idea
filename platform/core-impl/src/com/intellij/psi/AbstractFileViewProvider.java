@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi;
 
 import com.intellij.injected.editor.DocumentWindow;
@@ -6,7 +6,7 @@ import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.lang.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
-import com.intellij.openapi.command.undo.UndoConstants;
+import com.intellij.openapi.command.undo.UndoUtil;
 import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -35,6 +35,7 @@ import com.intellij.psi.impl.source.tree.FileElement;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.LocalTimeCounter;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.JBTreeTraverser;
@@ -203,7 +204,7 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
     LightVirtualFile copy = new LightVirtualFile(origFile.getName(), origFile.getFileType(), getContents(), origFile.getCharset(), getModificationStamp());
     origFile.copyCopyableDataTo(copy);
     copy.setOriginalFile(origFile);
-    copy.putUserData(UndoConstants.DONT_RECORD_UNDO, Boolean.TRUE);
+    UndoUtil.disableUndoFor(copy);
     copy.setCharset(origFile.getCharset());
 
     return createCopy(copy);
@@ -432,7 +433,7 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
     }
     Set<AbstractFileViewProvider> copies = getUserData(KNOWN_COPIES);
     if (copies == null) {
-      copies = putUserDataIfAbsent(KNOWN_COPIES, Collections.newSetFromMap(ContainerUtil.createConcurrentWeakMap()));
+      copies = putUserDataIfAbsent(KNOWN_COPIES, Collections.newSetFromMap(CollectionFactory.createConcurrentWeakMap()));
     }
     if (copy.getUserData(KNOWN_COPIES) != null) {
       List<AbstractFileViewProvider> derivations = JBTreeTraverser.from(AbstractFileViewProvider::getKnownCopies).withRoot(copy).toList();

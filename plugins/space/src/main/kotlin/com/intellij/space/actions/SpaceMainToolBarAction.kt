@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.space.actions
 
 import circlet.client.api.englishFullName
@@ -6,6 +6,7 @@ import circlet.platform.client.ConnectionStatus
 import circlet.workspaces.Workspace
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.RightAlignedToolbarAction
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -29,24 +30,19 @@ import java.awt.Point
 import javax.swing.Icon
 import javax.swing.JComponent
 
-class SpaceMainToolBarAction : DumbAwareAction() {
+class SpaceMainToolBarAction : DumbAwareAction(), RightAlignedToolbarAction {
   private val settings = SpaceSettings.getInstance()
 
   override fun update(e: AnActionEvent) {
     val isOnNavBar = e.place == ActionPlaces.NAVIGATION_BAR_TOOLBAR
-    if (!isOnNavBar) {
-      e.presentation.isEnabledAndVisible = false
-      return
-    }
-
-    val space = SpaceWorkspaceComponent.getInstance()
-    val connected = space.loginState.value is SpaceLoginState.Connected
-    if (!connected) {
+    val isOnMainBar = e.place == ActionPlaces.MAIN_TOOLBAR
+    if (!isOnNavBar && !isOnMainBar) {
       e.presentation.isEnabledAndVisible = false
       return
     }
     e.presentation.isEnabledAndVisible = true
 
+    val space = SpaceWorkspaceComponent.getInstance()
     val avatars = SpaceUserAvatarProvider.getInstance().avatars.value
     val isOnline = space.workspace.value?.client?.connectionStatus?.value is ConnectionStatus.Connected
     val isConnecting = space.loginState.value is SpaceLoginState.Connecting

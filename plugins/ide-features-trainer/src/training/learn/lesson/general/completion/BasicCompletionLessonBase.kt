@@ -1,16 +1,16 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package training.learn.lesson.general.completion
 
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.util.Key
+import training.dsl.LessonContext
+import training.dsl.LessonSample
+import training.dsl.LessonUtil
+import training.dsl.LessonUtil.checkExpectedStateOfEditor
+import training.dsl.restoreAfterStateBecomeFalse
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.*
-import training.learn.lesson.kimpl.LessonUtil.checkExpectedStateOfEditor
+import training.learn.course.KLesson
 import javax.swing.JList
 
-abstract class BasicCompletionLessonBase(module: Module, lang: String)
-  : KLesson("Basic completion", LessonsBundle.message("basic.completion.lesson.name"), module, lang) {
+abstract class BasicCompletionLessonBase : KLesson("Basic completion", LessonsBundle.message("basic.completion.lesson.name")) {
   protected abstract val sample1: LessonSample
   protected abstract val sample2: LessonSample
 
@@ -44,7 +44,7 @@ abstract class BasicCompletionLessonBase(module: Module, lang: String)
           }
         }
         test {
-          GuiTestUtil.typeText(item1StartToType)
+          type(item1StartToType)
         }
       }
       task("EditorChooseLookupItem") {
@@ -57,8 +57,8 @@ abstract class BasicCompletionLessonBase(module: Module, lang: String)
             !isTheFirstVariant(ui)
           } ?: true
         }
-        test {
-          GuiTestUtil.shortcut(Key.ENTER)
+        test(waitEditorToBeReady = false) {
+          invokeActionViaShortcut("ENTER")
         }
       }
       waitBeforeContinue(500)

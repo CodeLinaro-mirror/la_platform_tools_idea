@@ -19,8 +19,6 @@ import com.intellij.openapi.editor.impl.EditorComponentImpl
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.tasks.TaskBundle
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.util.Key
 import com.intellij.util.ui.UIUtil
 import com.intellij.xdebugger.*
 import com.intellij.xdebugger.impl.XDebugSessionImpl
@@ -29,29 +27,25 @@ import com.intellij.xdebugger.impl.breakpoints.XBreakpointUtil
 import com.intellij.xdebugger.impl.frame.XDebuggerFramesList
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree
 import org.jetbrains.annotations.Nls
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskRuntimeContext
-import training.commands.kotlin.TaskTestContext
-import training.keymap.KeymapUtil
+import training.dsl.*
+import training.dsl.LessonUtil.checkExpectedStateOfEditor
+import training.dsl.LessonUtil.checkPositionOfEditor
+import training.dsl.LessonUtil.highlightBreakpointGutter
+import training.dsl.LessonUtil.sampleRestoreNotification
 import training.learn.CourseManager
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
+import training.learn.course.KLesson
 import training.learn.lesson.LessonManager
-import training.learn.lesson.kimpl.*
-import training.learn.lesson.kimpl.LessonUtil.checkExpectedStateOfEditor
-import training.learn.lesson.kimpl.LessonUtil.checkPositionOfEditor
-import training.learn.lesson.kimpl.LessonUtil.highlightBreakpointGutter
-import training.learn.lesson.kimpl.LessonUtil.sampleRestoreNotification
 import training.ui.LearningUiHighlightingManager
 import training.ui.LearningUiManager
+import training.util.KeymapUtil
 import training.util.WeakReferenceDelegator
 import training.util.invokeActionForFocusContext
 import java.awt.Rectangle
 import javax.swing.JDialog
 import javax.swing.text.JTextComponent
 
-abstract class CommonDebugLesson(module: Module, id: String, languageId: String)
-  : KLesson(id, LessonsBundle.message("debug.workflow.lesson.name"), module, languageId) {
+abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message("debug.workflow.lesson.name")) {
   protected abstract val sample: LessonSample
   protected abstract var logicalPosition: LogicalPosition
   protected abstract val configurationName: String
@@ -200,7 +194,7 @@ abstract class CommonDebugLesson(module: Module, id: String, languageId: String)
       proposeModificationRestore(sample.text)
       test {
         Thread.sleep(500)
-        GuiTestUtil.shortcut(Key.ESCAPE)
+        invokeActionViaShortcut("ESCAPE")
       }
     }
   }
@@ -253,8 +247,8 @@ abstract class CommonDebugLesson(module: Module, id: String, languageId: String)
       proposeModificationRestore(sample.text)
       test {
         Thread.sleep(500)
-        GuiTestUtil.shortcut(if (stepIntoDirection == "→") Key.RIGHT else Key.LEFT)
-        GuiTestUtil.shortcut(Key.ENTER)
+        invokeActionViaShortcut(if (stepIntoDirection == "→") "RIGHT" else "LEFT")
+        invokeActionViaShortcut("ENTER")
       }
     }
   }
@@ -290,7 +284,7 @@ abstract class CommonDebugLesson(module: Module, id: String, languageId: String)
         else checkForBreakpoints()
       }
       test {
-        GuiTestUtil.shortcut(Key.ESCAPE)
+        invokeActionViaShortcut("ESCAPE")
         invokeLater {
           WriteCommandAction.runWriteCommandAction(project) {
             val offset = sample.text.indexOf("[0]")
@@ -360,6 +354,9 @@ abstract class CommonDebugLesson(module: Module, id: String, languageId: String)
     }
 
     task(expressionToBeEvaluated) {
+      before {
+        LearningUiHighlightingManager.clearHighlights()
+      }
       text(LessonsBundle.message("debug.workflow.type.result", code(it),
                                  strong(XDebuggerBundle.message("xdebugger.evaluate.label.expression"))))
       stateCheck { checkWordInTextField(it) }
@@ -381,7 +378,10 @@ abstract class CommonDebugLesson(module: Module, id: String, languageId: String)
         dialog?.title == XDebuggerBundle.message("xdebugger.evaluate.dialog.title") && root?.children?.size == 1
       }
       proposeModificationRestore(afterFixText)
-      test { GuiTestUtil.shortcut(Key.ENTER) }
+      test(waitEditorToBeReady = false) {
+        invokeActionViaShortcut("ENTER")
+        invokeActionViaShortcut("ESCAPE")
+      }
     }
   }
 

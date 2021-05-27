@@ -14,6 +14,7 @@ import com.intellij.openapi.externalSystem.model.ProjectSystemId;
 import com.intellij.openapi.externalSystem.service.project.wizard.AbstractExternalProjectImportProvider;
 import com.intellij.openapi.externalSystem.statistics.ExternalSystemActionsCollector;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
+import com.intellij.openapi.externalSystem.util.ExternalSystemUtil;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
@@ -34,6 +35,7 @@ public class AttachExternalProjectAction extends DumbAwareAction {
   public AttachExternalProjectAction() {
     getTemplatePresentation().setText(JavaUiBundle.messagePointer("action.attach.external.project.text", "External"));
     getTemplatePresentation().setDescription(JavaUiBundle.messagePointer("action.attach.external.project.description", "external"));
+    getTemplatePresentation().setIcon(AllIcons.General.Add);
   }
 
   @Override
@@ -81,6 +83,7 @@ public class AttachExternalProjectAction extends DumbAwareAction {
       projectImportProvider
     );
     if (wizard != null && (wizard.getStepCount() <= 0 || wizard.showAndGet())) {
+      ExternalSystemUtil.confirmLoadingUntrustedProjectIfNeeded(project, externalSystemId);
       ImportModuleAction.createFromWizard(project, wizard);
     }
   }

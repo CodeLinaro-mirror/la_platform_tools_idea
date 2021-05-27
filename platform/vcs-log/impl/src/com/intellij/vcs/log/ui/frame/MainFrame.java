@@ -55,10 +55,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
 import java.awt.*;
-import java.util.Collection;
-import java.util.Collections;
+import java.util.*;
 import java.util.List;
-import java.util.Objects;
 
 import static com.intellij.openapi.vfs.VfsUtilCore.toVirtualFileArray;
 import static com.intellij.util.ObjectUtils.notNull;
@@ -282,7 +280,12 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
       return new QuickActionProvider() {
         @Override
         public @NotNull List<AnAction> getActions(boolean originalProvider) {
-          return SimpleToolWindowPanel.collectActions(myToolbar);
+          AnAction textFilterAction = EmptyAction.wrap(ActionManager.getInstance().getAction(VcsLogActionPlaces.VCS_LOG_FOCUS_TEXT_FILTER));
+          textFilterAction.getTemplatePresentation().setText(VcsLogBundle.message("vcs.log.text.filter.action.text"));
+          List<AnAction> actions = new ArrayList<>();
+          actions.add(textFilterAction);
+          actions.addAll(SimpleToolWindowPanel.collectActions(myToolbar));
+          return actions;
         }
 
         @Override
@@ -351,7 +354,7 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
         myChangesBrowser.showText(statusText -> {
           statusText.setText(VcsLogBundle.message("vcs.log.changes.too.many.status", detailsList.size(), sizeText));
           statusText.appendSecondaryText(VcsLogBundle.message("vcs.log.changes.too.many.show.anyway.status.action"),
-                                         VcsLogUiUtil.getLinkAttributes(),
+                                         SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES,
                                          e -> myChangesBrowser.setSelectedDetails(detailsList));
         });
       }
@@ -430,7 +433,7 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
       else if (visiblePack.getVisibleGraph().getVisibleCommitCount() == 0) {
         if (visiblePack.getFilters().isEmpty()) {
           statusText.setText(VcsLogBundle.message("vcs.log.no.commits.status")).
-            appendSecondaryText(VcsLogBundle.message("vcs.log.commit.status.action"), VcsLogUiUtil.getLinkAttributes(),
+            appendSecondaryText(VcsLogBundle.message("vcs.log.commit.status.action"), SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES,
                                 ActionUtil.createActionListener(IdeActions.ACTION_CHECKIN_PROJECT, this,
                                                                 ActionPlaces.UNKNOWN));
           String shortcutText = KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CHECKIN_PROJECT);

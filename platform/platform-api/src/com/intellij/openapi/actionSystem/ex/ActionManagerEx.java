@@ -84,8 +84,6 @@ public abstract class ActionManagerEx extends ActionManager {
 
   public abstract boolean isActionPopupStackEmpty();
 
-  public abstract boolean isTransparentOnlyActionsUpdateNow();
-
   public void fireBeforeActionPerformed(@NotNull String actionId, @NotNull InputEvent event, @NotNull String place) {
     fireActionPerformed(actionId, event, place, this::fireBeforeActionPerformed);
   }
@@ -97,7 +95,7 @@ public abstract class ActionManagerEx extends ActionManager {
   private void fireActionPerformed(@NotNull String actionId,
                                    @NotNull InputEvent event,
                                    @NotNull String place,
-                                   TriConsumer<AnAction, DataContext, AnActionEvent> firingFunction) {
+                                   TriConsumer<? super AnAction, ? super DataContext, ? super AnActionEvent> firingFunction) {
     DataManager.getInstance().getDataContextFromFocusAsync().onSuccess(dataContext -> {
       final AnAction action = getAction(actionId);
       if (action != null) {

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.popup;
 
 import com.intellij.codeInsight.hint.HintUtil;
@@ -13,6 +13,8 @@ import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.actionSystem.PlatformDataKeys;
+import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl;
+import com.intellij.openapi.actionSystem.impl.AutoPopupSupportingListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.TransactionGuard;
@@ -26,6 +28,7 @@ import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.*;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
 import com.intellij.openapi.wm.impl.IdeGlassPaneImpl;
@@ -380,7 +383,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   }
 
   @Override
-  public void setAdText(final @NotNull String s, int alignment) {
+  public void setAdText(@NotNull String s, int alignment) {
     if (myAdComponent == null) {
       myAdComponent = HintUtil.createAdComponent(s, JBUI.CurrentTheme.Advertiser.border(), alignment);
       JPanel wrapper = new JPanel(new BorderLayout());
@@ -389,10 +392,10 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
       myContent.add(wrapper, BorderLayout.SOUTH);
       pack(false, true);
     }
-    else {
-      myAdComponent.setText(s);
-      myAdComponent.setHorizontalAlignment(alignment);
-    }
+
+    myAdComponent.setVisible(StringUtil.isNotEmpty(s));
+    myAdComponent.setText(s);
+    myAdComponent.setHorizontalAlignment(alignment);
   }
 
   public static @NotNull Point getCenterOf(@NotNull Component aContainer, @NotNull JComponent content) {
@@ -534,13 +537,16 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
     return location;
   }
 
-  private Dimension getSizeForPositioning() {
+  public Dimension getSizeForPositioning() {
     Dimension size = getSize();
     if (size == null) {
       size = getStoredSize();
     }
     if (size == null) {
-      size = myContent.getPreferredSize();
+      Dimension contentPreferredSize = myContent.getPreferredSize();
+      Dimension titlePreferredSize = getTitle().getPreferredSize();
+      size = new JBDimension(Math.max(contentPreferredSize.width, titlePreferredSize.width),
+                             contentPreferredSize.height + titlePreferredSize.height, true);
     }
     return size;
   }
@@ -554,7 +560,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
     // Set the accessible parent so that screen readers don't announce
     // a window context change -- the tooltip is "logically" hosted
     // inside the component (e.g. editor) it appears on top of.
-    AccessibleContextUtil.setParent((Component)myComponent, editor.getContentComponent());
+    AccessibleContextUtil.setParent(myComponent, editor.getContentComponent());
     show(getBestPositionFor(editor));
   }
 
@@ -659,7 +665,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
     return rectangle.getLocation();
   }
 
-  private @NotNull Dimension getPreferredContentSize() {
+  public @NotNull Dimension getPreferredContentSize() {
     if (myForcedSize != null) {
       return myForcedSize;
     }
@@ -877,6 +883,13 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
 
     if (myMouseOutCanceller != null) {
       myMouseOutCanceller.myEverEntered = targetBounds.equals(original);
+    }
+
+    // prevent hiding of a floating toolbar
+    Point pointOnOwner = new Point(aScreenX, aScreenY);
+    SwingUtilities.convertPointFromScreen(pointOnOwner, owner);
+    if (ActionToolbarImpl.isInPopupToolbar(SwingUtilities.getDeepestComponentAt(owner, pointOnOwner.x, pointOnOwner.y))) {
+      AutoPopupSupportingListener.installOn(this);
     }
 
     myOwner = getFrameOrDialog(owner); // use correct popup owner for non-modal dialogs too

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.refactoring.move;
 
@@ -21,7 +21,9 @@ import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.refactoring.actions.BaseRefactoringAction;
 import com.intellij.refactoring.move.moveFilesOrDirectories.MoveFilesOrDirectoriesUtil;
 import com.intellij.refactoring.util.CommonRefactoringUtil;
+import com.intellij.util.SlowOperations;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,6 +36,7 @@ public class MoveHandler implements RefactoringActionHandler {
    * @deprecated Use {@link #getRefactoringName()} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
   public static final String REFACTORING_NAME = "Move";
 
   /**
@@ -132,13 +135,15 @@ public class MoveHandler implements RefactoringActionHandler {
   public static void doMove(Project project, PsiElement @NotNull [] elements, PsiElement targetContainer, DataContext dataContext, MoveCallback callback) {
     if (elements.length == 0) return;
 
-    for (MoveHandlerDelegate delegate: MoveHandlerDelegate.EP_NAME.getExtensionList()) {
-      if (delegate.canMove(elements, targetContainer, null)) {
-        logDelegate(project, delegate, elements[0].getLanguage());
-        delegate.doMove(project, elements, delegate.adjustTargetForMove(dataContext, targetContainer), callback);
-        break;
+    SlowOperations.allowSlowOperations(() -> {
+      for (MoveHandlerDelegate delegate : MoveHandlerDelegate.EP_NAME.getExtensionList()) {
+        if (delegate.canMove(elements, targetContainer, null)) {
+          logDelegate(project, delegate, elements[0].getLanguage());
+          delegate.doMove(project, elements, delegate.adjustTargetForMove(dataContext, targetContainer), callback);
+          break;
+        }
       }
-    }
+    });
   }
 
   /**

@@ -2,25 +2,17 @@
 package training.learn.lesson.general.assistance
 
 import com.intellij.ide.IdeBundle
-import com.intellij.testGuiFramework.framework.GuiTestUtil
-import com.intellij.testGuiFramework.impl.jList
-import com.intellij.testGuiFramework.util.Key
-import com.intellij.testGuiFramework.util.Modifier
-import com.intellij.testGuiFramework.util.Shortcut
-import training.commands.kotlin.TaskContext
-import training.commands.kotlin.TaskRuntimeContext
-import training.commands.kotlin.TaskTestContext
+import org.apache.commons.lang.StringEscapeUtils
+import training.dsl.*
+import training.dsl.LessonUtil.restoreIfModifiedOrMoved
 import training.learn.LessonsBundle
-import training.learn.interfaces.Module
-import training.learn.lesson.kimpl.KLesson
-import training.learn.lesson.kimpl.LessonContext
-import training.learn.lesson.kimpl.LessonSample
-import training.learn.lesson.kimpl.LessonUtil.restoreIfModifiedOrMoved
+import training.learn.course.KLesson
+import training.ui.LessonMessagePane
 import training.util.PerformActionUtil
 import javax.swing.JEditorPane
 
-abstract class EditorCodingAssistanceLesson(module: Module, lang: String, private val sample: LessonSample) :
-  KLesson("CodeAssistance.EditorCodingAssistance", LessonsBundle.message("editor.coding.assistance.lesson.name"), module, lang) {
+abstract class EditorCodingAssistanceLesson(private val sample: LessonSample) :
+  KLesson("CodeAssistance.EditorCodingAssistance", LessonsBundle.message("editor.coding.assistance.lesson.name")) {
 
   protected abstract val errorIntentionText: String
   protected abstract val warningIntentionText: String
@@ -57,16 +49,15 @@ abstract class EditorCodingAssistanceLesson(module: Module, lang: String, privat
 
     task("ShowErrorDescription") {
       text(LessonsBundle.message("editor.coding.assistance.show.warning.description", action(it)))
-      val inspectionInfoLabelText = IdeBundle.message("inspection.message.inspection.info")
+      val inspectionInfoLabelText = StringEscapeUtils.escapeHtml(IdeBundle.message("inspection.message.inspection.info"))  // escapeHtml required in case of hieroglyph localization
       triggerByUiComponentAndHighlight<JEditorPane>(false, false) { ui ->
         ui.text.contains(inspectionInfoLabelText)
       }
       restoreIfModifiedOrMoved()
       test {
         Thread.sleep(500)
-        val errorDescriptionShortcut = Shortcut(hashSetOf(Modifier.CONTROL), Key.F1)
-        GuiTestUtil.shortcut(errorDescriptionShortcut)
-        GuiTestUtil.shortcut(errorDescriptionShortcut)
+        invokeActionViaShortcut("CONTROL F1")
+        invokeActionViaShortcut("CONTROL F1")
       }
     }
 

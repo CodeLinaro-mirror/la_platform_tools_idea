@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application;
 
 import com.intellij.diagnostic.StartUpMeasurer;
@@ -38,7 +38,6 @@ public final class PathManager {
 
   public static final String OPTIONS_DIRECTORY = "options";
   public static final String DEFAULT_EXT = ".xml";
-  public static final String DEFAULT_OPTIONS_FILE = "other" + DEFAULT_EXT;
 
   private static final String KOTLIN_IDE_IML_RELATIVE_PATH = "kotlin/idea/kotlin.idea.iml";
   private static final String KOTLIN_COMMUNITY_IDE_IML_RELATIVE_PATH = "idea/kotlin.idea.iml";
@@ -389,10 +388,12 @@ public final class PathManager {
     return getSystemPath() + "/tmp";
   }
 
-  public static @NotNull File getIndexRoot() {
+  public static @NotNull Path getIndexRoot() {
     String indexRootPath = getExplicitPath("index_root_path");
-    if (indexRootPath == null) indexRootPath = getSystemPath() + "/index";
-    return Paths.get(indexRootPath).toFile();
+    if (indexRootPath == null) {
+      indexRootPath = getSystemPath() + "/index";
+    }
+    return Paths.get(indexRootPath);
   }
 
   public static @NotNull String getLogPath() {
@@ -432,9 +433,9 @@ public final class PathManager {
   /**
    * Attempts to detect classpath entry containing given resource.
    */
-  public static @Nullable String getResourceRoot(@NotNull ClassLoader cl, @NotNull String resourcePath) {
-    URL url = cl.getResource(resourcePath);
-    return url != null ? extractRoot(url, resourcePath) : null;
+  public static @Nullable String getResourceRoot(@NotNull ClassLoader classLoader, @NotNull String resourcePath) {
+    URL url = classLoader.getResource(resourcePath);
+    return url == null ? null : extractRoot(url, "/"+resourcePath);
   }
 
   /**
@@ -559,8 +560,7 @@ public final class PathManager {
             }
           }
         }
-        catch (NoSuchFileException | AccessDeniedException ignore) {
-        }
+        catch (NoSuchFileException | AccessDeniedException ignore) { }
         catch (IOException e) {
           log("Can't read property file '" + path + "': " + e.getMessage());
         }

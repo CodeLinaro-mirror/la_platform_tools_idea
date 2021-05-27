@@ -19,7 +19,7 @@ import javax.swing.*;
  * <p/>
  * Use {@link Bus#notify(Notification)} or {@link Bus#notify(Notification, Project)} (when Project is known) to show notification.
  * <p>
- * See <a href="www.jetbrains.org/intellij/sdk/docs/user_interface_components/notifications.html#top-level-notifications">Notifications</a>.
+ * See <a href="https://plugins.jetbrains.com/docs/intellij/notifications.html#top-level-notifications">Notifications</a>.
  */
 public interface Notifications {
   Topic<Notifications> TOPIC = Topic.create("Notifications", Notifications.class, Topic.BroadcastDirection.NONE);
@@ -50,6 +50,7 @@ public interface Notifications {
      * @deprecated use {@link NotificationGroup}
      */
     @Deprecated
+    @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
     public static void register(@NotNull final String group_id, @NotNull final NotificationDisplayType defaultDisplayType) {
       if (ApplicationManager.getApplication().isUnitTestMode()) return;
       //noinspection SSBasedInspection

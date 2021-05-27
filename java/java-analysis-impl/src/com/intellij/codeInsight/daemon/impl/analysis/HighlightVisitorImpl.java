@@ -2,6 +2,7 @@
 package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.codeHighlighting.Pass;
+import com.intellij.codeInsight.AnnotationUtil;
 import com.intellij.codeInsight.daemon.JavaErrorBundle;
 import com.intellij.codeInsight.daemon.impl.*;
 import com.intellij.codeInsight.daemon.impl.quickfix.AdjustFunctionContextFix;
@@ -42,8 +43,10 @@ import com.intellij.refactoring.util.RefactoringChangeUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.MostlySingularMultiMap;
 import com.siyeh.ig.psiutils.ClassUtils;
-import one.util.streamex.StreamEx;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.function.Function;
@@ -57,7 +60,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   private PsiFile myFile;
   private PsiJavaModule myJavaModule;
 
-  private PreviewFeatureVisitor myPreviewFeatureVisitor;
+  private PsiElementVisitor myPreviewFeatureVisitor;
 
   // map codeBlock->List of PsiReferenceExpression of uninitialized final variables
   private final Map<PsiElement, Collection<PsiReferenceExpression>> myUninitializedVarProblems = new HashMap<>();
@@ -142,6 +145,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
    * @deprecated use {@link #HighlightVisitorImpl()} and {@link #getResolveHelper(Project)}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   protected HighlightVisitorImpl(@SuppressWarnings("unused") @NotNull PsiResolveHelper psiResolveHelper) {
   }
 
@@ -229,6 +233,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
       myJavaModule = null;
       myFile = null;
       myHolder = null;
+      myPreviewFeatureVisitor = null;
       myDuplicateMethods.clear();
       myOverrideEquivalentMethodsVisitedClasses.clear();
       myExpectedReturnTypes.clear();
@@ -249,7 +254,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     myJavaSdkVersion = ObjectUtils
       .notNull(JavaVersionService.getInstance().getJavaSdkVersion(file), JavaSdkVersion.fromLanguageLevel(myLanguageLevel));
     myJavaModule = myLanguageLevel.isAtLeast(LanguageLevel.JDK_1_9) ? JavaModuleGraphUtil.findDescriptorByElement(file) : null;
-    myPreviewFeatureVisitor = new PreviewFeatureVisitor(myLanguageLevel, myHolder);
+    myPreviewFeatureVisitor = myLanguageLevel.isPreview() ? EMPTY_VISITOR : new PreviewFeatureVisitor(myLanguageLevel, myHolder);
   }
 
   @Override
@@ -589,6 +594,8 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     super.visitExpression(expression);
 
     PsiElement parent = expression.getParent();
+    // Method expression of the call should not be especially processed
+    if (parent instanceof PsiMethodCallExpression) return;
     PsiType type = expression.getType();
 
     if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkMustBeBoolean(expression, type));
@@ -857,6 +864,9 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     super.visitInstanceOfExpression(expression);
     if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkInstanceOfApplicable(expression));
     if (!myHolder.hasErrorResults()) myHolder.add(GenericsHighlightUtil.checkInstanceOfGenericType(myLanguageLevel, expression));
+    if (!myHolder.hasErrorResults() && myLanguageLevel.isAtLeast(LanguageLevel.JDK_16)) {
+      myHolder.add(HighlightUtil.checkInstanceOfPatternSupertype(expression));
+    }
   }
 
   @Override
@@ -1327,11 +1337,11 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   }
 
   @Nullable
-  private static JavaResolveResult resolveOptimised(@NotNull PsiJavaCodeReferenceElement ref) {
+  private JavaResolveResult resolveOptimised(@NotNull PsiJavaCodeReferenceElement ref) {
     try {
       if (ref instanceof PsiReferenceExpressionImpl) {
         PsiReferenceExpressionImpl.OurGenericsResolver resolver = PsiReferenceExpressionImpl.OurGenericsResolver.INSTANCE;
-        JavaResolveResult[] results = JavaResolveUtil.resolveWithContainingFile(ref, resolver, true, true, ref.getContainingFile());
+        JavaResolveResult[] results = JavaResolveUtil.resolveWithContainingFile(ref, resolver, true, true, myFile);
         return results.length == 1 ? results[0] : JavaResolveResult.EMPTY;
       }
       else {
@@ -1343,11 +1353,11 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     }
   }
 
-  private static JavaResolveResult @Nullable [] resolveOptimised(@NotNull PsiReferenceExpression expression) {
+  private JavaResolveResult @Nullable [] resolveOptimised(@NotNull PsiReferenceExpression expression) {
     try {
       if (expression instanceof PsiReferenceExpressionImpl) {
         PsiReferenceExpressionImpl.OurGenericsResolver resolver = PsiReferenceExpressionImpl.OurGenericsResolver.INSTANCE;
-        return JavaResolveUtil.resolveWithContainingFile(expression, resolver, true, true, expression.getContainingFile());
+        return JavaResolveUtil.resolveWithContainingFile(expression, resolver, true, true, myFile);
       }
       else {
         return expression.multiResolve(true);
@@ -1375,7 +1385,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     if (resolved instanceof PsiVariable && resolved.getContainingFile() == expression.getContainingFile()) {
       PsiVariable variable = (PsiVariable)resolved;
       boolean isFinal = variable.hasModifierProperty(PsiModifier.FINAL);
-      if (isFinal && !variable.hasInitializer()) {
+      if (isFinal && !variable.hasInitializer() && !(variable instanceof PsiPatternVariable)) {
         if (!myHolder.hasErrorResults()) {
           myHolder.add(HighlightControlFlowUtil.checkFinalVariableMightAlreadyHaveBeenAssignedTo(variable, expression, myFinalVarProblems));
         }
@@ -1979,223 +1989,23 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     return HighlightUtil.checkFeature(element, feature, myLanguageLevel, myFile);
   }
 
-  public static class PreviewFeatureVisitor extends JavaElementVisitor {
-    public static final @NonNls String JDK_INTERNAL_PREVIEW_FEATURE = "jdk.internal.PreviewFeature";
-    public static final @NonNls String JDK_INTERNAL_JAVAC_PREVIEW_FEATURE = "jdk.internal.javac.PreviewFeature";
-
+  private static class PreviewFeatureVisitor extends PreviewFeatureVisitorBase {
     private final LanguageLevel myLanguageLevel;
     private final HighlightInfoHolder myHolder;
 
-    public PreviewFeatureVisitor(LanguageLevel level, HighlightInfoHolder holder) {
+    private PreviewFeatureVisitor(LanguageLevel level, HighlightInfoHolder holder) {
       myLanguageLevel = level;
       myHolder = holder;
     }
 
     @Override
-    public void visitImportStaticStatement(PsiImportStaticStatement statement) {
-      final PsiClass owner = statement.resolveTargetClass();
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(statement, owner, myLanguageLevel);
+    protected void registerProblem(PsiElement element, String description, HighlightingFeature feature, PsiAnnotation annotation) {
+      final boolean isReflective = Boolean.TRUE.equals(AnnotationUtil.getBooleanAttributeValue(annotation, "reflective"));
+
+      final HighlightInfoType type = isReflective ? HighlightInfoType.WARNING : HighlightInfoType.ERROR;
+
+      final HighlightInfo highlightInfo = HighlightUtil.checkFeature(element, feature, myLanguageLevel, element.getContainingFile(), description, type);
       myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitImportStatement(final PsiImportStatement statement) {
-      final PsiModifierListOwner owner = ObjectUtils.tryCast(statement.resolve(), PsiModifierListOwner.class);
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(statement, owner, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitMethodCallExpression(PsiMethodCallExpression expression) {
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(expression, expression.resolveMethod(), myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitNewExpression(PsiNewExpression expression) {
-      final PsiModifierListOwner owner = getTargetOfNewExpression(expression);
-
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(expression, owner, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitReferenceElement(PsiJavaCodeReferenceElement reference) {
-      super.visitReferenceElement(reference);
-
-      final JavaResolveResult result = resolveOptimised(reference);
-      if (result == null) return;
-
-      final PsiElement resolved = result.getElement();
-      if (!(resolved instanceof PsiModifierListOwner)) return;
-
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(reference, (PsiModifierListOwner)resolved, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitMethodReferenceExpression(PsiMethodReferenceExpression expression) {
-      final PsiMethod method = getMethod(expression);
-
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(expression, method, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitTypeElement(PsiTypeElement type) {
-      final PsiClass psiClass = PsiTypesUtil.getPsiClass(type.getType());
-
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(type, psiClass, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitReferenceExpression(PsiReferenceExpression expression) {
-      final PsiModifierListOwner target = getTargetElement(expression);
-
-      final HighlightInfo highlightInfo = checkPreviewFeatureElement(expression, target, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Override
-    public void visitModuleStatement(PsiStatement statement) {
-      final HighlightInfo highlightInfo = checkModulePreviewFeatureAnnotation(statement, myLanguageLevel);
-      myHolder.add(highlightInfo);
-    }
-
-    @Nullable
-    private static PsiModifierListOwner getTargetElement(PsiReferenceExpression expression) {
-      final JavaResolveResult[] results = resolveOptimised(expression);
-      if (results == null) return null;
-
-      final JavaResolveResult result = results.length == 1 ? results[0] : JavaResolveResult.EMPTY;
-      if (result == null) return null;
-
-      final PsiElement resolved = result.getElement();
-      if (!(resolved instanceof PsiModifierListOwner)) return null;
-
-      return (PsiModifierListOwner)resolved;
-    }
-
-    @Nullable
-    private static PsiMethod getMethod(PsiMethodReferenceExpression expression) {
-      final JavaResolveResult result;
-      try {
-        final JavaResolveResult[] results = expression.multiResolve(true);
-        result = results.length == 1 ? results[0] : JavaResolveResult.EMPTY;
-      }
-      catch (IndexNotReadyException e) {
-        return null;
-      }
-
-      final PsiElement method = result.getElement();
-      if (!(method instanceof PsiMethod)) return null;
-
-      return (PsiMethod)method;
-    }
-
-    @Nullable
-    private static PsiModifierListOwner getTargetOfNewExpression(@NotNull final PsiNewExpression expression) {
-      final PsiMethod method = expression.resolveMethod();
-      if (method != null) return method;
-
-      final PsiJavaCodeReferenceElement reference = expression.getClassOrAnonymousClassReference();
-      if (reference == null) return null;
-      return ObjectUtils.tryCast(reference.resolve(), PsiModifierListOwner.class);
-    }
-
-    /**
-     * This method validates that the language level of the project where the context accesses
-     * the owner that is annotated with either {@link HighlightVisitorImpl.PreviewFeatureVisitor#JDK_INTERNAL_PREVIEW_FEATURE}
-     * or {@link HighlightVisitorImpl.PreviewFeatureVisitor#JDK_INTERNAL_JAVAC_PREVIEW_FEATURE} is sufficient
-     *
-     * @param context the expression to examine
-     * @param level the current language level
-     * @return an instance of HighlightInfo with a quickfix to set the appropriate language level
-     * if the current language level is not sufficient or null
-     */
-    @Nullable
-    @Contract(value = "null, _, _ -> null; _, null, _ -> null", pure = true)
-    private static HighlightInfo checkPreviewFeatureElement(@Nullable final PsiElement context,
-                                                    @Nullable final PsiModifierListOwner owner,
-                                                    @NotNull final LanguageLevel level) {
-      if (context == null) return null;
-      if (owner == null) return null;
-
-      final PsiAnnotation annotation = getPreviewFeatureAnnotation(owner);
-      final HighlightingFeature feature = HighlightingFeature.fromPreviewFeatureAnnotation(annotation);
-      if (feature == null) return null;
-
-      return HighlightUtil.checkFeature(context, feature, level, context.getContainingFile());
-    }
-
-    @Nullable
-    private static HighlightInfo checkModulePreviewFeatureAnnotation(@Nullable final PsiStatement statement,
-                                                                    @NotNull final LanguageLevel level) {
-      if (statement instanceof PsiRequiresStatement) {
-        final PsiRequiresStatement requiresStatement = (PsiRequiresStatement)statement;
-        final PsiJavaModule module = requiresStatement.resolve();
-
-        return checkPreviewFeatureElement(statement, module, level);
-      }
-      else if (statement instanceof PsiPackageAccessibilityStatement) {
-        final PsiPackageAccessibilityStatement accessibilityStatement = (PsiPackageAccessibilityStatement)statement;
-        final PsiJavaCodeReferenceElement reference = accessibilityStatement.getPackageReference();
-        if (reference == null) return null;
-
-        final PsiElement resolve = reference.resolve();
-        if (!(resolve instanceof PsiPackage)) return null;
-
-        final PsiPackage psiPackage = (PsiPackage)resolve;
-        return checkPreviewFeatureElement(statement, psiPackage, level);
-      }
-      else if (statement instanceof PsiProvidesStatement) {
-        final PsiProvidesStatement providesStatement = (PsiProvidesStatement)statement;
-        final PsiReferenceList list = providesStatement.getImplementationList();
-        if (list == null) return null;
-
-        return StreamEx.of(list.getReferenceElements())
-          .map(PsiReference::resolve)
-          .select(PsiClass.class)
-          .map(clazz -> checkPreviewFeatureElement(statement, clazz, level))
-          .nonNull()
-          .findAny()
-          .orElse(null);
-      }
-      return null;
-    }
-
-    @Nullable
-    @Contract(value = "null -> null", pure = true)
-    public static PsiAnnotation getPreviewFeatureAnnotation(@Nullable final PsiModifierListOwner owner) {
-      if (owner == null) return null;
-
-      final PsiAnnotation annotation = getAnnotation(owner);
-      if (annotation != null) return annotation;
-
-      if (owner instanceof PsiMember && !owner.hasModifier(JvmModifier.STATIC)) {
-        final PsiMember member = (PsiMember)owner;
-        final PsiAnnotation result = getPreviewFeatureAnnotation(member.getContainingClass());
-        if (result != null) return result;
-      }
-
-      final PsiPackage psiPackage = JavaResolveUtil.getContainingPackage(owner);
-      if (psiPackage  == null) return null;
-
-      final PsiAnnotation packageAnnotation = getAnnotation(psiPackage);
-      if (packageAnnotation != null) return packageAnnotation;
-
-      final PsiJavaModule module = JavaModuleGraphUtil.findDescriptorByElement(owner);
-      if (module == null) return null;
-
-      return getAnnotation(module);
-    }
-
-    private static PsiAnnotation getAnnotation(@NotNull PsiModifierListOwner owner) {
-      final PsiAnnotation annotation = owner.getAnnotation(JDK_INTERNAL_JAVAC_PREVIEW_FEATURE);
-      if (annotation != null) return annotation;
-
-      return owner.getAnnotation(JDK_INTERNAL_PREVIEW_FEATURE);
     }
   }
 }

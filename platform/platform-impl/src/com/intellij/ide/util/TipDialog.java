@@ -4,13 +4,14 @@ package com.intellij.ide.util;
 import com.intellij.CommonBundle;
 import com.intellij.ide.GeneralSettings;
 import com.intellij.ide.IdeBundle;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.ide.TipsOfTheDayUsagesCollector;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
@@ -31,6 +32,7 @@ public final class TipDialog extends DialogWrapper {
   public static final Key<Boolean> DISABLE_TIPS_FOR_PROJECT = Key.create("DISABLE_TIPS_FOR_PROJECT");
   @NonNls private static final String LAST_TIME_TIPS_WERE_SHOWN = "lastTimeTipsWereShown";
   private final TipPanel myTipPanel;
+  private final boolean myShowingOnStartup;
 
   TipDialog(@NotNull final Window parent) {
     super(parent, true);
@@ -39,6 +41,7 @@ public final class TipDialog extends DialogWrapper {
     setCancelButtonText(CommonBundle.getCloseButtonText());
     myTipPanel = new TipPanel();
     setDoNotAskOption(myTipPanel);
+    myShowingOnStartup = myTipPanel.isToBeShown();
     setHorizontalStretch(1.33f);
     setVerticalStretch(1.25f);
     init();
@@ -58,8 +61,14 @@ public final class TipDialog extends DialogWrapper {
   }
 
   @Override
+  public void doCancelAction() {
+    super.doCancelAction();
+    TipsOfTheDayUsagesCollector.triggerDialogClosed(myShowingOnStartup);
+  }
+
+  @Override
   protected Action @NotNull [] createActions() {
-    if (ApplicationManager.getApplication().isInternal()) {
+    if (Registry.is("ide.show.open.button.in.tip.dialog")) {
       return new Action[]{new OpenTipsAction(), myTipPanel.myPreviousTipAction, myTipPanel.myNextTipAction, getCancelAction()};
     }
     return new Action[]{myTipPanel.myPreviousTipAction, myTipPanel.myNextTipAction, getCancelAction()};

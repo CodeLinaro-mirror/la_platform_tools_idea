@@ -45,6 +45,7 @@ import com.intellij.util.IncorrectOperationException;
 import com.jetbrains.python.PythonHelpersLocator;
 import com.jetbrains.python.PythonLanguage;
 import com.jetbrains.python.PythonTestUtil;
+import com.jetbrains.python.codeInsight.completion.PyModuleNameCompletionContributor;
 import com.jetbrains.python.documentation.PyDocumentationSettings;
 import com.jetbrains.python.documentation.PythonDocumentationProvider;
 import com.jetbrains.python.documentation.docstrings.DocStringFormat;
@@ -267,6 +268,7 @@ public abstract class PyTestCase extends UsefulTestCase {
   protected void tearDown() throws Exception {
     try {
       PyNamespacePackagesService.getInstance(myFixture.getModule()).resetAllNamespacePackages();
+      PyModuleNameCompletionContributor.ENABLED = true;
       setLanguageLevel(null);
       myFixture.tearDown();
       myFixture = null;
@@ -565,7 +567,7 @@ public abstract class PyTestCase extends UsefulTestCase {
     Disposer.register(myFixture.getProjectDisposable(), () -> PsiTestUtil.removeExcludedRoot(module, dir));
   }
 
-  public <T> void assertContainsInRelativeOrder(@NotNull final Iterable<T> actual, final T @Nullable ... expected) {
+  public <T> void assertContainsInRelativeOrder(@NotNull final Iterable<? extends T> actual, final T @Nullable ... expected) {
     final List<T> actualList = Lists.newArrayList(actual);
     if (expected.length > 0) {
       T prev = expected[0];

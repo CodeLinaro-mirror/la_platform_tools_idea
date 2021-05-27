@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.space.vcs.review.list
 
 import circlet.code.api.CodeReviewListItem
@@ -8,23 +8,22 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.progress.util.ProgressWindow
+import com.intellij.space.messages.SpaceBundle
 import com.intellij.space.ui.LoadableListVmImpl
 import com.intellij.space.ui.bindScroll
 import com.intellij.space.ui.toLoadable
 import com.intellij.space.vcs.review.SpaceReviewDataKeys
-import com.intellij.ui.CollectionListModel
-import com.intellij.ui.ListUtil
-import com.intellij.ui.PopupHandler
-import com.intellij.ui.ScrollPaneFactory
+import com.intellij.ui.*
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.vcs.log.ui.frame.ProgressStripe
 import java.awt.Component
+import java.awt.event.ActionListener
 import javax.swing.JComponent
 import javax.swing.JScrollPane
 
-object SpaceReviewListFactory {
+internal object SpaceReviewListFactory {
   fun create(parentDisposable: Disposable, listVm: SpaceReviewsListVm): JComponent {
     val listModel: CollectionListModel<CodeReviewListItem> = CollectionListModel()
 
@@ -65,9 +64,18 @@ object SpaceReviewListFactory {
     listVm.isLoading.forEach(listVm.lifetime) { isLoading ->
       if (isLoading) {
         progressStripe.startLoading()
+        reviewsList.emptyText
+          .clear()
+          .appendText(SpaceBundle.message("review.loading.reviews"))
       }
       else {
         progressStripe.stopLoading()
+        reviewsList.emptyText
+          .clear()
+          .appendText(SpaceBundle.message("review.list.empty"))
+          .appendSecondaryText(SpaceBundle.message("action.refresh.text"), SimpleTextAttributes.LINK_ATTRIBUTES, ActionListener {
+            listVm.refresh()
+          })
       }
     }
 

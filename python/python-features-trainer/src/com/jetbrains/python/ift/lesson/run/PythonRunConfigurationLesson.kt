@@ -2,13 +2,12 @@
 package com.jetbrains.python.ift.lesson.run
 
 import com.jetbrains.python.ift.PythonLessonsBundle
-import training.learn.interfaces.Module
+import training.dsl.LessonContext
+import training.dsl.LessonSample
+import training.dsl.checkToolWindowState
 import training.learn.lesson.general.run.CommonRunConfigurationLesson
-import training.learn.lesson.kimpl.LessonContext
-import training.learn.lesson.kimpl.LessonSample
-import training.learn.lesson.kimpl.toolWindowShowed
 
-class PythonRunConfigurationLesson(module: Module) : CommonRunConfigurationLesson(module, "python.run.configuration", "Python") {
+class PythonRunConfigurationLesson : CommonRunConfigurationLesson("python.run.configuration") {
   override val sample: LessonSample = PythonRunLessonsUtils.demoSample
   override val demoConfigurationName = PythonRunLessonsUtils.demoConfigurationName
 
@@ -16,7 +15,7 @@ class PythonRunConfigurationLesson(module: Module) : CommonRunConfigurationLesso
     task("RunClass") {
       text(PythonLessonsBundle.message("python.run.configuration.lets.run", action(it)))
       //Wait toolwindow
-      toolWindowShowed("Run")
+      checkToolWindowState("Run", true)
       stateCheck {
         configurations().isNotEmpty()
       }

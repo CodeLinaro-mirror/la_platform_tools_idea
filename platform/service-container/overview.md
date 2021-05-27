@@ -2,7 +2,7 @@ This document is a more like a draft, that will be finally moved to [IntelliJ Pl
 
 ## Service
 
-Please see [Service](https://www.jetbrains.org/intellij/sdk/docs/basics/plugin_structure/plugin_services.html).
+Please see [Service](https://plugins.jetbrains.com/docs/intellij/plugin-services.html).
 
 To replace (mock) service in tests, use [ServiceContainerUtil](https://github.com/JetBrains/intellij-community/blob/master/platform/testFramework/src/com/intellij/testFramework/ServiceContainerUtil.kt).
 
@@ -22,8 +22,9 @@ To register:
 
 ## Startup Activity
 
-An activity to be executed as part of project opening, under 'Loading Project' dialog. 
-Can't be registered by plugins. 
+An activity to be executed as part of project opening, on a pooled thread under `Loading Project` dialog, 
+after `ProjectComponent` initializations.
+This extension point can be only used by IJ Platform itself.
 
 To register: `StartupManager.registerStartupActivity` or
 

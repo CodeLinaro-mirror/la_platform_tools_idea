@@ -28,22 +28,7 @@ public class CoreJavaCodeStyleSettingsFacade extends JavaCodeStyleSettingsFacade
   }
 
   @Override
-  public boolean isJavaDocLeadingAsterisksEnabled() {
-    return false;
-  }
-
-  @Override
-  public int getIndentSize() {
-    return 4;
-  }
-
-  @Override
   public boolean isGenerateFinalParameters() {
-    return false;
-  }
-
-  @Override
-  public boolean isGenerateFinalLocals() {
     return false;
   }
 }

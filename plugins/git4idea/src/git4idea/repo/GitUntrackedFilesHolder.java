@@ -32,6 +32,7 @@ import com.intellij.vfs.AsyncVfsEventsListener;
 import com.intellij.vfs.AsyncVfsEventsPostProcessor;
 import git4idea.GitLocalBranch;
 import git4idea.commands.Git;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -148,7 +149,7 @@ public class GitUntrackedFilesHolder implements Disposable, AsyncVfsEventsListen
    */
   public void remove(@NotNull Collection<? extends FilePath> files) {
     synchronized (LOCK) {
-      myDefinitelyUntrackedFiles.removeAll(files);
+      files.forEach(myDefinitelyUntrackedFiles::remove);
       myPossiblyUntrackedFiles.addAll(files);
     }
   }
@@ -171,6 +172,7 @@ public class GitUntrackedFilesHolder implements Disposable, AsyncVfsEventsListen
    * @deprecated use {@link #retrieveUntrackedFilePaths} instead
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @NotNull
   public Collection<VirtualFile> retrieveUntrackedFiles() throws VcsException {
    return ContainerUtil.mapNotNull(retrieveUntrackedFilePaths(), FilePath::getVirtualFile);
@@ -216,15 +218,7 @@ public class GitUntrackedFilesHolder implements Disposable, AsyncVfsEventsListen
 
     Set<FilePath> untrackedFiles = myGit.untrackedFilePaths(myProject, myRoot, suspiciousFiles);
 
-    untrackedFiles.removeIf(it -> {
-      VirtualFile root = myVcsManager.getVcsRootFor(it);
-      if (!myRoot.equals(root)) {
-        LOG.warn(String.format("Ignoring untracked file under another root: %s; root: %s; mapped root: %s", it, myRoot, root));
-        return true;
-      }
-      return false;
-    });
-
+    removePathsUnderOtherRoots(untrackedFiles);
 
     synchronized (LOCK) {
       if (suspiciousFiles != null) {
@@ -237,6 +231,28 @@ public class GitUntrackedFilesHolder implements Disposable, AsyncVfsEventsListen
         myDefinitelyUntrackedFiles.addAll(untrackedFiles);
         myReady = true;
       }
+    }
+  }
+
+  private void removePathsUnderOtherRoots(@NotNull Collection<FilePath> untrackedFiles) {
+    int removedFiles = 0;
+    int maxFilesToReport = 10;
+
+    Iterator<FilePath> it = untrackedFiles.iterator();
+    while (it.hasNext()) {
+      FilePath filePath = it.next();
+      VirtualFile root = myVcsManager.getVcsRootFor(filePath);
+      if (myRoot.equals(root)) continue;
+
+      it.remove();
+      removedFiles++;
+      if (removedFiles < maxFilesToReport) {
+        LOG.warn(String.format("Ignoring untracked file under another root: %s; root: %s; mapped root: %s",
+                               filePath.getPresentableUrl(), myRoot.getPresentableUrl(), root != null ? root.getPresentableUrl() : "null"));
+      }
+    }
+    if (removedFiles >= maxFilesToReport) {
+      LOG.warn(String.format("Ignoring untracked file under another root: %s files total", removedFiles));
     }
   }
 

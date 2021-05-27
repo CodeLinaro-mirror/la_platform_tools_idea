@@ -108,13 +108,15 @@ import static org.junit.Assume.assumeTrue;
  */
 public abstract class UsefulTestCase extends TestCase {
   public static final boolean IS_UNDER_TEAMCITY = System.getenv("TEAMCITY_VERSION") != null;
+  @ApiStatus.Internal
+  public static final boolean IS_UNDER_SAFE_PUSH = IS_UNDER_TEAMCITY && "true".equals(System.getenv("SAFE_PUSH"));
   public static final String TEMP_DIR_MARKER = "unitTest_";
   public static final boolean OVERWRITE_TESTDATA = Boolean.getBoolean("idea.tests.overwrite.data");
 
   private static final String ORIGINAL_TEMP_DIR = FileUtil.getTempDirectory();
 
-  private static final Object2LongOpenHashMap<String> TOTAL_SETUP_COST_MILLIS = new Object2LongOpenHashMap<>();
-  private static final Object2LongOpenHashMap<String> TOTAL_TEARDOWN_COST_MILLIS = new Object2LongOpenHashMap<>();
+  private static final Object2LongMap<String> TOTAL_SETUP_COST_MILLIS=new Object2LongOpenHashMap<>();
+  private static final Object2LongMap<String> TOTAL_TEARDOWN_COST_MILLIS=new Object2LongOpenHashMap<>();
 
   protected static final Logger LOG = Logger.getInstance(UsefulTestCase.class);
 
@@ -487,8 +489,9 @@ public abstract class UsefulTestCase extends TestCase {
    *
    * @param cost setup cost in milliseconds
    */
-  private void logPerClassCost(long cost, @NotNull Object2LongOpenHashMap<? super String> costMap) {
-    costMap.addTo(getClass().getSuperclass().getName(), cost);
+  private void logPerClassCost(long cost,
+                               @NotNull Object2LongMap<? super String> costMap) {
+    costMap.mergeLong(getClass().getSuperclass().getName(), cost, Math::addExact);
   }
 
   @SuppressWarnings("UseOfSystemOutOrSystemErr")
@@ -653,7 +656,7 @@ public abstract class UsefulTestCase extends TestCase {
   }
 
   @SafeVarargs
-  public static <T> void assertOrderedCollection(T @NotNull [] collection, Consumer<T> @NotNull ... checkers) {
+  public static <T> void assertOrderedCollection(T @NotNull [] collection, Consumer<? super T> @NotNull ... checkers) {
     assertOrderedCollection(Arrays.asList(collection), checkers);
   }
 
@@ -755,7 +758,7 @@ public abstract class UsefulTestCase extends TestCase {
   }
 
   @SafeVarargs
-  public static <T> void assertOrderedCollection(@NotNull Collection<? extends T> collection, Consumer<T> @NotNull ... checkers) {
+  public static <T> void assertOrderedCollection(@NotNull Collection<? extends T> collection, Consumer<? super T> @NotNull ... checkers) {
     if (collection.size() != checkers.length) {
       Assert.fail(toString(collection));
     }
@@ -774,21 +777,21 @@ public abstract class UsefulTestCase extends TestCase {
   }
 
   @SafeVarargs
-  public static <T> void assertUnorderedCollection(T @NotNull [] collection, Consumer<T> @NotNull ... checkers) {
+  public static <T> void assertUnorderedCollection(T @NotNull [] collection, Consumer<? super T> @NotNull ... checkers) {
     assertUnorderedCollection(Arrays.asList(collection), checkers);
   }
 
   @SafeVarargs
-  public static <T> void assertUnorderedCollection(@NotNull Collection<? extends T> collection, Consumer<T> @NotNull ... checkers) {
+  public static <T> void assertUnorderedCollection(@NotNull Collection<? extends T> collection, Consumer<? super T> @NotNull ... checkers) {
     if (collection.size() != checkers.length) {
       Assert.fail(toString(collection));
     }
-    Set<Consumer<T>> checkerSet = ContainerUtil.set(checkers);
+    Set<Consumer<? super T>> checkerSet = ContainerUtil.set(checkers);
     int i = 0;
     Throwable lastError = null;
     for (final T actual : collection) {
       boolean flag = true;
-      for (final Consumer<T> condition : checkerSet) {
+      for (final Consumer<? super T> condition : checkerSet) {
         Throwable error = accepts(condition, actual);
         if (error == null) {
           checkerSet.remove(condition);

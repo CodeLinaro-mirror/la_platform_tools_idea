@@ -48,6 +48,13 @@ class PresentationFactory(private val editor: EditorImpl) : InlayPresentationFac
     return withInlayAttributes(textWithoutBox)
   }
 
+  fun smallTextWithoutBackground(text: String): InlayPresentation {
+    val textWithoutBox = InsetPresentation(TextInlayPresentation(textMetricsStorage, true, text), top = 1, down = 1)
+    return AttributesTransformerPresentation(textWithoutBox) {
+      it.withDefault(attributesOf(DefaultLanguageHighlighterColors.INLAY_TEXT_WITHOUT_BACKGROUND))
+    }
+  }
+
   override fun container(
     presentation: InlayPresentation,
     padding: Padding?,
@@ -70,17 +77,14 @@ class PresentationFactory(private val editor: EditorImpl) : InlayPresentationFac
 
   @Contract(pure = true)
   @Deprecated(message = "Bad API for Java, use mouseHandling with ClickListener")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
   fun mouseHandling(
     base: InlayPresentation,
     clickListener: ((MouseEvent, Point) -> Unit)?,
     hoverListener: HoverListener?
   ): InlayPresentation {
     val adapter = if (clickListener != null) {
-      object : ClickListener {
-        override fun onClick(event: MouseEvent, translated: Point) {
-          clickListener.invoke(event, translated)
-        }
-      }
+      ClickListener { event, translated -> clickListener.invoke(event, translated) }
     }
     else {
       null
@@ -381,7 +385,7 @@ class PresentationFactory(private val editor: EditorImpl) : InlayPresentationFac
 
   private fun withInlayAttributes(base: InlayPresentation): InlayPresentation {
     return AttributesTransformerPresentation(base) {
-      it.withDefault(attributesOf(DefaultLanguageHighlighterColors.INLINE_PARAMETER_HINT))
+      it.withDefault(attributesOf(DefaultLanguageHighlighterColors.INLAY_DEFAULT))
     }
   }
 

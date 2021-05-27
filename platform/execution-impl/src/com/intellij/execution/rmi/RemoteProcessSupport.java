@@ -4,7 +4,6 @@ package com.intellij.execution.rmi;
 import com.intellij.execution.*;
 import com.intellij.execution.configurations.RunProfile;
 import com.intellij.execution.configurations.RunProfileState;
-import com.intellij.execution.configurations.RunnerSettings;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
@@ -180,11 +179,14 @@ public abstract class RemoteProcessSupport<Target, EntryPoint, Parameters> {
     else if (info == null || info.handler == null) {
       throw new ExecutionException(ExecutionBundle.message("dialog.remote.process.unable.to.acquire.remote.proxy.for", getName(target)));
     }
-    publishPort(info.port);
-    if (info.servicePort != -1) {
-      publishPort(info.servicePort);
+    int publishedPort = publishPort(info.port);
+    int publishedServicePort = info.servicePort != -1 ? publishPort(info.servicePort) : info.servicePort;
+    if (publishedPort != info.port || publishedServicePort != info.servicePort) {
+      return acquire(new RunningInfo(info.handler, info.host, publishedPort, info.name, publishedServicePort));
     }
-    return acquire(info);
+    else {
+      return acquire(info);
+    }
   }
 
   private static void checkIndicator(@Nullable ProgressIndicator indicator) {
@@ -196,8 +198,8 @@ public abstract class RemoteProcessSupport<Target, EntryPoint, Parameters> {
     }
   }
 
-  protected void publishPort(int port) throws ExecutionException {
-
+  protected int publishPort(int port) throws ExecutionException {
+    return port;
   }
 
   @NotNull
@@ -230,7 +232,7 @@ public abstract class RemoteProcessSupport<Target, EntryPoint, Parameters> {
     });
   }
 
-  private static void destroyProcessesImpl(@NotNull List<Info> infos) {
+  private static void destroyProcessesImpl(@NotNull List<? extends Info> infos) {
     for (Info o : infos) {
       LOG.info("Terminating: " + o);
       o.handler.destroyProcess();

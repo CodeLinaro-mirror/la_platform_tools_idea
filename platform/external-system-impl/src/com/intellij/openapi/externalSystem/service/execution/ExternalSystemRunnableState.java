@@ -20,6 +20,7 @@ import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.execution.ui.ExecutionConsole;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.application.ApplicationManager;
@@ -133,7 +134,7 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
     ApplicationManager.getApplication().assertIsWriteThread();
     FileDocumentManager.getInstance().saveAllDocuments();
 
-    final ExternalSystemExecuteTaskTask task = new ExternalSystemExecuteTaskTask(myProject, mySettings, jvmParametersSetup);
+    ExternalSystemExecuteTaskTask task = new ExternalSystemExecuteTaskTask(myProject, mySettings, jvmParametersSetup, myConfiguration);
     copyUserDataTo(task);
     addDebugUserDataTo(task);
 
@@ -225,9 +226,9 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
 
           @Override
           public void onFailure(@NotNull ExternalSystemTaskId id, @NotNull Exception e) {
-            DataProvider dataProvider = BuildConsoleUtils.getDataProvider(id, progressListener);
+            DataContext dataContext = BuildConsoleUtils.getDataContext(id, progressListener);
             FailureResult failureResult = ExternalSystemUtil.createFailureResult(
-              executionName + " " + BuildBundle.message("build.status.failed"), e, id.getProjectSystemId(), myProject, dataProvider);
+              executionName + " " + BuildBundle.message("build.status.failed"), e, id.getProjectSystemId(), myProject, dataContext);
             eventDispatcher.onEvent(id, new FinishBuildEventImpl(id, null, System.currentTimeMillis(),
                                                                  BuildBundle.message("build.status.failed"), failureResult));
             processHandler.notifyProcessTerminated(1);
@@ -248,6 +249,9 @@ public class ExternalSystemRunnableState extends UserDataHolderBase implements R
 
           @Override
           public void onStatusChange(@NotNull ExternalSystemTaskNotificationEvent event) {
+            if (consoleView != null) {
+              consoleManager.onStatusChange(consoleView, event);
+            }
             if (event instanceof ExternalSystemBuildEvent) {
               eventDispatcher.onEvent(event.getId(), ((ExternalSystemBuildEvent)event).getBuildEvent());
             }

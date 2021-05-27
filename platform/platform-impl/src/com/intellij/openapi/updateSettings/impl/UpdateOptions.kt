@@ -17,19 +17,14 @@ class UpdateOptions : BaseState() {
   @get:OptionTag("CHECK_NEEDED")
   var isCheckNeeded by property(true)
 
+  @get:OptionTag("PLUGINS_CHECK_NEEDED")
+  var isPluginsCheckNeeded by property(true)
+
   @get:OptionTag("SHOW_WHATS_NEW_EDITOR")
   var isShowWhatsNewEditor by property(true)
 
   @get:OptionTag("LAST_TIME_CHECKED")
   var lastTimeChecked by property(0L)
-
-  // Exists only for statistics reporting. BeanBinding enumerates only mutable properties, so we need to provide a dummy setter
-  // for this property.
-  @Suppress("unused")
-  @get:ReportValue
-  var hoursSinceLastCheck: Int
-     get() = if (lastTimeChecked <= 0) -1 else TimeUnit.MILLISECONDS.toHours(System.currentTimeMillis() - lastTimeChecked).toInt()
-     set(_) { }
 
   @get:OptionTag("LAST_BUILD_CHECKED")
   var lastBuildChecked by string()

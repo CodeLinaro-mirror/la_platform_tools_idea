@@ -10,6 +10,7 @@ import com.intellij.internal.statistic.eventLog.validator.storage.GroupValidatio
 import com.intellij.internal.statistic.eventLog.events.EventsSchemeBuilder
 import com.intellij.internal.statistic.eventLog.validator.storage.ValidationTestRulesPersistedStorage
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupRemoteDescriptors
+import com.intellij.internal.statistic.utils.StatisticsRecorderUtil
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.progress.ProgressIndicator
@@ -40,7 +41,7 @@ class EditEventsTestSchemeAction(private val recorderId: String = StatisticsDevK
 
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project ?: return
-    val testSchemeStorage = ValidationTestRulesPersistedStorage.getTestStorage(recorderId)
+    val testSchemeStorage = ValidationTestRulesPersistedStorage.getTestStorage(recorderId, true)
     if (testSchemeStorage == null) {
       showNotification(project, NotificationType.ERROR, StatisticsBundle.message("stats.cannot.find.test.scheme.storage"))
       return
@@ -86,7 +87,8 @@ class EditEventsTestSchemeAction(private val recorderId: String = StatisticsDevK
   }
 
   override fun update(e: AnActionEvent) {
-    val testSchemeSize = ValidationTestRulesPersistedStorage.getTestStorage(recorderId)?.size() ?: 0
+    e.presentation.isEnabled = StatisticsRecorderUtil.isTestModeEnabled(recorderId)
+    val testSchemeSize = ValidationTestRulesPersistedStorage.getTestStorage(recorderId, true)?.size() ?: 0
     val text = if (testSchemeSize < 100) testSchemeSize.toString() else "99+"
     val sizeCountIcon = TextIcon(text, JBColor.DARK_GRAY, UIUtil.getLabelBackground(), 1)
     sizeCountIcon.setFont(Font(UIUtil.getLabelFont().name, Font.BOLD, JBUIScale.scale(9)))
