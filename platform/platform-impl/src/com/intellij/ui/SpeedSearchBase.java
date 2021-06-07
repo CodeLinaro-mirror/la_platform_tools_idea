@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
 import com.intellij.featureStatistics.FeatureUsageTracker;
@@ -27,6 +27,7 @@ import com.intellij.ui.speedSearch.SpeedSearchSupply;
 import com.intellij.util.text.NameUtilCore;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -54,7 +55,7 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
 
   private static final Key<String> SEARCH_TEXT_KEY = Key.create("SpeedSearch.searchText");
 
-  protected SearchPopup mySearchPopup;
+  private SearchPopup mySearchPopup;
   private JLayeredPane myPopupLayeredPane;
   protected final Comp myComponent;
   private final ToolWindowManagerListener myWindowManagerListener = new ToolWindowManagerListener() {
@@ -239,7 +240,8 @@ public abstract class SpeedSearchBase<Comp extends JComponent> extends SpeedSear
     myChangeSupport.removePropertyChangeListener(listener);
   }
 
-  private void fireStateChanged() {
+  @ApiStatus.Internal
+  protected void fireStateChanged() {
     String enteredPrefix = getEnteredPrefix();
     myChangeSupport.firePropertyChange(ENTERED_PREFIX_PROPERTY_NAME, myRecentEnteredPrefix, enteredPrefix);
     myRecentEnteredPrefix = enteredPrefix;

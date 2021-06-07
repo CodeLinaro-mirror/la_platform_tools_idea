@@ -11,7 +11,6 @@ import com.intellij.openapi.externalSystem.model.ProjectKeys;
 import com.intellij.openapi.externalSystem.model.project.*;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId;
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener;
-import com.intellij.openapi.externalSystem.service.execution.ExternalSystemExecutionAware;
 import com.intellij.openapi.externalSystem.service.project.ExternalSystemProjectResolver;
 import com.intellij.openapi.externalSystem.service.project.PerformanceTrace;
 import com.intellij.openapi.externalSystem.util.ExternalSystemDebugEnvironment;
@@ -25,7 +24,6 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.Function;
-import com.intellij.util.PathMapper;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
@@ -51,12 +49,9 @@ import org.jetbrains.plugins.gradle.service.execution.GradleExecutionHelper;
 import org.jetbrains.plugins.gradle.settings.DistributionType;
 import org.jetbrains.plugins.gradle.settings.GradleBuildParticipant;
 import org.jetbrains.plugins.gradle.settings.GradleExecutionSettings;
-import org.jetbrains.plugins.gradle.tooling.serialization.internal.IdeaProjectSerializationService;
 import org.jetbrains.plugins.gradle.util.GradleConstants;
-import org.jetbrains.plugins.gradle.util.ReflectionTraverser;
 
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Predicate;
@@ -76,7 +71,7 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
   @NotNull private final GradleExecutionHelper myHelper;
   private final GradleLibraryNamesMixer myLibraryNamesMixer = new GradleLibraryNamesMixer();
 
-  private final MultiMap<ExternalSystemTaskId, CancellationTokenSource> myCancellationMap = MultiMap.create();
+  private final MultiMap<ExternalSystemTaskId, CancellationTokenSource> myCancellationMap = MultiMap.createConcurrent();
   public static final Key<Map<String/* module id */, Pair<DataNode<GradleSourceSetData>, ExternalSourceSet>>> RESOLVED_SOURCE_SETS =
     Key.create("resolvedSourceSets");
   public static final Key<Map<String/* output path */, Pair<String /* module id*/, ExternalSystemSourceType>>> MODULES_OUTPUTS =
@@ -176,10 +171,8 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
 
   @Override
   public boolean cancelTask(@NotNull ExternalSystemTaskId id, @NotNull ExternalSystemTaskNotificationListener listener) {
-    synchronized (myCancellationMap) {
-      for (CancellationTokenSource cancellationTokenSource : myCancellationMap.get(id)) {
-        cancellationTokenSource.cancel();
-      }
+    for (CancellationTokenSource cancellationTokenSource : myCancellationMap.get(id)) {
+      cancellationTokenSource.cancel();
     }
     return true;
   }
@@ -305,8 +298,22 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
     }
 
     allModels.setBuildEnvironment(buildEnvironment);
-    maybeConvertTargetPaths(executionSettings, allModels);
+    try (GradleTargetPathsConverter pathsConverter = new GradleTargetPathsConverter(executionSettings)) {
+      pathsConverter.mayBeApplyTo(allModels);
+      return convertData(allModels, executionSettings, resolverCtx, gradleVersion,
+                         tracedResolverChain, performanceTrace, isBuildSrcProject, useCustomSerialization);
+    }
+  }
 
+  @NotNull
+  private DataNode<ProjectData> convertData(@NotNull ProjectImportAction.AllModels allModels,
+                                            @NotNull GradleExecutionSettings executionSettings,
+                                            @NotNull DefaultProjectResolverContext resolverCtx,
+                                            @Nullable GradleVersion gradleVersion,
+                                            @NotNull GradleProjectResolverExtension tracedResolverChain,
+                                            @NotNull PerformanceTrace performanceTrace,
+                                            boolean isBuildSrcProject,
+                                            boolean useCustomSerialization) {
     final long startDataConversionTime = System.currentTimeMillis();
     extractExternalProjectModels(allModels, resolverCtx, useCustomSerialization);
 
@@ -464,30 +471,6 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
     return isCompositeBuildsSupported ||
            resolverCtx.getConnection().newBuild() instanceof TargetBuildLauncher ||
            gradleVersion.getBaseVersion().compareTo(GradleVersion.version("3.0")) >= 0;
-  }
-
-  private static void maybeConvertTargetPaths(GradleExecutionSettings executionSettings, ProjectImportAction.AllModels allModels) {
-    PathMapper targetPathMapper = ExternalSystemExecutionAware.Companion.getTargetPathMapper(executionSettings);
-    if (targetPathMapper == null) return;
-    allModels.convertPaths(rootObject -> {
-      ReflectionTraverser.traverse(rootObject, new ReflectionTraverser.Visitor() {
-        @Override
-        public void process(@NotNull Object obj) {
-          if (obj instanceof File) {
-            String remotePath = ((File)obj).getPath();
-            if (!targetPathMapper.canReplaceRemote(remotePath)) return;
-            String localPath = targetPathMapper.convertToLocal(remotePath);
-            try {
-              Field field = File.class.getDeclaredField("path");
-              field.setAccessible(true);
-              field.set(obj, localPath);
-            }
-            catch (Throwable ignore) {
-            }
-          }
-        }
-      });
-    });
   }
 
   private static void configureExecutionArgumentsAndVmOptions(@NotNull GradleExecutionSettings executionSettings,

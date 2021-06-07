@@ -1,7 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.util;
 
-import com.intellij.CommonBundle;
 import com.intellij.build.*;
 import com.intellij.build.events.BuildEvent;
 import com.intellij.build.events.EventResult;
@@ -23,6 +22,9 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.execution.ui.ExecutionConsole;
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.IdeBundle;
+import com.intellij.ide.impl.OpenUntrustedProjectChoice;
+import com.intellij.ide.impl.TrustedProjects;
 import com.intellij.internal.statistic.IdeActivity;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationGroup;
@@ -54,7 +56,6 @@ import com.intellij.openapi.externalSystem.service.notification.ExternalSystemNo
 import com.intellij.openapi.externalSystem.service.notification.NotificationData;
 import com.intellij.openapi.externalSystem.service.notification.NotificationSource;
 import com.intellij.openapi.externalSystem.service.project.ExternalProjectRefreshCallback;
-import com.intellij.openapi.externalSystem.service.project.ExternalResolverIsSafe;
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
 import com.intellij.openapi.externalSystem.service.project.manage.ContentRootDataService;
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManagerImpl;
@@ -78,11 +79,11 @@ import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.NlsContexts.Button;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.text.NaturalComparator;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.StandardFileSystems;
@@ -110,11 +111,10 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
-import static com.intellij.ide.impl.TrustedProjects.confirmImportingUntrustedProject;
-import static com.intellij.ide.impl.TrustedProjects.getTrustedState;
+import static com.intellij.openapi.externalSystem.service.project.ExternalResolverIsSafe.executesTrustedCodeOnly;
 import static com.intellij.openapi.externalSystem.settings.AbstractExternalSystemLocalSettings.SyncType.*;
 import static com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.doWriteAction;
 import static org.jetbrains.annotations.Nls.Capitalization.Sentence;
@@ -365,6 +365,17 @@ public final class ExternalSystemUtil {
     }
     else {
       projectName = projectFile.getName();
+    }
+
+    TransactionGuard.getInstance().assertWriteSafeContext(ModalityState.defaultModalityState());
+    ApplicationManager.getApplication().invokeAndWait(FileDocumentManager.getInstance()::saveAllDocuments);
+
+    boolean isFirstLoad = ThreeState.UNSURE.equals(TrustedProjects.getTrustedState(project));
+    boolean isTrustedProject = confirmLoadingUntrustedProject(project, isFirstLoad, externalSystemId);
+
+    if (!isPreviewMode && !isTrustedProject) {
+      LOG.debug("Skip " + externalSystemId + " load, because project is not trusted");
+      return;
     }
 
     AbstractExternalSystemLocalSettings<?> localSettings = ExternalSystemApiUtil.getLocalSettings(project, externalSystemId);
@@ -641,17 +652,6 @@ public final class ExternalSystemUtil {
       }
     };
 
-    TransactionGuard.getInstance().assertWriteSafeContext(ModalityState.defaultModalityState());
-    ApplicationManager.getApplication().invokeAndWait(FileDocumentManager.getInstance()::saveAllDocuments);
-
-    boolean doImport = isPreviewMode ||
-                       ExternalResolverIsSafe.executesTrustedCodeOnly(externalSystemId) ||
-                       isProjectTrustedEnoughToImport(project, externalSystemId);
-    if (!doImport) {
-      LOG.debug("Skip " + externalSystemId + " import, because project is not trusted");
-      return;
-    }
-
     final String title;
     switch (progressExecutionMode) {
       case NO_PROGRESS_SYNC:
@@ -686,59 +686,82 @@ public final class ExternalSystemUtil {
     }
   }
 
-  private static boolean isProjectTrustedEnoughToImport(
+  public static boolean confirmLoadingUntrustedProject(
     @NotNull Project project,
-    @NotNull ProjectSystemId systemId
+    ProjectSystemId... systemIds
   ) {
-    return confirmLoadingUntrustedProjectIfNeeded(project, systemId, CommonBundle.getCancelButtonText(), ThreeState.UNSURE::equals);
+    return confirmLoadingUntrustedProject(project, true, systemIds);
   }
 
-  public static boolean confirmLoadingUntrustedProjectIfNeeded(
+  public static boolean confirmLoadingUntrustedProject(
     @NotNull Project project,
-    @NotNull ProjectSystemId systemId
+    @NotNull Collection<ProjectSystemId> systemIds
   ) {
-    return confirmLoadingUntrustedProjectIfNeeded(project, systemId, __ -> true);
+    return confirmLoadingUntrustedProject(project, true, systemIds);
   }
 
-  public static boolean confirmLoadingUntrustedProjectIfNeeded(
+  public static boolean confirmLoadingUntrustedProject(
     @NotNull Project project,
-    @NotNull ProjectSystemId systemId,
-    @NotNull @Button String cancelButtonText
+    boolean askConfirmation,
+    ProjectSystemId... systemIds
   ) {
-    return confirmLoadingUntrustedProjectIfNeeded(project, systemId, cancelButtonText, __ -> true);
+    return confirmLoadingUntrustedProject(project, askConfirmation, Arrays.asList(systemIds));
   }
 
-  public static boolean confirmLoadingUntrustedProjectIfNeeded(
+  public static boolean confirmLoadingUntrustedProject(
     @NotNull Project project,
-    @NotNull ProjectSystemId systemId,
-    @NotNull Predicate<ThreeState> confirmation
+    boolean askConfirmation,
+    @NotNull Collection<ProjectSystemId> systemIds
   ) {
-    String cancelButtonText = ExternalSystemBundle.message("unlinked.project.notification.open.preview.action");
-    return confirmLoadingUntrustedProjectIfNeeded(project, systemId, cancelButtonText, confirmation);
+    String systemsPresentation = naturalJoinSystemIds(systemIds);
+    return isTrusted(project, systemIds) ||
+           askConfirmation && TrustedProjects.confirmLoadingUntrustedProject(
+             project,
+             IdeBundle.message("untrusted.project.dialog.title", systemsPresentation, systemIds.size()),
+             IdeBundle.message("untrusted.project.dialog.text", systemsPresentation, systemIds.size()),
+             IdeBundle.message("untrusted.project.dialog.trust.button"),
+             IdeBundle.message("untrusted.project.dialog.distrust.button")
+           );
   }
 
-  public static boolean confirmLoadingUntrustedProjectIfNeeded(
-    @NotNull Project project,
-    @NotNull ProjectSystemId systemId,
-    @NotNull @Button String cancelButtonText,
-    @NotNull Predicate<ThreeState> confirmation
+  public static @NotNull OpenUntrustedProjectChoice confirmOpeningUntrustedProject(
+    @NotNull VirtualFile virtualFile,
+    ProjectSystemId... systemIds
   ) {
-    if (project.isDefault()) {
-      return true;
+    return confirmOpeningUntrustedProject(virtualFile, Arrays.asList(systemIds));
+  }
+
+  public static @NotNull OpenUntrustedProjectChoice confirmOpeningUntrustedProject(
+    @NotNull VirtualFile virtualFile,
+    @NotNull Collection<ProjectSystemId> systemIds
+  ) {
+    if (executesTrustedCodeOnly(systemIds)) {
+      return OpenUntrustedProjectChoice.IMPORT;
     }
-    ThreeState state = getTrustedState(project);
-    if (state.equals(ThreeState.YES)) {
-      return true;
-    }
-    if (!confirmation.test(state)) {
-      return false;
-    }
-    String systemName = systemId.getReadableName();
-    return confirmImportingUntrustedProject(
-      project, systemName,
-      ExternalSystemBundle.message("unlinked.project.notification.load.action", systemName),
-      cancelButtonText
-    );
+    return TrustedProjects.confirmOpeningUntrustedProject(
+      virtualFile,
+      new HashSet<>(systemIds)
+        .stream()
+        .map(it -> it.getReadableName())
+        .sorted(NaturalComparator.INSTANCE)
+        .collect(Collectors.toList()));
+  }
+
+  public static boolean isTrusted(@NotNull Project project, @NotNull ProjectSystemId systemId) {
+    return TrustedProjects.isTrusted(project) || project.isDefault() || executesTrustedCodeOnly(systemId);
+  }
+
+  public static boolean isTrusted(@NotNull Project project, @NotNull Collection<ProjectSystemId> systemIds) {
+    return systemIds.stream().allMatch(id -> isTrusted(project, id));
+  }
+
+
+  public static @NotNull @Nls String naturalJoinSystemIds(@NotNull Collection<ProjectSystemId> systemIds) {
+    List<String> projectTypeNames = new HashSet<>(systemIds).stream()
+      .map(it -> it.getReadableName())
+      .sorted(NaturalComparator.INSTANCE)
+      .collect(Collectors.toList());
+    return StringUtil.naturalJoin(projectTypeNames);
   }
 
   public static boolean isNewProject(Project project) {

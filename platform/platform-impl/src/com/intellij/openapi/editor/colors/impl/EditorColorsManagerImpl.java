@@ -77,6 +77,7 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
   static final String FILE_SPEC = "colors";
 
   private State myState = new State();
+  private boolean themeIsCustomized;
 
   public EditorColorsManagerImpl() {
     this(SchemeManagerFactory.getInstance());
@@ -233,15 +234,20 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
       LOG.assertTrue(scheme != null, "Wizard scheme " + wizardEditorScheme + " not found");
     }
 
-    if (scheme == null && currentLaf instanceof UIThemeBasedLookAndFeelInfo) {
-      String schemeName = ((UIThemeBasedLookAndFeelInfo)currentLaf).getTheme().getEditorSchemeName();
-      if (schemeName != null) {
-        scheme = getScheme(schemeName);
+    if (!themeIsCustomized && scheme == null) {
+      if (currentLaf instanceof UIThemeBasedLookAndFeelInfo) {
+        String schemeName = ((UIThemeBasedLookAndFeelInfo)currentLaf).getTheme().getEditorSchemeName();
+        if (schemeName != null) {
+          scheme = getScheme(schemeName);
+        }
+      }
+      else if (currentLaf.getName().contains("Darcula")) {
+        scheme = getScheme("Darcula");
       }
     }
 
     if (scheme != null) {
-      setGlobalSchemeInner(scheme);
+      mySchemeManager.setCurrent(scheme, false);
     }
   }
 
@@ -536,11 +542,13 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
 
   @Override
   public void noStateLoaded() {
+    themeIsCustomized = false;
     setGlobalSchemeInner(StartupUiUtil.isUnderDarcula() ? getScheme("Darcula") : getDefaultScheme());
   }
 
   @Override
   public void loadState(@NotNull State state) {
+    themeIsCustomized = true;
     myState = state;
     setGlobalSchemeInner(myState.colorScheme == null ? getDefaultScheme() : mySchemeManager.findSchemeByName(myState.colorScheme));
   }

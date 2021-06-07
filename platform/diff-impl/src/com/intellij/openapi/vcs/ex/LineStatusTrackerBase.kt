@@ -107,10 +107,17 @@ abstract class LineStatusTrackerBase<R : Range>(
   @RequiresEdt
   fun dropBaseRevision() {
     ApplicationManager.getApplication().assertIsDispatchThread()
-    if (isReleased) return
+    if (isReleased || !isInitialized) return
 
     isInitialized = false
     updateHighlighters()
+
+    documentTracker.doFrozen {
+      updateDocument(Side.LEFT) {
+        vcsDocument.setText(document.immutableCharSequence)
+        documentTracker.setFrozenState(emptyList())
+      }
+    }
   }
 
   fun release() {

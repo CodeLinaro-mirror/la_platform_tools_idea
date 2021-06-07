@@ -44,7 +44,7 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
 
     Collection<Type<?>> types = new ArrayList<>();
     for (TargetEnvironmentType<?> type : TargetEnvironmentType.EXTENSION_NAME.getExtensionList()) {
-      if (type.providesNewWizard(myProject, myDefaultRuntimeType)) {
+      if (type.isSystemCompatible() && type.providesNewWizard(myProject, myDefaultRuntimeType)) {
         types.add(new Type<>(type));
       }
     }
@@ -178,7 +178,7 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
     private final TargetEnvironmentType<T> type;
 
     private Type(@NotNull TargetEnvironmentType<T> type) {
-      super(type.getDisplayName(), type.getIcon());
+      super(ExecutionBundle.message("run.on.targets.label.new.target.of.type", type.getDisplayName()), type.getIcon());
       this.type = type;
     }
 

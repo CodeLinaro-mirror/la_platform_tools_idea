@@ -85,6 +85,9 @@ public class ParameterInfoController extends ParameterInfoControllerBase {
     myParameterInfoControllerData.setParameterOwner(parameterOwner);
     myParameterInfoControllerData.setHighlighted(highlighted);
 
+    registerSelf();
+    setupListeners();
+
     LookupListener lookupListener = new LookupListener() {
       LookupImpl activeLookup = null;
       final MergingUpdateQueue queue = new MergingUpdateQueue("Update parameter info position", 200, true, myComponent);

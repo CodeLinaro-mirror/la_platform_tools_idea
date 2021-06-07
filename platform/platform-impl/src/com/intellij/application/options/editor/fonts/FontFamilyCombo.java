@@ -7,7 +7,6 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.editor.impl.FontFamilyService;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsSafe;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.AbstractFontCombo;
 import com.intellij.ui.ColoredListCellRenderer;
 import com.intellij.ui.JBColor;
@@ -23,7 +22,10 @@ import java.awt.*;
 import java.util.List;
 import java.util.*;
 
-public class FontFamilyCombo extends AbstractFontCombo<FontFamilyCombo.MyFontItem> {
+class FontFamilyCombo extends AbstractFontCombo<FontFamilyCombo.MyFontItem> {
+
+  public static final int ITEM_WIDTH = 230;
+
   private final Dimension myItemSize;
   private final boolean myIsPrimary;
 
@@ -33,7 +35,7 @@ public class FontFamilyCombo extends AbstractFontCombo<FontFamilyCombo.MyFontIte
     myIsPrimary = isPrimary;
     setRenderer(new MyListCellRenderer());
     FontMetrics fontMetrics = getFontMetrics(getFont());
-    myItemSize = new Dimension(fontMetrics.stringWidth(StringUtil.repeat("M", 20)), fontMetrics.getHeight());
+    myItemSize = new Dimension(JBUI.scale(ITEM_WIDTH), fontMetrics.getHeight());
   }
 
   @Override
@@ -99,6 +101,12 @@ public class FontFamilyCombo extends AbstractFontCombo<FontFamilyCombo.MyFontIte
   private static class MyNoFontItem extends MyFontItem {
     private MyNoFontItem() {
       super("<None>", false);
+    }
+  }
+
+  private static class MyWarningItem extends MyFontItem {
+    private MyWarningItem(@NotNull String missingName) {
+      super(ApplicationBundle.message("settings.editor.font.missing.custom.font", missingName), false);
     }
   }
 
@@ -170,6 +178,9 @@ public class FontFamilyCombo extends AbstractFontCombo<FontFamilyCombo.MyFontIte
       }
       else if (anItem instanceof String) {
         mySelectedItem = ContainerUtil.find(myItems, item -> item.isSelectable() && item.myFamilyName.equals(anItem));
+        if (mySelectedItem == null) {
+          mySelectedItem = new MyWarningItem((String)anItem);
+        }
       }
       else if (anItem instanceof MySeparatorItem) {
         return;
@@ -261,6 +272,10 @@ public class FontFamilyCombo extends AbstractFontCombo<FontFamilyCombo.MyFontIte
     protected void customizeCellRenderer(@NotNull JList<? extends MyFontItem> list,
                                          MyFontItem value, int index, boolean selected, boolean hasFocus) {
       if (value != null) {
+        if (value instanceof MyWarningItem) {
+          append(value.getFamilyName(), SimpleTextAttributes.ERROR_ATTRIBUTES);
+          return;
+        }
         SimpleTextAttributes attributes = SimpleTextAttributes.REGULAR_ATTRIBUTES;
         if (value.myFont != null) {
           if (value.myFontCanDisplayName) {

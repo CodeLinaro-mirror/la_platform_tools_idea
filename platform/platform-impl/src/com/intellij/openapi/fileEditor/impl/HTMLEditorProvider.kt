@@ -1,6 +1,7 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileEditor.impl
 
+import com.intellij.ide.browsers.actions.WebPreviewFileType
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorPolicy
@@ -18,9 +19,7 @@ class HTMLEditorProvider : FileEditorProvider, DumbAware {
   override fun createEditor(project: Project, file: VirtualFile): FileEditor {
     val fileEditor = file.getUserData(EDITOR_KEY)
     return if (fileEditor != null) fileEditor else {
-      val url = file.getUserData(AFFINITY_KEY)!!
-      val html = (file as LightVirtualFile).content.toString()
-      val newEditor = if (url.isNotEmpty()) HTMLFileEditor(url, html) else HTMLFileEditor(html)
+      val newEditor = HTMLFileEditor(project, file as LightVirtualFile, file.getUserData(AFFINITY_KEY)!!)
       file.putUserData(EDITOR_KEY, newEditor)
       newEditor
     }
@@ -39,14 +38,14 @@ class HTMLEditorProvider : FileEditorProvider, DumbAware {
 
     @JvmStatic
     fun openEditor(project: Project, @DialogTitle title: String, @DetailedDescription html: String) {
-      val file = LightVirtualFile(title, html)
+      val file = LightVirtualFile(title, WebPreviewFileType.INSTANCE, html)
       file.putUserData(AFFINITY_KEY, "")
       FileEditorManager.getInstance(project).openFile(file, true)
     }
 
     @JvmStatic
     fun openEditor(project: Project, @DialogTitle title: String, url: String, @DetailedDescription timeoutHtml: String? = null) {
-      val file = LightVirtualFile(title, timeoutHtml ?: "")
+      val file = LightVirtualFile(title, WebPreviewFileType.INSTANCE, timeoutHtml ?: "")
       file.putUserData(AFFINITY_KEY, url)
       FileEditorManager.getInstance(project).openFile(file, true)
     }

@@ -143,8 +143,15 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   protected UrlClassLoader(@NotNull UrlClassLoader.Builder builder,
+                             @Nullable ClassPath.ResourceFileFactory resourceFileFactory,
+                             boolean isParallelCapable) {
+    this(builder, resourceFileFactory, isParallelCapable, false);
+  }
+
+  protected UrlClassLoader(@NotNull UrlClassLoader.Builder builder,
                            @Nullable ClassPath.ResourceFileFactory resourceFileFactory,
-                           boolean isParallelCapable) {
+                           boolean isParallelCapable,
+                           boolean isMimicJarUrlConnectionNeeded) {
     super(builder.parent);
 
     files = builder.files;
@@ -154,7 +161,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
       urlsWithProtectionDomain = Collections.emptySet();
     }
 
-    classPath = new ClassPath(files, urlsWithProtectionDomain, builder, resourceFileFactory, this);
+    classPath = new ClassPath(files, urlsWithProtectionDomain, builder, resourceFileFactory, this, isMimicJarUrlConnectionNeeded);
 
     isBootstrapResourcesAllowed = builder.isBootstrapResourcesAllowed;
     classLoadingLocks = isParallelCapable ? new ClassLoadingLocks() : null;
@@ -314,10 +321,6 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     String canonicalPath = toCanonicalPath(name);
     Resource resource = classPath.findResource(canonicalPath);
     if (resource == null && canonicalPath.startsWith("/")) {
-      //noinspection SpellCheckingInspection
-      if (!canonicalPath.startsWith("/org/bridj/")) {
-        logError("Do not request resource from classloader using path with leading slash", new IllegalArgumentException(name));
-      }
       resource = classPath.findResource(canonicalPath.substring(1));
     }
     return resource;

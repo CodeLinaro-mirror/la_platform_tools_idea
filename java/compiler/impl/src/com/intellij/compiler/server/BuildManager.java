@@ -19,12 +19,14 @@ import com.intellij.execution.ExecutionManager;
 import com.intellij.execution.process.*;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.wsl.WSLDistribution;
+import com.intellij.execution.wsl.WslDistributionManager;
 import com.intellij.execution.wsl.WslPath;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.PowerSaveMode;
 import com.intellij.ide.actions.RevealFileAction;
 import com.intellij.ide.file.BatchFileChangeListener;
+import com.intellij.ide.impl.TrustedProjects;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
@@ -99,6 +101,7 @@ import org.jetbrains.jps.cmdline.BuildMain;
 import org.jetbrains.jps.cmdline.ClasspathBootstrap;
 import org.jetbrains.jps.incremental.Utils;
 import org.jetbrains.jps.incremental.storage.ProjectStamps;
+import org.jetbrains.jps.javac.Iterators;
 import org.jetbrains.jps.model.java.compiler.JavaCompilers;
 
 import javax.tools.JavaCompiler;
@@ -111,6 +114,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.*;
@@ -197,7 +201,8 @@ public final class BuildManager implements Disposable {
     public void runTask() {
       if (shouldSaveDocuments()) {
         ApplicationManager.getApplication().invokeAndWait(() ->
-          ((FileDocumentManagerImpl)FileDocumentManager.getInstance()).saveAllDocuments(false));
+                                                            ((FileDocumentManagerImpl)FileDocumentManager.getInstance())
+                                                              .saveAllDocuments(false));
       }
     }
 
@@ -207,34 +212,47 @@ public final class BuildManager implements Disposable {
     }
   };
 
-  private final Runnable myGCTask = () -> {
-    // todo: make customizable in UI?
-    final int unusedThresholdDays = Registry.intValue("compiler.build.data.unused.threshold", -1);
-    if (unusedThresholdDays <= 0) {
-      return;
-    }
-    File buildSystemDir = getBuildSystemDirectory().toFile();
-    File[] dirs = buildSystemDir.listFiles(pathname -> pathname.isDirectory() && !TEMP_DIR_NAME.equals(pathname.getName()));
-    if (dirs != null) {
-      final Date now = new Date();
-      for (File buildDataProjectDir : dirs) {
-        File usageFile = getUsageFile(buildDataProjectDir);
-        if (usageFile.exists()) {
-          final Pair<Date, File> usageData = readUsageFile(usageFile);
-          if (usageData != null) {
-            final File projectFile = usageData.second;
-            if (projectFile != null && !projectFile.exists() || DateFormatUtil.getDifferenceInDays(usageData.first, now) > unusedThresholdDays) {
-              LOG.info("Clearing project build data because the project does not exist or was not opened for more than " + unusedThresholdDays + " days: " + buildDataProjectDir);
-              FileUtil.delete(buildDataProjectDir);
+
+  private static class GCRunnable implements Runnable {
+
+    private final Path myBuildSystemDir;
+
+    private GCRunnable(Path buildSystemDir) {myBuildSystemDir = buildSystemDir;}
+
+    @Override
+    public void run() {
+      // todo: make customizable in UI?
+      final int unusedThresholdDays = Registry.intValue("compiler.build.data.unused.threshold", -1);
+      if (unusedThresholdDays <= 0) {
+        return;
+      }
+      File buildSystemDir = myBuildSystemDir.toFile();
+      File[] dirs = buildSystemDir.listFiles(pathname -> pathname.isDirectory() && !TEMP_DIR_NAME.equals(pathname.getName()));
+      if (dirs != null) {
+        final Date now = new Date();
+        for (File buildDataProjectDir : dirs) {
+          File usageFile = getUsageFile(buildDataProjectDir);
+          if (usageFile.exists()) {
+            final Pair<Date, File> usageData = readUsageFile(usageFile);
+            if (usageData != null) {
+              final File projectFile = usageData.second;
+              if (projectFile != null && !projectFile.exists() ||
+                  DateFormatUtil.getDifferenceInDays(usageData.first, now) > unusedThresholdDays) {
+                LOG.info("Clearing project build data because the project does not exist or was not opened for more than " +
+                         unusedThresholdDays +
+                         " days: " +
+                         buildDataProjectDir);
+                FileUtil.delete(buildDataProjectDir);
+              }
             }
           }
-        }
-        else {
-          updateUsageFile(null, buildDataProjectDir); // set usage stamp to start countdown
+          else {
+            updateUsageFile(null, buildDataProjectDir); // set usage stamp to start countdown
+          }
         }
       }
     }
-  };
+  }
 
   private final BuildMessageDispatcher myMessageDispatcher = new BuildMessageDispatcher();
 
@@ -366,8 +384,19 @@ public final class BuildManager implements Disposable {
     ShutDownTracker.getInstance().registerShutdownTask(this::stopListening);
 
     if (!IS_UNIT_TEST_MODE) {
-      ScheduledFuture<?> future = AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(() -> runCommand(myGCTask), 3, 180, TimeUnit.MINUTES);
+      ScheduledFuture<?> future = AppExecutorUtil.getAppScheduledExecutorService()
+        .scheduleWithFixedDelay(() -> runCommand(new GCRunnable(getLocalBuildSystemDirectory())), 3, 180, TimeUnit.MINUTES);
       Disposer.register(this, () -> future.cancel(false));
+      if (Boolean.valueOf(System.getProperty("compiler.build.data.clean.unused.wsl"))) {
+        WslDistributionManager.getInstance().getInstalledDistributions().forEach(distribution -> {
+          Path wslBuildSystemDirectory = getWslBuildSystemDirectory(distribution);
+          if (wslBuildSystemDirectory != null) {
+            ScheduledFuture<?> wslFuture = AppExecutorUtil.getAppScheduledExecutorService()
+              .scheduleWithFixedDelay(() -> runCommand(new GCRunnable(wslBuildSystemDirectory)), 3, 180, TimeUnit.MINUTES);
+            Disposer.register(this, () -> wslFuture.cancel(false));
+          }
+        });
+      }
     }
   }
 
@@ -494,7 +523,7 @@ public final class BuildManager implements Disposable {
             final UUID sessionId = future.getRequestID();
             final Channel channel = myMessageDispatcher.getConnectedChannel(sessionId);
             if (channel != null) {
-              CmdlineRemoteProto.Message.ControllerMessage.FSEvent event = data.createNextEvent();
+              CmdlineRemoteProto.Message.ControllerMessage.FSEvent event = data.createNextEvent(wslPathMapper(entry.getKey()));
               final CmdlineRemoteProto.Message.ControllerMessage message = CmdlineRemoteProto.Message.ControllerMessage.newBuilder().setType(
                 CmdlineRemoteProto.Message.ControllerMessage.Type.FS_EVENT
               ).setFsEvent(event).build();
@@ -507,6 +536,38 @@ public final class BuildManager implements Disposable {
         }
       }
     });
+  }
+
+  @Nullable
+  private static Project findProjectByProjectPath(@NotNull String projectPath) {
+    return ContainerUtil.find(ProjectManager.getInstance().getOpenProjects(), (project) -> projectPath.equals(getProjectPath(project)));
+  }
+
+  @NotNull
+  private static Function<String, String> wslPathMapper(@Nullable WSLDistribution distr) {
+    return distr == null?
+      Function.identity() :
+      // interned paths collapse repeated slashes so \\wsl$ ends up /wsl$
+      path -> path.startsWith("/wsl$")? distr.getWslPath("/" + path) : path;
+  }
+
+  private static Function<String, String> wslPathMapper(@NotNull String projectPath) {
+    return new Function<>() {
+      private Function<String, String> myImpl;
+
+      @Override
+      public String apply(String path) {
+        if (myImpl != null) {
+          return myImpl.apply(path);
+        }
+        if (path.startsWith("/wsl$")) {
+          Project project = findProjectByProjectPath(projectPath);
+          myImpl = wslPathMapper(project != null ? findWSLDistributionForBuild(project) : null);
+          return myImpl.apply(path);
+        }
+        return path;
+      }
+    };
   }
 
   public static void forceModelLoading(CompileContext context) {
@@ -658,7 +719,7 @@ public final class BuildManager implements Disposable {
       return false;
     }
     final CompilerWorkspaceConfiguration config = CompilerWorkspaceConfiguration.getInstance(project);
-    if (!config.MAKE_PROJECT_ON_SAVE) {
+    if (!config.MAKE_PROJECT_ON_SAVE || !TrustedProjects.isTrusted(project)) {
       return false;
     }
     return config.allowAutoMakeWhileRunningApplication() || !hasRunningProcess(project);
@@ -849,7 +910,7 @@ public final class BuildManager implements Disposable {
                      new HashSet<>(convertToStringPaths(data.myDeleted)));
           }
           needRescan = data.getAndResetRescanFlag();
-          currentFSChanges = needRescan ? null : data.createNextEvent();
+          currentFSChanges = needRescan ? null : data.createNextEvent(wslPathMapper(wslDistribution));
           if (LOG.isDebugEnabled()) {
             LOG.debug("Sending to starting build, ordinal=" + (currentFSChanges == null ? null : currentFSChanges.getOrdinal()));
           }
@@ -1180,7 +1241,7 @@ public final class BuildManager implements Disposable {
       cmdLine = new WslBuildCommandLineBuilder(project, wslPath.getDistribution(), wslPath.getLinuxPath(), progressIndicator);
     }
     else {
-      cmdLine = new LocalBuildCommandLineBuilder(vmExecutablePath);
+      cmdLine = new LocalBuildCommandLineBuilder(project, vmExecutablePath);
     }
     int listenPort = ensureListening(cmdLine.getListenAddress());
 
@@ -1347,12 +1408,11 @@ public final class BuildManager implements Disposable {
 
     final File projectSystemRoot = getProjectSystemDirectory(project);
     if (projectSystemRoot != null) {
-      cmdLine.addParameter("-Djava.io.tmpdir=" + FileUtil.toSystemIndependentName(projectSystemRoot.getPath()) + "/" + TEMP_DIR_NAME);
+      cmdLine.addPathParameter("-Djava.io.tmpdir=", FileUtil.toSystemIndependentName(projectSystemRoot.getPath()) + "/" + TEMP_DIR_NAME);
     }
 
     for (BuildProcessParametersProvider provider : BuildProcessParametersProvider.EP_NAME.getExtensions(project)) {
-      final List<String> args = provider.getVMArguments();
-      for (String arg : args) {
+      for (String arg : provider.getVMArguments()) {
         cmdLine.addParameter(arg); // TODO path parameters
       }
     }
@@ -1395,6 +1455,10 @@ public final class BuildManager implements Disposable {
 
     final List<String> cp = myClasspathManager.getBuildProcessClasspath(project);
     cmdLine.addClasspathParameter(cp, isProfilingMode ? Collections.singletonList("yjp-controller-api-redist.jar") : Collections.emptyList());
+
+    for (BuildProcessParametersProvider buildProcessParametersProvider : BuildProcessParametersProvider.EP_NAME.getExtensions(project)) {
+      cmdLine.copyPathToTarget(Iterators.map(buildProcessParametersProvider.getAdditionalPluginPaths(), File::new));
+    }
 
     cmdLine.addParameter(BuildMain.class.getName());
     cmdLine.addParameter(cmdLine.getHostIp());
@@ -1472,16 +1536,53 @@ public final class BuildManager implements Disposable {
   private static boolean shouldIncludeEclipseCompiler(CompilerConfiguration config) {
     if (config instanceof CompilerConfigurationImpl) {
       final BackendCompiler javaCompiler = ((CompilerConfigurationImpl)config).getDefaultCompiler();
-      final String compilerId = javaCompiler != null? javaCompiler.getId() : null;
-      return JavaCompilers.ECLIPSE_ID.equals(compilerId)  || JavaCompilers.ECLIPSE_EMBEDDED_ID.equals(compilerId);
+      final String compilerId = javaCompiler != null ? javaCompiler.getId() : null;
+      return JavaCompilers.ECLIPSE_ID.equals(compilerId) || JavaCompilers.ECLIPSE_EMBEDDED_ID.equals(compilerId);
     }
     return true;
   }
 
   @NotNull
-  public Path getBuildSystemDirectory() {
+  public static Path getLocalBuildSystemDirectory() {
     return PathManagerEx.getAppSystemDir().resolve(SYSTEM_ROOT);
   }
+
+  @Nullable
+  public static Path getWslBuildSystemDirectory(WSLDistribution distribution) {
+    String pathsSelector = PathManager.getPathsSelector();
+    String wslUserHome = distribution.getUserHome();
+    if (wslUserHome == null) return null;
+    String windowsUserHomePath = distribution.getWindowsPath(wslUserHome);
+    if (pathsSelector == null) pathsSelector = "." + ApplicationNamesInfo.getInstance().getScriptName();
+    if (windowsUserHomePath == null) return null;
+    String workingDirectory = PathManager.getDefaultUnixSystemPath(windowsUserHomePath, pathsSelector) + "/" + BuildManager.SYSTEM_ROOT;
+    return Paths.get(workingDirectory);
+  }
+
+
+  /**
+   * @deprecated use getBuildSystemDirectory(Project)
+   */
+  @Deprecated
+  @NotNull
+  public Path getBuildSystemDirectory() {
+    return getLocalBuildSystemDirectory();
+  }
+
+  @NotNull
+  public Path getBuildSystemDirectory(Project project) {
+    String projectPath = getProjectPath(project);
+    WslPath wslPath = WslPath.parseWindowsUncPath(projectPath);
+
+    if (wslPath == null) {
+      return getLocalBuildSystemDirectory();
+    }
+    else {
+      Path buildDir = getWslBuildSystemDirectory(wslPath.getDistribution());
+      return buildDir != null ? buildDir : getLocalBuildSystemDirectory();
+    }
+  }
+
 
   @NotNull
   public static File getBuildLogDirectory() {
@@ -1490,7 +1591,16 @@ public final class BuildManager implements Disposable {
 
   @Nullable
   public File getProjectSystemDirectory(Project project) {
-    return Utils.getDataStorageRoot(getBuildSystemDirectory().toFile(), getProjectPath(project));
+    String projectPath = getProjectPath(project);
+    WslPath wslPath = WslPath.parseWindowsUncPath(projectPath);
+    Function<String, Integer> hashFunction;
+    if (wslPath == null) {
+      hashFunction = String::hashCode;
+    }
+    else {
+      hashFunction = s -> wslPath.getDistribution().getWslPath(s).hashCode();
+    }
+    return Utils.getDataStorageRoot(getBuildSystemDirectory(project).toFile(), projectPath, hashFunction);
   }
 
   private static File getUsageFile(@NotNull File projectSystemDir) {
@@ -1933,18 +2043,18 @@ public final class BuildManager implements Disposable {
       }
     }
 
-    CmdlineRemoteProto.Message.ControllerMessage.FSEvent createNextEvent() {
+    CmdlineRemoteProto.Message.ControllerMessage.FSEvent createNextEvent(Function<String, String> pathMapper) {
       final CmdlineRemoteProto.Message.ControllerMessage.FSEvent.Builder builder =
         CmdlineRemoteProto.Message.ControllerMessage.FSEvent.newBuilder();
       builder.setOrdinal(++myNextEventOrdinal);
 
       for (InternedPath path : myChanged) {
-        builder.addChangedPaths(path.getValue());
+        builder.addChangedPaths(pathMapper.apply(path.getValue()));
       }
       myChanged.clear();
 
       for (InternedPath path : myDeleted) {
-        builder.addDeletedPaths(path.getValue());
+        builder.addDeletedPaths(pathMapper.apply(path.getValue()));
       }
       myDeleted.clear();
 

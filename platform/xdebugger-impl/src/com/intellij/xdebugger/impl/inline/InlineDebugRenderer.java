@@ -8,6 +8,7 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorCustomElementRenderer;
 import com.intellij.openapi.editor.Inlay;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
+import com.intellij.openapi.editor.colors.EditorFontType;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.event.EditorMouseEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
@@ -111,7 +112,7 @@ public final class InlineDebugRenderer implements EditorCustomElementRenderer {
     EditorColorsScheme colorsScheme = editor.getColorsScheme();
     TextAttributes attributes = editor.getColorsScheme().getAttributes(DebuggerColors.INLINED_VALUES_EXECUTION_LINE);
     int fontStyle = attributes == null ? Font.PLAIN : attributes.getFontType();
-    return UIUtil.getFontWithFallback(colorsScheme.getEditorFontName(), fontStyle, colorsScheme.getEditorFontSize());
+    return UIUtil.getFontWithFallback(colorsScheme.getFont(EditorFontType.forJavaStyle(fontStyle)));
   }
 
 
@@ -153,25 +154,19 @@ public final class InlineDebugRenderer implements EditorCustomElementRenderer {
   }
 
 
-  public void onMouseExit(Inlay inlay, @NotNull EditorMouseEvent event) {
-    setHovered(false, inlay, (EditorEx)event.getEditor());
+  public void onMouseExit(@NotNull Inlay inlay) {
+    setHovered(false, inlay);
   }
 
-  public void onMouseMove(Inlay inlay, @NotNull EditorMouseEvent event) {
-    EditorEx editorEx = (EditorEx)event.getEditor();
-    if (event.getMouseEvent().getX() >= myTextStartXCoordinate) {
-      setHovered(true, inlay, editorEx);
-    }
-    else {
-      setHovered(false, inlay, editorEx);
-    }
+  public void onMouseMove(@NotNull Inlay inlay, @NotNull EditorMouseEvent event) {
+    setHovered(event.getMouseEvent().getX() >= myTextStartXCoordinate, inlay);
   }
 
-  private void setHovered(boolean active, Inlay inlay, EditorEx editorEx) {
+  private void setHovered(boolean active, @NotNull Inlay inlay) {
     boolean oldState = isHovered;
     isHovered = active;
     Cursor cursor = active ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : null;
-    editorEx.setCustomCursor(InlineDebugRenderer.class, cursor);
+    ((EditorEx)inlay.getEditor()).setCustomCursor(InlineDebugRenderer.class, cursor);
     if (oldState != active) {
       inlay.update();
     }

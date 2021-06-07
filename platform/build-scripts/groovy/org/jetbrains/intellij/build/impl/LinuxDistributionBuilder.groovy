@@ -47,9 +47,9 @@ final class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
       fileset(dir: "$buildContext.paths.communityHome/bin/linux")
     }
     BuildTasksImpl.unpackPty4jNative(buildContext, unixDistPath, "linux")
-    BuildTasksImpl.addDbusJava(buildContext, unixDistPath)
     BuildTasksImpl.generateBuildTxt(buildContext, unixDistPath)
     BuildTasksImpl.copyResourceFiles(buildContext, unixDistPath)
+    BuildTasksImpl.addDbusJava(buildContext, unixDistPath)
     Files.copy(ideaProperties, distBinDir.resolve(ideaProperties.fileName), StandardCopyOption.REPLACE_EXISTING)
     //todo[nik] converting line separators to unix-style make sense only when building Linux distributions under Windows on a local machine;
     // for real installers we need to checkout all text files with 'lf' separators anyway
@@ -60,6 +60,7 @@ final class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
     generateScripts(distBinDir)
     generateVMOptions(distBinDir)
     generateReadme(unixDistPath)
+    generateVersionMarker(unixDistPath)
     customizer.copyAdditionalFiles(buildContext, unixDistPath)
   }
 
@@ -193,6 +194,14 @@ final class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
        "system_selector": buildContext.systemSelector], "@@", "\n")
   }
 
+  // please keep in sync with `SystemHealthMonitor#checkInstallationIntegrity`
+  @CompileStatic
+  private void generateVersionMarker(Path unixDistPath) {
+    Path targetDir = unixDistPath.resolve("lib")
+    Files.writeString(targetDir.resolve("build-marker-${buildContext.fullBuildNumber}"), buildContext.fullBuildNumber)
+    Files.createDirectories(targetDir)
+  }
+
   @Override
   List<String> generateExecutableFilesPatterns(boolean includeJre) {
     def patterns = [
@@ -223,6 +232,7 @@ final class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
       paths += jreDirectoryPath
       javaExecutablePath = "jbr/bin/java"
     } */
+    boolean hasPatchedClasspathTxt = Files.exists(unixDistPath.resolve("lib/classpath.txt"))
     def productJsonDir = new File(buildContext.paths.temp, "linux.dist.product-info.json$suffix").absolutePath
     generateProductJson(Paths.get(productJsonDir), javaExecutablePath)
     paths += productJsonDir
@@ -232,10 +242,13 @@ final class LinuxDistributionBuilder extends OsSpecificDistributionBuilder {
     buildContext.messages.block("Build Linux tar.gz $description") {
       buildContext.messages.progress("Building Linux tar.gz $description")
       buildContext.ant.tar(tarfile: tarPath, longfile: "gnu", compression: "gzip") {
-        paths.each {
-          tarfileset(dir: it, prefix: tarRoot) {
+        paths.each { path ->
+          tarfileset(dir: path, prefix: tarRoot) {
             executableFilesPatterns.each {
               exclude(name: it)
+            }
+            if (hasPatchedClasspathTxt && path == buildContext.paths.distAll) {
+              exclude(name: "lib/classpath.txt")
             }
             type(type: "file")
           }

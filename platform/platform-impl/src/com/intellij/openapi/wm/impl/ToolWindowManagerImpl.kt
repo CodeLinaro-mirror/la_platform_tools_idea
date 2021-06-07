@@ -139,6 +139,12 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       val toolWindow = decorator.toolWindow
       return toolWindow.toolWindowManager.getRegisteredMutableInfoOrLogError(toolWindow.id)
     }
+
+    fun getAdjustedRatio(partSize: Int, totalSize: Int, direction: Int): Float {
+      var ratio = partSize.toFloat() / totalSize
+      ratio += (((partSize.toFloat() + direction) / totalSize) - ratio) / 2
+      return ratio
+    }
   }
 
   internal fun getFrame() = frame
@@ -620,7 +626,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     }
   }
 
-  fun activateToolWindow(id: String, runnable: Runnable?, autoFocusContents: Boolean, source: ToolWindowEventSource? = null) {
+  open fun activateToolWindow(id: String, runnable: Runnable?, autoFocusContents: Boolean, source: ToolWindowEventSource? = null) {
     ApplicationManager.getApplication().assertIsDispatchThread()
 
     val activity = UiActivity.Focus("toolWindow:$id")
@@ -832,7 +838,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     return idToEntry[id ?: return null]?.toolWindow
   }
 
-  fun showToolWindow(id: String) {
+  open fun showToolWindow(id: String) {
     LOG.debug { "enter: showToolWindow($id)" }
     EDT.assertIsEdt()
     val info = layout.getInfo(id) ?: throw IllegalThreadStateException("window with id=\"$id\" is unknown")
@@ -872,7 +878,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     hideToolWindow(id, hideSide, moveFocus = true)
   }
 
-  fun hideToolWindow(id: String, hideSide: Boolean, moveFocus: Boolean, source: ToolWindowEventSource? = null) {
+  open fun hideToolWindow(id: String, hideSide: Boolean, moveFocus: Boolean, source: ToolWindowEventSource? = null) {
     EDT.assertIsEdt()
 
     val entry = idToEntry[id]!!
@@ -1339,7 +1345,15 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
 
     val show = Runnable {
       val tracker: PositionTracker<Balloon>
-      if (button.isShowing) {
+      if (entry.toolWindow.isVisible &&
+          (entry.toolWindow.type == ToolWindowType.WINDOWED ||
+           entry.toolWindow.type == ToolWindowType.FLOATING)) {
+        tracker = createPositionTracker(entry.toolWindow.component, ToolWindowAnchor.BOTTOM)
+      }
+      else if (!button.isShowing) {
+        tracker = createPositionTracker(toolWindowPane!!, anchor)
+      }
+      else {
         tracker = object : PositionTracker<Balloon>(button) {
           override fun recalculateLocation(`object`: Balloon): RelativePoint? {
             val otherEntry = idToEntry[options.toolWindowId] ?: return null
@@ -1349,21 +1363,6 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
               return null
             }
             return RelativePoint(stripeButton, Point(stripeButton.bounds.width / 2, stripeButton.height / 2 - 2))
-          }
-        }
-      }
-      else {
-        tracker = object : PositionTracker<Balloon>(toolWindowPane) {
-          override fun recalculateLocation(`object`: Balloon): RelativePoint {
-            val bounds = toolWindowPane!!.bounds
-            val target = StartupUiUtil.getCenterPoint(bounds, Dimension(1, 1))
-            when {
-              ToolWindowAnchor.TOP == anchor -> target.y = 0
-              ToolWindowAnchor.BOTTOM == anchor -> target.y = bounds.height - 3
-              ToolWindowAnchor.LEFT == anchor -> target.x = 0
-              ToolWindowAnchor.RIGHT == anchor -> target.x = bounds.width
-            }
-            return RelativePoint(toolWindowPane!!, target)
           }
         }
       }
@@ -1403,16 +1402,24 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       position.set(Balloon.Position.atLeft)
     }
     val show = Runnable {
-      val tracker = object : PositionTracker<Balloon>(button) {
-        override fun recalculateLocation(`object`: Balloon): RelativePoint? {
-          val otherEntry = idToEntry[options.toolWindowId] ?: return null
-          if (otherEntry.readOnlyWindowInfo.largeStripeAnchor != anchor) {
-            `object`.hide()
-            return null
-          }
+      val tracker: PositionTracker<Balloon>
+      if (entry.toolWindow.isVisible &&
+          (entry.toolWindow.type == ToolWindowType.WINDOWED ||
+           entry.toolWindow.type == ToolWindowType.FLOATING)) {
+        tracker = createPositionTracker(entry.toolWindow.component, ToolWindowAnchor.BOTTOM)
+      }
+      else {
+        tracker = object : PositionTracker<Balloon>(button) {
+          override fun recalculateLocation(`object`: Balloon): RelativePoint? {
+            val otherEntry = idToEntry[options.toolWindowId] ?: return null
+            if (otherEntry.readOnlyWindowInfo.largeStripeAnchor != anchor) {
+              `object`.hide()
+              return null
+            }
 
-          return RelativePoint(button,
-                               Point(if (position.get() == Balloon.Position.atRight) 0 else button.bounds.width, button.height / 2))
+            return RelativePoint(button,
+                                 Point(if (position.get() == Balloon.Position.atRight) 0 else button.bounds.width, button.height / 2))
+          }
         }
       }
       if (!balloon.isDisposed) {
@@ -1425,6 +1432,22 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     }
     else {
       SwingUtilities.invokeLater(show)
+    }
+  }
+
+  private fun createPositionTracker(component: Component, anchor: ToolWindowAnchor): PositionTracker<Balloon> {
+    return object : PositionTracker<Balloon>(component) {
+      override fun recalculateLocation(`object`: Balloon): RelativePoint {
+        val bounds = component.bounds
+        val target = StartupUiUtil.getCenterPoint(bounds, Dimension(1, 1))
+        when {
+          ToolWindowAnchor.TOP == anchor -> target.y = 0
+          ToolWindowAnchor.BOTTOM == anchor -> target.y = bounds.height - 3
+          ToolWindowAnchor.LEFT == anchor -> target.x = 0
+          ToolWindowAnchor.RIGHT == anchor -> target.x = bounds.width
+        }
+        return RelativePoint(component, target)
+      }
     }
   }
 
@@ -1994,34 +2017,30 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       // docked and sliding windows
       val anchor = info.anchor
       var another: InternalDecoratorImpl? = null
+      val wholeSize = toolWindowPane!!.rootPane.size
       if (source.parent is Splitter) {
-        var sizeInSplit = if (anchor.isSplitVertically) source.height.toFloat() else source.width.toFloat()
+        var sizeInSplit = if (anchor.isSplitVertically) source.height else source.width
         val splitter = source.parent as Splitter
         if (splitter.secondComponent === source) {
-          sizeInSplit += splitter.dividerWidth.toFloat()
+          sizeInSplit += splitter.dividerWidth
           another = splitter.firstComponent as InternalDecoratorImpl
         }
         else {
           another = splitter.secondComponent as InternalDecoratorImpl
         }
-        if (anchor.isSplitVertically) {
-          info.sideWeight = sizeInSplit / splitter.height
-        }
-        else {
-          info.sideWeight = sizeInSplit / splitter.width
-        }
+        info.sideWeight = getAdjustedRatio(sizeInSplit,
+                                           if (anchor.isSplitVertically) splitter.height else splitter.width,
+                                           if (splitter.secondComponent === source) -1 else 1)
       }
 
-      val size = toolWindowPane!!.size
-      var paneWeight = if (anchor.isHorizontal) source.height.toFloat() / size.height else source.width.toFloat() / size.width
+      val paneWeight = getAdjustedRatio(if (anchor.isHorizontal) source.height else source.width,
+                                        if (anchor.isHorizontal) wholeSize.height else wholeSize.width, 1)
       info.weight = paneWeight
-      if (another != null && anchor.isSplitVertically) {
-        paneWeight = if (anchor.isHorizontal) another.height.toFloat() / size.height else another.width.toFloat() / size.width
+      if (another != null) {
         getRegisteredMutableInfoOrLogError(another.toolWindow.id).weight = paneWeight
       }
     }
   }
-
   private fun focusToolWindowByDefault() {
     var toFocus: ToolWindowEntry? = null
     for (each in activeStack.stack) {

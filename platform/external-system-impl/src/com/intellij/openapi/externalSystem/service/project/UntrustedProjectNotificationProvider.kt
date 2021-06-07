@@ -1,12 +1,17 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project
 
-import com.intellij.CommonBundle
-import com.intellij.ide.IdeBundle
 import com.intellij.ide.impl.TrustChangeNotifier
+import com.intellij.ide.impl.UntrustedProjectEditorNotificationPanel
 import com.intellij.ide.impl.isTrusted
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.ExtensionPointName
-import com.intellij.openapi.externalSystem.util.ExternalSystemUtil.confirmLoadingUntrustedProjectIfNeeded
+import com.intellij.openapi.externalSystem.ExternalSystemManager
+import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder
+import com.intellij.openapi.externalSystem.model.ProjectSystemId
+import com.intellij.openapi.externalSystem.service.project.ExternalResolverIsSafe.executesTrustedCodeOnly
+import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
+import com.intellij.openapi.externalSystem.util.ExternalSystemUtil.confirmLoadingUntrustedProject
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -22,25 +27,63 @@ class UntrustedProjectNotificationProvider : EditorNotifications.Provider<Editor
     if (project.isTrusted()) {
       return null
     }
-    val provider = EP_NAME.findFirstSafe { it.shouldShowEditorNotification(project) } ?: return null
-    return EditorNotificationPanel().apply {
-      text = IdeBundle.message("untrusted.project.notification.desctription")
-      createActionLabel(IdeBundle.message("untrusted.project.notification.trust.button", provider.systemId.readableName), {
-        if (confirmLoadingUntrustedProjectIfNeeded(project, provider.systemId, CommonBundle.getCancelButtonText())) {
+    val providers = collectUntrustedProjectModeProviders()
+      .filter { it.shouldShowEditorNotification(project) }
+    if (providers.isEmpty()) {
+      return null
+    }
+    return UntrustedProjectEditorNotificationPanel(project, fileEditor) {
+      if (confirmLoadingUntrustedProject(project, providers.map { it.systemId })) {
+        for (provider in providers) {
           provider.loadAllLinkedProjects(project)
         }
-      }, false)
+      }
     }
+  }
+
+  private fun collectUntrustedProjectModeProviders(): Collection<UntrustedProjectModeProvider> {
+    val providers = LinkedHashMap<ProjectSystemId, UntrustedProjectModeProvider>()
+    ExternalSystemManager.EP_NAME.forEachExtensionSafe {
+      providers[it.systemId] = ExternalSystemUntrustedProjectModeProvider(it)
+    }
+    EP_NAME.forEachExtensionSafe {
+      if (it.systemId in providers) {
+        LOG.warn("${it.javaClass.simpleName} for ${it.systemId} registered automatically")
+      }
+      providers[it.systemId] = it
+    }
+    return providers.values
   }
 
   companion object {
     private val EP_NAME = ExtensionPointName.create<UntrustedProjectModeProvider>("com.intellij.untrustedModeProvider")
     private val KEY = Key.create<EditorNotificationPanel?>("UntrustedProjectNotification")
+    private val LOG = Logger.getInstance(UntrustedProjectNotificationProvider::class.java)
   }
 
   class TrustedListener : TrustChangeNotifier {
     override fun projectTrusted(project: Project) {
       EditorNotifications.getInstance(project).updateAllNotifications()
+    }
+  }
+
+  private class ExternalSystemUntrustedProjectModeProvider(
+    private val manager: ExternalSystemManager<*, *, *, *, *>
+  ) : UntrustedProjectModeProvider {
+
+    override val systemId = manager.systemId
+
+    override fun shouldShowEditorNotification(project: Project): Boolean {
+      val settings = manager.settingsProvider.`fun`(project)
+      return !executesTrustedCodeOnly(systemId) && settings.linkedProjectsSettings.isNotEmpty()
+    }
+
+    override fun loadAllLinkedProjects(project: Project) {
+      val settings = manager.settingsProvider.`fun`(project)
+      for (linkedProjectSettings in settings.linkedProjectsSettings) {
+        val externalProjectPath = linkedProjectSettings.externalProjectPath
+        ExternalSystemUtil.refreshProject(externalProjectPath, ImportSpecBuilder(project, systemId))
+      }
     }
   }
 }

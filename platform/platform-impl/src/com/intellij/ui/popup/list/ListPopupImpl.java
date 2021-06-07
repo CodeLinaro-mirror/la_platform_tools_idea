@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.popup.list;
 
 import com.intellij.ide.DataManager;
@@ -15,6 +15,7 @@ import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.statistics.StatisticsInfo;
 import com.intellij.psi.statistics.StatisticsManager;
@@ -98,7 +99,7 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
   }
 
   public void showUnderneathOfLabel(@NotNull JLabel label) {
-    int offset = -UIUtil.getListCellHPadding() - UIUtil.getListViewportPadding().left;
+    int offset = -UIUtil.getListCellHPadding() - UIUtil.getListViewportPadding(isAdVisible()).left;
     if (label.getIcon() != null) {
       offset += label.getIcon().getIconWidth() + label.getIconTextGap();
     }
@@ -262,8 +263,7 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
     myList.setSelectionModel(new MyListSelectionModel());
 
     selectFirstSelectableItem();
-    Insets padding = UIUtil.getListViewportPadding();
-    myList.setBorder(new EmptyBorder(padding));
+    updateListPaddings();
 
     ScrollingUtil.installActions(myList);
 
@@ -296,6 +296,17 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
     myList.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
     return myList;
+  }
+
+  @Override
+  public void setAdText(@NotNull String s, int alignment) {
+    super.setAdText(s, alignment);
+    updateListPaddings();
+  }
+
+  private void updateListPaddings() {
+    Insets padding = UIUtil.getListViewportPadding(isAdVisible());
+    myList.setBorder(new EmptyBorder(padding));
   }
 
   private boolean isMultiSelectionEnabled() {
@@ -453,13 +464,22 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
   }
 
   protected void showNextStepPopup(PopupStep nextStep, Object parentValue) {
+    if (nextStep == null) {
+      String valueText = getListStep().getTextFor(parentValue);
+      String message = String.format("Cannot open submenu for '%s' item. PopupStep is null", valueText);
+      LOG.warn(message);
+      return;
+    }
+
     final Point point = myList.indexToLocation(myList.getSelectedIndex());
     SwingUtilities.convertPointToScreen(point, myList);
     myChild = createPopup(this, nextStep, parentValue);
-    if (myChild instanceof ListPopupImpl) {
+    if (myChild instanceof ListPopup) {
+      ListPopup child = (ListPopup)myChild;
       for (ListSelectionListener listener : myList.getListSelectionListeners()) {
-        ((ListPopupImpl)myChild).addListSelectionListener(listener);
+        child.addListSelectionListener(listener);
       }
+      child.setShowSubmenuOnHover(myShowSubmenuOnHover);
     }
     final JComponent container = getContent();
 
@@ -472,11 +492,14 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
 
     myChild.show(container, container.getLocationOnScreen().x + container.getWidth() - STEP_X_PADDING, y, true);
     setIndexForShowingChild(myList.getSelectedIndex());
-    myList.setNextStepButtonSelected(true);
-    Disposer.register(myChild, () -> {
-      setIndexForShowingChild(-1);
-      myList.setNextStepButtonSelected(false);
-    });
+
+    if (Registry.is("ide.list.popup.separate.next.step.button")) {
+      myList.setNextStepButtonSelected(true);
+      Disposer.register(myChild, () -> {
+        setIndexForShowingChild(-1);
+        myList.setNextStepButtonSelected(false);
+      });
+    }
   }
 
   @Override
@@ -522,7 +545,7 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
           myExtendMode = calcExtendMode(index);
           if (!isMultiSelectionEnabled() || !UIUtil.isSelectionButtonDown(e) && myList.getSelectedIndices().length <= 1) {
             myList.setSelectedIndex(index);
-            if (myExtendMode == ExtendMode.EXTEND_ON_HOVER && myShowSubmenuOnHover) {
+            if (myExtendMode == ExtendMode.EXTEND_ON_HOVER) {
               showSubMenu(index, true);
             }
             else if (getIndexForShowingChild() != -1) {
@@ -558,7 +581,13 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
       Object selectedValue = myListModel.getElementAt(index);
       if (selectedValue == null || !listStep.hasSubstep(selectedValue)) return ExtendMode.NO_EXTEND;
 
-      return listStep.isFinal(selectedValue) ? ExtendMode.EXTEND_ON_BUTTON : ExtendMode.EXTEND_ON_HOVER;
+      if (Registry.is("ide.list.popup.separate.next.step.button")) {
+        return listStep.isFinal(selectedValue)
+               ? ExtendMode.EXTEND_ON_BUTTON
+               : myShowSubmenuOnHover ? ExtendMode.EXTEND_ON_HOVER : ExtendMode.NO_EXTEND;
+      }
+
+      return myShowSubmenuOnHover ? ExtendMode.EXTEND_ON_HOVER : ExtendMode.NO_EXTEND;
     }
 
     private boolean isMovingToSubmenu(Point prevPoint, Point newPoint) {
@@ -842,7 +871,13 @@ public class ListPopupImpl extends WizardPopup implements ListPopup, NextStepHan
 
   private boolean isSelectable(@Nullable Object value) {
     // it is possible to use null elements in list model
-    return getListStep().isSelectable(value);
+    try {
+      return getListStep().isSelectable(value);
+    }
+    catch (Exception exception) {
+      LOG.error(getListStep().getClass().getName(), exception);
+      return false;
+    }
   }
 
   private boolean isSelectableAt(int index) {

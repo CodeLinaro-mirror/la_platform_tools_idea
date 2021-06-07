@@ -15,6 +15,7 @@ import com.intellij.openapi.roots.ex.ProjectRootManagerEx;
 import com.intellij.openapi.roots.impl.PushedFilePropertiesUpdater;
 import com.intellij.openapi.roots.impl.PushedFilePropertiesUpdaterImpl;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -26,7 +27,6 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.contentQueue.IndexUpdateRunner;
 import com.intellij.util.indexing.diagnostic.IndexDiagnosticDumper;
-import com.intellij.util.indexing.diagnostic.IndexingJobStatistics;
 import com.intellij.util.indexing.diagnostic.ProjectIndexingHistory;
 import com.intellij.util.indexing.diagnostic.ScanningStatistics;
 import com.intellij.util.indexing.diagnostic.dto.JsonScanningStatistics;
@@ -38,6 +38,7 @@ import com.intellij.util.indexing.snapshot.SnapshotInputMappingsStatistics;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.progress.ConcurrentTasksProgressManager;
 import com.intellij.util.progress.SubTaskProgressIndicator;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.VisibleForTesting;
 
@@ -49,6 +50,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
+@ApiStatus.Internal
 public final class UnindexedFilesUpdater extends DumbModeTask {
   private static final Logger LOG = Logger.getInstance(UnindexedFilesUpdater.class);
   private static final int DEFAULT_MAX_INDEXER_THREADS = 4;
@@ -130,19 +132,6 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
     indicator.setText(IndexingBundle.message("progress.indexing.scanning"));
 
     PerformanceWatcher.Snapshot snapshot = PerformanceWatcher.takeSnapshot();
-    Instant pushPropertiesStart = Instant.now();
-    try {
-      myPusher.pushAllPropertiesNow();
-    } finally {
-      projectIndexingHistory.getTimes().setPushPropertiesDuration(Duration.between(pushPropertiesStart, Instant.now()));
-    }
-
-    LOG.info(snapshot.getLogResponsivenessSinceCreationMessage("Pushing properties"));
-
-    myIndex.clearIndicesIfNecessary();
-
-    snapshot = PerformanceWatcher.takeSnapshot();
-
     Instant scanFilesStart = Instant.now();
     List<IndexableFilesIterator> orderedProviders;
     Map<IndexableFilesIterator, List<VirtualFile>> providerToFiles;
@@ -155,6 +144,17 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
     }
     String scanningCompletedMessage = getLogScanningCompletedStageMessage(projectIndexingHistory);
     LOG.info(snapshot.getLogResponsivenessSinceCreationMessage(scanningCompletedMessage));
+
+    snapshot = PerformanceWatcher.takeSnapshot();
+    Instant pushPropertiesStart = Instant.now();
+    try {
+      myPusher.pushAllPropertiesNow();
+    } finally {
+      projectIndexingHistory.getTimes().setPushPropertiesDuration(Duration.between(pushPropertiesStart, Instant.now()));
+    }
+    LOG.info(snapshot.getLogResponsivenessSinceCreationMessage("Pushing properties"));
+
+    myIndex.clearIndicesIfNecessary();
 
     if (!ApplicationManager.getApplication().isUnitTestMode()) {
       // full VFS refresh makes sense only after it's loaded, i.e. after scanning files to index is finished
@@ -204,38 +204,47 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
     IndexUpdateRunner indexUpdateRunner = new IndexUpdateRunner(myIndex, GLOBAL_INDEXING_EXECUTOR, numberOfIndexingThreads);
 
     for (int index = 0; index < orderedProviders.size(); ) {
-      List<VirtualFile> files = new ArrayList<>();
-      String indexingProgressText = "";
-      StringBuilder providerDebugName = new StringBuilder();
-      while (files.size() < MINIMUM_NUMBER_OF_FILES_TO_RUN_CONCURRENT_INDEXING && index < orderedProviders.size()) {
+      List<IndexUpdateRunner.FileSet> fileSets = new ArrayList<>();
+      int takenFiles = 0;
+
+      int biggestProviderFiles = 0;
+      IndexableFilesIterator biggestProvider = null;
+
+      while (takenFiles < MINIMUM_NUMBER_OF_FILES_TO_RUN_CONCURRENT_INDEXING && index < orderedProviders.size()) {
         IndexableFilesIterator provider = orderedProviders.get(index++);
         List<VirtualFile> providerFiles = providerToFiles.getOrDefault(provider, Collections.emptyList());
-        files.addAll(providerFiles);
-
-        indexingProgressText = provider.getIndexingProgressText();
-        if (providerDebugName.length() > 0) {
-          providerDebugName.append(", ");
+        if (!providerFiles.isEmpty()) {
+          fileSets.add(new IndexUpdateRunner.FileSet(myProject, provider.getDebugName(), providerFiles));
         }
-        providerDebugName.append(provider.getDebugName());
+        if (biggestProviderFiles < providerFiles.size()) {
+          biggestProviderFiles = providerFiles.size();
+          biggestProvider = provider;
+        }
+        takenFiles += providerFiles.size();
       }
+      if (fileSets.isEmpty() || biggestProvider == null) {
+        break;
+      }
+
+      var indexingProgressText = biggestProvider.getIndexingProgressText();
+
       concurrentTasksProgressManager.setText(indexingProgressText);
-      SubTaskProgressIndicator subTaskIndicator = concurrentTasksProgressManager.createSubTaskIndicator(files.size());
+      int numberOfFiles = fileSets.stream().mapToInt(b -> b.files.size()).sum();
+      SubTaskProgressIndicator subTaskIndicator = concurrentTasksProgressManager.createSubTaskIndicator(numberOfFiles);
       try {
-        IndexingJobStatistics statistics;
         IndexUpdateRunner.IndexingInterruptedException exception = null;
         try {
-          statistics = indexUpdateRunner.indexFiles(myProject, providerDebugName.toString(), files, subTaskIndicator);
+          indexUpdateRunner.indexFiles(myProject, fileSets, subTaskIndicator);
         }
         catch (IndexUpdateRunner.IndexingInterruptedException e) {
           exception = e;
-          statistics = e.myStatistics;
         }
 
         try {
-          projectIndexingHistory.addProviderStatistics(statistics);
+          fileSets.forEach(b -> projectIndexingHistory.addProviderStatistics(b.statistics));
         }
         catch (Exception e) {
-          LOG.error("Failed to add indexing statistics for " + providerDebugName, e);
+          LOG.error("Failed to add indexing statistics", e);
         }
 
         if (exception != null) {
@@ -333,6 +342,11 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
 
     ConcurrentTasksProgressManager concurrentTasksProgressManager = new ConcurrentTasksProgressManager(indicator, providers.size());
 
+    // Workaround for concurrent modification of the [projectIndexingHistory].
+    // PushedFilePropertiesUpdaterImpl.invokeConcurrentlyIfPossible may finish earlier than all its spawned tasks have completed.
+    // And some scanning statistics may be tried to be added to the [projectIndexingHistory],
+    // leading to ConcurrentModificationException in the statistics' processor.
+    Ref<Boolean> allTasksFinished = Ref.create(false);
     List<Runnable> tasks = ContainerUtil.map(providers, provider -> {
       SubTaskProgressIndicator subTaskIndicator = concurrentTasksProgressManager.createSubTaskIndicator(1);
       List<VirtualFile> files = new ArrayList<>();
@@ -374,15 +388,23 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
         }
         finally {
           scanningStatistics.setNumberOfSkippedFiles(thisProviderDeduplicateFilter.getNumberOfSkippedFiles());
-          synchronized (projectIndexingHistory) {
-            projectIndexingHistory.addScanningStatistics(scanningStatistics);
+          synchronized (allTasksFinished) {
+            if (!allTasksFinished.get()) {
+              projectIndexingHistory.addScanningStatistics(scanningStatistics);
+            }
           }
           subTaskIndicator.finished();
         }
       };
     });
     LOG.info("Scanning: use " + getNumberOfScanningThreads() + " scanning threads");
-    PushedFilePropertiesUpdaterImpl.invokeConcurrentlyIfPossible(tasks);
+    try {
+      PushedFilePropertiesUpdaterImpl.invokeConcurrentlyIfPossible(tasks);
+    } finally {
+      synchronized (allTasksFinished) {
+        allTasksFinished.set(true);
+      }
+    }
     return providerToFiles;
   }
 
@@ -424,7 +446,9 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
   @Override
   public void performInDumbMode(@NotNull ProgressIndicator indicator) {
     ProjectIndexingHistory projectIndexingHistory = new ProjectIndexingHistory(myProject);
+    myIndex.loadIndexes();
     myIndex.filesUpdateStarted(myProject);
+    IndexDiagnosticDumper.getInstance().onIndexingStarted(projectIndexingHistory);
     try {
       updateUnindexedFiles(projectIndexingHistory, indicator);
     }
@@ -438,7 +462,8 @@ public final class UnindexedFilesUpdater extends DumbModeTask {
     finally {
       myIndex.filesUpdateFinished(myProject);
       projectIndexingHistory.getTimes().setUpdatingEnd(ZonedDateTime.now(ZoneOffset.UTC));
-      IndexDiagnosticDumper.getInstance().dumpProjectIndexingHistoryIfNecessary(projectIndexingHistory);
+      projectIndexingHistory.getTimes().setTotalUpdatingTime(System.nanoTime() - projectIndexingHistory.getTimes().getTotalUpdatingTime());
+      IndexDiagnosticDumper.getInstance().onIndexingFinished(projectIndexingHistory);
     }
   }
 

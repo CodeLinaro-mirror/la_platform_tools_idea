@@ -54,6 +54,10 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
     data.shouldRestoreToTask = { previous?.let { it() } ?: if (restoreRequired(runtimeContext)) actualId else null }
   }
 
+  override fun restoreByTimer(delayMillis: Int, restoreId: TaskId?) {
+    lessonExecutor.restoreByTimer(this, delayMillis, restoreId)
+  }
+
   override fun proposeRestore(restoreCheck: TaskRuntimeContext.() -> RestoreNotification?) {
     restoreState {
       // restoreState is used to trigger by any IDE state change and check restore proposal is needed
@@ -149,10 +153,11 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
     }
   }
 
-  override fun runtimeText(callback: TaskRuntimeContext.() -> String?) {
-    val text = callback(runtimeContext)
+  override fun runtimeText(callback: RuntimeTextContext.() -> String?) {
+    val runtimeTextContext = RuntimeTextContext(runtimeContext)
+    val text = callback(runtimeTextContext)
     if (text != null) {
-      lessonExecutor.text(text)
+      lessonExecutor.text(text, runtimeTextContext.removeAfterDone)
     }
   }
 

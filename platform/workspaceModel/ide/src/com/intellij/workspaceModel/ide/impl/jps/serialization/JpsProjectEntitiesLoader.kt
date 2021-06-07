@@ -30,9 +30,10 @@ object JpsProjectEntitiesLoader {
                                externalStoragePath: Path,
                                serializeArtifacts: Boolean,
                                virtualFileManager: VirtualFileUrlManager,
-                               externalStorageConfigurationManager: ExternalStorageConfigurationManager? = null): JpsProjectSerializers {
+                               externalStorageConfigurationManager: ExternalStorageConfigurationManager? = null,
+                               fileInDirectorySourceNames: FileInDirectorySourceNames = FileInDirectorySourceNames.empty()): JpsProjectSerializers {
     return createProjectEntitiesSerializers(configLocation, reader, externalStoragePath, serializeArtifacts, virtualFileManager,
-                                            externalStorageConfigurationManager)
+                                            externalStorageConfigurationManager, fileInDirectorySourceNames)
   }
 
   @TestOnly
@@ -40,7 +41,7 @@ object JpsProjectEntitiesLoader {
                   externalStoragePath: Path, errorReporter: ErrorReporter, virtualFileManager: VirtualFileUrlManager): JpsProjectSerializers {
     val reader = CachingJpsFileContentReader(configLocation.baseDirectoryUrlString)
     val data = createProjectEntitiesSerializers(configLocation, reader, externalStoragePath, true, virtualFileManager)
-    data.loadAll(reader, builder, errorReporter)
+    data.loadAll(reader, builder, errorReporter, null)
     return data
   }
 
@@ -67,14 +68,16 @@ object JpsProjectEntitiesLoader {
                                                externalStoragePath: Path,
                                                serializeArtifacts: Boolean,
                                                virtualFileManager: VirtualFileUrlManager,
-                                               externalStorageConfigurationManager: ExternalStorageConfigurationManager? = null): JpsProjectSerializers {
+                                               externalStorageConfigurationManager: ExternalStorageConfigurationManager? = null,
+                                               fileInDirectorySourceNames: FileInDirectorySourceNames = FileInDirectorySourceNames.empty()): JpsProjectSerializers {
     val externalStorageRoot = externalStoragePath.toVirtualFileUrl(virtualFileManager)
     val externalStorageMapping = JpsExternalStorageMappingImpl(externalStorageRoot, configLocation)
     return when (configLocation) {
-      is JpsProjectConfigLocation.FileBased -> createIprProjectSerializers(configLocation, reader, externalStorageMapping, serializeArtifacts, virtualFileManager)
+      is JpsProjectConfigLocation.FileBased -> createIprProjectSerializers(configLocation, reader, externalStorageMapping, serializeArtifacts, virtualFileManager, fileInDirectorySourceNames)
       is JpsProjectConfigLocation.DirectoryBased -> createDirectoryProjectSerializers(configLocation, reader, externalStorageMapping,
                                                                                       serializeArtifacts, virtualFileManager,
-                                                                                      externalStorageConfigurationManager)
+                                                                                      externalStorageConfigurationManager,
+                                                                                      fileInDirectorySourceNames)
     }
   }
 
@@ -83,7 +86,8 @@ object JpsProjectEntitiesLoader {
                                                 externalStorageMapping: JpsExternalStorageMapping,
                                                 serializeArtifacts: Boolean,
                                                 virtualFileManager: VirtualFileUrlManager,
-                                                externalStorageConfigurationManager: ExternalStorageConfigurationManager?): JpsProjectSerializers {
+                                                externalStorageConfigurationManager: ExternalStorageConfigurationManager?,
+                                                fileInDirectorySourceNames: FileInDirectorySourceNames): JpsProjectSerializers {
     val projectDirUrl = configLocation.projectDir.url
     val directorySerializersFactories = ArrayList<JpsDirectoryEntitiesSerializerFactory<*>>()
     val librariesDirectoryUrl = "$projectDirUrl/.idea/libraries"
@@ -109,7 +113,8 @@ object JpsProjectEntitiesLoader {
       reader = reader,
       externalStorageMapping = externalStorageMapping,
       enableExternalStorage = externalStorageEnabled,
-      virtualFileManager = virtualFileManager
+      virtualFileManager = virtualFileManager,
+      fileInDirectorySourceNames = fileInDirectorySourceNames
     )
   }
 
@@ -122,7 +127,8 @@ object JpsProjectEntitiesLoader {
                                           reader: JpsFileContentReader,
                                           externalStorageMapping: JpsExternalStorageMappingImpl,
                                           serializeArtifacts: Boolean,
-                                          virtualFileManager: VirtualFileUrlManager): JpsProjectSerializers {
+                                          virtualFileManager: VirtualFileUrlManager,
+                                          fileInDirectorySourceNames: FileInDirectorySourceNames): JpsProjectSerializers {
     val projectFileSource = JpsFileEntitySource.ExactFile(configLocation.iprFile, configLocation)
     val projectFileUrl = projectFileSource.file
     val entityTypeSerializers = ArrayList<JpsFileEntityTypeSerializer<*>>()
@@ -138,7 +144,8 @@ object JpsProjectEntitiesLoader {
       reader = reader,
       virtualFileManager = virtualFileManager,
       externalStorageMapping = externalStorageMapping,
-      enableExternalStorage = false
+      enableExternalStorage = false,
+      fileInDirectorySourceNames = fileInDirectorySourceNames
     )
   }
 
@@ -166,7 +173,7 @@ object JpsProjectEntitiesLoader {
 internal fun loadStorageFile(xmlFile: Path, pathMacroManager: PathMacroManager): Map<String, Element> {
   val rootElement = JDOMUtil.load(xmlFile)
   if (Strings.endsWith(xmlFile.toString(), ".iml")) {
-    val optionElement = Element("component").setAttribute("name", "DeprecatedModuleOptionManager")
+    val optionElement = Element("component").setAttribute("name", DEPRECATED_MODULE_MANAGER_COMPONENT_NAME)
     val iterator = rootElement.attributes.iterator()
     for (attribute in iterator) {
       if (attribute.name != "version") {

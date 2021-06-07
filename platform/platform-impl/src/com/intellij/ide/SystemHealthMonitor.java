@@ -19,6 +19,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.util.MathUtil;
 import com.intellij.util.SystemProperties;
@@ -30,6 +31,7 @@ import com.sun.jna.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.PropertyKey;
+import org.jetbrains.jps.model.java.JdkVersionDetector;
 
 import javax.swing.*;
 import java.io.File;
@@ -50,12 +52,28 @@ final class SystemHealthMonitor extends PreloadingActivity {
 
   @Override
   public void preload(@NotNull ProgressIndicator indicator) {
+    checkInstallationIntegrity();
     checkIdeDirectories();
     checkRuntime();
     checkReservedCodeCacheSize();
     checkEnvironment();
     checkSignalBlocking();
     startDiskSpaceMonitoring();
+  }
+
+  private static void checkInstallationIntegrity() {
+    if (SystemInfo.isUnix && !SystemInfo.isMac) {
+      try (Stream<Path> stream = Files.list(Path.of(PathManager.getLibPath()))) {
+        // see `LinuxDistributionBuilder#generateVersionMarker`
+        long markers = stream.filter(p -> p.getFileName().toString().startsWith("build-marker-")).count();
+        if (markers > 1) {
+          showNotification("mixed.bag.installation", false, null, ApplicationNamesInfo.getInstance().getFullProductName());
+        }
+      }
+      catch (IOException e) {
+        LOG.warn(e.getClass().getName() + ": " + e.getMessage());
+      }
+    }
   }
 
   private static void checkIdeDirectories() {
@@ -81,13 +99,16 @@ final class SystemHealthMonitor extends PreloadingActivity {
   }
 
   private static void checkRuntime() {
-    if (!(SystemInfo.isJetBrainsJvm || PathManager.isUnderHomeDirectory(SystemProperties.getJavaHome()))) {
+    String jreHome = SystemProperties.getJavaHome();
+    if (!(PathManager.isUnderHomeDirectory(jreHome) || isModernJBR())) {
+      // the JRE is non-bundled and is either non-JB or older than bundled
       NotificationAction switchAction = null;
 
-      if ((SystemInfo.isWindows || SystemInfo.isMac || SystemInfo.isLinux) && isJbrOperational()) {
-        String appName = ApplicationNamesInfo.getInstance().getScriptName();
-        String configName = appName + (!SystemInfo.isWindows ? "" : CpuArch.isIntel64() ? "64.exe" : ".exe") + ".jdk";
-        Path configFile = Paths.get(PathManager.getConfigPath(), configName);
+      String directory = PathManager.getCustomOptionsDirectory();
+      if (directory != null && (SystemInfo.isWindows || SystemInfo.isMac || SystemInfo.isLinux) && isJbrOperational()) {
+        String scriptName = ApplicationNamesInfo.getInstance().getScriptName();
+        String configName = scriptName + (!SystemInfo.isWindows ? "" : CpuArch.isIntel64() ? "64.exe" : ".exe") + ".jdk";
+        Path configFile = Path.of(directory, configName);
         if (Files.isRegularFile(configFile)) {
           switchAction = new NotificationAction(IdeBundle.message("action.SwitchToJBR.text")) {
             @Override
@@ -105,13 +126,22 @@ final class SystemHealthMonitor extends PreloadingActivity {
         }
       }
 
-      String current = JavaVersion.current() + " by " + SystemInfo.JAVA_VENDOR;
-      showNotification("bundled.jre.version.message", switchAction, current);
+      jreHome = StringUtil.trimEnd(jreHome, "/Contents/Home");
+      showNotification("bundled.jre.version.message", switchAction, JavaVersion.current(), SystemInfo.JAVA_VENDOR, jreHome);
     }
   }
 
+  private static boolean isModernJBR() {
+    if (!SystemInfo.isJetBrainsJvm) {
+      return false;
+    }
+    // when can't detect a JBR version, give a user the benefit of the doubt
+    JdkVersionDetector.JdkVersionInfo jbrVersion = JdkVersionDetector.getInstance().detectJdkVersionInfo(PathManager.getBundledRuntimePath());
+    return jbrVersion == null || JavaVersion.current().compareTo(jbrVersion.version) >= 0;
+  }
+
   private static boolean isJbrOperational() {
-    Path bin = Path.of(PathManager.getBundledRuntimePath(), SystemInfo.isWindows ? "bin/java.exe" : SystemInfo.isMac ? "Contents/Home/bin/java" : "bin/java");
+    Path bin = Path.of(PathManager.getBundledRuntimePath(), SystemInfo.isWindows ? "bin/java.exe": "bin/java");
     if (Files.isRegularFile(bin) && (SystemInfo.isWindows || Files.isExecutable(bin))) {
       try {
         return new CapturingProcessHandler(new GeneralCommandLine(bin.toString(), "-version")).runProcess(30_000).getExitCode() == 0;
@@ -168,21 +198,32 @@ final class SystemHealthMonitor extends PreloadingActivity {
   private static void showNotification(@PropertyKey(resourceBundle = "messages.IdeBundle") String key,
                                        @Nullable NotificationAction action,
                                        Object... params) {
-    boolean ignored = PropertiesComponent.getInstance().isValueSet("ignore." + key);
-    LOG.warn("issue detected: " + key + (ignored ? " (ignored)" : ""));
-    if (ignored) return;
+    showNotification(key, true, action, params);
+  }
+
+  private static void showNotification(@PropertyKey(resourceBundle = "messages.IdeBundle") String key,
+                                       boolean suppressable,
+                                       @Nullable NotificationAction action,
+                                       Object... params) {
+    if (suppressable) {
+      boolean ignored = PropertiesComponent.getInstance().isValueSet("ignore." + key);
+      LOG.warn("issue detected: " + key + (ignored ? " (ignored)" : ""));
+      if (ignored) return;
+    }
 
     Notification notification = new MyNotification(IdeBundle.message(key, params));
     if (action != null) {
       notification.addAction(action);
     }
-    notification.addAction(new NotificationAction(IdeBundle.message("sys.health.acknowledge.action")) {
-      @Override
-      public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
-        notification.expire();
-        PropertiesComponent.getInstance().setValue("ignore." + key, "true");
-      }
-    });
+    if (suppressable) {
+      notification.addAction(new NotificationAction(IdeBundle.message("sys.health.acknowledge.action")) {
+        @Override
+        public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
+          notification.expire();
+          PropertiesComponent.getInstance().setValue("ignore." + key, "true");
+        }
+      });
+    }
     notification.setImportant(true);
 
     Notifications.Bus.notify(notification);

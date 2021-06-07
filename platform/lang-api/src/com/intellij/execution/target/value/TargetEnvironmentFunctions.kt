@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:JvmName("TargetEnvironmentFunctions")
 
 package com.intellij.execution.target.value
@@ -7,8 +7,13 @@ import com.intellij.execution.target.HostPort
 import com.intellij.execution.target.TargetEnvironment
 import com.intellij.execution.target.TargetEnvironmentRequest
 import com.intellij.execution.target.TargetPlatform
+import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.io.FileUtil
+import java.io.File
+import java.io.IOException
+import java.nio.file.Path
 import java.util.function.Function
+import kotlin.io.path.name
 
 /**
  * The function that is expected to be resolved with provided
@@ -36,12 +41,8 @@ fun <T> Iterable<TargetEnvironmentFunction<T>>.joinToStringFunction(separator: C
   JoinedStringTargetEnvironmentFunction(iterable = this, separator = separator)
 
 fun TargetEnvironmentRequest.getTargetEnvironmentValueForLocalPath(localPath: String): TargetEnvironmentFunction<String> {
-  val targetFileSeparator = targetPlatform.platform.fileSeparator
-  val (uploadRoot, relativePath) = uploadVolumes.mapNotNull { uploadRoot ->
-    getRelativePathIfAncestor(ancestor = uploadRoot.localRootPath.toString(),
-                              file = localPath,
-                              targetFileSeparator = targetFileSeparator)?.let { relativePath -> uploadRoot to relativePath }
-  }.firstOrNull() ?: throw IllegalArgumentException("Local path \"$localPath\" is not registered within uploads in the request")
+  val (uploadRoot, relativePath) = getUploadRootForLocalPath(localPath)
+                             ?: throw IllegalArgumentException("Local path \"$localPath\" is not registered within uploads in the request")
   return TargetEnvironmentFunction { targetEnvironment ->
     val volume = targetEnvironment.uploadVolumes[uploadRoot]
                  ?: throw IllegalStateException("Upload root \"$uploadRoot\" is expected to be created in the target environment")
@@ -49,9 +50,23 @@ fun TargetEnvironmentRequest.getTargetEnvironmentValueForLocalPath(localPath: St
   }
 }
 
-private fun getRelativePathIfAncestor(ancestor: String, file: String, targetFileSeparator: Char): String? =
+fun TargetEnvironmentRequest.getUploadRootForLocalPath(localPath: String): Pair<TargetEnvironment.UploadRoot, String>? {
+  val targetFileSeparator = targetPlatform.platform.fileSeparator
+  return uploadVolumes.mapNotNull { uploadRoot ->
+    getRelativePathIfAncestor(ancestor = uploadRoot.localRootPath.toString(), file = localPath)?.let { relativePath ->
+      uploadRoot to if (File.separatorChar != targetFileSeparator) {
+        relativePath.replace(File.separatorChar, targetFileSeparator)
+      }
+      else {
+        relativePath
+      }
+    }
+  }.firstOrNull()
+}
+
+private fun getRelativePathIfAncestor(ancestor: String, file: String): String? =
   if (FileUtil.isAncestor(ancestor, file, false)) {
-    FileUtil.getRelativePath(ancestor, file, targetFileSeparator)
+    FileUtil.getRelativePath(ancestor, file, File.separatorChar)
   }
   else {
     null
@@ -90,6 +105,15 @@ fun TargetEnvironment.LocalPortBinding.getTargetEnvironmentValue(): TargetEnviro
     return@TargetEnvironmentFunction targetEnvironment.localPortBindings[localPortBinding]
                                      ?: throw IllegalStateException("Local port binding \"$localPortBinding\" cannot be found")
   }
+
+@Throws(IOException::class)
+fun TargetEnvironment.downloadFromTarget(localPath: Path, progressIndicator: ProgressIndicator) {
+  val localFileDir = localPath.parent
+  val downloadVolumes = downloadVolumes.values
+  val downloadVolume = downloadVolumes.find { it.localRoot == localFileDir }
+                       ?: error("Volume with local root $localFileDir not found")
+  downloadVolume.download(localPath.name, progressIndicator)
+}
 
 private class JoinedStringTargetEnvironmentFunction<T>(private val iterable: Iterable<TargetEnvironmentFunction<T>>,
                                                        private val separator: CharSequence) : TargetEnvironmentFunction<String> {

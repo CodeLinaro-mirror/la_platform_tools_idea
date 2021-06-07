@@ -1,14 +1,18 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package training.learn
 
+import com.intellij.ide.DataManager
 import com.intellij.ide.scratch.ScratchFileService
 import com.intellij.ide.scratch.ScratchRootType
 import com.intellij.ide.startup.StartupManagerEx
+import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileEditor.TextEditor
@@ -22,6 +26,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.util.Alarm
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import training.dsl.LessonUtil
@@ -34,18 +39,20 @@ import training.learn.course.Lesson
 import training.learn.course.LessonType
 import training.learn.lesson.LessonManager
 import training.project.ProjectUtils
+import training.statistic.StatisticBase
 import training.statistic.StatisticLessonListener
 import training.ui.LearnToolWindowFactory
 import training.ui.LearningUiManager
 import training.util.findLanguageByID
 import training.util.isLearningProject
+import training.util.learningToolWindow
 import java.io.IOException
 
 internal object OpenLessonActivities {
   private val LOG = logger<OpenLessonActivities>()
 
   @RequiresEdt
-  fun openLesson(projectWhereToStartLesson: Project, lesson: Lesson) {
+  fun openLesson(projectWhereToStartLesson: Project, lesson: Lesson, forceStartLesson: Boolean) {
     LOG.debug("${projectWhereToStartLesson.name}: start openLesson method")
 
     // Stop the current lesson (if any)
@@ -61,7 +68,7 @@ internal object OpenLessonActivities {
       activeToolWindow.setModulesPanel()
     }
 
-    if (LessonManager.instance.lessonShouldBeOpenedCompleted(lesson)) {
+    if (!forceStartLesson && LessonManager.instance.lessonShouldBeOpenedCompleted(lesson)) {
       // TODO: Do not stop lesson in another toolwindow IFT-110
       LearningUiManager.activeToolWindow?.setLearnPanel() ?: error("No active toolwindow in $projectWhereToStartLesson")
       LessonManager.instance.openLessonPassed(lesson as KLesson, projectWhereToStartLesson)
@@ -166,9 +173,15 @@ internal object OpenLessonActivities {
     if (lesson.lessonType != LessonType.SCRATCH || LearningUiManager.learnProject == project) {
       // do not change view environment for scratch lessons in user project
       hideOtherViews(project)
-      ToolWindowManager.getInstance(project).getToolWindow(LearnToolWindowFactory.LEARN_TOOL_WINDOW)?.show()
     }
+    // We need to ensure that the learning panel is initialized
+    learningToolWindow(project)?.let {
+      it.show()
+      openLessonWhenLearnPanelIsReady(project, lesson, vf)
+    } ?: waitLearningToolwindow(project, lesson, vf)
+  }
 
+  private fun openLessonWhenLearnPanelIsReady(project: Project, lesson: Lesson, vf: VirtualFile?) {
     LOG.debug("${project.name}: Add listeners to lesson")
     addStatisticLessonListenerIfNeeded(project, lesson)
 
@@ -224,6 +237,24 @@ internal object OpenLessonActivities {
     else error("Unknown lesson format")
   }
 
+  private fun waitLearningToolwindow(project: Project, lesson: Lesson, vf: VirtualFile?) {
+    val connect = project.messageBus.connect()
+    connect.subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
+      override fun toolWindowsRegistered(ids: MutableList<String>, toolWindowManager: ToolWindowManager) {
+        if (ids.contains(LearnToolWindowFactory.LEARN_TOOL_WINDOW)) {
+          val toolWindow = toolWindowManager.getToolWindow(LearnToolWindowFactory.LEARN_TOOL_WINDOW)
+          if (toolWindow != null) {
+            connect.disconnect()
+            invokeLater {
+              toolWindow.show()
+              openLessonWhenLearnPanelIsReady(project, lesson, vf)
+            }
+          }
+        }
+      }
+    })
+  }
+
   private fun processDslLesson(lesson: KLesson, textEditor: TextEditor?, projectWhereToStartLesson: Project, vf: VirtualFile?) {
     val executor = LessonExecutor(lesson, projectWhereToStartLesson, textEditor?.editor, vf)
     val lessonContext = LessonContextImpl(executor)
@@ -248,17 +279,44 @@ internal object OpenLessonActivities {
     val manager = ProjectRootManager.getInstance(project)
     val root = manager.contentRoots[0]
     val readme = root?.findFileByRelativePath("README.md") ?: return
-    FileEditorManager.getInstance(project).openFile(readme, true, true)
+    val editors = FileEditorManager.getInstance(project).openFile(readme, true, true)
+    (editors.singleOrNull() as? TextEditor)?.editor?.let {
+      val action = ActionManager.getInstance().getAction(
+        "org.intellij.plugins.markdown.ui.actions.editorLayout.PreviewOnlyLayoutChangeAction")
+      invokeLater {
+        val dataContext = getEditorDataContext(it)
+        val event = AnActionEvent.createFromAnAction(action, null, ActionPlaces.LEARN_TOOLWINDOW, dataContext)
+        ActionUtil.performActionDumbAwareWithCallbacks(action, event, event.dataContext)
+      }
+    }
+  }
+
+  /* It is a temporary copy-paste from EditorUtil because the corresponding method was created after the release branch is forked */
+  private fun getEditorDataContext(editor: Editor): DataContext {
+    val context = DataManager.getInstance().getDataContext(editor.contentComponent)
+    return if (CommonDataKeys.PROJECT.getData(context) === editor.project) {
+      context
+    }
+    else DataContext { dataId: String ->
+      if (CommonDataKeys.PROJECT.`is`(dataId)) {
+        return@DataContext editor.project
+      }
+      context.getData(dataId)
+    }
   }
 
   fun openOnboardingFromWelcomeScreen(onboarding: Lesson) {
+    StatisticBase.logLearnProjectOpenedForTheFirstTime(StatisticBase.LearnProjectOpeningWay.ONBOARDING_PROMOTER)
     initLearnProject(null) { project ->
       StartupManager.getInstance(project).runAfterOpened {
         invokeLater {
-          openReadme(project)
-          hideOtherViews(project)
           if (onboarding.properties.canStartInDumbMode) {
-            CourseManager.instance.openLesson(project, onboarding)
+            CourseManager.instance.openLesson(project, onboarding, true)
+          }
+          else {
+            DumbService.getInstance(project).runWhenSmart {
+              CourseManager.instance.openLesson(project, onboarding, true)
+            }
           }
         }
       }
@@ -266,18 +324,19 @@ internal object OpenLessonActivities {
   }
 
   fun openLearnProjectFromWelcomeScreen() {
+    StatisticBase.logLearnProjectOpenedForTheFirstTime(StatisticBase.LearnProjectOpeningWay.LEARN_IDE)
     initLearnProject(null) { project ->
       StartupManager.getInstance(project).runAfterOpened {
         invokeLater {
           openReadme(project)
           hideOtherViews(project)
-          showModules(project)
+          showLearnPanel(project)
           CourseManager.instance.unfoldModuleOnInit = null
           // Try to fix PyCharm double startup indexing :(
           val openWhenSmart = {
-            showModules(project)
+            showLearnPanel(project)
             DumbService.getInstance(project).runWhenSmart {
-              showModules(project)
+              showLearnPanel(project)
             }
           }
           Alarm().addRequest(openWhenSmart, 500)
@@ -286,9 +345,8 @@ internal object OpenLessonActivities {
     }
   }
 
-  private fun showModules(project: Project) {
-    val toolWindowManager = ToolWindowManager.getInstance(project)
-    toolWindowManager.getToolWindow(LearnToolWindowFactory.LEARN_TOOL_WINDOW)?.show(null)
+  private fun showLearnPanel(project: Project) {
+    learningToolWindow(project)?.show()
   }
 
   @RequiresEdt
@@ -302,7 +360,6 @@ internal object OpenLessonActivities {
       val learnToolWindow = toolWindowManager.getToolWindow(LearnToolWindowFactory.LEARN_TOOL_WINDOW)
       if (learnToolWindow != null) {
         DumbService.getInstance(myLearnProject).runWhenSmart {
-          if (!lesson.properties.showLearnToolwindowAtStart) learnToolWindow.show()
           // Try to fix PyCharm double startup indexing :(
           val openWhenSmart = {
             DumbService.getInstance(myLearnProject).runWhenSmart {

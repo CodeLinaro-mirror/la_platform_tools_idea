@@ -115,14 +115,22 @@ open class ProjectManagerExImpl : ProjectManagerImpl() {
       }
 
       val project = result.project
+      if (!addToOpened(project)) {
+        return@run null
+      }
+
       frameAllocator.projectLoaded(project)
-      if (doOpenProject(project)) {
-        frameAllocator.projectOpened(project)
-        result
+      try {
+        openProject(project, ProgressManager.getInstance().progressIndicator, isRunStartUpActivitiesEnabled(project))
       }
-      else {
-        null
+      catch (e: ProcessCanceledException) {
+        app.invokeAndWait { closeProject(project, /* saveProject = */false, /* dispose = */true, /* checkCanClose = */false) }
+        app.messageBus.syncPublisher(AppLifecycleListener.TOPIC).projectOpenFailed()
+        return@run null
       }
+
+      frameAllocator.projectOpened(project)
+      result
     }
       .handle(BiFunction { result, error ->
         disableAutoSaveToken.finish()
@@ -295,41 +303,58 @@ private fun checkExistingProjectOnOpen(projectToClose: Project,
                                        callback: ProjectOpenedCallback?,
                                        projectDir: Path?,
                                        projectManager: ProjectManagerExImpl): Boolean {
+  val result = CompletableFuture<Boolean>()
+
   val settings = GeneralSettings.getInstance()
   val isValidProject = projectDir != null && ProjectUtil.isValidProjectPath(projectDir)
-  if (projectDir != null && ProjectAttachProcessor.canAttachToProject() &&
-      (!isValidProject || settings.confirmOpenNewProject == GeneralSettings.OPEN_PROJECT_ASK)) {
-    val exitCode = ProjectUtil.confirmOpenOrAttachProject()
-    if (exitCode == -1) {
-      return true
-    }
-    else if (exitCode == GeneralSettings.OPEN_PROJECT_SAME_WINDOW) {
-      if (!projectManager.closeAndDispose(projectToClose)) {
-        return true
+
+  ApplicationManager.getApplication().invokeAndWait{
+    try {
+      if (projectDir != null && ProjectAttachProcessor.canAttachToProject() &&
+          (!isValidProject || settings.confirmOpenNewProject == GeneralSettings.OPEN_PROJECT_ASK)) {
+        val exitCode = ProjectUtil.confirmOpenOrAttachProject()
+        if (exitCode == -1) {
+          result.complete(true)
+          return@invokeAndWait
+        }
+        else if (exitCode == GeneralSettings.OPEN_PROJECT_SAME_WINDOW) {
+          if (!projectManager.closeAndDispose(projectToClose)) {
+            result.complete(true)
+            return@invokeAndWait
+          }
+        }
+        else if (exitCode == GeneralSettings.OPEN_PROJECT_SAME_WINDOW_ATTACH) {
+          if (PlatformProjectOpenProcessor.attachToProject(projectToClose, projectDir, callback)) {
+            result.complete(true)
+            return@invokeAndWait
+          }
+        }
+        // process all pending events that can interrupt focus flow
+        // todo this can be removed after taming the focus beast
+        IdeEventQueue.getInstance().flushQueue()
       }
-    }
-    else if (exitCode == GeneralSettings.OPEN_PROJECT_SAME_WINDOW_ATTACH) {
-      if (PlatformProjectOpenProcessor.attachToProject(projectToClose, projectDir, callback)) {
-        return true
+      else {
+        val exitCode = ProjectUtil.confirmOpenNewProject(false)
+        if (exitCode == GeneralSettings.OPEN_PROJECT_SAME_WINDOW) {
+          if (!projectManager.closeAndDispose(projectToClose)) {
+            result.complete(true)
+            return@invokeAndWait
+          }
+        }
+        else if (exitCode != GeneralSettings.OPEN_PROJECT_NEW_WINDOW) {
+          // not in a new window
+          result.complete(true)
+          return@invokeAndWait
+        }
       }
+
+      result.complete(false)
+    } catch (err: Throwable) {
+      result.completeExceptionally(err)
     }
-    // process all pending events that can interrupt focus flow
-    // todo this can be removed after taming the focus beast
-    IdeEventQueue.getInstance().flushQueue()
   }
-  else {
-    val exitCode = ProjectUtil.confirmOpenNewProject(false)
-    if (exitCode == GeneralSettings.OPEN_PROJECT_SAME_WINDOW) {
-      if (!projectManager.closeAndDispose(projectToClose)) {
-        return true
-      }
-    }
-    else if (exitCode != GeneralSettings.OPEN_PROJECT_NEW_WINDOW) {
-      // not in a new window
-      return true
-    }
-  }
-  return false
+
+  return result.get()
 }
 
 private fun openProject(project: Project, indicator: ProgressIndicator?, runStartUpActivities: Boolean) {

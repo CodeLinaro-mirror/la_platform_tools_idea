@@ -64,6 +64,7 @@ import com.intellij.ui.components.*;
 import com.intellij.ui.hover.TableHoverListener;
 import com.intellij.ui.mac.TouchbarDataKeys;
 import com.intellij.ui.popup.PopupState;
+import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.table.JBTable;
 import com.intellij.usageView.UsageInfo;
@@ -74,6 +75,7 @@ import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.ui.*;
+import com.intellij.accessibility.TextFieldWithListAccessibleContext;
 import net.miginfocom.swing.MigLayout;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -81,6 +83,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.concurrency.Promises;
 
+import javax.accessibility.AccessibleContext;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
@@ -597,11 +600,26 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
                      .registerCustomShortcutSet(new CustomShortcutSet(navigationKeyStrokes.toArray(Shortcut.EMPTY_ARRAY)), this);
     }
 
-    mySearchComponent = new JBTextArea();
+    myResultsPreviewTableModel = createTableModel();
+    myResultsPreviewTable = new JBTable(myResultsPreviewTableModel) {
+      @Override
+      public Dimension getPreferredScrollableViewportSize() {
+        return new Dimension(getWidth(), 1 + getRowHeight() * 4);
+      }
+    };
+    myResultsPreviewTable.setFocusable(false);
+    myResultsPreviewTable.putClientProperty(RenderingUtil.ALWAYS_PAINT_SELECTION_AS_FOCUSED, true);
+    myResultsPreviewTable.getEmptyText().setShowAboveCenter(false);
+    myResultsPreviewTable.setShowColumns(false);
+    myResultsPreviewTable.getSelectionModel().setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+    myResultsPreviewTable.setShowGrid(false);
+    myResultsPreviewTable.setIntercellSpacing(JBUI.emptySize());
+
+    mySearchComponent = new JBTextAreaWithMixedAccessibleContext(myResultsPreviewTable.getAccessibleContext());
     mySearchComponent.setColumns(25);
     mySearchComponent.setRows(1);
     mySearchComponent.getAccessibleContext().setAccessibleName(FindBundle.message("find.search.accessible.name"));
-    myReplaceComponent = new JBTextArea();
+    myReplaceComponent = new JBTextAreaWithMixedAccessibleContext(myResultsPreviewTable.getAccessibleContext());
     myReplaceComponent.setColumns(25);
     myReplaceComponent.setRows(1);
     myReplaceComponent.getAccessibleContext().setAccessibleName(FindBundle.message("find.replace.accessible.name"));
@@ -646,19 +664,6 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     myScopeSelectionToolbar.setMinimumButtonSize(ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE);
     mySelectedScope = scopeComponents[0].first;
 
-    myResultsPreviewTableModel = createTableModel();
-    myResultsPreviewTable = new JBTable(myResultsPreviewTableModel) {
-      @Override
-      public Dimension getPreferredScrollableViewportSize() {
-        return new Dimension(getWidth(), 1 + getRowHeight() * 4);
-      }
-    };
-    myResultsPreviewTable.setFocusable(false);
-    myResultsPreviewTable.getEmptyText().setShowAboveCenter(false);
-    myResultsPreviewTable.setShowColumns(false);
-    myResultsPreviewTable.getSelectionModel().setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-    myResultsPreviewTable.setShowGrid(false);
-    myResultsPreviewTable.setIntercellSpacing(JBUI.emptySize());
     TableHoverListener.DEFAULT.removeFrom(myResultsPreviewTable);
     new DoubleClickListener() {
       @Override
@@ -1333,12 +1338,15 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     myInfoLabel.setText(null);
   }
 
-  private void showEmptyText(@Nullable String message) {
+  private void showEmptyText(@Nullable @NlsContexts.StatusText String message) {
     StatusText emptyText = myResultsPreviewTable.getEmptyText();
     emptyText.clear();
-    emptyText.setText(message != null ? FindBundle.message("message.nothingFound.with.problem", message)
-                                      : FindBundle.message("message.nothingFound"));
     FindModel model = myHelper.getModel();
+    if (StringUtil.isEmpty(model.getStringToFind())) {
+      emptyText.setText(FindBundle.message("message.type.search.query"));
+    } else {
+      emptyText.setText(message != null ? message+"." : FindBundle.message("message.nothingFound"));
+    }
     if (mySelectedScope == FindPopupScopeUIImpl.DIRECTORY && !model.isWithSubdirectories()) {
       emptyText.appendSecondaryText(FindBundle.message("find.recursively.hint"),
                                                                SimpleTextAttributes.LINK_ATTRIBUTES,
@@ -2027,6 +2035,23 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
       else {
         navigateToSelectedUsage(null);
       }
+    }
+  }
+
+  private static class JBTextAreaWithMixedAccessibleContext extends JBTextArea {
+
+    private final AccessibleContext tableContext;
+
+    private JBTextAreaWithMixedAccessibleContext(AccessibleContext context) {
+      tableContext = context;
+    }
+
+    @Override
+    public AccessibleContext getAccessibleContext() {
+      if (accessibleContext == null) {
+        accessibleContext = new TextFieldWithListAccessibleContext(this, tableContext);
+      }
+      return accessibleContext;
     }
   }
 }

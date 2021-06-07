@@ -2,6 +2,7 @@
 package training.util
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
+import com.intellij.DynamicBundle
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
 import com.intellij.ide.plugins.PluginManagerCore
@@ -17,6 +18,8 @@ import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.components.labels.LinkLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -35,6 +38,7 @@ import java.awt.Component
 import java.awt.Desktop
 import java.awt.Dimension
 import java.net.URI
+import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import javax.swing.*
@@ -76,6 +80,9 @@ val featureTrainerVersion: String by lazy {
   val featureTrainerPluginId = PluginManagerCore.getPluginByClassName(CourseManager::class.java.name)
   PluginManagerCore.getPlugin(featureTrainerPluginId)?.version ?: "UNKNOWN"
 }
+
+val adaptToNotNativeLocalization: Boolean
+  get() = Registry.`is`("ift.adapt.to.not.native.localization") || DynamicBundle.getLocale() != Locale.ENGLISH
 
 fun clearTrainingProgress() {
   LessonManager.instance.stopLesson()
@@ -189,4 +196,16 @@ fun learningProgressString(lessons: List<Lesson>): String {
     LearnBundle.message("learn.module.progress.completed")
   else
     LearnBundle.message("learn.module.progress", done, total)
+}
+
+fun learningToolWindow(project: Project): ToolWindow? {
+  return ToolWindowManager.getInstance(project).getToolWindow(LearnToolWindowFactory.LEARN_TOOL_WINDOW)
+}
+
+fun Any.toNullableString(): String? {
+  return excludeNullCheck(toString())
+}
+
+private fun excludeNullCheck(value: String?): String? {
+  return value
 }

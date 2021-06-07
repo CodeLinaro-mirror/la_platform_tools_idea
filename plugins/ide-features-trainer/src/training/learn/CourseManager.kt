@@ -57,17 +57,20 @@ class CourseManager internal constructor() : Disposable {
 
   /**
    * @param projectWhereToOpen -- where to open projectWhereToOpen
+   * @param forceStartLesson -- force start lesson without check for passed status (passed lessons will be opened as completed text)
    */
-  fun openLesson(projectWhereToOpen: Project, lesson: Lesson?) {
+  fun openLesson(projectWhereToOpen: Project, lesson: Lesson?, forceStartLesson: Boolean = false) {
     LessonManager.instance.stopLesson()
     if (lesson == null) return //todo: remove null lessons
-    OpenLessonActivities.openLesson(projectWhereToOpen, lesson)
+    OpenLessonActivities.openLesson(projectWhereToOpen, lesson, forceStartLesson)
   }
 
-  fun findLesson(lessonName: String): Lesson? {
-    return modules
-      .flatMap { it.lessons }
-      .firstOrNull { it.name.equals(lessonName, ignoreCase = true) }
+  fun findLessonById(lessonId: String): Lesson? {
+    return lessonsForModules.firstOrNull { it.id == lessonId }
+  }
+
+  fun findLessonByName(lessonName: String): Lesson? {
+    return lessonsForModules.firstOrNull { it.name.equals(lessonName, ignoreCase = true) }
   }
 
   fun calcLessonsForLanguage(primaryLangSupport: LangSupport): Int {

@@ -24,6 +24,7 @@ import com.intellij.openapi.actionSystem.impl.ActionButton;
 import com.intellij.openapi.actionSystem.impl.ActionMenu;
 import com.intellij.openapi.actionSystem.impl.ActionMenuItem;
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.keymap.Keymap;
@@ -130,6 +131,9 @@ public class UiInspectorAction extends DumbAwareAction implements LightEditCompa
         }
       }
     }, AWTEvent.MOUSE_EVENT_MASK);
+    if (Boolean.getBoolean("idea.ui.debug.mode") || Boolean.getBoolean("idea.ui.inspector")) {
+      ApplicationManager.getApplication().invokeLater(() -> new UiInspector(null));
+    }
   }
 
   private void updateMouseShortcuts() {
@@ -147,7 +151,9 @@ public class UiInspectorAction extends DumbAwareAction implements LightEditCompa
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
     InputEvent event = e.getInputEvent();
-    event.consume();
+    if (event != null) {
+      event.consume();
+    }
     Component component = e.getData(PlatformDataKeys.CONTEXT_COMPONENT);
 
     Project project = e.getProject();
@@ -611,7 +617,7 @@ public class UiInspectorAction extends DumbAwareAction implements LightEditCompa
             return Pair.create(entry.getValue(), field.getName());
           }
         }
-        catch (IllegalAccessException e) {
+        catch (Exception e) {
           //skip
         }
       }

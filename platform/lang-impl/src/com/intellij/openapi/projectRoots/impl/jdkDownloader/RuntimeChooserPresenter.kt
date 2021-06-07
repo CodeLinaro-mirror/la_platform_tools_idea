@@ -3,11 +3,32 @@ package com.intellij.openapi.projectRoots.impl.jdkDownloader
 
 import com.intellij.lang.LangBundle
 import com.intellij.ui.*
+import java.awt.Component
 import javax.swing.JList
 
-class RuntimeChooserPresenter(
-  private val model: RuntimeChooserModel
-) : ColoredListCellRenderer<RuntimeChooserItem>() {
+class RuntimeChooserPresenter: ColoredListCellRenderer<RuntimeChooserItem>() {
+
+  override fun getListCellRendererComponent(list: JList<out RuntimeChooserItem>?,
+                                            value: RuntimeChooserItem?,
+                                            index: Int,
+                                            selected: Boolean,
+                                            hasFocus: Boolean): Component {
+
+    val message = when (value) {
+      is RuntimeChooserAdvancedSectionSeparator -> LangBundle.message("dialog.separator.choose.ide.runtime.advanced")
+      is RuntimeChooserAdvancedJbrSelectedSectionSeparator -> LangBundle.message("dialog.separator.choose.ide.runtime.advancedJbrs")
+      is RuntimeChooserCustomSelectedSectionSeparator -> LangBundle.message("dialog.separator.choose.ide.runtime.customSelected")
+      else -> null
+    }
+
+    if (message == null) {
+      return super.getListCellRendererComponent(list, value, index, selected, hasFocus)
+    }
+
+    val sep = SeparatorWithText()
+    sep.caption = message
+    return sep
+  }
 
   override fun customizeCellRenderer(list: JList<out RuntimeChooserItem>,
                                      value: RuntimeChooserItem?,
@@ -23,59 +44,67 @@ class RuntimeChooserPresenter(
       return
     }
 
+    if (value is RuntimeChooserSelectRuntimeItem) {
+      append(LangBundle.message("dialog.item.choose.ide.runtime.select.runtime"), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+      return
+    }
+
     if (value is RuntimeChooserAddCustomItem) {
       append(LangBundle.message("dialog.item.choose.ide.runtime.add.custom", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES))
       return
     }
 
-    if (value is RuntimeChooserCustomItem) {
-      append(LangBundle.message("dialog.item.choose.ide.runtime.custom", value.version), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES, true)
+    if (value is RuntimeChooserItemWithFixedLocation) {
+      presetRuntime(value)
       return
     }
   }
 
-  private fun presetCurrentRuntime(value: RuntimeChooserCurrentItem) {
-    if (value.isBundled) {
-      append(LangBundle.message("dialog.item.choose.ide.runtime.bundled", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES))
+  companion object {
+    fun SimpleColoredComponent.presetRuntime(value: RuntimeChooserItemWithFixedLocation) {
+      value.version?.let {
+        append(it, SimpleTextAttributes.REGULAR_ATTRIBUTES, true)
+        append(" ")
+      }
+
+      value.displayName?.let {
+        append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        append(" ")
+      }
+
+      if (value.version == null && value.displayName == null) {
+        append(LangBundle.message("dialog.item.choose.ide.runtime.unknown"))
+        append(" ")
+      }
+    }
+
+    fun SimpleColoredComponent.presetCurrentRuntime(value: RuntimeChooserCurrentItem) {
+      presetRuntime(value)
+
+      if (value.isBundled) {
+        append(LangBundle.message("dialog.item.choose.ide.runtime.bundled"), SimpleTextAttributes.GRAY_SMALL_ATTRIBUTES)
+      }
+    }
+
+    fun SimpleColoredComponent.presentJbrItem(value: RuntimeChooserDownloadableItem) {
+      val item = value.item
+
+      append(item.jdkVersion, SimpleTextAttributes.REGULAR_ATTRIBUTES, true)
       append(" ")
-    }
 
-    append(LangBundle.message("dialog.item.choose.ide.runtime.current", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES))
-    append(" ")
+      item.product.vendor.let {
+        append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        append(" ")
+      }
 
-    value.version?.let {
-      append(it, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES, true)
-      append(" ")
-    }
+      item.product.product?.let {
+        append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        append(" ")
+      }
 
-    value.displayName?.let {
-      append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-      append(" ")
-    }
-
-    if (value.version == null && value.displayName == null) {
-      append(LangBundle.message("dialog.item.choose.ide.runtime.unknown"))
-    }
-  }
-
-  private fun presentJbrItem(value: RuntimeChooserDownloadableItem) {
-    val item = value.item
-
-    append(item.jdkVersion, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES, true)
-    append(" ")
-
-    item.product.vendor.let {
-      append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-      append(" ")
-    }
-
-    item.product.product?.let {
-      append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-      append(" ")
-    }
-
-    item.product.flavour?.let {
-      append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+      item.product.flavour?.let {
+        append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+      }
     }
   }
 }

@@ -2,6 +2,7 @@
 package com.jetbrains.python.psi.resolve;
 
 import com.google.common.collect.Lists;
+import com.intellij.codeInsight.completion.CompletionUtilCoreImpl;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.projectRoots.Sdk;
@@ -23,6 +24,7 @@ import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.impl.*;
 import com.jetbrains.python.psi.types.PyModuleType;
 import com.jetbrains.python.psi.types.PyType;
+import com.jetbrains.python.pyi.PyiStubSuppressor;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -47,7 +49,8 @@ public final class ResolveImportUtil {
       if (file instanceof PyFile) {
         final PyFile pyFile = (PyFile)file;
         if (pyFile.getLanguageLevel().isPy3K()) {
-          if (foothold.getManager().isInProject(foothold) && Registry.is("python.explicit.namespace.packages")) {
+          PsiElement originalFoothold = CompletionUtilCoreImpl.getOriginalOrSelf(foothold);
+          if (foothold.getManager().isInProject(originalFoothold) && Registry.is("python.explicit.namespace.packages")) {
             return false;
           }
           return true;
@@ -412,7 +415,10 @@ public final class ResolveImportUtil {
   private static PsiFile findPyFileInDir(PsiDirectory dir, String referencedName, boolean withoutStubs) {
     PsiFile file = null;
     if (!withoutStubs) {
-      file = dir.findFile(referencedName + PyNames.DOT_PYI);
+      final var stub = dir.findFile(referencedName + PyNames.DOT_PYI);
+      if (!PyiStubSuppressor.isIgnoredStub(stub)) {
+        file =  stub;
+      }
     }
     if (file == null) {
       file = dir.findFile(referencedName + PyNames.DOT_PY);

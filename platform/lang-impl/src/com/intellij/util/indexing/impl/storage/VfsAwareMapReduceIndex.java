@@ -64,8 +64,8 @@ public class VfsAwareMapReduceIndex<Key, Value> extends MapReduceIndex<Key, Valu
                                 @NotNull VfsAwareIndexStorageLayout<Key, Value> indexStorageLayout,
                                 @Nullable ReadWriteLock lock) throws IOException {
     this(extension,
-         () -> indexStorageLayout.createOrClearIndexStorage(),
-         () -> indexStorageLayout.createOrClearForwardIndex(),
+         () -> indexStorageLayout.openIndexStorage(),
+         () -> indexStorageLayout.openForwardIndex(),
          indexStorageLayout.getForwardIndexAccessor(),
          () -> indexStorageLayout.createOrClearSnapshotInputMappings(),
          lock);
@@ -85,7 +85,7 @@ public class VfsAwareMapReduceIndex<Key, Value> extends MapReduceIndex<Key, Valu
     try {
       inputMappings = snapshotInputMappings == null ? null : snapshotInputMappings.compute();
     } catch (IOException e) {
-      clearAndDispose();
+      tryDispose();
       throw e;
     }
     mySnapshotInputMappings = inputMappings;
@@ -112,7 +112,7 @@ public class VfsAwareMapReduceIndex<Key, Value> extends MapReduceIndex<Key, Valu
         }
       }
       catch (IOException e) {
-        clearAndDispose();
+        tryDispose();
         throw e;
       }
     } else {

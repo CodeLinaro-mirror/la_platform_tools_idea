@@ -45,7 +45,7 @@
 
     <resolver:remoterepos id="remoterepos.buildscript">
       <resolver:remoterepo id="central" url="https://cache-redirector.jetbrains.com/repo1.maven.org/maven2"/>
-      <resolver:remoterepo id="intellij-third-party-dependencies" url="https://cache-redirector.jetbrains.com/intellij-third-party-dependencies"/>
+      <resolver:remoterepo id="intellij-dependencies" url="https://cache-redirector.jetbrains.com/intellij-dependencies"/>
       <resolver:remoterepo id="jcenter" url="https://cache-redirector.jetbrains.com/jcenter.bintray.com"/>
     </resolver:remoterepos>
 
@@ -55,6 +55,7 @@
         <dependency coords="${jps.bootstrap.library.xml.component.library.properties(maven-id)}"/>
         <dependency coords="com.jetbrains.intellij.platform:test-framework-core:${jps.bootstrap.library.version}"/>
         <dependency coords="commons-cli:commons-cli:1.2"/>
+        <dependency coords="de.pdark:decentxml:1.4"/>
       </resolver:dependencies>
       <resolver:path refid="classpath.buildscripts" classpath="runtime"/>
     </resolver:resolve>

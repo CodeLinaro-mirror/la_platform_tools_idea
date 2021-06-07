@@ -2,19 +2,23 @@
 package com.intellij.ui.popup.list;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.openapi.actionSystem.Shortcut;
-import com.intellij.openapi.actionSystem.ShortcutProvider;
-import com.intellij.openapi.actionSystem.ShortcutSet;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.keymap.KeymapUtil;
-import com.intellij.openapi.ui.popup.*;
+import com.intellij.openapi.ui.popup.ListItemDescriptorAdapter;
+import com.intellij.openapi.ui.popup.ListPopupStep;
+import com.intellij.openapi.ui.popup.ListPopupStepEx;
+import com.intellij.openapi.ui.popup.MnemonicNavigationFilter;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
 import com.intellij.openapi.util.Comparing;
+import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.UserDataHolder;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.ui.*;
+import com.intellij.ui.popup.NumericMnemonicItem;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.ui.GridBag;
-import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,9 +28,11 @@ import java.awt.*;
 
 public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
 
+  public static final Key<@NlsSafe String> CUSTOM_KEY_STROKE_TEXT = new Key<>("CUSTOM_KEY_STROKE_TEXT");
   protected final ListPopupImpl myPopup;
   private JLabel myShortcutLabel;
   private @Nullable JLabel myValueLabel;
+  protected JLabel myMnemonicLabel;
 
   protected JComponent myRightPart;
   protected JComponent myLeftPart;
@@ -90,15 +96,26 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
       }
     };
     panel.add(myTextLabel, BorderLayout.WEST);
+
     myValueLabel = new JLabel();
     myValueLabel.setEnabled(false);
     myValueLabel.setBorder(JBUI.Borders.empty(0, JBUIScale.scale(8), 1, 0));
     myValueLabel.setForeground(UIManager.getColor("MenuItem.acceleratorForeground"));
     panel.add(myValueLabel, BorderLayout.CENTER);
+
     myShortcutLabel = new JLabel();
-    myShortcutLabel.setBorder(JBUI.Borders.emptyRight(3));
+    myShortcutLabel.setBorder(JBUI.Borders.empty(0,0,1,3));
     myShortcutLabel.setForeground(UIManager.getColor("MenuItem.acceleratorForeground"));
     panel.add(myShortcutLabel, BorderLayout.EAST);
+
+    myMnemonicLabel = new JLabel();
+    Dimension preferredSize = new JLabel("A").getPreferredSize();
+    Insets insets = JBUI.CurrentTheme.ActionsList.numberMnemonicInsets();
+    JBInsets.addTo(preferredSize, insets);
+    myMnemonicLabel.setPreferredSize(preferredSize);
+    myMnemonicLabel.setBorder(new JBEmptyBorder(insets));
+    myMnemonicLabel.setFont(JBUI.CurrentTheme.ActionsList.applyStylesForNumberMnemonic(myMnemonicLabel.getFont()));
+
     return layoutComponent(panel);
   }
 
@@ -146,7 +163,7 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
   }
 
   @NotNull
-  private static JComponent createNextStepButtonSeparator() {
+  protected static JComponent createNextStepButtonSeparator() {
     SeparatorComponent separator = new SeparatorComponent(JBColor.namedColor("Menu.separatorColor", JBColor.lightGray), SeparatorOrientation.VERTICAL);
     separator.setHGap(0);
     separator.setVGap(2);
@@ -156,6 +173,8 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
   @Nullable
   @Override
   protected Icon getItemIcon(E value, boolean isSelected) {
+    if (!Registry.is("ide.list.popup.separate.next.step.button")) return super.getItemIcon(value, isSelected);
+
     ListPopupStep<Object> step = myPopup.getListStep();
     return step.hasSubstep(value) && step.isFinal(value) && isNextStepButtonSelected(myPopup.getList())
            ? myDescriptor.getIconFor(value)
@@ -182,7 +201,7 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
     if (step.hasSubstep(value)) {
       myNextStepLabel.setVisible(isSelectable);
 
-      if (step.isFinal(value)) {
+      if (Registry.is("ide.list.popup.separate.next.step.button") && step.isFinal(value)) {
         myLeftPart.setOpaque(true);
         myRightPart.setOpaque(true);
         setSelected(myComponent, false, isSelected);
@@ -216,6 +235,13 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
       }
     }
 
+    if (value instanceof NumericMnemonicItem && ((NumericMnemonicItem)value).digitMnemonicsEnabled()) {
+      Character mnemonic = ((NumericMnemonicItem)value).getMnemonicChar();
+      myMnemonicLabel.setText(mnemonic != null ? String.valueOf(mnemonic) : "");
+      myMnemonicLabel.setForeground(isSelected && isSelectable && !nextStepButtonSelected ? getSelectionForeground() : JBUI.CurrentTheme.ActionsList.MNEMONIC_FOREGROUND);
+      myLeftPart.add(myMnemonicLabel, BorderLayout.WEST);
+    }
+
     if (step.isMnemonicsNavigationEnabled()) {
       MnemonicNavigationFilter<Object> filter = step.getMnemonicNavigationFilter();
       int pos = filter == null ? -1 : filter.getMnemonicPos(value);
@@ -235,12 +261,20 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
       myShortcutLabel.setText("");
       if (value instanceof ShortcutProvider) {
         ShortcutSet set = ((ShortcutProvider)value).getShortcut();
+        String shortcutText = null;
         if (set != null) {
           Shortcut shortcut = ArrayUtil.getFirstElement(set.getShortcuts());
           if (shortcut != null) {
-            myShortcutLabel.setText("     " + KeymapUtil.getShortcutText(shortcut));
+            shortcutText = KeymapUtil.getShortcutText(shortcut);
           }
         }
+        if (shortcutText == null && value instanceof AnActionHolder) {
+          AnAction action = ((AnActionHolder)value).getAction();
+          if (action instanceof UserDataHolder) {
+            shortcutText = ((UserDataHolder)action).getUserData(CUSTOM_KEY_STROKE_TEXT);
+          }
+        }
+        if (shortcutText != null) myShortcutLabel.setText("     " + shortcutText);
       }
       setSelected(myShortcutLabel, isSelected && isSelectable && !nextStepButtonSelected, isSelected);
       myShortcutLabel.setForeground(isSelected && isSelectable && !nextStepButtonSelected
@@ -266,6 +300,7 @@ public class PopupListElementRenderer<E> extends GroupedItemsListRenderer<E> {
   }
 
   protected boolean isNextStepButtonSelected(JList<?> list) {
+    if (!Registry.is("ide.list.popup.separate.next.step.button")) return false;
     return list instanceof ListPopupImpl.NestedList && ((ListPopupImpl.NestedList)list).isNextStepButtonSelected();
   }
 }

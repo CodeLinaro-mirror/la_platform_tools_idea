@@ -23,7 +23,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 internal class SystemStateMonitor : FeatureUsageStateEventTracker {
-  private val OS_GROUP = EventLogGroup("system.os", 5)
+  private val OS_GROUP = EventLogGroup("system.os", 6)
   private val INITIAL_DELAY = 5
   private val PERIOD_DELAY = 24 * 60
 
@@ -65,8 +65,13 @@ internal class SystemStateMonitor : FeatureUsageStateEventTracker {
     val currentZoneOffset = OffsetDateTime.now().offset
     val currentZoneOffsetFeatureUsageData = FeatureUsageData().addData("value", currentZoneOffset.toString())
     osEvents.add(newMetric("os.timezone", currentZoneOffsetFeatureUsageData))
-    val machineId = MachineIdManager.getMachineId()
-    osEvents.add(newMetric("machine.id", FeatureUsageData().addData("value", anonymizeMachineId(machineId))))
+    val configuration = EventLogConfiguration.getOrCreate("FUS").machineIdConfiguration
+    val machineId = MachineIdManager.getAnonymizedMachineId("JetBrainsFUS", configuration.salt)
+    val data = FeatureUsageData().addData("id", machineId ?: "unknown")
+    if (machineId != null) {
+      data.addData("revision", configuration.revision)
+    }
+    osEvents.add(newMetric("machine.id", data))
     return FUStateUsagesLogger.logStateEventsAsync(OS_GROUP, osEvents)
   }
 
@@ -78,12 +83,6 @@ internal class SystemStateMonitor : FeatureUsageStateEventTracker {
     events.add(TEST.metric(StatisticsRecorderUtil.isTestModeEnabled("FUS"), app.isInternal, isTeamcityDetected()))
     events.add(HEADLESS.metric(app.isHeadlessEnvironment, app.isCommandLine))
     FUStateUsagesLogger.logStateEventsAsync(SESSION_GROUP, events)
-  }
-
-  private fun anonymizeMachineId(machineId: String?): String {
-    if (machineId == null) return "unknown"
-    val salt = System.getProperty("user.name") + "JetBrainsFUS"
-    return EventLogConfiguration.hashSha256(salt.toByteArray(), machineId)
   }
 
   private fun newDataWithOsVersion(): FeatureUsageData {

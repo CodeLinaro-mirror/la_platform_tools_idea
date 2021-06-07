@@ -2,11 +2,11 @@
 package org.jetbrains.idea.maven.project
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.externalSystem.autoimport.ProjectStatus.ModificationType
-import com.intellij.openapi.externalSystem.autoimport.changes.AsyncFilesChangesProviderImpl
+import com.intellij.openapi.externalSystem.autoimport.changes.AsyncFilesChangesListener.Companion.subscribeOnVirtualFilesChanges
 import com.intellij.openapi.externalSystem.autoimport.changes.FilesChangesListener
-import com.intellij.openapi.externalSystem.autoimport.settings.ReadAsyncOperation
+import com.intellij.openapi.externalSystem.autoimport.settings.ReadAsyncSupplier
 import com.intellij.openapi.util.io.FileUtil
+import org.jetbrains.idea.maven.server.MavenDistributionsCache
 import java.util.concurrent.ExecutorService
 
 class MavenGeneralSettingsWatcher private constructor(
@@ -29,6 +29,7 @@ class MavenGeneralSettingsWatcher private constructor(
 
   private fun fireSettingsChange() {
     embeddersManager.reset()
+    MavenDistributionsCache.getInstance(manager.project).cleanCaches();
     watcher.scheduleUpdateAll(true, true)
   }
 
@@ -39,26 +40,10 @@ class MavenGeneralSettingsWatcher private constructor(
 
   init {
     generalSettings.addListener(::fireSettingsChange, parentDisposable)
-    AsyncFilesChangesProviderImpl(ReadAsyncOperation.readAction(::settingsFiles, backgroundExecutor, this))
-      .subscribeAsAsyncVirtualFilesChangesProvider(false, VirtualFileSettingsListener(), parentDisposable)
-  }
-
-  private inner class VirtualFileSettingsListener : FilesChangesListener {
-    private var hasRelevantChanges = false
-
-    override fun init() {
-      hasRelevantChanges = false
-    }
-
-    override fun onFileChange(path: String, modificationStamp: Long, modificationType: ModificationType) {
-      hasRelevantChanges = true
-    }
-
-    override fun apply() {
-      if (hasRelevantChanges) {
-        fireSettingsXmlChange()
-      }
-    }
+    val filesProvider = ReadAsyncSupplier.readAction(::settingsFiles, backgroundExecutor, this)
+    subscribeOnVirtualFilesChanges(false, filesProvider, object : FilesChangesListener {
+      override fun apply() = fireSettingsXmlChange()
+    }, parentDisposable)
   }
 
   companion object {

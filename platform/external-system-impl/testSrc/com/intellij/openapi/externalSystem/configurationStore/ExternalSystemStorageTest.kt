@@ -1,8 +1,10 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.configurationStore
 
+import com.intellij.configurationStore.StoreReloadManager
 import com.intellij.facet.FacetManager
 import com.intellij.facet.FacetType
+import com.intellij.facet.mock.MockFacet
 import com.intellij.facet.mock.MockFacetType
 import com.intellij.facet.mock.MockSubFacetType
 import com.intellij.openapi.Disposable
@@ -31,6 +33,7 @@ import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.packaging.artifacts.ArtifactManager
 import com.intellij.packaging.elements.ArtifactRootElement
@@ -43,12 +46,15 @@ import com.intellij.testFramework.*
 import com.intellij.testFramework.rules.ProjectModelRule
 import com.intellij.util.io.*
 import com.intellij.util.ui.UIUtil
+import com.intellij.workspaceModel.ide.impl.jps.serialization.JpsProjectModelSynchronizer
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.externalSystemOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.apache.log4j.Logger
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.ClassRule
@@ -275,15 +281,20 @@ class ExternalSystemStorageTest {
   @Test
   fun `save imported facet in imported module`() = saveProjectInExternalStorageAndCheckResult("importedFacetInImportedModule") { project, projectDir ->
     val imported = ModuleManager.getInstance(project).newModule(projectDir.resolve("imported.iml").systemIndependentPath, ModuleTypeId.JAVA_MODULE)
-    addFacet(imported, ExternalProjectSystemRegistry.MAVEN_EXTERNAL_SOURCE_ID, "imported")
+    val facetRoot = VfsUtilCore.pathToUrl(projectDir.resolve("facet").systemIndependentPath)
+    addFacet(imported, ExternalProjectSystemRegistry.MAVEN_EXTERNAL_SOURCE_ID, "imported", listOf(facetRoot))
     ExternalSystemModulePropertyManager.getInstance(imported).setMavenized(true)
   }
 
-  private fun addFacet(module: Module, externalSystemId: String?, facetName: String) {
+  private fun addFacet(module: Module, externalSystemId: String?, facetName: String, rootUrls: List<String> = emptyList()) {
     val facetManager = FacetManager.getInstance(module)
     val model = facetManager.createModifiableModel()
     val source = externalSystemId?.let { ExternalProjectSystemRegistry.getInstance().getSourceById(it) }
-    model.addFacet(facetManager.createFacet(MockFacetType.getInstance(), facetName, null), source)
+    val facet = facetManager.createFacet(MockFacetType.getInstance(), facetName, null)
+    for (root in rootUrls) {
+      facet.configuration.addRoot(root)
+    }
+    model.addFacet(facet, source)
     runWriteActionAndWait { model.commit() }
   }
 
@@ -333,9 +344,11 @@ class ExternalSystemStorageTest {
   fun `load imported facet in imported module`() = loadProjectAndCheckResults("importedFacetInImportedModule") { project ->
     val module = ModuleManager.getInstance(project).modules.single()
     assertThat(ExternalSystemModulePropertyManager.getInstance(module).isMavenized()).isTrue()
-    val facet = FacetManager.getInstance(module).allFacets.single()
+    val facet = FacetManager.getInstance(module).allFacets.single() as MockFacet
     assertThat(facet.name).isEqualTo("imported")
     assertThat(facet.externalSource!!.id).isEqualTo(ExternalProjectSystemRegistry.MAVEN_EXTERNAL_SOURCE_ID)
+    val facetRoot = VfsUtil.pathToUrl(project.basePath!!) + "/facet"
+    assertThat(facet.configuration.rootUrls).containsExactly(facetRoot)
   }
 
   @Test
@@ -423,9 +436,21 @@ class ExternalSystemStorageTest {
   }
 
   @Test
+  fun `remove regular module with enabled external storage`() {
+    loadModifySaveAndCheck("twoRegularModules", "twoRegularModulesAfterRemoval") { project ->
+      val moduleManager = ModuleManager.getInstance(project)
+      val module = moduleManager.findModuleByName("test2")
+      assertThat(module).isNotNull
+      runWriteActionAndWait {
+        moduleManager.disposeModule(module!!)
+      }
+    }
+  }
+
+  @Test
   fun `change storeExternally property and save libraries to internal storage`() {
     assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
-    loadModifySaveAndCheck("libraryInExternalStorage", "libraryAfterStoreExternallyPropertyChanged") { project ->
+    loadModifySaveAndCheck("librariesInExternalStorage", "librariesAfterStoreExternallyPropertyChanged") { project ->
       ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(false)
     }
   }
@@ -433,12 +458,24 @@ class ExternalSystemStorageTest {
   @Test
   fun `change storeExternally property several times`() {
     assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
-    loadModifySaveAndCheck("libraryInExternalStorage", "libraryAfterStoreExternallyPropertyChanged") { project ->
+    loadModifySaveAndCheck("librariesInExternalStorage", "librariesAfterStoreExternallyPropertyChanged") { project ->
       ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(false)
       runBlocking { project.stateStore.save() }
       ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(true)
       runBlocking { project.stateStore.save() }
       ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(false)
+    }
+  }
+
+  @Test
+  fun `remove library stored externally`() {
+    assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
+    loadModifySaveAndCheck("librariesInExternalStorage", "singleLibraryInExternalStorage") { project ->
+      val libraryTable = LibraryTablesRegistrar.getInstance().getLibraryTable(project)
+      runWriteActionAndWait {
+        libraryTable.removeLibrary(libraryTable.getLibraryByName("spring")!!)
+        libraryTable.removeLibrary(libraryTable.getLibraryByName("kotlin")!!)
+      }
     }
   }
 
@@ -480,11 +517,116 @@ class ExternalSystemStorageTest {
     }
   }
 
+  @Test
+  fun `check project model saved correctly at internal storage`() {
+    assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
+    loadModifySaveAndCheck("twoModulesWithLibsAndFacetsInExternalStorage", "twoModulesWithLibrariesAndFacets") { project ->
+      ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(false)
+    }
+  }
+
+  @Test
+  fun `check project model saved correctly at internal storage after misc manual modification`() {
+    assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
+    loadModifySaveAndCheck("twoModulesWithLibsAndFacetsInExternalStorage", "twoModulesWithLibrariesAndFacets") { project ->
+      val miscFile = File(project.projectFilePath!!)
+      miscFile.writeText("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project version="4">
+          <component name="ProjectRootManager" version="2" languageLevel="JDK_1_8" />
+        </project>
+      """.trimIndent())
+      WriteAction.runAndWait<RuntimeException> {
+        VfsUtil.markDirtyAndRefresh(false, false, false, miscFile)
+        StoreReloadManager.getInstance().flushChangedProjectFileAlarm()
+      }
+      ApplicationManager.getApplication().invokeAndWait{
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+      }
+    }
+  }
+
+  @Test
+  fun `check project model saved correctly at external storage after misc manual modification`() {
+    assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
+    loadModifySaveAndCheck("twoModulesWithLibrariesAndFacets", "twoModulesInExtAndLibsAndFacetsInInternalStorage") { project ->
+      val miscFile = File(project.projectFilePath!!)
+      miscFile.writeText("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <project version="4">
+          <component name="ExternalStorageConfigurationManager" enabled="true" />
+          <component name="ProjectRootManager" version="2" languageLevel="JDK_1_8" />
+        </project>
+      """.trimIndent())
+      WriteAction.runAndWait<RuntimeException> {
+        VfsUtil.markDirtyAndRefresh(false, false, false, miscFile)
+        StoreReloadManager.getInstance().flushChangedProjectFileAlarm()
+      }
+      ApplicationManager.getApplication().invokeAndWait{
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+      }
+    }
+  }
+
+  @Test
+  fun `incorrect modules setup`() {
+    suppressLogs {
+      loadProjectAndCheckResults("incorrectModulesSetupDifferentIml") { project ->
+        val modules = ModuleManager.getInstance(project).modules
+        assertEquals(1, modules.size)
+      }
+    }
+  }
+
+  @Test
+  fun `incorrect modules setup same iml`() {
+      loadProjectAndCheckResults("incorrectModulesSetupSameIml") { project ->
+        val modules = ModuleManager.getInstance(project).modules
+        assertEquals(1, modules.size)
+      }
+  }
+
+  @Test
+  fun `incorrect modules setup with facet`() {
+    suppressLogs {
+      loadProjectAndCheckResults("incorrectModulesSetupWithFacet") { project ->
+        val modules = ModuleManager.getInstance(project).modules
+        assertEquals(1, modules.size)
+        val facets = FacetManager.getInstance(modules.single()).allFacets
+        assertEquals(1, facets.size)
+      }
+    }
+  }
+
+  @Test
+  fun `duplicating library in internal storage`() {
+    loadModifySaveAndCheck("duplicatingLibrariesInInternalStorage", "librariesInExternalStorage") {
+      val libraries = LibraryTablesRegistrar.getInstance().getLibraryTable(it).libraries
+      assertThat(libraries.size).isEqualTo(3)
+    }
+  }
+
+  @Test
+  fun `multiple libraries in internal storage`() {
+    loadModifySaveAndCheck("multipleLibrariesInInternalStorage", "multipleLibrariesInInternalStorageFixed") {
+      val libraries = LibraryTablesRegistrar.getInstance().getLibraryTable(it).libraries
+      assertThat(libraries.size).isEqualTo(1)
+    }
+  }
+
   @Before
   fun registerFacetType() {
     WriteAction.runAndWait<RuntimeException> {
       FacetType.EP_NAME.getPoint().registerExtension(MockFacetType(), disposableRule.disposable)
       FacetType.EP_NAME.getPoint().registerExtension(MockSubFacetType(), disposableRule.disposable)
+    }
+  }
+
+  @Test
+  fun `external-system-id attributes are not removed from libraries, artifacts and facets on save`() {
+    assumeTrue(ProjectModelRule.isWorkspaceModelEnabled)
+    loadModifySaveAndCheck("elementsWithExternalSystemIdAttributes", "elementsWithExternalSystemIdAttributes") { project ->
+      JpsProjectModelSynchronizer.getInstance(project)!!.markAllEntitiesAsDirty()
     }
   }
 
@@ -587,4 +729,22 @@ class ExternalSystemStorageTest {
   }
 
   private fun isFolderWithoutFiles(root: File): Boolean = root.walk().none { it.isFile }
+
+  private inline fun suppressLogs(action: () -> Unit) {
+    val oldInstance = LoggedErrorProcessor.getInstance()
+    try {
+      LoggedErrorProcessor.setNewInstance(object : LoggedErrorProcessor() {
+        override fun processError(message: String?, t: Throwable?, details: Array<out String>?, logger: Logger) {
+          if (message?.contains("Trying to load multiple modules with the same name.") == true) return
+          super.processError(message, t, details, logger)
+        }
+      })
+
+      action()
+
+    }
+    finally {
+      LoggedErrorProcessor.setNewInstance(oldInstance)
+    }
+  }
 }

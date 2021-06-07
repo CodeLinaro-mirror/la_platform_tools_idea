@@ -12,6 +12,7 @@ import com.intellij.codeInsight.hint.HintManagerImpl;
 import com.intellij.codeInsight.lookup.*;
 import com.intellij.codeInsight.lookup.impl.actions.ChooseItemAction;
 import com.intellij.codeInsight.template.impl.actions.NextVariableAction;
+import com.intellij.codeWithMe.ClientId;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.injected.editor.DocumentWindow;
@@ -37,10 +38,7 @@ import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
-import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.NlsContexts;
-import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
@@ -147,7 +145,10 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     // a new top level frame just got the focus. This is important to prevent screen readers
     // from announcing the title of the top level frame when the list is shown (or hidden),
     // as they usually do when a new top-level frame receives the focus.
-    AccessibleContextUtil.setParent(myList, myEditor.getContentComponent());
+    // This is not relevant on Mac. This breaks JBR a11y on Mac.
+    if (SystemInfoRt.isWindows) {
+      AccessibleContextUtil.setParent(myList, myEditor.getContentComponent());
+    }
 
     myList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     myList.setBackground(LookupCellRenderer.BACKGROUND_COLOR);
@@ -839,7 +840,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
   }
 
   private boolean canHide() {
-    return myGuardedChanges == 0 && !myFinishing && !suppressHidingOnChange();
+    return myGuardedChanges == 0 && !myFinishing && !suppressHidingOnChange() && ClientId.isCurrentlyUnderLocalId();
   }
 
   protected boolean suppressHidingOnChange() {
@@ -1058,7 +1059,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     synchronized (myUiLock) {
       int lowerItemIndex = myList.getFirstVisibleIndex();
       int higherItemIndex = myList.getLastVisibleIndex();
-      if (lowerItemIndex < 0 || higherItemIndex <= 0) return Collections.emptyList();
+      if (lowerItemIndex < 0 || higherItemIndex < 0) return Collections.emptyList();
 
       return getListModel().toList().subList(lowerItemIndex, Math.min(higherItemIndex + 1, itemsCount));
     }

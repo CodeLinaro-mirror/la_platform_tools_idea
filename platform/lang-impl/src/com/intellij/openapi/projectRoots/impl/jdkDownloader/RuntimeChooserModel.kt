@@ -1,7 +1,11 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.projectRoots.impl.jdkDownloader
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
+import com.intellij.openapi.observable.properties.GraphProperty
+import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
+import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.util.io.FileUtil
 import java.nio.file.Files
 import java.nio.file.Path
@@ -12,10 +16,21 @@ import javax.swing.DefaultComboBoxModel
 
 abstract class RuntimeChooserItem
 
-class RuntimeChooserModel {
-  private var showAdvancedOptions: Boolean = false
+object RuntimeChooserSelectRuntimeItem: RuntimeChooserItem()
+object RuntimeChooserAdvancedSectionSeparator : RuntimeChooserItem()
+object RuntimeChooserCustomSelectedSectionSeparator : RuntimeChooserItem()
+object RuntimeChooserAdvancedJbrSelectedSectionSeparator : RuntimeChooserItem()
 
-  private var currentRuntime : RuntimeChooserCurrentItem? = null
+internal fun <Y> GraphProperty<Y>.getAndSubscribe(lifetime: Disposable, action: (Y) -> Unit) {
+  action(get())
+  afterChange(action, lifetime)
+}
+
+class RuntimeChooserModel {
+  private val graph = PropertyGraph()
+
+  val currentRuntime : GraphProperty<RuntimeChooserCurrentItem?> = graph.graphProperty { null }
+
   private var downloadableJbs: List<JdkItem> = listOf()
   private val customJdks = mutableListOf<RuntimeChooserCustomItem>()
 
@@ -42,33 +57,39 @@ class RuntimeChooserModel {
   }
 
   private fun updateMainCombobox(newSelection: RuntimeChooserItem? = null) {
-    val selection = newSelection ?: myMainComboModel.selectedItem
+    val selection = newSelection ?: myMainComboModel.selectedItem ?: RuntimeChooserSelectRuntimeItem
 
     myMainComboModel.removeAllElements()
 
     val newList = mutableListOf<RuntimeChooserItem>()
 
-    currentRuntime?.let {
-      newList += it
-    }
-
-    newList += downloadableJbs
-      .filter { showAdvancedOptions || it.isDefaultItem }
+    val defaultDownloadableSdks = downloadableJbs
+      .filter { it.isDefaultItem }
       .map { RuntimeChooserDownloadableItem(it) }
 
-    if (showAdvancedOptions && RuntimeChooserCustom.isActionAvailable) {
+    val advancedDownloadItems = downloadableJbs
+      .filterNot { it.isDefaultItem }
+      .map { RuntimeChooserDownloadableItem(it) }
+
+    newList += defaultDownloadableSdks
+
+    if (RuntimeChooserCustom.isActionAvailable) {
+      if (customJdks.isNotEmpty()) {
+        newList += RuntimeChooserCustomSelectedSectionSeparator
+        newList += customJdks
+      } else {
+        newList += RuntimeChooserAdvancedSectionSeparator
+      }
       newList += RuntimeChooserAddCustomItem
-      newList += customJdks
+    }
+
+    if (advancedDownloadItems.isNotEmpty()) {
+      newList += RuntimeChooserAdvancedJbrSelectedSectionSeparator
+      newList += advancedDownloadItems
     }
 
     myMainComboModel.addAll(newList)
-    myMainComboModel.selectedItem = selection ?: newList.firstOrNull { it is RuntimeChooserCurrentItem }
-  }
-
-  fun showAdvancedOptions() {
-    if (showAdvancedOptions) return
-    showAdvancedOptions = true
-    updateMainCombobox()
+    myMainComboModel.selectedItem = selection
   }
 
   fun updateDownloadJbrList(items: List<JdkItem>) {
@@ -77,7 +98,7 @@ class RuntimeChooserModel {
   }
 
   fun updateCurrentRuntime(runtime: RuntimeChooserCurrentItem) {
-    currentRuntime = runtime
+    currentRuntime.set(runtime)
     updateMainCombobox()
   }
 

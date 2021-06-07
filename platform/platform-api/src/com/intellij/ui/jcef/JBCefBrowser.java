@@ -28,7 +28,6 @@ import java.awt.event.*;
 import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import static com.intellij.ui.jcef.JBCefEventUtils.convertCefKeyEvent;
 import static com.intellij.ui.jcef.JBCefEventUtils.isUpDownKeyEvent;
@@ -46,16 +45,34 @@ import static org.cef.callback.CefMenuModel.MenuId.MENU_ID_USER_LAST;
  * @see JBCefOsrHandlerBrowser
  * @author tav
  */
+@SuppressWarnings("unused")
 public class JBCefBrowser extends JBCefBrowserBase {
+  /**
+   * @see #setProperty(String, Object)
+   */
+  public static class Properties extends JBCefBrowserBase.Properties {
+    /**
+     * Defines whether the browser component should take focus on navigation (loading a new URL).
+     * <p></p>
+     * Accepts {@link Boolean} values. The default value is {@link Boolean#FALSE}.
+     */
+    public static final @NotNull String FOCUS_ON_NAVIGATION = "JBCefBrowser.focusOnNavigation";
 
-  @NotNull private final JPanel myComponent;
-  @NotNull private final CefFocusHandler myCefFocusHandler;
-  @NotNull private final CefKeyboardHandler myKeyboardHandler;
-  @NotNull private static final List<Consumer<? super JBCefBrowser>> ourOnBrowserMoveResizeCallbacks =
+    /**
+     * Defines whether the browser component should take focus on show.
+     * <p></p>
+     * Accepts {@link Boolean} values. The default value is {@link Boolean#FALSE}.
+     */
+    public static final @NotNull String FOCUS_ON_SHOW ="JBCefBrowser.focusOnShow";
+
+    static {
+      PropertiesHelper.putType(FOCUS_ON_NAVIGATION, Boolean.class);
+      PropertiesHelper.putType(FOCUS_ON_SHOW, Boolean.class);
+    }
+  }
+
+  private static final @NotNull List<Consumer<? super JBCefBrowser>> ourOnBrowserMoveResizeCallbacks =
     Collections.synchronizedList(new ArrayList<>(1));
-
-  private JDialog myDevtoolsFrame = null;
-  protected CefContextMenuHandler myDefaultContextMenuHandler;
 
   @NotNull private static final Dimension DEF_PREF_SIZE = new Dimension(800, 600);
 
@@ -108,6 +125,15 @@ public class JBCefBrowser extends JBCefBrowserBase {
     }
   }
 
+  private final @NotNull JPanel myComponent;
+  private final @NotNull CefFocusHandler myCefFocusHandler;
+  private final @NotNull CefKeyboardHandler myKeyboardHandler;
+
+  private JDialog myDevtoolsFrame = null;
+  protected CefContextMenuHandler myDefaultContextMenuHandler;
+
+  private volatile boolean myFirstShow = true;
+
   /**
    * Creates a browser with the provided {@code JBCefClient} and initial URL. The client's lifecycle is the responsibility of the caller.
    */
@@ -133,18 +159,41 @@ public class JBCefBrowser extends JBCefBrowserBase {
 
     myCefClient.addFocusHandler(myCefFocusHandler = new CefFocusHandlerAdapter() {
       @Override
+      public void onTakeFocus(CefBrowser browser, boolean next) {
+        super.onTakeFocus(browser, next);
+        //noinspection AssignmentToStaticFieldFromInstanceMethod
+        focusedBrowser = null;
+      }
+
+      @Override
+      public void onGotFocus(CefBrowser browser) {
+        super.onGotFocus(browser);
+        //noinspection AssignmentToStaticFieldFromInstanceMethod
+        focusedBrowser = JBCefBrowser.this;
+      }
+
+      @Override
       public boolean onSetFocus(CefBrowser browser, FocusSource source) {
-        if (source == FocusSource.FOCUS_SOURCE_NAVIGATION) {
+        Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        boolean componentFocused = focusOwner == getComponent() || focusOwner == getCefBrowser().getUIComponent();
+        boolean focusOnNavigation = (myFirstShow && myPropertiesHelper.is(Properties.FOCUS_ON_SHOW) ||
+                                     myPropertiesHelper.is(Properties.FOCUS_ON_NAVIGATION)) ||
+                                    componentFocused;
+        myFirstShow = false;
+
+        if (source == FocusSource.FOCUS_SOURCE_NAVIGATION && !focusOnNavigation) {
           if (SystemInfoRt.isWindows) {
             myCefBrowser.setFocus(false);
           }
           return true; // suppress focusing the browser on navigation events
         }
-        if (SystemInfoRt.isLinux) {
-          browser.getUIComponent().requestFocus();
-        }
-        else {
-          browser.getUIComponent().requestFocusInWindow();
+        if (!browser.getUIComponent().hasFocus()) {
+          if (SystemInfoRt.isLinux) {
+            browser.getUIComponent().requestFocus();
+          }
+          else {
+            browser.getUIComponent().requestFocusInWindow();
+          }
         }
         return false;
       }
@@ -192,6 +241,9 @@ public class JBCefBrowser extends JBCefBrowserBase {
   private JPanel createComponent() {
     Component uiComp = getCefBrowser().getUIComponent();
     JPanel resultPanel = new JPanel(new BorderLayout()) {
+      {
+        enableEvents(AWTEvent.MOUSE_WHEEL_EVENT_MASK);
+      }
       @Override
       public void setBackground(Color bg) {
         uiComp.setBackground(bg);
@@ -205,6 +257,7 @@ public class JBCefBrowser extends JBCefBrowserBase {
             myCefBrowser.setFocus(false);
           }
         }
+        myFirstShow = true;
         super.removeNotify();
       }
       @Override
@@ -212,6 +265,13 @@ public class JBCefBrowser extends JBCefBrowserBase {
         // Preferred size should not be zero, otherwise the content loading is not triggered
         Dimension size = super.getPreferredSize();
         return size.width > 0 && size.height > 0 ? size : DEF_PREF_SIZE;
+      }
+      @Override
+      protected void processFocusEvent(FocusEvent e) {
+        super.processFocusEvent(e);
+        if (e.getID() == FocusEvent.FOCUS_GAINED) {
+          uiComp.requestFocusInWindow();
+        }
       }
     };
 
@@ -297,8 +357,17 @@ public class JBCefBrowser extends JBCefBrowserBase {
     return myComponent;
   }
 
-  @Nullable
-  private static Window getActiveFrame() {
+  /**
+   * Supports {@link Properties}.
+   *
+   * @throws IllegalArgumentException if the value has wrong type or format
+   */
+  @Override
+  public void setProperty(@NotNull String name, @Nullable Object value) {
+    super.setProperty(name, value);
+  }
+
+  private static @Nullable Window getActiveFrame() {
     for (Frame frame : Frame.getFrames()) {
       if (frame.isActive()) return frame;
     }

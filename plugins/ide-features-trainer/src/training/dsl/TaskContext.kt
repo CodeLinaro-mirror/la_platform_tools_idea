@@ -45,6 +45,9 @@ abstract class TaskContext : LearningDslBase {
     }
   }
 
+  /** Restore when timer is out. Is needed for chained tasks. */
+  open fun restoreByTimer(delayMillis: Int = 2000, restoreId: TaskId? = null) = Unit
+
   data class RestoreNotification(@Nls val message: String,
                                  @Nls val restoreLinkText: String = LearnBundle.message("learn.restore.default.link.text"),
                                  val callback: () -> Unit)
@@ -63,7 +66,7 @@ abstract class TaskContext : LearningDslBase {
   /** Insert text in the current position */
   open fun type(text: String) = Unit
   /** Write a text to the learn panel (panel with a learning tasks). */
-  open fun runtimeText(@Nls callback: TaskRuntimeContext.() -> String?) = Unit
+  open fun runtimeText(@Nls callback: RuntimeTextContext.() -> String?) = Unit
 
   /** Simply wait until an user perform particular action */
   open fun trigger(actionId: String) = Unit

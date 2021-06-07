@@ -55,7 +55,8 @@ class ExternalSystemModulePropertyManagerBridge(private val module: Module) : Ex
     val externalSystemId = moduleEntity.externalSystemOptions?.externalSystem
     val entitySource = moduleEntity.entitySource
     if (externalSystemId == null && entitySource is JpsFileEntitySource ||
-        externalSystemId != null && (entitySource as? JpsImportedEntitySource)?.externalSystemId == externalSystemId ||
+        externalSystemId != null && (entitySource as? JpsImportedEntitySource)?.externalSystemId == externalSystemId &&
+        entitySource.storedExternally == module.project.isExternalStorageEnabled ||
         entitySource !is JpsFileEntitySource && entitySource !is JpsImportedEntitySource) {
       return
     }
@@ -89,7 +90,8 @@ class ExternalSystemModulePropertyManagerBridge(private val module: Module) : Ex
   }
 
   override fun unlinkExternalOptions() {
-    editEntity {
+    val moduleDiff = getModuleDiff()
+    editEntity(moduleDiff) {
       externalSystem = null
       externalSystemModuleVersion = null
       externalSystemModuleGroup = null
@@ -97,7 +99,7 @@ class ExternalSystemModulePropertyManagerBridge(private val module: Module) : Ex
       linkedProjectPath = null
       rootProjectPath = null
     }
-    updateSource()
+    updateSource(moduleDiff)
   }
 
   override fun setExternalOptions(id: ProjectSystemId, moduleData: ModuleData, projectData: ProjectData?) {

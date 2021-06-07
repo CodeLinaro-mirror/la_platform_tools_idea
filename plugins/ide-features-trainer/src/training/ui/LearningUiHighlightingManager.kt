@@ -47,7 +47,12 @@ object LearningUiHighlightingManager {
                          options: HighlightingOptions = HighlightingOptions(),
                          path: () -> TreePath?) {
     highlightPartOfComponent(tree, options) {
-      path()?.let { tree.getPathBounds(it) }
+      path()?.let {
+        val treeRect = tree.visibleRect
+        val pathRect = tree.getPathBounds(it) ?: return@let null
+        val offset = pathRect.x - treeRect.x
+        Rectangle(pathRect.x, pathRect.y, treeRect.width - offset, pathRect.height)
+      }
     }
   }
 
@@ -69,6 +74,7 @@ object LearningUiHighlightingManager {
   private fun highlightComponent(original: Component, clearPreviousHighlights: Boolean, init: (glassPane: JComponent) -> RepaintHighlighting<*>) {
     runInEdt {
       if (clearPreviousHighlights) clearHighlights()
+      if (!original.isShowing) return@runInEdt  // this check is required in rare cases when highlighting called after restore
       val glassPane = getGlassPane(original) ?: return@runInEdt
       val repaintByTimer = init(glassPane)
       repaintByTimer.reinitHighlightComponent()

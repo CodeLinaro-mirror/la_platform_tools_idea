@@ -18,10 +18,7 @@ package com.jetbrains.python.codeInsight.editorActions.moveUpDown;
 import com.intellij.codeInsight.editorActions.moveUpDown.LineMover;
 import com.intellij.codeInsight.editorActions.moveUpDown.LineRange;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.editor.CaretModel;
-import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.SelectionModel;
+import com.intellij.openapi.editor.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
@@ -31,6 +28,7 @@ import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.jetbrains.python.psi.*;
+import com.jetbrains.python.psi.impl.PyPsiUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -69,6 +67,14 @@ public class PyStatementMover extends LineMover {
     else if (PsiTreeUtil.isAncestor(elementToMove2, elementToMove1, false)) {
       elementToMove1 = elementToMove2;
     }
+    else {
+      PsiElement commonParent = PsiTreeUtil.findCommonParent(elementToMove1, elementToMove2);
+      if (commonParent == null) return false;
+      elementToMove1 = PyPsiUtils.getParentRightBefore(elementToMove1, commonParent);
+      elementToMove2 = PyPsiUtils.getParentRightBefore(elementToMove2, commonParent);
+      assert elementToMove1 != null && elementToMove2 != null;
+    }
+
     info.toMove = new MyLineRange(elementToMove1, elementToMove2);
     info.toMove2 = getDestinationScope(file, editor, down ? elementToMove2 : elementToMove1, down);
 
@@ -335,6 +341,8 @@ public class PyStatementMover extends LineMover {
         final CaretModel caretModel = editor.getCaretModel();
 
         final int selectionStart = selectionModel.getSelectionStart();
+        final LogicalPosition selectionBeforeMoveStart = editor.offsetToLogicalPosition(selectionStart);
+        final LogicalPosition selectionBeforeMoveEnd = editor.offsetToLogicalPosition(selectionModel.getSelectionEnd());
         boolean isSelectionStartAtCaret = caretModel.getOffset() == selectionStart;
         final SelectionContainer selectionLen = getSelectionLenContainer(editor, ((MyLineRange)toMove));
 
@@ -348,8 +356,12 @@ public class PyStatementMover extends LineMover {
         else {
           offset = moveInOut(((MyLineRange)toMove), editor, info);
         }
+        final LogicalPosition positionOffsetAfterMove = editor.offsetToLogicalPosition(offset);
         restoreCaretAndSelection(file, editor, isSelectionStartAtCaret, hasSelection, selectionLen,
-                                 shift, offset, (MyLineRange)toMove);
+                                 shift, offset, (MyLineRange)toMove,
+                                 selectionBeforeMoveStart,
+                                 selectionBeforeMoveEnd,
+                                 positionOffsetAfterMove);
         info.toMove2 = info.toMove;   //do not move further
       });
     }
@@ -382,7 +394,10 @@ public class PyStatementMover extends LineMover {
 
   private static void restoreCaretAndSelection(@NotNull final PsiFile file, @NotNull final Editor editor, boolean selectionStartAtCaret,
                                                boolean hasSelection, @NotNull final SelectionContainer selectionContainer, int shift,
-                                               int offset, @NotNull final MyLineRange toMove) {
+                                               int offset, @NotNull final MyLineRange toMove,
+                                               LogicalPosition selectionBeforeMoveStart,
+                                               LogicalPosition selectionBeforeMoveEnd,
+                                               LogicalPosition positionOffsetAfterMove) {
     final Document document = editor.getDocument();
     final SelectionModel selectionModel = editor.getSelectionModel();
     final CaretModel caretModel = editor.getCaretModel();
@@ -421,13 +436,31 @@ public class PyStatementMover extends LineMover {
     caretModel.moveToOffset(newCaretOffset);
 
     if (hasSelection) {
-      if (selectionStartAtCaret) {
-        int newSelectionEnd = newCaretOffset + selectionLen;
-        selectionModel.setSelection(newCaretOffset, newSelectionEnd);
+      int selectionLinesDiff = selectionBeforeMoveEnd.line - selectionBeforeMoveStart.line;
+      if (selectionLinesDiff > 1) {
+        int endOffsetColumn = selectionBeforeMoveEnd.column;
+        if (endOffsetColumn > 0) endOffsetColumn += positionOffsetAfterMove.column - selectionBeforeMoveStart.column;
+        int startOffsetColumn = positionOffsetAfterMove.column;
+        if (selectionBeforeMoveStart.column == 0) startOffsetColumn = 0;
+        int startOffset = editor.logicalPositionToOffset(new LogicalPosition(positionOffsetAfterMove.line, startOffsetColumn));
+        int endOffset = editor.logicalPositionToOffset(new LogicalPosition(positionOffsetAfterMove.line + selectionLinesDiff, endOffsetColumn));
+        selectionModel.setSelection(startOffset, endOffset);
+        if (selectionStartAtCaret) {
+          caretModel.moveToOffset(startOffset);
+        }
+        else {
+          caretModel.moveToOffset(endOffset);
+        }
       }
       else {
-        int newSelectionStart = newCaretOffset - selectionLen;
-        selectionModel.setSelection(newSelectionStart, newCaretOffset);
+        if (selectionStartAtCaret) {
+          int newSelectionEnd = newCaretOffset + selectionLen;
+          selectionModel.setSelection(newCaretOffset, newSelectionEnd);
+        }
+        else {
+          int newSelectionStart = newCaretOffset - selectionLen;
+          selectionModel.setSelection(newSelectionStart, newCaretOffset);
+        }
       }
     }
   }

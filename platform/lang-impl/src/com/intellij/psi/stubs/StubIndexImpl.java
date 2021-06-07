@@ -585,7 +585,10 @@ public final class StubIndexImpl extends StubIndexEx {
   }
 
   void clearAllIndices() {
-    if (!myInitialized) return;
+    if (!myInitialized) {
+      LOG.error("stub index cleaning called when index is not yet initialized");
+      return;
+    }
     for (UpdatableIndex<?, ?, ?> index : getAsyncState().myIndices.values()) {
       try {
         index.clear();
@@ -664,7 +667,7 @@ public final class StubIndexImpl extends StubIndexEx {
     }
 
     @Override
-    public @NotNull IndexStorage<K, Void> createOrClearIndexStorage() throws IOException {
+    public @NotNull IndexStorage<K, Void> openIndexStorage() throws IOException {
       if (FileBasedIndex.USE_IN_MEMORY_INDEX) {
         return new InMemoryIndexStorage<>(myWrappedExtension.getKeyDescriptor());
       }
@@ -684,6 +687,11 @@ public final class StubIndexImpl extends StubIndexEx {
         IOUtil.deleteAllFilesStartingWith(storageFile);
         throw e;
       }
+    }
+
+    @Override
+    public void clearIndexData() {
+      throw new UnsupportedOperationException();
     }
   }
 

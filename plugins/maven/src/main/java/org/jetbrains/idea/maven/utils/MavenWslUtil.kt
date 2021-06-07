@@ -1,12 +1,17 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.utils
 
+import com.intellij.execution.wsl.WSLCommandLineOptions
 import com.intellij.execution.wsl.WSLDistribution
 import com.intellij.execution.wsl.WslPath
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.io.FileUtil
+import org.jetbrains.idea.maven.execution.SyncBundle
+import org.jetbrains.idea.maven.project.MavenProjectsManager
+import org.jetbrains.idea.maven.server.MavenDistributionsCache
 import org.jetbrains.idea.maven.server.MavenServerManager
 import org.jetbrains.idea.maven.server.WslMavenDistribution
 import java.io.File
@@ -66,14 +71,17 @@ object MavenWslUtil : MavenUtil() {
   @JvmStatic
   fun WSLDistribution.resolveMavenHomeDirectory(overrideMavenHome: String?): File? {
     MavenLog.LOG.debug("resolving maven home on WSL with override = \"${overrideMavenHome}\"")
-    if (overrideMavenHome != null && overrideMavenHome != MavenServerManager.BUNDLED_MAVEN_3) {
-      val home = this.getWindowsPath(overrideMavenHome)?.let(::File)
+    if (overrideMavenHome != null) {
+      if (overrideMavenHome == MavenServerManager.BUNDLED_MAVEN_3) {
+        return MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome
+      }
+      val home = File(overrideMavenHome)
       if (isValidMavenHome(home)) {
-        MavenLog.LOG.debug("resolved maven home as ${home}")
+        MavenLog.LOG.debug("resolved maven home as ${overrideMavenHome}")
         return home
       }
       else {
-        MavenLog.LOG.debug("Maven home ${home} on WSL is invalid")
+        MavenLog.LOG.debug("Maven home ${overrideMavenHome} on WSL is invalid")
         return null
       }
     }
@@ -89,6 +97,8 @@ object MavenWslUtil : MavenUtil() {
         return null
       }
     }
+
+
     var home = this.getWindowsPath("/usr/share/maven")?.let(::File)
     if (isValidMavenHome(home)) {
       MavenLog.LOG.debug("Maven home found at /usr/share/maven")
@@ -100,6 +110,20 @@ object MavenWslUtil : MavenUtil() {
       MavenLog.LOG.debug("Maven home found at /usr/share/maven2")
       return home
     }
+    
+    val options = WSLCommandLineOptions()
+      .setExecuteCommandInLoginShell(true)
+      .setShellPath(this.shellPath)
+    val processOutput = this.executeOnWsl(listOf("which", "mvn"), options, 10000, null)
+    if (processOutput.exitCode == 0) {
+      val path = processOutput.stdout.lines().find { it.isNotEmpty() }?.let(this::resolveSymlink)?.let(this::getWindowsPath)?.let(::File)
+      if (path != null) {
+        return path;
+      }
+
+    }
+    MavenLog.LOG.debug("mvn not found in \$PATH")
+
     MavenLog.LOG.debug("Maven home not found on ${this.presentableName}")
     return null
   }
@@ -150,9 +174,38 @@ object MavenWslUtil : MavenUtil() {
     return wsl.apply(wslDistribution)
   }
 
+  @JvmStatic
   fun useWslMaven(project: Project): Boolean {
     val projectWslDistr = tryGetWslDistribution(project) ?: return false
     val jdkWslDistr = tryGetWslDistributionForPath(ProjectRootManager.getInstance(project).projectSdk?.homePath) ?: return false
     return jdkWslDistr.id == projectWslDistr.id
+  }
+
+  @JvmStatic
+  fun sameDistributions(first: WSLDistribution?, second: WSLDistribution?): Boolean {
+    return first?.id == second?.id
+  }
+
+  @JvmStatic
+  fun restartMavenConnectorsIfJdkIncorrect(project: Project) {
+    ProgressManager.getInstance().runProcessWithProgressSynchronously(
+      {
+        val projectWslDistr = tryGetWslDistribution(project)
+        var needReset = false;
+
+        MavenServerManager.getInstance().allConnectors.forEach {
+          if (it.project == project) {
+            val jdkWslDistr = tryGetWslDistributionForPath(it.jdk.homePath)
+            if ((projectWslDistr != null && it.supportType != "WSL") || !sameDistributions(projectWslDistr, jdkWslDistr)) {
+              needReset = true;
+              it.shutdown(true)
+            }
+          }
+        }
+        if (!needReset) {
+          MavenProjectsManager.getInstance(project).embeddersManager.reset()
+        }
+
+      }, SyncBundle.message("maven.sync.restarting"), false, project)
   }
 }

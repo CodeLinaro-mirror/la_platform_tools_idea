@@ -4,9 +4,14 @@ package com.intellij.openapi.externalSystem.service.project;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.extensions.RequiredElement;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
+import com.intellij.openapi.util.Pair;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xmlb.annotations.Attribute;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * Specify if {@link ExternalSystemProjectResolver} for this {@link ProjectSystemId}
@@ -28,10 +33,13 @@ public class ExternalResolverIsSafe {
   public boolean executesTrustedCodeOnly;
 
   public static boolean executesTrustedCodeOnly(@NotNull ProjectSystemId systemId) {
-    return EP_NAME.extensions()
-      .filter(extension -> extension.systemId.equals(systemId.getId()))
-      .findFirst()
-      .map(extension -> extension.executesTrustedCodeOnly)
-      .orElse(false);
+    ExternalResolverIsSafe resolver = EP_NAME.findFirstSafe(it -> systemId.getId().equals(it.systemId));
+    return resolver != null && resolver.executesTrustedCodeOnly;
+  }
+
+  public static boolean executesTrustedCodeOnly(@NotNull Collection<ProjectSystemId> systemIds) {
+    Map<String, Boolean> executesTrustedCodeOnlyIndex =
+      ContainerUtil.map2Map(EP_NAME.getExtensionList(), it -> new Pair<>(it.systemId, it.executesTrustedCodeOnly));
+    return ContainerUtil.and(systemIds, it -> executesTrustedCodeOnlyIndex.getOrDefault(it.getId(), false));
   }
 }

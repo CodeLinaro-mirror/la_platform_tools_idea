@@ -33,7 +33,8 @@ class LessonExecutor(val lesson: KLesson, val project: Project, initialEditor: E
                               val taskContent: (TaskContext.() -> Unit)?,
                               var messagesNumberBeforeStart: Int = 0,
                               var rehighlightComponent: (() -> Component)? = null,
-                              var userVisibleInfo: PreviousTaskInfo? = null)
+                              var userVisibleInfo: PreviousTaskInfo? = null,
+                              val removeAfterDoneMessages: MutableList<Int> = mutableListOf())
 
   var predefinedEditor: Editor? by WeakReferenceDelegator(initialEditor)
   private set
@@ -211,6 +212,15 @@ class LessonExecutor(val lesson: KLesson, val project: Project, initialEditor: E
     processTestActions(taskContext)
   }
 
+  internal fun restoreByTimer(taskContext: TaskContextImpl, delayMillis: Int, restoreId: TaskContext.TaskId?) {
+    val restore = {
+      if (currentTaskIndex == taskContext.taskIndex) {
+        applyRestore(taskContext, restoreId)
+      }
+    }
+    Alarm().addRequest(restore, delayMillis)
+  }
+
   internal fun applyRestore(taskContext: TaskContextImpl, restoreId: TaskContext.TaskId? = null) {
     taskContext.steps.forEach { it.cancel(true) }
     val restoreIndex = restoreId?.idx ?: taskActions[taskContext.taskIndex].restoreIndex
@@ -266,7 +276,7 @@ class LessonExecutor(val lesson: KLesson, val project: Project, initialEditor: E
     // But it theoretically can be needed in case of several restores of dependent steps
     if (checkFunction()) return {}
 
-    val restoreRecorder = ActionsRecorder(project, editor.document, this)
+    val restoreRecorder = ActionsRecorder(project, selectedEditor?.document, this)
     currentRestoreRecorder = restoreRecorder
     val restoreFuture = restoreRecorder.futureCheck { checkFunction() }
     clearRestore = {
@@ -291,8 +301,13 @@ class LessonExecutor(val lesson: KLesson, val project: Project, initialEditor: E
         if (taskHasBeenDone) {
           clearRestore()
           LessonManager.instance.passExercise()
-          if (foundComponent == null) foundComponent = taskActions[currentTaskIndex].userVisibleInfo?.ui
-          if (rehighlightComponent == null) rehighlightComponent = taskActions[currentTaskIndex].rehighlightComponent
+          val taskInfo = taskActions[currentTaskIndex]
+          if (foundComponent == null) foundComponent = taskInfo.userVisibleInfo?.ui
+          if (rehighlightComponent == null) rehighlightComponent = taskInfo.rehighlightComponent
+          for (index in taskInfo.removeAfterDoneMessages) {
+            LessonManager.instance.removeMessage(index)
+          }
+          taskInfo.taskProperties?.let { it.messagesNumber -= taskInfo.removeAfterDoneMessages.size }
           processNextTask(currentTaskIndex + 1)
         }
       }
@@ -300,9 +315,6 @@ class LessonExecutor(val lesson: KLesson, val project: Project, initialEditor: E
   }
 
   private fun isTaskCompleted(taskContext: TaskContextImpl) = taskContext.steps.all { it.isDone && it.get() }
-
-  internal val taskCount: Int
-    get() = taskActions.size
 
   private fun canBeRestored(taskContext: TaskContextImpl): Boolean {
     return !hasBeenStopped && taskContext.steps.any { !it.isCancelled && !it.isCompletedExceptionally && (!it.isDone || !it.get()) }
@@ -316,9 +328,16 @@ class LessonExecutor(val lesson: KLesson, val project: Project, initialEditor: E
     }
   }
 
-  fun text(@Language("HTML") text: String) {
+  fun text(@Language("HTML") text: String, removeAfterDone: Boolean = false) {
     val taskInfo = taskActions[currentTaskIndex]
-    taskInfo.taskProperties?.let { it.messagesNumber++ } // Here could be runtime messages
+
+    if (removeAfterDone) taskInfo.removeAfterDoneMessages.add(LessonManager.instance.messagesNumber())
+
+    // Here could be runtime messages
+    taskInfo.taskProperties?.let {
+      it.messagesNumber++
+    }
+
     var hasDetection = false
     for (i in currentTaskIndex until taskActions.size) {
       if (taskInfo.taskProperties?.hasDetection == true) {

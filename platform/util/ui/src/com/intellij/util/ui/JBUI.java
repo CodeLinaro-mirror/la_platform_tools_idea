@@ -25,7 +25,10 @@ import javax.swing.border.CompoundBorder;
 import javax.swing.plaf.BorderUIResource;
 import javax.swing.plaf.UIResource;
 import java.awt.*;
+import java.awt.font.TextAttribute;
 import java.lang.ref.WeakReference;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author Konstantin Bulenkov
@@ -329,6 +332,26 @@ public class JBUI {
       return customLine(color, 1);
     }
 
+    public static @NotNull Border customLineTop(Color color) {
+      return customLine(color, 1, 0, 0, 0);
+    }
+
+    public static @NotNull Border customLineLeft(Color color) {
+      return customLine(color, 0, 1, 0, 0);
+    }
+
+    public static @NotNull Border customLineRight(Color color) {
+      return customLine(color, 0, 0, 0, 1);
+    }
+
+    public static @NotNull Border customLineBottom(Color color) {
+      return customLine(color, 0, 0, 1, 0);
+    }
+
+    public static @Nullable Border compound(@Nullable Border outside, @Nullable Border inside) {
+      return inside == null ? outside : outside == null ? inside : new CompoundBorder(outside, inside);
+    }
+
     @NotNull
     public static Border merge(@Nullable Border source, @NotNull Border extra, boolean extraIsOutside) {
       if (source == null) return extra;
@@ -393,6 +416,36 @@ public class JBUI {
       @NotNull
       public static Color hoverSeparatorColor() {
         return JBColor.namedColor("ActionButton.hoverSeparatorColor", new JBColor(Gray.xB3, Gray.x6B));
+      }
+    }
+
+    public static final class ActionsList {
+      public static final Color MNEMONIC_FOREGROUND = JBColor.namedColor("Label.infoForeground", new JBColor(Gray.x78, Gray.x8C));
+
+      @NotNull
+      public static Insets numberMnemonicInsets() {
+        return insets("ActionsList.mnemonicsBorderInsets", insets(0, 8, 1, 6));
+      }
+
+      @NotNull
+      public static Insets cellPadding() {
+        return insets("ActionsList.cellBorderInsets", insets(1, 12, 1, 12));
+      }
+
+      @NotNull
+      public static int elementIconGap() {
+        return new JBValue.UIInteger("ActionsList.icon.gap", scale(8)).get();
+      }
+
+      @NotNull
+      public static Font applyStylesForNumberMnemonic(Font font) {
+        if (SystemInfo.isWindows) {
+          Map<TextAttribute, Object> attributes = new HashMap<>(font.getAttributes());
+          attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
+          return font.deriveFont(attributes);
+        }
+
+        return font;
       }
     }
 
@@ -597,6 +650,17 @@ public class JBUI {
       @NotNull
       public static Color underlinedTabForeground() {
         return JBColor.namedColor("EditorTabs.underlinedTabForeground", DefaultTabs.underlinedTabForeground());
+      }
+    }
+
+    public interface Notification {
+      Color FOREGROUND = JBColor.namedColor("Notification.foreground", Label.foreground());
+      Color BACKGROUND = JBColor.namedColor("Notification.background", 0xFFF8D1, 0x1D3857);
+
+      interface Error {
+        Color FOREGROUND = JBColor.namedColor("Notification.errorForeground", Notification.FOREGROUND);
+        Color BACKGROUND = JBColor.namedColor("Notification.errorBackground", 0xF5E6E7, 0x593D41);
+        Color BORDER_COLOR = JBColor.namedColor("Notification.errorBorderColor", 0xE0A8A9, 0x73454B);
       }
     }
 
@@ -914,7 +978,7 @@ public class JBUI {
 
       @NotNull
       public static Border advertiserBorder()  {
-        return new JBEmptyBorder(insets("SearchEverywhere.Advertiser.foreground", insetsLeft(8)));
+        return new JBEmptyBorder(insets("SearchEverywhere.Advertiser.borderInsets", insets(5, 10, 5, 15)));
       }
 
       @NotNull
@@ -924,8 +988,6 @@ public class JBUI {
     }
 
     public static final class Advertiser {
-      private static final JBInsets DEFAULT_AD_INSETS = JBInsets.create(8, 8);
-
       @NotNull
       public static Color foreground() {
         Color foreground = JBUI.CurrentTheme.BigPopup.advertiserForeground();
@@ -940,7 +1002,7 @@ public class JBUI {
 
       @NotNull
       public static Border border() {
-        return new JBEmptyBorder(insets("Popup.Advertiser.borderInsets", DEFAULT_AD_INSETS));
+        return new JBEmptyBorder(insets("Popup.Advertiser.borderInsets", insets(5, 10, 5, 15)));
       }
 
       @NotNull

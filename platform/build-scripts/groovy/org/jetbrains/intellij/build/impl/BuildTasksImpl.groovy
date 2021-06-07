@@ -27,15 +27,11 @@ import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.model.module.JpsTypedModuleSourceRoot
 import org.jetbrains.jps.model.serialization.JpsModelSerializationDataService
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.StandardCopyOption
+import java.nio.file.*
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.*
-import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Function
 
 @CompileStatic
@@ -84,11 +80,13 @@ final class BuildTasksImpl extends BuildTasks {
           }
           for (JpsTypedModuleSourceRoot<JavaSourceRootProperties> root in module.getSourceRoots(JavaSourceRootType.SOURCE)) {
             buildContext.ant.zipfileset(dir: root.file.absolutePath,
-                                        prefix: root.properties.packagePrefix.replace('.', '/'), erroronmissingdir: false)
+                                        prefix: root.properties.packagePrefix.replace('.', '/'), erroronmissingdir: false) {
+              ["java", "groovy", "kt"].each { include(name: "**/*.$it") }
+            }
           }
           for (JpsTypedModuleSourceRoot<JavaResourceRootProperties> root in module.getSourceRoots(JavaResourceRootType.RESOURCE)) {
             buildContext.ant.zipfileset(dir: root.file.absolutePath, prefix: root.properties.relativeOutputPath, erroronmissingdir: false) {
-              exclude(name: "**/*.png")
+              ["java", "groovy", "kt"].each { include(name: "**/*.$it") }
             }
           }
         }
@@ -588,7 +586,7 @@ idea.fatal.error.notification=disabled
   }
 
   @CompileStatic(TypeCheckingMode.SKIP)
-  static def unpackPty4jNative(BuildContext buildContext, @NotNull Path distDir, String pty4jOsSubpackageName) {
+  static @NotNull Path unpackPty4jNative(BuildContext buildContext, @NotNull Path distDir, String pty4jOsSubpackageName) {
     def pty4jNativeDir = "$distDir/lib/pty4j-native"
     def nativePkg = "resources/com/pty4j/native"
     def includedNativePkg = Strings.trimEnd(nativePkg + "/" + Strings.notNullize(pty4jOsSubpackageName), '/')
@@ -607,6 +605,7 @@ idea.fatal.error.notification=disabled
     if (files.empty) {
       buildContext.messages.error("Cannot layout pty4j native: no files extracted")
     }
+    return Path.of(pty4jNativeDir)
   }
 
   //dbus-java is used only on linux for KWallet integration.
@@ -615,9 +614,22 @@ idea.fatal.error.notification=disabled
   static void addDbusJava(BuildContext buildContext, @NotNull Path distDir) {
     JpsLibrary library = buildContext.findModule("intellij.platform.credentialStore").libraryCollection.findLibrary("dbus-java")
     Path destLibDir = distDir.resolve("lib")
+    List<String> extraJars = new ArrayList<>()
     Files.createDirectories(destLibDir)
     for (File file : library.getFiles(JpsOrderRootType.COMPILED)) {
       Files.copy(file.toPath(), destLibDir.resolve(file.name), StandardCopyOption.REPLACE_EXISTING)
+      extraJars += file.name
+    }
+    def srcClassPathTxt = Paths.get("$buildContext.paths.distAll/lib/classpath.txt")
+    //no file in fleet
+    if (Files.exists(srcClassPathTxt)) {
+      def classPathTxt = destLibDir.resolve("classpath.txt")
+      Files.copy(srcClassPathTxt, classPathTxt, StandardCopyOption.REPLACE_EXISTING)
+      Files.writeString(classPathTxt, "\n" + extraJars.join("\n"), StandardOpenOption.APPEND)
+      buildContext.messages.warning("added dbus-java to classpath.txt")
+    }
+    else {
+      buildContext.messages.warning("no classpath.txt - no patching")
     }
   }
 
@@ -828,37 +840,42 @@ idea.fatal.error.notification=disabled
         buildContext.messages.info("Started ${tasks.size()} tasks in parallel: ${tasks.collect { it.stepId }}")
         ExecutorService executorService = Executors.newWorkStealingPool()
         List<Pair<BuildTaskRunnable<V>, Future<Pair<V, Long>>>> futures = new ArrayList<Pair<BuildTaskRunnable<V>, Future<Pair<V, Long>>>>(tasks.size())
-        AtomicReference<Throwable> errorRef = new AtomicReference<>()
         for (BuildTaskRunnable<V> task : tasks) {
-          if (errorRef.get() != null) {
-            break
-          }
-
-          futures.add(new Pair<>(task, executorService.submit(createTaskWrapper(task, buildContext.forkForParallelTask(task.stepId), errorRef))))
+          futures.add(new Pair<>(task, executorService.submit(createTaskWrapper(task, buildContext.forkForParallelTask(task.stepId)))))
         }
 
         executorService.shutdown()
 
         // wait until all tasks finishes
+        List<Throwable> errors = new ArrayList<>()
+
         List<V> results = new ArrayList<>(futures.size())
         for (Pair<BuildTaskRunnable<V>, Future<Pair<V, Long>>> item : futures) {
-          Throwable error = errorRef.get()
+          try {
+            Pair<V, Long> result = item.second.get()
+            if (result == null) {
+              throw new IllegalStateException("Result from build step wrapper must not be null")
+            }
 
-          Pair<V, Long> result = item.second.get()
-
-          if (error != null) {
-            buildContext.messages.error("Cannot execute task", error)
-            // unreachable code - BuildException will be thrown
-            return results
+            results.add(result.first)
+            buildContext.messages.info("'${item.first.stepId}' task successfully finished in ${Formats.formatDuration(result.second)}")
           }
-
-          if (result == null) {
-            continue
+          catch (Throwable t) {
+            buildContext.messages.info("'${item.first.stepId}' task failed")
+            errors.add(new Exception("Cannot execute task ${item.first.stepId}", t))
           }
-
-          results.add(result.first)
-          buildContext.messages.info("'${item.first.stepId}' task finished in ${Formats.formatDuration(result.second)}")
         }
+
+        if (errors.size() > 0) {
+          Throwable aggregateException = errors.remove(0)
+          for (error in errors) {
+            aggregateException.addSuppressed(error)
+          }
+
+          // Will throw an exception
+          buildContext.messages.error("Some tasks failed", aggregateException)
+        }
+
         return results
       }
     }
@@ -870,24 +887,16 @@ idea.fatal.error.notification=disabled
     }
   }
 
-  private static <T> Callable<Pair<T, Long>> createTaskWrapper(BuildTaskRunnable<T> task, BuildContext buildContext, AtomicReference<Throwable> errorRef) {
+  private static <T> Callable<Pair<T, Long>> createTaskWrapper(BuildTaskRunnable<T> task, BuildContext buildContext) {
     return new Callable<Pair<T, Long>>() {
       @Override
       Pair<T, Long> call() throws Exception {
-        if (errorRef.get() != null) {
-          return null
-        }
-
         long start = System.currentTimeMillis()
         buildContext.messages.onForkStarted()
         try {
           T result = task.execute(buildContext)
           long duration = System.currentTimeMillis() - start
           return new Pair<T, Long>(result, duration)
-        }
-        catch (Throwable e) {
-          errorRef.compareAndSet(null, e)
-          return null
         }
         finally {
           buildContext.messages.onForkFinished()

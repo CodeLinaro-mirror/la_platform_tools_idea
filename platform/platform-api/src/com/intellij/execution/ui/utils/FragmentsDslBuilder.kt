@@ -1,7 +1,10 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.ui.utils
 
-import com.intellij.execution.ui.*
+import com.intellij.execution.ui.FragmentedSettings
+import com.intellij.execution.ui.NestedGroupFragment
+import com.intellij.execution.ui.SettingsEditorFragment
+import com.intellij.execution.ui.TagButton
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.ui.ComponentValidator
 import com.intellij.openapi.ui.ComponentWithBrowseButton
@@ -37,10 +40,10 @@ abstract class AbstractFragmentBuilder<Settings : FragmentedSettings> {
 @FragmentsDsl
 class Group<Settings : FragmentedSettings>(
   val id: String,
-  val name: @Nls String
+  @Nls val name: String
 ) : AbstractFragmentBuilder<Settings>() {
 
-  var onVisibilityChanged: (Settings, Boolean) -> Unit = { _, _ -> }
+  var applyVisibility: ((Settings, Boolean) -> Unit)? = null
 
   var visible: (Settings) -> Boolean = { true }
 
@@ -58,8 +61,18 @@ class Group<Settings : FragmentedSettings>(
       override fun getChildrenGroupName(): String? = this@Group.childrenGroupName ?: super.getChildrenGroupName()
 
       override fun applyEditorTo(s: Settings) {
-        onVisibilityChanged(s, component().isVisible)
+        applyVisibility?.let { it(s, component().isVisible) }
         super.applyEditorTo(s)
+      }
+
+      override fun isInitiallyVisible(s: Settings): Boolean {
+        val serializableVisibility = applyVisibility != null
+        return if (serializableVisibility) {
+          visible(s)
+        }
+        else {
+          super.isInitiallyVisible(s)
+        }
       }
     }.also {
       it.actionHint = actionHint
@@ -72,7 +85,7 @@ class Group<Settings : FragmentedSettings>(
 @FragmentsDsl
 class Tag<Settings : FragmentedSettings>(
   val id: String,
-  val name: @Nls String
+  @Nls val name: String
 ) : AbstractFragmentBuilder<Settings>() {
 
   var holder: SettingsEditorFragment<Settings, *>? = null

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.keymap;
 
 import org.jetbrains.annotations.NonNls;
@@ -18,7 +18,8 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "F1",                       "ContextHelp", "org.jetbrains.r.actions.REditorHelpAction"},
     { "F2",                       "GotoNextError", "GuiDesigner.EditComponent", "GuiDesigner.EditGroup", "Console.TableResult.EditValue", "XDebugger.SetValue", "Git.Reword.Commit", "Git.Rename.Local.Branch", "ShelvedChanges.Rename", "ChangesView.Rename"},
     { "alt ENTER",                "ShowIntentionActions", "Console.TableResult.EditValue"},
-    { "F5",                       "Graph.ApplyCurrentLayout", "CopyElement"},
+    { "F3",                       "FindNext", "PoToggleSelection"},
+    { "F5",                       "Graph.RouteEdges", "CopyElement"},
     { "F7",                       "NextDiff", "StepInto"},
     { "INSERT",                   "EditorToggleInsertState", "UsageView.Include", "DomElementsTreeView.AddElement", "DomCollectionControl.Add", "XDebugger.NewWatch"},
     { "SUBTRACT",                 "CollapseTreeNode", "Graph.ZoomOut"},
@@ -36,7 +37,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "control ADD",              "ExpandAll", "ExpandExpandableComponent", "ExpandRegion"},
     { "control DIVIDE",           "CommentByLineComment", "Graph.ActualSize"},
     { "control DOWN",             "EditorScrollDown", "EditorLookupDown", "MethodOverloadSwitchDown", "JupyterSelectCellBelowAction"},
-    { "control ENTER",            "Console.Execute.Multiline", "DirDiffMenu.SynchronizeDiff.All", "EditorSplitLine", "ViewSource", "PyExecuteCellAction", "NotebookRunCellAction", "org.jetbrains.r.actions.RunSelection", "Terminal.SmartCommandExecution.Run"},
+    { "control ENTER",            "Console.Execute.Multiline", "DirDiffMenu.SynchronizeDiff.All", "EditorSplitLine", "NotebookRunCellAction", "PyExecuteCellAction", "SplitChooser.Duplicate", "Terminal.SmartCommandExecution.Run", "ViewSource", "org.jetbrains.r.actions.RunSelection"},
     { "control TAB",              "Switcher", "Diff.FocusOppositePane"},
     { "control EQUALS",           "ExpandAll", "ExpandExpandableComponent", "ExpandRegion"},
     { "control F5",               "Refresh", "Rerun"},
@@ -116,12 +117,12 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     });
     put("Mac OS X 10.5+", new String[][] {
     { "F1",                       "QuickJavaDoc", "org.jetbrains.r.actions.REditorHelpAction"},
+    { "F3",                       "PoToggleSelection", "ToggleBookmark"},
     { "Force touch",              "GotoDeclaration", "RunToCursor"},
     { "BACK_SPACE",               "$Delete", "EditorBackSpace"},
     { "shift BACK_SPACE",         "EditorBackSpace", "UsageView.Include"},
     { "meta BACK_SPACE",          "EditorDeleteLine", "$Delete"},
-    { "control DOWN",             "EditorLookupDown", "JupyterSelectCellBelowAction", "MethodDown"},
-    { "control UP",               "EditorLookupUp", "JupyterSelectCellAboveAction", "MethodUp"},
+    { "control UP",               "JupyterSelectCellAboveAction", "MethodUp"},
     { "control TAB",              "Switcher", "Diff.FocusOppositePane"},
     { "control D",                "Debug", "org.jetbrains.r.console.RConsoleView.REofAction"},
     { "control M",                "EditorMatchBrace", "Vcs.ShowMessageHistory"},
@@ -209,7 +210,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "F7",                       "CompileDirty", "NextDiff"},
     { "ctrl P",                   "FileChooser.TogglePathShowing", "Print"},
     { "ctrl F10",                 "RunToCursor", "UpdateRunningApplication"},
-    { "F5",                       "Graph.ApplyCurrentLayout", "Resume"},
+    { "F5",                       "Graph.RouteEdges", "Resume", "PoBrowserRefresh"},
     { "ctrl F1",                  "ExternalJavaDoc", "ShowErrorDescription"},
     { "shift alt CLOSE_BRACKET",  "EditorCodeBlockEnd", "EmmetNextEditPoint"},
     { "shift alt OPEN_BRACKET",   "EditorCodeBlockStart", "EmmetPreviousEditPoint"},
@@ -219,7 +220,6 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "ctrl alt F",               "ActivateStructureToolWindow", "ShowFilterPopup"},
     { "shift ctrl DOWN",          "FindNext", "ResizeToolWindowDown"},
     { "ctrl R",                   SECOND_STROKE, "org.jetbrains.plugins.ruby.rails.console.ReloadSources"},
-    { "shift ctrl F11",           "FocusTracer", "GotoTypeDeclaration"},
     { "shift ctrl UP",            "FindPrevious", "ResizeToolWindowUp"},
     { "ctrl SUBTRACT",            "Back", "CollapseAll", "CollapseExpandableComponent"},
     { "ctrl R,R",                 "ChangesView.Rename", "Git.Rename.Local.Branch", "Git.Reword.Commit", "RenameElement", "ShelvedChanges.Rename"},
@@ -229,6 +229,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "shift alt RIGHT",          "Diff.ApplyLeftSide", "EditorRightWithSelection"},
     { "ctrl N",                   "FileChooser.NewFolder", "NewElement"},
     { "ctrl F5",                  "Run", "RunClass"},
+    { "shift F5",                 "Graph.ApplyCurrentLayout", "Stop"},
     { "ctrl alt W",               "ActivateWebToolWindow", "Vcs.UpdateProject"},
     { "shift alt ENTER",          "JupyterDebugAction", "ToggleFullScreen"},
     { "ctrl ENTER",               "Console.Execute.Multiline", "DirDiffMenu.SynchronizeDiff.All", "EditorStartNewLineBefore", "NotebookRunCellAction", "PyExecuteCellAction", "ViewSource", "org.jetbrains.r.actions.RunSelection", "Terminal.SmartCommandExecution.Run", "SplitChooser.Duplicate"},
@@ -262,7 +263,8 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     });
     put("Eclipse", new String[][] {
     { "F2",                       "Console.TableResult.EditValue", "QuickJavaDoc", "XDebugger.SetValue"},
-    { "F5",                       "Graph.ApplyCurrentLayout", "StepInto"},
+    { "F3",                       "GotoDeclaration", "PoToggleSelection"},
+    { "F5",                       "Graph.RouteEdges", "StepInto", "PoBrowserRefresh"},
     { "alt DOWN",                 "ShowContent", "MoveStatementDown", "ShowSearchHistory"},
     { "alt HOME",                 "ViewNavigationBar", "ShowNavBar"},
     { "ctrl 1",                   "DuplicatesForm.SendToLeft", "FileChooser.GotoHome", "ShowIntentionActions"},
@@ -289,7 +291,6 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "shift control DOWN",       "ResizeToolWindowDown", "MethodDown"},
     { "shift control E",          "RecentLocations", "EditSource"},
     { "shift control F6",         "ChangeTypeSignature", "Diff.PrevChange", "PreviousTab"},
-    { "shift control F11",        "ToggleBookmark", "FocusTracer"},
     { "shift control G",          "FindUsagesInFile", "ClassTemplateNavigation", "GoToClass"},
     { "shift control I",          "QuickImplementations", "XDebugger.Inspect"},
     { "shift control UP",         "ResizeToolWindowUp", "MethodUp"},
@@ -302,7 +303,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     });
     put("NetBeans 6.5", new String[][] {
     { "F4",                       "RunToCursor", "EditSource"},
-    { "F5",                       "Debugger.ResumeThread", "Resume", "Graph.ApplyCurrentLayout"},
+    { "F5",                       "Debugger.ResumeThread", "Resume", "Graph.RouteEdges", "PoBrowserRefresh"},
     { "alt DOWN",                 "GotoNextElementUnderCaretUsage", "ShowContent", "ShowSearchHistory"},
     { "control 1",                "ActivateProjectToolWindow", "DuplicatesForm.SendToLeft"},
     { "control 2",                "ActivateProjectToolWindow", "FileChooser.GotoProject", "DuplicatesForm.SendToRight"},
@@ -336,8 +337,8 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     put("Eclipse (Mac OS X)", new String[][] {
     { "meta BACK_SPACE",          "EditorDeleteToWordStart", "$Delete"},
     { "F2",                       "Console.TableResult.EditValue", "QuickJavaDoc", "XDebugger.SetValue", "Git.Reword.Commit", "Git.Rename.Local.Branch", "ShelvedChanges.Rename", "ChangesView.Rename"},
-    { "F3",                       "GotoDeclaration", "EditSource"},
-    { "F5",                       "StepInto", "Graph.ApplyCurrentLayout"},
+    { "F3",                       "GotoDeclaration", "EditSource", "PoToggleSelection"},
+    { "F5",                       "StepInto", "Graph.RouteEdges", "PoBrowserRefresh"},
     { "alt DOWN",                 "MoveStatementDown", "MethodOverloadSwitchDown", "ShowSearchHistory"},
     { "alt UP",                   "MoveStatementUp", "MethodOverloadSwitchUp"},
     { "control PERIOD",           "EditorChooseLookupItemDot", "HippieCompletion"},
@@ -357,7 +358,6 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "meta alt LEFT",            "Diff.PrevChange", "PreviousTab"},
     { "meta alt RIGHT",           "Diff.NextChange", "NextTab"},
     { "meta alt DOWN",            "Console.TableResult.NextPage", "EditorDuplicateLines"},
-    { "shift meta F11",           "Run", "FocusTracer"},
     { "shift meta G",             "ClassTemplateNavigation", "GoToClass", "FindUsages"},
     { "shift meta K",             "Vcs.Push", "FindPrevious"},
     { "shift meta X",             "EditorToggleCase", "com.jetbrains.php.framework.FrameworkRunConsoleAction"},
@@ -365,6 +365,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "shift meta F6",            "Diff.PrevChange", "PreviousTab"},
     { "control shift alt Z",      "Vcs.RollbackChangedLines", "ChangesView.Revert"},
     { "meta K",                   "FindNext", "Terminal.ClearBuffer"},
+    { "shift ctrl DOWN",          "EditorUnSelectWord", "ShowContent"},
     });
     put("Sublime Text", new String[][] {
     { "F2",                       "ChangesView.Rename", "Console.TableResult.EditValue", "Git.Reword.Commit", "Git.Rename.Local.Branch", "GotoNextBookmark", "GuiDesigner.EditComponent", "GuiDesigner.EditGroup", "ShelvedChanges.Rename", "XDebugger.SetValue"},
@@ -390,7 +391,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "shift ctrl ENTER",         "Console.Jpa.GenerateSql", "EditorStartNewLineBefore", "org.jetbrains.r.actions.RRunAction", "Terminal.SmartCommandExecution.Debug"},
     { "shift ctrl T",             "ReopenClosedTab", "ServiceView.ShowServices"},
     { "shift ctrl UP",            "MoveLineUp", "ResizeToolWindowUp"},
-    { "ctrl L",                   "EditorSelectWord", "Terminal.ClearBuffer"},
+    { "ctrl L",                   "EditorSelectLine", "Terminal.ClearBuffer"},
     });
     put("Sublime Text (Mac OS X)", new String[][] {
     { "F2",                       "ChangesView.Rename", "Console.TableResult.EditValue", "Git.Reword.Commit", "Git.Rename.Local.Branch", "GotoNextBookmark", "GuiDesigner.EditComponent", "GuiDesigner.EditGroup", "ShelvedChanges.Rename", "XDebugger.SetValue"},
@@ -411,8 +412,9 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
     { "shift meta D",             "Console.TableResult.CompareCells", "EditorDuplicate", "Uml.ShowDiff"},
     { "shift meta ENTER",         "Console.Jpa.GenerateSql", "EditorStartNewLineBefore",  "org.jetbrains.r.actions.RRunAction", "Terminal.SmartCommandExecution.Debug"},
     { "shift meta T",             "ReopenClosedTab", "ServiceView.ShowServices"},
-    { "meta L",                   "EditorSelectWord", "Terminal.ClearBuffer"},
+    { "meta L",                   "EditorSelectLine", "Terminal.ClearBuffer"},
     { "meta K",                   "SECOND_STROKE_SHORTCUT", "Terminal.ClearBuffer"},
+    { "shift ctrl DOWN",          "EditorCloneCaretBelow", "ShowContent"},
     });
     put("macOS System Shortcuts", new String[][] {
       { "ctrl C",                   "Vcs.QuickListPopupAction", "org.jetbrains.r.console.RConsoleView.RInterruptAction"},
@@ -423,7 +425,7 @@ public abstract class KeymapsTestCase extends KeymapsTestCaseBase {
       { "meta alt I",               "Move", "RMarkdownNewChunk"},
       { "shift meta DOWN",          "EditorTextEndWithSelection", "ResizeToolWindowDown"},
       { "shift meta UP",            "EditorTextStartWithSelection", "ResizeToolWindowUp"},
-      { "ctrl ENTER",               "EditorSplitLine", "NotebookRunCellAction", "PyExecuteCellAction", "SplitChooser.Duplicate"},
+      { "ctrl ENTER",               "EditorSplitLine", "NotebookRunCellAction", "PyExecuteCellAction"},
       { "meta CLOSE_BRACKET",       "Forward", "NextDiff"},
       { "meta OPEN_BRACKET",        "Back", "PreviousDiff"},
       { "meta alt E",               "Console.History.Browse", "GotoNextElementUnderCaretUsage", "PerforceDirect.Edit"},

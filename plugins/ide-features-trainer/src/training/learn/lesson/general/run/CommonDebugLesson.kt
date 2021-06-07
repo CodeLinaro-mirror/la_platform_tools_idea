@@ -64,10 +64,12 @@ abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message
   override val lessonContent: LessonContext.() -> Unit = {
     prepareSample(sample)
 
+    clearBreakpoints()
     prepareTask()
 
     toggleBreakpointTask(sample, { logicalPosition }) {
-      LessonsBundle.message("debug.workflow.toggle.breakpoint", action("ToggleLineBreakpoint"))
+      text(LessonsBundle.message("debug.workflow.toggle.breakpoint",
+                                 action("ToggleLineBreakpoint")))
     }
 
     startDebugTask()
@@ -460,28 +462,30 @@ abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message
 @Nls
 private val incorrectBreakPointsMessage = LessonsBundle.message("debug.workflow.incorrect.breakpoints")
 
-fun LessonContext.toggleBreakpointTask(sample: LessonSample,
-                                       logicalPosition: () -> LogicalPosition,
-                                       checkLine: Boolean = true,
-                                       @Nls message: TaskContext.() -> String) {
-  highlightBreakpointGutter(logicalPosition)
-
+fun LessonContext.clearBreakpoints() {
   prepareRuntimeTask {
     runWriteAction {
       val breakpointManager = XDebuggerManager.getInstance(project).breakpointManager
       breakpointManager.allBreakpoints.forEach { breakpointManager.removeBreakpoint(it) }
     }
   }
+}
+
+fun LessonContext.toggleBreakpointTask(sample: LessonSample,
+                                       logicalPosition: () -> LogicalPosition,
+                                       checkLine: Boolean = true,
+                                       textContent: TaskContext.() -> Unit) {
+  highlightBreakpointGutter(logicalPosition)
 
   task {
-    text(message())
+    textContent()
     stateCheck {
       lineWithBreakpoints() == setOf(logicalPosition().line)
     }
     proposeRestore {
       val breakpoints = lineWithBreakpoints()
-      checkExpectedStateOfEditor(sample)
-      ?: if (breakpoints.isNotEmpty() && (checkLine && breakpoints != setOf(logicalPosition().line))) {
+      checkExpectedStateOfEditor(sample, checkPosition = checkLine)
+      ?: if (breakpoints.isNotEmpty() && (breakpoints != setOf(logicalPosition().line))) {
         TaskContext.RestoreNotification(incorrectBreakPointsMessage, callback = restorePreviousTaskCallback)
       }
       else null

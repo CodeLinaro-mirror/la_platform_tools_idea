@@ -817,7 +817,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon RwAccess = load("nodes/rw-access.svg", -2790954136544911595L, 0);
     /** 16x16 */ public static final @Deprecated @NotNull Icon Rw_access = RwAccess;
     /** 16x16 */ public static final @NotNull Icon SecurityRole = load("nodes/securityRole.svg", -5500371977726954805L, 0);
-    /** 14x12 */ public static final @NotNull Icon Services = load("nodes/services.svg", -2057777837011288462L, 0);
+    /** 16x16 */ public static final @NotNull Icon Services = load("nodes/services.svg", -2057777837011288462L, 0);
     /** 16x16 */ public static final @NotNull Icon Servlet = load("nodes/servlet.svg", -6853224320261092461L, 0);
     /** 16x16 */ public static final @NotNull Icon Shared = load("nodes/shared.svg", -6894260543915480253L, 0);
     /** 16x16 */ public static final @NotNull Icon SortBySeverity = load("nodes/sortBySeverity.svg", 3926891644325651337L, 2);
@@ -951,7 +951,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon BigQuery = load("providers/bigQuery.svg", -1485203038192915431L, 0);
     /** 16x16 */ public static final @NotNull Icon Cassandra = load("providers/cassandra.svg", -7281058075200040514L, 2);
     /** 16x16 */ public static final @NotNull Icon ClickHouse = load("providers/clickHouse.svg", 1647149862900553939L, 0);
-    /** 16x16 */ public static final @NotNull Icon CockroachDB = load("providers/cockroachDB.svg", -840155423285507372L, 7);
+    /** 16x16 */ public static final @NotNull Icon CockroachDB = load("providers/cockroachDB.svg", -8622465395810973373L, 0);
     /** 16x16 */ public static final @NotNull Icon Couchbase = load("providers/couchbase.svg", 2362485358505666920L, 0);
     /** 16x16 */ public static final @NotNull Icon DB2 = load("providers/DB2.svg", 6413560575348587225L, 2);
     /** 16x16 */ public static final @NotNull Icon Eclipse = load("providers/eclipse.svg", 8001776984939118232L, 2);
@@ -1089,6 +1089,7 @@ public class AllIcons {
     /** 13x13 */ public static final @NotNull Icon ToolWindowFind = load("toolwindows/toolWindowFind.svg", 5754354581701228611L, 2);
     /** 13x13 */ public static final @NotNull Icon ToolWindowHierarchy = load("toolwindows/toolWindowHierarchy.svg", -478081747606020437L, 2);
     /** 13x13 */ public static final @NotNull Icon ToolWindowInspection = load("toolwindows/toolWindowInspection.svg", -4167260115100983149L, 2);
+    /** 13x13 */ public static final @NotNull Icon ToolWindowJsonPath = load("toolwindows/toolWindowJsonPath.svg", -3004991167452181001L, 2);
     /** 13x13 */ public static final @NotNull Icon ToolWindowMessages = load("toolwindows/toolWindowMessages.svg", 5212602638812950015L, 2);
     /** 13x13 */ public static final @NotNull Icon ToolWindowModuleDependencies = load("toolwindows/toolWindowModuleDependencies.svg", 676416966637667074L, 2);
     /** 13x13 */ public static final @NotNull Icon ToolWindowPalette = load("toolwindows/toolWindowPalette.svg", 136170054099118815L, 2);

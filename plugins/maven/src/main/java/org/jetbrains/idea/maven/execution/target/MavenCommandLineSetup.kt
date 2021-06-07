@@ -58,12 +58,15 @@ class MavenCommandLineSetup(private val project: Project,
   }
 
   @Throws(CantRunException::class)
-  fun setupCommandLine(settings: MavenRunConfiguration.MavenSettings): MavenCommandLineSetup {
+  @JvmOverloads
+  fun setupCommandLine(settings: MavenRunConfiguration.MavenSettings, setupEventListener: Boolean = true): MavenCommandLineSetup {
     val mavenOptsValues = mutableListOf<TargetValue<String>>()
-    setupExePath(settings.myGeneralSettings)
+    setupExePath()
     setupTargetJavaRuntime(settings.myRunnerSettings)
     setupTargetProjectDirectories(settings)
-    setupMavenExtClassPath(mavenOptsValues)
+    if (setupEventListener) {
+      setupMavenExtClassPath()
+    }
     addMavenParameters(settings, mavenOptsValues)
     setupTargetEnvironmentVariables(settings, mavenOptsValues)
     return this
@@ -77,19 +80,13 @@ class MavenCommandLineSetup(private val project: Project,
   }
 
   @Throws(CantRunException::class)
-  private fun setupExePath(generalSettings: MavenGeneralSettings) {
+  private fun setupExePath() {
     if (defaultMavenRuntimeConfiguration == null) {
       commandLine.setExePath("mvn")
       return
     }
 
-    val homePath: String
-    if (generalSettings.mavenHome == MavenServerManager.BUNDLED_MAVEN_3 || generalSettings.mavenHome == MavenServerManager.WRAPPED_MAVEN) {
-      homePath = defaultMavenRuntimeConfiguration.homePath
-    }
-    else {
-      homePath = generalSettings.mavenHome
-    }
+    val homePath = defaultMavenRuntimeConfiguration.homePath
 
     if (StringUtil.isEmptyOrSpaces(homePath)) {
       commandLine.setExePath("mvn")
@@ -97,6 +94,7 @@ class MavenCommandLineSetup(private val project: Project,
     }
 
     commandLine.addEnvironmentVariable("MAVEN_HOME", homePath)
+    commandLine.addEnvironmentVariable("M2_HOME", homePath)
     commandLine.setExePath(joinPath(arrayOf(homePath, "bin", "mvn")))
   }
 
@@ -108,13 +106,13 @@ class MavenCommandLineSetup(private val project: Project,
     }?.let { commandLine.addEnvironmentVariable("JAVA_HOME", it) }
   }
 
-  private fun setupMavenExtClassPath(mavenOptsValues: MutableList<TargetValue<String>>) {
+  private fun setupMavenExtClassPath() {
     val mavenEventListener = MavenServerManager.getMavenEventListener()
     val uploadPath = Paths.get(toSystemDependentName(mavenEventListener.path))
     val uploadRoot = createUploadRoot(MavenRuntimeType.MAVEN_EXT_CLASS_PATH_VOLUME, uploadPath.parent)
     request.uploadVolumes += uploadRoot
     val targetValue = upload(uploadRoot, uploadPath.toString(), uploadPath.fileName.toString())
-    mavenOptsValues.add(TargetValue.map(targetValue) { "-D" + MavenServerEmbedder.MAVEN_EXT_CLASS_PATH + "=" + it })
+    commandLine.addParameter(TargetValue.map(targetValue) { "-D" + MavenServerEmbedder.MAVEN_EXT_CLASS_PATH + "=" + it })
   }
 
   private fun addMavenParameters(settings: MavenRunConfiguration.MavenSettings, mavenOptsValues: MutableList<TargetValue<String>>) {

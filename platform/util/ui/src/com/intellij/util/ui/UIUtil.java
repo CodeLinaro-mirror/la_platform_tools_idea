@@ -25,10 +25,12 @@ import com.intellij.util.containers.JBTreeTraverser;
 import org.intellij.lang.annotations.JdkConstants;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.*;
+import sun.font.FontUtilities;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
+import javax.swing.FocusManager;
 import javax.swing.Timer;
 import javax.swing.*;
 import javax.swing.border.AbstractBorder;
@@ -72,6 +74,7 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
+import java.text.ParseException;
 import java.util.List;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -1273,7 +1276,12 @@ public final class UIUtil {
   }
 
   public static @NotNull Insets getListViewportPadding() {
-    return isUnderNativeMacLookAndFeel() ? JBInsets.create(1, 0) : JBUI.emptyInsets();
+    return getListViewportPadding(false);
+  }
+
+  public static @NotNull Insets getListViewportPadding(boolean listWithAdvertiser) {
+    return listWithAdvertiser ? new JBInsets(4, 0, 8 , 0)
+                              : JBInsets.create(4, 0);
   }
 
   public static boolean isToUseDottedCellBorder() {
@@ -2000,7 +2008,22 @@ public final class UIUtil {
   }
 
   public static @NotNull FontUIResource getFontWithFallback(@NotNull Font font) {
-    return getFontWithFallback(font.getFamily(), font.getStyle(), font.getSize());
+    // On macOS font fallback is implemented in JDK by default
+    // (except for explicitly registered fonts, e.g. the fonts we bundle with IDE, for them we don't have a solution now)
+    if (!SystemInfo.isMac) {
+      try {
+        if (!FontUtilities.fontSupportsDefaultEncoding(font)) {
+          font = FontUtilities.getCompositeFontUIResource(font);
+        }
+      }
+      catch (Throwable e) {
+        // this might happen e.g. if we're running under newer runtime, forbidding access to sun.font package
+        getLogger().warn(e);
+        // this might not give the same result, but we have no choice here
+        return getFontWithFallback(font.getFamily(), font.getStyle(), font.getSize());
+      }
+    }
+    return font instanceof FontUIResource ? (FontUIResource)font : new FontUIResource(font);
   }
 
   public static @NotNull FontUIResource getFontWithFallback(@Nullable String familyName, @JdkConstants.FontStyle int style, int size) {
@@ -3460,5 +3483,21 @@ public final class UIUtil {
       return 0;
     }
     return Math.min(result, 255);
+  }
+
+  public static void stopFocusedEditing(@NotNull Window window) {
+    Component focusOwner = FocusManager.getCurrentManager().getFocusOwner();
+    if (focusOwner == null || !SwingUtilities.isDescendingFrom(focusOwner, window)) {
+      return;
+    }
+    ObjectUtils.consumeIfCast(focusOwner, JFormattedTextField.class, field -> {
+      try {
+        ((JFormattedTextField)focusOwner).commitEdit();
+      }
+      catch (ParseException ignored) {
+      }
+    });
+    ObjectUtils.consumeIfCast(focusOwner.getParent(), JTable.class, table -> TableUtil.stopEditing(table));
+    ObjectUtils.consumeIfCast(focusOwner.getParent(), JTree.class, tree -> tree.stopEditing());
   }
 }

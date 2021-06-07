@@ -60,6 +60,8 @@
     <cachesInvalidator implementation="com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsDataInvalidator"/>
     <registryKey key="external.system.invalidate.storage" defaultValue="true"
                  description="Invalidate caches invalidates the cache data imported from external systems"/>
+    <registryKey key="external.system.remote.debugger.dispatch.host" defaultValue="0"
+                 description="Set binding address for server socket listening incoming requests for debugger clients. 0 means address of the first found remote network interface will be used."/>
     <projectService serviceImplementation="com.intellij.openapi.externalSystem.service.project.ExternalProjectsWorkspaceImpl"/>
     <externalProjectDataService implementation="com.intellij.openapi.externalSystem.service.project.manage.ProjectDataServiceImpl"/>
     <externalProjectDataService implementation="com.intellij.openapi.externalSystem.service.project.manage.LibraryDataService"/>
@@ -105,6 +107,7 @@
     <applicationService serviceInterface="com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkProvider"
                         serviceImplementation="com.intellij.openapi.externalSystem.service.execution.DefaultExternalSystemJdkProvider"/>
 
+    <statistics.counterUsagesCollector groupId="external.project.task" version="1"/>
     <statistics.projectUsagesCollector implementation="com.intellij.openapi.externalSystem.statistics.ExternalSystemUsagesCollector"/>
     <statistics.projectUsagesCollector implementation="com.intellij.openapi.externalSystem.statistics.ExternalSystemSettingsCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.openapi.externalSystem.statistics.ExternalSystemActionsCollector"/>

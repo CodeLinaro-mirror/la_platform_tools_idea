@@ -87,9 +87,10 @@ public class DirtyScopeHolder extends UserDataHolderBase implements AsyncFileLis
 
       connect.subscribe(ProjectTopics.PROJECT_ROOTS, new ModuleRootListener() {
         @Override
-        public void beforeRootsChange(@NotNull ModuleRootEvent event) {
+        public void rootsChanged(@NotNull ModuleRootEvent event) {
           final Module[] modules = ModuleManager.getInstance(myService.getProject()).getModules();
           synchronized (myLock) {
+            myVFSChangedModules.clear();
             ContainerUtil.addAll(myVFSChangedModules, modules);
           }
         }
@@ -150,7 +151,7 @@ public class DirtyScopeHolder extends UserDataHolderBase implements AsyncFileLis
       myExcludedDescriptions.clear();
     }
     myCompilationAffectedModules.clear();
-    myExcludedFilesScope = ExcludedFromCompileFilesUtil.getExcludedFilesScope(descriptions, myService.getFileTypes(), myService.getProject(), myService.getFileIndex());
+    myExcludedFilesScope = ExcludedFromCompileFilesUtil.getExcludedFilesScope(descriptions, myService.getFileTypes(), myService.getProject());
   }
 
   @NotNull

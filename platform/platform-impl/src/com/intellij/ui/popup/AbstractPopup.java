@@ -28,6 +28,7 @@ import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.*;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
@@ -44,12 +45,10 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.WeakList;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.accessibility.AccessibleContextUtil;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
+import javax.swing.plaf.basic.BasicHTML;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
@@ -84,6 +83,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   private WindowResizeListener myResizeListener;
   private WindowMoveListener myMoveListener;
   private JPanel myHeaderPanel;
+  private JPanel myBottomPanel;
   private CaptionPanel myCaption;
   private JComponent myComponent;
   private SpeedSearch mySpeedSearchFoundInRootComponent;
@@ -124,6 +124,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   private boolean myHeaderAlwaysFocusable;
   private boolean myMovable;
   private JComponent myHeaderComponent;
+  private JComponent myBottomComponent;
 
   InputEvent myDisposeEvent;
 
@@ -166,7 +167,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
   protected SearchTextField mySpeedSearchPatternField;
   private boolean myNativePopup;
   private boolean myMayBeParent;
-  private JLabel myAdComponent;
+  private JComponent myAdComponent;
   private boolean myDisposed;
   private boolean myNormalWindowLevel;
 
@@ -273,6 +274,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
     ActiveIcon actualIcon = titleIcon == null ? new ActiveIcon(EmptyIcon.ICON_0) : titleIcon;
 
     myHeaderPanel = new JPanel(new BorderLayout());
+    myBottomPanel = new JPanel(new BorderLayout());
 
     if (caption != null) {
       if (!caption.isEmpty()) {
@@ -308,6 +310,7 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
 
     myHeaderPanel.add(myCaption, BorderLayout.NORTH);
     myContent.add(myHeaderPanel, BorderLayout.NORTH);
+    myContent.add(myBottomPanel, BorderLayout.SOUTH);
 
     myForcedHeavyweight = true;
     myResizable = resizable;
@@ -384,18 +387,55 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
 
   @Override
   public void setAdText(@NotNull String s, int alignment) {
-    if (myAdComponent == null) {
-      myAdComponent = HintUtil.createAdComponent(s, JBUI.CurrentTheme.Advertiser.border(), alignment);
-      JPanel wrapper = new JPanel(new BorderLayout());
-      wrapper.setOpaque(false);
-      wrapper.add(myAdComponent, BorderLayout.CENTER);
-      myContent.add(wrapper, BorderLayout.SOUTH);
-      pack(false, true);
+    JLabel label;
+    if (myAdComponent == null || !(myAdComponent instanceof JLabel)) {
+      label = HintUtil.createAdComponent(s, JBUI.CurrentTheme.Advertiser.border(), alignment);
+      setFooterComponent(label);
+    } else {
+      label = (JLabel)myAdComponent;
     }
 
-    myAdComponent.setVisible(StringUtil.isNotEmpty(s));
-    myAdComponent.setText(s);
-    myAdComponent.setHorizontalAlignment(alignment);
+    Dimension prefSize = label.isVisible() ? myAdComponent.getPreferredSize() : JBUI.emptySize();
+    boolean keepSize = BasicHTML.isHTMLString(s);
+
+    label.setVisible(StringUtil.isNotEmpty(s));
+    label.setText(keepSize ? s : wrapToSize(s));
+    label.setHorizontalAlignment(alignment);
+
+    Dimension newPrefSize = label.isVisible() ? myAdComponent.getPreferredSize() : JBUI.emptySize();
+    int delta = newPrefSize.height - prefSize.height;
+
+    // Resize popup to match new advertiser size.
+    if (myPopup != null && !isBusy() && delta != 0 && !keepSize) {
+      Window popupWindow = getContentWindow(myContent);
+      if (popupWindow != null) {
+        Dimension size = popupWindow.getSize();
+        size.height += delta;
+        myContent.setPreferredSize(size);
+        popupWindow.pack();
+        updateMaskAndAlpha(popupWindow);
+      }
+    }
+  }
+
+  protected void setFooterComponent(JComponent c) {
+    if (myAdComponent != null) {
+      myContent.remove(myAdComponent);
+    }
+
+    myContent.add(c, BorderLayout.SOUTH);
+    pack(false, true);
+    myAdComponent = c;
+  }
+
+  @NotNull
+  @Nls
+  private String wrapToSize(@NotNull @Nls String hint) {
+    if (StringUtil.isEmpty(hint)) return hint;
+
+    Dimension size = myContent.computePreferredSize();
+    int width = Math.max(JBUI.CurrentTheme.Popup.minimumHintWidth(), size.width);
+    return HtmlChunk.text(hint).wrapWith(HtmlChunk.div().attr("width", width)).wrapWith(HtmlChunk.html()).toString();
   }
 
   public static @NotNull Point getCenterOf(@NotNull Component aContainer, @NotNull JComponent content) {
@@ -1667,6 +1707,10 @@ public class AbstractPopup implements JBPopup, ScreenAreaConsumer {
 
   private int getAdComponentHeight() {
     return myAdComponent != null ? myAdComponent.getPreferredSize().height + JBUIScale.scale(1) : 0;
+  }
+
+  protected boolean isAdVisible() {
+    return myAdComponent != null && myAdComponent.isVisible();
   }
 
   @Override

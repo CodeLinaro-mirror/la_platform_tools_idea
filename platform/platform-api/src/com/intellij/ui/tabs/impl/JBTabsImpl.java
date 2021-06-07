@@ -159,7 +159,6 @@ public class JBTabsImpl extends JComponent
   private Disposable myTabActionsAutoHideListenerDisposable = Disposer.newDisposable();
   private IdeGlassPane myGlassPane;
   @NonNls private static final String LAYOUT_DONE = "Layout.done";
-  @NonNls public static final String STRETCHED_BY_WIDTH = "Layout.stretchedByWidth";
 
   private TimedDeadzone.Length myTabActionsMouseDeadzone = TimedDeadzone.DEFAULT;
 
@@ -2438,7 +2437,15 @@ public class JBTabsImpl extends JComponent
 
   @Override
   public JBTabs addListener(@NotNull TabsListener listener) {
+    return addListener(listener, null);
+  }
+
+  @Override
+  public JBTabs addListener(@NotNull TabsListener listener, @Nullable Disposable disposable) {
     myTabListeners.add(listener);
+    if (disposable != null) {
+      Disposer.register(disposable, () -> myTabListeners.remove(listener));
+    }
     return this;
   }
 
@@ -2933,7 +2940,6 @@ public class JBTabsImpl extends JComponent
   public static void resetLayout(JComponent c) {
     if (c == null) return;
     c.putClientProperty(LAYOUT_DONE, null);
-    c.putClientProperty(STRETCHED_BY_WIDTH, null);
   }
 
   private void applyResetComponents() {
