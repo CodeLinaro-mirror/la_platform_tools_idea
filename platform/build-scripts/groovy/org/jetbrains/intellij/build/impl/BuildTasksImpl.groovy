@@ -8,6 +8,7 @@ import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.text.Formats
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.util.text.Strings
 import groovy.io.FileType
 import groovy.transform.CompileStatic
@@ -17,6 +18,7 @@ import org.jetbrains.idea.maven.aether.ArtifactKind
 import org.jetbrains.idea.maven.aether.ArtifactRepositoryManager
 import org.jetbrains.idea.maven.aether.ProgressConsumer
 import org.jetbrains.intellij.build.*
+import org.jetbrains.jps.model.JpsGlobal
 import org.jetbrains.jps.model.artifact.JpsArtifactService
 import org.jetbrains.jps.model.jarRepository.JpsRemoteRepositoryService
 import org.jetbrains.jps.model.java.*
@@ -26,6 +28,7 @@ import org.jetbrains.jps.model.library.JpsRepositoryLibraryType
 import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.model.module.JpsTypedModuleSourceRoot
 import org.jetbrains.jps.model.serialization.JpsModelSerializationDataService
+import org.jetbrains.jps.util.JpsPathUtil
 
 import java.nio.file.*
 import java.time.ZoneOffset
@@ -67,85 +70,111 @@ final class BuildTasksImpl extends BuildTasks {
 
   @Override
   @CompileStatic(TypeCheckingMode.SKIP)
-  void zipSourcesOfModules(Collection<String> modules, Path targetFile) {
+  void zipSourcesOfModules(Collection<String> modules, Path targetFile, boolean includeLibraries) {
     buildContext.executeStep("Build sources of modules archive", BuildOptions.SOURCES_ARCHIVE_STEP) {
       buildContext.messages.progress("Building archive of ${modules.size()} modules to $targetFile")
       Files.createDirectories(targetFile.parent)
       Files.deleteIfExists(targetFile)
+
+      String sourceFilesId = "source.files.only"
+      buildContext.ant.patternset(id: sourceFilesId) {
+        ["java", "groovy", "kt"].each {
+          include(name: "**/*.$it")
+        }
+      }
+
+      def includedLibraries = new LinkedHashSet<JpsLibrary>()
+      if (includeLibraries) {
+        buildContext.messages.debug("Collecting libraries to include into archive:")
+        for (String moduleName in modules) {
+          JpsModule module = buildContext.findRequiredModule(moduleName)
+          if (moduleName.startsWith("intellij.platform.") && buildContext.findModule("${moduleName}.impl") != null) {
+            def libraries = JpsJavaExtensionService.dependencies(module).productionOnly().compileOnly().recursivelyExportedOnly().libraries
+            includedLibraries.addAll(libraries)
+            libraries.each {
+              buildContext.messages.debug(" ${it.name} for $moduleName")
+            }
+          }
+        }
+        def librariesWithMissingSources = includedLibraries
+          .collect { it.asTyped(JpsRepositoryLibraryType.INSTANCE) }
+          .findAll { library ->
+            library != null && library.getFiles(JpsOrderRootType.SOURCES).any { !it.exists() }
+          }
+        if (!librariesWithMissingSources.isEmpty()) {
+          buildContext.messages.debug("Download missing sources for ${librariesWithMissingSources.size()} libraries")
+          def repositories = JpsRemoteRepositoryService.instance.getRemoteRepositoriesConfiguration(buildContext.project)?.repositories?.collect {
+            ArtifactRepositoryManager.createRemoteRepository(it.id, it.url)
+          } ?: []
+          def repositoryManager = new ArtifactRepositoryManager(getLocalArtifactRepositoryRoot(buildContext.projectModel.global), repositories, ProgressConsumer.DEAF)
+          librariesWithMissingSources.each { library ->
+            def descriptor = library.properties.data
+            buildContext.messages.progress("Downloading sources for library '${library.name}' ($descriptor.mavenId)")
+            def downloaded = repositoryManager.resolveDependencyAsArtifact(descriptor.groupId, descriptor.artifactId, descriptor.version,
+                                                                           EnumSet.of(ArtifactKind.SOURCES),
+                                                                           descriptor.includeTransitiveDependencies,
+                                                                           descriptor.excludedDependencies)
+            buildContext.messages.debug(" $library.name: downloaded ${downloaded.join(", ")}")
+          }
+        }
+      }
+
+      buildContext.messages.debug("Packing sources into $targetFile")
       buildContext.ant.zip(destfile: targetFile) {
         for (String moduleName in modules) {
-          JpsModule module = buildContext.findModule(moduleName)
-          if (module == null) {
-            buildContext.messages.error("Cannot build sources archive: '$moduleName' module doesn't exist")
-          }
+          buildContext.messages.debug(" include module $moduleName")
+          JpsModule module = buildContext.findRequiredModule(moduleName)
           for (JpsTypedModuleSourceRoot<JavaSourceRootProperties> root in module.getSourceRoots(JavaSourceRootType.SOURCE)) {
             buildContext.ant.zipfileset(dir: root.file.absolutePath,
                                         prefix: root.properties.packagePrefix.replace('.', '/'), erroronmissingdir: false) {
-              ["java", "groovy", "kt"].each { include(name: "**/*.$it") }
+              patternset(refid: sourceFilesId)
             }
           }
           for (JpsTypedModuleSourceRoot<JavaResourceRootProperties> root in module.getSourceRoots(JavaResourceRootType.RESOURCE)) {
             buildContext.ant.zipfileset(dir: root.file.absolutePath, prefix: root.properties.relativeOutputPath, erroronmissingdir: false) {
-              ["java", "groovy", "kt"].each { include(name: "**/*.$it") }
+              patternset(refid: sourceFilesId)
             }
+          }
+        }
+        def libraryRootUrls = includedLibraries.collectMany { it.getRootUrls(JpsOrderRootType.SOURCES) }
+        buildContext.messages.debug(" include ${libraryRootUrls.size()} roots from ${includedLibraries.size()} libraries:")
+        for (url in libraryRootUrls) {
+          if (url.startsWith(JpsPathUtil.JAR_URL_PREFIX) && url.endsWith(JpsPathUtil.JAR_SEPARATOR)) {
+            def file = JpsPathUtil.urlToFile(url)
+            if (file.isFile()) {
+              buildContext.messages.debug("  $file.absolutePath, ${StringUtil.formatFileSize(file.length())}, ${file.length().toString().padLeft(9, "0")} bytes")
+              buildContext.ant.zipfileset(src: file.absolutePath) {
+                patternset(refid: sourceFilesId)
+              }
+            }
+            else {
+              buildContext.messages.debug("  skipped root $file: file doesn't exist")
+            }
+          }
+          else {
+            buildContext.messages.debug("  skipped root $url: not a jar file")
           }
         }
 
         // Android Studio: include sources for the prebuilt Kotlin plugin.
         def workspaceRoot = "$buildContext.paths.communityHome/../.."
         buildContext.ant.zipfileset(src: "$workspaceRoot/prebuilts/tools/common/kotlin-plugin/kotlin-plugin-sources.jar")
-
-        // Android Studio: include sources from library dependencies too.
-        zipSourcesOfLibraries()
       }
 
       buildContext.notifyArtifactBuilt(targetFile)
     }
   }
 
-  // Android Studio: include sources from library dependencies too.
-  // Some of this code is inspired by LibraryLicensesListGenerator and DependencyResolvingBuilder.
-  @CompileStatic(TypeCheckingMode.SKIP)
-  private void zipSourcesOfLibraries() {
-    buildContext.messages.info("Including sources from library dependencies")
-    def libs = JpsJavaExtensionService.dependencies(buildContext.project)
-      .recursively()
-      .includedIn(JpsJavaClasspathKind.PRODUCTION_RUNTIME)
-      .getLibraries()
-
-    // The JPS build does not download sources for Maven dependencies, so we have to do it manually.
-    def pathVars = JpsModelSerializationDataService.getPathVariablesConfiguration(buildContext.projectModel.global)
-    def localRepo = new File(pathVars.getUserVariableValue("MAVEN_REPOSITORY"))
-    def remoteRepoConfig = JpsRemoteRepositoryService.getInstance().getRemoteRepositoriesConfiguration(buildContext.project)
-    def remoteRepos = remoteRepoConfig.repositories.collect { ArtifactRepositoryManager.createRemoteRepository(it.id, it.url) }
-    ArtifactRepositoryManager repoManager = new ArtifactRepositoryManager(localRepo, remoteRepos, ProgressConsumer.DEAF)
-
-    for (lib in libs) {
-      def sourceRoots = lib.getFiles(JpsOrderRootType.SOURCES)
-      if (sourceRoots.empty) continue
-
-      // Download sources from Maven if needed.
-      def mavenLib = lib.asTyped(JpsRepositoryLibraryType.INSTANCE)
-      def hasMissingSourceRoots = sourceRoots.any { !it.exists() }
-      if (mavenLib != null && hasMissingSourceRoots) {
-        buildContext.messages.info("Downloading sources for library: ${lib.name}")
-        def descriptor = mavenLib.properties.data
-        repoManager.resolveDependencyAsArtifact(
-          descriptor.groupId, descriptor.artifactId, descriptor.version, Collections.singleton(ArtifactKind.SOURCES),
-          descriptor.includeTransitiveDependencies, descriptor.excludedDependencies)
-      }
-
-      for (root in sourceRoots) {
-        if (root.isFile()) {
-          buildContext.ant.zipfileset(src: root.absolutePath, erroronmissingarchive: false)
-        } else if (root.isDirectory()) {
-          buildContext.ant.zipfileset(dir: root.absolutePath, erroronmissingdir: false)
-        } else {
-          buildContext.messages.warning("Ignoring missing source root in library ${lib.name}: $root")
-        }
-      }
+  //todo replace by DependencyResolvingBuilder#getLocalArtifactRepositoryRoot call after next update of jps-build-script-dependencies-bootstrap
+  private static File getLocalArtifactRepositoryRoot(@NotNull JpsGlobal global) {
+    def localRepoPath = JpsModelSerializationDataService.getPathVariablesConfiguration(global)?.getUserVariableValue("MAVEN_REPOSITORY")
+    if (localRepoPath != null) {
+      return new File(localRepoPath)
     }
+    def root = System.getProperty("user.home", null)
+    return root != null ? new File(root, ".m2/repository") : new File(".m2/repository")
   }
+
 
   /**
    * Build a list with modules that the IDE will provide for plugins.
@@ -618,12 +647,12 @@ idea.fatal.error.notification=disabled
     Files.createDirectories(destLibDir)
     for (File file : library.getFiles(JpsOrderRootType.COMPILED)) {
       Files.copy(file.toPath(), destLibDir.resolve(file.name), StandardCopyOption.REPLACE_EXISTING)
-      extraJars += file.name
+      extraJars += "lib/" + file.name
     }
-    def srcClassPathTxt = Paths.get("$buildContext.paths.distAll/lib/classpath.txt")
+    def srcClassPathTxt = Paths.get("$buildContext.paths.tempDir/classpath.txt")
     //no file in fleet
     if (Files.exists(srcClassPathTxt)) {
-      def classPathTxt = destLibDir.resolve("classpath.txt")
+      def classPathTxt = distDir.resolve("classpath.txt")
       Files.copy(srcClassPathTxt, classPathTxt, StandardCopyOption.REPLACE_EXISTING)
       Files.writeString(classPathTxt, "\n" + extraJars.join("\n"), StandardOpenOption.APPEND)
       buildContext.messages.warning("added dbus-java to classpath.txt")
