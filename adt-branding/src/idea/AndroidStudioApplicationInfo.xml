@@ -20,7 +20,7 @@
   <company name="Google" url="http://developer.android.com"/>
   <build number="AI-__BUILD__" date="__BUILD_DATE__"/>
   <logo url="/artwork/studio_splash.png" textcolor="cccccc" progressColor="d7effe" progressY="397" progressHeight="3" />
-  <about url="/artwork/studio_about.png" foreground="cccccc"/>
+  <about url="/artwork/studio_about.png" foreground="073042" linkColor="4285f4"/>
   <icon svg="/artwork/androidstudio.svg" svg-small="/artwork/androidstudio-small.svg" ico="artwork/androidstudio.ico"/>
   <icon-eap svg="/artwork/preview/androidstudio.svg" svg-small="/artwork/preview/androidstudio-small.svg"/>
   <package code="AI"/> <!-- used only in adrt -->
