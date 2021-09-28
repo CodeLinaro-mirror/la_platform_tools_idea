@@ -60,8 +60,8 @@ class AndroidStudioLibraryLicenses {
     // for eclipse-layout-kernel module library in intellij.android.designer
     new LibraryLicense(name: "Eclipse Layout Kernel", libraryName: "eclipse-layout-kernel", license: "Eclipse Public License 1.0"),
     // for LSP4J module libraries in intellij.c
-    new LibraryLicense(name: "Eclipse LSP4J", libraryName: "org.eclipse.lsp4j:org.eclipse.lsp4j:0.10.0", license: "Eclipse Public License 1.0"),
-    new LibraryLicense(name: "Eclipse LSP4J", libraryName: "org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:0.10.0", license: "Eclipse Public License 1.0"),
+    new LibraryLicense(name: "Eclipse LSP4J", libraryName: "org.eclipse.lsp4j:org.eclipse.lsp4j:0.12.0", license: "Eclipse Public License 1.0"),
+    new LibraryLicense(name: "Eclipse LSP4J", libraryName: "org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc:0.12.0", license: "Eclipse Public License 1.0"),
     new LibraryLicense(name: "fetchasgoogle.jar", libraryName: "fetchasgoogle.jar", license: "Apache 2.0"),
     // for flatbuffers-java module library in android.sdktools.mlkit-common
     new LibraryLicense(name: "FlatBuffers Java API", libraryName: "flatbuffers-java",
@@ -166,7 +166,7 @@ class AndroidStudioLibraryLicenses {
     // for workmanager-inspector-proto module library in intellij.android.app-inspection.inspectors.workmanager.model
     new LibraryLicense(name: "WorkManager Inspector Proto", libraryName: "workmanager-inspector-proto", license: "Apache 2.0",
                        licenseUrl: "http://www.apache.org/licenses/LICENSE-2.0"),
-    new LibraryLicense(name: "Xtext", libraryName: "org.eclipse.xtext.xbase", license: "Eclipse Public License 1.0"),
+    new LibraryLicense(name: "Xtext", libraryName: "xtext-xbase", license: "Eclipse Public License 1.0"),
     new LibraryLicense(name: "Instant App Proto Manifest", libraryName: "aia-proto",
                        license: "Apache 2.0", url: "http://source.android.com/"),
     new LibraryLicense(name: "Archive Patcher",
