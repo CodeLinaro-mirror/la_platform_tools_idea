@@ -11,9 +11,11 @@ import com.intellij.openapi.module.impl.ModulePath
 import com.intellij.openapi.project.ExternalStorageConfigurationManager
 import com.intellij.openapi.roots.ExternalProjectSystemRegistry
 import com.intellij.openapi.util.JDOMUtil
+import com.intellij.projectModel.ProjectModelBundle
 import com.intellij.util.io.exists
 import com.intellij.util.isEmpty
 import com.intellij.workspaceModel.ide.*
+import com.intellij.workspaceModel.ide.impl.legacyBridge.library.LibraryNameGenerator
 import com.intellij.workspaceModel.ide.impl.virtualFile
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.*
@@ -109,7 +111,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       customRootsSerializer = moduleOptions[JpsProjectLoader.CLASSPATH_ATTRIBUTE]?.let { customSerializerId ->
         val serializer = CustomModuleRootsSerializer.EP_NAME.extensions().filter { it.id == customSerializerId }.findAny().orElse(null)
         if (serializer == null) {
-          LOG.warn("Classpath storage provider $customSerializerId not found")
+          errorReporter.reportError(ProjectModelBundle.message("error.message.unknown.classpath.provider", fileUrl.fileName, customSerializerId), fileUrl)
         }
         return@let serializer
       }
@@ -274,7 +276,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
         INHERITED_JDK_TYPE -> ModuleDependencyItem.InheritedSdkDependency
         LIBRARY_TYPE -> {
           val level = dependencyElement.getAttributeValueStrict(LEVEL_ATTRIBUTE)
-          val parentId = levelToLibraryTableId(level)
+          val parentId = LibraryNameGenerator.getLibraryTableId(level)
           val libraryId = LibraryId(dependencyElement.getAttributeValueStrict(NAME_ATTRIBUTE), parentId)
           ModuleDependencyItem.Exportable.LibraryDependency(libraryId, dependencyElement.isExported(), dependencyElement.readScope())
         }
@@ -282,8 +284,8 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
           val libraryElement = dependencyElement.getChild(LIBRARY_TAG)!!
           // TODO. Probably we want a fixed name based on hashed library roots
           val nameAttributeValue = libraryElement.getAttributeValue(NAME_ATTRIBUTE)
-          val originalName = nameAttributeValue ?: "$UNNAMED_LIBRARY_NAME_PREFIX${nextUnnamedLibraryIndex++}"
-          val name = generateUniqueLibraryName(originalName) { it in moduleLibraryNames }
+          val originalName = nameAttributeValue ?: "${LibraryNameGenerator.UNNAMED_LIBRARY_NAME_PREFIX}${nextUnnamedLibraryIndex++}"
+          val name = LibraryNameGenerator.generateUniqueLibraryName(originalName) { it in moduleLibraryNames }
           moduleLibraryNames.add(name)
           val tableId = LibraryTableId.ModuleLibraryTableId(moduleEntity.persistentId())
           loadLibrary(name, libraryElement, tableId, builder, entitySource, virtualFileManager, false)
@@ -305,6 +307,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
     }
 
     val inheritedCompilerOutput = rootManagerElement.getAttributeAndDetach(INHERIT_COMPILER_OUTPUT_ATTRIBUTE)
+    val languageLevel = rootManagerElement.getAttributeAndDetach(MODULE_LANGUAGE_LEVEL_ATTRIBUTE)
     val excludeOutput = rootManagerElement.getChildAndDetach(EXCLUDE_OUTPUT_TAG) != null
     val compilerOutput = rootManagerElement.getChildAndDetach(OUTPUT_TAG)?.getAttributeValue(URL_ATTRIBUTE)
     val compilerOutputForTests = rootManagerElement.getChildAndDetach(TEST_OUTPUT_TAG)?.getAttributeValue(URL_ATTRIBUTE)
@@ -314,6 +317,7 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
       excludeOutput = excludeOutput,
       compilerOutput = compilerOutput?.let { virtualFileManager.fromUrl(it) },
       compilerOutputForTests = compilerOutputForTests?.let { virtualFileManager.fromUrl(it) },
+      languageLevelId = languageLevel,
       module = moduleEntity,
       source = entitySource
     )
@@ -487,6 +491,9 @@ internal open class ModuleImlFileEntitiesSerializer(internal val modulePath: Mod
     }
     if (javaSettings.excludeOutput) {
       rootManagerElement.addContent(Element(EXCLUDE_OUTPUT_TAG))
+    }
+    javaSettings.languageLevelId?.let {
+      rootManagerElement.setAttribute(MODULE_LANGUAGE_LEVEL_ATTRIBUTE, it)
     }
   }
 

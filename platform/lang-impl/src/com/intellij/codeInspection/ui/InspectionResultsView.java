@@ -173,7 +173,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
 
     getProject().getMessageBus().connect(this).subscribe(ProfileChangeAdapter.TOPIC, new ProfileChangeAdapter() {
       @Override
-      public void profileChanged(InspectionProfile profile) {
+      public void profileChanged(@NotNull InspectionProfile profile) {
         if (profile == ProjectInspectionProfileManager.getInstance(getProject()).getCurrentProfile()) {
           InspectionResultsView.this.profileChanged();
         }
@@ -774,11 +774,17 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
                                     @NotNull GlobalInspectionContextImpl context,
                                     @NotNull InspectionRVContentProvider contentProvider) {
     for (Tools currentTools : tools) {
-      for (ScopeToolState state : contentProvider.getTools(currentTools)) {
-        InspectionToolWrapper toolWrapper = state.getTool();
-        if (context.getPresentation(toolWrapper).hasReportedProblems() || contentProvider.checkReportedProblems(context, toolWrapper)) {
-          return true;
+      boolean hasProblems = ReadAction.compute(() -> {
+        for (ScopeToolState state : contentProvider.getTools(currentTools)) {
+          InspectionToolWrapper toolWrapper = state.getTool();
+          if (context.getPresentation(toolWrapper).hasReportedProblems() || contentProvider.checkReportedProblems(context, toolWrapper)) {
+            return true;
+          }
         }
+        return false;
+      });
+      if (hasProblems) {
+        return true;
       }
     }
     return false;

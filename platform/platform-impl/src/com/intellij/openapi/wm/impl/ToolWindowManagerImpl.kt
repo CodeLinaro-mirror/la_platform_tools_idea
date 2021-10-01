@@ -49,6 +49,7 @@ import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.*
+import com.intellij.openapi.util.registry.ExperimentalUI
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.*
@@ -70,7 +71,6 @@ import com.intellij.util.ui.*
 import org.intellij.lang.annotations.JdkConstants
 import org.jdom.Element
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.annotations.TestOnly
 import java.awt.*
 import java.awt.event.*
 import java.beans.PropertyChangeListener
@@ -773,8 +773,8 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
   /**
    * @return tool button for the window with specified `ID`.
    */
-  @TestOnly
-  fun getStripeButton(id: String) = idToEntry[id]!!.stripeButton
+  @ApiStatus.Internal
+  fun getStripeButton(id: String) = idToEntry[id]?.stripeButton
 
   override fun getIdsOn(anchor: ToolWindowAnchor) = getVisibleToolWindowsOn(anchor).map { it.id }.toList()
 
@@ -863,7 +863,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     updateStateAndRemoveDecorator(info, entry, dirtyMode = false)
     entry.applyWindowInfo(info.copy())
 
-    if (Registry.`is`("ide.new.stripes.ui")) {
+    if (ExperimentalUI.isNewToolWindowsStripes()) {
       toolWindowPane?.onStripeButtonRemoved(project, entry.toolWindow)
     }
 
@@ -1082,7 +1082,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     button.updatePresentation()
     addStripeButton(button, toolWindowPane.getStripeFor((contentFactory as? ToolWindowFactoryEx)?.anchor ?: info.anchor))
 
-    if (Registry.`is`("ide.new.stripes.ui")) {
+    if (ExperimentalUI.isNewToolWindowsStripes()) {
       toolWindow.largeStripeAnchor = if (toolWindow.largeStripeAnchor == ToolWindowAnchor.NONE) task.anchor else toolWindow.largeStripeAnchor
     }
 
@@ -1306,7 +1306,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
   }
 
   override fun notifyByBalloon(options: ToolWindowBalloonShowOptions) {
-    if (Registry.`is`("ide.new.stripes.ui")) {
+    if (ExperimentalUI.isNewToolWindowsStripes()) {
       notifySquareButtonByBalloon(options)
       return
     }
@@ -2005,7 +2005,8 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
    * Spies on IdeToolWindow properties and applies them to the window
    * state.
    */
-  internal fun toolWindowPropertyChanged(toolWindow: ToolWindowImpl, property: ToolWindowProperty) {
+  @ApiStatus.Internal
+  open fun toolWindowPropertyChanged(toolWindow: ToolWindow, property: ToolWindowProperty) {
     val entry = idToEntry[toolWindow.id]
 
     if (property == ToolWindowProperty.AVAILABLE && !toolWindow.isAvailable && entry?.readOnlyWindowInfo?.isVisible == true) {
@@ -2245,7 +2246,7 @@ private const val ACTIVE_ATTR_VALUE = "active"
 private const val LAYOUT_TO_RESTORE = "layout-to-restore"
 private const val RECENT_TW_TAG = "recentWindows"
 
-internal enum class ToolWindowProperty {
+enum class ToolWindowProperty {
   TITLE, ICON, AVAILABLE, STRIPE_TITLE
 }
 

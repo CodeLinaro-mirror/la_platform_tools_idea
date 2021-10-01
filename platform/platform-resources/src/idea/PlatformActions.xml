@@ -395,6 +395,7 @@
     <group id="Diff.EditorGutterPopupMenu">
       <group id="Diff.EditorGutterPopupMenu.EditorSettings"/>
     </group>
+    <group id="Diff.Binary.Settings" popup="true" icon="AllIcons.General.GearPlain"/>
 
     <action id="ScrollTreeToCenter" class="com.intellij.ide.actions.ScrollTreeToCenterAction" use-shortcut-of="EditorScrollToCenter"/>
 
@@ -715,6 +716,7 @@
           <action id="CloseActiveTab" class="com.intellij.ide.actions.CloseActiveTabAction"/>
           <action id="JumpToLastWindow" class="com.intellij.ide.actions.JumpToLastWindowAction"/>
           <action id="MaximizeToolWindow" class="com.intellij.openapi.wm.impl.MaximizeToolWindowAction"/>
+          <action id="DockToolWindow" class="com.intellij.openapi.wm.impl.DockToolWindowAction"/>
           <separator/>
           <group id="TW.ViewModeGroup" class="com.intellij.ide.actions.ToolWindowViewModeAction$Group" popup="true"/>
           <group id="TW.MoveToGroup" class="com.intellij.ide.actions.ToolWindowMoveAction$Group"/>

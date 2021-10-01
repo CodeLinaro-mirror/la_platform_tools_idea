@@ -1,7 +1,4 @@
-/*
- * Copyright 2010-2019 JetBrains s.r.o. and Kotlin Programming Language contributors.
- * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
- */
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.tools.projectWizard.templates
 
@@ -63,7 +60,7 @@ class KtorServerTemplate : Template() {
         targetConfigurationIR.addWithJavaIntoJvmTarget()
 
     override fun Reader.getFileTemplates(module: ModuleIR): List<FileTemplateDescriptorWithPath> = listOf(
-        FileTemplateDescriptor("$id/server.kt.vm", "server.kt".asPath()) asSrcOf SourcesetType.main
+        FileTemplateDescriptor("$id/server.kt.vm", "Server.kt".asPath()) asSrcOf SourcesetType.main
     )
 
     val imports = InterceptionPoint("imports", emptyList<String>())

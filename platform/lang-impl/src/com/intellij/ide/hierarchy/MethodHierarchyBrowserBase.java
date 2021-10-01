@@ -37,13 +37,21 @@ import java.util.function.Supplier;
 public abstract class MethodHierarchyBrowserBase extends HierarchyBrowserBaseEx {
   public static final String METHOD_TYPE = "Method {0}";
 
-  /** @deprecated Not used. See {@link com.intellij.ide.hierarchy.method.OverrideImplementMethodAction#getMethodHierarchyBrowser(AnActionEvent)}*/
+  /** @deprecated Use {@link #HIERARCHY_BROWSER} data key instead. */
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
   @Deprecated
   public static final DataKey<MethodHierarchyBrowserBase> DATA_KEY = DataKey.create("com.intellij.ide.hierarchy.MethodHierarchyBrowserBase");
 
-  public MethodHierarchyBrowserBase(final Project project, final PsiElement method) {
+  public MethodHierarchyBrowserBase(Project project, PsiElement method) {
     super(project, method);
+  }
+
+  @Override
+  public Object getData(@NotNull String dataId) {
+    if (DATA_KEY.is(dataId)) {
+      return this;
+    }
+    return super.getData(dataId);
   }
 
   @Override
@@ -53,7 +61,7 @@ public abstract class MethodHierarchyBrowserBase extends HierarchyBrowserBaseEx 
   }
 
   @Override
-  protected Map<String, Supplier<String>> getPresentableNameMap() {
+  protected @NotNull Map<String, Supplier<String>> getPresentableNameMap() {
     HashMap<String, Supplier<String>> map = new HashMap<>();
     map.put(METHOD_TYPE, MethodHierarchyBrowserBase::getMethodType);
     return map;
@@ -68,9 +76,9 @@ public abstract class MethodHierarchyBrowserBase extends HierarchyBrowserBaseEx 
   protected static JPanel createStandardLegendPanel(@NlsContexts.Label String methodDefinedText,
                                                     @NlsContexts.Label String methodNotDefinedLegallyText,
                                                     @NlsContexts.Label String methodShouldBeDefined) {
-    final JPanel panel = new JPanel(new GridBagLayout());
+    JPanel panel = new JPanel(new GridBagLayout());
 
-    final GridBagConstraints gc =
+    GridBagConstraints gc =
       new GridBagConstraints(0, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, JBUI.insets(3, 5, 0, 5), 0, 0);
 
     JLabel label = new JLabel(methodDefinedText, AllIcons.Hierarchy.MethodDefined, SwingConstants.LEFT);
@@ -112,28 +120,28 @@ public abstract class MethodHierarchyBrowserBase extends HierarchyBrowserBaseEx 
     }
 
     @Override
-    public final boolean isSelected(@NotNull final AnActionEvent event) {
+    public final boolean isSelected(@NotNull AnActionEvent event) {
       return HierarchyBrowserManager.getInstance(myProject).getState().HIDE_CLASSES_WHERE_METHOD_NOT_IMPLEMENTED;
     }
 
     @Override
-    public final void setSelected(@NotNull final AnActionEvent event, final boolean flag) {
+    public final void setSelected(@NotNull AnActionEvent event, boolean flag) {
       HierarchyBrowserManager.getInstance(myProject).getState().HIDE_CLASSES_WHERE_METHOD_NOT_IMPLEMENTED = flag;
       // invokeLater is called to update state of button before long tree building operation
       ApplicationManager.getApplication().invokeLater(() -> doRefresh(true));
     }
 
     @Override
-    public final void update(@NotNull final AnActionEvent event) {
+    public final void update(@NotNull AnActionEvent event) {
       super.update(event);
-      final Presentation presentation = event.getPresentation();
+      Presentation presentation = event.getPresentation();
       presentation.setEnabled(isValidBase());
     }
   }
 
   public static class BaseOnThisMethodAction extends BaseOnThisElementAction {
     public BaseOnThisMethodAction() {
-      super(IdeBundle.messagePointer("action.base.on.this.method"), MethodHierarchyBrowserBase.class, LanguageMethodHierarchy.INSTANCE);
+      super(IdeBundle.messagePointer("action.base.on.this.method"), LanguageMethodHierarchy.INSTANCE);
     }
   }
 

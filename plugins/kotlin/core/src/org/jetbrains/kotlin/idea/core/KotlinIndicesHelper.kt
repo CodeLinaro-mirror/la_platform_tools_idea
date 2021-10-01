@@ -1,18 +1,4 @@
-/*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.core
 
@@ -23,7 +9,6 @@ import com.intellij.psi.impl.CompositeShortNamesCache
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
 import com.intellij.psi.stubs.StringStubIndexExtension
-import com.intellij.util.indexing.IdFilter
 import org.jetbrains.kotlin.asJava.elements.KtLightElement
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.FrontendInternals
@@ -484,14 +469,13 @@ class KotlinIndicesHelper(
         nameFilter: (String) -> Boolean,
         processor: (DeclarationDescriptor) -> Unit
     ) {
-        val idFilter = IdFilter.getProjectIdFilter(resolutionFacade.project, false)
         val shortNamesCache = PsiShortNamesCache.getInstance(project)
 
         val allMethodNames = hashSetOf<String>()
         shortNamesCache.processAllMethodNames(
             { name -> if (nameFilter(name)) allMethodNames.add(name); true },
             scopeWithoutKotlin,
-            idFilter
+            null
         )
         for (name in allMethodNames) {
             ProgressManager.checkCanceled()
@@ -519,7 +503,7 @@ class KotlinIndicesHelper(
         }
 
         val allFieldNames = hashSetOf<String>()
-        shortNamesCache.processAllFieldNames({ name -> if (nameFilter(name)) allFieldNames.add(name); true }, scopeWithoutKotlin, idFilter)
+        shortNamesCache.processAllFieldNames({ name -> if (nameFilter(name)) allFieldNames.add(name); true }, scopeWithoutKotlin, null)
         for (name in allFieldNames) {
             ProgressManager.checkCanceled()
 

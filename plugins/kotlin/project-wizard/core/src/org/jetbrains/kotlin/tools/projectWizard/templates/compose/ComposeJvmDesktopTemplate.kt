@@ -1,7 +1,4 @@
-/*
- * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
- * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
- */
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.tools.projectWizard.templates.compose
 
@@ -73,10 +70,10 @@ class ComposeJvmDesktopTemplate : Template() {
         val dependsOnMppModule: Module? =
             module.originalModule.dependencies.map { moduleByReference(it) }.firstOrNull { it.template is ComposeMppModuleTemplate }
         if (dependsOnMppModule == null) {
-            +(FileTemplateDescriptor("$id/main.kt", "main.kt".asPath()) asSrcOf SourcesetType.main)
+            +(FileTemplateDescriptor("$id/main.kt", "Main.kt".asPath()) asSrcOf SourcesetType.main)
         } else {
             val javaPackage = dependsOnMppModule.javaPackage(pomIR()).asCodePackage()
-            +(FileTemplateDescriptor("composeMpp/main.kt.vm", "main.kt".asPath())
+            +(FileTemplateDescriptor("composeMpp/main.kt.vm", "Main.kt".asPath())
                     asSrcOf SourcesetType.main
                     withSettings ("sharedPackage" to javaPackage)
                     )

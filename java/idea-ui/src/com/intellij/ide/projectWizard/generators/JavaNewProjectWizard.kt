@@ -4,53 +4,67 @@ package com.intellij.ide.projectWizard.generators
 import com.intellij.ide.JavaUiBundle
 import com.intellij.ide.LabelAndComponent
 import com.intellij.ide.NewProjectWizard
-import com.intellij.ide.wizard.*
+import com.intellij.ide.util.projectWizard.WizardContext
+import com.intellij.ide.wizard.BuildSystemWithSettings
 import com.intellij.openapi.observable.properties.GraphProperty
 import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
 import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.roots.ui.configuration.JdkComboBox
 import com.intellij.openapi.roots.ui.configuration.projectRoot.ProjectSdksModel
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.layout.*
 import java.awt.Dimension
+import java.awt.event.ItemListener
 import javax.swing.JComponent
 
 class JavaNewProjectWizard : NewProjectWizard<JavaSettings> {
   override val language: String = "Java"
   override var settingsFactory = { JavaSettings() }
 
-  private val propertyGraph: PropertyGraph = PropertyGraph()
-  private val buildSystemProperty: GraphProperty<BuildSystemButton> = propertyGraph.graphProperty { BuildSystemButton(GradleGroovy) }
-
   override fun settingsList(settings: JavaSettings): List<LabelAndComponent> {
-    val buildSystemButtons = BuildSystemType.EP_BUILD_SYSTEM.extensions
-      .filter { it.name == GradleGroovy.name || it.name == Maven.name || it.name == Intellij.name }
-      .map { BuildSystemButton(it) }
-
-    buildSystemProperty.set(buildSystemButtons.first())
-
     var component: JComponent = JBLabel()
     panel {
       row {
-        component = buttonSelector(buildSystemButtons, buildSystemProperty) {it.buildSystemType.name}.component
+        component = buttonSelector(settings.buildSystemButtons.value, settings.buildSystemProperty) { it.name }.component
       }
     }
 
+    settings.propertyGraph.afterPropagation {
+      settings.buildSystemButtons.value.forEach { it.advancedSettings().apply { isVisible = false } }
+      settings.buildSystemProperty.get().advancedSettings().apply { isVisible = true }
+    }
+
+    val sdkCombo = JdkComboBox(null, ProjectSdksModel(), null, null, null, null)
+      .apply { minimumSize = Dimension(0, 0) }.also { it.addItemListener(ItemListener { settings.sdk = it.item as Sdk? }) }
+
+    settings.buildSystemProperty.set(settings.buildSystemButtons.value.first())
+
     return listOf(
-      LabelAndComponent(JavaUiBundle.message("label.project.wizard.new.project.build.system"), component),
-      LabelAndComponent(JavaUiBundle.message("label.project.wizard.new.project.jdk"),
-                        JdkComboBox(null, ProjectSdksModel(), null, null, null, null)
-                          .apply { minimumSize = Dimension(0, 0) })
-    )
+      LabelAndComponent(JBLabel(JavaUiBundle.message("label.project.wizard.new.project.build.system")), component),
+      LabelAndComponent(JBLabel(JavaUiBundle.message("label.project.wizard.new.project.jdk")), sdkCombo)
+    ).plus(settings.buildSystemButtons.value.map { LabelAndComponent(component = it.advancedSettings()) })
   }
 
-  override fun setupProject(project: Project?, settings: JavaSettings) {
-    settings
+  override fun setupProject(project: Project?, settings: JavaSettings, context: WizardContext) {
+    settings.buildSystemProperty.get().setupProject(settings)
   }
 }
 
+open class JavaBuildSystemWithSettings<P>(val buildSystemType: JavaBuildSystemType<P>) :
+  BuildSystemWithSettings<JavaSettings, P>(buildSystemType)
+
 class JavaSettings {
-  var version: String = "1.0"
-  var buildSystemSettings: String = "Gradle Groovy"
+  var sdk: Sdk? = null
+  val propertyGraph: PropertyGraph = PropertyGraph()
+  val buildSystemButtons: Lazy<List<JavaBuildSystemWithSettings<out Any?>>> = lazy {
+    JavaBuildSystemType.EP_NAME.extensionList.map {
+      JavaBuildSystemWithSettings(it)
+    }
+  }
+
+  val buildSystemProperty: GraphProperty<JavaBuildSystemWithSettings<*>> = propertyGraph.graphProperty {
+    buildSystemButtons.value.first()
+  }
 }

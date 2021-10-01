@@ -2,7 +2,7 @@
 package com.intellij.testFramework;
 
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.module.LanguageLevelUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.projectRoots.*;
 import com.intellij.openapi.projectRoots.impl.JavaSdkImpl;
@@ -45,7 +45,7 @@ public final class IdeaTestUtil {
     final LanguageLevelProjectExtension projectExt = LanguageLevelProjectExtension.getInstance(module.getProject());
 
     final LanguageLevel projectLevel = projectExt.getLanguageLevel();
-    final LanguageLevel moduleLevel = LanguageLevelModuleExtensionImpl.getInstance(module).getLanguageLevel();
+    final LanguageLevel moduleLevel = LanguageLevelUtil.getCustomLanguageLevel(module);
     try {
       projectExt.setLanguageLevel(level);
       setModuleLanguageLevel(module, level);
@@ -62,7 +62,7 @@ public final class IdeaTestUtil {
   }
 
   public static void setModuleLanguageLevel(@NotNull Module module, @NotNull LanguageLevel level, @NotNull Disposable parentDisposable) {
-    LanguageLevel prev = LanguageLevelModuleExtensionImpl.getInstance(module).getLanguageLevel();
+    LanguageLevel prev = LanguageLevelUtil.getCustomLanguageLevel(module);
     setModuleLanguageLevel(module, level);
     Disposer.register(parentDisposable, () -> setModuleLanguageLevel(module, prev));
   }
@@ -167,14 +167,11 @@ public final class IdeaTestUtil {
 
   public static String getMockJdkVersion(@NotNull String path) {
     String name = PathUtil.getFileName(path);
-    if (name.startsWith(MOCK_JDK_DIR_NAME_PREFIX)) {
-      return "java " + StringUtil.trimStart(name, MOCK_JDK_DIR_NAME_PREFIX);
-    }
-    return null;
+    return name.startsWith(MOCK_JDK_DIR_NAME_PREFIX) ? "java " + StringUtil.trimStart(name, MOCK_JDK_DIR_NAME_PREFIX) : null;
   }
 
   private static @NotNull File getPathForJdkNamed(@NotNull String name) {
-    return new File(PathManager.getCommunityHomePath(), "java/" + name);
+    return new File(PlatformTestUtil.getCommunityPath(), "java/" + name);
   }
 
   public static void addWebJarsToModule(@NotNull Module module) {

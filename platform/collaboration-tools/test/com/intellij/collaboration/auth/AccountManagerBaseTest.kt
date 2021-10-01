@@ -1,9 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.collaboration.auth
 
-import com.intellij.collaboration.api.ServerPath
 import com.intellij.ide.passwordSafe.PasswordSafe
-import com.intellij.openapi.util.Disposer
 import com.intellij.util.messages.MessageBusConnection
 import org.junit.Before
 import org.junit.Test
@@ -17,19 +15,21 @@ class AccountManagerBaseTest {
   private val account = MockAccount()
   private val account2 = MockAccount()
 
-  private lateinit var persistentAccounts: AccountsPersistentStateComponent<MockAccount, *>
+  private lateinit var accountsRepository: AccountsRepository<MockAccount>
   private lateinit var passwordSafe: PasswordSafe
   private lateinit var accountsListener: AccountsListener<MockAccount>
   private lateinit var manager: TestManager
 
   @Before
   fun createMocks() {
-    persistentAccounts = object : SimpleAccountsPersistentStateComponent<MockAccount>() {}
+    accountsRepository = object : AccountsRepository<MockAccount> {
+      override var accounts: Set<MockAccount> = setOf()
+    }
     passwordSafe = mock(PasswordSafe::class.java)
     @Suppress("UNCHECKED_CAST")
     accountsListener = mock(AccountsListener::class.java) as AccountsListener<MockAccount>
-    manager = TestManager(persistentAccounts, passwordSafe).apply {
-      addListener(Disposer.newDisposable(), accountsListener)
+    manager = TestManager(accountsRepository, passwordSafe).apply {
+      addListener(accountsListener)
     }
   }
 
@@ -117,15 +117,12 @@ class AccountManagerBaseTest {
 
   private class MockAccount(override val id: String = generateId()) : Account() {
     override val name: String = ""
-    override val server: ServerPath = object : ServerPath {
-      override fun toString() = "test_server"
-    }
   }
 
-  private class TestManager(private val persistentAccounts: AccountsPersistentStateComponent<MockAccount, *>,
+  private class TestManager(private val persistentAccounts: AccountsRepository<MockAccount>,
                             override val passwordSafe: PasswordSafe)
     : AccountManagerBase<MockAccount, String>("test") {
-    override fun persistentAccounts() = persistentAccounts
+    override fun accountsRepository() = persistentAccounts
     override fun messageBusConnection(): MessageBusConnection = mock(MessageBusConnection::class.java)
     override fun serializeCredentials(credentials: String): String = credentials
     override fun deserializeCredentials(credentials: String): String = credentials

@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diagnostic;
 
-import com.intellij.application.options.RegistryManager;
 import com.intellij.execution.process.OSProcessUtil;
 import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollector;
 import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.internal.statistic.utils.PluginInfo;
+import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationInfo;
@@ -17,12 +18,14 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.AppScheduledExecutorService;
 import com.intellij.util.containers.ContainerUtil;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -81,7 +84,7 @@ public final class PerformanceWatcher implements Disposable {
 
     AppScheduledExecutorService service = (AppScheduledExecutorService)AppExecutorUtil.getAppScheduledExecutorService();
     service.setNewThreadListener(new BiConsumer<>() {
-      private final int ourReasonableThreadPoolSize = RegistryManager.getInstance().intValue("core.pooled.threads");
+      private final int ourReasonableThreadPoolSize = getRegistryValue("core.pooled.threads");
 
       @Override
       public void accept(Thread thread, Runnable runnable) {
@@ -127,7 +130,18 @@ public final class PerformanceWatcher implements Disposable {
               }
               Attachment attachment = new Attachment("crash.txt", content);
               attachment.setIncluded(true);
-              Attachment[] attachments = new Attachment[]{attachment};
+
+              // include plugins list
+              String plugins = StreamEx.of(PluginManagerCore.getLoadedPlugins())
+                .filter(d -> d.isEnabled() && !d.isBundled())
+                .map(PluginInfoDetectorKt::getPluginInfoByDescriptor)
+                .filter(PluginInfo::isSafeToReport)
+                .map(i -> i.getId() + " (" + i.getVersion() + ")")
+                .joining("\n", "Extra plugins:\n", "");
+              Attachment pluginsAttachment = new Attachment("plugins.txt", plugins);
+              attachment.setIncluded(true);
+
+              Attachment[] attachments = new Attachment[]{attachment, pluginsAttachment};
 
               // look for extended crash logs
               File extraLog = findExtraLogFile(pid, appInfoFileLastModified);
@@ -172,7 +186,7 @@ public final class PerformanceWatcher implements Disposable {
   }
 
   private static int getMaxAttempts() {
-    return RegistryManager.getInstance().intValue("performance.watcher.unresponsive.max.attempts.before.log");
+    return getRegistryValue("performance.watcher.unresponsive.max.attempts.before.log");
   }
 
   public void processUnfinishedFreeze(@NotNull BiConsumer<? super File, ? super Integer> consumer) {
@@ -267,7 +281,7 @@ public final class PerformanceWatcher implements Disposable {
   }
 
   private static int getSamplingInterval() {
-    return RegistryManager.getInstance().intValue("performance.watcher.sampling.interval.ms");
+    return getRegistryValue("performance.watcher.sampling.interval.ms");
   }
 
   static int getDumpInterval() {
@@ -275,11 +289,15 @@ public final class PerformanceWatcher implements Disposable {
   }
 
   static int getUnresponsiveInterval() {
-    return RegistryManager.getInstance().intValue("performance.watcher.unresponsive.interval.ms");
+    return getRegistryValue("performance.watcher.unresponsive.interval.ms");
   }
 
   static int getMaxDumpDuration() {
-    return RegistryManager.getInstance().intValue("performance.watcher.dump.duration.s") * 1000;
+    return getRegistryValue("performance.watcher.dump.duration.s") * 1000;
+  }
+
+  private static int getRegistryValue(@NonNls @NotNull String key) {
+    return Registry._getWithoutStateCheck(key).asInteger();
   }
 
   private static String buildName() {
@@ -312,6 +330,7 @@ public final class PerformanceWatcher implements Disposable {
   }
 
   private void startTracking(long start) {
+    // todo: the registry key is being obtained _twice_ on every AWT event
     int delay = getUnresponsiveInterval();
     if (delay > 0) {
       myCurrentEDTEventChecker = new FreezeCheckerTask(start, delay);

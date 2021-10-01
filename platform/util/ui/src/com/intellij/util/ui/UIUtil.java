@@ -356,13 +356,6 @@ public final class UIUtil {
     }
   }
 
-  /** @deprecated use {@link JBUIScale} instead */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
-  public static boolean isAppleRetina() {
-    return false;
-  }
-
   public static @NotNull Couple<Color> getCellColors(@NotNull JTable table, boolean isSel, int row, int column) {
     return Couple.of(isSel ? table.getSelectionForeground() : table.getForeground(),
                      isSel ? table.getSelectionBackground() : table.getBackground());
@@ -857,7 +850,6 @@ public final class UIUtil {
   public static int getCheckBoxTextHorizontalOffset(@NotNull JCheckBox cb) {
     // logic copied from javax.swing.plaf.basic.BasicRadioButtonUI.paint
     ButtonUI ui = cb.getUI();
-    String text = cb.getText();
 
     Icon buttonIcon = cb.getIcon();
     if (buttonIcon == null && ui != null) {
@@ -866,27 +858,28 @@ public final class UIUtil {
       }
     }
 
-    Dimension size = new Dimension();
+    return getButtonTextHorizontalOffset(cb, cb.getSize(new Dimension()), buttonIcon);
+  }
+
+  public static int getButtonTextHorizontalOffset(@NotNull AbstractButton button, @NotNull Dimension size, @Nullable Icon buttonIcon) {
+    String text = button.getText();
+
     Rectangle viewRect = new Rectangle();
     Rectangle iconRect = new Rectangle();
     Rectangle textRect = new Rectangle();
 
-    Insets i = cb.getInsets();
+    Insets i = button.getInsets();
 
-    size = cb.getSize(size);
-    viewRect.x = i.left;
     viewRect.y = i.top;
     viewRect.width = size.width - (i.right + viewRect.x);
     viewRect.height = size.height - (i.bottom + viewRect.y);
-    iconRect.x = iconRect.y = iconRect.width = iconRect.height = 0;
-    textRect.x = textRect.y = textRect.width = textRect.height = 0;
 
     SwingUtilities.layoutCompoundLabel(
-      cb, cb.getFontMetrics(cb.getFont()), text, buttonIcon,
-      cb.getVerticalAlignment(), cb.getHorizontalAlignment(),
-      cb.getVerticalTextPosition(), cb.getHorizontalTextPosition(),
+      button, button.getFontMetrics(button.getFont()), text, buttonIcon,
+      button.getVerticalAlignment(), button.getHorizontalAlignment(),
+      button.getVerticalTextPosition(), button.getHorizontalTextPosition(),
       viewRect, iconRect, textRect,
-      text == null ? 0 : cb.getIconTextGap());
+      text == null ? 0 : button.getIconTextGap());
 
     return textRect.x;
   }
@@ -2303,15 +2296,6 @@ public final class UIUtil {
     editor.reshape(x, y, width, height);
   }
 
-  /**
-   * @deprecated the method was used to fix Aqua Look-n-Feel problems. Now it does not make sense
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
-  public static int fixComboBoxHeight(final int height) {
-    return height;
-  }
-
   public static final int LIST_FIXED_CELL_HEIGHT = 20;
 
   /**
@@ -3332,25 +3316,6 @@ public final class UIUtil {
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public static boolean isJreHiDPIEnabled() {
     return JreHiDpiUtil.isJreHiDPIEnabled();
-  }
-
-  /**
-   * @deprecated use {@link JreHiDpiUtil#isJreHiDPI(Graphics2D)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
-  public static boolean isJreHiDPI(@Nullable Graphics2D g) {
-    return JreHiDpiUtil.isJreHiDPI(g);
-  }
-
-  /**
-   * @deprecated use {@link UIUtil#getPanelBackground()} instead
-   */
-  @SuppressWarnings("SpellCheckingInspection")
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
-  public static @NotNull Color getPanelBackgound() {
-    return getPanelBackground();
   }
 
   public static void doNotScrollToCaret(@NotNull JTextComponent textComponent) {

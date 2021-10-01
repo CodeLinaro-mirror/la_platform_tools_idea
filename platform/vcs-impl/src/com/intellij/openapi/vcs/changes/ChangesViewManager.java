@@ -1,8 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.vcs.changes;
 
-import com.intellij.diff.util.DiffPlaces;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.CommonActionsManager;
 import com.intellij.ide.TreeExpander;
@@ -56,6 +55,7 @@ import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.util.xmlb.annotations.Attribute;
 import com.intellij.util.xmlb.annotations.XCollection;
 import com.intellij.vcs.commit.*;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -149,7 +149,7 @@ public class ChangesViewManager implements ChangesViewEx,
 
     @Override
     public String get() {
-      return isCommitToolWindowShown(myProject) ? VcsBundle.message("tab.title.commit") : VcsBundle.message("local.changes.tab");
+      return getLocalChangesToolWindowName(myProject);
     }
   }
 
@@ -455,8 +455,7 @@ public class ChangesViewManager implements ChangesViewEx,
 
       if (myChangeProcessor != null) Disposer.dispose(myChangeProcessor);
 
-      String place = isEditorPreview ? DiffPlaces.DEFAULT : DiffPlaces.CHANGES_VIEW;
-      myChangeProcessor = new ChangesViewDiffPreviewProcessor(myView, place);
+      myChangeProcessor = new ChangesViewDiffPreviewProcessor(myView, isEditorPreview);
       Disposer.register(this, myChangeProcessor);
 
       myDiffPreview = isEditorPreview ? installEditorPreview(myChangeProcessor) : installSplitterPreview(myChangeProcessor);
@@ -914,5 +913,9 @@ public class ChangesViewManager implements ChangesViewEx,
       label.setForeground(isError ? JBColor.RED : UIUtil.getLabelForeground());
       return label;
     };
+  }
+
+  static @NotNull @Nls String getLocalChangesToolWindowName(@NotNull Project project) {
+    return isCommitToolWindowShown(project) ? VcsBundle.message("tab.title.commit") : VcsBundle.message("local.changes.tab");
   }
 }
