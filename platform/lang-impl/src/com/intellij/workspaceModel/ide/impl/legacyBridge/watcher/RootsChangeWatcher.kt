@@ -21,10 +21,10 @@ import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.io.URLUtil
 import com.intellij.workspaceModel.ide.WorkspaceModel
 import com.intellij.workspaceModel.ide.getInstance
-import com.intellij.workspaceModel.ide.impl.legacyBridge.watcher.VirtualFileUrlWatcher.Companion.calculateAffectedEntities
 import com.intellij.workspaceModel.ide.impl.legacyBridge.project.ProjectRootManagerBridge
 import com.intellij.workspaceModel.ide.impl.legacyBridge.project.ProjectRootsChangeListener.Companion.calculateRootsChangeType
 import com.intellij.workspaceModel.ide.impl.legacyBridge.project.ProjectRootsChangeListener.Companion.shouldFireRootsChanged
+import com.intellij.workspaceModel.ide.impl.legacyBridge.watcher.VirtualFileUrlWatcher.Companion.calculateAffectedEntities
 import com.intellij.workspaceModel.storage.WorkspaceEntityStorage
 import com.intellij.workspaceModel.storage.bridgeEntities.ModifiableModuleEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleId
@@ -131,8 +131,10 @@ internal class RootsChangeWatcher(val project: Project) {
         val affectedEntities = mutableListOf<EntityWithVirtualFileUrl>()
         calculateAffectedEntities(storage, virtualFileUrl, affectedEntities)
         virtualFileUrl.subTreeFileUrls.forEach { fileUrl -> calculateAffectedEntities(storage, fileUrl, affectedEntities) }
-        if (affectedEntities.none { shouldFireRootsChanged(it.entity, project) }) return
-        result = calculateRootsChangeType(result, currentRootsChangeType)
+
+        if (affectedEntities.any { it.propertyName != "entitySource" && shouldFireRootsChanged(it.entity, project)}) {
+          result = calculateRootsChangeType(result, currentRootsChangeType)
+        }
       }
 
       private fun isRootChangeForbidden(): Boolean {
