@@ -86,25 +86,26 @@ public class HwFacadeHelper {
   // Android Studio: remove when commit 4ed7d550e028caf9b09cd156b3228a3e6abd6b98 is merged; we need to disable all JBCef* calls
   public static HwFacadeHelper create(@NotNull JComponent target) {
     return JBCefApp.isSupported() ?
-           new HwFacadeHelper(target) :
-           // do not provoke any JBCef* class loading
-           new HwFacadeHelper(target) {
-             @Override
-             public void addNotify() {
-             }
-             @Override
-             public void show() {
-             }
-             @Override
-             public void removeNotify() {
-             }
-             @Override
-             public void hide() {
-             }
-             @Override
-             public void paint(Graphics g, Consumer<? super Graphics> targetPaint) {
-             }
-           };
+      new HwFacadeHelper(target) :
+      // do not provoke any JBCef* class loading
+      new HwFacadeHelper(target) {
+        @Override
+        public void addNotify() {
+        }
+        @Override
+        public void show() {
+        }
+        @Override
+        public void removeNotify() {
+        }
+        @Override
+        public void hide() {
+        }
+        @Override
+        public void paint(@NotNull Graphics g, @NotNull Consumer<? super Graphics> targetPaint) {
+          targetPaint.accept(g);
+        }
+      };
   }
 
   public HwFacadeHelper(JComponent target) {
@@ -235,7 +236,7 @@ public class HwFacadeHelper {
     }
   }
 
-  public void paint(Graphics g, Consumer<? super Graphics> targetPaint) {
+  public void paint(@NotNull Graphics g, @NotNull Consumer<? super Graphics> targetPaint) {
     if (isActive()) {
       Dimension size = myTarget.getSize();
       if (myBackBuffer == null || myBackBuffer.getWidth() != size.width || myBackBuffer.getHeight() != size.height) {
