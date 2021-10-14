@@ -37,7 +37,7 @@ import static com.intellij.ide.impl.DataManagerImpl.validateEditor;
 /**
  * @author gregsh
  */
-class PreCachedDataContext implements DataContext, UserDataHolder, AnActionEvent.InjectedDataContextSupplier {
+class PreCachedDataContext implements AsyncDataContext, UserDataHolder, AnActionEvent.InjectedDataContextSupplier {
 
   private static int ourPrevMapEventCount;
   private static final Map<Component, Map<String, Object>> ourPrevMaps = ContainerUtil.createWeakKeySoftValueMap();
@@ -168,7 +168,7 @@ class PreCachedDataContext implements DataContext, UserDataHolder, AnActionEvent
         boolean alreadyComputed = computed.get(i);
         Object data = !alreadyComputed || key == PlatformDataKeys.SLOW_DATA_PROVIDERS ?
                       dataManager.getDataFromProvider(dataProvider, key.getName(), null, getFastDataRule(key)) : null;
-        if (data instanceof Editor) data = validateEditor((Editor)data, component);
+        if (key == CommonDataKeys.EDITOR || key == CommonDataKeys.HOST_EDITOR) data = validateEditor((Editor)data, component);
         if (data == null) continue;
 
         computed.set(i, true);

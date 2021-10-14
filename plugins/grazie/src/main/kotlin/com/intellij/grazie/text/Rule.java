@@ -1,6 +1,7 @@
 package com.intellij.grazie.text;
 
 import com.intellij.grazie.GrazieConfig;
+import com.intellij.pom.Navigatable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,19 +13,6 @@ public abstract class Rule {
   private final String globalId;
   private final String presentableName;
   private final String category;
-  private boolean enabledByDefault = true;
-
-  /**
-   * @deprecated use {@link #Rule(String, String, String)}
-   */
-  @Deprecated
-  public Rule(String globalId, String presentableName, String category, boolean enabledByDefault) {
-    this(globalId, presentableName, category);
-    this.enabledByDefault = enabledByDefault;
-    if (!globalId.contains(".")) {
-      throw new IllegalArgumentException("Global id should be a qualified name with at least one dot inside: " + this);
-    }
-  }
 
   /**
    * @param globalId a rule identifier that should be as unique as possible.
@@ -73,7 +61,14 @@ public abstract class Rule {
    * @return whether this rule is enabled by default
    */
   public boolean isEnabledByDefault() {
-    return enabledByDefault;
+    return true;
+  }
+
+  /**
+   * @return an optional navigatable to open from "Rule X settings" quick fix.
+   */
+  public @Nullable Navigatable editSettings() {
+    return null;
   }
 
   @SuppressWarnings("unused")

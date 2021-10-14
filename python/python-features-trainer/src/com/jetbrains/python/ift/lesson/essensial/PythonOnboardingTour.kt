@@ -6,6 +6,7 @@ import com.intellij.execution.ExecutionBundle
 import com.intellij.execution.RunManager
 import com.intellij.execution.ui.layout.impl.JBRunnerTabs
 import com.intellij.icons.AllIcons
+import com.intellij.ide.DataManager
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereManagerImpl
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereUI
 import com.intellij.ide.util.gotoByName.GotoActionModel
@@ -13,6 +14,8 @@ import com.intellij.idea.ActionsBundle
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.actionSystem.impl.ActionMenuItem
@@ -33,10 +36,12 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.impl.FocusManagerImpl
 import com.intellij.openapi.wm.impl.IdeFrameImpl
 import com.intellij.openapi.wm.impl.StripeButton
+import com.intellij.openapi.wm.impl.status.TextPanel
 import com.intellij.ui.ScreenUtil
 import com.intellij.ui.UIBundle
 import com.intellij.ui.components.fields.ExtendableTextField
 import com.intellij.ui.tree.TreeVisitor
+import com.intellij.util.Alarm
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import com.intellij.xdebugger.XDebuggerBundle
@@ -44,13 +49,14 @@ import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.ift.PythonLessonsBundle
 import com.jetbrains.python.ift.PythonLessonsUtil
-import icons.FeaturesTrainerIcons
 import org.intellij.lang.annotations.Language
 import org.jetbrains.annotations.Nls
+import training.FeaturesTrainerIcons
 import training.dsl.*
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.dsl.LessonUtil.restoreIfModified
 import training.dsl.LessonUtil.restoreIfModifiedOrMoved
+import training.dsl.LessonUtil.restorePopupPosition
 import training.learn.LearnBundle
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
@@ -75,6 +81,9 @@ import javax.swing.tree.TreePath
 
 class PythonOnboardingTour :
   KLesson("python.onboarding", PythonLessonsBundle.message("python.onboarding.lesson.name")) {
+
+  private lateinit var openLearnTaskId: TaskContext.TaskId
+  private var useDelay: Boolean = false
 
   private val demoConfigurationName: String = "welcome"
   private val demoFileName: String = "$demoConfigurationName.py"
@@ -101,6 +110,7 @@ class PythonOnboardingTour :
 
   override val lessonContent: LessonContext.() -> Unit = {
     prepareRuntimeTask {
+      useDelay = true
       configurations().forEach { runManager().removeConfiguration(it) }
 
       val root = ProjectUtils.getProjectRoot(project)
@@ -118,11 +128,15 @@ class PythonOnboardingTour :
 
     openLearnToolwindow()
 
+    showInterpreterConfiguration()
+
     runTasks()
 
     debugTasks()
 
     completionSteps()
+
+    waitBeforeContinue(500)
 
     contextActions()
 
@@ -144,13 +158,10 @@ class PythonOnboardingTour :
   }
 
   override fun onLessonEnd(project: Project, lessonPassed: Boolean) {
-    if (backupPopupLocation != null) {
-      invokeLater {
-        WindowStateService.getInstance(project).putLocation(SearchEverywhereManagerImpl.LOCATION_SETTINGS_KEY, backupPopupLocation)
-        backupPopupLocation = null
-      }
-    }
+    restorePopupPosition(project, SearchEverywhereManagerImpl.LOCATION_SETTINGS_KEY, backupPopupLocation)
+    backupPopupLocation = null
     if (!lessonPassed) return
+    val dataContextPromise = DataManager.getInstance().dataContextFromFocusAsync
     invokeLater {
       val result = MessageDialogBuilder.yesNoCancel(PythonLessonsBundle.message("python.onboarding.finish.title"),
                                                     PythonLessonsBundle.message("python.onboarding.finish.text",
@@ -164,7 +175,12 @@ class PythonOnboardingTour :
         Messages.YES -> invokeLater {
           LessonManager.instance.stopLesson()
           val closeAction = ActionManager.getInstance().getAction("CloseProject") ?: error("No close project action found")
-          invokeActionForFocusContext(closeAction)
+          dataContextPromise.onSuccess { context ->
+            invokeLater {
+              val event = AnActionEvent.createFromAnAction(closeAction, null, ActionPlaces.LEARN_TOOLWINDOW, context)
+              ActionUtil.performActionDumbAwareWithCallbacks(closeAction, event)
+            }
+          }
         }
         Messages.NO -> invokeLater {
           LearningUiManager.resetModulesView()
@@ -285,12 +301,13 @@ class PythonOnboardingTour :
         configurations().isNotEmpty()
       }
       restoreIfModified(sample)
+      rehighlightPreviousUi = true
     }
 
     task {
 
       triggerByPartOfComponent(highlightInside = true, usePulsation = true) { ui: ActionToolbarImpl ->
-        ui.takeIf { (ui.place == ActionPlaces.NAVIGATION_BAR_TOOLBAR || ui.place == ActionPlaces.MAIN_TOOLBAR) }?.let { toolbar ->
+        ui.takeIf { (ui.place == ActionPlaces.NAVIGATION_BAR_TOOLBAR || ui.place == ActionPlaces.MAIN_TOOLBAR) }?.let {
           val configurations = ui.components.find { it is JPanel && it.components.any { b -> b is ComboBoxAction.ComboBoxButton } }
           val stop = ui.components.find { it is ActionButton && it.action == ActionManager.getInstance().getAction("Stop") }
           if (configurations != null && stop != null) {
@@ -299,7 +316,8 @@ class PythonOnboardingTour :
             val width = stop.x + stop.width - x
             val height = stop.y + stop.height - y
             Rectangle(x, y, width, height)
-          } else null
+          }
+          else null
         }
       }
     }
@@ -323,8 +341,9 @@ class PythonOnboardingTour :
     }
 
     task {
+      openLearnTaskId = taskId
       text(PythonLessonsBundle.message("python.onboarding.balloon.open.learn.toolbar", strong(LearnBundle.message("toolwindow.stripe.Learn"))),
-           LearningBalloonConfig(Balloon.Position.atRight, width = 0))
+           LearningBalloonConfig(Balloon.Position.atRight, width = 0, duplicateMessage = true))
       stateCheck {
         ToolWindowManager.getInstance(project).getToolWindow("Learn")?.isVisible == true
       }
@@ -405,13 +424,7 @@ class PythonOnboardingTour :
     }
     task {
       text(PythonLessonsBundle.message("python.onboarding.type.division", code(" / l")))
-      var wasEmpty = false
-      proposeRestore {
-        checkExpectedStateOfEditor(previous.sample) {
-          if (it.isEmpty()) wasEmpty = true
-          wasEmpty && "/len".contains(it.replace(" ", ""))
-        }
-      }
+      proposeRestoreForInvalidText("/len")
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { // no highlighting
         it.toString().contains("string=len;")
       }
@@ -426,32 +439,31 @@ class PythonOnboardingTour :
       restoreByUi()
     }
 
-    lateinit var completionTask: TaskContext.TaskId
-    task("CodeCompletion") {
+    task {
       text(PythonLessonsBundle.message("python.onboarding.invoke.completion",
                                        code("values"),
-                                       code("()"),
-                                       action(it)))
-      trigger(it)
-      restoreIfModifiedOrMoved()
-      completionTask = taskId
-    }
-
-    task {
-      triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { item ->
-        item.toString().contains("values")
+                                       code("()")))
+      triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { // no highlighting
+        it.toString().contains("values")
       }
-      restoreIfModifiedOrMoved()
-      restoreByTimer() // completion may be invoked in the another place, for example...
+      proposeRestoreForInvalidText("values")
     }
 
     task {
       text(PythonLessonsBundle.message("python.onboarding.choose.values.item",
-                                       strong("val"), code("values"), action("EditorChooseLookupItem")))
+                                       code("values"), action("EditorChooseLookupItem")))
       stateCheck {
         checkEditorModification(completionPosition, "/len(values)")
       }
-      restoreByUi(restoreId = completionTask)
+      restoreByUi()
+    }
+  }
+
+  private fun TaskContext.proposeRestoreForInvalidText(needToType: String) {
+    proposeRestore {
+      checkExpectedStateOfEditor(previous.sample) {
+        needToType.contains(it.replace(" ", ""))
+      }
     }
   }
 
@@ -494,7 +506,7 @@ class PythonOnboardingTour :
       restoreByUi(delayMillis = defaultRestoreDelay)
     }
 
-    fun returnTypeMessage(project: Project)=
+    fun returnTypeMessage(project: Project) =
       if (PythonLessonsUtil.isPython3Installed(project)) PyPsiBundle.message("INTN.specify.return.type.in.annotation")
       else PyPsiBundle.message("INTN.specify.return.type.in.docstring")
 
@@ -553,7 +565,9 @@ class PythonOnboardingTour :
     }
 
     task {
+      transparentRestore = true
       before {
+        if (backupPopupLocation != null) return@before
         val ui = previous.ui ?: return@before
         val popupWindow = UIUtil.getParentOfType(JWindow::class.java, ui) ?: return@before
         val oldPopupLocation = WindowStateService.getInstance(project).getLocation(SearchEverywhereManagerImpl.LOCATION_SETTINGS_KEY)
@@ -577,6 +591,40 @@ class PythonOnboardingTour :
     }
 
     text(PythonLessonsBundle.message("python.onboarding.case.changed"))
+  }
+
+  private fun LessonContext.showInterpreterConfiguration() {
+    task {
+      addFutureStep {
+        if (useDelay) {
+          Alarm().addRequest({ completeStep() }, 500)
+        }
+        else {
+          completeStep()
+        }
+      }
+    }
+
+    task {
+      triggerByUiComponentAndHighlight(usePulsation = true) { info: TextPanel.WithIconAndArrows ->
+        info.toolTipText.contains(PyBundle.message("current.interpreter", ""))
+      }
+    }
+    task {
+      before {
+        useDelay = false
+      }
+      text(PythonLessonsBundle.message("python.onboarding.interpreter.description"))
+
+      restoreState(restoreId = openLearnTaskId) {
+        learningToolWindow(project)?.isVisible?.not() ?: true
+      }
+      restoreIfModified(sample)
+      proceedLink()
+    }
+    prepareRuntimeTask {
+      LearningUiHighlightingManager.clearHighlights()
+    }
   }
 
   private fun TaskRuntimeContext.runManager() = RunManager.getInstance(project)

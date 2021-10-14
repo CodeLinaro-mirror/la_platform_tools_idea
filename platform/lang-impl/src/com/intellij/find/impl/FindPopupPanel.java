@@ -11,7 +11,6 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
-import com.intellij.ide.scratch.ScratchImplUtil;
 import com.intellij.ide.scratch.ScratchUtil;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.Disposable;
@@ -347,10 +346,15 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
       };
 
       dialogWindow.addWindowListener(new WindowAdapter() {
+        private boolean wasOpened = false;
+
         @Override
         public void windowDeactivated(WindowEvent e) {
+          if (!wasOpened) {
+            return;
+          }
           // At the moment of deactivation there is just "temporary" focus owner (main frame),
-          // true focus owner (Search Everywhere popup etc.) appears later so the check should postponed too
+          // true focus owner (Search Everywhere popup etc.) appears later so the check should be postponed too
           ApplicationManager.getApplication().invokeLater(() -> {
             Component focusOwner = IdeFocusManager.getInstance(myProject).getFocusOwner();
             if (SwingUtilities.isDescendingFrom(focusOwner, FindPopupPanel.this)) return;
@@ -363,6 +367,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
 
         @Override
         public void windowOpened(WindowEvent e) {
+          wasOpened = true;
           Arrays.stream(Frame.getFrames())
             .filter(f -> f != null && f.getOwner() != dialogWindow
                          && f instanceof IdeFrame && ((IdeFrame)f).getProject() == myProject)
@@ -892,7 +897,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
   private static @NlsSafe String getPresentablePath(@NotNull Project project, @Nullable VirtualFile virtualFile, int maxChars) {
     if (virtualFile == null) return null;
     String path = ScratchUtil.isScratch(virtualFile)
-               ? ScratchImplUtil.getRelativePath(project, virtualFile)
+               ? ScratchUtil.getRelativePath(project, virtualFile)
                : VfsUtilCore.isAncestor(project.getBaseDir(), virtualFile, true)
                  ? VfsUtilCore.getRelativeLocation(virtualFile, project.getBaseDir())
                  : FileUtil.getLocationRelativeToUserHome(virtualFile.getPath());

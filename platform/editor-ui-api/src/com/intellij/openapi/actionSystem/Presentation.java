@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem;
 
 import com.intellij.DynamicBundle;
@@ -337,7 +337,7 @@ public final class Presentation implements Cloneable {
     fireBooleanPropertyChange(PROP_ENABLED, oldEnabled, myEnabled);
   }
 
-  public final void setEnabledAndVisible(boolean enabled) {
+  public void setEnabledAndVisible(boolean enabled) {
     setEnabled(enabled);
     setVisible(enabled);
   }
@@ -368,11 +368,15 @@ public final class Presentation implements Cloneable {
     }
   }
 
-  public void copyFrom(Presentation presentation) {
-    copyFrom(presentation, null);
+  public void copyFrom(@NotNull Presentation presentation) {
+    copyFrom(presentation, null, false);
   }
 
-  public void copyFrom(Presentation presentation, @Nullable Component customComponent) {
+  public void copyFrom(@NotNull Presentation presentation, @Nullable Component customComponent) {
+    copyFrom(presentation, customComponent, true);
+  }
+
+  private void copyFrom(@NotNull Presentation presentation, @Nullable Component customComponent, boolean forceNullComponent) {
     if (presentation == this) return;
 
     setTextWithMnemonic(presentation.getTextWithPossibleMnemonic());
@@ -390,7 +394,7 @@ public final class Presentation implements Cloneable {
       allKeys.addAll(myUserMap.keySet());
       if (!allKeys.isEmpty()) {
         for (String key : allKeys) {
-          if (key.equals(CustomComponentAction.COMPONENT_KEY.toString()) && customComponent != null) {
+          if (key.equals(CustomComponentAction.COMPONENT_KEY.toString()) && (customComponent != null || forceNullComponent)) {
             putClientProperty(key, customComponent);
           }
           else {

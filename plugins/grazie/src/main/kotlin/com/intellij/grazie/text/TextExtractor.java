@@ -9,7 +9,11 @@ import com.intellij.lang.LanguageExtensionPoint;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.extensions.ExtensionPoint;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.RecursionGuard;
+import com.intellij.openapi.util.RecursionManager;
+import com.intellij.openapi.util.UserDataHolderEx;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.SyntaxTraverser;
@@ -69,10 +73,16 @@ public abstract class TextExtractor {
       }
     }
 
+    Language fileLanguage = psi.getContainingFile().getLanguage();
+
     for (PsiElement each : hierarchy) {
       RecursionGuard.StackStamp stamp = RecursionManager.markStack();
 
-      TextContent content = doExtract(each, allowedDomains);
+      Language psiLanguage = each.getLanguage();
+      TextContent content = doExtract(each, allowedDomains, psiLanguage);
+      if (content == null && fileLanguage != psiLanguage) {
+        content = doExtract(each, allowedDomains, fileLanguage);
+      }
       if (content != null && stamp.mayCacheNow()) {
         PsiElement parent = content.getCommonParent();
         CachedValue<Set<TextContent>> cache = CachedValuesManager.getManager(parent.getProject()).createCachedValue(
@@ -94,7 +104,20 @@ public abstract class TextExtractor {
   private static boolean isSuitable(TextContent content, PsiElement psi) {
     return content.intersectsRange(psi.getTextRange()) &&
            !hasIntersectingInjection(content, psi.getContainingFile()) &&
-           !isSuppressionComment(content);
+           !isSuppressionComment(content) &&
+           !isCopyrightComment(content);
+  }
+
+  private static boolean isCopyrightComment(TextContent content) {
+    return (content.getDomain() == TextContent.TextDomain.COMMENTS || content.getDomain() == TextContent.TextDomain.DOCUMENTATION) &&
+           StringUtil.containsIgnoreCase(content.toString(), "Copyright") &&
+           isAtFileStart(content);
+  }
+
+  private static boolean isAtFileStart(TextContent content) {
+    PsiFile file = content.getContainingFile();
+    int textStart = content.textOffsetToFile(0);
+    return file.getViewProvider().getContents().subSequence(0, textStart).chars().noneMatch(Character::isLetterOrDigit);
   }
 
   private static boolean isSuppressionComment(TextContent content) {
@@ -119,15 +142,15 @@ public abstract class TextExtractor {
   }
 
   @SuppressWarnings("deprecation")
-  private static TextContent doExtract(@NotNull PsiElement anyRoot, @NotNull Set<TextContent.TextDomain> allowedDomains) {
-    TextExtractor extractor = EP.forLanguage(anyRoot.getLanguage());
+  private static TextContent doExtract(@NotNull PsiElement anyRoot, @NotNull Set<TextContent.TextDomain> allowedDomains, @NotNull Language language) {
+    TextExtractor extractor = EP.forLanguage(language);
     if (extractor != null) {
       TextContent roots = extractor.buildTextContent(anyRoot, allowedDomains);
       return roots != null && allowedDomains.contains(roots.getDomain()) ? roots : null;
     }
 
     // legacy extraction
-    for (GrammarCheckingStrategy strategy : LanguageGrammarChecking.INSTANCE.allForLanguage(anyRoot.getLanguage())) {
+    for (GrammarCheckingStrategy strategy : LanguageGrammarChecking.INSTANCE.allForLanguage(language)) {
       if (strategy.isMyContextRoot(anyRoot)) {
         GrammarCheckingStrategy.TextDomain oldDomain = strategy.getContextRootTextDomain(anyRoot);
         TextContent.TextDomain domain = StrategyTextExtractor.convertDomain(oldDomain);

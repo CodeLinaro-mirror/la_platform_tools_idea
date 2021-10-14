@@ -7,15 +7,17 @@ import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemDescriptorBase
 import com.intellij.codeInspection.ProblemHighlightType
-import com.intellij.grazie.GrazieConfig
 import com.intellij.grazie.ide.fus.GrazieFUSCounter
 import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieAddExceptionQuickFix
-import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieDisableRuleQuickFix
+import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieRuleSettingsAction
 import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieReplaceTypoQuickFix
 import com.intellij.grazie.ide.language.LanguageGrammarChecking
 import com.intellij.grazie.utils.toLinkedSet
 import com.intellij.lang.LanguageExtension
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.PsiFile
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.util.parents
 import com.intellij.refactoring.suggested.startOffset
@@ -47,13 +49,15 @@ internal class CheckerRunner(val text: TextContent) {
 
   fun toProblemDescriptors(problems: List<TextProblem>, isOnTheFly: Boolean): List<ProblemDescriptor> {
     val parent = text.commonParent
-    return problems.map { problem ->
-      ProblemDescriptorBase(
-        parent, parent, problem.getDescriptionTemplate(isOnTheFly),
-        if (isOnTheFly) toFixes(problem) else LocalQuickFix.EMPTY_ARRAY,
-        ProblemHighlightType.GENERIC_ERROR_OR_WARNING, false,
-        toFileRange(problem.highlightRange).shiftLeft(parent.startOffset),
-        true, isOnTheFly)
+    return problems.flatMap { problem ->
+      fileHighlightRanges(problem).map { range ->
+        ProblemDescriptorBase(
+          parent, parent, problem.getDescriptionTemplate(isOnTheFly),
+          if (isOnTheFly) toFixes(problem) else LocalQuickFix.EMPTY_ARRAY,
+          ProblemHighlightType.GENERIC_ERROR_OR_WARNING, false,
+          range.shiftLeft(parent.startOffset),
+          true, isOnTheFly)
+      }
     }
   }
 
@@ -64,8 +68,8 @@ internal class CheckerRunner(val text: TextContent) {
     for (root in text.findPsiElementAt(0).parents(withSelf = true)) {
       for (strategy in LanguageGrammarChecking.allForLanguage(root.language)) {
         if (strategy.isMyContextRoot(root)) {
-          val errorRange = toFileRange(descriptor.highlightRange).shiftLeft(root.startOffset)
-          val patternRange = toFileRange(descriptor.patternRange ?: descriptor.highlightRange).shiftLeft(root.startOffset)
+          val errorRange = text.textRangeToFile(descriptor.highlightRange).shiftLeft(root.startOffset)
+          val patternRange = text.textRangeToFile(descriptor.patternRange ?: descriptor.highlightRange).shiftLeft(root.startOffset)
           val typoRange = errorRange.startOffset until errorRange.endOffset
           val ruleRange = patternRange.startOffset until patternRange.endOffset
           if (!strategy.isTypoAccepted(text.commonParent, strategy.getRootsChain(root), typoRange, ruleRange) ||
@@ -84,7 +88,7 @@ internal class CheckerRunner(val text: TextContent) {
   }
 
   private fun ignoredRules(descriptor: TextProblem): RuleGroup {
-    val psiRange = toFileRange(descriptor.highlightRange)
+    val psiRange = text.textRangeToFile(descriptor.highlightRange)
     val textRange = text.fileRangeToText(psiRange) ?: return RuleGroup.EMPTY
     val leaves = (textRange.startOffset until textRange.endOffset).map { text.findPsiElementAt(it) }.toLinkedSet()
     val ignored = LinkedHashSet<String>()
@@ -104,40 +108,44 @@ internal class CheckerRunner(val text: TextContent) {
 
   private fun isSuppressed(problem: TextProblem): Boolean {
     val sentence = findSentence(problem)
-    val defaultPattern = defaultSuppressionPattern(problem, sentence)
-    val suppressed = GrazieConfig.get().suppressingContext.suppressed
-    if (defaultPattern.full in suppressed) {
+    if (defaultSuppressionPattern(problem, sentence).isSuppressed()) {
       return true
     }
 
     val patternRange = problem.patternRange
     val errorText = problem.highlightRange.subSequence(text)
-    return patternRange != null && sentence != null && SuppressionPattern(errorText, sentence).full in suppressed
+    return patternRange != null && sentence != null && SuppressionPattern(errorText, sentence).isSuppressed()
   }
 
   private fun findSentence(problem: TextProblem) =
     sentences.find { problem.highlightRange.intersects(it.range.first, it.range.last + 1) }?.token
 
   fun toFixes(problem: TextProblem): Array<LocalQuickFix> {
-    val file = text.commonParent.containingFile
+    val file = text.containingFile
     val result = arrayListOf<LocalQuickFix>()
     val spm = SmartPointerManager.getInstance(file.project)
-    val underline = spm.createSmartPsiFileRangePointer(file, toFileRange(problem.highlightRange))
+    val underline = fileHighlightRanges(problem).map { spm.createSmartPsiFileRangePointer(file, it) }
 
     val fixes = problem.corrections
     if (fixes.isNotEmpty()) {
       GrazieFUSCounter.typoFound(problem)
-      val replace = spm.createSmartPsiFileRangePointer(file, toFileRange(problem.replacementRange))
-      result.addAll(GrazieReplaceTypoQuickFix(problem.shortMessage, fixes, underline, replace).getAllAsFixes())
+      result.addAll(GrazieReplaceTypoQuickFix.getReplacementFixes(problem, underline, file))
     }
 
-    result.add(GrazieAddExceptionQuickFix(defaultSuppressionPattern(problem, findSentence(problem)), underline))
-    result.add(GrazieDisableRuleQuickFix(problem.shortMessage, problem.rule))
+    result.add(object : GrazieAddExceptionQuickFix(defaultSuppressionPattern(problem, findSentence(problem)), underline) {
+      override fun applyFix(project: Project, file: PsiFile, editor: Editor?) {
+        GrazieFUSCounter.quickFixInvoked(problem.rule, project, "add.exception")
+        super.applyFix(project, file, editor)
+      }
+    })
+    result.add(GrazieRuleSettingsAction(problem.rule.presentableName, problem.rule))
     return result.toTypedArray()
   }
 
-  private fun toFileRange(range: TextRange) =
-    TextRange(text.textOffsetToFile(range.startOffset), text.textOffsetToFile(range.endOffset))
+  private fun fileHighlightRanges(problem: TextProblem): List<TextRange> {
+    val range = text.textRangeToFile(problem.highlightRange)
+    return text.rangesInFile.asSequence().mapNotNull { it.intersection(range) }.filterNot { it.isEmpty }.toList()
+  }
 
   private fun defaultSuppressionPattern(problem: TextProblem, sentenceText: String?): SuppressionPattern {
     val text = problem.text
@@ -147,13 +155,6 @@ internal class CheckerRunner(val text: TextContent) {
     }
     return SuppressionPattern(problem.highlightRange.subSequence(text), sentenceText)
   }
-}
-
-internal class SuppressionPattern(errorText: CharSequence, sentenceText: String?) {
-  val errorText : String = normalize(errorText)
-  val full : String = this.errorText + (if (sentenceText == null) "" else "|" + normalize(sentenceText))
-
-  private fun normalize(text: CharSequence) = text.replace(Regex("\\s+"), " ").trim()
 }
 
 private val filterEp = LanguageExtension<ProblemFilter>("com.intellij.grazie.problemFilter")

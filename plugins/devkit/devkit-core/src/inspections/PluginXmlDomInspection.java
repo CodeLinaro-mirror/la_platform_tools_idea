@@ -199,9 +199,6 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
     else if (element instanceof ContentDescriptor) {
       annotateContentDescriptor((ContentDescriptor)element, holder);
     }
-    else if (element instanceof ContentDescriptor.ModuleDescriptor) {
-      annotateModuleDescriptor((ContentDescriptor.ModuleDescriptor)element, holder);
-    }
     else if (element instanceof Extensions) {
       annotateExtensions((Extensions)element, holder);
     }
@@ -226,7 +223,7 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
         annotateProjectComponent((Component.Project)element, holder);
       }
     }
-    else //noinspection deprecation
+    else
       if (element instanceof Helpset) {
       highlightRedundant(element, DevKitBundle.message("inspections.plugin.xml.deprecated.helpset"), holder);
     }
@@ -271,11 +268,6 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
     }
   }
 
-  private static void annotateModuleDescriptor(ContentDescriptor.ModuleDescriptor descriptor, DomElementAnnotationHolder holder) {
-    final IdeaPlugin ideaPlugin = descriptor.getName().getValue();
-    if (ideaPlugin == null) return;
-  }
-
   private static boolean isIdeaProjectOrJetBrains(DomElement element) {
     final Module module = element.getModule();
     if (module == null) return true;
@@ -284,7 +276,7 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
 
     final IdeaPlugin ideaPlugin = element.getParentOfType(IdeaPlugin.class, false);
     assert ideaPlugin != null;
-    return PluginManagerCore.VENDOR_JETBRAINS.equals(ideaPlugin.getVendor().getValue());
+    return PluginManagerCore.isDevelopedByJetBrains(ideaPlugin.getVendor().getValue());
   }
 
   private static void annotatePsiClassValue(GenericDomValue domValue, DomElementAnnotationHolder holder) {
@@ -510,7 +502,7 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
                            new AddMissingMainTag(DevKitBundle.message("inspections.plugin.xml.vendor.specify.jetbrains"),
                                                  vendor, PluginManagerCore.VENDOR_JETBRAINS));
     }
-    else if (!PluginManagerCore.VENDOR_JETBRAINS.equals(vendor.getValue())) {
+    else if (!PluginManagerCore.isVendorJetBrains(vendor.getValue())) {
       holder.createProblem(vendor, DevKitBundle.message("inspections.plugin.xml.plugin.should.have.jetbrains.vendor"));
     }
     else {
@@ -680,7 +672,6 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
   }
 
   private static void annotateExtensions(Extensions extensions, DomElementAnnotationHolder holder) {
-    //noinspection deprecation
     final GenericAttributeValue<IdeaPlugin> xmlnsAttribute = extensions.getXmlns();
     if (DomUtil.hasXml(xmlnsAttribute)) {
       highlightDeprecated(xmlnsAttribute, DevKitBundle.message("inspections.plugin.xml.use.defaultExtensionNs"), holder, false, true);

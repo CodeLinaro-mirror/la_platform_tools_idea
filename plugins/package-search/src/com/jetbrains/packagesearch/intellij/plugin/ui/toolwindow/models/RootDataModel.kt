@@ -4,22 +4,23 @@ import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.manageme
 import com.jetbrains.packagesearch.intellij.plugin.util.TraceInfo
 
 internal data class RootDataModel(
-    val projectModules: List<ModuleModel>,
-    val packageModels: List<PackageModel>,
+    val moduleModels: List<ModuleModel>,
+    val packageModels: List<UiPackageModel<*>>,
     val packagesToUpdate: PackagesToUpdate,
     val headerData: PackagesHeaderData,
     val targetModules: TargetModules,
     val allKnownRepositories: KnownRepositories.All,
     val knownRepositoriesInTargetModules: KnownRepositories.InTargetModules,
-    val selectedPackage: SelectedPackageModel<*>?,
+    val selectedPackage: UiPackageModel<*>?,
     val filterOptions: FilterOptions,
-    val traceInfo: TraceInfo
+    val traceInfo: TraceInfo,
+    val searchQuery: String
 ) {
 
     companion object {
 
         val EMPTY = RootDataModel(
-            projectModules = emptyList(),
+            moduleModels = emptyList(),
             packageModels = emptyList(),
             packagesToUpdate = PackagesToUpdate.EMPTY,
             headerData = PackagesHeaderData.EMPTY,
@@ -28,7 +29,8 @@ internal data class RootDataModel(
             knownRepositoriesInTargetModules = KnownRepositories.InTargetModules.EMPTY,
             selectedPackage = null,
             filterOptions = FilterOptions(),
-            traceInfo = TraceInfo.EMPTY
+            traceInfo = TraceInfo.EMPTY,
+            searchQuery = ""
         )
     }
 }

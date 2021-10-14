@@ -1,41 +1,46 @@
 package com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages
 
-import com.intellij.application.subscribe
-import com.intellij.ide.ui.LafManagerListener
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.application.AppUIExecutor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBPanelWithEmptyText
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.jetbrains.packagesearch.intellij.plugin.PackageSearchBundle
+import com.jetbrains.packagesearch.intellij.plugin.fus.FUSGroupIds
+import com.jetbrains.packagesearch.intellij.plugin.fus.PackageSearchEventsLogger
 import com.jetbrains.packagesearch.intellij.plugin.ui.ComponentActionWrapper
 import com.jetbrains.packagesearch.intellij.plugin.ui.PackageSearchUI
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.FilterOptions
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.KnownRepositories
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.LifetimeProvider
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.OperationExecutor
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageModel
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.SearchClient
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.SelectedPackageModel
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.TargetModules
+import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.UiPackageModel
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.operations.PackageSearchOperationFactory
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.PackageSearchPanelBase
 import com.jetbrains.packagesearch.intellij.plugin.ui.updateAndRepaint
+import com.jetbrains.packagesearch.intellij.plugin.ui.util.Displayable
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.emptyBorder
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.onOpacityChanged
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.onVisibilityChanged
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.scaled
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.scaledEmptyBorder
+import com.jetbrains.packagesearch.intellij.plugin.util.AppUI
 import com.jetbrains.packagesearch.intellij.plugin.util.TraceInfo
+import com.jetbrains.packagesearch.intellij.plugin.util.lifecycleScope
 import com.jetbrains.packagesearch.intellij.plugin.util.logDebug
-import com.jetbrains.rd.util.reactive.Property
-import com.jetbrains.rd.util.reactive.Signal
+import com.jetbrains.packagesearch.intellij.plugin.util.lookAndFeelFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.miginfocom.swing.MigLayout
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -51,18 +56,19 @@ import javax.swing.event.DocumentEvent
 internal class PackagesListPanel(
     private val project: Project,
     private val searchClient: SearchClient,
-    private val lifetimeProvider: LifetimeProvider,
     operationFactory: PackageSearchOperationFactory,
-    operationExecutor: OperationExecutor
-) : PackageSearchPanelBase(PackageSearchBundle.message("packagesearch.ui.toolwindow.tab.packages.title")), Disposable {
+    operationExecutor: OperationExecutor,
+    onItemSelectionChanged: SelectedPackageModelListener,
+    onSearchResultStateChanged: SearchResultStateChangeListener
+) : PackageSearchPanelBase(PackageSearchBundle.message("packagesearch.ui.toolwindow.tab.packages.title")), Displayable<PackagesListPanel.ViewModel> {
 
-    val selectedPackage = Property<SelectedPackageModel<*>?>(null)
+    val selectedPackage = MutableStateFlow<UiPackageModel<*>?>(null)
 
-    private val searchFieldFocus = Signal.Void()
+    private val searchFieldFocus = Channel<Unit>()
 
-    private val packagesTable = PackagesTable(project, operationExecutor, operationFactory)
+    private val packagesTable = PackagesTable(project, operationExecutor, operationFactory, onItemSelectionChanged, onSearchResultStateChanged)
 
-    private val searchTextField = PackagesSmartSearchField(searchFieldFocus, lifetimeProvider.lifetime)
+    private val searchTextField = PackagesSmartSearchField(searchFieldFocus.consumeAsFlow(), project)
         .apply {
             goToTable = {
                 if (packagesTable.hasInstalledItems) {
@@ -73,7 +79,14 @@ internal class PackagesListPanel(
                     false
                 }
             }
+            fieldClearedListener = {
+                PackageSearchEventsLogger.logSearchQueryClear()
+            }
         }
+
+    private val textChangedListener = SearchTextFieldTextChangedListener {
+        project.lifecycleScope.launch(Dispatchers.AppUI) { searchClient.setSearchQuery(searchTextField.text) }
+    }
 
     private val packagesPanel = PackageSearchUI.borderPanel {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -167,14 +180,10 @@ internal class PackagesListPanel(
 
         registerForUiEvents()
 
-        // Keep LAF in sync
-        val lafListener = LafManagerListener { updateLaf() }
-        LafManagerListener.TOPIC.subscribe(
-            lifetimeProvider.parentDisposable,
-            lafListener
-        )
+        project.lookAndFeelFlow.onEach { updateLaf() }
+            .launchIn(project.lifecycleScope)
 
-        updateLaf()
+        project.lifecycleScope.launch { updateLaf() }
     }
 
     fun setIsBusy(isBusy: Boolean) {
@@ -183,31 +192,6 @@ internal class PackagesListPanel(
 
         headerPanel.showBusyIndicator(isBusy)
         headerPanel.updateAndRepaint()
-    }
-
-    fun display(
-        headerData: PackagesHeaderData,
-        packageModels: List<PackageModel>,
-        targetModules: TargetModules,
-        knownRepositoriesInTargetModules: KnownRepositories.InTargetModules,
-        allKnownRepositories: KnownRepositories.All,
-        filterOptions: FilterOptions,
-        traceInfo: TraceInfo
-    ) {
-        onlyStableCheckBox.isSelected = filterOptions.onlyStable
-        onlyKotlinMpCheckBox.isSelected = filterOptions.onlyKotlinMultiplatform
-
-        updateListEmptyState(targetModules)
-
-        display(
-            headerData = headerData,
-            packageModels = packageModels,
-            onlyStable = filterOptions.onlyStable,
-            targetModules = targetModules,
-            knownRepositoriesInTargetModules = knownRepositoriesInTargetModules,
-            allKnownRepositories = allKnownRepositories,
-            traceInfo = traceInfo
-        )
     }
 
     private fun updateListEmptyState(targetModules: TargetModules) {
@@ -232,28 +216,49 @@ internal class PackagesListPanel(
 
     private fun isSearching() = !searchTextField.text.isNullOrBlank()
 
-    private fun display(
-        headerData: PackagesHeaderData,
-        packageModels: List<PackageModel>,
-        onlyStable: Boolean,
-        targetModules: TargetModules,
-        knownRepositoriesInTargetModules: KnownRepositories.InTargetModules,
-        allKnownRepositories: KnownRepositories.All,
-        traceInfo: TraceInfo
-    ) {
-        logDebug(traceInfo, "PackagesListPanel#display()") { "PackagesListPanel#display() — Got new data" }
+    internal data class ViewModel(
+        val headerData: PackagesHeaderData,
+        val filterOptions: FilterOptions,
+        val targetModules: TargetModules,
+        val knownRepositoriesInTargetModules: KnownRepositories.InTargetModules,
+        val allKnownRepositories: KnownRepositories.All,
+        val tableItems: PackagesTable.ViewModel.TableItems,
+        val traceInfo: TraceInfo,
+        val searchQuery: String
+    )
+
+    override suspend fun display(viewModel: ViewModel) = withContext(Dispatchers.AppUI) {
+        searchTextField.setTextWithoutFiringListeners(viewModel.searchQuery)
+        onlyStableCheckBox.isSelected = viewModel.filterOptions.onlyStable
+        onlyKotlinMpCheckBox.isSelected = viewModel.filterOptions.onlyKotlinMultiplatform
+
+        updateListEmptyState(viewModel.targetModules)
+
+        logDebug(viewModel.traceInfo, "PackagesListPanel#display()") { "PackagesListPanel#display() — Got new data" }
 
         headerPanel.display(
-            headerData.labelText,
-            headerData.count,
-            headerData.availableUpdatesCount,
-            headerData.updateOperations
+            HeaderPanel.ViewModel(
+                viewModel.headerData.labelText,
+                viewModel.headerData.count,
+                viewModel.headerData.availableUpdatesCount,
+                viewModel.headerData.updateOperations
+            )
         )
 
-        packagesTable.display(packageModels, onlyStable, targetModules, knownRepositoriesInTargetModules, allKnownRepositories, traceInfo)
-        tableScrollPane.isVisible = packageModels.isNotEmpty()
-        listPanel.updateAndRepaint()
+        packagesTable.display(
+            PackagesTable.ViewModel(
+                viewModel.tableItems,
+                viewModel.filterOptions.onlyStable,
+                viewModel.targetModules,
+                viewModel.knownRepositoriesInTargetModules,
+                viewModel.allKnownRepositories,
+                viewModel.traceInfo
+            )
+        )
 
+        tableScrollPane.isVisible = viewModel.tableItems.isNotEmpty()
+
+        listPanel.updateAndRepaint()
         packagesTable.updateAndRepaint()
         packagesPanel.updateAndRepaint()
     }
@@ -263,33 +268,22 @@ internal class PackagesListPanel(
             IdeFocusManager.getInstance(project).requestFocus(searchTextField, false)
         }
 
-        searchTextField.addDocumentListener(object : DocumentAdapter() {
-            override fun textChanged(e: DocumentEvent) {
-                AppUIExecutor.onUiThread().execute { searchClient.setSearchQuery(searchTextField.text) }
-            }
-        })
+        searchTextField.addDocumentListener(textChangedListener)
 
         onlyStableCheckBox.addItemListener { e ->
-            searchClient.setOnlyStable(e.stateChange == ItemEvent.SELECTED)
+            val selected = e.stateChange == ItemEvent.SELECTED
+            searchClient.setOnlyStable(selected)
+            PackageSearchEventsLogger.logToggle(FUSGroupIds.ToggleTypes.OnlyStable, selected)
         }
 
         onlyKotlinMpCheckBox.addItemListener { e ->
-            searchClient.setOnlyKotlinMultiplatform(e.stateChange == ItemEvent.SELECTED)
-        }
-
-        packagesTable.selectedPackage.advise(lifetimeProvider.lifetime) {
-            logDebug("PackagesListPanel#selectedPackage.advise()") {
-                if (it != null) {
-                    "User selected a package: ${it.packageModel.identifier}"
-                } else {
-                    "Package selection cleared"
-                }
-            }
-            selectedPackage.set(it)
+            val selected = e.stateChange == ItemEvent.SELECTED
+            searchClient.setOnlyKotlinMultiplatform(selected)
+            PackageSearchEventsLogger.logToggle(FUSGroupIds.ToggleTypes.OnlyKotlinMp, selected)
         }
     }
 
-    private fun updateLaf() {
+    private suspend fun updateLaf() = withContext(Dispatchers.AppUI) {
         @Suppress("MagicNumber") // Dimension constants
         with(searchTextField) {
             textEditor.putClientProperty("JTextField.Search.Gap", 6.scaled())
@@ -309,8 +303,15 @@ internal class PackagesListPanel(
         minimumSize = Dimension(200.scaled(), minimumSize.height)
     }
 
-    override fun dispose() {
-        logDebug("PackagesListPanel#dispose()") { "Disposing PackagesListPanel..." }
-        Disposer.dispose(packagesTable)
+    private fun PackagesSmartSearchField.setTextWithoutFiringListeners(searchQuery: String) {
+        removeDocumentListener(textChangedListener)
+        text = searchQuery
+        addDocumentListener(textChangedListener)
     }
 }
+
+@Suppress("FunctionName")
+fun SearchTextFieldTextChangedListener(action: (DocumentEvent) -> Unit) =
+    object : DocumentAdapter() {
+        override fun textChanged(e: DocumentEvent) = action(e)
+    }

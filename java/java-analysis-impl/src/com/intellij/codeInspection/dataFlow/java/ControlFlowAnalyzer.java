@@ -867,9 +867,24 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
     finishElement(statement);
   }
 
-  @Override public void visitSwitchLabelStatement(PsiSwitchLabelStatement statement) {
+  @Override
+  public void visitSwitchLabelStatement(PsiSwitchLabelStatement statement) {
     startElement(statement);
+    PsiCaseLabelElementList labelElementList = statement.getCaseLabelElementList();
+    if (labelElementList != null) {
+      for (PsiCaseLabelElement element : labelElementList.getElements()) {
+        if (element instanceof PsiDefaultCaseLabelElement) {
+          element.accept(this);
+        }
+      }
+    }
     finishElement(statement);
+  }
+
+  @Override
+  public void visitDefaultCaseLabelElement(PsiDefaultCaseLabelElement element) {
+    startElement(element);
+    finishElement(element);
   }
 
   @Override
@@ -954,40 +969,45 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
 
     if (body != null) {
       PsiStatement[] statements = body.getStatements();
-      ControlFlowOffset offset;
-      PsiSwitchLabelStatementBase defaultLabel = null;
+      PsiElement defaultLabel = null;
       for (PsiStatement statement : statements) {
-        if (statement instanceof PsiSwitchLabelStatementBase) {
-          PsiSwitchLabelStatementBase psiLabelStatement = (PsiSwitchLabelStatementBase)statement;
-          if (psiLabelStatement.isDefaultCase()) {
-            defaultLabel = psiLabelStatement;
-          }
-          else {
-            try {
-              offset = getStartOffset(statement);
-              PsiExpressionList values = psiLabelStatement.getCaseValues();
-              if (values != null) {
-                for (PsiExpression caseValue : values.getExpressions()) {
-                  boolean enumConstant = caseValue instanceof PsiReferenceExpression &&
-                                         ((PsiReferenceExpression)caseValue).resolve() instanceof PsiEnumConstant;
-
-                  if (caseValue != null && expressionValue != null && (enumConstant || PsiUtil.isConstantExpression(caseValue))) {
-                    addInstruction(new JvmPushInstruction(expressionValue, null));
-                    caseValue.accept(this);
-                    addInstruction(new BooleanBinaryInstruction(RelationType.EQ, true, new JavaSwitchLabelTakenAnchor(caseValue)));
-                  }
-                  else {
-                    pushUnknown();
-                  }
-
-                  addInstruction(new ConditionalGotoInstruction(offset, DfTypes.TRUE));
+        if (!(statement instanceof PsiSwitchLabelStatementBase)) {
+          continue;
+        }
+        PsiSwitchLabelStatementBase psiLabelStatement = (PsiSwitchLabelStatementBase)statement;
+        if (psiLabelStatement.isDefaultCase()) {
+          defaultLabel = psiLabelStatement;
+          continue;
+        }
+        try {
+          ControlFlowOffset offset = getStartOffset(statement);
+          PsiCaseLabelElementList labelElementList = psiLabelStatement.getCaseLabelElementList();
+          if (labelElementList != null) {
+            for (PsiCaseLabelElement labelElement : labelElementList.getElements()) {
+              if (labelElement instanceof PsiDefaultCaseLabelElement) {
+                defaultLabel = labelElement;
+                continue;
+              }
+              if (labelElement instanceof PsiExpression) {
+                PsiExpression expr = ((PsiExpression)labelElement);
+                boolean enumConstant = expr instanceof PsiReferenceExpression &&
+                                       ((PsiReferenceExpression)expr).resolve() instanceof PsiEnumConstant;
+                if (expressionValue != null && (enumConstant || PsiUtil.isConstantExpression(expr) ||
+                                                TypeConversionUtil.isNullType(expr.getType()))) {
+                  addInstruction(new JvmPushInstruction(expressionValue, null));
+                  expr.accept(this);
+                  addInstruction(new BooleanBinaryInstruction(RelationType.EQ, true, new JavaSwitchLabelTakenAnchor(expr)));
                 }
+                else {
+                  pushUnknown();
+                }
+                addInstruction(new ConditionalGotoInstruction(offset, DfTypes.TRUE));
               }
             }
-            catch (IncorrectOperationException e) {
-              LOG.error(e);
-            }
           }
+        }
+        catch (IncorrectOperationException e) {
+          LOG.error(e);
         }
       }
 
@@ -1593,47 +1613,58 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
     PsiExpression operand = expression.getOperand();
     CFGBuilder builder = new CFGBuilder(this);
     PsiTypeElement checkType = expression.getCheckType();
-    if (pattern instanceof PsiTypeTestPattern) {
-      PsiType type = ((PsiTypeTestPattern)pattern).getCheckType().getType();
+    if (pattern instanceof PsiTypeTestPattern && checkType != null) {
+      PsiType type = checkType.getType();
       PsiPatternVariable variable = ((PsiTypeTestPattern)pattern).getPatternVariable();
-      DfaVariableValue dfaVar = PlainDescriptor.createVariableValue(getFactory(), variable);
-      DfaValue expr = JavaDfaValueFactory.getExpressionDfaValue(getFactory(), operand);
-      if (expr instanceof DfaVariableValue) {
-        builder.push(expr);
-      }
-      else {
-        DfaVariableValue tmp = createTempVariable(operand.getType());
+      if (variable != null) {
+        DfaVariableValue dfaVar = PlainDescriptor.createVariableValue(getFactory(), variable);
+        DfaValue expr = JavaDfaValueFactory.getExpressionDfaValue(getFactory(), operand);
+        if (expr instanceof DfaVariableValue) {
+          builder.push(expr, operand);
+        }
+        else {
+          DfaVariableValue tmp = createTempVariable(operand.getType());
+          builder
+            .pushForWrite(tmp)
+            .pushExpression(operand)
+            .assign();
+        }
         builder
-          .pushForWrite(tmp)
-          .pushExpression(operand)
-          .assign();
+          .dup()
+          .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
+          .isInstance(expression, operand, type)
+          .ifConditionIs(false)
+          .pop()
+          .push(DfTypes.FALSE)
+          .elseBranch()
+          .pushForWrite(dfaVar)
+          .swap()
+          .assign()
+          .pop()
+          .push(DfTypes.TRUE)
+          .end();
+      } else {
+        buildSimpleInstanceof(builder, expression, operand, checkType);
       }
-      builder
-        .dup()
-        .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
-        .isInstance(expression, operand, type)
-        .ifConditionIs(false)
-        .pop()
-        .push(DfTypes.FALSE)
-        .elseBranch()
-        .pushForWrite(dfaVar)
-        .swap()
-        .assign()
-        .pop()
-        .push(DfTypes.TRUE)
-        .end();
     }
     else if (checkType != null) {
-      PsiType type = checkType.getType();
-      builder
-        .pushExpression(operand)
-        .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
-        .isInstance(expression, operand, type);
+      buildSimpleInstanceof(builder, expression, operand, checkType);
     }
     else {
       pushUnknown();
     }
     finishElement(expression);
+  }
+
+  private static void buildSimpleInstanceof(CFGBuilder builder,
+                                            PsiInstanceOfExpression expression,
+                                            PsiExpression operand,
+                                            PsiTypeElement checkType) {
+    PsiType type = checkType.getType();
+    builder
+      .pushExpression(operand)
+      .push(DfTypes.typedObject(type, Nullability.NOT_NULL))
+      .isInstance(expression, operand, type);
   }
 
   void addMethodThrows(PsiMethod method) {
@@ -1808,7 +1839,7 @@ public class ControlFlowAnalyzer extends JavaElementVisitor {
         }
         DfaControlTransferValue transfer = createTransfer("java.lang.NegativeArraySizeException");
         for (int i = dims - 1; i >= 0; i--) {
-          addInstruction(new EnsureInstruction(new NegativeArraySizeProblem(dimensions[i]), 
+          addInstruction(new EnsureInstruction(new NegativeArraySizeProblem(dimensions[i]),
                                                RelationType.GE, DfTypes.intValue(0), transfer, true));
           if (i != 0) {
             addInstruction(new PopInstruction());

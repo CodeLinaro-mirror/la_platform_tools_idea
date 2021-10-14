@@ -20,6 +20,7 @@ import net.miginfocom.swing.MigLayout
 
 class GrazieScopeTab : GrazieUIComponent {
   private val myDisabledLanguageIds = hashSetOf<String>()
+  private val myEnabledLanguageIds = hashSetOf<String>()
 
   private val cbLiterals = JBCheckBox(msg("grazie.settings.grammar.scope.places-to-check.literals"))
   private val cbComments = JBCheckBox(msg("grazie.settings.grammar.scope.places-to-check.comments"))
@@ -31,49 +32,52 @@ class GrazieScopeTab : GrazieUIComponent {
     languageList.setCheckBoxListListener(CheckBoxListListener { index, selected ->
       val language = languageList.getItemAt(index) ?: return@CheckBoxListListener
 
-      if (selected) {
-        myDisabledLanguageIds.remove(language.id)
-      }
-      else {
-        myDisabledLanguageIds.add(language.id)
+      myDisabledLanguageIds.remove(language.id)
+      myEnabledLanguageIds.remove(language.id)
+
+      val enabledByDefault = language.id !in CheckingContext.getLanguagesDisabledByDefault()
+      if (selected != enabledByDefault) {
+        (if (enabledByDefault) myDisabledLanguageIds else myEnabledLanguageIds).add(language.id)
       }
     })
     ListSpeedSearch(languageList) { it.text }
   }
 
-  override fun isModified(state: GrazieConfig.State) =
-    with(state.checkingContext) {
-      cbLiterals.isSelected != isCheckInStringLiteralsEnabled ||
-      cbComments.isSelected != isCheckInCommentsEnabled ||
-      cbDocumentation.isSelected != isCheckInDocumentationEnabled ||
-      cbCommits.isSelected != isCheckInCommitMessagesEnabled ||
-      myDisabledLanguageIds != disabledLanguages
-    }
+  override fun isModified(state: GrazieConfig.State): Boolean {
+    val myState = toCheckingContext()
+    return state.checkingContext.domainsDiffer(myState) || state.checkingContext.languagesDiffer(myState)
+  }
 
   override fun reset(state: GrazieConfig.State) {
     with(state.checkingContext) {
       myDisabledLanguageIds.clear()
       myDisabledLanguageIds.addAll(disabledLanguages)
+      myEnabledLanguageIds.clear()
+      myEnabledLanguageIds.addAll(enabledLanguages)
       cbLiterals.isSelected = isCheckInStringLiteralsEnabled
       cbComments.isSelected = isCheckInCommentsEnabled
       cbDocumentation.isSelected = isCheckInDocumentationEnabled
       cbCommits.isSelected = isCheckInCommitMessagesEnabled
     }
 
+    val disabledByDefault = CheckingContext.getLanguagesDisabledByDefault()
+
     languageList.clear()
     for (language in TextExtractor.getSupportedLanguages().sortedBy { it.displayName }) {
-      languageList.addItem(language, language.displayName, language.id !in myDisabledLanguageIds)
+      val enabled = if (language.id in disabledByDefault) language.id in myEnabledLanguageIds else language.id !in myDisabledLanguageIds
+      languageList.addItem(language, language.displayName, enabled)
     }
   }
 
-  override fun apply(state: GrazieConfig.State): GrazieConfig.State = state.copy(
-    checkingContext = CheckingContext(
-      isCheckInStringLiteralsEnabled = cbLiterals.isSelected,
-      isCheckInCommentsEnabled = cbComments.isSelected,
-      isCheckInDocumentationEnabled = cbDocumentation.isSelected,
-      isCheckInCommitMessagesEnabled = cbCommits.isSelected,
-      disabledLanguages = myDisabledLanguageIds
-    )
+  override fun apply(state: GrazieConfig.State): GrazieConfig.State = state.copy(checkingContext = toCheckingContext())
+
+  private fun toCheckingContext() = CheckingContext(
+    isCheckInStringLiteralsEnabled = cbLiterals.isSelected,
+    isCheckInCommentsEnabled = cbComments.isSelected,
+    isCheckInDocumentationEnabled = cbDocumentation.isSelected,
+    isCheckInCommitMessagesEnabled = cbCommits.isSelected,
+    disabledLanguages = myDisabledLanguageIds,
+    enabledLanguages = myEnabledLanguageIds
   )
 
   override val component = panel(MigLayout(createLayoutConstraints())) {

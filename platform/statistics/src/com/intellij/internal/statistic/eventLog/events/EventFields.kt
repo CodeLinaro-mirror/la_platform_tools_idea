@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.eventLog.events
 
 import com.intellij.internal.statistic.eventLog.FeatureUsageData
@@ -55,8 +55,24 @@ object EventFields {
   @JvmStatic
   fun Int(@NonNls name: String): IntEventField = IntEventField(name)
 
+  /**
+   * Rounds integer value to the next power of two.
+   * Use it to anonymize sensitive information like the number of files in a project.
+   * @see com.intellij.internal.statistic.utils.StatisticsUtil.roundToPowerOfTwo
+   */
+  @JvmStatic
+  fun RoundedInt(@NonNls name: String): RoundedIntEventField = RoundedIntEventField(name)
+
   @JvmStatic
   fun Long(@NonNls name: String): LongEventField = LongEventField(name)
+
+  /**
+   * Rounds long value to the next power of two.
+   * Use it to anonymize sensitive information like the number of files in a project.
+   * @see com.intellij.internal.statistic.utils.StatisticsUtil.roundToPowerOfTwo
+   */
+  @JvmStatic
+  fun RoundedLong(@NonNls name: String): RoundedLongEventField = RoundedLongEventField(name)
 
   @JvmStatic
   fun Float(@NonNls name: String): FloatEventField = FloatEventField(name)

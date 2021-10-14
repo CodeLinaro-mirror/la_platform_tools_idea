@@ -4,6 +4,8 @@ package git4idea.ift.lesson
 import com.intellij.openapi.actionSystem.CommonShortcuts
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.impl.ActionMenuItem
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.vcs.ui.CommitMessage
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
@@ -24,8 +26,12 @@ import git4idea.ift.GitLessonsUtil.highlightSubsequentCommitsInGitLog
 import git4idea.ift.GitLessonsUtil.resetGitLogWindow
 import git4idea.ift.GitLessonsUtil.showWarningIfGitWindowClosed
 import git4idea.ift.GitLessonsUtil.triggerOnNotification
+import git4idea.rebase.interactive.dialog.GIT_INTERACTIVE_REBASE_DIALOG_DIMENSION_KEY
 import training.dsl.*
+import training.dsl.LessonUtil.adjustPopupPosition
+import training.dsl.LessonUtil.restorePopupPosition
 import training.ui.LearningUiHighlightingManager
+import java.awt.Point
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JButton
@@ -33,8 +39,10 @@ import javax.swing.JDialog
 import javax.swing.KeyStroke
 
 class GitInteractiveRebaseLesson : GitLesson("Git.InteractiveRebase", GitLessonsBundle.message("git.interactive.rebase.lesson.name")) {
-  override val existedFile = "src/git/martian_cat.yml"
+  override val existedFile = "git/martian_cat.yml"
   private val branchName = "fixes"
+
+  private var backupRebaseDialogLocation: Point? = null
 
   override val testScriptProperties = TaskTestContext.TestScriptProperties(skipTesting = true)
 
@@ -57,20 +65,25 @@ class GitInteractiveRebaseLesson : GitLesson("Git.InteractiveRebase", GitLessons
       proceedLink()
     }
 
-    val interactiveRebaseMenuItemText = GitBundle.message("action.Git.Interactive.Rebase.text")
-    lateinit var openRebaseDialogTaskId: TaskContext.TaskId
     task {
-      openRebaseDialogTaskId = taskId
       var commitHashToHighlight: Hash? = null
       before {
         LearningUiHighlightingManager.clearHighlights()
         val vcsData = VcsProjectLog.getInstance(project).dataManager
         commitHashToHighlight = vcsData?.findFirstCommitInBranch(branchName)
       }
-      text(GitLessonsBundle.message("git.interactive.rebase.open.context.menu"))
       highlightSubsequentCommitsInGitLog {
         it.id == commitHashToHighlight
       }
+    }
+
+    val interactiveRebaseMenuItemText = GitBundle.message("action.Git.Interactive.Rebase.text")
+    lateinit var openRebaseDialogTaskId: TaskContext.TaskId
+    task {
+      openRebaseDialogTaskId = taskId
+      text(GitLessonsBundle.message("git.interactive.rebase.open.context.menu"))
+      text(GitLessonsBundle.message("git.interactive.rebase.click.commit.tooltip"),
+           LearningBalloonConfig(Balloon.Position.above, 0))
       triggerByUiComponentAndHighlight { ui: ActionMenuItem ->
         ui.text == interactiveRebaseMenuItemText
       }
@@ -79,7 +92,7 @@ class GitInteractiveRebaseLesson : GitLesson("Git.InteractiveRebase", GitLessons
 
     task {
       text(GitLessonsBundle.message("git.interactive.rebase.choose.interactive.rebase",
-                                    strong(interactiveRebaseMenuItemText), LessonUtil.rawEnter()))
+                                    strong(interactiveRebaseMenuItemText)))
       val rebasingDialogTitle = GitBundle.message("rebase.interactive.dialog.title")
       triggerByUiComponentAndHighlight(false, false) { ui: JDialog ->
         ui.title?.contains(rebasingDialogTitle) == true
@@ -89,6 +102,11 @@ class GitInteractiveRebaseLesson : GitLesson("Git.InteractiveRebase", GitLessons
 
     lateinit var movingCommitText: String
     task {
+      before {
+        if (backupRebaseDialogLocation == null) {
+          backupRebaseDialogLocation = adjustPopupPosition(GIT_INTERACTIVE_REBASE_DIALOG_DIMENSION_KEY)
+        }
+      }
       text(GitLessonsBundle.message("git.interactive.rebase.select.one.commit"))
       highlightCommitInRebaseDialog(4)
       triggerByUiComponentAndHighlight(false, false) { ui: JBTable ->
@@ -170,6 +188,11 @@ class GitInteractiveRebaseLesson : GitLesson("Git.InteractiveRebase", GitLessons
     }
 
     text(GitLessonsBundle.message("git.interactive.rebase.congratulations"))
+  }
+
+  override fun onLessonEnd(project: Project, lessonPassed: Boolean) {
+    restorePopupPosition(project, GIT_INTERACTIVE_REBASE_DIALOG_DIMENSION_KEY, backupRebaseDialogLocation)
+    backupRebaseDialogLocation = null
   }
 
   private fun TaskContext.highlightCommitInRebaseDialog(rowInd: Int) {

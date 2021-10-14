@@ -4,6 +4,7 @@ package com.intellij.openapi.options.advanced
  import com.intellij.icons.AllIcons
  import com.intellij.ide.ui.search.SearchUtil
  import com.intellij.ide.ui.search.SearchableOptionsRegistrar
+ import com.intellij.internal.statistic.collectors.fus.ui.SettingsCounterUsagesCollector
  import com.intellij.openapi.actionSystem.AnActionEvent
  import com.intellij.openapi.application.ApplicationBundle
  import com.intellij.openapi.options.SearchableConfigurable
@@ -18,6 +19,7 @@ package com.intellij.openapi.options.advanced
  import com.intellij.util.Alarm
  import com.intellij.util.ui.JBUI
  import com.intellij.util.ui.UIUtil
+ import java.awt.Dimension
  import javax.swing.*
  import javax.swing.event.DocumentEvent
 
@@ -85,7 +87,8 @@ class AdvancedSettingsConfigurable : UiDslConfigurable.Simple(), SearchableConfi
                     reset()
                   }
                 }
-                actionButton(resetAction)
+                val minSize = AllIcons.Diff.Revert.iconHeight
+                actionButton(resetAction, Dimension(minSize, minSize))
                   .visibleIf(isDefaultPredicate.not())
 
                 label("").constraints(pushX)
@@ -203,6 +206,7 @@ class AdvancedSettingsConfigurable : UiDslConfigurable.Simple(), SearchableConfi
     val filterWords = searchText?.let { searchableOptionsRegistrar.getProcessedWords(it) } ?: emptySet()
     val filterWordsUnstemmed = searchText?.split(' ') ?: emptySet()
     val visibleGroupPanels = mutableSetOf<JPanel>()
+    var matchCount = 0
     for (settingsRow in settingsRows) {
       val textWords = searchableOptionsRegistrar.getProcessedWords(settingsRow.text)
       val idWords = settingsRow.id.split('.')
@@ -210,6 +214,7 @@ class AdvancedSettingsConfigurable : UiDslConfigurable.Simple(), SearchableConfi
       val idMatches = searchText == null || (filterWordsUnstemmed.isNotEmpty() && idWords.containsAll(filterWordsUnstemmed))
       val modifiedMatches = if (onlyShowModified) !settingsRow.isDefaultPredicate() else true
       val matches = (textMatches || idMatches) && modifiedMatches
+      if (matches) matchCount++
 
       settingsRow.row.visible = matches
       settingsRow.row.subRowsVisible = matches
@@ -230,6 +235,7 @@ class AdvancedSettingsConfigurable : UiDslConfigurable.Simple(), SearchableConfi
       }
     }
     nothingFoundRow.visible = visibleGroupPanels.isEmpty()
+    SettingsCounterUsagesCollector.ADVANDED_SETTINGS_SEARCH.log(matchCount, searchText?.length ?: 0, onlyShowModified)
   }
 
   private fun updateMatchText(component: JComponent, @NlsSafe baseText: String, @NlsSafe searchText: String?) {

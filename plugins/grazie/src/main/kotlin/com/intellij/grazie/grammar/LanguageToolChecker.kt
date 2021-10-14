@@ -21,6 +21,7 @@ import org.jetbrains.annotations.VisibleForTesting
 import org.languagetool.JLanguageTool
 import org.languagetool.Languages
 import org.languagetool.markup.AnnotatedTextBuilder
+import org.languagetool.rules.GenericUnpairedBracketsRule
 import org.languagetool.rules.RuleMatch
 import org.slf4j.LoggerFactory
 import java.util.*
@@ -29,9 +30,9 @@ import java.util.*
 class LanguageToolChecker : TextChecker() {
   override fun getRules(locale: Locale): Collection<Rule> {
     val language = Languages.getLanguageForLocale(locale)
-    val state = GrazieConfig.get();
+    val state = GrazieConfig.get()
     val lang = state.enabledLanguages.find { language == it.jLanguage } ?: return emptyList()
-    return getRules(lang, state)
+    return grammarRules(LangTool.getTool(lang), lang)
   }
 
   override fun check(extracted: TextContent): @NotNull List<TextProblem> {
@@ -51,7 +52,22 @@ class LanguageToolChecker : TextChecker() {
     override fun getPatternRange() = TextRange(match.patternFromPos, match.patternToPos)
 
     override fun fitsGroup(group: RuleGroup): Boolean {
-      return super.fitsGroup(group) || group.rules.any { id -> isAbstractCategory(id) && match.rule.id == id }
+      val ruleId = match.rule.id
+      if (RuleGroup.INCOMPLETE_SENTENCE in group.rules) {
+        if (highlightRange.startOffset == 0 &&
+            (ruleId == "SENTENCE_FRAGMENT" || ruleId == "SENT_START_CONJUNCTIVE_LINKING_ADVERB_COMMA" || ruleId == "AGREEMENT_SENT_START")) {
+          return true
+        }
+        if (ruleId == "MASS_AGREEMENT" && text.subSequence(highlightRange.endOffset, text.length).startsWith(".")) {
+          return true
+        }
+      }
+
+      if (RuleGroup.UNDECORATED_SENTENCE_SEPARATION in group.rules && ruleId in sentenceSeparationRules) {
+        return true
+      }
+
+      return super.fitsGroup(group) || group.rules.any { id -> isAbstractCategory(id) && ruleId == id }
     }
 
     private fun isAbstractCategory(id: String) =
@@ -61,9 +77,10 @@ class LanguageToolChecker : TextChecker() {
   companion object {
     private val logger = LoggerFactory.getLogger(LanguageToolChecker::class.java)
     private val interner = Interner.createWeakInterner<String>()
+    private val sentenceSeparationRules = setOf("LC_AFTER_PERIOD", "PUNT_GEEN_HL", "KLEIN_NACH_PUNKT")
 
-    internal fun getRules(lang: Lang, state: GrazieConfig.State = GrazieConfig.get()): List<LanguageToolRule> {
-      return LangTool.getTool(lang, state).allRules.asSequence()
+    internal fun grammarRules(tool: JLanguageTool, lang: Lang): List<LanguageToolRule> {
+      return tool.allRules.asSequence()
         .distinctBy { it.id }
         .filter { r -> !r.isDictionaryBasedSpellingRule }
         .map { LanguageToolRule(lang, it) }
@@ -79,13 +96,15 @@ class LanguageToolChecker : TextChecker() {
 
       return try {
         ClassLoaderUtil.computeWithClassLoader<List<Problem>, Throwable>(GraziePlugin.classLoader) {
-          val annotated = AnnotatedTextBuilder().addText(str).build()
-          LangTool.getTool(lang).check(annotated, true, JLanguageTool.ParagraphHandling.NORMAL,
-                                       null, JLanguageTool.Mode.ALL, JLanguageTool.Level.PICKY)
-            .asSequence()
-            .filterNotNull()
-            .map { Problem(it, lang, text) }
-            .toList()
+          val tool = LangTool.getTool(lang)
+          val sentences = tool.sentenceTokenize(str)
+          if (sentences.any { it.length > 1000 }) emptyList()
+          else {
+            val annotated = AnnotatedTextBuilder().addText(str).build()
+            val matches = tool.check(annotated, true, JLanguageTool.ParagraphHandling.NORMAL,
+                                     null, JLanguageTool.Mode.ALL, JLanguageTool.Level.PICKY)
+            matches.mapNotNull { if (!isKnownLTBug(it, text)) Problem(it, lang, text) else null }
+          }
         }
       }
       catch (e: Throwable) {
@@ -96,6 +115,27 @@ class LanguageToolChecker : TextChecker() {
         logger.warn("Got exception during check for typos by LanguageTool", e)
         emptyList()
       }
+    }
+
+    private fun isKnownLTBug(match: RuleMatch, text: TextContent): Boolean {
+      if (match.rule is GenericUnpairedBracketsRule && match.fromPos > 0 &&
+          (text.startsWith("\")", match.fromPos - 1) || text.subSequence(0, match.fromPos).contains("(\""))) {
+        return true //https://github.com/languagetool-org/languagetool/issues/5269
+      }
+
+      if (match.rule.id == "ARTICLE_ADJECTIVE_OF" && text.substring(match.fromPos, match.toPos).equals("iterable", ignoreCase = true)) {
+        return true // https://github.com/languagetool-org/languagetool/issues/5270
+      }
+
+      if (match.rule.id == "EN_A_VS_AN" && text.subSequence(match.toPos, text.length).matches(Regex("[^\\p{javaLetterOrDigit}]*hour.*"))) {
+        return true // https://github.com/languagetool-org/languagetool/issues/5260
+      }
+
+      if (match.rule.id == "THIS_NNS_VB" && text.subSequence(match.toPos, text.length).matches(Regex("\\s+reverts\\s.*"))) {
+        return true // https://github.com/languagetool-org/languagetool/issues/5455
+      }
+
+      return false
     }
 
     @NlsSafe
@@ -134,7 +174,7 @@ class LanguageToolChecker : TextChecker() {
               }
             }
 
-            if (it.corrections.any { correction -> correction.isNullOrBlank().not() }) {
+            if (it.corrections.isNotEmpty()) {
               tr {
                 td {
                   valign = "top"

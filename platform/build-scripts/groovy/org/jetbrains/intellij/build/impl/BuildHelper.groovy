@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.util.lang.UrlClassLoader
@@ -32,6 +32,8 @@ final class BuildHelper {
   final MethodHandle brokenPluginsTask
   final MethodHandle reorderJars
   MethodHandle mergeJars
+
+  final MethodHandle setAppInfo
 
   private final MethodHandle copyDirHandle
 
@@ -69,15 +71,17 @@ final class BuildHelper {
                                                                 path, string, bool, logger))
 
     reorderJars = lookup.findStatic(helperClassLoader.loadClass("org.jetbrains.intellij.build.tasks.ReorderJarsKt"),
-                                                     "reorderJars",
-                                                     MethodType.methodType(voidClass,
-                                                                           path, path, iterable, path,
-                                                                           string, path,
-                                                                           logger))
+                                    "reorderJars",
+                                    MethodType.methodType(voidClass,
+                                                          path, path, iterable, path,
+                                                          string, path,
+                                                          logger))
     mergeJars = lookup.findStatic(helperClassLoader.loadClass("org.jetbrains.intellij.build.tasks.MergeJarsKt"),
-                                                     "mergeJars",
-                                                     MethodType.methodType(voidClass, path, List.class as Class<?>))
-  }
+                                  "mergeJars",
+                                  MethodType.methodType(voidClass, path, List.class as Class<?>))
+    setAppInfo = lookup.findStatic(helperClassLoader.loadClass("org.jetbrains.intellij.build.tasks.AsmKt"), "injectAppInfo",
+                                   MethodType.methodType(voidClass, path, path, string))
+  }  
 
   static void copyDir(Path fromDir, Path targetDir, BuildContext buildContext) {
     getInstance(buildContext).copyDirHandle.invokeWithArguments(fromDir, targetDir)
@@ -98,7 +102,11 @@ final class BuildHelper {
     Files.move(source, target)
   }
 
-  static void zip(@NotNull BuildContext buildContext, @NotNull Path targetFile, List<Path> dirs, @Nullable String prefix) {
+  static void zip(@NotNull BuildContext buildContext, @NotNull Path targetFile, @NotNull Path dir) {
+    zipWithPrefix(buildContext, targetFile, Collections.singletonList(dir), null)
+  }
+
+  static void zipWithPrefix(@NotNull BuildContext buildContext, @NotNull Path targetFile, List<Path> dirs, @Nullable String prefix) {
     Map<Path, String> map = new LinkedHashMap<>(dirs.size())
     for (Path dir : dirs) {
       map.put(dir, prefix ?: "")

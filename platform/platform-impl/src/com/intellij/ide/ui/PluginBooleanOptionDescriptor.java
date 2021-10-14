@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui;
 
 import com.intellij.ide.IdeBundle;
@@ -6,21 +6,18 @@ import com.intellij.ide.plugins.*;
 import com.intellij.ide.ui.search.BooleanOptionDescription;
 import com.intellij.ide.ui.search.NotABooleanOptionDescription;
 import com.intellij.notification.*;
-import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.extensions.PluginId;
+import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.ui.popup.Balloon;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.FileVisitResult;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -47,21 +44,20 @@ public final class PluginBooleanOptionDescriptor extends BooleanOptionDescriptio
     togglePluginState(enabled, Set.of(plugin));
   }
 
-  public static void togglePluginState(boolean enabled, Set<IdeaPluginDescriptor> plugins) {
+  public static void togglePluginState(boolean enabled,
+                                       @NotNull Set<IdeaPluginDescriptor> plugins) {
+    Map<PluginId, IdeaPluginDescriptorImpl> pluginIdMap = PluginManagerCore.buildPluginIdMap();
     Set<IdeaPluginDescriptor> autoSwitchedIds = new HashSet<>();
     for (IdeaPluginDescriptor descriptor : plugins) {
-      if (enabled) {
-        autoSwitchedIds.addAll(getPluginsIdsToEnable(descriptor));
-      }
-      else {
-        autoSwitchedIds.addAll(getPluginsIdsToDisable(descriptor));
-      }
+      Set<IdeaPluginDescriptor> descriptors = enabled ?
+                                              getPluginsIdsToEnable(descriptor, pluginIdMap) :
+                                              getPluginsIdsToDisable(descriptor, pluginIdMap);
+      autoSwitchedIds.addAll(descriptors);
     }
 
-    boolean enabledWithoutRestart = ProjectPluginTrackerManager.getInstance().updatePluginsState(
-      autoSwitchedIds,
-      PluginEnableDisableAction.globally(enabled)
-    );
+    boolean enabledWithoutRestart = ProjectPluginTrackerManager.getInstance()
+      .updatePluginsState(autoSwitchedIds,
+                          PluginEnableDisableAction.globally(enabled));
 
     if (autoSwitchedIds.size() > plugins.size()) {
       showAutoSwitchNotification(plugins, autoSwitchedIds, enabled);
@@ -113,17 +109,17 @@ public final class PluginBooleanOptionDescriptor extends BooleanOptionDescriptio
       }
       builder.append('"').append(plugin.getName()).append('"');
     }
-    String dependenciesString = builder.toString();
-    return dependenciesString;
+    return builder.toString();
   }
 
-  private static @NotNull Set<IdeaPluginDescriptor> getPluginsIdsToEnable(@NotNull IdeaPluginDescriptor rootDescriptor) {
+  private static @NotNull Set<IdeaPluginDescriptor> getPluginsIdsToEnable(@NotNull IdeaPluginDescriptor rootDescriptor,
+                                                                          @NotNull Map<PluginId, IdeaPluginDescriptorImpl> pluginIdMap) {
     Set<IdeaPluginDescriptor> result = new HashSet<>();
     result.add(rootDescriptor);
 
     if (rootDescriptor instanceof IdeaPluginDescriptorImpl) {
       PluginManagerCore.processAllDependencies((IdeaPluginDescriptorImpl)rootDescriptor,
-                                               false,
+                                               pluginIdMap,
                                                descriptor -> PluginManagerCore.CORE_ID.equals(descriptor.getPluginId()) ||
                                                              descriptor.isEnabled() ||
                                                              !result.add(descriptor)
@@ -137,11 +133,11 @@ public final class PluginBooleanOptionDescriptor extends BooleanOptionDescriptio
     return result;
   }
 
-  private static @NotNull Set<IdeaPluginDescriptor> getPluginsIdsToDisable(@NotNull IdeaPluginDescriptor rootDescriptor) {
+  private static @NotNull Set<IdeaPluginDescriptor> getPluginsIdsToDisable(@NotNull IdeaPluginDescriptor rootDescriptor,
+                                                                           @NotNull Map<PluginId, IdeaPluginDescriptorImpl> pluginIdMap) {
     Set<IdeaPluginDescriptor> result = new HashSet<>();
     result.add(rootDescriptor);
 
-    // TODO unify with PluginBooleanOptionDescriptor.getPluginsIdsToDisable
     ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
     PluginId rootId = rootDescriptor.getPluginId();
 
@@ -163,7 +159,7 @@ public final class PluginBooleanOptionDescriptor extends BooleanOptionDescriptio
         continue;
       }
 
-      PluginManagerCore.processAllDependencies(pluginDescriptor, false, descriptor -> {
+      PluginManagerCore.processAllDependencies(pluginDescriptor, pluginIdMap, descriptor -> {
         if (Objects.equals(descriptor.getPluginId(), rootId)) {
           result.add(plugin);
           return FileVisitResult.TERMINATE;
@@ -209,7 +205,7 @@ public final class PluginBooleanOptionDescriptor extends BooleanOptionDescriptio
           IdeBundle.message("plugins.changed.notification.content", ApplicationNamesInfo.getInstance().getFullProductName()),
           NotificationType.INFORMATION)
         .setTitle(IdeBundle.message("plugins.changed.notification.title"))
-        .addAction(new AnAction(IdeBundle.message("ide.restart.action")) {
+        .addAction(new DumbAwareAction(IdeBundle.message("ide.restart.action")) {
           @Override
           public void actionPerformed(@NotNull AnActionEvent e) {
             ApplicationManager.getApplication().restart();

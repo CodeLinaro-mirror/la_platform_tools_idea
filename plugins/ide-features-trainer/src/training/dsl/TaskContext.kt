@@ -5,17 +5,16 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.ui.tree.TreeVisitor
 import com.intellij.util.ui.tree.TreeUtil
-import org.fest.swing.timing.Timeout
 import org.intellij.lang.annotations.Language
 import org.jetbrains.annotations.Nls
 import training.learn.LearnBundle
 import training.ui.LearningUiHighlightingManager
-import training.ui.LearningUiUtil
+import training.ui.LearningUiManager
 import java.awt.Component
 import java.awt.Rectangle
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Future
-import java.util.concurrent.TimeUnit
+import javax.swing.Icon
 import javax.swing.JList
 import javax.swing.JTree
 import javax.swing.tree.TreePath
@@ -31,6 +30,12 @@ abstract class TaskContext : LearningDslBase {
    * Default `null` value is reserved for the future automatic transparent restore calculation.
    */
   open var transparentRestore: Boolean? = null
+
+  /**
+   * Can be set to true iff you need to rehighlight the triggered element from the previous task when it will be shown again.
+   * Note: that the rehighlighted element can be different from `previous?.ui` (it can become `null` or `!isValid` or `!isShowing`)
+   * */
+  open var rehighlightPreviousUi: Boolean? = null
 
   /** Put here some initialization for the task */
   open fun before(preparation: TaskRuntimeContext.() -> Unit) = Unit
@@ -69,8 +74,12 @@ abstract class TaskContext : LearningDslBase {
    */
   open fun text(@Language("HTML") @Nls text: String, useBalloon: LearningBalloonConfig? = null) = Unit
 
+  /** Add an illustration */
+  fun illustration(icon: Icon): Unit = text("<illustration>${LearningUiManager.getIconIndex(icon)}</illustration>")
+
   /** Insert text in the current position */
   open fun type(text: String) = Unit
+
   /** Write a text to the learn panel (panel with a learning tasks). */
   open fun runtimeText(@Nls callback: RuntimeTextContext.() -> String?) = Unit
 
@@ -87,7 +96,9 @@ abstract class TaskContext : LearningDslBase {
   open fun triggers(vararg actionIds: String) = Unit
 
   /** An user need to rice an action which leads to necessary state change */
-  open fun <T : Any?> trigger(actionId: String, calculateState: TaskRuntimeContext.() -> T, checkState: TaskRuntimeContext.(T, T) -> Boolean) = Unit
+  open fun <T : Any?> trigger(actionId: String,
+                              calculateState: TaskRuntimeContext.() -> T,
+                              checkState: TaskRuntimeContext.(T, T) -> Boolean) = Unit
 
   /** An user need to rice an action which leads to appropriate end state */
   fun trigger(actionId: String, checkState: TaskRuntimeContext.() -> Boolean) {
@@ -113,9 +124,10 @@ abstract class TaskContext : LearningDslBase {
   /** [action] What should be done to pass the current task */
   open fun test(waitEditorToBeReady: Boolean = true, action: TaskTestContext.() -> Unit) = Unit
 
-  fun triggerByFoundPathAndHighlight(highlightBorder: Boolean = true, highlightInside: Boolean = false, usePulsation: Boolean = false,
+  fun triggerByFoundPathAndHighlight(highlightBorder: Boolean = true, highlightInside: Boolean = false,
+                                     usePulsation: Boolean = false, clearPreviousHighlights: Boolean = true,
                                      checkPath: TaskRuntimeContext.(tree: JTree, path: TreePath) -> Boolean) {
-    val options = LearningUiHighlightingManager.HighlightingOptions(highlightBorder, highlightInside, usePulsation)
+    val options = LearningUiHighlightingManager.HighlightingOptions(highlightBorder, highlightInside, usePulsation, clearPreviousHighlights)
     triggerByFoundPathAndHighlight(options) { tree ->
       TreeUtil.visitVisibleRows(tree, TreeVisitor { path ->
         if (checkPath(tree, path)) TreeVisitor.Action.INTERRUPT else TreeVisitor.Action.CONTINUE
@@ -124,87 +136,62 @@ abstract class TaskContext : LearningDslBase {
   }
 
   // This method later can be converted to the public (But I'm not sure it will be ever needed in a such form)
-  private fun triggerByFoundPathAndHighlight(options: LearningUiHighlightingManager.HighlightingOptions, checkTree: TaskRuntimeContext.(tree: JTree) -> TreePath?) {
+  protected open fun triggerByFoundPathAndHighlight(options: LearningUiHighlightingManager.HighlightingOptions,
+                                                    checkTree: TaskRuntimeContext.(tree: JTree) -> TreePath?) = Unit
+
+  inline fun <reified T : Component> triggerByPartOfComponent(highlightBorder: Boolean = true, highlightInside: Boolean = false,
+                                                              usePulsation: Boolean = false, clearPreviousHighlights: Boolean = true,
+                                                              noinline selector: ((candidates: Collection<T>) -> T?)? = null,
+                                                              crossinline rectangle: TaskRuntimeContext.(T) -> Rectangle?) {
+    val componentClass = T::class.java
     @Suppress("DEPRECATION")
-    triggerByUiComponentAndHighlight {
-      val delay = Timeout.timeout(500, TimeUnit.MILLISECONDS)
-      val tree = LearningUiUtil.findShowingComponentWithTimeout(null, JTree::class.java, delay) {
-        checkTree(it) != null
-      }
-      return@triggerByUiComponentAndHighlight {
-        LearningUiHighlightingManager.highlightJTreeItem(tree, options) {
-          checkTree(tree)
-        }
-        tree
-      }
-    }
+    triggerByFoundPathAndHighlightImpl(componentClass, highlightBorder, highlightInside,
+      usePulsation, clearPreviousHighlights, selector) { rectangle(it) }
   }
 
-  inline fun <reified T: Component> triggerByPartOfComponent(highlightBorder: Boolean = true, highlightInside: Boolean = false,
-                                                             usePulsation: Boolean = false,
-                                                             noinline selector: ((candidates: Collection<T>) -> T?)? = null,
-                                                             crossinline rectangle: TaskRuntimeContext.(T) -> Rectangle?) {
-    val options = LearningUiHighlightingManager.HighlightingOptions(highlightBorder, highlightInside, usePulsation)
-    @Suppress("DEPRECATION")
-    triggerByUiComponentAndHighlight {
-      val delay = Timeout.timeout(500, TimeUnit.MILLISECONDS)
-      val whole = LearningUiUtil.findShowingComponentWithTimeout(null, T::class.java, delay, selector) {
-        rectangle(it) != null
-      }
-      return@triggerByUiComponentAndHighlight {
-        LearningUiHighlightingManager.highlightPartOfComponent(whole, options) { rectangle(it) }
-        whole
-      }
-    }
-  }
+  @Deprecated("Use inline version")
+  open fun <T : Component> triggerByFoundPathAndHighlightImpl(componentClass: Class<T>,
+                                                              highlightBorder: Boolean,
+                                                              highlightInside: Boolean,
+                                                              usePulsation: Boolean,
+                                                              clearPreviousHighlights: Boolean,
+                                                              selector: ((candidates: Collection<T>) -> T?)?,
+                                                              rectangle: TaskRuntimeContext.(T) -> Rectangle?) = Unit
 
-  fun triggerByListItemAndHighlight(highlightBorder: Boolean = true, highlightInside: Boolean = false, usePulsation: Boolean = false,
+  fun triggerByListItemAndHighlight(highlightBorder: Boolean = true, highlightInside: Boolean = false,
+                                    usePulsation: Boolean = false, clearPreviousHighlights: Boolean = true,
                                     checkList: TaskRuntimeContext.(item: Any) -> Boolean) {
-    val options = LearningUiHighlightingManager.HighlightingOptions(highlightBorder, highlightInside, usePulsation)
+    val options = LearningUiHighlightingManager.HighlightingOptions(highlightBorder, highlightInside, usePulsation, clearPreviousHighlights)
     triggerByFoundListItemAndHighlight(options) { ui: JList<*> ->
       LessonUtil.findItem(ui) { checkList(it) }
     }
   }
 
   // This method later can be converted to the public (But I'm not sure it will be ever needed in a such form
-  private fun triggerByFoundListItemAndHighlight(options: LearningUiHighlightingManager.HighlightingOptions, checkList: TaskRuntimeContext.(list: JList<*>) -> Int?) {
-    @Suppress("DEPRECATION")
-    triggerByUiComponentAndHighlight {
-      val delay = Timeout.timeout(500, TimeUnit.MILLISECONDS)
-      val list = LearningUiUtil.findShowingComponentWithTimeout(null, JList::class.java, delay) l@{
-        val index = checkList(it)
-        index != null && it.visibleRowCount > index
-      }
-      return@triggerByUiComponentAndHighlight {
-        LearningUiHighlightingManager.highlightJListItem(list, options) {
-          checkList(list)
-        }
-        list
-      }
-    }
-  }
+  protected open fun triggerByFoundListItemAndHighlight(options: LearningUiHighlightingManager.HighlightingOptions,
+                                                        checkList: TaskRuntimeContext.(list: JList<*>) -> Int?) = Unit
 
   inline fun <reified ComponentType : Component> triggerByUiComponentAndHighlight(
-    highlightBorder: Boolean = true, highlightInside: Boolean = true, usePulsation: Boolean = false,
+    highlightBorder: Boolean = true, highlightInside: Boolean = true,
+    usePulsation: Boolean = false, clearPreviousHighlights: Boolean = true,
     noinline selector: ((candidates: Collection<ComponentType>) -> ComponentType?)? = null,
     crossinline finderFunction: TaskRuntimeContext.(ComponentType) -> Boolean
   ) {
+    val componentClass = ComponentType::class.java
     @Suppress("DEPRECATION")
-    triggerByUiComponentAndHighlight l@{
-      val delay = Timeout.timeout(500, TimeUnit.MILLISECONDS)
-      val component = LearningUiUtil.findShowingComponentWithTimeout(null, ComponentType::class.java, delay, selector) {
-        finderFunction(it)
-      }
-      return@l {
-        val options = LearningUiHighlightingManager.HighlightingOptions(highlightBorder, highlightInside, usePulsation)
-        LearningUiHighlightingManager.highlightComponent(component, options)
-        component
-      }
-    }
+    triggerByUiComponentAndHighlightImpl(componentClass, highlightBorder, highlightInside,
+      usePulsation, clearPreviousHighlights, selector) { finderFunction(it) }
   }
 
-  @Deprecated("It is auxiliary method with explicit class parameter. Use inlined short form instead")
-  open fun triggerByUiComponentAndHighlight(findAndHighlight: TaskRuntimeContext.() -> (() -> Component)) = Unit
+  @Deprecated("Use inline version")
+  open fun <ComponentType : Component>
+    triggerByUiComponentAndHighlightImpl(componentClass: Class<ComponentType>,
+                                         highlightBorder: Boolean,
+                                         highlightInside: Boolean,
+                                         usePulsation: Boolean,
+                                         clearPreviousHighlights: Boolean,
+                                         selector: ((candidates: Collection<ComponentType>) -> ComponentType?)?,
+                                         finderFunction: TaskRuntimeContext.(ComponentType) -> Boolean) = Unit
 
   open fun caret(position: LessonSamplePosition) = before {
     caret(position)

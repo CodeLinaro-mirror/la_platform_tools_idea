@@ -1,6 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application;
 
+import com.intellij.configurationStore.StoreUtilKt;
 import com.intellij.diagnostic.VMOptions;
 import com.intellij.ide.BootstrapBundle;
 import com.intellij.ide.actions.ImportSettingsFilenameFilter;
@@ -17,6 +18,8 @@ import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
+import com.intellij.openapi.keymap.KeymapManager;
+import com.intellij.openapi.keymap.impl.KeymapManagerImpl;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -440,7 +443,8 @@ public final class ConfigImportHelper {
     homes.add(newConfigDir.getParent());  // ... in the vicinity of the new config directory
     homes.add(newConfigDir.getFileSystem().getPath(PathManager.getDefaultConfigPathFor("X")).getParent());  // ... in the default location
     Path historic = newConfigDir.getFileSystem().getPath(defaultConfigPath("X2019.3"));
-    homes.add(SystemInfo.isMac ? historic.getParent() : historic.getParent().getParent());  // ... in the historic location
+    Path historicHome = SystemInfo.isMac ? historic.getParent() : historic.getParent().getParent();
+    homes.add(historicHome);  // ... in the historic location
 
     String prefix = getPrefixFromSelector(PathManager.getPathsSelector());
     if (prefix == null) prefix = getPrefixFromSelector(getNameWithVersion(newConfigDir));
@@ -455,16 +459,17 @@ public final class ConfigImportHelper {
     List<Path> otherCandidates = new ArrayList<>();
     for (Path home : homes) {
       if (home == null || !Files.isDirectory(home)) continue;
+      boolean dotted = !SystemInfo.isMac && home == historicHome;
 
       try (DirectoryStream<Path> stream = Files.newDirectoryStream(home)) {
         for (Path path : stream) {
           if (!path.equals(newConfigDir) && Files.isDirectory(path)) {
             String name = path.getFileName().toString();
-            if (nameMatchesPrefix(name, prefix)) {
+            if (nameMatchesPrefix(name, prefix, dotted)) {
               exactCandidates.add(path);
             }
             else if (exactCandidates.isEmpty() && productPrefixOtherIde != null) {
-              if (nameMatchesPrefix(name, productPrefixOtherIde)) {
+              if (nameMatchesPrefix(name, productPrefixOtherIde, dotted)) {
                 otherPreferredCandidates.add(path);
               }
               else if (otherPreferredCandidates.isEmpty() && isConfigDirectory(path)) {
@@ -525,8 +530,8 @@ public final class ConfigImportHelper {
     return new ConfigDirsSearchResult(lastModified, exact);
   }
 
-  private static boolean nameMatchesPrefix(@NotNull String name, @NotNull String prefix) {
-    return StringUtil.startsWithIgnoreCase(name, prefix) || StringUtil.startsWithIgnoreCase(name, '.' + prefix);
+  private static boolean nameMatchesPrefix(@NotNull String name, @NotNull String prefix, boolean dotted) {
+    return StringUtil.startsWithIgnoreCase(name, dotted ? '.' + prefix : prefix);
   }
 
   private static String getNameWithVersion(Path configDir) {
@@ -952,7 +957,8 @@ public final class ConfigImportHelper {
       return;
     }
 
-    Path keymapOptionFile = newConfigDir.resolve("options/keymap.xml");
+    String keymapFileSpec = StoreUtilKt.getDefaultStoragePathSpec(KeymapManagerImpl.class);
+    Path keymapOptionFile = newConfigDir.resolve(OPTIONS_DIRECTORY).resolve(keymapFileSpec);
     if (Files.exists(keymapOptionFile)) {
       return;
     }

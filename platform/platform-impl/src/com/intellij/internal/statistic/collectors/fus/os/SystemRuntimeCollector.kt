@@ -28,23 +28,23 @@ class SystemRuntimeCollector : ApplicationUsagesCollector() {
 
   override fun getMetrics(): Set<MetricEvent> {
     val result = HashSet<MetricEvent>()
-    result.add(CORES.metric(StatisticsUtil.getUpperBound(Runtime.getRuntime().availableProcessors(),
-                                                         intArrayOf(1, 2, 4, 6, 8, 12, 16, 20, 24, 32, 64))))
+    result.add(CORES.metric(StatisticsUtil.roundToUpperBound(Runtime.getRuntime().availableProcessors(),
+                                                             intArrayOf(1, 2, 4, 6, 8, 12, 16, 20, 24, 32, 64))))
 
     val osMxBean = ManagementFactory.getOperatingSystemMXBean() as OperatingSystemMXBean
-    val totalPhysicalMemory = StatisticsUtil.getUpperBound((osMxBean.totalPhysicalMemorySize.toDouble() / (1 shl 30)).roundToInt(),
-                                                           intArrayOf(1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 128, 256))
+    val totalPhysicalMemory = StatisticsUtil.roundToUpperBound((osMxBean.totalPhysicalMemorySize.toDouble() / (1 shl 30)).roundToInt(),
+                                                               intArrayOf(1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 128, 256))
     result.add(MEMORY_SIZE.metric(totalPhysicalMemory))
 
     var totalSwapSize = (osMxBean.totalSwapSpaceSize.toDouble() / (1 shl 30)).roundToInt()
     totalSwapSize = min(totalSwapSize, totalPhysicalMemory)
-    result.add(SWAP_SIZE.metric(if (totalSwapSize > 0) StatisticsUtil.getNextPowerOfTwo(totalSwapSize) else 0))
+    result.add(SWAP_SIZE.metric(StatisticsUtil.roundToPowerOfTwo(totalSwapSize)))
 
     try {
       val totalSpace = PathManager.getIndexRoot().toFile().totalSpace
       if (totalSpace > 0L) {
         val indexDirPartitionSize = min(1 shl 14, // currently max available consumer hard drive size is around 16 Tb
-                                        StatisticsUtil.getNextPowerOfTwo((totalSpace shr 30).toInt()))
+                                        StatisticsUtil.roundToPowerOfTwo((totalSpace shr 30).toInt()))
         val indexDirPartitionFreeSpace =
           ((PathManager.getIndexRoot().toFile().usableSpace.toDouble() / totalSpace) * 100).toInt()
         result.add(DISK_SIZE.metric(indexDirPartitionSize, indexDirPartitionFreeSpace))
@@ -69,10 +69,10 @@ class SystemRuntimeCollector : ApplicationUsagesCollector() {
       result.add(JVM_OPTION.metric(option.key, option.value))
     }
 
-    for (clientProperty in knownClientProperties) {
+    for (clientProperty in splashClientProperties) {
       val value = System.getProperty(clientProperty)
       if (value != null) {
-        result.add(JVM_CLIENT_PROPERTIES.metric(clientProperty, value))
+        result.add(JVM_CLIENT_PROPERTIES.metric(clientProperty, value.toBoolean()))
       }
     }
 
@@ -107,11 +107,11 @@ class SystemRuntimeCollector : ApplicationUsagesCollector() {
     )
 
     //No -D prefix is required here
-    private val knownClientProperties = arrayListOf(
+    private val splashClientProperties = arrayListOf(
       "splash", "nosplash"
     )
 
-    private val GROUP: EventLogGroup = EventLogGroup("system.runtime", 11)
+    private val GROUP: EventLogGroup = EventLogGroup("system.runtime", 13)
     private val DEBUG_AGENT: EventId1<Boolean> = GROUP.registerEvent("debug.agent", EventFields.Enabled)
     private val CORES: EventId1<Int> = GROUP.registerEvent("cores", EventFields.Int("value"))
     private val MEMORY_SIZE: EventId1<Int> = GROUP.registerEvent("memory.size", EventFields.Int("gigabytes"))
@@ -135,9 +135,9 @@ class SystemRuntimeCollector : ApplicationUsagesCollector() {
       EventFields.String("name", arrayListOf("Xmx", "Xms", "SoftRefLRUPolicyMSPerMB", "ReservedCodeCacheSize")),
       EventFields.Long("value")
     )
-    private val JVM_CLIENT_PROPERTIES: EventId2<String?, String?> = GROUP.registerEvent("jvm.client.properties",
-      EventFields.String("name", knownClientProperties),
-      EventFields.String("value", listOf("true", "false"))
+    private val JVM_CLIENT_PROPERTIES: EventId2<String?, Boolean> = GROUP.registerEvent("jvm.client.properties",
+                                                                                        EventFields.String("name", splashClientProperties),
+                                                                                        EventFields.Boolean("value")
     )
 
     fun convertOptionToData(arg: String): Pair<String, Long>? {

@@ -605,10 +605,10 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
     }
   }
 
-  protected void navigateInsideBar(int sourceItemIndex, final Object object) {
+  protected void navigateInsideBar(int sourceItemIndex, final Object object, boolean forceNavigate) {
     UIEventLogger.NavBarNavigate.log(myProject);
 
-    boolean restorePopup = shouldRestorePopupOnSelect(object, sourceItemIndex);
+    boolean restorePopup = !forceNavigate && shouldRestorePopupOnSelect(object, sourceItemIndex);
     Object obj = expandDirsWithJustOneSubdir(object);
     myContextObject = null;
 
@@ -635,8 +635,16 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
 
   private boolean shouldRestorePopupOnSelect(Object obj, int sourceItemIndex) {
     if (sourceItemIndex < myModel.size() - 1 && myModel.get(sourceItemIndex+1) == obj) return true;
+    return isExpandable(obj);
+  }
+
+  public static boolean isExpandable(Object obj) {
     if (!(obj instanceof PsiElement)) return true;
     PsiElement psiElement = (PsiElement)obj;
+    for (NavBarModelExtension modelExtension : NavBarModelExtension.EP_NAME.getExtensionList()) {
+      Boolean expand = modelExtension.shouldExpandOnClick(psiElement);
+      if (expand != null) return expand;
+    }
     return psiElement instanceof PsiDirectory || psiElement instanceof PsiDirectoryContainer;
   }
 
@@ -675,6 +683,9 @@ public class NavBarPanel extends JPanel implements DataProvider, PopupOwner, Dis
   @Override
   @Nullable
   public Object getData(@NotNull String dataId) {
+    if (CommonDataKeys.PROJECT.is(dataId)) {
+      return !myProject.isDisposed() ? myProject : null;
+    }
     return getData(dataId, () -> getSelection());
   }
 

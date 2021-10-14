@@ -22,19 +22,22 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBOptionButton
 import com.intellij.ui.table.JBTable
 import com.intellij.util.DocumentUtil
+import com.intellij.util.ui.tree.TreeUtil
 import com.intellij.vcs.commit.*
 import com.intellij.vcs.log.ui.frame.VcsLogChangesBrowser
 import git4idea.i18n.GitBundle
 import git4idea.ift.GitLessonsBundle
 import git4idea.ift.GitLessonsUtil.checkoutBranch
 import git4idea.ift.GitLessonsUtil.highlightSubsequentCommitsInGitLog
-import git4idea.ift.GitLessonsUtil.moveLearnToolWindowRight
+import git4idea.ift.GitLessonsUtil.openCommitWindowText
 import git4idea.ift.GitLessonsUtil.resetGitLogWindow
 import git4idea.ift.GitLessonsUtil.showWarningIfCommitWindowClosed
 import git4idea.ift.GitLessonsUtil.showWarningIfGitWindowClosed
+import git4idea.ift.GitLessonsUtil.showWarningIfModalCommitEnabled
 import training.dsl.*
 import training.project.ProjectUtils
 import training.ui.LearningUiHighlightingManager
+import java.awt.Rectangle
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JTree
@@ -42,7 +45,7 @@ import javax.swing.KeyStroke
 import javax.swing.tree.TreePath
 
 class GitCommitLesson : GitLesson("Git.Commit", GitLessonsBundle.message("git.commit.lesson.name")) {
-  override val existedFile = "src/git/simple_cat.yml"
+  override val existedFile = "git/puss_in_boots.yml"
   private val branchName = "feature"
   private val firstFileName = "simple_cat.yml"
   private val secondFileName = "puss_in_boots.yml"
@@ -68,8 +71,10 @@ class GitCommitLesson : GitLesson("Git.Commit", GitLessonsBundle.message("git.co
       modifyFiles()
     }
 
+    showWarningIfModalCommitEnabled()
+
     task {
-      text(GitLessonsBundle.message("git.commit.open.commit.window", action("CheckinProject")))
+      openCommitWindowText(GitLessonsBundle.message("git.commit.open.commit.window"))
       stateCheck {
         ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.COMMIT)?.isVisible == true
       }
@@ -89,25 +94,37 @@ class GitCommitLesson : GitLesson("Git.Commit", GitLessonsBundle.message("git.co
       commitWorkflowHandler.setCommitMessage(lastCommitMessage)
     }
 
-    moveLearnToolWindowRight()
+    task {
+      triggerByPartOfComponent(false) l@{ ui: ChangesListView ->
+        val path = TreeUtil.treePathTraverser(ui).find { it.getPathComponent(it.pathCount - 1).toString().contains(firstFileName) }
+                   ?: return@l null
+        val rect = ui.getPathBounds(path) ?: return@l null
+        Rectangle(rect.x, rect.y, 20, rect.height)
+      }
+    }
 
-    task { highlightVcsChange(secondFileName, highlightBorder = false) }
+    val commitWindowName = VcsBundle.message("commit.dialog.configurable")
+    task {
+      text(GitLessonsBundle.message("git.commit.choose.files", strong(commitWindowName), strong(firstFileName)))
+      text(GitLessonsBundle.message("git.commit.choose.files.balloon"),
+           LearningBalloonConfig(Balloon.Position.below, 300, cornerToPointerDistance = 55))
+      highlightVcsChange(firstFileName)
+      triggerOnOneChangeIncluded(secondFileName)
+      showWarningIfCommitWindowClosed()
+    }
 
     task {
-      text(GitLessonsBundle.message("git.commit.choose.files"))
-      text(GitLessonsBundle.message("git.commit.choose.files.balloon"), LearningBalloonConfig(Balloon.Position.atRight, 300))
-      highlightVcsChange(secondFileName)
-      triggerOnOneChangeIncluded(firstFileName)
-      showWarningIfCommitWindowClosed()
+      triggerByUiComponentAndHighlight(usePulsation = true) { ui: ActionButton ->
+        ActionManager.getInstance().getId(ui.action) == "ChangesView.ShowCommitOptions"
+      }
     }
 
     lateinit var showOptionsTaskId: TaskContext.TaskId
     task {
       showOptionsTaskId = taskId
       text(GitLessonsBundle.message("git.commit.open.before.commit.options", icon(AllIcons.General.Gear)))
-      triggerByUiComponentAndHighlight(usePulsation = true) { ui: ActionButton ->
-        ActionManager.getInstance().getId(ui.action) == "ChangesView.ShowCommitOptions"
-      }
+      text(GitLessonsBundle.message("git.commit.open.options.tooltip", strong(commitWindowName)),
+           LearningBalloonConfig(Balloon.Position.above, 0))
       triggerByUiComponentAndHighlight(false, false) { _: CommitOptionsPanel -> true }
       showWarningIfCommitWindowClosed()
     }
@@ -180,7 +197,8 @@ class GitCommitLesson : GitLesson("Git.Commit", GitLessonsBundle.message("git.co
       val amendCheckboxText = VcsBundle.message("checkbox.amend").dropMnemonic()
       text(GitLessonsBundle.message("git.commit.select.amend.checkbox",
                                     strong(amendCheckboxText),
-                                    LessonUtil.rawKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_M, InputEvent.ALT_DOWN_MASK))))
+                                    LessonUtil.rawKeyStroke(KeyStroke.getKeyStroke(KeyEvent.VK_M, InputEvent.ALT_DOWN_MASK)),
+                                    strong(commitWindowName)))
       triggerByUiComponentAndHighlight(usePulsation = true) { ui: JBCheckBox ->
         ui.text?.contains(amendCheckboxText) == true
       }
@@ -192,8 +210,8 @@ class GitCommitLesson : GitLesson("Git.Commit", GitLessonsBundle.message("git.co
 
     task {
       text(GitLessonsBundle.message("git.commit.select.file"))
-      highlightVcsChange(secondFileName)
-      triggerOnOneChangeIncluded(secondFileName)
+      highlightVcsChange(firstFileName)
+      triggerOnOneChangeIncluded(firstFileName)
       showWarningIfCommitWindowClosed()
     }
 

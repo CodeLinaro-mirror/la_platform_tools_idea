@@ -508,6 +508,26 @@ public class PythonHighlightingTest extends PyTestCase {
     doTest(LanguageLevel.PYTHON310, false, true);
   }
 
+  // PY-44974
+  public void testBitwiseOrUnionInOlderVersionsError() {
+    doTest(LanguageLevel.PYTHON39, false, false);
+  }
+
+  // PY-44974
+  public void testBitwiseOrUnionInOlderVersionsErrorIsInstance() {
+    doTest(LanguageLevel.PYTHON39, false, false);
+  }
+
+  // PY-49697
+  public void testNoErrorMetaClassOverloadBitwiseOrOperator() {
+    doTest(LanguageLevel.PYTHON39, false, false);
+  }
+
+  // PY-49697
+  public void testNoErrorMetaClassOverloadBitwiseOrOperatorReturnTypesUnion() {
+    doTest(LanguageLevel.PYTHON39, false, false);
+  }
+
   @NotNull
   private static EditorColorsScheme createTemporaryColorScheme() {
     EditorColorsManager manager = EditorColorsManager.getInstance();

@@ -40,6 +40,7 @@ import com.intellij.openapi.fileTypes.FileTypeListener;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.KeymapManager;
+import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.*;
 import com.intellij.openapi.project.impl.ProjectImpl;
@@ -135,6 +136,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
    */
   public static final Key<Boolean> SINGLETON_EDITOR_IN_WINDOW = Key.create("OPEN_OTHER_TABS_IN_MAIN_WINDOW");
   public static final String FILE_EDITOR_MANAGER = "FileEditorManager";
+  public static final String EDITOR_OPEN_INACTIVE_SPLITTER = "editor.open.inactive.splitter";
 
   public enum OpenMode {
     NEW_WINDOW,
@@ -338,7 +340,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
         return;
       }
       Component focusOwner = fm.getFocusOwner();
-      DockContainer container = myDockManager.getContainerFor(focusOwner);
+      DockContainer container = myDockManager.getContainerFor(focusOwner, DockableEditorTabbedContainer.class::isInstance);
       if (container instanceof DockableEditorTabbedContainer) {
         result.setResult(((DockableEditorTabbedContainer)container).getSplitters());
       }
@@ -367,10 +369,10 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       focusOwner = fm.getLastFocusedFor(fm.getLastFocusedIdeWindow());
     }
 
-    DockContainer container = myDockManager.getContainerFor(focusOwner);
+    DockContainer container = myDockManager.getContainerFor(focusOwner, DockableEditorTabbedContainer.class::isInstance);
     if (container == null) {
       focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
-      container = myDockManager.getContainerFor(focusOwner);
+      container = myDockManager.getContainerFor(focusOwner, DockableEditorTabbedContainer.class::isInstance);
     }
 
     if (container instanceof DockableEditorTabbedContainer) {
@@ -753,7 +755,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     }
 
     EditorWindow windowToOpenIn = window;
-    if (windowToOpenIn == null && options.getReuseOpen()) {
+    if (windowToOpenIn == null && (options.getReuseOpen() || !AdvancedSettings.getBoolean(EDITOR_OPEN_INACTIVE_SPLITTER))) {
       windowToOpenIn = findWindowInAllSplitters(file);
     }
     if (windowToOpenIn == null) {
@@ -773,7 +775,12 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       EditorWindow[] windows = splitters.getWindows();
       for (EditorWindow window : windows) {
         if (isFileOpenInWindow(file, window)) {
-          return window;
+          if (AdvancedSettings.getBoolean(EDITOR_OPEN_INACTIVE_SPLITTER)) {
+            return window;
+          }
+
+          // return a window from here so that we don't look for it again in getOrCreateCurrentWindow
+          return activeCurrentWindow;
         }
       }
     }
@@ -2101,7 +2108,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   @Override
   public EditorsSplitters getSplittersFor(Component c) {
     EditorsSplitters splitters = null;
-    DockContainer dockContainer = myDockManager.getContainerFor(c);
+    DockContainer dockContainer = myDockManager.getContainerFor(c, DockableEditorTabbedContainer.class::isInstance);
     if (dockContainer instanceof DockableEditorTabbedContainer) {
       splitters = ((DockableEditorTabbedContainer)dockContainer).getSplitters();
     }

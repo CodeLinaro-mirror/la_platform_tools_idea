@@ -100,6 +100,16 @@ public abstract class TypingIndentationTestBaseGenerated extends AbstractTypingI
             runTest("testData/indentationOnNewline/ConsecutiveCallsInSafeCallsEnd.after.kt");
         }
 
+        @TestMetadata("EOFCommentAfterFor.after.kt")
+        public void testEOFCommentAfterFor() throws Exception {
+            runTest("testData/indentationOnNewline/EOFCommentAfterFor.after.kt");
+        }
+
+        @TestMetadata("EOFCommentAfterIf.after.kt")
+        public void testEOFCommentAfterIf() throws Exception {
+            runTest("testData/indentationOnNewline/EOFCommentAfterIf.after.kt");
+        }
+
         @TestMetadata("FunctionBlock.after.kt")
         public void testFunctionBlock() throws Exception {
             runTest("testData/indentationOnNewline/FunctionBlock.after.kt");
@@ -321,6 +331,11 @@ public abstract class TypingIndentationTestBaseGenerated extends AbstractTypingI
         public static class ControlFlowConstructions extends AbstractTypingIndentationTestBase {
             private void runTest(String testDataFilePath) throws Exception {
                 KotlinTestUtils.runTest(this::doNewlineTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("BetweenOpenBraceAndParenthesis.after.kt")
+            public void testBetweenOpenBraceAndParenthesis() throws Exception {
+                runTest("testData/indentationOnNewline/controlFlowConstructions/BetweenOpenBraceAndParenthesis.after.kt");
             }
 
             @TestMetadata("Catch.after.kt")

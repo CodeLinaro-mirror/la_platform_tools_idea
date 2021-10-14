@@ -5,7 +5,9 @@ import com.intellij.ide.util.treeView.NodeRenderer
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.impl.IdeFrameImpl
+import com.intellij.openapi.wm.impl.ProjectFrameHelper
 import com.intellij.ui.KeyStrokeAdapter
 import com.intellij.ui.MultilineTreeCellRenderer
 import com.intellij.ui.SimpleColoredComponent
@@ -15,10 +17,7 @@ import org.fest.swing.driver.BasicJListCellReader
 import org.fest.swing.driver.ComponentDriver
 import org.fest.swing.exception.ComponentLookupException
 import org.fest.swing.exception.WaitTimedOutError
-import org.fest.swing.fixture.AbstractComponentFixture
-import org.fest.swing.fixture.ContainerFixture
-import org.fest.swing.fixture.JButtonFixture
-import org.fest.swing.fixture.JListFixture
+import org.fest.swing.fixture.*
 import org.fest.swing.timing.Condition
 import org.fest.swing.timing.Pause
 import org.fest.swing.timing.Timeout
@@ -29,18 +28,15 @@ import java.awt.Component
 import java.awt.Container
 import java.util.*
 import java.util.concurrent.TimeUnit
-import javax.swing.JButton
-import javax.swing.JDialog
-import javax.swing.JLabel
-import javax.swing.JList
+import javax.swing.*
 
 @LearningDsl
-class TaskTestContext(rt: TaskRuntimeContext): TaskRuntimeContext(rt) {
+class TaskTestContext(rt: TaskRuntimeContext) : TaskRuntimeContext(rt) {
   private val defaultTimeout = Timeout.timeout(3, TimeUnit.SECONDS)
 
   val robot: Robot get() = LearningUiUtil.robot
 
-  data class TestScriptProperties (
+  data class TestScriptProperties(
     val duration: Int = 15, //seconds
     val skipTesting: Boolean = false
   )
@@ -62,16 +58,16 @@ class TaskTestContext(rt: TaskRuntimeContext): TaskRuntimeContext(rt) {
   }
 
   fun ideFrame(action: ContainerFixture<IdeFrameImpl>.() -> Unit) {
-    with(findIdeFrame(robot, defaultTimeout)) {
+    with(findIdeFrame(project, robot, defaultTimeout)) {
       action()
     }
   }
 
   fun <ComponentType : Component> waitComponent(componentClass: Class<ComponentType>, partOfName: String? = null) {
-    LearningUiUtil.waitUntilFound(robot, null, typeMatcher(componentClass) {
+    LearningUiUtil.waitUntilFound(robot, typeMatcher(componentClass) {
       (if (partOfName != null) it.javaClass.name.contains(partOfName)
       else true) && it.isShowing
-    }, defaultTimeout)
+    }, defaultTimeout) { LearningUiUtil.getUiRootsForProject(project) }
   }
 
   /**
@@ -80,7 +76,7 @@ class TaskTestContext(rt: TaskRuntimeContext): TaskRuntimeContext(rt) {
    * @throws ComponentLookupException if component has not been found or timeout exceeded
    */
   fun <C : Container> ContainerFixture<C>.jList(containingItem: String? = null, timeout: Timeout = defaultTimeout): JListFixture {
-    return generalListFinder(timeout, containingItem) { element, p ->  element == p }
+    return generalListFinder(timeout, containingItem) { element, p -> element == p }
   }
 
   /**
@@ -101,6 +97,12 @@ class TaskTestContext(rt: TaskRuntimeContext): TaskRuntimeContext(rt) {
     return ActionButtonFixture(robot(), actionButton)
   }
 
+  fun <C : Container> ContainerFixture<C>.jMenuItem(timeout: Timeout = defaultTimeout,
+                                                    finderFunction: (JMenuItem) -> Boolean): JMenuItemFixture {
+    val item = findComponentWithTimeout(timeout) { item: JMenuItem -> finderFunction(item) }
+    return JMenuItemFixture(robot(), item)
+  }
+
   // Modified copy-paste
   fun <C : Container> ContainerFixture<C>.jListContains(partOfItem: String? = null, timeout: Timeout = defaultTimeout): JListFixture {
     return generalListFinder(timeout, partOfItem) { element, p -> element.contains(p) }
@@ -116,7 +118,9 @@ class TaskTestContext(rt: TaskRuntimeContext): TaskRuntimeContext(rt) {
              func: ContainerFixture<JDialog>.() -> Unit = {})
     : AbstractComponentFixture<*, JDialog, ComponentDriver<*>> {
     val jDialogFixture = if (title == null) {
-      val jDialog = LearningUiUtil.waitUntilFound(robot, null, typeMatcher(JDialog::class.java) { true }, timeout)
+      val jDialog = LearningUiUtil.waitUntilFound(robot, typeMatcher(JDialog::class.java) { true }, timeout) {
+        LearningUiUtil.getUiRootsForProject(project)
+      }
       JDialogFixture(robot, jDialog)
     }
     else {
@@ -212,7 +216,7 @@ private fun getValueWithCellRenderer(cellRendererComponent: Component, isExtende
     is NodeRenderer -> {
       if (isExtended) cellRendererComponent.getFullText()
       else cellRendererComponent.getFirstText()
-    } //should stands before SimpleColoredComponent because it is more specific
+    } //should stand before SimpleColoredComponent because it is more specific
     is SimpleColoredComponent -> cellRendererComponent.getFullText()
     is MultilineTreeCellRenderer -> cellRendererComponent.text
     else -> cellRendererComponent.findText()
@@ -224,6 +228,7 @@ private fun getValueWithCellRenderer(cellRendererComponent: Component, isExtende
 private class ExtendedJListCellReader : BasicJListCellReader() {
   override fun valueAt(list: JList<*>, index: Int): String? {
     val element = list.model.getElementAt(index) ?: return null
+
     @Suppress("UNCHECKED_CAST")
     val cellRendererComponent = (list as JList<Any>).cellRenderer
       .getListCellRendererComponent(list, element, index, true, true)
@@ -303,7 +308,7 @@ private open class ComponentFixture<S, C : Component>(selfType: Class<S>, robot:
   }
 }
 
-private class ActionButtonFixture(robot: Robot, target: ActionButton):
+private class ActionButtonFixture(robot: Robot, target: ActionButton) :
   ComponentFixture<ActionButtonFixture, ActionButton>(ActionButtonFixture::class.java, robot, target), ContainerFixture<ActionButton>
 
 private class IdeFrameFixture(robot: Robot, target: IdeFrameImpl)
@@ -312,11 +317,11 @@ private class IdeFrameFixture(robot: Robot, target: IdeFrameImpl)
 private class JDialogFixture(robot: Robot, jDialog: JDialog) :
   ComponentFixture<JDialogFixture, JDialog>(JDialogFixture::class.java, robot, jDialog), ContainerFixture<JDialog>
 
-private fun findIdeFrame(robot: Robot, timeout: Timeout): IdeFrameFixture {
+private fun findIdeFrame(project: Project, robot: Robot, timeout: Timeout): IdeFrameFixture {
   val matcher: GenericTypeMatcher<IdeFrameImpl> = object : GenericTypeMatcher<IdeFrameImpl>(
     IdeFrameImpl::class.java) {
     override fun isMatching(frame: IdeFrameImpl): Boolean {
-      return frame.isShowing
+      return frame.isShowing && ProjectFrameHelper.getFrameHelper(frame)?.project == project
     }
   }
   return try {

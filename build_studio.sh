@@ -33,8 +33,6 @@ function get_absolute_path() {
   ( unset CDPATH; cd "$1" && pwd ) 2> /dev/null
 }
 
-BNUM="__BUILD_NUMBER__"
-
 OUT="${OUT_DIR:-out/studio}"
 DIST="${DIST_DIR:-"${OUT}/dist"}"
 
@@ -57,25 +55,11 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-echo "## Building android-studio ##"
-echo "## Dist dir: $DIST"
-echo "## Qualifier: $QUAL"
-echo "## Build Num: $BNUM"
-echo "## Out dir: $OUT"
-echo "## Prog dir: $PROG_DIR"
-echo "## Incremental: $INCREMENTAL"
-echo
-
 set_java_home
 
-export JDK_16_x64=$JAVA_HOME
-export JDK_18_x64=$JAVA_HOME
+export PATH="${JAVA_HOME}/bin:${PATH}"
 
-echo "## JAVA_HOME: $JAVA_HOME"
-
-export PATH=$JDK_18_x64/bin:$PATH
-
-readonly AS_BUILD_NUMBER="$(sed "s/SNAPSHOT/${BNUM}/" build.txt)"
+readonly AS_BUILD_NUMBER="$(sed "s/SNAPSHOT/__BUILD_NUMBER__/" build.txt)"
 
 declare -ar BUILD_PROPERTIES=(
   "-Dintellij.build.output.root=${OUT}"
@@ -89,7 +73,6 @@ $ANT "${BUILD_PROPERTIES[@]}" build
 
 $ANT "-Dintellij.build.output.root=$OUT/updater" fullupdater
 
-echo "## Copying android-studio distribution files"
 mkdir -p "$DIST"
 cp -Rfv "$OUT"/artifacts/android-studio* "$DIST"
 cp -Rfv "$OUT"/updater/artifacts/updater-full.jar "$DIST"/updater-full.jar

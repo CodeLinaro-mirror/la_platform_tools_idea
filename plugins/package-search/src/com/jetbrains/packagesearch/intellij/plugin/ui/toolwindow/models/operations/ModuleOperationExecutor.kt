@@ -1,11 +1,13 @@
 package com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.operations
 
 import com.intellij.buildsystem.model.OperationFailure
+import com.intellij.buildsystem.model.unified.UnifiedCoordinates
 import com.intellij.buildsystem.model.unified.UnifiedDependency
-import com.intellij.openapi.project.Project
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.DependencyOperationMetadata
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModule
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModuleOperationProvider
+import com.jetbrains.packagesearch.intellij.plugin.fus.PackageSearchEventsLogger
+import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageIdentifier
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageScope
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageVersion
 import com.jetbrains.packagesearch.intellij.plugin.util.logDebug
@@ -42,8 +44,15 @@ internal class ModuleOperationExecutor {
             module = projectModule
         ).throwIfAnyFailures()
 
+        PackageSearchEventsLogger.logPackageInstalled(
+            packageIdentifier = operation.model.coordinates.toIdentifier(),
+            packageVersion = operation.newVersion,
+            targetModule = operation.projectModule
+        )
         logTrace("ModuleOperationExecutor#installPackage()") { "Package ${operation.model.displayName} installed in ${projectModule.name}" }
     }
+
+    private fun UnifiedCoordinates.toIdentifier() = PackageIdentifier("$groupId:$artifactId")
 
     private fun removePackage(operation: PackageSearchOperation.Package.Remove) {
         val projectModule = operation.projectModule
@@ -57,6 +66,11 @@ internal class ModuleOperationExecutor {
             module = projectModule
         ).throwIfAnyFailures()
 
+        PackageSearchEventsLogger.logPackageRemoved(
+            packageIdentifier = operation.model.coordinates.toIdentifier(),
+            packageVersion = operation.currentVersion,
+            targetModule = operation.projectModule
+        )
         logTrace("ModuleOperationExecutor#removePackage()") { "Package ${operation.model.displayName} removed from ${projectModule.name}" }
     }
 
@@ -72,6 +86,12 @@ internal class ModuleOperationExecutor {
             module = projectModule
         ).throwIfAnyFailures()
 
+        PackageSearchEventsLogger.logPackageUpdated(
+            packageIdentifier = operation.model.coordinates.toIdentifier(),
+            packageFromVersion = operation.currentVersion,
+            packageVersion = operation.newVersion,
+            targetModule = operation.projectModule
+        )
         logTrace("ModuleOperationExecutor#changePackage()") { "Package ${operation.model.displayName} changed in ${projectModule.name}" }
     }
 
@@ -82,12 +102,12 @@ internal class ModuleOperationExecutor {
         newScope: PackageScope? = null
     ) = DependencyOperationMetadata(
         module = projectModule,
-        groupId = dependency.coordinates.groupId ?: throw OperationException.InvalidPackage(dependency),
-        artifactId = dependency.coordinates.artifactId ?: throw OperationException.InvalidPackage(dependency),
-        currentVersion = dependency.coordinates.version,
-        currentScope = dependency.scope,
-        newVersion = newVersion?.versionName.nullIfBlank() ?: dependency.coordinates.version,
-        newScope = newScope?.scopeName.nullIfBlank() ?: dependency.scope
+        groupId = dependency.coordinates.groupId.nullIfBlank() ?: throw OperationException.InvalidPackage(dependency),
+        artifactId = dependency.coordinates.artifactId.nullIfBlank() ?: throw OperationException.InvalidPackage(dependency),
+        currentVersion = dependency.coordinates.version.nullIfBlank(),
+        currentScope = dependency.scope.nullIfBlank(),
+        newVersion = newVersion?.versionName.nullIfBlank() ?: dependency.coordinates.version.nullIfBlank(),
+        newScope = newScope?.scopeName.nullIfBlank() ?: dependency.scope.nullIfBlank()
     )
 
     private fun installRepository(operation: PackageSearchOperation.Repository.Install) {
@@ -100,6 +120,7 @@ internal class ModuleOperationExecutor {
         operationProvider.addRepositoryToModule(operation.model, projectModule)
             .throwIfAnyFailures()
 
+        PackageSearchEventsLogger.logRepositoryAdded(operation.model)
         logTrace("ModuleOperationExecutor#installRepository()") { "Repository ${operation.model.displayName} installed in ${projectModule.name}" }
     }
 
@@ -113,6 +134,7 @@ internal class ModuleOperationExecutor {
         operationProvider.removeRepositoryFromModule(operation.model, projectModule)
             .throwIfAnyFailures()
 
+        PackageSearchEventsLogger.logRepositoryRemoved(operation.model)
         logTrace("ModuleOperationExecutor#removeRepository()") { "Repository ${operation.model.displayName} removed from ${projectModule.name}" }
     }
 

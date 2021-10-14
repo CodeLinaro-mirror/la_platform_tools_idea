@@ -156,7 +156,7 @@ public class PSIPresentationBgRendererWrapper implements WeightedSearchEverywher
         }
       };
       add(leftRenderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus), BorderLayout.WEST);
-
+      accessibleContext = leftRenderer.getAccessibleContext();
       return this;
     }
 
@@ -314,5 +314,13 @@ public class PSIPresentationBgRendererWrapper implements WeightedSearchEverywher
   public int getElementPriority(@NotNull Object element,
                                 @NotNull String searchPattern) {
     return myDelegate.getElementPriority(getItem(element), searchPattern);
+  }
+
+  @Nullable
+  public static PsiElement toPsi(Object o) {
+    if (o instanceof PsiElement) return (PsiElement)o;
+    if (o instanceof PsiItemWithPresentation) return ((PsiItemWithPresentation)o).getItem();
+
+    return null;
   }
 }

@@ -44,6 +44,7 @@ import org.jetbrains.plugins.gradle.settings.DistributionType;
 import org.jetbrains.plugins.gradle.settings.GradleExecutionSettings;
 import org.jetbrains.plugins.gradle.tooling.internal.init.Init;
 import org.jetbrains.plugins.gradle.util.GradleBundle;
+import org.jetbrains.plugins.gradle.util.GradleCommandLine;
 import org.jetbrains.plugins.gradle.util.GradleConstants;
 import org.jetbrains.plugins.gradle.util.GradleUtil;
 
@@ -54,6 +55,8 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.intellij.openapi.util.Pair.pair;
+import static com.intellij.util.containers.ContainerUtil.newHashMap;
 import static org.jetbrains.plugins.gradle.GradleConnectorService.withGradleConnection;
 import static org.jetbrains.plugins.gradle.service.execution.LocalGradleExecutionAware.LOCAL_TARGET_TYPE_ID;
 
@@ -120,7 +123,11 @@ public class GradleExecutionHelper {
       projectDir, taskId, settings, listener, cancellationToken,
       connection -> {
         try {
-          return maybeApplyUserDirWorkaround(() -> f.fun(connection), projectDir);
+          Map<String, String> propertiesFixes = newHashMap(
+            pair("user.dir", projectDir),
+            pair("java.system.class.loader", null)
+          );
+          return maybeFixSystemProperties(() -> f.fun(connection), propertiesFixes);
         }
         catch (ExternalSystemException | ProcessCanceledException e) {
           throw e;
@@ -135,20 +142,31 @@ public class GradleExecutionHelper {
       });
   }
 
-  public static <T> T maybeApplyUserDirWorkaround(@NotNull Computable<T> action, String projectDir) {
-    String userDir = null;
+  public static <T> T maybeFixSystemProperties(@NotNull Computable<T> action, Map<String, String> keyToMask) {
+    Map<String, String> oldValues = new HashMap<>();
     try {
       if (!PlatformUtils.isFleetBackend() && Registry.is("gradle.tooling.adjust.user.dir", true)) {
-        userDir = System.getProperty("user.dir");
-        if (userDir != null) System.setProperty("user.dir", projectDir);
+        keyToMask.forEach((key,newVal) -> {
+          final String oldVal = System.getProperty(key);
+          oldValues.put(key, oldVal);
+          if (oldVal != null) {
+            if (newVal != null) {
+              System.setProperty(key, newVal);
+            } else {
+              System.clearProperty(key);
+            }
+          }
+        });
       }
       return action.compute();
     }
     finally {
-      if (userDir != null) {
-        // restore original user.dir property
-        System.setProperty("user.dir", userDir);
-      }
+      // restore original properties
+      oldValues.forEach((k,v) -> {
+        if (v != null) {
+          System.setProperty(k, v);
+        }
+      });
     }
   }
 
@@ -160,6 +178,7 @@ public class GradleExecutionHelper {
     ensureInstalledWrapper(id, projectPath, settings, null, listener, cancellationToken);
   }
 
+  @SuppressWarnings("deprecation")
   public void ensureInstalledWrapper(@NotNull ExternalSystemTaskId id,
                                      @NotNull String projectPath,
                                      @NotNull GradleExecutionSettings settings,
@@ -178,8 +197,11 @@ public class GradleExecutionHelper {
       projectPath, id, settings, listener, cancellationToken,
       connection -> {
         long ttlInMs = settings.getRemoteProcessIdleTtlInMs();
+        List<String> arguments = settings.getArguments();
         try {
           settings.setRemoteProcessIdleTtlInMs(100);
+          settings.setArguments(GradleCommandLine.parse(arguments).getScriptParameters());
+
           TargetEnvironmentConfigurationProvider configurationProvider =
             ExternalSystemExecutionAware.Companion.getEnvironmentConfigurationProvider(settings);
           if (configurationProvider != null) {
@@ -246,6 +268,7 @@ public class GradleExecutionHelper {
         }
         finally {
           settings.setRemoteProcessIdleTtlInMs(ttlInMs);
+          settings.setArguments(arguments);
         }
         return null;
       }
@@ -540,7 +563,7 @@ public class GradleExecutionHelper {
     }
     try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
       String toolingExtensionsJarPaths = getToolingExtensionsJarPaths(toolingExtensionClasses);
-      String script = StreamUtil.readText(reader).replaceFirst(Pattern.quote("${EXTENSIONS_JARS_PATH}"), toolingExtensionsJarPaths);
+      String script = StreamUtil.readText(reader).replaceFirst(Pattern.quote("${EXTENSIONS_JARS_PATH}"), Matcher.quoteReplacement(toolingExtensionsJarPaths));
       if (isBuildSrcProject) {
         String buildSrcDefaultInitScript = getBuildSrcDefaultInitScript();
         if (buildSrcDefaultInitScript == null) return null;

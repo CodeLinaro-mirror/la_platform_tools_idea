@@ -86,7 +86,7 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
     elementsToSearch.add(parameter);
     int idx = ReadAction.compute(() -> method.getParameterList().getParameterIndex(parameter));
     for (PsiMethod override : overrides) {
-      final PsiParameter[] parameters = override.getParameterList().getParameters();
+      final PsiParameter[] parameters = ReadAction.compute(()->override.getParameterList().getParameters());
       if (idx < parameters.length) {
         elementsToSearch.add(parameters[idx]);
       }
@@ -96,7 +96,7 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
     if (aClass != null) {
       FunctionalExpressionSearch.search(aClass).forEach(element -> {
         if (element instanceof PsiLambdaExpression) {
-          PsiParameter[] parameters = ((PsiLambdaExpression)element).getParameterList().getParameters();
+          PsiParameter[] parameters = ReadAction.compute(() ->((PsiLambdaExpression)element).getParameterList().getParameters());
           if (idx < parameters.length) {
             elementsToSearch.add(parameters[idx]);
           }
@@ -149,9 +149,12 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
         boolean doSearch = !containsPhysical || myFactory.getFindVariableOptions().isSearchForAccessors;
         if (doSearch) {
           Set<PsiElement> elements = new HashSet<>();
-          if (myFactory.getFindVariableOptions().isSearchForBaseAccessors) {
-            for (PsiMethod accessor : accessors) {
-                ContainerUtil.addAll(elements, SuperMethodWarningUtil.getTargetMethodCandidates(accessor, Collections.emptyList()));
+          for (PsiMethod accessor : accessors) {
+            if (myFactory.getFindVariableOptions().isSearchForBaseAccessors) {
+              ContainerUtil.addAll(elements, SuperMethodWarningUtil.getTargetMethodCandidates(accessor, Collections.emptyList()));
+            }
+            else {
+              elements.add(accessor);
             }
           }
           return PsiUtilCore.toPsiElementArray(elements);

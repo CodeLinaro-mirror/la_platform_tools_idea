@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.dataFlow;
 
 import com.intellij.codeInsight.Nullability;
@@ -119,7 +119,7 @@ public final class NullabilityProblemKind<T extends PsiElement> {
    */
   @Contract("null, _ -> null")
   @Nullable
-  public final NullabilityProblem<T> problem(@Nullable T anchor, @Nullable PsiExpression expression) {
+  public NullabilityProblem<T> problem(@Nullable T anchor, @Nullable PsiExpression expression) {
     return anchor == null || this == noProblem ? null : new NullabilityProblem<>(this, anchor, expression, false);
   }
 
@@ -131,7 +131,7 @@ public final class NullabilityProblemKind<T extends PsiElement> {
    */
   @SuppressWarnings("unchecked")
   @Nullable
-  public final NullabilityProblem<T> asMyProblem(NullabilityProblem<?> problem) {
+  public NullabilityProblem<T> asMyProblem(NullabilityProblem<?> problem) {
     return problem != null && problem.myKind == this ? (NullabilityProblem<T>)problem : null;
   }
 
@@ -226,8 +226,7 @@ public final class NullabilityProblemKind<T extends PsiElement> {
       return createUnboxingProblem(context, expression);
     }
     if (parent instanceof PsiSwitchBlock) {
-      NullabilityProblem<PsiElement> problem = createUnboxingProblem(context, expression);
-      return problem == null ? fieldAccessNPE.problem(context, expression) : problem;
+      return getSwitchBlockProblem((PsiSwitchBlock)parent, expression, context);
     }
     if (parent instanceof PsiForeachStatement || parent instanceof PsiThrowStatement ||
         parent instanceof PsiSynchronizedStatement) {
@@ -330,6 +329,33 @@ public final class NullabilityProblemKind<T extends PsiElement> {
       }
     }
     return null;
+  }
+
+  @Nullable
+  private static NullabilityProblem<?> getSwitchBlockProblem(@NotNull PsiSwitchBlock switchBlock,
+                                                             @NotNull PsiExpression expression,
+                                                             @NotNull PsiExpression context) {
+    Nullability exprNullability = DfaPsiUtil.getTypeNullability(expression.getType());
+    // if selector expr is nullable or unknown and switch contains null label, then we shouldn't check nullity of the expr
+    if (exprNullability != Nullability.NOT_NULL) {
+      PsiCodeBlock body = switchBlock.getBody();
+      if (body != null) {
+        PsiStatement[] statements = body.getStatements();
+        for (PsiStatement statement : statements) {
+          PsiSwitchLabelStatementBase labelStatement = tryCast(statement, PsiSwitchLabelStatementBase.class);
+          if (labelStatement == null) continue;
+          PsiCaseLabelElementList labelElementList = labelStatement.getCaseLabelElementList();
+          if (labelElementList == null) continue;
+          for (PsiCaseLabelElement element : labelElementList.getElements()) {
+            if (element instanceof PsiExpression && TypeConversionUtil.isNullType(((PsiExpression)element).getType())) {
+              return null;
+            }
+          }
+        }
+      }
+    }
+    NullabilityProblem<PsiElement> problem = createUnboxingProblem(context, expression);
+    return problem == null ? fieldAccessNPE.problem(context, expression) : problem;
   }
 
   @Nullable

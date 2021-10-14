@@ -17,25 +17,18 @@ import training.dsl.LessonUtil
 import training.learn.CourseManager
 import training.learn.LessonsBundle
 import training.learn.course.LearningCourseBase
-import training.learn.course.IftModule
 import training.learn.course.LearningModule
 import training.learn.course.LessonType
 import training.learn.lesson.general.*
 import training.learn.lesson.general.assistance.CodeFormatLesson
+import training.learn.lesson.general.assistance.LocalHistoryLesson
 import training.learn.lesson.general.assistance.ParameterInfoLesson
 import training.learn.lesson.general.assistance.QuickPopupsLesson
 import training.learn.lesson.general.navigation.FindInFilesLesson
 import training.learn.lesson.general.refactorings.ExtractVariableFromBubbleLesson
-import training.util.switchOnExperimentalLessons
 
 class JavaLearningCourse : LearningCourseBase(JavaLanguage.INSTANCE.id) {
-  override fun modules(): Collection<IftModule> {
-    val gitModule = if (switchOnExperimentalLessons) {
-      CourseManager.instance.findCommonModules("Git")
-    }
-    else emptyList()
-    return stableModules() + gitModule
-  }
+  override fun modules() = stableModules() + CourseManager.instance.findCommonModules("Git")
 
   private fun stableModules() = listOf(
     LearningModule(name = LessonsBundle.message("essential.module.name"),
@@ -95,6 +88,7 @@ class JavaLearningCourse : LearningCourseBase(JavaLanguage.INSTANCE.id) {
                    moduleType = LessonType.SINGLE_EDITOR) {
       fun ls(sampleName: String) = loadSample("CodeAssistance/$sampleName")
       listOf(
+        LocalHistoryLesson(),
         CodeFormatLesson(ls("CodeFormat.java.sample"), true),
         ParameterInfoLesson(ls("ParameterInfo.java.sample")),
         QuickPopupsLesson(ls("QuickPopups.java.sample")),

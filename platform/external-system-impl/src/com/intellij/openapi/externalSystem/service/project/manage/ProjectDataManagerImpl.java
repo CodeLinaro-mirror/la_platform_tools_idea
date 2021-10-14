@@ -4,6 +4,8 @@ package com.intellij.openapi.externalSystem.service.project.manage;
 import com.intellij.diagnostic.Activity;
 import com.intellij.diagnostic.ActivityCategory;
 import com.intellij.diagnostic.StartUpMeasurer;
+import com.intellij.diagnostic.StartUpPerformanceService;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.externalSystem.model.*;
@@ -153,6 +155,9 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
       }
     }
     runFinalTasks(project, synchronous, onSuccessImportTasks);
+    Application application = ApplicationManager.getApplication();
+    if (application.isUnitTestMode() || application.isHeadlessEnvironment()) return;
+    StartUpPerformanceService.getInstance().reportStatistics(project);
   }
 
   private static void runFinalTasks(@NotNull Project project, boolean synchronous, List<? extends Runnable> tasks) {
@@ -200,7 +205,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
   public <T> void importData(@NotNull Collection<? extends DataNode<T>> nodes, @NotNull Project project, boolean synchronous) {
     Collection<DataNode<?>> dummy = new SmartList<>();
     dummy.addAll(nodes);
-    importData(dummy, project, new IdeModifiableModelsProviderImpl(project), synchronous);
+    importData(dummy, project, createModifiableModelsProvider(project), synchronous);
   }
 
   @Override
@@ -217,7 +222,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
   public <T> void importData(@NotNull DataNode<T> node,
                              @NotNull Project project,
                              boolean synchronous) {
-    importData(node, project, new IdeModifiableModelsProviderImpl(project), synchronous);
+    importData(node, project, createModifiableModelsProvider(project), synchronous);
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
@@ -358,7 +363,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
                                 @NotNull final ProjectData projectData,
                                 @NotNull Project project,
                                 boolean synchronous) {
-    removeData(key, toRemove, toIgnore, projectData, project, new IdeModifiableModelsProviderImpl(project), synchronous);
+    removeData(key, toRemove, toIgnore, projectData, project, createModifiableModelsProvider(project), synchronous);
   }
 
   public void updateExternalProjectData(@NotNull Project project, @NotNull ExternalProjectInfo externalProjectInfo) {
@@ -384,6 +389,11 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
     else {
       return ContainerUtil.emptyList();
     }
+  }
+
+  @Override
+  public @NotNull IdeModifiableModelsProvider createModifiableModelsProvider(@NotNull Project project) {
+    return new IdeModifiableModelsProviderImpl(project);
   }
 
   private void ensureTheDataIsReadyToUse(@NotNull Collection<? extends DataNode<?>> nodes) {

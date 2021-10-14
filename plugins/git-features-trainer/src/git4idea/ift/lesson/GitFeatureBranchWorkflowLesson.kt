@@ -8,13 +8,13 @@ import com.intellij.dvcs.push.ui.PushLog
 import com.intellij.dvcs.ui.DvcsBundle
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsBundle
 import com.intellij.openapi.vcs.VcsConfiguration
 import com.intellij.openapi.vcs.ex.ProjectLevelVcsManagerEx
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.impl.status.TextPanel
@@ -25,61 +25,59 @@ import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.i18n.GitBundle
 import git4idea.ift.GitLessonsBundle
+import git4idea.ift.GitLessonsUtil
+import git4idea.ift.GitLessonsUtil.checkoutBranch
 import git4idea.ift.GitLessonsUtil.highlightLatestCommitsFromBranch
+import git4idea.ift.GitLessonsUtil.openPushDialogText
+import git4idea.ift.GitLessonsUtil.openUpdateDialogText
 import git4idea.ift.GitLessonsUtil.resetGitLogWindow
 import git4idea.ift.GitLessonsUtil.triggerOnNotification
 import git4idea.ift.GitProjectUtil
-import git4idea.index.actions.runProcess
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
+import git4idea.ui.branch.GitBranchPopupActions
 import training.dsl.*
-import training.project.ProjectUtils
 import java.io.File
+import javax.swing.JButton
 import javax.swing.JDialog
+import javax.swing.JList
 
 class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessonsBundle.message("git.feature.branch.lesson.name")) {
-  override val existedFile = "src/git/simple_cat.yml"
+  override val existedFile = "git/simple_cat.yml"
   private val remoteName = "origin"
   private val branchName = "feature"
   private val main = "main"
-  private lateinit var repository: GitRepository
-  private val remoteProjectName = "RemoteLearningProject"
 
-  private val firstFileAddition = """
+  private val fileToCommitName = "sphinx_cat.yml"
+  private val committerName = "Johnny Catsville"
+  private val committerEmail = "johnny.catsville@meow.com"
+  private val commitMessage = "Add new fact about sphinx's behaviour"
+
+  private val fileAddition = """
     |
     |    - steal:
     |        condition: food was left unattended
     |        action:
     |          - steal a piece of food and hide""".trimMargin()
 
-  private val secondFileAddition = """
-    |
-    |    - care_for_weapon:
-    |        condition: favourite sword become blunt
-    |        actions:
-    |          - sharpen the sword using the stone""".trimMargin()
+  private lateinit var repository: GitRepository
+
+  private val illustration1 by lazy { GitLessonsUtil.loadIllustration("gitFeatureBranchIllustration01.svg") }
+  private val illustration2 by lazy { GitLessonsUtil.loadIllustration("gitFeatureBranchIllustration02.svg") }
+  private val illustration3 by lazy { GitLessonsUtil.loadIllustration("gitFeatureBranchIllustration03.svg") }
 
   override val testScriptProperties = TaskTestContext.TestScriptProperties(skipTesting = true)
 
   override val lessonContent: LessonContext.() -> Unit = {
     prepareRuntimeTask {
-      val remoteProjectRoot = reCreateRemoteProjectDir()
-      GitProjectUtil.copyGitProject(File(remoteProjectRoot.path))
-      runProcess(project, "", false) {
-        val git = Git.getInstance()
-        repository = GitRepositoryManager.getInstance(project).repositories.first()
-        git.addRemote(repository, remoteName, remoteProjectRoot.path).throwOnError()
-        repository.update()
-        git.fetch(repository, repository.remotes.first(), emptyList())
-        git.checkout(repository, branchName, null, false, false).throwOnError()
-        git.setUpstream(repository, "$remoteName/$main", main)
-        repository.update()
-      }
-      modifyRemoteProject(remoteProjectRoot)
+      repository = GitRepositoryManager.getInstance(project).repositories.first()
     }
+
+    checkoutBranch(branchName)
 
     task("ActivateVersionControlToolWindow") {
       text(GitLessonsBundle.message("git.feature.branch.introduction.1", strong(branchName), strong(main), action(it)))
+      illustration(illustration1)
       stateCheck {
         val toolWindowManager = ToolWindowManager.getInstance(project)
         toolWindowManager.getToolWindow(ToolWindowId.VCS)?.isVisible == true
@@ -102,7 +100,7 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
     task("Git.Branches") {
       firstShowBranchesTaskId = taskId
       text(GitLessonsBundle.message("git.feature.branch.open.branches.popup.1", strong(main), action(it)))
-      text(GitLessonsBundle.message("git.feature.branch.open.branches.popup.balloon"), LearningBalloonConfig(Balloon.Position.above, 200))
+      text(GitLessonsBundle.message("git.feature.branch.open.branches.popup.balloon"), LearningBalloonConfig(Balloon.Position.above, 0))
       triggerOnBranchesPopupShown()
     }
 
@@ -115,9 +113,11 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
       before {
         curBranchName = repository.currentBranchName ?: error("Not found information about active branch")
       }
-      text(GitLessonsBundle.message("git.feature.branch.checkout.branch", strong(main), strong(GitBundle.message("branches.checkout"))))
+      val checkoutItemText = GitBundle.message("branches.checkout")
+      text(GitLessonsBundle.message("git.feature.branch.checkout.branch", strong(main), strong(checkoutItemText)))
+      highlightListItemAndRehighlight { item -> item.toString() == checkoutItemText }
       stateCheck { repository.currentBranchName == main }
-      restoreState(firstShowBranchesTaskId, delayMillis = defaultRestoreDelay) {
+      restoreState(firstShowBranchesTaskId, delayMillis = 4 * defaultRestoreDelay) {
         val newBranchName = repository.currentBranchName
         previous.ui?.isShowing != true || (newBranchName != curBranchName && newBranchName != main)
       }
@@ -129,8 +129,8 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
     }
 
     task("Vcs.UpdateProject") {
-      text(GitLessonsBundle.message("git.feature.branch.open.update.dialog", strong(main), action(it)))
       val updateProjectDialogTitle = VcsBundle.message("action.display.name.update.scope", VcsBundle.message("update.project.scope.name"))
+      openUpdateDialogText(GitLessonsBundle.message("git.feature.branch.open.update.dialog", strong(main)))
       triggerByUiComponentAndHighlight(false, false) { ui: JDialog ->
         ui.title?.contains(updateProjectDialogTitle) == true
       }
@@ -138,6 +138,9 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
 
     task {
       text(GitLessonsBundle.message("git.feature.branch.confirm.update", strong(CommonBundle.getOkButtonText())))
+      triggerByUiComponentAndHighlight { ui: JButton ->
+        ui.text == CommonBundle.getOkButtonText()
+      }
       triggerOnNotification { notification ->
         notification.groupId == "Vcs Notifications" && notification.type == NotificationType.INFORMATION
       }
@@ -148,17 +151,21 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
 
     task("Git.Branches") {
       text(GitLessonsBundle.message("git.feature.branch.new.commits.explanation", strong(main)))
-      highlightLatestCommitsFromBranch("$remoteName/$main", sequenceLength = 2)
-      proceedLink()
+      illustration(illustration2)
+      highlightLatestCommitsFromBranch("$remoteName/$main")
+      proceedLink(4)
+    }
+
+    task {
+      triggerByUiComponentAndHighlight(usePulsation = true) { ui: TextPanel.WithIconAndArrows -> ui.text == main }
     }
 
     lateinit var secondShowBranchesTaskId: TaskContext.TaskId
     task("Git.Branches") {
       secondShowBranchesTaskId = taskId
       text(GitLessonsBundle.message("git.feature.branch.open.branches.popup.2", strong(branchName), strong(main), action(it)))
-      triggerByUiComponentAndHighlight(usePulsation = true) { ui: TextPanel.WithIconAndArrows ->
-        ui.text == main
-      }
+      illustration(illustration3)
+      text(GitLessonsBundle.message("git.feature.branch.open.branches.popup.balloon"), LearningBalloonConfig(Balloon.Position.above, 200))
       triggerOnBranchesPopupShown()
     }
 
@@ -167,17 +174,19 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
     }
 
     task {
-      val checkoutAndRebaseText = GitBundle.message("branches.checkout.and.rebase.onto.current")
+      val repositories = GitRepositoryManager.getInstance(project).repositories
+      val checkoutAndRebaseText = GitBundle.message("branches.checkout.and.rebase.onto.branch",
+                                                    GitBranchPopupActions.getCurrentBranchTruncatedPresentation(project, repositories))
       text(GitLessonsBundle.message("git.feature.branch.checkout.and.rebase", strong(branchName), strong(checkoutAndRebaseText)))
-      triggerByListItemAndHighlight { item -> item.toString().contains(checkoutAndRebaseText) }
+      highlightListItemAndRehighlight { item -> item.toString().contains(checkoutAndRebaseText) }
       triggerOnNotification { notification -> notification.title == GitBundle.message("rebase.notification.successful.title") }
-      restoreState(secondShowBranchesTaskId, delayMillis = 3 * defaultRestoreDelay) {
+      restoreState(secondShowBranchesTaskId, delayMillis = 4 * defaultRestoreDelay) {
         previous.ui?.isShowing != true && !StoreReloadManager.getInstance().isReloadBlocked() // reload is blocked when rebase is running
       }
     }
 
     task("Vcs.Push") {
-      text(GitLessonsBundle.message("git.feature.branch.open.push.dialog", strong(branchName), action(it)))
+      openPushDialogText(GitLessonsBundle.message("git.feature.branch.open.push.dialog", strong(branchName)))
       triggerByUiComponentAndHighlight(false, false) { _: PushLog -> true }
     }
 
@@ -195,11 +204,18 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
 
     task {
       text(GitLessonsBundle.message("git.feature.branch.confirm.force.push", strong(forcePushText)))
+      text(GitLessonsBundle.message("git.feature.branch.force.push.tip", strong(forcePushText)))
       triggerOnNotification { notification ->
         notification.groupId == "Vcs Notifications" && notification.type == NotificationType.INFORMATION
       }
       restoreByUi(delayMillis = defaultRestoreDelay)
     }
+  }
+
+  override fun prepare(project: Project) {
+    super.prepare(project)
+    val remoteProjectRoot = GitProjectUtil.createRemoteProject(remoteName, project)
+    modifyRemoteProject(remoteProjectRoot)
   }
 
   private fun TaskContext.triggerOnBranchesPopupShown() {
@@ -210,34 +226,28 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
     }
   }
 
-  private fun TaskRuntimeContext.reCreateRemoteProjectDir(): File {
-    val learnProjectPath = ProjectUtils.getProjectRoot(project).toNioPath()
-    val learnProjectRoot = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(learnProjectPath)
-                           ?: error("Learning project not found")
-    val projectsRoot = learnProjectRoot.parent.toNioPath().toFile()
-    val remoteProjectRoot = projectsRoot.listFiles()?.find { it.name == remoteProjectName }.let {
-      it?.apply { deleteRecursively() } ?: File(projectsRoot.absolutePath + File.separator + remoteProjectName)
+  private fun TaskContext.highlightListItemAndRehighlight(checkList: TaskRuntimeContext.(item: Any) -> Boolean) {
+    var showedList: JList<*>? = null
+    triggerByPartOfComponent l@{ ui: JList<*> ->
+      val ind = (0 until ui.model.size).find { checkList(ui.model.getElementAt(it)) } ?: return@l null
+      showedList = ui
+      ui.getCellBounds(ind, ind)
     }
-    remoteProjectRoot.mkdir()
-    return remoteProjectRoot
+    // it is a hack: restart current task to highlight list item when it will be shown again
+    // rehighlightPreviousUi property can not be used in this case, because I can't highlight this list item in the previous task
+    restoreState(restoreId = taskId) {
+      showedList != null && !showedList!!.isShowing
+    }
   }
 
   private fun modifyRemoteProject(remoteProjectRoot: File) {
     val files = mutableListOf<File>()
     FileUtil.processFilesRecursively(remoteProjectRoot, files::add)
-    val firstFile = files.find { it.name == "sphinx_cat.yml" }
-    val secondFile = files.find { it.name == "puss_in_boots.yml" }
-    if(firstFile != null && secondFile != null) {
-      gitChange(remoteProjectRoot, "user.name", "JonnyCatsville")
-      gitChange(remoteProjectRoot, "user.email", "jonny.catsville@meow.com")
-      createOneFileCommit(remoteProjectRoot, firstFile, "Add new fact about sphinx's behaviour") {
-        it.appendText(firstFileAddition)
-      }
-      createOneFileCommit(remoteProjectRoot, secondFile, "Add fact about Puss in boots") {
-        it.appendText(secondFileAddition)
-      }
-    }
-    else error("Failed to find files to modify in $remoteProjectRoot")
+    val fileToCommit = files.find { it.name == fileToCommitName }
+                       ?: error("Failed to find file $fileToCommitName to modify in $remoteProjectRoot")
+    gitChange(remoteProjectRoot, "user.name", committerName)
+    gitChange(remoteProjectRoot, "user.email", committerEmail)
+    createOneFileCommit(remoteProjectRoot, fileToCommit)
   }
 
   private fun gitChange(root: File, param: String, value: String) {
@@ -246,8 +256,8 @@ class GitFeatureBranchWorkflowLesson : GitLesson("Git.BasicWorkflow", GitLessons
     runGitCommandSynchronously(handler)
   }
 
-  private fun createOneFileCommit(root: File, editingFile: File, commitMessage: String, editFileContent: (File) -> Unit) {
-    editFileContent(editingFile)
+  private fun createOneFileCommit(root: File, fileToCommit: File) {
+    fileToCommit.appendText(fileAddition)
     val handler = GitLineHandler(null, root, GitCommand.COMMIT)
     handler.addParameters("-a")
     handler.addParameters("-m", commitMessage)

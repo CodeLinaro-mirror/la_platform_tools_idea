@@ -75,6 +75,26 @@ public abstract class JavaAgainstKotlinSourceCheckerTestGenerated extends Abstra
             runTest("testData/kotlinAndJavaChecker/javaAgainstKotlin/ExtendClassWithJvmDefaultImplementation.kt");
         }
 
+        @TestMetadata("ExtendInterfaceWithAJvmStaticMethodInCompanion.kt")
+        public void testExtendInterfaceWithAJvmStaticMethodInCompanion() throws Exception {
+            runTest("testData/kotlinAndJavaChecker/javaAgainstKotlin/ExtendInterfaceWithAJvmStaticMethodInCompanion.kt");
+        }
+
+        @TestMetadata("ExtendInterfaceWithDefaultMethodAndCompatibilityAll.kt")
+        public void testExtendInterfaceWithDefaultMethodAndCompatibilityAll() throws Exception {
+            runTest("testData/kotlinAndJavaChecker/javaAgainstKotlin/ExtendInterfaceWithDefaultMethodAndCompatibilityAll.kt");
+        }
+
+        @TestMetadata("ExtendInterfaceWithDefaultMethodAndCompatibilityAllCompatibility.kt")
+        public void testExtendInterfaceWithDefaultMethodAndCompatibilityAllCompatibility() throws Exception {
+            runTest("testData/kotlinAndJavaChecker/javaAgainstKotlin/ExtendInterfaceWithDefaultMethodAndCompatibilityAllCompatibility.kt");
+        }
+
+        @TestMetadata("ExtendInterfaceWithDefaultMethodAndCompatibilityDisabled.kt")
+        public void testExtendInterfaceWithDefaultMethodAndCompatibilityDisabled() throws Exception {
+            runTest("testData/kotlinAndJavaChecker/javaAgainstKotlin/ExtendInterfaceWithDefaultMethodAndCompatibilityDisabled.kt");
+        }
+
         @TestMetadata("ExtendingMutableInterfaces.kt")
         public void testExtendingMutableInterfaces() throws Exception {
             runTest("testData/kotlinAndJavaChecker/javaAgainstKotlin/ExtendingMutableInterfaces.kt");

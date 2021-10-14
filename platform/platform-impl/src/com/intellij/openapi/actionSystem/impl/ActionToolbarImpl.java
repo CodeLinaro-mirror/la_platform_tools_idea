@@ -33,8 +33,6 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.concurrency.EdtScheduledExecutorService;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.*;
-import com.intellij.util.ui.update.Activatable;
-import com.intellij.util.ui.update.UiNotifyConnector;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -46,8 +44,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -102,6 +98,7 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
     boolean isTestMode = ApplicationManager.getApplication().isUnitTestMode();
     for (ActionToolbarImpl toolbar : new ArrayList<>(ourToolbars)) {
       CancellablePromise<List<AnAction>> promise = toolbar.myLastUpdate;
+      toolbar.myLastUpdate = null;
       if (promise != null) promise.cancel();
       toolbar.myVisibleActions.clear();
       Image image = !isTestMode && toolbar.isShowing() ? paintToImage(toolbar) : null;
@@ -223,6 +220,7 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
   @Override
   public void addNotify() {
     super.addNotify();
+    if (ComponentUtil.getParentOfType(CellRendererPane.class, this) != null) return;
     ourToolbars.add(this);
 
     // should update action right on the showing, otherwise toolbar may not be displayed at all,
@@ -237,6 +235,7 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
   @Override
   public void removeNotify() {
     super.removeNotify();
+    if (ComponentUtil.getParentOfType(CellRendererPane.class, this) != null) return;
     ourToolbars.remove(this);
 
     if (myPopup != null) {
@@ -245,17 +244,8 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
     }
 
     CancellablePromise<List<AnAction>> lastUpdate = myLastUpdate;
-    if (lastUpdate != null) {
-      lastUpdate.cancel();
-      if (ApplicationManager.getApplication().isUnitTestMode()) {
-        try {
-          lastUpdate.blockingGet(1, TimeUnit.DAYS);
-        }
-        catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-      }
-    }
+    myLastUpdate = null;
+    if (lastUpdate != null) lastUpdate.cancel();
   }
 
   @Override
@@ -968,32 +958,6 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
     }
   }
 
-  private static class ToolbarReference extends WeakReference<ActionToolbarImpl> {
-    private static final ReferenceQueue<ActionToolbarImpl> ourQueue = new ReferenceQueue<>();
-    private volatile Disposable myDisposable;
-
-    ToolbarReference(@NotNull ActionToolbarImpl toolbar) {
-      super(toolbar, ourQueue);
-      processQueue();
-    }
-
-    private static void processQueue() {
-      while (true) {
-        ToolbarReference ref = (ToolbarReference)ourQueue.poll();
-        if (ref == null) break;
-        ref.disposeReference();
-      }
-    }
-
-    private void disposeReference() {
-      Disposable disposable = myDisposable;
-      if (disposable != null) {
-        myDisposable = null;
-        Disposer.dispose(disposable);
-      }
-    }
-  }
-
   protected @NotNull Color getSeparatorColor() {
     return JBUI.CurrentTheme.CustomFrameDecorations.separatorForeground();
   }
@@ -1169,19 +1133,24 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
     ActionUpdater updater = new ActionUpdater(LaterInvocator.isInModalContext(), myPresentationFactory,
                                               dataContext, myPlace, false, true);
     if (Utils.isAsyncDataContext(dataContext)) {
-      if (myLastUpdate != null) myLastUpdate.cancel();
+      CancellablePromise<List<AnAction>> lastUpdate = myLastUpdate;
+      myLastUpdate = null;
+      if (lastUpdate != null) lastUpdate.cancel();
 
       updateActionsImplFastTrack(updater);
 
       boolean forcedActual = forced || myForcedUpdateRequested;
-      myLastUpdate = updater.expandActionGroupAsync(myActionGroup, myHideDisabled);
-      myLastUpdate.onSuccess(actions -> actionsUpdated(forcedActual, actions))
+      CancellablePromise<List<AnAction>> promise = myLastUpdate = updater.expandActionGroupAsync(myActionGroup, myHideDisabled);
+      promise
+        .onSuccess(actions -> {
+          if (myLastUpdate == promise) myLastUpdate = null;
+          actionsUpdated(forcedActual, actions);
+        })
         .onError(ex -> {
           if (!(ex instanceof ControlFlowException || ex instanceof CancellationException)) {
             LOG.error(ex);
           }
-        })
-        .onProcessed(__ -> myLastUpdate = null);
+        });
     }
     else {
       boolean forcedActual = forced || myForcedUpdateRequested;
@@ -1355,31 +1324,12 @@ public class ActionToolbarImpl extends JPanel implements ActionToolbar, QuickAct
     if (myTargetComponent == null) {
       putClientProperty(SUPPRESS_TARGET_COMPONENT_WARNING, true);
     }
-    myTargetComponent = component;
-
-    if (myTargetComponent != null) {
-      updateWhenFirstShown(myTargetComponent, new ToolbarReference(this));
+    if (myTargetComponent != component) {
+      myTargetComponent = component;
+      if (isShowing()) {
+        updateActionsImmediately();
+      }
     }
-  }
-
-  private static void updateWhenFirstShown(@NotNull JComponent targetComponent, @NotNull ToolbarReference ref) {
-    Activatable activatable = new Activatable() {
-      @Override
-      public void showNotify() {
-        ActionToolbarImpl toolbar = ref.get();
-        if (toolbar != null) {
-          toolbar.myUpdater.updateActions(false, false, false);
-        }
-      }
-    };
-
-    ref.myDisposable = new UiNotifyConnector(targetComponent, activatable) {
-      @Override
-      protected void showNotify() {
-        super.showNotify();
-        ref.disposeReference();
-      }
-    };
   }
 
   @Override

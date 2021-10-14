@@ -16,6 +16,7 @@ internal sealed class ApiResult<T : Any> {
         if (isSuccess) {
             Success(action((this as Success<T>).result))
         } else {
+            @Suppress("UNCHECKED_CAST")
             this as Failure<V>
         }
 
@@ -25,5 +26,10 @@ internal sealed class ApiResult<T : Any> {
 
     inline fun onSuccess(action: (T) -> Unit) = apply {
         if (this is Success<T>) action(result)
+    }
+
+    fun getOrNull(): T? = when (this) {
+        is Failure -> null
+        is Success -> result
     }
 }

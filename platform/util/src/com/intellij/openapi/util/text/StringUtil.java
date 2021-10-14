@@ -2,7 +2,6 @@
 package com.intellij.openapi.util.text;
 
 import com.intellij.ReviseWhenPortedToJDK;
-import com.intellij.UtilBundle;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.NlsSafe;
@@ -733,6 +732,148 @@ public class StringUtil extends StringUtilRt {
   }
 
   /**
+   * C/C++ escaping https://en.cppreference.com/w/cpp/language/escape
+   */
+  @NotNull
+  public static String unescapeAnsiStringCharacters(@NotNull String s) {
+    StringBuilder buffer = new StringBuilder();
+    int length = s.length();
+    int count = 0;
+    int radix = 0;
+    int suffixLen = 0;
+    boolean decode = false;
+
+    boolean escaped = false;
+    for (int idx = 0; idx < length; idx++) {
+      char ch = s.charAt(idx);
+      if (!escaped) {
+        if (ch == '\\') {
+          escaped = true;
+        }
+        else {
+          buffer.append(ch);
+        }
+      }
+      else {
+        switch (ch) {
+          case '\'':
+            buffer.append((char)0x27);
+            break;
+
+          case '\"':
+            buffer.append((char)0x22);
+            break;
+
+          case '?':
+            buffer.append((char)0x3f);
+            break;
+
+          case '\\':
+            buffer.append((char)0x5c);
+            break;
+
+          case 'a':
+            buffer.append((char)0x07);
+            break;
+
+          case 'b':
+            buffer.append((char)0x08);
+            break;
+
+          case 'f':
+            buffer.append((char)0x0c);
+            break;
+
+          case 'n':
+            buffer.append((char)0x0a);
+            break;
+
+          case 'r':
+            buffer.append((char)0x0d);
+            break;
+
+          case 't':
+            buffer.append((char)0x09);
+            break;
+
+          case 'v':
+            buffer.append((char)0x0b);
+            break;
+
+          case '0':
+          case '1':
+          case '2':
+          case '3':
+          case '4':
+          case '5':
+          case '6':
+          case '7':
+            count = 3;
+            radix = 8;
+            suffixLen = 0;
+            decode = true;
+            break;
+          case 'x':
+            count = 2;
+            radix = 0x10;
+            suffixLen = 1;
+            decode = true;
+            break;
+          case 'u':
+            count = 4;
+            radix = 0x10;
+            suffixLen = 1;
+            decode = true;
+            break;
+          case 'U':
+            count = 8;
+            radix = 0x10;
+            suffixLen = 1;
+            decode = true;
+            break;
+          default:
+            buffer.append(ch);
+            break;
+        }
+        if (decode) {
+          decode = false;
+          StringBuilder sb = new StringBuilder(count);
+          for (int pos = idx + suffixLen; pos < length && count > 0; ++pos) {
+            char chl = s.charAt(pos);
+            if (!(radix == 0x10 && StringUtil.isHexDigit(chl) || radix == 8 && StringUtil.isOctalDigit(chl))) {
+              break;
+            }
+            sb.append(chl);
+            --count;
+          }
+          if (sb.length() != 0) {
+            try {
+              long code = Long.parseLong(sb.toString(), radix);
+              //noinspection AssignmentToForLoopParameter
+              idx += sb.length() + suffixLen - 1;
+              // todo: implement UTF-32 support
+              //if (code > 0xFFFFL) {
+              //  OCLog.LOG.warn("U32 char is not supported:" + code + ", reduced to " + (char)code);
+              //}
+              buffer.append((char)code);
+            }
+            catch (NumberFormatException e) {
+              buffer.append('\\').append(ch);
+            }
+          }
+          else {
+            buffer.append('\\').append(ch);
+          }
+        }
+        escaped = false;
+      }
+    }
+
+    if (escaped) buffer.append('\\');
+    return buffer.toString();
+  }
+
+  /**
    * Pluralize English word. Could be used when e.g. generating collection name by element type.
    * Do not use this method in localized context, as it works for English language only.
    *
@@ -1435,6 +1576,7 @@ public class StringUtil extends StringUtilRt {
    * @deprecated use NlsMessages#formatDurationApproximateNarrow for localized output
    */
   @Contract(pure = true)
+  @ApiStatus.ScheduledForRemoval(inVersion = "2022.1")
   @Deprecated
   public static @NotNull @NonNls String formatDuration(long duration, @NotNull String unitSeparator) {
     return Formats.formatDuration(duration, unitSeparator);
@@ -3064,6 +3206,11 @@ public class StringUtil extends StringUtilRt {
     return c == ' ' || c == '\t';
   }
 
+  /**
+   * @deprecated use {@link com.intellij.ide.nls.NlsMessages#formatAndList(java.util.Collection)} instead to get properly localized concatenation
+   */
+  @SuppressWarnings("HardCodedStringLiteral")
+  @Deprecated
   @Nls
   @NotNull
   public static String naturalJoin(List<String> strings) {
@@ -3071,6 +3218,6 @@ public class StringUtil extends StringUtilRt {
     if (strings.size() == 1) return strings.get(0);
     String lastWord = strings.get(strings.size() - 1);
     String leadingWords = join(strings.subList(0, strings.size() - 1), ", ");
-    return UtilBundle.message("natural.join", leadingWords, lastWord);
+    return leadingWords + " and " + lastWord;
   }
 }

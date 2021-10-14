@@ -1,11 +1,15 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package training.learn
 
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.lang.LanguageExtensionPoint
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.KeyedLazyInstanceEP
 import com.intellij.util.containers.ContainerUtil
@@ -18,11 +22,30 @@ import training.learn.course.LearningCourseBase
 import training.learn.course.Lesson
 import training.learn.lesson.LessonManager
 import training.ui.LearnToolWindowFactory
+import training.util.LEARNING_PANEL_OPENED_IN
 import training.util.WeakReferenceDelegator
 import training.util.courseCanBeUsed
 import training.util.switchOnExperimentalLessons
 
+@Service(Service.Level.APP)
 class CourseManager internal constructor() : Disposable {
+
+  val previousOpenedVersion: BuildNumber?
+
+  init {
+    val strBuild = PropertiesComponent.getInstance().getValue(LEARNING_PANEL_OPENED_IN)
+    previousOpenedVersion = if (strBuild == null) {
+      null
+    }
+    else {
+      val parseVersion = BuildNumber.fromString(strBuild)
+      if (parseVersion == null) {
+        thisLogger().error("Cannot parse previous version $strBuild")
+      }
+      parseVersion
+    }
+  }
+
   val mapModuleVirtualFile: MutableMap<IftModule, VirtualFile> = ContainerUtil.createWeakMap()
 
   var unfoldModuleOnInit by WeakReferenceDelegator<IftModule>()
@@ -41,16 +64,33 @@ class CourseManager internal constructor() : Disposable {
   val lessonsForModules: List<Lesson>
     get() = modules.map { it.lessons }.flatten()
 
+  val newLessons: List<Lesson>
+    get() {
+      val previousVersion = previousOpenedVersion ?: return lessonsForModules.filter { it.properties.availableSince != null }
+      return lessonsForModules.filter {
+        if (it.passed) return@filter false // It is strange situation actually
+        val availableSince = it.properties.availableSince ?: return@filter false
+        val lessonVersion = BuildNumber.fromString(availableSince)
+        if (lessonVersion == null) {
+          thisLogger().error("Invalid lesson version: $availableSince")
+          return@filter false
+        }
+        lessonVersion > previousVersion
+      }
+    }
+
   override fun dispose() {
   }
 
   init {
-    COURSE_MODULES_EP.addChangeListener(Runnable {
-      clearModules()
-      for (toolWindow in LearnToolWindowFactory.learnWindowPerProject.values) {
-        toolWindow.reinitViews()
-      }
-    }, this)
+    for (ep in listOf(COMMON_COURSE_MODULES_EP, COURSE_MODULES_EP)) {
+      ep.addChangeListener(Runnable {
+        clearModules()
+        for (toolWindow in LearnToolWindowFactory.learnWindowPerProject.values) {
+          toolWindow.reinitViews()
+        }
+      }, this)
+    }
   }
 
   fun clearModules() {
@@ -91,7 +131,7 @@ class CourseManager internal constructor() : Disposable {
     for (e in extensions) {
       val langSupport = LangManager.getInstance().getLangSupportById(e.language)
       if (langSupport != null) {
-        languageCourses.put(langSupport, e.instance.modules())
+        languageCourses.putValues(langSupport, e.instance.modules())
       }
     }
   }

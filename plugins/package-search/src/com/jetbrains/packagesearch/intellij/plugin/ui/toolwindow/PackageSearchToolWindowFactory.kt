@@ -1,62 +1,59 @@
 package com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow
 
 import com.intellij.openapi.project.DumbAware
-import com.intellij.openapi.project.DumbService
-import com.intellij.openapi.project.DumbUnawareHider
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.wm.RegisterToolWindowTask
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.ui.content.ContentFactory
+import com.jetbrains.packagesearch.PackageSearchIcons
 import com.jetbrains.packagesearch.intellij.plugin.PackageSearchBundle
-import com.jetbrains.packagesearch.intellij.plugin.fus.PackageSearchEventsLogger
-import javax.swing.JLabel
+import com.jetbrains.packagesearch.intellij.plugin.util.AppUI
+import com.jetbrains.packagesearch.intellij.plugin.util.lifecycleScope
+import com.jetbrains.packagesearch.intellij.plugin.util.packageSearchDataService
+import com.jetbrains.packagesearch.intellij.plugin.util.toolWindowManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
 
 class PackageSearchToolWindowFactory : ToolWindowFactory, DumbAware {
 
     companion object {
 
-        private val ToolWindowId = PackageSearchBundle.message("packagesearch.ui.toolwindow.title")
+        private val ToolWindowId = PackageSearchBundle.message("toolwindow.stripe.Dependencies")
 
         private fun getToolWindow(project: Project) = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId)
 
-        fun activateToolWindow(project: Project) {
-            PackageSearchEventsLogger.onToolWindowOpen(project)
-            getToolWindow(project)?.activate {}
-        }
-
         fun activateToolWindow(project: Project, action: () -> Unit) {
-            PackageSearchEventsLogger.onToolWindowOpen(project)
             getToolWindow(project)?.activate(action, true, true)
         }
-
-        fun toggleToolWindow(project: Project) {
-            getToolWindow(project)?.let {
-                if (it.isVisible) {
-                    PackageSearchEventsLogger.onToolWindowOpen(project)
-                    it.hide { }
-                } else {
-                    PackageSearchEventsLogger.onToolWindowClose(project)
-                    it.activate(null, true, true)
-                }
-            }
-        }
     }
 
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        // On first load, show "unavailable while indices are built"
-        toolWindow.contentManager.addContent(
-            ContentFactory.SERVICE.getInstance().createContent(
-                DumbUnawareHider(JLabel()).apply { setContentVisible(false) },
-                PackageSearchBundle.message("packagesearch.ui.toolwindow.tab.packages.title"), false
-            ).apply {
-                isCloseable = false
-            }
-        )
+    override fun isApplicable(project: Project): Boolean {
+        val isAvailable = project.packageSearchDataService.projectModulesStateFlow.value.isNotEmpty()
 
-        // Once indices have been built once, show tool window forever
-        DumbService.getInstance(project).runWhenSmart {
-            project.getService(PackageSearchToolWindowService::class.java).initialize(toolWindow)
-        }
+        if (!isAvailable) project.packageSearchDataService.projectModulesStateFlow
+            .filter { it.isNotEmpty() }
+            .take(1)
+            .map {
+                RegisterToolWindowTask.closable(
+                    ToolWindowId,
+                    PackageSearchBundle.messagePointer("toolwindow.stripe.Dependencies"),
+                    PackageSearchIcons.ArtifactSmall
+                )
+            }
+            .map { toolWindowTask -> project.toolWindowManager.registerToolWindow(toolWindowTask) }
+            .onEach { toolWindow -> toolWindow.initialize(project) }
+            .flowOn(Dispatchers.AppUI)
+            .launchIn(project.lifecycleScope)
+
+        return isAvailable
     }
+
+    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) = toolWindow.initialize(project)
+
 }

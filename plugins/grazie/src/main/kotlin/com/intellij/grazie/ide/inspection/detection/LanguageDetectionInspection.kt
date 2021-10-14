@@ -36,14 +36,16 @@ internal class LanguageDetectionInspection : LocalInspectionTool() {
   }
 
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
-    if (!isOnTheFly || InjectedLanguageManager.getInstance(holder.project).isInjectedFragment(holder.file))
+    val file = holder.file
+    if (!isOnTheFly || InjectedLanguageManager.getInstance(holder.project).isInjectedFragment(file) || GrazieInspection.ignoreGrammarChecking(file))
       return PsiElementVisitor.EMPTY_VISITOR
 
     val domains = GrazieInspection.checkedDomains()
-    val fileLanguage = holder.file.language
+    val fileLanguage = file.language
+    val areChecksDisabled = GrazieInspection.getDisabledChecker(fileLanguage)
     return object : PsiElementVisitor() {
       override fun visitElement(element: PsiElement) {
-        if (GrazieInspection.areChecksDisabled(element, fileLanguage)) return
+        if (areChecksDisabled(element)) return
         val text = TextExtractor.findUniqueTextAt(element, domains) ?: return
         LangDetector.updateContext(text, session.getUserData(key)!!)
       }

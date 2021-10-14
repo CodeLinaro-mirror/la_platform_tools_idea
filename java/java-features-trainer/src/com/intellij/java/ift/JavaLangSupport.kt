@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.ift
 
-import com.intellij.ide.impl.NewProjectUtil
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.application.runWriteAction
@@ -10,6 +9,7 @@ import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.openapi.projectRoots.ex.JavaSdkUtil
 import com.intellij.openapi.roots.impl.LanguageLevelProjectExtensionImpl
 import com.intellij.openapi.roots.ui.configuration.SdkLookup
 import com.intellij.openapi.roots.ui.configuration.SdkLookupDecision
@@ -38,7 +38,7 @@ class JavaLangSupport : AbstractLangSupport() {
 
   override val langCourseFeedback get() = getFeedbackLink(this, false)
 
-  override val readMeCreator= ReadMeCreator()
+  override val readMeCreator = ReadMeCreator()
 
   override fun installAndOpenLearningProject(projectPath: Path,
                                              projectToClose: Project?,
@@ -89,13 +89,13 @@ class JavaLangSupport : AbstractLangSupport() {
       .executeLookup()
   }
 
-  override fun getSdkForProject(project: Project): Sdk? {
+  override fun getSdkForProject(project: Project, selectedSdk: Sdk?): Sdk? {
     return null
   }
 
   override fun applyProjectSdk(sdk: Sdk, project: Project) {
     val applySdkAction = {
-      runWriteAction { NewProjectUtil.applyJdkToProject(project, sdk) }
+      runWriteAction { JavaSdkUtil.applyJdkToProject(project, sdk) }
     }
     runInEdt {
       CommandProcessor.getInstance().executeCommand(project, applySdkAction, null, null)

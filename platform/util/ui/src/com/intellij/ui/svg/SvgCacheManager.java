@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.svg;
 
 import com.intellij.diagnostic.StartUpMeasurer;
@@ -114,11 +114,11 @@ public final class SvgCacheManager {
     return buffer.array();
   }
 
-  public final @Nullable Image loadFromCache(byte @NotNull [] theme,
-                                             byte @NotNull [] imageBytes,
-                                             float scale,
-                                             boolean isDark,
-                                             @NotNull ImageLoader.Dimension2DDouble docSize) {
+  public @Nullable Image loadFromCache(byte @NotNull [] theme,
+                                       byte @NotNull [] imageBytes,
+                                       float scale,
+                                       boolean isDark,
+                                       @NotNull ImageLoader.Dimension2DDouble docSize) {
     byte[] key = getCacheKey(theme, imageBytes);
     MVMap<byte[], ImageValue> map = getMap(scale, isDark, scaleToMap, store, mapBuilder);
     try {
@@ -160,7 +160,7 @@ public final class SvgCacheManager {
       return null;
     }
 
-    DataBuffer dataBuffer = new DataBufferByte(value.data, value.actualWidth * 4 * (value.actualHeight - 1) + 4 * value.actualWidth);
+    DataBuffer dataBuffer = createBuffer(value.data, value.actualWidth * 4 * (value.actualHeight - 1) + 4 * value.actualWidth);
     WritableRaster raster = Raster.createInterleavedRaster(dataBuffer, value.actualWidth, value.actualHeight, value.actualWidth * 4, 4, B_OFFS, null);
     Image image = new BufferedImage(colorModel, raster, false, null);
     docSize.setSize(value.width, value.height);
@@ -177,7 +177,25 @@ public final class SvgCacheManager {
     g.drawImage(image, 0, 0, null);
     g.dispose();
 
-    byte[] imageData = ((DataBufferByte)convertedImage.getRaster().getDataBuffer()).getData();
+    byte[] imageData = extractBufferData((DataBufferByte)convertedImage.getRaster().getDataBuffer());
     return new ImageValue(imageData, (float)size.getWidth(), (float)size.getHeight(), actualWidth, actualHeight);
+  }
+
+  private static DataBuffer createBuffer(byte[] data, int size) {
+    // Create a STABLE internal buffer. It will be marked dirty for now, but will remain STABLE after a refresh.
+    DataBufferByte dataBuffer = new DataBufferByte(size);
+    for (int i = 0; i < data.length; i++) {
+      dataBuffer.setElem(i, data[i]);
+    }
+    return dataBuffer;
+  }
+
+  private static byte[] extractBufferData(DataBufferByte dataBufferByte) {
+    // Calling getData() directly will mark the internal buffer UNTRACKABLE, so preserve ownership.
+    byte[] imageData = new byte[dataBufferByte.getSize()];
+    for (int i = 0; i < imageData.length; i++) {
+      imageData[i] = (byte)dataBufferByte.getElem(i);
+    }
+    return imageData;
   }
 }

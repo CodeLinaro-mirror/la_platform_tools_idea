@@ -1,5 +1,7 @@
 package com.intellij.grazie.text;
 
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
@@ -38,6 +40,11 @@ class TextContentImpl implements TextContent {
     if (tokens.get(tokens.size() - 1) == WS_TOKEN) tokens.remove(tokens.size() - 1);
     if (tokens.isEmpty()) {
       throw new IllegalArgumentException("There should be at least one non-whitespace token");
+    }
+
+    List<TextRange> ranges = getRangesInFile();
+    if (!ContainerUtil.sorted(ranges, Segment.BY_START_OFFSET_THEN_END_OFFSET).equals(ranges)) {
+      throw new IllegalArgumentException("TextContent fragments should be ordered by the offset ascending: " + ranges);
     }
   }
 
@@ -151,7 +158,7 @@ class TextContentImpl implements TextContent {
 
   @Override
   public @NotNull PsiElement findPsiElementAt(int textOffset) {
-    return Objects.requireNonNull(containingFile().findElementAt(textOffsetToFile(textOffset)));
+    return Objects.requireNonNull(getContainingFile().findElementAt(textOffsetToFile(textOffset)));
   }
 
   @Override
@@ -162,7 +169,8 @@ class TextContentImpl implements TextContent {
       .toList();
   }
 
-  private PsiFile containingFile() {
+  @Override
+  public @NotNull PsiFile getContainingFile() {
     for (TokenInfo token : tokens) {
       if (token instanceof PsiToken) {
         return ((PsiToken) token).psi.getContainingFile();
@@ -203,6 +211,7 @@ class TextContentImpl implements TextContent {
   }
 
   private TextContent excludeRange(TextRange range, boolean unknown) {
+    ProgressManager.checkCanceled();
     if (range.getStartOffset() < 0 || range.getEndOffset() > length()) {
       throw new IllegalArgumentException("Text range " + range + " should be between 0 and " + length());
     }

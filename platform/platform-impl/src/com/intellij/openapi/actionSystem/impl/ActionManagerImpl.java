@@ -52,9 +52,10 @@ import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeFrame;
-import com.intellij.serviceContainer.ContainerUtilKt;
+import com.intellij.serviceContainer.PrecomputedExtensionModelKt;
 import com.intellij.ui.icons.IconLoadMeasurer;
 import com.intellij.util.ArrayUtilRt;
+import com.intellij.util.DefaultBundleService;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.XmlElement;
 import com.intellij.util.containers.CollectionFactory;
@@ -82,7 +83,7 @@ import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public final class ActionManagerImpl extends ActionManagerEx implements Disposable {
+public class ActionManagerImpl extends ActionManagerEx implements Disposable {
   private static final ExtensionPointName<ActionConfigurationCustomizer> EP =
     new ExtensionPointName<>("com.intellij.actionConfigurationCustomizer");
   private static final ExtensionPointName<DynamicActionConfigurationCustomizer> DYNAMIC_EP_NAME =
@@ -132,7 +133,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   private final Map<OverridingAction, AnAction> myBaseActions = new HashMap<>();
   private int myAnonymousGroupIdCounter;
 
-  ActionManagerImpl() {
+  protected ActionManagerImpl() {
     Application app = ApplicationManager.getApplication();
     if (!app.isUnitTestMode()) {
       LoadingState.COMPONENTS_LOADED.checkOccurred();
@@ -167,7 +168,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   @ApiStatus.Internal
   public void registerActions(@NotNull List<IdeaPluginDescriptorImpl> plugins) {
     KeymapManagerEx keymapManager = Objects.requireNonNull(KeymapManagerEx.getInstanceEx());
-    ContainerUtilKt.executeRegisterTask(plugins, it -> {
+    PrecomputedExtensionModelKt.executeRegisterTask(plugins, it -> {
       registerPluginActions(it, keymapManager);
       return Unit.INSTANCE;
     });
@@ -259,14 +260,27 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   }
 
   @SuppressWarnings("HardCodedStringLiteral")
-  private static @NlsActions.ActionDescription String computeDescription(@NotNull ResourceBundle bundle, String id, String elementType, String descriptionValue) {
-    String key = elementType + "." + id + ".description";
-    return AbstractBundle.messageOrDefault(bundle, key, Strings.notNullize(descriptionValue));
+  private static @NlsActions.ActionDescription String computeDescription(@Nullable ResourceBundle bundle,
+                                                                         String id,
+                                                                         String elementType,
+                                                                         String descriptionValue,
+                                                                         @NotNull ClassLoader classLoader) {
+    if (bundle != null && DefaultBundleService.isDefaultBundle()) {
+      bundle = DynamicBundle.INSTANCE.getResourceBundle(bundle.getBaseBundleName(), classLoader);
+    }
+    return AbstractBundle.messageOrDefault(bundle, elementType + "." + id + "." + DESCRIPTION, Strings.notNullize(descriptionValue));
   }
 
   @SuppressWarnings("HardCodedStringLiteral")
-  private static @NlsActions.ActionText String computeActionText(@Nullable ResourceBundle bundle, String id, String elementType, @Nullable String textValue) {
+  private static @NlsActions.ActionText String computeActionText(@Nullable ResourceBundle bundle,
+                                                                 String id,
+                                                                 String elementType,
+                                                                 @Nullable String textValue,
+                                                                 @NotNull ClassLoader classLoader) {
     String defaultValue = Strings.notNullize(textValue);
+    if (bundle != null && DefaultBundleService.isDefaultBundle()) {
+      bundle = DynamicBundle.INSTANCE.getResourceBundle(bundle.getBaseBundleName(), classLoader);
+    }
     return bundle == null ? defaultValue : AbstractBundle.messageOrDefault(bundle, elementType + "." + id + "." + TEXT_ATTR_NAME, defaultValue);
   }
 
@@ -350,7 +364,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   }
 
   private static void reportKeymapNotFoundWarning(@Nullable PluginId pluginId, @NotNull String keymapName) {
-    if (DefaultKeymap.isBundledKeymapHidden(keymapName)) {
+    if (DefaultKeymap.Companion.isBundledKeymapHidden(keymapName)) {
       return;
     }
     String message = "keymap \"" + keymapName + "\" not found";
@@ -465,10 +479,10 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
 
       switch (descriptor.name) {
         case ACTION_ELEMENT_NAME:
-          processActionElement(element, pluginDescriptor, bundle, keymapManager);
+          processActionElement(element, pluginDescriptor, bundle, keymapManager, pluginDescriptor.getPluginClassLoader());
           break;
         case GROUP_ELEMENT_NAME:
-          processGroupElement(element, pluginDescriptor, bundle, keymapManager);
+          processGroupElement(element, pluginDescriptor, bundle, keymapManager, pluginDescriptor.getPluginClassLoader());
           break;
         case SEPARATOR_ELEMENT_NAME:
           processSeparatorNode(null, element, pluginDescriptor.getPluginId(), bundle);
@@ -591,7 +605,8 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   private @Nullable AnAction processActionElement(@NotNull XmlElement element,
                                                   @NotNull IdeaPluginDescriptorImpl plugin,
                                                   @Nullable ResourceBundle bundle,
-                                                  @NotNull KeymapManager keymapManager) {
+                                                  @NotNull KeymapManager keymapManager,
+                                                  @NotNull ClassLoader classLoader) {
     String className = element.attributes.get(CLASS_ATTR_NAME);
     if (className == null || className.isEmpty()) {
       reportActionError(plugin.getPluginId(), "action element should have specified \"class\" attribute");
@@ -619,7 +634,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
     String descriptionValue = element.attributes.get(DESCRIPTION);
 
     ActionStub stub = new ActionStub(className, id, plugin, iconPath, ProjectType.create(projectType), () -> {
-      Supplier<String> text = () -> computeActionText(bundle, id, ACTION_ELEMENT_NAME, textValue);
+      Supplier<String> text = () -> computeActionText(bundle, id, ACTION_ELEMENT_NAME, textValue, classLoader);
       if (text.get() == null) {
         reportActionError(plugin.getPluginId(), "'text' attribute is mandatory (actionId=" + id +
                                                 ", plugin=" + plugin + ")");
@@ -631,7 +646,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
         presentation.setDescription(descriptionValue);
       }
       else {
-        presentation.setDescription(() -> computeDescription(bundle, id, ACTION_ELEMENT_NAME, descriptionValue));
+        presentation.setDescription(() -> computeDescription(bundle, id, ACTION_ELEMENT_NAME, descriptionValue, classLoader));
       }
       return presentation;
     });
@@ -707,7 +722,8 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   private AnAction processGroupElement(@NotNull XmlElement element,
                                        @NotNull IdeaPluginDescriptorImpl plugin,
                                        @Nullable ResourceBundle bundle,
-                                       @NotNull KeymapManagerEx keymapManager) {
+                                       @NotNull KeymapManagerEx keymapManager,
+                                       @NotNull ClassLoader classLoader) {
     String className = element.attributes.get(CLASS_ATTR_NAME);
     if (className == null) {
       // use default group if class isn't specified
@@ -771,7 +787,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       String finalId = id;
 
       // text
-      Supplier<String> text = () -> computeActionText(bundle, finalId, GROUP_ELEMENT_NAME, element.attributes.get(TEXT_ATTR_NAME));
+      Supplier<String> text = () -> computeActionText(bundle, finalId, GROUP_ELEMENT_NAME, element.attributes.get(TEXT_ATTR_NAME), classLoader);
       // don't override value which was set in API with empty value from xml descriptor
       if (!Strings.isEmpty(text.get()) || presentation.getText() == null) {
         presentation.setText(text);
@@ -786,7 +802,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
         }
       }
       else {
-        Supplier<String> descriptionSupplier = () -> computeDescription(bundle, finalId, GROUP_ELEMENT_NAME, description);
+        Supplier<String> descriptionSupplier = () -> computeDescription(bundle, finalId, GROUP_ELEMENT_NAME, description, classLoader);
         // don't override value which was set in API with empty value from xml descriptor
         if (!Strings.isEmpty(descriptionSupplier.get()) || presentation.getDescription() == null) {
           presentation.setDescription(descriptionSupplier);
@@ -825,7 +841,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       for (XmlElement child : element.children) {
         switch (child.name) {
           case ACTION_ELEMENT_NAME: {
-            AnAction action = processActionElement(child, plugin, bundle, keymapManager);
+            AnAction action = processActionElement(child, plugin, bundle, keymapManager, classLoader);
             if (action != null) {
               addToGroupInner(group, action, Constraints.LAST, isSecondary(child));
             }
@@ -835,7 +851,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
             processSeparatorNode((DefaultActionGroup)group, child, plugin.getPluginId(), bundle);
             break;
           case GROUP_ELEMENT_NAME: {
-            AnAction action = processGroupElement(child, plugin, bundle, keymapManager);
+            AnAction action = processGroupElement(child, plugin, bundle, keymapManager, classLoader);
             if (action != null) {
               addToGroupInner(group, action, Constraints.LAST, false);
             }
@@ -1068,8 +1084,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
       reportKeymapNotFoundWarning(pluginId, keymapName);
       return;
     }
-    final KeyboardShortcut shortcut = new KeyboardShortcut(firstKeyStroke, secondKeyStroke);
-    processRemoveAndReplace(element, actionId, keymap, shortcut);
+    processRemoveAndReplace(element, actionId, keymap, new KeyboardShortcut(firstKeyStroke, secondKeyStroke));
   }
 
   private static void processRemoveAndReplace(@NotNull XmlElement element, String actionId, @NotNull Keymap keymap, @NotNull Shortcut shortcut) {
@@ -1350,7 +1365,7 @@ public final class ActionManagerImpl extends ActionManagerEx implements Disposab
   }
 
   /**
-   * Unregisters already registered action and prevents the action from being registered in future.
+   * Unregisters already registered action and prevents the action from being registered in the future.
    * Should be used only in IDE configuration
    */
   @ApiStatus.Internal

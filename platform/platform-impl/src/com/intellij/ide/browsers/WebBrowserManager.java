@@ -15,7 +15,6 @@ import com.intellij.util.xmlb.SkipDefaultValuesSerializationFilters;
 import com.intellij.util.xmlb.XmlSerializer;
 import org.jdom.Element;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,7 +32,8 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
   private static final UUID PREDEFINED_OPERA_ID = UUID.fromString("53E2F627-B1A7-4DFA-BFA7-5B83CC034776");
   private static final UUID PREDEFINED_YANDEX_ID = UUID.fromString("B1B2EC2C-20BD-4EE2-89C4-616DB004BCD4");
   private static final UUID PREDEFINED_EXPLORER_ID = UUID.fromString("16BF23D4-93E0-4FFC-BFD6-CB13575177B0");
-  private static final UUID PREDEFINED_EDGE_ID = UUID.fromString("B2A9DCA7-9D0B-4E1E-98A8-AFB19C1328D2");
+  private static final UUID PREDEFINED_OLD_EDGE_ID = UUID.fromString("B2A9DCA7-9D0B-4E1E-98A8-AFB19C1328D2");
+  private static final UUID PREDEFINED_EDGE_ID = UUID.fromString("37cae5b9-e8b2-4949-9172-aafa37fbc09c");
 
   private static final UUID[] PREDEFINED_BROWSER_IDS = new UUID[]{
     PREDEFINED_CHROME_ID,
@@ -45,7 +45,21 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
     PREDEFINED_EDGE_ID
   };
 
-  @NonNls private static final String EDGE_COMMAND = "microsoft-edge";
+  public static final ReloadMode BROWSER_RELOAD_MODE_DEFAULT = ReloadMode.RELOAD_ON_SAVE;
+  public static final ReloadMode PREVIEW_RELOAD_MODE_DEFAULT = ReloadMode.RELOAD_ON_SAVE;
+
+  @NotNull
+  private static String getEdgeExecutionPath() {
+    if (SystemInfo.isWindows) {
+      return "msedge";
+    }
+    else if (SystemInfo.isMac) {
+      return "Microsoft Edge";
+    }
+    else {
+      return "microsoft-edge";
+    }
+  }
 
   private static List<ConfigurableWebBrowser> getPredefinedBrowsers() {
     return Arrays.asList(
@@ -61,7 +75,9 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
       new ConfigurableWebBrowser(PREDEFINED_EXPLORER_ID, BrowserFamily.EXPLORER, BrowserFamily.EXPLORER.getName(),
                                  BrowserFamily.EXPLORER.getExecutionPath(), false,
                                  BrowserFamily.EXPLORER.createBrowserSpecificSettings()),
-      new ConfigurableWebBrowser(PREDEFINED_EDGE_ID, BrowserFamily.EXPLORER, "Edge", EDGE_COMMAND, SystemInfo.isWindows, null)
+      new ConfigurableWebBrowser(PREDEFINED_EDGE_ID, BrowserFamily.CHROME, "Edge",
+                                 getEdgeExecutionPath(), SystemInfo.isWindows,
+                                 BrowserFamily.CHROME.createBrowserSpecificSettings())
     );
   }
 
@@ -69,6 +85,8 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
   private boolean myShowBrowserHover = true;
   private boolean myShowBrowserHoverXml = false;
   DefaultBrowserPolicy defaultBrowserPolicy = DefaultBrowserPolicy.SYSTEM;
+  ReloadMode webServerReloadMode = BROWSER_RELOAD_MODE_DEFAULT;
+  ReloadMode webPreviewReloadMode = PREVIEW_RELOAD_MODE_DEFAULT;
 
   public WebBrowserManager() {
     browsers = new ArrayList<>(getPredefinedBrowsers());
@@ -87,9 +105,9 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
   }
 
   public static boolean isEdge(@NotNull WebBrowser browser) {
-    return browser.getFamily() == BrowserFamily.EXPLORER &&
+    return browser.getFamily() == BrowserFamily.CHROME &&
            (browser.getId().equals(PREDEFINED_EDGE_ID) ||
-            checkNameAndPath(EDGE_COMMAND, browser) ||
+            checkNameAndPath(getEdgeExecutionPath(), browser) ||
             checkNameAndPath("MicrosoftEdge", browser));
   }
 
@@ -131,11 +149,27 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
     return defaultBrowserPolicy;
   }
 
+  @NotNull
+  public ReloadMode getWebServerReloadMode() {
+    return webServerReloadMode;
+  }
+
+  @NotNull
+  public ReloadMode getWebPreviewReloadMode() {
+    return webPreviewReloadMode;
+  }
+
   @Override
   public Element getState() {
     Element state = new Element("state");
     if (defaultBrowserPolicy != DefaultBrowserPolicy.SYSTEM) {
       state.setAttribute("default", StringUtil.toLowerCase(defaultBrowserPolicy.name()));
+    }
+    if (webServerReloadMode != ReloadMode.RELOAD_ON_SAVE) {
+      state.setAttribute("serverReloadMode", StringUtil.toLowerCase(webServerReloadMode.name()));
+    }
+    if (webPreviewReloadMode != ReloadMode.RELOAD_ON_CHANGE) {
+      state.setAttribute("previewReloadMode", StringUtil.toLowerCase(webPreviewReloadMode.name()));
     }
     if (!myShowBrowserHover) {
       state.setAttribute("showHover", "false");
@@ -236,14 +270,22 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
 
   @Override
   public void loadState(@NotNull Element element) {
-    String defaultValue = element.getAttributeValue("default");
-    if (!StringUtil.isEmpty(defaultValue)) {
-      try {
-        defaultBrowserPolicy = DefaultBrowserPolicy.valueOf(StringUtil.toUpperCase(defaultValue));
+    try {
+      String defaultValue = element.getAttributeValue("default");
+      if (!StringUtil.isEmpty(defaultValue)) {
+          defaultBrowserPolicy = DefaultBrowserPolicy.valueOf(StringUtil.toUpperCase(defaultValue));
       }
-      catch (IllegalArgumentException e) {
-        LOG.warn(e);
+      String serverReload = element.getAttributeValue("serverReloadMode");
+      if (!StringUtil.isEmpty(serverReload)) {
+        webServerReloadMode = ReloadMode.valueOf(StringUtil.toUpperCase(serverReload));
       }
+      String previewReload = element.getAttributeValue("previewReloadMode");
+      if (!StringUtil.isEmpty(previewReload)) {
+        webPreviewReloadMode = ReloadMode.valueOf(StringUtil.toUpperCase(previewReload));
+      }
+    }
+    catch (IllegalArgumentException e) {
+      LOG.warn(e);
     }
 
     myShowBrowserHover = !"false".equals(element.getAttributeValue("showHover"));
@@ -256,7 +298,7 @@ public final class WebBrowserManager extends SimpleModificationTracker implement
       }
 
       UUID id = readId(child.getAttributeValue("id"), family, list);
-      if (id == null) {
+      if (id == null || PREDEFINED_OLD_EDGE_ID.equals(id)) {
         continue;
       }
 

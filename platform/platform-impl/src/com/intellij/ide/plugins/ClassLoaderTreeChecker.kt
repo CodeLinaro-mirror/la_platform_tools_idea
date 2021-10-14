@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins
 
 import com.intellij.ide.plugins.cl.PluginClassLoader
@@ -14,7 +14,14 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
       return
     }
 
-    PluginManagerCore.getLoadedPlugins(null).forEach(this::checkThatClassLoaderNotReferencedByPluginClassLoader)
+    val pluginSet = PluginManagerCore.getPluginSet()
+    for (it in pluginSet.enabledPlugins) {
+      checkThatClassLoaderNotReferencedByPluginClassLoader(it)
+    }
+    @Suppress("TestOnlyProblems")
+    for (it in pluginSet.getUnsortedEnabledModules()) {
+      checkThatClassloaderNotReferenced(it.requireDescriptor())
+    }
   }
 
   private fun checkThatClassLoaderNotReferencedByPluginClassLoader(descriptor: IdeaPluginDescriptorImpl) {
@@ -32,22 +39,21 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
         LOG.error("$classLoader must be unloaded but still referenced")
       }
 
-      if (classLoader.pluginId == unloadedMainDescriptor.pluginId && classLoader.pluginDescriptor === descriptor) {
+      if (classLoader.pluginDescriptor === descriptor && classLoader.pluginId == unloadedMainDescriptor.pluginId) {
         LOG.error("Classloader of $descriptor must be nullified")
       }
     }
 
     @Suppress("TestOnlyProblems")
     val parents = classLoader._getParents()
-
     for (unloadedClassLoader in classLoaders) {
-      if (parents.contains(unloadedClassLoader)) {
+      if (parents.any { it.classLoader === unloadedClassLoader }) {
         LOG.error("$classLoader references via parents $unloadedClassLoader that must be unloaded")
       }
     }
 
     for (parent in parents) {
-      if (parent is PluginClassLoader && parent.pluginId == unloadedMainDescriptor.pluginId) {
+      if (parent.pluginId == unloadedMainDescriptor.pluginId) {
         LOG.error("$classLoader references via parents $parent that must be unloaded")
       }
     }

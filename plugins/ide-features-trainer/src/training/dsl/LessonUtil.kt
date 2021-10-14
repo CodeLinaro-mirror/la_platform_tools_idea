@@ -20,6 +20,7 @@ import com.intellij.openapi.options.OptionsBundle
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsActions
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.WindowStateService
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.TextWithMnemonic
 import com.intellij.openapi.wm.ToolWindowAnchor
@@ -41,6 +42,7 @@ import training.learn.LessonsBundle
 import training.ui.LearningUiHighlightingManager
 import training.ui.LearningUiManager
 import training.ui.LearningUiUtil
+import training.ui.UISettings
 import training.util.learningToolWindow
 import java.awt.Component
 import java.awt.Point
@@ -68,6 +70,7 @@ object LessonUtil {
       }
     }
   }
+
   fun insertIntoSample(sample: LessonSample, inserted: String): String {
     return sample.text.substring(0, sample.startOffset) + inserted + sample.text.substring(sample.startOffset)
   }
@@ -174,7 +177,8 @@ object LessonUtil {
   }
 
   fun actionName(actionId: String): @NlsActions.ActionText String {
-    val name = ActionManager.getInstance().getAction(actionId).templatePresentation.text?.replace("...", "") ?: error("No action with ID $actionId")
+    val name = ActionManager.getInstance().getAction(actionId).templatePresentation.text?.replace("...", "")
+               ?: error("No action with ID $actionId")
     return "<strong>${name}</strong>"
   }
 
@@ -199,7 +203,7 @@ object LessonUtil {
     }
   }
 
-  fun checkToolbarIsShowing(ui: ActionButton): Boolean   {
+  fun checkToolbarIsShowing(ui: ActionButton): Boolean {
     // Some buttons are duplicated to several tab-panels. It is a way to find an active one.
     val parentOfType = UIUtil.getParentOfType(JBTabsImpl.Toolbar::class.java, ui)
     val location = parentOfType?.location
@@ -217,6 +221,22 @@ object LessonUtil {
     }
   }
 
+  /**
+   * Should be called after task with detection of UI element inside desired window to adjust
+   * @return location of window before adjustment
+   */
+  fun TaskRuntimeContext.adjustPopupPosition(windowKey: String): Point? {
+    val window = UIUtil.getWindow(previous.ui) ?: return null
+    val previousWindowLocation = WindowStateService.getInstance(project).getLocation(windowKey)
+    return if (adjustPopupPosition(project, window)) previousWindowLocation else null
+  }
+
+  fun restorePopupPosition(project: Project, windowKey: String, savedLocation: Point?) {
+    if (savedLocation != null) invokeLater {
+      WindowStateService.getInstance(project).putLocation(windowKey, savedLocation)
+    }
+  }
+
   fun adjustPopupPosition(project: Project, popupWindow: Window): Boolean {
     val learningToolWindow = learningToolWindow(project) ?: return false
     val learningComponent = learningToolWindow.component
@@ -224,11 +244,11 @@ object LessonUtil {
     val popupBounds = popupWindow.bounds
     val screenRectangle = ScreenUtil.getScreenRectangle(learningComponent)
 
-    if (!learningRectangle.intersects(popupBounds)) return false// ok, no intersection
+    if (!learningRectangle.intersects(popupBounds)) return false // ok, no intersection
 
-    if (!screenRectangle.contains(learningRectangle)) return false// we can make some strange moves in this case
+    if (!screenRectangle.contains(learningRectangle)) return false // we can make some strange moves in this case
 
-    if (learningRectangle.width + popupBounds.width > screenRectangle.width) return false// some huge sizes
+    if (learningRectangle.width + popupBounds.width > screenRectangle.width) return false // some huge sizes
 
     when (learningToolWindow.anchor) {
       ToolWindowAnchor.LEFT -> {
@@ -264,10 +284,11 @@ fun LessonContext.firstLessonCompletedMessage() {
   text(LessonsBundle.message("goto.action.propose.to.go.next.new.ui", LessonUtil.rawEnter()))
 }
 
-fun TaskContext.proceedLink() {
+fun TaskContext.proceedLink(additionalAbove: Int = 0) {
   val gotIt = CompletableFuture<Boolean>()
   runtimeText {
     removeAfterDone = true
+    textProperties = TaskTextProperties(UISettings.instance.taskInternalParagraphAbove + additionalAbove, 12)
     LessonsBundle.message("proceed.to.the.next.step", LearningUiManager.addCallback { gotIt.complete(true) })
   }
   addStep(gotIt)
@@ -286,7 +307,7 @@ fun TaskContext.checkToolWindowState(toolWindowId: String, isShowing: Boolean) {
   }
 }
 
-fun <L: Any> TaskRuntimeContext.subscribeForMessageBus(topic: Topic<L>, handler: L) {
+fun <L : Any> TaskRuntimeContext.subscribeForMessageBus(topic: Topic<L>, handler: L) {
   project.messageBus.connect(taskDisposable).subscribe(topic, handler)
 }
 
@@ -324,13 +345,14 @@ fun TaskRuntimeContext.closeAllFindTabs() {
   }
 }
 
-fun String.dropMnemonic(): String {
+fun @Nls String.dropMnemonic(): @Nls String {
   return TextWithMnemonic.parse(this).dropMnemonic(true).text
 }
 
 val seconds01 = Timeout.timeout(1, TimeUnit.SECONDS)
 
 fun LessonContext.showWarningIfInplaceRefactoringsDisabled() {
+  if (EditorSettingsExternalizable.getInstance().isVariableInplaceRenameEnabled) return
   task {
     val step = CompletableFuture<Boolean>()
     addStep(step)
@@ -354,17 +376,19 @@ fun LessonContext.showWarningIfInplaceRefactoringsDisabled() {
   }
 }
 
-fun LessonContext.highlightButtonById(actionId: String): CompletableFuture<Boolean> {
+fun LessonContext.highlightButtonById(actionId: String, clearHighlights: Boolean = true): CompletableFuture<Boolean> {
   val feature: CompletableFuture<Boolean> = CompletableFuture()
   val needToFindButton = ActionManager.getInstance().getAction(actionId)
   prepareRuntimeTask {
-    LearningUiHighlightingManager.clearHighlights()
+    if (clearHighlights) {
+      LearningUiHighlightingManager.clearHighlights()
+    }
     ApplicationManager.getApplication().executeOnPooledThread {
       val result =
-        LearningUiUtil.findAllShowingComponentWithTimeout(null, ActionButton::class.java, seconds01) { ui ->
-        ui.action == needToFindButton && LessonUtil.checkToolbarIsShowing(ui)
-      }
-      invokeLater {
+        LearningUiUtil.findAllShowingComponentWithTimeout(project, ActionButton::class.java, seconds01) { ui ->
+          ui.action == needToFindButton && LessonUtil.checkToolbarIsShowing(ui)
+        }
+      taskInvokeLater {
         feature.complete(result.isNotEmpty())
         for (button in result) {
           val options = LearningUiHighlightingManager.HighlightingOptions(usePulsation = true, clearPreviousHighlights = false)
@@ -382,15 +406,28 @@ inline fun <reified ComponentType : Component> LessonContext.highlightAllFoundUi
   usePulsation: Boolean = false,
   crossinline finderFunction: TaskRuntimeContext.(ComponentType) -> Boolean
 ) {
+  val componentClass = ComponentType::class.java
+  @Suppress("DEPRECATION")
+  highlightAllFoundUiWithClass(componentClass, clearPreviousHighlights, highlightInside, usePulsation) {
+    finderFunction(it)
+  }
+}
+
+@Deprecated("Use inline form instead")
+fun <ComponentType : Component> LessonContext.highlightAllFoundUiWithClass(componentClass: Class<ComponentType>,
+                                                                           clearPreviousHighlights: Boolean,
+                                                                           highlightInside: Boolean,
+                                                                           usePulsation: Boolean,
+                                                                           finderFunction: TaskRuntimeContext.(ComponentType) -> Boolean) {
   prepareRuntimeTask {
     if (clearPreviousHighlights) LearningUiHighlightingManager.clearHighlights()
-    ApplicationManager.getApplication().executeOnPooledThread {
+    invokeInBackground {
       val result =
-        LearningUiUtil.findAllShowingComponentWithTimeout(null, ComponentType::class.java, seconds01) { ui ->
-        finderFunction(ui)
-      }
+        LearningUiUtil.findAllShowingComponentWithTimeout(project, componentClass, seconds01) { ui ->
+          finderFunction(ui)
+        }
 
-      invokeLater {
+      taskInvokeLater {
         for (ui in result) {
           val options = LearningUiHighlightingManager.HighlightingOptions(clearPreviousHighlights = false,
                                                                           highlightInside = highlightInside,

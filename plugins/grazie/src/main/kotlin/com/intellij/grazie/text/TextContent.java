@@ -2,6 +2,7 @@ package com.intellij.grazie.text;
 
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.util.containers.ContainerUtil;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
@@ -55,9 +56,21 @@ public interface TextContent extends CharSequence {
   @Nullable TextRange fileRangeToText(TextRange fileRange);
 
   /**
+   * @return the range with start and end translated using {@link #textOffsetToFile(int)}.
+   */
+  default @NotNull TextRange textRangeToFile(TextRange textRange) {
+    return new TextRange(textOffsetToFile(textRange.getStartOffset()), textOffsetToFile(textRange.getEndOffset()));
+  }
+
+  /**
    * @return the PSI element containing all of this content's fragments.
    */
   @NotNull PsiElement getCommonParent();
+
+  /**
+   * @return the PSI file containing this content.
+   */
+  @NotNull PsiFile getContainingFile();
 
   /**
    * @return the leaf PSI element containing the given text offset.
@@ -124,6 +137,8 @@ public interface TextContent extends CharSequence {
   /**
    * @return a new TextContent in the given domain, containing the substring of the given {@code psi.getText()}
    * in the specified range.
+   * Consider using {@link #builder()} instead if there's any chance that your language might be used as a data language in templates
+   * (see e.g. {@link com.intellij.psi.templateLanguages.TemplateLanguageFileViewProvider}).
    */
   static TextContent psiFragment(TextDomain domain, PsiElement psi, TextRange rangeInPsi) {
     return new TextContentImpl(domain, Collections.singletonList(
@@ -132,15 +147,26 @@ public interface TextContent extends CharSequence {
 
   /**
    * @return a new TextContent in the given domain, containing the full {@code psi.getText()}.
+   * Consider using {@link #builder()} instead if there's any chance that your language might be used as a data language in templates
+   * (see e.g. {@link com.intellij.psi.templateLanguages.TemplateLanguageFileViewProvider}).
    */
   static TextContent psiFragment(TextDomain domain, PsiElement psi) {
     return psiFragment(domain, psi, TextRange.from(0, psi.getTextLength()));
   }
 
   /**
+   * A builder allowing to assemble text content taking into account various PSI types and characters to exclude,
+   * element manipulators and {@link com.intellij.psi.templateLanguages.OuterLanguageElement}s.
+   */
+  static TextContentBuilder builder() {
+    return TextContentBuilder.FromPsi;
+  }
+
+  /**
    * @return a concatenation of several text contents, which must have the same domains.
    */
-  static TextContent join(List<? extends @NotNull TextContent> components) {
+  static @Nullable TextContent join(List<? extends @NotNull TextContent> components) {
+    if (components.isEmpty()) return null;
     if (components.size() == 1) return components.get(0);
 
     return new TextContentImpl(commonDomain(components), ContainerUtil.flatMap(components, c -> ((TextContentImpl) c).tokens));
