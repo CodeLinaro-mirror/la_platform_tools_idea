@@ -66,7 +66,9 @@ internal class GHAccountsPanel(
     accountList.emptyText.apply {
       appendText(GithubBundle.message("accounts.none.added"))
       appendSecondaryText(GithubBundle.message("accounts.add"), SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+        /* Android Studio: Android Studio: disable web flow for GitHub auth (via account.jetbrains.com and internal web browser redirect)
         invokeAction(actionManager.getAction("Github.Accounts.AddGHAccount"), accountList, ActionPlaces.UNKNOWN, null, null)
+        */ invokeAction(actionManager.getAction("Github.Accounts.AddGHAccountWithToken"), accountList, ActionPlaces.UNKNOWN, null, null)
       }
       appendSecondaryText(" (${KeymapUtil.getFirstKeyboardShortcutText(CommonShortcuts.getNew())})", StatusText.DEFAULT_ATTRIBUTES, null)
     }
