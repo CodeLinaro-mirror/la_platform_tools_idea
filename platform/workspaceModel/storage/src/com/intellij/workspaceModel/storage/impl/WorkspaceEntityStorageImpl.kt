@@ -840,7 +840,7 @@ internal class WorkspaceEntityStorageBuilderImpl(
     for (id in accumulator) indexes.removeFromIndices(id)
 
     accumulator.forEach {
-      LOG.debug { "Cascade removing: ${ClassToIntConverter.getClassOrDie(it.clazz)}-${it.arrayId}" }
+      LOG.debug { "Cascade removing: ${ClassToIntConverter.INSTANCE.getClassOrDie(it.clazz)}-${it.arrayId}" }
       this.changeLog.addRemoveEvent(it)
     }
   }
