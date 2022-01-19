@@ -10,22 +10,14 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.externalSystem.model.project.ProjectData
-import com.intellij.openapi.externalSystem.service.remote.ExternalSystemProgressNotificationManagerImpl
-import com.intellij.openapi.externalSystem.test.ExternalSystemImportingTestCase
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.findProjectData
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.getSettings
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.roots.ui.configuration.DefaultModulesProvider
 import com.intellij.openapi.roots.ui.configuration.ModulesProvider
 import com.intellij.openapi.roots.ui.configuration.actions.NewModuleAction
 import com.intellij.openapi.util.text.StringUtil.convertLineSeparators
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.PlatformTestUtil
-import com.intellij.testFramework.RunAll
-import com.intellij.testFramework.UsefulTestCase
-import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory
-import org.gradle.util.GradleVersion
 import org.jetbrains.plugins.gradle.org.jetbrains.plugins.gradle.util.ProjectInfoBuilder
 import org.jetbrains.plugins.gradle.org.jetbrains.plugins.gradle.util.ProjectInfoBuilder.ModuleInfo
 import org.jetbrains.plugins.gradle.org.jetbrains.plugins.gradle.util.ProjectInfoBuilder.ProjectInfo
@@ -33,47 +25,20 @@ import org.jetbrains.plugins.gradle.service.project.wizard.GradleFrameworksWizar
 import org.jetbrains.plugins.gradle.service.project.wizard.GradleStructureWizardStep
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 import org.jetbrains.plugins.gradle.util.GradleConstants
-import org.jetbrains.plugins.gradle.util.isSupported
-import org.jetbrains.plugins.gradle.util.runReadActionAndWait
 import org.jetbrains.plugins.gradle.util.waitForProjectReload
+import org.junit.runners.Parameterized
 import java.io.File
 import com.intellij.openapi.externalSystem.util.use as utilUse
 
 
-abstract class GradleCreateProjectTestCase : UsefulTestCase() {
-
-  private val bareFixture = IdeaTestFixtureFactory.getFixtureFactory().createBareFixture()
-  private val tempDirFixture = IdeaTestFixtureFactory.getFixtureFactory().createTempDirTestFixture()
-  private val sdkFixture = IdeaTestFixtureFactory.getFixtureFactory().createSdkFixture()
-
-  override fun setUp() {
-    super.setUp()
-    tempDirFixture.setUp()
-    bareFixture.setUp()
-    sdkFixture.setUp()
-    sdkFixture.setUpSdk(JavaSdk.getInstance()) {
-      isSupported(GradleVersion.current(), it)
-    }
-  }
-
-  override fun tearDown() {
-    RunAll(
-      { ExternalSystemProgressNotificationManagerImpl.assertListenersReleased() },
-      { ExternalSystemProgressNotificationManagerImpl.cleanupListeners() },
-      { sdkFixture.tearDown() },
-      { bareFixture.tearDown() },
-      { tempDirFixture.tearDown() },
-      { super.tearDown() }
-    ).run()
-  }
+abstract class GradleCreateProjectTestCase : GradleImportingTestCase() {
 
   fun Project.assertProjectStructure(projectInfo: ProjectInfo) {
-    ExternalSystemImportingTestCase.assertModules(
-      this,
-      projectInfo.rootModule.ideName,
-      *projectInfo.rootModule.modulesPerSourceSet.toTypedArray(),
-      *projectInfo.modules.map { it.ideName }.toTypedArray(),
-      *projectInfo.modules.flatMap { it.modulesPerSourceSet }.toTypedArray())
+    val rootModule = projectInfo.rootModule.ideName
+    val rootSourceSetModules = projectInfo.rootModule.modulesPerSourceSet
+    val modules = projectInfo.modules.map { it.ideName }
+    val sourceSetModules = projectInfo.modules.flatMap { it.modulesPerSourceSet }
+    assertModules(this, rootModule, *rootSourceSetModules.toTypedArray(), *modules.toTypedArray(), *sourceSetModules.toTypedArray())
   }
 
   fun deleteProject(projectInfo: ProjectInfo) {
@@ -90,11 +55,7 @@ abstract class GradleCreateProjectTestCase : UsefulTestCase() {
   }
 
   fun projectInfo(id: String, useKotlinDsl: Boolean = false, configure: ProjectInfoBuilder.() -> Unit): ProjectInfo {
-    val tempDirectory = runReadActionAndWait {
-      LocalFileSystem.getInstance()
-        .findFileByPath(tempDirFixture.tempDirPath)!!
-    }
-    return ProjectInfoBuilder.projectInfo(id, tempDirectory) {
+    return ProjectInfoBuilder.projectInfo(id, myProjectRoot) {
       this.useKotlinDsl = useKotlinDsl
       configure()
     }
@@ -272,4 +233,13 @@ abstract class GradleCreateProjectTestCase : UsefulTestCase() {
   }
 
   fun Project.use(save: Boolean = false, action: (Project) -> Unit) = utilUse(save, action)
+
+  companion object {
+    /**
+     * It's sufficient to run the test against one gradle version
+     */
+    @Parameterized.Parameters(name = "with Gradle-{0}")
+    @JvmStatic
+    fun tests(): Collection<Array<out String>> = arrayListOf(arrayOf(BASE_GRADLE_VERSION))
+  }
 }

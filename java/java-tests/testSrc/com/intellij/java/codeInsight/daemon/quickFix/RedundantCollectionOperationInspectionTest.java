@@ -3,11 +3,9 @@ package com.intellij.java.codeInsight.daemon.quickFix;
 
 import com.intellij.codeInsight.daemon.quickFix.LightQuickFixParameterizedTestCase;
 import com.intellij.codeInspection.LocalInspectionTool;
-import com.intellij.testFramework.LightProjectDescriptor;
 import com.siyeh.ig.redundancy.RedundantCollectionOperationInspection;
 import org.jetbrains.annotations.NotNull;
 
-import static com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase.JAVA_9;
 
 public class RedundantCollectionOperationInspectionTest extends LightQuickFixParameterizedTestCase {
   @Override
@@ -20,11 +18,5 @@ public class RedundantCollectionOperationInspectionTest extends LightQuickFixPar
   @Override
   protected String getBasePath() {
     return "/codeInsight/daemonCodeAnalyzer/quickFix/redundantCollectionOperation";
-  }
-
-  @NotNull
-  @Override
-  protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_9;
   }
 }

@@ -13,8 +13,7 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.ui.SystemNotifications;
-import com.intellij.util.concurrency.EdtExecutorService;
-import com.intellij.util.concurrency.SameThreadExecutor;
+import com.intellij.util.concurrency.PlainEdtExecutor;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,9 +23,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
 
 public class ProgressManagerImpl extends CoreProgressManager implements Disposable {
   private static final Key<Boolean> SAFE_PROGRESS_INDICATOR = Key.create("SAFE_PROGRESS_INDICATOR");
@@ -128,18 +125,16 @@ public class ProgressManagerImpl extends CoreProgressManager implements Disposab
   @Override
   @NotNull
   public Future<?> runProcessWithProgressAsynchronously(@NotNull Task.Backgroundable task) {
-    Supplier<@NotNull ProgressIndicator> supplier = () -> {
-      if (ApplicationManager.getApplication().isHeadlessEnvironment()) {
-        return shouldKeepTasksAsynchronousInHeadlessMode()
-               ? new ProgressIndicatorBase()
-               : new EmptyProgressIndicator();
-      }
-      Project project = task.getProject();
-      return project != null && project.isDisposed() ? new EmptyProgressIndicator() : new BackgroundableProcessIndicator(task);
-    };
-    Executor executor = ApplicationManager.getApplication().isDispatchThread() || ApplicationManager.getApplication().isHeadlessEnvironment()
-                        ? SameThreadExecutor.INSTANCE : EdtExecutorService.getInstance();
-    CompletableFuture<@NotNull ProgressIndicator> progressIndicator = CompletableFuture.supplyAsync(supplier, executor);
+    CompletableFuture<@NotNull ProgressIndicator> progressIndicator = CompletableFuture.supplyAsync(
+      () -> {
+        if (ApplicationManager.getApplication().isHeadlessEnvironment()) {
+          return shouldKeepTasksAsynchronousInHeadlessMode()
+                 ? new ProgressIndicatorBase()
+                 : new EmptyProgressIndicator();
+        }
+        Project project = task.getProject();
+        return project != null && project.isDisposed() ? new EmptyProgressIndicator() : new BackgroundableProcessIndicator(task);
+      }, PlainEdtExecutor.INSTANCE);
     return runProcessWithProgressAsync(task, progressIndicator, null, null, null);
   }
 

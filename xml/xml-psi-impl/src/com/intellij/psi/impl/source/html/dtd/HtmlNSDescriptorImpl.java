@@ -15,7 +15,6 @@ import com.intellij.xml.XmlElementDescriptor;
 import com.intellij.xml.XmlNSDescriptor;
 import com.intellij.xml.impl.schema.TypeDescriptor;
 import com.intellij.xml.impl.schema.XmlNSTypeDescriptorProvider;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -116,8 +115,7 @@ public class HtmlNSDescriptorImpl implements XmlNSDescriptor, DumbAware, XmlNSTy
     return xmlElementDescriptor;
   }
 
-  @ApiStatus.Internal
-  public XmlElementDescriptor getElementDescriptorByName(String name) {
+  private XmlElementDescriptor getElementDescriptorByName(String name) {
     if (!myCaseSensitive) name = StringUtil.toLowerCase(name);
 
     return buildDeclarationMap().get(name);

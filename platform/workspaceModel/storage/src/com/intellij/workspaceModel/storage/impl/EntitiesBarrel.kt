@@ -2,7 +2,6 @@
 package com.intellij.workspaceModel.storage.impl
 
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.workspaceModel.storage.ClassConversion
 import com.intellij.workspaceModel.storage.PersistentEntityId
 import com.intellij.workspaceModel.storage.WorkspaceEntity
 import com.intellij.workspaceModel.storage.WorkspaceEntityWithPersistentId
@@ -28,24 +27,21 @@ internal class MutableEntitiesBarrel private constructor(
     return getMutableEntityFamily(id.clazz).getEntityDataForModification(id.arrayId)
   }
 
-  @Suppress("UNCHECKED_CAST")
   fun <T : WorkspaceEntity> add(newEntity: WorkspaceEntityData<T>, clazz: Int) {
     (getMutableEntityFamily(clazz) as MutableEntityFamily<T>).add(newEntity)
   }
 
   fun book(clazz: Int): EntityId {
     val arrayId = getMutableEntityFamily(clazz).book()
-    return createEntityId(arrayId, clazz)
+    return EntityId(arrayId, clazz)
   }
 
-  @Suppress("UNCHECKED_CAST")
   fun <T : WorkspaceEntity> cloneAndAdd(newEntity: WorkspaceEntityData<T>, clazz: Int): WorkspaceEntityData<T> {
     val cloned = newEntity.clone()
     (getMutableEntityFamily(clazz) as MutableEntityFamily<T>).add(cloned)
     return cloned
   }
 
-  @Suppress("UNCHECKED_CAST")
   fun <T : WorkspaceEntity> cloneAndAddAt(newEntity: WorkspaceEntityData<T>, entityId: EntityId): WorkspaceEntityData<T> {
     val cloned = newEntity.clone()
     cloned.id = entityId.arrayId
@@ -53,7 +49,6 @@ internal class MutableEntitiesBarrel private constructor(
     return cloned
   }
 
-  @Suppress("UNCHECKED_CAST")
   fun <T : WorkspaceEntity> replaceById(newEntity: WorkspaceEntityData<T>, clazz: Int) {
     val family = getMutableEntityFamily(clazz) as MutableEntityFamily<T>
     if (!family.exists(newEntity.id)) {
@@ -126,7 +121,7 @@ internal sealed class EntitiesBarrel {
 
         // Assert unique of persistent id
         if (hasPersistentId) {
-          val persistentId = entityData.persistentId()
+          val persistentId = entityData.persistentId(WorkspaceEntityStorageImpl.EMPTY)
           assert(persistentId != null) { "Persistent id expected for $clazz" }
           assert(persistentId !in persistentIds) { "Duplicated persistent ids: $persistentId" }
           persistentIds.add(persistentId!!)

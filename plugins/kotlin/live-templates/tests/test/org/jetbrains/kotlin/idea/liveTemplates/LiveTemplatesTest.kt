@@ -192,12 +192,6 @@ class LiveTemplatesTest : KotlinLightCodeInsightFixtureTestCase() {
         checkAfter()
     }
 
-    fun testIter_ForKeywordVariable() {
-        start()
-        nextTab(2)
-        checkAfter()
-    }
-
     fun testAnonymous_1() {
         start()
 

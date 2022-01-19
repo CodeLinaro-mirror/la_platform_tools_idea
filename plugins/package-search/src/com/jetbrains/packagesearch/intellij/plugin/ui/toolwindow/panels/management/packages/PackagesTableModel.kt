@@ -2,29 +2,27 @@ package com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.managem
 
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.ListTableModel
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.ActionsColumn
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.NameColumn
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.ScopeColumn
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.VersionColumn
+import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageModel
+import com.jetbrains.packagesearch.intellij.plugin.util.logDebug
 
 internal class PackagesTableModel(
-    val nameColumn: NameColumn,
-    val scopeColumn: ScopeColumn,
-    val versionColumn: VersionColumn,
-    val actionsColumn: ActionsColumn
-) : ListTableModel<PackagesTableItem<*>>(nameColumn, scopeColumn, versionColumn, actionsColumn) {
-
-    val columns by lazy { arrayOf(nameColumn, scopeColumn, versionColumn, actionsColumn) }
+    var onlyStable: Boolean,
+    vararg val columns: ColumnInfo<PackagesTableItem<*>, *>
+) : ListTableModel<PackagesTableItem<*>>(*columns) {
 
     override fun getRowCount() = items.size
     override fun getColumnCount() = columns.size
     override fun getColumnClass(columnIndex: Int): Class<out Any> = columns[columnIndex].javaClass
 
-    fun columnIndexOf(info: ColumnInfo<PackagesTableItem<*>, *>) = when (info) {
-        nameColumn -> 0
-        scopeColumn -> 1
-        versionColumn -> 2
-        actionsColumn -> 3
-        else -> error("Column not known")
+    fun replaceItemMatching(packageModel: PackageModel, itemProducer: (PackagesTableItem<*>) -> PackagesTableItem<*>) {
+        val newItems = mutableListOf<PackagesTableItem<*>>()
+        newItems.addAll(items.takeWhile { it.packageModel != packageModel })
+        if (newItems.size == items.size) {
+            logDebug("PackagesTableModel#replaceItem()") { "Could not replace with model ${packageModel.identifier}: not found" }
+            return
+        }
+        newItems.add(itemProducer(items[newItems.size]))
+        newItems.addAll(items.subList(newItems.size, items.size - 1))
+        items = newItems
     }
 }

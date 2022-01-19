@@ -124,6 +124,7 @@ public abstract class UsefulTestCase extends TestCase {
   private @Nullable List<Path> myPathsToKeep;
   private @Nullable Path myTempDir;
 
+  private static final String DEFAULT_SETTINGS_EXTERNALIZED;
   private static final CodeInsightSettings defaultSettings = new CodeInsightSettings();
 
   static {
@@ -132,6 +133,15 @@ public abstract class UsefulTestCase extends TestCase {
 
     // Radar #5755208: Command line Java applications need a way to launch without a Dock icon.
     System.setProperty("apple.awt.UIElement", "true");
+
+    try {
+      Element oldS = new Element("temp");
+      defaultSettings.writeExternal(oldS);
+      DEFAULT_SETTINGS_EXTERNALIZED = JDOMUtil.writeElement(oldS);
+    }
+    catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   /**
@@ -393,10 +403,17 @@ public abstract class UsefulTestCase extends TestCase {
     new RunAll(
       () -> {
         try {
-          checkCodeInsightSettingsNotOverwritten(settings);
+          checkCodeInsightSettingsEqual(defaultSettings, settings);
         }
         catch (AssertionError error) {
-          restoreCodeInsightSettingsToAvoidInducedErrors(settings);
+          CodeInsightSettings clean = new CodeInsightSettings();
+          for (Field field : clean.getClass().getFields()) {
+            try {
+              ReflectionUtil.copyFieldValue(clean, settings, field);
+            }
+            catch (Exception ignored) {
+            }
+          }
           throw error;
         }
       },
@@ -410,17 +427,6 @@ public abstract class UsefulTestCase extends TestCase {
         }
       }
     ).run();
-  }
-
-  private static void restoreCodeInsightSettingsToAvoidInducedErrors(@NotNull CodeInsightSettings settings) {
-    CodeInsightSettings clean = new CodeInsightSettings();
-    for (Field field : clean.getClass().getFields()) {
-      try {
-        ReflectionUtil.copyFieldValue(clean, settings, field);
-      }
-      catch (Exception ignored) {
-      }
-    }
   }
 
   /**
@@ -499,34 +505,14 @@ public abstract class UsefulTestCase extends TestCase {
                                @NotNull ObjectIntMap<String> countMap) {
     String name = getClass().getSuperclass().getName();
     int storedCost = costMap.get(name);
-    costMap.put(name, (storedCost == -1 ? 0 : storedCost)+cost);
+    costMap.put(name, (storedCost == -1 ? 0 : storedCost) + cost);
     int storedCount = countMap.get(name);
-    countMap.put(name, storedCount == -1 ? 1 : storedCount+1);
+    countMap.put(name, storedCount == -1 ? 1 : storedCount + 1);
   }
 
-  @SuppressWarnings("UseOfSystemOutOrSystemErr")
-  static void logSetupTeardownCosts() {
-    System.out.println("Setup costs");
-    long totalSetup = 0;
-    for (ObjectIntMap.Entry<String> entry : TOTAL_SETUP_COST_MILLIS.entries()) {
-      String name = entry.getKey();
-      int cost = entry.getValue();
-      long count = TOTAL_SETUP_COUNT.get(name);
-      System.out.printf("  %s: %d ms for %d executions%n", name, cost, count);
-      totalSetup += cost;
-    }
-    System.out.println("Teardown costs");
-    long totalTeardown = 0;
-    for (ObjectIntMap.Entry<String> entry : TOTAL_TEARDOWN_COST_MILLIS.entries()) {
-      String name = entry.getKey();
-      int cost = entry.getValue();
-      long count = TOTAL_TEARDOWN_COUNT.get(name);
-      System.out.printf("  %s: %d ms for %d executions%n", name, cost, count);
-      totalTeardown += cost;
-    }
-    System.out.printf("Total overhead: setup %d ms, teardown %d ms%n", totalSetup, totalTeardown);
-    System.out.printf("##teamcity[buildStatisticValue key='ideaTests.totalSetupMs' value='%d']%n", totalSetup);
-    System.out.printf("##teamcity[buildStatisticValue key='ideaTests.totalTeardownMs' value='%d']%n", totalTeardown);
+  protected @NotNull <T extends Disposable> T disposeOnTearDown(@NotNull T disposable) {
+    Disposer.register(getTestRootDisposable(), disposable);
+    return disposable;
   }
 
   @Override
@@ -587,22 +573,8 @@ public abstract class UsefulTestCase extends TestCase {
     EdtTestUtil.runInEdtAndWait(runnable);
   }
 
-  public static @NotNull String toString(@NotNull Iterable<?> collection) {
-    if (!collection.iterator().hasNext()) {
-      return "<empty>";
-    }
-
-    StringBuilder builder = new StringBuilder();
-    for (Object o : collection) {
-      if (o instanceof Set) {
-        builder.append(new TreeSet<>((Set<?>)o));
-      }
-      else {
-        builder.append(o);
-      }
-      builder.append('\n');
-    }
-    return builder.toString();
+  protected @NotNull String getTestName(boolean lowercaseFirstLetter) {
+    return getTestName(getName(), lowercaseFirstLetter);
   }
 
   @SafeVarargs
@@ -745,8 +717,9 @@ public abstract class UsefulTestCase extends TestCase {
     assertSameElements(toString(collection), copy, expected);
   }
 
-  public static @NotNull String toString(Object @NotNull [] collection, @NotNull String separator) {
-    return toString(Arrays.asList(collection), separator);
+  protected @NotNull String getTestDirectoryName() {
+    final String testName = getTestName(true);
+    return testName.replaceAll("_.*", "");
   }
 
   @SafeVarargs
@@ -760,19 +733,8 @@ public abstract class UsefulTestCase extends TestCase {
     assertSameElements(collection, expected);
   }
 
-  public static @NotNull String toString(@NotNull Collection<?> collection, @NotNull String separator) {
-    List<String> list = ContainerUtil.map2List(collection, String::valueOf);
-    Collections.sort(list);
-    StringBuilder builder = new StringBuilder();
-    boolean flag = false;
-    for (final String o : list) {
-      if (flag) {
-        builder.append(separator);
-      }
-      builder.append(o);
-      flag = true;
-    }
-    return builder.toString();
+  protected @NotNull String getHomePath() {
+    return PathManager.getHomePath().replace(File.separatorChar, '/');
   }
 
   @SafeVarargs
@@ -839,12 +801,9 @@ public abstract class UsefulTestCase extends TestCase {
     }
   }
 
-  @Contract("null, _ -> fail")
-  public static @NotNull <T> T assertInstanceOf(Object o, @NotNull Class<T> aClass) {
-    Assert.assertNotNull("Expected instance of: " + aClass.getName() + " actual: " + null, o);
-    Assert.assertTrue("Expected instance of: " + aClass.getName() + " actual: " + o.getClass().getName(), aClass.isInstance(o));
-    @SuppressWarnings("unchecked") T t = (T)o;
-    return t;
+  protected void setRegistryPropertyForTest(@NotNull String property, @NotNull String value) {
+    Registry.get(property).setValue(value);
+    Disposer.register(getTestRootDisposable(), () -> Registry.get(property).resetToDefault());
   }
 
   public static <T> T assertOneElement(@NotNull Collection<? extends T> collection) {
@@ -909,9 +868,18 @@ public abstract class UsefulTestCase extends TestCase {
     }
   }
 
-  protected @NotNull <T extends Disposable> T disposeOnTearDown(@NotNull T disposable) {
-    Disposer.register(getTestRootDisposable(), disposable);
-    return disposable;
+  protected void allowAccessToDirsIfExists(@NotNull String @NotNull ... dirNames) {
+    for (String dirName : dirNames) {
+      final Path usrShareDir = Paths.get(dirName);
+      if (Files.exists(usrShareDir)) {
+        final String absolutePath = usrShareDir.toAbsolutePath().toString();
+        LOG.debug(usrShareDir.toString(), " exists, adding to the list of allowed root: ", absolutePath);
+        VfsRootAccess.allowRootAccess(getTestRootDisposable(), absolutePath);
+      }
+      else {
+        LOG.debug(usrShareDir.toString(), " does not exists");
+      }
+    }
   }
 
   public static void assertSameLines(@NotNull String expected, @NotNull String actual) {
@@ -924,25 +892,59 @@ public abstract class UsefulTestCase extends TestCase {
     Assert.assertEquals(message, expectedText, actualText);
   }
 
-  public static void assertExists(@NotNull File file){
+  public static void assertExists(@NotNull File file) {
     assertTrue("File should exist " + file, file.exists());
   }
 
-  public static void assertDoesntExist(@NotNull File file){
+  public static void assertDoesntExist(@NotNull File file) {
     assertFalse("File should not exist " + file, file.exists());
   }
 
-  protected @NotNull String getTestName(boolean lowercaseFirstLetter) {
-    return getTestName(getName(), lowercaseFirstLetter);
+  @SuppressWarnings("UseOfSystemOutOrSystemErr")
+  static void logSetupTeardownCosts() {
+    System.out.println("Setup costs");
+    long totalSetup = 0;
+    for (ObjectIntMap.Entry<String> entry : TOTAL_SETUP_COST_MILLIS.entries()) {
+      String name = entry.getKey();
+      int cost = entry.getValue();
+      long count = TOTAL_SETUP_COUNT.get(name);
+      System.out.printf("  %s: %d ms for %d executions%n", name, cost, count);
+      totalSetup += cost;
+    }
+    System.out.println("Teardown costs");
+    long totalTeardown = 0;
+    for (ObjectIntMap.Entry<String> entry : TOTAL_TEARDOWN_COST_MILLIS.entries()) {
+      String name = entry.getKey();
+      int cost = entry.getValue();
+      long count = TOTAL_TEARDOWN_COUNT.get(name);
+      System.out.printf("  %s: %d ms for %d executions%n", name, cost, count);
+      totalTeardown += cost;
+    }
+    System.out.printf("Total overhead: setup %d ms, teardown %d ms%n", totalSetup, totalTeardown);
+    System.out.printf("##teamcity[buildStatisticValue key='ideaTests.totalSetupMs' value='%d']%n", totalSetup);
+    System.out.printf("##teamcity[buildStatisticValue key='ideaTests.totalTeardownMs' value='%d']%n", totalTeardown);
   }
 
-  public static @NotNull String getTestName(@Nullable String name, boolean lowercaseFirstLetter) {
-    return name == null ? "" : PlatformTestUtil.getTestName(name, lowercaseFirstLetter);
+  public static @NotNull String toString(@NotNull Iterable<?> collection) {
+    if (!collection.iterator().hasNext()) {
+      return "<empty>";
+    }
+
+    StringBuilder builder = new StringBuilder();
+    for (Object o : collection) {
+      if (o instanceof Set) {
+        builder.append(new TreeSet<>((Set<?>)o));
+      }
+      else {
+        builder.append(o);
+      }
+      builder.append('\n');
+    }
+    return builder.toString();
   }
 
-  protected @NotNull String getTestDirectoryName() {
-    final String testName = getTestName(true);
-    return testName.replaceAll("_.*", "");
+  public static @NotNull String toString(Object @NotNull [] collection, @NotNull String separator) {
+    return toString(Arrays.asList(collection), separator);
   }
 
   public static void assertSameLinesWithFile(@NotNull String filePath, @NotNull String actualText) {
@@ -966,7 +968,7 @@ public abstract class UsefulTestCase extends TestCase {
     String fileText;
     try {
       if (OVERWRITE_TESTDATA) {
-        VfsTestUtil.overwriteTestData(filePath, actualText, trimBeforeComparing);
+        VfsTestUtil.overwriteTestData(filePath, actualText);
         //noinspection UseOfSystemOutOrSystemErr
         System.out.println("File " + filePath + " created.");
       }
@@ -1020,13 +1022,11 @@ public abstract class UsefulTestCase extends TestCase {
     }
   }
 
-  private static void checkCodeInsightSettingsNotOverwritten(@NotNull CodeInsightSettings settings) {
-    if (!settings.equals(defaultSettings)) {
+  private static void checkCodeInsightSettingsEqual(@SuppressWarnings("SameParameterValue") @NotNull CodeInsightSettings oldSettings,
+                                                    @NotNull CodeInsightSettings settings) {
+    if (!oldSettings.equals(settings)) {
       Element newS = new Element("temp");
       settings.writeExternal(newS);
-      Element oldS = new Element("temp");
-      defaultSettings.writeExternal(oldS);
-      String DEFAULT_SETTINGS_EXTERNALIZED = JDOMUtil.writeElement(oldS);
       Assert.assertEquals("Code insight settings damaged", DEFAULT_SETTINGS_EXTERNALIZED, JDOMUtil.writeElement(newS));
     }
   }
@@ -1207,8 +1207,19 @@ public abstract class UsefulTestCase extends TestCase {
     return false;
   }
 
-  protected @NotNull String getHomePath() {
-    return PathManager.getHomePath().replace(File.separatorChar, '/');
+  public static @NotNull String toString(@NotNull Collection<?> collection, @NotNull String separator) {
+    List<String> list = ContainerUtil.map2List(collection, String::valueOf);
+    Collections.sort(list);
+    StringBuilder builder = new StringBuilder();
+    boolean flag = false;
+    for (final String o : list) {
+      if (flag) {
+        builder.append(separator);
+      }
+      builder.append(o);
+      flag = true;
+    }
+    return builder.toString();
   }
 
   public static void refreshRecursively(@NotNull VirtualFile file) {
@@ -1222,8 +1233,12 @@ public abstract class UsefulTestCase extends TestCase {
     file.refresh(false, true);
   }
 
-  public static VirtualFile refreshAndFindFile(final @NotNull File file) {
-    return UIUtil.invokeAndWaitIfNeeded(() -> LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file));
+  @Contract("null, _ -> fail")
+  public static @NotNull <T> T assertInstanceOf(Object o, @NotNull Class<T> aClass) {
+    Assert.assertNotNull("Expected instance of: " + aClass.getName() + " actual: " + null, o);
+    Assert.assertTrue("Expected instance of: " + aClass.getName() + " actual: " + o.getClass().getName(), aClass.isInstance(o));
+    @SuppressWarnings("unchecked") T t = (T)o;
+    return t;
   }
 
   public static void waitForAppLeakingThreads(long timeout, @NotNull TimeUnit timeUnit) throws Exception {
@@ -1264,22 +1279,11 @@ public abstract class UsefulTestCase extends TestCase {
     }
   }
 
-  protected void setRegistryPropertyForTest(@NotNull String property, @NotNull String value) {
-    Registry.get(property).setValue(value);
-    Disposer.register(getTestRootDisposable(), () -> Registry.get(property).resetToDefault());
+  public static @NotNull String getTestName(@Nullable String name, boolean lowercaseFirstLetter) {
+    return name == null ? "" : PlatformTestUtil.getTestName(name, lowercaseFirstLetter);
   }
 
-  protected void allowAccessToDirsIfExists(@NotNull String @NotNull ... dirNames) {
-    for (String dirName : dirNames) {
-      final Path usrShareDir = Paths.get(dirName);
-      if (Files.exists(usrShareDir)) {
-        final String absolutePath = usrShareDir.toAbsolutePath().toString();
-        LOG.debug(usrShareDir.toString(), " exists, adding to the list of allowed root: ", absolutePath);
-        VfsRootAccess.allowRootAccess(getTestRootDisposable(), absolutePath);
-      }
-      else {
-        LOG.debug(usrShareDir.toString(), " does not exists");
-      }
-    }
+  public static VirtualFile refreshAndFindFile(final @NotNull File file) {
+    return UIUtil.invokeAndWaitIfNeeded(() -> LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file));
   }
 }

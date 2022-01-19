@@ -19,7 +19,6 @@ import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.target.LanguageRuntimeType;
 import com.intellij.execution.target.TargetEnvironmentAwareRunProfile;
 import com.intellij.execution.target.TargetEnvironmentConfiguration;
-import com.intellij.execution.target.TargetEnvironmentConfigurations;
 import com.intellij.execution.target.java.JavaLanguageRuntimeConfiguration;
 import com.intellij.execution.target.java.JavaLanguageRuntimeType;
 import com.intellij.execution.testframework.TestRunnerBundle;
@@ -646,7 +645,7 @@ public class JUnitConfiguration extends JavaTestConfigurationWithDiscoverySuppor
 
   @Override
   public boolean needPrepareTarget() {
-    return TargetEnvironmentAwareRunProfile.super.needPrepareTarget() || runsUnderWslJdk();
+    return getDefaultTargetName() != null || runsUnderWslJdk();
   }
 
   public static class Data implements Cloneable {

@@ -2,7 +2,6 @@
 package org.jetbrains.idea.maven.dom;
 
 import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.PsiElement;
@@ -223,8 +222,8 @@ public class MavenPluginConfigurationDomExtender extends DomExtender<MavenDomCon
 
   public static final class ParameterData {
     public final MavenDomParameter parameter;
-    public @Nullable @NlsSafe String defaultValue;
-    public @Nullable @NlsSafe String expression;
+    public @Nullable String defaultValue;
+    public @Nullable String expression;
 
     private ParameterData(MavenDomParameter parameter) {
       this.parameter = parameter;

@@ -15,9 +15,7 @@ import com.jetbrains.python.ift.PythonLessonsBundle
 import com.jetbrains.python.inspections.quickfix.PyChangeSignatureQuickFix
 import training.dsl.*
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
-import training.learn.LessonsBundle
 import training.learn.course.KLesson
-import training.util.isToStringContains
 import java.util.regex.Pattern
 import javax.swing.JDialog
 import javax.swing.JTable
@@ -68,7 +66,7 @@ class PythonQuickFixesRefactoringLesson
       showQuickFixesTaskId = taskId
       text(PythonLessonsBundle.message("python.quick.fix.refactoring.invoke.intentions", action(it)))
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { item ->
-        item.isToStringContains("foo(")
+        item.toString().contains("foo(")
       }
       proposeRestore {
         checkExpectedStateOfEditor(previous.sample)
@@ -167,13 +165,4 @@ class PythonQuickFixesRefactoringLesson
       checkExpectedStateOfEditor(sample) { ", y".startsWith(it) || ",y".startsWith(it) }
     }
   }
-
-  override val suitableTips = listOf("QuickFixRightArrow")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(PythonLessonsBundle.message("python.quick.fix.refactoring.help.link"),
-         LessonUtil.getHelpLink("change-signature.html")),
-    Pair(LessonsBundle.message("context.actions.help.intention.actions"),
-         LessonUtil.getHelpLink("intention-actions.html")),
-  )
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.workspaceModel.storage.entities
 
 import com.intellij.workspaceModel.storage.*
@@ -15,9 +15,23 @@ import com.intellij.workspaceModel.storage.impl.url.VirtualFileUrlManagerImpl
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
 
+internal data class SampleEntitySource(val name: String) : EntitySource
+
+internal object MySource : EntitySource {
+  override fun toString(): String = "MySource"
+}
+
+internal object AnotherSource : EntitySource {
+  override fun toString(): String = "AnotherSource"
+}
+
+internal object MyDummyParentSource : DummyParentEntitySource {
+  override fun toString(): String = "DummyParent"
+}
+
 // ---------------------------------------
 
-class SampleEntityData : WorkspaceEntityData<SampleEntity>() {
+internal class SampleEntityData : WorkspaceEntityData<SampleEntity>() {
   var booleanProperty: Boolean = false
   lateinit var stringProperty: String
   lateinit var stringListProperty: List<String>
@@ -26,24 +40,20 @@ class SampleEntityData : WorkspaceEntityData<SampleEntity>() {
   lateinit var myData: MyConcreteImpl
 
   override fun createEntity(snapshot: WorkspaceEntityStorage): SampleEntity {
-    return SampleEntity(booleanProperty, stringProperty, stringListProperty, stringSetProperty, fileProperty, myData).also {
-      addMetaData(it, snapshot)
-    }
+    return SampleEntity(booleanProperty, stringProperty, stringListProperty, stringSetProperty, fileProperty, myData).also { addMetaData(it, snapshot) }
   }
 }
 
-class SampleEntity(
+internal class SampleEntity(
   val booleanProperty: Boolean,
   val stringProperty: String,
   val stringListProperty: List<String>,
   val stringSetProperty: Set<String>,
   val fileProperty: VirtualFileUrl,
   val myData: MyConcreteImpl,
-) : WorkspaceEntityBase() {
+) : WorkspaceEntityBase()
 
-}
-
-class ModifiableSampleEntity : ModifiableWorkspaceEntityBase<SampleEntity>() {
+internal class ModifiableSampleEntity : ModifiableWorkspaceEntityBase<SampleEntity>() {
   var booleanProperty: Boolean by EntityDataDelegation()
   var stringProperty: String by EntityDataDelegation()
   var stringListProperty: List<String> by EntityDataDelegation()
@@ -68,14 +78,14 @@ class MyConcreteImpl(myData: MyContainer) : MyData(myData) {
 
 data class MyContainer(val info: String)
 
-fun WorkspaceEntityStorageDiffBuilder.addSampleEntity(stringProperty: String,
-                                                      source: EntitySource = SampleEntitySource("test"),
-                                                      booleanProperty: Boolean = false,
-                                                      stringListProperty: MutableList<String> = ArrayList(),
-                                                      stringSetProperty: MutableSet<String> = LinkedHashSet(),
-                                                      virtualFileManager: VirtualFileUrlManager = VirtualFileUrlManagerImpl(),
-                                                      fileProperty: VirtualFileUrl = virtualFileManager.fromUrl("file:///tmp"),
-                                                      info: String = ""
+internal fun WorkspaceEntityStorageDiffBuilder.addSampleEntity(stringProperty: String,
+                                                               source: EntitySource = SampleEntitySource("test"),
+                                                               booleanProperty: Boolean = false,
+                                                               stringListProperty: MutableList<String> = ArrayList(),
+                                                               stringSetProperty: MutableSet<String> = LinkedHashSet(),
+                                                               virtualFileManager: VirtualFileUrlManager = VirtualFileUrlManagerImpl(),
+                                                               fileProperty: VirtualFileUrl = virtualFileManager.fromUrl("file:///tmp"),
+                                                               info: String = ""
 ): SampleEntity {
   return addEntity(ModifiableSampleEntity::class.java, source) {
     this.booleanProperty = booleanProperty
@@ -89,38 +99,38 @@ fun WorkspaceEntityStorageDiffBuilder.addSampleEntity(stringProperty: String,
 
 // ---------------------------------------
 
-class SecondSampleEntityData : WorkspaceEntityData<SecondSampleEntity>() {
+internal class SecondSampleEntityData : WorkspaceEntityData<SecondSampleEntity>() {
   var intProperty: Int = -1
   override fun createEntity(snapshot: WorkspaceEntityStorage): SecondSampleEntity {
     return SecondSampleEntity(intProperty).also { addMetaData(it, snapshot) }
   }
 }
 
-class SecondSampleEntity(
+internal class SecondSampleEntity(
   val intProperty: Int
 ) : WorkspaceEntityBase()
 
-class ModifiableSecondSampleEntity : ModifiableWorkspaceEntityBase<SecondSampleEntity>() {
+internal class ModifiableSecondSampleEntity : ModifiableWorkspaceEntityBase<SecondSampleEntity>() {
   var intProperty: Int by EntityDataDelegation()
 }
 
 // ---------------------------------------
 
-class SourceEntityData : WorkspaceEntityData<SourceEntity>() {
+internal class SourceEntityData : WorkspaceEntityData<SourceEntity>() {
   lateinit var data: String
   override fun createEntity(snapshot: WorkspaceEntityStorage): SourceEntity {
     return SourceEntity(data).also { addMetaData(it, snapshot) }
   }
 }
 
-class SourceEntity(val data: String) : WorkspaceEntityBase()
+internal class SourceEntity(val data: String) : WorkspaceEntityBase()
 
-class ModifiableSourceEntity : ModifiableWorkspaceEntityBase<SourceEntity>() {
+internal class ModifiableSourceEntity : ModifiableWorkspaceEntityBase<SourceEntity>() {
   var data: String by EntityDataDelegation()
 }
 
-fun WorkspaceEntityStorageBuilder.addSourceEntity(data: String,
-                                                  source: EntitySource): SourceEntity {
+internal fun WorkspaceEntityStorageBuilder.addSourceEntity(data: String,
+                                                           source: EntitySource): SourceEntity {
   return addEntity(ModifiableSourceEntity::class.java, source) {
     this.data = data
   }
@@ -128,52 +138,52 @@ fun WorkspaceEntityStorageBuilder.addSourceEntity(data: String,
 
 // ---------------------------------------
 
-class ChildSourceEntityData : WorkspaceEntityData<ChildSourceEntity>() {
+internal class ChildSourceEntityData : WorkspaceEntityData<ChildSourceEntity>() {
   lateinit var data: String
   override fun createEntity(snapshot: WorkspaceEntityStorage): ChildSourceEntity {
     return ChildSourceEntity(data).also { addMetaData(it, snapshot) }
   }
 }
 
-class ChildSourceEntity(val data: String) : WorkspaceEntityBase() {
+internal class ChildSourceEntity(val data: String) : WorkspaceEntityBase() {
   val parent: SourceEntity by ManyToOne.NotNull(SourceEntity::class.java)
 }
 
-class ModifiableChildSourceEntity : ModifiableWorkspaceEntityBase<ChildSourceEntity>() {
+internal class ModifiableChildSourceEntity : ModifiableWorkspaceEntityBase<ChildSourceEntity>() {
   var data: String by EntityDataDelegation()
   var parent: SourceEntity by MutableManyToOne.NotNull(ChildSourceEntity::class.java, SourceEntity::class.java)
 }
 
 // ---------------------------------------
 
-class ChildSampleEntityData : WorkspaceEntityData<ChildSampleEntity>() {
+internal class ChildSampleEntityData : WorkspaceEntityData<ChildSampleEntity>() {
   lateinit var data: String
   override fun createEntity(snapshot: WorkspaceEntityStorage): ChildSampleEntity {
     return ChildSampleEntity(data).also { addMetaData(it, snapshot) }
   }
 }
 
-class ChildSampleEntity(
+internal class ChildSampleEntity(
   val data: String
 ) : WorkspaceEntityBase() {
   val parent: SampleEntity? by ManyToOne.Nullable(SampleEntity::class.java)
 }
 
-class ModifiableChildSampleEntity : ModifiableWorkspaceEntityBase<ChildSampleEntity>() {
+internal class ModifiableChildSampleEntity : ModifiableWorkspaceEntityBase<ChildSampleEntity>() {
   var data: String by EntityDataDelegation()
   var parent: SampleEntity? by MutableManyToOne.Nullable(ChildSampleEntity::class.java, SampleEntity::class.java)
 }
 
-fun WorkspaceEntityStorageBuilder.addChildSampleEntity(stringProperty: String,
-                                                       parent: SampleEntity?,
-                                                       source: EntitySource = SampleEntitySource("test")): ChildSampleEntity {
+internal fun WorkspaceEntityStorageBuilder.addChildSampleEntity(stringProperty: String,
+                                                                parent: SampleEntity?,
+                                                                source: EntitySource = SampleEntitySource("test")): ChildSampleEntity {
   return addEntity(ModifiableChildSampleEntity::class.java, source) {
     this.data = stringProperty
     this.parent = parent
   }
 }
 
-class PersistentIdEntityData : WorkspaceEntityData.WithCalculablePersistentId<PersistentIdEntity>() {
+internal class PersistentIdEntityData : WorkspaceEntityData.WithCalculablePersistentId<PersistentIdEntity>() {
   lateinit var data: String
   override fun createEntity(snapshot: WorkspaceEntityStorage): PersistentIdEntity {
     return PersistentIdEntity(data).also { addMetaData(it, snapshot) }
@@ -182,22 +192,22 @@ class PersistentIdEntityData : WorkspaceEntityData.WithCalculablePersistentId<Pe
   override fun persistentId(): LinkedListEntityId = LinkedListEntityId(data)
 }
 
-class PersistentIdEntity(val data: String) : WorkspaceEntityWithPersistentId, WorkspaceEntityBase() {
+internal class PersistentIdEntity(val data: String) : WorkspaceEntityWithPersistentId, WorkspaceEntityBase() {
   override fun persistentId(): LinkedListEntityId = LinkedListEntityId(data)
 }
 
-class ModifiablePersistentIdEntity : ModifiableWorkspaceEntityBase<PersistentIdEntity>() {
+internal class ModifiablePersistentIdEntity : ModifiableWorkspaceEntityBase<PersistentIdEntity>() {
   var data: String by EntityDataDelegation()
 }
 
-fun WorkspaceEntityStorageBuilder.addPersistentIdEntity(data: String,
-                                                        source: EntitySource = SampleEntitySource("test")): PersistentIdEntity {
+internal fun WorkspaceEntityStorageBuilder.addPersistentIdEntity(data: String,
+                                                                 source: EntitySource = SampleEntitySource("test")): PersistentIdEntity {
   return addEntity(ModifiablePersistentIdEntity::class.java, source) {
     this.data = data
   }
 }
 
-class VFUEntityData : WorkspaceEntityData<VFUEntity>() {
+internal class VFUEntityData : WorkspaceEntityData<VFUEntity>() {
   lateinit var data: String
   lateinit var fileProperty: VirtualFileUrl
   override fun createEntity(snapshot: WorkspaceEntityStorage): VFUEntity {
@@ -205,7 +215,7 @@ class VFUEntityData : WorkspaceEntityData<VFUEntity>() {
   }
 }
 
-class VFUWithTwoPropertiesEntityData : WorkspaceEntityData<VFUWithTwoPropertiesEntity>() {
+internal class VFUWithTwoPropertiesEntityData : WorkspaceEntityData<VFUWithTwoPropertiesEntity>() {
   lateinit var data: String
   lateinit var fileProperty: VirtualFileUrl
   lateinit var secondFileProperty: VirtualFileUrl
@@ -214,7 +224,7 @@ class VFUWithTwoPropertiesEntityData : WorkspaceEntityData<VFUWithTwoPropertiesE
   }
 }
 
-class NullableVFUEntityData : WorkspaceEntityData<NullableVFUEntity>() {
+internal class NullableVFUEntityData : WorkspaceEntityData<NullableVFUEntity>() {
   lateinit var data: String
   var fileProperty: VirtualFileUrl? = null
   override fun createEntity(snapshot: WorkspaceEntityStorage): NullableVFUEntity {
@@ -222,7 +232,7 @@ class NullableVFUEntityData : WorkspaceEntityData<NullableVFUEntity>() {
   }
 }
 
-class ListVFUEntityData : WorkspaceEntityData<ListVFUEntity>() {
+internal class ListVFUEntityData : WorkspaceEntityData<ListVFUEntity>() {
   lateinit var data: String
   lateinit var fileProperty: List<VirtualFileUrl>
   override fun createEntity(snapshot: WorkspaceEntityStorage): ListVFUEntity {
@@ -230,50 +240,50 @@ class ListVFUEntityData : WorkspaceEntityData<ListVFUEntity>() {
   }
 }
 
-class VFUEntity(val data: String, val fileProperty: VirtualFileUrl) : WorkspaceEntityBase()
-class VFUWithTwoPropertiesEntity(val data: String,
-                                 val fileProperty: VirtualFileUrl,
-                                 val secondFileProperty: VirtualFileUrl) : WorkspaceEntityBase()
+internal class VFUEntity(val data: String, val fileProperty: VirtualFileUrl) : WorkspaceEntityBase()
+internal class VFUWithTwoPropertiesEntity(val data: String,
+                                          val fileProperty: VirtualFileUrl,
+                                          val secondFileProperty: VirtualFileUrl) : WorkspaceEntityBase()
 
-class NullableVFUEntity(val data: String, val fileProperty: VirtualFileUrl?) : WorkspaceEntityBase()
-class ListVFUEntity(val data: String, val fileProperty: List<VirtualFileUrl>) : WorkspaceEntityBase()
+internal class NullableVFUEntity(val data: String, val fileProperty: VirtualFileUrl?) : WorkspaceEntityBase()
+internal class ListVFUEntity(val data: String, val fileProperty: List<VirtualFileUrl>) : WorkspaceEntityBase()
 
-class ModifiableVFUEntity : ModifiableWorkspaceEntityBase<VFUEntity>() {
+internal class ModifiableVFUEntity : ModifiableWorkspaceEntityBase<VFUEntity>() {
   var data: String by EntityDataDelegation()
   var fileProperty: VirtualFileUrl by VirtualFileUrlProperty()
 }
 
-class ModifiableVFUWithTwoPropertiesEntity : ModifiableWorkspaceEntityBase<VFUWithTwoPropertiesEntity>() {
+internal class ModifiableVFUWithTwoPropertiesEntity : ModifiableWorkspaceEntityBase<VFUWithTwoPropertiesEntity>() {
   var data: String by EntityDataDelegation()
   var fileProperty: VirtualFileUrl by VirtualFileUrlProperty()
   var secondFileProperty: VirtualFileUrl by VirtualFileUrlProperty()
 }
 
-class ModifiableNullableVFUEntity : ModifiableWorkspaceEntityBase<NullableVFUEntity>() {
+internal class ModifiableNullableVFUEntity : ModifiableWorkspaceEntityBase<NullableVFUEntity>() {
   var data: String by EntityDataDelegation()
   var fileProperty: VirtualFileUrl? by VirtualFileUrlNullableProperty()
 }
 
-class ModifiableListVFUEntity : ModifiableWorkspaceEntityBase<ListVFUEntity>() {
+internal class ModifiableListVFUEntity : ModifiableWorkspaceEntityBase<ListVFUEntity>() {
   var data: String by EntityDataDelegation()
   var fileProperty: List<VirtualFileUrl> by VirtualFileUrlListProperty()
 }
 
-fun WorkspaceEntityStorageBuilder.addVFUEntity(data: String,
-                                               fileUrl: String,
-                                               virtualFileManager: VirtualFileUrlManager,
-                                               source: EntitySource = SampleEntitySource("test")): VFUEntity {
+internal fun WorkspaceEntityStorageBuilder.addVFUEntity(data: String,
+                                                        fileUrl: String,
+                                                        virtualFileManager: VirtualFileUrlManager,
+                                                        source: EntitySource = SampleEntitySource("test")): VFUEntity {
   return addEntity(ModifiableVFUEntity::class.java, source) {
     this.data = data
     this.fileProperty = virtualFileManager.fromUrl(fileUrl)
   }
 }
 
-fun WorkspaceEntityStorageBuilder.addVFU2Entity(data: String,
-                                                fileUrl: String,
-                                                secondFileUrl: String,
-                                                virtualFileManager: VirtualFileUrlManager,
-                                                source: EntitySource = SampleEntitySource("test")): VFUWithTwoPropertiesEntity {
+internal fun WorkspaceEntityStorageBuilder.addVFU2Entity(data: String,
+                                                         fileUrl: String,
+                                                         secondFileUrl: String,
+                                                         virtualFileManager: VirtualFileUrlManager,
+                                                         source: EntitySource = SampleEntitySource("test")): VFUWithTwoPropertiesEntity {
   return addEntity(ModifiableVFUWithTwoPropertiesEntity::class.java, source) {
     this.data = data
     this.fileProperty = virtualFileManager.fromUrl(fileUrl)
@@ -281,20 +291,20 @@ fun WorkspaceEntityStorageBuilder.addVFU2Entity(data: String,
   }
 }
 
-fun WorkspaceEntityStorageBuilder.addNullableVFUEntity(data: String,
-                                                       fileUrl: String?,
-                                                       virtualFileManager: VirtualFileUrlManager,
-                                                       source: EntitySource = SampleEntitySource("test")): NullableVFUEntity {
+internal fun WorkspaceEntityStorageBuilder.addNullableVFUEntity(data: String,
+                                                                fileUrl: String?,
+                                                                virtualFileManager: VirtualFileUrlManager,
+                                                                source: EntitySource = SampleEntitySource("test")): NullableVFUEntity {
   return addEntity(ModifiableNullableVFUEntity::class.java, source) {
     this.data = data
     if (fileUrl != null) this.fileProperty = virtualFileManager.fromUrl(fileUrl)
   }
 }
 
-fun WorkspaceEntityStorageBuilder.addListVFUEntity(data: String,
-                                                   fileUrl: List<String>,
-                                                   virtualFileManager: VirtualFileUrlManager,
-                                                   source: EntitySource = SampleEntitySource("test")): ListVFUEntity {
+internal fun WorkspaceEntityStorageBuilder.addListVFUEntity(data: String,
+                                                            fileUrl: List<String>,
+                                                            virtualFileManager: VirtualFileUrlManager,
+                                                            source: EntitySource = SampleEntitySource("test")): ListVFUEntity {
   return addEntity(ModifiableListVFUEntity::class.java, source) {
     this.data = data
     this.fileProperty = fileUrl.map { virtualFileManager.fromUrl(it) }

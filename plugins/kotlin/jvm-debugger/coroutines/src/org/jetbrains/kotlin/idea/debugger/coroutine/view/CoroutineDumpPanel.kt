@@ -12,6 +12,7 @@ import com.intellij.notification.NotificationGroup
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.colors.EditorColors
+import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAware
@@ -27,7 +28,7 @@ import com.intellij.ui.components.JBList
 import com.intellij.unscramble.AnalyzeStacktraceUtil
 import com.intellij.util.PlatformIcons
 import org.jetbrains.kotlin.idea.debugger.coroutine.KotlinDebuggerCoroutinesBundle
-import org.jetbrains.kotlin.idea.debugger.coroutine.data.CompleteCoroutineInfoData
+import org.jetbrains.kotlin.idea.debugger.coroutine.data.CoroutineInfoData
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.datatransfer.StringSelection
@@ -42,11 +43,11 @@ class CoroutineDumpPanel(
     project: Project,
     consoleView: ConsoleView,
     toolbarActions: DefaultActionGroup,
-    val dump: List<CompleteCoroutineInfoData>
+    val dump: List<CoroutineInfoData>
 ) :
     JPanel(BorderLayout()), DataProvider {
     private var exporterToTextFile: ExporterToTextFile
-    private var mergedDump = ArrayList<CompleteCoroutineInfoData>()
+    private var mergedDump = ArrayList<CoroutineInfoData>()
     val filterField = SearchTextField()
     val filterPanel = JPanel(BorderLayout())
     private val coroutinesList = JBList(DefaultListModel<Any>())
@@ -72,7 +73,7 @@ class CoroutineDumpPanel(
             addListSelectionListener {
                 val index = selectedIndex
                 if (index >= 0) {
-                    val selection = model.getElementAt(index) as CompleteCoroutineInfoData
+                    val selection = model.getElementAt(index) as CoroutineInfoData
                     AnalyzeStacktraceUtil.printStacktrace(consoleView, stringStackTrace(selection))
                 } else {
                     AnalyzeStacktraceUtil.printStacktrace(consoleView, "")
@@ -142,8 +143,7 @@ class CoroutineDumpPanel(
         var index = 0
         val states = if (UISettings.instance.state.mergeEqualStackTraces) mergedDump else dump
         for (state in states) {
-            if (StringUtil.containsIgnoreCase(stringStackTrace(state), text) ||
-                StringUtil.containsIgnoreCase(state.descriptor.name, text)) {
+            if (StringUtil.containsIgnoreCase(stringStackTrace(state), text) || StringUtil.containsIgnoreCase(state.key.name, text)) {
                 model.addElement(state)
                 if (selection === state) {
                     selectedIndex = index
@@ -177,20 +177,19 @@ class CoroutineDumpPanel(
 
     override fun getData(dataId: String): Any? = if (PlatformDataKeys.EXPORTER_TO_TEXT_FILE.`is`(dataId)) exporterToTextFile else null
 
-    private fun getAttributes(infoData: CompleteCoroutineInfoData): SimpleTextAttributes {
+    private fun getAttributes(infoData: CoroutineInfoData): SimpleTextAttributes {
         return when {
             infoData.isSuspended() -> SimpleTextAttributes.GRAY_ATTRIBUTES
-            infoData.stackTrace.isEmpty() -> SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, Color.GRAY.brighter())
+            infoData.isEmptyStack() -> SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, Color.GRAY.brighter())
             else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
         }
     }
 
     private inner class CoroutineListCellRenderer : ColoredListCellRenderer<Any>() {
 
-        @Suppress("HardCodedStringLiteral")
         override fun customizeCellRenderer(list: JList<*>, value: Any, index: Int, selected: Boolean, hasFocus: Boolean) {
-            val infoData = value as CompleteCoroutineInfoData
-            val state = infoData.descriptor
+            val infoData = value as CoroutineInfoData
+            val state = infoData.key
             icon = fromState(state.state)
             val attrs = getAttributes(infoData)
             append(state.name + " (", attrs)
@@ -242,7 +241,7 @@ class CoroutineDumpPanel(
         }
     }
 
-    private class CopyToClipboardAction(private val myCoroutinesDump: List<CompleteCoroutineInfoData>, private val myProject: Project) :
+    private class CopyToClipboardAction(private val myCoroutinesDump: List<CoroutineInfoData>, private val myProject: Project) :
         DumbAwareAction(
             KotlinDebuggerCoroutinesBundle.message("coroutine.dump.copy.action"),
             KotlinDebuggerCoroutinesBundle.message("coroutine.dump.copy.description"),
@@ -268,7 +267,7 @@ class CoroutineDumpPanel(
 
     private class MyToFileExporter(
         private val myProject: Project,
-        private val infoData: List<CompleteCoroutineInfoData>
+        private val infoData: List<CoroutineInfoData>
     ) : ExporterToTextFile {
 
         override fun getReportText() = buildString {
@@ -284,9 +283,9 @@ class CoroutineDumpPanel(
     }
 }
 
-private fun stringStackTrace(info: CompleteCoroutineInfoData) =
+private fun stringStackTrace(info: CoroutineInfoData) =
     buildString {
-        appendLine("\"${info.descriptor.name}\", state: ${info.descriptor.state}")
+        appendLine("\"${info.key.name}\", state: ${info.key.state}")
         info.stackTrace.forEach {
             appendLine("\t$it")
         }

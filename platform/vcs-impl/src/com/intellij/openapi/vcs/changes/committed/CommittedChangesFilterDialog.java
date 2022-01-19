@@ -21,7 +21,7 @@ public class CommittedChangesFilterDialog extends DialogWrapper {
   private final ChangesBrowserSettingsEditor myPanel;
   private ChangeBrowserSettings mySettings;
   private final JLabel myErrorLabel = new JLabel();
-  private final Alarm myValidateAlarm = new Alarm();
+  private final Alarm myValidateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
   private final Runnable myValidateRunnable = new Runnable() {
     @Override
     public void run() {

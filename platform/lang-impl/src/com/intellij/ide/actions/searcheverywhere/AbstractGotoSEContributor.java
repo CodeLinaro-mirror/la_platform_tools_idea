@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions.searcheverywhere;
 
 import com.intellij.codeInsight.navigation.NavigationUtil;
@@ -306,9 +306,9 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
     }
   }
 
-  protected boolean processElement(@NotNull ProgressIndicator progressIndicator,
-                                   @NotNull Processor<? super FoundItemDescriptor<Object>> consumer,
-                                   FilteringGotoByModel<?> model, Object element, int degree) {
+  private boolean processElement(@NotNull ProgressIndicator progressIndicator,
+                                 @NotNull Processor<? super FoundItemDescriptor<Object>> consumer,
+                                 FilteringGotoByModel<?> model, Object element, int degree) {
     if (progressIndicator.isCanceled()) return false;
 
     if (element == null) {
@@ -403,10 +403,10 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
         return true;
       }
 
-      NavigationUtil.activateFileWithPsiElement(psiElement, true);
+      NavigationUtil.activateFileWithPsiElement(psiElement, openInCurrentWindow(modifiers));
     }
     else {
-      EditSourceUtil.navigate(((NavigationItem)selected), true, false);
+      EditSourceUtil.navigate(((NavigationItem)selected), true, openInCurrentWindow(modifiers));
     }
 
     return true;
@@ -460,7 +460,8 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
     Pair<Integer, Integer> position = getLineAndColumn(searchText);
     boolean positionSpecified = position.first >= 0 || position.second >= 0;
     if (file != null && positionSpecified) {
-      return new OpenFileDescriptor(psi.getProject(), file, position.first, position.second);
+      OpenFileDescriptor descriptor = new OpenFileDescriptor(psi.getProject(), file, position.first, position.second);
+      return descriptor.setUseCurrentWindow(openInCurrentWindow(modifiers));
     }
 
     return null;
@@ -495,6 +496,10 @@ public abstract class AbstractGotoSEContributor implements WeightedSearchEverywh
     }
 
     return -1;
+  }
+
+  protected static boolean openInCurrentWindow(int modifiers) {
+    return (modifiers & InputEvent.SHIFT_MASK) == 0;
   }
 
   abstract static class ScopeChooserAction extends ActionGroup

@@ -29,8 +29,11 @@ class ExternalProject(val path: String, val openWith: ProjectOpenAction) {
 }
 
 internal fun Disposable.registerLoadingErrorsHeadlessNotifier() {
-    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(this) { description ->
-        throw RuntimeException(description.description)
-    }
+    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(
+        { description ->
+            throw RuntimeException(description.description)
+        },
+        this
+    )
 
 }

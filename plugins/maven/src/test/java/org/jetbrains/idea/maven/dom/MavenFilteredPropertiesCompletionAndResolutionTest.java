@@ -608,13 +608,13 @@ public class MavenFilteredPropertiesCompletionAndResolutionTest extends MavenDom
                      "<artifactId>project</artifactId>\n" +
                      "<version>1</version>\n" +
                      "<properties>\n" +
-                     "  <aaa>${<error descr=\"Cannot resolve symbol 'zzz'\">zzz</error>}</aaa>" +
+                     "  <aaa>${<error>zzz</error>}</aaa>\n" +
                      "</properties>\n" +
 
                      "<build>\n" +
                      "  <plugins>\n" +
                      "    <plugin>\n" +
-                     "      <artifactId><error descr=\"Plugin 'maven-resources-plugin:' not found\">maven-resources-plugin</error></artifactId>" +
+                     "      <artifactId>maven-resources-plugin</artifactId>\n" +
                      "      <configuration>\n" +
                      "        <delimiters>\n" +
                      "          <delimiter>${*}</delimiter>\n" +

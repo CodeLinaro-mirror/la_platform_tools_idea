@@ -1,7 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.jcef;
 
-import com.intellij.application.options.RegistryManager;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.util.Function;
 import com.intellij.util.JBHiDPIScaledImage;
@@ -42,8 +41,6 @@ class JBCefOsrHandler implements CefRenderHandler {
   private final @NotNull Function<JComponent, Rectangle> myScreenBoundsProvider;
   private final @NotNull AtomicReference<Point> myLocationOnScreenRef = new AtomicReference<>(new Point());
   private final @NotNull JBCefOsrComponent.MyScale myScale = new JBCefOsrComponent.MyScale();
-  private final @NotNull JBCefFpsMeter myFpsMeter = JBCefFpsMeter.register(
-    RegistryManager.getInstance().get("ide.browser.jcef.osr.measureFPS.id").asString());
 
   private final @NotNull Object myImageLock = new Object();
 
@@ -65,8 +62,6 @@ class JBCefOsrHandler implements CefRenderHandler {
         updateLocation();
       }
     });
-
-    myFpsMeter.registerComponent(myComponent);
   }
 
   @Override
@@ -154,14 +149,12 @@ class JBCefOsrHandler implements CefRenderHandler {
   }
 
   public void paint(Graphics2D g) {
-    myFpsMeter.paintFrameStarted();
     synchronized (myImageLock) {
       if (myImage != null) {
-        // the graphics has correct clip set in onPaint, so here we draw the whole image
+        // the graphics clip will optimize the whole image painting
         UIUtil.drawImage(g, myImage, 0, 0, null);
       }
     }
-    myFpsMeter.paintFrameFinished(g);
   }
 
   private static @NotNull Rectangle findOuterRect(Rectangle@NotNull[] rects) {

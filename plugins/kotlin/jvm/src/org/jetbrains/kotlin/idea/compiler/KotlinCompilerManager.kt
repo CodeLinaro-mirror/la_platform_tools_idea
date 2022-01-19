@@ -6,7 +6,6 @@ import com.intellij.diagnostic.PluginException
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.compiler.*
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.diagnostic.UntraceableException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupActivity
 import com.intellij.openapi.util.io.FileUtilRt
@@ -21,8 +20,7 @@ import java.io.PrintWriter
 class KotlinCompilerStartupActivity : StartupActivity {
     // Extending PluginException ensures that Exception Analyzer recognizes this as a Kotlin exception
     private class KotlinCompilerException(private val text: String) :
-        PluginException("", PluginManagerCore.getPluginByClassName(KotlinCompilerStartupActivity::class.java.name)),
-        UntraceableException {
+        PluginException("", PluginManagerCore.getPluginByClassName(KotlinCompilerStartupActivity::class.java.name)) {
         override fun printStackTrace(s: PrintWriter) {
             s.print(text)
         }
@@ -58,7 +56,6 @@ class KotlinCompilerStartupActivity : StartupActivity {
 
     override fun runActivity(project: Project) {
         project.messageBus.connect().subscribe(CompilerTopics.COMPILATION_STATUS, object : CompilationStatusListener {
-            @Suppress("HardCodedStringLiteral")
             override fun compilationFinished(aborted: Boolean, errors: Int, warnings: Int, compileContext: CompileContext) {
                 for (error in compileContext.getMessages(CompilerMessageCategory.ERROR)) {
                     val message = error.message

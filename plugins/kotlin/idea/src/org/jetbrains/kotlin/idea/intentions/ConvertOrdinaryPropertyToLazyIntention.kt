@@ -5,7 +5,6 @@ package org.jetbrains.kotlin.idea.intentions
 import com.intellij.openapi.editor.Editor
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.inspections.collections.isCalling
-import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtProperty
@@ -16,8 +15,7 @@ class ConvertOrdinaryPropertyToLazyIntention : SelfTargetingIntention<KtProperty
     KtProperty::class.java, KotlinBundle.lazyMessage("convert.to.lazy.property")
 ) {
     override fun isApplicableTo(element: KtProperty, caretOffset: Int): Boolean =
-        !element.isVar && element.initializer != null && element.getter == null && !element.isLocal &&
-                !element.hasModifier(KtTokens.CONST_KEYWORD)
+        !element.isVar && element.initializer != null && element.getter == null && !element.isLocal
 
     override fun applyTo(element: KtProperty, editor: Editor?) {
         val initializer = element.initializer ?: return

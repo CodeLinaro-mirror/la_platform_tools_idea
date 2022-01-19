@@ -26,12 +26,7 @@ import com.intellij.openapi.actionSystem.DataKey;
 public interface Refreshable {
   DataKey<Refreshable> PANEL_KEY = DataKey.create("Panel");
 
-  /**
-   * @deprecated unused
-   */
-  @Deprecated
-  default void refresh() {
-  }
+  void refresh();
 
   void saveState();
 

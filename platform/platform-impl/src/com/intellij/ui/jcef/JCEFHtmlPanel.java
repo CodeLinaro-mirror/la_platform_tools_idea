@@ -40,7 +40,8 @@ public class JCEFHtmlPanel extends JBCefBrowser {
 
   @Override
   protected DefaultCefContextMenuHandler createDefaultContextMenuHandler() {
-    return new DefaultCefContextMenuHandler() {
+    boolean isInternal = ApplicationManager.getApplication().isInternal();
+    return new DefaultCefContextMenuHandler(isInternal) {
       @Override
       public void onBeforeContextMenu(CefBrowser browser, CefFrame frame, CefContextMenuParams params, CefMenuModel model) {
         model.clear();

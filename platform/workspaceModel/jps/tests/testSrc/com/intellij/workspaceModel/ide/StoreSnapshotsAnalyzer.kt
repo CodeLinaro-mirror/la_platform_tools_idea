@@ -4,10 +4,9 @@ package com.intellij.workspaceModel.ide
 import com.intellij.workspaceModel.storage.EntitySource
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity
 import com.intellij.workspaceModel.storage.impl.EntityStorageSerializerImpl
-import com.intellij.workspaceModel.storage.impl.MatchedEntitySource
 import com.intellij.workspaceModel.storage.impl.SimpleEntityTypesResolver
-import com.intellij.workspaceModel.storage.impl.url.VirtualFileUrlManagerImpl
 import com.intellij.workspaceModel.storage.toBuilder
+import com.intellij.workspaceModel.storage.impl.url.VirtualFileUrlManagerImpl
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -15,8 +14,9 @@ import kotlin.system.exitProcess
  * This is a boilerplate code for analyzing state of entity stores that were received as attachments to exceptions
  */
 fun main(args: Array<String>) {
-  if (args.size != 1) {
-    println("Usage: com.intellij.workspaceModel.ide.StoreSnapshotsAnalyzerKt <path to directory with storage files>")
+  if (args.size !in 1..2) {
+    println("Usage: com.intellij.workspaceModel.ide.StoreSnapshotsAnalyzerKt <path to directory with storage files> [<entity source filter>]\n" +
+            "or com.intellij.workspaceModel.ide.StoreSnapshotsAnalyzerKt <path to cache.data file>")
     exitProcess(1)
   }
   val file = File(args[0])
@@ -48,23 +48,16 @@ fun main(args: Array<String>) {
   val resStore = serializer.deserializeCache(resFile.inputStream())!!
 
   val leftStore = serializer.deserializeCache(leftFile.inputStream()) ?: throw IllegalArgumentException("Cannot load cache")
-
-  if (file.resolve("Replace_By_Source").exists()) {
+  val filterPattern = args.getOrNull(1)
+  if (filterPattern != null) {
     val rightStore = serializer.deserializeCache(rightFile.inputStream())!!
 
     val allEntitySources = leftStore.entitiesBySource { true }.map { it.key }.toHashSet()
     allEntitySources.addAll(rightStore.entitiesBySource { true }.map { it.key })
-
-    val pattern = if (file.resolve("Report_Wrapped").exists()) {
-      matchedPattern()
-    }
-    else {
-      val sortedSources = allEntitySources.sortedBy { it.toString() }
-      patternFilter(file.resolve("Replace_By_Source").readText(), sortedSources)
-    }
+    val sortedSources = allEntitySources.sortedBy { it.toString() }
 
     val expectedResult = leftStore.toBuilder()
-    expectedResult.replaceBySource(pattern, rightStore)
+    expectedResult.replaceBySource(patternFilter(filterPattern, sortedSources), rightStore)
 
     // Set a breakpoint and check
     println("storage loaded")
@@ -78,17 +71,12 @@ fun main(args: Array<String>) {
     // Set a breakpoint and check
     println("storage loaded")
   }
+
 }
 
 fun patternFilter(pattern: String, sortedSources: List<EntitySource>): (EntitySource) -> Boolean {
   return {
     val idx = sortedSources.indexOf(it)
     pattern[idx] == '1'
-  }
-}
-
-fun matchedPattern(): (EntitySource) -> Boolean {
-  return {
-    it is MatchedEntitySource
   }
 }

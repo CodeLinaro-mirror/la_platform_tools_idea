@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.log
 
 import com.intellij.openapi.Disposable
@@ -27,7 +27,7 @@ internal fun createLogData(repo: GitRepository, logProvider: GitLogProvider, dis
   }, disposable)
 }
 
-internal fun VcsLogData.refreshAndWait(repo: GitRepository, waitIndexFinishing: Boolean) {
+internal fun VcsLogData.refreshAndWait(repo: GitRepository, withIndex: Boolean = false) {
   val logWaiter = CompletableFuture<VcsLogData>()
   val dataPackChangeListener = DataPackChangeListener { newDataPack ->
     if (newDataPack.isFull) {
@@ -38,7 +38,7 @@ internal fun VcsLogData.refreshAndWait(repo: GitRepository, waitIndexFinishing: 
   refresh(listOf(repo.root))
   try {
     logWaiter.get(5, TimeUnit.SECONDS)
-    if (waitIndexFinishing) {
+    if (withIndex) {
       waitIndexFinishing(repo)
     }
   }
@@ -52,17 +52,13 @@ internal fun VcsLogData.refreshAndWait(repo: GitRepository, waitIndexFinishing: 
 
 private fun VcsLogData.waitIndexFinishing(repo: GitRepository) {
   val indexWaiter = CompletableFuture<VirtualFile>()
-  val repositoryRoot = repo.root
   val indexFinishedListener = VcsLogIndex.IndexingFinishedListener { root ->
-    if (repositoryRoot == root) {
+    if (repo.root == root) {
       indexWaiter.complete(root)
     }
   }
   index.addListener(indexFinishedListener)
   try {
-    if (index.isIndexed(repositoryRoot)) {
-      indexWaiter.complete(repositoryRoot)
-    }
     indexWaiter.get(5, TimeUnit.SECONDS)
   }
   catch (e: Exception) {

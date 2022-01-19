@@ -2,7 +2,6 @@
 package com.jetbrains.python.codeInsight.testIntegration
 
 import com.intellij.openapi.module.ModuleUtil
-import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
@@ -78,12 +77,9 @@ class PyTestCreationModel(var fileName: String,
 
     private fun getTestFolder(element: PsiElement): VirtualFile =
       ModuleUtil.findModuleForPsiElement(element)?.let { module ->
-        // No need to create tests in site-packages (aka classes root)
-        val fileIndex = ProjectFileIndex.getInstance(element.project)
-        return@let FilenameIndex.getVirtualFilesByName("tests", module.moduleContentScope).firstOrNull { possibleRoot ->
-          possibleRoot.isDirectory && !fileIndex.isInLibrary(possibleRoot)
-        }
+        FilenameIndex.getVirtualFilesByName( "tests", module.moduleContentScope).firstOrNull()
       } ?: element.containingFile.containingDirectory.virtualFile
+
   }
 
 }

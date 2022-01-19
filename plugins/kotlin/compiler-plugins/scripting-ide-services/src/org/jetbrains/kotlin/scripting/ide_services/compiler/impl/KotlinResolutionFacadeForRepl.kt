@@ -70,10 +70,6 @@ class KotlinResolutionFacadeForRepl(
         throw UnsupportedOperationException()
     }
 
-    override fun analyzeWithAllCompilerChecks(element: KtElement, callback: DiagnosticSink.DiagnosticsCallback?): AnalysisResult {
-        throw UnsupportedOperationException()
-    }
-
     override fun analyzeWithAllCompilerChecks(
         elements: Collection<KtElement>,
         callback: DiagnosticSink.DiagnosticsCallback?

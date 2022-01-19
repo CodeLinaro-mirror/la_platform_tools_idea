@@ -1,3 +1,5 @@
+from typing import Any
+
 class Version:
     def __new__(cls, major, minor, micro, release: str = ..., pre: int = ..., post: int = ..., dev: int = ...): ...
 

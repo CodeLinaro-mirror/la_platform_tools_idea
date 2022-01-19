@@ -35,9 +35,4 @@ public class GrFlipCommaTest extends GrIntentionTestCase {
     doTextTest("[1, 2,<caret> 3]",
                "[1, 3, 2]");
   }
-
-  public void testFlipAfterNewline() {
-    doTextTest("[1<caret>,\n 2]",
-               "[2<caret>,\n 1]");
-  }
 }

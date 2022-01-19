@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.externalDependencies.impl;
 
 import com.intellij.externalDependencies.DependencyOnPlugin;
@@ -19,7 +19,6 @@ import com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginsAdve
 import com.intellij.openapi.util.BuildNumber;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.HtmlChunk;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.text.VersionComparatorUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
@@ -30,6 +29,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import static com.intellij.openapi.util.text.StringUtil.join;
+import static com.intellij.util.containers.ContainerUtil.map2SetNotNull;
 
 final class CheckRequiredPluginsActivity implements StartupActivity.RequiredForSmartMode {
   private static final Logger LOG = Logger.getInstance(CheckRequiredPluginsActivity.class);
@@ -55,69 +57,69 @@ final class CheckRequiredPluginsActivity implements StartupActivity.RequiredForS
       return;
     }
 
-    String projectName = project.getName();
-
     final List<@Nls String> errorMessages = new ArrayList<>();
     final List<IdeaPluginDescriptor> disabled = new ArrayList<>();
     final Set<PluginId> notInstalled = new HashSet<>();
     List<IdeaPluginDescriptor> pluginsToEnableWithoutRestart = new ArrayList<>();
-
-    ApplicationInfo applicationInfo = ApplicationInfo.getInstance();
-    PluginEnabler pluginEnabler = PluginEnabler.getInstance();
-    ProjectPluginTracker pluginTracker = DynamicPluginEnabler.findPluginTracker(project, pluginEnabler);
+    ProjectPluginTracker pluginTracker = ProjectPluginTrackerManager.getInstance().getPluginTracker(project);
 
     for (DependencyOnPlugin dependency : dependencies) {
       PluginId pluginId = PluginId.getId(dependency.getPluginId());
-      IdeaPluginDescriptorImpl descriptor = PluginManagerCore.findPlugin(pluginId);
-      if (descriptor == null) {
-        errorMessages.add(IdeBundle.message("error.plugin.required.for.project.not.installed", pluginId, projectName));
+      IdeaPluginDescriptor plugin = PluginManagerCore.getPlugin(pluginId);
+      if (plugin == null) {
+        errorMessages.add(IdeBundle.message("error.plugin.required.for.project.not.installed", pluginId, project.getName()));
         notInstalled.add(pluginId);
         continue;
       }
 
-      String pluginName = descriptor.getName();
-      if (pluginEnabler.isDisabled(pluginId) ||
-          pluginTracker != null && pluginTracker.isDisabled(pluginId)) {
-        boolean canEnableWithoutRestart = Registry.is("ide.plugins.load.automatically") &&
-                                          DynamicPlugins.allowLoadUnloadWithoutRestart(descriptor);
-        if (canEnableWithoutRestart) {
-          pluginsToEnableWithoutRestart.add(descriptor);
+      if (!plugin.isEnabled() || pluginTracker.isDisabled(pluginId)) {
+        boolean canEnableWithoutRestart = false;
+        if (Registry.is("ide.plugins.load.automatically")) {
+          String message = DynamicPlugins.checkCanUnloadWithoutRestart((IdeaPluginDescriptorImpl)plugin);
+          if (message == null) {
+            canEnableWithoutRestart = true;
+            pluginsToEnableWithoutRestart.add(plugin);
+          }
+          else {
+            LOG.info("Required plugin " + plugin.getPluginId() + " can't be enabled without restart: " + message);
+          }
         }
-        else {
-          errorMessages.add(IdeBundle.message("error.plugin.required.for.project.disabled", pluginName, projectName));
-          disabled.add(descriptor);
+        if (!canEnableWithoutRestart) {
+          errorMessages.add(IdeBundle.message("error.plugin.required.for.project.disabled", plugin.getName(), project.getName()));
+          disabled.add(plugin);
         }
         continue;
       }
 
       String minVersion = dependency.getMinVersion();
       String maxVersion = dependency.getMaxVersion();
-      String pluginVersion = descriptor.getVersion();
-
-      BuildNumber currentIdeVersion = applicationInfo.getBuild();
-      if (descriptor.isBundled() && !descriptor.allowBundledUpdate() && currentIdeVersion.asStringWithoutProductCode().equals(pluginVersion)) {
-        String pluginFromString = PluginManagerCore.CORE_ID.equals(descriptor.getPluginId()) ? "" : "plugin '" + pluginName + "' from ";
+      String pluginVersion = plugin.getVersion();
+      BuildNumber currentIdeVersion = ApplicationInfo.getInstance().getBuild();
+      if (plugin.isBundled() && !plugin.allowBundledUpdate() && currentIdeVersion.asStringWithoutProductCode().equals(pluginVersion)) {
+        String pluginFromString = PluginManagerCore.CORE_ID.equals(plugin.getPluginId()) ? "" : "plugin '" + plugin.getName() + "' from ";
         if (minVersion != null && currentIdeVersion.compareTo(BuildNumber.fromString(minVersion)) < 0) {
-          errorMessages.add(IdeBundle.message("error.project.requires.newer.ide", projectName, pluginFromString, minVersion, pluginVersion));
+          errorMessages
+            .add(IdeBundle.message("error.project.requires.newer.ide", project.getName(), pluginFromString, minVersion, pluginVersion));
         }
         if (maxVersion != null && currentIdeVersion.compareTo(BuildNumber.fromString(maxVersion)) > 0) {
-          errorMessages.add(IdeBundle.message("error.project.requires.older.ide", projectName, pluginFromString, maxVersion, pluginVersion));
+          errorMessages
+            .add(IdeBundle.message("error.project.requires.older.ide", project.getName(), pluginFromString, maxVersion, pluginVersion));
         }
       }
       else {
         if (minVersion != null && VersionComparatorUtil.compare(pluginVersion, minVersion) < 0) {
-          errorMessages.add(IdeBundle.message("error.project.requires.newer.plugin", projectName, pluginName, minVersion, pluginVersion));
+          errorMessages
+            .add(IdeBundle.message("error.project.requires.newer.plugin", project.getName(), plugin.getName(), minVersion, pluginVersion));
         }
         if (maxVersion != null && VersionComparatorUtil.compare(pluginVersion, maxVersion) > 0) {
-          errorMessages.add(IdeBundle.message("error.project.requires.older.plugin", projectName, pluginName, maxVersion, pluginVersion));
+          errorMessages
+            .add(IdeBundle.message("error.project.requires.older.plugin", project.getName(), plugin.getName(), maxVersion, pluginVersion));
         }
       }
     }
 
     if (!pluginsToEnableWithoutRestart.isEmpty()) {
-      ApplicationManager.getApplication().invokeLater(() -> {
-        enablePlugins(pluginsToEnableWithoutRestart, pluginEnabler);
-      });
+      ApplicationManager.getApplication().invokeLater(() -> enablePlugins(project, pluginsToEnableWithoutRestart));
     }
 
     if (errorMessages.isEmpty()) {
@@ -139,35 +141,37 @@ final class CheckRequiredPluginsActivity implements StartupActivity.RequiredForS
     }
 
     NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-      .createNotification(IdeBundle.message("notification.title.required.plugins.not.loaded"), StringUtil.join(errorMessages, "<br>"), NotificationType.ERROR)
+      .createNotification(IdeBundle.message("notification.title.required.plugins.not.loaded"), join(errorMessages, "<br>"), NotificationType.ERROR)
       .setListener(notInstalled.isEmpty() ?
-                   createEnableNotificationListener(project, disabled, pluginEnabler) :
-                   createInstallNotificationListener(project, notInstalled, disabled))
+                   createEnableNotificationListener(project, disabled) :
+                   createInstallNotificationListener(notInstalled, disabled))
       .notify(project);
   }
 
-  private static boolean enablePlugins(@NotNull List<? extends IdeaPluginDescriptor> descriptors,
-                                       @NotNull PluginEnabler pluginEnabler) {
-    LOG.info("Required plugins to enable: [" + StringUtil.join(descriptors, d -> d.getPluginId().getIdString(), ", ") + "]");
-    return pluginEnabler.enable(descriptors);
+  private static void enablePlugins(@NotNull Project project,
+                                    @NotNull List<? extends IdeaPluginDescriptor> plugins) {
+    Set<PluginId> pluginIds = map2SetNotNull(plugins, IdeaPluginDescriptor::getPluginId);
+    LOG.info("Required plugins to enable: [" + join(pluginIds, ", ") + "]");
+
+    ProjectPluginTrackerManager
+      .getInstance()
+      .updatePluginsState(plugins,
+                          PluginEnableDisableAction.ENABLE_GLOBALLY,
+                          project);
   }
 
   private static @NotNull NotificationListener createEnableNotificationListener(@NotNull Project project,
-                                                                                @NotNull List<? extends IdeaPluginDescriptor> disabled,
-                                                                                @NotNull PluginEnabler pluginEnabler) {
+                                                                                @NotNull List<? extends IdeaPluginDescriptor> disabled) {
     return (notification, event) -> {
       if (!isApplicable(event, ENABLE)) return;
 
       notification.expire();
-
-      if (!enablePlugins(disabled, pluginEnabler)) {
-        PluginManagerMain.notifyPluginsUpdated(project);
-      }
+      enablePlugins(project, disabled);
+      PluginManagerMain.notifyPluginsUpdated(project);
     };
   }
 
-  private static @NotNull NotificationListener createInstallNotificationListener(@NotNull Project project,
-                                                                                 @NotNull Set<PluginId> notInstalled,
+  private static @NotNull NotificationListener createInstallNotificationListener(@NotNull Set<PluginId> notInstalled,
                                                                                  @NotNull List<? extends IdeaPluginDescriptor> disabled) {
 
     HashSet<PluginId> pluginIds = new HashSet<>(notInstalled);
@@ -179,7 +183,7 @@ final class CheckRequiredPluginsActivity implements StartupActivity.RequiredForS
     return (notification, event) -> {
       if (!isApplicable(event, INSTALL)) return;
 
-      PluginsAdvertiser.installAndEnable(project, pluginIds, true, () -> notification.expire());
+      PluginsAdvertiser.installAndEnable(pluginIds, () -> notification.expire());
     };
   }
 

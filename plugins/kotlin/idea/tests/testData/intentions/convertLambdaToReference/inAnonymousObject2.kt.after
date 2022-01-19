@@ -1,5 +1,3 @@
-// AFTER-WARNING: Parameter 'f' is never used
-// AFTER-WARNING: Parameter 'i' is never used
 interface I {
     fun foo(i: Int)
 }
@@ -8,7 +6,7 @@ class C {
     fun create(): I {
         return object : I {
             override fun foo(i: Int) {
-                bar(::baz)
+                bar(this::baz)
             }
 
             fun bar(f: (Int) -> Unit) {}

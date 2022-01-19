@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.rename.impl
 
 import com.intellij.codeInsight.actions.VcsFacade
@@ -11,7 +11,7 @@ import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Progress
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogBuilder
 import com.intellij.openapi.util.registry.Registry
@@ -180,8 +180,8 @@ suspend fun prepareRename(allUsages: Collection<UsagePointer>, newName: String):
     val (
       byFileUpdater: Map<FileUpdater, List<Pointer<out ModifiableRenameUsage>>>,
       byModelUpdater: Map<ModelUpdater, List<Pointer<out ModifiableRenameUsage>>>
-    ) = readAction {
-      classifyUsages(allUsages)
+    ) = readAction { progress: Progress ->
+      classifyUsages(progress, allUsages)
     }
     val fileUpdates: Deferred<FileUpdates?> = async {
       prepareFileUpdates(byFileUpdater, newName)
@@ -197,6 +197,7 @@ suspend fun prepareRename(allUsages: Collection<UsagePointer>, newName: String):
 }
 
 private fun classifyUsages(
+  progress: Progress,
   allUsages: Collection<UsagePointer>
 ): Pair<
   Map<FileUpdater, List<Pointer<out ModifiableRenameUsage>>>,
@@ -207,7 +208,7 @@ private fun classifyUsages(
   val byFileUpdater = HashMap<FileUpdater, MutableList<Pointer<out ModifiableRenameUsage>>>()
   val byModelUpdater = HashMap<ModelUpdater, MutableList<Pointer<out ModifiableRenameUsage>>>()
   for (pointer: UsagePointer in allUsages) {
-    ProgressManager.checkCanceled()
+    progress.checkCancelled()
     val renameUsage: ModifiableRenameUsage = pointer.dereference() as? ModifiableRenameUsage ?: continue
     @Suppress("UNCHECKED_CAST") val modifiablePointer = pointer as Pointer<out ModifiableRenameUsage>
     renameUsage.fileUpdater?.let { fileUpdater: FileUpdater ->
@@ -239,14 +240,14 @@ private suspend fun prepareFileUpdates(
   usagePointers: List<Pointer<out ModifiableRenameUsage>>,
   newName: String
 ): FileUpdates? {
-  return readAction {
+  return readAction { progress: Progress ->
     usagePointers.dereferenceOrNull()?.let { usages: List<ModifiableRenameUsage> ->
-      createFileUpdates(fileUpdater.prepareFileUpdateBatch(usages, newName))
+      createFileUpdates(progress, fileUpdater.prepareFileUpdateBatch(progress, usages, newName))
     }
   }
 }
 
-private fun createFileUpdates(fileOperations: Collection<FileOperation>): FileUpdates {
+private fun createFileUpdates(progress: Progress, fileOperations: Collection<FileOperation>): FileUpdates {
   ApplicationManager.getApplication().assertReadAccessAllowed()
 
   val filesToAdd = ArrayList<Pair<Path, CharSequence>>()
@@ -256,6 +257,7 @@ private fun createFileUpdates(fileOperations: Collection<FileOperation>): FileUp
 
   loop@
   for (fileOperation: FileOperation in fileOperations) {
+    progress.checkCancelled()
     when (fileOperation) {
       is FileOperation.Add -> filesToAdd += Pair(fileOperation.path, fileOperation.content)
       is FileOperation.Move -> filesToMove += Pair(fileOperation.file, fileOperation.path)
@@ -263,6 +265,7 @@ private fun createFileUpdates(fileOperations: Collection<FileOperation>): FileUp
       is FileOperation.Modify -> {
         val document: Document = FileDocumentManager.getInstance().getDocument(fileOperation.file.virtualFile) ?: continue@loop
         for (stringOperation: StringOperation in fileOperation.modifications) {
+          progress.checkCancelled()
           val rangeMarker: RangeMarker = document.createRangeMarker(stringOperation.range)
           fileModifications += Pair(rangeMarker, stringOperation.replacement)
         }
@@ -276,10 +279,10 @@ private fun createFileUpdates(fileOperations: Collection<FileOperation>): FileUp
 private suspend fun prepareModelUpdate(byModelUpdater: Map<ModelUpdater, List<Pointer<out ModifiableRenameUsage>>>): ModelUpdate? {
   val updates: List<ModelUpdate> = byModelUpdater
     .flatMap { (modelUpdater: ModelUpdater, usagePointers: List<Pointer<out ModifiableRenameUsage>>) ->
-      readAction {
+      readAction { progress: Progress ->
         usagePointers.dereferenceOrNull()
           ?.let { usages: List<ModifiableRenameUsage> ->
-            modelUpdater.prepareModelUpdateBatch(usages)
+            modelUpdater.prepareModelUpdateBatch(progress, usages)
           }
         ?: emptyList()
       }

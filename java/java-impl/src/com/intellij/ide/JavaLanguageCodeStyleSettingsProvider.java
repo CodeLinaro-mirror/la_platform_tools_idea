@@ -411,11 +411,6 @@ public class JavaLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
     }
   }
 
-  @Override
-  public boolean usesCommonKeepLineBreaks() {
-    return true;
-  }
-
   private static final String GENERAL_CODE_SAMPLE =
     "public class Foo {\n" +
     "  public int[] X = new int[]{1, 3, 5, 7, 9, 11};\n" +

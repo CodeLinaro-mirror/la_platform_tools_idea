@@ -26,7 +26,6 @@ import java.util.Objects;
 
 public class ExceptionFilter implements Filter, DumbAware {
   final ExceptionInfoCache myCache;
-  private final ExceptionLineParserFactory myFactory = ExceptionLineParserFactory.getInstance();
   private ExceptionLineRefiner myNextLineRefiner;
 
   public ExceptionFilter(@NotNull final GlobalSearchScope scope) {
@@ -39,7 +38,7 @@ public class ExceptionFilter implements Filter, DumbAware {
 
   @Override
   public Result applyFilter(@NotNull final String line, final int textEndOffset) {
-    ExceptionLineParser worker = myFactory.create(myCache);
+    ExceptionWorker worker = new ExceptionWorker(myCache);
     Result result = worker.execute(line, textEndOffset, myNextLineRefiner);
     if (result == null) {
       if (myNextLineRefiner != null) {

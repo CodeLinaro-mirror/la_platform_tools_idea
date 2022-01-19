@@ -1,8 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.builders.impl.java;
 
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.builders.java.CannotCreateJavaCompilerException;
@@ -24,8 +25,9 @@ public final class EclipseCompilerTool extends JavaCompilingTool {
   private static final String JAR_FILE_NAME_PREFIX = "ecj-";
   private static final String JAR_FILE_NAME_SUFFIX = ".jar";
   private String myVersion;
+  @NotNull
   @Override
-  public @NotNull String getId() {
+  public String getId() {
     return JavaCompilers.ECLIPSE_ID;
   }
 
@@ -39,8 +41,9 @@ public final class EclipseCompilerTool extends JavaCompilingTool {
     return false;
   }
 
+  @NotNull
   @Override
-  public @NotNull String getDescription() {
+  public String getDescription() {
     String version = myVersion;
     if (version == null) {
       version = "";
@@ -57,8 +60,9 @@ public final class EclipseCompilerTool extends JavaCompilingTool {
     return "Eclipse compiler" + version;
   }
 
+  @NotNull
   @Override
-  public @NotNull JavaCompiler createCompiler() throws CannotCreateJavaCompilerException {
+  public JavaCompiler createCompiler() throws CannotCreateJavaCompilerException {
     final JavaCompiler javaCompiler = findCompiler();
     if (javaCompiler == null) {
       throw new CannotCreateJavaCompilerException("Eclipse Batch Compiler was not found in classpath");
@@ -66,7 +70,8 @@ public final class EclipseCompilerTool extends JavaCompilingTool {
     return javaCompiler;
   }
 
-  private static @Nullable JavaCompiler findCompiler() {
+  @Nullable
+  private static JavaCompiler findCompiler() {
     for (JavaCompiler javaCompiler : ServiceLoader.load(JavaCompiler.class)) {
       if ("EclipseCompiler".equals(StringUtil.getShortName(javaCompiler.getClass()))) {
         return javaCompiler;
@@ -75,19 +80,16 @@ public final class EclipseCompilerTool extends JavaCompilingTool {
     return null;
   }
 
+  @NotNull
   @Override
-  public @NotNull List<File> getAdditionalClasspath() {
-    File element = findEcjJarFile();
-    return element == null ? Collections.emptyList() : Collections.singletonList(element);
+  public List<File> getAdditionalClasspath() {
+    return ContainerUtil.createMaybeSingletonList(findEcjJarFile());
   }
 
-  public static @Nullable File findEcjJarFile() {
-    File result = new File(PathManager.getHomePath(), "plugins/java/lib/ecj/eclipse.jar");
-    if (result.exists()) {
-      return result;
-    }
-
-    for (String relativeDirectoryPath : new String[]{"plugins/java/lib", "lib", "community/lib"}) {
+  @Nullable
+  public static File findEcjJarFile() {
+    String[] dirsToCheck = {"plugins/java/lib", "lib", "community/lib"};
+    for (String relativeDirectoryPath : dirsToCheck) {
       File lib = new File(PathManager.getHomePath(), relativeDirectoryPath);
       File[] children = lib.listFiles((dir, name) -> name.startsWith(JAR_FILE_NAME_PREFIX) && name.endsWith(JAR_FILE_NAME_SUFFIX));
       if (children != null && children.length > 0) {

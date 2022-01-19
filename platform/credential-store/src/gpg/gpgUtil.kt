@@ -6,7 +6,7 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.text.StringUtilRt
 import com.intellij.util.SmartList
 
-class Pgp(private val gpgTool: GpgToolWrapper = createGpg()) {
+internal class Pgp(private val gpgTool: GpgToolWrapper = createGpg()) {
   // only keys with "Encrypt" capability are returned
   fun listKeys(): List<PgpKey> {
     val result = SmartList<PgpKey>()
@@ -69,7 +69,7 @@ interface GpgToolWrapper {
   fun decrypt(data: ByteArray): ByteArray
 }
 
-fun createGpg(): GpgToolWrapper {
+internal fun createGpg(): GpgToolWrapper {
   val result = GpgToolWrapperImpl()
   try {
     result.version()
@@ -87,4 +87,4 @@ fun createGpg(): GpgToolWrapper {
   return result
 }
 
-data class PgpKey(@NlsSafe val keyId: String, @NlsSafe val userId: String)
+internal data class PgpKey(@NlsSafe val keyId: String, @NlsSafe val userId: String)

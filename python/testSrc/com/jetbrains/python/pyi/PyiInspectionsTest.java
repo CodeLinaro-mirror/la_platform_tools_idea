@@ -125,8 +125,7 @@ public class PyiInspectionsTest extends PyTestCase {
     doPyiTest(PyUnresolvedReferencesInspection.class);
   }
 
-  // PY-49004
-  public void testPyiTopLevelResolvedForwardReferencesInAnnotations() {
+  public void testPyiTopLevelUnresolvedForwardReferencesInAnnotations() {
     doPyiTest(PyUnresolvedReferencesInspection.class);
   }
 

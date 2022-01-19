@@ -10,6 +10,7 @@ import com.intellij.util.PairProcessor;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.jsonSchema.JsonSchemaMappingsProjectConfiguration;
 import com.jetbrains.jsonSchema.UserDefinedJsonSchemaConfiguration;
+import com.jetbrains.jsonSchema.impl.JsonSchemaObject;
 import com.jetbrains.jsonSchema.impl.JsonSchemaVersion;
 import com.jetbrains.jsonSchema.remote.JsonFileResolver;
 import org.jetbrains.annotations.Nls;
@@ -43,7 +44,7 @@ public class JsonSchemaUserDefinedProviderFactory implements JsonSchemaProviderF
                                    UserDefinedJsonSchemaConfiguration schema) {
     String relPath = schema.getRelativePathToSchema();
     return new MyProvider(project, schema.getSchemaVersion(), schema.getName(),
-                          isAbsoluteUrl(relPath) || new File(relPath).isAbsolute()
+                          isHttpPath(relPath) || relPath.startsWith(JsonSchemaObject.TEMP_URL) || new File(relPath).isAbsolute()
                             ? relPath
                             : new File(project.getBasePath(),
                           relPath).getAbsolutePath(),

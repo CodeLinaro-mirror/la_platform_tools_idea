@@ -4,10 +4,8 @@ package com.intellij.util.indexing.impl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream;
-import com.intellij.openapi.util.io.ByteArraySequence;
 import com.intellij.util.indexing.IndexExtension;
 import com.intellij.util.indexing.IndexId;
-import com.intellij.util.indexing.impl.forward.AbstractForwardIndexAccessor;
 import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.DataOutputStream;
 import org.jetbrains.annotations.NotNull;
@@ -46,10 +44,12 @@ final class ValueSerializationChecker<Value, Input> {
       }
 
       try {
-        ByteArraySequence sequence = AbstractForwardIndexAccessor.serializeValueToByteSeq(value,
-                                                                                          myValueExternalizer,
-                                                                                          4);
-        Value deserializedValue = sequence == null ? null : myValueExternalizer.read(new DataInputStream(sequence.toInputStream()));
+        final BufferExposingByteArrayOutputStream out = new BufferExposingByteArrayOutputStream();
+        DataOutputStream outputStream = new DataOutputStream(out);
+        myValueExternalizer.save(outputStream, value);
+        outputStream.close();
+        final Value deserializedValue =
+          myValueExternalizer.read(new DataInputStream(out.toInputStream()));
 
         if (!(Comparing.equal(value, deserializedValue) && (value == null || value.hashCode() == deserializedValue.hashCode()))) {
           LOG.error(("Index " + myIndexId + " deserialization violates equals / hashCode contract for Value parameter") +

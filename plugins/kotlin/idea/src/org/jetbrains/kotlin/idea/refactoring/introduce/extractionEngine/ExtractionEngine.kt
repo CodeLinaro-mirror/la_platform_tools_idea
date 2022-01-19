@@ -2,13 +2,12 @@
 
 package org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageType
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.openapi.util.NlsContexts
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.refactoring.BaseRefactoringProcessor
 import com.intellij.ui.awt.RelativePoint
 import org.jetbrains.kotlin.idea.KotlinBundle
@@ -16,13 +15,9 @@ import org.jetbrains.kotlin.idea.refactoring.checkConflictsInteractively
 import org.jetbrains.kotlin.idea.refactoring.introduce.showErrorHint
 import org.jetbrains.kotlin.idea.util.ProgressIndicatorUtils
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
-import org.jetbrains.kotlin.idea.util.nonBlocking
-import org.jetbrains.kotlin.utils.addToStdlib.cast
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import javax.swing.event.HyperlinkEvent
 
-abstract class ExtractionEngineHelper(@NlsContexts.DialogTitle val operationName: String) {
+abstract class ExtractionEngineHelper(val operationName: String) {
     open fun adjustExtractionData(data: ExtractionData): ExtractionData = data
 
     fun doRefactor(config: ExtractionGeneratorConfiguration, onFinish: (ExtractionResult) -> Unit = {}) {
@@ -57,28 +52,19 @@ class ExtractionEngine(
             adjustExtractionData.performAnalysis()
         }
 
-        if (isUnitTestMode() && analysisResult.status != AnalysisResult.Status.SUCCESS) {
+        if (ApplicationManager.getApplication()!!.isUnitTestMode && analysisResult.status != AnalysisResult.Status.SUCCESS) {
             throw BaseRefactoringProcessor.ConflictsInTestsException(analysisResult.messages.map { it.renderMessage() })
         }
 
         fun validateAndRefactor() {
-            nonBlocking(project, {
-                try {
-                    helper.validate(analysisResult.descriptor!!)
-                } catch (e: RuntimeException) {
-                    ExtractableCodeDescriptorWithException(e)
-                }
-            }) { result ->
-                result.safeAs<ExtractableCodeDescriptorWithException>()?.let { throw it.exception }
-                val validationResult = result.cast<ExtractableCodeDescriptorWithConflicts>()
-                project.checkConflictsInteractively(validationResult.conflicts) {
-                    helper.configureAndRun(project, editor, validationResult) {
-                        try {
-                            onFinish(it)
-                        } finally {
-                            it.dispose()
-                            extractionData.dispose()
-                        }
+            val validationResult = helper.validate(analysisResult.descriptor!!)
+            project.checkConflictsInteractively(validationResult.conflicts) {
+                helper.configureAndRun(project, editor, validationResult) {
+                    try {
+                        onFinish(it)
+                    } finally {
+                        it.dispose()
+                        extractionData.dispose()
                     }
                 }
             }
@@ -95,11 +81,9 @@ class ExtractionEngine(
                     editor.contentComponent,
                     editor.visualPositionToXY(editor.selectionModel.selectionStartPosition!!)
                 )
-                @NlsSafe val htmlContent =
-                    "$message<br/><br/><a href=\"EXTRACT\">${KotlinBundle.message("text.proceed.with.extraction")}</a>"
                 JBPopupFactory.getInstance()!!
                     .createHtmlTextBalloonBuilder(
-                        htmlContent,
+                        "$message<br/><br/><a href=\"EXTRACT\">${KotlinBundle.message("text.proceed.with.extraction")}</a>",
                         MessageType.WARNING
                     ) { event ->
                         if (event?.eventType == HyperlinkEvent.EventType.ACTIVATED) {

@@ -3,45 +3,22 @@ package com.intellij.codeInsight.actions.onSave;
 
 import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.ide.actionsOnSave.ActionOnSaveContext;
-import com.intellij.lang.ImportOptimizer;
-import com.intellij.lang.Language;
-import com.intellij.lang.LanguageImportStatements;
-import com.intellij.openapi.extensions.ExtensionPoint;
-import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.util.Key;
-import com.intellij.util.KeyedLazyInstance;
-import com.intellij.util.containers.ContainerUtil;
+import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Collection;
+public class OptimizeImportsOnSaveActionInfo extends ActionOnSaveInfoBase {
+  private static final String OPTIMIZE_IMPORTS_ON_SAVE_PROPERTY = "optimize.imports.on.save";
+  private static final boolean OPTIMIZE_IMPORTS_ON_SAVE_DEFAULT = false;
 
-public class OptimizeImportsOnSaveActionInfo extends FormatOnSaveActionInfoBase<OptimizeImportsOnSaveOptions> {
-
-  private static final Key<OptimizeImportsOnSaveOptions> CURRENT_UI_STATE_KEY = Key.create("optimize.imports.on.save.options");
+  public static boolean isOptimizeImportsOnSaveEnabled(@NotNull Project project) {
+    return PropertiesComponent.getInstance(project).getBoolean(OPTIMIZE_IMPORTS_ON_SAVE_PROPERTY, OPTIMIZE_IMPORTS_ON_SAVE_DEFAULT);
+  }
 
   public OptimizeImportsOnSaveActionInfo(@NotNull ActionOnSaveContext context) {
-    super(context, CodeInsightBundle.message("actions.on.save.page.checkbox.optimize.imports"), CURRENT_UI_STATE_KEY);
-  }
-
-  @Override
-  protected @NotNull OptimizeImportsOnSaveOptions getOptionsFromStoredState() {
-    return OptimizeImportsOnSaveOptions.getInstance(getProject());
-  }
-
-  @Override
-  protected void addApplicableFileTypes(@NotNull Collection<FileType> result) {
-    ExtensionPoint<KeyedLazyInstance<ImportOptimizer>> ep = LanguageImportStatements.INSTANCE.getPoint();
-    if (ep != null) {
-      for (KeyedLazyInstance<ImportOptimizer> instance : ep.getExtensionList()) {
-        String languageId = instance.getKey();
-        Language language = Language.findLanguageByID(languageId);
-        ContainerUtil.addIfNotNull(result, language != null ? language.getAssociatedFileType() : null);
-      }
-    }
-  }
-
-  @Override
-  protected void apply() {
-    getOptionsFromStoredState().loadState(getCurrentUiState().getState().clone());
+    super(context,
+          CodeInsightBundle.message("actions.on.save.page.checkbox.optimize.imports"),
+          OPTIMIZE_IMPORTS_ON_SAVE_PROPERTY,
+          OPTIMIZE_IMPORTS_ON_SAVE_DEFAULT);
   }
 }

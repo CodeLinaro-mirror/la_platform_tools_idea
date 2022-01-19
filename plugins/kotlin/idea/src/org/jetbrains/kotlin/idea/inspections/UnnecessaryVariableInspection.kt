@@ -10,7 +10,6 @@ import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.VariableDescriptor
-import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToCall
@@ -79,7 +78,6 @@ class UnnecessaryVariableInspection : AbstractApplicabilityBasedInspection<KtPro
                         ?: return false
                     if (initializerDescriptor.isVar) return false
                     if (initializerDescriptor.containingDeclaration !is FunctionDescriptor) return false
-                    if (initializerDescriptor.safeAs<LocalVariableDescriptor>()?.isDelegated == true) return false
 
                     val copyName = initializerDescriptor.name.asString()
                     if (ReferencesSearch.search(property, LocalSearchScope(enclosingElement)).findFirst() == null) return false

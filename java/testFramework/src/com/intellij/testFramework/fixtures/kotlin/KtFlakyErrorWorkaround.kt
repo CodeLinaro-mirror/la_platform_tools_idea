@@ -25,7 +25,7 @@ class KtFlakyErrorWorkaround(private val setUp: () -> Unit,
           repeatedTimes++
           repeat = true
           if (repeatedTimes > repeatCount) {
-            logger<KtFlakyErrorWorkaround>().error("Workaround: hit too many times: $repeatedTimes, max is $repeatCount", e)
+            logger<KtFlakyErrorWorkaround>().error("Workaround: hit too many times: $repeatedTimes, max is $repeatCount")
             throw e
           }
           tearDown()

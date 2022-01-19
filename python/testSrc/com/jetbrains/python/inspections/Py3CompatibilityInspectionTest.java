@@ -65,11 +65,6 @@ public class Py3CompatibilityInspectionTest extends PyInspectionTestCase {
                  "    pass\n");
   }
 
-  // PY-48012
-  public void testMatchStatement() {
-    doTest();
-  }
-
   @NotNull
   @Override
   protected Class<? extends PyInspection> getInspectionClass() {

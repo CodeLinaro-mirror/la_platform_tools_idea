@@ -8,7 +8,6 @@ import com.intellij.execution.JavaRunConfigurationBase;
 import com.intellij.execution.JavaRunConfigurationExtensionManager;
 import com.intellij.execution.ui.*;
 import com.intellij.ide.macro.MacrosDialog;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.ui.LabeledComponent;
 import com.intellij.openapi.util.Computable;
 import com.intellij.ui.RawCommandLineEditor;
@@ -64,7 +63,6 @@ public abstract class JavaSettingsEditorBase<T extends JavaRunConfigurationBase>
     vmParameters.setEditorGetter(editor -> editor.getEditorField());
     fragments.add(vmParameters);
     fragments.add(moduleClasspath);
-    fragments.add(new ClasspathModifier<>(mySettings));
     customizeFragments(fragments, moduleClasspath, commonParameterFragments);
 
     fragments.add(new LogsGroupFragment<>());

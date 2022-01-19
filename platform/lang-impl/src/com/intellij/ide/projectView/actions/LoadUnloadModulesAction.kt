@@ -7,7 +7,6 @@ import com.intellij.idea.ActionsBundle.actionText
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.LangDataKeys
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.roots.ui.configuration.ConfigureUnloadedModulesDialog
@@ -31,7 +30,7 @@ class LoadUnloadModulesAction : DumbAwareAction(actionText(ACTION_ID)) {
 
   override fun actionPerformed(e: AnActionEvent) {
     val selectedModuleName = e.getData(LangDataKeys.MODULE_CONTEXT)?.name ?: getSelectedUnloadedModuleName(e)
-                             ?: e.getData(PlatformCoreDataKeys.MODULE)?.name
+                             ?: e.getData(LangDataKeys.MODULE)?.name
     ConfigureUnloadedModulesDialog(e.project!!, selectedModuleName).show()
   }
 

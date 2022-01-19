@@ -37,6 +37,11 @@ public final class LightEditFileEditorManagerImpl extends FileEditorManagerImpl 
   }
 
   @Override
+  public boolean isProblem(@NotNull VirtualFile file) {
+    return false;
+  }
+
+  @Override
   public @NotNull Pair<FileEditor[], FileEditorProvider[]> openFileImpl2(@NotNull EditorWindow window,
                                                                          @NotNull VirtualFile file,
                                                                          boolean focusEditor) {

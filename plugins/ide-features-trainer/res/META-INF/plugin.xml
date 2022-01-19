@@ -63,8 +63,6 @@
 
     <interactiveCourseFactory id="IFTInteractiveCourse" implementation="training.ui.welcomeScreen.IFTInteractiveCourse" order="first"/>
 
-    <tipAndTrickPromotionFactory implementation="training.ui.IftTipAndTrickPromoter"/>
-
     <applicationService serviceImplementation="training.lang.LangManager"/>
     <applicationService serviceImplementation="training.ui.UISettings"/>
     <applicationService serviceImplementation="training.learn.lesson.LessonStateBase"/>
@@ -95,18 +93,15 @@
     <action id="RestartLessonAction" class="training.actions.RestartLessonAction"/>
 
     <!-- Help -->
-    <group id="LearnGroup">
-      <separator/>
-      <action id="ShowLearnPanel" class="training.actions.OpenLearnPanel" icon="training.FeaturesTrainerIcons.Img.FeatureTrainerToolWindow"/>
-      <separator/>
-      <add-to-group group-id="HelpMenu" relative-to-action="HelpTopics" anchor="after"/>
-    </group>
+    <action id="ShowLearnPanel" class="training.actions.OpenLearnPanel" icon="training.FeaturesTrainerIcons.Img.FeatureTrainerToolWindow">
+      <add-to-group group-id="HelpMenu" relative-to-action="ShowTips" anchor="after"/>
+    </action>
   </actions>
 
   <extensions defaultExtensionNs="com.intellij">
     <registryKey key="ift.help.links"
                  description="Turn on IFT Help and Resources section"
-                 defaultValue="TRUE"
+                 defaultValue="FALSE"
                  restartRequired="false"/>
     <registryKey key="ift.experimental.lessons"
                  description="Turn on it to preview incomplete lessons"

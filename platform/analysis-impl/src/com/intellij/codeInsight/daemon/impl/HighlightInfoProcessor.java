@@ -49,7 +49,7 @@ public abstract class HighlightInfoProcessor {
   // this range is over.
   // Can queue to EDT to remove abandoned bijective highlighters from this range. All the rest abandoned highlighters have to wait until *AreProduced().
   public void allHighlightsForRangeAreProduced(@NotNull HighlightingSession session,
-                                               long elementRange,
+                                               @NotNull TextRange elementRange,
                                                @Nullable List<? extends HighlightInfo> infos){}
 
   public void progressIsAdvanced(@NotNull HighlightingSession highlightingSession,

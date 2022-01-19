@@ -10,7 +10,7 @@
                     interface="com.intellij.openapi.externalSystem.debugger.DebuggerBackendExtension"
                     dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.externalSystemWorkspaceContributor"
-                    interface="com.intellij.openapi.externalSystem.service.project.ExternalSystemWorkspaceContributor"
+                    interface="com.intellij.openapi.externalSystem.service.project.ExternalProjectsWorkspaceImpl$Contributor"
                     dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.externalProjectDataService"
                     interface="com.intellij.openapi.externalSystem.service.project.manage.ProjectDataService"
@@ -81,8 +81,5 @@
     <extensionPoint qualifiedName="com.intellij.externalSystemCrcCalculator"
                     interface="com.intellij.openapi.externalSystem.util.ExternalSystemCrcCalculator"
                     dynamic="true" />
-    <extensionPoint name="externalSystemDependencyAnalyzer"
-                    interface="com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerExtension"
-                    dynamic="true"/>
   </extensionPoints>
 </idea-plugin>

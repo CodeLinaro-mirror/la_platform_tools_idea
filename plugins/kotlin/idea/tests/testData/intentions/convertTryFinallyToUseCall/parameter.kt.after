@@ -1,6 +1,4 @@
 // WITH_RUNTIME
-// TODO: seems a bug
-// AFTER-WARNING: Name shadowed: reader
 import java.io.File
 import java.io.BufferedReader
 

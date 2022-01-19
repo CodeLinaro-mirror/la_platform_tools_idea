@@ -1,9 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.projectWizard;
 
-import com.intellij.core.CoreBundle;
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.IdeCoreBundle;
 import com.intellij.ide.JavaUiBundle;
 import com.intellij.ide.highlighter.ModuleFileType;
 import com.intellij.ide.util.BrowseFilesListener;
@@ -245,8 +243,8 @@ public class ModuleNameLocationComponent implements ModuleNameLocationSettings {
     File moduleFile = new File(moduleFileDirectory, moduleName + ModuleFileType.DOT_DEFAULT_EXTENSION);
     if (moduleFile.exists()) {
       int answer = MessageDialogBuilder.yesNo(IdeBundle.message("title.file.already.exists"),
-                                              CoreBundle.message("prompt.overwrite.project.file", moduleFile.getAbsolutePath(),
-                                                                 IdeCoreBundle.message("project.new.wizard.module.identification"))).show();
+                                              JavaUiBundle.message("prompt.overwrite.project.file", moduleFile.getAbsolutePath(),
+                                                                   IdeBundle.message("project.new.wizard.module.identification"))).show();
       if (answer != Messages.YES) {
         return false;
       }

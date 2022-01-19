@@ -34,11 +34,7 @@ object AnalyticsPlatformSettingsDeserializer {
       return GSON.fromJson(json, AnalyticsPlatformSettings::class.java)
     }
     catch (e: JsonSyntaxException) {
-      if (json.contains("Authentication", ignoreCase = true)) {
-        LOG.warn("Could not get Analytics Platform settings due to authentication problems", e)
-      } else {
-        LOG.error("Could not parse Analytics Platform settings: $json", e)
-      }
+      LOG.error("Could not parse Analytics Platform settings", e)
       return null
     }
   }

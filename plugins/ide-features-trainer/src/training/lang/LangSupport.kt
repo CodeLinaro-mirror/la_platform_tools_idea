@@ -17,10 +17,7 @@ interface LangSupport {
   val primaryLanguage: String
   val defaultProductName: String?
     get() = null
-
-  /** It is a name for content root for learning files. In most cases it is just a learning project name. */
-  val contentRootDirectoryName: String
-
+  val defaultProjectName: String
   val filename: String
     get() = "Learning"
   val langCourseFeedback: String?
@@ -28,7 +25,7 @@ interface LangSupport {
 
   /** Relative path inside plugin resources */
   val projectResourcePath: String
-    get() = "learnProjects/${primaryLanguage.toLowerCase()}/$contentRootDirectoryName"
+    get() = "learnProjects/${primaryLanguage.toLowerCase()}/$defaultProjectName"
 
   /** Language can specify default sandbox-like file to be used for lessons with modifications but also with project support */
   val projectSandboxRelativePath: String?
@@ -38,7 +35,7 @@ interface LangSupport {
     const val EP_NAME = "training.ift.language.extension"
   }
 
-  fun installAndOpenLearningProject(contentRoot: Path, projectToClose: Project?, postInitCallback: (learnProject: Project) -> Unit)
+  fun installAndOpenLearningProject(projectPath: Path, projectToClose: Project?, postInitCallback: (learnProject: Project) -> Unit)
 
   fun copyLearningProjectFiles(projectDirectory: File, destinationFilter: FileFilter? = null): Boolean
 
@@ -80,13 +77,5 @@ interface LangSupport {
 
   fun startFromWelcomeFrame(startCallback: (Sdk?) -> Unit) {
     startCallback(null)
-  }
-
-  fun getLearningProjectPath(contentRoot: Path): Path {
-    return contentRoot
-  }
-
-  fun getContentRootPath(projectPath: Path): Path {
-    return projectPath
   }
 }

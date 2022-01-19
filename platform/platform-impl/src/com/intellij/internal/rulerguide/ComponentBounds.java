@@ -29,7 +29,19 @@ class ComponentBounds extends Rectangle {
         return new Point(xx, yy);
     }
 
-  @Override
+    @Override
+    public int hashCode() {
+        // using superclass
+        return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        // using superclass
+        return super.equals(obj);
+    }
+
+    @Override
     public String toString() {
         return "ComponentBounds{" +
                 "x=" + x +

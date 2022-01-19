@@ -1,4 +1,3 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.starters.remote.wizard
 
 import com.intellij.ide.starters.JavaStartersBundle
@@ -12,7 +11,6 @@ import com.intellij.ide.util.PropertiesComponent
 import com.intellij.ide.util.projectWizard.ModuleNameGenerator
 import com.intellij.ide.util.projectWizard.ModuleWizardStep
 import com.intellij.ide.util.projectWizard.WizardContext
-import com.intellij.ide.wizard.AbstractWizard
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
@@ -331,8 +329,7 @@ open class WebStarterInitialStep(contextProvider: WebStarterContextProvider) : M
     if (!validateSdk(sdkProperty, sdkModel)) {
       return false
     }
-    val passTechnologyName = if (starterSettings.languageLevels.size > 1) null else moduleBuilder.presentableName
-    if (!validateJavaVersion(sdkProperty, languageLevel?.javaVersion, passTechnologyName)) {
+    if (!validateJavaVersion(sdkProperty, languageLevel?.javaVersion)) {
       return false
     }
 
@@ -399,6 +396,8 @@ open class WebStarterInitialStep(contextProvider: WebStarterContextProvider) : M
     serverOptionsLoadingSemaphore.down()
 
     currentRequest = ApplicationManager.getApplication().executeOnPooledThread {
+      addStarterNetworkDelay()
+
       val readyServerOptions = try {
         moduleBuilder.getServerOptions(starterContext.serverUrl)
       }
@@ -444,7 +443,7 @@ open class WebStarterInitialStep(contextProvider: WebStarterContextProvider) : M
   }
 
   private fun getModalityState(): ModalityState {
-    return ModalityState.stateForComponent(wizardContext.getUserData(AbstractWizard.KEY)!!.contentComponent)
+    return ModalityState.stateForComponent(wizardContext.wizard.contentComponent)
   }
 
   private fun getDisposed(): Condition<Any> = Condition<Any> { Disposer.isDisposed(parentDisposable) }

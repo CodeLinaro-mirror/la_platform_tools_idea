@@ -107,10 +107,6 @@ public class PathMacroManager implements PathMacroSubstitutor {
     return result;
   }
 
-  protected void resetCachedReplacePathMap() {
-    myReplacePathToMacroMap = null;
-  }
-
   @Override
   @Contract("null -> null; !null -> !null")
   public String expandPath(@Nullable String text) {

@@ -13,8 +13,6 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.ThreeState;
-import com.intellij.codeInspection.restriction.AnnotationContext;
-import com.intellij.codeInspection.restriction.StringFlowUtil;
 import one.util.streamex.IntStreamEx;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nls;
@@ -114,7 +112,11 @@ public class TitleCapitalizationInspection extends AbstractBaseJavaLocalInspecti
     }
     if (arg instanceof UCallExpression) {
       UCallExpression call = (UCallExpression)arg;
-      UExpression returnValue = StringFlowUtil.getReturnValue(call);
+      PsiMethod psiMethod = call.resolve();
+      UExpression returnValue = UastContextKt.toUElement(PropertyUtilBase.getGetterReturnExpression(psiMethod), UExpression.class);
+      if (returnValue instanceof UQualifiedReferenceExpression) {
+        returnValue = ((UQualifiedReferenceExpression)returnValue).getSelector();
+      }
       if (arg.equals(returnValue)) {
         return null;
       }

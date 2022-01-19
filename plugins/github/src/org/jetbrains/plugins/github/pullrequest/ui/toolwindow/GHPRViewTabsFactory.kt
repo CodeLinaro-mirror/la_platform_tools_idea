@@ -1,24 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.toolwindow
 
-import com.intellij.collaboration.ui.codereview.CodeReviewTabs.bindTabText
-import com.intellij.collaboration.ui.codereview.CodeReviewTabs.bindTabUi
-import com.intellij.collaboration.ui.codereview.ReturnToListComponent
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.AppUIExecutor.onUiThread
-import com.intellij.openapi.application.impl.coroutineDispatchingContext
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.tabs.JBTabs
 import com.intellij.ui.tabs.TabInfo
 import com.intellij.ui.tabs.TabsListener
 import com.intellij.ui.tabs.impl.SingleHeightTabs
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
+import com.intellij.collaboration.ui.codereview.ReturnToListComponent
+import org.jetbrains.annotations.Nls
 import org.jetbrains.plugins.github.i18n.GithubBundle
-import org.jetbrains.plugins.github.i18n.GithubBundle.messagePointer
+import com.intellij.collaboration.ui.SingleValueModel
 import javax.swing.JComponent
 
 internal class GHPRViewTabsFactory(private val project: Project,
@@ -28,17 +22,14 @@ internal class GHPRViewTabsFactory(private val project: Project,
   private val uiDisposable = Disposer.newDisposable().also {
     Disposer.register(disposable, it)
   }
-  private val scope = CoroutineScope(SupervisorJob() + onUiThread().coroutineDispatchingContext())
-    .also { Disposer.register(uiDisposable) { it.cancel() } }
 
   fun create(infoComponent: JComponent,
              diffController: GHPRDiffController,
              filesComponent: JComponent,
-             filesCountModel: Flow<Int?>,
-             notViewedFilesCountModel: Flow<Int?>?,
+             filesCountModel: SingleValueModel<Int?>,
              commitsComponent: JComponent,
-             commitsCountModel: Flow<Int?>): JBTabs {
-    return create(infoComponent, filesComponent, filesCountModel, notViewedFilesCountModel, commitsComponent, commitsCountModel).also {
+             commitsCountModel: SingleValueModel<Int?>): JBTabs {
+    return create(infoComponent, filesComponent, filesCountModel, commitsComponent, commitsCountModel).also {
       val listener = object : TabsListener {
         override fun selectionChanged(oldSelection: TabInfo?, newSelection: TabInfo?) {
           diffController.activeTree = when (newSelection?.component) {
@@ -55,10 +46,9 @@ internal class GHPRViewTabsFactory(private val project: Project,
 
   private fun create(infoComponent: JComponent,
                      filesComponent: JComponent,
-                     filesCountModel: Flow<Int?>,
-                     notViewedFilesCountModel: Flow<Int?>?,
+                     filesCountModel: SingleValueModel<Int?>,
                      commitsComponent: JComponent,
-                     commitsCountModel: Flow<Int?>): JBTabs {
+                     commitsCountModel: SingleValueModel<Int?>): JBTabs {
 
     val infoTabInfo = TabInfo(infoComponent).apply {
       text = GithubBundle.message("pull.request.info")
@@ -66,35 +56,35 @@ internal class GHPRViewTabsFactory(private val project: Project,
     }
     val filesTabInfo = TabInfo(filesComponent).apply {
       sideComponent = createReturnToListSideComponent()
+    }.also {
+      installTabTitleUpdater(it, GithubBundle.message("pull.request.files"), filesCountModel)
     }
     val commitsTabInfo = TabInfo(commitsComponent).apply {
       sideComponent = createReturnToListSideComponent()
     }.also {
-      scope.bindTabText(it, messagePointer("pull.request.commits"), commitsCountModel)
+      installTabTitleUpdater(it, GithubBundle.message("pull.request.commits"), commitsCountModel)
     }
 
-    val tabs = object : SingleHeightTabs(project, uiDisposable) {
-      override fun adjust(each: TabInfo?) = Unit
+    return object : SingleHeightTabs(project, uiDisposable) {
+      override fun adjust(each: TabInfo?) {}
     }.apply {
       addTab(infoTabInfo)
       addTab(filesTabInfo)
       addTab(commitsTabInfo)
     }
-
-    // after adding to `JBTabs` as `getTabLabel()` is used in `bindTabUi`
-    if (notViewedFilesCountModel == null) {
-      scope.bindTabText(filesTabInfo, messagePointer("pull.request.files"), filesCountModel)
-    }
-    else {
-      scope.bindTabUi(tabs, filesTabInfo, messagePointer("pull.request.files"), filesCountModel, notViewedFilesCountModel)
-    }
-
-    return tabs
   }
 
   private fun createReturnToListSideComponent(): JComponent {
     return ReturnToListComponent.createReturnToListSideComponent(GithubBundle.message("pull.request.back.to.list")) {
       backToListAction()
+    }
+  }
+
+  private fun installTabTitleUpdater(tabInfo: TabInfo, @Nls title: String, countModel: SingleValueModel<Int?>) {
+    countModel.addAndInvokeListener {
+      val count = countModel.value
+      tabInfo.clearText(false).append(title, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+      if (count != null) tabInfo.append("  $count", SimpleTextAttributes.GRAYED_ATTRIBUTES)
     }
   }
 }

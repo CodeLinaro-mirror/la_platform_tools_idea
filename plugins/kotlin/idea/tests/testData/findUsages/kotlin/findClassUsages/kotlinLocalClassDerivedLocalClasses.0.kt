@@ -3,13 +3,15 @@
 fun foo() {
     open class <caret>A
 
-    class B : A()
+    class B: A()
 
-    open class T : A()
+    interface T: A
 
     fun bar() {
-        class C : A()
+        class C: A()
 
-        class D : T()
+        class D: T
     }
 }
+
+// DISABLE-ERRORS

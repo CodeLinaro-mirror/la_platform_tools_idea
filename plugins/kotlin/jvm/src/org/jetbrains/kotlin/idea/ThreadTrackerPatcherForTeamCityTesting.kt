@@ -3,6 +3,7 @@
 package org.jetbrains.kotlin.idea
 
 import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory
+import com.intellij.testFramework.ThreadTracker
 import java.lang.reflect.Modifier
 import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,11 +36,10 @@ object ThreadTrackerPatcherForTeamCityTesting {
         }
 
         try {
-            val threadTrackerClass = Class.forName("com.intellij.testFramework.ThreadTracker")
             val wellKnownOffendersField = try {
-                threadTrackerClass.getDeclaredField("wellKnownOffenders")
+                ThreadTracker::class.java.getDeclaredField("wellKnownOffenders")
             } catch (communityPropertyNotFoundEx: NoSuchFieldException) {
-                threadTrackerClass.declaredFields.single {
+                ThreadTracker::class.java.declaredFields.single {
                     Modifier.isStatic(it.modifiers) && MutableSet::class.java.isAssignableFrom(it.type)
                 }
             }
@@ -51,8 +51,6 @@ object ThreadTrackerPatcherForTeamCityTesting {
 
             wellKnownOffenders.add("ForkJoinPool.commonPool-worker-")
             println("Patching ThreadTracker was successful")
-        } catch (e: ClassNotFoundException) {
-            println("Patching ThreadTracker failed: $e")
         } catch (e: NoSuchFieldException) {
             println("Patching ThreadTracker failed: $e")
         } catch (e: IllegalAccessException) {

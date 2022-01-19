@@ -6,7 +6,6 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiForStatement
 import com.intellij.psi.util.PsiTreeUtil
 import training.dsl.LessonContext
-import training.dsl.LessonUtil
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.dsl.LessonUtil.restoreIfModifiedOrMoved
 import training.dsl.TaskRuntimeContext
@@ -87,11 +86,4 @@ class JavaStatementCompletionLesson
 
     return trimmedText == "{if(){}}"
   }
-
-  override val suitableTips = listOf("CompleteStatement", "FinishBySmartEnter")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(JavaLessonsBundle.message("java.statement.completion.help.link"),
-         LessonUtil.getHelpLink("auto-completing-code.html#statements_completion")),
-  )
 }

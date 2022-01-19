@@ -370,13 +370,16 @@ public final class ScratchFileServiceImpl extends ScratchFileService implements 
 
     @Override
     public @Nullable String getPresentableText(Object object) {
-      PsiElement psi = object instanceof PsiElement ? (PsiElement)object : null;
-      if (psi == null || !psi.isValid()) return null;
-      VirtualFile virtualFile = PsiUtilCore.getVirtualFile(psi);
+      if (!(object instanceof PsiElement)) {
+        return null;
+      }
+      Project project = ((PsiElement)object).getProject();
+      VirtualFile virtualFile = PsiUtilCore.getVirtualFile((PsiElement)object);
       if (virtualFile == null || !virtualFile.isValid()) return null;
       RootType rootType = ScratchFileService.getInstance().getRootType(virtualFile);
-      if (rootType == null) return null;
-      Project project = psi.getProject();
+      if (rootType == null) {
+        return null;
+      }
       if (virtualFile.isDirectory() && additionalRoots(project).contains(virtualFile)) {
         return rootType.getDisplayName();
       }
@@ -410,21 +413,16 @@ public final class ScratchFileServiceImpl extends ScratchFileService implements 
         return null;
       }
     }
-    String fileName = PathUtil.getFileName(pathName);
+    String ext = PathUtil.getFileExtension(pathName);
+    String fileNameExt = PathUtil.getFileName(pathName);
+    String fileName = StringUtil.trimEnd(fileNameExt, ext == null ? "" : "." + ext);
     return WriteAction.compute(() -> {
       VirtualFile dir = VfsUtil.createDirectories(PathUtil.getParentPath(fullPath));
       if (option == Option.create_new_always) {
-        return dir.createChildData(fileSystem, ScratchImplUtil.getNextAvailableName(dir, fileName));
-      }
-      else if (option == Option.create_if_missing && rootType instanceof ScratchRootType && fileName.startsWith("buffer")) {
-        VirtualFile file = ScratchImplUtil.findFileIgnoreExtension(dir, fileName);
-        if (file != null && !file.getName().equals(fileName)) {
-          file.rename(this, fileName);
-        }
-        return file != null ? file : dir.findOrCreateChildData(fileSystem, fileName);
+        return dir.createChildData(fileSystem, ScratchImplUtil.getNextAvailableName(dir, fileName, StringUtil.notNullize(ext)));
       }
       else {
-        return dir.findOrCreateChildData(fileSystem, fileName);
+        return dir.findOrCreateChildData(fileSystem, fileNameExt);
       }
     });
   }

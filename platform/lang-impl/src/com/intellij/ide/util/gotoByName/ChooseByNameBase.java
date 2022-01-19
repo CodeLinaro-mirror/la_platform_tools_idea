@@ -265,7 +265,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
         return myTextField.getText();
       }
 
-      if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+      if (PlatformDataKeys.HELP_ID.is(dataId)) {
         return myModel.getHelpId();
       }
 
@@ -906,7 +906,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
 
     ListCellRenderer cellRenderer = myList.getCellRenderer();
     if (cellRenderer instanceof ExpandedItemListCellRendererWrapper) {
-      cellRenderer = ((ExpandedItemListCellRendererWrapper<?>)cellRenderer).getWrappee();
+      cellRenderer = ((ExpandedItemListCellRendererWrapper)cellRenderer).getWrappee();
     }
     final String pattern = patternToLowerCase(transformPattern(text));
     final Matcher matcher = buildPatternMatcher(isSearchInAnyPlace() ? "*" + pattern : pattern);
@@ -1558,7 +1558,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
               protected boolean isOverflow(@NotNull Set<Object> elementsArray) {
                 tooManyUsagesStatus.pauseProcessingIfTooManyUsages();
                 if (elementsArray.size() > UsageLimitUtil.USAGES_LIMIT - myMaximumListSizeLimit && tooManyUsagesStatus.switchTooManyUsagesStatus()) {
-                  UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, indicator, null, null);
+                  UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, indicator, null);
                 }
                 return false;
               }

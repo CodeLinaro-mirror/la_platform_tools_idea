@@ -1,8 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.io
 
 import java.nio.channels.FileChannel
-import java.nio.file.*
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.ForkJoinTask
@@ -18,7 +21,7 @@ fun zip(targetFile: Path, dirs: Map<Path, String>, compress: Boolean = true, add
   FileChannel.open(targetFile, EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE)).use {
     val zipCreator = ZipFileWriter(it, if (compress) Deflater(Deflater.DEFAULT_COMPRESSION, true) else null)
 
-    val fileAdded: ((String) -> Boolean)?
+    val fileAdded: ((String) -> Unit)?
     val dirNameSetToAdd: Set<String>
     if (addDirEntries) {
       dirNameSetToAdd = LinkedHashSet()
@@ -34,7 +37,6 @@ fun zip(targetFile: Path, dirs: Map<Path, String>, compress: Boolean = true, add
             }
           }
         }
-        true
       }
     }
     else {
@@ -46,13 +48,13 @@ fun zip(targetFile: Path, dirs: Map<Path, String>, compress: Boolean = true, add
     for ((dir, prefix) in dirs.entries) {
       val normalizedDir = dir.toAbsolutePath().normalize()
       archiver.setRootDir(normalizedDir, prefix)
-      compressDir(normalizedDir, archiver, excludes = null)
+      compressDir(normalizedDir, archiver)
     }
 
     if (dirNameSetToAdd.isNotEmpty()) {
       addDirForResourceFiles(zipCreator, dirNameSetToAdd)
     }
-    zipCreator.finish()
+    zipCreator.finish(null)
   }
 
   logger?.info("${targetFile.fileName} created in ${formatDuration(System.currentTimeMillis() - start)}")
@@ -73,7 +75,7 @@ fun bulkZipWithPrefix(commonSourceDir: Path, items: List<Map.Entry<String, Path>
 private fun formatDuration(value: Long): String {
   return Duration.ofMillis(value).toString().substring(2)
     .replace(Regex("(\\d[HMS])(?!$)"), "$1 ")
-    .lowercase()
+    .toLowerCase()
 }
 
 private fun addDirForResourceFiles(out: ZipFileWriter, dirNameSetToAdd: Set<String>) {
@@ -82,9 +84,7 @@ private fun addDirForResourceFiles(out: ZipFileWriter, dirNameSetToAdd: Set<Stri
   }
 }
 
-internal class ZipArchiver(private val method: Int,
-                           private val zipCreator: ZipFileWriter,
-                           val fileAdded: ((String) -> Boolean)?,) {
+private class ZipArchiver(private val method: Int, val zipCreator: ZipFileWriter, val fileAdded: ((String) -> Unit)?) {
   private var localPrefixLength = -1
   private var archivePrefix = ""
 
@@ -101,35 +101,20 @@ internal class ZipArchiver(private val method: Int,
 
   fun addFile(file: Path) {
     val name = archivePrefix + file.toString().substring(localPrefixLength).replace('\\', '/')
-    if (fileAdded == null || fileAdded.invoke(name)) {
-      zipCreator.writeEntry(name, method, file)
-    }
+    fileAdded?.invoke(name)
+    zipCreator.writeEntry(name, method, file)
   }
 }
 
-internal fun compressDir(startDir: Path, archiver: ZipArchiver, excludes: List<PathMatcher>?) {
+private fun compressDir(startDir: Path, archiver: ZipArchiver) {
   val dirCandidates = ArrayDeque<Path>()
   dirCandidates.add(startDir)
   val tempList = ArrayList<Path>()
   while (true) {
     val dir = dirCandidates.pollFirst() ?: break
-    if (!Files.exists(dir)) break
     tempList.clear()
     Files.newDirectoryStream(dir).use {
-      if (excludes == null) {
-        tempList.addAll(it)
-      }
-      else {
-        l@ for (child in it) {
-          val relative = startDir.relativize(child)
-          for (exclude in excludes) {
-            if (exclude.matches(relative)) {
-              continue@l
-            }
-          }
-          tempList.add(child)
-        }
-      }
+      tempList.addAll(it)
     }
 
     tempList.sort()

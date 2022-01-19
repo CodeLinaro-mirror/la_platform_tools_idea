@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.profile.codeInspection.ui.header;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -29,7 +29,7 @@ import java.util.Arrays;
 
 public abstract class InspectionToolsConfigurable implements ErrorsConfigurable, SearchableConfigurable, Configurable.NoScroll {
   private static final Logger LOG = Logger.getInstance(InspectionToolsConfigurable.class);
-  public static final @NonNls String ID = "Errors";
+  @NonNls public static final String ID = "Errors";
 
   protected final BaseInspectionProfileManager myApplicationProfileManager;
   protected final ProjectInspectionProfileManager myProjectProfileManager;
@@ -61,7 +61,8 @@ public abstract class InspectionToolsConfigurable implements ErrorsConfigurable,
   }
 
   @Override
-  public @NotNull String getId() {
+  @NotNull
+  public String getId() {
     return ID;
   }
 
@@ -153,7 +154,10 @@ public abstract class InspectionToolsConfigurable implements ErrorsConfigurable,
 
   @Override
   public void reset() {
-    assert myAbstractSchemesPanel != null;
+    doReset();
+  }
+
+  private void doReset() {
     disposeProfilePanels();
     myAbstractSchemesPanel.reset();
     final InspectionProfileModifiableModel currentModifiableModel = myAbstractSchemesPanel.getModel().getModifiableModelFor(getCurrentProfile());
@@ -169,13 +173,14 @@ public abstract class InspectionToolsConfigurable implements ErrorsConfigurable,
     final SingleInspectionProfilePanel panel = getSelectedPanel();
     if (panel != null) {
       panel.setVisible(true);//make sure that UI was initialized
-      mySelectionAlarm = new Alarm();
+      mySelectionAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
       mySelectionAlarm.cancelAllRequests();
       mySelectionAlarm.addRequest(panel::updateSelection, 200);
     }
   }
 
-  public @NotNull SingleInspectionProfilePanel createPanel(@NotNull InspectionProfileModifiableModel profile) {
+  @NotNull
+  public SingleInspectionProfilePanel createPanel(@NotNull InspectionProfileModifiableModel profile) {
     return new SingleInspectionProfilePanel(myProjectProfileManager, profile) {
       @Override
       protected boolean accept(InspectionToolWrapper entry) {
@@ -187,10 +192,7 @@ public abstract class InspectionToolsConfigurable implements ErrorsConfigurable,
   @Override
   public void disposeUIResources() {
     disposeProfilePanels();
-    if (myAbstractSchemesPanel != null) {
-      Disposer.dispose(myAbstractSchemesPanel);
-      myAbstractSchemesPanel = null;
-    }
+    Disposer.dispose(myAbstractSchemesPanel);
   }
 
   private void disposeProfilePanels() {
@@ -225,15 +227,16 @@ public abstract class InspectionToolsConfigurable implements ErrorsConfigurable,
   }
 
 
+  @NotNull
   @Override
-  public @NotNull InspectionProfileModifiableModel getSelectedObject() {
+  public InspectionProfileModifiableModel getSelectedObject() {
     return myAbstractSchemesPanel.getSelectedScheme();
   }
 
   @Override
   public @Nullable JComponent getPreferredFocusedComponent() {
-    SingleInspectionProfilePanel panel = myAbstractSchemesPanel != null ? getSelectedPanel() : null;
-    return panel != null ? panel.getPreferredFocusedComponent() : null;
+    final SingleInspectionProfilePanel panel = getSelectedPanel();
+    return panel == null ? null : panel.getPreferredFocusedComponent();
   }
 
   void removeProfilePanel(SingleInspectionProfilePanel profilePanel) {
@@ -256,7 +259,8 @@ public abstract class InspectionToolsConfigurable implements ErrorsConfigurable,
     myAbstractSchemesPanel.selectScheme(profile);
   }
 
-  public static @NotNull @NlsContexts.ConfigurableName String getInspectionsDisplayName() {
+  @NotNull
+  public static @NlsContexts.ConfigurableName String getInspectionsDisplayName() {
     return CodeInsightBundle.message("configurable.InspectionToolsConfigurable.display.name");
   }
 }

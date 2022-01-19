@@ -28,8 +28,10 @@ import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
-import com.siyeh.ig.callMatcher.CallMatcher;
-import com.siyeh.ig.psiutils.*;
+import com.siyeh.ig.psiutils.CommentTracker;
+import com.siyeh.ig.psiutils.FunctionalExpressionUtils;
+import com.siyeh.ig.psiutils.StreamApiUtil;
+import com.siyeh.ig.psiutils.TypeUtils;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -75,8 +77,10 @@ public class SuspiciousToArrayCallInspection extends BaseInspection {
       if (qualifierExpression == null) {
         return;
       }
-      final PsiClassType classType = ObjectUtils.tryCast(qualifierExpression.getType(), PsiClassType.class);
-      if (classType == null || classType.isRaw()) return;
+      final PsiType type = qualifierExpression.getType();
+      if (!(type instanceof PsiClassType)) {
+        return;
+      }
       final PsiExpressionList argumentList = expression.getArgumentList();
       final PsiExpression[] arguments = argumentList.getExpressions();
       if (arguments.length != 1) {
@@ -85,6 +89,8 @@ public class SuspiciousToArrayCallInspection extends BaseInspection {
       final PsiExpression argument = PsiUtil.skipParenthesizedExprDown(arguments[0]);
       if (argument == null) return;
 
+      final PsiClassType classType = (PsiClassType)type;
+      if (classType.isRaw()) return;
       final PsiClass aClass = classType.resolve();
       if (aClass == null) {
         return;
@@ -100,50 +106,9 @@ public class SuspiciousToArrayCallInspection extends BaseInspection {
       else if (InheritanceUtil.isInheritor(aClass, CommonClassNames.JAVA_UTIL_STREAM_STREAM)) {
         PsiType argumentType = getIntFunctionParameterType(argument);
         if (argumentType != null) {
-          checkArrayTypes(argument, expression, argumentType, getStreamElementType(qualifierExpression));
+          checkArrayTypes(argument, expression, argumentType, StreamApiUtil.getStreamElementType(classType, false));
         }
       }
-    }
-
-    private static final CallMatcher STREAM_FILTER = CallMatcher.instanceCall(CommonClassNames.JAVA_UTIL_STREAM_STREAM, "filter")
-      .parameterTypes(CommonClassNames.JAVA_UTIL_FUNCTION_PREDICATE);
-    private static final CallMatcher CLASS_INSTANCEOF = CallMatcher.instanceCall(CommonClassNames.JAVA_LANG_CLASS, "isInstance")
-      .parameterCount(1);
-
-    /**
-     * @param expression stream expression
-     * @return type of elements inside the stream. Tries to take into account previous filters by element type
-     */
-    private static @Nullable PsiType getStreamElementType(PsiExpression expression) {
-      PsiMethodCallExpression call =
-        ObjectUtils.tryCast(PsiUtil.skipParenthesizedExprDown(expression), PsiMethodCallExpression.class);
-      while (STREAM_FILTER.test(call)) {
-        PsiExpression predicate = PsiUtil.skipParenthesizedExprDown(call.getArgumentList().getExpressions()[0]);
-        if (predicate instanceof PsiMethodReferenceExpression) {
-          if (CLASS_INSTANCEOF.methodReferenceMatches((PsiMethodReferenceExpression)predicate)) {
-            PsiExpression qualifier = PsiUtil.skipParenthesizedExprDown(((PsiMethodReferenceExpression)predicate).getQualifierExpression());
-            if (qualifier instanceof PsiClassObjectAccessExpression) {
-              return ((PsiClassObjectAccessExpression)qualifier).getOperand().getType();
-            }
-          }
-        }
-        else if (predicate instanceof PsiLambdaExpression) {
-          PsiParameter[] parameters = ((PsiLambdaExpression)predicate).getParameterList().getParameters();
-          if (parameters.length == 1) {
-            PsiExpression lambdaBody =
-              PsiUtil.skipParenthesizedExprDown(LambdaUtil.extractSingleExpressionFromBody(((PsiLambdaExpression)predicate).getBody()));
-            if (lambdaBody instanceof PsiInstanceOfExpression &&
-                ExpressionUtils.isReferenceTo(((PsiInstanceOfExpression)lambdaBody).getOperand(), parameters[0])) {
-              PsiTypeElement checkType = ((PsiInstanceOfExpression)lambdaBody).getCheckType();
-              if (checkType != null) {
-                return checkType.getType();
-              }
-            }
-          }
-        }
-        call = MethodCallUtils.getQualifierMethodCall(call);
-      }
-      return StreamApiUtil.getStreamElementType(expression.getType(), false);
     }
 
     private static PsiType getIntFunctionParameterType(PsiExpression argument) {

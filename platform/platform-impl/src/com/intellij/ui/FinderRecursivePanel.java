@@ -380,7 +380,7 @@ public abstract class FinderRecursivePanel<T> extends OnePixelSplitter implement
     if (CommonDataKeys.NAVIGATABLE.is(dataId) && selectedValue instanceof Navigatable) {
       return selectedValue;
     }
-    if (PlatformCoreDataKeys.MODULE.is(dataId) && selectedValue instanceof Module) {
+    if (LangDataKeys.MODULE.is(dataId) && selectedValue instanceof Module) {
       return selectedValue;
     }
 

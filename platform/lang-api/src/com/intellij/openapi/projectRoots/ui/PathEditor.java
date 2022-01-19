@@ -17,7 +17,8 @@ import com.intellij.ui.*;
 import com.intellij.ui.components.JBList;
 import com.intellij.util.PlatformIcons;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -204,14 +205,14 @@ public class PathEditor {
   public void removePaths(VirtualFile... paths) {
     final Set<VirtualFile> pathsSet = ContainerUtil.set(paths);
     int size = getRowCount();
-    IntArrayList indicesToRemove = new IntArrayList(paths.length);
+    final IntList indicesToRemove = new IntArrayList(paths.length);
     for (int idx = 0; idx < size; idx++) {
       VirtualFile path = getValueAt(idx);
       if (pathsSet.contains(path)) {
         indicesToRemove.add(idx);
       }
     }
-    itemsRemoved(ListUtil.removeIndices(myList, indicesToRemove.toArray()));
+    itemsRemoved(ListUtil.removeIndices(myList, indicesToRemove.toIntArray()));
   }
 
   /**

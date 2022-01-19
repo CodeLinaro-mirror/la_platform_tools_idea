@@ -21,17 +21,17 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 
 abstract class AbstractLangSupport : LangSupport {
-  override val contentRootDirectoryName: String
+  override val defaultProjectName: String
     get() = "LearnProject"
 
   override fun getProjectFilePath(projectName: String): String {
     return ProjectUtil.getBaseDir() + File.separator + projectName
   }
 
-  override fun installAndOpenLearningProject(contentRoot: Path,
+  override fun installAndOpenLearningProject(projectPath: Path,
                                              projectToClose: Project?,
                                              postInitCallback: (learnProject: Project) -> Unit) {
-    ProjectUtils.simpleInstallAndOpenLearningProject(contentRoot, this,
+    ProjectUtils.simpleInstallAndOpenLearningProject(projectPath, this,
                                                      OpenProjectTask(projectToClose = projectToClose),
                                                      postInitCallback)
   }

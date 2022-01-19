@@ -17,8 +17,8 @@ import static java.util.Collections.emptyList;
 
 public class Bundle {
   // all extensions should be lowercased
-  @SuppressWarnings("SpellCheckingInspection") private static final FileFilter SYNTAX_FILES_FILTER = new BundleFilesFilter("tmlanguage", "plist", "tmlanguage.json");
-  @SuppressWarnings("SpellCheckingInspection") private static final FileFilter PREFERENCE_FILES_FILTER = new BundleFilesFilter("tmpreferences", "plist");
+  private static final FileFilter SYNTAX_FILES_FILTER = new BundleFilesFilter("tmlanguage", "plist", "tmlanguage.json");
+  private static final FileFilter PREFERENCE_FILES_FILTER = new BundleFilesFilter("tmpreferences", "plist");
 
   protected final String myName;
   protected final File bundleFile;
@@ -30,33 +30,41 @@ public class Bundle {
     myType = type;
   }
 
-  public @NotNull String getName() {
+  @NotNull
+  public String getName() {
     return myName;
   }
 
-  public @NotNull Collection<File> getGrammarFiles() {
+  @NotNull
+  public Collection<File> getGrammarFiles() {
     return getFilesInBundle(myType.getSyntaxesPath(), SYNTAX_FILES_FILTER);
   }
 
-  public @NotNull Collection<File> getPreferenceFiles() {
+  @NotNull
+  public Collection<File> getPreferenceFiles() {
     return getFilesInBundle(myType.getPreferencesPath(), PREFERENCE_FILES_FILTER);
   }
 
-  public @NotNull Collection<File> getSnippetFiles() {
+  @NotNull
+  public Collection<File> getSnippetFiles() {
     return getFilesInBundle(myType.getSnippetsPath(), new BundleFilesFilter(myType.getSnippetFileExtensions()));
   }
 
-  public @NotNull BundleType getType() {
+  @NotNull
+  public BundleType getType() {
     return myType;
   }
 
-  private @NotNull Collection<File> getFilesInBundle(@NotNull String path, @Nullable FileFilter filter) {
+  @NotNull
+  private Collection<File> getFilesInBundle(@NotNull String path, @Nullable FileFilter filter) {
+    File directory = new File(bundleFile, path);
     File[] files = null;
     try {
-      files = new File(bundleFile, path).listFiles(filter);
+      files = directory.listFiles(filter);
     }
-    catch (SecurityException ignore) { }
-    return files != null && files.length > 0 ? Set.of(files) : Collections.emptySet();
+    catch (SecurityException ignore) {
+    }
+    return files != null && files.length > 0 ? new HashSet<>(Arrays.asList(files)) : Collections.emptySet();
   }
 
   @Override
@@ -76,7 +84,11 @@ public class Bundle {
 
   @Override
   public String toString() {
-    return "Bundle{name='" + myName + "', path='" + bundleFile + "', type=" + myType + '}';
+    return "Bundle{" +
+           "name='" + myName + '\'' +
+           ", path='" + bundleFile + '\'' +
+           ", type=" + myType +
+           '}';
   }
 
 
@@ -88,11 +100,11 @@ public class Bundle {
     return Collections.singletonList(PreferencesReadUtil.retrieveSettingsPlist(plistReader.read(file)));
   }
 
-  private static class BundleFilesFilter implements FileFilter {
+  public static class BundleFilesFilter implements FileFilter {
     private final Set<String> myExtensions;
 
-    private BundleFilesFilter(String... extensions) {
-      myExtensions = Set.of(extensions);
+    public BundleFilesFilter(String... extensions) {
+      myExtensions = new HashSet<>(Arrays.asList(extensions));
     }
 
     @Override

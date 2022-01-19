@@ -1,9 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs.local;
 
 import com.intellij.core.CoreBundle;
 import com.intellij.ide.GeneralSettings;
-import com.intellij.ide.IdeCoreBundle;
+import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.DefaultLogger;
@@ -35,7 +35,6 @@ import org.junit.Rule;
 import org.junit.Test;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -43,9 +42,7 @@ import java.util.*;
 
 import static com.intellij.openapi.util.io.IoTestUtil.*;
 import static com.intellij.testFramework.EdtTestUtil.runInEdtAndWait;
-import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.junit.Assert.*;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
@@ -92,7 +89,7 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
 
   @Test
   public void testBasics() throws IOException {
-    VirtualFile dir = requireNonNull(myFS.refreshAndFindFileByIoFile(tempDir.newDirectory("xxx")));
+    VirtualFile dir = Objects.requireNonNull(myFS.refreshAndFindFileByIoFile(tempDir.newDirectory("xxx")));
     assertTrue(dir.isValid());
     assertEquals(0, dir.getChildren().length);
 
@@ -519,7 +516,7 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
   public void testFindRootWithDeepNestedFileMustThrow() {
     try {
       File d = tempDir.newDirectory();
-      VirtualFile vDir = requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByIoFile(d));
+      VirtualFile vDir = Objects.requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByIoFile(d));
       ManagingFS.getInstance().findRoot(vDir.getPath(), myFS);
       fail("should fail by assertion in PersistentFsImpl.findRoot()");
     }
@@ -557,7 +554,7 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
   @Test
   public void testCaseInsensitiveRename() throws IOException {
     File file = tempDir.newFile("file.txt");
-    File home = requireNonNull(file.getParentFile());
+    File home = Objects.requireNonNull(file.getParentFile());
     assertThat(home.list()).containsExactly("file.txt");
 
     VirtualFile vFile = myFS.refreshAndFindFileByIoFile(file);
@@ -630,11 +627,11 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
       FileUtil.writeToFile(file2, "++");
       ((NewVirtualFile)topDir).markDirtyRecursively();
       topDir.refresh(false, false);
-      assertThat(processed).containsExactly(vFile1);  // `vFile2` should stay unvisited after non-recursive refresh
+      assertThat(processed).containsExactly(vFile1);  // vFile2 should stay unvisited after non-recursive refresh
 
       processed.clear();
       topDir.refresh(false, true);
-      assertThat(processed).containsExactly(vFile2);  // `vFile2` changes should be picked up by the next recursive refresh
+      assertThat(processed).containsExactly(vFile2);  // vFile2 changes should be picked up by a next recursive refresh
     }
     finally {
       connection.disconnect();
@@ -647,7 +644,7 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
 
     File target = tempDir.newDirectory("target");
     File link = new File(tempDir.getRoot(), "link");
-    createSymbolicLink(link.toPath(), target.toPath());
+    createSymbolicLink(link.toPath(), target.toPath()).toFile();
 
     VirtualFile vTop = myFS.refreshAndFindFileByIoFile(tempDir.getRoot());
     assertNotNull(vTop);
@@ -769,7 +766,7 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
         fail("duplicate file name should have been rejected");
       }
       catch (IOException e) {
-        assertEquals(IdeCoreBundle.message("vfs.target.already.exists.error", file1.getPath()), e.getMessage());
+        assertEquals(IdeBundle.message("vfs.target.already.exists.error", file1.getPath()), e.getMessage());
       }
     });
   }
@@ -851,7 +848,7 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
 
   private static void assertWritable(File file, VirtualFile vFile, boolean expected) {
     assertEquals(expected, file.canWrite());
-    assertEquals(expected, requireNonNull(FileSystemUtil.getAttributes(file)).isWritable());
+    assertEquals(expected, Objects.requireNonNull(FileSystemUtil.getAttributes(file)).isWritable());
     assertEquals(expected, vFile.isWritable());
   }
 
@@ -929,23 +926,5 @@ public class LocalFileSystemTest extends BareTestFixtureTestCase {
     CaseSensitivity expected = SystemInfo.isFileSystemCaseSensitive ? CaseSensitivity.SENSITIVE : CaseSensitivity.INSENSITIVE;
     assertEquals(expected, dir.getChildrenCaseSensitivity());
     assertEquals(expected == CaseSensitivity.SENSITIVE, dir.isCaseSensitive());
-  }
-
-  @Test(timeout = 30_000)
-  public void specialFileDoesNotCauseHangs() {
-    assumeUnix();
-
-    Path fifo = tempDir.getRoot().toPath().resolve("test.fifo");
-    createFifo(fifo.toString());
-    VirtualFile file = requireNonNull(myFS.refreshAndFindFileByNioFile(fifo));
-    assertThat(file.is(VFileProperty.SPECIAL)).isTrue();
-    assertThat(file.getLength()).isEqualTo(0);
-
-    assertThatExceptionOfType(FileNotFoundException.class)
-      .isThrownBy(() -> file.getInputStream())
-      .withMessageStartingWith("Not a file: ");
-    assertThatExceptionOfType(FileNotFoundException.class)
-      .isThrownBy(() -> file.contentsToByteArray())
-      .withMessageStartingWith("Not a file: ");
   }
 }

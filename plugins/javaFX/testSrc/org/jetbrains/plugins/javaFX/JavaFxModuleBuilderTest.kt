@@ -10,7 +10,7 @@ import org.junit.Test
 
 class JavaFxModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(JAVA_11) {
   @Test
-  fun EmptyMavenProject() {
+  fun emptyMavenProject() {
     JavaFxModuleBuilder().setupTestModule(fixture.module) {
       language = JAVA_STARTER_LANGUAGE
       projectType = MAVEN_PROJECT
@@ -59,7 +59,7 @@ class JavaFxModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(JAVA_11) {
 
           <properties>
               <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-              <junit.version>5.8.1</junit.version>
+              <junit.version>${dlr}{junit.version}</junit.version>
           </properties>
 
           <dependencies>
@@ -102,19 +102,13 @@ class JavaFxModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(JAVA_11) {
                   <plugin>
                       <groupId>org.openjfx</groupId>
                       <artifactId>javafx-maven-plugin</artifactId>
-                      <version>0.0.8</version>
+                      <version>0.0.7</version>
                       <executions>
                           <execution>
                               <!-- Default configuration for running with: mvn clean javafx:run -->
                               <id>default-cli</id>
                               <configuration>
                                   <mainClass>com.example.demo/com.example.demo.HelloApplication</mainClass>
-                                  <launcher>app</launcher>
-                                  <jlinkZipName>app</jlinkZipName>
-                                  <jlinkImageName>app</jlinkImageName>
-                                  <noManPages>true</noManPages>
-                                  <stripDebug>true</stripDebug>
-                                  <noHeaderFiles>true</noHeaderFiles>
                               </configuration>
                           </execution>
                       </executions>
@@ -126,7 +120,7 @@ class JavaFxModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(JAVA_11) {
   }
 
   @Test
-  fun EmptyGradleProject() {
+  fun emptyGradleProject() {
     JavaFxModuleBuilder().setupTestModule(fixture.module) {
       language = JAVA_STARTER_LANGUAGE
       projectType = GRADLE_PROJECT
@@ -150,13 +144,12 @@ class JavaFxModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(JAVA_11) {
           }
       }
     """.trimIndent())
-    val dlr = "\$"
+
     expectFile("build.gradle", """
       plugins {
           id 'java'
           id 'application'
           id 'org.openjfx.javafxplugin' version '0.0.10'
-          id 'org.beryx.jlink' version '2.24.1'
       }
 
       group 'com.example'
@@ -190,18 +183,6 @@ class JavaFxModuleBuilderTest : LightJavaCodeInsightFixtureTestCase4(JAVA_11) {
 
       test {
           useTestNG()
-      }
-      
-      jlink {
-          imageZip = project.file("${dlr}{buildDir}/distributions/app-${dlr}{javafx.platform.classifier}.zip")
-          options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
-          launcher {
-              name = 'app'
-          }
-      }
-
-      jlinkZip {
-          group = 'distribution'
       }
     """.trimIndent())
 

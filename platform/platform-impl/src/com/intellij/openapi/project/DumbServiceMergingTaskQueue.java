@@ -6,15 +6,12 @@ import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.util.ProgressIndicatorBase;
-import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.wm.ex.ProgressIndicatorEx;
-import com.intellij.util.SystemProperties;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 public class DumbServiceMergingTaskQueue {
   private static final Logger LOG = Logger.getInstance(DumbServiceMergingTaskQueue.class);
@@ -91,7 +88,6 @@ public class DumbServiceMergingTaskQueue {
     }
 
     if (olderTask != null) {
-      LOG.debug("Removed from queue " + olderTask);
       Disposer.dispose(olderTask);
     }
   }
@@ -194,7 +190,6 @@ public class DumbServiceMergingTaskQueue {
         customIndicator.checkCanceled();
       }
 
-      delayIndexingInTestsIfNecessary();
       myTask.performInDumbMode(customIndicator);
     }
 
@@ -205,14 +200,6 @@ public class DumbServiceMergingTaskQueue {
 
     String getInfoString() {
       return String.valueOf(myTask);
-    }
-  }
-
-  private static void delayIndexingInTestsIfNecessary() {
-    int delay = SystemProperties.getIntProperty("intellij.indexing.tests.indexing.delay.seconds", -1);
-    long start = System.nanoTime();
-    if (delay != -1) {
-      ProgressIndicatorUtils.awaitWithCheckCanceled(() -> System.nanoTime() - start > TimeUnit.SECONDS.toNanos(delay));
     }
   }
 }

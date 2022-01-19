@@ -100,11 +100,8 @@ public final class XmlCompletionContributor extends CompletionContributor {
           else if (prefix.contains("&")) {
             prefix = prefix.substring(prefix.indexOf("&") + 1);
           }
-          matcher = matcher.cloneWithPrefix(prefix);
-          if (parameters.getInvocationCount() == 0) {
-            matcher = new StartOnlyMatcher(matcher);
-          }
-          addEntityRefCompletions(position, result.withPrefixMatcher(matcher));
+
+          addEntityRefCompletions(position, result.withPrefixMatcher(prefix));
         }
       }
     });

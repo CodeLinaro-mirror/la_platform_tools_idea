@@ -108,7 +108,7 @@ class RunConfigurationEntry(val runSettings: RunnerAndConfigurationSettings) : R
   
   override val runDate: Date
     get() {
-      return suites.minByOrNull { it.runDate }!!.runDate
+      return suites.minBy { it.runDate }!!.runDate
     }
   
   

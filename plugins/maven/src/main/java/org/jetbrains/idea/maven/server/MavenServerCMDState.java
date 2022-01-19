@@ -12,12 +12,14 @@ import com.intellij.execution.configurations.SimpleJavaParameters;
 import com.intellij.execution.process.OSProcessHandler;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.runners.ProgramRunner;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.PathUtil;
+import gnu.trove.TIntHashSet;
+import org.apache.lucene.search.Query;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -100,9 +102,6 @@ public class MavenServerCMDState extends CommandLineState {
           xmsProperty = param;
           continue;
         }
-        if (Registry.is("maven.server.vm.remove.javaagent") && param.startsWith("-javaagent")) {
-          continue;
-        }
         params.getVMParametersList().add(param);
       }
     }
@@ -112,12 +111,11 @@ public class MavenServerCMDState extends CommandLineState {
 
     params.getVMParametersList().addProperty(MavenServerEmbedder.MAVEN_EMBEDDER_VERSION, myDistribution.getVersion());
 
-    params.getClassPath().addAllFiles(MavenServerManager.collectClassPathAndLibsFolder(myDistribution));
-
     Collection<String> classPath = collectRTLibraries(myDistribution.getVersion());
     for (String s : classPath) {
       params.getClassPath().add(s);
     }
+    params.getClassPath().addAllFiles(MavenServerManager.collectClassPathAndLibsFolder(myDistribution));
 
     String embedderXmx = System.getProperty("idea.maven.embedder.xmx");
     if (embedderXmx != null) {
@@ -181,11 +179,17 @@ public class MavenServerCMDState extends CommandLineState {
     classPath.add(PathUtil.getJarPathForClass(StringUtilRt.class));//util-rt
     classPath.add(PathUtil.getJarPathForClass(NotNull.class));//annotations-java5
     classPath.add(PathUtil.getJarPathForClass(Element.class));//JDOM
+    classPath.add(PathUtil.getJarPathForClass(TIntHashSet.class));//Trove
+
+    String element = PathManager.getJarPathForClass(Query.class);
+    if (element != null) {
+      (classPath).add(element);
+    }
     return classPath;
   }
 
   private static void setupMainClass(SimpleJavaParameters params, String mavenVersion) {
-    if (setupThrowMainClass && MavenUtil.isMavenUnitTestModeEnabled()) {
+    if (setupThrowMainClass && ApplicationManager.getApplication().isUnitTestMode()) {
       setupThrowMainClass = false;
       params.setMainClass(MAIN_CLASS_WITH_EXCEPTION_FOR_TESTS);
     }
@@ -278,7 +282,6 @@ public class MavenServerCMDState extends CommandLineState {
     private enum MemoryUnit {
       B(1), K(B.ratio * 1024), M(K.ratio * 1024), G(M.ratio * 1024);
       final int ratio;
-
       MemoryUnit(int ratio) {
         this.ratio = ratio;
       }
@@ -287,7 +290,6 @@ public class MavenServerCMDState extends CommandLineState {
     private enum MemoryPropertyType {
       XMX("-Xmx"), XMS("-Xms");
       private final String type;
-
       MemoryPropertyType(String type) {
         this.type = type;
       }

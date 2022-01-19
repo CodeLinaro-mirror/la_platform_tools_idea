@@ -22,7 +22,6 @@ public class EditorConfigOptionValueListImpl extends EditorConfigDescribableElem
     visitor.visitOptionValueList(this);
   }
 
-  @Override
   public void accept(@NotNull PsiElementVisitor visitor) {
     if (visitor instanceof EditorConfigVisitor) accept((EditorConfigVisitor)visitor);
     else super.accept(visitor);
@@ -35,7 +34,8 @@ public class EditorConfigOptionValueListImpl extends EditorConfigDescribableElem
   }
 
   @Override
-  public @Nullable EditorConfigDescriptor getDescriptor(boolean smart) {
+  @Nullable
+  public EditorConfigDescriptor getDescriptor(boolean smart) {
     return EditorConfigPsiImplUtils.getDescriptor(this, smart);
   }
 

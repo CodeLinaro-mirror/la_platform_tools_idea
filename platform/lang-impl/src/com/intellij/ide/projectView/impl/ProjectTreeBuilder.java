@@ -1,10 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.projectView.impl;
 
 import com.intellij.ProjectTopics;
 import com.intellij.ide.CopyPasteUtil;
-import com.intellij.ide.bookmark.BookmarksListener;
-import com.intellij.ide.bookmark.FileBookmarksListener;
+import com.intellij.ide.bookmarks.Bookmark;
+import com.intellij.ide.bookmarks.BookmarksListener;
 import com.intellij.ide.projectView.BaseProjectTreeBuilder;
 import com.intellij.ide.projectView.ProjectViewNode;
 import com.intellij.ide.projectView.ProjectViewPsiTreeChangeListener;
@@ -26,6 +26,7 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.Alarm;
 import com.intellij.util.SmartList;
 import com.intellij.util.messages.MessageBusConnection;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -51,12 +52,7 @@ public class ProjectTreeBuilder extends BaseProjectTreeBuilder {
       }
     });
     connection.subscribe(AdditionalLibraryRootsListener.TOPIC, (presentableLibraryName, oldRoots, newRoots, libraryNameForDebug) -> queueUpdate());
-    connection.subscribe(BookmarksListener.TOPIC, new FileBookmarksListener(file -> {
-      PsiElement element = findPsi(file);
-      if (element != null) {
-        queueUpdateFrom(element, false);
-      }
-    }));
+    connection.subscribe(BookmarksListener.TOPIC, new MyBookmarksListener());
 
     PsiManager.getInstance(project).addPsiTreeChangeListener(createPsiTreeChangeListener(project), this);
     FileStatusManager.getInstance(project).addFileStatusListener(new MyFileStatusListener(), this);
@@ -101,6 +97,30 @@ public class ProjectTreeBuilder extends BaseProjectTreeBuilder {
     }
   }
 
+  private final class MyBookmarksListener implements BookmarksListener {
+    @Override
+    public void bookmarkAdded(@NotNull Bookmark b) {
+      updateForFile(b.getFile());
+    }
+
+    @Override
+    public void bookmarkRemoved(@NotNull Bookmark b) {
+      updateForFile(b.getFile());
+    }
+
+    @Override
+    public void bookmarkChanged(@NotNull Bookmark b) {
+      updateForFile(b.getFile());
+    }
+
+    private void updateForFile(@NotNull VirtualFile file) {
+      PsiElement element = findPsi(file);
+      if (element != null) {
+        queueUpdateFrom(element, false);
+      }
+    }
+  }
+
   private final class MyFileStatusListener implements FileStatusListener {
     @Override
     public void fileStatusesChanged() {
@@ -117,7 +137,7 @@ public class ProjectTreeBuilder extends BaseProjectTreeBuilder {
     return PsiUtilCore.findFileSystemItem(myProject, vFile);
   }
 
-  private final class MyProblemListener implements ProblemListener {
+  private class MyProblemListener implements ProblemListener {
     private final Alarm myUpdateProblemAlarm = new Alarm();
     private final Collection<VirtualFile> myFilesToRefresh = new HashSet<>();
 
@@ -139,7 +159,7 @@ public class ProjectTreeBuilder extends BaseProjectTreeBuilder {
             if (!myProject.isOpen()) return;
             Set<VirtualFile> filesToRefresh;
             synchronized (myFilesToRefresh) {
-              filesToRefresh = new HashSet<>(myFilesToRefresh);
+              filesToRefresh = new THashSet<>(myFilesToRefresh);
             }
             final DefaultMutableTreeNode rootNode = getRootNode();
             if (rootNode != null) {

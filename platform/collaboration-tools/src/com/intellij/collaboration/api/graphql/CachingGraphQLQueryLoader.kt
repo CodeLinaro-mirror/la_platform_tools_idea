@@ -1,31 +1,29 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.collaboration.api.graphql
 
-import com.github.benmanes.caffeine.cache.Caffeine
+import com.google.common.cache.CacheBuilder
 import org.jetbrains.annotations.VisibleForTesting
 import java.io.IOException
-import java.io.InputStream
-import java.time.Duration
-import java.time.temporal.ChronoUnit
+import java.util.concurrent.TimeUnit
 
 abstract class CachingGraphQLQueryLoader(private val fragmentsDirectory: String = "graphql/fragment",
                                          private val fragmentsFileExtension: String = "graphql") {
 
   private val fragmentDefinitionRegex = Regex("fragment (.*) on .*\\{")
 
-  private val fragmentsCache = Caffeine.newBuilder()
-    .expireAfterAccess(Duration.of(2, ChronoUnit.MINUTES))
+  private val fragmentsCache = CacheBuilder.newBuilder()
+    .expireAfterAccess(2, TimeUnit.MINUTES)
     .build<String, Fragment>()
 
-  private val queriesCache = Caffeine.newBuilder()
-    .expireAfterAccess(Duration.of(1, ChronoUnit.MINUTES))
+  private val queriesCache = CacheBuilder.newBuilder()
+    .expireAfterAccess(1, TimeUnit.MINUTES)
     .build<String, String>()
 
   // Use path to allow going to the file quickly
   @Throws(IOException::class)
   fun loadQuery(queryPath: String): String {
-    return queriesCache.get(queryPath) { path ->
-      val (body, fragmentNames) = readCollectingFragmentNames(path)
+    return queriesCache.get(queryPath) {
+      val (body, fragmentNames) = readCollectingFragmentNames(queryPath)
 
       val builder = StringBuilder()
       val fragments = LinkedHashMap<String, Fragment>()
@@ -40,8 +38,8 @@ abstract class CachingGraphQLQueryLoader(private val fragmentsDirectory: String 
   }
 
   private fun readFragmentsWithDependencies(names: Set<String>, into: MutableMap<String, Fragment>) {
-    for (fragmentName in names) {
-      val fragment = fragmentsCache.get(fragmentName) { name ->
+    for (name in names) {
+      val fragment = fragmentsCache.get(name) {
         Fragment(name)
       }
       into[fragment.name] = fragment
@@ -79,7 +77,7 @@ abstract class CachingGraphQLQueryLoader(private val fragmentsDirectory: String 
 
   // visible to avoid storing test queries with the code
   @VisibleForTesting
-  protected open fun getFileStream(relativePath: String): InputStream? = this::class.java.classLoader.getResourceAsStream(relativePath)
+  protected open fun getFileStream(relativePath: String) = this::class.java.classLoader.getResourceAsStream(relativePath)
 
   private inner class Fragment(val name: String) {
 

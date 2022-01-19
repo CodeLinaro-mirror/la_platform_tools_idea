@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.console;
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
@@ -99,19 +99,13 @@ public class LanguageConsoleImpl extends ConsoleViewImpl implements LanguageCons
     EditorFactory editorFactory = EditorFactory.getInstance();
     myConsoleExecutionEditor = new ConsoleExecutionEditor(helper);
     Disposer.register(this, myConsoleExecutionEditor);
-    myHistoryViewer = doCreateHistoryEditor();
+    Document historyDocument = ((EditorFactoryImpl)editorFactory).createDocument(true);
+    UndoUtil.disableUndoFor(historyDocument);
+    myHistoryViewer = (EditorEx)editorFactory.createViewer(historyDocument, getProject(), EditorKind.CONSOLE);
     myHistoryViewer.getDocument().addDocumentListener(myDocumentAdapter);
     myConsoleExecutionEditor.getDocument().addDocumentListener(myDocumentAdapter);
     myMergedScrollBarModel = MergedHorizontalScrollBarModel.create(myScrollBar, myHistoryViewer, myConsoleExecutionEditor.getEditor());
     myScrollBar.putClientProperty(Alignment.class, Alignment.BOTTOM);
-  }
-
-  @NotNull
-  protected EditorEx doCreateHistoryEditor() {
-    EditorFactory editorFactory = EditorFactory.getInstance();
-    Document historyDocument = ((EditorFactoryImpl)editorFactory).createDocument(true);
-    UndoUtil.disableUndoFor(historyDocument);
-    return (EditorEx)editorFactory.createViewer(historyDocument, getProject(), EditorKind.CONSOLE);
   }
 
   @NotNull
@@ -445,7 +439,7 @@ public class LanguageConsoleImpl extends ConsoleViewImpl implements LanguageCons
     return true;
   }
 
-  protected int getMinHistoryLineCount() {
+  int getMinHistoryLineCount() {
     return 2;
   }
 

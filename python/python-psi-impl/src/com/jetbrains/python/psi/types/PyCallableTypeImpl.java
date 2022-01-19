@@ -14,7 +14,9 @@ import com.jetbrains.python.psi.resolve.RatedResolveResult;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author vlan
@@ -54,21 +56,19 @@ public class PyCallableTypeImpl implements PyCallableType {
       return myReturnType;
     }
 
-    final var fullMapping = PyCallExpressionHelper.mapArguments(callSite, this, context);
-    final var actualParameters = fullMapping.getMappedParameters();
-    final var allParameters = ContainerUtil.notNullize(getParameters(context));
-    final var receiver = callSite.getReceiver(this.myCallable);
-    return analyzeCallType(myReturnType, actualParameters, allParameters, receiver, context);
+    PyCallExpression.PyArgumentsMapping fullMapping = PyCallExpressionHelper.mapArguments(callSite, this, context);
+    Map<PyExpression, PyCallableParameter> actualParameters = fullMapping.getMappedParameters();
+    List<PyCallableParameter> allParameters = ContainerUtil.notNullize(getParameters(context));
+    return analyzeCallType(myReturnType, actualParameters, allParameters, context);
   }
 
   @Nullable
   private static PyType analyzeCallType(@Nullable PyType type,
                                         @NotNull Map<PyExpression, PyCallableParameter> actualParameters,
                                         @NotNull Collection<PyCallableParameter> allParameters,
-                                        @Nullable PyExpression receiver,
                                         @NotNull TypeEvalContext context) {
-    final var substitutions = PyTypeChecker.unifyGenericCallWithParamSpecs(receiver, actualParameters, context);
-    final var substitutionsWithUnresolvedReturnGenerics =
+    Map<PyGenericType, PyType> substitutions = PyTypeChecker.unifyGenericCall(null, actualParameters, context);
+    Map<PyGenericType, PyType> substitutionsWithUnresolvedReturnGenerics =
       PyTypeChecker.getSubstitutionsWithUnresolvedReturnGenerics(allParameters, type, substitutions, context);
     return PyTypeChecker.substitute(type, substitutionsWithUnresolvedReturnGenerics, context);
   }

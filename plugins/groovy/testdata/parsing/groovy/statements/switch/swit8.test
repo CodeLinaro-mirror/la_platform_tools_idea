@@ -15,10 +15,11 @@ Groovy script
     PsiElement({)('{')
     PsiWhiteSpace('\n  ')
     Case section
-      PsiElement(case)('case')
-      PsiErrorElement:<expression> expected, got ':'
-        <empty list>
-      PsiElement(:)(':')
+      Case label
+        PsiElement(case)('case')
+        PsiErrorElement:<expression> expected, got ':'
+          <empty list>
+        PsiElement(:)(':')
       PsiElement(new line)('\n    ')
       Call expression
         Reference expression

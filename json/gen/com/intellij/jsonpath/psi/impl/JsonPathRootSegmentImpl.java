@@ -27,4 +27,10 @@ public class JsonPathRootSegmentImpl extends ASTWrapperPsiElement implements Jso
     else super.accept(visitor);
   }
 
+  @Override
+  @NotNull
+  public List<JsonPathSegmentExpression> getSegmentExpressionList() {
+    return PsiTreeUtil.getChildrenOfTypeAsList(this, JsonPathSegmentExpression.class);
+  }
+
 }

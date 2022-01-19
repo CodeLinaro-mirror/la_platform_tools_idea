@@ -4,10 +4,10 @@
 // HIGHLIGHTING
 
 open class A : I {
-    override fun foo() {}
+    open fun foo() {}
 }
 
-class B : A() {
+class B: A() {
     override fun <caret>foo() {}
 }
 
@@ -16,3 +16,5 @@ fun test(i: I) {
     A().foo()
     B().foo()
 }
+
+// DISABLE-ERRORS

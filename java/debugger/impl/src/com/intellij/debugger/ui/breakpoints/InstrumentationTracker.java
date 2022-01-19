@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.ui.breakpoints;
 
 import com.intellij.debugger.JavaDebuggerBundle;
@@ -12,13 +12,11 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.jdi.ReferenceTypeImpl;
-import com.jetbrains.jdi.VirtualMachineImpl;
 import com.sun.jdi.*;
 import com.sun.jdi.event.LocatableEvent;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 
-import java.lang.reflect.InaccessibleObjectException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
@@ -36,14 +34,14 @@ public final class InstrumentationTracker {
     try {
       redefineMethod = ReflectionUtil.getDeclaredMethod(Class.forName("com.sun.tools.jdi.ReferenceTypeImpl"), "noticeRedefineClass");
     }
-    catch (ClassNotFoundException | InaccessibleObjectException e) {
+    catch (ClassNotFoundException e) {
       LOG.warn(e);
     }
     ourNoticeRedefineClassMethod = redefineMethod;
   }
 
   public static void track(DebugProcessImpl debugProcess) {
-    if (ourNoticeRedefineClassMethod != null || debugProcess.getVirtualMachineProxy().getVirtualMachine() instanceof VirtualMachineImpl) {
+    if (ourNoticeRedefineClassMethod != null) {
       new InstrumentationTracker(debugProcess);
     }
   }

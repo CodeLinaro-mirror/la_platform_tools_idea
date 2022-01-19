@@ -14,12 +14,11 @@ kotlin {
         compilations.all {
             kotlinOptions.jvmTarget = "1.8"
         }
-        withJava()
         testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
+            useJUnit()
         }
     }
-    js(BOTH) {
+    js(LEGACY) {
         browser {
             commonWebpackConfig {
                 cssSupport.enabled = true

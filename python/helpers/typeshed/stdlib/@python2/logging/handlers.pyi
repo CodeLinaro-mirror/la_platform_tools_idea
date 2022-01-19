@@ -1,7 +1,7 @@
 from _typeshed import StrPath
 from logging import FileHandler, Handler, LogRecord
 from socket import SocketKind, SocketType
-from typing import Any, ClassVar, Dict, List, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 
 DEFAULT_TCP_LOGGING_PORT: int
 DEFAULT_UDP_LOGGING_PORT: int
@@ -13,7 +13,7 @@ SYSLOG_TCP_PORT: int
 class WatchedFileHandler(FileHandler):
     dev: int
     ino: int
-    def __init__(self, filename: StrPath, mode: str = ..., encoding: str | None = ..., delay: bool = ...) -> None: ...
+    def __init__(self, filename: StrPath, mode: str = ..., encoding: Optional[str] = ..., delay: bool = ...) -> None: ...
     def _statstream(self) -> None: ...
 
 class RotatingFileHandler(Handler):
@@ -23,7 +23,7 @@ class RotatingFileHandler(Handler):
         mode: str = ...,
         maxBytes: int = ...,
         backupCount: int = ...,
-        encoding: str | None = ...,
+        encoding: Optional[str] = ...,
         delay: bool = ...,
     ) -> None: ...
     def doRollover(self) -> None: ...
@@ -35,7 +35,7 @@ class TimedRotatingFileHandler(Handler):
         when: str = ...,
         interval: int = ...,
         backupCount: int = ...,
-        encoding: str | None = ...,
+        encoding: Optional[str] = ...,
         delay: bool = ...,
         utc: bool = ...,
     ) -> None: ...
@@ -84,19 +84,20 @@ class SysLogHandler(Handler):
     LOG_LOCAL5: int
     LOG_LOCAL6: int
     LOG_LOCAL7: int
-    address: Tuple[str, int] | str  # undocumented
     unixsocket: bool  # undocumented
     socktype: SocketKind  # undocumented
     facility: int  # undocumented
     priority_names: ClassVar[Dict[str, int]]  # undocumented
     facility_names: ClassVar[Dict[str, int]]  # undocumented
     priority_map: ClassVar[Dict[str, str]]  # undocumented
-    def __init__(self, address: Tuple[str, int] | str = ..., facility: int = ..., socktype: SocketKind | None = ...) -> None: ...
-    def encodePriority(self, facility: int | str, priority: int | str) -> int: ...
+    def __init__(
+        self, address: Union[Tuple[str, int], str] = ..., facility: int = ..., socktype: Optional[SocketKind] = ...
+    ) -> None: ...
+    def encodePriority(self, facility: Union[int, str], priority: Union[int, str]) -> int: ...
     def mapPriority(self, levelName: str) -> str: ...
 
 class NTEventLogHandler(Handler):
-    def __init__(self, appname: str, dllname: str | None = ..., logtype: str = ...) -> None: ...
+    def __init__(self, appname: str, dllname: Optional[str] = ..., logtype: str = ...) -> None: ...
     def getEventCategory(self, record: LogRecord) -> int: ...
     # TODO correct return value?
     def getEventType(self, record: LogRecord) -> int: ...
@@ -106,12 +107,12 @@ class SMTPHandler(Handler):
     # TODO `secure` can also be an empty tuple
     def __init__(
         self,
-        mailhost: str | Tuple[str, int],
+        mailhost: Union[str, Tuple[str, int]],
         fromaddr: str,
         toaddrs: List[str],
         subject: str,
-        credentials: Tuple[str, str] | None = ...,
-        secure: Tuple[str] | Tuple[str, str] | None = ...,
+        credentials: Optional[Tuple[str, str]] = ...,
+        secure: Union[Tuple[str], Tuple[str, str], None] = ...,
     ) -> None: ...
     def getSubject(self, record: LogRecord) -> str: ...
 
@@ -121,7 +122,7 @@ class BufferingHandler(Handler):
     def shouldFlush(self, record: LogRecord) -> bool: ...
 
 class MemoryHandler(BufferingHandler):
-    def __init__(self, capacity: int, flushLevel: int = ..., target: Handler | None = ...) -> None: ...
+    def __init__(self, capacity: int, flushLevel: int = ..., target: Optional[Handler] = ...) -> None: ...
     def setTarget(self, target: Handler) -> None: ...
 
 class HTTPHandler(Handler):

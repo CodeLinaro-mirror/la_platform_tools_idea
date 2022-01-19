@@ -1,3 +1,5 @@
+from typing import Any
+
 from markdown.extensions import Extension
 
 BR_RE: str

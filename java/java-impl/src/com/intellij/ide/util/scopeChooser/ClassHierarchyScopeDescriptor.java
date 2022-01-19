@@ -15,6 +15,7 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.presentation.java.ClassPresentationUtil;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
@@ -65,9 +66,8 @@ public class ClassHierarchyScopeDescriptor extends ScopeDescriptor {
 
       PsiClass aClass = chooser.getSelected();
       if (aClass == null) {
-        myCachedScope = LocalSearchScope.EMPTY;
-      }
-      else {
+        myCachedScope = GlobalSearchScope.EMPTY_SCOPE;
+      } else {
         final List<PsiElement> classesToSearch = new LinkedList<>();
         classesToSearch.add(aClass);
 

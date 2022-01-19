@@ -97,8 +97,7 @@ class MavenWslTargetConfigurer : MavenModuleConfigurer() {
 
   private fun createWslTarget(project: Project, wslDistribution: WSLDistribution): WslTargetEnvironmentConfiguration {
     val configuration = WslTargetEnvironmentConfiguration(wslDistribution)
-    @Suppress("HardCodedStringLiteral")
-    configuration.displayName = "WSL" //NON-NLS
+    configuration.displayName = "WSL"
     TargetEnvironmentsManager.getInstance(project).addTarget(configuration)
     return configuration
   }

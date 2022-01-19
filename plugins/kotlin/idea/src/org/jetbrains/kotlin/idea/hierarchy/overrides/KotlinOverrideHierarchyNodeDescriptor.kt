@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.roots.ui.util.CompositeAppearance
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.util.Iconable
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMember
 import com.intellij.ui.LayeredIcon
@@ -124,8 +123,7 @@ class KotlinOverrideHierarchyNodeDescriptor(
         }
 
         with(myHighlightedText.ending) {
-            @NlsSafe val classDescriptorAsString = classDescriptor.name.asString()
-            addText(classDescriptorAsString, classNameAttributes)
+            addText(classDescriptor.name.asString(), classNameAttributes)
             classDescriptor.parents.forEach { parentDescriptor ->
                 when (parentDescriptor) {
                     is MemberDescriptor -> {
@@ -135,8 +133,7 @@ class KotlinOverrideHierarchyNodeDescriptor(
                         }
                     }
                     is PackageFragmentDescriptor -> {
-                        @NlsSafe val parentDescriptorAsString = parentDescriptor.fqName.asString()
-                        addText("  ($parentDescriptorAsString)", getPackageNameAttributes())
+                        addText("  (${parentDescriptor.fqName.asString()})", getPackageNameAttributes())
                         return@forEach
                     }
                 }

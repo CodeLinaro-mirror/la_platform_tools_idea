@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.ant.doc;
 
 import com.intellij.lang.ant.AntFilesProvider;
@@ -9,7 +9,6 @@ import com.intellij.lang.ant.dom.AntDomProject;
 import com.intellij.lang.ant.dom.AntDomTarget;
 import com.intellij.lang.documentation.DocumentationProvider;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.*;
 import com.intellij.pom.PomTarget;
@@ -22,7 +21,6 @@ import com.intellij.psi.xml.XmlTag;
 import com.intellij.util.xml.DomElement;
 import com.intellij.util.xml.DomTarget;
 import com.intellij.util.xml.reflect.DomChildrenDescription;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,13 +36,13 @@ public class AntDomDocumentationProvider implements DocumentationProvider {
   private static final Logger LOG = Logger.getInstance(AntDomDocumentationProvider.class);
 
   @Override
-  public @Nls String generateDoc(PsiElement element, PsiElement originalElement) {
+  public String generateDoc(PsiElement element, PsiElement originalElement) {
     final String mainDoc = getMainDocumentation(originalElement);
     final String additionalDoc = getAdditionalDocumentation(originalElement);
     if (mainDoc == null && additionalDoc == null) {
       return null;
     }
-    @NlsSafe final StringBuilder builder = new StringBuilder();
+    final StringBuilder builder = new StringBuilder();
     if (additionalDoc != null) {
       builder.append(additionalDoc);
     }
@@ -59,7 +57,7 @@ public class AntDomDocumentationProvider implements DocumentationProvider {
     final VirtualFile helpFile = getHelpFile(elem);
     if (helpFile != null) {
       try {
-        return VfsUtilCore.loadText(helpFile);
+        return VfsUtil.loadText(helpFile);
       }
       catch (IOException ignored) {
       }
@@ -174,7 +172,7 @@ public class AntDomDocumentationProvider implements DocumentationProvider {
 
   @Override
   @Nullable
-  public @Nls String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {  // todo!
+  public String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {  // todo!
     if (element instanceof PomTargetPsiElement) {
       final PomTarget pomTarget = ((PomTargetPsiElement)element).getTarget();
       if (pomTarget instanceof DomTarget) {
@@ -197,8 +195,7 @@ public class AntDomDocumentationProvider implements DocumentationProvider {
                 builder.append(" [").append(fileName).append("]");
               }
             }
-            @NlsSafe final String result = builder.append(" ").append(description).toString();
-            return result;
+            return builder.append(" ").append(description).toString();
           }
         }
       }
@@ -223,8 +220,7 @@ public class AntDomDocumentationProvider implements DocumentationProvider {
               builder.append("Data structure ");
             }
             builder.append(elemName);
-            @NlsSafe final String result = builder.toString();
-            return result;
+            return builder.toString();
           }
         }
       }

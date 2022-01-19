@@ -11,6 +11,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcsUtil.VcsSelection;
 import com.intellij.vcsUtil.VcsSelectionUtil;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -18,7 +19,7 @@ public class ShowSelectionHistoryAction extends ShowHistoryAction {
   @Override
   protected void actionPerformed(@NotNull Project p, @NotNull IdeaGateway gw, @NotNull AnActionEvent e) {
     VirtualFile f = Objects.requireNonNull(getFile(e));
-    VcsSelection sel = Objects.requireNonNull(VcsSelectionUtil.getSelection(e));
+    VcsSelection sel = Objects.requireNonNull(getSelection(e));
 
     int from = sel.getSelectionStartLineNumber();
     int to = sel.getSelectionEndLineNumber();
@@ -30,7 +31,7 @@ public class ShowSelectionHistoryAction extends ShowHistoryAction {
   public void update(@NotNull AnActionEvent e) {
     super.update(e);
 
-    VcsSelection selection = VcsSelectionUtil.getSelection(e);
+    VcsSelection selection = getSelection(e);
     if (selection == null) {
       e.getPresentation().setEnabledAndVisible(false);
     }
@@ -42,5 +43,10 @@ public class ShowSelectionHistoryAction extends ShowHistoryAction {
   @Override
   protected boolean isEnabled(@NotNull IdeaGateway gw, @NotNull VirtualFile f) {
     return super.isEnabled(gw, f) && !f.isDirectory();
+  }
+
+  @Nullable
+  private static VcsSelection getSelection(@NotNull AnActionEvent e) {
+    return VcsSelectionUtil.getSelection(e.getDataContext());
   }
 }

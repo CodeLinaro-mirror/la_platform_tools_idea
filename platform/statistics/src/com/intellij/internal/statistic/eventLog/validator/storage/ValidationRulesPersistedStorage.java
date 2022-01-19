@@ -2,10 +2,7 @@
 package com.intellij.internal.statistic.eventLog.validator.storage;
 
 import com.intellij.internal.statistic.eventLog.*;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupFilterRules;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataLoadException;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataParseException;
-import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataUtils;
+import com.intellij.internal.statistic.eventLog.connection.metadata.*;
 import com.intellij.internal.statistic.eventLog.validator.rules.beans.EventGroupRules;
 import com.intellij.internal.statistic.eventLog.validator.rules.utils.CustomRuleProducer;
 import com.intellij.internal.statistic.eventLog.validator.rules.utils.ValidationSimpleRuleFactory;
@@ -13,7 +10,6 @@ import com.intellij.internal.statistic.eventLog.validator.storage.persistence.Ev
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.concurrency.Semaphore;
-import com.jetbrains.fus.reporting.model.metadata.EventGroupRemoteDescriptors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;

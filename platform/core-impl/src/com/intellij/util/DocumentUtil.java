@@ -44,19 +44,13 @@ public final class DocumentUtil {
       return;
     }
 
-    //noinspection deprecation
     document.setInBulkUpdate(executeInBulk);
     try {
       task.run();
     }
     finally {
-      //noinspection deprecation
       document.setInBulkUpdate(!executeInBulk);
     }
-  }
-
-  public static void executeInBulk(@NotNull Document document, @NotNull Runnable task) {
-    executeInBulk(document, true, task);
   }
 
   public static void writeInRunUndoTransparentAction(@NotNull final Runnable runnable) {
@@ -172,25 +166,5 @@ public final class DocumentUtil {
       result--;
     }
     return document.getCharsSequence().subSequence(lineOffset, lineOffset + Math.max(result, 0));
-  }
-
-  public static int calculateOffset(@NotNull Document document, int line, int column, int tabSize) {
-    int offset;
-    if (0 <= line && line < document.getLineCount()) {
-      final int lineStart = document.getLineStartOffset(line);
-      final int lineEnd = document.getLineEndOffset(line);
-      final CharSequence docText = document.getCharsSequence();
-
-      offset = lineStart;
-      int col = 0;
-      while (offset < lineEnd && col < column) {
-        col += docText.charAt(offset) == '\t' ? tabSize : 1;
-        offset++;
-      }
-    }
-    else {
-      offset = document.getTextLength();
-    }
-    return offset;
   }
 }

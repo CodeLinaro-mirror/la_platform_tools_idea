@@ -16,7 +16,6 @@
 
 package com.intellij.codeInsight.daemon.impl;
 
-import com.intellij.diagnostic.PluginException;
 import com.intellij.lang.ASTNode;
 import com.intellij.lang.annotation.*;
 import com.intellij.openapi.diagnostic.Logger;
@@ -26,8 +25,6 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
-import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.ReflectionUtilRt;
 import com.intellij.util.SmartList;
 import com.intellij.xml.util.XmlStringUtil;
 import org.jetbrains.annotations.*;
@@ -47,19 +44,17 @@ public class AnnotationHolderImpl extends SmartList<Annotation> implements Annot
   Annotator myCurrentAnnotator;
 
   /**
-   * @deprecated Do not instantiate the AnnotationHolderImpl directly, please use the one provided to {@link Annotator#annotate(PsiElement, AnnotationHolder)} instead
+   * Do not instantiate the AnnotationHolderImpl directly, please use the one provided to {@link Annotator#annotate(PsiElement, AnnotationHolder)} instead
    */
   @ApiStatus.Internal
-  @Deprecated
   public AnnotationHolderImpl(@NotNull AnnotationSession session) {
     this(session, false);
   }
 
   /**
-   * @deprecated Do not instantiate the AnnotationHolderImpl directly, please use the one provided to {@link Annotator#annotate(PsiElement, AnnotationHolder)} instead
+   * Do not instantiate the AnnotationHolderImpl directly, please use the one provided to {@link Annotator#annotate(PsiElement, AnnotationHolder)} instead
    */
   @ApiStatus.Internal
-  @Deprecated
   public AnnotationHolderImpl(@NotNull AnnotationSession session, boolean batchMode) {
     myAnnotationSession = session;
     myBatchMode = batchMode;
@@ -73,75 +68,64 @@ public class AnnotationHolderImpl extends SmartList<Annotation> implements Annot
   @Override
   public Annotation createErrorAnnotation(@NotNull PsiElement elt, String message) {
     assertMyFile(elt);
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.ERROR, elt.getTextRange(), message, wrapXml(message), callerClass, "createErrorAnnotation");
+    return createAnnotation(HighlightSeverity.ERROR, elt.getTextRange(), message);
   }
 
   @Override
   public Annotation createErrorAnnotation(@NotNull ASTNode node, String message) {
     assertMyFile(node.getPsi());
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.ERROR, node.getTextRange(), message, wrapXml(message), callerClass, "createErrorAnnotation");
+    return createAnnotation(HighlightSeverity.ERROR, node.getTextRange(), message);
   }
 
   @Override
   public Annotation createErrorAnnotation(@NotNull TextRange range, String message) {
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.ERROR, range, message, wrapXml(message), callerClass, "createErrorAnnotation");
+    return createAnnotation(HighlightSeverity.ERROR, range, message);
   }
 
   @Override
   public Annotation createWarningAnnotation(@NotNull PsiElement elt, String message) {
     assertMyFile(elt);
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WARNING, elt.getTextRange(), message, wrapXml(message), callerClass, "createWarningAnnotation");
+    return createAnnotation(HighlightSeverity.WARNING, elt.getTextRange(), message);
   }
 
   @Override
   public Annotation createWarningAnnotation(@NotNull ASTNode node, String message) {
     assertMyFile(node.getPsi());
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WARNING, node.getTextRange(), message, wrapXml(message), callerClass, "createWarningAnnotation");
+    return createAnnotation(HighlightSeverity.WARNING, node.getTextRange(), message);
   }
 
   @Override
   public Annotation createWarningAnnotation(@NotNull TextRange range, String message) {
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WARNING, range, message, wrapXml(message), callerClass, "createWarningAnnotation");
+    return createAnnotation(HighlightSeverity.WARNING, range, message);
   }
 
   @Override
   public Annotation createWeakWarningAnnotation(@NotNull PsiElement elt, @Nullable String message) {
     assertMyFile(elt);
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WEAK_WARNING, elt.getTextRange(), message, wrapXml(message), callerClass, "createWeakWarningAnnotation");
+    return createAnnotation(HighlightSeverity.WEAK_WARNING, elt.getTextRange(), message);
   }
 
   @Override
   public Annotation createWeakWarningAnnotation(@NotNull ASTNode node, @Nullable String message) {
     assertMyFile(node.getPsi());
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WEAK_WARNING, node.getTextRange(), message, wrapXml(message), callerClass, "createWeakWarningAnnotation");
+    return createAnnotation(HighlightSeverity.WEAK_WARNING, node.getTextRange(), message);
   }
 
   @Override
   public Annotation createWeakWarningAnnotation(@NotNull TextRange range, String message) {
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.WEAK_WARNING, range, message, wrapXml(message), callerClass, "createWeakWarningAnnotation");
+    return createAnnotation(HighlightSeverity.WEAK_WARNING, range, message);
   }
 
   @Override
   public Annotation createInfoAnnotation(@NotNull PsiElement elt, String message) {
     assertMyFile(elt);
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.INFORMATION, elt.getTextRange(), message, wrapXml(message), callerClass, "createInfoAnnotation");
+    return createAnnotation(HighlightSeverity.INFORMATION, elt.getTextRange(), message);
   }
 
   @Override
   public Annotation createInfoAnnotation(@NotNull ASTNode node, String message) {
     assertMyFile(node.getPsi());
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.INFORMATION, node.getTextRange(), message, wrapXml(message), callerClass, "createInfoAnnotation");
+    return createAnnotation(HighlightSeverity.INFORMATION, node.getTextRange(), message);
   }
 
   private void assertMyFile(PsiElement node) {
@@ -160,48 +144,20 @@ public class AnnotationHolderImpl extends SmartList<Annotation> implements Annot
 
   @Override
   public Annotation createInfoAnnotation(@NotNull TextRange range, String message) {
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(HighlightSeverity.INFORMATION, range, message, wrapXml(message), callerClass, "createInfoAnnotation");
+    return createAnnotation(HighlightSeverity.INFORMATION, range, message);
   }
 
   @Override
   public Annotation createAnnotation(@NotNull HighlightSeverity severity, @NotNull TextRange range, @Nullable String message) {
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(severity, range, message, wrapXml(message), callerClass, "createAnnotation");
-  }
-
-  @Nullable
-  private static @NonNls String wrapXml(@Nullable String message) {
-    return message == null ? null : XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(message));
+    @NonNls String tooltip = message == null ? null : XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(message));
+    return createAnnotation(severity, range, message, tooltip);
   }
 
   @Override
   public Annotation createAnnotation(@NotNull HighlightSeverity severity, @NotNull TextRange range, @Nullable String message,
                                      @Nullable @NlsContexts.Tooltip String tooltip) {
-    Class<?> callerClass = ReflectionUtilRt.findCallerClass(2);
-    return doCreateAnnotation(severity, range, message, tooltip, callerClass, "createAnnotation");
-  }
-
-  /**
-   * @deprecated this is an old way of creating annotations, via createXXXAnnotation(). please use newAnnotation() instead
-   */
-  @NotNull
-  @Deprecated
-  private Annotation doCreateAnnotation(@NotNull HighlightSeverity severity,
-                                        @NotNull TextRange range,
-                                        @Nullable String message,
-                                        @Nullable String tooltip,
-                                        @Nullable Class<?> callerClass,
-                                        @NotNull String methodName) {
     Annotation annotation = new Annotation(range.getStartOffset(), range.getEndOffset(), severity, message, tooltip);
     add(annotation);
-    String callerInfo = callerClass == null ? "" : " (the call to which was found in "+callerClass+")";
-    PluginException pluginException = PluginException.createByClass(
-      new IncorrectOperationException("'AnnotationHolder."+methodName + "()' method" + callerInfo + " is slow, non-incremental " +
-                                      "and thus can cause unexpected behaviour (e.g. annoying blinking), " +
-                                      "is deprecated and will be removed soon. " +
-                                      "Please use `newAnnotation().create()` instead"), callerClass == null ? getClass() : callerClass);
-      LOG.warn(pluginException);
     return annotation;
   }
 

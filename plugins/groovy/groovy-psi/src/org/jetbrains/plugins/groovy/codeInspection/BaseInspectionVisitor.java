@@ -120,11 +120,11 @@ public abstract class BaseInspectionVisitor extends GroovyElementVisitor {
         inspection.buildQuickFixesOnlyForOnTheFlyErrors()) {
       return null;
     }
-    final LocalQuickFix fix = inspection.buildFix(location);
+    final GroovyFix fix = inspection.buildFix(location);
     if (fix == null) {
       return null;
     }
-    return new LocalQuickFix[]{fix};
+    return new GroovyFix[]{fix};
   }
 
   public int getErrorCount() {

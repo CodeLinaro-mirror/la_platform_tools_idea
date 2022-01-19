@@ -55,7 +55,7 @@ record AnnotatedComponents(
 class Outer {
   record NestedRecord() {}
   class Inner {
-    record InnerRecord() {}
+    <error descr="Static declarations in inner classes are not supported at language level '15'">record InnerRecord()</error> {}
   }
 }
 

@@ -27,7 +27,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
 import com.intellij.ui.AppUIUtil;
 import com.intellij.util.DocumentUtil;
-import com.intellij.util.SlowOperations;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.impl.XDebuggerUtilImpl;
 import com.intellij.xdebugger.impl.settings.XDebuggerSettingManagerImpl;
@@ -187,7 +186,7 @@ public class ExecutionPointHighlighter {
     TextAttributesKey attributesKey = myNotTopFrame ? DebuggerColors.NOT_TOP_FRAME_ATTRIBUTES : DebuggerColors.EXECUTIONPOINT_ATTRIBUTES;
     MarkupModel markupModel = DocumentMarkupModel.forDocument(document, myProject, true);
     if (mySourcePosition instanceof HighlighterProvider) {
-      TextRange range = SlowOperations.allowSlowOperations(() -> ((HighlighterProvider)mySourcePosition).getHighlightRange());
+      TextRange range = ((HighlighterProvider)mySourcePosition).getHighlightRange();
       if (range != null) {
         TextRange lineRange = DocumentUtil.getLineTextRange(document, line);
         if (!range.equals(lineRange)) {

@@ -6,7 +6,6 @@ import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.core.replaced
@@ -46,7 +45,6 @@ class IfThenToSafeAccessInspection @JvmOverloads constructor(private val inlineW
     }
 
     companion object {
-        @Nls
         fun fixTextFor(element: KtIfExpression): String {
             val ifThenToSelectData = element.buildSelectTransformationData()
             return if (ifThenToSelectData?.baseClauseEvaluatesToReceiver() == true) {

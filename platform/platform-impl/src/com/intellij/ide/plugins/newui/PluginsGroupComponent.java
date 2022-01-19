@@ -40,7 +40,7 @@ public abstract class PluginsGroupComponent extends JBPanelWithEmptyText {
     setBackground(PluginManagerConfigurable.MAIN_BG_COLOR);
   }
 
-  protected abstract @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor, @NotNull PluginsGroup group);
+  protected abstract @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor);
 
   public final @NotNull List<UIPluginGroup> getGroups() {
     return Collections.unmodifiableList(myGroups);
@@ -194,7 +194,7 @@ public abstract class PluginsGroupComponent extends JBPanelWithEmptyText {
                           int index,
                           int eventIndex) {
     for (IdeaPluginDescriptor descriptor : descriptors) {
-      ListPluginComponent pluginComponent = createListComponent(descriptor, group);
+      ListPluginComponent pluginComponent = createListComponent(descriptor);
       group.ui.plugins.add(pluginComponent);
       add(pluginComponent, index);
       myEventHandler.addCell(pluginComponent, eventIndex);
@@ -226,7 +226,7 @@ public abstract class PluginsGroupComponent extends JBPanelWithEmptyText {
       uiIndex = getComponentIndex(anchor);
     }
 
-    ListPluginComponent pluginComponent = createListComponent(descriptor, group);
+    ListPluginComponent pluginComponent = createListComponent(descriptor);
     group.ui.plugins.add(index, pluginComponent);
     add(pluginComponent, uiIndex);
     myEventHandler.addCell(pluginComponent, anchor);

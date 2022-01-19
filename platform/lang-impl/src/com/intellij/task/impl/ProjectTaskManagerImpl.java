@@ -18,7 +18,6 @@ import com.intellij.openapi.roots.ProjectModelBuildableElement;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.task.*;
-import com.intellij.tracing.Tracer;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ModalityUiUtil;
 import com.intellij.util.SmartList;
@@ -144,7 +143,6 @@ public final class ProjectTaskManagerImpl extends ProjectTaskManager {
 
   @Override
   public Promise<Result> run(@NotNull ProjectTaskContext context, @NotNull ProjectTask projectTask) {
-    Tracer.Span buildSpan = Tracer.start("build");
     AsyncPromise<Result> promiseResult = new AsyncPromise<>();
     List<Pair<ProjectTaskRunner, Collection<? extends ProjectTask>>> toRun = new SmartList<>();
 
@@ -172,7 +170,6 @@ public final class ProjectTaskManagerImpl extends ProjectTaskManager {
     };
     visitTasks(projectTask instanceof ProjectTaskList ? (ProjectTaskList)projectTask : Collections.singleton(projectTask), taskClassifier);
 
-    buildSpan.complete();
     context.putUserData(ProjectTaskScope.KEY, new ProjectTaskScope() {
       @Override
       public @NotNull <T extends ProjectTask> List<T> getRequestedTasks(@NotNull Class<T> instanceOf) {
@@ -237,9 +234,6 @@ public final class ProjectTaskManagerImpl extends ProjectTaskManager {
     else {
       runnable.run();
     }
-    promiseResult.onProcessed(result -> {
-      buildSpan.complete();
-    });
     return promiseResult;
   }
 
@@ -352,12 +346,12 @@ public final class ProjectTaskManagerImpl extends ProjectTaskManager {
     }
 
     private void notify(@NotNull Result result) {
-      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), () -> {
+      ModalityUiUtil.invokeLaterIfNeeded(() -> {
         if (!myProject.isDisposed()) {
           myEventPublisher.finished(result);
         }
         myPromise.setResult(result);
-      });
+      }, ModalityState.defaultModalityState());
     }
   }
 

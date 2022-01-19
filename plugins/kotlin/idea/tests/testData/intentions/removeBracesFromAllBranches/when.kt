@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
 fun test(i: Int) {
     when<caret> (i) {
         1 -> {

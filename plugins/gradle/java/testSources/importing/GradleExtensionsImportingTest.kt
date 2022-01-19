@@ -72,7 +72,8 @@ class GradleExtensionsImportingTest : GradleImportingTestCase() {
                                "sourceSets" to "org.gradle.api.tasks.SourceSetContainer",
                                "java" to "org.gradle.api.plugins.internal.DefaultJavaPluginExtension",
                                "javaInstalls" to "org.gradle.jvm.toolchain.internal.DefaultJavaInstallationRegistry")
-      isGradleOlderThan("7.0") ->
+
+      else ->
         mapOf<String, String?>("ext" to extraPropertiesExtensionFqn,
                                "idea" to "org.gradle.plugins.ide.idea.model.IdeaModel",
                                "defaultArtifacts" to "org.gradle.api.internal.plugins.DefaultArtifactPublicationSet",
@@ -81,23 +82,6 @@ class GradleExtensionsImportingTest : GradleImportingTestCase() {
                                "java" to "org.gradle.api.plugins.internal.DefaultJavaPluginExtension",
                                "javaInstalls" to "org.gradle.jvm.toolchain.internal.DefaultJavaInstallationRegistry",
                                "javaToolchains" to "org.gradle.jvm.toolchain.internal.DefaultJavaToolchainService")
-      isGradleOlderThan("7.1") ->
-        mapOf<String, String?>("ext" to extraPropertiesExtensionFqn,
-                               "idea" to "org.gradle.plugins.ide.idea.model.IdeaModel",
-                               "defaultArtifacts" to "org.gradle.api.internal.plugins.DefaultArtifactPublicationSet",
-                               "reporting" to "org.gradle.api.reporting.ReportingExtension",
-                               "sourceSets" to "org.gradle.api.tasks.SourceSetContainer",
-                               "java" to "org.gradle.api.plugins.internal.DefaultJavaPluginExtension",
-                               "javaToolchains" to "org.gradle.jvm.toolchain.internal.DefaultJavaToolchainService")
-      else ->
-        mapOf<String, String?>("ext" to extraPropertiesExtensionFqn,
-                               "idea" to "org.gradle.plugins.ide.idea.model.IdeaModel",
-                               "defaultArtifacts" to "org.gradle.api.internal.plugins.DefaultArtifactPublicationSet",
-                               "reporting" to "org.gradle.api.reporting.ReportingExtension",
-                               "sourceSets" to "org.gradle.api.tasks.SourceSetContainer",
-                               "java" to "org.gradle.api.plugins.internal.DefaultJavaPluginExtension",
-                               "javaToolchains" to "org.gradle.jvm.toolchain.internal.DefaultJavaToolchainService",
-                               "base" to "org.gradle.api.plugins.internal.DefaultBasePluginExtension")
     }
 
     assertMapsEqual(expectedExtensions, extensionsMap)

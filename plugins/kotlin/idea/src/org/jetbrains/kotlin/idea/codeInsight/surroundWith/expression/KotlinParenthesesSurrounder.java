@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.psi.KtParenthesizedExpression;
 import org.jetbrains.kotlin.psi.KtPsiFactoryKt;
 
 public class KotlinParenthesesSurrounder extends KotlinExpressionSurrounder {
-    @SuppressWarnings("DialogTitleCapitalization")
     @Override
     public String getTemplateDescription() {
         return CodeInsightBundle.message("surround.with.parenthesis.template");

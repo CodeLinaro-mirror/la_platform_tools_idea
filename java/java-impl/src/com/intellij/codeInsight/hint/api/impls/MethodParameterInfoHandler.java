@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.hint.api.impls;
 
 import com.intellij.codeInsight.AnnotationTargetUtil;
@@ -11,7 +11,6 @@ import com.intellij.codeInsight.daemon.impl.ParameterHintsPresentationManager;
 import com.intellij.codeInsight.hint.ParameterInfoControllerBase;
 import com.intellij.codeInsight.hints.ParameterHintsPass;
 import com.intellij.codeInsight.javadoc.JavaDocInfoGenerator;
-import com.intellij.codeInsight.javadoc.JavaDocInfoGeneratorFactory;
 import com.intellij.injected.editor.EditorWindow;
 import com.intellij.lang.parameterInfo.*;
 import com.intellij.openapi.application.WriteAction;
@@ -51,7 +50,7 @@ import java.util.*;
 /**
  * @author Maxim.Mossienko
  */
-public final class MethodParameterInfoHandler implements ParameterInfoHandlerWithTabActionSupport<PsiExpressionList, Object, PsiExpression>, DumbAware {
+public class MethodParameterInfoHandler implements ParameterInfoHandlerWithTabActionSupport<PsiExpressionList, Object, PsiExpression>, DumbAware {
   private static final Set<Class<?>> ourArgumentListAllowedParentClassesSet = ContainerUtil.newHashSet(
     PsiMethodCallExpression.class, PsiNewExpression.class, PsiAnonymousClass.class, PsiEnumConstant.class);
   private static final Set<Class<?>> ourStopSearch = Collections.singleton(PsiMethod.class);
@@ -122,7 +121,7 @@ public final class MethodParameterInfoHandler implements ParameterInfoHandlerWit
           PsiMethod targetMethod = (PsiMethod)((CandidateInfo)(highlighted == null ? objects[0] : highlighted)).getElement();
           CompletionMemory.registerChosenMethod(targetMethod, methodCall);
           controller.setPreservedOnHintHidden(true);
-          ParameterHintsPass.asyncUpdate(methodCall, context.getEditor());
+          ParameterHintsPass.syncUpdate(methodCall, context.getEditor());
         }
       }
     }
@@ -191,12 +190,8 @@ public final class MethodParameterInfoHandler implements ParameterInfoHandlerWit
                 document != null && psiDocumentManager.isCommitted(document) &&
                 isIncompatibleParameterCount(chosenMethod, currentNumberOfParameters)) {
               JavaMethodCallElement.setCompletionMode((PsiCall)parent, false);
-              // make sure the statement above takes effect
-              ParameterHintsPass.asyncUpdate(parent, context.getEditor())
-                .then(o -> {
-                  highlightHints(context.getEditor(), null, -1, context.getCustomContext());
-                  return null;
-                });
+              ParameterHintsPass.syncUpdate(parent, context.getEditor()); // make sure the statement above takes effect
+              highlightHints(context.getEditor(), null, -1, context.getCustomContext());
             }
             else {
               int index = ParameterInfoUtils.getCurrentParameterIndex(expressionList.getNode(),
@@ -369,12 +364,9 @@ public final class MethodParameterInfoHandler implements ParameterInfoHandlerWit
           chosenInfo = candidate;
         }
 
-        if (realResolve == method) {
-          if (parms.length == args.length && isAssignableParametersBeforeGivenIndex(parms, args, args.length, substitutor) ||
-              method.isVarArgs() && parms.length - 1 <= args.length &&
-              isAssignableParametersBeforeGivenIndex(parms, args, Math.min(parms.length, args.length), substitutor)) {
-            completeMatch = candidate;
-          }
+        if (parms.length == args.length && realResolve == method &&
+            isAssignableParametersBeforeGivenIndex(parms, args, args.length, substitutor)) {
+          completeMatch = candidate;
         }
       }
     }
@@ -485,7 +477,7 @@ public final class MethodParameterInfoHandler implements ParameterInfoHandlerWit
       resetHints(context.getCustomContext());
       PsiElement parameterOwner = context.getParameterOwner();
       if (!editor.isDisposed() && parameterOwner != null && parameterOwner.isValid()) {
-        ParameterHintsPass.asyncUpdate(parameterOwner.getParent(), editor);
+        ParameterHintsPass.syncUpdate(parameterOwner.getParent(), editor);
       }
     }
   }
@@ -711,7 +703,7 @@ public final class MethodParameterInfoHandler implements ParameterInfoHandlerWit
         }
 
         if (context.isSingleParameterInfo()) {
-          String javaDoc = JavaDocInfoGeneratorFactory.create(param.getProject(), param).generateMethodParameterJavaDoc();
+          String javaDoc = new JavaDocInfoGenerator(param.getProject(), param).generateMethodParameterJavaDoc();
           if (javaDoc != null) {
             javaDoc = removeHyperlinks(javaDoc);
             if (javaDoc.length() < 100) {
@@ -859,10 +851,8 @@ public final class MethodParameterInfoHandler implements ParameterInfoHandlerWit
     Caret caret = editor.getCaretModel().getCurrentCaret();
     int caretOffset = caret.getOffset();
     ParameterHintsPresentationManager pm = ParameterHintsPresentationManager.getInstance();
-    List<Inlay<?>> inlays = pm.getParameterHintsInRange(editor, caretOffset, caretOffset);
-    if (inlays.isEmpty()) {
-      return 0;
-    }
+    List<Inlay> inlays = pm.getParameterHintsInRange(editor, caretOffset, caretOffset);
+    if (inlays.isEmpty()) return 0;
 
     VisualPosition caretPosition = caret.getVisualPosition();
     return ContainerUtil.count(inlays, inlay -> StringUtil.startsWithChar(pm.getHintText(inlay), ',') &&

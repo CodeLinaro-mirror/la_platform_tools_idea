@@ -201,34 +201,23 @@ class DebuggerClassNameProvider(
 
                 getOuterClassNamesForElement(initializerOwner, alreadyVisited)
             }
-            is KtCallableReferenceExpression ->
-                getNamesForLambda(element, alreadyVisited)
-            is KtFunctionLiteral ->
-                getNamesForLambda(element, alreadyVisited)
-            else ->
-                getOuterClassNamesForElement(element.relevantParentInReadAction, alreadyVisited)
-        }
-    }
+            is KtFunctionLiteral -> {
+                val names = runReadAction {
+                    val name = ClassNameCalculator.getClassNameCompat(element)
+                    if (name != null) Cached(name) else EMPTY
+                }
 
-    private fun getNamesForLambda(element: KtElement, alreadyVisited: Set<PsiElement>): ComputedClassNames {
-        val names = element.getNamesInReadAction()
-        if (!names.isEmpty() && !alwaysReturnLambdaParentClass) {
-            if (element !is KtFunctionLiteral || !element.isInlinedArgument()) {
-                return names
+                if (!names.isEmpty() && !alwaysReturnLambdaParentClass) {
+                    if (!InlineUtil.isInlinedArgument(element, element.analyze(), true)) {
+                        return names
+                    }
+                }
+
+                names + getOuterClassNamesForElement(element.relevantParentInReadAction, alreadyVisited)
             }
+            else -> getOuterClassNamesForElement(element.relevantParentInReadAction, alreadyVisited)
         }
-
-        return names + getOuterClassNamesForElement(element.relevantParentInReadAction, alreadyVisited)
     }
-
-    private fun KtFunction.isInlinedArgument() =
-        InlineUtil.isInlinedArgument(this, analyze(), true)
-
-    private fun KtElement.getNamesInReadAction() =
-        runReadAction {
-            val name = ClassNameCalculator.getClassNameCompat(this)
-            if (name != null) Cached(name) else EMPTY
-        }
 
     private val KtDeclaration.isInlineInReadAction: Boolean
         get() = runReadAction { hasModifier(KtTokens.INLINE_KEYWORD) }

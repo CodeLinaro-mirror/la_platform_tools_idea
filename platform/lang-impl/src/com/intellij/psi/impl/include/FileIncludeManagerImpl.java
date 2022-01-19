@@ -26,7 +26,6 @@ import com.intellij.psi.util.ParameterizedCachedValueProvider;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
-import com.intellij.util.indexing.FileBasedIndex;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -83,7 +82,6 @@ public final class FileIncludeManagerImpl extends FileIncludeManager implements 
     context = context.getOriginalFile();
     VirtualFile contextFile = context.getVirtualFile();
     if (contextFile == null) return;
-    if (FileBasedIndex.getInstance().getFileBeingCurrentlyIndexed() != null) return;
 
     String originalName = context.getName();
     Collection<String> names = getPossibleIncludeNames(context, originalName);

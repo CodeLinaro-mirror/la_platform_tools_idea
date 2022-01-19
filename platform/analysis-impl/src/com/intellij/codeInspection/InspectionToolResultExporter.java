@@ -10,7 +10,6 @@ import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.project.Project;
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager;
 import com.intellij.psi.PsiElement;
-import com.intellij.util.ThreeState;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,7 +37,7 @@ public interface InspectionToolResultExporter extends ProblemDescriptionsProcess
                      @NotNull Predicate<? super RefEntity> isEntityExcluded,
                      @NotNull Predicate<? super CommonProblemDescriptor> isProblemExcluded);
 
-  @NotNull InspectionToolWrapper<?,?> getToolWrapper();
+  @NotNull InspectionToolWrapper getToolWrapper();
 
   @NotNull
   SynchronizedBidiMultiMap<RefEntity, CommonProblemDescriptor> getProblemElements();
@@ -84,8 +83,7 @@ public interface InspectionToolResultExporter extends ProblemDescriptionsProcess
   @NotNull
   Collection<CommonProblemDescriptor> getProblemDescriptors();
 
-  @NotNull
-  ThreeState hasReportedProblems();
+  boolean hasReportedProblems();
 
   @NotNull
   Collection<RefEntity> getResolvedElements();

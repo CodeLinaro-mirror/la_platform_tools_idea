@@ -4,6 +4,7 @@ package com.intellij.ide.projectView;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.dnd.*;
 import com.intellij.ide.projectView.impl.ProjectAbstractTreeStructureBase;
+import com.intellij.ide.projectView.impl.ProjectTreeStructure;
 import com.intellij.ide.projectView.impl.ProjectViewPane;
 import com.intellij.ide.projectView.impl.ProjectViewTree;
 import com.intellij.ide.projectView.impl.nodes.ProjectViewProjectNode;
@@ -72,9 +73,9 @@ public abstract class AttachableProjectViewPane extends ProjectViewPane {
   @NotNull
   @Override
   protected ProjectAbstractTreeStructureBase createStructure() {
-    return new ProjectViewPaneTreeStructure() {
+    return new ProjectTreeStructure(myProject, ID) {
       @Override
-      protected AbstractTreeNode<?> createRoot(@NotNull final Project project, @NotNull ViewSettings settings) {
+      protected AbstractTreeNode createRoot(@NotNull final Project project, @NotNull ViewSettings settings) {
         return new ProjectViewProjectNode(project, settings) {
           @NotNull
           @Override
@@ -97,6 +98,11 @@ public abstract class AttachableProjectViewPane extends ProjectViewPane {
         };
       }
     };
+  }
+
+  @Override
+  public Object getData(@NotNull String dataId) {
+    return super.getData(dataId);
   }
 
   protected void processDroppedDirectories(@NotNull List<VirtualFile> dirs) {

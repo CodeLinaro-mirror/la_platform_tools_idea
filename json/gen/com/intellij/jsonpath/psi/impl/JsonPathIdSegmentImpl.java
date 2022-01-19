@@ -33,4 +33,10 @@ public class JsonPathIdSegmentImpl extends ASTWrapperPsiElement implements JsonP
     return findNotNullChildByClass(JsonPathId.class);
   }
 
+  @Override
+  @NotNull
+  public List<JsonPathSegmentExpression> getSegmentExpressionList() {
+    return PsiTreeUtil.getChildrenOfTypeAsList(this, JsonPathSegmentExpression.class);
+  }
+
 }

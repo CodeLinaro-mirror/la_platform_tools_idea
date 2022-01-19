@@ -98,10 +98,15 @@ open class LineMarkerConfiguration(var renderDescription: Boolean = true) : Abst
         if (!renderParams) return ""
         val params = mutableListOf<String>()
 
-        if (renderDescription) {
-            lineMarkerCodeMetaInfo.lineMarker.lineMarkerTooltip?.apply {
-                params.add("descr='${sanitizeLineMarkerTooltip(this)}'")
-            }
+        try {
+            if (renderDescription)
+                lineMarkerCodeMetaInfo.lineMarker.lineMarkerTooltip?.apply {
+                    params.add("descr='${sanitizeLineMarkerTooltip(this)}'")
+                }
+        } catch (e: Exception) {
+            //Sometimes got exception caused by `ModuleDescriptor?.getPlatformName()` in HasActualMarker.kt
+            // when calling `single()` method, but platform collection has more than one element
+            // Going to fix it
         }
 
         params.add(getAdditionalParams(lineMarkerCodeMetaInfo))

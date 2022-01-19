@@ -70,7 +70,7 @@ class ColorValuePanel(private val model: ColorPickerModel, private val showAlpha
    * Used to update the color of picker when color text fields are edited.
    */
   @get:TestOnly
-  val updateAlarm = Alarm()
+  val updateAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD)
 
   @get:TestOnly
   val alphaField = ColorValueField()

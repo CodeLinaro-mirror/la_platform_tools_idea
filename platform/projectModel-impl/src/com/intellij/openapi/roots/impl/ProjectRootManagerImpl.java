@@ -12,7 +12,6 @@ import com.intellij.openapi.extensions.ProjectExtensionPointName;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.RootsChangeIndexingInfo;
 import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.*;
@@ -25,7 +24,6 @@ import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerListener;
 import com.intellij.util.EventDispatcher;
-import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.URLUtil;
 import org.jdom.Element;
@@ -55,16 +53,17 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
   private final OrderRootsCache myRootsCache;
 
   protected boolean myStartupActivityPerformed;
+  private boolean myStateLoaded;
 
   private final RootProvider.RootSetChangedListener myRootProviderChangeListener = new RootProviderChangeListener();
 
   @ApiStatus.Internal
-  public abstract class BatchSession<Change, ChangeList> {
+  public abstract class BatchSession<Change> {
     private final boolean myFileTypes;
     private int myBatchLevel;
     private int myPendingRootsChanged;
     private boolean myChanged;
-    private ChangeList myChanges;
+    private Change myChanges;
 
     private BatchSession(final boolean fileTypes) {
       myFileTypes = fileTypes;
@@ -84,7 +83,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
         try {
           // todo make sure it should be not null here
           if (myChanges == null) {
-            myChanges = initiateChangelist(getGenericChange());
+            myChanges = getGenericChange();
           }
           myPendingRootsChanged--;
           WriteAction.run(() -> fireRootsChanged(myChanges));
@@ -107,7 +106,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     }
 
     public void rootsChanged(@NotNull Change change) {
-      myChanges = myChanges == null ? initiateChangelist(change) : accumulate(myChanges, change);
+      myChanges = myChanges == null ? change : accumulate(myChanges, change);
 
       if (myBatchLevel == 0 && myChanged) {
         myPendingRootsChanged--;
@@ -119,54 +118,53 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     }
 
     public void rootsChanged() {
-      rootsChanged(getGenericChange());
+     rootsChanged(getGenericChange());
     }
 
-    protected abstract boolean fireRootsChanged(@NotNull ChangeList change);
-
-    protected abstract @NotNull ChangeList initiateChangelist(@NotNull Change change);
+    protected abstract boolean fireRootsChanged(@NotNull Change change);
 
     @NotNull
-    protected abstract ChangeList accumulate(@NotNull ChangeList current, @NotNull Change change);
+    protected abstract Change accumulate(@NotNull Change current, @NotNull Change change);
 
     @NotNull
     protected abstract Change getGenericChange();
   }
 
   @ApiStatus.Internal
-  public BatchSession<RootsChangeIndexingInfo, List<RootsChangeIndexingInfo>> getRootsChanged() {
+  public enum RootsChangeType {
+    ROOTS_REMOVED, ROOTS_ADDED, GENERIC
+  }
+
+  @ApiStatus.Internal
+  public BatchSession<RootsChangeType> getRootsChanged() {
     return myRootsChanged;
   }
 
-  protected final BatchSession<RootsChangeIndexingInfo, List<RootsChangeIndexingInfo>>
-    myRootsChanged = new BatchSession<>(false) {
+  protected final BatchSession<RootsChangeType> myRootsChanged = new BatchSession<>(false) {
     @Override
-    protected boolean fireRootsChanged(@NotNull List<RootsChangeIndexingInfo> changes) {
-      return ProjectRootManagerImpl.this.fireRootsChanged(false, changes);
+    protected boolean fireRootsChanged(@NotNull ProjectRootManagerImpl.RootsChangeType cause) {
+      return ProjectRootManagerImpl.this.fireRootsChanged(false, cause);
     }
 
     @Override
-    protected @NotNull List<RootsChangeIndexingInfo> accumulate(@NotNull List<RootsChangeIndexingInfo> currentPair,
-                                                                @NotNull RootsChangeIndexingInfo cause) {
-      currentPair.add(cause);
-      return currentPair;
+    protected @NotNull ProjectRootManagerImpl.RootsChangeType accumulate(@NotNull ProjectRootManagerImpl.RootsChangeType current, @NotNull ProjectRootManagerImpl.RootsChangeType cause) {
+      if (current == RootsChangeType.GENERIC || cause == RootsChangeType.GENERIC) {
+        return RootsChangeType.GENERIC;
+      }
+      if (current != cause) return RootsChangeType.GENERIC;
+      return current;
     }
 
     @Override
-    protected @NotNull RootsChangeIndexingInfo getGenericChange() {
-      return RootsChangeIndexingInfo.TOTAL_REINDEX;
-    }
-
-    @Override
-    protected @NotNull List<RootsChangeIndexingInfo> initiateChangelist(@NotNull RootsChangeIndexingInfo info) {
-      return new SmartList<>(info);
+    protected @NotNull ProjectRootManagerImpl.RootsChangeType getGenericChange() {
+      return RootsChangeType.GENERIC;
     }
   };
 
-  protected final BatchSession<Boolean, Boolean> myFileTypesChanged = new BatchSession<>(true) {
+  protected final BatchSession<Boolean> myFileTypesChanged = new BatchSession<>(true) {
     @Override
     protected boolean fireRootsChanged(@NotNull Boolean aBoolean) {
-      return ProjectRootManagerImpl.this.fireRootsChanged(true, Collections.emptyList());
+      return ProjectRootManagerImpl.this.fireRootsChanged(true, null);
     }
 
     @Override
@@ -177,11 +175,6 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     @Override
     protected @NotNull Boolean getGenericChange() {
       return Boolean.TRUE;
-    }
-
-    @Override
-    protected @NotNull Boolean initiateChangelist(@NotNull Boolean aBoolean) {
-      return aBoolean;
     }
   };
   private final VirtualFilePointerListener myEmptyRootsValidityChangedListener = new VirtualFilePointerListener(){};
@@ -354,10 +347,19 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
     myProjectSdkName = element.getAttributeValue(PROJECT_JDK_NAME_ATTR);
     myProjectSdkType = element.getAttributeValue(PROJECT_JDK_TYPE_ATTR);
 
-    Application app = ApplicationManager.getApplication();
-    if (app != null) {
-      app.invokeLater(() -> app.runWriteAction(() -> projectJdkChanged()), app.getNoneModalityState());
+    if (myStateLoaded) {
+      Application app = ApplicationManager.getApplication();
+      if (app != null) {
+        app.invokeLater(() -> app.runWriteAction(() -> projectJdkChanged()), app.getNoneModalityState());
+      }
+    } else {
+      myStateLoaded = true;
     }
+  }
+
+  @Override
+  public void noStateLoaded() {
+    myStateLoaded = true;
   }
 
   @Override
@@ -384,7 +386,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
   @Override
   public void mergeRootsChangesDuring(@NotNull Runnable runnable) {
     ApplicationManager.getApplication().assertWriteAccessAllowed();
-    BatchSession<?, ?> batchSession = myRootsChanged;
+    BatchSession<?> batchSession = myRootsChanged;
     batchSession.levelUp();
     try {
       runnable.run();
@@ -410,7 +412,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
   @Override
   public void makeRootsChange(@NotNull Runnable runnable, boolean fileTypes, boolean fireEvents) {
     if (myProject.isDisposed()) return;
-    BatchSession<?, ?> session = fileTypes ? myFileTypesChanged : myRootsChanged;
+    BatchSession<?> session = fileTypes ? myFileTypesChanged : myRootsChanged;
     try {
       if (fireEvents) session.beforeRootsChanged();
       runnable.run();
@@ -433,7 +435,7 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
   @ApiStatus.Internal
   protected void fireBeforeRootsChangeEvent(boolean fileTypes) { }
 
-  private boolean fireRootsChanged(boolean fileTypes, @NotNull List<? extends RootsChangeIndexingInfo> indexingInfos) {
+  private boolean fireRootsChanged(boolean fileTypes, @Nullable ProjectRootManagerImpl.RootsChangeType cause) {
     if (myProject.isDisposed()) return false;
 
     ApplicationManager.getApplication().assertWriteAccessAllowed();
@@ -444,13 +446,14 @@ public class ProjectRootManagerImpl extends ProjectRootManagerEx implements Pers
 
     incModificationCount();
 
-    fireRootsChangedEvent(fileTypes, indexingInfos);
+    fireRootsChangedEvent(fileTypes, cause);
 
     return true;
   }
 
   @ApiStatus.Internal
-  protected void fireRootsChangedEvent(boolean fileTypes, @NotNull List<? extends RootsChangeIndexingInfo> indexingInfos) { }
+  protected void fireRootsChangedEvent(boolean fileTypes,
+                                       @Nullable ProjectRootManagerImpl.RootsChangeType cause) { }
 
   @ApiStatus.Internal
   protected OrderRootsCache getOrderRootsCache(@NotNull Project project) {

@@ -7,7 +7,7 @@ This is legal if the static member is in
 the same class, but may be confusing.
 </p>
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   class Foo {
     static void foo() {}
     static int x;
@@ -19,9 +19,9 @@ the same class, but may be confusing.
 
     static void baz() { foo(); }
   }
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
+<pre>
   class Foo {
     static void foo() {}
     static int x;
@@ -33,7 +33,7 @@ the same class, but may be confusing.
 
     static void baz() { Foo.foo(); }
   }
-</code></pre>
+</pre>
 <!-- tooltip end -->
 <p>Use the inspection settings to toggle the reporting for the following items:</p>
 <ul>

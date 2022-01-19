@@ -12,7 +12,9 @@ import com.intellij.vcs.log.VcsUser
 import com.intellij.vcs.log.data.VcsLogUserResolver
 import com.intellij.vcs.log.data.VcsLogUserResolverBase
 import com.intellij.vcs.log.util.VcsUserUtil
+import org.jetbrains.annotations.ApiStatus
 
+@ApiStatus.Internal
 internal class VcsLogUserFilterImpl(private val userNames: Collection<String>,
                                     private val resolver: VcsLogUserResolver) : VcsLogUserFilter {
 

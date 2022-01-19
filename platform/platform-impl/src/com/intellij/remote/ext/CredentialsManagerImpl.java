@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.remote.ext;
 
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.remote.CredentialsType;
 import com.intellij.remote.RemoteSdkAdditionalData;
 import org.jdom.Element;
@@ -20,13 +19,7 @@ final class CredentialsManagerImpl extends CredentialsManager {
     for (CredentialsType type : CredentialsType.EP_NAME.getExtensionList()) {
       if (type.hasPrefix(interpreterPath)) {
         Object credentials = type.createCredentials();
-        try {
-          type.getHandler(credentials).load(element);
-        }
-        catch (CredentialsCantBeLoaded e) {
-          Logger.getInstance(CredentialsManagerImpl.class).warn(e);
-          continue;
-        }
+        type.getHandler(credentials).load(element);
         data.setCredentials(type.getCredentialsKey(), credentials);
         return;
       }

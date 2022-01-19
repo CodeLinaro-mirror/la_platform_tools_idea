@@ -404,9 +404,8 @@ public class PyReferenceExpressionImpl extends PyElementImpl implements PyRefere
         PyType qualifierType = context.getType(qualifier);
         boolean possiblyParameterizedQualifier = !(qualifierType instanceof PyModuleType || qualifierType instanceof PyImportedModuleType);
         if (possiblyParameterizedQualifier && PyTypeChecker.hasGenerics(type, context)) {
-          final var substitutions =
-            PyTypeChecker.unifyGenericCallWithParamSpecs(qualifier, Collections.emptyMap(), context);
-          if (substitutions != null) {
+          final Map<PyGenericType, PyType> substitutions = PyTypeChecker.unifyGenericCall(qualifier, Collections.emptyMap(), context);
+          if (!ContainerUtil.isEmpty(substitutions)) {
             final PyType substituted = PyTypeChecker.substitute(type, substitutions, context);
             if (substituted != null) {
               return substituted;

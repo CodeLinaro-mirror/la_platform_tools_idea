@@ -25,13 +25,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ModuleSourceSet {
-  public enum Type {
-    PRODUCTION, TEST, RESOURCES, RESOURCES_TEST;
-
-    public boolean isTest() {
-      return this == TEST || this == RESOURCES_TEST;
-    }
-  }
+  public enum Type { PRODUCTION, TEST }
 
   private final Module myModule;
   private final Type myType;
@@ -72,7 +66,7 @@ public class ModuleSourceSet {
 
   @NotNull
   public @Nls(capitalization = Nls.Capitalization.Sentence) String getDisplayName() {
-    final int choice = myType.isTest()? 1 : 0;
+    final int choice = myType == Type.PRODUCTION ? 0 : 1;
     return JavaCompilerBundle.message("module.sources.set.display.name", choice, myModule.getName());
   }
 

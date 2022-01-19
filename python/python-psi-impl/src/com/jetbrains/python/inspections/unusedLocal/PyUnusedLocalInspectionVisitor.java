@@ -29,7 +29,6 @@ import com.jetbrains.python.psi.impl.*;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.search.PyOverridingMethodsSearch;
 import com.jetbrains.python.psi.search.PySuperMethodsSearch;
-import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.pyi.PyiUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -45,12 +44,12 @@ public final class PyUnusedLocalInspectionVisitor extends PyInspectionVisitor {
   private final HashSet<PsiElement> myUsedElements;
 
   public PyUnusedLocalInspectionVisitor(@NotNull ProblemsHolder holder,
+                                        @NotNull LocalInspectionToolSession session,
                                         boolean ignoreTupleUnpacking,
                                         boolean ignoreLambdaParameters,
                                         boolean ignoreRangeIterationVariables,
-                                        boolean ignoreVariablesStartingWithUnderscore,
-                                        @NotNull TypeEvalContext context) {
-    super(holder, context);
+                                        boolean ignoreVariablesStartingWithUnderscore) {
+    super(holder, session);
     myIgnoreTupleUnpacking = ignoreTupleUnpacking;
     myIgnoreLambdaParameters = ignoreLambdaParameters;
     myIgnoreRangeIterationVariables = ignoreRangeIterationVariables;
@@ -195,7 +194,7 @@ public final class PyUnusedLocalInspectionVisitor extends PyInspectionVisitor {
       final Map<String, PyNames.BuiltinDescription> builtinMethods =
         function.getContainingClass() != null ? PyNames.getBuiltinMethods(level) : PyNames.getModuleBuiltinMethods(level);
 
-      return functionName != null && !PyNames.INIT.equals(functionName) && builtinMethods.containsKey(functionName);
+      return !PyNames.INIT.equals(functionName) && builtinMethods.containsKey(functionName);
     }
 
     return false;

@@ -20,6 +20,7 @@ import com.intellij.util.PairProcessor;
 import com.intellij.util.WalkingState;
 import com.intellij.util.containers.ConcurrentFactoryMap;
 import com.intellij.util.containers.HashingStrategy;
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -200,14 +201,14 @@ public final class SliceLeafAnalyzer {
     }
   }
 
-  private static Collection<PsiElement> node(@NotNull SliceNode node, @NotNull Map<SliceNode, Collection<PsiElement>> map) {
+  private static Collection<PsiElement> node(SliceNode node, Map<SliceNode, Collection<PsiElement>> map) {
     return map.get(node);
   }
 
   @NotNull
   public Collection<PsiElement> calcLeafExpressions(@NotNull final SliceNode root,
-                                                    @NotNull AbstractTreeStructure treeStructure,
-                                                    @NotNull final Map<SliceNode, Collection<PsiElement>> map) {
+                                                           @NotNull AbstractTreeStructure treeStructure,
+                                                           @NotNull final Map<SliceNode, Collection<PsiElement>> map) {
     final SliceNodeGuide guide = new SliceNodeGuide(treeStructure);
     AtomicInteger depth = new AtomicInteger();
     boolean printToLog = LOG.isTraceEnabled();
@@ -238,7 +239,7 @@ public final class SliceLeafAnalyzer {
             if (children.isEmpty() && sliceUsage != null && sliceUsage.canBeLeaf()) {
               PsiElement value = sliceUsage.getElement();
               if (value != null) {
-                node(element, map).add(value);
+                node(element, map).addAll(new ObjectOpenCustomHashSet<>(new PsiElement[]{value}, myLeafEquality));
               }
             }
           });

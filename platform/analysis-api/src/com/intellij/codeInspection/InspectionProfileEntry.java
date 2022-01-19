@@ -21,11 +21,11 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.serialization.SerializationException;
 import com.intellij.util.ResourceUtil;
 import com.intellij.util.ThreeState;
-import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.HashingStrategy;
 import com.intellij.util.xmlb.SerializationFilter;
 import com.intellij.util.xmlb.annotations.Property;
+import it.unimi.dsi.fastutil.Hash;
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import org.jdom.Element;
 import org.jetbrains.annotations.*;
 
@@ -98,7 +98,7 @@ public abstract class InspectionProfileEntry implements BatchSuppressableTool {
     if (element == null) {
       return SuppressQuickFix.EMPTY_ARRAY;
     }
-    Set<SuppressQuickFix> fixes = CollectionFactory.createCustomHashingStrategySet(new HashingStrategy<>() {
+    Set<SuppressQuickFix> fixes = new ObjectOpenCustomHashSet<>(new Hash.Strategy<>() {
       @Override
       public int hashCode(@Nullable SuppressQuickFix object) {
         if (object == null) {
@@ -350,6 +350,7 @@ public abstract class InspectionProfileEntry implements BatchSuppressableTool {
    * @param node to read settings from.
    * @throws InvalidDataException if the loaded data was not valid.
    */
+  @SuppressWarnings("deprecation")
   public void readSettings(@NotNull Element node) {
     if (useNewSerializer()) {
       try {
@@ -360,7 +361,6 @@ public abstract class InspectionProfileEntry implements BatchSuppressableTool {
       }
     }
     else {
-      //noinspection deprecation
       DefaultJDOMExternalizer.readExternal(this, node);
     }
   }

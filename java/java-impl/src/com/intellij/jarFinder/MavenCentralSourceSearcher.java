@@ -2,7 +2,6 @@
 package com.intellij.jarFinder;
 
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.IdeCoreBundle;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -26,7 +25,7 @@ public class MavenCentralSourceSearcher extends SourceSearcher {
                                  @NotNull String version,
                                  @NotNull VirtualFile classesJar) throws SourceSearchException {
     try {
-      indicator.setText(IdeCoreBundle.message("progress.message.connecting.to", "https://search.maven.org"));
+      indicator.setText(IdeBundle.message("progress.message.connecting.to", "https://search.maven.org"));
 
       indicator.checkCanceled();
 

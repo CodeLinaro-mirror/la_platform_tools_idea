@@ -1,4 +1,4 @@
-// "Cast argument to 'double'" "true"
+// "Cast parameter to 'double'" "true"
 class a {
  void test(Double d) {}
  

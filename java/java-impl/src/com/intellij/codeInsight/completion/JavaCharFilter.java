@@ -26,7 +26,6 @@ import com.intellij.patterns.PsiJavaPatterns;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.javadoc.PsiDocComment;
-import com.intellij.psi.javadoc.PsiDocToken;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 
@@ -55,13 +54,6 @@ public class JavaCharFilter extends CharFilter {
       JavaPsiClassReferenceElement typeItem = item.as(JavaPsiClassReferenceElement.class);
       if (typeItem != null && typeItem.getInsertHandler() instanceof JavaClassNameInsertHandler) {
         return Result.SELECT_ITEM_AND_FINISH_LOOKUP;
-      }
-    }
-    if (c == '{' || c == '@') {
-      PsiElement element = lookup.getPsiElement();
-      if (element instanceof PsiDocComment || element instanceof PsiDocToken ||
-          element instanceof PsiWhiteSpace && element.getParent() instanceof PsiDocComment) {
-        return Result.ADD_TO_PREFIX;
       }
     }
     if (c == '!') {

@@ -2,7 +2,6 @@
 package com.intellij.openapi.fileEditor.impl;
 
 import com.intellij.ide.IdeBundle;
-import com.intellij.openapi.fileEditor.UnlockOption;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.NlsContexts;
@@ -19,7 +18,7 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.List;
 
-class NonProjectFileWritingAccessDialog extends DialogWrapper {
+public class NonProjectFileWritingAccessDialog extends DialogWrapper {
   private JPanel myPanel;
   private JLabel myListTitle;
   private JList<VirtualFile> myFileList;
@@ -27,7 +26,7 @@ class NonProjectFileWritingAccessDialog extends DialogWrapper {
   private JRadioButton myUnlockDirButton;
   private JRadioButton myUnlockAllButton;
 
-  NonProjectFileWritingAccessDialog(@NotNull Project project, @NotNull List<? extends VirtualFile> nonProjectFiles) {
+  public NonProjectFileWritingAccessDialog(@NotNull Project project, @NotNull List<? extends VirtualFile> nonProjectFiles) {
     super(project);
     setTitle(IdeBundle.message("dialog.title.non.project.files.protection"));
 
@@ -88,10 +87,10 @@ class NonProjectFileWritingAccessDialog extends DialogWrapper {
     return myPanel;
   }
 
-  public @NotNull UnlockOption getUnlockOption() {
-    if (myUnlockAllButton.isSelected()) return UnlockOption.UNLOCK_ALL;
-    if (myUnlockDirButton.isSelected()) return UnlockOption.UNLOCK_DIR;
-    return UnlockOption.UNLOCK;
+  public @NotNull NonProjectFileWritingAccessProvider.UnlockOption getUnlockOption() {
+    if (myUnlockAllButton.isSelected()) return NonProjectFileWritingAccessProvider.UnlockOption.UNLOCK_ALL;
+    if (myUnlockDirButton.isSelected()) return NonProjectFileWritingAccessProvider.UnlockOption.UNLOCK_DIR;
+    return NonProjectFileWritingAccessProvider.UnlockOption.UNLOCK;
   }
 
   @Override

@@ -15,8 +15,8 @@ import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.containers.CollectionFactory;
-import com.intellij.util.containers.HashingStrategy;
+import gnu.trove.THashSet;
+import gnu.trove.TObjectHashingStrategy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -58,7 +58,7 @@ public final class MagicCompletionContributor extends CompletionContributor impl
   public static MagicConstantUtils.AllowedValues getAllowedValues(@NotNull PsiElement pos) {
     MagicConstantUtils.AllowedValues allowedValues = null;
     for (Pair<PsiModifierListOwner, PsiType> pair : getMembersWithAllowedValues(pos)) {
-      MagicConstantUtils.AllowedValues values = MagicConstantUtils.getAllowedValues(pair.first, pair.second, pos);
+      MagicConstantUtils.AllowedValues values = MagicConstantUtils.getAllowedValues(pair.first, pair.second);
       if (values == null) continue;
       if (allowedValues == null) {
         allowedValues = values;
@@ -89,10 +89,15 @@ public final class MagicCompletionContributor extends CompletionContributor impl
     Set<Pair<PsiModifierListOwner, PsiType>> result = new HashSet<>();
     if (IN_METHOD_CALL_ARGUMENT.accepts(pos)) {
       PsiCall call = PsiTreeUtil.getParentOfType(pos, PsiCall.class);
-      if (call == null) return Collections.emptyList();
+      if (!(call instanceof PsiExpression)) return Collections.emptyList();
+      PsiType type = ((PsiExpression)call).getType();
 
       PsiResolveHelper resolveHelper = JavaPsiFacade.getInstance(call.getProject()).getResolveHelper();
-      JavaResolveResult[] methods = getMethodCandidates(call, resolveHelper);
+      JavaResolveResult[] methods = call instanceof PsiMethodCallExpression
+                                    ? ((PsiMethodCallExpression)call).getMethodExpression().multiResolve(true)
+                                    : call instanceof PsiNewExpression && type instanceof PsiClassType
+                                      ? resolveHelper.multiResolveConstructor((PsiClassType)type, call.getArgumentList(), call)
+                                      : JavaResolveResult.EMPTY_ARRAY;
       for (JavaResolveResult resolveResult : methods) {
         PsiElement element = resolveResult.getElement();
         if (!(element instanceof PsiMethod)) return Collections.emptyList();
@@ -175,33 +180,13 @@ public final class MagicCompletionContributor extends CompletionContributor impl
     return new ArrayList<>(result);
   }
 
-  private static @NotNull JavaResolveResult @NotNull [] getMethodCandidates(PsiCall call, PsiResolveHelper resolveHelper) {
-    if (call instanceof PsiMethodCallExpression) {
-      return ((PsiMethodCallExpression)call).getMethodExpression().multiResolve(true);
-    }
-    if (call instanceof PsiNewExpression) {
-      PsiType type = ((PsiExpression)call).getType();
-      PsiExpressionList argumentList = call.getArgumentList();
-      if (type instanceof PsiClassType && argumentList != null) {
-        return resolveHelper.multiResolveConstructor((PsiClassType)type, argumentList, call);
-      }
-    }
-    if (call instanceof PsiEnumConstant) {
-      JavaResolveResult result = call.resolveMethodGenerics();
-      if (result != JavaResolveResult.EMPTY) {
-        return new JavaResolveResult[]{result};
-      }
-    }
-    return JavaResolveResult.EMPTY_ARRAY;
-  }
-
   private static void addCompletionVariants(@NotNull final CompletionParameters parameters,
                                             @NotNull final CompletionResultSet result,
                                             PsiElement pos,
                                             MagicConstantUtils.AllowedValues allowedValues) {
-    final Set<PsiElement> allowed = CollectionFactory.createCustomHashingStrategySet(new HashingStrategy<>() {
+    final Set<PsiElement> allowed = new THashSet<>(new TObjectHashingStrategy<>() {
       @Override
-      public int hashCode(PsiElement object) {
+      public int computeHashCode(PsiElement object) {
         return 0;
       }
 

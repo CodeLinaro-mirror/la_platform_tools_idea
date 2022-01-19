@@ -20,7 +20,6 @@ import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.RangeMarker;
-import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.options.ex.SingleConfigurableEditor;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.TextRange;
@@ -148,6 +147,11 @@ public class SaveAsTemplateAction extends AnAction {
     Editor editor = CommonDataKeys.EDITOR.getData(dataContext);
     PsiFile file = CommonDataKeys.PSI_FILE.getData(dataContext);
 
-    e.getPresentation().setEnabled(file != null && editor != null && editor.getSelectionModel().hasSelection() && !EditorUtil.contextMenuInvokedOutsideOfSelection(e));
+    if (file == null || editor == null) {
+      e.getPresentation().setEnabled(false);
+    }
+    else {
+      e.getPresentation().setEnabled(editor.getSelectionModel().hasSelection());
+    }
   }
 }

@@ -143,15 +143,11 @@ final class VisualLineFragmentsIterator implements Iterator<VisualLineFragmentsI
       myCurrentX += myView.getPrefixTextWidthInPixels();
     }
     else if (currentOrPrevWrap != null && mySegmentStartOffset == currentOrPrevWrap.getStart()) {
-      myCurrentX += alignToInt(currentOrPrevWrap.getIndentInPixels());
+      myCurrentX += currentOrPrevWrap.getIndentInPixels();
       myCurrentVisualColumn = currentOrPrevWrap.getIndentInColumns();
     }
     myNextWrapOffset = followingWrap == null ? Integer.MAX_VALUE : followingWrap.getStart();
     setInlaysAndFragmentIterator();
-  }
-
-  private double alignToInt(int width) {
-    return PaintUtil.alignToInt(width, myScaleContext);
   }
 
   private void setInlaysAndFragmentIterator() {
@@ -257,7 +253,7 @@ final class VisualLineFragmentsIterator implements Iterator<VisualLineFragmentsI
       myFoldRegion = null;
       myCurrentStartLogicalLine = myCurrentEndLogicalLine;
       Inlay inlay = myInlays.get(myCurrentInlayIndex);
-      myCurrentX += alignToInt(inlay.getWidthInPixels());
+      myCurrentX += PaintUtil.alignToInt(inlay.getWidthInPixels(), myScaleContext);
       myCurrentVisualColumn++;
       myCurrentInlayIndex++;
       if (myCurrentInlayIndex >= myInlays.size() || myInlays.get(myCurrentInlayIndex).getOffset() > inlay.getOffset()) {

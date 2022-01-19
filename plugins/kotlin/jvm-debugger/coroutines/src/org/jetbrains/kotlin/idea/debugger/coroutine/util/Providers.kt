@@ -5,7 +5,6 @@ package org.jetbrains.kotlin.idea.debugger.coroutine.util
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebugSessionListener
-import org.jetbrains.annotations.Nls
 import javax.swing.Icon
 import javax.swing.JComponent
 import kotlin.properties.ReadOnlyProperty
@@ -18,7 +17,7 @@ interface CreateContentParamsProvider {
 data class CreateContentParams(
     val id: String,
     val component: JComponent,
-    @Nls val displayName: String,
+    val displayName: String,
     val icon: Icon?,
     val parentComponent: JComponent
 )

@@ -66,10 +66,6 @@ public class LimitedInputStream extends FilterInputStream {
     return myReadLimit - myBytesRead;
   }
 
-  public int getBytesRead() {
-    return myBytesRead;
-  }
-
   @Override
   public synchronized void mark(final int readLimit) {
     throw new UnsupportedOperationException();

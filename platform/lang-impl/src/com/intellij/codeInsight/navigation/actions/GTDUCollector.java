@@ -1,11 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.navigation.actions;
 
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsEventLogGroup;
 import com.intellij.internal.statistic.eventLog.EventLogGroup;
 import com.intellij.internal.statistic.eventLog.events.*;
 import com.intellij.internal.statistic.service.fus.collectors.CounterUsagesCollector;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -20,20 +19,22 @@ final class GTDUCollector extends CounterUsagesCollector {
 
   private static final EnumEventField<GTDUChoice> CHOICE = EventFields.Enum("choice", GTDUChoice.class);
   private static final ClassEventField NAVIGATION_PROVIDER_CLASS = EventFields.Class("navigation_provider_class");
-  private static final EventLogGroup GROUP = new EventLogGroup("actions.gtdu", 59);
+  private static final EventLogGroup GROUP = new EventLogGroup("actions.gtdu", 58);
 
-  private static final VarargEventId PERFORMED = registerGTDUEvent("performed", CHOICE);
-  private static final VarargEventId NAVIGATED = registerGTDUEvent("navigated", NAVIGATION_PROVIDER_CLASS);
+  private static final VarargEventId PERFORMED = registerGTDUEvent("performed");
+  private static final VarargEventId NAVIGATED = registerGTDUEvent("navigated");
 
   @NotNull
-  private static VarargEventId registerGTDUEvent(String eventId, EventField<?>... extraFields) {
-    EventField<?>[] baseFields = {
+  private static VarargEventId registerGTDUEvent(String eventId) {
+    return GROUP.registerVarargEvent(
+      eventId,
       EventFields.InputEvent,
       EventFields.ActionPlace,
       ActionsEventLogGroup.CONTEXT_MENU,
-      EventFields.CurrentFile
-    };
-    return GROUP.registerVarargEvent(eventId, ArrayUtil.mergeArrays(baseFields, extraFields));
+      EventFields.CurrentFile,
+      CHOICE,
+      NAVIGATION_PROVIDER_CLASS
+    );
   }
 
   static void recordPerformed(@NotNull GTDUChoice choice) {

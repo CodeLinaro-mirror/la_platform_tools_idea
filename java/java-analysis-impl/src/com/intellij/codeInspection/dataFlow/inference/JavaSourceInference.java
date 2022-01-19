@@ -321,9 +321,8 @@ public final class JavaSourceInference {
       return false;
     }
 
-    PsiElement parent = containingClass.getParent();
-    if (parent instanceof PsiNewExpression &&
-        PsiUtil.skipParenthesizedExprUp(parent.getParent()) instanceof PsiVariable &&
+    if (containingClass.getParent() instanceof PsiNewExpression &&
+        containingClass.getParent().getParent() instanceof PsiVariable &&
         !method.getHierarchicalMethodSignature().getSuperSignatures().isEmpty()) {
       // references outside anonymous class can still resolve to this method, see com.intellij.psi.scope.util.PsiScopesUtil.setupAndRunProcessor()
       return false;

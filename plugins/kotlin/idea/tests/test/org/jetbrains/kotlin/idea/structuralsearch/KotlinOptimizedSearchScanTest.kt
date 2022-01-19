@@ -41,6 +41,11 @@ class KotlinOptimizedSearchScanTest : LightQuickFixTestCase() {
         doTest("val foo = 1", "[in code:foo]")
     }
 
+    fun testConstantExpression() {
+        doTest("val '_ = true", "[in code:true]")
+        doTest("val '_ : Int? = null", "[in code:null]")
+    }
+
     fun testDQE() {
         doTest("'_.lifetime", "[in code:lifetime]")
     }

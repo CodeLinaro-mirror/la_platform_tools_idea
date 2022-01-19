@@ -21,6 +21,7 @@ import com.intellij.refactoring.move.moveFilesOrDirectories.MoveFilesOrDirectori
 import com.intellij.refactoring.util.CommonRefactoringUtil;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -149,7 +150,7 @@ public class MoveHandler implements RefactoringActionHandler {
 
   /**
    * Must be invoked in AtomicAction
-   * target container can be null => means that container is not determined yet and must be specified by the user
+   * target container can be null => means that container is not determined yet and must be spacify by the user
    */
   public static boolean canMove(PsiElement @NotNull [] elements, PsiElement targetContainer) {
     return findDelegate(elements, targetContainer, null) != null;

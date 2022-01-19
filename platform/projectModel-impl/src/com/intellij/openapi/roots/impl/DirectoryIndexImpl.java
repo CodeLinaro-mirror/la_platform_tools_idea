@@ -94,6 +94,10 @@ public final class DirectoryIndexImpl extends DirectoryIndex implements Disposab
     });
 
     myConnection.subscribe(AdditionalLibraryRootsListener.TOPIC, (presentableLibraryName, oldRoots, newRoots, libraryNameForDebug) -> {
+      if (new HashSet<>(oldRoots).equals(new HashSet<>(newRoots))) {
+        throw new IllegalStateException("AdditionalLibraryRootsListener.libraryRootsChanged with unchanged roots. " +
+                                        "Consider using com.intellij.openapi.roots.AdditionalLibraryRootsListener.fireAdditionalLibraryChanged");
+      }
       myRootIndex = null;
     });
   }

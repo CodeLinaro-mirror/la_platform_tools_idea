@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 's' is never used
 fun foo(s: String) {}
 
 data class Example(private val str: String) {

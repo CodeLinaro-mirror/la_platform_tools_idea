@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'f' is never used
 
 package test
 

@@ -23,7 +23,6 @@ import java.util.Map;
 public final class PersistentSubIndexerRetriever<SubIndexerType, SubIndexerVersion> implements Closeable {
   private static final String INDEXED_VERSIONS = "indexed_versions";
   private static final int UNINDEXED_STATE = -2;
-  private static final int NULL_SUB_INDEXER = -3;
 
   @NotNull
   private final PersistentSubIndexerVersionEnumerator<SubIndexerVersion> myPersistentVersionEnumerator;
@@ -99,7 +98,7 @@ public final class PersistentSubIndexerRetriever<SubIndexerType, SubIndexerVersi
 
   public int getFileIndexerId(@NotNull IndexedFile file) throws IOException {
     SubIndexerVersion version = getVersion(file);
-    if (version == null) return NULL_SUB_INDEXER;
+    if (version == null) return UNINDEXED_STATE;
     return myPersistentVersionEnumerator.enumerate(version);
   }
 

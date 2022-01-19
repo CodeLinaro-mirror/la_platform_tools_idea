@@ -1,6 +1,3 @@
-// AFTER-WARNING: Parameter 'args' is never used
-// AFTER-WARNING: The expression is unused
-// AFTER-WARNING: The expression is unused
 fun main(args: Array<String>) {
     var a: String? = "A"
     a ?:<caret> "bar"

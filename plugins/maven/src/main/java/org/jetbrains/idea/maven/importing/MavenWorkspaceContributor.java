@@ -18,7 +18,8 @@ package org.jetbrains.idea.maven.importing;
 import com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager;
 import com.intellij.openapi.externalSystem.model.project.ProjectCoordinate;
 import com.intellij.openapi.externalSystem.model.project.ProjectId;
-import com.intellij.openapi.externalSystem.service.project.ExternalSystemWorkspaceContributor;
+import com.intellij.openapi.externalSystem.service.project.ExternalProjectsWorkspaceImpl;
+import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
 import com.intellij.openapi.module.Module;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.model.MavenId;
@@ -28,10 +29,10 @@ import org.jetbrains.idea.maven.project.MavenProjectsManager;
 /**
  * @author Vladislav.Soroka
  */
-public class MavenWorkspaceContributor implements ExternalSystemWorkspaceContributor {
+public class MavenWorkspaceContributor implements ExternalProjectsWorkspaceImpl.Contributor {
   @Nullable
   @Override
-  public ProjectCoordinate findProjectId(Module module) {
+  public ProjectCoordinate findProjectId(Module module, IdeModifiableModelsProvider modelsProvider) {
     if (!ExternalSystemModulePropertyManager.getInstance(module).isMavenized()) {
       return null;
     }

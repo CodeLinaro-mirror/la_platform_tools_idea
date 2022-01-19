@@ -55,12 +55,7 @@ object StatisticsEventLogProviderUtil {
         return true
       }
       val pluginInfo = getPluginInfo(extension::class.java)
-
-      return if (recorderId == "MLSE") {
-        pluginInfo.isDevelopedByJetBrains()
-      } else {
-        pluginInfo.type == PluginType.PLATFORM || pluginInfo.type == PluginType.FROM_SOURCES || pluginInfo.isAllowedToInjectIntoFUS()
-      }
+      return pluginInfo.type == PluginType.PLATFORM || pluginInfo.type == PluginType.FROM_SOURCES || pluginInfo.isAllowedToInjectIntoFUS()
     }
     return false
   }

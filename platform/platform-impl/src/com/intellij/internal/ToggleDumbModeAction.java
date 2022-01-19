@@ -28,7 +28,7 @@ public class ToggleDumbModeAction extends DumbAwareAction {
     }
     else {
       setToggledDumb(project, true);
-      new DumbModeTask(project) {
+      DumbServiceImpl.getInstance(project).queueTask(new DumbModeTask(project) {
         @Override
         public void performInDumbMode(@NotNull ProgressIndicator indicator) {
           indicator.setIndeterminate(true);
@@ -38,7 +38,7 @@ public class ToggleDumbModeAction extends DumbAwareAction {
             TimeoutUtil.sleep(100);
           }
         }
-      }.queue(project);
+      });
     }
   }
 

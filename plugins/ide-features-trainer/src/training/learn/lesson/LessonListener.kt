@@ -2,12 +2,11 @@
 package training.learn.lesson
 
 import training.learn.course.Lesson
-import training.statistic.LessonStartingWay
 import java.util.*
 
 interface LessonListener : EventListener {
 
-  fun lessonStarted(lesson: Lesson, way: LessonStartingWay) {}
+  fun lessonStarted(lesson: Lesson) {}
 
   fun lessonPassed(lesson: Lesson) {}
 

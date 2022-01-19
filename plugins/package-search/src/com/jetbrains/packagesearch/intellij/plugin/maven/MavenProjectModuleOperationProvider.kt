@@ -6,7 +6,10 @@ import com.intellij.psi.PsiFile
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.AbstractProjectModuleOperationProvider
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModule
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModuleType
+import org.jetbrains.idea.maven.project.MavenProjectsManager
 import org.jetbrains.idea.maven.utils.MavenUtil
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 private val MAVEN_CENTRAL_UNIFIED_REPOSITORY = UnifiedDependencyRepository(
     "central",
@@ -15,8 +18,6 @@ private val MAVEN_CENTRAL_UNIFIED_REPOSITORY = UnifiedDependencyRepository(
 )
 
 internal class MavenProjectModuleOperationProvider : AbstractProjectModuleOperationProvider() {
-
-    override fun usesSharedPackageUpdateInspection() = true
 
     override fun hasSupportFor(projectModuleType: ProjectModuleType): Boolean =
         projectModuleType is MavenProjectModuleType

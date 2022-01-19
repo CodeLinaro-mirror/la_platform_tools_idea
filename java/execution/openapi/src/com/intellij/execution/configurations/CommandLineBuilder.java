@@ -8,6 +8,7 @@ import org.jetbrains.annotations.ApiStatus;
 /** @deprecated use {@link SimpleJavaParameters#toCommandLine()} */
 @Deprecated
 @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+@SuppressWarnings("unused")
 public final class CommandLineBuilder {
   private CommandLineBuilder() { }
 

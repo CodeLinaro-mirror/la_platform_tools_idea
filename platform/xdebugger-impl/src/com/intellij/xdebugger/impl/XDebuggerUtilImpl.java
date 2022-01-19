@@ -40,7 +40,6 @@ import com.intellij.ui.SimpleColoredText;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.util.*;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xdebugger.*;
 import com.intellij.xdebugger.breakpoints.*;
 import com.intellij.xdebugger.breakpoints.ui.XBreakpointGroupingRule;
@@ -120,7 +119,7 @@ public class XDebuggerUtilImpl extends XDebuggerUtil {
 
   @Override
   public boolean canPutBreakpointAt(@NotNull Project project, @NotNull VirtualFile file, int line) {
-    return ContainerUtil.exists(getLineBreakpointTypes(), type -> type.canPutAt(file, line, project));
+    return Arrays.stream(getLineBreakpointTypes()).anyMatch(type -> type.canPutAt(file, line, project));
   }
 
   @Override
@@ -149,7 +148,7 @@ public class XDebuggerUtilImpl extends XDebuggerUtil {
     List<Promise<List<? extends XLineBreakpointType.XLineBreakpointVariant>>> promises = new SmartList<>();
     for (XLineBreakpointType type : types) {
       promises.add(type.computeVariantsAsync(project, position).then(o -> {
-        if (((List<?>)o).isEmpty() && types.size() > 1) { // multiple types
+        if (((List)o).isEmpty() && types.size() > 1) { // multiple types
           return Collections.singletonList(type.new XLineBreakpointAllVariant(position) {
             @NotNull
             @Override
@@ -193,7 +192,7 @@ public class XDebuggerUtilImpl extends XDebuggerUtil {
 
     return getLineBreakpointVariants(project, types, position).thenAsync(variants -> {
       final AsyncPromise<XLineBreakpoint> res = new AsyncPromise<>();
-      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), () -> {
+      ModalityUiUtil.invokeLaterIfNeeded(() -> {
         for (XLineBreakpointType<?> type : types) {
           if (breakpointManager.findBreakpointAtLine(type, file, line) != null) {
             return;
@@ -307,7 +306,7 @@ public class XDebuggerUtilImpl extends XDebuggerUtil {
         }
         XLineBreakpointType type = types.get(0);
         insertBreakpoint(type.createBreakpointProperties(file, line), res, breakpointManager, file, line, type, temporary);
-      });
+      }, ModalityState.defaultModalityState());
       return res;
     });
   }
@@ -462,11 +461,7 @@ public class XDebuggerUtilImpl extends XDebuggerUtil {
     return Comparator.comparing(XLineBreakpoint<P>::getFileUrl).thenComparingInt(XLineBreakpoint::getLine);
   }
 
-  /**
-   * @deprecated use {@link XDebugProcess#getEvaluator()}
-   */
   @Nullable
-  @Deprecated
   public static XDebuggerEvaluator getEvaluator(final XSuspendContext suspendContext) {
     XExecutionStack executionStack = suspendContext.getActiveExecutionStack();
     if (executionStack != null) {

@@ -13,9 +13,7 @@ import java.util.Set;
 
 /**
  * @author Alexander Lobas
- * @deprecated use {@link com.intellij.ui.components.panels.VerticalLayout}
  */
-@Deprecated
 public class VerticalLayout extends AbstractLayoutManager {
   @NonNls public static final String FILL_HORIZONTAL = "fill_h";
 

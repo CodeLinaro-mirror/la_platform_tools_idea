@@ -56,6 +56,7 @@ class BunchFileCheckInHandlerFactory : CheckinHandlerFactory() {
                     return panel
                 }
 
+                override fun refresh() {}
                 override fun saveState() {
                     project.bunchFileCheckEnabled = bunchFilesCheckBox.isSelected
                 }

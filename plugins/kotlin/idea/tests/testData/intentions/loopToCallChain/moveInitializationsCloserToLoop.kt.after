@@ -1,7 +1,6 @@
 // WITH_RUNTIME
 // INTENTION_TEXT: "Replace with 'map{}'"
 // IS_APPLICABLE_2: false
-// AFTER-WARNING: Variable 'result' is never used
 import java.util.*
 
 fun foo(list: List<String>) {

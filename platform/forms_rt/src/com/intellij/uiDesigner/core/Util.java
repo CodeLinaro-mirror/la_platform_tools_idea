@@ -105,7 +105,7 @@ public final class Util {
       }
 
       if (eliminated != null) {
-        eliminated.add(Integer.valueOf(cell));
+        eliminated.add(new Integer(cell));
       }
 
       // eliminate cell

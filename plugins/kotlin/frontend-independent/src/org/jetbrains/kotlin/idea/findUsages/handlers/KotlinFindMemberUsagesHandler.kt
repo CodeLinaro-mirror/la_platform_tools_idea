@@ -27,7 +27,6 @@ import com.intellij.psi.search.searches.OverridingMethodsSearch
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.usageView.UsageInfo
 import com.intellij.util.*
-import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.idea.KotlinIndependentBundle
@@ -48,7 +47,6 @@ import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchPar
 import org.jetbrains.kotlin.idea.search.isImportUsage
 import org.jetbrains.kotlin.idea.search.isOnlyKotlinSearch
 import org.jetbrains.kotlin.idea.search.isPotentiallyOperator
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.parameterIndex
@@ -120,7 +118,7 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
             options: FindUsagesOptions
         ): Boolean {
 
-            if (isUnitTestMode() ||
+            if (ApplicationManager.getApplication().isUnitTestMode ||
                 !isPropertyOfDataClass ||
                 psiElement.getDisableComponentAndDestructionSearch(resetSingleFind = false)
             ) return super.processElementUsages(element, processor, options)
@@ -344,13 +342,11 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
 
         private const val DISABLE_ONCE = "DISABLE_ONCE"
         private const val DISABLE = "DISABLE"
-        private val DISABLE_COMPONENT_AND_DESTRUCTION_SEARCH_TEXT
-            @Nls
-            get() = KotlinIndependentBundle.message(
-                "find.usages.text.find.usages.for.data.class.components.and.destruction.declarations",
-                DISABLE_ONCE,
-                DISABLE
-            )
+        private val DISABLE_COMPONENT_AND_DESTRUCTION_SEARCH_TEXT = KotlinIndependentBundle.message(
+            "find.usages.text.find.usages.for.data.class.components.and.destruction.declarations",
+            DISABLE_ONCE,
+            DISABLE
+        )
 
         private const val DISABLE_COMPONENT_AND_DESTRUCTION_SEARCH_TIMEOUT = 5000
 

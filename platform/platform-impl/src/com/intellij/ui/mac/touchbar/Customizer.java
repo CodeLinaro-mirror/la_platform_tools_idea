@@ -3,7 +3,9 @@ package com.intellij.ui.mac.touchbar;
 
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.CompactActionGroup;
 import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.ui.mac.TouchbarDataKeys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,8 +35,6 @@ class Customizer {
     myAct2Parent.clear();
     fillAct2Parent(new ActionGroupInfo(actionGroup, null));
   }
-
-  void onBeforeActionsExpand(@NotNull ActionGroup actionGroup) {}
 
   private void fillAct2Parent(@NotNull ActionGroupInfo actionGroupInfo) {
     @NotNull ActionGroup actionGroup = actionGroupInfo.group;
@@ -95,13 +95,13 @@ class Customizer {
   boolean isPrincipalGroupAction(@NotNull AnAction action) {
     // 1. check parent group
     ActionGroupInfo groupInfo = myAct2Parent.get(action);
-    if (groupInfo != null && groupInfo.hasPrincipalParent()) {
+    if (groupInfo != null && groupInfo.hasMainGroupParent()) {
       return true;
     }
 
-    // 2. check action customizations descriptor
+    // 2. check action descriptor
     Object descriptor = myAct2Descriptor.get(action);
-    return descriptor instanceof TouchbarActionCustomizations && ((TouchbarActionCustomizations)descriptor).isPrincipal();
+    return descriptor instanceof TouchbarDataKeys.DlgButtonDesc && ((TouchbarDataKeys.DlgButtonDesc)descriptor).isMainGroup();
   }
 
   //
@@ -143,20 +143,24 @@ class Customizer {
     final @NotNull ActionGroup group;
     final @NotNull String groupID;
     final @Nullable ActionGroupInfo parent;
-    final @Nullable TouchbarActionCustomizations groupC;
+    final @Nullable TouchbarDataKeys.ActionDesc groupDesc;
 
     ActionGroupInfo(@NotNull ActionGroup group, @Nullable ActionGroupInfo parent) {
       this.group = group;
       this.parent = parent;
       this.groupID = Helpers.getActionId(group);
-      this.groupC = TouchbarActionCustomizations.getCustomizations(group);
+      this.groupDesc = group.getTemplatePresentation().getClientProperty(TouchbarDataKeys.ACTIONS_DESCRIPTOR_KEY);
     }
 
-    @Nullable TouchbarActionCustomizations getCustomizations() { return groupC; }
+    boolean isCompact() { return group instanceof CompactActionGroup; }
 
-    boolean hasPrincipalParent() {
+    @NotNull String getGroupID() { return groupID; }
+
+    @Nullable TouchbarDataKeys.ActionDesc getDesc() { return groupDesc; }
+
+    boolean hasMainGroupParent() {
       for (ActionGroupInfo p = this; p != null; p = p.parent) {
-        if (p.groupC != null && p.groupC.isPrincipal()) {
+        if (p.groupDesc != null && p.groupDesc.isMainGroup()) {
           return true;
         }
       }

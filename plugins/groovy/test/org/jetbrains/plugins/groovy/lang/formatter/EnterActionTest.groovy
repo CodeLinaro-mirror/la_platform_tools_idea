@@ -324,46 +324,6 @@ switch(x) {
 }"""
   }
 
-  void testWrapInSwitchBlock() {
-    doTest """
-switch(x) {
-  case 0 -> {<caret>}
-}
-""", """
-switch(x) {
-  case 0 -> {
-    <caret>
-  }
-}
-"""
-  }
-
-  void testWrapAfterSwitchArrowedExpression() {
-    doTest """
-switch(x) {
-  case 0 -> zzz<caret>
-}
-""", """
-switch(x) {
-  case 0 -> zzz
-  <caret>
-}
-"""
-  }
-
-  void testWrapInSwitchExpressionList() {
-    doTest """
-switch(x) {
-  case 0, <caret>10 -> zzz
-}
-""", """
-switch(x) {
-  case 0, 
-      <caret>10 -> zzz
-}
-"""
-  }
-
   void testAlmostBeforeClosingClosureBrace() throws Throwable {
     doTest  """
 def c = { a ->
@@ -445,7 +405,7 @@ def c = { a ->
 } }
 '''
   }
-
+  
   void testGeese3() {
     myTempSettings.getCustomSettings(GroovyCodeStyleSettings).USE_FLYING_GEESE_BRACES = true
     doTest '''\

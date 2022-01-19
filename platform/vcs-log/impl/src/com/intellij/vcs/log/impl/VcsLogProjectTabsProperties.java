@@ -6,6 +6,7 @@ import com.intellij.openapi.components.*;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.util.xmlb.annotations.Tag;
 import com.intellij.util.xmlb.annotations.XCollection;
+import com.intellij.vcs.log.util.FilterConfigMigrationUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -36,6 +37,17 @@ public final class VcsLogProjectTabsProperties implements PersistentStateCompone
   @Override
   public void loadState(@NotNull State state) {
     myState = state;
+
+    if (!myState.oldMeFiltersMigrated) {
+      // migrate "me" to "*" for recent user filters
+      FilterConfigMigrationUtil.migrateRecentUserFilters(myState.RECENT_FILTERS);
+
+      // migrate "me" to "*" for user filters in tabs
+      myState.TAB_STATES.values().forEach(tabState -> {
+        FilterConfigMigrationUtil.migrateTabUserFilters(tabState.FILTERS);
+      });
+      myState.oldMeFiltersMigrated = true;
+    }
   }
 
   @Override
@@ -91,6 +103,8 @@ public final class VcsLogProjectTabsProperties implements PersistentStateCompone
     public Map<String, MyState> TAB_STATES = new TreeMap<>();
     public LinkedHashMap<String, VcsLogManager.LogWindowKind> OPEN_GENERIC_TABS = new LinkedHashMap<>();
     public Map<String, List<RecentGroup>> RECENT_FILTERS = new HashMap<>();
+
+    public boolean oldMeFiltersMigrated = false;
   }
 
   public static class RecentGroup {

@@ -15,7 +15,6 @@
  */
 package com.intellij.openapi.roots.ui.configuration.libraryEditor;
 
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.roots.libraries.LibraryProperties;
 import com.intellij.openapi.roots.libraries.LibraryType;
 import com.intellij.openapi.roots.libraries.ui.LibraryEditorComponent;
@@ -31,13 +30,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 public abstract class LibraryPropertiesEditorBase<P extends LibraryProperties, T extends LibraryType<P>> extends LibraryPropertiesEditor {
-  protected final Logger logger = Logger.getInstance(getClass());
-
-  private boolean myModified;
   private JPanel myMainPanel;
   private JLabel myDescriptionLabel;
   private JButton myEditButton;
-  protected JButton myReloadButton;
+  private boolean myModified;
   protected final LibraryEditorComponent<P> myEditorComponent;
   protected final T myLibraryType;
 

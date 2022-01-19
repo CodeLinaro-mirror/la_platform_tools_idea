@@ -3,7 +3,6 @@ package com.intellij.remoteServer.impl.runtime.clientLibrary;
 
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.RoamingType;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.Pair;
@@ -25,9 +24,7 @@ import java.util.*;
 /**
  * @author michael.golubev
  */
-@State(
-  name = "RemoteServerClientLibraries",
-  storages = @Storage(value = "remote-server-client-libraries.xml", roamingType = RoamingType.DISABLED))
+@State(name = "RemoteServerClientLibraries", storages = @Storage("remote-server-client-libraries.xml"))
 public class ClientLibraryManagerImpl extends ClientLibraryManager implements PersistentStateComponent<ClientLibraryManagerImpl.State> {
   private Map<String, List<File>> myFiles = new LinkedHashMap<>();
 

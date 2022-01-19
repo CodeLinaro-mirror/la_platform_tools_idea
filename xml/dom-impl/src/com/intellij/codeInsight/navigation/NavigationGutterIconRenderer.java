@@ -17,7 +17,6 @@ package com.intellij.codeInsight.navigation;
 
 import com.intellij.codeInsight.daemon.GutterIconNavigationHandler;
 import com.intellij.codeInsight.hint.HintUtil;
-import com.intellij.codeWithMe.ClientId;
 import com.intellij.ide.util.PsiElementListCellRenderer;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -150,8 +149,7 @@ public abstract class NavigationGutterIconRenderer extends GutterIconRenderer
     Component component = event.getComponent();
     Runnable loadingRemover = component instanceof EditorGutterComponentEx ?
                               ((EditorGutterComponentEx)component).setLoadingIconForCurrentGutterMark() : null;
-    AppExecutorUtil.getAppExecutorService().execute(ClientId.decorateRunnable(() -> {
-
+    AppExecutorUtil.getAppExecutorService().execute(() -> {
       ProgressManager.getInstance().computePrioritized(() -> {
         ProgressManager.getInstance().executeProcessUnderProgress(() -> {
           Ref<List<PsiElement>> targets = Ref.create();
@@ -168,7 +166,7 @@ public abstract class NavigationGutterIconRenderer extends GutterIconRenderer
         }, new EmptyProgressIndicator());
         return null;
       });
-    }));
+    });
   }
 
   private void navigateTargets(@Nullable MouseEvent event, List<PsiElement> targets) {

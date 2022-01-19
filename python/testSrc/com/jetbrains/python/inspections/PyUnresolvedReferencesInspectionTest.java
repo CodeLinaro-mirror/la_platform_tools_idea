@@ -511,7 +511,7 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
   public void testBuiltinListGetItem() {
     doTest();
   }
-
+  
   // PY-13395
   public void testPropertyNotListedInSlots() {
     doTest();
@@ -776,19 +776,14 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
 
   // PY-29929
   public void testAttrsSpecialAttribute() {
-    runWithAdditionalClassEntryInSdkRoots(
-      "packages",
-      () -> doTestByText(
-        "import attr\n" +
-        "\n" +
-        "@attr.s\n" +
-        "class C:\n" +
-        "    a = attr.ib()\n" +
-        "\n" +
-        "print(C.__attrs_attrs__)\n" +
-        "print(C(1).__attrs_attrs__)"
-      )
-    );
+    doTestByText("import attr\n" +
+                 "\n" +
+                 "@attr.s\n" +
+                 "class C:\n" +
+                 "    a = attr.ib()\n" +
+                 "\n" +
+                 "print(C.__attrs_attrs__)\n" +
+                 "print(C(1).__attrs_attrs__)");
   }
 
   // PY-32927
@@ -884,11 +879,6 @@ public class PyUnresolvedReferencesInspectionTest extends PyInspectionTestCase {
       Registry.get("enable.numpy.pyi.stubs").setValue(true, getTestRootDisposable());
     }
     doMultiFileTest();
-  }
-
-  // PY-48012
-  public void testUnresolvedKeywordPattern() {
-    runWithLanguageLevel(LanguageLevel.PYTHON310, this::doTest);
   }
 
   @NotNull

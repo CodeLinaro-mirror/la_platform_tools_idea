@@ -7,7 +7,6 @@ import com.intellij.ide.ui.UISettings;
 import com.intellij.internal.inspector.UiInspectorUtil;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.ActionPopupMenu;
@@ -163,8 +162,8 @@ final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationActivatio
       //noinspection RedundantSuppression
       if (Registry.is("ide.diagnostics.show.context.menu.invocation.time")) {
         long time = System.currentTimeMillis() - IdeEventQueue.getInstance().getPopupTriggerTime();
-        //noinspection HardCodedStringLiteral
-        new Notification(Notifications.SYSTEM_MESSAGES_GROUP_ID, "Context menu invocation took " + time + "ms", NotificationType.INFORMATION).notify(null);
+        //noinspection HardCodedStringLiteral, UnresolvedPluginConfigReference
+        new Notification("", "Context menu invocation took " + time + "ms", NotificationType.INFORMATION).notify(null);
       }
     }
 

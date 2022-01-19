@@ -33,6 +33,7 @@ import org.jetbrains.jps.incremental.GlobalContextKey;
 import javax.tools.Diagnostic;
 import java.io.File;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -92,8 +93,14 @@ public class ExternalJavacManager extends ProcessAdapter {
                                      compilationRequestsHandler);
         }
       });
-    myChannelRegistrar.add(bootstrap.bind(InetAddress.getLoopbackAddress(), listenPort).syncUninterruptibly().channel());
-    myListenPort = listenPort;
+    try {
+      final InetAddress loopback = InetAddress.getByName(null);
+      myChannelRegistrar.add(bootstrap.bind(loopback, listenPort).syncUninterruptibly().channel());
+      myListenPort = listenPort;
+    }
+    catch (UnknownHostException e) {
+      throw new RuntimeException(e);
+    }
   }
 
 
@@ -336,7 +343,7 @@ public class ExternalJavacManager extends ProcessAdapter {
 
     appendParam(cmdLine, ExternalJavacProcess.class.getName());
     appendParam(cmdLine, processId.toString());
-    appendParam(cmdLine, InetAddress.getLoopbackAddress().getHostAddress());
+    appendParam(cmdLine, "127.0.0.1");
     appendParam(cmdLine, Integer.toString(port));
     appendParam(cmdLine, Boolean.toString(keepProcessAlive));  // keep in memory after build finished
 
@@ -407,14 +414,11 @@ public class ExternalJavacManager extends ProcessAdapter {
             }
           }
         }
-        final String msg = prefix + ": " + text;
         if (consumers != null) {
+          final String msg = prefix + ": " + text;
           for (DiagnosticOutputConsumer consumer : consumers) {
             consumer.outputLineAvailable(msg);
           }
-        }
-        else {
-          LOG.info(msg.trim());
         }
       }
     }
@@ -530,27 +534,27 @@ public class ExternalJavacManager extends ProcessAdapter {
               myConnections.put(msgUuid, channel);
               myConnections.notifyAll();
             }
-            return;
           }
-        }
-
-        if (handler != null) {
-          final boolean terminateOk = handler.handleMessage(message);
-          if (terminateOk) {
-            session.setDone();
-            mySessions.remove(session.getId());
-            final ExternalJavacProcessHandler process = myRunningProcesses.get(session.getProcessId());
-            if (process != null) {
-              process.unlock();
+          else if (handler != null) {
+            final boolean terminateOk = handler.handleMessage(message);
+            if (terminateOk) {
+              session.setDone();
+              mySessions.remove(session.getId());
+              final ExternalJavacProcessHandler process = myRunningProcesses.get(session.getProcessId());
+              if (process != null) {
+                process.unlock();
+              }
+            }
+            else if (session.isCancelRequested()) {
+              reply = JavacProtoUtil.toMessage(msgUuid, JavacProtoUtil.createCancelRequest());
             }
           }
-          else if (session.isCancelRequested()) {
+          else {
             reply = JavacProtoUtil.toMessage(msgUuid, JavacProtoUtil.createCancelRequest());
           }
         }
         else {
-          LOG.info("No message handler is registered to handle message " + messageType.name() + "; canceling the process");
-          reply = JavacProtoUtil.toMessage(msgUuid, JavacProtoUtil.createCancelRequest());
+          reply = JavacProtoUtil.toMessage(msgUuid, JavacProtoUtil.createFailure("Unsupported message: " + messageType.name(), null));
         }
       }
       finally {

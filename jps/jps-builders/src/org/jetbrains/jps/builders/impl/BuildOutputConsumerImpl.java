@@ -17,7 +17,7 @@ package org.jetbrains.jps.builders.impl;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.util.containers.CollectionFactory;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.jps.builders.BuildOutputConsumer;
 import org.jetbrains.jps.builders.BuildTarget;
@@ -30,7 +30,6 @@ import org.jetbrains.jps.incremental.messages.FileGeneratedEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Set;
 
 /**
 * @author Eugene Zhuravlev
@@ -41,7 +40,7 @@ public class BuildOutputConsumerImpl implements BuildOutputConsumer {
   private final CompileContext myContext;
   private final FileGeneratedEvent myFileGeneratedEvent;
   private final Collection<File> myOutputs;
-  private final Set<String> myRegisteredSources = CollectionFactory.createFilePathSet();
+  private final THashSet<String> myRegisteredSources = new THashSet<>(FileUtil.PATH_HASHING_STRATEGY);
 
   public BuildOutputConsumerImpl(BuildTarget<?> target, CompileContext context) {
     myTarget = target;

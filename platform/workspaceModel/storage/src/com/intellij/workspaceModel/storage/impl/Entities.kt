@@ -5,7 +5,6 @@ import com.intellij.util.ReflectionUtil
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.ModifiableModuleEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleDependencyItem
-import com.intellij.workspaceModel.storage.impl.indices.WorkspaceMutableIndex
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
@@ -98,7 +97,7 @@ abstract class WorkspaceEntityBase : ReferableWorkspaceEntity, Any() {
   override lateinit var entitySource: EntitySource
     internal set
 
-  internal var id: EntityId = 0
+  internal lateinit var id: EntityId
 
   internal lateinit var snapshot: AbstractEntityStorage
 
@@ -140,7 +139,6 @@ abstract class WorkspaceEntityBase : ReferableWorkspaceEntity, Any() {
     other as WorkspaceEntityBase
 
     if (id != other.id) return false
-    if (this.snapshot.entityDataById(id) !== other.snapshot.entityDataById(other.id)) return false
 
     return true
   }
@@ -168,10 +166,16 @@ abstract class ModifiableWorkspaceEntityBase<T : WorkspaceEntityBase> : Workspac
   internal fun getEntityClass(): KClass<T> = ClassConversion.modifiableEntityToEntity(this::class)
 }
 
+internal data class EntityId(val arrayId: Int, val clazz: Int) {
+  init {
+    if (arrayId < 0) error("ArrayId cannot be negative: $arrayId")
+  }
+
+  override fun toString(): String = clazz.findEntityClass<WorkspaceEntity>().simpleName + "-:-" + arrayId.toString()
+}
+
 interface SoftLinkable {
   fun getLinks(): Set<PersistentEntityId<*>>
-  fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>)
-  fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>)
   fun updateLink(oldLink: PersistentEntityId<*>, newLink: PersistentEntityId<*>): Boolean
 }
 
@@ -179,7 +183,7 @@ abstract class WorkspaceEntityData<E : WorkspaceEntity> : Cloneable {
   lateinit var entitySource: EntitySource
   var id: Int = -1
 
-  internal fun createEntityId(): EntityId = createEntityId(id, ClassConversion.entityDataToEntity(javaClass).toClassId())
+  internal fun createEntityId(): EntityId = EntityId(id, ClassConversion.entityDataToEntity(this.javaClass).toClassId())
 
   abstract fun createEntity(snapshot: WorkspaceEntityStorage): E
 
@@ -191,13 +195,13 @@ abstract class WorkspaceEntityData<E : WorkspaceEntity> : Cloneable {
 
   fun addMetaData(res: E, snapshot: WorkspaceEntityStorage, classId: Int) {
     (res as WorkspaceEntityBase).entitySource = entitySource
-    (res as WorkspaceEntityBase).id = createEntityId(id, classId)
+    (res as WorkspaceEntityBase).id = EntityId(id, classId)
     (res as WorkspaceEntityBase).snapshot = snapshot as AbstractEntityStorage
   }
 
   internal fun wrapAsModifiable(diff: WorkspaceEntityStorageBuilderImpl): ModifiableWorkspaceEntity<E> {
     val returnClass = ClassConversion.entityDataToModifiableEntity(this::class)
-    val res = returnClass.java.getDeclaredConstructor().newInstance()
+    val res = returnClass.java.newInstance()
     res as ModifiableWorkspaceEntityBase
     res.original = this
     res.diff = diff
@@ -206,7 +210,6 @@ abstract class WorkspaceEntityData<E : WorkspaceEntity> : Cloneable {
     return res
   }
 
-  @Suppress("UNCHECKED_CAST")
   public override fun clone(): WorkspaceEntityData<E> = super.clone() as WorkspaceEntityData<E>
 
   override fun equals(other: Any?): Boolean {
@@ -250,10 +253,13 @@ abstract class WorkspaceEntityData<E : WorkspaceEntity> : Cloneable {
   abstract class WithCalculablePersistentId<E : WorkspaceEntity> : WorkspaceEntityData<E>() {
     abstract fun persistentId(): PersistentEntityId<*>
   }
+
+  abstract class WithPersistentId<E : WorkspaceEntity> : WorkspaceEntityData<E>()
 }
 
-fun WorkspaceEntityData<*>.persistentId(): PersistentEntityId<*>? = when (this) {
+fun WorkspaceEntityData<*>.persistentId(snapshot: WorkspaceEntityStorage): PersistentEntityId<*>? = when (this) {
   is WorkspaceEntityData.WithCalculablePersistentId -> this.persistentId()
+  is WorkspaceEntityData.WithPersistentId -> (this.createEntity(snapshot) as WorkspaceEntityWithPersistentId).persistentId()
   else -> null
 }
 
@@ -261,7 +267,6 @@ class EntityDataDelegation<A : ModifiableWorkspaceEntityBase<*>, B> : ReadWriteP
   override fun getValue(thisRef: A, property: KProperty<*>): B {
     val field = thisRef.original.javaClass.getDeclaredField(property.name)
     field.isAccessible = true
-    @Suppress("UNCHECKED_CAST")
     return field.get(thisRef.original) as B
   }
 
@@ -279,7 +284,6 @@ class ModuleDependencyEntityDataDelegation : ReadWriteProperty<ModifiableModuleE
   override fun getValue(thisRef: ModifiableModuleEntity, property: KProperty<*>): List<ModuleDependencyItem> {
     val field = thisRef.original.javaClass.getDeclaredField(property.name)
     field.isAccessible = true
-    @Suppress("UNCHECKED_CAST")
     return field.get(thisRef.original) as List<ModuleDependencyItem>
   }
 

@@ -2,7 +2,6 @@
 package com.intellij.openapi.wm.impl;
 
 import com.intellij.openapi.actionSystem.ActionToolbar;
-import com.intellij.ui.content.ContentManager;
 
 import javax.swing.*;
 
@@ -21,8 +20,4 @@ public abstract class InternalDecorator extends JPanel {
   public abstract void setHeaderVisible(boolean value);
 
   public abstract boolean isHeaderVisible();
-
-  public ContentManager getContentManager() {
-    return null;
-  }
 }

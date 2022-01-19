@@ -5,7 +5,6 @@ import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
@@ -13,7 +12,6 @@ import com.intellij.openapi.editor.impl.EditorImpl;
 import com.intellij.openapi.editor.impl.event.MarkupModelListener;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
-import com.intellij.openapi.wm.impl.InternalDecoratorImpl;
 import com.intellij.ui.CollectionComboBoxModel;
 import com.intellij.ui.EditorComboBoxEditor;
 import com.intellij.ui.EditorComboBoxRenderer;
@@ -24,6 +22,7 @@ import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.evaluation.EvaluationMode;
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider;
+import com.intellij.xdebugger.impl.XDebuggerHistoryManager;
 import com.intellij.xdebugger.impl.breakpoints.XExpressionImpl;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -73,7 +72,7 @@ public class XDebuggerExpressionComboBox extends XDebuggerEditorBase {
   @Override
   @Nullable
   public Editor getEditor() {
-    return myEditor.getEditorTextField().getEditor(true);
+    return myEditor.getEditorTextField().getEditor();
   }
 
   @Override
@@ -102,7 +101,7 @@ public class XDebuggerExpressionComboBox extends XDebuggerEditorBase {
     myComboBox.setEditor(myEditor);
     //myEditor.setItem(myExpression);
     myComboBox.setRenderer(new EditorComboBoxRenderer(myEditor));
-    myComboBox.setMaximumRowCount(10);
+    myComboBox.setMaximumRowCount(XDebuggerHistoryManager.MAX_RECENT_EXPRESSIONS);
   }
 
   @Override
@@ -192,16 +191,6 @@ public class XDebuggerExpressionComboBox extends XDebuggerEditorBase {
         }
       };
       myDelegate.getEditorComponent().setFontInheritedFromLAF(false);
-      myDelegate.getEditorComponent().addPropertyChangeListener("ancestor", evt -> {
-        if (evt.getNewValue() == null) {
-          // Workaround for IDEA-273987, IDEA-278153
-          var editor = myDelegate.getEditor();
-          if (editor != null && !editor.isDisposed() &&
-              SwingUtilities.getAncestorOfClass(InternalDecoratorImpl.class, editor.getComponent()) != null) {
-            EditorFactory.getInstance().releaseEditor(editor);
-          }
-        }
-      });
       JComponent comp = myDelegate.getEditorComponent();
       if (languageInside) {
         comp = addChooser(comp);

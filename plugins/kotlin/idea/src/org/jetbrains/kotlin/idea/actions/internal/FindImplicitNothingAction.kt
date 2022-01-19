@@ -5,6 +5,7 @@ package org.jetbrains.kotlin.idea.actions.internal
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
@@ -25,7 +26,6 @@ import org.jetbrains.kotlin.builtins.isFunctionType
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
-import org.jetbrains.kotlin.idea.util.application.isApplicationInternalMode
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
@@ -44,7 +44,7 @@ class FindImplicitNothingAction : AnAction() {
 
         ProgressManager.getInstance().runProcessWithProgressSynchronously(
             { find(selectedFiles, project) },
-            KotlinBundle.message("progress.finding.implicit.nothing.s"),
+            KotlinBundle.message("finding.implicit.nothing.s"),
             true,
             project
         )
@@ -125,9 +125,8 @@ class FindImplicitNothingAction : AnAction() {
     }
 
     override fun update(e: AnActionEvent) {
-        val internalMode = isApplicationInternalMode()
-        e.presentation.isVisible = internalMode
-        e.presentation.isEnabled = internalMode
+        e.presentation.isVisible = ApplicationManager.getApplication().isInternal
+        e.presentation.isEnabled = ApplicationManager.getApplication().isInternal
     }
 
     private fun selectedKotlinFiles(e: AnActionEvent): Sequence<KtFile> {

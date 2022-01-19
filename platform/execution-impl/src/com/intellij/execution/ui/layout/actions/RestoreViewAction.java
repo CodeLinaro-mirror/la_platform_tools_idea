@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-public class RestoreViewAction extends DumbAwareToggleAction implements ViewLayoutModificationAction {
+public class RestoreViewAction extends DumbAwareToggleAction {
 
   private final RunnerContentUi myUi;
   private final Content myContent;
@@ -44,7 +44,7 @@ public class RestoreViewAction extends DumbAwareToggleAction implements ViewLayo
     }
   }
 
-  public @NotNull Content getContent() {
+  public Content getContent() {
     return myContent;
   }
 }

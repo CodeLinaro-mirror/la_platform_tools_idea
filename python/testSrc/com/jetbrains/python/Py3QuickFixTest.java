@@ -16,7 +16,6 @@
 package com.jetbrains.python;
 
 import com.intellij.codeInsight.intention.IntentionAction;
-import com.intellij.codeInspection.LocalInspectionTool;
 import com.intellij.testFramework.TestDataFile;
 import com.intellij.testFramework.TestDataPath;
 import com.jetbrains.python.fixtures.PyTestCase;
@@ -175,7 +174,7 @@ public class Py3QuickFixTest extends PyTestCase {
     return PythonTestUtil.getTestDataPath() + "/inspections/";
   }
 
-  private void doInspectionTest(@NotNull Class<? extends LocalInspectionTool> inspectionClass,
+  private void doInspectionTest(@NotNull Class inspectionClass,
                                 @NotNull String quickFixName,
                                 boolean applyFix,
                                 boolean available) {
@@ -183,7 +182,7 @@ public class Py3QuickFixTest extends PyTestCase {
   }
 
   protected void doInspectionTest(@TestDataFile @NonNls @NotNull String testFileName,
-                                  @NotNull Class<? extends LocalInspectionTool> inspectionClass,
+                                  @NotNull Class inspectionClass,
                                   @NonNls @NotNull String quickFixName,
                                   boolean applyFix,
                                   boolean available) {
@@ -198,9 +197,10 @@ public class Py3QuickFixTest extends PyTestCase {
    * @param quickFixName    how the resulting fix should be named (the human-readable name users see)
    * @param applyFix        true if the fix needs to be applied
    * @param available       true if the fix should be available, false if it should be explicitly not available.
+   * @throws Exception
    */
   protected void doInspectionTest(@NonNls String @NotNull [] testFiles,
-                                  @NotNull Class<? extends LocalInspectionTool> inspectionClass,
+                                  @NotNull Class inspectionClass,
                                   @NonNls @NotNull String quickFixName,
                                   boolean applyFix,
                                   boolean available) {
@@ -210,10 +210,10 @@ public class Py3QuickFixTest extends PyTestCase {
     final List<IntentionAction> intentionActions = myFixture.filterAvailableIntentions(quickFixName);
     if (available) {
       if (intentionActions.isEmpty()) {
-        throw new AssertionError("Quickfix \"" + quickFixName + "\" is not available. All quickfixes:\n"+myFixture.getAvailableIntentions());
+        throw new AssertionError("Quickfix \"" + quickFixName + "\" is not available");
       }
       if (intentionActions.size() > 1) {
-        throw new AssertionError("There are more than one quickfix with the name \"" + quickFixName + "\". All quickfixes:\n"+myFixture.getAvailableIntentions());
+        throw new AssertionError("There are more than one quickfix with the name \"" + quickFixName + "\"");
       }
       if (applyFix) {
         myFixture.launchAction(intentionActions.get(0));

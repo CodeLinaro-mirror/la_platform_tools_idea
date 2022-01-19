@@ -1,18 +1,16 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins.newui;
 
-import com.intellij.application.options.RegistryManager;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.plugins.*;
-import com.intellij.ide.plugins.org.PluginManagerFilters;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Ref;
-import com.intellij.openapi.util.text.HtmlChunk;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.Gray;
@@ -54,9 +52,7 @@ public class ListPluginComponent extends JPanel {
   private final MyPluginModel myPluginModel;
   private final LinkListener<Object> mySearchListener;
   private final boolean myMarketplace;
-  private final boolean myIsAllowed;
   private @NotNull IdeaPluginDescriptor myPlugin;
-  private @NotNull PluginsGroup myGroup;
   private boolean myOnlyUpdateMode;
   public IdeaPluginDescriptor myUpdateDescriptor;
 
@@ -77,22 +73,19 @@ public class ListPluginComponent extends JPanel {
   private LicensePanel myLicensePanel;
   private LicensePanel myUpdateLicensePanel;
   private JPanel myErrorPanel;
-  private ErrorComponent myErrorComponent;
+  private JComponent myErrorComponent;
   private OneLineProgressIndicator myIndicator;
   private EventHandler myEventHandler;
   protected @NotNull EventHandler.SelectionType mySelection = EventHandler.SelectionType.NONE;
 
   public ListPluginComponent(@NotNull MyPluginModel pluginModel,
                              @NotNull IdeaPluginDescriptor plugin,
-                             @NotNull PluginsGroup group,
                              @NotNull LinkListener<Object> searchListener,
                              boolean marketplace) {
     myPlugin = plugin;
-    myGroup = group;
     myPluginModel = pluginModel;
     mySearchListener = searchListener;
     myMarketplace = marketplace;
-    myIsAllowed = PluginManagerFilters.getInstance().isPluginAllowed(!marketplace, plugin);
     pluginModel.addComponent(this);
 
     setOpaque(true);
@@ -107,17 +100,12 @@ public class ListPluginComponent extends JPanel {
     myLayout.setNameComponent(RelativeFont.BOLD.install(myNameComponent));
 
     createTag();
-
-    if (myIsAllowed) {
-      createButtons();
-      createMetricsPanel();
-      createLicensePanel();
-    } else {
-      createNotAllowedMarker();
-    }
+    createButtons();
+    createMetricsPanel();
+    createLicensePanel();
 
     if (marketplace) {
-      updateIcon(false, !myIsAllowed);
+      updateIcon(false, false);
     }
     else {
       updateErrors();
@@ -127,8 +115,6 @@ public class ListPluginComponent extends JPanel {
     }
     updateColors(EventHandler.SelectionType.NONE);
   }
-
-  @NotNull PluginsGroup getGroup() { return myGroup; }
 
   @NotNull EventHandler.SelectionType getSelection() {
     return mySelection;
@@ -174,32 +160,6 @@ public class ListPluginComponent extends JPanel {
     }
   }
 
-  private void createNotAllowedMarker() {
-    myInstallButton = new InstallButton(false);
-    setupNotAllowedMarkerButton();
-    myLayout.addButtonComponent(myInstallButton);
-  }
-
-  private void setupNotAllowedMarkerButton() {
-    if (myMarketplace || myPluginModel.getState(myPlugin).isDisabled()) {
-      myInstallButton.setButtonColors(false);
-      myInstallButton.setEnabled(false, IdeBundle.message("plugin.status.not.allowed"));
-      myInstallButton.setToolTipText(IdeBundle.message("plugin.status.not.allowed.tooltip"));
-    } else {
-      myInstallButton.setButtonColors(false);
-      myInstallButton.setEnabled(true, IdeBundle.message("plugin.status.not.allowed.but.enabled"));
-      myInstallButton.setText(IdeBundle.message("plugin.status.not.allowed.but.enabled"));
-      myInstallButton.setToolTipText(IdeBundle.message("plugin.status.not.allowed.tooltip"));
-      myInstallButton.setBorderColor(JBColor.red);
-      myInstallButton.setTextColor(JBColor.red);
-      myInstallButton.addActionListener(e -> {
-        myPluginModel.disable(List.of(myPlugin));
-        setupNotAllowedMarkerButton();
-      });
-    }
-    ColorButton.setWidth72(myInstallButton);
-  }
-
   private void createButtons() {
     if (myMarketplace) {
       if (InstalledPluginsState.getInstance().wasInstalled(myPlugin.getPluginId())) {
@@ -229,8 +189,8 @@ public class ListPluginComponent extends JPanel {
           myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel));
         }
         else {
-          if (DynamicPluginEnabler.isPerProjectEnabled() &&
-              !RegistryManager.getInstance().is("ide.plugins.per.project.use.checkboxes")) {
+          if (PluginEnabler.isPerProjectEnabled() &&
+              !Registry.is("ide.plugins.per.project.use.checkboxes", false)) {
             myEnableDisableButton = SelectionBasedPluginModelAction.createGearButton(
               action -> createEnableDisableAction(action, List.of(this)),
               () -> createUninstallAction(List.of(this))
@@ -240,15 +200,8 @@ public class ListPluginComponent extends JPanel {
           }
           else {
             myEnableDisableButton = createEnableDisableButton(
-              __ -> {
-                List<IdeaPluginDescriptor> descriptors = List.of(myPlugin);
-                if (myPluginModel.getState(myPlugin).isDisabled()) {
-                  myPluginModel.enable(descriptors);
-                }
-                else {
-                  myPluginModel.disable(descriptors);
-                }
-              }
+              __ -> myPluginModel.setEnabledState(List.of(myPlugin),
+                                                  PluginEnableDisableAction.globally(myPluginModel.getState(myPlugin).isDisabled()))
             );
           }
 
@@ -519,12 +472,6 @@ public class ListPluginComponent extends JPanel {
         calcColor = false;
       }
     }
-
-    if (calcColor && !myIsAllowed) {
-      calcColor = false;
-      nameForeground = otherForeground = DisabledColor;
-    }
-
     if (calcColor && !myMarketplace) {
       boolean disabled = myPluginModel.isUninstalled(myPlugin) ||
                          !MyPluginModel.isInstallingOrUpdate(myPlugin) && !isEnabledState();
@@ -551,17 +498,16 @@ public class ListPluginComponent extends JPanel {
   }
 
   public void updateErrors() {
-    List<? extends HtmlChunk> errors = myOnlyUpdateMode ?
-                                       List.of() :
-                                       myPluginModel.getErrors(myPlugin);
-    boolean hasErrors = !errors.isEmpty();
-    updateIcon(hasErrors, myPluginModel.isUninstalled(myPlugin) || !isEnabledState() || !myIsAllowed);
+    Ref<@Nls String> enableAction = new Ref<>();
+    String message = myOnlyUpdateMode ? null : myPluginModel.getErrorMessage(myPlugin, enableAction);
+    boolean errors = message != null;
+    updateIcon(errors, myPluginModel.isUninstalled(myPlugin) || !isEnabledState());
 
     if (myAlignButton != null) {
       myAlignButton.setVisible(myRestartButton != null);
     }
 
-    if (hasErrors) {
+    if (errors) {
       boolean addListeners = myErrorComponent == null && myEventHandler != null;
 
       if (myErrorPanel == null) {
@@ -569,13 +515,9 @@ public class ListPluginComponent extends JPanel {
         myLayout.addLineComponent(myErrorPanel);
       }
 
-      if (myErrorComponent == null) {
-        myErrorComponent = new ErrorComponent();
-        myErrorComponent.setBorder(JBUI.Borders.emptyTop(5));
-        myErrorPanel.add(myErrorComponent, BorderLayout.CENTER);
-      }
-      myErrorComponent.setErrors(errors,
-                                 () -> myPluginModel.enableRequiredPlugins(myPlugin));
+      myErrorComponent = ErrorComponent.show(myErrorPanel, BorderLayout.CENTER, myErrorComponent, message, enableAction.get(),
+                                             enableAction.isNull() ? null : () -> myPluginModel.enableRequiredPlugins(myPlugin));
+      myErrorComponent.setBorder(JBUI.Borders.emptyTop(5));
 
       if (addListeners) {
         myEventHandler.addAll(myErrorPanel);
@@ -588,10 +530,10 @@ public class ListPluginComponent extends JPanel {
     }
 
     if (myLicensePanel != null) {
-      myLicensePanel.setVisible(!hasErrors);
+      myLicensePanel.setVisible(!errors);
     }
     if (myUpdateLicensePanel != null) {
-      myUpdateLicensePanel.setVisible(!hasErrors);
+      myUpdateLicensePanel.setVisible(!errors);
     }
   }
 
@@ -656,7 +598,7 @@ public class ListPluginComponent extends JPanel {
       myLayout.removeButtonComponent(myEnableDisableButton);
       myEnableDisableButton = null;
     }
-    if (myIsAllowed && showRestart && myRestartButton == null) {
+    if (showRestart && myRestartButton == null) {
       myLayout.addButtonComponent(myRestartButton = new RestartButton(myPluginModel), 0);
     }
     if (myAlignButton != null) {
@@ -724,10 +666,6 @@ public class ListPluginComponent extends JPanel {
 
   public void createPopupMenu(@NotNull DefaultActionGroup group,
                               @NotNull List<? extends ListPluginComponent> selection) {
-    if (!myIsAllowed) {
-      return;
-    }
-
     if (myOnlyUpdateMode) {
       return;
     }

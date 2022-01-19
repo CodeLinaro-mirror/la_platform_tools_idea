@@ -125,21 +125,13 @@ abstract class RenameKotlinPsiProcessor : RenamePsiElementProcessor() {
 
     protected var PsiElement.ambiguousImportUsages: List<UsageInfo>? by UserDataProperty(Key.create("AMBIGUOUS_IMPORT_USAGES"))
 
-    protected fun UsageInfo.importState(): ImportState {
-        val ref = reference as? PsiPolyVariantReference ?: return ImportState.NOT_IMPORT
+    protected fun UsageInfo.isAmbiguousImportUsage(): Boolean {
+        val ref = reference as? PsiPolyVariantReference ?: return false
         val refElement = ref.element
-        if (refElement.parents.none { it is KtImportDirective && !it.isAllUnder || it is PsiImportStatementBase && !it.isOnDemand }) {
-            return ImportState.NOT_IMPORT
-        }
-
-        return if (ref.multiResolve(false).mapNotNullTo(HashSet()) { it.element?.unwrapped }.size > 1)
-            ImportState.AMBIGUOUS
-        else
-            ImportState.SIMPLE
-    }
-
-    protected enum class ImportState {
-        NOT_IMPORT, AMBIGUOUS, SIMPLE
+        return refElement.parents
+            .any { (it is KtImportDirective && !it.isAllUnder) || (it is PsiImportStaticStatement && !it.isOnDemand) } && ref.multiResolve(
+            false
+        ).mapNotNullTo(HashSet()) { it.element?.unwrapped }.size > 1
     }
 
     protected fun renameMangledUsageIfPossible(usage: UsageInfo, element: PsiElement, newName: String): Boolean {

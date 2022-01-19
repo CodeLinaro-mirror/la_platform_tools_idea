@@ -1,5 +1,3 @@
-// AFTER-WARNING: The expression is unused
-// AFTER-WARNING: The expression is unused
 enum class Type {
     HYDRO,
     PYRO

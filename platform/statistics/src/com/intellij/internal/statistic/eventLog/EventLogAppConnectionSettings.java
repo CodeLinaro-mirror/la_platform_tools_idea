@@ -1,13 +1,15 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.eventLog;
 
-import com.intellij.ide.ui.IdeUiService;
 import com.intellij.internal.statistic.eventLog.connection.EventLogConnectionSettings;
 import com.intellij.internal.statistic.eventLog.connection.request.StatsProxyInfo;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
+import com.intellij.util.net.HttpConfigurable;
+import com.intellij.util.net.ssl.CertificateManager;
+import com.intellij.util.proxy.CommonProxy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -48,12 +50,12 @@ public class EventLogAppConnectionSettings implements EventLogConnectionSettings
   @Nullable
   @Override
   public SSLContext getSSLContext() {
-    return IdeUiService.getInstance().getSslContext();
+    return CertificateManager.getInstance().getSslContext();
   }
 
   @Nullable
   private static StatsProxyInfo.StatsProxyAuthProvider getAuthProvider() {
-    if (IdeUiService.getInstance().isProxyAuth()) {
+    if (HttpConfigurable.getInstance().PROXY_AUTHENTICATION) {
       return EventLogAppProxyAuth.INSTANCE;
     }
     return null;
@@ -62,7 +64,7 @@ public class EventLogAppConnectionSettings implements EventLogConnectionSettings
   @NotNull
   private static Proxy findProxy(@NotNull String url) {
     try {
-      List<Proxy> proxies = IdeUiService.getInstance().getProxyList(new URL(url));
+      List<Proxy> proxies = CommonProxy.getInstance().select(new URL(url));
       return !proxies.isEmpty() ? proxies.get(0) : Proxy.NO_PROXY;
     }
     catch (MalformedURLException e) {
@@ -76,12 +78,12 @@ public class EventLogAppConnectionSettings implements EventLogConnectionSettings
 
     @Override
     public @Nullable String getProxyLogin() {
-      return IdeUiService.getInstance().getProxyLogin();
+      return HttpConfigurable.getInstance().getProxyLogin();
     }
 
     @Override
     public @Nullable String getProxyPassword() {
-      return IdeUiService.getInstance().getPlainProxyPassword();
+      return HttpConfigurable.getInstance().getPlainProxyPassword();
     }
   }
 }

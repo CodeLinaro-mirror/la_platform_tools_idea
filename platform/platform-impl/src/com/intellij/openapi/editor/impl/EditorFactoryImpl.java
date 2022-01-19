@@ -7,7 +7,6 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ModalityStateListener;
-import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
@@ -106,10 +105,12 @@ public class EditorFactoryImpl extends EditorFactory {
   @NonNls
   public static void throwNotReleasedError(@NotNull Editor editor) {
     if (editor instanceof EditorImpl) {
-      ((EditorImpl)editor).throwDisposalError("Editor " + editor + " hasn't been released:");
+      ((EditorImpl)editor).throwEditorNotDisposedError("Editor of " + editor.getClass() + " hasn't been released:");
     }
-    throw new RuntimeException("Editor of " + editor.getClass() +
-                               " and the following text hasn't been released:\n" + editor.getDocument().getText());
+    else {
+      throw new RuntimeException("Editor of " + editor.getClass() +
+                                 " and the following text hasn't been released:\n" + editor.getDocument().getText());
+    }
   }
 
   @Override
@@ -218,37 +219,40 @@ public class EditorFactoryImpl extends EditorFactory {
 
   @Override
   public void releaseEditor(@NotNull Editor editor) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
-    WriteAction.run(() -> {
+    try {
+      EditorFactoryEvent event = new EditorFactoryEvent(this, editor);
+      myEditorFactoryEventDispatcher.getMulticaster().editorReleased(event);
+      EP.forEachExtensionSafe(it -> it.editorReleased(event));
+    }
+    finally {
       try {
-        EditorFactoryEvent event = new EditorFactoryEvent(this, editor);
-        myEditorFactoryEventDispatcher.getMulticaster().editorReleased(event);
-        EP.forEachExtensionSafe(it -> it.editorReleased(event));
+        ((EditorImpl)editor).release();
       }
       finally {
-        try {
-          ((EditorImpl)editor).release();
-        }
-        finally {
-          for (ClientEditorManager clientEditors : ClientEditorManager.getAllInstances()) {
-            if (clientEditors.editorReleased(editor)) {
-              if (LOG.isDebugEnabled()) {
-                LOG.debug("number of Editors after release: " + clientEditors.editors().count());
-              }
-              if (clientEditors != ClientEditorManager.getCurrentInstance()) {
-                LOG.warn("Released editor didn't belong to current session");
-              }
-              break;
+        for (ClientEditorManager clientEditors : ClientEditorManager.getAllInstances()) {
+          if (clientEditors.editorReleased(editor)) {
+            if (LOG.isDebugEnabled()) {
+              LOG.debug("number of Editors after release: " + clientEditors.editors().count());
             }
+            if (clientEditors != ClientEditorManager.getCurrentInstance()) {
+              LOG.warn("Released editor didn't belong to current session");
+            }
+            break;
           }
         }
       }
-    });
+    }
   }
 
   @Override
   public @NotNull Stream<Editor> editors(@NotNull Document document, @Nullable Project project) {
     return collectAllEditors()
+      .filter(editor -> editor.getDocument().equals(document) && (project == null || project.equals(editor.getProject())));
+  }
+
+  @Override
+  public @NotNull Stream<Editor> editorsForCurrentClient(@NotNull Document document, @Nullable Project project) {
+    return ClientEditorManager.getCurrentInstance().editors()
       .filter(editor -> editor.getDocument().equals(document) && (project == null || project.equals(editor.getProject())));
   }
 

@@ -221,7 +221,7 @@ object ExecUtil {
 
   @JvmStatic
   @Throws(IOException::class, ExecutionException::class)
-  fun sudoAndGetOutput(commandLine: GeneralCommandLine, prompt: @Nls String): ProcessOutput =
+  fun sudoAndGetOutput(commandLine: GeneralCommandLine, prompt: String): ProcessOutput =
     execAndGetOutput(sudoCommand(commandLine, prompt))
 
   @NlsSafe

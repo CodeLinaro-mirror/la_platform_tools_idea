@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.refactoring.introduce.extractFunction.ui
 
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.ui.components.JBComboBoxLabel
 import com.intellij.ui.components.editors.JBComboBoxTableCellEditorComponent
 import com.intellij.util.ui.AbstractTableCellEditor
@@ -44,8 +43,7 @@ open class ExtractFunctionParameterTablePanel : AbstractParameterTablePanel<Para
                 override fun getTableCellRendererComponent(
                     table: JTable, value: Any, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
                 ): Component {
-                    @NlsSafe val renderType = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_NO_ANNOTATIONS.renderType(value as KotlinType)
-                    myLabel.text = renderType
+                    myLabel.text = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_NO_ANNOTATIONS.renderType(value as KotlinType)
                     myLabel.background = if (isSelected) table.selectionBackground else table.background
                     myLabel.foreground = if (isSelected) table.selectionForeground else table.foreground
                     if (isSelected) {

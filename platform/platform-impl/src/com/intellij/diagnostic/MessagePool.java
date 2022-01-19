@@ -1,7 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diagnostic;
 
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.IdeaLoggingEvent;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -118,11 +117,6 @@ public final class MessagePool {
       AbstractMessage message = myMessages.size() == 1 ? myMessages.get(0) : groupMessages();
       message.setOnReadCallback(() -> notifyEntryRead());
       myMessages.clear();
-      if (ApplicationManager.getApplication().isInternal()) {
-        for (Attachment attachment : message.getAllAttachments()) {
-          attachment.setIncluded(true);
-        }
-      }
       myErrors.add(message);
       notifyEntryAdded();
     }

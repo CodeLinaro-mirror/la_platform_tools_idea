@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.codeInsight.surroundWith.expression
 
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.idea.codeInsight.surroundWith.statement.KotlinTrySurrounderBase
 import org.jetbrains.kotlin.psi.KtExpression
@@ -11,13 +10,11 @@ import org.jetbrains.kotlin.psi.KtTryExpression
 
 sealed class KotlinTryExpressionSurrounder : KotlinControlFlowExpressionSurrounderBase() {
     class TryCatch : KotlinTryExpressionSurrounder() {
-        @NlsSafe
         override fun getTemplateDescription() = "try { expr } catch {}"
         override fun getPattern() = "try { $0 } catch (e: Exception) {}"
     }
 
     class TryCatchFinally : KotlinTryExpressionSurrounder() {
-        @NlsSafe
         override fun getTemplateDescription() = "try { expr } catch {} finally {}"
         override fun getPattern() = "try { $0 } catch (e: Exception) {} finally {}"
     }

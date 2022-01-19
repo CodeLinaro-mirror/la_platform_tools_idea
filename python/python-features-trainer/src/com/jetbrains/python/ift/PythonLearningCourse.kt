@@ -40,8 +40,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
   private val disableOnboardingLesson get() = ApplicationNamesInfo.getInstance().fullProductNameWithEdition.equals("PyCharm Edu")
 
   private fun onboardingTour() = if (!disableOnboardingLesson) listOf(
-    LearningModule(id = "Python.Onboarding",
-                   name = PythonLessonsBundle.message("python.onboarding.module.name"),
+    LearningModule(name = PythonLessonsBundle.message("python.onboarding.module.name"),
                    description = PythonLessonsBundle.message("python.onboarding.module.description", LessonUtil.productName),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.PROJECT) {
@@ -51,8 +50,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
   else emptyList()
 
   private fun stableModules() = listOf(
-    LearningModule(id = "Python.EditorBasics",
-                   name = LessonsBundle.message("editor.basics.module.name"),
+    LearningModule(name = LessonsBundle.message("editor.basics.module.name"),
                    description = LessonsBundle.message("editor.basics.module.description"),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.SCRATCH) {
@@ -69,8 +67,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
         MultipleSelectionHtmlLesson(),
       )
     },
-    LearningModule(id = "Python.CodeCompletion",
-                   name = LessonsBundle.message("code.completion.module.name"),
+    LearningModule(name = LessonsBundle.message("code.completion.module.name"),
                    description = LessonsBundle.message("code.completion.module.description"),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.SCRATCH) {
@@ -82,8 +79,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
         FStringCompletionLesson(),
       )
     },
-    LearningModule(id = "Python.Refactorings",
-                   name = LessonsBundle.message("refactorings.module.name"),
+    LearningModule(name = LessonsBundle.message("refactorings.module.name"),
                    description = LessonsBundle.message("refactorings.module.description"),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.SCRATCH) {
@@ -97,8 +93,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
         PythonInPlaceRefactoringLesson(),
       )
     },
-    LearningModule(id = "Python.CodeAssistance",
-                   name = LessonsBundle.message("code.assistance.module.name"),
+    LearningModule(name = LessonsBundle.message("code.assistance.module.name"),
                    description = LessonsBundle.message("code.assistance.module.description"),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.SINGLE_EDITOR) {
@@ -111,8 +106,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
         PythonEditorCodingAssistanceLesson(ls("EditorCodingAssistance.py.sample")),
       )
     },
-    LearningModule(id = "Python.Navigation",
-                   name = LessonsBundle.message("navigation.module.name"),
+    LearningModule(name = LessonsBundle.message("navigation.module.name"),
                    description = LessonsBundle.message("navigation.module.description"),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.PROJECT) {
@@ -124,8 +118,7 @@ class PythonLearningCourse : LearningCourseBase(PythonLanguage.INSTANCE.id) {
         PythonRecentFilesLesson(),
       )
     },
-    LearningModule(id = "Python.RunAndDebug",
-                   name = LessonsBundle.message("run.debug.module.name"),
+    LearningModule(name = LessonsBundle.message("run.debug.module.name"),
                    description = LessonsBundle.message("run.debug.module.description"),
                    primaryLanguage = langSupport,
                    moduleType = LessonType.SINGLE_EDITOR) {

@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
 fun test(i: Int) {
     when (i) {
         1 -> println(1)

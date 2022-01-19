@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.html;
 
 import com.intellij.openapi.vfs.VfsUtilCore;
@@ -10,8 +10,7 @@ import org.intellij.plugins.markdown.MarkdownTestingUtil;
 import org.intellij.plugins.markdown.extensions.MarkdownCodeFencePluginGeneratingProvider;
 import org.intellij.plugins.markdown.extensions.MarkdownExtensionWithExternalFiles;
 import org.intellij.plugins.markdown.extensions.common.plantuml.PlantUMLCodeGeneratingProvider;
-import org.intellij.plugins.markdown.settings.MarkdownExtensionsSettings;
-import org.intellij.plugins.markdown.settings.MarkdownSettings;
+import org.intellij.plugins.markdown.settings.MarkdownApplicationSettings;
 import org.intellij.plugins.markdown.ui.preview.html.MarkdownCodeFencePluginCache;
 import org.intellij.plugins.markdown.ui.preview.html.MarkdownUtil;
 
@@ -39,7 +38,7 @@ public class MarkdownPlantUMLTest extends BasePlatformTestCase {
     myFixture = IdeaTestFixtureFactory.getFixtureFactory().createTempDirTestFixture();
     myFixture.setUp();
 
-    extension = MarkdownCodeFencePluginGeneratingProvider.Companion.getAll().stream()
+    extension = MarkdownCodeFencePluginGeneratingProvider.getAll().stream()
       .filter(PlantUMLCodeGeneratingProvider.class::isInstance)
       .map(PlantUMLCodeGeneratingProvider.class::cast)
       .findFirst().orElse(null);
@@ -81,7 +80,7 @@ public class MarkdownPlantUMLTest extends BasePlatformTestCase {
     assertTrue(extension.isAvailable());
     myFixture.copyAll(getTestDataPath() + DATA_SUBDIR, "plantuml");
 
-    MarkdownExtensionsSettings.getInstance().setExtensionsEnabledState(Collections.singletonMap("PlantUMLLanguageExtension", true));
+    MarkdownApplicationSettings.getInstance().setExtensionsEnabledState(Collections.singletonMap("PlantUMLLanguageExtension", true));
     assertTrue(extension.isEnabled());
 
     VirtualFile mdVFile = myFixture.getFile("plantuml/" + getTestName(true) + ".md");

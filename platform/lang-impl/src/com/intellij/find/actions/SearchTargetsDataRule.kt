@@ -2,7 +2,7 @@
 package com.intellij.find.actions
 
 import com.intellij.find.usages.api.SearchTarget
-import com.intellij.find.usages.impl.symbolSearchTargets
+import com.intellij.find.usages.impl.searchTargets
 import com.intellij.ide.impl.dataRules.GetDataRule
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataProvider
@@ -11,12 +11,10 @@ import com.intellij.openapi.project.IndexNotReadyException
 class SearchTargetsDataRule : GetDataRule {
 
   override fun getData(dataProvider: DataProvider): Collection<SearchTarget>? {
-    val project = CommonDataKeys.PROJECT.getData(dataProvider) ?: return null
+    val file = CommonDataKeys.PSI_FILE.getData(dataProvider) ?: return null
+    val offset = CommonDataKeys.CARET.getData(dataProvider)?.offset ?: return null
     try {
-      val symbols = CommonDataKeys.SYMBOLS.getData(dataProvider) ?: return null
-      return symbolSearchTargets(project, symbols).takeIf {
-        it.isNotEmpty()
-      }
+      return searchTargets(file, offset)
     }
     catch (e: IndexNotReadyException) {
       return null

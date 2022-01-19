@@ -18,7 +18,6 @@ class A {
 }
 
 // PRINT_FRAME
-// SHOW_KOTLIN_VARIABLES
 
 // EXPRESSION: element
 // RESULT: 1: I

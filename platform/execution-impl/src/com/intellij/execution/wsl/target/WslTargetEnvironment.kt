@@ -10,7 +10,6 @@ import com.intellij.execution.wsl.WSLDistribution
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.vfs.impl.wsl.WslConstants
 import com.intellij.util.io.sizeOrNull
 import java.io.IOException
 import java.nio.file.Path
@@ -81,7 +80,7 @@ class WslTargetEnvironment constructor(override val request: WslTargetEnvironmen
   }
 
   private fun convertUncPathToLinux(localPath: String): String? {
-    val root: String = WslConstants.UNC_PREFIX + distribution.msId
+    val root: String = WSLDistribution.UNC_PREFIX + distribution.msId
     val winLocalPath = FileUtil.toSystemDependentName(localPath)
     if (winLocalPath.startsWith(root)) {
       val linuxPath = winLocalPath.substring(root.length)
@@ -119,7 +118,7 @@ class WslTargetEnvironment constructor(override val request: WslTargetEnvironmen
     @Throws(IOException::class)
     override fun resolveTargetPath(relativePath: String): String {
       val localPath = FileUtil.toCanonicalPath(FileUtil.join(localRoot.toString(), relativePath))
-      return toLinuxPath(localPath) ?: throw RuntimeException("Cannot find Linux path for $localPath (${distribution.msId})")
+      return toLinuxPath(localPath)!!
     }
 
     @Throws(IOException::class)

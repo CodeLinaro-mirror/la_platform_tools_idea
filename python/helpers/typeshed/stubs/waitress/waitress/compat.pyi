@@ -1,12 +1,12 @@
 from io import TextIOWrapper
-from typing import Any
+from typing import Any, Optional, Tuple
 
 PY2: bool
 PY3: bool
 WIN: bool
-string_types: tuple[str]
-integer_types: tuple[int]
-class_types: tuple[type]
+string_types: Tuple[str]
+integer_types: Tuple[int]
+class_types: Tuple[type]
 text_type = str
 binary_type = bytes
 long = int
@@ -18,7 +18,7 @@ def tobytes(s: str) -> bytes: ...
 
 exec_: Any
 
-def reraise(tp: Any, value: BaseException, tb: str | None = ...) -> None: ...
+def reraise(tp: Any, value: BaseException, tb: Optional[str] = ...) -> None: ...
 
 MAXINT: int
 HAS_IPV6: bool

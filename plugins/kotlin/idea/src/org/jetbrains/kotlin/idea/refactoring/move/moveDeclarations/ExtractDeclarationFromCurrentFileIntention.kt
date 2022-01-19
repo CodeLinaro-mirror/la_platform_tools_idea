@@ -5,6 +5,7 @@ package org.jetbrains.kotlin.idea.refactoring.move.moveDeclarations
 import com.intellij.codeInsight.actions.OptimizeImportsProcessor
 import com.intellij.codeInsight.intention.LowPriorityAction
 import com.intellij.codeInsight.navigation.NavigationUtil
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -24,8 +25,6 @@ import org.jetbrains.kotlin.idea.intentions.SelfTargetingRangeIntention
 import org.jetbrains.kotlin.idea.refactoring.createKotlinFile
 import org.jetbrains.kotlin.idea.refactoring.move.moveDeclarations.ui.MoveKotlinTopLevelDeclarationsDialog
 import org.jetbrains.kotlin.idea.refactoring.showWithTransaction
-import org.jetbrains.kotlin.idea.util.application.invokeLater
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
@@ -90,7 +89,7 @@ class ExtractDeclarationFromCurrentFileIntention : SelfTargetingRangeIntention<K
         val targetFile = directory.findFile(targetFileName)
 
         if (targetFile !== null) {
-            if (isUnitTestMode()) {
+            if (ApplicationManager.getApplication().isUnitTestMode) {
                 throw CommonRefactoringUtil.RefactoringErrorHintException(RefactoringBundle.message("file.already.exist", targetFileName))
             }
             // If automatic move is not possible, fall back to full-fledged Move Declarations refactoring
@@ -98,7 +97,7 @@ class ExtractDeclarationFromCurrentFileIntention : SelfTargetingRangeIntention<K
             return
         }
 
-        val moveTarget = KotlinMoveTargetForDeferredFile(packageName, directory.virtualFile) {
+        val moveTarget = KotlinMoveTargetForDeferredFile(packageName, directory, targetFile = null) {
             createKotlinFile(targetFileName, directory, packageName.asString())
         }
 
@@ -137,7 +136,7 @@ class ExtractDeclarationFromCurrentFileIntention : SelfTargetingRangeIntention<K
         targetFile: PsiFile?,
         file: KtFile
     ) {
-        invokeLater {
+        ApplicationManager.getApplication().invokeLater {
 
             val callBack = MoveCallback {
                 runBlocking {

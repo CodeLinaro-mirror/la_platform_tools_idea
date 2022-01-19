@@ -15,9 +15,6 @@ public class DuplicateConditionInspectionTest extends LightJavaInspectionTestCas
   public void testDuplicateBooleanBranch() {
     doTest();
   }
-  public void testDuplicateWithNegation() {
-    doTest();
-  }
 
   @Nullable
   @Override

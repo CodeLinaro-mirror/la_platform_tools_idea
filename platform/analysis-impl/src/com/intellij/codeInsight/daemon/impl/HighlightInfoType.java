@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.HighlightDisplayKey;
 import com.intellij.codeInspection.DeprecationUtil;
 import com.intellij.codeInspection.InspectionProfile;
 import com.intellij.lang.annotation.HighlightSeverity;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.HighlighterColors;
 import com.intellij.openapi.editor.colors.CodeInsightColors;
 import com.intellij.openapi.editor.colors.EditorColors;
@@ -170,6 +171,9 @@ public interface HighlightInfoType {
   }
 
   class HighlightInfoTypeSeverityByKey implements HighlightInfoType {
+    @SuppressWarnings("unused")
+    static final Logger LOG = Logger.getInstance(HighlightInfoTypeSeverityByKey.class);
+
     private final TextAttributesKey myAttributesKey;
     private final HighlightDisplayKey myToolKey;
 

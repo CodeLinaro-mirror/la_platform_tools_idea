@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
 fun test(b: Boolean) {
     if (b) foo(0)
     else<caret>

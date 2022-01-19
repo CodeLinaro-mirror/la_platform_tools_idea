@@ -5,17 +5,15 @@ import com.intellij.codeInsight.PsiEquivalenceUtil
 import com.intellij.codeInsight.highlighting.HighlightManager
 import com.intellij.find.FindManager
 import com.intellij.java.refactoring.JavaRefactoringBundle
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.TextRange
 import com.intellij.psi.*
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.extractMethod.SignatureSuggesterPreviewDialog
 import com.intellij.refactoring.extractMethod.newImpl.*
-import com.intellij.refactoring.extractMethod.newImpl.ExtractMethodHelper.inputParameterOf
+import com.intellij.refactoring.extractMethod.newImpl.ExtractMethodHelper.guessName
 import com.intellij.refactoring.extractMethod.newImpl.JavaDuplicatesFinder.Companion.textRangeOf
 import com.intellij.refactoring.extractMethod.newImpl.structures.ExtractOptions
 import com.intellij.refactoring.extractMethod.newImpl.structures.InputParameter
@@ -70,24 +68,17 @@ class DuplicatesMethodExtractor: InplaceExtractMethodProvider {
     val finder = duplicatesFinder ?: return
     val calls = callsToReplace?.map { it.element!! } ?: return
     val options = extractOptions ?: return
-    var duplicates = finder
-      .findDuplicates(method.containingClass ?: file)
-      .filterNot { duplicate ->
-        findParentMethod(duplicate.candidate.first()) == method || areElementsIntersected(duplicate.candidate, calls)
-      }
-
+    var duplicates = finder.findDuplicates(method.containingClass ?: file)
+      .filterNot { findParentMethod(it.candidate.first()) == method }
     //TODO check same data output
     //TODO check same flow output (+ same return values)
 
-    val parameterExpressions = options.inputParameters.flatMap { parameter -> parameter.references }
-    val changedExpressions = duplicates.flatMap { it.changedExpressions.map(ChangedExpression::pattern) }
-    val duplicatesFinder = finder.withPredefinedChanges((parameterExpressions + changedExpressions).toSet())
-
-    duplicates = duplicates.mapNotNull { duplicatesFinder.createDuplicate(it.pattern, it.candidate) }
-
-    val updatedParameters: List<InputParameter> = findNewParameters(options.inputParameters, duplicates)
-
-    val elementsToReplace = MethodExtractor().prepareRefactoringElements(options.copy(inputParameters = updatedParameters, methodName = method.name))
+    val changes = duplicates.flatMap { it.changedExpressions.map(ChangedExpression::pattern) }.toSet()
+    fun isEquivalent(pattern: PsiElement, candidate: PsiElement) = pattern !in changes && finder.isEquivalent(pattern, candidate)
+    duplicates = duplicates.mapNotNull { finder.createDuplicate(it.pattern, it.candidate, ::isEquivalent) }
+    val allParameters = duplicates
+      .fold(options.inputParameters) { parameters, duplicate ->  updateParameters(parameters, duplicate.changedExpressions)}
+    val elementsToReplace = MethodExtractor().prepareRefactoringElements(options.copy(inputParameters = allParameters, methodName = method.name))
 
     //TODO clean up
     val initialParameters = options.inputParameters.flatMap(InputParameter::references).toSet()
@@ -97,15 +88,9 @@ class DuplicatesMethodExtractor: InplaceExtractMethodProvider {
     val oldMethodCall = PsiTreeUtil.findChildOfType(calls.first(), PsiMethodCallExpression::class.java)
     val newMethodCall = PsiTreeUtil.findChildOfType(elementsToReplace.callElements.first(), PsiMethodCallExpression::class.java)
     val parametrizedDuplicatesNumber = duplicates.size - exactDuplicates.size
-    fun confirmChangeSignature(): Boolean {
-      val dialog = SignatureSuggesterPreviewDialog(method, elementsToReplace.method, oldMethodCall, newMethodCall, parametrizedDuplicatesNumber)
-      return dialog.showAndGet()
-    }
-    if (parametrizedDuplicatesNumber > 0){
-      val changeSignature = isSilentMode || confirmChangeSignature()
-      if (!changeSignature) {
-        duplicates = exactDuplicates
-      }
+    val changeSignature = SignatureSuggesterPreviewDialog(method, elementsToReplace.method, oldMethodCall, newMethodCall, parametrizedDuplicatesNumber).showAndGet()
+    if (!changeSignature) {
+      duplicates = exactDuplicates
     }
 
     duplicates = confirmDuplicates(project, editor, duplicates)
@@ -119,7 +104,7 @@ class DuplicatesMethodExtractor: InplaceExtractMethodProvider {
     duplicates.forEach { duplicate ->
       val duplicateOptions = findExtractOptions(duplicate.candidate)
       val expressionMap = duplicate.changedExpressions.associate { (pattern, candidate) -> pattern to candidate }
-      val duplicateParameters = updatedParameters.map { parameter -> parameter.copy(references = parameter.references.map { expression -> expressionMap[expression]!! }) }
+      val duplicateParameters = allParameters.map { parameter -> parameter.copy(references = parameter.references.map { expression -> expressionMap[expression]!! }) }
 
       //TODO extract duplicate
       val builder = CallBuilder(duplicateOptions.project, duplicateOptions.elements.first())
@@ -135,27 +120,7 @@ class DuplicatesMethodExtractor: InplaceExtractMethodProvider {
     }
   }
 
-  private fun areElementsIntersected(firstElements: List<PsiElement>, secondElements: List<PsiElement>): Boolean {
-    if (firstElements.isEmpty() || secondElements.isEmpty()) {
-      return false
-    }
-    if (firstElements.first().containingFile != secondElements.first().containingFile) {
-      return false
-    }
-    val firstRange = TextRange(firstElements.first().textRange.startOffset, firstElements.last().textRange.endOffset)
-    val secondRange = TextRange(secondElements.first().textRange.startOffset, secondElements.last().textRange.endOffset)
-    return firstRange.intersects(secondRange)
-  }
-
-  private val isSilentMode = ApplicationManager.getApplication().isUnitTestMode
-
-  private fun findNewParameters(parameters: List<InputParameter>, duplicates: List<Duplicate>): List<InputParameter> {
-    return duplicates
-      .fold(parameters) { updatedParameters, duplicate -> updateParameters(updatedParameters, duplicate.changedExpressions) }
-  }
-
   private fun confirmDuplicates(project: Project, editor: Editor, duplicates: List<Duplicate>): List<Duplicate> {
-    if (isSilentMode) return duplicates
     val confirmedDuplicates = mutableListOf<Duplicate>()
     duplicates.forEach { duplicate ->
       val highlighters = ArrayList<RangeHighlighter>()
@@ -180,7 +145,7 @@ class DuplicatesMethodExtractor: InplaceExtractMethodProvider {
     val expressionGroups = groupEquivalentExpressions(changes.map(ChangedExpression::pattern))
     val parametersGroupedByPatternExpressions = expressionGroups.map { expressionGroup ->
       val parameter = parameters.firstOrNull { expressions -> isEqual(expressionGroup.first(), expressions.references.first()) }
-      parameter?.copy(references = expressionGroup) ?: inputParameterOf(expressionGroup)
+      parameter?.copy(references = expressionGroup) ?: InputParameter(expressionGroup, guessName(expressionGroup.first()), expressionGroup.first().type!!)
     }
     val splitParameters = parametersGroupedByPatternExpressions.flatMap { parameter -> splitByCandidateExpressions(parameter, parameter.references.map { changeMap[it]!! }) }
     return fixNameConflicts(splitParameters)
@@ -212,7 +177,7 @@ class DuplicatesMethodExtractor: InplaceExtractMethodProvider {
         groups.add(mutableListOf(expression))
       }
     }
-    return groups.sortedBy { group: List<PsiExpression> -> group.minOf { expression -> expression.textRange.startOffset } }
+    return groups
   }
 
   private fun isEqual(first: PsiExpression, second: PsiExpression): Boolean {

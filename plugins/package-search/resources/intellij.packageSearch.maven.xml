@@ -18,7 +18,7 @@
 
         <packagesearch.projectModuleOperationProvider
                 implementation="com.jetbrains.packagesearch.intellij.plugin.maven.MavenProjectModuleOperationProvider"/>
-        <packagesearch.coroutineModuleTransformer
+        <packagesearch.moduleTransformer
                 implementation="com.jetbrains.packagesearch.intellij.plugin.maven.MavenModuleTransformer"/>
 
         <packagesearch.moduleChangesSignalProvider

@@ -2,7 +2,6 @@
 package com.intellij.refactoring.typeMigration.intentions;
 
 import com.intellij.codeInsight.FileModificationService;
-import com.intellij.codeInsight.intention.HighPriorityAction;
 import com.intellij.codeInsight.intention.PriorityAction;
 import com.intellij.codeInsight.intention.PsiElementBaseIntentionAction;
 import com.intellij.lang.java.JavaLanguage;
@@ -198,7 +197,7 @@ public class ConvertFieldToAtomicIntention extends PsiElementBaseIntentionAction
     return false;
   }
 
-  public static class ConvertNonFinalLocalToAtomicFix extends ConvertFieldToAtomicIntention implements HighPriorityAction {
+  public static class ConvertNonFinalLocalToAtomicFix extends ConvertFieldToAtomicIntention {
     private final PsiElement myContext;
 
     public ConvertNonFinalLocalToAtomicFix(PsiElement context) {

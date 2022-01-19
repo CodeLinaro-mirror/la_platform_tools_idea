@@ -2,6 +2,7 @@
 package com.intellij.openapi.roots.impl;
 
 import com.intellij.ProjectTopics;
+import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.components.impl.stores.BatchUpdateListener;
@@ -14,10 +15,7 @@ import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.module.impl.ModuleEx;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerListener;
-import com.intellij.openapi.project.RootsChangeIndexingInfo;
+import com.intellij.openapi.project.*;
 import com.intellij.openapi.roots.*;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Disposer;
@@ -39,11 +37,15 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.indexing.*;
+import com.intellij.util.indexing.FileBasedIndex;
+import com.intellij.util.indexing.FileBasedIndexImpl;
+import com.intellij.util.indexing.FileBasedIndexProjectHandler;
+import com.intellij.util.indexing.UnindexedFilesUpdater;
 import com.intellij.util.indexing.roots.AdditionalLibraryRootsContributor;
 import com.intellij.util.indexing.roots.IndexableFilesIterator;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.*;
@@ -65,6 +67,8 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
                                              ? ConcurrencyUtil.newSameThreadExecutorService()
                                              : AppExecutorUtil.createBoundedApplicationPoolExecutor("Project Root Manager", 1);
   private @NotNull Future<?> myCollectWatchRootsFuture = CompletableFuture.completedFuture(null); // accessed in EDT only
+
+  private final OnlyOnceExceptionLogger myRootsChangedLogger = new OnlyOnceExceptionLogger(LOG);
 
   private boolean myPointerChangesDetected;
   private int myInsideWriteAction;
@@ -113,7 +117,17 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
       }
     });
 
-    StartupManager.getInstance(myProject).registerStartupActivity(() -> myStartupActivityPerformed = true);
+    if (!LightEdit.owns(myProject)) {
+      VirtualFileManager.getInstance().addVirtualFileManagerListener(new VirtualFileManagerListener() {
+        @Override
+        public void afterRefreshFinish(boolean asynchronous) {
+          doUpdateOnRefresh();
+        }
+      }, this);
+    }
+    StartupManager.getInstance(myProject).registerStartupActivity(() -> {
+      myStartupActivityPerformed = true;
+    });
 
     connection.subscribe(BatchUpdateListener.TOPIC, new BatchUpdateListener() {
       @Override
@@ -128,9 +142,11 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
         myFileTypesChanged.levelDown();
       }
     });
-    Runnable rootsExtensionPointListener = () -> ApplicationManager.getApplication().invokeLater(() ->
-      WriteAction.run(() -> makeRootsChange(EmptyRunnable.getInstance(), false, true))
-    );
+    Runnable rootsExtensionPointListener = () -> ApplicationManager.getApplication().invokeLater(() -> {
+      WriteAction.run(() -> {
+        makeRootsChange(EmptyRunnable.getInstance(), false, true);
+      });
+    });
     AdditionalLibraryRootsProvider.EP_NAME.addChangeListener(rootsExtensionPointListener, this);
     OrderEnumerationHandler.EP_NAME.addChangeListener(rootsExtensionPointListener, this);
 
@@ -158,7 +174,7 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
       List<IndexableFilesIterator> indexableFilesIterators =
         Collections.singletonList(AdditionalLibraryRootsContributor.createIndexingIterator(presentableLibraryName, rootsToIndex, libraryNameForDebug));
 
-      new UnindexedFilesUpdater(myProject, indexableFilesIterators, "On updated roots of library '" + presentableLibraryName + "'").queue(myProject);
+      DumbService.getInstance(myProject).queueTask(new UnindexedFilesUpdater(myProject, indexableFilesIterators, "On updated roots of library '" + presentableLibraryName + "'"));
     });
   }
 
@@ -176,15 +192,26 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
     myCollectWatchRootsFuture.cancel(false);
     myCollectWatchRootsFuture = myExecutor.submit(() -> {
       Pair<Set<String>, Set<String>> watchRoots = ReadAction.compute(() -> myProject.isDisposed() ? null : collectWatchRoots(newDisposable));
-      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.any(), () -> {
+      ModalityUiUtil.invokeLaterIfNeeded(() -> {
         if (myProject.isDisposed()) return;
         myRootPointersDisposable = newDisposable;
         // dispose after the re-creating container to keep VFPs from disposing and re-creating back;
         // instead, just increment/decrement their usage count
         Disposer.dispose(oldDisposable);
         myRootsToWatch = LocalFileSystem.getInstance().replaceWatchedRoots(myRootsToWatch, watchRoots.first, watchRoots.second);
-      });
+      }, ModalityState.any());
     });
+  }
+
+  private void doUpdateOnRefresh() {
+    if (ApplicationManager.getApplication().isUnitTestMode() && (!myStartupActivityPerformed || myProject.isDisposed())) {
+      return; // in test mode suppress addition to a queue unless project is properly initialized
+    }
+
+    if (LOG_CACHES_UPDATE || LOG.isDebugEnabled()) {
+      LOG.debug("refresh");
+    }
+    FileBasedIndexProjectHandler.scheduleReindexingInDumbMode(myProject);
   }
 
   @Override
@@ -199,16 +226,16 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
   }
 
   @Override
-  protected void fireRootsChangedEvent(boolean fileTypes, @NotNull List<? extends RootsChangeIndexingInfo> indexingInfos) {
+  protected void fireRootsChangedEvent(boolean fileTypes, @Nullable ProjectRootManagerImpl.RootsChangeType changeType) {
     isFiringEvent = true;
     try {
-      myProject.getMessageBus().syncPublisher(ProjectTopics.PROJECT_ROOTS).rootsChanged(new ModuleRootEventImpl(myProject, fileTypes, indexingInfos));
+      myProject.getMessageBus().syncPublisher(ProjectTopics.PROJECT_ROOTS).rootsChanged(new ModuleRootEventImpl(myProject, fileTypes));
     }
     finally {
       isFiringEvent = false;
     }
 
-    synchronizeRoots(indexingInfos);
+    synchronizeRoots(changeType);
     addRootsToWatch();
   }
 
@@ -293,9 +320,29 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
     }
   }
 
-  private void synchronizeRoots(@NotNull List<? extends RootsChangeIndexingInfo> indexingInfos) {
+  private void synchronizeRoots(@Nullable ProjectRootManagerImpl.RootsChangeType changeType) {
     if (!myStartupActivityPerformed) return;
-      EntityIndexingService.getInstance().indexChanges(myProject, indexingInfos);
+
+    if (changeType == RootsChangeType.ROOTS_REMOVED) {
+      logRootChanges("Project roots of " + myProject.getName() + " were removed");
+      return;
+    }
+
+    logRootChanges("Project roots of " + myProject.getName() + " have changed");
+
+    DumbServiceImpl dumbService = DumbServiceImpl.getInstance(myProject);
+    if (FileBasedIndex.getInstance() instanceof FileBasedIndexImpl) {
+      dumbService.queueTask(new UnindexedFilesUpdater(myProject, "Project roots have changed"));
+    }
+  }
+
+  private void logRootChanges(@NotNull String message) {
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      LOG.info(message);
+    }
+    else {
+      myRootsChangedLogger.info(message, new Throwable());
+    }
   }
 
   @Override
@@ -354,19 +401,27 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
 
   private final VirtualFilePointerListener myRootsChangedListener = new VirtualFilePointerListener() {
     @NotNull
-    private RootsChangeIndexingInfo getPointersChanges(VirtualFilePointer @NotNull [] pointers) {
-      RootsChangeIndexingInfo result = null;
+    private ProjectRootManagerImpl.RootsChangeType getPointersChanges(VirtualFilePointer @NotNull [] pointers) {
+      RootsChangeType result = null;
       for (VirtualFilePointer pointer : pointers) {
         if (pointer.isValid()) {
-          return RootsChangeIndexingInfo.TOTAL_REINDEX;
+          if (result == null) {
+            result = RootsChangeType.ROOTS_ADDED;
+          }
+          else if (result != RootsChangeType.ROOTS_ADDED) {
+            return RootsChangeType.GENERIC;
+          }
         }
         else {
           if (result == null) {
-            result = RootsChangeIndexingInfo.NO_INDEXING_NEEDED;
+            result = RootsChangeType.ROOTS_REMOVED;
+          }
+          else if (result != RootsChangeType.ROOTS_REMOVED) {
+            return RootsChangeType.GENERIC;
           }
         }
       }
-      return ObjectUtils.notNull(result, RootsChangeIndexingInfo.TOTAL_REINDEX);
+      return ObjectUtils.notNull(result, RootsChangeType.GENERIC);
     }
 
     @Override
@@ -389,14 +444,14 @@ public class ProjectRootManagerComponent extends ProjectRootManagerImpl implemen
 
     @Override
     public void validityChanged(VirtualFilePointer @NotNull [] pointers) {
-      RootsChangeIndexingInfo changeInfo = getPointersChanges(pointers);
+      RootsChangeType changeType = getPointersChanges(pointers);
 
       if (myProject.isDisposed()) {
         return;
       }
 
       if (isInsideWriteAction()) {
-        myRootsChanged.rootsChanged(changeInfo);
+        myRootsChanged.rootsChanged(changeType);
       }
       else {
         clearScopesCaches();

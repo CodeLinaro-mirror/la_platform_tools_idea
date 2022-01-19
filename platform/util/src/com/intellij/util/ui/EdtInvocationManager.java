@@ -123,6 +123,7 @@ public abstract class EdtInvocationManager {
     return result;
   }
 
+  @SuppressWarnings("unused") // Used in Upsource
   public static @Nullable EdtInvocationManager setEdtInvocationManager(@NotNull EdtInvocationManager edtInvocationManager) {
     return ourInstance.getAndSet(edtInvocationManager);
   }

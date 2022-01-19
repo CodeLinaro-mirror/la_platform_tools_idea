@@ -1,4 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2000-2014 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.intellij.codeInsight.template.postfix.templates;
 
 import com.intellij.codeInsight.CodeInsightUtilCore;
@@ -9,8 +23,6 @@ import com.intellij.java.JavaBundle;
 import com.intellij.lang.surroundWith.Surrounder;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.project.DumbAware;
-import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.TextRange;
@@ -20,29 +32,25 @@ import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.Function;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.indexing.DumbModeAccessType;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static com.intellij.openapi.util.Conditions.and;
 
-public class SwitchStatementPostfixTemplate extends SurroundPostfixTemplateBase implements DumbAware {
+public class SwitchStatementPostfixTemplate extends SurroundPostfixTemplateBase {
 
   private static final Condition<PsiElement> SWITCH_TYPE = expression -> {
     if (!(expression instanceof PsiExpression)) return false;
 
-    final PsiType type = getType((PsiExpression)expression);
+    PsiType type = ((PsiExpression)expression).getType();
 
     if (type == null) return false;
     if (PsiType.INT.isAssignableFrom(type)) return true;
-    if (type instanceof PsiClassType) {
-      if (HighlightingFeature.PATTERNS_IN_SWITCH.isAvailable(expression)) return true;
 
-      final PsiClass psiClass = getClassType(expression.getProject(), (PsiClassType)type);
+    if (type instanceof PsiClassType) {
+      PsiClass psiClass = ((PsiClassType)type).resolve();
       if (psiClass != null && psiClass.isEnum()) return true;
     }
 
@@ -56,23 +64,6 @@ public class SwitchStatementPostfixTemplate extends SurroundPostfixTemplateBase 
 
     return false;
   };
-
-  @Contract(pure = true)
-  private static @Nullable PsiType getType(@NotNull PsiExpression expression) {
-    if (!DumbService.isDumb(expression.getProject())) {
-      return expression.getType();
-    }
-    return DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(expression::getType);
-  }
-
-  @Contract(pure = true)
-  private static @Nullable PsiClass getClassType(@NotNull Project project, @NotNull PsiClassType type) {
-    if (!DumbService.isDumb(project)) {
-      return type.resolve();
-    }
-
-    return DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(type::resolve);
-  }
 
   public SwitchStatementPostfixTemplate() {
     super("switch", "switch(expr)", JavaPostfixTemplatesUtils.JAVA_PSI_INFO, selectorTopmost(SWITCH_TYPE));
@@ -123,11 +114,9 @@ public class SwitchStatementPostfixTemplate extends SurroundPostfixTemplateBase 
         PsiCodeBlock body = switchBlock.getBody();
         if (body != null) {
           body = CodeInsightUtilCore.forcePsiPostprocessAndRestoreElement(body);
-          if (body != null) {
-            TextRange range = body.getStatements()[0].getTextRange();
-            editor.getDocument().deleteString(range.getStartOffset(), range.getEndOffset());
-            return TextRange.from(range.getStartOffset(), 0);
-          }
+          TextRange range = body.getStatements()[0].getTextRange();
+          editor.getDocument().deleteString(range.getStartOffset(), range.getEndOffset());
+          return TextRange.from(range.getStartOffset(), 0);
         }
         return TextRange.from(editor.getCaretModel().getOffset(), 0);
       }

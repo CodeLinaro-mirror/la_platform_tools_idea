@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.tools.util;
 
 import com.intellij.diff.util.Range;
@@ -26,11 +26,6 @@ public final class SyncScrollSupport {
   public interface SyncScrollable {
     @RequiresEdt
     boolean isSyncScrollEnabled();
-
-    @RequiresEdt
-    default boolean forceSyncVerticalScroll() {
-      return false;
-    }
 
     @RequiresEdt
     int transfer(@NotNull Side baseSide, int line);
@@ -98,8 +93,7 @@ public final class SyncScrollSupport {
     public void makeVisible(@NotNull Side masterSide,
                             int startLine1, int endLine1, int startLine2, int endLine2,
                             final boolean animate) {
-      doMakeVisible(masterSide.getIndex(), new int[]{startLine1, startLine2}, new int[]{endLine1, endLine2}, animate,
-                    myScrollable.forceSyncVerticalScroll());
+      doMakeVisible(masterSide.getIndex(), new int[]{startLine1, startLine2}, new int[]{endLine1, endLine2}, animate);
     }
 
     @NotNull
@@ -184,8 +178,7 @@ public final class SyncScrollSupport {
     }
 
     public void makeVisible(@NotNull ThreeSide masterSide, int[] startLines, int[] endLines, boolean animate) {
-      doMakeVisible(masterSide.getIndex(), startLines, endLines, animate,
-                    myScrollable12.forceSyncVerticalScroll() || myScrollable23.forceSyncVerticalScroll());
+      doMakeVisible(masterSide.getIndex(), startLines, endLines, animate);
     }
 
     @NotNull
@@ -240,11 +233,7 @@ public final class SyncScrollSupport {
     @NotNull
     protected abstract List<? extends ScrollHelper> getScrollHelpers();
 
-    protected void doMakeVisible(final int masterIndex,
-                                 int[] startLines,
-                                 int[] endLines,
-                                 final boolean animate,
-                                 boolean forceSyncVerticalScroll) {
+    protected void doMakeVisible(final int masterIndex, int[] startLines, int[] endLines, final boolean animate) {
       final List<? extends Editor> editors = getEditors();
       final List<? extends ScrollHelper> helpers = getScrollHelpers();
 
@@ -262,11 +251,6 @@ public final class SyncScrollSupport {
       final Editor masterEditor = editors.get(masterIndex);
       final int masterOffset = offsets[masterIndex];
       final int masterStartOffset = startOffsets[masterIndex];
-
-      if (forceSyncVerticalScroll) {
-        doScrollVertically(masterEditor, masterOffset, true);
-        return;
-      }
 
       for (ScrollHelper helper : helpers) {
         helper.setAnchor(startOffsets[helper.getMasterIndex()], offsets[helper.getMasterIndex()],
@@ -310,10 +294,10 @@ public final class SyncScrollSupport {
     @Nullable private Anchor myAnchor;
 
     ScrollHelper(@NotNull List<? extends Editor> editors,
-                 int masterIndex,
-                 int slaveIndex,
-                 @NotNull SyncScrollable scrollable,
-                 @NotNull Side side) {
+                        int masterIndex,
+                        int slaveIndex,
+                        @NotNull SyncScrollable scrollable,
+                        @NotNull Side side) {
       myEditors = editors;
       myMasterIndex = masterIndex;
       mySlaveIndex = slaveIndex;
@@ -372,10 +356,7 @@ public final class SyncScrollSupport {
       boolean onlyMajorForward = false;
       boolean onlyMajorBackward = false;
       int offset;
-      if (myScrollable.forceSyncVerticalScroll()) {
-        offset = viewRect.y;
-      }
-      else if (myAnchor == null) {
+      if (myAnchor == null) {
         int middleY = viewRect.height / 3;
         int masterOffset = viewRect.y + middleY;
 

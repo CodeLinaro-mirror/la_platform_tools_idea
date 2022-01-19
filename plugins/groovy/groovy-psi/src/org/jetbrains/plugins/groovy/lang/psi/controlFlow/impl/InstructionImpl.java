@@ -1,8 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.controlFlow.impl;
 
 import com.intellij.psi.PsiElement;
-import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,15 +12,15 @@ import org.jetbrains.plugins.groovy.lang.psi.controlFlow.NegatingGotoInstruction
 
 import java.util.Collections;
 import java.util.Deque;
-import java.util.Set;
+import java.util.LinkedHashSet;
 
 /**
  * @author ven
  */
 public class InstructionImpl implements Instruction {
-  private final Set<Instruction> myPredecessors = new ObjectArraySet<>(1);
-  private final Set<Instruction> mySuccessors = new ObjectArraySet<>(1);
-  private Set<NegatingGotoInstruction> myNegations;
+  private final LinkedHashSet<Instruction> myPredecessors = new LinkedHashSet<>(1);
+  private final LinkedHashSet<Instruction> mySuccessors = new LinkedHashSet<>(1);
+  private LinkedHashSet<NegatingGotoInstruction> myNegations;
 
   protected final PsiElement myPsiElement;
   private int myNumber = -1;
@@ -115,7 +114,7 @@ public class InstructionImpl implements Instruction {
 
   void addNegationsFrom(Instruction instruction) {
     if (myNegations == null) {
-      myNegations = new ObjectArraySet<>(1);
+      myNegations = new LinkedHashSet<>(1);
     }
     for (NegatingGotoInstruction negation : instruction.getNegatingGotoInstruction()) {
       myNegations.add(negation);

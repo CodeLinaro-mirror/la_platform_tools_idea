@@ -4,7 +4,6 @@ package com.intellij.internal.statistic.eventLog
 import com.google.gson.JsonSyntaxException
 import com.intellij.internal.statistic.config.EventLogOptions.DEFAULT_ID_REVISION
 import com.intellij.internal.statistic.eventLog.filters.LogEventFilter
-import com.jetbrains.fus.reporting.model.lion3.LogEvent
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
@@ -74,7 +73,7 @@ class LogEventRecordRequest(val recorder: String, val product : String, val devi
         if (event != null && filter.accepts(event)) {
           recordSize += estimator.estimate(line)
           fillMachineId(event, machineId)
-          events.add(event.escape())
+          events.add(event)
         }
         line = reader.readLine()
       }
@@ -86,11 +85,11 @@ class LogEventRecordRequest(val recorder: String, val product : String, val devi
       val eventAction = event.event
       val machineIdValue = machineId.id
       val idRevision = machineId.revision
-      eventAction.data["system_machine_id"] = machineIdValue
+      eventAction.addData("system_machine_id", machineIdValue)
       if (idRevision != DEFAULT_ID_REVISION &&
           machineId != MachineId.UNKNOWN &&
           machineId != MachineId.DISABLED) {
-        eventAction.data["system_id_revision"] = idRevision
+        eventAction.addData("system_id_revision", idRevision)
       }
     }
   }

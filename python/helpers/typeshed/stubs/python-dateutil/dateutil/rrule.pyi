@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional, Union
 
 from ._common import weekday as weekdaybase
 
@@ -29,28 +29,28 @@ class rrulebase:
     def count(self): ...
     def before(self, dt, inc: bool = ...): ...
     def after(self, dt, inc: bool = ...): ...
-    def xafter(self, dt, count: Any | None = ..., inc: bool = ...): ...
+    def xafter(self, dt, count: Optional[Any] = ..., inc: bool = ...): ...
     def between(self, after, before, inc: bool = ..., count: int = ...): ...
 
 class rrule(rrulebase):
     def __init__(
         self,
         freq,
-        dtstart: datetime.date | None = ...,
+        dtstart: Optional[datetime.date] = ...,
         interval: int = ...,
-        wkst: weekday | int | None = ...,
-        count: int | None = ...,
-        until: datetime.date | int | None = ...,
-        bysetpos: int | Iterable[int] | None = ...,
-        bymonth: int | Iterable[int] | None = ...,
-        bymonthday: int | Iterable[int] | None = ...,
-        byyearday: int | Iterable[int] | None = ...,
-        byeaster: int | Iterable[int] | None = ...,
-        byweekno: int | Iterable[int] | None = ...,
-        byweekday: int | weekday | Iterable[int] | Iterable[weekday] | None = ...,
-        byhour: int | Iterable[int] | None = ...,
-        byminute: int | Iterable[int] | None = ...,
-        bysecond: int | Iterable[int] | None = ...,
+        wkst: Optional[Union[weekday, int]] = ...,
+        count: Optional[int] = ...,
+        until: Optional[Union[datetime.date, int]] = ...,
+        bysetpos: Optional[Union[int, Iterable[int]]] = ...,
+        bymonth: Optional[Union[int, Iterable[int]]] = ...,
+        bymonthday: Optional[Union[int, Iterable[int]]] = ...,
+        byyearday: Optional[Union[int, Iterable[int]]] = ...,
+        byeaster: Optional[Union[int, Iterable[int]]] = ...,
+        byweekno: Optional[Union[int, Iterable[int]]] = ...,
+        byweekday: Optional[Union[int, weekday, Iterable[int], Iterable[weekday]]] = ...,
+        byhour: Optional[Union[int, Iterable[int]]] = ...,
+        byminute: Optional[Union[int, Iterable[int]]] = ...,
+        bysecond: Optional[Union[int, Iterable[int]]] = ...,
         cache: bool = ...,
     ) -> None: ...
     def replace(self, **kwargs): ...
@@ -81,8 +81,6 @@ class _iterinfo:
     def mtimeset(self, hour, minute, second): ...
     def stimeset(self, hour, minute, second): ...
 
-_rrule = rrule
-
 class rruleset(rrulebase):
     class _genitem:
         dt: Any = ...
@@ -96,7 +94,7 @@ class rruleset(rrulebase):
         def __eq__(self, other): ...
         def __ne__(self, other): ...
     def __init__(self, cache: bool = ...) -> None: ...
-    def rrule(self, rrule: _rrule): ...
+    def rrule(self, rrule): ...
     def rdate(self, rdate): ...
     def exrule(self, exrule): ...
     def exdate(self, exdate): ...

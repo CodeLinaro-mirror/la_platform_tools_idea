@@ -6,7 +6,6 @@ import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 
 apply from: 'archivesCleanup.gradle'
-apply from: 'retries.gradle'
 
 def jbrVersion = System.getProperty('intellij.build.jdk.version', '11').toInteger()
 def setupJdkTasks = ["setupJbr$jbrVersion"]
@@ -27,7 +26,6 @@ def deleteObsoleteJdkArchives = ext.deleteObsoleteArchivesTask('Jdk', jbsdkDir)
  * Update this method together with:
  *  `setupJbre.gradle`
  *  `org/jetbrains/intellij/build/impl/BundledJreManager.groovy`
- *  `com.jetbrains.gateway.downloader.CodeWithMeClientDownloader#downloadClientAndJdk(java.lang.String, java.lang.String, com.intellij.openapi.progress.ProgressIndicator)`
  */
 static def splitJbrBuild(String jreBuild, String version) {
   def split = jreBuild.split('b')
@@ -68,14 +66,13 @@ def downloadJbr = task("downloadJbr$jbrVersion") {
   outputs.file(outputFile)
   doLast {
     logger.info("Downloading JBR $jbrVersion to compile (using $jbrUrl)")
-    project.ext.retry {
-      download {
-        src jbrUrl
-        dest outputFile
-        tempAndMove true
-        connectTimeout TimeUnit.SECONDS.toMillis(30).toInteger()
-        readTimeout TimeUnit.MINUTES.toMillis(5).toInteger()
-      }
+    download {
+      src jbrUrl
+      dest outputFile
+      tempAndMove true
+      connectTimeout TimeUnit.SECONDS.toMillis(30).toInteger()
+      readTimeout TimeUnit.MINUTES.toMillis(5).toInteger()
+      retries 10
     }
   }
 }
@@ -97,31 +94,21 @@ def setupJbr = tasks.create(name: "setupJbr$jbrVersion", dependsOn: [downloadJbr
 setupJbr.finalizedBy(checkJbr(jbrVersion, jbrOutputDir))
 setupJbr.finalizedBy(deleteObsoleteJdkArchives)
 
-def untar(File archive, String directory) {
-  copy {
-    from tarTree(archive)
-    into directory
-  }
-}
-
-def unpackJdk(File jbrArchive, String outputDir) {
+def unpackJdk(jbrArchive, outputDir) {
   logger.info("Unpacking $jbrArchive to ${outputDir}")
   if (file(outputDir).exists()) {
     delete(outputDir)
   }
   def currentOs = OperatingSystem.current()
   if (currentOs.isWindows()) {
-    untar(jbrArchive, outputDir)
+    copy {
+      from tarTree(jbrArchive)
+      into outputDir
+    }
   }
   else {
-    try {
-      exec { commandLine 'mkdir', '-p', outputDir }
-      exec { commandLine 'tar', 'xpf', "$jbrArchive.absolutePath", '--directory', outputDir }
-    }
-    catch (Throwable e) {
-      logger.log(LogLevel.WARN, 'Failed to unpack via native executables', e)
-      untar(jbrArchive, outputDir)
-    }
+    exec { commandLine 'mkdir', '-p', outputDir }
+    exec { commandLine 'tar', 'xpf', "$jbrArchive.absolutePath", '--directory', outputDir }
   }
   def rootDirs = ['jbrsdk', 'jbr', 'jdk']
   if (file(outputDir).list()?.any { rootDirs.contains(it) }) {
@@ -145,31 +132,14 @@ def unpackJdk(File jbrArchive, String outputDir) {
   }
 }
 
-/**
- * Inspired with com.intellij.util.system.CpuArch
- */
-static def currentArch() {
-  String arch = System.getProperty("os.arch")
-  if ("x86_64" == arch || "amd64" == arch) {
-    return 'x64'
-  }
-  else if ("i386" == arch || "x86" == arch) {
-    // x86 JVMs are sometimes used as JAVA_HOME to reduce memory consumption on TeamCity, shouldn't affect SDK choice
-    return 'x64'
-  }
-  else if ("aarch64" == arch || "arm64" == arch) {
-    return 'aarch64'
-  }
-  else {
-    throw new IllegalStateException("Unknown arch '$arch'")
-  }
-}
-
 static def jbrArch() {
   def arch = System.getProperty("intellij.jdk.arch", "")
-  if (arch == '32') return 'x86'
+  if (arch == '32') return 'i586'
   if (arch == '64') return 'x64'
-  return currentArch()
+  def os = OperatingSystem.current()
+  if (os.isWindows()) return System.getenv("ProgramFiles(x86)") != null ? 'x64' : 'i586'
+  else if (os.isMacOsX()) return System.getProperty("os.arch") != 'aarch64' ? 'x64' : 'aarch64'
+  else return 'x64'
 }
 
 @SuppressWarnings("GrMethodMayBeStatic")
@@ -179,12 +149,7 @@ def jbrUrl(String jbrVersion, String jbrBuild, String jbrArtifactPrefix) {
   def (update, buildNumber) = splitJbrBuild(jbrBuild, jbrVersion)
   // base url of TeamCity build to download JBR from
   def teamCityBuild = System.getProperty('intellij.jdk.teamcity.build.url')
-  if (teamCityBuild != null) {
-    "${teamCityBuild}/${jbrArtifactPrefix}${update}-${platform}-${arch}-${buildNumber}.tar.gz?guest=1"
-  }
-  else {
-    "${jbrRepo}/${jbrArtifactPrefix}${update}-${platform}-${arch}-${buildNumber}.tar.gz"
-  }
+  "${teamCityBuild ?: jbrRepo}/${jbrArtifactPrefix}${update}-${platform}-${arch}-${buildNumber}.tar.gz"
 }
 
 static def currentPlatformName() {

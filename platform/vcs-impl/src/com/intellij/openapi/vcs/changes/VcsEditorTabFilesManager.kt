@@ -63,6 +63,7 @@ class VcsEditorTabFilesManager :
   fun openFile(project: Project, file: VirtualFile, focusEditor: Boolean): Array<out FileEditor> {
     val editorManager = FileEditorManager.getInstance(project) as FileEditorManagerImpl
     if (editorManager.isFileOpen(file)) {
+      editorManager.updateFilePresentation(file)
       editorManager.selectAndFocusEditor(file, focusEditor)
       return emptyArray()
     }

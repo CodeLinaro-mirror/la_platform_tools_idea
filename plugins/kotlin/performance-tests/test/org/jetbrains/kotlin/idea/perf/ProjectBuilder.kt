@@ -35,7 +35,8 @@ abstract class AbstractClassSource(val name: String) : AbstractSource() {
     override fun intendLevel(): Int = 1
 
     fun function(name: String, funSource: FunSource.() -> Unit) {
-        super.body(FunSource(name).apply(funSource))
+        val funSource = FunSource(name).apply(funSource)
+        super.body(funSource)
     }
 }
 
@@ -49,13 +50,7 @@ enum class Visibility {
     INTERNAL
 }
 
-data class Parameter(
-    val name: String,
-    val type: String,
-    val mutable: Boolean = false,
-    val visibility: Visibility = Visibility.PUBLIC,
-    val defaultValueExpression: String? = null,
-) {
+data class Parameter(val name: String, val type: String, val mutable: Boolean = false, val visibility: Visibility = Visibility.PUBLIC, val defaultValueExpression: String? = null) {
     override fun toString(): String {
         val visibilityString = if (visibility == Visibility.PUBLIC) "" else visibility.name.toLowerCase() + " "
         val valueExpression = defaultValueExpression?.let { " = $it" } ?: ""
@@ -186,11 +181,13 @@ class KotlinFileSource : AbstractSource() {
     }
 
     fun topClass(name: String, clsSource: ClassSource.() -> Unit) {
-        super.body(ClassSource(name).apply(clsSource))
+        val classSource = ClassSource(name).apply(clsSource)
+        super.body(classSource)
     }
 
     fun topFunction(name: String, funSource: FunSource.() -> Unit) {
-        super.body(FunSource(name).apply(funSource))
+        val funSource = FunSource(name).apply(funSource)
+        super.body(funSource)
     }
 }
 
@@ -228,22 +225,25 @@ class ProjectBuilder {
             targetDirectory.delete(true)
         })
 
-        val javaMainSrcDir = buildGradle?.let { Paths.get(it) }?.let { buildGradlePath ->
+        val javaMainSrcDir = if (buildGradle != null) {
+            val buildGradlePath = Paths.get(buildGradle)
             when {
-                buildGradlePath.isFile() -> buildGradlePath.copy(targetDirectory)
+                buildGradlePath.isFile() -> {
+                    buildGradlePath.copy(targetDirectory)
+                }
                 buildGradlePath.isDirectory() -> {
-                    val buildGradleFile = listOf("build.gradle.kts", "build.gradle").map { buildGradlePath.resolve(it) }
-                        .firstOrNull { it.exists() }
-                        ?: error("neither build.gradle.kts nor build.gradle found at $buildGradlePath")
-
+                    val buildGradleFile =
+                        listOf("build.gradle.kts", "build.gradle").map { buildGradlePath.resolve(it) }.firstOrNull { it.exists() }
+                            ?: error("neither build.gradle.kts nor build.gradle found at $buildGradlePath")
                     buildGradleFile.copy(targetDirectory.resolve(buildGradleFile.fileName))
                 }
                 else -> error("illegal type of build gradle path: $buildGradlePath")
             }
 
             targetDirectory.resolve("src/main/java")
-        } ?: targetDirectory.resolve("src")
-
+        } else {
+            targetDirectory.resolve("src")
+        }
         javaMainSrcDir.createDirectories()
         kotlinFiles.forEach { (name, source) ->
             val srcDir = source.pkg?.let { pkg ->
@@ -254,7 +254,7 @@ class ProjectBuilder {
             srcDir.resolve("$name.kt").toFile().writeText(source.toString())
         }
         //
-        return targetDirectory.toRealPath().toString()
+        return targetDirectory.toAbsolutePath().toFile().absolutePath
     }
 
     fun openProjectOperation(): OpenProjectOperation {

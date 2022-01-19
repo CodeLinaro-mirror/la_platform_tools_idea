@@ -1,4 +1,3 @@
-// SUGGESTED_NAMES: pair, intVPair, vPair
 // PARAM_TYPES: V
 // PARAM_DESCRIPTOR: value-parameter v: V defined in foo
 open class Data(val x: Int)

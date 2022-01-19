@@ -28,12 +28,11 @@ import java.nio.file.Paths
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-import kotlin.io.path.bufferedReader
-import kotlin.io.path.extension
-import kotlin.io.path.nameWithoutExtension
+import kotlin.io.path.*
 import kotlin.streams.asSequence
 
 class IndexDiagnosticDumper : Disposable {
+
   companion object {
     @JvmStatic
     fun getInstance(): IndexDiagnosticDumper = service()
@@ -41,8 +40,6 @@ class IndexDiagnosticDumper : Disposable {
     val diagnosticTimestampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss.SSS")
 
     private const val fileNamePrefix = "diagnostic-"
-
-    private val projectIndexingHistoryListenerEpName = ExtensionPointName.create<ProjectIndexingHistoryListener>("com.intellij.projectIndexingHistoryListener")
 
     @JvmStatic
     private val shouldDumpDiagnosticsForInterruptedUpdaters: Boolean
@@ -52,7 +49,7 @@ class IndexDiagnosticDumper : Disposable {
     @JvmStatic
     private val indexingDiagnosticsLimitOfFiles: Int
       get() =
-        SystemProperties.getIntProperty("intellij.indexes.diagnostics.limit.of.files", 300)
+        SystemProperties.getIntProperty("intellij.indexes.diagnostics.limit.of.files", 20)
 
     @JvmStatic
     val shouldDumpPathsOfIndexedFiles: Boolean
@@ -94,11 +91,21 @@ class IndexDiagnosticDumper : Disposable {
 
   private var isDisposed = false
 
-  fun onIndexingStarted(projectIndexingHistory: ProjectIndexingHistoryImpl) {
+  interface ProjectIndexingHistoryListener {
+    companion object {
+      val EP_NAME = ExtensionPointName.create<ProjectIndexingHistoryListener>("com.intellij.projectIndexingHistoryListener")
+    }
+
+    fun onStartedIndexing(projectIndexingHistory: ProjectIndexingHistory) = Unit
+
+    fun onFinishedIndexing(projectIndexingHistory: ProjectIndexingHistory)
+  }
+
+  fun onIndexingStarted(projectIndexingHistory: ProjectIndexingHistory) {
     runAllListenersSafely { onStartedIndexing(projectIndexingHistory) }
   }
 
-  fun onIndexingFinished(projectIndexingHistory: ProjectIndexingHistoryImpl) {
+  fun onIndexingFinished(projectIndexingHistory: ProjectIndexingHistory) {
     try {
       if (ApplicationManager.getApplication().isUnitTestMode && !shouldDumpInUnitTestMode) {
         return
@@ -115,7 +122,7 @@ class IndexDiagnosticDumper : Disposable {
 
   private fun runAllListenersSafely(block: ProjectIndexingHistoryListener.() -> Unit) {
     val listeners = ProgressManager.getInstance().computeInNonCancelableSection<List<ProjectIndexingHistoryListener>, Exception> {
-      projectIndexingHistoryListenerEpName.extensionList
+      ProjectIndexingHistoryListener.EP_NAME.extensionList
     }
     for (listener in listeners) {
       try {
@@ -132,7 +139,7 @@ class IndexDiagnosticDumper : Disposable {
   }
 
   @Synchronized
-  private fun dumpProjectIndexingHistoryToLogSubdirectory(projectIndexingHistory: ProjectIndexingHistoryImpl) {
+  private fun dumpProjectIndexingHistoryToLogSubdirectory(projectIndexingHistory: ProjectIndexingHistory) {
     try {
       check(!isDisposed)
 
@@ -147,9 +154,8 @@ class IndexDiagnosticDumper : Disposable {
       val existingDiagnostics = parseExistingDiagnostics(indexDiagnosticDirectory)
       val survivedDiagnostics = deleteOutdatedDiagnostics(existingDiagnostics)
       val sharedIndexEvents = SharedIndexDiagnostic.readEvents(projectIndexingHistory.project)
-      val changedFilesPushedEvents = ChangedFilesPushedDiagnostic.readEvents(projectIndexingHistory.project)
       indexDiagnosticDirectory.resolve("report.html").write(
-        createAggregateHtml(projectIndexingHistory.project.name, survivedDiagnostics, sharedIndexEvents, changedFilesPushedEvents)
+        createAggregateHtml(projectIndexingHistory.project.name, survivedDiagnostics, sharedIndexEvents)
       )
     }
     catch (e: Exception) {

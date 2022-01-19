@@ -1,4 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2000-2016 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.intellij.codeInspection.inferNullity;
 
 import com.intellij.analysis.AnalysisBundle;
@@ -29,6 +43,7 @@ import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryUtil;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.ui.VerticalFlowLayout;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Factory;
 import com.intellij.openapi.util.NlsContexts;
@@ -40,6 +55,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.refactoring.RefactoringBundle;
+import com.intellij.ui.TitledSeparator;
 import com.intellij.usageView.UsageInfo;
 import com.intellij.usageView.UsageViewUtil;
 import com.intellij.usages.*;
@@ -50,15 +66,13 @@ import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.concurrency.Promise;
-import org.jetbrains.concurrency.Promises;
 
 import javax.swing.*;
 import java.util.*;
 
 public class InferNullityAnnotationsAction extends BaseAnalysisAction {
   @NonNls private static final String ANNOTATE_LOCAL_VARIABLES = "checkbox.annotate.local.variables";
-  private InferNullityAdditionalUi myUi = new InferNullityAdditionalUi();
+  private JCheckBox myAnnotateLocalVariablesCb;
 
   public InferNullityAnnotationsAction() {
     super(JavaBundle.messagePointer("dialog.title.infer.nullity"), JavaBundle.messagePointer("action.description.infer.nullity.annotations"));
@@ -66,7 +80,7 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
 
   @Override
   protected void analyze(@NotNull final Project project, @NotNull final AnalysisScope scope) {
-    PropertiesComponent.getInstance().setValue(ANNOTATE_LOCAL_VARIABLES, myUi.getCheckBox().isSelected());
+    PropertiesComponent.getInstance().setValue(ANNOTATE_LOCAL_VARIABLES, myAnnotateLocalVariablesCb.isSelected());
 
     final ProgressManager progressManager = ProgressManager.getInstance();
     final Set<Module> modulesWithoutAnnotations = new HashSet<>();
@@ -107,11 +121,10 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
       return;
     }
     if (!modulesWithoutAnnotations.isEmpty()) {
-      addAnnotationsDependency(project, modulesWithoutAnnotations, defaultNullable,
-                                                       JavaBundle.message("action.description.infer.nullity.annotations"))
-        .onSuccess(__ -> {
-          restartAnalysis(project, scope);
-        });
+      if (addAnnotationsDependency(project, modulesWithoutAnnotations, defaultNullable,
+                                   JavaBundle.message("action.description.infer.nullity.annotations"))) {
+        restartAnalysis(project, scope);
+      }
       return;
     }
     PsiDocumentManager.getInstance(project).commitAllDocuments();
@@ -130,9 +143,9 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
     }
   }
 
-  public static Promise<Void> addAnnotationsDependency(@NotNull final Project project,
-                                                       @NotNull final Set<? extends Module> modulesWithoutAnnotations,
-                                                       @NotNull String annoFQN, final @NlsContexts.DialogTitle String title) {
+  public static boolean addAnnotationsDependency(@NotNull final Project project,
+                                                 @NotNull final Set<? extends Module> modulesWithoutAnnotations,
+                                                 @NotNull String annoFQN, final @NlsContexts.DialogTitle String title) {
     final Library annotationsLib = LibraryUtil.findLibraryByClass(annoFQN, project);
     if (annotationsLib != null) {
       String message = JavaBundle.message("dialog.message.modules.dont.refer.to.existing.annotations.library",
@@ -145,19 +158,20 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
             ModuleRootModificationUtil.addDependency(module, annotationsLib);
           }
         });
-        return Promises.resolvedPromise();
+        return true;
       }
-      return Promises.rejectedPromise();
+      return false;
     }
     
     if (Messages.showOkCancelDialog(project, JavaBundle.message(
       "dialog.message.jetbrains.annotations.library.is.missing"),
                                     title, Messages.getErrorIcon()) == Messages.OK) {
       Module firstModule = modulesWithoutAnnotations.iterator().next();
-      return JavaProjectModelModificationService.getInstance(project).addDependency(modulesWithoutAnnotations, JetBrainsAnnotationsExternalLibraryResolver.getAnnotationsLibraryDescriptor(firstModule),
+      JavaProjectModelModificationService.getInstance(project).addDependency(modulesWithoutAnnotations, JetBrainsAnnotationsExternalLibraryResolver.getAnnotationsLibraryDescriptor(firstModule),
                                                                              DependencyScope.COMPILE);
+      return true;
     }
-    return Promises.rejectedPromise();
+    return false;
   }
 
   protected UsageInfo @Nullable [] findUsages(@NotNull final Project project,
@@ -209,7 +223,7 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
   }
 
   protected boolean isAnnotateLocalVariables() {
-    return myUi.getCheckBox().isSelected();
+    return myAnnotateLocalVariablesCb.isSelected();
   }
 
   private static Runnable applyRunnable(final Project project, final Computable<UsageInfo[]> computable) {
@@ -296,12 +310,16 @@ public class InferNullityAnnotationsAction extends BaseAnalysisAction {
 
   @Override
   protected JComponent getAdditionalActionSettings(Project project, BaseAnalysisActionDialog dialog) {
-    myUi.getCheckBox().setSelected(PropertiesComponent.getInstance().getBoolean(ANNOTATE_LOCAL_VARIABLES));
-    return myUi.getPanel();
+    final JPanel panel = new JPanel(new VerticalFlowLayout());
+    panel.add(new TitledSeparator());
+    myAnnotateLocalVariablesCb = new JCheckBox(JavaBundle.message("checkbox.annotate.local.variables"), PropertiesComponent.getInstance().getBoolean(ANNOTATE_LOCAL_VARIABLES));
+    panel.add(myAnnotateLocalVariablesCb);
+    return panel;
   }
 
   @Override
   protected void canceled() {
     super.canceled();
+    myAnnotateLocalVariablesCb = null;
   }
 }

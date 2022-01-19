@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.core.script
 
-import com.intellij.ide.scratch.ScratchUtil
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.project.Project
@@ -15,7 +14,6 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.util.io.URLUtil
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.idea.core.script.configuration.CompositeScriptConfigurationManager
-import org.jetbrains.kotlin.idea.core.script.configuration.DefaultScriptingSupport
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.UserDataProperty
 import org.jetbrains.kotlin.scripting.definitions.ScriptDependenciesProvider
@@ -44,12 +42,7 @@ class IdeScriptDependenciesProvider(project: Project) : ScriptDependenciesProvid
     }
 
     override fun getScriptConfiguration(file: KtFile): ScriptCompilationConfigurationWrapper? {
-        // return only already loaded configurations OR force to load gradle-related configurations
-        return if (DefaultScriptingSupport.getInstance(project).isLoadedFromCache(file) || !ScratchUtil.isScratch(file.virtualFile)) {
-            ScriptConfigurationManager.getInstance(project).getConfiguration(file)
-        } else {
-            null
-        }
+        return ScriptConfigurationManager.getInstance(project).getConfiguration(file)
     }
 
 }

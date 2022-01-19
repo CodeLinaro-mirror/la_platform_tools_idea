@@ -2,13 +2,13 @@
 <body>
 Reports calls to methods like <code>format()</code> and <code>printf()</code> that can be safely removed or simplified.
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   System.out.println(String.format("Total count: %d", 42));
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
+<pre>
   System.out.printf("Total count: %d%n", 42);
-</code></pre>
+</pre>
 <!-- tooltip end -->
 </body>
 </html>

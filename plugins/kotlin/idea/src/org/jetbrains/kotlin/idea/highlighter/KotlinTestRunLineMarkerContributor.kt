@@ -11,7 +11,6 @@ import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.platform.tooling
 import org.jetbrains.kotlin.idea.project.platform
-import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
 import org.jetbrains.kotlin.idea.util.projectStructure.module
 import org.jetbrains.kotlin.konan.target.HostManager
 import org.jetbrains.kotlin.konan.target.KonanTarget
@@ -68,8 +67,6 @@ class KotlinTestRunLineMarkerContributor : RunLineMarkerContributor() {
         if (declaration !is KtClass && declaration !is KtNamedFunction) return null
 
         if (declaration is KtNamedFunction && declaration.containingClass() == null) return null
-
-        if (!ProjectRootsUtil.isInProjectSource(declaration)) return null
 
         val targetPlatform = declaration.module?.platform ?: return null
         if (!targetPlatform.providesRunnableTests()) return null

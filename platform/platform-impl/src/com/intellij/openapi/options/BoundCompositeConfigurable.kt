@@ -2,8 +2,6 @@
 package com.intellij.openapi.options
 
 import com.intellij.openapi.util.NlsContexts
-import com.intellij.ui.dsl.builder.Panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
 import com.intellij.ui.layout.*
 
 abstract class BoundCompositeConfigurable<T : UnnamedConfigurable>(
@@ -15,7 +13,7 @@ abstract class BoundCompositeConfigurable<T : UnnamedConfigurable>(
   private val lazyConfigurables: Lazy<List<T>> = lazy { createConfigurables() }
 
   protected val configurables get() = lazyConfigurables.value
-  private val plainConfigurables get() = lazyConfigurables.value.filter { it !is UiDslConfigurable && it !is UiDslUnnamedConfigurable }
+  private val plainConfigurables get() = lazyConfigurables.value.filter { it !is UiDslConfigurable }
 
   override fun isModified(): Boolean {
     return super.isModified() || plainConfigurables.any { it.isModified }
@@ -38,7 +36,7 @@ abstract class BoundCompositeConfigurable<T : UnnamedConfigurable>(
   override fun disposeUIResources() {
     super.disposeUIResources()
     if (lazyConfigurables.isInitialized()) {
-      for (configurable in configurables) {
+      for (configurable in plainConfigurables) {
         configurable.disposeUIResources()
       }
     }
@@ -56,25 +54,6 @@ abstract class BoundCompositeConfigurable<T : UnnamedConfigurable>(
       if (panel != null) {
         row {
           component(panel)
-            .constraints(CCFlags.growX)
-        }
-      }
-    }
-  }
-
-  protected fun Panel.appendDslConfigurable(configurable: UnnamedConfigurable) {
-    if (configurable is UiDslUnnamedConfigurable) {
-      val builder = this
-      with(configurable) {
-        builder.createContent()
-      }
-    }
-    else {
-      val panel = configurable.createComponent()
-      if (panel != null) {
-        row {
-          cell(panel)
-            .horizontalAlign(HorizontalAlign.FILL)
         }
       }
     }

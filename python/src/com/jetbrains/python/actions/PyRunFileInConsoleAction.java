@@ -23,10 +23,10 @@ import com.jetbrains.python.run.PythonRunConfigurationProducer;
 import icons.PythonIcons;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PyRunFileInConsoleAction extends AnAction implements DumbAware {
-  private static final HashMap<PythonRunConfiguration, Boolean> waitingForExecution = new HashMap<>();
+  private static final ConcurrentHashMap<PythonRunConfiguration, Boolean> waitingForExecution = new ConcurrentHashMap<>();
 
   public PyRunFileInConsoleAction() {
     super(PyBundle.messagePointer("acton.run.file.in.python.console.title"),
@@ -63,9 +63,7 @@ public class PyRunFileInConsoleAction extends AnAction implements DumbAware {
     if (builder != null) {
       boolean oldValueShowCommandline = configuration.showCommandLineAfterwards();
       configuration.setShowCommandLineAfterwards(true);
-      synchronized (this) {
-        waitingForExecution.put(configuration, oldValueShowCommandline);
-      }
+      waitingForExecution.put(configuration, oldValueShowCommandline);
 
       ExecutionManager.getInstance(project).restartRunProfile(builder.build());
     }
@@ -74,7 +72,7 @@ public class PyRunFileInConsoleAction extends AnAction implements DumbAware {
   /*
     Restore the option which was changed for the action execution
    */
-  synchronized public static void configExecuted(PythonRunConfiguration configuration) {
+  public static void configExecuted(PythonRunConfiguration configuration) {
     if (waitingForExecution.containsKey(configuration)) {
       Boolean oldValue = waitingForExecution.remove(configuration);
       configuration.setShowCommandLineAfterwards(oldValue);

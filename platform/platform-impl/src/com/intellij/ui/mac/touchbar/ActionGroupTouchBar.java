@@ -35,7 +35,7 @@ class ActionGroupTouchBar extends TouchBar {
   private final @Nullable Collection<AnAction> myAutoCloseActions;
   private final @Nullable Customizer myCustomizer;
 
-  private final @NotNull Updater myUpdateTimer = new Updater();
+  private final @NotNull Updater myUpdateTimer = new Updater(500);
   private CancellablePromise<List<AnAction>> myLastUpdate;
   private long myLastUpdateNs = 0;
   private long myStartShowNs = 0;
@@ -424,10 +424,6 @@ class ActionGroupTouchBar extends TouchBar {
       return;
     }
 
-    if (myCustomizer != null) {
-      myCustomizer.onBeforeActionsExpand(myActionGroup);
-    }
-
     // NOTE: some of buttons (from dialogs for example) has custom component (used in _performAction, as event source (i.e. DataContext))
     // but here we expand actions with current-focus-component (theoretically it can cause that some actions will be updated incorrectly)
     DataContext dataContext = Utils.wrapDataContext(DataManager.getInstance().getDataContext(Helpers.getCurrentFocusComponent()));
@@ -453,7 +449,10 @@ class ActionGroupTouchBar extends TouchBar {
   }
 
   private final class Updater {
+    private final int myDelay;
     private @Nullable TimerListener myTimerImpl;
+
+    Updater(int delay) { myDelay = delay; }
 
     void start() {
       if (myTimerImpl != null) {
@@ -471,7 +470,7 @@ class ActionGroupTouchBar extends TouchBar {
           updateActionItems();
         }
       };
-      ActionManager.getInstance().addTimerListener(myTimerImpl);
+      ActionManager.getInstance().addTimerListener(myDelay/*delay param doesn't affect anything*/, myTimerImpl);
     }
 
     void stop() {
@@ -491,9 +490,27 @@ class ActionGroupTouchBar extends TouchBar {
   // check that all autoClose actions are presented in actionGroup
   private static void validateAutoCloseActions(@NotNull ActionGroup actionGroup, @NotNull Collection<AnAction> autoCloseActions) {
     List<AnAction> actionsFromGroup = new ArrayList<>();
-    Helpers.collectLeafActions(actionGroup, actionsFromGroup);
+    collectLeafActions(actionGroup, actionsFromGroup);
     if (!actionsFromGroup.containsAll(autoCloseActions)) {
       autoCloseActions.removeIf(a -> !actionsFromGroup.contains(a));
+    }
+  }
+
+  private static void collectLeafActions(@NotNull ActionGroup actionGroup, @NotNull Collection<AnAction> out) {
+    AnAction[] actions = actionGroup.getChildren(null);
+    for (AnAction childAction : actions) {
+      if (childAction == null) {
+        continue;
+      }
+      if (childAction instanceof ActionGroup) {
+        final ActionGroup childGroup = (ActionGroup)childAction;
+        collectLeafActions(childGroup, out);
+        continue;
+      }
+      if (childAction instanceof Separator) {
+        continue;
+      }
+      out.add(childAction);
     }
   }
 }

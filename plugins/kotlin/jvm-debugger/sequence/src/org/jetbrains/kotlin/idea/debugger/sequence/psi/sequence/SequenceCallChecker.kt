@@ -4,8 +4,8 @@ package org.jetbrains.kotlin.idea.debugger.sequence.psi.sequence
 
 import org.jetbrains.kotlin.idea.debugger.sequence.psi.KotlinPsiUtil
 import org.jetbrains.kotlin.idea.debugger.sequence.psi.StreamCallChecker
-import org.jetbrains.kotlin.idea.core.receiverType
-import org.jetbrains.kotlin.idea.core.resolveType
+import org.jetbrains.kotlin.idea.debugger.sequence.psi.receiverType
+import org.jetbrains.kotlin.idea.debugger.sequence.psi.resolveType
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.typeUtil.supertypes
@@ -13,14 +13,12 @@ import org.jetbrains.kotlin.types.typeUtil.supertypes
 class SequenceCallChecker : StreamCallChecker {
     override fun isIntermediateCall(expression: KtCallExpression): Boolean {
         val receiverType = expression.receiverType() ?: return false
-        val expressionType = expression.resolveType() ?: return false
-        return isSequenceInheritor(receiverType) && isSequenceInheritor(expressionType)
+        return isSequenceInheritor(receiverType) && isSequenceInheritor(expression.resolveType())
     }
 
     override fun isTerminationCall(expression: KtCallExpression): Boolean {
         val receiverType = expression.receiverType() ?: return false
-        val expressionType = expression.resolveType() ?: return false
-        return isSequenceInheritor(receiverType) && !isSequenceInheritor(expressionType)
+        return isSequenceInheritor(receiverType) && !isSequenceInheritor(expression.resolveType())
     }
 
     private fun isSequenceInheritor(type: KotlinType): Boolean =

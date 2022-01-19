@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.transformations
 
 import com.intellij.openapi.project.Project
@@ -6,15 +6,16 @@ import com.intellij.psi.*
 import com.intellij.psi.impl.light.LightMethodBuilder
 import com.intellij.psi.impl.light.LightPsiClassBuilder
 import com.intellij.psi.util.MethodSignature
+import com.intellij.psi.util.MethodSignatureUtil.METHOD_PARAMETERS_ERASURE_EQUALITY
 import com.intellij.psi.util.PsiTypesUtil
 import com.intellij.util.containers.FactoryMap
 import com.intellij.util.containers.toArray
 import it.unimi.dsi.fastutil.Hash
 import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet
 import org.jetbrains.plugins.groovy.lang.psi.api.auxiliary.modifiers.GrModifierList
-import org.jetbrains.plugins.groovy.lang.psi.api.auxiliary.modifiers.annotation.GrAnnotation
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrField
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.GrTypeDefinition
+import org.jetbrains.plugins.groovy.lang.psi.impl.PsiImplUtil.getAnnotation
 import org.jetbrains.plugins.groovy.lang.psi.impl.auxiliary.modifiers.hasCodeModifierProperty
 import org.jetbrains.plugins.groovy.lang.psi.impl.auxiliary.modifiers.hasModifierProperty
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil.createType
@@ -57,9 +58,6 @@ internal class TransformationContextImpl(private val myCodeClass: GrTypeDefiniti
       }
     }
     result
-  }
-  private val myAnnotations: MutableList<PsiAnnotation> by lazy(LazyThreadSafetyMode.NONE) {
-    myCodeClass.annotations.toMutableList()
   }
 
   @Suppress("ClassName")
@@ -174,11 +172,7 @@ internal class TransformationContextImpl(private val myCodeClass: GrTypeDefiniti
 
   override fun getSuperClass(): PsiClass? = getSuperClass(codeClass, myExtendsTypes.toTypedArray())
 
-  override fun getAnnotation(fqn: String): PsiAnnotation? = myAnnotations.find { it.qualifiedName == fqn }
-
-  override fun addAnnotation(annotation: GrAnnotation) {
-    myAnnotations.add(annotation)
-  }
+  override fun getAnnotation(fqn: String): PsiAnnotation? = getAnnotation(codeClass, fqn)
 
   override fun isInheritor(baseClass: PsiClass): Boolean {
     if (manager.areElementsEquivalent(codeClass, baseClass)) return true
@@ -249,7 +243,7 @@ internal class TransformationContextImpl(private val myCodeClass: GrTypeDefiniti
     for (expanded in expandReflectedMethods(method)) {
       val signature = expanded.getSignature(PsiSubstitutor.EMPTY)
       if (signatures.remove(signature)) {
-        myMethods.removeIf { m -> com.intellij.psi.util.MethodSignatureUtil.areSignaturesErasureEqual(signature, m.getSignature(PsiSubstitutor.EMPTY)) }
+        myMethods.removeIf { m -> METHOD_PARAMETERS_ERASURE_EQUALITY.equals(signature, m.getSignature(PsiSubstitutor.EMPTY)) }
       }
     }
   }

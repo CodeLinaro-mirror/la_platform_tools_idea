@@ -1,15 +1,10 @@
 package com.intellij.codeInspection.tests.java
 
 import com.intellij.codeInspection.tests.JUnitRuleInspectionTestBase
-import com.intellij.jvm.analysis.JavaJvmAnalysisTestUtil
-import com.intellij.testFramework.TestDataPath
+import com.intellij.jvm.analysis.JvmAnalysisTestsUtil
 
-private const val inspectionPath = "/codeInspection/junitrule"
-
-@TestDataPath("\$CONTENT_ROOT/testData$inspectionPath")
 class JavaJUnitRuleInspectionTest : JUnitRuleInspectionTestBase() {
-  override fun getBasePath() = JavaJvmAnalysisTestUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + inspectionPath
-
+  override fun getTestDataPath() = JvmAnalysisTestsUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + "/codeInspection/junitrule"
 
   fun `test @Rule highlighting`() {
     myFixture.testHighlighting("RuleTest.java")

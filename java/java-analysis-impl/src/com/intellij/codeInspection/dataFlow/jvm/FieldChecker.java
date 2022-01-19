@@ -8,7 +8,6 @@ import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
-import com.intellij.util.ObjectUtils;
 import com.siyeh.ig.callMatcher.CallMatcher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -20,7 +19,7 @@ public class FieldChecker {
   private final PsiClass myClass;
 
   private FieldChecker(PsiElement context) {
-    PsiMethod method = ObjectUtils.tryCast(PsiTreeUtil.getNonStrictParentOfType(context, PsiMember.class), PsiMethod.class);
+    PsiMethod method = context instanceof PsiClass ? null : PsiTreeUtil.getParentOfType(context, PsiMethod.class);
     PsiClass contextClass = method != null ? method.getContainingClass() : context instanceof PsiClass ? (PsiClass)context : null;
     myClass = contextClass;
     if (method == null || myClass == null) {

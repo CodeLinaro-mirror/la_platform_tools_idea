@@ -1,1 +1,0 @@
-Unclassified 6 SomeObject.INSTANCE.action();

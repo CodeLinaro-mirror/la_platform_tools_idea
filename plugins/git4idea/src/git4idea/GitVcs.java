@@ -18,6 +18,7 @@ import com.intellij.openapi.vcs.diff.DiffProvider;
 import com.intellij.openapi.vcs.history.VcsRevisionNumber;
 import com.intellij.openapi.vcs.merge.MergeProvider;
 import com.intellij.openapi.vcs.rollback.RollbackEnvironment;
+import com.intellij.openapi.vcs.roots.VcsRootDetector;
 import com.intellij.openapi.vcs.update.UpdateEnvironment;
 import com.intellij.openapi.vcs.versionBrowser.CommittedChangeList;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -26,7 +27,6 @@ import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.VcsSynchronousProgressWrapper;
 import com.intellij.vcs.AnnotationProviderEx;
 import com.intellij.vcs.log.VcsUserRegistry;
-import git4idea.annotate.GitAdvancedSettingsListener;
 import git4idea.annotate.GitAnnotationProvider;
 import git4idea.annotate.GitRepositoryForAnnotationsListener;
 import git4idea.branch.GitBranchIncomingOutgoingManager;
@@ -215,7 +215,6 @@ public final class GitVcs extends AbstractVcs {
     myProject.getService(VcsUserRegistry.class);
 
     GitRepositoryForAnnotationsListener.registerListener(myProject, myDisposable);
-    GitAdvancedSettingsListener.registerListener(myProject, myDisposable);
 
     GitUserRegistry.getInstance(myProject).activate();
     GitBranchIncomingOutgoingManager.getInstance(myProject).activate();
@@ -317,16 +316,11 @@ public final class GitVcs extends AbstractVcs {
   @Override
   @RequiresEdt
   public void enableIntegration() {
-    enableIntegration(null);
-  }
-
-  @Override
-  @RequiresEdt
-  public void enableIntegration(@Nullable VirtualFile targetDirectory) {
     new Task.Backgroundable(myProject, GitBundle.message("progress.title.enabling.git"), true) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
-        new GitIntegrationEnabler(GitVcs.this, targetDirectory).detectAndEnable();
+        Collection<VcsRoot> roots = myProject.getService(VcsRootDetector.class).detect();
+        new GitIntegrationEnabler(GitVcs.this).enable(roots);
       }
     }.queue();
   }

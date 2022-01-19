@@ -6,8 +6,8 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.module.Module
 
-enum class BuildSystemType {
-    JPS, Gradle, AndroidGradle, Maven
+abstract class BuildSystemType {
+    object JPS : BuildSystemType()
 }
 
 interface BuildSystemTypeDetector {

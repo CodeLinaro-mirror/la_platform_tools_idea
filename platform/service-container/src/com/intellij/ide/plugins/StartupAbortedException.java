@@ -18,7 +18,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 public final class StartupAbortedException extends RuntimeException {
@@ -80,9 +79,7 @@ public final class StartupAbortedException extends RuntimeException {
                                              pluginId.getIdString(),
                                              getProductNameSafe()));
       message.append("\n\n");
-
-      Throwable cause = pluginException.getCause();
-      Objects.requireNonNullElse(cause, pluginException).printStackTrace(new PrintWriter(message));
+      pluginException.getCause().printStackTrace(new PrintWriter(message));
 
       Main.showMessage(BootstrapBundle.message("bootstrap.error.title.plugin.error"), message.toString(), false); //NON-NLS
       System.exit(Main.PLUGIN_ERROR);

@@ -3,13 +3,15 @@
 fun foo() {
     open class <caret>A
 
-    val b = object : A() {}
+    val b = object: A() {}
 
-    open class T : A()
+    interface T: A
 
     fun bar() {
-        val c = object : A() {}
+        val c = object: A() {}
 
-        val d = object : T() {}
+        val d = object: T {}
     }
 }
+
+// DISABLE-ERRORS

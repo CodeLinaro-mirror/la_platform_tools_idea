@@ -5,7 +5,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target({ElementType.METHOD, ElementType.TYPE})
-@Retention(RetentionPolicy.CLASS)
+@Target(value = ElementType.METHOD)
+@Retention(value = RetentionPolicy.CLASS)
 public @interface Blocking {
 }

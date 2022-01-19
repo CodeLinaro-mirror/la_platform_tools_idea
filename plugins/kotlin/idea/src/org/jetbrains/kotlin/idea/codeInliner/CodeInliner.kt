@@ -4,7 +4,6 @@ package org.jetbrains.kotlin.idea.codeInliner
 
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
-import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.search.LocalSearchScope
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.builtins.isExtensionFunctionType
@@ -20,13 +19,10 @@ import org.jetbrains.kotlin.idea.inspections.RedundantUnitExpressionInspection
 import org.jetbrains.kotlin.idea.intentions.InsertExplicitTypeArgumentsIntention
 import org.jetbrains.kotlin.idea.intentions.LambdaToAnonymousFunctionIntention
 import org.jetbrains.kotlin.idea.intentions.RemoveExplicitTypeArgumentsIntention
-import org.jetbrains.kotlin.idea.intentions.isInvokeOperator
 import org.jetbrains.kotlin.idea.refactoring.inline.KotlinInlineAnonymousFunctionProcessor
 import org.jetbrains.kotlin.idea.search.usagesSearch.descriptor
-import org.jetbrains.kotlin.idea.util.CommentSaver
-import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.idea.util.ImportInsertHelper
-import org.jetbrains.kotlin.idea.util.getResolutionScope
+import org.jetbrains.kotlin.idea.util.*
+import org.jetbrains.kotlin.idea.intentions.isInvokeOperator
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
@@ -503,22 +499,24 @@ class CodeInliner<TCallElement : KtElement>(
         }
 
         for (pointer in pointers) {
-            restoreComments(pointer)
+            val element = pointer.element ?: continue
 
-            introduceNamedArguments(pointer)
+            restoreComments(element)
 
-            restoreFunctionLiteralArguments(pointer)
+            introduceNamedArguments(element)
+
+            restoreFunctionLiteralArguments(element)
 
             //TODO: do this earlier
-            dropArgumentsForDefaultValues(pointer)
+            dropArgumentsForDefaultValues(element)
 
-            removeRedundantLambdasAndAnonymousFunctions(pointer)
+            removeRedundantLambdasAndAnonymousFunctions(element)
 
-            simplifySpreadArrayOfArguments(pointer)
+            simplifySpreadArrayOfArguments(element)
 
-            removeExplicitTypeArguments(pointer)
+            removeExplicitTypeArguments(element)
 
-            removeRedundantUnitExpressions(pointer)
+            removeRedundantUnitExpressions(element)
         }
 
         val shortenFilter = { element: PsiElement ->
@@ -563,8 +561,7 @@ class CodeInliner<TCallElement : KtElement>(
         return if (newElements.isEmpty()) PsiChildRange.EMPTY else PsiChildRange(newElements.first(), newElements.last())
     }
 
-    private fun removeRedundantLambdasAndAnonymousFunctions(pointer: SmartPsiElementPointer<KtElement>) {
-        val element = pointer.element ?: return
+    private fun removeRedundantLambdasAndAnonymousFunctions(element: KtElement) {
         for (function in element.collectDescendantsOfType<KtFunction>().asReversed()) {
             val call = RedundantLambdaOrAnonymousFunctionInspection.findCallIfApplicableTo(function)
             if (call != null) {
@@ -573,24 +570,23 @@ class CodeInliner<TCallElement : KtElement>(
         }
     }
 
-    private fun restoreComments(pointer: SmartPsiElementPointer<KtElement>) {
-        pointer.element?.forEachDescendantOfType<KtExpression> {
+    private fun restoreComments(element: KtElement) {
+        element.forEachDescendantOfType<KtExpression> {
             it.getCopyableUserData(CommentHolder.COMMENTS_TO_RESTORE_KEY)?.restoreComments(it)
         }
     }
 
-    private fun removeRedundantUnitExpressions(pointer: SmartPsiElementPointer<KtElement>) {
-        pointer.element?.forEachDescendantOfType<KtReferenceExpression> {
+    private fun removeRedundantUnitExpressions(result: KtElement) {
+        result.forEachDescendantOfType<KtReferenceExpression> {
             if (RedundantUnitExpressionInspection.isRedundantUnit(it)) {
                 it.delete()
             }
         }
     }
 
-    private fun introduceNamedArguments(pointer: SmartPsiElementPointer<KtElement>) {
-        val element = pointer.element ?: return
+    private fun introduceNamedArguments(result: KtElement) {
         val callsToProcess = LinkedHashSet<KtCallExpression>()
-        element.forEachDescendantOfType<KtValueArgument> {
+        result.forEachDescendantOfType<KtValueArgument> {
             if (it[MAKE_ARGUMENT_NAMED_KEY] && !it.isNamed()) {
                 val callExpression = (it.parent as? KtValueArgumentList)?.parent as? KtCallExpression
                 callsToProcess.addIfNotNull(callExpression)
@@ -619,8 +615,7 @@ class CodeInliner<TCallElement : KtElement>(
         }
     }
 
-    private fun dropArgumentsForDefaultValues(pointer: SmartPsiElementPointer<KtElement>) {
-        val result = pointer.element ?: return
+    private fun dropArgumentsForDefaultValues(result: KtElement) {
         val project = result.project
         val newBindingContext = result.analyze()
         val argumentsToDrop = ArrayList<ValueArgument>()
@@ -662,8 +657,7 @@ class CodeInliner<TCallElement : KtElement>(
         }
     }
 
-    private fun removeExplicitTypeArguments(pointer: SmartPsiElementPointer<KtElement>) {
-        val result = pointer.element ?: return
+    private fun removeExplicitTypeArguments(result: KtElement) {
         for (typeArgumentList in result.collectDescendantsOfType<KtTypeArgumentList>(canGoInside = { !it[USER_CODE_KEY] }).asReversed()) {
             if (RemoveExplicitTypeArgumentsIntention.isApplicableTo(typeArgumentList, approximateFlexible = true)) {
                 typeArgumentList.delete()
@@ -671,8 +665,7 @@ class CodeInliner<TCallElement : KtElement>(
         }
     }
 
-    private fun simplifySpreadArrayOfArguments(pointer: SmartPsiElementPointer<KtElement>) {
-        val result = pointer.element ?: return
+    private fun simplifySpreadArrayOfArguments(result: KtElement) {
         //TODO: test for nested
 
         val argumentsToExpand = ArrayList<Pair<KtValueArgument, Collection<KtValueArgument>>>()
@@ -706,8 +699,7 @@ class CodeInliner<TCallElement : KtElement>(
         }
     }
 
-    private fun restoreFunctionLiteralArguments(pointer: SmartPsiElementPointer<KtElement>) {
-        val expression = pointer.element ?: return
+    private fun restoreFunctionLiteralArguments(expression: KtElement) {
         val callExpressions = ArrayList<KtCallExpression>()
 
         expression.forEachDescendantOfType<KtExpression>(fun(expr) {

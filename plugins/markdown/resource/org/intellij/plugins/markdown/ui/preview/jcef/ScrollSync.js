@@ -16,10 +16,7 @@ class ScrollController {
   constructor() {
     this.positionAttributeName = document.querySelector(`meta[name="markdown-position-attribute-name"]`).content;
     this.collectMarkdownElements = this._collectMarkdownElements();
-    const scrollHandler = throttle(() => this._scrollHandler(), 20);
-    document.addEventListener('scroll', e => {
-      scrollHandler()
-    })
+    this.scrollHandler = throttle(() => this._scrollHandler(), 20);
     IncrementalDOM.notifications.afterPatchListeners.push(() => {
       this.collectMarkdownElements = this._collectMarkdownElements();
     });
@@ -45,7 +42,7 @@ class ScrollController {
 
   _scrollHandler() {
     const value = this._getElementsAtOffset(window.scrollY);
-    window.__IntelliJTools.messagePipe.post("setScroll", value.previous.from);
+    window.messagePipe.post("setScroll", value.previous.from);
   }
 
   _getNodeOffsets(node) {
@@ -101,7 +98,7 @@ class ScrollController {
     return { previous: hiElement };
   }
 
-  scrollTo(offset, smooth = true) {
+  scrollTo(offset, fast = false) {
     if (this.currentScrollElement) {
       const position = this._getNodeOffsets(this.currentScrollElement);
       if (offset >= position[0] && offset <= position[1]) {
@@ -117,7 +114,7 @@ class ScrollController {
       // console.warn(`Failed to find element for offset: ${offset}`);
       return;
     }
-    if (!smooth) {
+    if (fast) {
       this.currentScrollElement.scrollIntoView();
     }
     else {

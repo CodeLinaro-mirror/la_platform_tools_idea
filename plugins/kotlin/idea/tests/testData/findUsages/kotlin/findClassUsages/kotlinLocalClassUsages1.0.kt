@@ -8,6 +8,6 @@ fun foo(): Any {
     return Bar()
 }
 
-class Bar
-
 val x = Bar()
+
+// DISABLE-ERRORS

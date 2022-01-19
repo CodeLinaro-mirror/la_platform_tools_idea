@@ -6,7 +6,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ui.Messages
 import org.jetbrains.kotlin.idea.KotlinBundle
-import org.jetbrains.kotlin.idea.completion.KotlinIdeaCompletionBundle
 import org.jetbrains.kotlin.idea.formatter.KotlinFormatterUsageCollector
 
 class KotlinFormattingSettingsStatusAction : AnAction() {
@@ -17,7 +16,7 @@ class KotlinFormattingSettingsStatusAction : AnAction() {
 
         Messages.showInfoMessage(
             project,
-            KotlinIdeaCompletionBundle.message("formatting.settings.dialog.message.formatterkind", formatterKind),
+            "formatterKind = $formatterKind",
             KotlinBundle.message("formatter.settings.title")
         )
     }

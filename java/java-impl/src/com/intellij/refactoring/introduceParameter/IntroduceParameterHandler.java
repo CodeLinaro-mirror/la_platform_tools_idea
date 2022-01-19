@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.introduceParameter;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -27,7 +27,10 @@ import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.JBPopupListener;
 import com.intellij.openapi.ui.popup.LightweightWindowEvent;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.codeStyle.SuggestedNameInfo;
@@ -47,7 +50,6 @@ import com.intellij.refactoring.extractMethod.InputVariables;
 import com.intellij.refactoring.extractMethod.PrepareFailedException;
 import com.intellij.refactoring.introduce.inplace.AbstractInplaceIntroducer;
 import com.intellij.refactoring.introduceField.ElementToWorkOn;
-import com.intellij.refactoring.introduceVariable.IntroduceVariableBase;
 import com.intellij.refactoring.ui.MethodCellRenderer;
 import com.intellij.refactoring.ui.NameSuggestionsGenerator;
 import com.intellij.refactoring.ui.TypeSelectorManagerImpl;
@@ -373,49 +375,29 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
     }
 
     public void introduceParameter(PsiMethod method, PsiMethod methodToSearchFor) {
-      ExpressionOccurrenceManager occurrenceManager = myExpr != null ? new ExpressionOccurrenceManager(myExpr, method, null) : null;
       PsiExpression[] occurrences;
       if (myExpr != null) {
-        occurrences = occurrenceManager.findExpressionOccurrences();
+        occurrences = new ExpressionOccurrenceManager(myExpr, method, null).findExpressionOccurrences();
       }
       else { // local variable
         occurrences = CodeInsightUtil.findReferenceExpressions(method, myLocalVar);
       }
 
-      if (myExpr != null && AbstractInplaceIntroducer.getActiveIntroducer(myEditor) == null) {
-        IntroduceVariableBase.OccurrencesInfo occurrencesInfo = new IntroduceVariableBase.OccurrencesInfo(occurrences, false);
-        LinkedHashMap<IntroduceVariableBase.JavaReplaceChoice, List<PsiExpression>> occurrencesMap = occurrencesInfo.buildOccurrencesMap(myExpr);
-        IntroduceVariableBase.createOccurrencesChooser(myEditor).showChooser(new Pass<>() {
-          @Override
-          public void pass(IntroduceVariableBase.JavaReplaceChoice choice) {
-            PsiExpression[] selectedOccurrences = choice.filter(occurrenceManager);
-            introduceParameter(method, methodToSearchFor, selectedOccurrences, choice);
-          }
-        }, occurrencesMap, RefactoringBundle.message("replace.multiple.occurrences.found"));
-      }
-      else {
-        introduceParameter(method, methodToSearchFor, occurrences, IntroduceVariableBase.JavaReplaceChoice.ALL);
-      }
-    }
-
-    private void introduceParameter(PsiMethod method,
-                                    PsiMethod methodToSearchFor,
-                                    PsiExpression[] occurrences,
-                                    @NotNull IntroduceVariableBase.JavaReplaceChoice replaceChoice) {
       String enteredName = null;
+      boolean replaceAllOccurrences = false;
       boolean delegate = false;
       PsiType initializerType = IntroduceParameterProcessor.getInitializerType(null, myExpr, myLocalVar);
 
-      final var activeIntroducer = (InplaceIntroduceParameterPopup)AbstractInplaceIntroducer.getActiveIntroducer(myEditor);
+      final AbstractInplaceIntroducer activeIntroducer = AbstractInplaceIntroducer.getActiveIntroducer(myEditor);
       if (activeIntroducer != null) {
         activeIntroducer.stopIntroduce(myEditor);
-        myExpr = activeIntroducer.getExpr();
+        myExpr = (PsiExpression)activeIntroducer.getExpr();
         myLocalVar = (PsiLocalVariable)activeIntroducer.getLocalVariable();
-        occurrences = activeIntroducer.getOccurrences();
+        occurrences = (PsiExpression[])activeIntroducer.getOccurrences();
         enteredName = activeIntroducer.getInputName();
-        replaceChoice = activeIntroducer.getReplaceChoice();
-        delegate = activeIntroducer.isGenerateDelegate();
-        initializerType = activeIntroducer.getType();
+        replaceAllOccurrences = activeIntroducer.isReplaceAllOccurrences();
+        delegate = ((InplaceIntroduceParameterPopup)activeIntroducer).isGenerateDelegate();
+        initializerType = ((AbstractJavaInplaceIntroducer)activeIntroducer).getType();
       }
 
       boolean mustBeFinal = false;
@@ -424,7 +406,7 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
         mustBeFinal = parent != null && PsiTreeUtil.getParentOfType(parent, PsiClass.class, PsiMethod.class) != method;
       }
       for (PsiExpression occurrence : occurrences) {
-        if (occurrence.isPhysical() && PsiTreeUtil.getParentOfType(occurrence, PsiClass.class, PsiMethod.class) != method) {
+        if (PsiTreeUtil.getParentOfType(occurrence, PsiClass.class, PsiMethod.class) != method) {
           mustBeFinal = true;
           break;
         }
@@ -445,8 +427,7 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
                                              createTypeSelectorManager(occurrences, initializerType),
                                              myExpr, myLocalVar, method, methodToSearchFor, occurrences,
                                              getParamsToRemove(method, occurrences),
-                                             mustBeFinal, 
-                                             replaceChoice);
+                                             mustBeFinal);
         if (myInplaceIntroduceParameterPopup.startInplaceIntroduceTemplate()) {
           return;
         }
@@ -455,8 +436,8 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
         @NonNls String parameterName = "anObject";
         PsiExpression initializer = myLocalVar != null && myExpr == null ? myLocalVar.getInitializer() : myExpr;
         new IntroduceParameterProcessor(myProject, method, methodToSearchFor, initializer, myExpr, myLocalVar, true, parameterName,
-                                        IntroduceVariableBase.JavaReplaceChoice.ALL, IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_NONE, mustBeFinal,
-                                        false, false, null,
+                                        true, IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_NONE, mustBeFinal,
+                                        false, null,
                                         getParamsToRemove(method, occurrences)).run();
       }
       else {
@@ -469,7 +450,7 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
           Util.analyzeExpression(myExpr, new ArrayList<>(), classMemberRefs, new ArrayList<>());
         }
 
-        showDialog(method, methodToSearchFor, occurrences, replaceChoice, delegate, initializerType, mustBeFinal,
+        showDialog(method, methodToSearchFor, occurrences, replaceAllOccurrences, delegate, initializerType, mustBeFinal,
                    classMemberRefs, createNameSuggestionGenerator(myExpr, propName, myProject, enteredName));
       }
     }
@@ -477,7 +458,7 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
     private void showDialog(PsiMethod method,
                             PsiMethod methodToSearchFor,
                             PsiExpression[] occurrences,
-                            IntroduceVariableBase.JavaReplaceChoice replaceChoice,
+                            boolean replaceAllOccurrences,
                             boolean delegate,
                             PsiType initializerType,
                             boolean mustBeFinal,
@@ -486,7 +467,7 @@ public class IntroduceParameterHandler extends IntroduceHandlerBase {
         new IntroduceParameterDialog(myProject, classMemberRefs, occurrences, myLocalVar, myExpr,
                                      nameSuggestionGenerator,
                                      createTypeSelectorManager(occurrences, initializerType), methodToSearchFor, method, getParamsToRemove(method, occurrences), mustBeFinal);
-      dialog.setReplaceAllOccurrences(replaceChoice);
+      dialog.setReplaceAllOccurrences(replaceAllOccurrences);
       dialog.setGenerateDelegate(delegate);
       if (dialog.showAndGet()) {
         final Runnable cleanSelectionRunnable = () -> {

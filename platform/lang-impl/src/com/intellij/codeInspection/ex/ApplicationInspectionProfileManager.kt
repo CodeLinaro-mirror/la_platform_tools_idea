@@ -41,7 +41,8 @@ open class ApplicationInspectionProfileManager @TestOnly @NonInjectable construc
     @JvmStatic
     fun getInstanceImpl() = service<InspectionProfileManager>() as ApplicationInspectionProfileManager
 
-    private fun registerProvidedSeverities() {
+    // It should be public to be available from Upsource
+    fun registerProvidedSeverities() {
       val map = HashMap<String, HighlightInfoType>()
       SeveritiesProvider.EP_NAME.forEachExtensionSafe { provider ->
         for (t in provider.severitiesHighlightInfoTypes) {

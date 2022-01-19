@@ -20,37 +20,37 @@
     <intentionAction>
       <className>com.siyeh.ipp.bool.DemorgansIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.conditional.operator</categoryKey>
+      <categoryKey>intention.category.boolean</categoryKey>
     </intentionAction>
 
     <intentionAction>
       <className>com.siyeh.ipp.bool.NegateComparisonIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.conditional.operator</categoryKey>
+      <categoryKey>intention.category.boolean</categoryKey>
     </intentionAction>
 
     <intentionAction>
       <className>com.siyeh.ipp.bool.NegateConditionalIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.conditional.operator</categoryKey>
+      <categoryKey>intention.category.boolean</categoryKey>
     </intentionAction>
 
     <intentionAction>
       <className>com.siyeh.ipp.bool.FlipComparisonIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.conditional.operator</categoryKey>
+      <categoryKey>intention.category.boolean</categoryKey>
     </intentionAction>
 
     <intentionAction>
       <className>com.siyeh.ipp.trivialif.ExpandBooleanIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.control.flow</categoryKey>
+      <categoryKey>intention.category.boolean</categoryKey>
     </intentionAction>
 
     <intentionAction>
       <className>com.siyeh.ipp.trivialif.ConvertToNestedIfIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.control.flow</categoryKey>
+      <categoryKey>intention.category.boolean</categoryKey>
     </intentionAction>
 
     <!-- Conditional Operator -->
@@ -413,12 +413,12 @@
     <intentionAction>
       <className>com.siyeh.ipp.collections.ReplaceWithArraysAsListIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.collections</categoryKey>
+      <categoryKey>intention.category.other</categoryKey>
     </intentionAction>
     <intentionAction>
       <className>com.siyeh.ipp.collections.ReplaceWithMutableCollectionIntention</className>
       <bundleName>messages.JavaBundle</bundleName>
-      <categoryKey>intention.category.collections</categoryKey>
+      <categoryKey>intention.category.other</categoryKey>
     </intentionAction>
   </extensions>
 </idea-plugin>

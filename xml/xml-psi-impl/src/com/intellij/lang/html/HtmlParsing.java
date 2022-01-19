@@ -377,9 +377,6 @@ public class HtmlParsing {
     boolean isCell = TD_TAG.equals(childName) || TH_TAG.equals(childName);
     boolean isRow = TR_TAG.equals(childName);
     boolean isStructure = isStructure(childName);
-    boolean isLi = "li".equals(childName);
-    boolean isDd = "dd".equals(childName);
-    boolean isDt = "dt".equals(childName);
 
     for (int i = myTagNamesStack.size() - 1; i >= 0; i--) {
       String parentName = myTagNamesStack.get(i);
@@ -391,11 +388,11 @@ public class HtmlParsing {
         return false;
       }
 
-      if (isLi && ("ul".equals(parentName) || "ol".equals(parentName))) {
+      if ("li".equals(childName) && ("ul".equals(parentName) || "ol".equals(parentName))) {
         return false;
       }
 
-      if ((isDd || isDt) && "dl".equals(parentName)) {
+      if ("dl".equals(parentName) && ("dd".equals(childName) || "dt".equals(childName))) {
         return false;
       }
 
@@ -406,8 +403,8 @@ public class HtmlParsing {
     return false;
   }
 
-  private static boolean isStructure(String tagName) {
-    return "thead".equals(tagName) || "tbody".equals(tagName) || "tfoot".equals(tagName);
+  private static boolean isStructure(String childName) {
+    return "thead".equals(childName) || "tbody".equals(childName) || "tfoot".equals(childName);
   }
 
   @NotNull

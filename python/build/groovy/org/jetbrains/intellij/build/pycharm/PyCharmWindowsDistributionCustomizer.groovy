@@ -8,7 +8,6 @@ import org.jetbrains.intellij.build.WindowsDistributionCustomizer
 class PyCharmWindowsDistributionCustomizer extends WindowsDistributionCustomizer {
   @Override
   void copyAdditionalFiles(BuildContext context, String targetDirectory) {
-    super.copyAdditionalFiles(context, targetDirectory)
     def underTeamCity = System.getProperty("teamcity.buildType.id") != null
 
     context.ant.copy(todir: "$targetDirectory/skeletons", failonerror: underTeamCity) {

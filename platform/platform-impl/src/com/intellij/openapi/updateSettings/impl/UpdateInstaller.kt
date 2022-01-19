@@ -103,23 +103,24 @@ internal object UpdateInstaller {
   }
 
   @JvmStatic
-  fun installDownloadedPluginUpdates(downloaders: Collection<PluginDownloader>, requiresRestart: (PluginDownloader) -> Boolean): PluginUpdateResult {
+  fun installDownloadedPluginUpdates(downloaders: Collection<PluginDownloader>,
+                                     requiresRestart: (PluginDownloader) -> Boolean): PluginUpdateResult {
     val pluginsInstalled = mutableListOf<IdeaPluginDescriptor>()
     var restartRequired = false
 
     for (downloader in downloaders) {
       try {
-        if (requiresRestart(downloader)) {
+        if (requiresRestart.invoke(downloader)) {
           downloader.install()
           restartRequired = true
         }
-        pluginsInstalled += downloader.descriptor
+
+        pluginsInstalled.add(downloader.descriptor)
       }
       catch (e: Exception) {
         Logger.getInstance(UpdateChecker::class.java).info(e)
       }
     }
-
     return PluginUpdateResult(pluginsInstalled, restartRequired)
   }
 
@@ -143,6 +144,9 @@ internal object UpdateInstaller {
   fun preparePatchCommand(patchFiles: List<File>, indicator: ProgressIndicator): Array<String> {
     indicator.text = IdeBundle.message("update.preparing.patch.progress")
 
+    val jna = findLib("jna.jar")
+    val jnaUtils = findLib("jna-platform.jar")
+
     val tempDir = getTempDir()
     if (FileUtil.isAncestor(PathManager.getHomePath(), tempDir.path, true)) {
       throw IOException("Temp directory inside installation: $tempDir")
@@ -150,6 +154,9 @@ internal object UpdateInstaller {
     if (!(tempDir.exists() || tempDir.mkdirs())) {
       throw IOException("Cannot create temp directory: $tempDir")
     }
+
+    val jnaCopy = jna.copyTo(File(tempDir, jna.name), true)
+    val jnaUtilsCopy = jnaUtils.copyTo(File(tempDir, jnaUtils.name), true)
 
     var java = System.getProperty("java.home")
     if (PathManager.isUnderHomeDirectory(Path.of(java))) {
@@ -181,7 +188,7 @@ internal object UpdateInstaller {
     args += File(java, if (SystemInfo.isWindows) "bin\\java.exe" else "bin/java").path
     args += "-Xmx${2000}m"
     args += "-cp"
-    args += patchFiles.last().path
+    args += arrayOf(patchFiles.last().path, jnaCopy.path, jnaUtilsCopy.path).joinToString(File.pathSeparator)
 
     args += "-Djna.nosys=true"
     args += "-Djna.boot.library.path="
@@ -199,6 +206,11 @@ internal object UpdateInstaller {
     }
 
     return args.toTypedArray()
+  }
+
+  private fun findLib(libName: String): File {
+    val libFile = File(PathManager.getLibPath(), libName)
+    return if (libFile.exists()) libFile else throw IOException("Missing: $libFile")
   }
 
   private fun getTempDir() = File(PathManager.getTempPath(), "patch-update")

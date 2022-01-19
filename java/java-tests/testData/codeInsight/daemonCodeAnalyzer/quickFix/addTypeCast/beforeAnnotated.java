@@ -1,4 +1,4 @@
-// "Cast argument to 'String'" "true"
+// "Cast parameter to 'java.lang.@Anno String'" "true"
 import java.lang.annotation.Target;
 import java.lang.annotation.ElementType;
 

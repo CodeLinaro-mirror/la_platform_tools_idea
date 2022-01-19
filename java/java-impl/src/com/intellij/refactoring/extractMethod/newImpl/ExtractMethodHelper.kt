@@ -46,14 +46,6 @@ object ExtractMethodHelper {
     return listOf(codeBlock)
   }
 
-  fun getReturnedExpression(returnOrYieldStatement: PsiStatement): PsiExpression? {
-    return when (returnOrYieldStatement) {
-      is PsiReturnStatement -> returnOrYieldStatement.returnValue
-      is PsiYieldStatement -> returnOrYieldStatement.expression
-      else -> null
-    }
-  }
-
   fun findUsedTypeParameters(source: PsiTypeParameterList?, searchScope: List<PsiElement>): List<PsiTypeParameter> {
     val typeParameterList = RefactoringUtil.createTypeParameterListWithUsedTypeParameters(source, *searchScope.toTypedArray())
     return typeParameterList?.typeParameters.orEmpty().toList()
@@ -61,13 +53,6 @@ object ExtractMethodHelper {
 
   fun inputParameterOf(externalReference: ExternalReference): InputParameter {
     return InputParameter(externalReference.references, requireNotNull(externalReference.variable.name), externalReference.variable.type)
-  }
-
-  fun inputParameterOf(expressionGroup: List<PsiExpression>): InputParameter {
-    require(expressionGroup.isNotEmpty())
-    val expression = expressionGroup.first()
-    val objectType = PsiType.getJavaLangObject(expression.manager, GlobalSearchScope.projectScope(expression.project))
-    return InputParameter(expressionGroup, guessName(expression), expressionGroup.first().type ?: objectType)
   }
 
   fun PsiElement.addSiblingAfter(element: PsiElement): PsiElement {
@@ -148,6 +133,11 @@ object ExtractMethodHelper {
     PsiUtil.setModifierProperty(declaredVariable, PsiModifier.FINAL, variable.hasModifierProperty(PsiModifier.FINAL))
     variable.annotations.forEach { annotation -> declaredVariable.modifierList?.add(annotation) }
     return declaration
+  }
+
+  tailrec fun findTopmostParenthesis(expression: PsiExpression): PsiExpression {
+    val parent = expression.parent as? PsiParenthesizedExpression
+    return if (parent != null) findTopmostParenthesis(parent) else expression
   }
 
   fun getExpressionType(expression: PsiExpression): PsiType {

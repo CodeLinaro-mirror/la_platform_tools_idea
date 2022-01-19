@@ -2,7 +2,6 @@
 package com.intellij.codeEditor.printing;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
@@ -11,7 +10,7 @@ import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 
-@State(name = "PrintSettings", storages = @Storage("print.xml"), category = SettingsCategory.UI)
+@State(name = "PrintSettings", storages = @Storage("print.xml"))
 public class PrintSettings implements PersistentStateComponent<PrintSettings> {
   public enum Placement {
     Header() {

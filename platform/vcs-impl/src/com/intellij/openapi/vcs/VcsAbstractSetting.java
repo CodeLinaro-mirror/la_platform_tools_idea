@@ -24,11 +24,10 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 
 public abstract class VcsAbstractSetting implements PersistentVcsSetting {
-  private final Set<String> myApplicable = new HashSet<>();
+  private final Collection<String> myApplicable = new HashSet<>();
 
   @Override
   public void addApplicableVcs(AbstractVcs vcs) {

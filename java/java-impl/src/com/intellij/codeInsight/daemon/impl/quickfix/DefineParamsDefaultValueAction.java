@@ -39,7 +39,6 @@ import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
-import com.intellij.psi.util.JavaElementKind;
 import com.intellij.psi.util.JavaPsiRecordUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
@@ -93,8 +92,7 @@ public class DefineParamsDefaultValueAction extends PsiElementBaseIntentionActio
     if (containingClass == null || (containingClass.isInterface() && !PsiUtil.isLanguageLevel8OrHigher(method))) {
       return false;
     }
-    setText(QuickFixBundle.message("generate.overloaded.method.or.constructor.with.default.parameter.values",
-                                   JavaElementKind.fromElement(method).lessDescriptive().object()));
+    setText(QuickFixBundle.message("generate.overloaded.method.or.constructor.with.default.parameter.values", method.isConstructor() ? "constructor" : "method"));
     return true;
   }
 

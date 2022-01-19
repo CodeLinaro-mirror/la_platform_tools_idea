@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.todo;
 
 import com.intellij.find.FindModel;
@@ -215,9 +215,7 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
 
     toolbarGroup.add(new MyPreviewAction());
 
-    ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.TODO_VIEW_TOOLBAR, toolbarGroup, false);
-    toolbar.setTargetComponent(myTree);
-    setToolbar(toolbar.getComponent());
+    setToolbar(ActionManager.getInstance().createActionToolbar(ActionPlaces.TODO_VIEW_TOOLBAR, toolbarGroup, false).getComponent());
   }
 
   @NotNull
@@ -245,7 +243,7 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
       DefaultMutableTreeNode node = (DefaultMutableTreeNode)path.getLastPathComponent();
       Object userObject = node.getUserObject();
       if (userObject instanceof NodeDescriptor) {
-        Object element = ((NodeDescriptor<?>)userObject).getElement();
+        Object element = ((NodeDescriptor)userObject).getElement();
         TodoItemNode pointer = myTodoTreeBuilder.getFirstPointerForElement(element);
         if (pointer != null) {
           final SmartTodoItemPointer value = pointer.getValue();
@@ -350,9 +348,19 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
     return getSelectedFile();
   }
 
-  private @Nullable Object getSlowData(@NotNull String dataId, @NotNull NodeDescriptor nodeDescriptor) {
+  @Override
+  public Object getData(@NotNull String dataId) {
     if (CommonDataKeys.NAVIGATABLE.is(dataId)) {
-      Object element = nodeDescriptor.getElement();
+      TreePath path = myTree.getSelectionPath();
+      if (path == null) {
+        return null;
+      }
+      DefaultMutableTreeNode node = (DefaultMutableTreeNode)path.getLastPathComponent();
+      Object userObject = node.getUserObject();
+      if (!(userObject instanceof NodeDescriptor)) {
+        return null;
+      }
+      Object element = ((NodeDescriptor)userObject).getElement();
       if (!(element instanceof TodoFileNode || element instanceof TodoItemNode)) { // allow user to use F4 only on files an TODOs
         return null;
       }
@@ -364,13 +372,11 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
                                                                     pointer.getValue().getRangeMarker()
                                                                            .getStartOffset());
       }
+      else {
+        return null;
+      }
     }
-    return null;
-  }
-
-  @Override
-  public Object getData(@NotNull String dataId) {
-    if (CommonDataKeys.VIRTUAL_FILE.is(dataId)) {
+    else if (CommonDataKeys.VIRTUAL_FILE.is(dataId)) {
       final PsiFile file = getSelectedFile();
       return file != null ? file.getVirtualFile() : null;
     }
@@ -386,22 +392,11 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
         return VirtualFile.EMPTY_ARRAY;
       }
     }
-    else if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    else if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return "find.todoList";
     }
     else if (TODO_PANEL_DATA_KEY.is(dataId)) {
       return this;
-    }
-    else if (PlatformCoreDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
-      TreePath path = myTree.getSelectionPath();
-      if (path == null) {
-        return null;
-      }
-      Object userObject = TreeUtil.getUserObject(path.getLastPathComponent());
-      if (!(userObject instanceof NodeDescriptor)) {
-        return null;
-      }
-      return List.of((DataProvider)realDataId -> getSlowData(realDataId, (NodeDescriptor)userObject));
     }
     return super.getData(dataId);
   }
@@ -480,7 +475,7 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
       if (userObject == null) {
         return false;
       }
-      if (userObject instanceof NodeDescriptor && ((NodeDescriptor<?>)userObject).getElement() instanceof TodoItemNode) {
+      if (userObject instanceof NodeDescriptor && ((NodeDescriptor)userObject).getElement() instanceof TodoItemNode) {
         return myTree.getRowCount() != myTree.getRowForPath(path) + 1;
       }
       else {
@@ -552,7 +547,7 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
       if (!(userObject instanceof NodeDescriptor)) {
         return null;
       }
-      Object element = ((NodeDescriptor<?>)userObject).getElement();
+      Object element = ((NodeDescriptor)userObject).getElement();
       TodoItemNode pointer;
       if (element instanceof TodoItemNode) {
         pointer = myTodoTreeBuilder.getNextPointer((TodoItemNode)element);
@@ -574,7 +569,7 @@ public abstract class TodoPanel extends SimpleToolWindowPanel implements Occuren
       if (!(userObject instanceof NodeDescriptor)) {
         return null;
       }
-      Object element = ((NodeDescriptor<?>)userObject).getElement();
+      Object element = ((NodeDescriptor)userObject).getElement();
       TodoItemNode pointer;
       if (element instanceof TodoItemNode) {
         pointer = myTodoTreeBuilder.getPreviousPointer((TodoItemNode)element);

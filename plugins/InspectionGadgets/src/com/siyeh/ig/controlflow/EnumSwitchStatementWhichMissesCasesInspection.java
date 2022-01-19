@@ -31,7 +31,6 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.InspectionGadgetsBundle;
-import com.siyeh.ig.fixes.CreateEnumMissingSwitchBranchesFix;
 import com.siyeh.ig.fixes.CreateMissingSwitchBranchesFix;
 import com.siyeh.ig.psiutils.CreateSwitchBranchesUtil;
 import com.siyeh.ig.psiutils.ExpressionUtils;
@@ -148,7 +147,7 @@ public class EnumSwitchStatementWhichMissesCasesInspection extends AbstractBaseJ
         }
         if (constants.isEmpty()) return;
         String message = buildErrorString(aClass.getQualifiedName(), constants);
-        CreateMissingSwitchBranchesFix fix = new CreateEnumMissingSwitchBranchesFix(switchBlock, constants);
+        CreateMissingSwitchBranchesFix fix = new CreateMissingSwitchBranchesFix(switchBlock, constants);
         if (highlighting == ProblemHighlightType.INFORMATION ||
             InspectionProjectProfileManager.isInformationLevel(getShortName(), switchBlock)) {
           holder.registerProblem(switchBlock, message, highlighting, fix);

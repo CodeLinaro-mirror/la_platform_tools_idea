@@ -5,6 +5,7 @@ import com.intellij.application.options.colors.ReaderModeStatsCollector
 import com.intellij.codeInsight.actions.ReaderModeSettings.Companion.applyReaderMode
 import com.intellij.codeInsight.actions.ReaderModeSettingsListener.Companion.applyToAllEditors
 import com.intellij.ide.DataManager
+import com.intellij.ide.IdeBundle
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.impl.AppEditorFontOptions
 import com.intellij.openapi.editor.colors.impl.FontPreferencesImpl
@@ -18,10 +19,12 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupActivity
 import com.intellij.openapi.util.Disposer
-import com.intellij.testFramework.LightVirtualFile
+import com.intellij.ui.HyperlinkLabel
 import com.intellij.util.messages.Topic
+import com.intellij.util.ui.UIUtil
 import java.beans.PropertyChangeListener
 import java.util.*
+import javax.swing.event.HyperlinkListener
 
 interface ReaderModeListener : EventListener {
   fun modeChanged(project: Project)
@@ -35,27 +38,31 @@ class ReaderModeSettingsListener : ReaderModeListener {
 
     fun applyToAllEditors(project: Project) {
       FileEditorManager.getInstance(project).allEditors.forEach {
-        if (it !is TextEditor) return@forEach
+        if (it !is TextEditor) return
         applyReaderMode(project, it.editor, it.file, fileIsOpenAlready = true)
       }
 
       EditorFactory.getInstance().allEditors.forEach {
-        if (it !is EditorImpl) return@forEach
-        if (it.getProject() != project) return@forEach
+        if (it !is EditorImpl) return
         applyReaderMode(project, it, FileDocumentManager.getInstance().getFile(it.document),
                         fileIsOpenAlready = true)
       }
     }
 
-    fun goToEditorReaderMode() {
-      DataManager.getInstance().dataContextFromFocusAsync.onSuccess { context ->
-        context?.let { dataContext ->
-          Settings.KEY.getData(dataContext)?.let { settings ->
-            settings.select(settings.find("editor.reader.mode"))
-            ReaderModeStatsCollector.logSeeAlsoNavigation()
+    fun createReaderModeComment() = HyperlinkLabel().apply {
+      setTextWithHyperlink(IdeBundle.message("checkbox.also.in.reader.mode"))
+      font = UIUtil.getFont(UIUtil.FontSize.SMALL, font)
+      foreground = UIUtil.getLabelFontColor(UIUtil.FontColor.BRIGHTER)
+      addHyperlinkListener(HyperlinkListener {
+        DataManager.getInstance().dataContextFromFocusAsync.onSuccess { context ->
+          context?.let { dataContext ->
+            Settings.KEY.getData(dataContext)?.let { settings ->
+              settings.select(settings.find("editor.reader.mode"))
+              ReaderModeStatsCollector.logSeeAlsoNavigation()
+            }
           }
         }
-      }
+      })
     }
   }
 

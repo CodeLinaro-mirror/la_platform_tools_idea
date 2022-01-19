@@ -2,7 +2,6 @@
 package com.intellij.util.lang;
 
 import com.intellij.util.BloomFilterBase;
-import com.intellij.util.containers.IntObjectHashMap;
 import com.intellij.util.io.Murmur3_32Hash;
 import com.intellij.util.lang.fastutil.StrippedIntOpenHashSet;
 import com.intellij.util.lang.fastutil.StrippedLongOpenHashSet;
@@ -13,12 +12,13 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.util.function.IntFunction;
 import java.util.function.Predicate;
 
 @ApiStatus.Internal
 public final class ClasspathCache {
   private static final double PROBABILITY = 0.005d;
-  private static final IntObjectHashMap.ArrayProducer<Loader[][]> ARRAY_FACTORY = size -> new Loader[size][];
+  private static final IntFunction<Loader[][]> ARRAY_FACTORY = size -> new Loader[size][];
 
   private volatile IntObjectHashMap<Loader[]> classPackageCache = new IntObjectHashMap<>(ARRAY_FACTORY);
   private volatile IntObjectHashMap<Loader[]> resourcePackageCache = new IntObjectHashMap<>(ARRAY_FACTORY);

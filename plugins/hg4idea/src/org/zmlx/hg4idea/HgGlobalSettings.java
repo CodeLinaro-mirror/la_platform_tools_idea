@@ -13,7 +13,10 @@
 package org.zmlx.hg4idea;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.RoamingType;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -21,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
-@State(name = "HgGlobalSettings", storages = @Storage(value = "hg.xml", roamingType = RoamingType.PER_OS), category = SettingsCategory.TOOLS)
+@State(name = "HgGlobalSettings", storages = @Storage(value = "hg.xml", roamingType = RoamingType.PER_OS))
 public class HgGlobalSettings implements PersistentStateComponent<HgGlobalSettings.State> {
   private static final int FIVE_MINUTES = 300;
 

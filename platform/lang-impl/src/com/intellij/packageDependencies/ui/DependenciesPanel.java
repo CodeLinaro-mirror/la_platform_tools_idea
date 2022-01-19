@@ -454,7 +454,7 @@ public final class DependenciesPanel extends JPanel implements Disposable, DataP
         return element != null && element.isValid() ? element : null;
       }
     }
-    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return "dependency.viewer.tool.window";
     }
     return null;

@@ -1,6 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'a' is never used
-// AFTER-WARNING: Variable 'a' is never used
 
 class MyClass {
     fun foo1(a: MyClass): MyClass = this

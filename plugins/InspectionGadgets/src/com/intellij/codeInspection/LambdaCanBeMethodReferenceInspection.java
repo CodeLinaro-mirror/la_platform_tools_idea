@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection;
 
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingFeature;
@@ -20,7 +20,6 @@ import com.intellij.psi.util.*;
 import com.intellij.refactoring.util.RefactoringChangeUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.psiutils.CommentTracker;
 import com.siyeh.ig.psiutils.ExpressionUtils;
@@ -30,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.stream.Stream;
 
 public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalInspectionTool {
   private static final Logger LOG = Logger.getInstance(LambdaCanBeMethodReferenceInspection.class);
@@ -64,9 +64,13 @@ public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalI
       public void visitLambdaExpression(PsiLambdaExpression expression) {
         super.visitLambdaExpression(expression);
         final PsiElement body = expression.getBody();
+        final PsiType functionalInterfaceType = expression.getFunctionalInterfaceType();
+        if (functionalInterfaceType == null) return;
         MethodReferenceCandidate methodRefCandidate = extractMethodReferenceCandidateExpression(body);
         if (methodRefCandidate == null) return;
-        final PsiExpression candidate = getLambdaToMethodReferenceConversionCandidate(expression, methodRefCandidate.myExpression);
+        final PsiExpression candidate =
+          canBeMethodReferenceProblem(expression.getParameterList().getParameters(), functionalInterfaceType, null,
+                                      methodRefCandidate.myExpression);
         if (candidate == null) return;
         ProblemHighlightType type;
         if (methodRefCandidate.mySafeQualifier && methodRefCandidate.myConformsCodeStyle) {
@@ -90,24 +94,6 @@ public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalI
   }
 
   @Nullable
-  private static PsiExpression getLambdaToMethodReferenceConversionCandidate(@NotNull PsiLambdaExpression expression,
-                                                                             @NotNull PsiExpression methodRefCandidate) {
-    PsiParameter[] parameters = expression.getParameterList().getParameters();
-    PsiType functionalInterfaceType = expression.getFunctionalInterfaceType();
-    if (functionalInterfaceType == null) return null;
-    final PsiExpression candidate = canBeMethodReferenceProblem(parameters, functionalInterfaceType, null, methodRefCandidate);
-    if (candidate == null) return null;
-    boolean safeLambdaReplacement = LambdaUtil.isSafeLambdaReplacement(expression, () -> {
-      String text = createMethodReferenceText(methodRefCandidate, functionalInterfaceType, parameters);
-      // We already did the same operation inside canBeMethodReferenceProblem
-      LOG.assertTrue(text != null);
-      return JavaPsiFacade.getElementFactory(expression.getProject()).createExpressionFromText(text, expression);
-    });
-    if (!safeLambdaReplacement) return null;
-    return candidate;
-  }
-
-  @Nullable
   public static PsiExpression canBeMethodReferenceProblem(@Nullable final PsiElement body,
                                                           final PsiVariable[] parameters,
                                                           PsiType functionalInterfaceType,
@@ -124,7 +110,7 @@ public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalI
                                                           final PsiExpression methodRefCandidate) {
     if (functionalInterfaceType == null) return null;
     // Do not suggest for annotated lambda, as annotation will be lost during the conversion
-    if (ContainerUtil.or(parameters, LambdaCanBeMethodReferenceInspection::hasAnnotation)) return null;
+    if (Stream.of(parameters).anyMatch(LambdaCanBeMethodReferenceInspection::hasAnnotation)) return null;
     if (methodRefCandidate instanceof PsiNewExpression) {
       final PsiNewExpression newExpression = (PsiNewExpression)methodRefCandidate;
       if (newExpression.getAnonymousClass() != null || newExpression.getArrayInitializer() != null) {
@@ -319,7 +305,9 @@ public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalI
   public static PsiExpression replaceLambdaWithMethodReference(@NotNull PsiLambdaExpression lambda) {
     MethodReferenceCandidate methodRefCandidate = extractMethodReferenceCandidateExpression(lambda.getBody());
     if (methodRefCandidate == null || !methodRefCandidate.mySafeQualifier || !methodRefCandidate.myConformsCodeStyle) return lambda;
-    PsiExpression candidate = getLambdaToMethodReferenceConversionCandidate(lambda, methodRefCandidate.myExpression);
+    PsiExpression candidate =
+      canBeMethodReferenceProblem(lambda.getParameterList().getParameters(), lambda.getFunctionalInterfaceType(), lambda,
+                                  methodRefCandidate.myExpression);
     return tryConvertToMethodReference(lambda, candidate);
   }
 
@@ -327,7 +315,7 @@ public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalI
     if (qualifier == null) {
       return true;
     }
-    final Condition<PsiElement> callExpressionCondition = Conditions.instanceOf(PsiCallExpression.class, PsiArrayAccessExpression.class, PsiTypeCastExpression.class);
+    final Condition<PsiElement> callExpressionCondition = Conditions.instanceOf(PsiCallExpression.class, PsiArrayAccessExpression.class);
     final Condition<PsiElement> nonFinalFieldRefCondition = expression -> {
       if (expression instanceof PsiReferenceExpression && !(expression.getParent() instanceof PsiCallExpression)) {
         PsiElement element = ((PsiReferenceExpression)expression).resolve();
@@ -626,7 +614,7 @@ public class LambdaCanBeMethodReferenceInspection extends AbstractBaseJavaLocalI
   }
 
   @NotNull
-  private static PsiExpression tryConvertToMethodReference(@NotNull PsiLambdaExpression lambda, PsiElement body) {
+  static PsiExpression tryConvertToMethodReference(@NotNull PsiLambdaExpression lambda, PsiElement body) {
     Project project = lambda.getProject();
     PsiType functionalInterfaceType = lambda.getFunctionalInterfaceType();
     if (functionalInterfaceType == null || !functionalInterfaceType.isValid()) return lambda;

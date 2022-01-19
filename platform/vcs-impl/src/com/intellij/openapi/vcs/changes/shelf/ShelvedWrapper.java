@@ -1,20 +1,18 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes.shelf;
 
-import com.intellij.diff.chains.DiffRequestProducer;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.changes.Change;
-import com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor;
 import com.intellij.openapi.vcs.changes.ChangesUtil;
-import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode;
+import com.intellij.openapi.vcs.changes.ui.PresentableChange;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.vcsUtil.VcsUtil;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,37 +21,18 @@ import java.util.Objects;
 
 import static com.intellij.util.ObjectUtils.chooseNotNull;
 
-class ShelvedWrapper extends ChangeViewDiffRequestProcessor.Wrapper {
+class ShelvedWrapper implements PresentableChange {
   @Nullable private final ShelvedChange myShelvedChange;
   @Nullable private final ShelvedBinaryFile myBinaryFile;
-  @NotNull private final ShelvedChangeList myChangeList;
 
-  ShelvedWrapper(@NotNull ShelvedChange shelvedChange, @NotNull ShelvedChangeList changeList) {
+  ShelvedWrapper(@NotNull ShelvedChange shelvedChange) {
     myShelvedChange = shelvedChange;
     myBinaryFile = null;
-    myChangeList = changeList;
   }
 
-  ShelvedWrapper(@NotNull ShelvedBinaryFile binaryFile, @NotNull ShelvedChangeList changeList) {
+  ShelvedWrapper(@NotNull ShelvedBinaryFile binaryFile) {
     myShelvedChange = null;
     myBinaryFile = binaryFile;
-    myChangeList = changeList;
-  }
-
-  @NotNull
-  public ShelvedChangeList getChangeList() {
-    return myChangeList;
-  }
-
-  @Override
-  public @NotNull Object getUserObject() {
-    return myShelvedChange != null ? myShelvedChange : Objects.requireNonNull(myBinaryFile);
-  }
-
-  @Nullable
-  @Override
-  public ChangesBrowserNode.Tag getTag() {
-    return new ShelvedListTag(myChangeList);
   }
 
   @Nullable
@@ -66,8 +45,7 @@ class ShelvedWrapper extends ChangeViewDiffRequestProcessor.Wrapper {
     return myBinaryFile;
   }
 
-  @NotNull
-  public String getPath() {
+  public  String getPath() {
     return chooseNotNull(getAfterPath(), getBeforePath());
   }
 
@@ -77,8 +55,8 @@ class ShelvedWrapper extends ChangeViewDiffRequestProcessor.Wrapper {
   }
 
   @NlsSafe
+  @RequiresEdt
   @NotNull
-  @Override
   public String getPresentableName() {
     if (myShelvedChange == null) {
       return getRequestName();
@@ -119,21 +97,4 @@ class ShelvedWrapper extends ChangeViewDiffRequestProcessor.Wrapper {
     return LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
   }
 
-  @Override
-  public @Nullable DiffRequestProducer createProducer(@Nullable Project project) {
-    if (project == null) return null;
-    return new ShelvedWrapperDiffRequestProducer(project, this);
-  }
-
-  public static class ShelvedListTag extends ChangesBrowserNode.ValueTag<ShelvedChangeList> {
-    public ShelvedListTag(@NotNull ShelvedChangeList value) {
-      super(value);
-    }
-
-    @Nls
-    @Override
-    public String toString() {
-      return value.DESCRIPTION;
-    }
-  }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * @author Eugene Zhuravlev
@@ -10,7 +10,6 @@ import com.intellij.debugger.engine.DebuggerManagerThreadImpl;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluateExceptionUtil;
 import com.intellij.debugger.engine.jdi.LocalVariableProxy;
-import com.intellij.debugger.impl.DebuggerUtilsAsync;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.ThreeState;
@@ -21,8 +20,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxyEx {
   private static final Logger LOG = Logger.getInstance(StackFrameProxyImpl.class);
@@ -31,11 +28,11 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxyEx {
   private final int myFrameFromBottomIndex; // 1-based
 
   //caches
-  private volatile int myFrameIndex = -1;
-  private volatile StackFrame myStackFrame;
+  private int myFrameIndex = -1;
+  private StackFrame myStackFrame;
   private ObjectReference myThisReference;
   private ClassLoaderReference myClassLoader;
-  private volatile ThreeState myIsObsolete = ThreeState.UNSURE;
+  private ThreeState myIsObsolete = ThreeState.UNSURE;
   private Map<LocalVariable, Value> myAllValues;
 
   public StackFrameProxyImpl(@NotNull ThreadReferenceProxyImpl threadProxy, @NotNull StackFrame frame, int fromBottomIndex /* 1-based */) {
@@ -45,36 +42,36 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxyEx {
     myStackFrame = frame;
   }
 
-  public CompletableFuture<Boolean> isObsolete() throws EvaluateException {
+  public boolean isObsolete() throws EvaluateException {
     DebuggerManagerThreadImpl.assertIsManagerThread();
     if (!getVirtualMachine().canRedefineClasses()) {
-      return CompletableFuture.completedFuture(false);
+      return false;
     }
     checkValid();
     if (myIsObsolete != ThreeState.UNSURE) {
-      return CompletableFuture.completedFuture(myIsObsolete.toBoolean());
+      return myIsObsolete.toBoolean();
     }
-    return DebuggerUtilsAsync.method(location())
-      .thenCompose(method -> {
-        if (method == null) {
-          myIsObsolete = ThreeState.YES;
-          return CompletableFuture.completedFuture(true);
-        }
-        else {
-          return DebuggerUtilsAsync.isObsolete(method).thenApply(res -> {
-            myIsObsolete = ThreeState.fromBoolean(res);
-            return res;
-          });
-        }
-      })
-      .exceptionally(throwable -> {
-        Throwable exception = DebuggerUtilsAsync.unwrap(throwable);
-        if (exception instanceof InternalException && ((InternalException)exception).errorCode() == JvmtiError.INVALID_METHODID) {
+    InvalidStackFrameException error = null;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        Method method = DebuggerUtilsEx.getMethod(location());
+        boolean isObsolete = method == null || method.isObsolete();
+        myIsObsolete = ThreeState.fromBoolean(isObsolete);
+        return isObsolete;
+      }
+      catch (InvalidStackFrameException e) {
+        error = e;
+        clearCaches();
+      }
+      catch (InternalException e) {
+        if (e.errorCode() == JvmtiError.INVALID_METHODID) {
           myIsObsolete = ThreeState.YES;
           return true;
         }
-        throw (RuntimeException)throwable;
-      });
+        throw e;
+      }
+    }
+    throw new EvaluateException(error.getMessage(), error);
   }
 
   @Override
@@ -144,69 +141,20 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxyEx {
     return myStackFrame;
   }
 
-  public CompletableFuture<StackFrame> getStackFrameAsync() {
-    DebuggerManagerThreadImpl.assertIsManagerThread();
-
-    checkValid();
-
-    if (myStackFrame == null) {
-      ThreadReference threadRef = myThreadProxy.getThreadReference();
-      return getFrameIndexAsync().thenCompose(index -> {
-        // batch get frames from 1 to FRAMES_BATCH_MAX
-        // making this number very high does not help much because renderers invocation usually flush all caches
-        if (index > 0 && index < FRAMES_BATCH_MAX) {
-            try {
-              return DebuggerUtilsAsync.frames(threadRef, 0, Math.min(myThreadProxy.frameCount(), FRAMES_BATCH_MAX))
-                .thenApply(frames -> myStackFrame = frames.get(index));
-            }
-            catch (EvaluateException e) {
-              return CompletableFuture.failedFuture(e);
-            }
-          }
-          else {
-            return DebuggerUtilsAsync.frame(threadRef, index).thenApply(f -> myStackFrame = f);
-          }
-        })
-        .exceptionally(throwable -> {
-          if (DebuggerUtilsAsync.unwrap(throwable) instanceof ObjectCollectedException) {
-            throw new CompletionException(EvaluateExceptionUtil.createEvaluateException(JavaDebuggerBundle.message("evaluation.error.thread.collected")));
-          }
-          throw (RuntimeException)throwable;
-        });
-    }
-
-    return CompletableFuture.completedFuture(myStackFrame);
-  }
-
   @Override
   public int getFrameIndex() throws EvaluateException {
     DebuggerManagerThreadImpl.assertIsManagerThread();
     checkValid();
-    if (myFrameIndex == -1) {
+    if(myFrameIndex == -1) {
       int count = myThreadProxy.frameCount();
 
-      if (myFrameFromBottomIndex > count) {
+      if(myFrameFromBottomIndex  > count) {
         throw EvaluateExceptionUtil.createEvaluateException(new IncompatibleThreadStateException());
       }
 
       myFrameIndex = count - myFrameFromBottomIndex;
     }
     return myFrameIndex;
-  }
-
-  public CompletableFuture<Integer> getFrameIndexAsync() {
-    DebuggerManagerThreadImpl.assertIsManagerThread();
-    checkValid();
-    if (myFrameIndex == -1) {
-      return myThreadProxy.frameCountAsync().thenApply(count -> {
-        if (myFrameFromBottomIndex > count) {
-          throw new CompletionException(EvaluateExceptionUtil.createEvaluateException(new IncompatibleThreadStateException()));
-        }
-        myFrameIndex = count - myFrameFromBottomIndex;
-        return myFrameIndex;
-      });
-    }
-    return CompletableFuture.completedFuture(myFrameIndex);
   }
 
 //  public boolean isProxiedFrameValid() {
@@ -240,25 +188,6 @@ public class StackFrameProxyImpl extends JdiProxy implements StackFrameProxyEx {
       }
     }
     throw new EvaluateException(error.getMessage(), error);
-  }
-
-  public CompletableFuture<Location> locationAsync() {
-    return locationAsync(1);
-  }
-
-  private CompletableFuture<Location> locationAsync(int attempt) {
-    return getStackFrameAsync()
-      .thenCompose(frame -> {
-        try {
-          return CompletableFuture.completedFuture(frame.location());
-        }
-        catch (InvalidStackFrameException e) {
-          if (attempt > 0) {
-            return locationAsync(attempt-1);
-          }
-          throw new CompletionException(new EvaluateException(e.getMessage(), e));
-        }
-      });
   }
 
   @NotNull

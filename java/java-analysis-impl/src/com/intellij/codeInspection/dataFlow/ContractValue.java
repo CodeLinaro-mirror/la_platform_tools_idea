@@ -16,22 +16,22 @@
 package com.intellij.codeInspection.dataFlow;
 
 import com.intellij.codeInspection.dataFlow.jvm.SpecialField;
-import com.intellij.codeInspection.dataFlow.memory.DfaMemoryState;
-import com.intellij.codeInspection.dataFlow.types.*;
+import com.intellij.codeInspection.dataFlow.types.DfPrimitiveType;
+import com.intellij.codeInspection.dataFlow.types.DfReferenceType;
+import com.intellij.codeInspection.dataFlow.types.DfType;
+import com.intellij.codeInspection.dataFlow.types.DfTypes;
 import com.intellij.codeInspection.dataFlow.value.*;
-import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.compiled.ClsParameterImpl;
 import com.intellij.psi.util.JavaElementKind;
-import com.intellij.psi.util.PsiExpressionTrimRenderer;
 import com.intellij.psi.util.TypeConversionUtil;
-import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.MethodCallUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.OptionalInt;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 public abstract class ContractValue {
   // package private to avoid uncontrolled implementations
@@ -71,6 +71,10 @@ public abstract class ContractValue {
     return false;
   }
 
+  public DfaCallArguments updateArguments(DfaCallArguments arguments, boolean negated) {
+    return arguments;
+  }
+
   public OptionalInt getNullCheckedArgument(boolean equalToNull) {
     return getArgumentComparedTo(nullValue(), equalToNull);
   }
@@ -79,7 +83,11 @@ public abstract class ContractValue {
     return OptionalInt.empty();
   }
 
-  public String getPresentationText(PsiCallExpression call) {
+  @NotNull DfaCallArguments fixArgument(@NotNull DfaCallArguments arguments, @NotNull UnaryOperator<DfType> converter) {
+    return arguments;
+  }
+
+  public String getPresentationText(PsiMethod method) {
     return toString();
   }
 
@@ -89,10 +97,6 @@ public abstract class ContractValue {
    */
   public PsiExpression findPlace(PsiCallExpression call) {
     return null;
-  }
-
-  public @NotNull DfaCallState updateState(@NotNull DfaCallState state) {
-    return state;
   }
 
   public static ContractValue qualifier() {
@@ -146,24 +150,15 @@ public abstract class ContractValue {
     }
 
     @Override
-    public String getPresentationText(PsiCallExpression call) {
-      PsiExpression place = findPlace(call);
-      if (place != null) {
-        return PsiExpressionTrimRenderer.render(place);
+    @NotNull DfaCallArguments fixArgument(@NotNull DfaCallArguments arguments, @NotNull UnaryOperator<DfType> converter) {
+      if (arguments.myQualifier instanceof DfaTypeValue) {
+        DfType type = arguments.myQualifier.getDfType();
+        DfType newType = converter.apply(type);
+        if (!type.equals(newType)) {
+          return new DfaCallArguments(arguments.myQualifier.getFactory().fromDfType(newType), arguments.myArguments, arguments.myMutation);
+        }
       }
-      return super.getPresentationText(call);
-    }
-
-    @Override
-    public @NotNull DfaCallState updateState(@NotNull DfaCallState state) {
-      DfaValueFactory factory = state.getReturnValue().getFactory();
-      DfaCallArguments callArguments = state.getCallArguments();
-      DfaValue value = callArguments.myQualifier;
-      if (!(value instanceof DfaVariableValue) && !DfaTypeValue.isUnknown(value) && !(value.getDfType() instanceof DfConstantType)) {
-        DfaVariableValue var = makeVariable(state, factory, value);
-        return state.withArguments(new DfaCallArguments(var, callArguments.myArguments, callArguments.myMutation));
-      }
-      return state;
+      return arguments;
     }
 
     @Override
@@ -188,20 +183,6 @@ public abstract class ContractValue {
     }
 
     @Override
-    public @NotNull DfaCallState updateState(@NotNull DfaCallState state) {
-      DfaValueFactory factory = state.getReturnValue().getFactory();
-      DfaCallArguments callArguments = state.getCallArguments();
-      DfaValue value = makeDfaValue(factory, callArguments);
-      if (!(value instanceof DfaVariableValue) && !DfaTypeValue.isUnknown(value) && !(value.getDfType() instanceof DfConstantType)) {
-        DfaVariableValue var = makeVariable(state, factory, value);
-        DfaValue[] newArgs = callArguments.getArguments().clone();
-        newArgs[myIndex] = var;
-        return state.withArguments(new DfaCallArguments(callArguments.myQualifier, newArgs, callArguments.myMutation));
-      }
-      return state;
-    }
-
-    @Override
     public PsiExpression findPlace(PsiCallExpression call) {
       PsiExpressionList list = call.getArgumentList();
       if (list != null) {
@@ -214,13 +195,7 @@ public abstract class ContractValue {
     }
 
     @Override
-    public String getPresentationText(PsiCallExpression call) {
-      PsiExpression place = findPlace(call);
-      if (place != null && !ExpressionUtils.isNullLiteral(place)) {
-        return PsiExpressionTrimRenderer.render(place);
-      }
-      PsiMethod method = call.resolveMethod();
-      if (method == null) return toString();
+    public String getPresentationText(PsiMethod method) {
       PsiParameter[] params = method.getParameterList().getParameters();
       if (myIndex == 0 && params.length == 1) {
         return JavaElementKind.PARAMETER.subject();
@@ -233,6 +208,23 @@ public abstract class ContractValue {
         return param.getName();
       }
       return toString();
+    }
+
+    @Override
+    @NotNull DfaCallArguments fixArgument(@NotNull DfaCallArguments arguments, @NotNull UnaryOperator<DfType> converter) {
+      if (arguments.myArguments != null && arguments.myArguments.length > myIndex) {
+        DfaValue value = arguments.myArguments[myIndex];
+        if (value instanceof DfaTypeValue) {
+          DfType type = value.getDfType();
+          DfType newType = converter.apply(type);
+          if (!type.equals(newType)) {
+            DfaValue[] clone = arguments.myArguments.clone();
+            clone[myIndex] = value.getFactory().fromDfType(newType);
+            return new DfaCallArguments(arguments.myQualifier, clone, arguments.myMutation);
+          }
+        }
+      }
+      return arguments;
     }
 
     @Override
@@ -304,13 +296,23 @@ public abstract class ContractValue {
     }
 
     @Override
+    @NotNull DfaCallArguments fixArgument(@NotNull DfaCallArguments arguments, @NotNull UnaryOperator<DfType> converter) {
+      return myQualifier.fixArgument(arguments, t -> {
+        if (!(t instanceof DfReferenceType)) return t;
+        DfType sfType = myField.getFromQualifier(t);
+        DfType newType = converter.apply(sfType);
+        return newType.equals(sfType) ? t : ((DfReferenceType)t).dropSpecialField().meet(myField.asDfType(newType));
+      });
+    }
+
+    @Override
     public PsiExpression findPlace(PsiCallExpression call) {
       return myQualifier.findPlace(call);
     }
 
     @Override
-    public String getPresentationText(PsiCallExpression call) {
-      return JavaAnalysisBundle.message("dfa.find.cause.special.field.of.something", myField, myQualifier.getPresentationText(call));
+    public String getPresentationText(PsiMethod method) {
+      return myQualifier.getPresentationText(method) + "." + myField + (myField == SpecialField.ARRAY_LENGTH ? "" : "()");
     }
 
     @Override
@@ -363,8 +365,16 @@ public abstract class ContractValue {
     }
 
     @Override
-    public @NotNull DfaCallState updateState(@NotNull DfaCallState state) {
-      return myRight.updateState(myLeft.updateState(state));
+    public DfaCallArguments updateArguments(DfaCallArguments arguments, boolean negated) {
+      ContractValue target = getValueComparedTo(nullValue(), negated);
+      if (target != null) {
+        return target.fixArgument(arguments, dfType -> dfType.meet(DfaNullability.NOT_NULL.asDfType()));
+      }
+      target = getValueComparedTo(nullValue(), !negated);
+      if (target != null) {
+        return target.fixArgument(arguments, dfType -> dfType.meet(DfaNullability.NULL.asDfType()));
+      }
+      return arguments;
     }
 
     private @Nullable ContractValue getValueComparedTo(ContractValue value, boolean equal) {
@@ -413,11 +423,11 @@ public abstract class ContractValue {
     }
 
     @Override
-    public String getPresentationText(PsiCallExpression call) {
+    public String getPresentationText(PsiMethod method) {
       if (myLeft instanceof IndependentValue) {
-        return myRight.getPresentationText(call) + " " + myRelationType.getFlipped() + " " + myLeft.getPresentationText(call);
+        return myRight.getPresentationText(method) + " " + myRelationType.getFlipped() + " " + myLeft.getPresentationText(method);
       }
-      return myLeft.getPresentationText(call) + " " + myRelationType + " " + myRight.getPresentationText(call);
+      return myLeft.getPresentationText(method) + " " + myRelationType + " " + myRight.getPresentationText(method);
     }
 
     /**
@@ -450,62 +460,5 @@ public abstract class ContractValue {
     public String toString() {
       return myLeft + " " + myRelationType + " " + myRight;
     }
-  }
-
-  private static class ContractTempDescriptor implements VariableDescriptor {
-    private final @NotNull ContractValue myValue;
-    private final @NotNull DfType myType;
-
-    private ContractTempDescriptor(@NotNull ContractValue value, @NotNull DfType type) {
-      myValue = value;
-      myType = type;
-    }
-
-    @Override
-    public boolean isStable() {
-      return true;
-    }
-
-    @Override
-    public @NotNull DfType getDfType(@Nullable DfaVariableValue qualifier) {
-      return myType;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      return obj == this || obj instanceof ContractTempDescriptor &&
-                            ((ContractTempDescriptor)obj).myValue == myValue &&
-                            ((ContractTempDescriptor)obj).myType.equals(myType);
-    }
-
-    @Override
-    public int hashCode() {
-      return myValue.hashCode();
-    }
-
-    @Override
-    public String toString() {
-      return "contract$" + myValue;
-    }
-  }
-
-  @NotNull DfaVariableValue makeVariable(@NotNull DfaCallState state, DfaValueFactory factory, DfaValue value) {
-    DfType type = value.getDfType();
-    if (type instanceof DfReferenceType) {
-      if (type.isLocal()) {
-        type = ((DfReferenceType)type).dropLocality();
-        value = factory.fromDfType(type);
-      }
-      if (((DfReferenceType)type).getNullability() == DfaNullability.NULLABLE) {
-        type = ((DfReferenceType)type).dropNullability();
-      }
-    }
-    DfaVariableValue var = factory.getVarFactory().createVariableValue(new ContractTempDescriptor(this, type));
-    state.getMemoryState().setVarValue(var, value);
-    return var;
-  }
-
-  public static void flushContractTempVariables(DfaMemoryState state) {
-    state.flushVariables(var -> var.getDescriptor() instanceof ContractTempDescriptor);
   }
 }

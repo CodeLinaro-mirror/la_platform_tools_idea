@@ -171,15 +171,16 @@ public class CheckboxTreeBase extends Tree {
     }
 
     private State getNodeStatus(final CheckedTreeNode node) {
-      State ownState = node.isChecked() ? State.SELECTED : State.NOT_SELECTED;
-      if (myIgnoreInheritance || node.getChildCount() == 0 || !myUsePartialStatusForParentNodes) {
-        return ownState;
-      }
+      if (myIgnoreInheritance) return node.isChecked() ? State.SELECTED : State.NOT_SELECTED;
+      final boolean checked = node.isChecked();
+      if (node.getChildCount() == 0 || !myUsePartialStatusForParentNodes) return checked ? State.SELECTED : State.NOT_SELECTED;
 
       State result = null;
+
       for (int i = 0; i < node.getChildCount(); i++) {
         TreeNode child = node.getChildAt(i);
-        State childStatus = child instanceof CheckedTreeNode? getNodeStatus((CheckedTreeNode)child) : ownState;
+        State childStatus = child instanceof CheckedTreeNode? getNodeStatus((CheckedTreeNode)child) :
+                checked? State.SELECTED : State.NOT_SELECTED;
         if (childStatus == State.DONT_CARE) return State.DONT_CARE;
         if (result == null) {
           result = childStatus;
@@ -188,7 +189,8 @@ public class CheckboxTreeBase extends Tree {
           return State.DONT_CARE;
         }
       }
-      return result == null ? ownState : result;
+
+      return result == null ? State.NOT_SELECTED : result;
     }
 
     @Override

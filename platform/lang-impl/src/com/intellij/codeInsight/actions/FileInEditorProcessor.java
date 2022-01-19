@@ -5,8 +5,6 @@ import com.intellij.application.options.CodeStyle;
 import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.codeInsight.hint.HintManagerImpl;
 import com.intellij.codeInsight.hint.HintUtil;
-import com.intellij.formatting.service.CoreFormattingService;
-import com.intellij.formatting.service.FormattingServiceUtil;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.actions.ShowSettingsUtilImpl;
 import com.intellij.lang.LangBundle;
@@ -42,7 +40,6 @@ import javax.swing.*;
 import javax.swing.event.HyperlinkEvent;
 import javax.swing.event.HyperlinkListener;
 import java.awt.*;
-import java.util.Objects;
 
 import static com.intellij.codeInsight.actions.TextRangeType.SELECTED_TEXT;
 import static com.intellij.codeInsight.actions.TextRangeType.VCS_CHANGED_TEXT;
@@ -103,11 +100,7 @@ public class FileInEditorProcessor {
     if (shouldNotify()) {
       myProcessor.setCollectInfo(true);
       myProcessor.setPostRunnable(() -> {
-        if (myEditor.isDisposed() || !myEditor.getComponent().isShowing()) {
-          return;
-        }
-        if ((!myProcessSelectedText || Objects.requireNonNull(myProcessor.getInfoCollector()).getSecondFormatNotification() != null)
-            && !isExternalFormatterInUse()) {
+        if (!myEditor.isDisposed() && myEditor.getComponent().isShowing()) {
           showHint(myEditor, new FormattedMessageBuilder());
         }
       });
@@ -118,11 +111,6 @@ public class FileInEditorProcessor {
     if (myEditor != null && myOptions.getTextRangeType() == TextRangeType.WHOLE_FILE) {
       CodeStyleSettingsManager.getInstance(myProject).notifyCodeStyleSettingsChanged();
     }
-  }
-
-  private boolean isExternalFormatterInUse() {
-    return !(FormattingServiceUtil.findService(myFile, true, myOptions.getTextRangeType() == TextRangeType.WHOLE_FILE)
-               instanceof CoreFormattingService);
   }
 
   @NotNull
@@ -148,27 +136,23 @@ public class FileInEditorProcessor {
 
   @NotNull
   private AbstractLayoutCodeProcessor mixWithReformatProcessor(@Nullable AbstractLayoutCodeProcessor processor) {
-    ReformatCodeProcessor reformatCodeProcessor;
     if (processor != null) {
       if (myProcessSelectedText) {
-        reformatCodeProcessor = new ReformatCodeProcessor(processor, myEditor.getSelectionModel());
+        processor = new ReformatCodeProcessor(processor, myEditor.getSelectionModel());
       }
       else {
-        reformatCodeProcessor = new ReformatCodeProcessor(processor, myProcessChangesTextOnly);
+        processor = new ReformatCodeProcessor(processor, myProcessChangesTextOnly);
       }
     }
     else {
       if (myProcessSelectedText) {
-        reformatCodeProcessor = new ReformatCodeProcessor(myFile, myEditor.getSelectionModel());
+        processor = new ReformatCodeProcessor(myFile, myEditor.getSelectionModel());
       }
       else {
-        reformatCodeProcessor = new ReformatCodeProcessor(myFile, myProcessChangesTextOnly);
+        processor = new ReformatCodeProcessor(myFile, myProcessChangesTextOnly);
       }
     }
-    if (myOptions.doNotKeepLineBreaks()) {
-      reformatCodeProcessor.setDoNotKeepLineBreaks(myFile);
-    }
-    return reformatCodeProcessor;
+    return processor;
   }
 
   @NotNull
@@ -230,7 +214,7 @@ public class FileInEditorProcessor {
   private boolean shouldNotify() {
     if (isInHeadlessMode()) return false;
     EditorSettingsExternalizable es = EditorSettingsExternalizable.getInstance();
-    return es.isShowNotificationAfterReformat() && myEditor != null;
+    return es.isShowNotificationAfterReformat() && myEditor != null && !myProcessSelectedText;
   }
 
   private static boolean isInHeadlessMode() {
@@ -269,10 +253,7 @@ public class FileInEditorProcessor {
       LOG.assertTrue(notifications != null);
 
       if (notifications.isEmpty() && !myNoChangesDetected) {
-        if (notifications.getSecondFormatNotification() != null) {
-          builder.append(notifications.getSecondFormatNotification()).br();
-        }
-        else if (myProcessChangesTextOnly) {
+        if (myProcessChangesTextOnly) {
           builder.append(LangBundle.message("formatter.in.editor.message.already.formatted")).br();
         }
         else {
@@ -299,9 +280,6 @@ public class FileInEditorProcessor {
         String optimizeImportsNotification = notifications.getOptimizeImportsNotification();
         if (optimizeImportsNotification != null) {
           builder.append(optimizeImportsNotification).br();
-        }
-        if (notifications.getSecondFormatNotification() != null) {
-          builder.append(notifications.getSecondFormatNotification()).br();
         }
       }
 

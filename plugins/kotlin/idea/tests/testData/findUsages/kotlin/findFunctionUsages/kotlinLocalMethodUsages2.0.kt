@@ -14,5 +14,6 @@ fun foo() {
     bar()
 }
 
-fun bar() = Unit
-val b = bar()
+bar()
+
+// DISABLE-ERRORS

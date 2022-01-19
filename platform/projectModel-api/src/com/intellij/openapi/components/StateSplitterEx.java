@@ -12,6 +12,7 @@ import org.jetbrains.jps.model.serialization.SerializationConstants;
 
 import java.util.List;
 
+@SuppressWarnings("deprecation")
 public abstract class StateSplitterEx implements StateSplitter {
   @NotNull
   @Override

@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'args' is never used
 fun foo(): String? {
     return "foo"
 }

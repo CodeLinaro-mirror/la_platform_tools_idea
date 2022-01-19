@@ -1,8 +1,8 @@
-// PSI_ELEMENT: org.jetbrains.kotlin.psi.KtProperty
+// PSI_ELEMENT: org.jetbrains.kotlin.psi.KtObjectDeclaration
 // OPTIONS: usages
 fun foo(): Any {
     if (true) {
-        val Bar<caret> = object {}
+        object <caret>Bar
 
         return Bar
     }
@@ -10,6 +10,5 @@ fun foo(): Any {
     return Bar
 }
 
-object Bar {}
-
 val x = Bar
+// DISABLE-ERRORS

@@ -2,7 +2,7 @@ import subprocess
 import sys
 from _typeshed import StrOrBytesPath
 from asyncio import events, protocols, streams, transports
-from typing import IO, Any, Callable, Union
+from typing import IO, Any, Callable, Optional, Tuple, Union
 from typing_extensions import Literal
 
 if sys.version_info >= (3, 8):
@@ -15,37 +15,37 @@ STDOUT: int
 DEVNULL: int
 
 class SubprocessStreamProtocol(streams.FlowControlMixin, protocols.SubprocessProtocol):
-    stdin: streams.StreamWriter | None
-    stdout: streams.StreamReader | None
-    stderr: streams.StreamReader | None
+    stdin: Optional[streams.StreamWriter]
+    stdout: Optional[streams.StreamReader]
+    stderr: Optional[streams.StreamReader]
     def __init__(self, limit: int, loop: events.AbstractEventLoop) -> None: ...
     def connection_made(self, transport: transports.BaseTransport) -> None: ...
-    def pipe_data_received(self, fd: int, data: bytes | str) -> None: ...
-    def pipe_connection_lost(self, fd: int, exc: Exception | None) -> None: ...
+    def pipe_data_received(self, fd: int, data: Union[bytes, str]) -> None: ...
+    def pipe_connection_lost(self, fd: int, exc: Optional[Exception]) -> None: ...
     def process_exited(self) -> None: ...
 
 class Process:
-    stdin: streams.StreamWriter | None
-    stdout: streams.StreamReader | None
-    stderr: streams.StreamReader | None
+    stdin: Optional[streams.StreamWriter]
+    stdout: Optional[streams.StreamReader]
+    stderr: Optional[streams.StreamReader]
     pid: int
     def __init__(
         self, transport: transports.BaseTransport, protocol: protocols.BaseProtocol, loop: events.AbstractEventLoop
     ) -> None: ...
     @property
-    def returncode(self) -> int | None: ...
+    def returncode(self) -> Optional[int]: ...
     async def wait(self) -> int: ...
     def send_signal(self, signal: int) -> None: ...
     def terminate(self) -> None: ...
     def kill(self) -> None: ...
-    async def communicate(self, input: bytes | None = ...) -> tuple[bytes, bytes]: ...
+    async def communicate(self, input: Optional[bytes] = ...) -> Tuple[bytes, bytes]: ...
 
 if sys.version_info >= (3, 10):
     async def create_subprocess_shell(
-        cmd: str | bytes,
-        stdin: int | IO[Any] | None = ...,
-        stdout: int | IO[Any] | None = ...,
-        stderr: int | IO[Any] | None = ...,
+        cmd: Union[str, bytes],
+        stdin: Union[int, IO[Any], None] = ...,
+        stdout: Union[int, IO[Any], None] = ...,
+        stderr: Union[int, IO[Any], None] = ...,
         limit: int = ...,
         *,
         # These parameters are forced to these values by BaseEventLoop.subprocess_shell
@@ -56,12 +56,12 @@ if sys.version_info >= (3, 10):
         errors: None = ...,
         text: Literal[False, None] = ...,
         # These parameters are taken by subprocess.Popen, which this ultimately delegates to
-        executable: StrOrBytesPath | None = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: subprocess._ENV | None = ...,
-        startupinfo: Any | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[subprocess._ENV] = ...,
+        startupinfo: Optional[Any] = ...,
         creationflags: int = ...,
         restore_signals: bool = ...,
         start_new_session: bool = ...,
@@ -70,9 +70,9 @@ if sys.version_info >= (3, 10):
     async def create_subprocess_exec(
         program: _ExecArg,
         *args: _ExecArg,
-        stdin: int | IO[Any] | None = ...,
-        stdout: int | IO[Any] | None = ...,
-        stderr: int | IO[Any] | None = ...,
+        stdin: Union[int, IO[Any], None] = ...,
+        stdout: Union[int, IO[Any], None] = ...,
+        stderr: Union[int, IO[Any], None] = ...,
         limit: int = ...,
         # These parameters are forced to these values by BaseEventLoop.subprocess_shell
         universal_newlines: Literal[False] = ...,
@@ -81,13 +81,13 @@ if sys.version_info >= (3, 10):
         encoding: None = ...,
         errors: None = ...,
         # These parameters are taken by subprocess.Popen, which this ultimately delegates to
-        text: bool | None = ...,
-        executable: StrOrBytesPath | None = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        text: Optional[bool] = ...,
+        executable: Optional[StrOrBytesPath] = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: subprocess._ENV | None = ...,
-        startupinfo: Any | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[subprocess._ENV] = ...,
+        startupinfo: Optional[Any] = ...,
         creationflags: int = ...,
         restore_signals: bool = ...,
         start_new_session: bool = ...,
@@ -96,11 +96,11 @@ if sys.version_info >= (3, 10):
 
 else:
     async def create_subprocess_shell(
-        cmd: str | bytes,
-        stdin: int | IO[Any] | None = ...,
-        stdout: int | IO[Any] | None = ...,
-        stderr: int | IO[Any] | None = ...,
-        loop: events.AbstractEventLoop | None = ...,
+        cmd: Union[str, bytes],
+        stdin: Union[int, IO[Any], None] = ...,
+        stdout: Union[int, IO[Any], None] = ...,
+        stderr: Union[int, IO[Any], None] = ...,
+        loop: Optional[events.AbstractEventLoop] = ...,
         limit: int = ...,
         *,
         # These parameters are forced to these values by BaseEventLoop.subprocess_shell
@@ -111,12 +111,12 @@ else:
         errors: None = ...,
         text: Literal[False, None] = ...,
         # These parameters are taken by subprocess.Popen, which this ultimately delegates to
-        executable: StrOrBytesPath | None = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: subprocess._ENV | None = ...,
-        startupinfo: Any | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[subprocess._ENV] = ...,
+        startupinfo: Optional[Any] = ...,
         creationflags: int = ...,
         restore_signals: bool = ...,
         start_new_session: bool = ...,
@@ -125,10 +125,10 @@ else:
     async def create_subprocess_exec(
         program: _ExecArg,
         *args: _ExecArg,
-        stdin: int | IO[Any] | None = ...,
-        stdout: int | IO[Any] | None = ...,
-        stderr: int | IO[Any] | None = ...,
-        loop: events.AbstractEventLoop | None = ...,
+        stdin: Union[int, IO[Any], None] = ...,
+        stdout: Union[int, IO[Any], None] = ...,
+        stderr: Union[int, IO[Any], None] = ...,
+        loop: Optional[events.AbstractEventLoop] = ...,
         limit: int = ...,
         # These parameters are forced to these values by BaseEventLoop.subprocess_shell
         universal_newlines: Literal[False] = ...,
@@ -137,13 +137,13 @@ else:
         encoding: None = ...,
         errors: None = ...,
         # These parameters are taken by subprocess.Popen, which this ultimately delegates to
-        text: bool | None = ...,
-        executable: StrOrBytesPath | None = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        text: Optional[bool] = ...,
+        executable: Optional[StrOrBytesPath] = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: subprocess._ENV | None = ...,
-        startupinfo: Any | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[subprocess._ENV] = ...,
+        startupinfo: Optional[Any] = ...,
         creationflags: int = ...,
         restore_signals: bool = ...,
         start_new_session: bool = ...,

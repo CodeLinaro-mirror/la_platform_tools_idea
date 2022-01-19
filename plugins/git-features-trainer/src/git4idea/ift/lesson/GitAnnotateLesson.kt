@@ -7,7 +7,6 @@ import com.intellij.idea.ActionsBundle
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.actionSystem.impl.ActionMenuItem
-import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorBundle
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx
@@ -20,21 +19,16 @@ import com.intellij.openapi.vcs.actions.AnnotateToggleAction
 import com.intellij.openapi.vcs.changes.VcsEditorTabFilesManager
 import com.intellij.openapi.vcs.changes.ui.ChangeListViewerDialog
 import com.intellij.openapi.vcs.changes.ui.CommittedChangeListPanel
-import com.intellij.openapi.wm.impl.IdeFrameImpl
 import com.intellij.util.ui.UIUtil
 import git4idea.ift.GitLessonsBundle
-import org.assertj.swing.core.MouseButton
-import org.assertj.swing.timing.Timeout
 import training.dsl.*
 import training.dsl.LessonUtil.adjustPopupPosition
 import training.dsl.LessonUtil.restorePopupPosition
 import training.learn.LearnBundle
-import training.ui.IftTestContainerFixture
-import training.ui.LearningUiUtil.findComponentWithTimeout
 import java.awt.Component
 import java.awt.Point
 import java.awt.Rectangle
-import java.awt.event.KeyEvent
+import java.util.concurrent.CompletableFuture
 import javax.swing.JEditorPane
 
 class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("git.annotate.lesson.name")) {
@@ -50,7 +44,7 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
   private var backupDiffLocation: Point? = null
   private var backupRevisionsLocation: Point? = null
 
-  override val testScriptProperties = TaskTestContext.TestScriptProperties(duration = 60)
+  override val testScriptProperties = TaskTestContext.TestScriptProperties(skipTesting = true)
 
   override val lessonContent: LessonContext.() -> Unit = {
     val annotateActionName = ActionsBundle.message("action.Annotate.text").dropMnemonic()
@@ -73,7 +67,6 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
       task("Annotate") {
         text(GitLessonsBundle.message("git.annotate.invoke.shortcut.1", action(it)))
         trigger(it)
-        test { actions(it) }
       }
     }
     else {
@@ -84,8 +77,7 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
       task {
         text(GitLessonsBundle.message("git.annotate.open.context.menu"))
         text(GitLessonsBundle.message("git.annotate.click.gutter.balloon"), LearningBalloonConfig(Balloon.Position.atRight, 0))
-        highlightAnnotateMenuItem(clearPreviousHighlights = true)
-        test { clickGutter(null, firstStateText, MouseButton.RIGHT_BUTTON) }
+        highlightAnnotateMenuItem()
       }
 
       task("Annotate") {
@@ -94,32 +86,27 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
         text(GitLessonsBundle.message("git.annotate.add.shortcut.tip", strong(annotateActionName), action(it), strong(addShortcutText)))
         trigger(it)
         restoreByUi()
-        test { clickAnnotateAction() }
       }
     }
 
-    lateinit var openFirstDiffTaskId: TaskContext.TaskId
     task {
-      openFirstDiffTaskId = taskId
       highlightAnnotation(null, firstStateText, highlightRight = true)
     }
 
     val showDiffText = ActionsBundle.message("action.Diff.ShowDiff.text")
+    lateinit var openFirstDiffTaskId: TaskContext.TaskId
     task {
+      openFirstDiffTaskId = taskId
       text(GitLessonsBundle.message("git.annotate.feature.explanation", strong(annotateActionName), strong("Johnny Catsville")))
       text(GitLessonsBundle.message("git.annotate.click.annotation.tooltip"), LearningBalloonConfig(Balloon.Position.above, 0))
       highlightShowDiffMenuItem()
-      test {
-        clickAnnotation(null, firstStateText, rightOriented = true, MouseButton.RIGHT_BUTTON)
-      }
     }
 
     var firstDiffSplitter: DiffSplitter? = null
     task {
       text(GitLessonsBundle.message("git.annotate.choose.show.diff", strong(showDiffText)))
       trigger("com.intellij.openapi.vcs.actions.ShowDiffFromAnnotation")
-      restoreByUi(openFirstDiffTaskId, delayMillis = defaultRestoreDelay)
-      test { clickShowDiffAction() }
+      restoreByUi(delayMillis = defaultRestoreDelay)
     }
 
     task {
@@ -144,10 +131,6 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
              + GitLessonsBundle.message("git.annotate.invoke.shortcut.2", action(it)))
         triggerOnAnnotationsShown(firstDiffSplitter, secondStateText)
         restoreIfDiffClosed(openFirstDiffTaskId, firstDiffSplitter)
-        test(waitEditorToBeReady = false) {
-          clickGutter(firstDiffSplitter, secondStateText, MouseButton.LEFT_BUTTON)
-          actions(it)
-        }
       }
     } else {
       task {
@@ -158,13 +141,10 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
         text(GitLessonsBundle.message("git.annotate.go.deeper", code(propertyName)) + " "
              + GitLessonsBundle.message("git.annotate.invoke.manually", strong(annotateMenuItemText)))
         text(GitLessonsBundle.message("git.annotate.click.gutter.balloon"), LearningBalloonConfig(Balloon.Position.atLeft, 0))
-        highlightAnnotateMenuItem()
+        val annotateItemFuture = highlightAnnotateMenuItem()
         triggerOnAnnotationsShown(firstDiffSplitter, secondStateText)
         restoreIfDiffClosed(openFirstDiffTaskId, firstDiffSplitter)
-        test(waitEditorToBeReady = false) {
-          clickGutter(firstDiffSplitter, secondStateText, MouseButton.RIGHT_BUTTON)
-          clickAnnotateAction()
-        }
+        restartTaskIfMenuClosed(annotateItemFuture)
       }
     }
 
@@ -174,7 +154,7 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
       openSecondDiffTaskId = taskId
       text(GitLessonsBundle.message("git.annotate.show.diff", strong(showDiffText)))
       highlightAnnotation(firstDiffSplitter, secondStateText, highlightRight = false)
-      highlightShowDiffMenuItem()
+      val showDiffItemFuture = highlightShowDiffMenuItem()
       triggerByUiComponentAndHighlight(highlightBorder = false, highlightInside = false) { ui: EditorComponentImpl ->
         if (ui.editor.document.charsSequence.contains(thirdStateText)) {
           secondDiffSplitter = UIUtil.getParentOfType(DiffSplitter::class.java, ui)
@@ -183,10 +163,7 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
         else false
       }
       restoreIfDiffClosed(openFirstDiffTaskId, firstDiffSplitter)
-      test(waitEditorToBeReady = false) {
-        clickAnnotation(firstDiffSplitter, secondStateText, rightOriented = false, MouseButton.RIGHT_BUTTON)
-        clickShowDiffAction()
-      }
+      restartTaskIfMenuClosed(showDiffItemFuture)
     }
 
     if (isAnnotateShortcutSet()) {
@@ -195,23 +172,16 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
              + GitLessonsBundle.message("git.annotate.invoke.shortcut.3", action(it)))
         triggerOnAnnotationsShown(secondDiffSplitter, secondStateText)
         restoreIfDiffClosed(openSecondDiffTaskId, secondDiffSplitter)
-        test(waitEditorToBeReady = false) {
-          clickGutter(secondDiffSplitter, secondStateText, MouseButton.LEFT_BUTTON)
-          actions(it)
-        }
       }
     } else {
       task {
         text(GitLessonsBundle.message("git.annotate.found.needed.commit", code(editedPropertyName)) + " "
              + GitLessonsBundle.message("git.annotate.invoke.manually", strong(annotateMenuItemText)))
         highlightGutterComponent(secondDiffSplitter, secondStateText, highlightRight = true)
-        highlightAnnotateMenuItem()
+        val annotateItemFuture = highlightAnnotateMenuItem()
         triggerOnAnnotationsShown(secondDiffSplitter, secondStateText)
         restoreIfDiffClosed(openSecondDiffTaskId, secondDiffSplitter)
-        test(waitEditorToBeReady = false) {
-          clickGutter(secondDiffSplitter, secondStateText, MouseButton.RIGHT_BUTTON)
-          clickAnnotateAction()
-        }
+        restartTaskIfMenuClosed(annotateItemFuture)
       }
     }
 
@@ -223,38 +193,18 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
         && ui.text?.contains(partOfTargetCommitMessage) == true
       }
       restoreIfDiffClosed(openSecondDiffTaskId, secondDiffSplitter)
-      test(waitEditorToBeReady = false) {
-        clickAnnotation(secondDiffSplitter, secondStateText, rightOriented = true, MouseButton.LEFT_BUTTON)
-      }
     }
 
-    task {
+    task("EditorEscape") {
       before {
         if (backupRevisionsLocation == null) {
           backupRevisionsLocation = adjustPopupPosition(ChangeListViewerDialog.DIMENSION_SERVICE_KEY)
         }
       }
-      text(GitLessonsBundle.message("git.annotate.close.changes", code(editedPropertyName), LessonUtil.rawKeyStroke(KeyEvent.VK_ESCAPE)))
+      text(GitLessonsBundle.message("git.annotate.close.all.windows", code(editedPropertyName),
+                                    if (VcsEditorTabFilesManager.getInstance().shouldOpenInNewWindow) 0 else 1, action(it)))
       stateCheck {
-        previous.ui?.isShowing != true
-      }
-      test(waitEditorToBeReady = false) {
-        Thread.sleep(500)
-        invokeActionViaShortcut("ESCAPE")
-      }
-    }
-
-    task("EditorEscape") {
-      text(GitLessonsBundle.message("git.annotate.close.all.windows",
-        if (VcsEditorTabFilesManager.getInstance().shouldOpenInNewWindow) 0 else 1, action(it)))
-      stateCheck {
-        firstDiffSplitter?.isShowing != true && secondDiffSplitter?.isShowing != true
-      }
-      test(waitEditorToBeReady = false) {
-        repeat(2) {
-          Thread.sleep(300)
-          invokeActionViaShortcut("ESCAPE")
-        }
+        previous.ui?.isShowing != true && firstDiffSplitter?.isShowing != true && secondDiffSplitter?.isShowing != true
       }
     }
 
@@ -263,10 +213,8 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
         text(GitLessonsBundle.message("git.annotate.close.annotations") + " "
              + GitLessonsBundle.message("git.annotate.close.by.shortcut", action(it)))
         stateCheck { !isAnnotationsShown(editor) }
-        test { actions(it) }
       }
-    }
-    else {
+    } else {
       task("Annotate") {
         val closeAnnotationsText = EditorBundle.message("close.editor.annotations.action.name")
         text(GitLessonsBundle.message("git.annotate.close.annotations") + " "
@@ -277,15 +225,14 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
           }
           else null
         }
-        highlightMenuItem(clearPreviousHighlights = false) { item -> item.text?.contains(closeAnnotationsText) == true }
-        stateCheck { !isAnnotationsShown(editor) }
-        test {
-          clickGutter(null, firstStateText, MouseButton.RIGHT_BUTTON)
-          ideFrame {
-            val fixture = jMenuItem { item: ActionMenuItem -> item.text?.contains(closeAnnotationsText) == true }
-            fixture.click()
+        val closeAnnotationsItemFuture = CompletableFuture<ActionMenuItem>()
+        triggerByUiComponentAndHighlight(highlightInside = false) { ui: ActionMenuItem ->
+          (ui.text?.contains(closeAnnotationsText) == true).also {
+            if (it) closeAnnotationsItemFuture.complete(ui)
           }
         }
+        stateCheck { !isAnnotationsShown(editor) }
+        restartTaskIfMenuClosed(closeAnnotationsItemFuture)
       }
     }
   }
@@ -299,7 +246,9 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
 
   private fun TaskContext.highlightGutterComponent(splitter: DiffSplitter?, partOfEditorText: String, highlightRight: Boolean) {
     triggerByPartOfComponent l@{ ui: EditorGutterComponentEx ->
-      if (ui.checkInsideSplitterAndRightEditor(splitter, partOfEditorText)) {
+      if (splitter != null && !isInsideSplitter(splitter, ui)) return@l null
+      val curEditor = CommonDataKeys.EDITOR.getData(ui as DataProvider) ?: return@l null
+      if (curEditor.document.charsSequence.contains(partOfEditorText)) {
         if (highlightRight) {
           Rectangle(ui.x, ui.y, ui.width - 5, ui.height)
         }
@@ -309,44 +258,35 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
     }
   }
 
-  private fun EditorGutterComponentEx.checkInsideSplitterAndRightEditor(splitter: DiffSplitter?, partOfEditorText: String): Boolean {
-    if (splitter != null && !isInsideSplitter(splitter, this)) return false
-    val editor = CommonDataKeys.EDITOR.getData(this as DataProvider) ?: return false
-    return editor.document.charsSequence.contains(partOfEditorText)
-  }
-
   private fun TaskContext.highlightAnnotation(splitter: DiffSplitter?, partOfLineText: String, highlightRight: Boolean) {
     triggerByPartOfComponent l@{ ui: EditorGutterComponentEx ->
       if (splitter != null && !isInsideSplitter(splitter, ui)) return@l null
-      ui.getAnnotationRect(partOfLineText, highlightRight)
-    }
-  }
-
-  private fun EditorGutterComponentEx.getAnnotationRect(partOfLineText: String, rightOriented: Boolean): Rectangle? {
-    val editor = CommonDataKeys.EDITOR.getData(this as DataProvider) ?: return null
-    val offset = editor.document.charsSequence.indexOf(partOfLineText)
-    if (offset == -1) return null
-    return invokeAndWaitIfNeeded {
-      val lineY = editor.offsetToXY(offset).y
-      if (rightOriented) {
-        Rectangle(x + annotationsAreaOffset, lineY, annotationsAreaWidth, editor.lineHeight)
+      val curEditor = CommonDataKeys.EDITOR.getData(ui as DataProvider) ?: return@l null
+      val offset = curEditor.document.charsSequence.indexOf(partOfLineText)
+      if (offset == -1) return@l null
+      val y = curEditor.offsetToXY(offset).y
+      if (highlightRight) {
+        Rectangle(ui.x + ui.annotationsAreaOffset, y, ui.annotationsAreaWidth, curEditor.lineHeight)
       }
-      else Rectangle(x + width - annotationsAreaOffset - annotationsAreaWidth, lineY, annotationsAreaWidth, editor.lineHeight)
+      else Rectangle(ui.x + ui.width - ui.annotationsAreaOffset - ui.annotationsAreaWidth, y, ui.annotationsAreaWidth, curEditor.lineHeight)
     }
   }
 
-  private fun TaskContext.highlightAnnotateMenuItem(clearPreviousHighlights: Boolean = false) {
-    highlightMenuItem(clearPreviousHighlights) { it.anAction is AnnotateToggleAction }
-  }
+  private fun TaskContext.highlightAnnotateMenuItem() = highlightMenuItem { it.anAction is AnnotateToggleAction }
 
-  private fun TaskContext.highlightShowDiffMenuItem(clearPreviousHighlights: Boolean = false) {
+  private fun TaskContext.highlightShowDiffMenuItem(): CompletableFuture<ActionMenuItem> {
     val showDiffText = ActionsBundle.message("action.Diff.ShowDiff.text")
-    return highlightMenuItem(clearPreviousHighlights) { it.text?.contains(showDiffText) == true }
+    return highlightMenuItem { it.text?.contains(showDiffText) == true }
   }
 
-  private fun TaskContext.highlightMenuItem(clearPreviousHighlights: Boolean, predicate: (ActionMenuItem) -> Boolean) {
-    triggerByUiComponentAndHighlight(highlightInside = false,
-                                     clearPreviousHighlights = clearPreviousHighlights) { ui: ActionMenuItem -> predicate(ui) }
+  private fun TaskContext.highlightMenuItem(predicate: (ActionMenuItem) -> Boolean): CompletableFuture<ActionMenuItem> {
+    val future = CompletableFuture<ActionMenuItem>()
+    triggerByUiComponentAndHighlight(highlightInside = false) { ui: ActionMenuItem ->
+      predicate(ui).also {
+        if (it) future.complete(ui)
+      }
+    }
+    return future
   }
 
   private fun TaskContext.triggerOnAnnotationsShown(splitter: DiffSplitter?, partOfEditorText: String) {
@@ -358,7 +298,14 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
   }
 
   private fun TaskContext.restoreIfDiffClosed(restoreId: TaskContext.TaskId, diff: DiffSplitter?) {
-    restoreState(restoreId, delayMillis = defaultRestoreDelay) { diff?.isShowing != true }
+    restoreState(restoreId) { diff?.isShowing != true }
+  }
+
+  private fun TaskContext.restartTaskIfMenuClosed(menuItemFuture: CompletableFuture<ActionMenuItem>) {
+    restoreState(taskId, delayMillis = defaultRestoreDelay) {
+      val item = menuItemFuture.getNow(null)
+      item != null && !item.isShowing
+    }
   }
 
   private fun isInsideSplitter(splitter: DiffSplitter, component: Component): Boolean {
@@ -373,48 +320,4 @@ class GitAnnotateLesson : GitLesson("Git.Annotate", GitLessonsBundle.message("gi
   private fun isAnnotateShortcutSet(): Boolean {
     return KeymapManager.getInstance().activeKeymap.getShortcuts("Annotate").isNotEmpty()
   }
-
-  private fun TaskTestContext.clickGutter(splitter: DiffSplitter?, partOfEditorText: String, button: MouseButton) {
-    ideFrame {
-      val gutter = findGutterComponent(splitter, partOfEditorText, defaultTimeout)
-      robot.click(gutter, button)
-    }
-  }
-
-  private fun TaskTestContext.clickAnnotation(splitter: DiffSplitter?,
-                                              partOfLineText: String,
-                                              rightOriented: Boolean,
-                                              button: MouseButton) {
-    ideFrame {
-      val gutter = findGutterComponent(splitter, partOfLineText, defaultTimeout)
-      val annotationRect = gutter.getAnnotationRect(partOfLineText, rightOriented)
-                           ?: error("Failed to find text '$partOfLineText' in editor")
-      robot.click(gutter, Point(annotationRect.centerX.toInt(), annotationRect.centerY.toInt()), button, 1)
-    }
-  }
-
-  private fun IftTestContainerFixture<IdeFrameImpl>.findGutterComponent(splitter: DiffSplitter?,
-                                                                        partOfEditorText: String,
-                                                                        timeout: Timeout): EditorGutterComponentEx {
-    return findComponentWithTimeout(timeout) l@{ ui: EditorGutterComponentEx ->
-      ui.checkInsideSplitterAndRightEditor(splitter, partOfEditorText)
-    }
-  }
-
-  private fun TaskTestContext.clickAnnotateAction() {
-    ideFrame { jMenuItem { item: ActionMenuItem -> item.anAction is AnnotateToggleAction }.click() }
-  }
-
-  private fun TaskTestContext.clickShowDiffAction() {
-    ideFrame {
-      val showDiffText = ActionsBundle.message("action.Diff.ShowDiff.text")
-      jMenuItem { item: ActionMenuItem -> item.text?.contains(showDiffText) == true }.click()
-    }
-  }
-
-  override val suitableTips = listOf("AnnotationsAndDiffs")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(GitLessonsBundle.message("git.annotate.help.link"),
-         LessonUtil.getHelpLink("investigate-changes.html#annotate_blame")),
-  )}
+}

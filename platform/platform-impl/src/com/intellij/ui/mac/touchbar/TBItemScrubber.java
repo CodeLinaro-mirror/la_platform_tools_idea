@@ -138,10 +138,6 @@ class TBItemScrubber extends TBItem implements NSTLibrary.ScrubberDelegate {
 
     Icon getIcon() { return myIcon; }
 
-    String getText() {
-      return myText;
-    }
-
     byte[] getTextBytes() {
       if (myTextBytes == null && myText != null) {
         myTextBytes = myText.getBytes(StandardCharsets.UTF_8);

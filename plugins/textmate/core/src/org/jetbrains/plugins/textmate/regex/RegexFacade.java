@@ -9,7 +9,6 @@ import org.jetbrains.annotations.Nullable;
 import org.joni.Matcher;
 import org.joni.Option;
 import org.joni.Regex;
-import org.joni.WarnCallback;
 import org.joni.exception.JOniException;
 
 import java.nio.charset.StandardCharsets;
@@ -29,7 +28,7 @@ public final class RegexFacade {
     byte[] bytes = regexString.getBytes(StandardCharsets.UTF_8);
     Regex regex;
     try {
-      regex = new Regex(bytes, 0, bytes.length, Option.CAPTURE_GROUP, UTF8Encoding.INSTANCE, WarnCallback.NONE);
+      regex = new Regex(bytes, 0, bytes.length, Option.CAPTURE_GROUP, UTF8Encoding.INSTANCE);
     }
     catch (JOniException e) {
       LOGGER.info("Failed to parse textmate regex", e);

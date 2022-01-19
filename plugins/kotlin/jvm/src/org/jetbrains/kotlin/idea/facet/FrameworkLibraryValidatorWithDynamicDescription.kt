@@ -80,7 +80,7 @@ class FrameworkLibraryValidatorWithDynamicDescription(
         }
 
         return ValidationResult(
-            KotlinJvmBundle.message("label.missed.libraries.text", libraryCategoryName),
+            IdeBundle.message("label.missed.libraries.text", libraryCategoryName),
             LibrariesQuickFix(targetPlatform.idePlatformKind.libraryDescription!!)
         )
     }

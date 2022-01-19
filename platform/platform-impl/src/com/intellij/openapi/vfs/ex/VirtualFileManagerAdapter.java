@@ -10,5 +10,11 @@ import org.jetbrains.annotations.ApiStatus;
 @Deprecated
 @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
 public abstract class VirtualFileManagerAdapter implements VirtualFileManagerListener {
+  @Override
+  public void beforeRefreshStart(boolean asynchronous) {
+  }
 
+  @Override
+  public void afterRefreshFinish(boolean asynchronous) {
+  }
 }

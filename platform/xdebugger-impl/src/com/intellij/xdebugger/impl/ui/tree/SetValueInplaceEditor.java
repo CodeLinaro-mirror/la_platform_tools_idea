@@ -6,19 +6,58 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.ui.AppUIUtil;
+import com.intellij.ui.SimpleColoredComponent;
+import com.intellij.util.ui.JBUI;
 import com.intellij.xdebugger.frame.XValueModifier;
+import com.intellij.xdebugger.frame.presentation.XValuePresentation;
 import com.intellij.xdebugger.impl.breakpoints.XExpressionImpl;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
+import com.intellij.xdebugger.impl.ui.XDebuggerUIConstants;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
+import com.intellij.xdebugger.impl.ui.tree.nodes.XValuePresentationUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-public final class SetValueInplaceEditor extends XDebuggerTreeValueNodeInplaceEditor {
+import javax.swing.*;
+import javax.swing.border.Border;
+import java.awt.*;
+
+public final class SetValueInplaceEditor extends XDebuggerTreeInplaceEditor {
+  private final JPanel myEditorPanel;
   private final XValueModifier myModifier;
+  private final XValueNodeImpl myValueNode;
+  private final int myNameOffset;
 
   private SetValueInplaceEditor(final XValueNodeImpl node, @NotNull final @NlsSafe String nodeName) {
-    super("setValue", node, nodeName);
+    super(node, "setValue");
+    myValueNode = node;
     myModifier = myValueNode.getValueContainer().getModifier();
+
+    SimpleColoredComponent nameLabel = new SimpleColoredComponent();
+    nameLabel.getIpad().right = 0;
+    nameLabel.getIpad().left = 0;
+    nameLabel.setIcon(myNode.getIcon());
+    nameLabel.append(nodeName, XDebuggerUIConstants.VALUE_NAME_ATTRIBUTES);
+    XValuePresentation presentation = node.getValuePresentation();
+    if (presentation != null) {
+      XValuePresentationUtil.appendSeparator(nameLabel, presentation.getSeparator());
+    }
+    Border border = nameLabel.getMyBorder();
+    myNameOffset = nameLabel.getPreferredSize().width  - (border != null ? border.getBorderInsets(nameLabel).right : 0);
+    myEditorPanel = JBUI.Panels.simplePanel(myExpressionEditor.getComponent());
+  }
+
+  @Nullable
+  @Override
+  protected Rectangle getEditorBounds() {
+    Rectangle bounds = super.getEditorBounds();
+    if (bounds == null) {
+      return null;
+    }
+    bounds.x += myNameOffset;
+    bounds.width -= myNameOffset;
+    return bounds;
   }
 
   public static void show(final XValueNodeImpl node, @NotNull final String nodeName) {
@@ -41,6 +80,11 @@ public final class SetValueInplaceEditor extends XDebuggerTreeValueNodeInplaceEd
     myExpressionEditor.selectAll();
 
     show();
+  }
+
+  @Override
+  protected JComponent createInplaceEditorComponent() {
+    return myEditorPanel;
   }
 
   @Override

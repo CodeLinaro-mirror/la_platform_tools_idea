@@ -64,7 +64,7 @@ public class FindInProjectManager {
 
     String text = PlatformDataKeys.PREDEFINED_TEXT.getData(dataContext);
     if (text != null) {
-      FindModel.initStringToFind(findModel, text);
+      FindModel.initStringToFindNoMultiline(findModel, text);
     }
     else {
       FindInProjectUtil.initStringToFindFromDataContext(findModel, dataContext);

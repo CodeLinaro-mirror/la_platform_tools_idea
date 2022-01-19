@@ -2,9 +2,9 @@
 
 package org.jetbrains.kotlin.idea.perf.util
 
-import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import khttp.structures.authorization.BasicAuthorization
+import java.io.FileInputStream
+import java.util.*
 
 object ESUploader {
     var host: String? = null
@@ -12,9 +12,6 @@ object ESUploader {
     var password: String? = null
 
     var indexName = "kotlin_ide_benchmarks"
-
-    private val JSON: MediaType = "application/json; charset=utf-8".toMediaType()
-    private val client = OkHttpClient()
 
     init {
         host = System.getenv("es.hostname")
@@ -31,30 +28,21 @@ object ESUploader {
 
         val url = "$host/$indexName/_doc/${benchmark.id()}"
         val auth = if (username != null && password != null) {
-            Credentials.basic(username!!, password!!);
+            BasicAuthorization(username!!, password!!)
         } else {
             null
         }
         val json = kotlinJsonMapper.writeValueAsString(benchmark)
 
-        val body: RequestBody = json.toRequestBody(JSON)
-        val request: Request = Request.Builder()
-            .url(url)
-            .post(body)
-            .header("Content-Type", "application/json")
-            .also { builder ->
-                auth?.let {
-                    builder.header("Authorization", it)
-                }
-            }
-            .build()
-        client.newCall(request).execute().use { response ->
-            val code = response.code
-            val string = response.body?.string()
-            logMessage { "$code -> $string" }
-            if (code != 200 && code != 201) {
-                throw IllegalStateException("Error code $code -> $string")
-            }
+        val response = khttp.put(
+            url = url,
+            auth = auth,
+            headers = mapOf("Content-Type" to "application/json"),
+            data = json
+        )
+        logMessage { "${response.statusCode} -> ${response.jsonObject}" }
+        if (response.statusCode != 200 && response.statusCode != 201) {
+            throw IllegalStateException("Error code ${response.statusCode} -> ${response.text}")
         }
     }
 }

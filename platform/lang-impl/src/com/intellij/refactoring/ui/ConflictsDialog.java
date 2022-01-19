@@ -186,11 +186,18 @@ public class ConflictsDialog extends DialogWrapper{
           usages.add(new DescriptionOnlyUsage());
           continue;
         }
+        boolean isRead = false;
+        boolean isWrite = false;
         ReadWriteAccessDetector detector = ReadWriteAccessDetector.findDetector(element);
-        ReadWriteAccessDetector.Access access = detector != null ? detector.getExpressionAccess(element) : null;
+        if (detector != null) {
+          final ReadWriteAccessDetector.Access access = detector.getExpressionAccess(element);
+          isRead = access != ReadWriteAccessDetector.Access.Write;
+          isWrite = access != ReadWriteAccessDetector.Access.Read;
+        }
+
         for (final @NlsContexts.Tooltip String conflictDescription : myElementConflictDescription.get(element)) {
           final UsagePresentation usagePresentation = new DescriptionOnlyUsage(conflictDescription).getPresentation();
-          Usage usage = access != null ? new ReadWriteAccessUsageInfo2UsageAdapter(new UsageInfo(element), access) {
+          Usage usage = isRead || isWrite ? new ReadWriteAccessUsageInfo2UsageAdapter(new UsageInfo(element), isRead, isWrite) {
             @NotNull
             @Override
             public UsagePresentation getPresentation() {

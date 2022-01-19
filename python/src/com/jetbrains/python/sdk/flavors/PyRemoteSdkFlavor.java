@@ -32,7 +32,7 @@ public final class PyRemoteSdkFlavor extends CPythonSdkFlavor {
   }
 
   @Override
-  public boolean isValidSdkHome(@NotNull String path) {
+  public boolean isValidSdkHome(String path) {
     return StringUtil.isNotEmpty(path) && checkName(NAMES, getExecutableName(path)) && checkName(REMOTE_SDK_HOME_PREFIXES, path);
   }
 
@@ -48,12 +48,13 @@ public final class PyRemoteSdkFlavor extends CPythonSdkFlavor {
     return false;
   }
 
-  private static @NotNull String getExecutableName(@NotNull String path) {
+  @Nullable
+  private static String getExecutableName(String path) {
     return RemoteFile.createRemoteFile(path).getName();
   }
 
   @Override
-  public @NotNull Icon getIcon() {
+  public Icon getIcon() {
     return PythonIcons.Python.RemoteInterpreter;
   }
 }

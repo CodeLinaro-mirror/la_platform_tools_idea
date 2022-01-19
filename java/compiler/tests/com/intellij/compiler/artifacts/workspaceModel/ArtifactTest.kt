@@ -8,7 +8,6 @@ import com.intellij.compiler.artifacts.propertybased.*
 import com.intellij.concurrency.JobSchedulerImpl
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.invokeAndWaitIfNeeded
-import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.util.Disposer
@@ -34,7 +33,9 @@ import java.util.concurrent.Callable
 
 class ArtifactTest : ArtifactsTestCase() {
 
-  fun `test rename artifact via model`() = runWriteAction {
+  override fun isRunInWriteAction(): Boolean = true
+
+  fun `test rename artifact via model`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     addArtifact("art")
@@ -52,7 +53,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertEquals(anotherName, artifactObject.name)
   }
 
-  fun `test add artifact mix bridge and model`() = runWriteAction {
+  fun `test add artifact mix bridge and model`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val workspaceModel = WorkspaceModel.getInstance(project)
@@ -74,7 +75,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertTrue(artifacts.any { it.name == "NameThree" })
   }
 
-  fun `test add artifact mix bridge and model rename via model`() = runWriteAction {
+  fun `test add artifact mix bridge and model rename via model`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val workspaceModel = WorkspaceModel.getInstance(project)
@@ -101,7 +102,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertTrue(artifacts.any { it.name == "NameThree" })
   }
 
-  fun `test add artifact mix bridge and model rename via model same name`() = runWriteAction {
+  fun `test add artifact mix bridge and model rename via model same name`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val workspaceModel = WorkspaceModel.getInstance(project)
@@ -128,7 +129,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertTrue(artifacts.any { it.name == "NameThree" })
   }
 
-  fun `test dispose modifiable model`() = runWriteAction {
+  fun `test dispose modifiable model`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val workspaceModel = WorkspaceModel.getInstance(project)
@@ -150,7 +151,7 @@ class ArtifactTest : ArtifactsTestCase() {
     modifiableModel.dispose()
   }
 
-  fun `test dir with same name`() = runWriteAction {
+  fun `test dir with same name`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val element_0 = DirectoryPackagingElement("Name-15")
@@ -163,15 +164,17 @@ class ArtifactTest : ArtifactsTestCase() {
     }
     val chosenArtifactEntity = WorkspaceModel.getInstance(project).entityStorage.current.entities(ArtifactEntity::class.java).toList()[0]
     val chosenArtifact = WorkspaceModel.getInstance(project).entityStorage.current.artifactsMap.getDataByEntity(chosenArtifactEntity)!!
-    val happyResult_2 = run {
-      val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-      val modifiableArtifact = modifiableModel.getOrCreateModifiableArtifact(chosenArtifact)
-      val rootElement = modifiableArtifact.rootElement
-      val chosenChild = rootElement.children[0]
-      rootElement.removeAllChildren()
-      val rootElement_2 = modifiableArtifact.rootElement
-      modifiableModel.commit()
-      return@run Triple(rootElement_2, chosenChild, rootElement)
+    val happyResult_2 = invokeAndWaitIfNeeded {
+      runWriteAction {
+        val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
+        val modifiableArtifact = modifiableModel.getOrCreateModifiableArtifact(chosenArtifact)
+        val rootElement = modifiableArtifact.rootElement
+        val chosenChild = rootElement.children[0]
+        rootElement.removeAllChildren()
+        val rootElement_2 = modifiableArtifact.rootElement
+        modifiableModel.commit()
+        return@runWriteAction Triple(rootElement_2, chosenChild, rootElement)
+      }
     }
     val manager = ArtifactManager.getInstance(project)
     val foundArtifact = manager.findArtifact(chosenArtifact.name)!!
@@ -182,7 +185,7 @@ class ArtifactTest : ArtifactsTestCase() {
     }
   }
 
-  fun `test another remove`() = runWriteAction {
+  fun `test another remove`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val element_0 = DirectoryPackagingElement("Name-19")
@@ -218,22 +221,26 @@ class ArtifactTest : ArtifactsTestCase() {
     element_2_6.addFirstChild(element_3_4)
     element_1_4.addFirstChild(element_2_6)
     element_0.addFirstChild(element_1_4)
-    run {
-      ArtifactManager.getInstance(project).addArtifact("Artifact-0", PlainArtifactType.getInstance(), element_0)
-      return@run null
+    val happyResult = invokeAndWaitIfNeeded {
+      runWriteAction {
+        ArtifactManager.getInstance(project).addArtifact("Artifact-0", PlainArtifactType.getInstance(), element_0)
+        return@runWriteAction null
+      }
     }
     val chosenArtifactEntity = WorkspaceModel.getInstance(project).entityStorage.current.entities(ArtifactEntity::class.java).toList()[0]
     val chosenArtifact = WorkspaceModel.getInstance(project).entityStorage.current.artifactsMap.getDataByEntity(chosenArtifactEntity)!!
-    val happyResult_2 = run {
-      val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-      val modifiableArtifact = modifiableModel.getOrCreateModifiableArtifact(chosenArtifact)
-      val rootElement = modifiableArtifact.rootElement
-      val chosenParent = (rootElement.children[0] as CompositePackagingElement<*>).children[0] as CompositePackagingElement<*>
-      val chosenChild = ((rootElement.children[0] as CompositePackagingElement<*>).children[0] as CompositePackagingElement<*>).children[0]
-      chosenParent.removeAllChildren()
-      val rootElement_2 = modifiableArtifact.rootElement
-      modifiableModel.commit()
-      return@run Triple(rootElement_2, chosenChild, chosenParent)
+    val happyResult_2 = invokeAndWaitIfNeeded {
+      runWriteAction {
+        val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
+        val modifiableArtifact = modifiableModel.getOrCreateModifiableArtifact(chosenArtifact)
+        val rootElement = modifiableArtifact.rootElement
+        val chosenParent = (rootElement.children[0] as CompositePackagingElement<*>).children[0] as CompositePackagingElement<*>
+        val chosenChild = ((rootElement.children[0] as CompositePackagingElement<*>).children[0] as CompositePackagingElement<*>).children[0]
+        chosenParent.removeAllChildren()
+        val rootElement_2 = modifiableArtifact.rootElement
+        modifiableModel.commit()
+        return@runWriteAction Triple(rootElement_2, chosenChild, chosenParent)
+      }
     }
     val manager = ArtifactManager.getInstance(project)
     val foundArtifact = manager.findArtifact(chosenArtifact.name)!!
@@ -244,7 +251,7 @@ class ArtifactTest : ArtifactsTestCase() {
     }
   }
 
-  fun `test custom element`() = runWriteAction {
+  fun `test custom element`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     PackagingElementType.EP_NAME.point.registerExtension(MyWorkspacePackagingElementType, this.testRootDisposable)
@@ -263,7 +270,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertEquals("Name-2", packagingElement.state.data)
   }
 
-  fun `test unknown custom element`() = runWriteAction {
+  fun `test unknown custom element`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val workspaceModel = WorkspaceModel.getInstance(project)
@@ -279,7 +286,7 @@ class ArtifactTest : ArtifactsTestCase() {
     assertTrue(newArtifact is InvalidArtifact)
   }
 
-  fun `test add root via model and get via bridge`() = runWriteAction {
+  fun `test add root via model and get via bridge`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     val workspaceModel = WorkspaceModel.getInstance(project)
@@ -295,7 +302,7 @@ class ArtifactTest : ArtifactsTestCase() {
     modifiableModel.commit()
   }
 
-  fun `test custom composite package element`() = runWriteAction {
+  fun `test custom composite package element`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     PackagingElementType.EP_NAME.point.registerExtension(MyCompositeWorkspacePackagingElementType, this.testRootDisposable)
@@ -326,7 +333,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertEquals("Name-17", directoryElement.directoryName)
   }
 
-  fun `test custom composite package element with adding new child`() = runWriteAction {
+  fun `test custom composite package element with adding new child`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     PackagingElementType.EP_NAME.point.registerExtension(MyCompositeWorkspacePackagingElementType, this.testRootDisposable)
@@ -363,7 +370,7 @@ class ArtifactTest : ArtifactsTestCase() {
     TestCase.assertEquals("Name-1", directoryElement.directoryName)
   }
 
-  fun `test complicated packaging elements structure`() = runWriteAction {
+  fun `test complicated packaging elements structure`() {
     assumeTrue(WorkspaceModel.enabledForArtifacts)
 
     PackagingElementType.EP_NAME.point.registerExtension(MyCompositeWorkspacePackagingElementType, this.testRootDisposable)
@@ -387,7 +394,7 @@ class ArtifactTest : ArtifactsTestCase() {
     val bridgeArtifact = artifact(project, "Artifact-0")
     (bridgeArtifact.rootElement.children.single() as MyCompositeWorkspacePackagingElement).children
     val artifactEntity = artifactEntity(project, "Artifact-0")
-    assertTreesEquals(project, bridgeArtifact.rootElement, artifactEntity.rootElement!!)
+    assertTreesEquals(project, bridgeArtifact.rootElement, artifactEntity.rootElement)
   }
 
   fun `test async artifacts requesting`() {
@@ -399,28 +406,22 @@ class ArtifactTest : ArtifactsTestCase() {
     repeat(1000) {
       val workspaceModel = WorkspaceModel.getInstance(project)
       val artifacts = workspaceModel.entityStorage.current.entities(ArtifactEntity::class.java).toList()
-      runWriteAction {
-        workspaceModel.updateProjectModel {
-          artifacts.forEach { artifact ->
-            it.removeEntity(artifact)
-          }
+      workspaceModel.updateProjectModel {
+        artifacts.forEach { artifact ->
+          it.removeEntity(artifact)
         }
       }
 
       repeat(10) { counter ->
-        runWriteAction {
-          workspaceModel.updateProjectModel {
-            val rootElementEntity = it.addArtifactRootElementEntity(emptyList(), MySource)
-            it.addArtifactEntity("Artifact-$counter", PlainArtifactType.ID, false, null, rootElementEntity, MySource)
-          }
+        workspaceModel.updateProjectModel {
+          val rootElementEntity = it.addArtifactRootElementEntity(emptyList(), MySource)
+          it.addArtifactEntity("Artifact-$counter", PlainArtifactType.ID, false, null, rootElementEntity, MySource)
         }
       }
 
       val threads = List(10) {
         Callable {
-          runReadAction {
-            ArtifactManager.getInstance(project).artifacts
-          }
+          ArtifactManager.getInstance(project).artifacts
         }
       }
 
@@ -435,122 +436,56 @@ class ArtifactTest : ArtifactsTestCase() {
     }
   }
 
-  fun `test commit and dispose modifiable model`() = runWriteAction {
-    val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-    val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
-    modifiableModel.commit()
-
-    val modifiableModel2 = ArtifactManager.getInstance(project).createModifiableModel()
-    val modifiableArtifact = modifiableModel2.getOrCreateModifiableArtifact(artifact)
-    modifiableArtifact.name = "AnotherName"
-    modifiableModel2.commit()
-    modifiableModel2.dispose()
-  }
-
-  fun `test replace root element`() = runWriteAction {
-    val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-    val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
-    val rootElement = ArtifactRootElementImpl()
-    artifact.rootElement = rootElement
-    modifiableModel.commit()
-
-    val anotherModifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-    val anotherModifiableArtifact = anotherModifiableModel.getOrCreateModifiableArtifact(artifact)
-    val anotherRootElement = ArtifactRootElementImpl()
-    anotherModifiableArtifact.rootElement = anotherRootElement
-    anotherModifiableModel.commit()
-
-    val rootElements = WorkspaceModel.getInstance(project).entityStorage.current.entities(ArtifactRootElementEntity::class.java).toList()
-    assertOneElement(rootElements)
-    Unit
-  }
-
-  fun `test set property`() = runWriteAction {
-    runWithRegisteredExtension(MockArtifactPropertiesProvider(), ArtifactPropertiesProvider.EP_NAME) {
+  fun `test commit and dispose modifiable model`() {
+    runWriteAction {
       val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
       val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
-      artifact.setProperties(MockArtifactPropertiesProvider.getInstance(), MockArtifactProperties().apply { data = "data" })
+      modifiableModel.commit()
+
+      val modifiableModel2 = ArtifactManager.getInstance(project).createModifiableModel()
+      val modifiableArtifact = modifiableModel2.getOrCreateModifiableArtifact(artifact)
+      modifiableArtifact.name = "AnotherName"
+      modifiableModel2.commit()
+      modifiableModel2.dispose()
+    }
+  }
+
+  fun `test replace root element`() {
+    runWriteAction {
+      val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
+      val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
+      val rootElement = ArtifactRootElementImpl()
+      artifact.rootElement = rootElement
       modifiableModel.commit()
 
       val anotherModifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
       val anotherModifiableArtifact = anotherModifiableModel.getOrCreateModifiableArtifact(artifact)
-      anotherModifiableArtifact.setProperties(MockArtifactPropertiesProvider.getInstance(), null)
+      val anotherRootElement = ArtifactRootElementImpl()
+      anotherModifiableArtifact.rootElement = anotherRootElement
       anotherModifiableModel.commit()
 
-      val properties = WorkspaceModel.getInstance(project)
-        .entityStorage
-        .current
-        .entities(ArtifactPropertiesEntity::class.java)
-        .filter { it.providerType == MockArtifactPropertiesProvider.getInstance().id }
-        .toList()
-      assertEmpty(properties)
+      val rootElements = WorkspaceModel.getInstance(project).entityStorage.current.entities(ArtifactRootElementEntity::class.java).toList()
+      assertOneElement(rootElements)
     }
   }
 
-  fun `test default properties are added`() = runWriteAction {
-    runWithRegisteredExtension(MockArtifactPropertiesProvider(), ArtifactPropertiesProvider.EP_NAME) {
-      val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-      val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
-      modifiableModel.commit()
+  fun `test set property`() {
+    runWriteAction {
+      runWithRegisteredExtension(MockArtifactPropertiesProvider(), ArtifactPropertiesProvider.EP_NAME) {
+        val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
+        val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
+        artifact.setProperties(MockArtifactPropertiesProvider.getInstance(), MockArtifactProperties().apply { data = "data" })
+        modifiableModel.commit()
 
-      val defaultProperties = artifact.getProperties(MockArtifactPropertiesProvider.getInstance())
-      TestCase.assertNotNull(defaultProperties)
+        val anotherModifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
+        val anotherModifiableArtifact = anotherModifiableModel.getOrCreateModifiableArtifact(artifact)
+        anotherModifiableArtifact.setProperties(MockArtifactPropertiesProvider.getInstance(), null)
+        anotherModifiableModel.commit()
+
+        val properties = WorkspaceModel.getInstance(project).entityStorage.current.entities(ArtifactPropertiesEntity::class.java).toList()
+        assertEmpty(properties)
+      }
     }
-  }
-
-  fun `test default properties are added with modification`() = runWriteAction {
-    runWithRegisteredExtension(MockArtifactPropertiesProvider(), ArtifactPropertiesProvider.EP_NAME) {
-      val modifiableModel = ArtifactManager.getInstance(project).createModifiableModel()
-      val artifact = modifiableModel.addArtifact("MyArtifact", PlainArtifactType.getInstance())
-      modifiableModel.commit()
-
-      val defaultProperties = artifact.getProperties(MockArtifactPropertiesProvider.getInstance())
-      TestCase.assertNotNull(defaultProperties)
-
-      val modifiableModel1 = ArtifactManager.getInstance(project).createModifiableModel()
-      val modifiableArtifact = modifiableModel1.getOrCreateModifiableArtifact(artifact)
-      modifiableArtifact.setProperties(MockArtifactPropertiesProvider.getInstance(), MockArtifactProperties().also { it.data = "123" })
-      modifiableModel1.commit()
-
-      val defaultProperties2 = artifact.getProperties(MockArtifactPropertiesProvider.getInstance())
-      TestCase.assertNotNull(defaultProperties2)
-      assertEquals("123", (defaultProperties2 as MockArtifactProperties).data)
-    }
-  }
-
-  fun `test work with removed artifact via bridge`() = runWriteAction {
-    val artifactEntity = WorkspaceModel.getInstance(project).updateProjectModel {
-      val element = it.addArtifactRootElementEntity(emptyList(), MySource)
-      it.addArtifactEntity("MyArtifact", PlainArtifactType.getInstance().id, true, null, element, MySource)
-    }
-
-    val artifactBridge = ArtifactManager.getInstance(project).artifacts[0]
-
-    WorkspaceModel.getInstance(project).updateProjectModel {
-      it.removeEntity(artifactEntity)
-    }
-
-    artifactBridge.rootElement.children
-    Unit
-  }
-
-  fun `test invalid artifact`() = runWriteAction {
-    assumeTrue(WorkspaceModel.enabledForArtifacts)
-
-    val workspaceModel = WorkspaceModel.getInstance(project)
-    workspaceModel.updateProjectModel {
-      val customElement = it.addCustomPackagingElementEntity("Custom-element", "<CustomPackagingElementState>\n" +
-                                                                               "  <option name=\"data\" value=\"Name-2\" />\n" +
-                                                                               "</CustomPackagingElementState>", emptyList(), MySource)
-      val rootElement = it.addArtifactRootElementEntity(listOf(customElement), MySource)
-      it.addArtifactEntity("MyArtifact", PlainArtifactType.ID, false, null, rootElement, MySource)
-    }
-
-    val newArtifact = ArtifactManager.getInstance(project).allArtifactsIncludingInvalid.single() as InvalidArtifact
-
-    // Assert empty and assert no exceptions
-    // Invalid artifact always has only one root element without children
-    assertEmpty(newArtifact.rootElement.children)
   }
 
   private inline fun <T> runWithRegisteredExtension(extension: T, extensionPoint: ExtensionPointName<T>, action: () -> Unit) {

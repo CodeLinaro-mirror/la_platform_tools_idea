@@ -14,7 +14,7 @@ suspend fun foo() {
     use(a)
     yield()
     // EXPRESSION: a
-    // RESULT: This variable is inaccessible because it isn't used after the last suspension point
+    // RESULT: 1: I
     //Breakpoint!
     println("")
 }
@@ -26,7 +26,6 @@ fun main() = runBlocking {
     //Breakpoint!
     println("")
     use(a)
-    yield()
     // EXPRESSION: a
     // RESULT: This variable is inaccessible because it isn't used after the last suspension point
     //Breakpoint!

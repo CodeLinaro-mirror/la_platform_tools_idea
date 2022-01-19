@@ -68,15 +68,6 @@ public class MethodMayBeStaticInspection extends BaseInspection {
       }
 
       @Override
-      public boolean applyFixForPreview(@NotNull Project project, @NotNull ProblemDescriptor previewDescriptor) {
-        final PsiMethod element = PsiTreeUtil.getParentOfType(previewDescriptor.getPsiElement(), PsiMethod.class);
-        if (element != null) {
-          element.getModifierList().setModifierProperty(PsiModifier.STATIC, true);
-        }
-        return true;
-      }
-
-      @Override
       public boolean startInWriteAction() {
         return false;
       }

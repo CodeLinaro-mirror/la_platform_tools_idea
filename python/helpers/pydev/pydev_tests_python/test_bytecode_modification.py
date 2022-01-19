@@ -3,15 +3,12 @@ import sys
 import unittest
 from io import StringIO
 from types import CodeType
-
 import pytest
 
-from _pydevd_frame_eval.pydevd_modify_bytecode import insert_code, \
-    add_jump_instruction, IS_PY310_OR_GREATER
+from _pydevd_frame_eval.pydevd_modify_bytecode import insert_code
 from opcode import EXTENDED_ARG
 
 TRACE_MESSAGE = "Trace called"
-
 
 def tracing():
     print(TRACE_MESSAGE)
@@ -79,10 +76,7 @@ class TestInsertCode(unittest.TestCase):
                     # it's ok, because we added POP_JUMP_IF_TRUE manually, but it's POP_TOP in the real code
                     # inserted code - 2 (removed return instruction) - real code inserted
                     # Jump should be done to the beginning of inserted fragment
-                    if IS_PY310_OR_GREATER:
-                        self.assertEqual(arg1, (of - (inserted_code_size - 2)) // 2)
-                    else:
-                        self.assertEqual(arg1, of - (inserted_code_size - 2))
+                    self.assertEqual(arg1, of - (inserted_code_size - 2))
                     continue
                 elif op1 == EXTENDED_ARG and op2 == 12:
                     # we added a real UNARY_NOT to balance EXTENDED_ARG added by new jump instruction
@@ -95,11 +89,11 @@ class TestInsertCode(unittest.TestCase):
             if op1 in LOAD_OPCODES:
                 # When comparing arguments of the load operations we shouldn't rely only on arguments themselves,
                 # because their order may change. It's better to compare the actual values instead.
-                self.compare_load_args(of, code1, code2, op1, arg1, arg2)
+                self.comapre_load_args(of, code1, code2, op1, arg1, arg2)
             elif arg1 != arg2:
                 self.assertEquals(arg1, arg2, "Different arguments at offset {}".format(of))
 
-    def compare_load_args(self, offset, code1, code2, opcode, arg1, arg2):
+    def comapre_load_args(self, offset, code1, code2, opcode, arg1, arg2):
         err_msg = "Different arguments at offset {}".format(offset)
         if opcode == dis.opmap['LOAD_ATTR']:
             assert code1.co_names[arg1] == code2.co_names[arg2], err_msg
@@ -115,7 +109,7 @@ class TestInsertCode(unittest.TestCase):
         elif opcode == dis.opmap['LOAD_NAME']:
             assert code1.co_names[arg1] == code2.co_names[arg2], err_msg
 
-    def test_line_before_py310(self):
+    def test_line(self):
 
         def foo():
             global global_loaded
@@ -502,9 +496,7 @@ class TestInsertCode(unittest.TestCase):
         self.check_insert_to_line_by_symbols(Dummy.fun, call_tracing, Dummy.fun.__code__.co_firstlineno + 3,
                                              DummyTracing.fun.__code__)
 
-    @pytest.mark.skipif(
-        IS_PY310_OR_GREATER, reason="Test is specific for Python versions < 3.10")
-    def test_double_extended_arg_before_py310(self):
+    def test_double_extended_arg(self):
         self.original_stdout = sys.stdout
         sys.stdout = StringIO()
 
@@ -537,7 +529,7 @@ class TestInsertCode(unittest.TestCase):
                 a = a + 1
                 return a
 
-            def foo_check_3():
+            def foo_check():
                 a = 1
                 b = 2
                 tracing()
@@ -566,7 +558,7 @@ class TestInsertCode(unittest.TestCase):
                 a = a + 1
                 return a
 
-            def foo_check_21():
+            def foo_check_2():
                 a = 1
                 b = 2
                 if b > 0:
@@ -599,218 +591,11 @@ class TestInsertCode(unittest.TestCase):
             sys.stdout = self.original_stdout
 
             self.check_insert_to_line_by_symbols(foo, call_tracing, foo.__code__.co_firstlineno + 3,
-                                                 foo_check_3.__code__)
+                                                 foo_check.__code__)
 
             self.check_insert_to_line_by_symbols(foo, call_tracing, foo.__code__.co_firstlineno + 21,
-                                                 foo_check_21.__code__)
+                                                 foo_check_2.__code__)
 
 
         finally:
             sys.stdout = self.original_stdout
-
-    @pytest.mark.skipif(
-        not IS_PY310_OR_GREATER, reason="Test is specific for Python versions >= 3.10")
-    def test_double_extended_arg_after_py310(self):
-        self.original_stdout = sys.stdout
-        sys.stdout = StringIO()
-
-        try:
-            def foo():
-                a = 1
-                b = 2
-                if b > 0:
-                    d = a + b
-                    d += 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                a = a + 1
-                return a
-
-            def foo_check_3():
-                a = 1
-                b = 2
-                tracing()
-                if b > 0:
-                    d = a + b
-                    d += 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                a = a + 1
-                return a
-
-            def foo_check_40():
-                a = 1
-                b = 2
-                if b > 0:
-                    d = a + b
-                    d += 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    not tracing() #  add 'not' to balance EXTENDED_ARG when jumping
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                    b = b - 1 if a > 0 else b + 1
-                a = a + 1
-                return a
-
-            self.check_insert_to_line_with_exec(foo, tracing, foo.__code__.co_firstlineno + 2)
-            sys.stdout = self.original_stdout
-
-            self.check_insert_to_line_by_symbols(foo, call_tracing, foo.__code__.co_firstlineno + 3,
-                                                 foo_check_3.__code__)
-
-            self.check_insert_to_line_by_symbols(foo, call_tracing, foo.__code__.co_firstlineno + 40,
-                                                 foo_check_40.__code__)
-        finally:
-            sys.stdout = self.original_stdout
-
-    def test_add_jump_instruction(self):
-        def foo():
-            a = 1
-            b = 2
-            return a + b
-
-        offset = 0
-        if IS_PY310_OR_GREATER:
-            offset *= 2
-        new_code_list = add_jump_instruction(offset, foo.__code__)
-        assert new_code_list[-1] == 0
-        assert new_code_list[-2] == dis.opmap['POP_JUMP_IF_TRUE']
-
-        offset = 42
-        if IS_PY310_OR_GREATER:
-            offset *= 2
-        new_code_list = add_jump_instruction(offset, foo.__code__)
-        assert new_code_list[-1] == 42
-        assert new_code_list[-2] == dis.opmap['POP_JUMP_IF_TRUE']
-
-        offset = 257
-        if IS_PY310_OR_GREATER:
-            offset *= 2
-        new_code_list = add_jump_instruction(offset, foo.__code__)
-        assert new_code_list[-1] == 1
-        assert new_code_list[-2] == dis.opmap['POP_JUMP_IF_TRUE']
-        assert new_code_list[-3] == 1
-        assert new_code_list[-4] == EXTENDED_ARG
-
-        offset = 65602
-        if IS_PY310_OR_GREATER:
-            offset *= 2
-        new_code_list = add_jump_instruction(offset, foo.__code__)
-        assert new_code_list[-1] == 66
-        assert new_code_list[-2] == dis.opmap['POP_JUMP_IF_TRUE']
-        assert new_code_list[-3] == 0
-        assert new_code_list[-4] == EXTENDED_ARG
-        assert new_code_list[-5] == 1
-        assert new_code_list[-6] == EXTENDED_ARG
-
-        offset = 4294967296  # Doesn't fit into 4 EXTENDED_ARGs.
-        if IS_PY310_OR_GREATER:
-            offset *= 2
-        with(pytest.raises(RuntimeError)):
-            add_jump_instruction(offset, foo.__code__)

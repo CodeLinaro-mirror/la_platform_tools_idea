@@ -12,8 +12,6 @@ import com.intellij.diff.requests.LoadingDiffRequest;
 import com.intellij.diff.tools.util.PrevNextDifferenceIterable;
 import com.intellij.diff.util.DiffUserDataKeysEx.ScrollToPolicy;
 import com.intellij.diff.util.DiffUtil;
-import com.intellij.openapi.ListSelection;
-import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.diff.DiffBundle;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -23,7 +21,6 @@ import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer;
-import com.intellij.openapi.vcs.changes.actions.diff.PresentableGoToChangePopupAction;
 import com.intellij.openapi.vcs.changes.actions.diff.UnversionedDiffRequestProducer;
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode;
 import com.intellij.openapi.vcs.changes.ui.PresentableChange;
@@ -52,16 +49,12 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
   //
 
   @NotNull
-  public abstract Stream<? extends Wrapper> getSelectedChanges();
+  public abstract Stream<Wrapper> getSelectedChanges();
 
   @NotNull
-  public abstract Stream<? extends Wrapper> getAllChanges();
+  public abstract Stream<Wrapper> getAllChanges();
 
   protected abstract void selectChange(@NotNull Wrapper change);
-
-  protected boolean showAllChangesForEmptySelection() {
-    return true;
-  }
 
   //
   // Update
@@ -146,7 +139,6 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
     if (isDisposed()) return;
 
     List<Wrapper> selectedChanges = getSelectedChanges().collect(Collectors.toList());
-    if (selectedChanges.isEmpty() && showAllChangesForEmptySelection()) selectedChanges = getAllChanges().collect(Collectors.toList());
 
     Wrapper selectedChange = myCurrentChange != null ? ContainerUtil.find(selectedChanges, myCurrentChange) : null;
     if (fromModelRefresh &&
@@ -194,21 +186,16 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
     return myCurrentChange;
   }
 
-  @Override
-  protected @Nullable AnAction createGoToChangeAction() {
-    return new MyGoToChangePopupAction();
-  }
+  /**
+   * In case of conflict, will select first change with this file path
+   */
+  @Deprecated
+  protected void selectFilePath(@NotNull FilePath filePath) {
+    Wrapper changeToSelect = ContainerUtil.find(getAllChanges().iterator(), change -> change.getFilePath().equals(filePath));
 
-  private class MyGoToChangePopupAction extends PresentableGoToChangePopupAction.Default<Wrapper> {
-    @Override
-    protected @NotNull ListSelection<? extends Wrapper> getChanges() {
-      List<Wrapper> allChanges = getAllChanges().collect(Collectors.toList());
-      return ListSelection.create(allChanges, getCurrentChange());
-    }
-
-    @Override
-    protected void onSelected(@NotNull Wrapper change) {
-      selectChange(change);
+    if (changeToSelect != null) {
+      myCurrentChange = changeToSelect;
+      selectChange(changeToSelect);
     }
   }
 
@@ -244,22 +231,15 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
   @Nullable
   private PrevNextDifferenceIterable getSelectionStrategy(boolean fromUpdate) {
     if (myCurrentChange == null) return null;
-
-    List<? extends Wrapper> selectedChanges = toListIfNotMany(getSelectedChanges(), fromUpdate);
+    List<Wrapper> selectedChanges = toListIfNotMany(getSelectedChanges(), fromUpdate);
     if (selectedChanges == null) return DumbPrevNextDifferenceIterable.INSTANCE;
-    if (selectedChanges.size() > 1) {
-      return new ChangesNavigatable(selectedChanges, selectedChanges.get(0), false);
+    if (selectedChanges.isEmpty()) return null;
+    if (selectedChanges.size() == 1) {
+      List<Wrapper> allChanges = toListIfNotMany(getAllChanges(), fromUpdate);
+      if (allChanges == null) return DumbPrevNextDifferenceIterable.INSTANCE;
+      return new ChangesNavigatable(allChanges, selectedChanges.get(0), true);
     }
-    if (selectedChanges.isEmpty() && !showAllChangesForEmptySelection()) {
-      return null;
-    }
-
-    List<? extends Wrapper> allChanges = toListIfNotMany(getAllChanges(), fromUpdate);
-    if (allChanges == null) return DumbPrevNextDifferenceIterable.INSTANCE;
-    if (allChanges.isEmpty()) return null;
-
-    Wrapper selection = selectedChanges.isEmpty() ? allChanges.get(0) : selectedChanges.get(0);
-    return new ChangesNavigatable(allChanges, selection, true);
+    return new ChangesNavigatable(selectedChanges, selectedChanges.get(0), false);
   }
 
   private class ChangesNavigatable implements PrevNextDifferenceIterable {
@@ -378,15 +358,9 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
 
   protected static class ChangeWrapper extends Wrapper {
     @NotNull protected final Change change;
-    @Nullable protected final ChangesBrowserNode.Tag nodeTag;
 
     public ChangeWrapper(@NotNull Change change) {
-      this(change, null);
-    }
-
-    public ChangeWrapper(@NotNull Change change, @Nullable ChangesBrowserNode.Tag nodeTag) {
       this.change = change;
-      this.nodeTag = nodeTag;
     }
 
     @NotNull
@@ -409,11 +383,6 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
     @Override
     public String getPresentableName() {
       return getFilePath().getName();
-    }
-
-    @Override
-    public @Nullable ChangesBrowserNode.Tag getTag() {
-      return nodeTag;
     }
 
     @Nullable
@@ -440,12 +409,12 @@ public abstract class ChangeViewDiffRequestProcessor extends CacheDiffRequestPro
       if (getClass() != o.getClass()) return false;
 
       ChangeWrapper wrapper = (ChangeWrapper)o;
-      return ChangeListChange.HASHING_STRATEGY.equals(wrapper.change, change) && Objects.equals(wrapper.nodeTag, nodeTag);
+      return ChangeListChange.HASHING_STRATEGY.equals(wrapper.change, change);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(change, nodeTag);
+      return change.hashCode();
     }
   }
 

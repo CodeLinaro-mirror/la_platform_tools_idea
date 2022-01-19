@@ -22,12 +22,11 @@ class ProjectTemplatesPlugin(context: Context) : Plugin(context) {
             KotlinNewProjectWizardBundle.message("plugin.templates.setting.template"),
             GenerationPhase.INIT_TEMPLATE,
             parser = valueParserM { _, _ ->
-                Failure(ParseError(KotlinNewProjectWizardBundle.message("error.text.project.templates.is.not.supported.in.yaml.for.now")))
+                Failure(ParseError("Project templates is not supported in yaml for now"))
             },
         ) {
             values = ProjectTemplate.ALL
             isRequired = false
-            tooltipText = KotlinNewProjectWizardBundle.message("plugin.templates.setting.template.tooltip")
         }
     }
 

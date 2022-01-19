@@ -16,15 +16,18 @@ from typing import (
     Counter as Counter,
     DefaultDict as DefaultDict,
     Deque as Deque,
+    Dict,
     ItemsView,
     KeysView,
     Mapping,
     NewType as NewType,
     NoReturn as NoReturn,
+    Optional,
     Text as Text,
     Tuple,
     Type as Type,
     TypeVar,
+    Union,
     ValuesView,
     _Alias,
     overload as overload,
@@ -71,14 +74,14 @@ OrderedDict = _Alias()
 
 def get_type_hints(
     obj: Callable[..., Any],
-    globalns: dict[str, Any] | None = ...,
-    localns: dict[str, Any] | None = ...,
+    globalns: Optional[Dict[str, Any]] = ...,
+    localns: Optional[Dict[str, Any]] = ...,
     include_extras: bool = ...,
-) -> dict[str, Any]: ...
+) -> Dict[str, Any]: ...
 
 if sys.version_info >= (3, 7):
     def get_args(tp: Any) -> Tuple[Any, ...]: ...
-    def get_origin(tp: Any) -> Any | None: ...
+    def get_origin(tp: Any) -> Optional[Any]: ...
 
 Annotated: _SpecialForm = ...
 _AnnotatedAlias: Any = ...  # undocumented
@@ -100,11 +103,11 @@ else:
         def __init__(self, origin: ParamSpec) -> None: ...
     class ParamSpec:
         __name__: str
-        __bound__: Type[Any] | None
+        __bound__: Optional[Type[Any]]
         __covariant__: bool
         __contravariant__: bool
         def __init__(
-            self, name: str, *, bound: None | Type[Any] | str = ..., contravariant: bool = ..., covariant: bool = ...
+            self, name: str, *, bound: Union[None, Type[Any], str] = ..., contravariant: bool = ..., covariant: bool = ...
         ) -> None: ...
         @property
         def args(self) -> ParamSpecArgs: ...

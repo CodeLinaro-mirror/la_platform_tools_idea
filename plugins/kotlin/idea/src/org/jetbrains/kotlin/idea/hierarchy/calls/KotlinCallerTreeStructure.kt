@@ -80,8 +80,7 @@ class KotlinCallerTreeStructure(
                 isReadAccess = element.isGetter
                 isWriteAccess = element.isSetter
             }
-            is KtEnumEntry -> KotlinClassFindUsagesOptions(myProject)
-            is KtClass, is KtObjectDeclaration -> KotlinClassFindUsagesOptions(myProject).apply {
+            is KtClass -> KotlinClassFindUsagesOptions(myProject).apply {
                 isUsages = false
             }
             else -> return emptyList()

@@ -15,12 +15,8 @@
  */
 package com.theoryinpractice.testng.configuration;
 
-import com.intellij.execution.configurations.ConfigurationFactory;
-import org.jetbrains.annotations.NotNull;
-
 public class TestNGPatternConfigurationProducer extends AbstractTestNGPatternConfigurationProducer {
-  @Override
-  public @NotNull ConfigurationFactory getConfigurationFactory() {
-    return TestNGConfigurationType.getInstance();
+  protected TestNGPatternConfigurationProducer() {
+    super(TestNGConfigurationType.getInstance());
   }
 }

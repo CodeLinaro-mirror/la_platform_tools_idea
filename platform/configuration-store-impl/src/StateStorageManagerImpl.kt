@@ -17,7 +17,6 @@ import org.jdom.Element
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.TestOnly
 import java.nio.file.Path
-import java.util.*
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -30,7 +29,7 @@ open class StateStorageManagerImpl(@NonNls private val rootTagName: String,
                                    override val componentManager: ComponentManager? = null,
                                    private val virtualFileTracker: StorageVirtualFileTracker? = createDefaultVirtualTracker(componentManager)) : StateStorageManager {
   @Volatile
-  protected var macros: List<Macro> = Collections.emptyList()
+  protected var macros: List<Macro> = emptyList()
 
   protected val storageLock = ReentrantReadWriteLock()
   private val storages = HashMap<String, StateStorage>()

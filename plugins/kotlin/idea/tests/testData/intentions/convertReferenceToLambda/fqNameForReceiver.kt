@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'f' is never used
 class Foo {
     class Bar {
         fun foo() {}

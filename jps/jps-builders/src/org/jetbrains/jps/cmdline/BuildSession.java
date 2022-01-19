@@ -9,7 +9,6 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.tracing.Tracer;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
 import com.intellij.util.io.DataOutputStream;
@@ -35,8 +34,6 @@ import org.jetbrains.jps.service.JpsServiceManager;
 import org.jetbrains.jps.service.SharedThreadPool;
 
 import java.io.*;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.Executor;
 
@@ -122,19 +119,6 @@ final class BuildSession implements Runnable, CanceledStatus {
       LOG.debug(" loadUnloadedModules = " + myLoadUnloadedModules);
       LOG.debug(" preloadedData = " + myPreloadedData);
       LOG.debug(" buildType = " + myBuildType);
-    }
-
-    try {
-      String tracingFile = System.getProperty("tracingFile");
-      if (tracingFile != null) {
-        LOG.debug("Tracing enabled, file: " + tracingFile);
-        Path tracingFilePath = Paths.get(tracingFile);
-        Tracer.runTracer(1, tracingFilePath, 1, e -> {
-          LOG.warn(e);
-        });
-      }
-    } catch (IOException e) {
-      LOG.warn(e);
     }
   }
 

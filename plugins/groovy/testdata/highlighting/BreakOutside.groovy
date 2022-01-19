@@ -4,4 +4,4 @@ for (s in ['a', 'b']) {
   }
 }
 
-<error>break</error>; 
+<error descr="The break statement is only allowed inside loops or switches">break</error>; 

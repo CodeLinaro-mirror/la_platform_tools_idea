@@ -1,1 +1,1 @@
-[//]: # (Welcome to JetBrains IntelliJ IDEA.)
+[comment]: <> (Welcome to JetBrains IntelliJ IDEA.)

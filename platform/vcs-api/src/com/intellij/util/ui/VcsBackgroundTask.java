@@ -16,22 +16,24 @@ import java.util.Collection;
 import java.util.List;
 
 
-public abstract class VcsBackgroundTask<T> extends Task.Backgroundable {
+public abstract class VcsBackgroundTask<T> extends Task.ConditionalModal {
   private final Collection<? extends T> myItems;
   private final List<VcsException> myExceptions = new ArrayList<>();
 
   public VcsBackgroundTask(Project project,
                            @NotNull @NlsContexts.ProgressTitle String title,
+                           @NotNull final PerformInBackgroundOption backgroundOption,
                            Collection<? extends T> itemsToProcess,
                            boolean canBeCanceled) {
-    super(project, title, canBeCanceled);
+    super(project, title, canBeCanceled, backgroundOption);
     myItems = itemsToProcess;
   }
 
   public VcsBackgroundTask(Project project,
                            @NotNull @NlsContexts.ProgressTitle String title,
+                           @NotNull PerformInBackgroundOption backgroundOption,
                            Collection<? extends T> itemsToProcess) {
-    this(project, title, itemsToProcess, false);
+    this(project, title, backgroundOption, itemsToProcess, false);
   }
 
   @Override

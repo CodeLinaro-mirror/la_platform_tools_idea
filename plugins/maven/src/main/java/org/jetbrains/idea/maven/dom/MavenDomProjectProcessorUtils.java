@@ -3,6 +3,7 @@ package org.jetbrains.idea.maven.dom;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -27,9 +28,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class MavenDomProjectProcessorUtils {
-
-  public static final String DEFAULT_RELATIVE_PATH = "../pom.xml";
-
   private MavenDomProjectProcessorUtils() {
   }
 
@@ -518,7 +516,7 @@ public final class MavenDomProjectProcessorUtils {
         String parentArtifactId = parent.getArtifactId().getStringValue();
         String parentVersion = parent.getVersion().getStringValue();
         String parentRelativePath = parent.getRelativePath().getStringValue();
-        if (parentRelativePath == null) parentRelativePath = DEFAULT_RELATIVE_PATH;
+        if (StringUtil.isEmptyOrSpaces(parentRelativePath)) parentRelativePath = "../pom.xml";
         MavenId parentId = new MavenId(parentGroupId, parentArtifactId, parentVersion);
         parentDesc = new MavenParentDesc(parentId, parentRelativePath);
       }

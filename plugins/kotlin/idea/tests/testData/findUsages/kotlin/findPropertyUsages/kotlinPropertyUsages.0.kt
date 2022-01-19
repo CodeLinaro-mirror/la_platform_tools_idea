@@ -4,11 +4,11 @@
 package server
 
 open class A<T> {
-    open var <caret>foo: T = TODO()
+    open var <caret>foo: T
 }
 
-open class B : A<String>() {
-    override var foo: String
+open class B: A<String>() {
+    open var foo: String
         get() {
             println("get")
             return super<A>.foo
@@ -18,3 +18,5 @@ open class B : A<String>() {
             super<A>.foo = value
         }
 }
+
+// DISABLE-ERRORS

@@ -18,13 +18,12 @@ class JsonPathCompletionTest : LightPlatformCodeInsightFixture4TestCase() {
     myFixture.configureByText(JsonPathFileType.INSTANCE, "$.<caret>")
     assertCompletionVariants(
       "*",
-      "avg()",
       "concat()",
       "keys()",
       "length()",
-      "max()",
       "min()",
-      "size()",
+      "max()",
+      "avg()",
       "stddev()",
       "sum()"
     )
@@ -108,23 +107,6 @@ class JsonPathCompletionTest : LightPlatformCodeInsightFixture4TestCase() {
     fileWithQuot.putUserData(JsonPathEvaluateManager.JSON_PATH_EVALUATE_SOURCE_KEY, Supplier { jsonFile })
 
     assertCompletionVariants("ok", "demo", "some name")
-  }
-
-  @Test
-  fun topLevelCompletion() {
-    myFixture.configureByText(JsonPathFileType.INSTANCE, "<caret>")
-    assertCompletionVariants(
-      "*",
-      "avg()",
-      "concat()",
-      "keys()",
-      "length()",
-      "max()",
-      "min()",
-      "size()",
-      "stddev()",
-      "sum()"
-    )
   }
 
   private fun injectJsonPathToProperties(jsonFile: JsonFile, names: List<String>) {

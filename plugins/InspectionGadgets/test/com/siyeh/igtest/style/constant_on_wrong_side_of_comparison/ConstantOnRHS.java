@@ -12,11 +12,6 @@ public class ConstantOnRHS
 
         }
         if (m_bar ==<error descr="Expression expected"> </error>) {}
-        if (5 == m_bar) {}
-    }
-
-    boolean x(String s) {
-        return s == null;
     }
 }
 class C {

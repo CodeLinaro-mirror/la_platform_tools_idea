@@ -8,7 +8,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-@Deprecated
 public final class MarkdownCssSettings {
   public static final MarkdownCssSettings DEFAULT = new MarkdownCssSettings();
 

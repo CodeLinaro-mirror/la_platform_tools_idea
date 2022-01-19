@@ -25,11 +25,8 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.ex.ProjectRootManagerEx
 import com.intellij.openapi.roots.ui.configuration.ProjectStructureConfigurable
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.navigation.Place
 import com.intellij.util.text.VersionComparatorUtil
-import org.jetbrains.idea.maven.config.MavenConfig
-import org.jetbrains.idea.maven.config.MavenConfigSettings
 import org.jetbrains.idea.maven.execution.MavenRunnerSettings
 import org.jetbrains.idea.maven.execution.SyncBundle
 import org.jetbrains.idea.maven.project.MavenProjectBundle
@@ -127,7 +124,7 @@ internal object MavenWslUtil : MavenUtil() {
     MavenLog.LOG.debug("resolving maven home on WSL with override = \"${overrideMavenHome}\"")
     if (overrideMavenHome != null) {
       if (overrideMavenHome == MavenServerManager.BUNDLED_MAVEN_3) {
-        return MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.toFile()
+        return MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome
       }
       val home = File(overrideMavenHome)
       if (isValidMavenHome(home)) {
@@ -222,50 +219,12 @@ internal object MavenWslUtil : MavenUtil() {
 
   @JvmStatic
   fun <T> resolveWslAware(project: Project?, ordinary: Supplier<T>, wsl: Function<WSLDistribution, T>): T {
-    if (project == null && MavenUtil.isMavenUnitTestModeEnabled()) {
+    if (project == null && ApplicationManager.getApplication().isUnitTestMode) {
       MavenLog.LOG.error("resolveWslAware: Project is null")
     }
     val wslDistribution = project?.let { tryGetWslDistribution(it) } ?: return ordinary.get()
     return wsl.apply(wslDistribution)
   }
-
-  @JvmStatic
-  fun getLocalRepo(project: Project?, overriddenLocalRepository: String?, mavenHome: String?,
-                   mavenSettingsFile: String?, mavenConfig: MavenConfig?): File {
-    var settingPath = mavenSettingsFile;
-    if (StringUtil.isEmptyOrSpaces(mavenSettingsFile)) {
-      settingPath = mavenConfig?.getFilePath(MavenConfigSettings.ALTERNATE_USER_SETTINGS) ?: ""
-    }
-    return resolveWslAware(project,
-                    { resolveLocalRepository(overriddenLocalRepository, mavenHome, settingPath) },
-                    { wsl: WSLDistribution -> wsl.resolveLocalRepository(overriddenLocalRepository, mavenHome, settingPath) })
-  }
-
-  @JvmStatic
-  fun getUserSettings(project: Project?, userSettingsPath: String?, mavenConfig: MavenConfig?): File {
-    var settingPath = userSettingsPath;
-    if (StringUtil.isEmptyOrSpaces(userSettingsPath)) {
-      settingPath = mavenConfig?.getFilePath(MavenConfigSettings.ALTERNATE_USER_SETTINGS) ?: ""
-    }
-    return resolveWslAware(project,
-                    { resolveUserSettingsFile(settingPath) },
-                    { wsl: WSLDistribution -> wsl.resolveUserSettingsFile(settingPath) })
-  }
-
-  @JvmStatic
-  fun getGlobalSettings(project: Project?, globalSettingsPath: String?, mavenConfig: MavenConfig?): File? {
-    val filePath = mavenConfig?.getFilePath(MavenConfigSettings.ALTERNATE_GLOBAL_SETTINGS)
-    if (filePath != null) return File(filePath)
-    return resolveWslAware(project,
-                    { resolveGlobalSettingsFile(globalSettingsPath) },
-                    { wsl: WSLDistribution -> wsl.resolveGlobalSettingsFile(globalSettingsPath) })
-  }
-
-  @JvmStatic
-  fun resolveMavenHome(project: Project?, mavenHome: String?) =
-    resolveWslAware(project,
-                    { resolveMavenHomeDirectory(mavenHome) },
-                    { wsl: WSLDistribution -> wsl.resolveMavenHomeDirectory(mavenHome) })
 
   @JvmStatic
   fun useWslMaven(project: Project): Boolean {
@@ -397,7 +356,6 @@ internal object MavenWslUtil : MavenUtil() {
 
         }
         else {
-          this.title = MavenProjectBundle.message("wsl.jdk.downloading")
           val homeDir = installer.defaultInstallDir(model[0], projectWslDistr)
           val request = installer.prepareJdkInstallation(model[0], homeDir)
           installer.installJdk(request, indicator, project)

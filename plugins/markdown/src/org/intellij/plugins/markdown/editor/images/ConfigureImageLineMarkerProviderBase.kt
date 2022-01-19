@@ -4,13 +4,12 @@ package org.intellij.plugins.markdown.editor.images
 import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProviderDescriptor
 import com.intellij.codeInsight.daemon.MergeableLineMarkerInfo
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiElement
-import icons.MarkdownIcons
 import org.intellij.plugins.markdown.MarkdownBundle
-import org.jetbrains.annotations.Nls
 import java.net.URI
 import java.nio.file.InvalidPathException
 import java.nio.file.Paths
@@ -66,7 +65,7 @@ internal abstract class ConfigureImageLineMarkerProviderBase<T : PsiElement> : L
     }
   }
 
-  private fun getMarkerElementPresentation(element: PsiElement): @Nls String {
+  private fun getMarkerElementPresentation(element: PsiElement): String {
     val fileName = obtainPathText(element)?.let(::processFileName) ?: ""
     return when {
       fileName.isEmpty() -> MarkdownBundle.message("markdown.configure.image.text")
@@ -80,7 +79,7 @@ internal abstract class ConfigureImageLineMarkerProviderBase<T : PsiElement> : L
   ) : MergeableLineMarkerInfo<PsiElement>(
     element,
     textRange,
-    MarkdownIcons.ImageGutter,
+    AllIcons.General.LayoutPreviewOnly,
     ::getMarkerElementPresentation,
     { _, e -> performAction(e) },
     ALIGNMENT,

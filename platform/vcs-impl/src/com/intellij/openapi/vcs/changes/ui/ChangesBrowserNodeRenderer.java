@@ -14,7 +14,6 @@ import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.speedSearch.SpeedSearchUtil;
 import com.intellij.util.PlatformIcons;
 import com.intellij.util.ui.JBInsets;
-import com.intellij.vcsUtil.VcsUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -105,7 +104,7 @@ public class ChangesBrowserNodeRenderer extends ColoredTreeCellRenderer {
       setIcon(icon);
       return;
     }
-    setIcon(VcsUtil.getIcon(myProject, filePath));
+    setIcon(filePath.getFileType().getIcon());
   }
 
   public void setBackgroundInsets(@Nullable JBInsets backgroundInsets) {

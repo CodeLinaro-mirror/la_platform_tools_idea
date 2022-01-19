@@ -2,7 +2,7 @@
 // OPTIONS: constructorUsages
 package server
 
-open class <caret>Server() {
+open class <caret>Server {
     constructor(name: String): this() {
 
     }
@@ -15,3 +15,5 @@ open class <caret>Server() {
         println("Server")
     }
 }
+
+// DISABLE-ERRORS

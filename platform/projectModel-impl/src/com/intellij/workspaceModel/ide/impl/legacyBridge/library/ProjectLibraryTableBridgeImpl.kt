@@ -2,10 +2,8 @@
 package com.intellij.workspaceModel.ide.impl.legacyBridge.library
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.runInEdt
-import com.intellij.openapi.application.runWriteAction
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.debug
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.libraries.Library
 import com.intellij.openapi.roots.libraries.LibraryTable
@@ -27,6 +25,8 @@ import com.intellij.workspaceModel.storage.bridgeEntities.LibraryTableId
 class ProjectLibraryTableBridgeImpl(
   private val parentProject: Project
 ) : ProjectLibraryTableBridge, Disposable {
+
+  private val LOG = Logger.getInstance(javaClass)
 
   private val entityStorage: VersionedEntityStorage = WorkspaceModel.getInstance(parentProject).entityStorage
 
@@ -141,12 +141,8 @@ class ProjectLibraryTableBridgeImpl(
           it.mutableLibraryMap.addIfAbsent(entity, library)
         }
       }
-      runInEdt {
-        runWriteAction {
-          libraries.forEach { (_, library) ->
-            dispatcher.multicaster.afterLibraryAdded(library)
-          }
-        }
+      libraries.forEach { (_, library) ->
+        dispatcher.multicaster.afterLibraryAdded(library)
       }
     }
   }
@@ -247,7 +243,5 @@ class ProjectLibraryTableBridgeImpl(
 
     fun WorkspaceEntityStorage.findLibraryEntity(library: LibraryBridge) =
       libraryMap.getEntities(library).firstOrNull() as LibraryEntity?
-
-    private val LOG = logger<ProjectLibraryTableBridgeImpl>()
   }
 }

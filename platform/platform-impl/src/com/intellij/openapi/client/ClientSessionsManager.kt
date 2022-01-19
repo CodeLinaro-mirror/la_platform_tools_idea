@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.client
 
 import com.intellij.codeWithMe.ClientId
@@ -49,12 +49,8 @@ sealed class ClientSessionsManager<T : ClientSession> {
   private val sessions = ConcurrentHashMap<ClientId, T>()
 
   fun getSessions(includeLocal: Boolean): List<T> {
-    if (includeLocal) {
-      return java.util.List.copyOf(sessions.values)
-    }
-    else {
-      return sessions.values.filter { !it.isLocal }
-    }
+    if (includeLocal) return sessions.values.toList()
+    return sessions.values.filter { !it.isLocal }
   }
 
   fun getSession(clientId: ClientId): T? {
@@ -83,7 +79,7 @@ open class ClientAppSessionsManager : ClientSessionsManager<ClientAppSession>() 
   }
 
   /**
-   * used for ClientId overriding in JetBrains Client
+   * used for ClientId overriding in Code With Me Guest
    */
   protected open fun createLocalSession(application: ApplicationImpl): ClientAppSessionImpl {
     return ClientAppSessionImpl(ClientId.localId, application)

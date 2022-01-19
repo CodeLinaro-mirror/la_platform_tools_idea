@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.ProjectTopics;
@@ -45,7 +45,6 @@ import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.ex.ProjectRootManagerEx;
 import com.intellij.openapi.roots.impl.ProjectRootManagerImpl;
-import com.intellij.openapi.roots.impl.libraries.LibraryTableTracker;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.Pair;
@@ -57,7 +56,7 @@ import com.intellij.openapi.vfs.encoding.EncodingManagerImpl;
 import com.intellij.openapi.vfs.impl.VirtualFilePointerTracker;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFS;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl;
-import com.intellij.project.TestProjectManagerKt;
+import com.intellij.project.TestProjectManager;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileFactory;
@@ -106,7 +105,6 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
     PlatformTestUtil.registerProjectCleanup(LightPlatformTestCase::closeAndDeleteProject);
   }
   private VirtualFilePointerTracker myVirtualFilePointerTracker;
-  private LibraryTableTracker myLibraryTableTracker;
   private CodeStyleSettingsTracker myCodeStyleSettingsTracker;
   private Disposable mySdkParentDisposable = Disposer.newDisposable("sdk for project in light tests");
 
@@ -148,7 +146,7 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
     System.out.printf("##teamcity[buildStatisticValue key='ideaTests.appInstancesCreated' value='%d']%n",
                       MockApplication.INSTANCES_CREATED);
     System.out.printf("##teamcity[buildStatisticValue key='ideaTests.projectInstancesCreated' value='%d']%n",
-                      TestProjectManagerKt.getTotalCreatedProjectsCount());
+                      TestProjectManager.Companion.getTotalCreatedProjectCount());
     long totalGcTime = 0;
     for (GarbageCollectorMXBean mxBean : ManagementFactory.getGarbageCollectorMXBeans()) {
       totalGcTime += mxBean.getCollectionTime();
@@ -248,7 +246,6 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
       myThreadTracker = new ThreadTracker();
       ModuleRootManager.getInstance(ourModule).orderEntries().getAllLibrariesAndSdkClassesRoots();
       myVirtualFilePointerTracker = new VirtualFilePointerTracker();
-      myLibraryTableTracker = new LibraryTableTracker();
     });
   }
 
@@ -400,11 +397,6 @@ public abstract class LightPlatformTestCase extends UsefulTestCase implements Da
       () -> {
         if (myVirtualFilePointerTracker != null) {
           myVirtualFilePointerTracker.assertPointersAreDisposed();
-        }
-      },
-      () -> {
-        if (myLibraryTableTracker != null) {
-          myLibraryTableTracker.assertDisposed();
         }
       },
       () -> {

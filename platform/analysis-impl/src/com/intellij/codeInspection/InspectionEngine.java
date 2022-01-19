@@ -33,34 +33,26 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class InspectionEngine {
   private static final Logger LOG = Logger.getInstance(InspectionEngine.class);
-  private static final Set<Class<? extends LocalInspectionTool>> RECURSIVE_VISITOR_TOOL_CLASSES = ContainerUtil.newConcurrentSet();
+  private static final Set<Class<? extends LocalInspectionTool>> RECURSIVE_VISITOR_TOOL_CLASSES =
+    ContainerUtil.newConcurrentSet();
 
   public static @NotNull PsiElementVisitor createVisitorAndAcceptElements(@NotNull LocalInspectionTool tool,
                                                                           @NotNull ProblemsHolder holder,
                                                                           boolean isOnTheFly,
                                                                           @NotNull LocalInspectionToolSession session,
                                                                           @NotNull List<? extends PsiElement> elements) {
-    PsiElementVisitor visitor = createVisitor(tool, holder, isOnTheFly, session);
+    PsiElementVisitor visitor = tool.buildVisitor(holder, isOnTheFly, session);
+    //noinspection ConstantConditions
+    if (visitor == null) {
+      LOG.error("Tool " + tool + " (" + tool.getClass()+ ") must not return null from the buildVisitor() method");
+    }
+    else if (visitor instanceof PsiRecursiveVisitor && RECURSIVE_VISITOR_TOOL_CLASSES.add(tool.getClass())) {
+      LOG.error("The visitor returned from LocalInspectionTool.buildVisitor() must not be recursive: " + tool);
+    }
     // if inspection returned empty visitor then it should be skipped
     if (visitor != PsiElementVisitor.EMPTY_VISITOR) {
       tool.inspectionStarted(session, isOnTheFly);
       acceptElements(elements, visitor);
-    }
-    return visitor;
-  }
-
-  @NotNull
-  public static PsiElementVisitor createVisitor(@NotNull LocalInspectionTool tool,
-                                                @NotNull ProblemsHolder holder,
-                                                boolean isOnTheFly,
-                                                @NotNull LocalInspectionToolSession session) {
-    PsiElementVisitor visitor = tool.buildVisitor(holder, isOnTheFly, session);
-    //noinspection ConstantConditions
-    if (visitor == null) {
-      LOG.error("Tool " + tool + " (" + tool.getClass() + ") must not return null from the buildVisitor() method");
-    }
-    else if (visitor instanceof PsiRecursiveVisitor && RECURSIVE_VISITOR_TOOL_CLASSES.add(tool.getClass())) {
-      LOG.error("The visitor returned from LocalInspectionTool.buildVisitor() must not be recursive: " + tool);
     }
     return visitor;
   }
@@ -74,39 +66,31 @@ public final class InspectionEngine {
     }
   }
 
-  private static @NotNull List<ProblemDescriptor> inspect(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
-                                                          @NotNull PsiFile file,
-                                                          @NotNull InspectionManager iManager,
-                                                          @NotNull ProgressIndicator indicator) {
-    Map<String, List<ProblemDescriptor>> problemDescriptors = inspectEx(toolWrappers, file, iManager, false, indicator);
+  private static @NotNull List<ProblemDescriptor> inspect(final @NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
+                                                          final @NotNull PsiFile file,
+                                                          final @NotNull InspectionManager iManager,
+                                                          final @NotNull ProgressIndicator indicator) {
+    final Map<String, List<ProblemDescriptor>> problemDescriptors = inspectEx(toolWrappers, file, iManager, false, indicator);
 
-    List<ProblemDescriptor> result = new ArrayList<>();
+    final List<ProblemDescriptor> result = new ArrayList<>();
     for (List<ProblemDescriptor> group : problemDescriptors.values()) {
       result.addAll(group);
     }
     return result;
   }
 
+  // public for Upsource
   // returns map (toolName -> problem descriptors)
-  public static @NotNull Map<String, List<ProblemDescriptor>> inspectEx(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
-                                                                        @NotNull PsiFile file,
-                                                                        @NotNull InspectionManager iManager,
-                                                                        boolean isOnTheFly,
-                                                                        @NotNull ProgressIndicator indicator) {
-    TextRange restrictRange = file.getTextRange();
-    return inspectEx(toolWrappers, file, restrictRange, iManager, isOnTheFly, indicator);
-  }
-
-  @NotNull
-  public static Map<String, List<ProblemDescriptor>> inspectEx(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
-                                                               @NotNull PsiFile file,
-                                                               @NotNull TextRange restrictRange, @NotNull InspectionManager iManager,
-                                                               boolean isOnTheFly,
-                                                               @NotNull ProgressIndicator indicator) {
+  public static @NotNull Map<String, List<ProblemDescriptor>> inspectEx(final @NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
+                                                                        final @NotNull PsiFile file,
+                                                                        final @NotNull InspectionManager iManager,
+                                                                        final boolean isOnTheFly,
+                                                                        final @NotNull ProgressIndicator indicator) {
     if (toolWrappers.isEmpty()) return Collections.emptyMap();
 
+    TextRange range = file.getTextRange();
     List<Divider.DividedElements> allDivided = new ArrayList<>();
-    Divider.divideInsideAndOutsideAllRoots(file, restrictRange, file.getTextRange(), __ -> true, new CommonProcessors.CollectProcessor<>(allDivided));
+    Divider.divideInsideAndOutsideAllRoots(file, range, range, __ -> true, new CommonProcessors.CollectProcessor<>(allDivided));
 
     List<PsiElement> elements = ContainerUtil.concat(
       (List<List<PsiElement>>)ContainerUtil.map(allDivided, d -> ContainerUtil.concat(d.inside, d.outside, d.parents)));
@@ -116,18 +100,18 @@ public final class InspectionEngine {
   }
 
   // returns map tool.shortName -> list of descriptors found
-  public static @NotNull Map<String, List<ProblemDescriptor>> inspectElements(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
-                                                                              @NotNull PsiFile file,
-                                                                              @NotNull InspectionManager iManager,
-                                                                              boolean isOnTheFly,
-                                                                              @NotNull ProgressIndicator indicator,
-                                                                              @NotNull List<? extends PsiElement> elements,
-                                                                              @NotNull Set<String> elementDialectIds) {
+  static @NotNull Map<String, List<ProblemDescriptor>> inspectElements(@NotNull List<? extends LocalInspectionToolWrapper> toolWrappers,
+                                                                       final @NotNull PsiFile file,
+                                                                       final @NotNull InspectionManager iManager,
+                                                                       final boolean isOnTheFly,
+                                                                       @NotNull ProgressIndicator indicator,
+                                                                       final @NotNull List<? extends PsiElement> elements,
+                                                                       final @NotNull Set<String> elementDialectIds) {
     TextRange range = file.getTextRange();
-    LocalInspectionToolSession session = new LocalInspectionToolSession(file, range.getStartOffset(), range.getEndOffset());
+    final LocalInspectionToolSession session = new LocalInspectionToolSession(file, range.getStartOffset(), range.getEndOffset());
 
     toolWrappers = filterToolsApplicableByLanguage(toolWrappers, elementDialectIds);
-    Map<String, List<ProblemDescriptor>> resultDescriptors = new ConcurrentHashMap<>();
+    final Map<String, List<ProblemDescriptor>> resultDescriptors = new ConcurrentHashMap<>();
     Processor<LocalInspectionToolWrapper> processor = wrapper -> {
       ProblemsHolder holder = new ProblemsHolder(iManager, file, isOnTheFly);
       LocalInspectionTool tool = wrapper.getTool();
@@ -149,10 +133,10 @@ public final class InspectionEngine {
     return resultDescriptors;
   }
 
-  public static @NotNull List<ProblemDescriptor> runInspectionOnFile(@NotNull PsiFile file,
+  public static @NotNull List<ProblemDescriptor> runInspectionOnFile(final @NotNull PsiFile file,
                                                                      @NotNull InspectionToolWrapper<?, ?> toolWrapper,
-                                                                     @NotNull GlobalInspectionContext inspectionContext) {
-    InspectionManager inspectionManager = InspectionManager.getInstance(file.getProject());
+                                                                     final @NotNull GlobalInspectionContext inspectionContext) {
+    final InspectionManager inspectionManager = InspectionManager.getInstance(file.getProject());
     toolWrapper.initialize(inspectionContext);
     RefManagerImpl refManager = (RefManagerImpl)inspectionContext.getRefManager();
     refManager.inspectionReadActionStarted();
@@ -161,8 +145,8 @@ public final class InspectionEngine {
         return inspect(Collections.singletonList((LocalInspectionToolWrapper)toolWrapper), file, inspectionManager, new EmptyProgressIndicator());
       }
       if (toolWrapper instanceof GlobalInspectionToolWrapper) {
-        GlobalInspectionTool globalTool = ((GlobalInspectionToolWrapper)toolWrapper).getTool();
-        List<ProblemDescriptor> descriptors = new ArrayList<>();
+        final GlobalInspectionTool globalTool = ((GlobalInspectionToolWrapper)toolWrapper).getTool();
+        final List<ProblemDescriptor> descriptors = new ArrayList<>();
         if (globalTool instanceof GlobalSimpleInspectionTool) {
           GlobalSimpleInspectionTool simpleTool = (GlobalSimpleInspectionTool)globalTool;
           ProblemsHolder problemsHolder = new ProblemsHolder(inspectionManager, file, false);
@@ -198,7 +182,7 @@ public final class InspectionEngine {
           return descriptors;
         }
         RefElement fileRef = refManager.getReference(file);
-        AnalysisScope scope = new AnalysisScope(file);
+        final AnalysisScope scope = new AnalysisScope(file);
         assert fileRef != null;
         fileRef.accept(new RefVisitor(){
           @Override
@@ -255,7 +239,7 @@ public final class InspectionEngine {
     });
   }
 
-  private static @NotNull Set<String> getDialectIdsSpecifiedForTool(@NotNull String langId, boolean applyToDialects) {
+  private static @NotNull Set<String> getDialectIdsSpecifiedForTool(String langId, boolean applyToDialects) {
     Language language = Language.findLanguageByID(langId);
     Set<String> result;
     if (language == null) {
@@ -295,7 +279,7 @@ public final class InspectionEngine {
 
   public static @NotNull Set<String> calcElementDialectIds(@NotNull List<? extends PsiElement> inside, @NotNull List<? extends PsiElement> outside) {
     Set<String> dialectIds = new HashSet<>();
-    Set<Language> processedLanguages = new HashSet<>();
+    Set<Language> processedLanguages = new HashSet();
     addDialects(inside, processedLanguages, dialectIds);
     addDialects(outside, processedLanguages, dialectIds);
     return dialectIds;

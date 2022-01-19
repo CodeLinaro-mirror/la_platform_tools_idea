@@ -1,12 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.siyeh.ig.junit;
 
 import com.intellij.util.containers.ContainerUtil;
-import org.jetbrains.annotations.NonNls;
 
 import java.util.Collection;
 
-@NonNls
 public final class JUnitCommonClassNames {
   public static final String ORG_JUNIT_ASSERT = "org.junit.Assert";
   public static final String ORG_JUNIT_ASSUME = "org.junit.Assume";
@@ -16,7 +14,6 @@ public final class JUnitCommonClassNames {
   public static final String JUNIT_FRAMEWORK_TEST_CASE = "junit.framework.TestCase";
   public static final String ORG_HAMCREST_MATCHER_ASSERT = "org.hamcrest.MatcherAssert";
   public static final String ORG_JUNIT_TEST = "org.junit.Test";
-  public static final String ORG_JUNIT_IGNORE = "org.junit.Ignore";
   public static final String ORG_JUNIT_RULE = "org.junit.Rule";
   public static final String ORG_JUNIT_CLASS_RULE = "org.junit.ClassRule";
   public static final String ORG_JUNIT_JUPITER_PARAMS_PARAMETERIZED_TEST = "org.junit.jupiter.params.ParameterizedTest";

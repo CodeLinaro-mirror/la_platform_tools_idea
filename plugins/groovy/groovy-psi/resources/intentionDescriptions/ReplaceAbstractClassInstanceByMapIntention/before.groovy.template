@@ -1,5 +1,5 @@
 def listener = <spot>new ActionListener(){
-    void actionPerformed(ActionEvent e) {
+    public void actionPerformed(ActionEvent e) {
         print "action performed"
     }
 }</spot>

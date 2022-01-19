@@ -45,9 +45,6 @@ public class RequestHint {
   private boolean myResetIgnoreFilters = false;
   private boolean myRestoreBreakpoints = false;
 
-  @Nullable
-  private final RequestHint myParentHint;
-
   public RequestHint(final ThreadReferenceProxyImpl stepThread, final SuspendContextImpl suspendContext, @NotNull MethodFilter methodFilter) {
     this(stepThread, suspendContext, StepRequest.STEP_LINE, StepRequest.STEP_INTO, methodFilter);
   }
@@ -59,19 +56,10 @@ public class RequestHint {
   }
 
   public RequestHint(final ThreadReferenceProxyImpl stepThread,
-                     final SuspendContextImpl suspendContext,
-                     @MagicConstant (intValues = {StepRequest.STEP_MIN, StepRequest.STEP_LINE}) int stepSize,
-                     @MagicConstant (intValues = {StepRequest.STEP_INTO, StepRequest.STEP_OVER, StepRequest.STEP_OUT}) int depth,
-                     @Nullable MethodFilter methodFilter) {
-    this(stepThread, suspendContext, stepSize, depth, methodFilter, null);
-  }
-
-  public RequestHint(final ThreadReferenceProxyImpl stepThread,
-                     final SuspendContextImpl suspendContext,
-                     @MagicConstant (intValues = {StepRequest.STEP_MIN, StepRequest.STEP_LINE}) int stepSize,
-                     @MagicConstant (intValues = {StepRequest.STEP_INTO, StepRequest.STEP_OVER, StepRequest.STEP_OUT}) int depth,
-                     @Nullable MethodFilter methodFilter,
-                     @Nullable RequestHint parentHint) {
+                      final SuspendContextImpl suspendContext,
+                      @MagicConstant (intValues = {StepRequest.STEP_MIN, StepRequest.STEP_LINE}) int stepSize,
+                      @MagicConstant (intValues = {StepRequest.STEP_INTO, StepRequest.STEP_OVER, StepRequest.STEP_OUT}) int depth,
+                      @Nullable MethodFilter methodFilter) {
     mySize = stepSize;
     myDepth = depth;
     myMethodFilter = methodFilter;
@@ -79,7 +67,6 @@ public class RequestHint {
     myFrameCount = DebugProcessImpl.getFrameCount(stepThread, suspendContext);
     myPosition =
       suspendContext.getDebugProcess().getPositionManager().getSourcePosition(DebugProcessImpl.getLocation(stepThread, suspendContext));
-    myParentHint = parentHint;
   }
 
   public void setIgnoreFilters(boolean ignoreFilters) {
@@ -169,55 +156,6 @@ public class RequestHint {
     return method.isBridge() || DebuggerUtilsEx.isProxyClass(method.declaringType());
   }
 
-  @Nullable
-  protected final Integer processSteppingFilters(@NotNull SuspendContextImpl context, @Nullable Location location) {
-    final DebuggerSettings settings = DebuggerSettings.getInstance();
-
-    if ((myMethodFilter != null || (settings.SKIP_SYNTHETIC_METHODS && !myIgnoreFilters)) &&
-        location != null && DebuggerUtils.isSynthetic(location.method())) {
-      return myDepth;
-    }
-
-    if (!myIgnoreFilters) {
-      if(settings.SKIP_GETTERS) {
-        boolean isGetter = ReadAction.compute(() -> {
-          PsiElement contextElement = ContextUtil.getContextElement(context);
-          return contextElement != null && DebuggerUtils.isInsideSimpleGetter(contextElement);
-        }).booleanValue();
-
-        if(isGetter) {
-          return StepRequest.STEP_OUT;
-        }
-      }
-
-      if (location != null) {
-        if (settings.SKIP_CONSTRUCTORS) {
-          final Method method = location.method();
-          if (method != null && method.isConstructor()) {
-            return StepRequest.STEP_OUT;
-          }
-        }
-
-        if (settings.SKIP_CLASSLOADERS && DebuggerUtilsEx.isAssignableFrom("java.lang.ClassLoader", location.declaringType())) {
-          return StepRequest.STEP_OUT;
-        }
-      }
-
-      for (ExtraSteppingFilter filter : ExtraSteppingFilter.EP_NAME.getExtensionList()) {
-        try {
-          if (filter.isApplicable(context)) {
-            return filter.getStepRequestDepth(context);
-          }
-        }
-        catch (Exception | AssertionError e) {
-          DebuggerUtilsImpl.logError(e);
-        }
-      }
-    }
-
-    return null;
-  }
-
   public int getNextStepDepth(final SuspendContextImpl context) {
     try {
       Location location = context.getLocation();
@@ -245,11 +183,50 @@ public class RequestHint {
         return resultDepth.intValue();
       }
 
-      resultDepth = processSteppingFilters(context, location);
-      if (resultDepth != null) {
-        return resultDepth.intValue();
+      // Now check filters
+
+      final DebuggerSettings settings = DebuggerSettings.getInstance();
+
+      if ((myMethodFilter != null || (settings.SKIP_SYNTHETIC_METHODS && !myIgnoreFilters)) &&
+          location != null &&
+          DebuggerUtils.isSynthetic(location.method())) {
+        return myDepth;
       }
 
+      if (!myIgnoreFilters) {
+        if(settings.SKIP_GETTERS) {
+          boolean isGetter = ReadAction.compute(() -> {
+            PsiElement contextElement = ContextUtil.getContextElement(context);
+            return contextElement != null && DebuggerUtils.isInsideSimpleGetter(contextElement);
+          }).booleanValue();
+
+          if(isGetter) {
+            return StepRequest.STEP_OUT;
+          }
+        }
+
+        if (location != null) {
+          if (settings.SKIP_CONSTRUCTORS) {
+            final Method method = location.method();
+            if (method != null && method.isConstructor()) {
+              return StepRequest.STEP_OUT;
+            }
+          }
+
+          if (settings.SKIP_CLASSLOADERS && DebuggerUtilsEx.isAssignableFrom("java.lang.ClassLoader", location.declaringType())) {
+            return StepRequest.STEP_OUT;
+          }
+        }
+
+        for (ExtraSteppingFilter filter : ExtraSteppingFilter.EP_NAME.getExtensionList()) {
+          try {
+            if (filter.isApplicable(context)) return filter.getStepRequestDepth(context);
+          }
+          catch (Exception | AssertionError e) {
+            DebuggerUtilsImpl.logError(e);
+          }
+        }
+      }
       // smart step feature
       if (myMethodFilter != null) {
         isTheSameFrame(context); // to set mySteppedOut if needed
@@ -266,12 +243,4 @@ public class RequestHint {
     return STOP;
   }
 
-  public void doStep(@NotNull DebugProcessImpl debugProcess, SuspendContextImpl suspendContext, ThreadReferenceProxyImpl stepThread, int size, int depth) {
-    debugProcess.doStep(suspendContext, stepThread, size, depth, this);
-  }
-
-  @Nullable
-  final RequestHint getParentHint() {
-    return myParentHint;
-  }
 }

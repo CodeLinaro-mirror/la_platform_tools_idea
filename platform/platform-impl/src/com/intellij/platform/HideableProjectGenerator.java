@@ -16,8 +16,7 @@
 package com.intellij.platform;
 
 /**
- * Provides a way to hide {@link DirectoryProjectGenerator} based on internal state 
- * (e.g. if the generator has sub-steps, that are registered separately, and we want to hide the generator if there are no nested steps)
+ * @author Dennis.Ushakov
  */
 public interface HideableProjectGenerator {
   boolean isHidden();

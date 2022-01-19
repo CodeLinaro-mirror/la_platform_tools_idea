@@ -43,7 +43,6 @@ import com.jetbrains.python.console.pydev.ConsoleCommunicationListener;
 import com.jetbrains.python.debugger.settings.PyDebuggerSettings;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.run.*;
-import com.jetbrains.python.run.target.HelpersAwareTargetEnvironmentRequest;
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
@@ -128,8 +127,7 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
   }
 
   @NotNull
-  private Promise<XDebugSession> createSessionUsingTargetsApi(@NotNull RunProfileState state,
-                                                              @NotNull final ExecutionEnvironment environment) {
+  private Promise<XDebugSession> createSessionUsingTargetsApi(@NotNull RunProfileState state, @NotNull final ExecutionEnvironment environment) {
     PythonCommandLineState pyState = (PythonCommandLineState)state;
     RunProfile profile = environment.getRunProfile();
     return Promises
@@ -154,8 +152,8 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
   }
 
   private @NotNull XDebugSession createXDebugSession(@NotNull ExecutionEnvironment environment,
-                                                     PythonCommandLineState pyState,
-                                                     ServerSocket serverSocket, ExecutionResult result) throws ExecutionException {
+                                                              PythonCommandLineState pyState,
+                                                              ServerSocket serverSocket, ExecutionResult result) throws ExecutionException {
     return XDebuggerManager.getInstance(environment.getProject()).
       startSession(environment, new XDebugProcessStarter() {
         @Override
@@ -476,10 +474,9 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
                                                                         @NotNull PythonCommandLineState pyState,
                                                                         @NotNull PythonExecution originalPythonScript,
                                                                         @Nullable RunProfile runProfile,
-                                                                        @NotNull HelpersAwareTargetEnvironmentRequest request) {
-    PythonScriptExecution debuggerScript = PythonScripts.prepareHelperScriptExecution(PythonHelper.DEBUGGER, request);
+                                                                        @NotNull TargetEnvironmentRequest targetEnvironmentRequest) {
+    PythonScriptExecution debuggerScript = PythonScripts.prepareHelperScriptExecution(PythonHelper.DEBUGGER, targetEnvironmentRequest);
 
-    TargetEnvironmentRequest targetEnvironmentRequest = request.getTargetEnvironmentRequest();
     PythonScripts.extendEnvs(debuggerScript, originalPythonScript.getEnvs(), targetEnvironmentRequest.getTargetPlatform());
 
     debuggerScript.setWorkingDir(originalPythonScript.getWorkingDir());
@@ -756,17 +753,15 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
 
     @NotNull
     @Override
-    public PythonExecution build(@NotNull HelpersAwareTargetEnvironmentRequest helpersAwareTargetRequest,
-                                 @NotNull PythonExecution pythonScript) {
+    public PythonExecution build(@NotNull TargetEnvironmentRequest targetEnvironmentRequest, @NotNull PythonExecution pythonScript) {
       TargetEnvironment.LocalPortBinding ideServerPortBinding = new TargetEnvironment.LocalPortBinding(myIdeDebugServerLocalPort, null);
-      helpersAwareTargetRequest.getTargetEnvironmentRequest().getLocalPortBindings().add(ideServerPortBinding);
+      targetEnvironmentRequest.getLocalPortBindings().add(ideServerPortBinding);
 
       Function<TargetEnvironment, HostPort> ideServerPortBindingValue =
         TargetEnvironmentFunctions.getTargetEnvironmentValue(ideServerPortBinding);
 
       PythonScriptExecution debuggerScript =
-        prepareDebuggerScriptExecution(myProject, ideServerPortBindingValue, myPyState, pythonScript, myProfile,
-                                       helpersAwareTargetRequest);
+        prepareDebuggerScriptExecution(myProject, ideServerPortBindingValue, myPyState, pythonScript, myProfile, targetEnvironmentRequest);
 
       // TODO [Targets API] We loose interpreter parameters here :(
 

@@ -19,9 +19,11 @@ public class PagePool {
 
   private int finalizationId = 0;
 
-  private final SortedMap<PoolPageKey, FinalizationRequest> myFinalizationQueue = new TreeMap<>();
+  private final TreeMap<PoolPageKey, FinalizationRequest> myFinalizationQueue = new TreeMap<>();
 
   private final Object lock = new Object();
+  private final Object finalizationMonitor = new Object();
+  private final PoolPageKey keyInstance = new PoolPageKey(null, -1);
 
   private PoolPageKey lastFinalizedKey = null;
 
@@ -67,9 +69,8 @@ public class PagePool {
 
   @SuppressWarnings({"AssignmentToStaticFieldFromInstanceMethod"})
   @NotNull
-  public Page alloc(@NotNull RandomAccessDataFile owner, long offset) {
+  public Page alloc(RandomAccessDataFile owner, long offset) {
     synchronized (lock) {
-      RandomAccessDataFile.ensureNonNegative(offset, "offset");
       offset -= offset % Page.PAGE_SIZE;
       hits++;
 
@@ -82,14 +83,14 @@ public class PagePool {
       lastOwner = owner;
       lastHit = hitQueues(owner, offset);
 
-      flushFinalizationQueue();
+      flushFinalizationQueue(Integer.MAX_VALUE);
 
       return lastHit;
     }
   }
 
-  private Page hitQueues(@NotNull RandomAccessDataFile owner, final long offset) {
-    PoolPageKey key = new PoolPageKey(owner, offset);
+  private Page hitQueues(final RandomAccessDataFile owner, final long offset) {
+    PoolPageKey key = setupKey(owner, offset);
 
     Page page = myProtectedQueue.get(key);
     if (page != null) {
@@ -113,9 +114,9 @@ public class PagePool {
     }
 
     cache_misses++;
-    page = new Page(new PoolPageKey(owner, offset));
+    page = new Page(owner, offset);
 
-    myProbationalQueue.put(page.getKey(), page);
+    myProbationalQueue.put(keyForPage(page), page);
 
     return page;
   }
@@ -139,11 +140,27 @@ public class PagePool {
     System.out.println("Total writes: " + RandomAccessDataFile.totalWrites + ". Bytes written: " + RandomAccessDataFile.totalWriteBytes);
   }
 
+  private static PoolPageKey keyForPage(final Page page) {
+    return page.getKey();
+  }
+
   private void toProtectedQueue(final Page page) {
-    myProtectedQueue.put(page.getKey(), page);
+    myProtectedQueue.put(keyForPage(page), page);
+  }
+
+  private PoolPageKey setupKey(RandomAccessDataFile owner, long offset) {
+    keyInstance.setup(owner, offset);
+    return keyInstance;
   }
 
   public void flushPages(final RandomAccessDataFile owner) {
+    flushPages(owner, Integer.MAX_VALUE);
+  }
+
+  /**
+   * @return {@code true} if all the dirty pages where flushed.
+   */
+  public boolean flushPages(final RandomAccessDataFile owner, final int maxPagesToFlush) {
     boolean hasFlushes;
     synchronized (lock) {
       if (lastOwner == owner) {
@@ -156,20 +173,23 @@ public class PagePool {
       hasFlushes |= scanQueue(owner, myProbationalQueue);
     }
 
-    if (hasFlushes) {
-      flushFinalizationQueue();
-    }
+    return !hasFlushes || flushFinalizationQueue(maxPagesToFlush);
   }
 
-  private void flushFinalizationQueue() {
-    while (true) {
+  private boolean flushFinalizationQueue(final int maxPagesToFlush) {
+    int count = 0;
+
+    while (count < maxPagesToFlush) {
       FinalizationRequest request = retrieveFinalizationRequest();
       if (request == null) {
-        return;
+        return true;
       }
 
       processFinalizationRequest(request);
+      count++;
     }
+
+    return false;
   }
 
   private boolean scanQueue(final RandomAccessDataFile owner, final Map<?, Page> queue) {
@@ -187,18 +207,34 @@ public class PagePool {
     return hasFlushes;
   }
 
-  private void scheduleFinalization(final Page page) {
+  private boolean scheduleFinalization(final Page page) {
     final int curFinalizationId;
     synchronized (lock) {
       curFinalizationId = ++finalizationId;
     }
 
     final FinalizationRequest request = page.prepareForFinalization(curFinalizationId);
-    if (request == null) return;
+    if (request == null) return false;
 
     synchronized (lock) {
-      myFinalizationQueue.put(page.getKey(), request);
+      /*
+      if (myFinalizerThread == null) {
+        myFinalizerThread = new Thread(new FinalizationThreadWorker(), FINALIZER_THREAD_NAME);
+        myFinalizerThread.start();
+      }
+      */
+
+      myFinalizationQueue.put(keyForPage(page), request);
+      if (myFinalizationQueue.size() > 5000) {
+        return true;
+      }
     }
+
+    synchronized (finalizationMonitor) {
+      finalizationMonitor.notifyAll();
+    }
+
+    return false;
   }
 
   private void processFinalizationRequest(final FinalizationRequest request) {

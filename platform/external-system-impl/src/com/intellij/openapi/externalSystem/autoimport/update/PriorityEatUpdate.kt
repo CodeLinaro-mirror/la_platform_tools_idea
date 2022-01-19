@@ -3,14 +3,14 @@ package com.intellij.openapi.externalSystem.autoimport.update
 
 import com.intellij.util.ui.update.Update
 
-internal abstract class PriorityEatUpdate(priority: Int) : Update(Any(), priority) {
+internal abstract class PriorityEatUpdate(private val priority: Long) : Update(Any()) {
   override fun canEat(update: Update): Boolean {
     if (update !is PriorityEatUpdate) return false
     return priority <= update.priority
   }
 
   companion object {
-    operator fun invoke(priority: Int, update: () -> Unit) =
+    operator fun invoke(priority: Long, update: () -> Unit) =
       object : PriorityEatUpdate(priority) {
         override fun run() = update()
       }

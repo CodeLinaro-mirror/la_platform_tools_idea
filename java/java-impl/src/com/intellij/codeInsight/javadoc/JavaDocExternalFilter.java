@@ -16,7 +16,6 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.util.Url;
 import com.intellij.util.Urls;
 import com.intellij.util.BuiltinWebServerAccess;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.builtInWebServer.BuiltInServerOptions;
@@ -75,9 +74,8 @@ public class JavaDocExternalFilter extends AbstractExternalFilter {
     return myReferenceConverters;
   }
 
-  @Nls
   @Nullable
-  public static String filterInternalDocInfo(@Nls String text) {
+  public static String filterInternalDocInfo(String text) {
     return text == null ? null : PlatformDocumentationUtil.fixupText(text);
   }
 
@@ -117,8 +115,7 @@ public class JavaDocExternalFilter extends AbstractExternalFilter {
           PsiClass aClass = ((PsiMethod)element).getContainingClass();
           if (aClass != null) {
             String qName = aClass.getQualifiedName();
-            String typeParameters = JavaDocInfoGeneratorFactory.create(aClass.getProject(), null).generateTypeParameters(aClass, true);
-            return pair(qName, qName + typeParameters);
+            return pair(qName, qName + JavaDocInfoGenerator.generateTypeParameters(aClass, true));
           }
           return null;
         }

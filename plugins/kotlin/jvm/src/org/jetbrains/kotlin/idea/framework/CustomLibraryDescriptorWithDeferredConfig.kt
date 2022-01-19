@@ -17,7 +17,6 @@ import com.intellij.openapi.roots.ui.configuration.libraryEditor.LibraryEditor
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.config.VersionView
 import org.jetbrains.kotlin.config.apiVersionView
@@ -48,8 +47,8 @@ abstract class CustomLibraryDescriptorWithDeferredConfig(
     val project: Project?,
     private val configuratorName: String,
     private val libraryName: String,
-    @Nls private val dialogTitle: String,
-    @org.jetbrains.annotations.Nls private val modulesSeparatorCaption: String,
+    private val dialogTitle: String,
+    private val modulesSeparatorCaption: String,
     private val libraryKind: LibraryKind,
     private val suitableLibraryKinds: Set<LibraryKind>
 ) : CustomLibraryDescription() {

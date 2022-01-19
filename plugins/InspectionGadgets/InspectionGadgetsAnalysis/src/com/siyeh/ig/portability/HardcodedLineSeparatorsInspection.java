@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2021 Dave Griffith, Bas Leijdekkers
+ * Copyright 2003-2020 Dave Griffith, Bas Leijdekkers
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,14 +57,10 @@ public class HardcodedLineSeparatorsInspection extends BaseInspection {
       final StringBuilder result = new StringBuilder();
       final boolean success = CodeInsightUtilCore.parseStringCharacters(text, result, offsets);
       if (success) {
-        for (int i = 0, max = result.length(); i < max; i++) {
+        for (int i = 0, length = result.length(); i < length; i++) {
           final char c = result.charAt(i);
           if (c == '\n' || c == '\r') {
-            final int offset = offsets[i];
-            final int length = offsets[i + 1] - offset;
-            if (length > 1) {
-              registerErrorAtOffset(expression, offset, length);
-            }
+            registerErrorAtOffset(expression, offsets[i], offsets[i + 1] - offsets[i]);
           }
         }
       }

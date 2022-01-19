@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * @author Eugene Zhuravlev
@@ -27,7 +27,7 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.DoNotAskOption;
+import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.MessageDialogBuilder;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsContexts;
@@ -38,17 +38,16 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XDebuggerBundle;
+import com.intellij.xdebugger.XDebuggerManager;
 import com.intellij.xdebugger.evaluation.EvaluationMode;
 import com.intellij.xdebugger.evaluation.XDebuggerEvaluator;
 import com.intellij.xdebugger.frame.XStackFrame;
 import com.intellij.xdebugger.frame.XValue;
 import com.intellij.xdebugger.impl.breakpoints.XExpressionImpl;
-import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.sun.jdi.InvalidStackFrameException;
 import com.sun.jdi.NativeMethodException;
 import com.sun.jdi.VMDisconnectedException;
 import org.jetbrains.annotations.Nls;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -57,7 +56,6 @@ import java.util.Collections;
 import java.util.List;
 
 public class PopFrameAction extends DebuggerAction implements DumbAware {
-  @NonNls public static final String ACTION_NAME = "Debugger.PopFrame";
   private static final Logger LOG = Logger.getInstance(PopFrameAction.class);
 
   @Override
@@ -76,7 +74,7 @@ public class PopFrameAction extends DebuggerAction implements DumbAware {
 
       debugProcess.getSession().setSteppingThrough(stackFrame.getStackFrameProxy().threadProxy());
       if (evaluateFinallyBlocks(project,
-                                UIUtil.removeMnemonic(ActionsBundle.actionText(ACTION_NAME)),
+                                UIUtil.removeMnemonic(ActionsBundle.actionText(DebuggerActions.POP_FRAME)),
                                 stackFrame,
                                 new XDebuggerEvaluator.XEvaluationCallback() {
                                   @Override
@@ -87,14 +85,14 @@ public class PopFrameAction extends DebuggerAction implements DumbAware {
                                   @Override
                                   public void errorOccurred(@NotNull final String errorMessage) {
                                     showError(project, JavaDebuggerBundle.message("error.executing.finally", errorMessage),
-                                              UIUtil.removeMnemonic(ActionsBundle.actionText(ACTION_NAME)));
+                                              UIUtil.removeMnemonic(ActionsBundle.actionText(DebuggerActions.POP_FRAME)));
                                   }
                                 })) return;
       popFrame(debugProcess, debuggerContext, stackFrame);
     }
     catch (NativeMethodException e2){
       Messages.showMessageDialog(project, JavaDebuggerBundle.message("error.native.method.exception"),
-                                 UIUtil.removeMnemonic(ActionsBundle.actionText(ACTION_NAME)), Messages.getErrorIcon());
+                                 UIUtil.removeMnemonic(ActionsBundle.actionText(DebuggerActions.POP_FRAME)), Messages.getErrorIcon());
     }
     catch (InvalidStackFrameException | VMDisconnectedException ignored) {
     }
@@ -123,7 +121,7 @@ public class PopFrameAction extends DebuggerAction implements DumbAware {
             .yesText(JavaDebuggerBundle.message("button.execute.finally"))
             .noText(JavaDebuggerBundle.message("button.drop.anyway"))
             .cancelText(CommonBundle.getCancelButtonText())
-            .doNotAsk(new DoNotAskOption() {
+            .doNotAsk(new DialogWrapper.DoNotAskOption() {
               @Override
               public boolean isToBeShown() {
                 return !DebuggerSettings.EVALUATE_FINALLY_ALWAYS.equals(DebuggerSettings.getInstance().EVALUATE_FINALLY_ON_POP_FRAME) &&
@@ -191,7 +189,7 @@ public class PopFrameAction extends DebuggerAction implements DumbAware {
     }
     else {
       Messages.showMessageDialog(project, XDebuggerBundle.message("xdebugger.evaluate.stack.frame.has.not.evaluator"),
-                                 UIUtil.removeMnemonic(ActionsBundle.actionText(ACTION_NAME)),
+                                 UIUtil.removeMnemonic(ActionsBundle.actionText(DebuggerActions.POP_FRAME)),
                                  Messages.getErrorIcon());
     }
   }
@@ -284,7 +282,10 @@ public class PopFrameAction extends DebuggerAction implements DumbAware {
   private static JavaStackFrame getSelectedStackFrame(AnActionEvent e) {
     Project project = e.getProject();
     if (project != null) {
-      XDebugSession session = DebuggerUIUtil.getSession(e);
+      XDebugSession session = e.getData(XDebugSession.DATA_KEY);
+      if (session == null) {
+        session = XDebuggerManager.getInstance(project).getCurrentSession();
+      }
       if (session != null) {
         XStackFrame frame = session.getCurrentStackFrame();
         if (frame instanceof JavaStackFrame) {

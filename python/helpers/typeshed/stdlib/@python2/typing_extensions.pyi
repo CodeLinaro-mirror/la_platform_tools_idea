@@ -14,10 +14,12 @@ from typing import (
     Mapping,
     NewType as NewType,
     NoReturn as NoReturn,
+    Optional,
     Text as Text,
     Tuple,
     Type as Type,
     TypeVar,
+    Union,
     ValuesView,
     _Alias,
     overload as overload,
@@ -65,8 +67,8 @@ OrderedDict = _Alias()
 
 def get_type_hints(
     obj: Callable[..., Any],
-    globalns: Dict[str, Any] | None = ...,
-    localns: Dict[str, Any] | None = ...,
+    globalns: Optional[Dict[str, Any]] = ...,
+    localns: Optional[Dict[str, Any]] = ...,
     include_extras: bool = ...,
 ) -> Dict[str, Any]: ...
 
@@ -89,11 +91,11 @@ class ParamSpecKwargs:
 
 class ParamSpec:
     __name__: str
-    __bound__: Type[Any] | None
+    __bound__: Optional[Type[Any]]
     __covariant__: bool
     __contravariant__: bool
     def __init__(
-        self, name: str, *, bound: None | Type[Any] | str = ..., contravariant: bool = ..., covariant: bool = ...
+        self, name: str, *, bound: Union[None, Type[Any], str] = ..., contravariant: bool = ..., covariant: bool = ...
     ) -> None: ...
     @property
     def args(self) -> ParamSpecArgs: ...

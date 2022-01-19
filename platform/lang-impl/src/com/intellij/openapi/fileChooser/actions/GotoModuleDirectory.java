@@ -18,7 +18,6 @@ package com.intellij.openapi.fileChooser.actions;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.LangDataKeys;
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.fileChooser.FileSystemTree;
 import com.intellij.openapi.module.Module;
@@ -45,7 +44,7 @@ public final class GotoModuleDirectory extends FileChooserAction {
   private static VirtualFile getModuleDir(final AnActionEvent e) {
     Module module = e.getData(LangDataKeys.MODULE_CONTEXT);
     if (module == null) {
-      module = e.getData(PlatformCoreDataKeys.MODULE);
+      module = e.getData(LangDataKeys.MODULE);
     }
 
     if (module != null && !module.isDisposed()) {

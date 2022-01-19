@@ -20,7 +20,6 @@ import com.google.common.collect.Collections2;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.console.LanguageConsoleView;
 import com.intellij.lang.ASTNode;
-import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
@@ -39,11 +38,8 @@ import com.jetbrains.python.remote.PyRemotePathMapper;
 import com.jetbrains.python.remote.PyRemoteSdkAdditionalDataBase;
 import com.jetbrains.python.remote.PythonRemoteInterpreterManager;
 import com.jetbrains.python.run.PythonCommandLineState;
-import com.jetbrains.python.run.target.PySdkTargetPaths;
-import com.jetbrains.python.sdk.PySdkExtKt;
 import com.jetbrains.python.sdk.PythonEnvUtil;
 import com.jetbrains.python.sdk.PythonSdkUtil;
-import com.jetbrains.python.target.PyTargetAwareAdditionalData;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -68,10 +64,6 @@ public interface PydevConsoleRunner {
   static PyRemotePathMapper getPathMapper(@NotNull Project project,
                                           Sdk sdk,
                                           PyConsoleOptions.PyConsoleSettings consoleSettings) {
-    if (PySdkExtKt.isTargetBased(sdk)) {
-      PyTargetAwareAdditionalData data = (PyTargetAwareAdditionalData)sdk.getSdkAdditionalData();
-      return PySdkTargetPaths.getPathMapper(project, consoleSettings, data);
-    }
     if (PythonSdkUtil.isRemote(sdk)) {
       PyRemoteSdkAdditionalDataBase remoteSdkAdditionalData = (PyRemoteSdkAdditionalDataBase)sdk.getSdkAdditionalData();
       return getPathMapper(project, consoleSettings, remoteSdkAdditionalData);
@@ -239,8 +231,6 @@ public interface PydevConsoleRunner {
 
   void run(boolean requestEditorFocus);
 
-  void reRun(boolean requestEditorFocus, String title);
-
   PydevConsoleCommunication getPydevConsoleCommunication();
 
   void addConsoleListener(PydevConsoleRunnerImpl.ConsoleListener consoleListener);
@@ -250,9 +240,6 @@ public interface PydevConsoleRunner {
   PyConsoleProcessHandler getProcessHandler();
 
   PythonConsoleView getConsoleView();
-
-  @Nullable
-  default AnAction createRerunAction() { return null; }
 
   @TestOnly
   void setSdk(Sdk sdk);

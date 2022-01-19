@@ -135,8 +135,7 @@ public class PyBinaryExpressionImpl extends PyElementImpl implements PyBinaryExp
       return PyUnionType.union(leftType, rightType);
     }
 
-    final String referencedName = getReferencedName();
-    if (PyNames.CONTAINS.equals(referencedName)) return PyBuiltinCache.getInstance(this).getBoolType();
+    if (PyNames.CONTAINS.equals(getReferencedName())) return PyBuiltinCache.getInstance(this).getBoolType();
 
     final List<PyCallExpression.PyArgumentsMapping> results =
       PyCallExpressionHelper.mapArguments(this, PyResolveContext.defaultContext(context));
@@ -168,7 +167,7 @@ public class PyBinaryExpressionImpl extends PyElementImpl implements PyBinaryExp
         return bothOperandsAreKnown ? result : PyUnionType.createWeakType(result);
       }
     }
-    if (referencedName != null && PyNames.COMPARISON_OPERATORS.contains(referencedName)) {
+    if (PyNames.COMPARISON_OPERATORS.contains(getReferencedName())) {
       return PyBuiltinCache.getInstance(this).getBoolType();
     }
     return null;

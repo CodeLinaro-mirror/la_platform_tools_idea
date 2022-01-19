@@ -9,7 +9,6 @@ import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.PasswordUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.PlatformUtils;
 import com.intellij.util.xmlb.annotations.Transient;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
@@ -34,7 +33,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
   @NonNls public static final String USE_AUTH_AGENT = "USE_AUTH_AGENT";
   @NonNls public static final String PRIVATE_KEY_FILE = "PRIVATE_KEY_FILE";
   @NonNls public static final String PASSPHRASE = "PASSPHRASE";
-  @NonNls public static final String USE_OPENSSH_CONFIG = "USE_OPENSSH_CONFIG";
   @NonNls public static final String CONNECTION_CONFIG_PATCH = "sshConnectionConfigPatch";
 
   @NonNls public static final String SSH_PREFIX = "ssh://";
@@ -52,7 +50,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
   private @Nullable String myPassphrase;
   private boolean myStorePassword;
   private boolean myStorePassphrase;
-  private boolean myUseOpenSSHConfig;
   private @NotNull AuthType myAuthType = AuthType.PASSWORD;
   private @Nullable SshConnectionConfigPatch myConnectionConfigPatch;
 
@@ -145,16 +142,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
   @Override
   public boolean isStorePassphrase() {
     return myStorePassphrase;
-  }
-
-  @Override
-  public boolean isOpenSshConfigUsageForced() {
-    return myUseOpenSSHConfig;
-  }
-
-  @Override
-  public void setOpenSshConfigUsageForced(boolean useOpenSSHConfig) {
-    myUseOpenSSHConfig = useOpenSSHConfig;
   }
 
   @Override
@@ -255,7 +242,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
     to.setPrivateKeyFile(from.getPrivateKeyFile());
     to.setStorePassword(from.isStorePassword());
     to.setStorePassphrase(from.isStorePassphrase());
-    to.setOpenSshConfigUsageForced(from.isOpenSshConfigUsageForced());
     to.setConnectionConfigPatch(from.getConnectionConfigPatch());
   }
 
@@ -266,9 +252,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
     setSerializedPassword(element.getAttributeValue(PASSWORD));
     setPrivateKeyFile(StringUtil.nullize(element.getAttributeValue(PRIVATE_KEY_FILE)));
     setSerializedPassphrase(element.getAttributeValue(PASSPHRASE));
-    // true by default for all IDEs except DataGrip due to historical reasons
-    setOpenSshConfigUsageForced(Boolean.valueOf(StringUtil.defaultIfEmpty(element.getAttributeValue(USE_OPENSSH_CONFIG),
-                                                  String.valueOf(!PlatformUtils.isDataGrip()))));
     boolean useKeyPair = Boolean.parseBoolean(element.getAttributeValue(USE_KEY_PAIR));
     boolean useAuthAgent = Boolean.parseBoolean(element.getAttributeValue(USE_AUTH_AGENT));
     if (useKeyPair) {
@@ -299,7 +282,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
         setStorePassphrase(false);
       }
       else {
-        setOpenSshConfigUsageForced(true);
         setPassword(null);
         setStorePassword(false);
         setPassphrase(null);
@@ -326,7 +308,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
     rootElement.setAttribute(USERNAME, getSerializedUserName());
     rootElement.setAttribute(PRIVATE_KEY_FILE, StringUtil.notNullize(getPrivateKeyFile()));
     rootElement.setAttribute(USE_KEY_PAIR, Boolean.toString(myAuthType == AuthType.KEY_PAIR));
-    rootElement.setAttribute(USE_OPENSSH_CONFIG, Boolean.toString(isOpenSshConfigUsageForced()));
     // the old `USE_AUTH_AGENT` attribute is used to avoid settings migration
     rootElement.setAttribute(USE_AUTH_AGENT, Boolean.toString(myAuthType == AuthType.OPEN_SSH));
 
@@ -371,7 +352,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
     if (!Objects.equals(myPassword, holder.myPassword)) return false;
     if (!myPrivateKeyFile.equals(holder.myPrivateKeyFile)) return false;
     if (!Objects.equals(myPassphrase, holder.myPassphrase)) return false;
-    if (myUseOpenSSHConfig != holder.myUseOpenSSHConfig) return false;
     if (myAuthType != holder.myAuthType) return false;
     if (!Objects.equals(myConnectionConfigPatch, holder.myConnectionConfigPatch)) return false;
 
@@ -388,7 +368,6 @@ public class RemoteCredentialsHolder implements MutableRemoteCredentials {
     result = 31 * result + (myPassphrase != null ? myPassphrase.hashCode() : 0);
     result = 31 * result + (myStorePassword ? 1 : 0);
     result = 31 * result + (myStorePassphrase ? 1 : 0);
-    result = 31 * result + (myUseOpenSSHConfig ? 1 : 0);
     result = 31 * result + myAuthType.hashCode();
     result = 31 * result + (myConnectionConfigPatch != null ? myConnectionConfigPatch.hashCode() : 0);
     return result;

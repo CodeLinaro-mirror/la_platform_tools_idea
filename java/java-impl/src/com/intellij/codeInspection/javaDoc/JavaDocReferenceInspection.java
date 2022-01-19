@@ -131,7 +131,7 @@ public class JavaDocReferenceInspection extends LocalInspectionTool {
 
       LocalQuickFix fix = null;
       if (isOnTheFly) {
-        List<? extends PsiClass> classesToImport = new ImportClassFix(reference).getClassesToImport();
+        List<PsiClass> classesToImport = new ImportClassFix(reference).getClassesToImport();
         if (!classesToImport.isEmpty()) {
           fix = new AddQualifierFix(classesToImport);
         }

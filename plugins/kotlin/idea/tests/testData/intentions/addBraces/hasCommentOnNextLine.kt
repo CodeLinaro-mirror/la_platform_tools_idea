@@ -7,7 +7,6 @@ fun foo(list: List<String>) {
     for (l in list) println(l)
 
     // printing...
-// AFTER-WARNING: Parameter 'a' is never used
     println("hi")
 }
 

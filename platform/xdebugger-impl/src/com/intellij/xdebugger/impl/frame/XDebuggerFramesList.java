@@ -33,10 +33,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
 import java.awt.*;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 public class XDebuggerFramesList extends DebuggerFramesList implements DataProvider {
   private final Project myProject;
@@ -109,7 +107,7 @@ public class XDebuggerFramesList extends DebuggerFramesList implements DataProvi
       }
       return null;
     }
-    if (PlatformCoreDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
+    if (PlatformDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
       XStackFrame frame = getSelectedFrame();
       if (frame != null) {
         return List.<DataProvider>of(realDataId -> getSlowData(frame, realDataId));

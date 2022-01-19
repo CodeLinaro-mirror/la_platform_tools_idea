@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
 import com.intellij.icons.AllIcons;
@@ -36,11 +36,9 @@ import com.intellij.platform.PlatformProjectOpenProcessor;
 import com.intellij.projectImport.ProjectAttachProcessor;
 import com.intellij.projectImport.ProjectOpenProcessor;
 import com.intellij.util.PlatformUtils;
-import com.intellij.util.concurrency.annotations.RequiresEdt;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.VisibleForTesting;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -109,7 +107,6 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
     }
   }
 
-  @RequiresEdt
   private static void doOpenFile(@Nullable Project project, @NotNull VirtualFile file) {
     Path filePath = file.toNioPath();
     if (Files.isDirectory(filePath)) {
@@ -146,14 +143,14 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
     }
   }
 
+  // public for testing
   @ApiStatus.Internal
-  @VisibleForTesting
   public static @NotNull CompletableFuture<@Nullable Project> openExistingDir(@NotNull Path file, @Nullable Project currentProject) {
     boolean canAttach = ProjectAttachProcessor.canAttachToProject();
     boolean preferAttach = currentProject != null &&
                            canAttach &&
                            (PlatformUtils.isDataGrip() && !ProjectUtil.isValidProjectPath(file)
-                            || PlatformUtils.isDataSpell());
+                            || PlatformUtils.isPyCharmDs());
     if (preferAttach && PlatformProjectOpenProcessor.attachToProject(currentProject, file, null)) {
       return CompletableFuture.completedFuture(null);
     }
@@ -230,8 +227,7 @@ public class OpenFileAction extends AnAction implements DumbAware, LightEditComp
     }
 
     @Override
-    public boolean isFileSelectable(@Nullable VirtualFile file) {
-      if (file == null) return false;
+    public boolean isFileSelectable(VirtualFile file) {
       return file.isDirectory() ? super.isFileSelectable(file) : myStandardDescriptor.isFileSelectable(file);
     }
 

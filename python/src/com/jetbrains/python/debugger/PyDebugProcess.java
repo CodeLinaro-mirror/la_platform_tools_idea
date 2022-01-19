@@ -965,7 +965,7 @@ public class PyDebugProcess extends XDebugProcess implements IPyDebugProcess, Pr
   @NotNull
   private PyStackFrame currentFrame() throws PyDebuggerException {
     if (!isConnected()) {
-      throw new PyDebuggerException("Disconnected");
+      throw new PyDebuggerException(PyBundle.message("debugger.debug.process.disconnected"));
     }
 
     final PyStackFrame frame = (PyStackFrame)getSession().getCurrentStackFrame();

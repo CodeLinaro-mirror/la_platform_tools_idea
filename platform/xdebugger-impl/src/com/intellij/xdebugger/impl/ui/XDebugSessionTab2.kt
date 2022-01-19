@@ -146,19 +146,12 @@ class XDebugSessionTab2(
   override fun getWatchesContentId() = debuggerContentId
   override fun getFramesContentId() = debuggerContentId
 
-  private fun getWatchesViewImpl(session: XDebugSessionImpl, watchesIsVariables: Boolean): XWatchesViewImpl {
-    val useSplitterView = (session.debugProcess as? XDebugSessionTabCustomizer)?.bottomLocalsComponentProvider != null
-    return if (useSplitterView)
-      XSplitterWatchesViewImpl(session, watchesIsVariables, true, withToolbar = true)
-    else
-      XWatchesViewImpl(session, watchesIsVariables, true, true)
-  }
-
   override fun addVariablesAndWatches(session: XDebugSessionImpl) {
     val variablesView: XVariablesView?
     val watchesView: XVariablesView?
+    val layoutDisposable = Disposer.newDisposable(ui.contentManager, "debugger layout disposable")
     if (isWatchesInVariables) {
-      variablesView = getWatchesViewImpl(session, true)
+      variablesView = XWatchesViewImpl2(session, true, true, layoutDisposable)
       registerView(DebuggerContentInfo.VARIABLES_CONTENT, variablesView)
       variables = variablesView
 
@@ -169,7 +162,7 @@ class XDebugSessionTab2(
       registerView(DebuggerContentInfo.VARIABLES_CONTENT, variablesView)
       variables = variablesView
       
-      watchesView = getWatchesViewImpl(session, watchesIsVariables = false)
+      watchesView = XWatchesViewImpl2(session, false, true, layoutDisposable)
       registerView(DebuggerContentInfo.WATCHES_CONTENT, watchesView)
       myWatchesView = watchesView
     }
@@ -196,7 +189,7 @@ class XDebugSessionTab2(
     registerView(DebuggerContentInfo.FRAME_CONTENT, framesView)
 
     framesView.setThreadsVisible(threadsIsVisible)
-    splitter.firstComponent = xThreadsFramesView.mainComponent
+    splitter.firstComponent = xThreadsFramesView.mainPanel
     addVariablesAndWatches(session)
 
     val name = debuggerContentId

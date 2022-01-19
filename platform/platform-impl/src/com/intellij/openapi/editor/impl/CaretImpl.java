@@ -1145,9 +1145,6 @@ public class CaretImpl extends UserDataHolderBase implements Caret, Dumpable {
           marker.endVirtualOffset = Math.max(0, Math.max(startDiff, endDiff));
         }
       }
-      else {
-        setRangeMarkerEndPositionIsLead(endOffset != getOffset());
-      }
       mySelectionMarker = marker;
 
       if (fireListeners) {
@@ -1203,7 +1200,6 @@ public class CaretImpl extends UserDataHolderBase implements Caret, Dumpable {
               return startOffset;
             }
           }
-          return isRangeMarkerEndPositionIsLead() ? endOffset : startOffset;
         }
 
         return caretOffset == endOffset ? startOffset : endOffset;

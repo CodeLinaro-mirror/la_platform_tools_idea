@@ -40,10 +40,6 @@ public class RefJavaVisitor extends RefVisitor {
     visitElement(aClass);
   }
 
-  public void visitFunctionalExpression(@NotNull RefFunctionalExpression functionalExpression) {
-    visitElement(functionalExpression);
-  }
-
   public void visitPackage(@NotNull RefPackage aPackage) {
     visitElement(aPackage);
   }

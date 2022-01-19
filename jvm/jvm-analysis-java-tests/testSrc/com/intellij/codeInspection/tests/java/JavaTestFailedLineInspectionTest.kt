@@ -1,14 +1,10 @@
 package com.intellij.codeInspection.tests.java
 
 import com.intellij.codeInspection.tests.TestFailedLineInspectionTestBase
-import com.intellij.jvm.analysis.JavaJvmAnalysisTestUtil
-import com.intellij.testFramework.TestDataPath
+import com.intellij.jvm.analysis.JvmAnalysisTestsUtil
 
-private const val inspectionPath = "/codeInspection/testfailedline"
-
-@TestDataPath("\$CONTENT_ROOT/testData$inspectionPath")
 class JavaTestFailedLineInspectionTest : TestFailedLineInspectionTestBase() {
-  override fun getBasePath() = JavaJvmAnalysisTestUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + inspectionPath
+  override fun getTestDataPath() = JvmAnalysisTestsUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + "/codeInspection/testfailedline"
 
   fun testMainTest() {
     doTest(

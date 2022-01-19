@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'value' is never used
 interface I<T>
 
 interface MyMap {

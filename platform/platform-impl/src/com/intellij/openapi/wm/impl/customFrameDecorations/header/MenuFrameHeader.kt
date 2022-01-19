@@ -20,7 +20,7 @@ import javax.swing.SwingUtilities
 import javax.swing.event.ChangeListener
 import kotlin.math.roundToInt
 
-internal class MenuFrameHeader(frame: JFrame, val headerTitle: CustomHeaderTitle, val myIdeMenu: IdeMenuBar) : AbstractMenuFrameHeader(frame) {
+internal class MenuFrameHeader(frame: JFrame, val headerTitle: CustomHeaderTitle, val myIdeMenu: IdeMenuBar) : FrameHeader(frame){
   private val menuHolder: JComponent
   private var changeListener: ChangeListener
 
@@ -64,7 +64,7 @@ internal class MenuFrameHeader(frame: JFrame, val headerTitle: CustomHeaderTitle
     menuHolder.isVisible = UISettings.instance.showMainMenu
   }
 
-  override fun updateMenuActions(forceRebuild: Boolean) {
+  fun updateMenuActions(forceRebuild: Boolean) {
     myIdeMenu.updateMenuActions(forceRebuild)
   }
 

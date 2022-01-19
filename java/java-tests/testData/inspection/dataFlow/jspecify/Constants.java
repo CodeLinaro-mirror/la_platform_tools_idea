@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import org.jspecify.nullness.NullMarked;
+import org.jspecify.annotations.DefaultNonNull;
 
 class Constants {
-  @NullMarked
+  @DefaultNonNull
   class User {
     Object x0() {
       return "";

@@ -19,6 +19,8 @@ public final class PluginXmlExternalAnnotatorsFilter implements ExternalAnnotato
       return false;
     }
 
-    return ReadAction.compute(() -> DescriptorUtil.isPluginXml(file));
+    return ReadAction.compute(() -> {
+      return DescriptorUtil.isPluginXml(file);
+    });
   }
 }

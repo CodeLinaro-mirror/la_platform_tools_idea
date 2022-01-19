@@ -12,12 +12,14 @@ import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
+import com.intellij.util.Processor;
 import com.intellij.util.Processors;
-import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.JBIterable;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
 public class GutterIntentionMenuContributor implements IntentionMenuContributor {
   @Override
@@ -26,25 +28,24 @@ public class GutterIntentionMenuContributor implements IntentionMenuContributor 
                              @NotNull ShowIntentionsPass.IntentionsInfo intentions,
                              int passIdToShowIntentionsFor,
                              int offset) {
-    Project project = hostFile.getProject();
-    Document hostDocument = hostEditor.getDocument();
-    int line = hostDocument.getLineNumber(offset);
+    final Project project = hostFile.getProject();
+    final Document hostDocument = hostEditor.getDocument();
+    final int line = hostDocument.getLineNumber(offset);
     MarkupModelEx model = (MarkupModelEx)DocumentMarkupModel.forDocument(hostDocument, project, true);
     List<RangeHighlighterEx> result = new ArrayList<>();
+    Processor<RangeHighlighterEx> processor = Processors.cancelableCollectProcessor(result);
     model.processRangeHighlightersOverlappingWith(hostDocument.getLineStartOffset(line),
                                                   hostDocument.getLineEndOffset(line),
-                                                  Processors.cancelableCollectProcessor(result));
-    Collection<AnAction> actions = result.stream()
-      .map(RangeHighlighter::getGutterIconRenderer)
-      .filter(Objects::nonNull)
+                                                  processor);
+    JBIterable.from(result)
+      .filterMap(RangeHighlighter::getGutterIconRenderer)
       .filter(r -> !DumbService.isDumb(project) || DumbService.isDumbAware(r))
-      .flatMap(r -> {
+      .flatten(r -> {
         ActionGroup group = r.getPopupMenuActions();
-        List<AnAction> clickActions = Arrays.asList(r.getClickAction(), r.getMiddleButtonClickAction(), r.getRightButtonClickAction());
-        return (group == null ? clickActions : ContainerUtil.append(clickActions, group.getChildren(null))).stream();
+        JBIterable<AnAction> it = JBIterable.of(r.getClickAction(), r.getMiddleButtonClickAction(), r.getRightButtonClickAction());
+        return group == null ? it : it.append(group.getChildren(null));
       })
       .filter(Objects::nonNull)
-      .collect(Collectors.toCollection(LinkedHashSet::new));
-    intentions.guttersToShow.addAll(actions);
+      .addAllTo(intentions.guttersToShow);
   }
 }

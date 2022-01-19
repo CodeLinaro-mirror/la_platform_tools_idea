@@ -3,26 +3,31 @@ package git4idea.stash.ui
 
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.AnActionExtensionProvider
-import com.intellij.openapi.vcs.changes.ui.ChangesBrowserBase
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.vcs.VcsDataKeys
+import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 
 class GitShowDiffFromStashAction : AnActionExtensionProvider {
   override fun isActive(e: AnActionEvent): Boolean {
-    return e.getData(GitStashUi.GIT_STASH_UI) != null &&
-           e.getData(ChangesBrowserBase.DATA_KEY) == null
+    return e.getData(GitStashTree.GIT_STASH_TREE_FLAG) == true
   }
 
   override fun update(e: AnActionEvent) {
-    val project = e.project
-    val stashUi = e.getData(GitStashUi.GIT_STASH_UI)
-    if (project == null || stashUi == null) {
-      e.presentation.isEnabledAndVisible = false
-      return
+    updateAvailability(e)
+  }
+
+  companion object {
+    @JvmStatic
+    fun updateAvailability(e: AnActionEvent) {
+      e.presentation.isEnabled = e.project != null && e.getData(VcsDataKeys.CHANGES_SELECTION)?.isEmpty == false
+      e.presentation.isVisible = e.isFromActionToolbar || e.presentation.isEnabled
     }
-    e.presentation.isVisible = true
-    e.presentation.isEnabled = stashUi.changesBrowser.canShowDiff()
   }
 
   override fun actionPerformed(e: AnActionEvent) {
-    ChangesBrowserBase.ShowStandaloneDiff.showStandaloneDiff(e.project!!, e.getRequiredData(GitStashUi.GIT_STASH_UI).changesBrowser)
+    val project = e.getRequiredData(CommonDataKeys.PROJECT)
+    val changesSelection = e.getRequiredData(VcsDataKeys.CHANGES_SELECTION)
+
+    ShowDiffAction.showDiffForChange(project, changesSelection)
   }
 }

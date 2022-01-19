@@ -10,6 +10,7 @@ import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.testframework.AbstractPatternBasedConfigurationProducer;
 import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings;
+import com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunConfiguration;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
@@ -23,7 +24,6 @@ import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.gradle.service.execution.GradleExternalTaskConfigurationType;
-import org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration;
 import org.jetbrains.plugins.gradle.util.GradleBundle;
 import org.jetbrains.plugins.gradle.util.GradleConstants;
 
@@ -33,31 +33,23 @@ import static org.jetbrains.plugins.gradle.execution.test.runner.TestGradleConfi
 import static org.jetbrains.plugins.gradle.execution.test.runner.TestGradleConfigurationProducerUtilKt.getSourceFile;
 import static org.jetbrains.plugins.gradle.util.GradleExecutionSettingsUtil.createTestFilterFrom;
 
-
+/**
+ * @author Vladislav.Soroka
+ */
 public final class PatternGradleConfigurationProducer extends GradleTestRunConfigurationProducer {
-  private final GradlePatternBasedConfigurationProducer<?> myBaseConfigurationProducer = new GradlePatternBasedConfigurationProducer<>();
+  private final GradlePatternBasedConfigurationProducer myBaseConfigurationProducer = new GradlePatternBasedConfigurationProducer();
 
+  @NotNull
   @Override
-  public boolean isPreferredConfiguration(@NotNull ConfigurationFromContext self, @NotNull ConfigurationFromContext other) {
-    return other.isProducedBy(TestClassGradleConfigurationProducer.class) ||
-           other.isProducedBy(TestMethodGradleConfigurationProducer.class) ||
-           super.isPreferredConfiguration(self, other);
+  public ConfigurationFactory getConfigurationFactory() {
+    return GradleExternalTaskConfigurationType.getInstance().getFactory();
   }
 
   @Override
-  public boolean shouldReplace(@NotNull ConfigurationFromContext self, @NotNull ConfigurationFromContext other) {
-    return other.isProducedBy(TestClassGradleConfigurationProducer.class) ||
-           other.isProducedBy(TestMethodGradleConfigurationProducer.class) ||
-           super.shouldReplace(self, other);
-  }
-
-  @Override
-  protected boolean doSetupConfigurationFromContext(
-    @NotNull GradleRunConfiguration configuration,
-    @NotNull ConfigurationContext context,
-    @NotNull Ref<PsiElement> sourceElement
-  ) {
-    if (!myBaseConfigurationProducer.isMultipleElementsSelected(context)) return false;
+  protected boolean doSetupConfigurationFromContext(ExternalSystemRunConfiguration configuration,
+                                                    ConfigurationContext context,
+                                                    Ref<PsiElement> sourceElement) {
+    if (!isMultipleElementsSelected(context)) return false;
     ExternalSystemTaskExecutionSettings settings = configuration.getSettings();
     if (!GradleConstants.SYSTEM_ID.equals(settings.getExternalSystemId())) return false;
     final Location contextLocation = context.getLocation();
@@ -68,62 +60,56 @@ public final class PatternGradleConfigurationProducer extends GradleTestRunConfi
     TestMappings testMappings = getTestMappings(project, tests);
     Function1<String, VirtualFile> findTestSource = test -> getSourceFile(testMappings.getClasses().get(test));
     Function1<String, String> createFilter = (test) ->
-      createTestFilterFrom(testMappings.getClasses().get(test), testMappings.getMethods().get(test));
+      createTestFilterFrom(testMappings.getClasses().get(test), testMappings.getMethods().get(test), /*hasSuffix=*/true);
     Module module = getModuleFromContext(context);
     if (module == null) return false;
     if (!applyTestConfiguration(settings, module, tests, findTestSource, createFilter)) return false;
     configuration.setName(suggestConfigurationName(tests));
-    setUniqueNameIfNeeded(project, configuration);
     JavaRunConfigurationExtensionManager.getInstance().extendCreatedConfiguration(configuration, contextLocation);
     return true;
   }
 
   @Override
-  protected boolean doIsConfigurationFromContext(
-    @NotNull GradleRunConfiguration configuration,
-    @NotNull ConfigurationContext context
-  ) {
+  protected boolean doIsConfigurationFromContext(ExternalSystemRunConfiguration configuration, ConfigurationContext context) {
     return false;
   }
 
   @Override
-  public void onFirstRun(
-    @NotNull ConfigurationFromContext configuration,
-    @NotNull ConfigurationContext context,
-    @NotNull Runnable startRunnable
-  ) {
-    if (!myBaseConfigurationProducer.isMultipleElementsSelected(context)) {
-      super.onFirstRun(configuration, context, startRunnable);
+  public void onFirstRun(@NotNull ConfigurationFromContext fromContext,
+                         @NotNull ConfigurationContext context,
+                         @NotNull Runnable performRunnable) {
+    Runnable runnableWithCheck = addCheckForTemplateParams(fromContext, context, performRunnable);
+    if (!isMultipleElementsSelected(context)) {
+      super.onFirstRun(fromContext, context, runnableWithCheck);
       return;
     }
     Module module = getModuleFromContext(context);
     if (module == null) {
       LOG.warn("Cannot find module from context, uses raw run configuration");
-      super.onFirstRun(configuration, context, startRunnable);
+      runnableWithCheck.run();
       return;
     }
-    GradleRunConfiguration runConfiguration = (GradleRunConfiguration)configuration.getConfiguration();
+    ExternalSystemRunConfiguration configuration = (ExternalSystemRunConfiguration)fromContext.getConfiguration();
     Project project = context.getProject();
     List<String> tests = getTestPatterns(context);
     if (tests.isEmpty()) {
       LOG.warn("Cannot find runnable tests from context, uses raw run configuration");
-      super.onFirstRun(configuration, context, startRunnable);
+      runnableWithCheck.run();
       return;
     }
     TestMappings testMappings = getTestMappings(project, tests);
     getTestTasksChooser().chooseTestTasks(project, context.getDataContext(), testMappings.getClasses().values(), tasks -> {
-      ExternalSystemTaskExecutionSettings settings = runConfiguration.getSettings();
+      ExternalSystemTaskExecutionSettings settings = configuration.getSettings();
       Function1<String, VirtualFile> findTestSource = test -> getSourceFile(testMappings.getClasses().get(test));
       Function1<String, String> createFilter = (test) ->
-        createTestFilterFrom(testMappings.getClasses().get(test), testMappings.getMethods().get(test));
+        createTestFilterFrom(testMappings.getClasses().get(test), testMappings.getMethods().get(test), /*hasSuffix=*/true);
       if (!applyTestConfiguration(settings, module, tasks, tests, findTestSource, createFilter)) {
         LOG.warn("Cannot apply pattern test configuration, uses raw run configuration");
-        super.onFirstRun(configuration, context, startRunnable);
+        runnableWithCheck.run();
         return;
       }
-      runConfiguration.setName(suggestConfigurationName(tests));
-      setUniqueNameIfNeeded(project, runConfiguration);
-      super.onFirstRun(configuration, context, startRunnable);
+      configuration.setName(suggestConfigurationName(tests));
+      runnableWithCheck.run();
     });
   }
 
@@ -183,6 +169,10 @@ public final class PatternGradleConfigurationProducer extends GradleTestRunConfi
     private Map<String, String> getMethods() {
       return methods;
     }
+  }
+
+  public boolean isMultipleElementsSelected(ConfigurationContext context) {
+    return myBaseConfigurationProducer.isMultipleElementsSelected(context);
   }
 
   private static class GradlePatternBasedConfigurationProducer<T extends JavaTestConfigurationBase>

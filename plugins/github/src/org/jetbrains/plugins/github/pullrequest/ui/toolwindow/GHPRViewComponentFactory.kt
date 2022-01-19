@@ -2,7 +2,7 @@
 package org.jetbrains.plugins.github.pullrequest.ui.toolwindow
 
 import com.intellij.collaboration.ui.SingleValueModel
-import com.intellij.collaboration.ui.codereview.commits.CommitsBrowserComponentBuilder
+import com.intellij.collaboration.ui.codereview.commits.CommitsBrowserComponentFactory
 import com.intellij.ide.DataManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionGroup
@@ -12,23 +12,15 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.Key
-import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.changes.Change
-import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.DiffPreview
 import com.intellij.openapi.vcs.changes.EditorTabDiffPreviewManager.Companion.EDITOR_TAB_DIFF_PREVIEW
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
-import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
-import com.intellij.ui.IdeBorderFactory
-import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.ScrollPaneFactory
-import com.intellij.ui.SideBorder
+import com.intellij.ui.*
 import com.intellij.ui.components.panels.Wrapper
 import com.intellij.ui.tabs.JBTabs
 import com.intellij.util.EditSourceOnDoubleClickHandler
 import com.intellij.util.Processor
-import com.intellij.util.containers.JBIterable
 import com.intellij.util.containers.TreeTraversal
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -38,29 +30,24 @@ import com.intellij.vcs.log.VcsCommitMetadata
 import com.intellij.vcs.log.VcsLogObjectsFactory
 import com.intellij.vcs.log.impl.HashImpl
 import com.intellij.vcsUtil.VcsUtil
-import git4idea.repo.GitRepository
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import org.jetbrains.plugins.github.api.data.GHCommit
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequest
-import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestFileViewedState
-import org.jetbrains.plugins.github.api.data.pullrequest.isViewed
 import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.action.GHPRActionKeys
-import org.jetbrains.plugins.github.pullrequest.action.GHPRActionKeys.PULL_REQUEST_FILES
 import org.jetbrains.plugins.github.pullrequest.action.GHPRShowDiffActionProvider
 import org.jetbrains.plugins.github.pullrequest.data.GHPRChangesProvider
 import org.jetbrains.plugins.github.pullrequest.data.GHPRDataContext
 import org.jetbrains.plugins.github.pullrequest.data.GHPRIdentifier
 import org.jetbrains.plugins.github.pullrequest.ui.GHApiLoadingErrorHandler
 import org.jetbrains.plugins.github.pullrequest.ui.GHCompletableFutureLoadingModel
+import org.jetbrains.plugins.github.pullrequest.ui.GHLoadingModel
 import org.jetbrains.plugins.github.pullrequest.ui.GHLoadingPanelFactory
-import org.jetbrains.plugins.github.pullrequest.ui.changes.*
+import org.jetbrains.plugins.github.pullrequest.ui.changes.GHPRChangesTreeFactory
+import org.jetbrains.plugins.github.pullrequest.ui.changes.GHPRDiffRequestChainProducer
 import org.jetbrains.plugins.github.pullrequest.ui.details.GHPRBranchesModelImpl
 import org.jetbrains.plugins.github.pullrequest.ui.details.GHPRDetailsModelImpl
 import org.jetbrains.plugins.github.pullrequest.ui.details.GHPRMetadataModelImpl
 import org.jetbrains.plugins.github.pullrequest.ui.details.GHPRStateModelImpl
-import org.jetbrains.plugins.github.pullrequest.ui.getResultFlow
 import org.jetbrains.plugins.github.ui.HtmlInfoPanel
 import org.jetbrains.plugins.github.ui.util.GHUIUtil
 import org.jetbrains.plugins.github.util.DiffRequestChainProducer
@@ -78,10 +65,13 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
                                         private val disposable: Disposable) {
   private val dataProvider = dataContext.dataProviderRepository.getDataProvider(pullRequest, disposable)
 
+  private val diffRequestProducer = GHPRDiffRequestChainProducer(project, dataProvider,
+                                                                 dataContext.avatarIconsProvider,
+                                                                 dataContext.securityService.currentUser)
+
   private val detailsLoadingModel = GHCompletableFutureLoadingModel<GHPullRequest>(disposable)
   private val commitsLoadingModel = GHCompletableFutureLoadingModel<List<GHCommit>>(disposable)
   private val changesLoadingModel = GHCompletableFutureLoadingModel<GHPRChangesProvider>(disposable)
-  private val viewedStateLoadingModel = GHCompletableFutureLoadingModel<Map<String, GHPullRequestFileViewedState>>(disposable)
 
   init {
     dataProvider.detailsData.loadDetails(disposable) {
@@ -93,7 +83,6 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     dataProvider.changesData.loadChanges(disposable) {
       changesLoadingModel.future = it
     }
-    setupViewedStateModel()
     // pre-fetch to show diff quicker
     dataProvider.changesData.fetchBaseBranch()
     dataProvider.changesData.fetchHeadBranch()
@@ -109,35 +98,10 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     dataProvider.changesData.reloadChanges()
   }
 
-  private val repository: GitRepository get() = dataContext.repositoryDataService.remoteCoordinates.repository
-
-  private val diffRequestProducer: DiffRequestChainProducer =
-    object : GHPRDiffRequestChainProducer(project, dataProvider, dataContext.avatarIconsProvider, dataContext.securityService.currentUser) {
-
-      private val viewedStateSupport = GHPRViewedStateDiffSupportImpl(repository, dataProvider.viewedStateData)
-
-      override fun createCustomContext(change: Change): Map<Key<*>, Any> {
-        if (diffBridge.activeTree != GHPRDiffController.ActiveTree.FILES) return emptyMap()
-
-        return mapOf(
-          GHPRViewedStateDiffSupport.KEY to viewedStateSupport,
-          GHPRViewedStateDiffSupport.PULL_REQUEST_FILE to ChangesUtil.getFilePath(change)
-        )
-      }
-    }
   private val diffBridge = GHPRDiffController(dataProvider.diffRequestModel, diffRequestProducer)
 
   private val uiDisposable = Disposer.newDisposable().also {
     Disposer.register(disposable, it)
-  }
-
-  private fun setupViewedStateModel() {
-    fun update() {
-      viewedStateLoadingModel.future = dataProvider.viewedStateData.loadViewedState()
-    }
-
-    dataProvider.viewedStateData.addViewedStateListener(disposable) { update() }
-    update()
   }
 
   fun create(): JComponent {
@@ -145,7 +109,6 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
 
     val filesComponent = createFilesComponent()
     val filesCountModel = createFilesCountModel()
-    val notViewedFilesCountModel = createNotViewedFilesCountModel()
 
     val commitsComponent = createCommitsComponent()
     val commitsCountModel = createCommitsCountModel()
@@ -153,12 +116,12 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     val tabs = GHPRViewTabsFactory(project, viewController::viewList, uiDisposable)
       .create(infoComponent,
               diffBridge,
-              filesComponent, filesCountModel, notViewedFilesCountModel,
+              filesComponent, filesCountModel,
               commitsComponent, commitsCountModel)
       .apply {
         setDataProvider { dataId ->
           when {
-            GHPRActionKeys.GIT_REPOSITORY.`is`(dataId) -> repository
+            GHPRActionKeys.GIT_REPOSITORY.`is`(dataId) -> dataContext.repositoryDataService.remoteCoordinates.repository
             GHPRActionKeys.PULL_REQUEST_DATA_PROVIDER.`is`(dataId) -> this@GHPRViewComponentFactory.dataProvider
             DiffRequestChainProducer.DATA_KEY.`is`(dataId) -> diffRequestProducer
             else -> null
@@ -192,7 +155,7 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     }
 
     private fun findCommitsList(parent: JComponent): JList<VcsCommitMetadata>? {
-      UIUtil.getClientProperty(parent, CommitsBrowserComponentBuilder.COMMITS_LIST_KEY)?.run {
+      UIUtil.getClientProperty(parent, CommitsBrowserComponentFactory.COMMITS_LIST_KEY)?.run {
         return this
       }
 
@@ -234,7 +197,7 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
                                                     detailsLoadingErrorHandler).createWithUpdatesStripe(uiDisposable) { _, model ->
       val branchesModel = GHPRBranchesModelImpl(model,
                                                 dataProvider.detailsData,
-                                                repository,
+                                                dataContext.repositoryDataService.repositoryMapping.gitRemoteUrlCoordinates.repository,
                                                 disposable)
 
       val detailsModel = GHPRDetailsModelImpl(model)
@@ -272,14 +235,14 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
                                                     null, GithubBundle.message("cannot.load.commits"),
                                                     changesLoadingErrorHandler)
       .createWithUpdatesStripe(uiDisposable) { _, model ->
-        val commitsModel = model.map { list ->
+        val (commitBrowser, commitList) = CommitsBrowserComponentFactory(project).create(model.map { list ->
           val logObjectsFactory = project.service<VcsLogObjectsFactory>()
           list.map { commit ->
             logObjectsFactory.createCommitMetadata(
               HashImpl.build(commit.oid),
               commit.parents.map { HashImpl.build(it.oid) },
               commit.committer?.date?.time ?: 0L,
-              repository.root,
+              dataContext.repositoryDataService.remoteCoordinates.repository.root,
               commit.messageHeadline,
               commit.author?.name ?: "unknown user",
               commit.author?.email ?: "",
@@ -289,13 +252,16 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
               commit.author?.date?.time ?: 0L
             )
           }
-        }
+        }, commitSelectionListener)
 
-        CommitsBrowserComponentBuilder(project, commitsModel)
-          .installPopupActions(DefaultActionGroup(actionManager.getAction("Github.PullRequest.Changes.Reload")), "GHPRCommitsPopup")
-          .setEmptyCommitListText(GithubBundle.message("pull.request.does.not.contain.commits"))
-          .onCommitSelected(commitSelectionListener)
-          .create()
+        commitList.emptyText.text = GithubBundle.message("pull.request.does.not.contain.commits")
+
+        PopupHandler.installSelectionListPopup(
+          commitList,
+          DefaultActionGroup(actionManager.getAction("Github.PullRequest.Changes.Reload")),
+          "GHPRCommitsPopup")
+
+        commitBrowser
       }
 
     val changesLoadingPanel = GHLoadingPanelFactory(changesLoadingModel,
@@ -325,7 +291,18 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     }
   }
 
-  private fun createCommitsCountModel(): Flow<Int?> = commitsLoadingModel.getResultFlow().map { it?.size }
+  private fun createCommitsCountModel(): SingleValueModel<Int?> {
+    val model = SingleValueModel<Int?>(null)
+    val loadingListener = object : GHLoadingModel.StateChangeListener {
+      override fun onLoadingCompleted() {
+        val commits = if (commitsLoadingModel.resultAvailable) commitsLoadingModel.result!! else null
+        model.value = commits?.size
+      }
+    }
+    commitsLoadingModel.addStateChangeListener(loadingListener)
+    loadingListener.onLoadingCompleted()
+    return model
+  }
 
   private fun createFilesComponent(): JComponent {
     val panel = BorderLayoutPanel().withBackground(UIUtil.getListBackground())
@@ -333,18 +310,10 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
                                                     GithubBundle.message("cannot.load.changes"),
                                                     changesLoadingErrorHandler)
       .withContentListener {
-        val tree = UIUtil.findComponentOfType(it, ChangesTree::class.java)
-
-        diffBridge.filesTree = tree
-        tree?.showPullRequestProgress(uiDisposable, repository, dataProvider.reviewData, dataProvider.viewedStateData)
+        diffBridge.filesTree = UIUtil.findComponentOfType(it, ChangesTree::class.java)
       }
       .createWithUpdatesStripe(uiDisposable) { parent, model ->
-        val getCustomData = { tree: ChangesTree, dataId: String ->
-          if (PULL_REQUEST_FILES.`is`(dataId)) tree.getPullRequestFiles()
-          else null
-        }
-
-        createChangesTree(parent, model.map { it.changes }, GithubBundle.message("pull.request.does.not.contain.changes"), getCustomData)
+        createChangesTree(parent, model.map { it.changes }, GithubBundle.message("pull.request.does.not.contain.changes"))
       }.apply {
         border = IdeBorderFactory.createBorder(SideBorder.TOP)
       }
@@ -352,10 +321,18 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     return panel.addToTop(toolbar).addToCenter(changesLoadingPanel)
   }
 
-  private fun createFilesCountModel(): Flow<Int?> = changesLoadingModel.getResultFlow().map { it?.changes?.size }
-
-  private fun createNotViewedFilesCountModel(): Flow<Int?> =
-    viewedStateLoadingModel.getResultFlow().map { it?.count { (_, state) -> !state.isViewed() } }
+  private fun createFilesCountModel(): SingleValueModel<Int?> {
+    val model = SingleValueModel<Int?>(null)
+    val loadingListener = object : GHLoadingModel.StateChangeListener {
+      override fun onLoadingCompleted() {
+        val changesProvider = if (changesLoadingModel.resultAvailable) changesLoadingModel.result!! else null
+        model.value = changesProvider?.changes?.size
+      }
+    }
+    changesLoadingModel.addStateChangeListener(loadingListener)
+    loadingListener.onLoadingCompleted()
+    return model
+  }
 
   private fun createReviewUnsupportedPlaque(model: SingleValueModel<GHPRChangesProvider>) = HtmlInfoPanel().apply {
     setInfo(GithubBundle.message("pull.request.review.not.supported.non.linear"), HtmlInfoPanel.Severity.WARNING)
@@ -378,12 +355,9 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     return model
   }
 
-  private fun createChangesTree(
-    parentPanel: JPanel,
-    model: SingleValueModel<List<Change>>,
-    emptyTextText: String,
-    getCustomData: ChangesTree.(String) -> Any? = { null }
-  ): JComponent {
+  private fun createChangesTree(parentPanel: JPanel,
+                                model: SingleValueModel<List<Change>>,
+                                emptyTextText: String): JComponent {
     val editorDiffPreview = object : DiffPreview {
       override fun updateAvailability(event: AnActionEvent) {
         GHPRShowDiffActionProvider.updateAvailability(event)
@@ -411,12 +385,10 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     reloadChangesAction.registerCustomShortcutSet(tree, null)
     tree.installPopupHandler(actionManager.getAction("Github.PullRequest.Changes.Popup") as ActionGroup)
 
-    DataManager.registerDataProvider(parentPanel) { dataId ->
-      when {
-        EDITOR_TAB_DIFF_PREVIEW.`is`(dataId) -> editorDiffPreview
-        tree.isShowing -> tree.getCustomData(dataId) ?: tree.getData(dataId)
-        else -> null
-      }
+    DataManager.registerDataProvider(parentPanel) {
+      if (EDITOR_TAB_DIFF_PREVIEW.`is`(it)) return@registerDataProvider editorDiffPreview
+
+      if (tree.isShowing) tree.getData(it) else null
     }
     return ScrollPaneFactory.createScrollPane(tree, true)
   }
@@ -452,11 +424,3 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     }
   }
 }
-
-private fun ChangesTree.getPullRequestFiles(): Iterable<FilePath> =
-  JBIterable.create {
-    VcsTreeModelData.selected(this)
-      .userObjectsStream(Change::class.java)
-      .map { ChangesUtil.getFilePath(it) }
-      .iterator()
-  }

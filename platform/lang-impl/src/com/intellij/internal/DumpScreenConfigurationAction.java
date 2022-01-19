@@ -4,7 +4,6 @@ package com.intellij.internal;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.JBColor;
@@ -13,7 +12,6 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.datatransfer.StringSelection;
 import java.util.ArrayList;
 
 public class DumpScreenConfigurationAction extends DumbAwareAction {
@@ -113,7 +111,6 @@ public class DumpScreenConfigurationAction extends DumbAwareAction {
         append(sb.append("\n"), device);
       }
       LOG.warn(sb.toString());
-      CopyPasteManager.getInstance().setContents(new StringSelection(sb.toString()));
       super.doOKAction();
     }
   }

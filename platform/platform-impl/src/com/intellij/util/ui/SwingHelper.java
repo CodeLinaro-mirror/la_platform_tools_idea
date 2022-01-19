@@ -402,7 +402,7 @@ public class SwingHelper {
               textFieldWithHistoryWithBrowseButton.getChildComponent().getTextEditor(),
               browseDialogTitle,
               fileChooserDescriptor,
-              TextComponentAccessors.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT);
+              TextComponentAccessor.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT);
   }
 
   public static void installFileCompletionAndBrowseDialog(@Nullable Project project,

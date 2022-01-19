@@ -6,7 +6,6 @@ import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.learn.LearnBundle
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
-import training.util.toNullableString
 
 abstract class SurroundAndUnwrapLesson
   : KLesson("Surround and unwrap", LessonsBundle.message("surround.and.unwrap.lesson.name")) {
@@ -30,7 +29,7 @@ abstract class SurroundAndUnwrapLesson
         }
         text(LessonsBundle.message("surround.and.unwrap.invoke.surround", action(it)))
         triggerByListItemAndHighlight { item ->
-          surroundItems.all { need -> wordIsPresent(item.toNullableString(), need) }
+          surroundItems.all { need -> wordIsPresent(item.toString(), need) }
         }
         test { actions(it) }
       }
@@ -61,7 +60,7 @@ abstract class SurroundAndUnwrapLesson
         }
         text(LessonsBundle.message("surround.and.unwrap.invoke.unwrap", action(it)))
         triggerByListItemAndHighlight { item ->
-          wordIsPresent(item.toNullableString(), surroundItems[0])
+          wordIsPresent(item.toString(), surroundItems[0])
         }
         test { actions(it) }
       }
@@ -80,8 +79,7 @@ abstract class SurroundAndUnwrapLesson
       }
     }
 
-  private fun wordIsPresent(text: String?, word: String): Boolean {
-    if (text == null) return false
+  private fun wordIsPresent(text: String, word: String): Boolean {
     var index = 0
     while (index != -1 && index < text.length) {
       index = text.indexOf(word, startIndex = index)
@@ -102,13 +100,4 @@ abstract class SurroundAndUnwrapLesson
       else null
     }
   }
-
-  override val suitableTips = listOf("SurroundWith")
-
-  override val helpLinks: Map<String, String> = mapOf(
-    Pair(LessonsBundle.message("surround.and.unwrap.help.surround.code.fragments"),
-         LessonUtil.getHelpLink("surrounding-blocks-of-code-with-language-constructs.html")),
-    Pair(LessonsBundle.message("surround.and.unwrap.help.unwrapping.and.removing.statements"),
-         LessonUtil.getHelpLink("working-with-source-code.html#unwrap_remove_statement")),
-  )
 }

@@ -295,6 +295,14 @@ public abstract class ProjectViewNode <Value> extends AbstractTreeNode<Value> im
     if (elementBackgroundColor != null) {
       return elementBackgroundColor;
     }
-    return FilePresentationService.getFileBackgroundColor(getProject(), getVirtualFile());
+    VirtualFile file = getVirtualFile();
+    if (file == null || !file.isValid()) {
+      return null;
+    }
+    Project project = getProject();
+    if (project == null || project.isDisposed()) {
+      return null;
+    }
+    return FilePresentationService.getInstance(project).getFileBackgroundColor(file);
   }
 }

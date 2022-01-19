@@ -1,6 +1,5 @@
 // INTENTION_TEXT: "Add import for 'java.util.regex.Pattern.CASE_INSENSITIVE'"
 // WITH_RUNTIME
-// AFTER-WARNING: Variable 'v' is never used
 
 import java.util.regex.Pattern
 

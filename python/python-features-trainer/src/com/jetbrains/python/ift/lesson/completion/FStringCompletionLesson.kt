@@ -4,11 +4,9 @@ package com.jetbrains.python.ift.lesson.completion
 import com.jetbrains.python.ift.PythonLessonsBundle
 import com.jetbrains.python.ift.PythonLessonsUtil.showWarningIfPython3NotFound
 import training.dsl.LessonContext
-import training.dsl.LessonUtil
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.dsl.parseLessonSample
 import training.learn.course.KLesson
-import training.util.isToStringContains
 
 class FStringCompletionLesson
   : KLesson("completion.f.string", PythonLessonsBundle.message("python.f.string.completion.lesson.name")) {
@@ -61,7 +59,7 @@ class FStringCompletionLesson
         if (prefixTyped) PythonLessonsBundle.message("python.f.string.completion.invoke.manually", action("CodeCompletion")) else null
       }
       triggerByListItemAndHighlight(highlightBorder = false) { item ->
-        item.isToStringContains(completionItem)
+        item.toString().contains(completionItem)
       }
       proposeRestore {
         checkExpectedStateOfEditor(sample) { change ->
@@ -81,9 +79,4 @@ class FStringCompletionLesson
     }
     text(PythonLessonsBundle.message("python.f.string.completion.result.message"))
   }
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(PythonLessonsBundle.message("python.f.string.completion.help.link"),
-         LessonUtil.getHelpLink("pycharm", "auto-completing-code.html#f-string-completion")),
-  )
 }

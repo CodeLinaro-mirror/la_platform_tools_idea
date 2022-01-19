@@ -2,7 +2,6 @@
 package com.intellij.codeInsight.generation;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.Couple;
@@ -18,7 +17,7 @@ import org.jetbrains.java.generate.template.TemplatesManager;
 import java.io.IOException;
 import java.util.*;
 
-@State(name = "EqualsHashCodeTemplates", storages = @Storage("equalsHashCodeTemplates.xml"), category = SettingsCategory.CODE)
+@State(name = "EqualsHashCodeTemplates", storages = @Storage("equalsHashCodeTemplates.xml"))
 public final class EqualsHashCodeTemplatesManager extends TemplatesManager {
   private static final String DEFAULT_EQUALS = "/com/intellij/codeInsight/generation/defaultEquals.vm";
   private static final String DEFAULT_HASH_CODE = "/com/intellij/codeInsight/generation/defaultHashCode.vm";

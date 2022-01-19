@@ -19,24 +19,7 @@ import com.siyeh.ig.IGInspectionTestCase;
 
 public class MethodReturnAlwaysConstantInspectionTest extends IGInspectionTestCase {
 
-  public void testNoInheritors() {
-    doTest();
-  }
-
-  public void testReturnsConstant() {
-    doTest();
-  }
-
-  public void testNotReturnConstant() {
-    doTest();
-  }
-
-  @Override
-  protected String getTestDataPath() {
-    return super.getTestDataPath() + "/com/siyeh/igtest/classlayout/method_return_always_constant";
-  }
-
-  private void doTest() {
-    doTest(getTestName(true), new MethodReturnAlwaysConstantInspection());
+  public void test() {
+    doTest("com/siyeh/igtest/classlayout/method_return_always_constant", new MethodReturnAlwaysConstantInspection());
   }
 }

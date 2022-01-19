@@ -1,8 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.intellij.openapi.application.PermanentInstallationID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -11,11 +9,11 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 public final class LicensingFacade {
   public String licensedTo;
-  public String licenseeEmail;
-  public List<String> restrictions;
+  public Supplier<List<String>> restrictions;
   public boolean isEvaluation;
   public Date expirationDate;
   public Date perpetualFallbackDate;
@@ -35,15 +33,9 @@ public final class LicensingFacade {
     return licensedTo;
   }
 
-  @Nullable
-  public String getLicenseeEmail() {
-    return licenseeEmail;
-  }
-
   @NotNull
   public List<String> getLicenseRestrictionsMessages() {
-    final List<String> result = restrictions;
-    return result != null? result : Collections.emptyList();
+    return restrictions == null ? Collections.emptyList() : Collections.unmodifiableList(restrictions.get());
   }
 
   public boolean isEvaluationLicense() {
@@ -51,13 +43,11 @@ public final class LicensingFacade {
   }
 
   public boolean isApplicableForProduct(@NotNull Date releaseDate) {
-    final Date expDate = expirationDate;
-    return isPerpetualForProduct(releaseDate) || (expDate == null || releaseDate.before(expDate));
+    return isPerpetualForProduct(releaseDate) || (expirationDate == null || releaseDate.before(expirationDate));
   }
 
   public boolean isPerpetualForProduct(@NotNull Date releaseDate) {
-    final Date result = perpetualFallbackDate;
-    return result != null && releaseDate.before(result);
+    return perpetualFallbackDate != null && releaseDate.before(perpetualFallbackDate);
   }
 
   /**
@@ -76,8 +66,7 @@ public final class LicensingFacade {
    */
   @Nullable
   public Date getExpirationDate(String productCode) {
-    final Map<String, Date> result = expirationDates;
-    return result != null? result.get(productCode) : null;
+    return expirationDates == null ? null : expirationDates.get(productCode);
   }
 
   /**
@@ -104,23 +93,7 @@ public final class LicensingFacade {
    */
   @Nullable
   public String getConfirmationStamp(String productCode) {
-    final Map<String, String> result = confirmationStamps;
-    return result != null? result.get(productCode) : null;
+    return confirmationStamps == null? null : confirmationStamps.get(productCode);
   }
 
-  private static final Gson ourGson = new GsonBuilder().setDateFormat("yyyyMMdd").create();
-
-  public String toJson() {
-    return ourGson.toJson(this);
-  }
-
-  @Nullable
-  public static LicensingFacade fromJson(String json) {
-    try {
-      return ourGson.fromJson(json, LicensingFacade.class);
-    }
-    catch (Throwable e) {
-      return null;
-    }
-  }
 }

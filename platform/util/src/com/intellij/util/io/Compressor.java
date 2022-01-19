@@ -1,8 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.io;
 
-import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream;
-import com.intellij.openapi.util.io.StreamUtil;
+import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtil;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -12,10 +11,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
-import java.nio.file.FileVisitResult;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.function.BiPredicate;
 import java.util.jar.JarFile;
@@ -57,23 +55,10 @@ public abstract class Compressor implements Closeable {
     @Override
     protected void writeFileEntry(String name, InputStream source, long length, long timestamp) throws IOException {
       TarArchiveEntry e = new TarArchiveEntry(name);
-      if (length < 0) {
-        if (source instanceof ByteArrayInputStream || source instanceof UnsyncByteArrayInputStream) {
-          length = source.available();
-        }
-        else {
-          BufferExposingByteArrayOutputStream temp = new BufferExposingByteArrayOutputStream();
-          StreamUtil.copy(source, temp);
-          length = temp.size();
-          source = new ByteArrayInputStream(temp.getInternalBuffer(), 0, temp.size());
-        }
-      }
       e.setSize(length);
       e.setModTime(timestamp);
       myStream.putArchiveEntry(e);
-      if (length > 0) {
-        StreamUtil.copy(source, myStream);
-      }
+      FileUtilRt.copy(source, myStream);
       myStream.closeArchiveEntry();
     }
 
@@ -126,9 +111,7 @@ public abstract class Compressor implements Closeable {
       }
       e.setTime(timestamp);
       myStream.putNextEntry(e);
-      if (length != 0) {
-        StreamUtil.copy(source, myStream);
-      }
+      FileUtilRt.copy(source, myStream);
       myStream.closeEntry();
     }
 
@@ -151,25 +134,39 @@ public abstract class Compressor implements Closeable {
     }
   }
 
-  private @Nullable BiPredicate<? super String, ? super @Nullable Path> myFilter;
+  private @Nullable BiPredicate<? super String, ? super @Nullable File> myFilter;
+  private @Nullable BiPredicate<? super String, ? super @Nullable Path> nioFilter;
 
   /**
    * Allows filtering entries being added to the archive.
-   * Please note that the second parameter of a filter ({@code Path}) <b>might be {@code null}</b> when it is applied
+   * Please note that <b>the second parameter of a filter ({@code File}) could be {@code null}</b> when the filter is applied
    * to an entry not present on a disk - e.g. via {@link #addFile(String, byte[])}.
    */
-  public Compressor filter(@Nullable BiPredicate<? super String, ? super @Nullable Path> filter) {
+  public Compressor filter(@Nullable BiPredicate<? super String, ? super @Nullable File> filter) {
     myFilter = filter;
     return this;
   }
 
+  /**
+   * Allows filtering entries being added to the archive.
+   * Please note that <b>the second parameter of a filter ({@code File}) could be {@code null}</b> when the filter is applied
+   * to an entry not present on a disk - e.g. via {@link #addFile(String, byte[])}.
+   */
+  public Compressor nioFilter(@Nullable BiPredicate<? super String, ? super @Nullable Path> filter) {
+    nioFilter = filter;
+    return this;
+  }
+
   public final void addFile(@NotNull String entryName, @NotNull File file) throws IOException {
-    addFile(entryName, file.toPath());
+    if (accepts(entryName, file)) {
+      try (InputStream source = new FileInputStream(file)) {
+        writeFileEntry(entryName, source, file.length(), file.lastModified());
+      }
+    }
   }
 
   public final void addFile(@NotNull String entryName, @NotNull Path file) throws IOException {
-    entryName = entryName(entryName);
-    if (accept(entryName, file)) {
+    if (nioFilter == null || nioFilter.test(entryName, file)) {
       try (InputStream source = Files.newInputStream(file)) {
         BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
         writeFileEntry(entryName, source, attributes.size(), attributes.lastModifiedTime().toMillis());
@@ -183,7 +180,7 @@ public abstract class Compressor implements Closeable {
 
   public final void addFile(@NotNull String entryName, byte @NotNull [] content, long timestamp) throws IOException {
     entryName = entryName(entryName);
-    if (accept(entryName, null)) {
+    if (accepts(entryName, null)) {
       writeFileEntry(entryName, new ByteArrayInputStream(content), content.length, timestamp(timestamp));
     }
   }
@@ -194,7 +191,7 @@ public abstract class Compressor implements Closeable {
 
   public final void addFile(@NotNull String entryName, @NotNull InputStream content, long timestamp) throws IOException {
     entryName = entryName(entryName);
-    if (accept(entryName, null)) {
+    if (accepts(entryName, null)) {
       writeFileEntry(entryName, content, -1, timestamp(timestamp));
     }
   }
@@ -205,21 +202,17 @@ public abstract class Compressor implements Closeable {
 
   public final void addDirectory(@NotNull String entryName, long timestamp) throws IOException {
     entryName = entryName(entryName);
-    if (accept(entryName, null)) {
+    if (accepts(entryName, null)) {
       writeDirectoryEntry(entryName, timestamp(timestamp));
     }
   }
 
   public final void addDirectory(@NotNull File directory) throws IOException {
-    addDirectory(directory.toPath());
-  }
-
-  public final void addDirectory(@NotNull Path directory) throws IOException {
     addRecursively("", directory);
   }
 
   public final void addDirectory(@NotNull String prefix, @NotNull File directory) throws IOException {
-    addDirectory(prefix, directory.toPath());
+    addRecursively(entryName(prefix), directory);
   }
 
   public final void addDirectory(@NotNull String prefix, @NotNull Path directory) throws IOException {
@@ -231,7 +224,9 @@ public abstract class Compressor implements Closeable {
 
   private static String entryName(String name) {
     String entryName = StringUtil.trimLeading(StringUtil.trimTrailing(name.replace('\\', '/'), '/'), '/');
-    if (entryName.isEmpty()) throw new IllegalArgumentException("Invalid entry name: " + name);
+    if (StringUtil.isEmpty(entryName)) {
+      throw new IllegalArgumentException("Invalid entry name: " + name);
+    }
     return entryName;
   }
 
@@ -239,43 +234,67 @@ public abstract class Compressor implements Closeable {
     return timestamp == -1 ? System.currentTimeMillis() : timestamp;
   }
 
-  private boolean accept(String entryName, @Nullable Path file) {
-    return myFilter == null || myFilter.test(entryName, file);
+  private boolean accepts(String entryName, @Nullable File file) {
+    if (myFilter == null) {
+      return file != null || nioFilter == null || nioFilter.test(entryName, null);
+    }
+    else {
+      return myFilter.test(entryName, file);
+    }
   }
 
-  private void addRecursively(String prefix, Path root) throws IOException {
-    Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-      @Override
-      public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-        String name = dir == root ? prefix : entryName(dir);
-        if (name.isEmpty()) {
-          return FileVisitResult.CONTINUE;
-        }
-        else if (accept(name, dir)) {
-          writeDirectoryEntry(name, attrs.lastModifiedTime().toMillis());
-          return FileVisitResult.CONTINUE;
+  private void addRecursively(String prefix, File directory) throws IOException {
+    if (!accepts(prefix, directory)) {
+      return;
+    }
+
+    if (!prefix.isEmpty()) {
+      writeDirectoryEntry(prefix, directory.lastModified());
+    }
+
+    File[] children = directory.listFiles();
+    if (children != null) {
+      for (File child: children) {
+        String name = prefix.isEmpty() ? child.getName() : prefix + '/' + child.getName();
+        if (child.isDirectory()) {
+          addRecursively(name, child);
         }
         else {
-          return FileVisitResult.SKIP_SUBTREE;
+          addFile(name, child);
         }
       }
+    }
+  }
 
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        String name = entryName(file);
-        if (accept(name, file)) {
-          try (InputStream source = Files.newInputStream(file)) {
-            writeFileEntry(name, source, attrs.size(), attrs.lastModifiedTime().toMillis());
+  private void addRecursively(@NotNull String prefix, @NotNull Path dir) throws IOException {
+    if (nioFilter == null || nioFilter.test(prefix, dir)) {
+      addRecursively(prefix, dir, Files.readAttributes(dir, BasicFileAttributes.class));
+    }
+  }
+
+  private void addRecursively(@NotNull String prefix, @NotNull Path dir, @NotNull BasicFileAttributes dirAttributes) throws IOException {
+    if (!prefix.isEmpty()) {
+      writeDirectoryEntry(prefix, dirAttributes.lastModifiedTime().toMillis());
+    }
+
+    try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
+      for (Path child : stream) {
+        String name = prefix.isEmpty() ? child.getFileName().toString() : prefix + '/' + child.getFileName().toString();
+        if (nioFilter != null && !nioFilter.test(name, dir)) {
+          continue;
+        }
+
+        BasicFileAttributes attributes = Files.readAttributes(child, BasicFileAttributes.class);
+        if (attributes.isDirectory()) {
+          addRecursively(name, child, attributes);
+        }
+        else {
+          try (InputStream source = Files.newInputStream(child)) {
+            writeFileEntry(name, source, attributes.size(), attributes.lastModifiedTime().toMillis());
           }
         }
-        return FileVisitResult.CONTINUE;
       }
-
-      private String entryName(Path fileOrDir) {
-        String relativeName = Compressor.entryName(root.relativize(fileOrDir).toString());
-        return prefix.isEmpty() ? relativeName : prefix + '/' + relativeName;
-      }
-    });
+    }
   }
 
   protected abstract void writeDirectoryEntry(String name, long timestamp) throws IOException;

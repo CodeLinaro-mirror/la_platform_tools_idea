@@ -67,8 +67,3 @@ open class E {
     // Not redundant
     abstract suspend fun baz()
 }
-
-// Not redundant
-suspend fun foo(): Int {
-    return someFunctionThatDoesntResolve()
-}

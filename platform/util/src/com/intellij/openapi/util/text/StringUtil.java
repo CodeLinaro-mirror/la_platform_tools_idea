@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.text;
 
 import com.intellij.ReviseWhenPortedToJDK;
@@ -127,7 +127,7 @@ public class StringUtil extends StringUtilRt {
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @Contract(pure = true)
-  public static @NotNull <T> Function<T, String> createToStringFunction(@NotNull Class<T> cls) {
+  public static @NotNull <T> Function<T, String> createToStringFunction(@SuppressWarnings("unused") @NotNull Class<T> cls) {
     return Object::toString;
   }
 
@@ -1324,7 +1324,23 @@ public class StringUtil extends StringUtilRt {
 
   @Contract(pure = true)
   public static @NotNull Iterable<String> tokenize(@NotNull String s, @NotNull String separators) {
-    return tokenize(new StringTokenizer(s, separators));
+    final com.intellij.util.text.StringTokenizer tokenizer = new com.intellij.util.text.StringTokenizer(s, separators);
+    return () -> new Iterator<String>() {
+      @Override
+      public boolean hasNext() {
+        return tokenizer.hasMoreTokens();
+      }
+
+      @Override
+      public String next() {
+        return tokenizer.nextToken();
+      }
+
+      @Override
+      public void remove() {
+        throw new UnsupportedOperationException();
+      }
+    };
   }
 
   @Contract(pure = true)
@@ -1564,6 +1580,26 @@ public class StringUtil extends StringUtilRt {
   @Deprecated
   public static @NotNull @NonNls String formatDuration(long duration, @NotNull String unitSeparator) {
     return Formats.formatDuration(duration, unitSeparator);
+  }
+
+  /**
+   * @deprecated use com.intellij.ide.nls.NlsMessages for localized output.
+   */
+  @Contract(pure = true)
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public static @NotNull @NonNls String formatDurationPadded(long millis, @NotNull String unitSeparator) {
+    return Formats.formatDurationPadded(millis, unitSeparator);
+  }
+
+  /**
+   * @deprecated use com.intellij.ide.nls.NlsMessages for localized output.
+   */
+  @Contract(pure = true)
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public static @NotNull @NonNls String formatDurationApproximate(long duration) {
+    return Formats.formatDurationApproximate(duration);
   }
 
   /**

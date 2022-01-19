@@ -11,8 +11,6 @@ Groovy script
     PsiElement(identifier)('b')
     Extends clause
       <empty list>
-    Permits clause
-      <empty list>
     PsiWhiteSpace(' ')
     Type definition body
       PsiElement({)('{')

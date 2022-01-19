@@ -45,7 +45,6 @@ public class JBPopupMenu extends JPopupMenu {
     myLayout = new MyLayout(this);
     setLayout(myLayout);
     setLightWeightPopupEnabled(false);
-    setOpaque(false);
   }
 
   @Override

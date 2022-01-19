@@ -29,7 +29,7 @@ public class KotlinScriptingSettingsConfigurable implements SearchableConfigurab
     private JPanel panelScriptDefinitionsChooser;
     private JPanel additionalSettingsPanel;
 
-    private final List<UnnamedConfigurable> scriptingSupportSettingsConfigurables = new ArrayList<>();
+    private final List<UnnamedConfigurable> scriptingSuppportSettingsConfigurables = new ArrayList<>();
 
     private final KotlinScriptDefinitionsModel model;
 
@@ -72,7 +72,7 @@ public class KotlinScriptingSettingsConfigurable implements SearchableConfigurab
             additionalSettingsPanel.add(new TitledSeparator(provider.getTitle()));
 
             UnnamedConfigurable configurable = provider.createConfigurable();
-            scriptingSupportSettingsConfigurables.add(configurable);
+            scriptingSuppportSettingsConfigurables.add(configurable);
 
             additionalSettingsPanel.add(configurable.createComponent());
         }
@@ -81,7 +81,7 @@ public class KotlinScriptingSettingsConfigurable implements SearchableConfigurab
 
     @Override
     public boolean isModified() {
-        for (UnnamedConfigurable supportSpecificSetting : scriptingSupportSettingsConfigurables) {
+        for (UnnamedConfigurable supportSpecificSetting : scriptingSuppportSettingsConfigurables) {
             if (supportSpecificSetting.isModified()) {
                 return true;
             }
@@ -104,7 +104,7 @@ public class KotlinScriptingSettingsConfigurable implements SearchableConfigurab
             manager.reorderScriptDefinitions();
         }
 
-        for (UnnamedConfigurable supportSpecificSetting : scriptingSupportSettingsConfigurables) {
+        for (UnnamedConfigurable supportSpecificSetting : scriptingSuppportSettingsConfigurables) {
             supportSpecificSetting.apply();
         }
     }
@@ -112,7 +112,7 @@ public class KotlinScriptingSettingsConfigurable implements SearchableConfigurab
     @Override
     public void reset() {
         model.setDefinitions(manager.getAllDefinitions(), settings);
-        for (UnnamedConfigurable supportSpecificSetting : scriptingSupportSettingsConfigurables) {
+        for (UnnamedConfigurable supportSpecificSetting : scriptingSuppportSettingsConfigurables) {
             supportSpecificSetting.reset();
         }
     }

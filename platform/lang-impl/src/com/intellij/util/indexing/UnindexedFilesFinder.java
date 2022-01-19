@@ -11,9 +11,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWithId;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualFileSystemEntry;
 import com.intellij.psi.search.FileTypeIndex;
-import com.intellij.util.BooleanFunction;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.indexing.projectFilter.FileAddStatus;
 import com.intellij.util.indexing.projectFilter.ProjectIndexableFilesFilterHolder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,13 +31,11 @@ final class UnindexedFilesFinder {
   private final FileBasedIndexImpl myFileBasedIndex;
   private final UpdatableIndex<FileType, Void, FileContent> myFileTypeIndex;
   private final Collection<FileBasedIndexInfrastructureExtension.FileIndexingStatusProcessor> myStateProcessors;
-  private final @Nullable BooleanFunction<? super IndexedFile> myForceReindexingTrigger;
   private final @NotNull ProjectIndexableFilesFilterHolder myIndexableFilesFilterHolder;
   private final boolean myShouldProcessUpToDateFiles;
 
   UnindexedFilesFinder(@NotNull Project project,
-                       @NotNull FileBasedIndexImpl fileBasedIndex,
-                       @Nullable BooleanFunction<? super IndexedFile> forceReindexingTrigger) {
+                       @NotNull FileBasedIndexImpl fileBasedIndex) {
     myProject = project;
     myFileBasedIndex = fileBasedIndex;
     myFileTypeIndex = fileBasedIndex.getIndex(FileTypeIndex.NAME);
@@ -50,7 +46,6 @@ final class UnindexedFilesFinder {
       .map(ex -> ex.createFileIndexingStatusProcessor(project))
       .filter(Objects::nonNull)
       .collect(Collectors.toList());
-    myForceReindexingTrigger = forceReindexingTrigger;
 
     myShouldProcessUpToDateFiles = ContainerUtil.find(myStateProcessors, p -> p.shouldProcessUpToDateFiles()) != null;
 
@@ -72,7 +67,7 @@ final class UnindexedFilesFinder {
 
       IndexedFileImpl indexedFile = new IndexedFileImpl(file, myProject);
       int inputId = FileBasedIndex.getFileId(file);
-      boolean fileWereJustAdded = myIndexableFilesFilterHolder.addFileId(inputId, myProject) == FileAddStatus.ADDED;
+      boolean fileWereJustAdded = myIndexableFilesFilterHolder.addFileId(inputId, myProject);
 
       if (file instanceof VirtualFileSystemEntry && ((VirtualFileSystemEntry)file).isFileIndexed()) {
         boolean wasInvalidated = false;
@@ -195,13 +190,8 @@ final class UnindexedFilesFinder {
         } finally {
           timeUpdatingContentLessIndexes.addAndGet(System.nanoTime() - nowTime);
         }
-
-        if (myForceReindexingTrigger != null && myForceReindexingTrigger.fun(indexedFile)) {
-          myFileBasedIndex.dropNontrivialIndexedStates(inputId);
-          shouldIndex.set(true);
-        }
-
         IndexingStamp.flushCache(inputId);
+
         if (!shouldIndex.get()) {
           IndexingFlag.setFileIndexed(file);
         }

@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'bar' is never used
 fun test(x: Int, b: Boolean) {
     val bar = when (x) {
         1 ->

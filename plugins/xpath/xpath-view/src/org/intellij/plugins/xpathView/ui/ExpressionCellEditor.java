@@ -21,7 +21,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.ui.EditorTextField;
-import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import javax.swing.table.TableCellEditor;
@@ -51,12 +50,12 @@ public class ExpressionCellEditor extends AbstractCellEditor implements TableCel
             }
 
             @Override
-            protected void onEditorAdded(@NotNull Editor editor) {
-                super.onEditorAdded(editor);
+            public void addNotify() {
+                super.addNotify();
                 Runnable runnable = () -> {
-                    final Editor e = getEditor();
-                    if (e != null) {
-                      IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(() -> IdeFocusManager.getGlobalInstance().requestFocus(e.getContentComponent(), true));
+                    final Editor editor = getEditor();
+                    if (editor != null) {
+                      IdeFocusManager.getGlobalInstance().doWhenFocusSettlesDown(() -> IdeFocusManager.getGlobalInstance().requestFocus(editor.getContentComponent(), true));
                     }
                 };
                 SwingUtilities.invokeLater(runnable);

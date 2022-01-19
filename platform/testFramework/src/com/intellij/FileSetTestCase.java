@@ -6,10 +6,8 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.testFramework.LightPlatformTestCase;
-import com.intellij.testFramework.UsefulTestCase;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ThrowableRunnable;
-import com.intellij.util.text.CharArrayUtil;
 import junit.framework.TestSuite;
 import org.jetbrains.annotations.NotNull;
 
@@ -91,7 +89,6 @@ public abstract class FileSetTestCase extends TestSuite {
     return testFile.getName();
   }
 
-  @SuppressWarnings({"JUnitTestCaseWithNoTests", "UnconstructableJUnitTestCase"})
   private class ActualTest extends LightPlatformTestCase {
     private final File myTestFile;
     private final String myTestName;
@@ -127,19 +124,20 @@ public abstract class FileSetTestCase extends TestSuite {
 
       content = StringUtil.replace(content, "\r", "");
 
-      int currentIndex = 0;
       int separatorIndex;
-      String delimiter = getDelimiter();
-      while ((separatorIndex = content.indexOf(delimiter, currentIndex)) >= 0) {
-        input.add(content.substring(currentIndex, separatorIndex));
-        currentIndex = separatorIndex + delimiter.length();
-        currentIndex = CharArrayUtil.shiftForward(content, currentIndex, "-\n");
+      while ((separatorIndex = content.indexOf(getDelimiter())) >= 0) {
+        input.add(content.substring(0, separatorIndex));
+        content = content.substring(separatorIndex);
+        while (StringUtil.startsWithChar(content, '-') || StringUtil.startsWithChar(content, '\n')) content = content.substring(1);
       }
 
-      assertFalse("No data found in source file", input.isEmpty());
+      String result = content;
 
-      int expectedOffset = currentIndex;
+      assertTrue("No data found in source file", !input.isEmpty());
 
+      while (StringUtil.startsWithChar(result, '-') || StringUtil.startsWithChar(result, '\n') || StringUtil.startsWithChar(result, '\r')) {
+        result = result.substring(1);
+      }
       myProject = getProject();
       String testName = myTestFile.getName();
       final int dotIdx = testName.indexOf('.');
@@ -147,10 +145,10 @@ public abstract class FileSetTestCase extends TestSuite {
         testName = testName.substring(0, dotIdx);
       }
 
-      final String transformed = transform(testName, ArrayUtilRt.toStringArray(input));
-      String result = content.substring(0, expectedOffset) + transformed;
+      final String transformed = StringUtil.replace(transform(testName, ArrayUtilRt.toStringArray(input)), "\r", "");
+      result = StringUtil.replace(result, "\r", "");
 
-      UsefulTestCase.assertSameLinesWithFile(myTestFile.getAbsolutePath(), result, true);
+      assertEquals(result.trim(),transformed.trim());
     }
 
     @NotNull

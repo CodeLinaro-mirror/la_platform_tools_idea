@@ -36,25 +36,25 @@ public class UserFilterPopupComponent
 
   @Override
   protected ActionGroup createActionGroup() {
-    List<AnAction> group = new ArrayList<>();
+    DefaultActionGroup group = new DefaultActionGroup();
     group.add(createAllAction());
     group.add(createSelectMultipleValuesAction());
     if (!myLogData.getCurrentUser().isEmpty()) {
       group.add(new PredefinedValueAction(Collections.singletonList(VcsLogFilterObject.ME), () -> me(), true));
     }
     group.addAll(createRecentItemsActionGroup());
-    return new DefaultActionGroup(group);
+    return group;
   }
 
   @NotNull
   protected ActionGroup createSpeedSearchActionGroup() {
-    List<AnAction> group = new ArrayList<>();
+    DefaultActionGroup group = new DefaultActionGroup();
     group.add(new SpeedsearchPredefinedValueAction(VcsLogFilterObject.ME, () -> me()));
     group.add(Separator.getInstance());
     for (String user : collectUsers(myLogData)) {
       group.add(new SpeedsearchPredefinedValueAction(user, () -> user));
     }
-    return new DefaultActionGroup(group);
+    return group;
   }
 
   @NotNull

@@ -6,7 +6,6 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.AboutPopupDescriptionProvider;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.nls.NlsMessages;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.ide.ui.UISettings;
@@ -43,6 +42,7 @@ import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.Alarm;
 import com.intellij.util.MathUtil;
 import com.intellij.util.PlatformUtils;
+import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.accessibility.AccessibleContextUtil;
 import org.jetbrains.annotations.Nls;
@@ -62,15 +62,11 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
-import java.text.DateFormat;
-import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
 
 import static com.intellij.util.ObjectUtils.notNull;
 import static javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER;
@@ -204,21 +200,15 @@ public final class AboutPopup {
       appendLast();
 
       String buildInfo = IdeBundle.message("about.box.build.number", appInfo.getBuild().asString());
-      String buildInfoNonLocalized = MessageFormat.format("Build #{0}", appInfo.getBuild().asString());
       Date timestamp = appInfo.getBuildDate().getTime();
       if (appInfo.getBuild().isSnapshot()) {
-        String time = new SimpleDateFormat("HH:mm").format(timestamp);
-        buildInfo += IdeBundle.message("about.box.build.date.time", NlsMessages.formatDateLong(timestamp), time);
-        buildInfoNonLocalized += MessageFormat.format(", built on {0} at {1}",
-                                                      DateFormat.getDateInstance(DateFormat.LONG, Locale.US).format(timestamp), time);
+        buildInfo += IdeBundle.message("about.box.build.date.time", DateFormatUtil.formatAboutDialogDate(timestamp), new SimpleDateFormat("HH:mm").format(timestamp));
       }
       else {
-        buildInfo += IdeBundle.message("about.box.build.date", NlsMessages.formatDateLong(timestamp));
-        buildInfoNonLocalized += MessageFormat.format(", built on {0}",
-                                                      DateFormat.getDateInstance(DateFormat.LONG, Locale.US).format(timestamp));
+        buildInfo += IdeBundle.message("about.box.build.date", DateFormatUtil.formatAboutDialogDate(timestamp));
       }
       myLines.add(new AboutBoxLine(buildInfo));
-      myInfo.append(buildInfoNonLocalized).append("\n");
+      appendLast();
 
       myLines.add(new AboutBoxLine(""));
 
@@ -241,12 +231,12 @@ public final class AboutPopup {
       String javaVersion = properties.getProperty("java.runtime.version", properties.getProperty("java.version", "unknown"));
       String arch = properties.getProperty("os.arch", "");
       myLines.add(new AboutBoxLine(IdeBundle.message("about.box.jre", javaVersion, arch)));
-      myInfo.append(MessageFormat.format("Runtime version: {0} {1}\n", javaVersion, arch));
+      appendLast();
 
       String vmVersion = properties.getProperty("java.vm.name", "unknown");
       String vmVendor = properties.getProperty("java.vendor", "unknown");
       myLines.add(new AboutBoxLine(IdeBundle.message("about.box.vm", vmVersion, vmVendor)));
-      myInfo.append(MessageFormat.format("VM: {0} by {1}\n", vmVersion, vmVendor));
+      appendLast();
 
       myLines.add(new AboutBoxLine(""));
       myLines.add(new AboutBoxLine(""));
@@ -675,20 +665,18 @@ public final class AboutPopup {
 
     extraInfo += "Cores: " + Runtime.getRuntime().availableProcessors() + "\n";
 
-    Collector<CharSequence, ?, String> joiner = Collectors.joining("\n");
-
     String registryKeys = Registry.getAll().stream().filter(RegistryValue::isChangedFromDefault)
-      .map(v -> "    " + v.getKey() + "=" + v.asString()).collect(joiner);
+      .map(v -> v.getKey() + "=" + v.asString()).collect(StringUtil.joining());
     if (!StringUtil.isEmpty(registryKeys)) {
-      extraInfo += "Registry:\n" + registryKeys + "\n\n";
+      extraInfo += "Registry: " + registryKeys + "\n";
     }
 
     String nonBundledPlugins = PluginManagerCore.getLoadedPlugins().stream()
       .filter(p -> !p.isBundled())
-      .map(p -> "    " + p.getPluginId().getIdString() + " (" + p.getVersion() + ")")
-      .collect(joiner);
+      .map(p -> p.getPluginId().getIdString() + " (" + p.getVersion() + ")")
+      .collect(StringUtil.joining());
     if (!StringUtil.isEmpty(nonBundledPlugins)) {
-      extraInfo += "Non-Bundled Plugins:\n" + nonBundledPlugins + "\n";
+      extraInfo += "Non-Bundled Plugins: " + nonBundledPlugins;
     }
 
     if (PlatformUtils.isIntelliJ()) {

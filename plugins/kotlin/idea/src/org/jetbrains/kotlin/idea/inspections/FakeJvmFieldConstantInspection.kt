@@ -82,7 +82,7 @@ class FakeJvmFieldConstantInspection : AbstractKotlinInspection() {
                 if (!additionalTypeCheck(resolvedPropertyType)) return
                 val fixes = mutableListOf<LocalQuickFix>()
                 if (resolvedPropertyStatus == JVM_FIELD_MIGHT_BE_CONST) {
-                    fixes += IntentionWrapper(AddConstModifierFix(resolvedProperty))
+                    fixes += IntentionWrapper(AddConstModifierFix(resolvedProperty), resolvedProperty.containingFile)
                 }
                 holder.registerProblem(
                     valueExpression,

@@ -4,6 +4,7 @@ package com.jetbrains.python.ift.lesson.essensial
 import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.execution.ExecutionBundle
 import com.intellij.execution.RunManager
+import com.intellij.execution.ui.layout.impl.JBRunnerTabs
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereManagerImpl
@@ -11,7 +12,9 @@ import com.intellij.ide.actions.searcheverywhere.SearchEverywhereUI
 import com.intellij.ide.ui.UISettings
 import com.intellij.ide.util.gotoByName.GotoActionModel
 import com.intellij.idea.ActionsBundle
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
@@ -24,11 +27,11 @@ import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.actions.ToggleCaseAction
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.util.WindowStateService
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.impl.FocusManagerImpl
@@ -43,6 +46,7 @@ import com.intellij.ui.tree.TreeVisitor
 import com.intellij.util.Alarm
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
+import com.intellij.xdebugger.XDebuggerBundle
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.PyPsiBundle
 import com.jetbrains.python.ift.PythonLessonsBundle
@@ -65,10 +69,9 @@ import training.learn.lesson.general.run.toggleBreakpointTask
 import training.project.ProjectUtils
 import training.ui.LearningUiHighlightingManager
 import training.ui.LearningUiManager
-import training.util.getActionById
 import training.util.invokeActionForFocusContext
-import training.util.isToStringContains
 import training.util.learningToolWindow
+import java.awt.Component
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.KeyEvent
@@ -154,9 +157,14 @@ class PythonOnboardingTour :
     task {
       text(PythonLessonsBundle.message("python.onboarding.epilog",
                                        getCallBackActionId("CloseProject"),
-                                       LessonUtil.returnToWelcomeScreenRemark(),
+                                       returnToWelcomeScreenRemark(),
                                        LearningUiManager.addCallback { LearningUiManager.resetModulesView() }))
     }
+  }
+
+  private fun returnToWelcomeScreenRemark(): String {
+    val isSingleProject = ProjectManager.getInstance().openProjects.size == 1
+    return if (isSingleProject) PythonLessonsBundle.message("python.onboarding.return.to.welcome") else ""
   }
 
   override fun onLessonEnd(project: Project, lessonPassed: Boolean) {
@@ -172,7 +180,7 @@ class PythonOnboardingTour :
     invokeLater {
       val result = MessageDialogBuilder.yesNoCancel(PythonLessonsBundle.message("python.onboarding.finish.title"),
                                                     PythonLessonsBundle.message("python.onboarding.finish.text",
-                                                                                LessonUtil.returnToWelcomeScreenRemark()))
+                                                                                returnToWelcomeScreenRemark()))
         .yesText(PythonLessonsBundle.message("python.onboarding.finish.exit"))
         .noText(PythonLessonsBundle.message("python.onboarding.finish.modules"))
         .icon(FeaturesTrainerIcons.Img.PluginIcon)
@@ -181,7 +189,7 @@ class PythonOnboardingTour :
       when (result) {
         Messages.YES -> invokeLater {
           LessonManager.instance.stopLesson()
-          val closeAction = getActionById("CloseProject")
+          val closeAction = ActionManager.getInstance().getAction("CloseProject") ?: error("No close project action found")
           dataContextPromise.onSuccess { context ->
             invokeLater {
               val event = AnActionEvent.createFromAnAction(closeAction, null, ActionPlaces.LEARN_TOOLWINDOW, context)
@@ -197,7 +205,7 @@ class PythonOnboardingTour :
   }
 
   private fun getCallBackActionId(@Suppress("SameParameterValue") actionId: String): Int {
-    val action = getActionById(actionId)
+    val action = ActionManager.getInstance().getAction(actionId) ?: error("No action with Id $actionId")
     return LearningUiManager.addCallback { invokeActionForFocusContext(action) }
   }
 
@@ -224,12 +232,29 @@ class PythonOnboardingTour :
       PythonLessonsBundle.message("python.onboarding.start.debugging", icon(AllIcons.Actions.StartDebugger))
     }
 
-    highlightDebugActionsToolbar()
+    task {
+      // Need to wait until Debugger tab will be selected
+      stateCheck {
+        val f = UIUtil.getParentOfType(JBRunnerTabs::class.java, focusOwner)
+        f?.selectedInfo?.text == XDebuggerBundle.message("xdebugger.debugger.tab.title")
+      }
+    }
+
+    task {
+      val needFirstAction = ActionManager.getInstance().getAction("ShowExecutionPoint")
+      triggerByUiComponentAndHighlight(highlightInside = true, usePulsation = true) { ui: ActionToolbarImpl ->
+        ui.size.let { it.width > 0 && it.height > 0 } && ui.place == "DebuggerToolbar" && checkFirstButton(ui, needFirstAction)
+      }
+    }
+
+    highlightAllFoundUi(clearPreviousHighlights = false, highlightInside = true, usePulsation = true) { ui: ActionToolbarImpl ->
+      ui.size.let { it.width > 0 && it.height > 0 } && ui.place == "DebuggerToolbar" &&
+      checkFirstButton(ui, ActionManager.getInstance().getAction("Rerun"))
+    }
 
     task {
       text(PythonLessonsBundle.message("python.onboarding.balloon.about.debug.panel",
                                        strong(UIBundle.message("tool.window.name.debug")),
-                                       if (Registry.`is`("debugger.new.tool.window.layout")) 0 else 1,
                                        strong(LessonsBundle.message("debug.workflow.lesson.name"))))
       proceedLink()
       restoreIfModified(sample)
@@ -265,6 +290,15 @@ class PythonOnboardingTour :
     text(message, useBalloon)
   }
 
+  private fun checkFirstButton(ui: ActionToolbarImpl,
+                               needFirstAction: AnAction?): Boolean {
+    return ui.components.let {
+      it.isNotEmpty<Component?>() && (it[0] as? ActionButton)?.let { first ->
+        first.action == needFirstAction
+      } == true
+    }
+  }
+
   private fun LessonContext.waitIndexingTasks() {
     task {
       triggerByUiComponentAndHighlight(highlightInside = false) { progress: NonOpaquePanel ->
@@ -290,7 +324,7 @@ class PythonOnboardingTour :
     task {
       text(PythonLessonsBundle.message("python.onboarding.context.menu"))
       triggerByUiComponentAndHighlight(usePulsation = true) { ui: ActionMenuItem ->
-        ui.text.isToStringContains(runItem)
+        ui.text?.contains(runItem) ?: false
       }
       restoreIfModified(sample)
     }
@@ -305,11 +339,10 @@ class PythonOnboardingTour :
     }
 
     task {
-      val stopAction = getActionById("Stop")
       triggerByPartOfComponent(highlightInside = true, usePulsation = true) { ui: ActionToolbarImpl ->
         ui.takeIf { (ui.place == ActionPlaces.NAVIGATION_BAR_TOOLBAR || ui.place == ActionPlaces.MAIN_TOOLBAR) }?.let {
           val configurations = ui.components.find { it is JPanel && it.components.any { b -> b is ComboBoxAction.ComboBoxButton } }
-          val stop = ui.components.find { it is ActionButton && it.action == stopAction }
+          val stop = ui.components.find { it is ActionButton && it.action == ActionManager.getInstance().getAction("Stop") }
           if (configurations != null && stop != null) {
             val x = configurations.x
             val y = configurations.y
@@ -398,7 +431,7 @@ class PythonOnboardingTour :
       text(PythonLessonsBundle.message("python.onboarding.balloon.project.view"),
            LearningBalloonConfig(Balloon.Position.atRight, width = 0))
       triggerByFoundPathAndHighlight { tree: JTree, path: TreePath ->
-        val result = path.pathCount >= 1 && path.getPathComponent(0).isToStringContains("PyCharmLearningProject")
+        val result = path.pathCount >= 1 && path.getPathComponent(0).toString().contains("PyCharmLearningProject")
         if (result) {
           if (!collapsed) {
             invokeLater {
@@ -412,7 +445,7 @@ class PythonOnboardingTour :
     }
 
     fun isDemoFilePath(path: TreePath) =
-      path.pathCount >= 3 && path.getPathComponent(2).isToStringContains(demoFileName)
+      path.pathCount >= 3 && path.getPathComponent(2).toString().contains(demoFileName)
 
     task {
       text(PythonLessonsBundle.message("python.onboarding.balloon.project.directory"),
@@ -454,7 +487,7 @@ class PythonOnboardingTour :
         code("()"),
         action("CodeCompletion")))
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { // no highlighting
-        it.isToStringContains("values")
+        it.toString().contains("values")
       }
       proposeRestoreForInvalidText("values")
     }
@@ -466,6 +499,14 @@ class PythonOnboardingTour :
         checkEditorModification(sample.getPosition(2), "/len(values)")
       }
       restoreByUi()
+    }
+  }
+
+  private fun TaskContext.proposeRestoreForInvalidText(needToType: String) {
+    proposeRestore {
+      checkExpectedStateOfEditor(previous.sample) {
+        needToType.contains(it.replace(" ", ""))
+      }
     }
   }
 
@@ -494,7 +535,7 @@ class PythonOnboardingTour :
       text(PythonLessonsBundle.message("python.onboarding.invoke.intention.for.warning.1"))
       text(PythonLessonsBundle.message("python.onboarding.invoke.intention.for.warning.2", action(it)))
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { item ->
-        item.isToStringContains(reformatMessage)
+        item.toString().contains(reformatMessage)
       }
       restoreIfModifiedOrMoved()
     }
@@ -517,7 +558,7 @@ class PythonOnboardingTour :
       text(PythonLessonsBundle.message("python.onboarding.invoke.intention.for.code",
                                        code("find_average"), action(it)))
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { item ->
-        item.isToStringContains(returnTypeMessage(project))
+        item.toString().contains(returnTypeMessage(project))
       }
       restoreIfModifiedOrMoved()
     }
@@ -609,7 +650,7 @@ class PythonOnboardingTour :
 
     task {
       triggerByUiComponentAndHighlight(usePulsation = true) { info: TextPanel.WithIconAndArrows ->
-        info.toolTipText.isToStringContains(PyBundle.message("current.interpreter", ""))
+        info.toolTipText.contains(PyBundle.message("current.interpreter", ""))
       }
     }
     task {

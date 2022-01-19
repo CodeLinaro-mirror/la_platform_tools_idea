@@ -57,9 +57,7 @@ public final class ClassUtil {
       }
 
       String fullName = aClass.getName();
-      if (fullName.equals("java.util.Arrays$ArrayList") ||
-          fullName.equals("java.util.Collections$SingletonList") ||
-          fullName.equals("java.util.Collections$SingletonSet")) {
+      if (fullName.equals("java.util.Arrays$ArrayList") || fullName.equals("java.util.Collections$SingletonList")) {
         return false;
       }
 

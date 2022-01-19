@@ -4,13 +4,13 @@ Reports code that instantiates a class to get its class object.
 <p>It is more performant to access the class object
   directly by name.</p>
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   Class&lt;?&gt; c = new Sample().getClass();
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
+<pre>
   Class&lt;?&gt; c = Sample.class;
-</code></pre>
+</pre>
 <!-- tooltip end -->
 </body>
 </html>

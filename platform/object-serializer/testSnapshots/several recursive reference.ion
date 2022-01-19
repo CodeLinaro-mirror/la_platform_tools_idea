@@ -4,14 +4,8 @@
     '@id':1,
     bean:0,
     list:0,
-    children:0,
-    singletonSet:[
-      a
-    ]
+    children:0
   },
   list:0,
-  children:0,
-  singletonSet:[
-    a
-  ]
+  children:0
 }

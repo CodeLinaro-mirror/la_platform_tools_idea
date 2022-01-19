@@ -15,9 +15,6 @@ int
 interface
 long
 native
-non-sealed
-record
-sealed
 short
 static
 strictfp

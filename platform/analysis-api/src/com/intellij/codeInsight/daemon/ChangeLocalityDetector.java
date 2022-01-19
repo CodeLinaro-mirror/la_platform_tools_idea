@@ -30,11 +30,10 @@ public interface ChangeLocalityDetector {
    *  - in Java, when the statement has changed, re-highlight the enclosing code block only.
    *  - in (hypothetical) framework which stores its annotations in comments, e.g. "// @someAnnotation",
    *    when that special comment has changed, re-highlight the whole file.
-   *<p/>
-   * Note: For performance reasons, please do not traverse PSI tree upwards from here, since this method will be called for the
-   *       {@code changedElement} and all its parents anyway.
-   *       So only a constant-time check should be enough here, e.g: {@code changedElement.getParent() instanceof PsiCodeBlock}
-   *       instead of wrong and slow {@code PsiTreeUtil.findFirstParent(changedElement, PsiCodeBlock.class)}
+   *
+   * Note: for the performance sake, do not traverse PSI tree upwards here, since this method will be called for the
+   *       changed element and all its parents anyway.
+   *       So the parent check is enough, e.g: {@code changedElement.getParent() instanceof PsiCodeBlock}
    */
   @Nullable
   PsiElement getChangeHighlightingDirtyScopeFor(@NotNull PsiElement changedElement);

@@ -15,12 +15,11 @@
  */
 package com.intellij.testFramework.codeInsight.hierarchy;
 
-import com.intellij.codeInsight.daemon.DaemonAnalyzerTestCase;
+import com.intellij.codeInsight.JavaCodeInsightTestCase;
 import com.intellij.ide.hierarchy.HierarchyTreeStructure;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
-import com.intellij.testFramework.ExpectedHighlightingData;
 import groovy.lang.GroovyObject;
 import org.jetbrains.annotations.NotNull;
 
@@ -30,7 +29,7 @@ import java.io.IOException;
 /**
  * Checks tree structure for Type Hierarchy (Ctrl+H), Call Hierarchy (Ctrl+Alt+H), Method Hierarchy (Ctrl+Shift+H).
  */
-public abstract class HierarchyViewTestBase extends DaemonAnalyzerTestCase {
+public abstract class HierarchyViewTestBase extends JavaCodeInsightTestCase {
   @Override
   protected void setUp() throws Exception {
     super.setUp();
@@ -46,7 +45,7 @@ public abstract class HierarchyViewTestBase extends DaemonAnalyzerTestCase {
   protected void doHierarchyTest(@NotNull Computable<? extends HierarchyTreeStructure> treeStructureComputable,
                                  String @NotNull ... fileNames) throws IOException {
     configure(fileNames);
-    String verificationFilePath = getTestDataPath() + "/" + getBasePath() + "/verification.xml";
+    String verificationFilePath = getTestDataPath() + "/" + getBasePath() + "/" + getTestName(false) + "_verification.xml";
     HierarchyViewTestFixture.doHierarchyTest(treeStructureComputable.compute(), new File(verificationFilePath));
   }
 
@@ -56,7 +55,5 @@ public abstract class HierarchyViewTestBase extends DaemonAnalyzerTestCase {
       relFilePaths[i] = "/" + getBasePath() + "/" + fileNames[i];
     }
     configureByFiles(null, relFilePaths);
-    ExpectedHighlightingData expectedHighlightingData = new ExpectedHighlightingData(myEditor.getDocument(), false, false, false);
-    checkHighlighting(expectedHighlightingData); // ensure there are no syntax errors because they can interfere with hierarchy calculation correctness
   }
 }

@@ -91,21 +91,23 @@ public final class PluginNode implements IdeaPluginDescriptor {
     this.id = PluginId.getId(id);
   }
 
+  @Nullable
   @Override
-  public @Nullable String getProductCode() {
+  public String getProductCode() {
     return productCode;
   }
 
-  public void setProductCode(@Nullable String productCode) {
+  public void setProductCode(String productCode) {
     this.productCode = productCode;
   }
 
+  @Nullable
   @Override
-  public @Nullable Date getReleaseDate() {
+  public Date getReleaseDate() {
     return releaseDate;
   }
 
-  public void setReleaseDate(@Nullable Date date) {
+  public void setReleaseDate(Date date) {
     releaseDate = date;
   }
 
@@ -131,11 +133,12 @@ public final class PluginNode implements IdeaPluginDescriptor {
    * Plugin update unique ID from Marketplace database.
    * Needed for getting Plugin meta information.
    */
-  public @Nullable String getExternalUpdateId() {
+  @Nullable
+  public String getExternalUpdateId() {
     return externalUpdateId;
   }
 
-  public void setExternalUpdateId(@Nullable String externalUpdateId) {
+  public void setExternalUpdateId(String externalUpdateId) {
     this.externalUpdateId = externalUpdateId;
   }
 
@@ -143,16 +146,17 @@ public final class PluginNode implements IdeaPluginDescriptor {
    * Plugin unique ID from Marketplace storage.
    * Needed for getting Plugin meta information.
    */
-  public @Nullable String getExternalPluginId() {
+  @Nullable
+  public String getExternalPluginId() {
     return externalPluginId;
   }
 
-  public void setExternalPluginId(@Nullable String externalPluginId) {
+  public void setExternalPluginId(String externalPluginId) {
     this.externalPluginId = externalPluginId;
   }
 
   @Override
-  public @Nullable String getCategory() {
+  public String getCategory() {
     return category;
   }
 
@@ -172,47 +176,47 @@ public final class PluginNode implements IdeaPluginDescriptor {
   }
 
   @Override
-  public @Nullable String getVendor() {
+  public String getVendor() {
     return vendor;
   }
 
-  public void setVendor(@Nullable String vendor) {
+  public void setVendor(@NotNull String vendor) {
     this.vendor = vendor;
   }
 
   @Override
-  public @Nullable String getOrganization() {
+  public String getOrganization() {
     return organization;
   }
 
-  public void setOrganization(@Nullable String organization) {
+  public void setOrganization(@NotNull String organization) {
     this.organization = organization;
   }
 
   @Override
-  public @Nullable String getDescription() {
+  public String getDescription() {
     return description;
   }
 
-  public void setDescription(@Nullable @NlsSafe String description) {
+  public void setDescription(@NlsSafe String description) {
     this.description = description;
   }
 
   @Override
-  public @Nullable String getChangeNotes() {
+  public String getChangeNotes() {
     return changeNotes;
   }
 
-  public void setChangeNotes(@Nullable String changeNotes) {
+  public void setChangeNotes(@NotNull String changeNotes) {
     this.changeNotes = changeNotes;
   }
 
   @Override
-  public @Nullable String getSinceBuild() {
+  public String getSinceBuild() {
     return sinceBuild;
   }
 
-  public void setSinceBuild(@Nullable String sinceBuild) {
+  public void setSinceBuild(String sinceBuild) {
     this.sinceBuild = sinceBuild;
   }
 
@@ -233,11 +237,12 @@ public final class PluginNode implements IdeaPluginDescriptor {
   }
 
   @Override
-  public @Nullable @NlsSafe String getDownloads() {
+  @NlsSafe
+  public String getDownloads() {
     return downloads;
   }
 
-  public void setDownloads(@Nullable String downloads) {
+  public void setDownloads(String downloads) {
     this.downloads = downloads;
   }
 
@@ -286,29 +291,29 @@ public final class PluginNode implements IdeaPluginDescriptor {
   }
 
   @Override
-  public @Nullable String getVendorEmail() {
+  public String getVendorEmail() {
     return vendorEmail;
   }
 
-  public void setVendorEmail(@Nullable String vendorEmail) {
+  public void setVendorEmail(String vendorEmail) {
     this.vendorEmail = vendorEmail;
   }
 
   @Override
-  public @Nullable String getVendorUrl() {
+  public String getVendorUrl() {
     return vendorUrl;
   }
 
-  public void setVendorUrl(@Nullable String vendorUrl) {
+  public void setVendorUrl(String vendorUrl) {
     this.vendorUrl = vendorUrl;
   }
 
   @Override
-  public @Nullable String getUrl() {
+  public String getUrl() {
     return url;
   }
 
-  public void setUrl(@Nullable String url) {
+  public void setUrl(String url) {
     this.url = url;
   }
 
@@ -392,7 +397,8 @@ public final class PluginNode implements IdeaPluginDescriptor {
   }
 
   @Override
-  public @Nullable ClassLoader getPluginClassLoader() {
+  @Nullable
+  public ClassLoader getPluginClassLoader() {
     return null;
   }
 
@@ -413,16 +419,17 @@ public final class PluginNode implements IdeaPluginDescriptor {
   }
 
   @Override
-  public @Nullable String getResourceBundleBaseName() {
+  @Nullable
+  public String getResourceBundleBaseName() {
     return null;
   }
 
   @Override
-  public @Nullable String getUntilBuild() {
+  public String getUntilBuild() {
     return untilBuild;
   }
 
-  public void setUntilBuild(@Nullable String untilBuild) {
+  public void setUntilBuild(final String untilBuild) {
     this.untilBuild = untilBuild;
   }
 

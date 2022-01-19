@@ -1,5 +1,5 @@
 // "Assign to property" "false"
-// ACTION: Converts the assignment statement to an expression
+// ACTION: Convert assignment to assignment expression
 // ERROR: Val cannot be reassigned
 class Test(val foo: Int) {
     fun test(foo: Int) {

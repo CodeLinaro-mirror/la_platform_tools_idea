@@ -27,10 +27,6 @@ import org.jetbrains.jps.model.module.JpsModuleSourceRootType;
 
 import java.util.*;
 
-/**
- * Extension point for customization maven module import process.
- * Main import logic {@link MavenModuleImporter}.
- */
 public abstract class MavenImporter {
   public static final ExtensionPointName<MavenImporter> EXTENSION_POINT_NAME = ExtensionPointName.create("org.jetbrains.idea.maven.importer");
 
@@ -123,17 +119,11 @@ public abstract class MavenImporter {
     resolve(project, mavenProject, nativeMavenProject, embedder);
   }
 
-  /**
-   * Import pre process callback.
-   */
   public abstract void preProcess(Module module,
                                   MavenProject mavenProject,
                                   MavenProjectChanges changes,
                                   IdeModifiableModelsProvider modifiableModelsProvider);
 
-  /**
-   * Import process callback.
-   */
   public abstract void process(IdeModifiableModelsProvider modifiableModelsProvider,
                                Module module,
                                MavenRootModelAdapter rootModel,
@@ -143,9 +133,6 @@ public abstract class MavenImporter {
                                Map<MavenProject, String> mavenProjectToModuleName,
                                List<MavenProjectsProcessorTask> postTasks);
 
-  /**
-   * Import post process callback.
-   */
   public void postProcess(Module module,
                           MavenProject mavenProject,
                           MavenProjectChanges changes,

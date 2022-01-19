@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.settings;
 
 import com.intellij.debugger.JavaDebuggerBundle;
@@ -216,9 +216,7 @@ class CompoundRendererConfigurable extends JPanel {
     if (myProject != null) {
       ReadAction.nonBlocking(() -> DebuggerUtilsImpl.getPsiClassAndType(qName, myProject).first)
         .inSmartMode(myProject)
-        .coalesceBy(this)
-        // the containing dialog may be not visible yet
-        .finishOnUiThread(ModalityState.any(), context -> {
+        .finishOnUiThread(ModalityState.defaultModalityState(), context -> {
           if (context != null) {
             myLabelEditor.setContext(context);
             myChildrenEditor.setContext(context);

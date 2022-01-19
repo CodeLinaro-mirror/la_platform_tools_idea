@@ -1,4 +1,3 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.coverage;
 
 import com.intellij.openapi.application.PathManager;
@@ -15,14 +14,9 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 
 /**
- * Represents coverage data collected by {@link CoverageRunner}.
- * 
- * @see BaseCoverageSuite
+ * @author Roman.Chernyatchik
  */
 public interface CoverageSuite extends JDOMExternalizable {
-  /**
-   * @return false e.g. if underlying file is deleted.
-   */
   boolean isValid();
 
   @NotNull
@@ -42,6 +36,10 @@ public interface CoverageSuite extends JDOMExternalizable {
   @Nullable
   ProjectData getCoverageData(CoverageDataManager coverageDataManager);
 
+  void setCoverageData(final ProjectData projectData);
+
+  void restoreCoverageData();
+
   boolean isTrackTestFolders();
 
   boolean isTracingEnabled();
@@ -54,17 +52,7 @@ public interface CoverageSuite extends JDOMExternalizable {
   Project getProject();
 
   /**
-   * Caches loaded coverage data on soft reference.
-   */
-  void setCoverageData(final ProjectData projectData);
-
-  /**
-   * Reinit coverage data cache with {@link CoverageRunner#loadCoverageData(File, CoverageSuite)}.
-   */
-  void restoreCoverageData();
-
-  /**
-   * @return true if engine can provide means to remove coverage data.
+   * @return true if engine can provide means to remove coverage data
    */
   default boolean canRemove() {
     CoverageFileProvider provider = getCoverageDataFileProvider();
@@ -73,7 +61,7 @@ public interface CoverageSuite extends JDOMExternalizable {
   }
 
   /**
-   * Called to cleanup gathered coverage on explicit user's action in settings dialog or e.g. during rerun of the same configuration.
+   * Called to cleanup gathered coverage on explicit user's action in settings dialog or e.g. during rerun of the same configuration
    */
   default void deleteCachedCoverageData() {
     final String fileName = getCoverageDataFileName();

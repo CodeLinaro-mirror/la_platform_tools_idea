@@ -3,8 +3,6 @@ package org.jetbrains.kotlin.idea
 
 import com.intellij.ProjectTopics
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
-import com.intellij.ide.plugins.DynamicPluginListener
-import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -31,30 +29,11 @@ internal class PluginStartupActivity : StartupActivity.Background {
         val startupService = PluginStartupService.getInstance(project)
 
         startupService.register()
-        val connection = project.messageBus.connect(startupService)
-        connection.subscribe(ProjectTopics.PROJECT_ROOTS, object : ModuleRootListener {
+        project.messageBus.connect(startupService).subscribe(ProjectTopics.PROJECT_ROOTS, object : ModuleRootListener {
             override fun rootsChanged(event: ModuleRootEvent) {
                 KotlinJavaPsiFacade.getInstance(project).clearPackageCaches()
             }
         })
-        connection.subscribe(DynamicPluginListener.TOPIC, object : DynamicPluginListener {
-            override fun beforePluginUnload(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
-                clearPackageCaches()
-            }
-
-            override fun pluginUnloaded(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
-                clearPackageCaches()
-            }
-
-            override fun pluginLoaded(pluginDescriptor: IdeaPluginDescriptor) {
-                clearPackageCaches()
-            }
-
-            private fun clearPackageCaches() {
-                KotlinJavaPsiFacade.getInstance(project).clearPackageCaches()
-            }
-        })
-
         initializeDiagnostics()
         excludedFromUpdateCheckPlugins.add("org.jetbrains.kotlin")
         checkCompatibility()

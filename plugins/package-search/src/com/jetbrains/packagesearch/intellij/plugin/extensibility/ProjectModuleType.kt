@@ -13,6 +13,6 @@ interface ProjectModuleType {
     val packageIcon: Icon?
     fun terminologyFor(term: ProjectModuleTypeTerm): String
 
-    fun userDefinedScopes(project: Project): List<String>
+    fun scopes(project: Project): List<String>
     fun defaultScope(project: Project): String
 }

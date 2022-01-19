@@ -32,6 +32,4 @@ class SelectLesson(private val sample: LessonSample) : KLesson("Select", Lessons
         LessonsBundle.message("selection.shrink.selection", action(it))
       }
     }
-
-  override val suitableTips = listOf("CtrlW")
 }

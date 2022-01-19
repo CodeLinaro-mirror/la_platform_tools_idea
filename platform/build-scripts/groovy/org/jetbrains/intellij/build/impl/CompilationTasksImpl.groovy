@@ -1,10 +1,9 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
-import com.intellij.openapi.util.io.NioFiles
-import com.intellij.util.io.Decompressor
+import com.intellij.openapi.util.io.FileUtil
+import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
-import org.jetbrains.intellij.build.BuildMessages
 import org.jetbrains.intellij.build.BuildOptions
 import org.jetbrains.intellij.build.CompilationContext
 import org.jetbrains.intellij.build.CompilationTasks
@@ -12,10 +11,6 @@ import org.jetbrains.intellij.build.impl.compilation.CompilationPartsUtil
 import org.jetbrains.intellij.build.impl.compilation.PortableCompilationCache
 import org.jetbrains.jps.model.java.JdkVersionDetector
 
-import java.nio.file.DirectoryStream
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.function.Supplier
 import java.util.stream.Collectors
 
 @CompileStatic
@@ -32,7 +27,7 @@ final class CompilationTasksImpl extends CompilationTasks {
   void compileModules(Collection<String> moduleNames, List<String> includingTestsInModules) {
     reuseCompiledClassesIfProvided()
     if (context.options.useCompiledClassesFromProjectOutput) {
-      context.messages.info("Compilation skipped, the compiled classes from '${context.projectOutputDirectory}' will be used")
+      context.messages.info("Compilation skipped, the compiled classes from the project output will be used")
       resolveProjectDependencies()
     }
     else if (jpsCache.canBeUsed) {
@@ -128,10 +123,12 @@ final class CompilationTasksImpl extends CompilationTasks {
            options.pathToCompiledClassesArchivesMetadata != null
   }
 
+  private static boolean areCompiledClassesReusedOrNotProvided
+
   @Override
   void reuseCompiledClassesIfProvided() {
     synchronized (CompilationTasksImpl) {
-      if (context.compilationData.compiledClassesAreLoaded) {
+      if (areCompiledClassesReusedOrNotProvided) {
         return
       }
       if (context.options.cleanOutputFolder) {
@@ -141,30 +138,27 @@ final class CompilationTasksImpl extends CompilationTasks {
         context.messages.info("cleanOutput step was skipped")
       }
       if (context.options.useCompiledClassesFromProjectOutput) {
-        context.messages.info("Compiled classes reused from '${context.projectOutputDirectory}'")
+        context.messages.info("Compiled classes reused from project output")
       }
       else if (context.options.pathToCompiledClassesArchivesMetadata != null) {
         CompilationPartsUtil.fetchAndUnpackCompiledClasses(context.messages, context.projectOutputDirectory, context.options)
       }
       else if (context.options.pathToCompiledClassesArchive != null) {
-        unpackCompiledClasses(context.projectOutputDirectory.toPath())
+        unpackCompiledClasses(context.projectOutputDirectory)
       }
       else if (jpsCache.canBeUsed && !jpsCache.isCompilationRequired()) {
         jpsCache.downloadCacheAndCompileProject()
       }
-      context.compilationData.compiledClassesAreLoaded = true
+      areCompiledClassesReusedOrNotProvided = true
     }
   }
 
-  private void unpackCompiledClasses(Path classesOutput) {
-    context.messages.block("Unpack compiled classes archive", new Supplier<Void>() {
-      @Override
-      Void get() {
-        NioFiles.deleteRecursively(classesOutput)
-        new Decompressor.Zip(Path.of(context.options.pathToCompiledClassesArchive)).extract(classesOutput)
-        return null
-      }
-    })
+  @CompileDynamic
+  private void unpackCompiledClasses(File classesOutput) {
+    context.messages.block("Unpack compiled classes archive") {
+      FileUtil.delete(classesOutput)
+      context.ant.unzip(src: context.options.pathToCompiledClassesArchive, dest: classesOutput.absolutePath)
+    }
   }
 
   private void cleanOutput() {
@@ -177,30 +171,18 @@ final class CompilationTasksImpl extends CompilationTasks {
       outputDirectoriesToKeep.add("classes")
       outputDirectoriesToKeep.add("project-artifacts")
     }
-
-    BuildMessages messages = context.messages
-    Path outputPath = Path.of(context.paths.buildOutputRoot)
-    messages.block("Clean output", new Supplier<Void>() {
-      @Override
-      Void get() {
-        messages.progress("Cleaning output directory $outputPath")
-        DirectoryStream<Path> dirStream = Files.newDirectoryStream(outputPath)
-        try {
-          for (Path file : dirStream) {
-            if (outputDirectoriesToKeep.contains(file.fileName.toString())) {
-              messages.info("Skipped cleaning for $file")
-            }
-            else {
-              messages.info("Deleting $file")
-              NioFiles.deleteRecursively(file)
-            }
-          }
+    context.messages.block("Clean output") {
+      def outputPath = context.paths.buildOutputRoot
+      context.messages.progress("Cleaning output directory $outputPath")
+      new File(outputPath).listFiles()?.each { File file ->
+        if (outputDirectoriesToKeep.contains(file.name)) {
+          context.messages.info("Skipped cleaning for $file.absolutePath")
         }
-        finally {
-          dirStream.close()
+        else {
+          context.messages.info("Deleting $file.absolutePath")
+          FileUtil.delete(file)
         }
-        return null
       }
-    })
+    }
   }
 }

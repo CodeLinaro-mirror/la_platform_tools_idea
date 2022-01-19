@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'i' is never used
 class Outer {
     class Middle {
         class Inner {

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:JvmName("PluginsAdvertiser")
 
 package com.intellij.openapi.updateSettings.impl.pluginsAdvertisement
@@ -23,12 +23,12 @@ import java.io.IOException
 private const val IGNORE_ULTIMATE_EDITION = "ignoreUltimateEdition"
 
 @get:JvmName("getLog")
-internal val LOG = Logger.getInstance("#PluginsAdvertiser")
+val LOG = Logger.getInstance("#PluginsAdvertiser")
 
 private val propertiesComponent
   get() = PropertiesComponent.getInstance()
 
-var isIgnoreIdeSuggestion: Boolean
+var isIgnoreUltimate: Boolean
   get() = propertiesComponent.isTrueValue(IGNORE_ULTIMATE_EDITION)
   set(value) = propertiesComponent.setValue(IGNORE_ULTIMATE_EDITION, value)
 
@@ -41,7 +41,7 @@ val notificationGroup: NotificationGroup
   get() = NotificationGroupManager.getInstance().getNotificationGroup("Plugins Suggestion")
 
 @Suppress("DeprecatedCallableAddReplaceWith")
-@Deprecated("Use `installAndEnable(Project, Set, Boolean, Runnable)`")
+@Deprecated("Use `installAndEnable(Set, Runnable)`")
 fun installAndEnablePlugins(
   pluginIds: Set<String>,
   onSuccess: Runnable,
@@ -52,7 +52,6 @@ fun installAndEnablePlugins(
   )
 }
 
-@Deprecated("Use `installAndEnable(Project, Set, Boolean, Runnable)`")
 fun installAndEnable(
   pluginIds: Set<PluginId>,
   onSuccess: Runnable,

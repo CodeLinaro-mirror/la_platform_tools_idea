@@ -8,7 +8,7 @@ open class A<T>(<caret>foo: T) {
 
     val t: T = foo
 
-    fun usage(): A<String> {
+    fun usage() {
         return A(foo = ":)")
     }
 }
@@ -16,3 +16,5 @@ open class A<T>(<caret>foo: T) {
 fun usage() {
     A(foo = ":)")
 }
+
+// DISABLE-ERRORS

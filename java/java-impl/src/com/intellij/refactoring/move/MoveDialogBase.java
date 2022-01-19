@@ -68,6 +68,7 @@ public abstract class MoveDialogBase extends RefactoringDialog {
     return "Move" + getMovePropertySuffix();
   }
 
+  @SuppressWarnings("unused")
   protected MoveDialogBase(@NotNull Project project, boolean canBeParent) {
     this(project, canBeParent, false);
   }

@@ -16,6 +16,7 @@
 
 package com.intellij.refactoring.actions;
 
+import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Editor;
@@ -35,6 +36,11 @@ public class SafeDeleteAction extends BaseRefactoringAction {
   @Override
   public boolean isAvailableInEditorOnly() {
     return false;
+  }
+
+  @Override
+  protected boolean isAvailableForLanguage(Language language) {
+    return true;
   }
 
   @Override

@@ -2,15 +2,15 @@
 <body>
 Reports manual copying of array contents which can be replaced with <code>System.arraycopy()</code>.
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   for (int i = 0; i &lt; array.length; i++) {
-    newArray[i] = array[i];
+    new_array[i] = array[i];
   }
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
-  System.arraycopy(array, 0, newArray, 0, array.length);
-</code></pre>
+<pre>
+  System.arraycopy(array, 0, new_array, 0, array.length);
+</pre>
 <!-- tooltip end -->
 </body>
 </html>

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins;
 
 import com.intellij.openapi.application.JetBrainsProtocolHandler;
@@ -19,8 +19,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-@ApiStatus.Internal
-public final class DisabledPluginsState implements PluginEnabler {
+public final class DisabledPluginsState {
 
   public static final @NonNls String DISABLED_PLUGINS_FILENAME = "disabled_plugins.txt";
 
@@ -28,22 +27,26 @@ public final class DisabledPluginsState implements PluginEnabler {
   private static final List<Runnable> ourDisabledPluginListeners = new CopyOnWriteArrayList<>();
   private static volatile boolean ourIgnoreDisabledPlugins;
 
-  DisabledPluginsState() {
+  private DisabledPluginsState() {
   }
 
+  @ApiStatus.Internal
   public static void addDisablePluginListener(@NotNull Runnable listener) {
     ourDisabledPluginListeners.add(listener);
   }
 
+  @ApiStatus.Internal
   public static void removeDisablePluginListener(@NotNull Runnable listener) {
     ourDisabledPluginListeners.remove(listener);
   }
 
   // For use in headless environment only
+  @ApiStatus.Internal
   public static void setIgnoreDisabledPlugins(boolean ignoreDisabledPlugins) {
     ourIgnoreDisabledPlugins = ignoreDisabledPlugins;
   }
 
+  @ApiStatus.Internal
   public static @NotNull Set<PluginId> loadDisabledPlugins() {
     Set<PluginId> disabledPlugins = new LinkedHashSet<>();
 
@@ -116,31 +119,12 @@ public final class DisabledPluginsState implements PluginEnabler {
     }
   }
 
-  @Override
-  public boolean isDisabled(@NotNull PluginId pluginId) {
+  @ApiStatus.Internal
+  static boolean isDisabled(@NotNull PluginId pluginId) {
     return getDisabledIds().contains(pluginId);
   }
 
-  @Override
-  public boolean enable(@NotNull Collection<? extends IdeaPluginDescriptor> descriptors) {
-    return enableById(IdeaPluginDescriptorImplKt.toPluginSet(descriptors));
-  }
-
-  @Override
-  public boolean disable(@NotNull Collection<? extends IdeaPluginDescriptor> descriptors) {
-    return disableById(IdeaPluginDescriptorImplKt.toPluginSet(descriptors));
-  }
-
-  @Override
-  public boolean enableById(@NotNull Set<PluginId> pluginIds) {
-    return setEnabledState(pluginIds, true);
-  }
-
-  @Override
-  public boolean disableById(@NotNull Set<PluginId> pluginIds) {
-    return setEnabledState(pluginIds, false);
-  }
-
+  @ApiStatus.Internal
   static boolean setEnabledState(@NotNull Set<PluginId> plugins,
                                  boolean enabled) {
     Set<PluginId> disabled = getDisabledIds();
@@ -152,6 +136,7 @@ public final class DisabledPluginsState implements PluginEnabler {
     return changed && trySaveDisabledPlugins(disabled);
   }
 
+  @ApiStatus.Internal
   public static boolean trySaveDisabledPlugins(@NotNull Collection<PluginId> pluginIds) {
     return trySaveDisabledPlugins(PathManager.getConfigDir().resolve(DISABLED_PLUGINS_FILENAME), pluginIds, true);
   }

@@ -75,6 +75,9 @@ public abstract class ColumnInfo<Item, Aspect> {
     return renderer;
   }
 
+  /**
+   * @see ComboBoxTableCellEditor
+   */
   @Nullable
   public TableCellEditor getEditor(Item item) {
     return null;

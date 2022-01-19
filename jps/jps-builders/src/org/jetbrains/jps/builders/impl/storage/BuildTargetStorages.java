@@ -34,8 +34,7 @@ public class BuildTargetStorages extends CompositeStorageOwner {
   private static final Logger LOG = Logger.getInstance(BuildTargetStorages.class);
   private final BuildTarget<?> myTarget;
   private final BuildDataPaths myPaths;
-  private final ConcurrentMap<StorageProvider<? extends StorageOwner>, StorageOwner> myStorages = new ConcurrentHashMap<>(16, 0.75f,
-                                                                                                                          BuildDataManager.getConcurrencyLevel());
+  private final ConcurrentMap<StorageProvider<? extends StorageOwner>, StorageOwner> myStorages = new ConcurrentHashMap<>(16, 0.75f, BuildDataManager.CONCURRENCY_LEVEL);
 
   public BuildTargetStorages(BuildTarget<?> target, BuildDataPaths paths) {
     myTarget = target;

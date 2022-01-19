@@ -1,8 +1,10 @@
 from _typeshed.xml import DOMImplementation
-from typing import Callable, Iterable
+from typing import Callable, Dict, Iterable, Optional, Tuple, Union
 
-well_known_implementations: dict[str, str]
-registered: dict[str, Callable[[], DOMImplementation]]
+well_known_implementations: Dict[str, str]
+registered: Dict[str, Callable[[], DOMImplementation]]
 
 def registerDOMImplementation(name: str, factory: Callable[[], DOMImplementation]) -> None: ...
-def getDOMImplementation(name: str | None = ..., features: str | Iterable[tuple[str, str | None]] = ...) -> DOMImplementation: ...
+def getDOMImplementation(
+    name: Optional[str] = ..., features: Union[str, Iterable[Tuple[str, Optional[str]]]] = ...
+) -> DOMImplementation: ...

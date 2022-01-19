@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.io;
 
 import com.intellij.ReviseWhenPortedToJDK;
@@ -49,25 +49,29 @@ public final class IoTestUtil {
   @SuppressWarnings("SpellCheckingInspection")
   private static final String[] UNICODE_PARTS = {"Юникоде", "Úñíçødê"};
 
-  public static @Nullable String getUnicodeName() {
+  @Nullable
+  public static String getUnicodeName() {
     return filterParts(PathUtil::isValidFileName);
   }
 
-  public static @Nullable String getUnicodeName(String forEncoding) {
+  @Nullable
+  public static String getUnicodeName(String forEncoding) {
     return filterParts(Charset.forName(forEncoding).newEncoder()::canEncode);
   }
 
-  private static String filterParts(Predicate<String> predicate) {
+  private static String filterParts(@NotNull Predicate<? super String> predicate) {
     return StringUtil.nullize(Stream.of(UNICODE_PARTS).filter(predicate).collect(Collectors.joining("_")));
   }
 
-  public static @NotNull File getTempDirectory() {
+  @NotNull
+  public static File getTempDirectory() {
     File dir = new File(FileUtil.getTempDirectory());
     dir = expandWindowsPath(dir);
     return dir;
   }
 
-  private static File expandWindowsPath(File file) {
+  @NotNull
+  private static File expandWindowsPath(@NotNull File file) {
     if (SystemInfo.isWindows && file.getPath().indexOf('~') > 0) {
       try {
         return file.getCanonicalFile();
@@ -85,7 +89,7 @@ public final class IoTestUtil {
     return createSymLink(target, link, Boolean.valueOf(shouldExist));
   }
 
-  /** A drop-in replacement for `Files#createSymbolicLink`, needed until migrating to Java 13+ */
+  /** A drop-in replacement for `Files#createSymbolicLink` needed until migrating to Java 13+ */
   public static @NotNull Path createSymbolicLink(@NotNull Path link, @NotNull Path target) throws IOException {
     try {
       return createSymLink(target.toString(), link.toString(), null).toPath();
@@ -95,7 +99,7 @@ public final class IoTestUtil {
     }
   }
 
-  private static File createSymLink(String target, String link, @Nullable Boolean shouldExist) {
+  private static @NotNull File createSymLink(String target, String link, @Nullable Boolean shouldExist) {
     File linkFile = getFullLinkPath(link);
     File targetFile = new File(target);
     try {
@@ -159,7 +163,8 @@ public final class IoTestUtil {
                                      UsefulTestCase.TEMP_DIR_MARKER + testName + "_");
   }
 
-  public static @NotNull File createJunction(@NotNull String target, @NotNull String junction) {
+  @NotNull
+  public static File createJunction(@NotNull String target, @NotNull String junction) {
     assertTrue(SystemInfo.isWindows);
     File targetFile = new File(target);
     assertTrue(targetFile.getPath(), targetFile.isDirectory());
@@ -174,7 +179,8 @@ public final class IoTestUtil {
     assertTrue(new File(junction).delete());
   }
 
-  public static @NotNull File createSubst(@NotNull String target) {
+  @NotNull
+  public static File createSubst(@NotNull String target) {
     assertTrue(SystemInfo.isWindows);
     File targetFile = new File(target);
     assertTrue(targetFile.getPath(), targetFile.isDirectory());
@@ -186,11 +192,7 @@ public final class IoTestUtil {
   }
 
   public static void deleteSubst(@NotNull String substRoot) {
-    runCommand("subst", StringUtil.trimEnd(substRoot, '\\'), "/d");
-  }
-
-  public static void createFifo(@NotNull String path) {
-    runCommand("mkfifo", path);
+    runCommand("subst", StringUtil.trimEnd(substRoot, "\\"), "/d");
   }
 
   private static char getFirstFreeDriveLetter() {
@@ -206,7 +208,7 @@ public final class IoTestUtil {
     throw new RuntimeException("No free roots");
   }
 
-  private static File getFullLinkPath(String link) {
+  private static @NotNull File getFullLinkPath(@NotNull String link) {
     File linkFile = new File(link);
     if (!linkFile.isAbsolute()) {
       linkFile = new File(getTempDirectory(), link);
@@ -217,7 +219,7 @@ public final class IoTestUtil {
     return linkFile;
   }
 
-  private static String runCommand(String... command) {
+  private static @NotNull String runCommand(String @NotNull ... command) {
     try {
       GeneralCommandLine cmd = new GeneralCommandLine(command).withRedirectErrorStream(true);
       ProcessOutput output = ExecUtil.execAndGetOutput(cmd, 30_000);
@@ -248,11 +250,13 @@ public final class IoTestUtil {
                roundedExpected != roundedActual);
   }
 
-  public static @NotNull File createTestJar(@NotNull File jarFile) {
+  @NotNull
+  public static File createTestJar(@NotNull File jarFile) {
     return createTestJar(jarFile, JarFile.MANIFEST_NAME, "");
   }
 
-  public static @NotNull File createTestJar(@NotNull File jarFile, String @NotNull ... namesAndTexts) {
+  @NotNull
+  public static File createTestJar(@NotNull File jarFile, String @NotNull ... namesAndTexts) {
     try (ZipOutputStream stream = new ZipOutputStream(new FileOutputStream(jarFile))) {
       for (int i = 0; i < namesAndTexts.length; i += 2) {
         stream.putNextEntry(new ZipEntry(namesAndTexts[i]));
@@ -266,7 +270,8 @@ public final class IoTestUtil {
     }
   }
 
-  public static @NotNull File createTestJar(@NotNull File jarFile, @NotNull Collection<Pair<String, byte[]>> namesAndContents) {
+  @NotNull
+  public static File createTestJar(@NotNull File jarFile, @NotNull Collection<? extends Pair<String, byte[]>> namesAndContents) {
     try (ZipOutputStream stream = new ZipOutputStream(new FileOutputStream(jarFile))) {
       for (Pair<String, byte[]> p : namesAndContents) {
         String name = p.first;
@@ -282,7 +287,8 @@ public final class IoTestUtil {
     }
   }
 
-  public static @NotNull File createTestJar(@NotNull File jarFile, @NotNull File root) {
+  @NotNull
+  public static File createTestJar(@NotNull File jarFile, @NotNull File root) {
     try (ZipOutputStream stream = new ZipOutputStream(new FileOutputStream(jarFile))) {
       FileUtil.visitFiles(root, file -> {
         if (file.isFile()) {
@@ -307,29 +313,35 @@ public final class IoTestUtil {
     }
   }
 
-  public static @NotNull File createTestDir(@NotNull String name) {
+  @NotNull
+  public static File createTestDir(@NotNull String name) {
     return createTestDir(getTempDirectory(), name);
   }
 
-  public static @NotNull File createTestDir(@NotNull File parent, @NotNull String name) {
+  @NotNull
+  public static File createTestDir(@NotNull File parent, @NotNull String name) {
     File dir = new File(parent, name);
     assertTrue(dir.getPath(), dir.mkdirs());
     return dir;
   }
 
-  public static @NotNull File createTestFile(@NotNull String name) {
+  @NotNull
+  public static File createTestFile(@NotNull String name) {
     return createTestFile(name, null);
   }
 
-  public static @NotNull File createTestFile(@NotNull String name, @Nullable String content) {
+  @NotNull
+  public static File createTestFile(@NotNull String name, @Nullable String content) {
     return createTestFile(getTempDirectory(), name, content);
   }
 
-  public static @NotNull File createTestFile(@NotNull File parent, @NotNull String name) {
+  @NotNull
+  public static File createTestFile(@NotNull File parent, @NotNull String name) {
     return createTestFile(parent, name, null);
   }
 
-  public static @NotNull File createTestFile(@NotNull File parent, @NotNull String name, @Nullable String content) {
+  @NotNull
+  public static File createTestFile(@NotNull File parent, @NotNull String name, @Nullable String content) {
     try {
       assertTrue(parent.getPath(), parent.isDirectory() || parent.mkdirs());
       File file = new File(parent, name);

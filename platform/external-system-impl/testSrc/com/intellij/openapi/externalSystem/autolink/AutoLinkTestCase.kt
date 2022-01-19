@@ -119,7 +119,6 @@ abstract class AutoLinkTestCase : ExternalSystemTestCase() {
   fun openProjectFrom(projectPath: VirtualFile): Project {
     return ExternalSystemSetupProjectTestCase.openProjectFrom(projectPath).apply {
       UnlinkedProjectStartupActivity().runActivity(this)
-      PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
       NonBlockingReadActionImpl.waitForAsyncTaskCompletion()
       PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }

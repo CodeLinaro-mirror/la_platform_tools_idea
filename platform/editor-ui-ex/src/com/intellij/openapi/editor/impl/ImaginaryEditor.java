@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.event.EditorMouseEventArea;
@@ -22,7 +21,7 @@ import java.awt.geom.Point2D;
 /**
  * This class is intended to simplify implementation of dummy editors needed only to pass to places which expect {@link Editor}
  * but do nothing complicated with it, only simple things like getting document/project/caret/selection.<p></p>
- * <p>
+ *
  * Since Imaginary* classes are intended to be used by multiple parties,
  * they should be as free as possible of simplified versions of any real Editor's logic.
  * Simplification involves making some assumptions what the clients would need, and different clients may disagree on that.
@@ -35,7 +34,6 @@ public class ImaginaryEditor extends UserDataHolderBase implements Editor {
   private final ImaginarySelectionModel mySelectionModel;
   private final Project myProject;
   @NotNull private final Document myDocument;
-  private static final Logger LOG = Logger.getInstance(ImaginaryEditor.class);
 
   public ImaginaryEditor(@NotNull Project project, @NotNull Document document) {
     myProject = project;
@@ -208,12 +206,12 @@ public class ImaginaryEditor extends UserDataHolderBase implements Editor {
 
   @Override
   public void addEditorMouseListener(@NotNull EditorMouseListener listener) {
-    LOG.info("Called ImaginaryEditor#addEditorMouseListener which is stubbed and has no implementation");
+    throw notImplemented();
   }
 
   @Override
   public void removeEditorMouseListener(@NotNull EditorMouseListener listener) {
-    LOG.info("Called ImaginaryEditor#removeEditorMouseListener which is stubbed and has no implementation");
+    throw notImplemented();
   }
 
   @Override
@@ -297,4 +295,5 @@ public class ImaginaryEditor extends UserDataHolderBase implements Editor {
   public EditorKind getEditorKind() {
     throw notImplemented();
   }
+
 }

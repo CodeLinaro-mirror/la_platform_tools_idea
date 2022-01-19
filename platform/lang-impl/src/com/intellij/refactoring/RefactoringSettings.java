@@ -2,14 +2,13 @@
 package com.intellij.refactoring;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 
-@State(name = "BaseRefactoringSettings", storages = @Storage("baseRefactoring.xml"), category = SettingsCategory.CODE)
+@State(name = "BaseRefactoringSettings", storages = @Storage("baseRefactoring.xml"))
 public class RefactoringSettings implements PersistentStateComponent<RefactoringSettings> {
   public static RefactoringSettings getInstance() {
     return ApplicationManager.getApplication().getService(RefactoringSettings.class);

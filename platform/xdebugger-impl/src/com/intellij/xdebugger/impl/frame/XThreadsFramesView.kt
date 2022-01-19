@@ -52,10 +52,7 @@ class XThreadsFramesView(val project: Project) : XDebugView() {
 
   private val myFramesPresentationCache = mutableMapOf<Any, String>()
 
-  private val mainPanel = JPanel(BorderLayout())
-  override fun getMainComponent(): JComponent {
-    return mainPanel
-  }
+  val mainPanel = JPanel(BorderLayout())
   val defaultFocusedComponent: JComponent = myFramesList
 
   companion object {
@@ -116,8 +113,6 @@ class XThreadsFramesView(val project: Project) : XDebugView() {
     mySplitter.revalidate()
     mySplitter.repaint()
   }
-
-  fun isThreadsViewVisible() = mySplitter.firstComponent.isVisible
 
   init {
     val disposable = myPauseDisposables.next()
@@ -217,7 +212,7 @@ class XThreadsFramesView(val project: Project) : XDebugView() {
     }
 
     UIUtil.invokeLaterIfNeeded {
-      if (!myAlreadyPaused && (event == SessionEvent.PAUSED || event == SessionEvent.SETTINGS_CHANGED && session.isSuspended)) {
+      if (!myAlreadyPaused && event == SessionEvent.PAUSED) {
         myAlreadyPaused = true
         // clear immediately
         cancelClear()

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.lang;
 
 import com.intellij.util.io.DirectByteBufferPool;
@@ -17,11 +17,11 @@ import java.util.zip.ZipException;
 
 @ApiStatus.Internal
 public final class ImmutableZipEntry {
-  final int uncompressedSize;
-  final int compressedSize;
+  private final int uncompressedSize;
+  private final int compressedSize;
   private final int method;
 
-  final String name;
+  private final String name;
 
   private final int headerOffset;
   private final int nameLengthInBytes;
@@ -42,11 +42,39 @@ public final class ImmutableZipEntry {
     this.dataOffset = dataOffset;
   }
 
+  public int getHeaderOffset() {
+    return headerOffset;
+  }
+
+  public int getSize() {
+    return uncompressedSize;
+  }
+
   /**
    * Get the name of the entry.
    */
   public String getName() {
     return name;
+  }
+
+  /**
+   * Returns the size of the compressed entry data.
+   * In the case of a stored entry, the compressed size will be the same
+   * as the uncompressed size of the entry.
+   */
+  public int getCompressedSize() {
+    return compressedSize;
+  }
+
+  public int getUncompressedSize() {
+    return uncompressedSize;
+  }
+
+  /**
+   * Returns the compression method of the entry.
+   */
+  public int getMethod() {
+    return method;
   }
 
   /**
@@ -69,7 +97,7 @@ public final class ImmutableZipEntry {
       throw new EOFException();
     }
 
-    switch (method) {
+    switch (getMethod()) {
       case ZipEntry.STORED: {
         ByteBuffer inputBuffer = computeDataOffsetIfNeededAndReadInputBuffer(file.mappedBuffer);
         byte[] result = new byte[uncompressedSize];
@@ -102,13 +130,13 @@ public final class ImmutableZipEntry {
       }
 
       default:
-        throw new ZipException("Found unsupported compression method " + method);
+        throw new ZipException("Found unsupported compression method " + getMethod());
     }
   }
 
   @ApiStatus.Internal
   public InputStream getInputStream(@NotNull ImmutableZipFile file) throws IOException {
-    return new DirectByteBufferBackedInputStream(getByteBuffer(file), method == ZipEntry.DEFLATED);
+    return new DirectByteBufferBackedInputStream(getByteBuffer(file), getMethod() == ZipEntry.DEFLATED);
   }
 
   /**
@@ -124,7 +152,7 @@ public final class ImmutableZipEntry {
       throw new EOFException();
     }
 
-    switch (method) {
+    switch (getMethod()) {
       case ZipEntry.STORED: {
         return computeDataOffsetIfNeededAndReadInputBuffer(file.mappedBuffer);
       }
@@ -149,7 +177,7 @@ public final class ImmutableZipEntry {
       }
 
       default:
-        throw new ZipException("Found unsupported compression method " + method);
+        throw new ZipException("Found unsupported compression method " + getMethod());
     }
   }
 

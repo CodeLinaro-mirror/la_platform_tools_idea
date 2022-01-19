@@ -11,7 +11,6 @@ import org.yaml.snakeyaml.parser.ParserException
 import java.nio.file.Path
 
 
-@Suppress("HardCodedStringLiteral")
 class YamlSettingsParser(settings: List<PluginSetting<Any, *>>, private val parsingState: ParsingState) {
     private val settingByName = settings.associateBy { it.path }
 

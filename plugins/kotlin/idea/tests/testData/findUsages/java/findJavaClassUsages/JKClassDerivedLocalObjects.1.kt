@@ -1,10 +1,12 @@
-open class T : A()
-
 fun foo() {
-    val O1 = object : A() {}
+    public interface T: A
+
+    public object O1: A()
 
     fun bar() {
-        val O2 = object : T() {}
+        public object O2: T
     }
 }
+
+
 

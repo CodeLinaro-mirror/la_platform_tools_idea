@@ -13,17 +13,17 @@ Groovy script
     PsiElement({)('{')
     PsiWhiteSpace('\n')
     Case section
-      PsiElement(case)('case')
-      PsiWhiteSpace(' ')
-      Expression list
+      Case label
+        PsiElement(case)('case')
+        PsiWhiteSpace(' ')
         Range expression
           Literal
             PsiElement(Integer)('16')
           PsiElement(..)('..')
           Literal
             PsiElement(Integer)('20')
-      PsiWhiteSpace(' ')
-      PsiElement(:)(':')
+        PsiWhiteSpace(' ')
+        PsiElement(:)(':')
       PsiWhiteSpace(' ')
       Assignment expression
         Reference expression
@@ -40,8 +40,9 @@ Groovy script
         PsiElement(break)('break')
       PsiElement(new line)('\n')
     Case section
-      PsiElement(default)('default')
-      PsiElement(:)(':')
+      Case label
+        PsiElement(default)('default')
+        PsiElement(:)(':')
       PsiWhiteSpace(' ')
       THROW statement
         PsiElement(throw)('throw')

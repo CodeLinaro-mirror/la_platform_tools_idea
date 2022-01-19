@@ -10,7 +10,7 @@ private val LOG = logger<ClassLoaderTreeChecker>()
 internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPluginDescriptorImpl,
                                       private val classLoaders: WeakList<PluginClassLoader>) {
   fun checkThatClassLoaderNotReferencedByPluginClassLoader() {
-    if (unloadedMainDescriptor.pluginClassLoader !is PluginClassLoader) {
+    if (unloadedMainDescriptor.classLoader !is PluginClassLoader) {
       return
     }
 
@@ -20,7 +20,7 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
     }
     @Suppress("TestOnlyProblems")
     for (it in pluginSet.getUnsortedEnabledModules()) {
-      checkThatClassloaderNotReferenced(it)
+      checkThatClassloaderNotReferenced(it.requireDescriptor())
     }
   }
 
@@ -32,7 +32,7 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
   }
 
   private fun checkThatClassloaderNotReferenced(descriptor: IdeaPluginDescriptorImpl) {
-    val classLoader = descriptor.pluginClassLoader as? PluginClassLoader ?: return
+    val classLoader = descriptor.classLoader as? PluginClassLoader ?: return
     if (descriptor !== unloadedMainDescriptor) {
       // unrealistic case, but who knows
       if (classLoaders.contains(classLoader)) {
@@ -47,7 +47,7 @@ internal class ClassLoaderTreeChecker(private val unloadedMainDescriptor: IdeaPl
     @Suppress("TestOnlyProblems")
     val parents = classLoader._getParents()
     for (unloadedClassLoader in classLoaders) {
-      if (parents.any { it.pluginClassLoader === unloadedClassLoader }) {
+      if (parents.any { it.classLoader === unloadedClassLoader }) {
         LOG.error("$classLoader references via parents $unloadedClassLoader that must be unloaded")
       }
     }

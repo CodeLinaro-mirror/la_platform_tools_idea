@@ -57,9 +57,7 @@ public class WelcomeBalloonLayoutImpl extends BalloonLayoutImpl {
 
   @Override
   public void add(@NotNull Balloon balloon, @Nullable Object layoutData) {
-    if (layoutData instanceof BalloonLayoutData
-        && ((BalloonLayoutData)layoutData).welcomeScreen
-        && balloon instanceof BalloonImpl) {
+    if (layoutData instanceof BalloonLayoutData && ((BalloonLayoutData)layoutData).welcomeScreen) {
       addToPopup((BalloonImpl)balloon, (BalloonLayoutData)layoutData);
     }
     else {

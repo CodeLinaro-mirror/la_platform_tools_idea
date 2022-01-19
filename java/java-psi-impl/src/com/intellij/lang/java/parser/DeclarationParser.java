@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.java.parser;
 
 import com.intellij.core.JavaPsiBundle;
@@ -35,8 +35,6 @@ public class DeclarationParser {
     JavaTokenType.IDENTIFIER, JavaTokenType.COMMA, JavaTokenType.THROWS_KEYWORD);
   private static final TokenSet PARAM_LIST_STOPPERS = TokenSet.create(
     JavaTokenType.RPARENTH, JavaTokenType.LBRACE, JavaTokenType.ARROW);
-  private static final TokenSet METHOD_PARAM_LIST_STOPPERS = TokenSet.create(
-    JavaTokenType.RPARENTH, JavaTokenType.LBRACE, JavaTokenType.ARROW, JavaTokenType.SEMICOLON);
   private static final TokenSet TYPE_START = TokenSet.orSet(
     ElementType.PRIMITIVE_TYPE_BIT_SET, TokenSet.create(JavaTokenType.IDENTIFIER, JavaTokenType.AT, JavaTokenType.VAR_KEYWORD));
   private static final TokenSet RESOURCE_EXPRESSIONS = TokenSet.create(
@@ -156,6 +154,7 @@ public class DeclarationParser {
 
   private void parseEnumConstants(final PsiBuilder builder) {
     boolean first = true;
+    boolean seenCommaBefore = false;
     while (builder.getTokenType() != null) {
       if (expect(builder, JavaTokenType.SEMICOLON)) {
         return;
@@ -430,7 +429,7 @@ public class DeclarationParser {
     if (tokenType == JavaTokenType.IDENTIFIER && PsiKeyword.RECORD.equals(builder.getTokenText()) &&
         builder.lookAhead(1) == JavaTokenType.IDENTIFIER) {
       LanguageLevel level = getLanguageLevel(builder);
-      return level.isAtLeast(LanguageLevel.JDK_16);
+      return level.isAtLeast(LanguageLevel.JDK_15_PREVIEW);
     }
     return false;
   }
@@ -570,13 +569,6 @@ public class DeclarationParser {
       }
       return JavaElementType.PARAMETER_LIST;
     }
-
-    TokenSet getStopperTypes() {
-      if (this == METHOD) {
-        return METHOD_PARAM_LIST_STOPPERS;
-      }
-      return PARAM_LIST_STOPPERS;
-    }
   }
 
   private void parseElementList(PsiBuilder builder, ListType type) {
@@ -596,7 +588,7 @@ public class DeclarationParser {
     boolean noElements = true;
     while (true) {
       final IElementType tokenType = builder.getTokenType();
-      if (tokenType == null || type.getStopperTypes().contains(tokenType)) {
+      if (tokenType == null || PARAM_LIST_STOPPERS.contains(tokenType)) {
         final boolean noLastElement = !delimiterExpected && (!noElements && !resources || noElements && resources);
         if (noLastElement) {
           final String key = lambda ? "expected.parameter" : "expected.identifier.or.type";
@@ -1035,7 +1027,7 @@ public class DeclarationParser {
         builder, JavaElementType.ANNOTATION_ARRAY_INITIALIZER, this::doParseAnnotationValue, "expected.value");
     }
     else {
-      result = myParser.getExpressionParser().parseConditional(builder, 0);
+      result = myParser.getExpressionParser().parseConditional(builder);
     }
 
     return result;

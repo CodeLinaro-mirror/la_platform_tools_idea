@@ -66,8 +66,7 @@ public class BigDecimalEqualsInspection extends BaseInspection {
       final String argText = commentTracker.text(right);
       @NonNls String replacement = qualifierText + ".compareTo(" + argText + ")==0";
       if (!check.isLeftDereferenced() && NullabilityUtil.getExpressionNullability(left, true) != Nullability.NOT_NULL) {
-        final boolean bothNullShouldEqual = call.getArgumentList().getExpressionCount() == 2 &&
-                                            NullabilityUtil.getExpressionNullability(right, true) != Nullability.NOT_NULL;
+        final boolean bothNullShouldEqual = call.getArgumentList().getExpressionCount() == 2;
         replacement = bothNullShouldEqual
                       ? left.getText() + "==null?" + right.getText() + "==null:" + replacement
                       : left.getText() + "!=null && " + replacement;

@@ -108,4 +108,12 @@ public abstract class DaemonCodeAnalyzer {
                                                     @NotNull PsiFile file) {
     }
   }
+
+  /**
+   * @deprecated Use {@link DaemonListener} instead
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public abstract static class DaemonListenerAdapter implements DaemonListener {
+  }
 }

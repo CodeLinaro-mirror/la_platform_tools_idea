@@ -10,13 +10,12 @@ interface ExternalSystemProjectAware {
   val projectId: ExternalSystemProjectId
 
   /**
-   * Collects settings files which will be watched.
-   * This property can be called from any thread context to reduce UI freezes and CPU usage.
-   * Result will be cached, so settings files should be equals between reloads.
+   * Collects settings files that are be watched
+   * This function can be called from any thread context to reduce UI freezes and CPU usage.
    */
   val settingsFiles: Set<String>
 
-  fun subscribe(listener: ExternalSystemProjectListener, parentDisposable: Disposable)
+  fun subscribe(listener: ExternalSystemProjectRefreshListener, parentDisposable: Disposable)
 
   fun reloadProject(context: ExternalSystemProjectReloadContext)
 }

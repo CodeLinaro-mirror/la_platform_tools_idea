@@ -7,7 +7,6 @@ import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTrack
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle.message
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.ui.layout.*
 import org.jetbrains.annotations.Nls
 import kotlin.reflect.KMutableProperty0
@@ -43,7 +42,7 @@ class ExternalSystemGroupConfigurable(private val project: Project) : BoundConfi
 
   private inline fun <reified T : Enum<T>> Row.buttonGroup(
     prop: KMutableProperty0<T>,
-    @NlsContexts.Checkbox title: String,
+    @Nls title: String,
     defaultValue: T,
     name: String,
     propertiesComponent: PropertiesComponent,
@@ -52,7 +51,6 @@ class ExternalSystemGroupConfigurable(private val project: Project) : BoundConfi
     val previousValue by lazy { propertiesComponent.getValue(name)?.let { enumValueOf<T>(it) } }
     var isEnabled = prop.get() != defaultValue
     var value = if (isEnabled) prop.get() else previousValue ?: defaultValue
-    @Suppress("HardCodedStringLiteral")
     checkBox(title)
       .apply { attachSubRowsEnabled(component) }
       .withSelectedBinding(PropertyBinding({ isEnabled }, { isEnabled = it }))

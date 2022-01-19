@@ -6,19 +6,22 @@ import groovy.transform.CompileStatic
 @CompileStatic
 enum JetBrainsRuntimeDistribution {
   /**
-   * JBR with JCEF
+   * JBR with both JavaFX and JCEF
+   */
+  VANILLA(''),
+  /**
+   * JBR with JCEF only
    */
   JCEF('jcef'),
+  /**
+   * JBR with JavaFX only
+   */
+  JFX('jfx'),
 
   /**
-   * JBR with DCEVM and JCEF
+   * JBR with DCEVM and both JavaFX and JCEF
    */
-  DCEVM('dcevm'),
-
-  /**
-   * JBR without JCEF and DCEVM
-   */
-  LIGHTWEIGHT('nomod'),
+  DCEVM('dcevm')
 
   /**
    * Distinguishes artifacts of different JBR distributions

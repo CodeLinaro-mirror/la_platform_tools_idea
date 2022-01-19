@@ -20,7 +20,7 @@ import groovy.transform.CompileStatic
 class JavaPsiTest extends LightJavaCodeInsightFixtureTestCase {
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_16
+    return JAVA_15
   }
 
   void testEmptyImportList() {
@@ -228,7 +228,7 @@ class JavaPsiTest extends LightJavaCodeInsightFixtureTestCase {
   }
 
   void "test enum with name sealed"() {
-    withLanguageLevel(LanguageLevel.JDK_16_PREVIEW) {
+    withLanguageLevel(LanguageLevel.JDK_15_PREVIEW) {
       def clazz = configureFile("enum sealed {}").classes[0]
       assert !clazz.getAllMethods().any { it.name == "values" }
     }

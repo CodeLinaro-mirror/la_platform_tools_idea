@@ -3,7 +3,6 @@ package com.intellij.execution.wsl;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.RoamingType;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.AtomicNullableLazyValue;
@@ -23,7 +22,7 @@ import java.util.*;
  */
 @State(
   name = "WslDistributionsService",
-  storages = @Storage(value = "wsl.distributions.xml", roamingType = RoamingType.DISABLED)
+  storages = @Storage("wsl.distributions.xml")
 )
 final class WSLDistributionService implements PersistentStateComponent<WSLDistributionService> {
   /**

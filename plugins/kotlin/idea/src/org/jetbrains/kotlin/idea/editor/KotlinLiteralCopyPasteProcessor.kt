@@ -149,34 +149,24 @@ class KotlinLiteralCopyPasteProcessor : CopyPastePreProcessor {
                     beginTp.getQualifiedExpressionForReceiver()?.callExpression?.calleeExpression?.text == "trimIndent" &&
                     templateTokenSequence.firstOrNull()?.indent() == templateTokenSequence.lastOrNull()?.indent()
                 ) {
-                    begin.parent?.prevSibling?.text?.takeIf { it.all { c -> c == ' ' || c == '\t' } }
+                    begin.parent?.prevSibling?.takeIf { it.text != "\n" && it.text != "\"\"\""  }?.text
                 } else {
                     null
                 } ?: ""
 
-            buildString {
-                val tripleQuoteRe = Regex("[\"]{3,}")
-                var indentToAdd = ""
-                for (chunk in templateTokenSequence) {
-                    when (chunk) {
-                        is LiteralChunk -> {
-                            val replaced = chunk.text.replace("\$", "\${'$'}").let { escapedDollar ->
-                                tripleQuoteRe.replace(escapedDollar) { "\"\"" + "\${'\"'}".repeat(it.value.count() - 2) }
-                            }
-                            append(indentToAdd + replaced)
-                            indentToAdd = ""
+            val tripleQuoteRe = Regex("[\"]{3,}")
+            templateTokenSequence.mapIndexed { index, chunk ->
+                when (chunk) {
+                    is LiteralChunk -> {
+                        val replaced = chunk.text.replace("\$", "\${'$'}").let { escapedDollar ->
+                            tripleQuoteRe.replace(escapedDollar) { "\"\"" + "\${'\"'}".repeat(it.value.count() - 2) }
                         }
-                        is EntryChunk -> {
-                            append(indentToAdd + chunk.text)
-                            indentToAdd = ""
-                        }
-                        is NewLineChunk -> {
-                            appendLine()
-                            indentToAdd = indent
-                        }
+                        if (index == 0) replaced else indent + replaced
                     }
+                    is EntryChunk -> if (index == 0) chunk.text else indent + chunk.text
+                    is NewLineChunk -> "\n"
                 }
-            }
+            }.joinToString(separator = "")
         }
     }
 }

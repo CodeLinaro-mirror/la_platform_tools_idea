@@ -74,7 +74,7 @@ class DebuggerConnection(
         val xCoroutineThreadView = XCoroutineView(project, session as XDebugSessionImpl)
         val framesContent: Content = createContent(ui, xCoroutineThreadView)
         framesContent.isCloseable = false
-        ui.addContent(framesContent, 0, PlaceInGrid.right, true)
+        ui.addContent(framesContent, 0, PlaceInGrid.right, false)
         session.addSessionListener(xCoroutineThreadView.debugSessionListener(session))
         session.rebuildViews()
         return xCoroutineThreadView

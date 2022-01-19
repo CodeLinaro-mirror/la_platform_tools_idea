@@ -1,7 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.kotlin.tools.projectWizard.wizard.ui.setting
 
-import com.intellij.ui.ContextHelpLabel
 import com.intellij.util.ui.components.BorderLayoutPanel
 import org.jetbrains.kotlin.tools.projectWizard.core.Context
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.ValidationResult
@@ -52,13 +51,10 @@ open class TitledComponentsList(
         fun JComponent.constraints() = layout.getConstraints(this)
 
         val componentsWithLabels = components.mapNotNull { component ->
-            if (!component.shouldBeShown()) return@mapNotNull null
+            if (!component.shouldBeShow()) return@mapNotNull null
             val label = label(component.title?.let { "$it:" }.orEmpty())
-            val tooltip = component.tooltipText?.let { ContextHelpLabel.create(component.tooltipText.orEmpty()) }
-
             TitledComponentData(
                 label.also { add(it) }.constraints(),
-                tooltip?.also { add(it) }?.constraints(),
                 component.component.also { add(it) }.constraints(),
                 component.alignment,
                 component.additionalComponentPadding,
@@ -72,12 +68,12 @@ open class TitledComponentsList(
             is TitleComponentAlignment.AlignFormTopWithPadding -> alignment.padding.asSpring()
         }
 
-        val maxLabelWidth =
-            componentsWithLabels.fold(componentsWithLabels.firstOrNull()?.label?.width ?: Spring.constant(0)) { spring, row ->
-                Spring.max(spring, row.label.width)
-            }
+        val labelWidth = componentsWithLabels.fold(componentsWithLabels.first().label.width) { spring, row ->
+            Spring.max(spring, row.label.width)
+        }
 
-        componentsWithLabels.forEach { (_, tooltipConst, component, _, _, componentMaxWidth) ->
+        componentsWithLabels.forEach { (label, component, _, _, componentMaxWidth) ->
+            label.width = labelWidth
             val maxWidth = componentMaxWidth ?: globalMaxWidth
             if (maxWidth == null) {
                 component[SpringLayout.EAST] = layout.getConstraint(SpringLayout.EAST, this) - xPanelPadding.asSpring()
@@ -89,24 +85,17 @@ open class TitledComponentsList(
         var lastLabel: SpringLayout.Constraints? = null
         var lastComponent: SpringLayout.Constraints? = null
 
-        val tooltipWidth = componentsWithLabels.find { it.tooltip != null }?.tooltip?.width
-
         for (data in componentsWithLabels) {
-            val (label, tooltip, component) = data
+            val (label, component) = data
             label.x = xPanelPadding.asSpring()
-            tooltip?.x = label[SpringLayout.EAST] + xGap
-            component.x = maxLabelWidth + 2 * xGap
-            if (tooltipWidth != null)
-                component.x += tooltipWidth + xGap
+            component.x = label[SpringLayout.EAST] + xGap
 
             if (lastComponent != null && lastLabel != null) {
                 val constraint = lastComponent[SpringLayout.SOUTH] + yGap + data.additionalComponentGap
                 label.y = constraint + data.centerConstraint()
-                tooltip?.y = label.y
                 component.y = constraint
             } else {
                 label.y = data.centerConstraint() + yPanelPadding
-                tooltip?.y = label.y
                 component.y = yPanelPadding.asSpring()
             }
 
@@ -129,7 +118,6 @@ open class TitledComponentsList(
 
     private data class TitledComponentData(
         val label: SpringLayout.Constraints,
-        val tooltip: SpringLayout.Constraints?,
         val component: SpringLayout.Constraints,
         val alignment: TitleComponentAlignment,
         val additionalComponentGap: Int,

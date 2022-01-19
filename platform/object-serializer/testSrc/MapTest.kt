@@ -116,7 +116,4 @@ private class TestMapBean {
 
   @JvmField
   val beanMap: MutableMap<TestMapBean, TestMapBean> = HashMap()
-
-  @JvmField
-  val emptyMap = emptyMap<String, String>()
 }

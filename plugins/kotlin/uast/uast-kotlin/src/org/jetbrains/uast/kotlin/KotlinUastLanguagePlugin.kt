@@ -7,7 +7,6 @@ import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.*
 import com.intellij.psi.impl.source.tree.LeafPsiElement
-import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.asJava.LightClassUtil
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
@@ -34,9 +33,6 @@ import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.uast.*
 import org.jetbrains.uast.analysis.UastAnalysisPlugin
 import org.jetbrains.uast.expressions.UInjectionHost
-import org.jetbrains.uast.internal.UElementAlternative
-import org.jetbrains.uast.internal.accommodate
-import org.jetbrains.uast.internal.alternative
 import org.jetbrains.uast.kotlin.KotlinConverter.convertDeclaration
 import org.jetbrains.uast.kotlin.KotlinConverter.convertDeclarationOrElement
 import org.jetbrains.uast.kotlin.declarations.KotlinUIdentifier
@@ -49,7 +45,6 @@ import org.jetbrains.uast.util.ClassSetsWrapper
 
 interface KotlinUastResolveProviderService {
     fun getBindingContext(element: KtElement): BindingContext
-    fun getBindingContextIfAny(element: KtElement): BindingContext? = getBindingContext(element)
     fun getTypeMapper(element: KtElement): KotlinTypeMapper?
     fun getLanguageVersionSettings(element: KtElement): LanguageVersionSettings
     fun isJvmElement(psiElement: PsiElement): Boolean
@@ -190,8 +185,8 @@ internal inline fun <reified ActualT : UElement> Array<out Class<out UElement>>.
 internal fun Array<out Class<out UElement>>.isAssignableFrom(cls: Class<*>) = any { it.isAssignableFrom(cls) }
 
 
-@ApiStatus.Internal
-object KotlinConverter {
+
+internal object KotlinConverter {
     internal tailrec fun unwrapElements(element: PsiElement?): PsiElement? = when (element) {
         is KtValueArgumentList -> unwrapElements(element.parent)
         is KtValueArgument -> unwrapElements(element.parent)
@@ -758,4 +753,14 @@ private fun elementTypes(requiredType: Class<out UElement>?) = requiredType?.let
 private fun <T : UElement> Array<out Class<out T>>.nonEmptyOr(default: Array<out Class<out UElement>>) = takeIf { it.isNotEmpty() }
     ?: default
 
+private fun <U : UElement> Array<out Class<out UElement>>.accommodate(vararg makers: UElementAlternative<out U>): Sequence<UElement> {
+    val makersSeq = makers.asSequence()
+    return this.asSequence()
+        .flatMap { requiredType -> makersSeq.filter { requiredType.isAssignableFrom(it.uType) } }
+        .distinct()
+        .mapNotNull { it.make.invoke() }
+}
 
+private inline fun <reified U : UElement> alternative(noinline make: () -> U?) = UElementAlternative(U::class.java, make)
+
+private class UElementAlternative<U : UElement>(val uType: Class<U>, val make: () -> U?)

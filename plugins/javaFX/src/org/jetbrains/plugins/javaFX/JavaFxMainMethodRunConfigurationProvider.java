@@ -8,26 +8,24 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiMethodUtil;
 import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.javaFX.fxml.JavaFxCommonNames;
 
 public class JavaFxMainMethodRunConfigurationProvider implements JavaMainMethodProvider {
   @NonNls public static final String LAUNCH_MAIN = "launch";
 
   @Override
-  public boolean isApplicable(@NotNull PsiClass clazz) {
+  public boolean isApplicable(PsiClass clazz) {
     return !DumbService.isDumb(clazz.getProject()) &&
            InheritanceUtil.isInheritor(clazz, true, JavaFxCommonNames.JAVAFX_APPLICATION_APPLICATION);
   }
 
   @Override
-  public boolean hasMainMethod(@NotNull PsiClass clazz) {
+  public boolean hasMainMethod(PsiClass clazz) {
     return isApplicable(clazz);
   }
 
   @Override
-  public @Nullable PsiMethod findMainInClass(@NotNull PsiClass clazz) {
+  public PsiMethod findMainInClass(PsiClass clazz) {
     final PsiMethod[] launches = clazz.findMethodsByName(LAUNCH_MAIN, true);
     for (PsiMethod launchMethod : launches) {
       if (PsiMethodUtil.isMainMethod(launchMethod)) {

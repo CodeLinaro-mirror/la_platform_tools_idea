@@ -20,7 +20,6 @@ public class KotlinTryCatchSurrounder extends KotlinTrySurrounderBase {
         return getCatchTypeParameterTextRange(expression);
     }
 
-    @SuppressWarnings("DialogTitleCapitalization")
     @Override
     public String getTemplateDescription() {
         return JavaBundle.message("surround.with.try.catch.template");

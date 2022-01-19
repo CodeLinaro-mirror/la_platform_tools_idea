@@ -20,10 +20,7 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory;
-import com.intellij.openapi.fileEditor.impl.EditorHistoryManager;
-import com.intellij.openapi.fileEditor.impl.EditorTabPresentationUtil;
-import com.intellij.openapi.fileEditor.impl.EditorWindow;
-import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl;
+import com.intellij.openapi.fileEditor.impl.*;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.LightEditActionFactory;
 import com.intellij.openapi.project.Project;
@@ -32,7 +29,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.openapi.wm.*;
 import com.intellij.ui.*;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
@@ -41,9 +38,7 @@ import com.intellij.ui.hover.ListHoverListener;
 import com.intellij.ui.popup.PopupUpdateProcessorBase;
 import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.speedSearch.NameFilteringListModel;
-import com.intellij.util.ArrayUtil;
-import com.intellij.util.Consumer;
-import com.intellij.util.SlowOperations;
+import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBUI;
@@ -117,7 +112,7 @@ public final class Switcher extends BaseSwitcherAction {
       if (CommonDataKeys.PROJECT.is(dataId)) {
         return this.project;
       }
-      if (PlatformCoreDataKeys.SELECTED_ITEM.is(dataId)) {
+      if (PlatformDataKeys.SELECTED_ITEM.is(dataId)) {
         if (files.isSelectionEmpty()) return null;
         SwitcherVirtualFile item = ContainerUtil.getOnlyItem(files.getSelectedValuesList());
         return item == null ? null : item.getFile();
@@ -136,7 +131,7 @@ public final class Switcher extends BaseSwitcherAction {
         if (pinned && (e.isControlDown() || e.isMetaDown() || e.isShiftDown())) return false;
         final Object source = e.getSource();
         if (source instanceof JList) {
-          JList<?> jList = (JList<?>)source;
+          JList<? extends SwitcherListItem> jList = (JList<? extends SwitcherListItem>)source;
           if (jList.getSelectedIndex() == -1 && jList.getAnchorSelectionIndex() != -1) {
             jList.setSelectedIndex(jList.getAnchorSelectionIndex());
           }
@@ -171,13 +166,13 @@ public final class Switcher extends BaseSwitcherAction {
       }
       // register custom actions as soon as possible to block overridden actions
       registerAction(this::navigate, "ENTER");
-      registerAction(this::hideSpeedSearchOrPopup, "ESCAPE");
       if (pinned) {
-        registerAction(this::closeTabOrToolWindow, ActionUtil.getShortcutSet("DeleteRecentFiles"));
         registerAction(this::navigate, ActionUtil.getShortcutSet(IdeActions.ACTION_OPEN_IN_NEW_WINDOW));
         registerAction(this::navigate, ActionUtil.getShortcutSet(IdeActions.ACTION_OPEN_IN_RIGHT_SPLIT));
       }
-      else {
+      registerAction(this::hideSpeedSearchOrPopup, "ESCAPE");
+      registerAction(this::closeTabOrToolWindow, "DELETE", "BACK_SPACE");
+      if (!pinned) {
         registerSwingAction(ListActions.Up.ID, "KP_UP", "UP");
         registerSwingAction(ListActions.Down.ID, "KP_DOWN", "DOWN");
         registerSwingAction(ListActions.Left.ID, "KP_LEFT", "LEFT");
@@ -804,7 +799,7 @@ public final class Switcher extends BaseSwitcherAction {
       if (myNameForRendering == null) {
         // Recently changed files would also be taken into account (not only open 'visible' files)
         myNameForRendering = SlowOperations.allowSlowOperations(
-          () -> EditorTabPresentationUtil.getUniqueEditorTabTitle(myProject, first)
+          () -> EditorTabPresentationUtil.getUniqueEditorTabTitle(myProject, first, second)
         );
       }
       return myNameForRendering;
@@ -819,16 +814,12 @@ public final class Switcher extends BaseSwitcherAction {
       super(view, VERTICAL_SCROLLBAR_AS_NEEDED, noBorder ? HORIZONTAL_SCROLLBAR_AS_NEEDED : HORIZONTAL_SCROLLBAR_NEVER);
       setBorder(noBorder ? JBUI.Borders.empty() : JBUI.Borders.customLineRight(JBUI.CurrentTheme.Popup.separatorColor()));
       setViewportBorder(JBUI.Borders.empty());
-      setMinimumSize(JBUI.size(noBorder ? 250 : 0, 100));
     }
 
     @Override
     public Dimension getPreferredSize() {
       Dimension size = super.getPreferredSize();
       if (isPreferredSizeSet()) return size;
-      Dimension min = super.getMinimumSize();
-      if (size.width < min.width) size.width = min.width;
-      if (size.height < min.height) size.height = min.height;
       if (HORIZONTAL_SCROLLBAR_NEVER != getHorizontalScrollBarPolicy()) return size;
       size.width = width = Math.max(size.width, width);
       return size;

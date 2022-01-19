@@ -26,6 +26,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.sh.ShLanguage;
 import com.intellij.sh.settings.ShSettings;
+import com.intellij.sh.statistics.ShFeatureUsagesCollector;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.download.DownloadableFileDescription;
 import com.intellij.util.download.DownloadableFileService;
@@ -45,12 +46,12 @@ import java.util.TreeMap;
 import static com.intellij.sh.ShBundle.message;
 import static com.intellij.sh.ShBundle.messagePointer;
 import static com.intellij.sh.ShLanguage.NOTIFICATION_GROUP_ID;
-import static com.intellij.sh.statistics.ShCounterUsagesCollector.EXTERNAL_ANNOTATOR_DOWNLOADED_EVENT_ID;
 
 public final class ShShellcheckUtil {
   private static final Logger LOG = Logger.getInstance(ShShellcheckUtil.class);
 
   private static final Key<Boolean> UPDATE_NOTIFICATION_SHOWN = Key.create("SHELLCHECK_UPDATE");
+  private static final String FEATURE_ACTION_ID = "ExternalAnnotatorDownloaded";
           static final @NlsSafe String SHELLCHECK = "shellcheck";
           static final @NlsSafe String SHELLCHECK_BIN = SystemInfo.isWindows ? SHELLCHECK + ".exe" : SHELLCHECK;
   private static final String SHELLCHECK_VERSION = "0.7.1";
@@ -111,7 +112,7 @@ public final class ShShellcheckUtil {
                 FileUtil.delete(oldShellcheck);
               }
               ApplicationManager.getApplication().invokeLater(onSuccess);
-              EXTERNAL_ANNOTATOR_DOWNLOADED_EVENT_ID.log();
+              ShFeatureUsagesCollector.logFeatureUsage(FEATURE_ACTION_ID);
             }
           }
         }

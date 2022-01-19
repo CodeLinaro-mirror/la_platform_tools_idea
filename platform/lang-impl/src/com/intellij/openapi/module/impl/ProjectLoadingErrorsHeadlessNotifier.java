@@ -17,8 +17,7 @@ public class ProjectLoadingErrorsHeadlessNotifier extends ProjectLoadingErrorsNo
   private static Consumer<? super ConfigurationErrorDescription> ourErrorHandler;
 
   @TestOnly
-  public static void setErrorHandler(@NotNull Disposable parentDisposable,
-                                     @NotNull Consumer<? super ConfigurationErrorDescription> errorHandler) {
+  public static void setErrorHandler(Consumer<? super ConfigurationErrorDescription> errorHandler, Disposable parentDisposable) {
     ourErrorHandler = errorHandler;
     Disposer.register(parentDisposable, () -> ourErrorHandler = null);
   }

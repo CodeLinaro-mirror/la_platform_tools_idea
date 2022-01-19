@@ -40,7 +40,7 @@ class FloatingToolbarComponentImpl(
     val graphics = g.create()
     try {
       if (graphics is Graphics2D) {
-        val alpha = visibilityController.opacity
+        val alpha = visibilityController.opacity * BACKGROUND_ALPHA
         graphics.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha)
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
       }
@@ -59,7 +59,7 @@ class FloatingToolbarComponentImpl(
     try {
       if (graphics is Graphics2D) {
         val alpha = visibilityController.opacity
-        graphics.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha)
+        graphics.composite = AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, alpha)
       }
       super.paintChildren(graphics)
     }
@@ -89,6 +89,7 @@ class FloatingToolbarComponentImpl(
   }
 
   companion object {
+    private const val BACKGROUND_ALPHA = 0.75f
     private val BACKGROUND = JBColor.namedColor("Toolbar.Floating.background", JBColor(0xEDEDED, 0x454A4D))
   }
 }

@@ -12,17 +12,10 @@ import org.jetbrains.annotations.NotNull;
 
 public class WslSdkFilter {
   public static Condition<? super Sdk> filterSdkByWsl(@NotNull Project project) {
-    var path = project.getBasePath();
-    if (path == null || !WSLUtil.isSystemCompatible()) {
-      return Conditions.alwaysTrue();
-    }
-
-    var distribution = WslPath.getDistributionByWindowsUncPath(path);
-    var projectOnLocalFs = distribution == null;
+    String path = project.getBasePath();
+    if (path == null || !WSLUtil.isSystemCompatible()) return Conditions.alwaysTrue();
+    WSLDistribution distribution = WslPath.getDistributionByWindowsUncPath(path);
     return (Condition<Sdk>)sdk -> {
-      if (projectOnLocalFs && sdk.getSdkType().allowWslSdkForLocalProject()) {
-        return true;
-      }
       String sdkHomePath = sdk.getHomePath();
       return sdkHomePath == null || WslPath.getDistributionByWindowsUncPath(sdkHomePath) == distribution;
     };

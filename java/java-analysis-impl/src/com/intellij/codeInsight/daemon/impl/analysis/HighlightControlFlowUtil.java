@@ -255,11 +255,11 @@ public final class HighlightControlFlowUtil {
     HighlightInfo highlightInfo = HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(range).descriptionAndTooltip(description).create();
     QuickFixAction.registerQuickFixAction(highlightInfo, HighlightMethodUtil.getFixRange(field), QUICK_FIX_FACTORY.createCreateConstructorParameterFromFieldFix(field));
     QuickFixAction.registerQuickFixAction(highlightInfo, HighlightMethodUtil.getFixRange(field), QUICK_FIX_FACTORY.createInitializeFinalFieldInConstructorFix(field));
-    QuickFixAction.registerQuickFixAction(highlightInfo, QUICK_FIX_FACTORY.createAddVariableInitializerFix(field));
     final PsiClass containingClass = field.getContainingClass();
     if (containingClass != null && !containingClass.isInterface()) {
       QuickFixAction.registerQuickFixAction(highlightInfo, QUICK_FIX_FACTORY.createModifierListFix(field, PsiModifier.FINAL, false, false));
     }
+    QuickFixAction.registerQuickFixAction(highlightInfo, QUICK_FIX_FACTORY.createAddVariableInitializerFix(field));
     return highlightInfo;
   }
 
@@ -288,7 +288,7 @@ public final class HighlightControlFlowUtil {
       PsiElement scope = variable instanceof PsiField
                                ? ((PsiField)variable).getContainingClass()
                                : variable.getParent() != null ? variable.getParent().getParent() : null;
-      while (scope instanceof PsiCodeBlock && scope.getParent() instanceof PsiSwitchBlock) {
+      while (scope instanceof PsiCodeBlock && scope.getParent() instanceof PsiSwitchStatement) {
         scope = PsiTreeUtil.getParentOfType(scope, PsiCodeBlock.class);
       }
 
@@ -505,10 +505,10 @@ public final class HighlightControlFlowUtil {
       JavaErrorBundle.message(inLoop ? "variable.assigned.in.loop" : "variable.already.assigned", variable.getName());
     final HighlightInfo highlightInfo =
       HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expression).descriptionAndTooltip(description).create();
+    HighlightFixUtil.registerMakeNotFinalAction(variable, highlightInfo);
     if (canDefer) {
       QuickFixAction.registerQuickFixAction(highlightInfo, QUICK_FIX_FACTORY.createDeferFinalAssignmentFix(variable, expression));
     }
-    HighlightFixUtil.registerMakeNotFinalAction(variable, highlightInfo);
     return highlightInfo;
   }
 

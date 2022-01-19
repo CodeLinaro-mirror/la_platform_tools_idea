@@ -14,12 +14,12 @@ fun test() {
     val t = A().p
     A().p = 1
 
-    val t2 = AA().p
+    val t = AA().p
     AA().p = 1
 
-    val t3 = J().p
+    val t = J().p
     J().p = 1
 
-    val t4 = B().p
+    val t = B().p
     B().p = 1
 }

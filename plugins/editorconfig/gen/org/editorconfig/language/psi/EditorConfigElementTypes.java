@@ -1,9 +1,11 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+
 // This is a generated file. Not intended for manual editing.
 package org.editorconfig.language.psi;
 
-import com.intellij.psi.tree.IElementType;
-import com.intellij.psi.PsiElement;
 import com.intellij.lang.ASTNode;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.tree.IElementType;
 import org.editorconfig.language.psi.impl.*;
 
 public interface EditorConfigElementTypes {
@@ -25,7 +27,6 @@ public interface EditorConfigElementTypes {
   IElementType QUALIFIED_KEY_PART = new EditorConfigElementType("QUALIFIED_KEY_PART");
   IElementType QUALIFIED_OPTION_KEY = new EditorConfigElementType("QUALIFIED_OPTION_KEY");
   IElementType QUESTION_PATTERN = new EditorConfigElementType("QUESTION_PATTERN");
-  IElementType RAW_OPTION_VALUE = new EditorConfigElementType("RAW_OPTION_VALUE");
   IElementType ROOT_DECLARATION = new EditorConfigElementType("ROOT_DECLARATION");
   IElementType ROOT_DECLARATION_KEY = new EditorConfigElementType("ROOT_DECLARATION_KEY");
   IElementType ROOT_DECLARATION_VALUE = new EditorConfigElementType("ROOT_DECLARATION_VALUE");
@@ -48,7 +49,7 @@ public interface EditorConfigElementTypes {
   IElementType R_CURLY = new EditorConfigTokenType("R_CURLY");
   IElementType SEPARATOR = new EditorConfigTokenType("SEPARATOR");
 
-  class Factory {
+  final class Factory {
     public static PsiElement createElement(ASTNode node) {
       IElementType type = node.getElementType();
       if (type == ASTERISK_PATTERN) {
@@ -101,9 +102,6 @@ public interface EditorConfigElementTypes {
       }
       else if (type == QUESTION_PATTERN) {
         return new EditorConfigQuestionPatternImpl(node);
-      }
-      else if (type == RAW_OPTION_VALUE) {
-        return new EditorConfigRawOptionValueImpl(node);
       }
       else if (type == ROOT_DECLARATION) {
         return new EditorConfigRootDeclarationImpl(node);

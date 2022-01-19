@@ -1,2 +1,4 @@
+from typing import List
+
 __version__: str
-VERSION: list[str]
+VERSION: List[str]

@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.SettingRefe
 import org.jetbrains.kotlin.tools.projectWizard.moduleConfigurators.CommonTargetConfigurator
 import org.jetbrains.kotlin.tools.projectWizard.moduleConfigurators.getConfiguratorSettings
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.KotlinPlugin
+import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModuleType
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ProjectKind
 import org.jetbrains.kotlin.tools.projectWizard.plugins.templates.TemplatesPlugin
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Module
@@ -59,18 +60,14 @@ class ModuleSettingsComponent(
         settingsList.setComponents(moduleSettingComponents)
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     private fun createTemplatesListComponentForModule(module: Module): ModuleTemplateComponent? {
-        val templates = read { availableTemplatesFor(module) }
-        if (templates.isEmpty()) return null
-
-        assert(templates.all { it.isPermittedForModule(module)}) {
-            "Templates available for the module contain non-permitted one: templates=$templates, module=$module"
+        val templates = read { availableTemplatesFor(module) }.takeIf { it.isNotEmpty() } ?: return null
+        val templatesWithNoneTemplate = buildList {
+            add(NoneTemplate)
+            addAll(templates)
         }
-
-        // we don't display the component for a single template matching module's default one (nothing to choose from)
-        if (templates.size == 1 && templates.first() == module.template) return null
-
-        return ModuleTemplateComponent(context, module, templates, uiEditorUsagesStats) {
+        return ModuleTemplateComponent(context, module, templatesWithNoneTemplate, uiEditorUsagesStats) {
             updateModule(module)
             component.updateUI()
         }
@@ -93,9 +90,17 @@ private class ModuleNameComponent(context: Context, private val module: Module) 
 
     override val title: String = KotlinNewProjectWizardUIBundle.message("module.settings.name")
 
-    override fun shouldBeShown(): Boolean {
+    override fun onInit() {
+        super.onInit()
         val isSingleRootMode = read { KotlinPlugin.modules.settingValue }.size == 1
-        return super.shouldBeShown() && !(isSingleRootMode && module.isRootModule) && (module.configurator != CommonTargetConfigurator)
+        when {
+            isSingleRootMode && module.isRootModule -> {
+                textField.disable(KotlinNewProjectWizardUIBundle.message("module.settings.name.same.as.project"))
+            }
+            module.configurator == CommonTargetConfigurator -> {
+                textField.disable(ModuleType.common.name + " " + KotlinNewProjectWizardUIBundle.message("module.settings.name.can.not.be.modified"))
+            }
+        }
     }
 
     companion object {
@@ -115,18 +120,12 @@ private class ModuleTemplateComponent(
     uiEditorUsagesStats: UiEditorUsageStats,
     onTemplateChanged: () -> Unit
 ) : TitledComponent(context) {
-
-    init {
-        if (module.template == null) {
-            module.template = templates.firstOrNull()
-        }
-    }
-
     @OptIn(ExperimentalStdlibApi::class)
     private val dropDown = DropDownComponent(
         context,
         initialValues = templates,
-        initiallySelectedValue = module.template,
+        initiallySelectedValue = module.template ?: NoneTemplate,
+        filter = { template: Template -> read { template.isApplicableTo(this, module) } },
         labelText = null,
     ) { value, isByUser ->
         if (isByUser) {
@@ -171,14 +170,14 @@ private class ModuleTemplateComponent(
 private object NoneTemplate : Template() {
     override val title = KotlinNewProjectWizardUIBundle.message("module.settings.template.none")
     override val description: String = ""
-    override fun isApplicableTo(module: Module, projectKind: ProjectKind, reader: Reader): Boolean = true
+    override fun isSupportedByModuleType(module: Module, projectKind: ProjectKind): Boolean = true
 
     override val id: String = "none"
 }
 
 fun Reader.availableTemplatesFor(module: Module) =
     TemplatesPlugin.templates.propertyValue.values.filter { template ->
-        template.isSupportedByModuleType(module, KotlinPlugin.projectKind.settingValue, this)
+        template.isSupportedByModuleType(module, KotlinPlugin.projectKind.settingValue)
     }
 
 

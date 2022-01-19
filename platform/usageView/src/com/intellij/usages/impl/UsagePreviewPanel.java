@@ -43,15 +43,11 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.beans.PropertyChangeListener;
-import java.beans.PropertyChangeSupport;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
 public class UsagePreviewPanel extends UsageContextPanelBase implements DataProvider {
-  public static final String LINE_HEIGHT_PROPERTY = "UsageViewPanel.lineHeightProperty";
-
   private static final Logger LOG = Logger.getInstance(UsagePreviewPanel.class);
   private Editor myEditor;
   private final boolean myIsEditor;
@@ -59,7 +55,6 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
   private List<? extends UsageInfo> myCachedSelectedUsageInfos;
   private Pattern myCachedSearchPattern;
   private Pattern myCachedReplacePattern;
-  private final PropertyChangeSupport myPropertyChangeSupport = new PropertyChangeSupport(this);
 
   public UsagePreviewPanel(@NotNull Project project, @NotNull UsageViewPresentation presentation) {
     this(project, presentation, false);
@@ -127,7 +122,7 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
       removeAll();
       if (isDisposed) return;
       myEditor = createEditor(psiFile, document);
-      setLineHeight(myEditor.getLineHeight());
+      myLineHeight = myEditor.getLineHeight();
       myEditor.setBorder(null);
       add(myEditor.getComponent(), BorderLayout.CENTER);
 
@@ -145,26 +140,11 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
     }
   }
 
-  private void setLineHeight(int lineHeight) {
-    if (lineHeight != myLineHeight) {
-      int oldHeight = myLineHeight;
-      myLineHeight = lineHeight;
-      myPropertyChangeSupport.firePropertyChange(LINE_HEIGHT_PROPERTY, oldHeight, myLineHeight);
-    }
-  }
-
   public int getLineHeight() {
     ApplicationManager.getApplication().assertIsDispatchThread();
     return myLineHeight;
   }
 
-  public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-    myPropertyChangeSupport.addPropertyChangeListener(propertyName, listener);
-  }
-
-  public void removePropertyChangeListener(PropertyChangeListener listener) {
-    myPropertyChangeSupport.removePropertyChangeListener(listener);
-  }
 
   private static final Key<Boolean> IN_PREVIEW_USAGE_FLAG = Key.create("IN_PREVIEW_USAGE_FLAG");
 

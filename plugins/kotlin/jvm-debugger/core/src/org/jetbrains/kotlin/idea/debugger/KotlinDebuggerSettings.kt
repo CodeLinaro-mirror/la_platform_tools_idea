@@ -19,7 +19,6 @@ class KotlinDebuggerSettings : XDebuggerSettings<KotlinDebuggerSettings>("kotlin
     var renderDelegatedProperties: Boolean = false
     var disableKotlinInternalClasses: Boolean = true
     var debugDisableCoroutineAgent: Boolean = false
-    var alwaysDoSmartStepInto: Boolean = true
 
     companion object {
         fun getInstance(): KotlinDebuggerSettings {
@@ -32,7 +31,7 @@ class KotlinDebuggerSettings : XDebuggerSettings<KotlinDebuggerSettings>("kotlin
             listOf(
                 SimpleConfigurable.create(
                     "reference.idesettings.debugger.kotlin.stepping",
-                    KotlinDebuggerCoreBundle.message("configurable.name.kotlin"),
+                    "Kotlin",
                     KotlinSteppingConfigurableUi::class.java,
                     this
                 )
@@ -41,7 +40,7 @@ class KotlinDebuggerSettings : XDebuggerSettings<KotlinDebuggerSettings>("kotlin
             listOf(
                 SimpleConfigurable.create(
                     "reference.idesettings.debugger.kotlin.data.view",
-                    KotlinDebuggerCoreBundle.message("configurable.name.kotlin"),
+                    "Kotlin",
                     KotlinDelegatedPropertyRendererConfigurableUi::class.java,
                     this
                 )

@@ -3,7 +3,6 @@ package com.intellij.openapi.vcs.changes;
 
 import com.intellij.diff.editor.DiffVirtualFile;
 import com.intellij.diff.impl.DiffRequestProcessor;
-import com.intellij.ide.actions.SplitAction;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
@@ -15,10 +14,8 @@ public class PreviewDiffVirtualFile extends DiffVirtualFile {
   @NotNull private final DiffPreviewProvider myProvider;
 
   public PreviewDiffVirtualFile(@NotNull DiffPreviewProvider provider) {
-    super("DiffPreview");
+    super(provider.getEditorTabName());
     myProvider = provider;
-
-    putUserData(SplitAction.FORBID_TAB_SPLIT, true);
   }
 
   @Override

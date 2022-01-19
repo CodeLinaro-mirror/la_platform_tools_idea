@@ -6,7 +6,6 @@ import com.intellij.debugger.ui.breakpoints.EditClassFiltersDialog;
 import com.intellij.debugger.ui.breakpoints.EditInstanceFiltersDialog;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiClass;
 import com.intellij.ui.FieldPanel;
@@ -159,7 +158,7 @@ public class KotlinBreakpointFiltersPanel<T extends KotlinPropertyBreakpointProp
         changed = properties.setClassExclusionFilters(myClassExclusionFilters) || changed;
         changed = properties.setInstanceFilters(myInstanceFilters) || changed;
         if (changed) {
-            ((XBreakpointBase<?, ?, ?>) breakpoint).fireBreakpointChanged();
+            ((XBreakpointBase) breakpoint).fireBreakpointChanged();
         }
     }
 
@@ -211,7 +210,7 @@ public class KotlinBreakpointFiltersPanel<T extends KotlinPropertyBreakpointProp
             myInstanceFiltersField.setText(StringUtil.join(filters, " "));
         }
 
-        String tipText = concatWithEx(new StringBuilder(), filters, " ", (int) Math.sqrt(myInstanceFilters.length) + 1, "\n").toString();
+        String tipText = concatWithEx(filters, " ", (int) Math.sqrt(myInstanceFilters.length) + 1, "\n");
         myInstanceFiltersField.getTextField().setToolTipText(tipText);
     }
 
@@ -270,8 +269,8 @@ public class KotlinBreakpointFiltersPanel<T extends KotlinPropertyBreakpointProp
                 exclusionFilters.add(classFilter);
             }
         }
-        myClassFilters = classFilters.toArray(ClassFilter.EMPTY_ARRAY);
-        myClassExclusionFilters = exclusionFilters.toArray(ClassFilter.EMPTY_ARRAY);
+        myClassFilters = classFilters.toArray(new ClassFilter[classFilters.size()]);
+        myClassExclusionFilters = exclusionFilters.toArray(new ClassFilter[exclusionFilters.size()]);
     }
 
     private void reloadInstanceFilters() {
@@ -296,7 +295,7 @@ public class KotlinBreakpointFiltersPanel<T extends KotlinPropertyBreakpointProp
                 idxs.add(instanceFilter);
             }
         }
-        myInstanceFilters = idxs.toArray(InstanceFilter.EMPTY_ARRAY);
+        myInstanceFilters = idxs.toArray(new InstanceFilter[idxs.size()]);
     }
 
     private void updateClassFilterEditor(boolean updateText) {
@@ -322,30 +321,29 @@ public class KotlinBreakpointFiltersPanel<T extends KotlinPropertyBreakpointProp
         }
 
         int width = (int) Math.sqrt(myClassExclusionFilters.length + myClassFilters.length) + 1;
-        StringBuilder tipTextBuilder = new StringBuilder();
-        concatWithEx(tipTextBuilder, filters, " ", width, "\n");
+        String tipText = concatWithEx(filters, " ", width, "\n");
         if (!filters.isEmpty()) {
-            tipTextBuilder.append("\n");
+            tipText += "\n";
         }
-        String tipText = concatWithEx(tipTextBuilder, excludeFilters, " ", width, "\n").toString();
+        tipText += concatWithEx(excludeFilters, " ", width, "\n");
         myClassFiltersField.getTextField().setToolTipText(tipText);
     }
 
-    @NlsSafe
-    private static StringBuilder concatWithEx(StringBuilder builder, List<String> s, String glue, int N, String nthGlue) {
+    private static String concatWithEx(List<String> s, String glue, int N, String nthGlue) {
+        StringBuilder result = new StringBuilder();
         int i = 1;
         for (Iterator<String> iterator = s.iterator(); iterator.hasNext(); i++) {
             String str = iterator.next();
-            builder.append(str);
+            result.append(str);
             if (iterator.hasNext()) {
                 if (i % N == 0) {
-                    builder.append(nthGlue);
+                    result.append(nthGlue);
                 } else {
-                    builder.append(glue);
+                    result.append(glue);
                 }
             }
         }
-        return builder;
+        return result.toString();
     }
 
     protected com.intellij.ide.util.ClassFilter createClassConditionFilter() {

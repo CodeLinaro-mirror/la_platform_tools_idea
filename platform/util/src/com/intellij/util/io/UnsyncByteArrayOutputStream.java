@@ -15,12 +15,6 @@ public class UnsyncByteArrayOutputStream extends OutputStream {
   protected byte[] myBuffer;
   protected int myCount;
   private boolean myIsShared;
-  private final @NotNull ByteArrayAllocator myAllocator;
-
-  @FunctionalInterface
-  public interface ByteArrayAllocator {
-    byte[] allocate(int size);
-  }
 
   public UnsyncByteArrayOutputStream() {
     this(32);
@@ -30,13 +24,7 @@ public class UnsyncByteArrayOutputStream extends OutputStream {
     this(ArrayUtil.newByteArray(size));
   }
   public UnsyncByteArrayOutputStream(byte @NotNull [] buffer) {
-    myAllocator = size -> ArrayUtil.newByteArray(size);
     myBuffer = buffer;
-  }
-
-  public UnsyncByteArrayOutputStream(@NotNull ByteArrayAllocator allocator, int initialSize) {
-    myAllocator = allocator;
-    myBuffer = allocator.allocate(initialSize);
   }
 
   @Override
@@ -51,10 +39,7 @@ public class UnsyncByteArrayOutputStream extends OutputStream {
   }
 
   private void grow(int newCount) {
-    int newLength = newCount > myBuffer.length ? Math.max(myBuffer.length << 1, newCount) : myBuffer.length;
-    byte[] newBuffer = myAllocator.allocate(newLength);
-    System.arraycopy(myBuffer, 0, newBuffer, 0, myBuffer.length);
-    myBuffer = newBuffer;
+    myBuffer = Arrays.copyOf(myBuffer, newCount > myBuffer.length ? Math.max(myBuffer.length << 1, newCount) : myBuffer.length);
   }
 
   @Override

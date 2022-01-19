@@ -1,17 +1,16 @@
 <html>
 <body>
-Reports code on which an unchecked warning will be issued by the javac compiler.
-Every unchecked warning may potentially trigger <code>ClassCastException</code> at runtime.
+Reports the code in which an unchecked warning is issued by the compiler.
+<p>Every unchecked warning may potentially trigger <code>ClassCastException</code> at runtime.</p>
 <p>Example:</p>
 <pre><code>
   List items = Arrays.asList("string", "string");
-  List&lt;Integer&gt; numbers = Collections.unmodifiableList(items); // unchecked assignment
+  List&lt;Integer&gt; numbers = Collections.unmodifiableList(items);
 </code></pre>
-<p>The quick-fix tries to generify the containing file,
-  which may expose any problems in the editor and during compilation that previously only appeared at runtime:</p>
+<p>The quick-fix tries to make the code more generic and put all missed types to the current file:</p>
 <pre><code>
   List&lt;String&gt; items = Arrays.asList("string", "string");
-  List&lt;Integer&gt; numbers = Collections.unmodifiableList(items); // incompatible types
+  List&lt;Integer&gt; numbers = Collections.unmodifiableList(items);
 </code></pre>
 </body>
 </html>

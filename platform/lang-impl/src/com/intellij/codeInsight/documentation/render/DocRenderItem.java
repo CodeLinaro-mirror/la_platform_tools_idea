@@ -1,12 +1,12 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.documentation.render;
 
 import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.codeInsight.documentation.DocFontSizePopup;
+import com.intellij.codeInsight.documentation.DocumentationManager;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.HelpTooltip;
 import com.intellij.ide.ui.LafManagerListener;
-import com.intellij.lang.documentation.InlineDocumentation;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
@@ -33,7 +33,9 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.psi.PsiDocCommentBase;
 import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.util.ObjectUtils;
@@ -52,8 +54,6 @@ import java.awt.geom.AffineTransform;
 import java.util.List;
 import java.util.*;
 import java.util.function.BooleanSupplier;
-
-import static com.intellij.codeInsight.documentation.render.InlineDocumentationImplKt.findInlineDocumentation;
 
 public final class DocRenderItem {
   private static final Key<Boolean> OLD_BACKEND = Key.create("doc.render.old.backend");
@@ -234,9 +234,11 @@ public final class DocRenderItem {
     int foundStartOffset = 0;
     for (DocRenderItem item : items) {
       if (!item.isValid()) continue;
-      InlineDocumentation documentation = item.getInlineDocumentation();
-      if (documentation == null) continue;
-      TextRange ownerTextRange = documentation.getDocumentationOwnerRange();
+      PsiDocCommentBase comment = item.getComment();
+      if (comment == null) continue;
+      PsiElement owner = comment.getOwner();
+      if (owner == null) continue;
+      TextRange ownerTextRange = owner.getTextRange();
       if (ownerTextRange == null || !ownerTextRange.containsOffset(offset)) continue;
       int startOffset = ownerTextRange.getStartOffset();
       if (foundItem != null && foundStartOffset >= startOffset) continue;
@@ -398,8 +400,9 @@ public final class DocRenderItem {
   }
 
   private void generateHtmlInBackgroundAndToggle() {
-    ReadAction.nonBlocking(() -> DocRenderPassFactory.calcText(getInlineDocumentation()))
-      .withDocumentsCommitted(Objects.requireNonNull(editor.getProject()))
+    ReadAction.nonBlocking(() -> {
+      return DocRenderPassFactory.calcText(getComment());
+    }).withDocumentsCommitted(Objects.requireNonNull(editor.getProject()))
       .coalesceBy(this)
       .finishOnUiThread(ModalityState.any(), (@Nls String html) -> {
         textToRender = html;
@@ -407,12 +410,12 @@ public final class DocRenderItem {
       }).submit(AppExecutorUtil.getAppExecutorService());
   }
 
-  @Nullable InlineDocumentation getInlineDocumentation() {
+  PsiDocCommentBase getComment() {
     if (highlighter.isValid()) {
       PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(Objects.requireNonNull(editor.getProject()));
       PsiFile file = psiDocumentManager.getPsiFile(editor.getDocument());
       if (file != null) {
-        return findInlineDocumentation(file, TextRange.create(highlighter));
+        return DocumentationManager.getProviderFromElement(file).findDocComment(file, TextRange.create(highlighter));
       }
     }
     return null;
@@ -423,10 +426,7 @@ public final class DocRenderItem {
       DocRenderItemUpdater.getInstance().updateInlays(ContainerUtil.mapNotNull(items, i -> i.inlay), recreateContent);
     }
     else {
-      DocRenderItemUpdater.getInstance().updateFoldRegions(
-        ContainerUtil.mapNotNull(items, i -> (CustomFoldRegion)i.foldRegion),
-        recreateContent
-      );
+      DocRenderItemUpdater.getInstance().updateFoldRegions(ContainerUtil.mapNotNull(items, i -> (CustomFoldRegion)i.foldRegion), recreateContent);
     }
   }
 
@@ -528,9 +528,9 @@ public final class DocRenderItem {
       }
       else {
         return inlay == null && (foldRegion == null ||
-                                 foldRegion instanceof CustomFoldRegion && foldRegion.isValid() &&
-                                 foldRegion.getStartOffset() == foldRegion.getEditor().getDocument().getLineStartOffset(foldStartLine) &&
-                                 foldRegion.getEndOffset() == foldRegion.getEditor().getDocument().getLineEndOffset(foldEndLine));
+               foldRegion instanceof CustomFoldRegion && foldRegion.isValid() &&
+               foldRegion.getStartOffset() == foldRegion.getEditor().getDocument().getLineStartOffset(foldStartLine) &&
+               foldRegion.getEndOffset() == foldRegion.getEditor().getDocument().getLineEndOffset(foldEndLine));
       }
     }
   }
@@ -698,12 +698,11 @@ public final class DocRenderItem {
     ChangeFontSize() {
       super(CodeInsightBundle.messagePointer("javadoc.adjust.font.size"));
     }
-
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
       Editor editor = e.getData(CommonDataKeys.EDITOR);
       if (editor != null) {
-        DocFontSizePopup.show(editor.getContentComponent(), () -> updateRenderers(editor, true));
+        DocFontSizePopup.show(() -> updateRenderers(editor, true), editor.getContentComponent());
       }
     }
   }

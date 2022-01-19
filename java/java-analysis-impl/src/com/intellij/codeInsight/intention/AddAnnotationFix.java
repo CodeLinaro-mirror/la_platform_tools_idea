@@ -16,7 +16,6 @@
 
 package com.intellij.codeInsight.intention;
 
-import com.intellij.codeInsight.ExternalAnnotationsManager;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
@@ -40,14 +39,6 @@ public class AddAnnotationFix extends AddAnnotationPsiFix implements IntentionAc
                           PsiNameValuePair @NotNull [] values,
                           String @NotNull ... annotationsToRemove) {
     super(fqn, modifierListOwner, values, annotationsToRemove);
-  }
-
-  public AddAnnotationFix(@NotNull String fqn,
-                          @NotNull PsiModifierListOwner modifierListOwner,
-                          PsiNameValuePair @NotNull [] values,
-                          ExternalAnnotationsManager.AnnotationPlace place,
-                          String @NotNull ... annotationsToRemove) {
-    super(fqn, modifierListOwner, values, place, annotationsToRemove);
   }
 
   @Override

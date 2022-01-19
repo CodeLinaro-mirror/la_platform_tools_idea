@@ -17,9 +17,11 @@ import org.jetbrains.concurrency.all
 import org.jetbrains.concurrency.resolvedPromise
 import java.util.*
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletableFuture.completedFuture
 import java.util.concurrent.ExecutorService
 import java.util.function.BiConsumer
 import java.util.function.Consumer
+import kotlin.collections.LinkedHashSet
 
 typealias ResultConsumer = (RepositoryArtifactData) -> Unit
 
@@ -50,7 +52,6 @@ class DependencySearchService(private val myProject: Project) {
     ReadAction.nonBlocking {
       remoteProviders.clear()
       localProviders.clear()
-      cache.clear()
       if (myProject.isDisposed) return@nonBlocking;
       for (f in DependencySearchProvidersFactory.EXTENSION_POINT_NAME.extensionList) {
         if (!f.isApplicable(myProject)) {
@@ -82,20 +83,12 @@ class DependencySearchService(private val myProject: Project) {
       }
     }
 
-    val thisNewFuture = CompletableFuture<Collection<RepositoryArtifactData>>()
-    val existingFuture = cache.putIfAbsent(cacheKey, thisNewFuture)
-    if (existingFuture != null && parameters.useCache()) {
-      return fillResultsFromCache(existingFuture, consumer)
-    }
-
-
     val localResultSet: MutableSet<RepositoryArtifactData> = LinkedHashSet()
     localProviders.forEach { lp -> searchMethod(lp) { localResultSet.add(it) } }
     localResultSet.forEach(consumer)
 
 
     if (parameters.isLocalOnly || remoteProviders.size == 0) {
-      thisNewFuture.complete(localResultSet)
       return resolvedPromise(0)
     }
 
@@ -119,8 +112,8 @@ class DependencySearchService(private val myProject: Project) {
     }
 
     return promises.all(resultSet, ignoreErrors = true).then {
-      if (!resultSet.isEmpty() && existingFuture == null) {
-        thisNewFuture.complete(resultSet)
+      if (!resultSet.isEmpty()) {
+        cache[cacheKey] = completedFuture<Collection<RepositoryArtifactData>>(resultSet)
       }
       return@then 1
     }
@@ -157,25 +150,20 @@ class DependencySearchService(private val myProject: Project) {
   private fun foundInCache(searchString: String, parameters: SearchParameters, consumer: ResultConsumer): Promise<Int>? {
     val future = cache[searchString]
     if (future != null) {
-      return fillResultsFromCache(future, consumer)
+      val p: AsyncPromise<Int> = AsyncPromise()
+      future.whenComplete(
+        BiConsumer { r: Collection<RepositoryArtifactData>, e: Throwable? ->
+          if (e != null) {
+            p.setError(e)
+          }
+          else {
+            r.forEach(consumer)
+            p.setResult(null)
+          }
+        })
+      return p
     }
     return null
-  }
-
-  private fun fillResultsFromCache(future: CompletableFuture<Collection<RepositoryArtifactData>>,
-                                   consumer: ResultConsumer): AsyncPromise<Int> {
-    val p: AsyncPromise<Int> = AsyncPromise()
-    future.whenComplete(
-      BiConsumer { r: Collection<RepositoryArtifactData>, e: Throwable? ->
-        if (e != null) {
-          p.setError(e)
-        }
-        else {
-          r.forEach(consumer)
-          p.setResult(null)
-        }
-      })
-    return p
   }
 
 

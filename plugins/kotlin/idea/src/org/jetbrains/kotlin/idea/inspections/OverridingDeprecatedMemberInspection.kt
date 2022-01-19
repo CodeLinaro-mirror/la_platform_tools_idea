@@ -4,7 +4,6 @@ package org.jetbrains.kotlin.idea.inspections
 
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
@@ -40,7 +39,6 @@ class OverridingDeprecatedMemberInspection : AbstractKotlinInspection() {
                 @OptIn(FrontendInternals::class)
                 val deprecationProvider = resolutionFacade.frontendService<DeprecationResolver>()
 
-                @NlsSafe // TODO: KT-48183
                 val message = deprecationProvider.getDeprecations(accessorDescriptor)
                     .firstOrNull()
                     ?.deprecatedByOverriddenMessage() ?: return

@@ -1,6 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'args' is never used
-// AFTER-WARNING: Variable 'b' is never used
 fun foo(): String? {
     return "foo"
 }

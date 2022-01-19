@@ -19,7 +19,6 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.*;
 
-import static com.intellij.ui.scale.ScaleType.USR_SCALE;
 import static java.lang.Math.min;
 
 /**
@@ -93,7 +92,7 @@ public final class ImageUtil {
 
   /**
    * @throws IllegalArgumentException if {@code width} or {@code height} is not greater than 0
-   * @see #createImage(GraphicsConfiguration, int, int, int)
+   * @see #createImage(GraphicsConfiguration, double, double, int, PaintUtil.RoundingMode)
    */
   @NotNull
   public static BufferedImage createImage(Graphics g, double width, double height, int type, @NotNull PaintUtil.RoundingMode rm) {
@@ -266,13 +265,6 @@ public final class ImageUtil {
       return new JBHiDPIScaledImage(image, userWidth, userHeight, BufferedImage.TYPE_INT_ARGB);
     }
     return image;
-  }
-
-  // NB: Execution may take more than 50ms, so if a lot of images should be resized, it is better to call it in background thread
-  public static @NotNull Image resize(@NotNull Image image, int size, @NotNull ScaleContext scaleContext) {
-    Image hidpiImage = ensureHiDPI(image, scaleContext);
-    int scaledSize = (int)scaleContext.apply(size, USR_SCALE);
-    return scaleImage(hidpiImage, scaledSize, scaledSize);
   }
 
   @NotNull

@@ -31,7 +31,7 @@ export default {
     rollupOptions: {
       output: {
         manualChunks: {
-          cytoscape: ["cytoscape", "cytoscape-cola"],
+          cytoscape: ["cytoscape", "cytoscape-fcose"],
         },
       },
     }

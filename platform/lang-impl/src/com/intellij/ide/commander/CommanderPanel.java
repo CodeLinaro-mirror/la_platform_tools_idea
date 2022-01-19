@@ -243,7 +243,7 @@ public class CommanderPanel extends JPanel {
   }
 
   protected boolean shouldDrillDownOnEmptyElement(final AbstractTreeNode node) {
-    return node instanceof ProjectViewNode && ((ProjectViewNode<?>)node).shouldDrillDownOnEmptyElement();
+    return node instanceof ProjectViewNode && ((ProjectViewNode)node).shouldDrillDownOnEmptyElement();
   }
 
   private boolean topElementIsSelected() {
@@ -454,7 +454,7 @@ public class CommanderPanel extends JPanel {
     if (PlatformDataKeys.DELETE_ELEMENT_PROVIDER.is(dataId)) {
       return myDeleteElementProvider;
     }
-    if (PlatformCoreDataKeys.MODULE.is(dataId)) {
+    if (LangDataKeys.MODULE.is(dataId)) {
       return selectedValue instanceof Module ? selectedValue : null;
     }
     if (ModuleGroup.ARRAY_DATA_KEY.is(dataId)) {

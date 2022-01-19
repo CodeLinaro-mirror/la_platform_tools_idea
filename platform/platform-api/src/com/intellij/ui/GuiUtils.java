@@ -203,7 +203,15 @@ public final class GuiUtils {
   }
 
   public static String colorToHex(final Color color) {
-    return UIUtil.colorToHex(color);
+    return to2DigitsHex(color.getRed())
+           + to2DigitsHex(color.getGreen())
+           + to2DigitsHex(color.getBlue());
+  }
+
+  private static String to2DigitsHex(int i) {
+    String s = Integer.toHexString(i);
+    if (s.length() < 2) s = "0" + s;
+    return s;
   }
 
   /**

@@ -1,9 +1,10 @@
 <html>
 <body>
-Reports <code>public</code> constructors of <code>abstract</code> classes.
+Reports the constructors of abstract classes that are declared as <code>public</code>.
 <p>
-  Constructors of <code>abstract</code> classes can only be called from the constructors of
-  their subclasses, declaring them <code>public</code> may be confusing.
+  Constructors of abstract classes can only be called in constructors of
+  their subclasses. So making constructors of abstract classes public may
+  be confusing.
 </p>
 <p>The quick-fix makes such constructors protected.</p>
 <p><b>Example:</b></p>

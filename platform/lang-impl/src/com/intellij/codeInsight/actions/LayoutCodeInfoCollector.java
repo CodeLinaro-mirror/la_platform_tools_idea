@@ -8,7 +8,6 @@ public class LayoutCodeInfoCollector {
   private @HintText String optimizeImportsNotification = null;
   private @HintText String reformatCodeNotification = null;
   private @HintText String rearrangeCodeNotification = null;
-  private @HintText String secondFormatNotification = null;
 
   @HintText
   public String getOptimizeImportsNotification() {
@@ -40,15 +39,6 @@ public class LayoutCodeInfoCollector {
   public boolean hasReformatOrRearrangeNotification() {
     return rearrangeCodeNotification != null
            || reformatCodeNotification != null;
-  }
-
-  @HintText
-  public String getSecondFormatNotification() {
-    return secondFormatNotification;
-  }
-
-  public void setSecondFormatNotification(@HintText String secondFormatNotification) {
-    this.secondFormatNotification = secondFormatNotification;
   }
 
   public boolean isEmpty() {

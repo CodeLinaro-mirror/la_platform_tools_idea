@@ -74,4 +74,4 @@ data class NotificationSettings @JvmOverloads constructor(var groupId: String,
 }
 
 fun isReadAloudEnabled() = SystemInfo.isMac
-fun isSoundEnabled() = true
+fun isSoundEnabled() = Registry.`is`("ide.notifications.sound.enabled")

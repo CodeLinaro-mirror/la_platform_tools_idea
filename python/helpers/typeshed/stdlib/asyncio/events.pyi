@@ -1,17 +1,15 @@
 import ssl
 import sys
-from _typeshed import FileDescriptorLike, Self
+from _typeshed import FileDescriptorLike
 from abc import ABCMeta, abstractmethod
+from asyncio.futures import Future
+from asyncio.protocols import BaseProtocol
+from asyncio.tasks import Task
+from asyncio.transports import BaseTransport
+from asyncio.unix_events import AbstractChildWatcher
 from socket import AddressFamily, SocketKind, _Address, _RetAddress, socket
-from typing import IO, Any, Awaitable, Callable, Dict, Generator, Sequence, Tuple, TypeVar, Union, overload
+from typing import IO, Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence, Tuple, TypeVar, Union, overload
 from typing_extensions import Literal
-
-from .base_events import Server
-from .futures import Future
-from .protocols import BaseProtocol
-from .tasks import Task
-from .transports import BaseTransport
-from .unix_events import AbstractChildWatcher
 
 if sys.version_info >= (3, 7):
     from contextvars import Context
@@ -28,7 +26,7 @@ class Handle:
     _args: Sequence[Any]
     if sys.version_info >= (3, 7):
         def __init__(
-            self, callback: Callable[..., Any], args: Sequence[Any], loop: AbstractEventLoop, context: Context | None = ...
+            self, callback: Callable[..., Any], args: Sequence[Any], loop: AbstractEventLoop, context: Optional[Context] = ...
         ) -> None: ...
     else:
         def __init__(self, callback: Callable[..., Any], args: Sequence[Any], loop: AbstractEventLoop) -> None: ...
@@ -46,7 +44,7 @@ class TimerHandle(Handle):
             callback: Callable[..., Any],
             args: Sequence[Any],
             loop: AbstractEventLoop,
-            context: Context | None = ...,
+            context: Optional[Context] = ...,
         ) -> None: ...
     else:
         def __init__(self, when: float, callback: Callable[..., Any], args: Sequence[Any], loop: AbstractEventLoop) -> None: ...
@@ -55,9 +53,10 @@ class TimerHandle(Handle):
         def when(self) -> float: ...
 
 class AbstractServer:
+    sockets: Optional[List[socket]]
     def close(self) -> None: ...
     if sys.version_info >= (3, 7):
-        async def __aenter__(self: Self) -> Self: ...
+        async def __aenter__(self: _T) -> _T: ...
         async def __aexit__(self, *exc: Any) -> None: ...
         def get_loop(self) -> AbstractEventLoop: ...
         def is_serving(self) -> bool: ...
@@ -66,7 +65,7 @@ class AbstractServer:
     async def wait_closed(self) -> None: ...
 
 class AbstractEventLoop(metaclass=ABCMeta):
-    slow_callback_duration: float
+    slow_callback_duration: float = ...
     @abstractmethod
     def run_forever(self) -> None: ...
     # Can't use a union, see mypy issue  # 1873.
@@ -101,14 +100,16 @@ class AbstractEventLoop(metaclass=ABCMeta):
     # Tasks methods
     if sys.version_info >= (3, 8):
         @abstractmethod
-        def create_task(self, coro: Awaitable[_T] | Generator[Any, None, _T], *, name: str | None = ...) -> Task[_T]: ...
+        def create_task(self, coro: Union[Awaitable[_T], Generator[Any, None, _T]], *, name: Optional[str] = ...) -> Task[_T]: ...
     else:
         @abstractmethod
-        def create_task(self, coro: Awaitable[_T] | Generator[Any, None, _T]) -> Task[_T]: ...
+        def create_task(self, coro: Union[Awaitable[_T], Generator[Any, None, _T]]) -> Task[_T]: ...
     @abstractmethod
-    def set_task_factory(self, factory: Callable[[AbstractEventLoop, Generator[Any, None, _T]], Future[_T]] | None) -> None: ...
+    def set_task_factory(
+        self, factory: Optional[Callable[[AbstractEventLoop, Generator[Any, None, _T]], Future[_T]]]
+    ) -> None: ...
     @abstractmethod
-    def get_task_factory(self) -> Callable[[AbstractEventLoop, Generator[Any, None, _T]], Future[_T]] | None: ...
+    def get_task_factory(self) -> Optional[Callable[[AbstractEventLoop, Generator[Any, None, _T]], Future[_T]]]: ...
     # Methods for interacting with threads
     @abstractmethod
     def call_soon_threadsafe(self, callback: Callable[..., Any], *args: Any) -> Handle: ...
@@ -119,10 +120,19 @@ class AbstractEventLoop(metaclass=ABCMeta):
     # Network I/O methods returning Futures.
     @abstractmethod
     async def getaddrinfo(
-        self, host: str | None, port: str | int | None, *, family: int = ..., type: int = ..., proto: int = ..., flags: int = ...
-    ) -> list[tuple[AddressFamily, SocketKind, int, str, tuple[str, int] | tuple[str, int, int, int]]]: ...
+        self,
+        host: Optional[str],
+        port: Union[str, int, None],
+        *,
+        family: int = ...,
+        type: int = ...,
+        proto: int = ...,
+        flags: int = ...,
+    ) -> List[Tuple[AddressFamily, SocketKind, int, str, Union[Tuple[str, int], Tuple[str, int, int, int]]]]: ...
     @abstractmethod
-    async def getnameinfo(self, sockaddr: tuple[str, int] | tuple[str, int, int, int], flags: int = ...) -> tuple[str, str]: ...
+    async def getnameinfo(
+        self, sockaddr: Union[Tuple[str, int], Tuple[str, int, int, int]], flags: int = ...
+    ) -> Tuple[str, str]: ...
     if sys.version_info >= (3, 8):
         @overload
         @abstractmethod
@@ -137,11 +147,11 @@ class AbstractEventLoop(metaclass=ABCMeta):
             proto: int = ...,
             flags: int = ...,
             sock: None = ...,
-            local_addr: tuple[str, int] | None = ...,
-            server_hostname: str | None = ...,
-            ssl_handshake_timeout: float | None = ...,
-            happy_eyeballs_delay: float | None = ...,
-            interleave: int | None = ...,
+            local_addr: Optional[Tuple[str, int]] = ...,
+            server_hostname: Optional[str] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
+            happy_eyeballs_delay: Optional[float] = ...,
+            interleave: Optional[int] = ...,
         ) -> _TransProtPair: ...
         @overload
         @abstractmethod
@@ -157,10 +167,10 @@ class AbstractEventLoop(metaclass=ABCMeta):
             flags: int = ...,
             sock: socket,
             local_addr: None = ...,
-            server_hostname: str | None = ...,
-            ssl_handshake_timeout: float | None = ...,
-            happy_eyeballs_delay: float | None = ...,
-            interleave: int | None = ...,
+            server_hostname: Optional[str] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
+            happy_eyeballs_delay: Optional[float] = ...,
+            interleave: Optional[int] = ...,
         ) -> _TransProtPair: ...
     elif sys.version_info >= (3, 7):
         @overload
@@ -176,9 +186,9 @@ class AbstractEventLoop(metaclass=ABCMeta):
             proto: int = ...,
             flags: int = ...,
             sock: None = ...,
-            local_addr: tuple[str, int] | None = ...,
-            server_hostname: str | None = ...,
-            ssl_handshake_timeout: float | None = ...,
+            local_addr: Optional[Tuple[str, int]] = ...,
+            server_hostname: Optional[str] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
         ) -> _TransProtPair: ...
         @overload
         @abstractmethod
@@ -194,8 +204,8 @@ class AbstractEventLoop(metaclass=ABCMeta):
             flags: int = ...,
             sock: socket,
             local_addr: None = ...,
-            server_hostname: str | None = ...,
-            ssl_handshake_timeout: float | None = ...,
+            server_hostname: Optional[str] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
         ) -> _TransProtPair: ...
     else:
         @overload
@@ -211,8 +221,8 @@ class AbstractEventLoop(metaclass=ABCMeta):
             proto: int = ...,
             flags: int = ...,
             sock: None = ...,
-            local_addr: tuple[str, int] | None = ...,
-            server_hostname: str | None = ...,
+            local_addr: Optional[Tuple[str, int]] = ...,
+            server_hostname: Optional[str] = ...,
         ) -> _TransProtPair: ...
         @overload
         @abstractmethod
@@ -228,19 +238,19 @@ class AbstractEventLoop(metaclass=ABCMeta):
             flags: int = ...,
             sock: socket,
             local_addr: None = ...,
-            server_hostname: str | None = ...,
+            server_hostname: Optional[str] = ...,
         ) -> _TransProtPair: ...
     if sys.version_info >= (3, 7):
         @abstractmethod
         async def sock_sendfile(
-            self, sock: socket, file: IO[bytes], offset: int = ..., count: int | None = ..., *, fallback: bool | None = ...
+            self, sock: socket, file: IO[bytes], offset: int = ..., count: Optional[int] = ..., *, fallback: Optional[bool] = ...
         ) -> int: ...
         @overload
         @abstractmethod
         async def create_server(
             self,
             protocol_factory: _ProtocolFactory,
-            host: str | Sequence[str] | None = ...,
+            host: Optional[Union[str, Sequence[str]]] = ...,
             port: int = ...,
             *,
             family: int = ...,
@@ -248,11 +258,11 @@ class AbstractEventLoop(metaclass=ABCMeta):
             sock: None = ...,
             backlog: int = ...,
             ssl: _SSLContext = ...,
-            reuse_address: bool | None = ...,
-            reuse_port: bool | None = ...,
-            ssl_handshake_timeout: float | None = ...,
+            reuse_address: Optional[bool] = ...,
+            reuse_port: Optional[bool] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
             start_serving: bool = ...,
-        ) -> Server: ...
+        ) -> AbstractServer: ...
         @overload
         @abstractmethod
         async def create_server(
@@ -266,35 +276,41 @@ class AbstractEventLoop(metaclass=ABCMeta):
             sock: socket = ...,
             backlog: int = ...,
             ssl: _SSLContext = ...,
-            reuse_address: bool | None = ...,
-            reuse_port: bool | None = ...,
-            ssl_handshake_timeout: float | None = ...,
+            reuse_address: Optional[bool] = ...,
+            reuse_port: Optional[bool] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
             start_serving: bool = ...,
-        ) -> Server: ...
+        ) -> AbstractServer: ...
         async def create_unix_connection(
             self,
             protocol_factory: _ProtocolFactory,
-            path: str | None = ...,
+            path: Optional[str] = ...,
             *,
             ssl: _SSLContext = ...,
-            sock: socket | None = ...,
-            server_hostname: str | None = ...,
-            ssl_handshake_timeout: float | None = ...,
+            sock: Optional[socket] = ...,
+            server_hostname: Optional[str] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
         ) -> _TransProtPair: ...
         async def create_unix_server(
             self,
             protocol_factory: _ProtocolFactory,
-            path: str | None = ...,
+            path: Optional[str] = ...,
             *,
-            sock: socket | None = ...,
+            sock: Optional[socket] = ...,
             backlog: int = ...,
             ssl: _SSLContext = ...,
-            ssl_handshake_timeout: float | None = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
             start_serving: bool = ...,
-        ) -> Server: ...
+        ) -> AbstractServer: ...
         @abstractmethod
         async def sendfile(
-            self, transport: BaseTransport, file: IO[bytes], offset: int = ..., count: int | None = ..., *, fallback: bool = ...
+            self,
+            transport: BaseTransport,
+            file: IO[bytes],
+            offset: int = ...,
+            count: Optional[int] = ...,
+            *,
+            fallback: bool = ...,
         ) -> int: ...
         @abstractmethod
         async def start_tls(
@@ -304,8 +320,8 @@ class AbstractEventLoop(metaclass=ABCMeta):
             sslcontext: ssl.SSLContext,
             *,
             server_side: bool = ...,
-            server_hostname: str | None = ...,
-            ssl_handshake_timeout: float | None = ...,
+            server_hostname: Optional[str] = ...,
+            ssl_handshake_timeout: Optional[float] = ...,
         ) -> BaseTransport: ...
     else:
         @overload
@@ -313,7 +329,7 @@ class AbstractEventLoop(metaclass=ABCMeta):
         async def create_server(
             self,
             protocol_factory: _ProtocolFactory,
-            host: str | Sequence[str] | None = ...,
+            host: Optional[Union[str, Sequence[str]]] = ...,
             port: int = ...,
             *,
             family: int = ...,
@@ -321,9 +337,9 @@ class AbstractEventLoop(metaclass=ABCMeta):
             sock: None = ...,
             backlog: int = ...,
             ssl: _SSLContext = ...,
-            reuse_address: bool | None = ...,
-            reuse_port: bool | None = ...,
-        ) -> Server: ...
+            reuse_address: Optional[bool] = ...,
+            reuse_port: Optional[bool] = ...,
+        ) -> AbstractServer: ...
         @overload
         @abstractmethod
         async def create_server(
@@ -337,41 +353,41 @@ class AbstractEventLoop(metaclass=ABCMeta):
             sock: socket,
             backlog: int = ...,
             ssl: _SSLContext = ...,
-            reuse_address: bool | None = ...,
-            reuse_port: bool | None = ...,
-        ) -> Server: ...
+            reuse_address: Optional[bool] = ...,
+            reuse_port: Optional[bool] = ...,
+        ) -> AbstractServer: ...
         async def create_unix_connection(
             self,
             protocol_factory: _ProtocolFactory,
             path: str,
             *,
             ssl: _SSLContext = ...,
-            sock: socket | None = ...,
-            server_hostname: str | None = ...,
+            sock: Optional[socket] = ...,
+            server_hostname: Optional[str] = ...,
         ) -> _TransProtPair: ...
         async def create_unix_server(
             self,
             protocol_factory: _ProtocolFactory,
             path: str,
             *,
-            sock: socket | None = ...,
+            sock: Optional[socket] = ...,
             backlog: int = ...,
             ssl: _SSLContext = ...,
-        ) -> Server: ...
+        ) -> AbstractServer: ...
     @abstractmethod
     async def create_datagram_endpoint(
         self,
         protocol_factory: _ProtocolFactory,
-        local_addr: tuple[str, int] | None = ...,
-        remote_addr: tuple[str, int] | None = ...,
+        local_addr: Optional[Tuple[str, int]] = ...,
+        remote_addr: Optional[Tuple[str, int]] = ...,
         *,
         family: int = ...,
         proto: int = ...,
         flags: int = ...,
-        reuse_address: bool | None = ...,
-        reuse_port: bool | None = ...,
-        allow_broadcast: bool | None = ...,
-        sock: socket | None = ...,
+        reuse_address: Optional[bool] = ...,
+        reuse_port: Optional[bool] = ...,
+        allow_broadcast: Optional[bool] = ...,
+        sock: Optional[socket] = ...,
     ) -> _TransProtPair: ...
     # Pipes and subprocesses.
     @abstractmethod
@@ -382,11 +398,11 @@ class AbstractEventLoop(metaclass=ABCMeta):
     async def subprocess_shell(
         self,
         protocol_factory: _ProtocolFactory,
-        cmd: bytes | str,
+        cmd: Union[bytes, str],
         *,
-        stdin: int | IO[Any] | None = ...,
-        stdout: int | IO[Any] | None = ...,
-        stderr: int | IO[Any] | None = ...,
+        stdin: Union[int, IO[Any], None] = ...,
+        stdout: Union[int, IO[Any], None] = ...,
+        stderr: Union[int, IO[Any], None] = ...,
         universal_newlines: Literal[False] = ...,
         shell: Literal[True] = ...,
         bufsize: Literal[0] = ...,
@@ -401,9 +417,9 @@ class AbstractEventLoop(metaclass=ABCMeta):
         protocol_factory: _ProtocolFactory,
         program: Any,
         *args: Any,
-        stdin: int | IO[Any] | None = ...,
-        stdout: int | IO[Any] | None = ...,
-        stderr: int | IO[Any] | None = ...,
+        stdin: Union[int, IO[Any], None] = ...,
+        stdout: Union[int, IO[Any], None] = ...,
+        stderr: Union[int, IO[Any], None] = ...,
         universal_newlines: Literal[False] = ...,
         shell: Literal[True] = ...,
         bufsize: Literal[0] = ...,
@@ -430,7 +446,7 @@ class AbstractEventLoop(metaclass=ABCMeta):
         @abstractmethod
         async def sock_connect(self, sock: socket, address: _Address) -> None: ...
         @abstractmethod
-        async def sock_accept(self, sock: socket) -> tuple[socket, _RetAddress]: ...
+        async def sock_accept(self, sock: socket) -> Tuple[socket, _RetAddress]: ...
     else:
         @abstractmethod
         def sock_recv(self, sock: socket, nbytes: int) -> Future[bytes]: ...
@@ -439,7 +455,7 @@ class AbstractEventLoop(metaclass=ABCMeta):
         @abstractmethod
         def sock_connect(self, sock: socket, address: _Address) -> Future[None]: ...
         @abstractmethod
-        def sock_accept(self, sock: socket) -> Future[tuple[socket, _RetAddress]]: ...
+        def sock_accept(self, sock: socket) -> Future[Tuple[socket, _RetAddress]]: ...
     # Signal handling.
     @abstractmethod
     def add_signal_handler(self, sig: int, callback: Callable[..., Any], *args: Any) -> None: ...
@@ -447,9 +463,9 @@ class AbstractEventLoop(metaclass=ABCMeta):
     def remove_signal_handler(self, sig: int) -> bool: ...
     # Error handlers.
     @abstractmethod
-    def set_exception_handler(self, handler: _ExceptionHandler | None) -> None: ...
+    def set_exception_handler(self, handler: Optional[_ExceptionHandler]) -> None: ...
     @abstractmethod
-    def get_exception_handler(self) -> _ExceptionHandler | None: ...
+    def get_exception_handler(self) -> Optional[_ExceptionHandler]: ...
     @abstractmethod
     def default_exception_handler(self, context: _Context) -> None: ...
     @abstractmethod
@@ -467,7 +483,7 @@ class AbstractEventLoopPolicy(metaclass=ABCMeta):
     @abstractmethod
     def get_event_loop(self) -> AbstractEventLoop: ...
     @abstractmethod
-    def set_event_loop(self, loop: AbstractEventLoop | None) -> None: ...
+    def set_event_loop(self, loop: Optional[AbstractEventLoop]) -> None: ...
     @abstractmethod
     def new_event_loop(self) -> AbstractEventLoop: ...
     # Child processes handling (Unix only).
@@ -479,17 +495,17 @@ class AbstractEventLoopPolicy(metaclass=ABCMeta):
 class BaseDefaultEventLoopPolicy(AbstractEventLoopPolicy, metaclass=ABCMeta):
     def __init__(self) -> None: ...
     def get_event_loop(self) -> AbstractEventLoop: ...
-    def set_event_loop(self, loop: AbstractEventLoop | None) -> None: ...
+    def set_event_loop(self, loop: Optional[AbstractEventLoop]) -> None: ...
     def new_event_loop(self) -> AbstractEventLoop: ...
 
 def get_event_loop_policy() -> AbstractEventLoopPolicy: ...
-def set_event_loop_policy(policy: AbstractEventLoopPolicy | None) -> None: ...
+def set_event_loop_policy(policy: Optional[AbstractEventLoopPolicy]) -> None: ...
 def get_event_loop() -> AbstractEventLoop: ...
-def set_event_loop(loop: AbstractEventLoop | None) -> None: ...
+def set_event_loop(loop: Optional[AbstractEventLoop]) -> None: ...
 def new_event_loop() -> AbstractEventLoop: ...
 def get_child_watcher() -> AbstractChildWatcher: ...
 def set_child_watcher(watcher: AbstractChildWatcher) -> None: ...
-def _set_running_loop(__loop: AbstractEventLoop | None) -> None: ...
+def _set_running_loop(__loop: Optional[AbstractEventLoop]) -> None: ...
 def _get_running_loop() -> AbstractEventLoop: ...
 
 if sys.version_info >= (3, 7):

@@ -48,7 +48,7 @@ public class FallthruInSwitchStatementInspection extends BaseInspection {
   @Override
   @Nullable
   protected InspectionGadgetsFix buildFix(Object... infos) {
-    return ((Boolean)infos[0]) ? new FallthruInSwitchStatementFix((String) infos[1]) : null;
+    return ((Boolean)infos[0]) ? new FallthruInSwitchStatementFix() : null;
   }
 
   @Override
@@ -58,21 +58,10 @@ public class FallthruInSwitchStatementInspection extends BaseInspection {
 
   private static class FallthruInSwitchStatementFix extends InspectionGadgetsFix {
 
-    private final String myKeyword;
-
-    private FallthruInSwitchStatementFix(String keyword) {
-      myKeyword = keyword;
-    }
-
     @Override
     @NotNull
     public String getFamilyName() {
-      return InspectionGadgetsBundle.message("fallthru.in.switch.statement.quickfix", PsiKeyword.BREAK);
-    }
-
-    @Override
-    public @NotNull String getName() {
-      return InspectionGadgetsBundle.message("fallthru.in.switch.statement.quickfix", myKeyword);
+      return InspectionGadgetsBundle.message("fallthru.in.switch.statement.quickfix");
     }
 
     @Override
@@ -135,7 +124,7 @@ public class FallthruInSwitchStatementInspection extends BaseInspection {
           continue;
         }
         if (ControlFlowUtils.statementMayCompleteNormally(previousStatement)) {
-          registerError(statement, switchBlock instanceof PsiSwitchStatement || isOnTheFly(), switchBlock instanceof PsiSwitchExpression ? PsiKeyword.YIELD : PsiKeyword.BREAK);
+          registerError(statement, switchBlock instanceof PsiSwitchStatement || isOnTheFly());
         }
       }
     }

@@ -31,7 +31,7 @@ public final class ProjectScope {
   private ProjectScope() { }
 
   /**
-   * @return Scope for all things inside the project: files in the project content plus files in libraries/library source
+   * @return Scope for all things inside the project: files in the project content plus files in libraries/libraries sources
    */
   @NotNull
   public static GlobalSearchScope getAllScope(@NotNull Project project) {

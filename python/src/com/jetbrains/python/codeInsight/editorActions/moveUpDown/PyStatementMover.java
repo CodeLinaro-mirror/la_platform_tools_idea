@@ -624,7 +624,7 @@ public class PyStatementMover extends LineMover {
   }
 
   // use to keep elements
-  public static class MyLineRange extends LineRange {
+  static class MyLineRange extends LineRange {
     private final PsiElement myStartElement;
     private final PsiElement myEndElement;
     int size = 0;
@@ -643,25 +643,14 @@ public class PyStatementMover extends LineMover {
         PsiElement counter = myStartElement;
         while (counter != myEndElement && counter != null) {
           size += 1;
-          if (!(counter instanceof PsiWhiteSpace) && !(counter instanceof PsiComment)) {
+          if (!(counter instanceof PsiWhiteSpace) && !(counter instanceof PsiComment))
             statementsSize += 1;
-          }
           counter = counter.getNextSibling();
         }
         size += 1;
-        if (!(counter instanceof PsiWhiteSpace) && !(counter instanceof PsiComment)) {
+        if (!(counter instanceof PsiWhiteSpace) && !(counter instanceof PsiComment))
           statementsSize += 1;
-        }
       }
-    }
-
-    @NotNull
-    public PsiElement getStartElement() {
-      return myStartElement;
-    }
-
-    public PsiElement getEndElement() {
-      return myEndElement;
     }
   }
 
@@ -676,9 +665,8 @@ public class PyStatementMover extends LineMover {
       myAtTheBeginning = atTheBeginning;
     }
   }
-
   // Use when element scope changed
-  public static class ScopeRange extends LineRange {
+  static class ScopeRange extends LineRange {
     private final PsiElement myScope;
     @NotNull private final PsiElement myAnchor;
     private final boolean addBefore;

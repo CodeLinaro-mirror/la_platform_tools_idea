@@ -9,9 +9,11 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.psi.PsiErrorElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
@@ -19,20 +21,18 @@ import com.intellij.psi.util.PsiTreeUtil
 import org.intellij.plugins.markdown.MarkdownBundle
 import org.intellij.plugins.markdown.lang.MarkdownFileType
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownCodeFenceImpl
-import org.intellij.plugins.markdown.settings.MarkdownSettings
+import org.intellij.plugins.markdown.settings.MarkdownApplicationSettings
 
 class MarkdownCodeFenceErrorHighlightingIntention : IntentionAction {
-  class CodeAnalyzerRestartListener: MarkdownSettings.ChangeListener {
-    override fun settingsChanged(settings: MarkdownSettings) {
-      val project = settings.project
-      val editorManager = FileEditorManager.getInstance(project) ?: return
-      val codeAnalyzer = DaemonCodeAnalyzerImpl.getInstance(project) ?: return
-      val psiManager = PsiManager.getInstance(project)
-      editorManager.openFiles
-        .filter { it.fileType == MarkdownFileType.INSTANCE }
-        .mapNotNull(psiManager::findFile)
-        .forEach(codeAnalyzer::restart)
-    }
+
+  companion object SettingsListener : MarkdownApplicationSettings.SettingsChangedListener {
+    override fun settingsChanged(settings: MarkdownApplicationSettings) =
+      ProjectManager.getInstance().openProjects.forEach { project ->
+        FileEditorManager.getInstance(project).openFiles
+          .filter { file -> file.fileType == MarkdownFileType.INSTANCE }
+          .mapNotNull { file -> PsiManager.getInstance(project).findFile(file) }
+          .forEach { DaemonCodeAnalyzerImpl.getInstance(project).restart(it) }
+      }
   }
 
   override fun getText(): String = MarkdownBundle.message("markdown.hide.errors.intention.text")
@@ -40,21 +40,21 @@ class MarkdownCodeFenceErrorHighlightingIntention : IntentionAction {
   override fun getFamilyName(): String = text
 
   override fun isAvailable(project: Project, editor: Editor?, file: PsiFile?): Boolean {
-    if (file?.fileType != MarkdownFileType.INSTANCE || MarkdownSettings.getInstance(project).hideErrorsInCodeBlocks) {
-      return false
-    }
+    if (file?.fileType != MarkdownFileType.INSTANCE || MarkdownApplicationSettings.getInstance().isHideErrors) return false
+
     val element = file?.findElementAt(editor?.caretModel?.offset ?: return false) ?: return false
+
     return PsiTreeUtil.getParentOfType(element, MarkdownCodeFenceImpl::class.java) != null
   }
 
   override fun invoke(project: Project, editor: Editor?, file: PsiFile?) {
-    setHideErrors(project, true)
+    setHideErrors(true)
 
     val notification = Notification("Markdown", MarkdownBundle.message("markdown.hide.errors.notification.title"),
                                     MarkdownBundle.message("markdown.hide.errors.notification.content"), NotificationType.INFORMATION)
     notification.addAction(object : NotificationAction(MarkdownBundle.message("markdown.hide.errors.notification.rollback.action.text")) {
       override fun actionPerformed(e: AnActionEvent, notification: Notification) {
-        setHideErrors(project, false)
+        setHideErrors(false)
         notification.expire()
       }
     })
@@ -62,10 +62,11 @@ class MarkdownCodeFenceErrorHighlightingIntention : IntentionAction {
     notification.notify(project)
   }
 
-  private fun setHideErrors(project: Project, hideErrors: Boolean) {
-    MarkdownSettings.getInstance(project).update {
-      it.hideErrorsInCodeBlocks = hideErrors
-    }
+  private fun setHideErrors(hideErrors: Boolean) {
+    MarkdownApplicationSettings.getInstance().isHideErrors = hideErrors
+
+    ApplicationManager.getApplication().messageBus.syncPublisher<MarkdownApplicationSettings.SettingsChangedListener>(
+      MarkdownApplicationSettings.SettingsChangedListener.TOPIC).settingsChanged(MarkdownApplicationSettings.getInstance())
   }
 
   class CodeFenceHighlightErrorFilter : HighlightErrorFilter() {
@@ -73,7 +74,7 @@ class MarkdownCodeFenceErrorHighlightingIntention : IntentionAction {
       val injectedLanguageManager = InjectedLanguageManager.getInstance(element.project)
       if (injectedLanguageManager.getTopLevelFile(element).fileType == MarkdownFileType.INSTANCE
           && injectedLanguageManager.getInjectionHost(element) is MarkdownCodeFenceImpl) {
-        return !MarkdownSettings.getInstance(element.project).hideErrorsInCodeBlocks
+        return !MarkdownApplicationSettings.getInstance().isHideErrors
       }
 
       return true

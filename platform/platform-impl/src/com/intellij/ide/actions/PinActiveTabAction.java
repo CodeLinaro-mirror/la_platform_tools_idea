@@ -11,7 +11,6 @@ import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
-import com.intellij.openapi.wm.impl.InternalDecoratorImpl;
 import com.intellij.openapi.wm.impl.content.BaseLabel;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.content.Content;
@@ -133,10 +132,10 @@ public class PinActiveTabAction extends DumbAwareAction {
     ToolWindow window = e.getData(PlatformDataKeys.TOOL_WINDOW);
     if (window == null) return null;
 
-    Component component = e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT);
+    Component component = e.getData(PlatformDataKeys.CONTEXT_COMPONENT);
     Content result = ObjectUtils.doIfNotNull(ComponentUtil.getParentOfType(BaseLabel.class, component), BaseLabel::getContent);
     if (result == null) {
-      result = ObjectUtils.doIfNotNull(InternalDecoratorImpl.findNearestDecorator(component).getContentManager(), ContentManager::getSelectedContent);
+      result = ObjectUtils.doIfNotNull(window.getContentManager(), ContentManager::getSelectedContent);
     }
     return result != null && result.isPinnable() ? result : null;
   }

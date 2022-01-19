@@ -7,7 +7,6 @@ import com.intellij.execution.target.local.LocalTargetEnvironmentRequest;
 import com.intellij.execution.target.value.TargetEnvironmentFunctions;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
-import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkAdditionalData;
 import com.intellij.openapi.roots.*;
@@ -22,10 +21,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PythonHelpersLocator;
 import com.jetbrains.python.facet.LibraryContributingFacet;
 import com.jetbrains.python.library.PythonLibraryType;
-import com.jetbrains.python.remote.PyRemotePathMapper;
-import com.jetbrains.python.run.target.PySdkTargetPaths;
 import com.jetbrains.python.sdk.PythonSdkAdditionalData;
-import com.jetbrains.python.sdk.PythonSdkUtil;
 import com.jetbrains.python.sdk.flavors.JythonSdkFlavor;
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
 import org.jetbrains.annotations.NotNull;
@@ -66,53 +62,8 @@ public class TargetedPythonPaths {
                                                                                   boolean shouldAddContentRoots,
                                                                                   boolean shouldAddSourceRoots,
                                                                                   boolean isDebug) {
-    return collectPythonPath(
-      targetEnvironmentRequest,
-      new LocalPathToTargetPathConverterImpl(targetEnvironmentRequest),
-      module,
-      sdkHome,
-      shouldAddContentRoots,
-      shouldAddSourceRoots,
-      isDebug
-    );
-  }
-
-  @NotNull
-  public static Collection<Function<TargetEnvironment, String>> collectPythonPath(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
-                                                                                  @NotNull Project project,
-                                                                                  @Nullable Module module,
-                                                                                  @Nullable String sdkHome,
-                                                                                  @Nullable PyRemotePathMapper pathMapper,
-                                                                                  boolean shouldAddContentRoots,
-                                                                                  boolean shouldAddSourceRoots,
-                                                                                  boolean isDebug) {
-    Sdk sdk = PythonSdkUtil.findSdkByPath(sdkHome);
-    return collectPythonPath(
-      targetEnvironmentRequest,
-      new LocalPathToTargetPathConverterSdkAware(targetEnvironmentRequest, project, sdk, pathMapper),
-      module,
-      sdkHome,
-      shouldAddContentRoots,
-      shouldAddSourceRoots,
-      isDebug
-    );
-  }
-
-  @NotNull
-  private static Collection<Function<TargetEnvironment, String>> collectPythonPath(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
-                                                                                   @NotNull LocalPathToTargetPathConverter pathConverter,
-                                                                                   @Nullable Module module,
-                                                                                   @Nullable String sdkHome,
-                                                                                   boolean shouldAddContentRoots,
-                                                                                   boolean shouldAddSourceRoots,
-                                                                                   boolean isDebug) {
-    Set<Function<TargetEnvironment, String>> pythonPath = new LinkedHashSet<>(
-      collectPythonPath(targetEnvironmentRequest,
-                        pathConverter,
-                        module,
-                        shouldAddContentRoots,
-                        shouldAddSourceRoots)
-    );
+    Set<Function<TargetEnvironment, String>> pythonPath =
+      new LinkedHashSet<>(collectPythonPath(targetEnvironmentRequest, module, shouldAddContentRoots, shouldAddSourceRoots));
 
     if (isDebug && PythonSdkFlavor.getFlavor(sdkHome) instanceof JythonSdkFlavor) {
       //that fixes Jython problem changing sys.argv on execfile, see PY-8164
@@ -128,26 +79,25 @@ public class TargetedPythonPaths {
   }
 
   @NotNull
-  private static Collection<Function<TargetEnvironment, String>> collectPythonPath(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
-                                                                                   @NotNull LocalPathToTargetPathConverter pathConverter,
-                                                                                   @Nullable Module module,
-                                                                                   boolean addContentRoots,
-                                                                                   boolean addSourceRoots) {
+  public static Collection<Function<TargetEnvironment, String>> collectPythonPath(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
+                                                                                  @Nullable Module module,
+                                                                                  boolean addContentRoots,
+                                                                                  boolean addSourceRoots) {
     Collection<Function<TargetEnvironment, String>> pythonPathList = new LinkedHashSet<>();
     if (module != null) {
       Set<Module> dependencies = new HashSet<>();
       ModuleUtilCore.getDependencies(module, dependencies);
 
       if (addContentRoots) {
-        addRoots(pathConverter, pythonPathList, ModuleRootManager.getInstance(module).getContentRoots());
+        addRoots(targetEnvironmentRequest, pythonPathList, ModuleRootManager.getInstance(module).getContentRoots());
         for (Module dependency : dependencies) {
-          addRoots(pathConverter, pythonPathList, ModuleRootManager.getInstance(dependency).getContentRoots());
+          addRoots(targetEnvironmentRequest, pythonPathList, ModuleRootManager.getInstance(dependency).getContentRoots());
         }
       }
       if (addSourceRoots) {
-        addRoots(pathConverter, pythonPathList, ModuleRootManager.getInstance(module).getSourceRoots());
+        addRoots(targetEnvironmentRequest, pythonPathList, ModuleRootManager.getInstance(module).getSourceRoots());
         for (Module dependency : dependencies) {
-          addRoots(pathConverter, pythonPathList, ModuleRootManager.getInstance(dependency).getSourceRoots());
+          addRoots(targetEnvironmentRequest, pythonPathList, ModuleRootManager.getInstance(dependency).getSourceRoots());
         }
       }
 
@@ -168,31 +118,31 @@ public class TargetedPythonPaths {
     if (sdkAdditionalData instanceof PythonSdkAdditionalData) {
       final Set<VirtualFile> addedPaths = ((PythonSdkAdditionalData)sdkAdditionalData).getAddedPathFiles();
       for (VirtualFile file : addedPaths) {
-        addToPythonPath(new LocalPathToTargetPathConverterImpl(targetEnvironmentRequest), file, pathList);
+        addToPythonPath(targetEnvironmentRequest, file, pathList);
       }
     }
     return pathList;
   }
 
-  private static void addToPythonPath(@NotNull LocalPathToTargetPathConverter pathConverter,
+  private static void addToPythonPath(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
                                       @NotNull VirtualFile file,
                                       @NotNull Collection<Function<TargetEnvironment, String>> pathList) {
     if (file.getFileSystem() instanceof JarFileSystem) {
       final VirtualFile realFile = JarFileSystem.getInstance().getVirtualFileForJar(file);
       if (realFile != null) {
-        addIfNeeded(pathConverter, realFile, pathList);
+        addIfNeeded(targetEnvironmentRequest, realFile, pathList);
       }
     }
     else {
-      addIfNeeded(pathConverter, file, pathList);
+      addIfNeeded(targetEnvironmentRequest, file, pathList);
     }
   }
 
-  private static void addIfNeeded(@NotNull LocalPathToTargetPathConverter pathConverter,
+  private static void addIfNeeded(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
                                   @NotNull VirtualFile file,
                                   @NotNull Collection<Function<TargetEnvironment, String>> pathList) {
     String filePath = FileUtil.toSystemDependentName(file.getPath());
-    pathList.add(pathConverter.getTargetPath(filePath));
+    pathList.add(TargetEnvironmentFunctions.getTargetEnvironmentValueForLocalPath(targetEnvironmentRequest, filePath));
   }
 
   private static void addLibrariesFromModule(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
@@ -209,12 +159,12 @@ public class TargetedPythonPaths {
         for (VirtualFile root : ((LibraryOrderEntry)entry).getRootFiles(OrderRootType.CLASSES)) {
           final Library library = ((LibraryOrderEntry)entry).getLibrary();
           if (!PlatformUtils.isPyCharm()) {
-            addToPythonPath(new LocalPathToTargetPathConverterImpl(targetEnvironmentRequest), root, list);
+            addToPythonPath(targetEnvironmentRequest, root, list);
           }
           else if (library instanceof LibraryEx) {
             final PersistentLibraryKind<?> kind = ((LibraryEx)library).getKind();
             if (kind == PythonLibraryType.getInstance().getKind()) {
-              addToPythonPath(new LocalPathToTargetPathConverterImpl(targetEnvironmentRequest), root, list);
+              addToPythonPath(targetEnvironmentRequest, root, list);
             }
           }
         }
@@ -237,49 +187,11 @@ public class TargetedPythonPaths {
     }
   }
 
-  private static void addRoots(@NotNull LocalPathToTargetPathConverter pathConverter,
+  private static void addRoots(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
                                @NotNull Collection<Function<TargetEnvironment, String>> pythonPathList,
                                @NotNull VirtualFile @NotNull [] roots) {
     for (VirtualFile root : roots) {
-      addToPythonPath(pathConverter, root, pythonPathList);
-    }
-  }
-
-  @FunctionalInterface
-  private interface LocalPathToTargetPathConverter {
-    @NotNull Function<TargetEnvironment, String> getTargetPath(@NotNull String localPath);
-  }
-
-  private static final class LocalPathToTargetPathConverterImpl implements LocalPathToTargetPathConverter {
-    private final @NotNull TargetEnvironmentRequest myTargetEnvironmentRequest;
-
-    private LocalPathToTargetPathConverterImpl(@NotNull TargetEnvironmentRequest request) {myTargetEnvironmentRequest = request;}
-
-    @Override
-    public @NotNull Function<TargetEnvironment, String> getTargetPath(@NotNull String localPath) {
-      return TargetEnvironmentFunctions.getTargetEnvironmentValueForLocalPath(myTargetEnvironmentRequest, localPath);
-    }
-  }
-
-  private static final class LocalPathToTargetPathConverterSdkAware implements LocalPathToTargetPathConverter {
-    private final @NotNull TargetEnvironmentRequest myTargetEnvironmentRequest;
-    private final @NotNull Project myProject;
-    private final @Nullable Sdk mySdk;
-    private final @Nullable PyRemotePathMapper pathMapper;
-
-    private LocalPathToTargetPathConverterSdkAware(@NotNull TargetEnvironmentRequest request,
-                                                   @NotNull Project project,
-                                                   @Nullable Sdk sdk,
-                                                   @Nullable PyRemotePathMapper pathMapper) {
-      myTargetEnvironmentRequest = request;
-      myProject = project;
-      mySdk = sdk;
-      this.pathMapper = pathMapper;
-    }
-
-    @Override
-    public @NotNull Function<TargetEnvironment, String> getTargetPath(@NotNull String localPath) {
-      return PySdkTargetPaths.getTargetPathForPythonConsoleExecution(myTargetEnvironmentRequest, myProject, mySdk, pathMapper, localPath);
+      addToPythonPath(targetEnvironmentRequest, root, pythonPathList);
     }
   }
 }

@@ -33,7 +33,6 @@ import com.intellij.util.treeWithCheckedNodes.TreeNodeState;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.vcs.log.VcsLogBundle;
-import com.intellij.vcsUtil.VcsUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -406,7 +405,7 @@ public class VcsStructureChooser extends DialogWrapper {
           setIcon(PlatformIcons.FOLDER_ICON);
         }
         else {
-          setIcon(VcsUtil.getIcon(myProject, path));
+          setIcon(path.getFileType().getIcon());
         }
       }
     }

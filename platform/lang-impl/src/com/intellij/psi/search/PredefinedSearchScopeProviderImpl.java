@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.search;
 
 import com.intellij.ide.IdeBundle;
@@ -7,7 +7,7 @@ import com.intellij.ide.scratch.ScratchesSearchScope;
 import com.intellij.lang.LangBundle;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
+import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
@@ -41,6 +41,7 @@ import com.intellij.usages.rules.PsiElementUsage;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -50,6 +51,7 @@ import java.util.*;
 
 // used by Rider
 public class PredefinedSearchScopeProviderImpl extends PredefinedSearchScopeProvider {
+
   public static @NotNull @Nls String getRecentlyViewedFilesScopeName() {
     return IdeBundle.message("scope.recent.files");
   }
@@ -90,13 +92,13 @@ public class PredefinedSearchScopeProviderImpl extends PredefinedSearchScopeProv
 
     result.add(ScratchesSearchScope.getScratchesScope(project));
 
-    SearchScope recentFilesScope = recentFilesScope(project, false);
+    GlobalSearchScope recentFilesScope = recentFilesScope(project, false);
     ContainerUtil.addIfNotNull(
-      result, !SearchScope.isEmptyScope(recentFilesScope) ? recentFilesScope :
+      result, recentFilesScope != GlobalSearchScope.EMPTY_SCOPE ? recentFilesScope :
               showEmptyScopes ? new LocalSearchScope(PsiElement.EMPTY_ARRAY, getRecentlyViewedFilesScopeName()) : null);
-    SearchScope recentModFilesScope = recentFilesScope(project, true);
+    GlobalSearchScope recentModFilesScope = recentFilesScope(project, true);
     ContainerUtil.addIfNotNull(
-      result, !SearchScope.isEmptyScope(recentModFilesScope) ? recentModFilesScope :
+      result, recentModFilesScope != GlobalSearchScope.EMPTY_SCOPE ? recentModFilesScope :
               showEmptyScopes ? new LocalSearchScope(PsiElement.EMPTY_ARRAY, getRecentlyChangedFilesScopeName()) : null);
     GlobalSearchScope openFilesScope = GlobalSearchScopes.openFilesScope(project);
     ContainerUtil.addIfNotNull(
@@ -124,7 +126,7 @@ public class PredefinedSearchScopeProviderImpl extends PredefinedSearchScopeProv
         if (!PlatformUtils.isCidr() && !PlatformUtils.isRider()) { // TODO: have an API to disable module scopes.
           Module module = ModuleUtilCore.findModuleForPsiElement(dataContextElement);
           if (module == null) {
-            module = PlatformCoreDataKeys.MODULE.getData(dataContext);
+            module = LangDataKeys.MODULE.getData(dataContext);
           }
           if (module != null && !ModuleType.isInternal(module)) {
             result.add(module.getModuleScope());
@@ -152,7 +154,7 @@ public class PredefinedSearchScopeProviderImpl extends PredefinedSearchScopeProv
       addHierarchyScope(project, result);
       UsageView selectedUsageView = UsageViewManager.getInstance(project).getSelectedUsageView();
       if (selectedUsageView != null && !selectedUsageView.isSearchInProgress()) {
-        final Set<Usage> usages = new HashSet<>(selectedUsageView.getUsages());
+        final Set<Usage> usages = new THashSet<>(selectedUsageView.getUsages());
         usages.removeAll(selectedUsageView.getExcludedUsages());
 
         if (prevSearchFiles) {
@@ -234,13 +236,13 @@ public class PredefinedSearchScopeProviderImpl extends PredefinedSearchScopeProv
   }
 
   @NotNull
-  public static SearchScope recentFilesScope(@NotNull Project project, boolean changedOnly) {
+  public static GlobalSearchScope recentFilesScope(@NotNull Project project, boolean changedOnly) {
     String name = changedOnly ? getRecentlyChangedFilesScopeName() : getRecentlyViewedFilesScopeName();
     List<VirtualFile> files = changedOnly ? IdeDocumentHistory.getInstance(project).getChangedFiles() :
                               JBIterable.from(EditorHistoryManager.getInstance(project).getFileList())
                                 .append(FileEditorManager.getInstance(project).getOpenFiles()).unique().toList();
 
-    return files.isEmpty() ? LocalSearchScope.EMPTY : GlobalSearchScope.filesScope(project, files, name);
+    return files.isEmpty() ? GlobalSearchScope.EMPTY_SCOPE : GlobalSearchScope.filesScope(project, files, name);
   }
 
   @Nullable

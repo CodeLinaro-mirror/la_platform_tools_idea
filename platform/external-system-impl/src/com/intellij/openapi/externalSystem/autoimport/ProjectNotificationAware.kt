@@ -16,13 +16,13 @@ class ProjectNotificationAware(private val project: Project) : Disposable {
 
   fun notificationNotify(projectAware: ExternalSystemProjectAware) {
     val projectId = projectAware.projectId
-    LOG.debug("${projectId.debugName}: Notify notification")
+    LOG.debug("${projectId.readableName}: Notify notification")
     projectsWithNotification.add(projectId)
     revealNotification()
   }
 
   fun notificationExpire(projectId: ExternalSystemProjectId) {
-    LOG.debug("${projectId.debugName}: Expire notification")
+    LOG.debug("${projectId.readableName}: Expire notification")
     projectsWithNotification.remove(projectId)
     revealNotification()
   }

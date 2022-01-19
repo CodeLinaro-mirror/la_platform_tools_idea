@@ -75,8 +75,7 @@ object DefaultIndexStorageLayout {
       extension.valueExternalizer,
       extension.cacheSize,
       extension.keyIsUniqueForIndexedFile(),
-      extension.traceKeyHashToVirtualFileMapping(),
-      extension.enableWal()
+      extension.traceKeyHashToVirtualFileMapping()
     ) {
       override fun initMapAndCache() {
         assert(PagedFileStorage.THREAD_LOCAL_STORAGE_LOCK_CONTEXT.get() == null)

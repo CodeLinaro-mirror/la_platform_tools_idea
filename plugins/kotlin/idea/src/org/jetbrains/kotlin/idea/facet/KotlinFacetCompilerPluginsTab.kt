@@ -6,7 +6,6 @@ import com.intellij.facet.ui.FacetEditorTab
 import com.intellij.facet.ui.FacetEditorValidator
 import com.intellij.facet.ui.FacetValidatorsManager
 import com.intellij.facet.ui.ValidationResult
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.table.JBTable
 import org.jetbrains.kotlin.compiler.plugin.CliOptionValue
@@ -116,7 +115,6 @@ class KotlinFacetCompilerPluginsTab(
         override fun check(): ValidationResult {
             val invalidOptions = optionsByTable.filter { parsePluginOption(it) == null }
             if (invalidOptions.isNotEmpty()) {
-                @NlsSafe
                 val message = buildString {
                     append(KotlinBundle.message("facet.text.following.options.are.not.correct"))
                     append(" <br/>")

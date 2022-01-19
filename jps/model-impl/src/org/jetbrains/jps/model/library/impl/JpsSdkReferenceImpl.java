@@ -64,9 +64,4 @@ public class JpsSdkReferenceImpl<P extends JpsElement> extends JpsNamedElementRe
   protected JpsElementCollection<? extends JpsLibrary> getCollection(@NotNull JpsCompositeElement parent) {
     return parent.getContainer().getChild(JpsLibraryRole.LIBRARIES_COLLECTION_ROLE);
   }
-
-  @Override
-  public String toString() {
-    return "SDK reference: '" + myElementName + "' in " + getParentReference();
-  }
 }

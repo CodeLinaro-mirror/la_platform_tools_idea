@@ -6,7 +6,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.util.NlsSafe;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 public abstract class FindSettings {
 
@@ -67,6 +66,20 @@ public abstract class FindSettings {
   public abstract void setLocalRegularExpressions(boolean regularExpressions);
 
   /**
+   * @deprecated use {@link FindInProjectSettings#addStringToFind(String)}
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public abstract void addStringToFind(@NotNull String s);
+
+  /**
+   * @deprecated use {@link FindInProjectSettings#addStringToReplace(String)}
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public abstract void addStringToReplace(@NotNull String s);
+
+  /**
    * @deprecated use {@link FindInProjectSettings#getRecentFindStrings()}
    */
   @Deprecated
@@ -92,9 +105,9 @@ public abstract class FindSettings {
 
   public abstract void initModelBySetings(@NotNull FindModel model);
 
-  public abstract @Nullable @NlsSafe String getFileMask();
+  public abstract @NlsSafe String getFileMask();
 
-  public abstract void setFileMask(@Nullable @NlsSafe String fileMask);
+  public abstract void setFileMask(String fileMask);
 
   public abstract void setCustomScope(String scopeName);
 

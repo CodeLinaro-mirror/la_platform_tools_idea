@@ -13,9 +13,4 @@ public class PySequencePatternImpl extends PyElementImpl implements PySequencePa
   protected void acceptPyVisitor(PyElementVisitor pyVisitor) {
     pyVisitor.visitPySequencePattern(this);
   }
-
-  @Override
-  public boolean isIrrefutable() {
-    return false;
-  }
 }

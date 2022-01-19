@@ -94,10 +94,6 @@ abstract class AbstractDataGetter<T extends VcsShortCommitDetails> implements Di
   }
 
   @Override
-  public @NotNull T getCommitData(int hash) {
-    return getCommitData(hash, Collections.singleton(hash));
-  }
-
   @NotNull
   public T getCommitData(int hash, @NotNull Iterable<Integer> neighbourHashes) {
     if (!EventQueue.isDispatchThread()) {
@@ -210,11 +206,10 @@ abstract class AbstractDataGetter<T extends VcsShortCommitDetails> implements Di
   @Override
   @Nullable
   public T getCommitDataIfAvailable(int hash) {
-    LOG.assertTrue(EventQueue.isDispatchThread());
     T details = getFromCache(hash);
     if (details != null) {
-      if (details instanceof LoadingDetailsImpl) {
-        if (((LoadingDetailsImpl)details).getLoadingTaskIndex() <= myCurrentTaskIndex - MAX_LOADING_TASKS) {
+      if (details instanceof LoadingDetails) {
+        if (((LoadingDetails)details).getLoadingTaskIndex() <= myCurrentTaskIndex - MAX_LOADING_TASKS) {
           // don't let old "loading" requests stay in the cache forever
           myCache.asMap().remove(hash, details);
           return null;
@@ -266,7 +261,7 @@ abstract class AbstractDataGetter<T extends VcsShortCommitDetails> implements Di
       return (T)new IndexedDetails(dataGetter, myStorage, commitId, taskNumber);
     }
     else {
-      return (T)new LoadingDetailsImpl(() -> myStorage.getCommitId(commitId), taskNumber);
+      return (T)new LoadingDetails(() -> myStorage.getCommitId(commitId), taskNumber);
     }
   }
 

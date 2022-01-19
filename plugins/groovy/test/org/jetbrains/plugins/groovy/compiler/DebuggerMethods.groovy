@@ -190,7 +190,7 @@ trait DebuggerMethods extends CompilerMethods {
     }
 
     @Override
-    void threadAction(@NotNull SuspendContextImpl suspendContext) {
+    void threadAction() {
       try {
         myResult = myAction()
       }

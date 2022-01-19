@@ -29,7 +29,6 @@ import org.jetbrains.kotlin.idea.core.script.scriptingDebugLog
 import org.jetbrains.kotlin.idea.core.util.CheckCanceledLock
 import org.jetbrains.kotlin.idea.core.util.EDT
 import org.jetbrains.kotlin.idea.util.FirPluginOracleService
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.psi.KtFile
 import java.util.concurrent.atomic.AtomicInteger
@@ -108,12 +107,8 @@ abstract class ScriptClassRootsUpdater(
         update { invalidate() }
     }
 
-    fun isInTransaction(): Boolean {
-        return concurrentUpdates.get() > 0
-    }
-
     fun checkInTransaction() {
-        check(isInTransaction())
+        check(concurrentUpdates.get() > 0)
     }
 
     inline fun <T> update(body: () -> T): T {
@@ -142,7 +137,7 @@ abstract class ScriptClassRootsUpdater(
             if (!invalidated) return
             invalidated = false
 
-            if (syncUpdateRequired || isUnitTestMode()) {
+            if (syncUpdateRequired || ApplicationManager.getApplication().isUnitTestMode) {
                 syncUpdateRequired = false
                 updateSynchronously()
             } else {

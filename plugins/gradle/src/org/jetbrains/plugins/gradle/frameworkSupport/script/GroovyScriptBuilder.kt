@@ -5,7 +5,7 @@ import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptElement.Argume
 import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptElement.Statement.Expression.*
 import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptTreeBuilder.Companion.script
 
-class GroovyScriptBuilder(indent: Int = 0) : AbstractScriptBuilder(indent) {
+class GroovyScriptBuilder : AbstractScriptBuilder() {
   override fun add(element: ScriptElement, indent: Int, isNewLine: Boolean) {
     when (element) {
       is ArgumentElement -> {

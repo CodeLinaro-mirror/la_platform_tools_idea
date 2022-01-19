@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.inspection;
 
 import com.intellij.codeInsight.daemon.HighlightDisplayKey;
@@ -11,12 +11,12 @@ import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.PlainTextLikeFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.WriteExternalException;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.NaturalComparator;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
@@ -24,13 +24,10 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
 import com.intellij.psi.PsiFile;
 import com.intellij.structuralsearch.*;
-import com.intellij.structuralsearch.impl.matcher.CompiledPattern;
 import com.intellij.structuralsearch.impl.matcher.MatchContext;
-import com.intellij.structuralsearch.impl.matcher.compiler.PatternCompiler;
 import com.intellij.structuralsearch.impl.matcher.filters.LexicalNodesFilter;
 import com.intellij.structuralsearch.impl.matcher.iterators.SsrFilteringNodeIterator;
 import com.intellij.structuralsearch.impl.matcher.predicates.ScriptSupport;
-import com.intellij.structuralsearch.impl.matcher.strategies.MatchingStrategy;
 import com.intellij.structuralsearch.plugin.replace.ReplacementInfo;
 import com.intellij.structuralsearch.plugin.replace.impl.Replacer;
 import com.intellij.structuralsearch.plugin.replace.ui.ReplaceConfiguration;
@@ -55,10 +52,9 @@ import java.util.stream.Collectors;
 import static com.intellij.codeInspection.ProblemHighlightType.GENERIC_ERROR_OR_WARNING;
 
 public class SSBasedInspection extends LocalInspectionTool implements DynamicGroupTool {
-  private static final Logger LOG = Logger.getInstance(SSBasedInspection.class);
-
   public static final Comparator<? super Configuration> CONFIGURATION_COMPARATOR =
     Comparator.comparing(Configuration::getName, NaturalComparator.INSTANCE).thenComparingInt(Configuration::getOrder);
+  private static final Object LOCK = ObjectUtils.sentinel("SSRLock"); // hack to avoid race conditions in SSR
 
   private static final Key<Map<Configuration, Matcher>> COMPILED_PATTERNS = Key.create("SSR_COMPILED_PATTERNS");
   private final MultiMapEx<Configuration, Matcher> myCompiledPatterns = new MultiMapEx<>();
@@ -171,8 +167,24 @@ public class SSBasedInspection extends LocalInspectionTool implements DynamicGro
     }
     if (configurations.isEmpty()) return PsiElementVisitor.EMPTY_VISITOR;
 
-    final Map<Configuration, Matcher> compiledPatterns = checkOutCompiledPatterns(configurations, project);
-    session.putUserData(COMPILED_PATTERNS, compiledPatterns);
+    final Map<Configuration, Matcher> compiledPatterns;
+    if (!Registry.is("ssr.multithreaded.inspection")) {
+      compiledPatterns = SSBasedInspectionCompiledPatternsCache.getInstance(project).getCachedCompiledConfigurations(configurations);
+      if (compiledPatterns.isEmpty()) return PsiElementVisitor.EMPTY_VISITOR;
+      synchronized (LOCK) {
+        for (Map.Entry<Configuration, Matcher> entry : compiledPatterns.entrySet()) {
+          final Matcher matcher = entry.getValue();
+          if (matcher == null) {
+            continue;
+          }
+          matcher.getMatchContext().setSink(new InspectionResultSink());
+        }
+      }
+    }
+    else {
+      compiledPatterns = checkOutCompiledPatterns(configurations, project);
+      session.putUserData(COMPILED_PATTERNS, compiledPatterns);
+    }
     return new SSBasedVisitor(compiledPatterns, profile, holder);
   }
 
@@ -355,28 +367,14 @@ public class SSBasedInspection extends LocalInspectionTool implements DynamicGro
         result.put(configuration, matcher);
       }
       else {
-        final Matcher newMatcher = buildCompiledConfiguration(configuration, project);
+        final Matcher newMatcher = SSBasedInspectionCompiledPatternsCache.getInstance(project).buildCompiledConfiguration(configuration);
         if (newMatcher != null) {
-          MatchContext context = newMatcher.getMatchContext();
-          context.setSink(new InspectionResultSink());
-          // ssr should never match recursively because this is handled by the inspection visitor
-          context.setShouldRecursivelyMatch(false);
+          newMatcher.getMatchContext().setSink(new InspectionResultSink());
         }
         result.put(configuration, newMatcher);
       }
     }
     return result;
-  }
-
-  Matcher buildCompiledConfiguration(Configuration configuration, @NotNull Project project) {
-    try {
-      final MatchOptions matchOptions = configuration.getMatchOptions();
-      final CompiledPattern compiledPattern = PatternCompiler.compilePattern(project, matchOptions, false, true);
-      return (compiledPattern == null) ? null : new Matcher(project, matchOptions, compiledPattern);
-    } catch (StructuralSearchException e) {
-      LOG.warn("Malformed structural search inspection pattern \"" + configuration.getName() + '"', e);
-      return null;
-    }
   }
 
   void checkInCompiledPatterns(@NotNull Map<Configuration, Matcher> compiledPatterns) {
@@ -424,13 +422,23 @@ public class SSBasedInspection extends LocalInspectionTool implements DynamicGro
     @Override
     public void visitElement(@NotNull PsiElement element) {
       if (LexicalNodesFilter.getInstance().accepts(element)) return;
+      if (Registry.is("ssr.multithreaded.inspection")) {
+        processElement(element);
+      }
+      else {
+        synchronized (LOCK) {
+          processElement(element);
+        }
+      }
+    }
+
+    private void processElement(@NotNull PsiElement element) {
       for (Map.Entry<Configuration, Matcher> entry : myCompiledOptions.entrySet()) {
+        final Configuration configuration = entry.getKey();
         final Matcher matcher = entry.getValue();
         if (matcher == null) continue;
-        MatchingStrategy strategy = matcher.getMatchContext().getPattern().getStrategy();
-        if (!strategy.continueMatching(element)) continue;
 
-        processElement(element, entry.getKey(), matcher);
+        processElement(element, configuration, matcher);
       }
     }
 

@@ -5,6 +5,7 @@ import com.intellij.navigation.TargetPresentation
 import com.intellij.openapi.application.AppUIExecutor
 import com.intellij.openapi.application.impl.coroutineDispatchingContext
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.progress.runUnderIndicator
 import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
@@ -67,9 +68,11 @@ internal class PsiElementBackgroundPresentationComputer(list: JList<*>) {
   private fun doComputePresentationAsync(rendererAndElement: RendererAndElement): Deferred<TargetPresentation> {
     val result = myCoroutineScope.async {
       //delay((Math.random() * 3000 + 2000).toLong()) // uncomment to add artificial delay to check out how it looks in UI
-      readAction {
-        val (renderer, element) = rendererAndElement
-        renderer.computePresentation(element)
+      readAction { progress ->
+        runUnderIndicator(progress) {
+          val (renderer, element) = rendererAndElement
+          renderer.computePresentation(element)
+        }
       }
     }
     myCoroutineScope.launch {

@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.compilerPlugin.parcelize
 
-import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.PropertyKey
 import org.jetbrains.kotlin.util.AbstractKotlinBundle
@@ -11,7 +10,6 @@ import org.jetbrains.kotlin.util.AbstractKotlinBundle
 private const val BUNDLE = "messages.KotlinParcelizeBundle"
 
 object KotlinParcelizeBundle : AbstractKotlinBundle(BUNDLE) {
-    @Nls
     @JvmStatic
     fun message(@NonNls @PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any): String =
         @Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")

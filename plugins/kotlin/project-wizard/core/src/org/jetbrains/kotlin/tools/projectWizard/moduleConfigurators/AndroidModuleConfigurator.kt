@@ -156,7 +156,7 @@ object AndroidTargetConfigurator : AndroidTargetConfiguratorBase(),
 
     override fun getConfiguratorSettings() = buildList<ModuleConfiguratorSetting<*, *>> {
         +super<AndroidTargetConfiguratorBase>.getConfiguratorSettings()
-        +JvmModuleConfigurator.testFramework
+        +super<ModuleConfiguratorWithTests>.getConfiguratorSettings()
     }
 
     override fun createModuleIRs(reader: Reader, configurationData: ModulesToIrConversionData, module: Module): List<BuildSystemIR> =
@@ -257,7 +257,7 @@ abstract class AndroidTargetConfiguratorBase : TargetConfigurator,
         KotlinNewProjectWizardBundle.message("module.configurator.android.setting.android.plugin"),
         neededAtPhase = GenerationPhase.PROJECT_GENERATION
     ) {
-        tooltipText = KotlinNewProjectWizardBundle.message("module.configurator.android.setting.android.plugin.tooltip")
+        description = KotlinNewProjectWizardBundle.message("module.configurator.android.setting.android.plugin.description")
     }
 }
 

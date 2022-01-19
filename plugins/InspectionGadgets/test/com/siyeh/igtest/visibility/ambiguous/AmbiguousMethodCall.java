@@ -62,16 +62,3 @@ class Outer {
         }
     }
 }
-class Parent {
-  void notAmbiguous(){}
-}
-
-class Example {
-  void notAmbiguous(){} // this non-static method is not accessible.
-
-  static class Inner extends Parent {
-    void example(){
-      notAmbiguous();
-    }
-  }
-}

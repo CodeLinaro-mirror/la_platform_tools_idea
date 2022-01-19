@@ -7,7 +7,7 @@ public class TestSimpleAnnotationsDetection {
 
   @NonBlocking
   private static void nonBlocking() {
-    <warning descr="Possibly blocking call in non-blocking context could lead to thread starvation">testBlocking</warning>();
+    <warning descr="Inappropriate blocking method call">testBlocking</warning>();
   }
 
   private static void withoutAnnotation() {

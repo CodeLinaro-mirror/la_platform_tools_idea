@@ -1,10 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.lang.documentation;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -15,11 +14,11 @@ public interface ExternalDocumentationProvider {
    */
   @SuppressWarnings("DeprecatedIsStillUsed")
   @Deprecated
-  default @Nls @Nullable String fetchExternalDocumentation(final Project project, PsiElement element, List<String> docUrls) {
+  default @Nullable String fetchExternalDocumentation(final Project project, PsiElement element, List<String> docUrls) {
     return null;
   }
 
-  default @Nls @Nullable String fetchExternalDocumentation(final Project project, PsiElement element, List<String> docUrls, boolean onHover) {
+  default @Nullable String fetchExternalDocumentation(final Project project, PsiElement element, List<String> docUrls, boolean onHover) {
     return fetchExternalDocumentation(project, element, docUrls);
   }
 

@@ -3,9 +3,11 @@ package com.intellij.util;
 
 import com.intellij.concurrency.AsyncFuture;
 import com.intellij.openapi.progress.ProgressManager;
-import com.intellij.util.containers.CollectionFactory;
-import com.intellij.util.containers.HashingStrategy;
+import it.unimi.dsi.fastutil.Hash;
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -13,14 +15,14 @@ import java.util.Set;
 
 public final class UniqueResultsQuery<T, M> extends AbstractQuery<T> {
   @NotNull private final Query<? extends T> myOriginal;
-  private final HashingStrategy<? super M> myHashingStrategy;
+  @Nullable private final Hash.Strategy<? super M> myHashingStrategy;
   @NotNull private final Function<? super T, ? extends M> myMapper;
 
   public UniqueResultsQuery(@NotNull Query<? extends T> original) {
     this(original, Functions.identity());
   }
 
-  public UniqueResultsQuery(@NotNull Query<? extends T> original, @NotNull HashingStrategy<? super M> hashingStrategy) {
+  public UniqueResultsQuery(@NotNull Query<? extends T> original, @NotNull Hash.Strategy<? super M> hashingStrategy) {
     myOriginal = original;
     myHashingStrategy = hashingStrategy;
     myMapper = Functions.identity();
@@ -41,7 +43,7 @@ public final class UniqueResultsQuery<T, M> extends AbstractQuery<T> {
     if (myHashingStrategy == null) {
       return Collections.synchronizedSet(new HashSet<>());
     }
-    return Collections.synchronizedSet(CollectionFactory.createCustomHashingStrategySet(myHashingStrategy));
+    return ObjectSets.synchronize(new ObjectOpenCustomHashSet<>(myHashingStrategy));
   }
 
   @NotNull

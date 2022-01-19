@@ -209,6 +209,12 @@ public final class RefCountingContentStorage extends AbstractStorage {
   }
 
   @Override
+  public boolean flushSome() {
+    flushPendingWrites();
+    return super.flushSome();
+  }
+
+  @Override
   public void dispose() {
     flushPendingWrites();
     super.dispose();

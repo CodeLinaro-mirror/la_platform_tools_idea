@@ -12,6 +12,7 @@ public interface EditorConfigOptionValueList extends EditorConfigDescribableElem
   @NotNull
   List<EditorConfigOptionValueIdentifier> getOptionValueIdentifierList();
 
-  @Nullable EditorConfigDescriptor getDescriptor(boolean smart);
+  @Nullable
+  EditorConfigDescriptor getDescriptor(boolean smart);
 
 }

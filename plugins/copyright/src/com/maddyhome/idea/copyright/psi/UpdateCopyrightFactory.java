@@ -25,15 +25,14 @@ public final class UpdateCopyrightFactory {
     return createUpdateCopyright(project, module, virtualFile, virtualFile.getFileType(), options);
   }
 
-  private static @Nullable UpdateCopyright createUpdateCopyright(Project project,
-                                                                 Module module,
-                                                                 VirtualFile file,
-                                                                 FileType type,
-                                                                 CopyrightProfile options) {
+  private static UpdateCopyright createUpdateCopyright(Project project,
+                                                       Module module,
+                                                       VirtualFile file,
+                                                       FileType type,
+                                                       CopyrightProfile options) {
     // NOTE - any changes here require changes to LanguageOptionsFactory and ConfigTabFactory
     LOG.debug("file=" + file);
     LOG.debug("type=" + type.getName());
-    UpdateCopyrightsProvider provider = CopyrightUpdaters.INSTANCE.forFileType(type);
-    return provider != null ? provider.createInstance(project, module, file, type, options) : null;
+    return CopyrightUpdaters.INSTANCE.forFileType(type).createInstance(project, module, file, type, options);
   }
 }

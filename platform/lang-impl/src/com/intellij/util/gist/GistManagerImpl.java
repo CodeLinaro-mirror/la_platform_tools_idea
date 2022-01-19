@@ -16,8 +16,6 @@ import com.intellij.util.ModalityUiUtil;
 import com.intellij.util.NullableFunction;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.DataExternalizer;
-import com.intellij.util.ui.update.MergingUpdateQueue;
-import com.intellij.util.ui.update.Update;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 
@@ -30,8 +28,6 @@ public final class GistManagerImpl extends GistManager {
   private static final Map<String, VirtualFileGist<?>> ourGists = ContainerUtil.createConcurrentWeakValueMap();
   private static final String ourPropertyName = "file.gist.reindex.count";
   private final AtomicInteger myReindexCount = new AtomicInteger(PropertiesComponent.getInstance().getInt(ourPropertyName, 0));
-  private final MergingUpdateQueue myDropCachesQueue = new MergingUpdateQueue("gist-manager-drop-caches", 500, true, null).setRestartTimerOnAdd(true);
-  private final AtomicInteger myMergingDropCachesRequestors = new AtomicInteger();
 
   static final class MyBulkFileListener implements BulkFileListener {
     @Override
@@ -87,8 +83,7 @@ public final class GistManagerImpl extends GistManager {
     if (LOG.isTraceEnabled()) {
       LOG.trace("Invalidating gist " + file);
     }
-    file.putUserDataIfAbsent(VirtualFileGistImpl.GIST_INVALIDATION_COUNT_KEY, new AtomicInteger()).incrementAndGet();
-    invalidateDependentCaches();
+    invalidateData(); // should be more granular in future
   }
 
   private void invalidateGists() {
@@ -100,31 +95,13 @@ public final class GistManagerImpl extends GistManager {
     PropertiesComponent.getInstance().setValue(ourPropertyName, myReindexCount.incrementAndGet(), 0);
   }
 
-  private void invalidateDependentCaches() {
-    Runnable dropCaches = () -> {
+  private static void invalidateDependentCaches() {
+    ModalityUiUtil.invokeLaterIfNeeded(() -> {
       for (Project project : ProjectManager.getInstance().getOpenProjects()) {
         PsiManager.getInstance(project).dropPsiCaches();
       }
-    };
-    if (myMergingDropCachesRequestors.get() == 0) {
-      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.NON_MODAL, dropCaches);
-    }
-    else {
-      myDropCachesQueue.queue(Update.create(this, dropCaches));
-    }
+    }, ModalityState.NON_MODAL);
   }
-
-  public void startMergingDependentCacheInvalidations() {
-    myMergingDropCachesRequestors.incrementAndGet();
-  }
-
-  public void endMergingDependentCacheInvalidations() {
-    if (myMergingDropCachesRequestors.decrementAndGet() == 0) {
-      myDropCachesQueue.sendFlush();
-    }
-  }
-
-
 
   @TestOnly
   public void resetReindexCount() {

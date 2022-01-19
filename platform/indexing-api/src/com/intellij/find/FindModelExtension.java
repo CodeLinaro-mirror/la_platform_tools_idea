@@ -8,7 +8,7 @@ import com.intellij.util.Processor;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-@ApiStatus.Internal
+@ApiStatus.Experimental
 public interface FindModelExtension {
   ExtensionPointName<FindModelExtension> EP_NAME = ExtensionPointName.create("com.intellij.findModelExtension");
 

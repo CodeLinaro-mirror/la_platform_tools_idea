@@ -4,7 +4,10 @@ package com.intellij.openapi.editor.colors.impl;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponentWithModificationTracker;
+import com.intellij.openapi.components.ReportValue;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.colors.EditorFontCache;
 import com.intellij.openapi.editor.colors.FontPreferences;
@@ -19,10 +22,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.List;
 
-@State(name = "DefaultFont", storages = {
-  @Storage(value = "editor-font.xml", roamingType = RoamingType.DISABLED),
-  @Storage(value = "editor.xml", deprecated = true)
-}, category = SettingsCategory.UI)
+@State(name = "DefaultFont", storages = @Storage("editor.xml"))
 public final class AppEditorFontOptions implements
                                         PersistentStateComponentWithModificationTracker<AppEditorFontOptions.PersistentFontPreferences> {
   private static final Logger LOG = Logger.getInstance(AppEditorFontOptions.class);
@@ -30,9 +30,6 @@ public final class AppEditorFontOptions implements
 
   private final FontPreferencesImpl myFontPreferences = new FontPreferencesImpl();
   private final SimpleModificationTracker myTracker = new SimpleModificationTracker();
-
-  private static final int CURR_FONT_PREF_VERSION = 1;
-  private              int myFontPrefVersion;
 
   public AppEditorFontOptions() {
     Application app = ApplicationManager.getApplication();
@@ -43,15 +40,10 @@ public final class AppEditorFontOptions implements
 
   @Override
   public long getStateModificationCount() {
-    if (myFontPrefVersion < CURR_FONT_PREF_VERSION) {
-      myTracker.incModificationCount();
-    }
     return myTracker.getModificationCount();
   }
 
   public static class PersistentFontPreferences {
-    public int VERSION = 0;
-
     @ReportValue
     public int FONT_SIZE = FontPreferences.DEFAULT_FONT_SIZE;
     @ReportValue
@@ -90,9 +82,7 @@ public final class AppEditorFontOptions implements
     }
 
     private static PersistentFontPreferences getDefaultState() {
-      PersistentFontPreferences preferences = new PersistentFontPreferences();
-      preferences.VERSION = CURR_FONT_PREF_VERSION;
-      return preferences;
+      return new PersistentFontPreferences();
     }
   }
 
@@ -103,15 +93,12 @@ public final class AppEditorFontOptions implements
 
   @Override
   public @NotNull PersistentFontPreferences getState() {
-    PersistentFontPreferences preferences = new PersistentFontPreferences(myFontPreferences);
-    preferences.VERSION = CURR_FONT_PREF_VERSION;
-    return preferences;
+    return new PersistentFontPreferences(myFontPreferences);
   }
 
   @Override
   public void loadState(@NotNull PersistentFontPreferences state) {
     copyState(state, myFontPreferences);
-    myFontPrefVersion = state.VERSION;
     myFontPreferences.setChangeListener(() -> EditorFontCache.getInstance().reset());
   }
 

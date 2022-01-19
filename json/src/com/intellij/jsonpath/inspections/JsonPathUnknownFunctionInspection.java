@@ -14,7 +14,7 @@ import org.jetbrains.annotations.NotNull;
 
 import static com.intellij.jsonpath.ui.JsonPathEvaluateManager.JSON_PATH_EVALUATE_EXPRESSION_KEY;
 
-public final class JsonPathUnknownFunctionInspection extends LocalInspectionTool {
+final class JsonPathUnknownFunctionInspection extends LocalInspectionTool {
   @Override
   public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
     return new JsonPathVisitor() {

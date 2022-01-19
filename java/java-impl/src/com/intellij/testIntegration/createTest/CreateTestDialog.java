@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testIntegration.createTest;
 
 import com.intellij.CommonBundle;
@@ -11,7 +11,6 @@ import com.intellij.java.JavaBundle;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CustomShortcutSet;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.module.Module;
@@ -38,7 +37,6 @@ import com.intellij.ui.*;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
@@ -125,24 +123,16 @@ public class CreateTestDialog extends DialogWrapper {
   }
 
   private void onLibrarySelected(TestFramework descriptor) {
-    ReadAction.nonBlocking(() -> {
-        boolean result = descriptor.isLibraryAttached(myTargetModule);
-        SwingUtilities.invokeLater(() -> {
-          if (result) {
-            myFixLibraryPanel.setVisible(false);
-          }
-          else {
-            myFixLibraryPanel.setVisible(true);
-            String text = JavaBundle.message("intention.create.test.dialog.library.not.found", descriptor.getName());
-            myFixLibraryLabel.setText(text);
-            myFixLibraryButton.setVisible(
-              descriptor instanceof JavaTestFramework && ((JavaTestFramework)descriptor).getFrameworkLibraryDescriptor() != null
-              || descriptor.getLibraryPath() != null);
-          }
-        });
-      })
-      .submit(AppExecutorUtil.getAppExecutorService());
-    
+    if (descriptor.isLibraryAttached(myTargetModule)) {
+      myFixLibraryPanel.setVisible(false);
+    }
+    else {
+      myFixLibraryPanel.setVisible(true);
+      String text = JavaBundle.message("intention.create.test.dialog.library.not.found", descriptor.getName());
+      myFixLibraryLabel.setText(text);
+      myFixLibraryButton.setVisible(descriptor instanceof JavaTestFramework && ((JavaTestFramework)descriptor).getFrameworkLibraryDescriptor() != null
+                                    || descriptor.getLibraryPath() != null);
+    }
 
     @NlsSafe String libraryDefaultSuperClass = descriptor.getDefaultSuperClass();
     @NlsSafe String lastSelectedSuperClass = getLastSelectedSuperClassName(descriptor);

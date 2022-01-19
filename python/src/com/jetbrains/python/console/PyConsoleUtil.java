@@ -47,7 +47,7 @@ public final class PyConsoleUtil {
   };
 
 
-  public static final Key<PythonConsoleData> PYTHON_CONSOLE_DATA = Key.create("python-console-data");
+  static final Key<PythonConsoleData> PYTHON_CONSOLE_DATA = Key.create("python-console-data");
 
   private PyConsoleUtil() {
   }

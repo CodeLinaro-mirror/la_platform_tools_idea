@@ -16,8 +16,7 @@ internal class MoveFilesWithDeclarationsViewDescriptor(
     private val myElementsToMove: Array<PsiElement>,
     newParent: PsiDirectory
 ) : UsageViewDescriptor {
-    @Nls
-    private val myProcessedElementsHeader: String
+    private var myProcessedElementsHeader: String? = null
     @Nls
     private val myCodeReferencesText: String
 
@@ -48,6 +47,7 @@ internal class MoveFilesWithDeclarationsViewDescriptor(
         return myCodeReferencesText + UsageViewBundle.getReferencesString(usagesCount, filesCount)
     }
 
-    override fun getCommentReferencesText(usagesCount: Int, filesCount: Int): String =
-        RefactoringBundle.message("comments.elements.header", UsageViewBundle.getOccurencesString(usagesCount, filesCount))
+    override fun getCommentReferencesText(usagesCount: Int, filesCount: Int): String? {
+        return RefactoringBundle.message("comments.elements.header", UsageViewBundle.getOccurencesString(usagesCount, filesCount))
+    }
 }

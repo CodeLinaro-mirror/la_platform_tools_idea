@@ -4,7 +4,7 @@ class Test {
   }
 
   {
-    String m  = <warning descr="Intersection type 'Runnable & String' cannot be instantiated, because 'java.lang.String' is final">f</warning>();
+    String m  <warning descr="Though assignment is formal correct, it could lead to ClassCastException at runtime. Expected: 'String', actual: 'Runnable & String'">=</warning> f();
     System.out.println(m);
   }
 }

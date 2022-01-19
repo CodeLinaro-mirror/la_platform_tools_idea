@@ -8,5 +8,6 @@ fun foo(): String {
     return bar
 }
 
-val bar = "1"
 val x = bar
+
+// DISABLE-ERRORS

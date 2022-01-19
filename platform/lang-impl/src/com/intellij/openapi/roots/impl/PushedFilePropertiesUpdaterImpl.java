@@ -18,6 +18,8 @@ import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
+import com.intellij.openapi.progress.util.ProgressWrapper;
 import com.intellij.openapi.project.*;
 import com.intellij.openapi.roots.ContentIteratorEx;
 import com.intellij.openapi.roots.ModuleRootEvent;
@@ -34,35 +36,32 @@ import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent;
 import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.psi.impl.file.impl.FileManagerImpl;
 import com.intellij.util.ModalityUiUtil;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.gist.GistManager;
-import com.intellij.util.gist.GistManagerImpl;
-import com.intellij.util.indexing.FileBasedIndex;
-import com.intellij.util.indexing.FileBasedIndexImpl;
-import com.intellij.util.indexing.FileBasedIndexProjectHandler;
-import com.intellij.util.indexing.IndexingBundle;
-import com.intellij.util.indexing.diagnostic.ChangedFilesPushedDiagnostic;
-import com.intellij.util.indexing.diagnostic.ChangedFilesPushingStatistics;
-import com.intellij.util.indexing.diagnostic.IndexDiagnosticDumper;
+import com.intellij.util.indexing.*;
 import com.intellij.util.indexing.roots.*;
-import com.intellij.workspaceModel.ide.WorkspaceModel;
-import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity;
-import kotlin.sequences.Sequence;
-import kotlin.sequences.SequencesKt;
+import com.intellij.util.indexing.roots.kind.ModuleRootOrigin;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.RunnableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesUpdater {
   private static final Logger LOG = Logger.getInstance(PushedFilePropertiesUpdater.class);
+
+  private static final int SCANNING_EXECUTOR_THREAD_COUNT = Math.max(UnindexedFilesUpdater.getNumberOfScanningThreads() - 1, 1);
+  private static final ExecutorService GLOBAL_SCANNING_EXECUTOR  = AppExecutorUtil.createBoundedApplicationPoolExecutor(
+    "Scanning", SCANNING_EXECUTOR_THREAD_COUNT
+  );
 
   private final Project myProject;
 
@@ -138,10 +137,10 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
       delayedTasks.addAll(syncTasks);
     }
     if (!delayedTasks.isEmpty()) {
-      queueTasks(delayedTasks, "Push on VFS changes");
+      queueTasks(delayedTasks);
     }
     if (pushingSomethingSynchronously) {
-      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), () -> scheduleDumbModeReindexingIfNeeded());
+      ModalityUiUtil.invokeLaterIfNeeded(() -> scheduleDumbModeReindexingIfNeeded(), ModalityState.defaultModalityState());
     }
   }
 
@@ -207,46 +206,26 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
     }, IndexableFilesDeduplicateFilter.create());
   }
 
-  private void queueTasks(@NotNull List<? extends Runnable> actions, @NotNull @NonNls String reason) {
+  private void queueTasks(@NotNull List<? extends Runnable> actions) {
     actions.forEach(myTasks::offer);
     DumbModeTask task = new DumbModeTask(this) {
       @Override
       public void performInDumbMode(@NotNull ProgressIndicator indicator) {
         indicator.setIndeterminate(true);
         indicator.setText(IndexingBundle.message("progress.indexing.scanning"));
-        ChangedFilesPushingStatistics statistics;
-        if (!ApplicationManager.getApplication().isUnitTestMode() || IndexDiagnosticDumper.getShouldDumpInUnitTestMode()) {
-          statistics = new ChangedFilesPushingStatistics(reason);
-        }
-        else {
-          statistics = null;
-        }
-        ((GistManagerImpl)GistManager.getInstance()).startMergingDependentCacheInvalidations();
-        try {
-          performDelayedPushTasks(statistics);
-        }
-        finally {
-          ((GistManagerImpl)GistManager.getInstance()).endMergingDependentCacheInvalidations();
-        }
+        performDelayedPushTasks();
       }
     };
     myProject.getMessageBus().connect(task).subscribe(ProjectTopics.PROJECT_ROOTS, new ModuleRootListener() {
       @Override
       public void rootsChanged(@NotNull ModuleRootEvent event) {
-        for (RootsChangeIndexingInfo info : ((ModuleRootEventImpl)event).getInfos()) {
-          if (info == RootsChangeIndexingInfo.TOTAL_REINDEX) {
-            DumbService.getInstance(myProject).cancelTask(task);
-            return;
-          }
-        }
+        DumbService.getInstance(myProject).cancelTask(task);
       }
     });
-    task.queue(myProject);
+    DumbService.getInstance(myProject).queueTask(task);
   }
 
-  public void performDelayedPushTasks() { performDelayedPushTasks(null); }
-
-  private void performDelayedPushTasks(@Nullable ChangedFilesPushingStatistics statistics) {
+  public void performDelayedPushTasks() {
     boolean hadTasks = false;
     while (true) {
       ProgressManager.checkCanceled(); // give a chance to suspend indexing
@@ -260,22 +239,13 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
         hadTasks = true;
       }
       catch (ProcessCanceledException e) {
-        if (statistics != null) {
-          statistics.finished(true);
-          ChangedFilesPushedDiagnostic.INSTANCE.addEvent(myProject, statistics);
-        }
-        queueTasks(Collections.singletonList(task),
-                   "Rerun pushing tasks after process cancelled"); // reschedule dumb mode and ensure the canceled task is enqueued again
+        queueTasks(Collections.singletonList(task)); // reschedule dumb mode and ensure the canceled task is enqueued again
         throw e;
       }
     }
 
     if (hadTasks) {
       scheduleDumbModeReindexingIfNeeded();
-    }
-    if (statistics != null) {
-      statistics.finished(false);
-      ChangedFilesPushedDiagnostic.INSTANCE.addEvent(myProject, statistics);
     }
   }
 
@@ -318,12 +288,12 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
 
   @Override
   public void pushAll(FilePropertyPusher<?> @NotNull ... pushers) {
-    queueTasks(Collections.singletonList(() -> doPushAll(Arrays.asList(pushers))), "Push all on " + Arrays.toString(pushers));
+    queueTasks(Collections.singletonList(() -> doPushAll(Arrays.asList(pushers))));
   }
 
   private void doPushAll(@NotNull List<? extends FilePropertyPusher<?>> pushers) {
-    scanProject(myProject, module -> {
-      final Object[] moduleValues = getModuleImmediateValues(pushers, module);
+    scanProject(myProject, moduleFileSet -> {
+      final Object[] moduleValues = getModuleImmediateValues(pushers, moduleFileSet.getOrigin());
       return fileOrDir -> {
         applyPushersToFile(fileOrDir, pushers, moduleValues);
         return ContentIteratorEx.Status.CONTINUE;
@@ -332,80 +302,68 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
   }
 
   public static Object @NotNull [] getModuleImmediateValues(@NotNull List<? extends FilePropertyPusher<?>> pushers,
-                                                            @NotNull Module module) {
+                                                            @NotNull ModuleRootOrigin origin) {
     final Object[] moduleValues;
     moduleValues = new Object[pushers.size()];
     for (int i = 0; i < moduleValues.length; i++) {
-      moduleValues[i] = pushers.get(i).getImmediateValue(module);
+      moduleValues[i] = pushers.get(i).getImmediateValue(origin.getModule());
     }
     return moduleValues;
   }
 
-  public static void scanProject(@NotNull Project project,
-                                 @NotNull Function<Module, ? extends ContentIteratorEx> iteratorProducer) {
-    Stream<Runnable> tasksStream;
-    //noinspection deprecation
-    if (DefaultProjectIndexableFilesContributor.indexProjectBasedOnIndexableEntityProviders()) {
-      Sequence<ModuleEntity> modulesSequence = ReadAction.compute(() ->
-                                                                    WorkspaceModel.getInstance(project).getEntityStorage().
-                                                                      getCurrent().entities(ModuleEntity.class));
-      List<ModuleEntity> moduleEntities = SequencesKt.toList(modulesSequence);
-      IndexableFilesDeduplicateFilter indexableFilesDeduplicateFilter = IndexableFilesDeduplicateFilter.create();
-      tasksStream = moduleEntities.stream()
-        .flatMap(moduleEntity -> {
-          return ReadAction.compute(() -> {
-            Module module = IndexableEntityProviderMethods.INSTANCE.findModuleForEntity(moduleEntity, project);
-            if (module == null) {
-              LOG.error("Failed to find a module from " + moduleEntity.getName() + " entity.");
-              return Stream.empty();
-            }
-            ProgressManager.checkCanceled();
-            return ContainerUtil.map(IndexableEntityProviderMethods.INSTANCE.createIterators(moduleEntity, project), it -> new Object() {
-                final IndexableFilesIterator files = it;
-                final ContentIteratorEx iterator = iteratorProducer.apply(module);
-              })
-              .stream()
-              .map(pair -> (Runnable)() -> {
-                pair.files.iterateFiles(project, pair.iterator, indexableFilesDeduplicateFilter);
-              });
+  public static void scanProject(@NotNull Project project, @NotNull Function<? super ModuleIndexableFilesIterator, ? extends ContentIteratorEx> iteratorProducer) {
+    Module[] modules = ReadAction.compute(() -> ModuleManager.getInstance(project).getModules());
+    IndexableFilesDeduplicateFilter indexableFilesDeduplicateFilter = IndexableFilesDeduplicateFilter.create();
+    List<Runnable> tasks = Arrays.stream(modules)
+      .flatMap(module -> {
+        return ReadAction.compute(() -> {
+          if (module.isDisposed()) return Stream.empty();
+          ProgressManager.checkCanceled();
+          return ContainerUtil.map(ModuleIndexableFilesIteratorImpl.getModuleIterators(module), it -> new Object() {
+            final IndexableFilesIterator files = it;
+            final ContentIteratorEx iterator = iteratorProducer.apply(it);
+          })
+            .stream()
+            .map(pair -> (Runnable)() -> {
+            pair.files.iterateFiles(project, pair.iterator, indexableFilesDeduplicateFilter);
           });
         });
-    }
-    else {
-      Module[] modules = ReadAction.compute(() -> ModuleManager.getInstance(project).getModules());
-      IndexableFilesDeduplicateFilter indexableFilesDeduplicateFilter = IndexableFilesDeduplicateFilter.create();
-      tasksStream = Arrays.stream(modules)
-        .flatMap(module -> {
-          return ReadAction.compute(() -> {
-            if (module.isDisposed()) return Stream.empty();
-            ProgressManager.checkCanceled();
-            //noinspection deprecation
-            return ContainerUtil.map(ModuleIndexableFilesIteratorImpl.getModuleIterators(module), it -> new Object() {
-                final IndexableFilesIterator files = it;
-                final ContentIteratorEx iterator = iteratorProducer.apply(it.getOrigin().getModule());
-              })
-              .stream()
-              .map(pair -> (Runnable)() -> {
-                pair.files.iterateFiles(project, pair.iterator, indexableFilesDeduplicateFilter);
-              });
-          });
-        });
-    }
-    List<Runnable> tasks = tasksStream.collect(Collectors.toList());
+      })
+      .collect(Collectors.toList());
     invokeConcurrentlyIfPossible(tasks);
   }
 
+  // TODO: this method may return earlier than all spawned threads have completed.
   public static void invokeConcurrentlyIfPossible(@NotNull List<? extends Runnable> tasks) {
     if (tasks.isEmpty()) return;
     if (tasks.size() == 1 || ApplicationManager.getApplication().isWriteAccessAllowed()) {
       for (Runnable r : tasks) r.run();
       return;
     }
-    ConcurrentLinkedQueue<Runnable> tasksQueue = new ConcurrentLinkedQueue<>(tasks);
-    FilesScanExecutor.runOnAllThreads(() -> {
-      Runnable runnable;
-      while ((runnable = tasksQueue.poll()) != null) runnable.run();
-    });
+
+    final ProgressIndicator progress = ProgressManager.getInstance().getProgressIndicator();
+
+    Runnable taskProcessor = new Runnable() {
+      final ConcurrentLinkedQueue<Runnable> tasksQueue = new ConcurrentLinkedQueue<>(tasks);
+
+      @Override
+      public void run() {
+        Runnable runnable;
+        while ((runnable = tasksQueue.poll()) != null) runnable.run();
+      }
+    };
+
+    List<Future<?>> results = new ArrayList<>();
+    for (int i = 0; i < SCANNING_EXECUTOR_THREAD_COUNT; i++) {
+      results.add(GLOBAL_SCANNING_EXECUTOR.submit(() -> {
+        ProgressManager.getInstance().runProcess(taskProcessor, ProgressWrapper.wrap(progress));
+      }));
+    }
+
+    for (Future<?> result : results) {
+      ((RunnableFuture<?>)result).run();
+      ProgressIndicatorUtils.awaitWithCheckCanceled(result);
+    }
   }
 
   public void applyPushersToFile(final VirtualFile fileOrDir,
@@ -469,9 +427,9 @@ public final class PushedFilePropertiesUpdaterImpl extends PushedFilePropertiesU
   private static void reloadPsi(final VirtualFile file, final Project project) {
     final FileManagerImpl fileManager = (FileManagerImpl)PsiManagerEx.getInstanceEx(project).getFileManager();
     if (fileManager.findCachedViewProvider(file) != null) {
-      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), project.getDisposed(),
-                                         () -> WriteAction.run(() -> fileManager.forceReload(file))
-      );
+      ModalityUiUtil.invokeLaterIfNeeded(() -> WriteAction.run(() -> fileManager.forceReload(file)),
+                                         ModalityState.defaultModalityState(),
+                                         project.getDisposed());
     }
   }
 

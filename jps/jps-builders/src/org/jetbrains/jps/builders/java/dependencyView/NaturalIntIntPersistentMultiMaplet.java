@@ -12,7 +12,7 @@ import org.jetbrains.jps.builders.storage.BuildDataCorruptedException;
 
 import java.io.*;
 
-final class NaturalIntIntPersistentMultiMaplet extends IntIntMultiMaplet {
+class NaturalIntIntPersistentMultiMaplet extends IntIntMultiMaplet {
   private static final TIntHashSet NULL_COLLECTION = new TIntHashSet();
   private static final int CACHE_SIZE = 128;
   private final PersistentHashMap<Integer, TIntHashSet> myMap;
@@ -224,12 +224,7 @@ final class NaturalIntIntPersistentMultiMaplet extends IntIntMultiMaplet {
 
   @Override
   public void flush(boolean memoryCachesOnly) {
-    if (memoryCachesOnly) {
-      if (myMap.isDirty()) {
-        myMap.dropMemoryCaches();
-      }
-    }
-    else {
+    if (!memoryCachesOnly) {
       myMap.force();
     }
   }

@@ -42,8 +42,7 @@ public abstract class AbstractCompilerAwareTest extends JavaCodeInsightFixtureTe
 
   protected void rebuildProject() {
     for (final CompilerMessage compilerMessage : myCompilerTester.rebuild()) {
-      assertNotSame("File: " + compilerMessage.getVirtualFile() + ", " + compilerMessage.getMessage(),
-                    CompilerMessageCategory.ERROR, compilerMessage.getCategory());
+      assertNotSame(compilerMessage.getMessage(), CompilerMessageCategory.ERROR, compilerMessage.getCategory());
     }
   }
 }

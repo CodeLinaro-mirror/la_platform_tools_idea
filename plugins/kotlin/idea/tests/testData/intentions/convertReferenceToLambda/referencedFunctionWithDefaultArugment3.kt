@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'f' is never used
 fun test() {
     bar(<caret>Int::foo)
 }

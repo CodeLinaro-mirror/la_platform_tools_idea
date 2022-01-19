@@ -12,8 +12,8 @@ import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
-import org.assertj.swing.exception.ComponentLookupException
-import org.assertj.swing.exception.WaitTimedOutError
+import org.fest.swing.exception.ComponentLookupException
+import org.fest.swing.exception.WaitTimedOutError
 import org.intellij.lang.annotations.Language
 import training.dsl.*
 import training.learn.ActionsRecorder
@@ -52,12 +52,6 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
       data.highlightPreviousUi = value
     }
 
-  override var propagateHighlighting: Boolean?
-    get() = data.propagateHighlighting
-    set(value) {
-      data.propagateHighlighting = value
-    }
-
   private val runtimeContext = TaskRuntimeContext(lessonExecutor,
                                                   recorder,
                                                   { lessonExecutor.applyRestore(this) },
@@ -74,13 +68,11 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
   /**
    * To work properly should not be called after [proposeRestore] or [showWarning] calls (only before)
    */
-  override fun restoreState(restoreId: TaskId?, delayMillis: Int, checkByTimer: Int?, restoreRequired: TaskRuntimeContext.() -> Boolean) {
+  override fun restoreState(restoreId: TaskId?, delayMillis: Int, restoreRequired: TaskRuntimeContext.() -> Boolean) {
     val actualId = restoreId ?: TaskId(lessonExecutor.calculateRestoreIndex())
-    addRestoreCheck(delayMillis, checkByTimer, restoreRequired) {
-      if (restoreRequired(runtimeContext)) {
-        StatisticBase.logRestorePerformed(lessonExecutor.lesson, taskId.idx)
-        lessonExecutor.applyRestore(this, actualId)
-      }
+    addRestoreCheck(delayMillis, restoreRequired) {
+      StatisticBase.logRestorePerformed(lessonExecutor.lesson, taskId.idx)
+      lessonExecutor.applyRestore(this, actualId)
     }
   }
 
@@ -140,7 +132,7 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
   private fun checkAndShowNotificationIfNeeded(delayMillis: Int, restoreId: TaskId?,
                                                notificationRequired: TaskRuntimeContext.() -> RestoreNotification?,
                                                setNotification: (RestoreNotification) -> Unit) {
-    addRestoreCheck(delayMillis, null, { true }) {
+    addRestoreCheck(delayMillis, { true }) {
       val notification = checkEditor() ?: notificationRequired(runtimeContext)
       val lessonManager = LessonManager.instance
       val activeNotification = lessonManager.shownRestoreNotification
@@ -155,10 +147,9 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
     }
   }
 
-  private fun addRestoreCheck(delayMillis: Int, checkByTimer: Int?, check: TaskRuntimeContext.() -> Boolean, restore: () -> Unit) {
+  private fun addRestoreCheck(delayMillis: Int, check: TaskRuntimeContext.() -> Boolean, restore: () -> Unit) {
     assert(lessonExecutor.currentTaskIndex == taskIndex)
-    data.delayBeforeRestore = delayMillis
-    data.checkRestoreByTimer = checkByTimer
+    data.delayMillis = delayMillis
     val previous = data.shouldRestore
     data.shouldRestore = { previous?.let { it() } ?: if (check(runtimeContext)) restore else null }
   }
@@ -251,13 +242,6 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
     return result
   }
 
-  override fun timerCheck(delayMillis: Int, checkState: TaskRuntimeContext.() -> Boolean): CompletableFuture<Boolean> {
-    val future = recorder.timerCheck(delayMillis) { checkState(runtimeContext) }
-    addStep(future)
-    return future
-  }
-
-
   override fun addFutureStep(p: DoneStepContext.() -> Unit) {
     val future: CompletableFuture<Boolean> = CompletableFuture()
     addStep(future)
@@ -284,11 +268,7 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
         }
       }
 
-      try {
-        TaskTestContext(runtimeContext).action()
-      } catch (e: Throwable) {
-        thisLogger().error("Test execution error", e)
-      }
+      TaskTestContext(runtimeContext).action()
     })
   }
 
@@ -391,7 +371,6 @@ internal class TaskContextImpl(private val lessonExecutor: LessonExecutor,
           lessonExecutor.taskInvokeLater(ModalityState.any()) {
             lessonExecutor.foundComponent = foundComponent
             lessonExecutor.rehighlightComponent = highlightFunction
-            lessonExecutor.rehighlightFoundComponent(foundComponent, highlightFunction)
             step.complete(true)
           }
         }

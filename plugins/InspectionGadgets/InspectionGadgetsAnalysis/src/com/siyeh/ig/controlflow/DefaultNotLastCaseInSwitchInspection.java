@@ -19,7 +19,6 @@ import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
-import com.intellij.psi.util.JavaElementKind;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
@@ -92,16 +91,16 @@ public class DefaultNotLastCaseInSwitchInspection extends BaseInspection {
     @Override
     public void visitSwitchStatement(@NotNull PsiSwitchStatement statement) {
       super.visitSwitchStatement(statement);
-      visitSwitchBlock(statement);
+      visitSwitchBlock(statement, "statement");
     }
 
     @Override
     public void visitSwitchExpression(PsiSwitchExpression expression) {
       super.visitSwitchExpression(expression);
-      visitSwitchBlock(expression);
+      visitSwitchBlock(expression, "expression");
     }
 
-    private void visitSwitchBlock(@NotNull PsiSwitchBlock statement) {
+    private void visitSwitchBlock(@NotNull PsiSwitchBlock statement, String locationDescription) {
       final PsiCodeBlock body = statement.getBody();
       if (body == null) {
         return;
@@ -114,7 +113,7 @@ public class DefaultNotLastCaseInSwitchInspection extends BaseInspection {
           final PsiSwitchLabelStatementBase label = (PsiSwitchLabelStatementBase)child;
           if (label.isDefaultCase()) {
             if (labelSeen) {
-              registerStatementError(label, label, JavaElementKind.fromElement(statement).subject());
+              registerStatementError(label, label, locationDescription);
             }
             return;
           }

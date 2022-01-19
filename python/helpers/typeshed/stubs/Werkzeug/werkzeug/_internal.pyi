@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 class _Missing:
     def __reduce__(self): ...
@@ -13,14 +13,14 @@ class _DictAccessorProperty:
     def __init__(
         self,
         name,
-        default: Any | None = ...,
-        load_func: Any | None = ...,
-        dump_func: Any | None = ...,
-        read_only: Any | None = ...,
-        doc: Any | None = ...,
+        default: Optional[Any] = ...,
+        load_func: Optional[Any] = ...,
+        dump_func: Optional[Any] = ...,
+        read_only: Optional[Any] = ...,
+        doc: Optional[Any] = ...,
     ): ...
-    def __get__(self, obj, type: Any | None = ...): ...
+    def __get__(self, obj, type: Optional[Any] = ...): ...
     def __set__(self, obj, value): ...
     def __delete__(self, obj): ...
 
-def _easteregg(app: Any | None = ...): ...
+def _easteregg(app: Optional[Any] = ...): ...

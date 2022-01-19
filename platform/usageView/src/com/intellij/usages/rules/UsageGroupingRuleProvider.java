@@ -30,7 +30,7 @@ public interface UsageGroupingRuleProvider {
   @OverrideOnly
   default @NotNull UsageGroupingRule @NotNull [] getActiveRules(
     @NotNull Project project,
-    @NotNull UsageViewSettings usageViewSettings
+    @SuppressWarnings("unused") @NotNull UsageViewSettings usageViewSettings
   ) {
     return getActiveRules(project);
   }

@@ -1,3 +1,0 @@
-// WITH_RUNTIME
-
-val x = 1.0E10f

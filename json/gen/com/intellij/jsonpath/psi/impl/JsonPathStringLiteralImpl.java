@@ -19,7 +19,6 @@ public class JsonPathStringLiteralImpl extends JsonPathStringLiteralMixin implem
     super(node);
   }
 
-  @Override
   public void accept(@NotNull JsonPathVisitor visitor) {
     visitor.visitStringLiteral(this);
   }

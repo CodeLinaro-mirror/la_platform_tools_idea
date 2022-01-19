@@ -1,4 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
+ */
 
 package org.jetbrains.kotlin.idea.asJava
 
@@ -336,5 +339,8 @@ internal fun KtSimpleConstantValue<*>.createPsiLiteral(parent: PsiElement): PsiE
         null
     }
 }
+
+internal inline fun <T> T.applyIf(`if`: Boolean, body: T.() -> T): T =
+    if (`if`) body() else this
 
 internal fun BitSet.copy(): BitSet = clone() as BitSet

@@ -1,6 +1,6 @@
 // "Create property 'foo'" "false"
 // ACTION: Rename reference
-// ACTION: Converts the assignment statement to an expression
+// ACTION: Convert assignment to assignment expression
 // ERROR: Unresolved reference: foo
 
 fun test() {

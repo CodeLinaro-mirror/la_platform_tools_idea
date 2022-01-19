@@ -84,16 +84,11 @@ public abstract class NestedGroupFragment<S extends FragmentedSettings> extends 
 
   protected abstract List<SettingsEditorFragment<S, ?>> createChildren();
 
-  protected @NotNull FragmentedSettingsBuilder<S> getBuilder() {
-    return new FragmentedSettingsBuilder<>(getChildren(), this, this);
-  }
-
-  @Override
+    @Override
   protected @NotNull JComponent createEditor() {
-    var builder = getBuilder();
-    myGroupComponent = builder.createCompoundEditor();
-    if (myComponent == null) myComponent = myGroupComponent;
-    updateVisibility();
-    return myGroupComponent;
+     myGroupComponent = new FragmentedSettingsBuilder<>(getChildren(), this, this).createCompoundEditor();
+     if (myComponent == null) myComponent = myGroupComponent;
+     updateVisibility();
+     return myGroupComponent;
   }
 }

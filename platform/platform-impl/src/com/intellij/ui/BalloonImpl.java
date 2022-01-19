@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
 import com.intellij.application.Topics;
@@ -10,7 +10,6 @@ import com.intellij.ide.IdeTooltip;
 import com.intellij.ide.RemoteDesktopService;
 import com.intellij.ide.ui.PopupLocationTracker;
 import com.intellij.ide.ui.ScreenAreaConsumer;
-import com.intellij.internal.statistic.collectors.fus.ui.BalloonUsageCollector;
 import com.intellij.openapi.MnemonicHelper;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -94,7 +93,6 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
   private Point myTargetPoint;
   private final boolean myHideOnFrameResize;
   private final boolean myHideOnLinkClick;
-  private boolean myZeroPositionInLayer = true;
 
   private final Color myBorderColor;
   private final Insets myBorderInsets;
@@ -110,10 +108,6 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
   private ActionProvider myActionProvider;
   private List<ActionButton> myActionButtons;
   private boolean invalidateShadow;
-  /**
-   * Id for feature usage statistics.
-   */
-  private String myId;
 
   private final AWTEventListener myAwtActivityListener = new AWTEventListener() {
     @Override
@@ -194,8 +188,7 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
         if (ke.getKeyCode() != KeyEvent.VK_SHIFT &&
             ke.getKeyCode() != KeyEvent.VK_CONTROL &&
             ke.getKeyCode() != KeyEvent.VK_ALT &&
-            ke.getKeyCode() != KeyEvent.VK_META &&
-            ke.getKeyCode() != KeyEvent.VK_WINDOWS) {
+            ke.getKeyCode() != KeyEvent.VK_META) {
           boolean doHide = false;
           // Close the balloon is ESC is pressed inside the balloon
           if (ke.getKeyCode() == KeyEvent.VK_ESCAPE && SwingUtilities.isDescendingFrom(ke.getComponent(), myComp)) {
@@ -656,9 +649,6 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
         });
       }
     }
-    if (myId != null) {
-      BalloonUsageCollector.BALLOON_SHOWN.log(myId);
-    }
   }
 
   public AbstractPosition getPosition() {
@@ -782,9 +772,7 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
     myComp.setBorder(new EmptyBorder(getShadowBorderInsets()));
 
     myLayeredPane.add(myComp);
-    if (myZeroPositionInLayer) {
-      myLayeredPane.setLayer(myComp, getLayer(), 0); // the second balloon must be over the first one
-    }
+    myLayeredPane.setLayer(myComp, getLayer(), 0); // the second balloon must be over the first one
     myPosition.updateBounds(this);
 
     PopupLocationTracker.register(this);
@@ -1128,10 +1116,6 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
   public void setHideListener(@NotNull Runnable listener) {
     myHideListener = listener;
     myHideOnMouse = true;
-  }
-
-  public void setZeroPositionInLayer(boolean zeroPositionInLayer) {
-    myZeroPositionInLayer = zeroPositionInLayer;
   }
 
   public void setShowPointer(final boolean show) {
@@ -1873,26 +1857,23 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
 
       Point pointTarget = SwingUtilities.convertPoint(myLayeredPane, myBalloon.myTargetPoint, this);
       Rectangle shapeBounds = myContent.getBounds();
+      int shadowSize = myBalloon.getShadowBorderSize();
 
-      if (!DrawUtil.isSimplifiedUI()) {
-        int shadowSize = myBalloon.getShadowBorderSize();
+      if (shadowSize > 0 && myShadow == null && myShadowBorderProvider == null) {
+        initComponentImage(pointTarget, shapeBounds);
+        myShadow = ShadowBorderPainter.createShadow(myImage, 0, 0, false, shadowSize / 2);
+      }
 
-        if (shadowSize > 0 && myShadow == null && myShadowBorderProvider == null) {
-          initComponentImage(pointTarget, shapeBounds);
-          myShadow = ShadowBorderPainter.createShadow(myImage, 0, 0, false, shadowSize / 2);
-        }
+      if (myImage == null && myAlpha != -1) {
+        initComponentImage(pointTarget, shapeBounds);
+      }
 
-        if (myImage == null && myAlpha != -1) {
-          initComponentImage(pointTarget, shapeBounds);
-        }
+      if (myImage != null && myAlpha != -1) {
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, myAlpha));
+      }
 
-        if (myImage != null && myAlpha != -1) {
-          g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, myAlpha));
-        }
-
-        if (myShadowBorderProvider != null) {
-          myShadowBorderProvider.paintShadow(this, g);
-        }
+      if (myShadowBorderProvider != null) {
+        myShadowBorderProvider.paintShadow(this, g);
       }
 
       if (myImage != null && myAlpha != -1) {
@@ -2173,13 +2154,5 @@ public final class BalloonImpl implements Balloon, IdeTooltip.Ui, ScreenAreaCons
   // For example balloon would ignore clicks and won't hide explicitly or would trigger some actions/navigation
   public boolean isClickProcessor() {
     return myClickHandler != null || !myCloseOnClick || isBlockClicks();
-  }
-
-  public String getId() {
-    return myId;
-  }
-
-  public void setId(String id) {
-    myId = id;
   }
 }

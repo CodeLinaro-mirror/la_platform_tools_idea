@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
 
 
 public abstract class AbstractPerformFixesTask extends PerformFixesModalTask {
-  private boolean myApplicableFixFound;
+  private boolean myApplicableFixFound = false;
   protected final Class<?> myQuickfixClass;
 
   public AbstractPerformFixesTask(@NotNull Project project,
@@ -21,14 +21,13 @@ public abstract class AbstractPerformFixesTask extends PerformFixesModalTask {
     myQuickfixClass = quickfixClass;
   }
 
-  protected abstract <D extends CommonProblemDescriptor> void collectFix(QuickFix<D> fix, D descriptor, Project project);
+  protected abstract void collectFix(QuickFix fix, ProblemDescriptor descriptor, Project project);
 
   @Override
   protected final void applyFix(Project project, CommonProblemDescriptor descriptor) {
-    //noinspection unchecked
-    QuickFix<ProblemDescriptor>[] fixes = descriptor.getFixes();
+    final QuickFix[] fixes = descriptor.getFixes();
     if (fixes != null && fixes.length > 0) {
-      for (final QuickFix<ProblemDescriptor> fix : fixes) {
+      for (final QuickFix fix : fixes) {
         if (fix != null && (myQuickfixClass == null || fix.getClass().isAssignableFrom(myQuickfixClass))) {
           final ProblemDescriptor problemDescriptor = (ProblemDescriptor)descriptor;
           final PsiElement element = problemDescriptor.getPsiElement();

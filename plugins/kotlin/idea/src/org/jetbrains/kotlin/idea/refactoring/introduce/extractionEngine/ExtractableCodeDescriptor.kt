@@ -7,7 +7,6 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.containers.MultiMap
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
@@ -462,8 +461,7 @@ data class ExtractionGeneratorOptions(
     val target: ExtractionTarget = ExtractionTarget.FUNCTION,
     val dummyName: String? = null,
     val allowExpressionBody: Boolean = true,
-    val delayInitialOccurrenceReplacement: Boolean = false,
-    val isConst: Boolean = false
+    val delayInitialOccurrenceReplacement: Boolean = false
 ) {
     companion object {
         @JvmField
@@ -515,7 +513,6 @@ class AnalysisResult(
             return this
         }
 
-        @Nls
         fun renderMessage(): String {
             val message = KotlinBundle.message(
                 when (this) {
@@ -538,11 +535,7 @@ class AnalysisResult(
     }
 }
 
-sealed class ExtractableCodeDescriptorWithConflictsResult
-
-data class ExtractableCodeDescriptorWithConflicts(
+class ExtractableCodeDescriptorWithConflicts(
     val descriptor: ExtractableCodeDescriptor,
     val conflicts: MultiMap<PsiElement, String>
-): ExtractableCodeDescriptorWithConflictsResult()
-
-data class ExtractableCodeDescriptorWithException(val exception: RuntimeException): ExtractableCodeDescriptorWithConflictsResult()
+)

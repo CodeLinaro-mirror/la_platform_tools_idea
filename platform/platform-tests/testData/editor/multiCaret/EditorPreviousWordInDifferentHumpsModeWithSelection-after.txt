@@ -1,4 +1,4 @@
-<selection>so<caret></selection>Me text<selection><caret>
+so<selection><caret>Me te</selection>xt<selection><caret>
 </selection>other line
 yet <selection><caret>another</selection> line
 <selection><caret>Heavily</selection>HumpedWord

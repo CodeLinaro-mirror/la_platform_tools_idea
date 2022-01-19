@@ -108,12 +108,14 @@ class GitCloneDialogComponent(project: Project,
       invokeAndWaitIfNeeded(modalityState) {
         if (!gitVersion.isSupported) {
           showUnsupportedVersionError(project, gitVersion, errorNotifier)
+          versionCheckState = VersionCheckState.FAILED
+          updateOkActionState(dialogStateListener)
         }
         else {
           inlineComponent.hideProgress()
+          versionCheckState = VersionCheckState.SUCCESS
+          updateOkActionState(dialogStateListener)
         }
-        versionCheckState = VersionCheckState.SUCCESS
-        updateOkActionState(dialogStateListener)
       }
     }
     catch (t: Throwable) {

@@ -4,9 +4,7 @@ package com.jetbrains.jsonSchema.remote;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Couple;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.JarFileSystem;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
@@ -36,7 +34,7 @@ public final class JsonFileResolver {
     if (urlString.startsWith(JsonSchemaObject.TEMP_URL)) {
       return TempFileSystem.getInstance().findFileByPath(urlString.substring(JsonSchemaObject.TEMP_URL.length() - 1));
     }
-    return VirtualFileManager.getInstance().findFileByUrl(FileUtil.toSystemIndependentName(replaceUnsafeSchemaStoreUrls(urlString)));
+    return VirtualFileManager.getInstance().findFileByUrl(replaceUnsafeSchemaStoreUrls(urlString));
   }
 
   @Nullable
@@ -107,7 +105,7 @@ public final class JsonFileResolver {
   }
 
   public static boolean isAbsoluteUrl(@NotNull String path) {
-    return isHttpPath(path) || path.startsWith(JsonSchemaObject.TEMP_URL) || FileUtil.toSystemIndependentName(path).startsWith(JarFileSystem.PROTOCOL_PREFIX);
+    return isHttpPath(path) || path.startsWith(JsonSchemaObject.TEMP_URL);
   }
 
   public static boolean isTempOrMockUrl(@NotNull String path) {

@@ -1,6 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Variable 'id' is never used
-// AFTER-WARNING: Variable 'name' is never used
 data class Foo(val id: Int, val name: String)
 
 fun test() {

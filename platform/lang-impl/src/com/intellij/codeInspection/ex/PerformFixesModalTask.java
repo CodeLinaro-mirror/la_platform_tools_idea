@@ -31,9 +31,9 @@ public abstract class PerformFixesModalTask implements SequentialTask {
   private final PostprocessReformattingAspect myReformattingAspect;
   private final int myLength;
 
-  private int myProcessed;
-  private int myPackIdx;
-  private int myDescriptorIdx;
+  private int myProcessed = 0;
+  private int myPackIdx = 0;
+  private int myDescriptorIdx = 0;
 
   protected PerformFixesModalTask(@NotNull Project project,
                                   CommonProblemDescriptor @NotNull [] descriptors) {
@@ -81,38 +81,32 @@ public abstract class PerformFixesModalTask implements SequentialTask {
     String presentableText = notNullize(getPresentableText(descriptor), "usages");
     indicator.setText(InspectionsBundle.message("processing.progress.text", presentableText));
 
-    boolean runInReadAction = mustRunInReadAction(descriptor);
+    final boolean[] runInReadAction = {false};
+    final QuickFix[] fixes = descriptor.getFixes();
+    if (fixes != null) {
+      for (QuickFix fix : fixes) {
+        if (!fix.startInWriteAction()) {
+          runInReadAction[0] = true;
+        } else {
+          runInReadAction[0] = false;
+          break;
+        }
+      }
+    }
 
     ApplicationManager.getApplication().runWriteAction(() -> {
       myDocumentManager.commitAllDocuments();
-      if (!runInReadAction) {
+      if (!runInReadAction[0]) {
         applyFix(myProject, descriptor);
         if (shouldDoPostponedOperations) {
           myReformattingAspect.doPostponedFormatting();
         }
       }
     });
-    if (runInReadAction) {
+    if (runInReadAction[0]) {
       applyFix(myProject, descriptor);
     }
     return isDone();
-  }
-
-  private static boolean mustRunInReadAction(@NotNull CommonProblemDescriptor descriptor) {
-    boolean runInReadAction = false;
-    QuickFix<?>[] fixes = descriptor.getFixes();
-    if (fixes != null) {
-      for (QuickFix<?> fix : fixes) {
-        if (!fix.startInWriteAction()) {
-          runInReadAction = true;
-        }
-        else {
-          runInReadAction = false;
-          break;
-        }
-      }
-    }
-    return runInReadAction;
   }
 
   protected abstract void applyFix(Project project, CommonProblemDescriptor descriptor);

@@ -9,7 +9,6 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.PathUtil
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.idea.KotlinJvmBundle.message
 import java.io.IOException
 import java.nio.file.Path
@@ -18,13 +17,13 @@ import kotlin.io.path.*
 
 object FileUIUtils {
     fun copyWithOverwriteDialog(
-        @Nls messagesTitle: String,
+        messagesTitle: String,
         destinationFolder: String,
         file: Path
     ): Path? = copyWithOverwriteDialog(messagesTitle, ImmutableMap.of(file, destinationFolder))?.getValue(file)
 
     fun copyWithOverwriteDialog(
-        @Nls messagesTitle: String,
+        messagesTitle: String,
         filesWithDestinations: Map<Path, String>
     ): Map<Path, Path>? {
         val fileNames = mutableSetOf<String>()

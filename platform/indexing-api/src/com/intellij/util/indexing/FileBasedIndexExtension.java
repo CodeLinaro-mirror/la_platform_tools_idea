@@ -137,9 +137,4 @@ public abstract class FileBasedIndexExtension<K, V> extends IndexExtension<K, V,
   public boolean canBeShared() {
     return true;
   }
-
-  @ApiStatus.Internal
-  public boolean enableWal() {
-    return false;
-  }
 }

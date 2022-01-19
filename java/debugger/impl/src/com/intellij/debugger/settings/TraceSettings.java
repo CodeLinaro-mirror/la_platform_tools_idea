@@ -3,7 +3,6 @@ package com.intellij.debugger.settings;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.ui.classFilter.ClassFilter;
@@ -12,7 +11,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 
-@State(name = "TraceSettings", storages = @Storage("debugger.xml"), category = SettingsCategory.TOOLS)
+@State(name = "TraceSettings", storages = @Storage("debugger.xml"))
 public class TraceSettings implements PersistentStateComponent<TraceSettings> {
   private ClassFilter[] myClassFilters;
   private ClassFilter[] myClassExclusionFilters;

@@ -4,7 +4,6 @@ package com.intellij.featureStatistics.fusCollectors;
 import com.intellij.diagnostic.PluginException;
 import com.intellij.internal.statistic.utils.PluginInfo;
 import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
-import com.intellij.openapi.diagnostic.UntraceableException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,7 +22,13 @@ public final class ThrowableDescription {
   }
 
   private static StackTraceElement @Nullable [] getStacktrace(@NotNull Throwable throwable) {
-    return throwable instanceof UntraceableException ? null : throwable.getStackTrace();
+    try {
+      return throwable.getStackTrace();
+    }
+    catch (Throwable e) {
+      // Kotlin internals might throw an exception and it doesn't support retrieving a stacktrace
+      return null;
+    }
   }
 
   @NotNull

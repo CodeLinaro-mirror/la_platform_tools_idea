@@ -41,6 +41,7 @@ import org.jetbrains.idea.maven.importing.MavenRootModelAdapter;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
 import org.jetbrains.idea.maven.project.*;
 import org.jetbrains.idea.maven.project.actions.RemoveManagedFilesAction;
+import org.jetbrains.idea.maven.server.MavenServerManager;
 import org.jetbrains.idea.maven.server.NativeMavenProjectHolder;
 import org.junit.Test;
 
@@ -117,11 +118,11 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
 
     runWriteAction(() -> p2.rename(this, "foo.bar"));
     configConfirmationForYesAnswer();
-    scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+    scheduleProjectImportAndWait();
     assertEquals(1, myProjectsTree.getRootProjects().size());
 
     runWriteAction(() -> p2.rename(this, "pom.xml"));
-    scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+    scheduleProjectImportAndWait();
     assertEquals(2, myProjectsTree.getRootProjects().size());
   }
 
@@ -145,11 +146,11 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
 
     runWriteAction(() -> p2.move(this, newDir));
     configConfirmationForYesAnswer();
-    scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+    scheduleProjectImportAndWait();
     assertEquals(1, myProjectsTree.getRootProjects().size());
 
     runWriteAction(() -> p2.move(this, oldDir));
-    scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+    scheduleProjectImportAndWait();
     assertEquals(2, myProjectsTree.getRootProjects().size());
   }
 
@@ -179,12 +180,12 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
       assertEquals(1, myProjectsTree.getModules(myProjectsTree.getRootProjects().get(0)).size());
 
       m.move(this, newDir);
-      scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+      scheduleProjectImportAndWait();
 
       assertEquals(1, myProjectsTree.getModules(myProjectsTree.getRootProjects().get(0)).size());
 
       m.move(this, oldDir);
-      scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+      scheduleProjectImportAndWait();
 
       assertEquals(1, myProjectsTree.getModules(myProjectsTree.getRootProjects().get(0)).size());
 
@@ -192,7 +193,7 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
     });
 
     configConfirmationForYesAnswer();
-    scheduleProjectImportAndWaitWithoutCheckFloatingBar();
+    scheduleProjectImportAndWait();
 
     assertEquals(0, myProjectsTree.getModules(myProjectsTree.getRootProjects().get(0)).size());
   }
@@ -571,19 +572,18 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
                     "  <sourceDirectory>${prop}</sourceDirectory>" +
                     "</build>");
 
-    updateSettingsXml("<profiles>" +
-                      "  <profile>" +
-                      "    <id>one</id>" +
-                      "    <activation>" +
-                      "      <activeByDefault>true</activeByDefault>" +
-                      "    </activation>" +
-                      "    <properties>" +
-                      "      <prop>value1</prop>" +
-                      "    </properties>" +
-                      "  </profile>" +
-                      "</profiles>");
+    createProfilesXmlOldStyle("<profile>" +
+                              "  <id>one</id>" +
+                              "  <activation>" +
+                              "    <activeByDefault>true</activeByDefault>" +
+                              "  </activation>" +
+                              "  <properties>" +
+                              "    <prop>value1</prop>" +
+                              "  </properties>" +
+                              "</profile>");
 
-    importProject();
+    MavenWorkspaceSettingsComponent.getInstance(myProject).getSettings().generalSettings.setMavenHome(MavenServerManager.BUNDLED_MAVEN_2);
+    importProjectWithErrors(); // structure warning, new style of profiles.xml expected
 
     List<MavenProject> roots = myProjectsTree.getRootProjects();
 
@@ -593,40 +593,36 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
     assertUnorderedPathsAreEqual(parentNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/value1")));
     assertUnorderedPathsAreEqual(childNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/m/value1")));
 
-    updateSettingsXml("<profiles>" +
-                      "  <profile>" +
-                      "    <id>one</id>" +
-                      "    <activation>" +
-                      "      <activeByDefault>true</activeByDefault>" +
-                      "    </activation>" +
-                      "    <properties>" +
-                      "      <prop>value2</prop>" +
-                      "    </properties>" +
-                      "  </profile>" +
-                      "</profiles>");
-    importProject();
+    createProfilesXmlOldStyle("<profile>" +
+                              "  <id>one</id>" +
+                              "  <activation>" +
+                              "    <activeByDefault>true</activeByDefault>" +
+                              "  </activation>" +
+                              "  <properties>" +
+                              "    <prop>value2</prop>" +
+                              "  </properties>" +
+                              "</profile>");
+    scheduleProjectImportAndWait();
 
     assertUnorderedPathsAreEqual(parentNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/value2")));
     assertUnorderedPathsAreEqual(childNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/m/value2")));
 
-    updateSettingsXml("<profiles/>");
-    importProject();
+    deleteProfilesXml();
+    scheduleProjectImportAndWait();
 
     assertUnorderedPathsAreEqual(parentNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/${prop}")));
     assertUnorderedPathsAreEqual(childNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/m/${prop}")));
 
-    updateSettingsXml("<profiles>" +
-                      "  <profile>" +
-                      "    <id>one</id>" +
-                      "    <activation>" +
-                      "      <activeByDefault>true</activeByDefault>" +
-                      "    </activation>" +
-                      "    <properties>" +
-                      "      <prop>value2</prop>" +
-                      "    </properties>" +
-                      "  </profile>" +
-                      "</profiles>");
-    importProject();
+    createProfilesXmlOldStyle("<profile>" +
+                              "  <id>one</id>" +
+                              "  <activation>" +
+                              "    <activeByDefault>true</activeByDefault>" +
+                              "  </activation>" +
+                              "  <properties>" +
+                              "    <prop>value2</prop>" +
+                              "  </properties>" +
+                              "</profile>");
+    scheduleProjectImportAndWait();
 
     assertUnorderedPathsAreEqual(parentNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/value2")));
     assertUnorderedPathsAreEqual(childNode.getSources(), Arrays.asList(FileUtil.toSystemDependentName(getProjectPath() + "/m/value2")));
@@ -1230,16 +1226,5 @@ public class MavenProjectsManagerTest extends MavenMultiVersionImportingTestCase
     ExternalSystemProjectTracker.getInstance(myProject).scheduleProjectRefresh();
     resolveDependenciesAndImport();
     assertFalse(hasProjectsToBeImported()); // otherwise project settings was modified while importing
-  }
-
-  /**
-   * temporary solution. since The maven deletes files during the import process (renaming the file).
-   * And therefore the floating bar is always displayed.
-   * Because there is no information who deleted the import file or the other user action
-   * problem in MavenProjectsAware#collectSettingsFiles() / yieldAll(projectsTree.projectsFiles.map { it.path })
-   */
-  private void scheduleProjectImportAndWaitWithoutCheckFloatingBar() {
-    ExternalSystemProjectTracker.getInstance(myProject).scheduleProjectRefresh();
-    resolveDependenciesAndImport();
   }
 }

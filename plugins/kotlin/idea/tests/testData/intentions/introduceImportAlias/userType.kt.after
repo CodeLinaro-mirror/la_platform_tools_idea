@@ -1,6 +1,5 @@
 import Outer.Middle as Middle1
 
-// AFTER-WARNING: Parameter 'b' is never used
 class Outer {
     class Middle<T> {}
 }

@@ -1,8 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.siyeh.ig.style;
 
 import com.intellij.codeInspection.ProblemDescriptor;
-import com.intellij.codeInspection.ui.InspectionOptionsPanel;
 import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
@@ -23,12 +22,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.ItemEvent;
 
 public class ConstantOnWrongSideOfComparisonInspection extends BaseInspection {
 
   public boolean myConstantShouldGoLeft = true;
-  public boolean myIgnoreNull = false;
 
   @Override
   @NotNull
@@ -50,9 +49,10 @@ public class ConstantOnWrongSideOfComparisonInspection extends BaseInspection {
         myConstantShouldGoLeft = (e.getItem() == left);
       }
     });
-    final InspectionOptionsPanel panel = new InspectionOptionsPanel(this);
-    panel.addLabeledRow(JavaAnalysisBundle.message("inspection.constant.on.wrong.side.of.a.comparison.side.option"), comboBox);
-    panel.addCheckbox(InspectionGadgetsBundle.message("checkbox.ignore.null.on.wrong.side"), "myIgnoreNull");
+    final JLabel label = new JLabel(JavaAnalysisBundle.message("inspection.constant.on.wrong.side.of.a.comparison.side.option"));
+    final JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEADING));
+    panel.add(label);
+    panel.add(comboBox);
     return panel;
   }
 
@@ -116,8 +116,7 @@ public class ConstantOnWrongSideOfComparisonInspection extends BaseInspection {
     }
 
     private boolean isConstantExpression(PsiExpression expression) {
-      if (ExpressionUtils.isNullLiteral(expression)) return !myIgnoreNull;
-      return PsiUtil.isConstantExpression(expression);
+      return ExpressionUtils.isNullLiteral(expression) || PsiUtil.isConstantExpression(expression);
     }
   }
 }

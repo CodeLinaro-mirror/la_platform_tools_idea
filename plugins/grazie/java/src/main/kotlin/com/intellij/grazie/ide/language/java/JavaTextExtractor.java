@@ -1,7 +1,6 @@
 package com.intellij.grazie.ide.language.java;
 
 import com.intellij.grazie.text.TextContent;
-import com.intellij.grazie.text.TextContent.Exclusion;
 import com.intellij.grazie.text.TextContentBuilder;
 import com.intellij.grazie.text.TextExtractor;
 import com.intellij.grazie.utils.HtmlUtilsKt;
@@ -50,7 +49,7 @@ public class JavaTextExtractor extends TextExtractor {
     if (root instanceof PsiCommentImpl && allowedDomains.contains(COMMENTS)) {
       List<PsiElement> roots = PsiUtilsKt.getNotSoDistantSimilarSiblings(root, e ->
         JAVA_PLAIN_COMMENT_BIT_SET.contains(PsiUtilCore.getElementType(e)));
-      return TextContent.joinWithWhitespace('\n', ContainerUtil.mapNotNull(roots, c ->
+      return TextContent.joinWithWhitespace(ContainerUtil.mapNotNull(roots, c ->
         TextContentBuilder.FromPsi.removingIndents(" \t*/").build(c, COMMENTS)));
     }
 
@@ -60,11 +59,8 @@ public class JavaTextExtractor extends TextExtractor {
       TextContent content = TextContentBuilder.FromPsi.build(root, LITERALS);
       int indent = PsiLiteralUtil.getTextBlockIndent((PsiLiteralExpression)root);
       if (indent >= 0 && indent < 1000 && content != null) {
-        if (indent > 0) {
-          content = content.excludeRanges(
-            ContainerUtil.map(Text.allOccurrences(Pattern.compile("(?<=\n)" + "\\s{" + indent + "}"), content), Exclusion::exclude));
-        }
-        content = content.excludeRanges(ContainerUtil.map(Text.allOccurrences(Pattern.compile("\\\\\n"), content), Exclusion::exclude));
+        content = content.excludeRanges(ContainerUtil.map(Text.allOccurrences(Pattern.compile("(?<=\n)" + "\\s".repeat(indent)), content), TextContent.Exclusion::exclude));
+        content = content.excludeRanges(ContainerUtil.map(Text.allOccurrences(Pattern.compile("\\\\\n"), content), TextContent.Exclusion::exclude));
         return content.trimWhitespace();
       }
 

@@ -27,7 +27,7 @@ public class NonCodeAnnotationGenerator {
     myOutput = output;
   }
 
-  void explainAnnotations(boolean isForRenderedFoc, boolean doSyntaxHighlighting) {
+  void explainAnnotations() {
     MultiMap<PsiModifierListOwner, AnnotationDocGenerator> generators = getSignatureNonCodeAnnotations(myOwner);
     if (generators.isEmpty()) return;
 
@@ -38,12 +38,12 @@ public class NonCodeAnnotationGenerator {
     generators.keySet().forEach(owner -> {
       myOutput.append("<p>");
       if (generators.size() > 1) {
-        myOutput.append(getKind(owner)).append(" <code>").append(((PsiNamedElement)owner).getName()).append("</code>: ").append("<br>");
+        myOutput.append(getKind(owner)).append(" <code>").append(((PsiNamedElement)owner).getName()).append("</code>: ");
       }
       List<AnnotationDocGenerator> annotations = new ArrayList<>(generators.get(owner));
       for (int i = 0; i < annotations.size(); i++) {
-        if (i > 0) myOutput.append("<br>");
-        annotations.get(i).generateAnnotation(myOutput, AnnotationFormat.JavaDocComplete, true, isForRenderedFoc, doSyntaxHighlighting);
+        if (i > 0) myOutput.append(" ");
+        annotations.get(i).generateAnnotation(myOutput, AnnotationFormat.JavaDocComplete);
       }
     });
     myOutput.append(DocumentationMarkup.SECTION_END);

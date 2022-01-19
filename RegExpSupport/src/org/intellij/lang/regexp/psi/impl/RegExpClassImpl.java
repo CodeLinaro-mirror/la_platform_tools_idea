@@ -16,7 +16,7 @@
 package org.intellij.lang.regexp.psi.impl;
 
 import com.intellij.lang.ASTNode;
-import com.intellij.psi.util.PsiTreeUtil;
+import org.intellij.lang.regexp.RegExpElementTypes;
 import org.intellij.lang.regexp.RegExpTT;
 import org.intellij.lang.regexp.psi.RegExpClass;
 import org.intellij.lang.regexp.psi.RegExpClassElement;
@@ -25,9 +25,7 @@ import org.jetbrains.annotations.NotNull;
 
 public class RegExpClassImpl extends RegExpElementImpl implements RegExpClass {
 
-  private static final RegExpClassElement[] EMPTY_CHILDREN = new RegExpClassElement[0];
-
-  public RegExpClassImpl(ASTNode astNode) {
+    public RegExpClassImpl(ASTNode astNode) {
         super(astNode);
     }
 
@@ -39,8 +37,12 @@ public class RegExpClassImpl extends RegExpElementImpl implements RegExpClass {
 
     @Override
     public RegExpClassElement @NotNull [] getElements() {
-      RegExpClassElement[] children = PsiTreeUtil.getChildrenOfType(this, RegExpClassElement.class);
-      return children != null ? children : EMPTY_CHILDREN;
+        final ASTNode[] nodes = getNode().getChildren(RegExpElementTypes.CLASS_ELEMENTS);
+        final RegExpClassElement[] e = new RegExpClassElement[nodes.length];
+        for (int i = 0; i < e.length; i++) {
+            e[i] = (RegExpClassElement)nodes[i].getPsi();
+        }
+        return e;
     }
 
     @Override

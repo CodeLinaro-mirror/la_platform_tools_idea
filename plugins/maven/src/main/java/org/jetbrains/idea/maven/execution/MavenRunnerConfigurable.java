@@ -29,8 +29,6 @@ import org.jetbrains.annotations.Nullable;
  */
 public abstract class MavenRunnerConfigurable extends MavenRunnerPanel implements SearchableConfigurable, Configurable.NoScroll {
 
-  public static final String SETTINGS_ID = "reference.settings.project.maven.runner";
-
   public MavenRunnerConfigurable(@NotNull Project p, boolean isRunConfiguration) {
     super(p, isRunConfiguration);
   }
@@ -65,7 +63,7 @@ public abstract class MavenRunnerConfigurable extends MavenRunnerPanel implement
   @Nullable
   @NonNls
   public String getHelpTopic() {
-    return SETTINGS_ID;
+    return "reference.settings.project.maven.runner";
   }
 
   @Override

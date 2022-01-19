@@ -42,7 +42,7 @@ public class PyBroadExceptionInspection extends PyInspection {
   public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder,
                                         boolean isOnTheFly,
                                         @NotNull LocalInspectionToolSession session) {
-    return new Visitor(holder, PyInspectionVisitor.getContext(session));
+    return new Visitor(holder, session);
   }
 
   public static boolean equalsException(@NotNull PyClass cls, @NotNull TypeEvalContext context) {
@@ -51,9 +51,8 @@ public class PyBroadExceptionInspection extends PyInspection {
   }
 
   private static class Visitor extends PyInspectionVisitor {
-    Visitor(@Nullable ProblemsHolder holder,
-            @NotNull TypeEvalContext context) {
-      super(holder, context);
+    Visitor(@Nullable ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
+      super(holder, session);
     }
 
     @Override

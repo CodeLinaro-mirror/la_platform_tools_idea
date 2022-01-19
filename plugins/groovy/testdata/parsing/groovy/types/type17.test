@@ -18,8 +18,6 @@ Groovy script
         PsiElement(def)('def')
     Implements clause
       <empty list>
-    Permits clause
-      <empty list>
     PsiWhiteSpace(' ')
     Type definition body
       PsiElement({)('{')
@@ -38,8 +36,6 @@ Groovy script
       PsiErrorElement:identifier expected, got 'as'
         PsiElement(as)('as')
     Implements clause
-      <empty list>
-    Permits clause
       <empty list>
     PsiWhiteSpace(' ')
     Type definition body
@@ -60,8 +56,6 @@ Groovy script
         PsiElement(in)('in')
     Implements clause
       <empty list>
-    Permits clause
-      <empty list>
     PsiWhiteSpace(' ')
     Type definition body
       PsiElement({)('{')
@@ -80,8 +74,6 @@ Groovy script
       PsiErrorElement:identifier expected, got 'trait'
         PsiElement(trait)('trait')
     Implements clause
-      <empty list>
-    Permits clause
       <empty list>
     PsiWhiteSpace(' ')
     Type definition body

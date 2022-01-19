@@ -1,34 +1,30 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import groovy.transform.CompileStatic
 import groovy.transform.TypeCheckingMode
 import org.jetbrains.intellij.build.BuildContext
 
-import java.nio.file.Files
-import java.nio.file.Path
-
 @CompileStatic
 final class BuiltInHelpPlugin {
-  private static final String MODULE_NAME = "intellij.platform.builtInHelp"
-
   @CompileStatic(TypeCheckingMode.SKIP)
   static PluginLayout helpPlugin(BuildContext buildContext, String pluginVersion) {
     def productName = buildContext.applicationInfo.productName
-    Path resourceRoot = buildContext.paths.projectHomeDir.resolve("help/plugin-resources")
-    if (!Files.exists(resourceRoot.resolve("topics/app.js"))) {
+    def moduleName = "intellij.platform.builtInHelp"
+    def helpRoot = "${buildContext.paths.projectHome}/help"
+    def resourceRoot = "$helpRoot/plugin-resources"
+    if (!new File(resourceRoot, "topics/app.js").exists()) {
       buildContext.messages.warning("Skipping $productName Help plugin because $resourceRoot/topics/app.js not present")
       return null
     }
-
-    return PluginLayout.plugin(MODULE_NAME) {
+    return PluginLayout.plugin(moduleName) {
       def productLowerCase = productName.replace(" ", "-").toLowerCase()
       mainJarName = "$productLowerCase-help.jar"
       directoryName = "${productName.replace(" ", "")}Help"
-      excludeFromModule(MODULE_NAME, "com/jetbrains/builtInHelp/indexer/**")
+      excludeFromModule(moduleName, "com/jetbrains/builtInHelp/indexer/**")
       doNotCopyModuleLibrariesAutomatically(["jsoup"])
       withGeneratedResources({ BuildContext context ->
-        def helpModule = context.findRequiredModule(MODULE_NAME)
+        def helpModule = context.findRequiredModule(moduleName)
         def ant = context.ant
         context.messages.block("Indexing help topics..") {
           ant.java(classname: "com.jetbrains.builtInHelp.indexer.HelpIndexer", fork: true, failonerror: true) {
@@ -44,22 +40,22 @@ final class BuiltInHelpPlugin {
             }
           }
         }
-
-        Path patchedRoot = buildContext.paths.tempDir.resolve("patched-plugin-xml/$MODULE_NAME/META-INF")
-        Files.createDirectories(patchedRoot.resolve("services"))
-        Files.writeString(patchedRoot.resolve("services/org.apache.lucene.codecs.Codec"), "org.apache.lucene.codecs.lucene50.Lucene50Codec")
-        Files.writeString(patchedRoot.resolve("plugin.xml"), pluginXml(context, pluginVersion))
+        def patchedRoot = "$buildContext.paths.temp/patched-plugin-xml/$moduleName"
+        new File(patchedRoot, "META-INF/services").mkdirs()
+        new File(patchedRoot, "META-INF/services/org.apache.lucene.codecs.Codec").text =
+          "org.apache.lucene.codecs.lucene50.Lucene50Codec"
+        new File(patchedRoot, "META-INF/plugin.xml").text = pluginXml(context, pluginVersion)
 
         def jarName = "$buildContext.paths.temp/help/$productLowerCase-assets.jar"
         ant.jar(destfile: jarName) {
-          ant.fileset(dir: resourceRoot.toString()) {
+          ant.fileset(dir: resourceRoot) {
             ant.include(name: "topics/**")
             ant.include(name: "images/**")
             ant.include(name: "search/**")
           }
         }
-        new File(jarName)
-                             }, "lib")
+
+        new File(jarName) }, "lib")
     }
   }
 

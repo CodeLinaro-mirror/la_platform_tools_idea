@@ -332,9 +332,7 @@ public class SearchTextArea extends JPanel implements PropertyChangeListener {
     }
   }
 
-  /**
-   * @deprecated use this wrapper component with JBTextArea and its getEmptyText() instead
-   */
+  @Deprecated
   public void setInfoText(String info) {}
 
   private class ShowHistoryAction extends DumbAwareAction {

@@ -8,7 +8,7 @@ import com.intellij.idea.ActionsBundle
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT
+import com.intellij.openapi.actionSystem.PlatformDataKeys.CONTEXT_COMPONENT
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.NlsActions
@@ -54,8 +54,7 @@ internal class CopySettingsPathAction : AnAction(pathActionName, ActionsBundle.m
         return null
       }
 
-      val prefix = if (isMac) CommonBundle.message("action.settings.path.mac") else CommonBundle.message("action.settings.path")
-      val sb = StringBuilder(prefix)
+      val sb = StringBuilder(if (isMac) "Preferences" else "File | Settings")
       for (name in names) {
         sb.append(" | ").append(name)
       }

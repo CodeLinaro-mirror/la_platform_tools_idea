@@ -61,7 +61,7 @@ class AccountMenuPopupStep(items: List<AccountMenuItem>) : BaseListPopupStep<Acc
     is AccountMenuItem.Group -> AccountMenuPopupStep(selectedValue.actions)
   }
 
-  override fun getBackgroundFor(value: AccountMenuItem?) = UIUtil.getListBackground()
+  override fun getBackgroundFor(value: AccountMenuItem?) = UIUtil.getPanelBackground()
 }
 
 class AccountsMenuListPopup(
@@ -109,7 +109,7 @@ class AccountMenuItemRenderer : ListCellRenderer<AccountMenuItem> {
       is AccountMenuItem.Action -> actionRenderer.getListCellRendererComponent(null, value, index, selected, focused)
       is AccountMenuItem.Group -> groupRenderer.getListCellRendererComponent(null, value, index, selected, focused)
     }
-    UIUtil.setBackgroundRecursively(renderer, if (selected) listSelectionBackground else UIUtil.getListBackground())
+    UIUtil.setBackgroundRecursively(renderer, if (selected) listSelectionBackground else UIUtil.getPanelBackground())
     renderer.border = if (value.showSeparatorAbove) separatorBorder else null
     return renderer
   }

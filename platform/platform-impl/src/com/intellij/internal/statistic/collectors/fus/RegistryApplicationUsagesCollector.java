@@ -20,7 +20,6 @@ import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.options.advanced.AdvancedSettingsImpl;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.registry.RegistryValue;
-import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,9 +30,7 @@ import java.util.stream.Collectors;
 
 import static com.intellij.internal.statistic.utils.PluginInfoDetectorKt.*;
 
-public final class RegistryApplicationUsagesCollector extends ApplicationUsagesCollector {
-  public static final String DISABLE_INTELLIJ_PROJECT_ANALYTICS = "ide.disable.intellij.project.analytics";
-
+final class RegistryApplicationUsagesCollector extends ApplicationUsagesCollector {
   private static final EventLogGroup GROUP = new EventLogGroup("platform.registry", 4);
   private static final StringEventField REGISTRY_KEY = EventFields.StringValidatedByCustomRule("id", "registry_key");
 
@@ -55,7 +52,7 @@ public final class RegistryApplicationUsagesCollector extends ApplicationUsagesC
   @NotNull
   static Set<MetricEvent> getChangedValuesUsages() {
     final Set<MetricEvent> registry = Registry.getAll().stream()
-      .filter(key -> key.isChangedFromDefault() && !StringUtil.equals(key.getKey(), DISABLE_INTELLIJ_PROJECT_ANALYTICS))
+      .filter(key -> key.isChangedFromDefault())
       .map(key -> REGISTRY.metric(REGISTRY_KEY.with(key.getKey())))
       .collect(Collectors.toSet());
 

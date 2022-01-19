@@ -1,6 +1,6 @@
 import types
 import unittest
-from typing import Any, Callable, Dict, List, NamedTuple, Tuple, Type
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Type, Union
 
 class TestResults(NamedTuple):
     failed: int
@@ -31,7 +31,7 @@ ELLIPSIS_MARKER: str
 class Example:
     source: str
     want: str
-    exc_msg: str | None
+    exc_msg: Optional[str]
     lineno: int
     indent: int
     options: Dict[int, bool]
@@ -39,10 +39,10 @@ class Example:
         self,
         source: str,
         want: str,
-        exc_msg: str | None = ...,
+        exc_msg: Optional[str] = ...,
         lineno: int = ...,
         indent: int = ...,
-        options: Dict[int, bool] | None = ...,
+        options: Optional[Dict[int, bool]] = ...,
     ) -> None: ...
     def __hash__(self) -> int: ...
 
@@ -50,24 +50,26 @@ class DocTest:
     examples: List[Example]
     globs: Dict[str, Any]
     name: str
-    filename: str | None
-    lineno: int | None
-    docstring: str | None
+    filename: Optional[str]
+    lineno: Optional[int]
+    docstring: Optional[str]
     def __init__(
         self,
         examples: List[Example],
         globs: Dict[str, Any],
         name: str,
-        filename: str | None,
-        lineno: int | None,
-        docstring: str | None,
+        filename: Optional[str],
+        lineno: Optional[int],
+        docstring: Optional[str],
     ) -> None: ...
     def __hash__(self) -> int: ...
     def __lt__(self, other: DocTest) -> bool: ...
 
 class DocTestParser:
-    def parse(self, string: str, name: str = ...) -> List[str | Example]: ...
-    def get_doctest(self, string: str, globs: Dict[str, Any], name: str, filename: str | None, lineno: int | None) -> DocTest: ...
+    def parse(self, string: str, name: str = ...) -> List[Union[str, Example]]: ...
+    def get_doctest(
+        self, string: str, globs: Dict[str, Any], name: str, filename: Optional[str], lineno: Optional[int]
+    ) -> DocTest: ...
     def get_examples(self, string: str, name: str = ...) -> List[Example]: ...
 
 class DocTestFinder:
@@ -77,10 +79,10 @@ class DocTestFinder:
     def find(
         self,
         obj: object,
-        name: str | None = ...,
-        module: None | bool | types.ModuleType = ...,
-        globs: Dict[str, Any] | None = ...,
-        extraglobs: Dict[str, Any] | None = ...,
+        name: Optional[str] = ...,
+        module: Union[None, bool, types.ModuleType] = ...,
+        globs: Optional[Dict[str, Any]] = ...,
+        extraglobs: Optional[Dict[str, Any]] = ...,
     ) -> List[DocTest]: ...
 
 _Out = Callable[[str], Any]
@@ -93,15 +95,15 @@ class DocTestRunner:
     tries: int
     failures: int
     test: DocTest
-    def __init__(self, checker: OutputChecker | None = ..., verbose: bool | None = ..., optionflags: int = ...) -> None: ...
+    def __init__(self, checker: Optional[OutputChecker] = ..., verbose: Optional[bool] = ..., optionflags: int = ...) -> None: ...
     def report_start(self, out: _Out, test: DocTest, example: Example) -> None: ...
     def report_success(self, out: _Out, test: DocTest, example: Example, got: str) -> None: ...
     def report_failure(self, out: _Out, test: DocTest, example: Example, got: str) -> None: ...
     def report_unexpected_exception(self, out: _Out, test: DocTest, example: Example, exc_info: _ExcInfo) -> None: ...
     def run(
-        self, test: DocTest, compileflags: int | None = ..., out: _Out | None = ..., clear_globs: bool = ...
+        self, test: DocTest, compileflags: Optional[int] = ..., out: Optional[_Out] = ..., clear_globs: bool = ...
     ) -> TestResults: ...
-    def summarize(self, verbose: bool | None = ...) -> TestResults: ...
+    def summarize(self, verbose: Optional[bool] = ...) -> TestResults: ...
     def merge(self, other: DocTestRunner) -> None: ...
 
 class OutputChecker:
@@ -122,35 +124,40 @@ class UnexpectedException(Exception):
 
 class DebugRunner(DocTestRunner): ...
 
-master: DocTestRunner | None
+master: Optional[DocTestRunner]
 
 def testmod(
-    m: types.ModuleType | None = ...,
-    name: str | None = ...,
-    globs: Dict[str, Any] | None = ...,
-    verbose: bool | None = ...,
+    m: Optional[types.ModuleType] = ...,
+    name: Optional[str] = ...,
+    globs: Optional[Dict[str, Any]] = ...,
+    verbose: Optional[bool] = ...,
     report: bool = ...,
     optionflags: int = ...,
-    extraglobs: Dict[str, Any] | None = ...,
+    extraglobs: Optional[Dict[str, Any]] = ...,
     raise_on_error: bool = ...,
     exclude_empty: bool = ...,
 ) -> TestResults: ...
 def testfile(
     filename: str,
     module_relative: bool = ...,
-    name: str | None = ...,
-    package: None | str | types.ModuleType = ...,
-    globs: Dict[str, Any] | None = ...,
-    verbose: bool | None = ...,
+    name: Optional[str] = ...,
+    package: Union[None, str, types.ModuleType] = ...,
+    globs: Optional[Dict[str, Any]] = ...,
+    verbose: Optional[bool] = ...,
     report: bool = ...,
     optionflags: int = ...,
-    extraglobs: Dict[str, Any] | None = ...,
+    extraglobs: Optional[Dict[str, Any]] = ...,
     raise_on_error: bool = ...,
     parser: DocTestParser = ...,
-    encoding: str | None = ...,
+    encoding: Optional[str] = ...,
 ) -> TestResults: ...
 def run_docstring_examples(
-    f: object, globs: Dict[str, Any], verbose: bool = ..., name: str = ..., compileflags: int | None = ..., optionflags: int = ...
+    f: object,
+    globs: Dict[str, Any],
+    verbose: bool = ...,
+    name: str = ...,
+    compileflags: Optional[int] = ...,
+    optionflags: int = ...,
 ) -> None: ...
 def set_unittest_reportflags(flags: int) -> int: ...
 
@@ -159,9 +166,9 @@ class DocTestCase(unittest.TestCase):
         self,
         test: DocTest,
         optionflags: int = ...,
-        setUp: Callable[[DocTest], Any] | None = ...,
-        tearDown: Callable[[DocTest], Any] | None = ...,
-        checker: OutputChecker | None = ...,
+        setUp: Optional[Callable[[DocTest], Any]] = ...,
+        tearDown: Optional[Callable[[DocTest], Any]] = ...,
+        checker: Optional[OutputChecker] = ...,
     ) -> None: ...
     def setUp(self) -> None: ...
     def tearDown(self) -> None: ...
@@ -181,10 +188,10 @@ class SkipDocTestCase(DocTestCase):
 _DocTestSuite = unittest.TestSuite
 
 def DocTestSuite(
-    module: None | str | types.ModuleType = ...,
-    globs: Dict[str, Any] | None = ...,
-    extraglobs: Dict[str, Any] | None = ...,
-    test_finder: DocTestFinder | None = ...,
+    module: Union[None, str, types.ModuleType] = ...,
+    globs: Optional[Dict[str, Any]] = ...,
+    extraglobs: Optional[Dict[str, Any]] = ...,
+    test_finder: Optional[DocTestFinder] = ...,
     **options: Any,
 ) -> _DocTestSuite: ...
 
@@ -195,15 +202,15 @@ class DocFileCase(DocTestCase):
 def DocFileTest(
     path: str,
     module_relative: bool = ...,
-    package: None | str | types.ModuleType = ...,
-    globs: Dict[str, Any] | None = ...,
+    package: Union[None, str, types.ModuleType] = ...,
+    globs: Optional[Dict[str, Any]] = ...,
     parser: DocTestParser = ...,
-    encoding: str | None = ...,
+    encoding: Optional[str] = ...,
     **options: Any,
 ) -> DocFileCase: ...
 def DocFileSuite(*paths: str, **kw: Any) -> _DocTestSuite: ...
 def script_from_examples(s: str) -> str: ...
-def testsource(module: None | str | types.ModuleType, name: str) -> str: ...
-def debug_src(src: str, pm: bool = ..., globs: Dict[str, Any] | None = ...) -> None: ...
-def debug_script(src: str, pm: bool = ..., globs: Dict[str, Any] | None = ...) -> None: ...
-def debug(module: None | str | types.ModuleType, name: str, pm: bool = ...) -> None: ...
+def testsource(module: Union[None, str, types.ModuleType], name: str) -> str: ...
+def debug_src(src: str, pm: bool = ..., globs: Optional[Dict[str, Any]] = ...) -> None: ...
+def debug_script(src: str, pm: bool = ..., globs: Optional[Dict[str, Any]] = ...) -> None: ...
+def debug(module: Union[None, str, types.ModuleType], name: str, pm: bool = ...) -> None: ...

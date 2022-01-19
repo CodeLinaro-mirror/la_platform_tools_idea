@@ -5,15 +5,14 @@ package org.jetbrains.kotlin.idea.refactoring.introduce.introduceVariable
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.template.*
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.impl.FinishMarkAction
 import com.intellij.openapi.command.impl.StartMarkAction
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.TextRange
-import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.psi.*
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.HelpID
@@ -30,13 +29,14 @@ import org.jetbrains.kotlin.idea.analysis.computeTypeInfoInContext
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.core.*
 import org.jetbrains.kotlin.idea.core.util.CodeInsightUtils
-import org.jetbrains.kotlin.idea.core.util.range
 import org.jetbrains.kotlin.idea.intentions.ConvertToBlockBodyIntention
 import org.jetbrains.kotlin.idea.refactoring.*
 import org.jetbrains.kotlin.idea.refactoring.introduce.*
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.idea.util.application.*
+import org.jetbrains.kotlin.idea.util.application.executeCommand
+import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
+import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.KotlinPsiUnifier
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.toRange
@@ -332,7 +332,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
         KtPsiUtil.isAssignment(it) && (it as KtBinaryExpression).left == this
     }
 
-    fun KtExpression.findOccurrences(occurrenceContainer: PsiElement): List<KtExpression> =
+    private fun KtExpression.findOccurrences(occurrenceContainer: PsiElement): List<KtExpression> =
         toRange().match(occurrenceContainer, KotlinPsiUnifier.DEFAULT).mapNotNull {
             val candidate = it.range.elements.first()
 
@@ -342,7 +342,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
                 is KtExpression -> candidate
                 is KtStringTemplateEntryWithExpression -> candidate.expression
                 else -> throw KotlinExceptionWithAttachments("Unexpected candidate element ${candidate::class.java}")
-                    .withPsiAttachment("candidate.kt", candidate)
+                    .withAttachment("candidate.kt", candidate.text)
             }
         }
 
@@ -494,11 +494,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
 
         val bindingTrace = ObservableBindingTrace(BindingTraceContext())
         val typeNoExpectedType = substringInfo?.type
-            ?: ProgressManager.getInstance().runProcessWithProgressSynchronously(ThrowableComputable {
-                runReadAction {
-                    physicalExpression.computeTypeInfoInContext(scope, physicalExpression, bindingTrace, dataFlowInfo).type
-                }
-            }, KotlinBundle.message("progress.title.calculating.type"), true, project)
+            ?: physicalExpression.computeTypeInfoInContext(scope, physicalExpression, bindingTrace, dataFlowInfo).type
         val noTypeInference = expressionType != null
                 && typeNoExpectedType != null
                 && !TypeCheckerImpl(project).equalTypes(expressionType, typeNoExpectedType)
@@ -513,7 +509,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
 
         val typeArgumentList = getQualifiedTypeArgumentList(KtPsiUtil.safeDeparenthesize(physicalExpression))
 
-        val isInplaceAvailable = editor != null && !isUnitTestMode()
+        val isInplaceAvailable = editor != null && !ApplicationManager.getApplication().isUnitTestMode
 
         val allOccurrences = occurrencesToReplace ?: expression.findOccurrences(occurrenceContainer)
 
@@ -630,7 +626,7 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
                     return occurrence.extractableSubstringInfo?.contentRange ?: occurrence.textRange
                 }
             }
-            invokeLater {
+            ApplicationManager.getApplication().invokeLater {
                 chooser.showChooser(expression, allOccurrences, callback)
             }
         } else {
@@ -700,14 +696,13 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
         }
     }
 
-    private fun doRefactoring(
+    fun doRefactoring(
         project: Project,
         editor: Editor?,
         expressionToExtract: KtExpression?,
         isVar: Boolean,
         occurrencesToReplace: List<KtExpression>?,
-        onNonInteractiveFinish: ((KtDeclaration) -> Unit)?,
-        selectContainer: (List<Pair<KtElement, KtElement>>, (Pair<KtElement, KtElement>) -> Unit) -> Unit
+        onNonInteractiveFinish: ((KtDeclaration) -> Unit)?
     ) {
         val expression = expressionToExtract?.let { KtPsiUtil.safeDeparenthesize(it) }
             ?: return showErrorHint(project, editor, KotlinBundle.message("cannot.refactor.no.expression"))
@@ -723,74 +718,29 @@ object KotlinIntroduceVariableHandler : RefactoringActionHandler {
         val resolutionFacade = physicalExpression.getResolutionFacade()
         val bindingContext = resolutionFacade.analyze(physicalExpression, BodyResolveMode.FULL)
 
-        val candidateContainers = expression.getCandidateContainers(resolutionFacade, bindingContext).ifEmpty {
-            return showErrorHint(project, editor, KotlinBundle.message("cannot.refactor.no.container"))
-        }
-
-        selectContainer(candidateContainers) { (container, occurrenceContainer) ->
+        fun runWithChosenContainers(container: KtElement, occurrenceContainer: KtElement) {
             doRefactoring(
                 project, editor, expression, container, occurrenceContainer, resolutionFacade, bindingContext,
                 isVar, occurrencesToReplace, onNonInteractiveFinish
             )
         }
-    }
 
-    fun doRefactoring(
-        project: Project,
-        editor: Editor?,
-        expressionToExtract: KtExpression?,
-        isVar: Boolean,
-        occurrencesToReplace: List<KtExpression>?,
-        onNonInteractiveFinish: ((KtDeclaration) -> Unit)?
-    ) = doRefactoring(
-        project,
-        editor,
-        expressionToExtract,
-        isVar,
-        occurrencesToReplace,
-        onNonInteractiveFinish
-    ) { candidateContainers, doRefactoring ->
+        val candidateContainers = expression.getCandidateContainers(resolutionFacade, bindingContext).ifEmpty {
+            return showErrorHint(project, editor, KotlinBundle.message("cannot.refactor.no.container"))
+        }
+
         if (editor == null) {
-            doRefactoring(candidateContainers.first())
-        } else if (isUnitTestMode()) {
-            doRefactoring(candidateContainers.last())
-        } else {
-            chooseContainerElementIfNecessary(
-                candidateContainers, editor,
-                KotlinBundle.message("text.select.target.code.block"), true, { it.first },
-                doRefactoring
-            )
+            return candidateContainers.first().let { runWithChosenContainers(it.first, it.second) }
         }
-    }
 
-    fun doRefactoringWithContainer(
-        project: Project,
-        editor: Editor?,
-        expressionToExtract: KtExpression?,
-        container: KtElement,
-        isVar: Boolean,
-        occurrencesToReplace: List<KtExpression>?,
-        onNonInteractiveFinish: ((KtDeclaration) -> Unit)?
-    ) = doRefactoring(
-        project,
-        editor,
-        expressionToExtract,
-        isVar,
-        occurrencesToReplace,
-        onNonInteractiveFinish
-    ) { candidateContainers, doRefactoring ->
-        val foundPair = candidateContainers.find { it.first.range == container.range }
-        if (foundPair != null) {
-            doRefactoring(foundPair)
+        if (ApplicationManager.getApplication().isUnitTestMode) {
+            return candidateContainers.last().let { runWithChosenContainers(it.first, it.second) }
         }
-    }
 
-    fun getContainersForExpression(expression: KtExpression): List<Pair<KtElement, KtElement>> {
-        val physicalExpression = expression.substringContextOrThis
-
-        val resolutionFacade = physicalExpression.getResolutionFacade()
-        val bindingContext = resolutionFacade.analyze(physicalExpression, BodyResolveMode.FULL)
-        return expression.getCandidateContainers(resolutionFacade, bindingContext)
+        chooseContainerElementIfNecessary(candidateContainers, editor,
+                                          KotlinBundle.message("text.select.target.code.block"), true, { it.first }) {
+            runWithChosenContainers(it.first, it.second)
+        }
     }
 
     override fun invoke(project: Project, editor: Editor, file: PsiFile, dataContext: DataContext) {

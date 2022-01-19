@@ -1,10 +1,20 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.util.io.IOUtil
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap
 import org.jdom.*
 import java.io.DataOutputStream
+
+private fun String.isEmptySafe(): Boolean {
+  return try {
+    isEmpty()
+  }
+  catch (e: NullPointerException) {
+    LOG.error(e)
+    true
+  }
+}
 
 internal class BinaryXmlWriter(private val out: DataOutputStream) {
   private val strings = Object2IntOpenHashMap<String>()
@@ -17,8 +27,8 @@ internal class BinaryXmlWriter(private val out: DataOutputStream) {
     writeElement(element)
   }
 
-  private fun writeString(string: String?) {
-    if (string == null || string.isEmpty()) {
+  private fun writeString(string: String) {
+    if (string.isEmptySafe()) {
       out.write(1)
       return
     }
@@ -38,7 +48,7 @@ internal class BinaryXmlWriter(private val out: DataOutputStream) {
   private fun writeElement(element: Element) {
     writeString(element.name)
 
-    writeAttributes(if (element.hasAttributes()) element.attributes else null)
+    writeAttributes(if (element.hasAttributes()) element.attributes else emptyList())
 
     val content = element.content
     for (item in content) {

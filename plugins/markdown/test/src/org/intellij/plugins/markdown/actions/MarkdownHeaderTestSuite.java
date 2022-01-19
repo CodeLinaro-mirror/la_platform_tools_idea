@@ -1,9 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.actions;
 
-import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.testFramework.EditorTestUtil;
 import com.intellij.testFramework.LightPlatformCodeInsightTestCase;
 import com.intellij.util.ThrowableRunnable;
 import junit.framework.TestSuite;
@@ -40,14 +38,7 @@ public class MarkdownHeaderTestSuite extends TestSuite {
         @Override
         protected void runTestRunnable(@NotNull ThrowableRunnable<Throwable> testRunnable) {
           configureByFile(testFile.getName());
-          final var editor = getEditor();
-          CommandProcessor.getInstance().executeCommand(
-            getProject(),
-            () -> EditorTestUtil.executeAction(editor, actionId, false),
-            "",
-            null,
-            editor.getDocument()
-          );
+          executeAction(actionId);
           checkResultByFile(dataName + "/" + StringUtil.substringBefore(testFile.getName(), "_before.md") + "_after.md");
         }
 

@@ -280,20 +280,11 @@ public final class VfsUtil extends VfsUtilCore {
 
   @NotNull
   public static String getUrlForLibraryRoot(@NotNull File libraryRoot) {
-    return getUrlForLibraryRoot(libraryRoot.getAbsolutePath(), libraryRoot.getName());
-  }
-
-  @NotNull
-  public static String getUrlForLibraryRoot(@NotNull Path libraryRoot) {
-    return getUrlForLibraryRoot(libraryRoot.toAbsolutePath().toString(), libraryRoot.getFileName().toString());
-  }
-
-  @NotNull
-  private static String getUrlForLibraryRoot(@NotNull String libraryRootAbsolutePath, @NotNull String libraryRootFileName) {
-    String path = FileUtil.toSystemIndependentName(libraryRootAbsolutePath);
-    return FileTypeRegistry.getInstance().getFileTypeByFileName(libraryRootFileName) == ArchiveFileType.INSTANCE
-           ? VirtualFileManager.constructUrl(StandardFileSystems.JAR_PROTOCOL, path + URLUtil.JAR_SEPARATOR)
-           : VirtualFileManager.constructUrl(LocalFileSystem.getInstance().getProtocol(), path);
+    String path = FileUtil.toSystemIndependentName(libraryRoot.getAbsolutePath());
+    if (FileTypeRegistry.getInstance().getFileTypeByFileName(libraryRoot.getName()) == ArchiveFileType.INSTANCE) {
+      return VirtualFileManager.constructUrl(StandardFileSystems.JAR_PROTOCOL, path + URLUtil.JAR_SEPARATOR);
+    }
+    return VirtualFileManager.constructUrl(LocalFileSystem.getInstance().getProtocol(), path);
   }
 
   public static @NotNull String getNextAvailableName(@NotNull VirtualFile dir,

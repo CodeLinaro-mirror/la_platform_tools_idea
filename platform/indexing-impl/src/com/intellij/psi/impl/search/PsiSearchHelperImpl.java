@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.search;
 
 import com.intellij.concurrency.AsyncFuture;
@@ -72,16 +72,8 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
   }
 
   @Override
-  public @NotNull SearchScope getUseScope(@NotNull PsiElement element) {
-    return getUseScope(element, false);
-  }
-
-  @Override
-  public @NotNull SearchScope getCodeUsageScope(@NotNull PsiElement element) {
-    return getUseScope(element, true);
-  }
-
-  private static @NotNull SearchScope getUseScope(@NotNull PsiElement element, boolean restrictToCodeUsageScope) {
+  @NotNull
+  public SearchScope getUseScope(@NotNull PsiElement element) {
     SearchScope scope = element.getUseScope();
     for (UseScopeEnlarger enlarger : UseScopeEnlarger.EP_NAME.getExtensions()) {
       ProgressManager.checkCanceled();
@@ -91,23 +83,11 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
       }
     }
 
-    scope = restrictScope(scope, USE_SCOPE_OPTIMIZER_EP_NAME.getExtensions(), element);
-    if (restrictToCodeUsageScope) {
-      scope = restrictScope(scope, CODE_USAGE_SCOPE_OPTIMIZER_EP_NAME.getExtensions(), element);
-    }
-
-    return scope;
-  }
-
-  private static @NotNull SearchScope restrictScope(@NotNull SearchScope baseScope,
-                                                    @NotNull ScopeOptimizer @NotNull [] optimizers,
-                                                    @NotNull PsiElement element) {
-    SearchScope scopeToRestrict = ScopeOptimizer.calculateOverallRestrictedUseScope(optimizers, element);
+    SearchScope scopeToRestrict = ScopeOptimizer.calculateOverallRestrictedUseScope(USE_SCOPE_OPTIMIZER_EP_NAME.getExtensions(), element);
     if (scopeToRestrict != null) {
-      return baseScope.intersectWith(scopeToRestrict);
+      scope = scope.intersectWith(scopeToRestrict);
     }
-
-    return baseScope;
+    return scope;
   }
 
   public PsiSearchHelperImpl(@NotNull Project project) {
@@ -188,6 +168,20 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
     boolean result = processElementsWithWord(processor, searchScope, text, searchContext, caseSensitively,
                                              shouldProcessInjectedPsi(searchScope));
     return AsyncUtil.wrapBoolean(result);
+  }
+
+  /**
+   * @deprecated use {@link PsiSearchHelperImpl#processElementsWithWord(SearchScope, String, short, EnumSet, String, SearchSession, TextOccurenceProcessor)} instead
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public boolean processElementsWithWord(@NotNull TextOccurenceProcessor processor,
+                                         @NotNull SearchScope searchScope,
+                                         @NotNull String text,
+                                         short searchContext,
+                                         @NotNull EnumSet<Options> options,
+                                         @Nullable String containerName) {
+    return processElementsWithWord(searchScope, text, searchContext, options, containerName, new SearchSession(), processor);
   }
 
   public boolean processElementsWithWord(@NotNull SearchScope searchScope,
@@ -333,10 +327,7 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
 
     List<VirtualFile> targets = ReadAction.compute(() -> ContainerUtil.filter(session.getTargetVirtualFiles(), scope::contains));
     List<@NotNull VirtualFile> directories;
-    if (targets.isEmpty()) {
-      directories = Collections.emptyList();
-    }
-    else {
+    if (!targets.isEmpty()) {
       priorities.add(targets);
       allFiles.removeAll(targets);
 
@@ -356,6 +347,9 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
         priorities.add(directoryNearTargetFiles);
         allFiles.removeAll(directoryNearTargetFiles);
       }
+    }
+    else {
+      directories = Collections.emptyList();
     }
     if (containerName != null) {
       Set<VirtualFile> intersectionWithContainerFiles = new HashSet<>();
@@ -972,6 +966,7 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
                                                        @NotNull Map<VirtualFile, Collection<T>> nearDirectoryFiles,
                                                        @NotNull Map<VirtualFile, Collection<T>> containerNameFiles,
                                                        @NotNull Map<VirtualFile, Collection<T>> restFiles) {
+    int totalSize = 0;
     for (Map.Entry<TextIndexQuery, Collection<T>> entry : singles.entrySet()) {
       ProgressManager.checkCanceled();
       TextIndexQuery key = entry.getKey();
@@ -1025,8 +1020,9 @@ public class PsiSearchHelperImpl implements PsiSearchHelper {
           }
         });
       }
+      totalSize += allFilesForKeys.size();
     }
-    return targetFiles.size() + nearDirectoryFiles.size() + containerNameFiles.size() + restFiles.size();
+    return totalSize;
   }
 
   @Nullable("null means we did not find common container files")

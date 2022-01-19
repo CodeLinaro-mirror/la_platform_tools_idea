@@ -239,6 +239,10 @@ public class PyFileImpl extends PsiFileBase implements PyFile, PyExpression {
       }
     }
     VirtualFile virtualFile = getVirtualFile();
+
+    if (virtualFile == null) {
+      virtualFile = getUserData(IndexingDataKeys.VIRTUAL_FILE);
+    }
     if (virtualFile == null) {
       virtualFile = getViewProvider().getVirtualFile();
     }

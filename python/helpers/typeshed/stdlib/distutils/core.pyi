@@ -1,7 +1,7 @@
 from distutils.cmd import Command as Command
 from distutils.dist import Distribution as Distribution
 from distutils.extension import Extension as Extension
-from typing import Any, Mapping, Type
+from typing import Any, List, Mapping, Optional, Tuple, Type, Union
 
 def setup(
     *,
@@ -15,34 +15,34 @@ def setup(
     maintainer_email: str = ...,
     url: str = ...,
     download_url: str = ...,
-    packages: list[str] = ...,
-    py_modules: list[str] = ...,
-    scripts: list[str] = ...,
-    ext_modules: list[Extension] = ...,
-    classifiers: list[str] = ...,
+    packages: List[str] = ...,
+    py_modules: List[str] = ...,
+    scripts: List[str] = ...,
+    ext_modules: List[Extension] = ...,
+    classifiers: List[str] = ...,
     distclass: Type[Distribution] = ...,
     script_name: str = ...,
-    script_args: list[str] = ...,
+    script_args: List[str] = ...,
     options: Mapping[str, Any] = ...,
     license: str = ...,
-    keywords: list[str] | str = ...,
-    platforms: list[str] | str = ...,
+    keywords: Union[List[str], str] = ...,
+    platforms: Union[List[str], str] = ...,
     cmdclass: Mapping[str, Type[Command]] = ...,
-    data_files: list[tuple[str, list[str]]] = ...,
+    data_files: List[Tuple[str, List[str]]] = ...,
     package_dir: Mapping[str, str] = ...,
-    obsoletes: list[str] = ...,
-    provides: list[str] = ...,
-    requires: list[str] = ...,
-    command_packages: list[str] = ...,
-    command_options: Mapping[str, Mapping[str, tuple[Any, Any]]] = ...,
-    package_data: Mapping[str, list[str]] = ...,
+    obsoletes: List[str] = ...,
+    provides: List[str] = ...,
+    requires: List[str] = ...,
+    command_packages: List[str] = ...,
+    command_options: Mapping[str, Mapping[str, Tuple[Any, Any]]] = ...,
+    package_data: Mapping[str, List[str]] = ...,
     include_package_data: bool = ...,
-    libraries: list[str] = ...,
-    headers: list[str] = ...,
+    libraries: List[str] = ...,
+    headers: List[str] = ...,
     ext_package: str = ...,
-    include_dirs: list[str] = ...,
+    include_dirs: List[str] = ...,
     password: str = ...,
     fullname: str = ...,
     **attrs: Any,
 ) -> None: ...
-def run_setup(script_name: str, script_args: list[str] | None = ..., stop_after: str = ...) -> Distribution: ...
+def run_setup(script_name: str, script_args: Optional[List[str]] = ..., stop_after: str = ...) -> Distribution: ...

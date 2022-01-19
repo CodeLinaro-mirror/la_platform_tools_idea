@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.inspections.migration
 
 import com.intellij.util.text.VersionComparatorUtil
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.versions.LibInfo
@@ -28,7 +27,7 @@ data class DeprecatedForKotlinLibInfo(
     val lib: LibInfo,
     val sinceKotlinLanguageVersion: LanguageVersion,
     val versionUpdater: VersionUpdater,
-    @Nls val message: String
+    val message: String
 )
 
 @Suppress("SpellCheckingInspection")

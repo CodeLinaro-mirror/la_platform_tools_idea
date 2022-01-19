@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.actions;
 
-import com.intellij.application.options.CodeStyle;
 import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.lang.LanguageImportStatements;
@@ -11,7 +10,6 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.codeStyle.arrangement.Rearranger;
 import com.intellij.testFramework.LightVirtualFile;
-import com.intellij.ui.components.JBCheckBox;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,7 +29,9 @@ public class LayoutCodeDialog extends DialogWrapper {
   private JRadioButton myOnlyVCSChangedTextRb;
   private JRadioButton mySelectedTextRadioButton;
   private JRadioButton myWholeFileRadioButton;
-  private JBCheckBox myDoNotKeepLineBreaks;
+  private JPanel myActionsPanel;
+  private JPanel myScopePanel;
+  private JLabel myOptionalLabel;
 
   public LayoutCodeDialog(@NotNull Project project, @NotNull PsiFile file, boolean textSelected, String helpId) {
     super(project, true);
@@ -106,11 +106,7 @@ public class LayoutCodeDialog extends DialogWrapper {
 
     myApplyCodeCleanup.setSelected(myLastRunOptions.getLastCodeCleanup());
 
-    boolean keepLineBreaks = CodeStyle.getLanguageSettings(myFile).KEEP_LINE_BREAKS;
-    myDoNotKeepLineBreaks.setVisible(keepLineBreaks);
-    if (keepLineBreaks) {
-      myDoNotKeepLineBreaks.setSelected(myLastRunOptions.isDoNotKeepLineBreaks());
-    }
+    myOptionalLabel.setVisible(canOptimizeImports || canRearrangeCode);
   }
 
   @Nullable
@@ -137,9 +133,6 @@ public class LayoutCodeDialog extends DialogWrapper {
 
     if (!mySelectedTextRadioButton.isSelected() && myOnlyVCSChangedTextRb.isEnabled()) {
       myLastRunOptions.saveProcessVcsChangedTextState(myOnlyVCSChangedTextRb.isSelected());
-    }
-    if (myDoNotKeepLineBreaks.isVisible()) {
-      myLastRunOptions.setDoNotKeepLineBreaks(myDoNotKeepLineBreaks.isSelected());
     }
   }
 
@@ -169,11 +162,6 @@ public class LayoutCodeDialog extends DialogWrapper {
       @Override
       public boolean isCodeCleanup() {
         return myApplyCodeCleanup.isEnabled() && myApplyCodeCleanup.isSelected();
-      }
-
-      @Override
-      public boolean doNotKeepLineBreaks() {
-        return myDoNotKeepLineBreaks.isEnabled() && myDoNotKeepLineBreaks.isSelected();
       }
     };
   }

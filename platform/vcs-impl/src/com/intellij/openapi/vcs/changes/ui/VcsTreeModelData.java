@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes.ui;
 
 import com.intellij.openapi.ListSelection;
@@ -62,11 +62,6 @@ public abstract class VcsTreeModelData {
     ChangesBrowserNode<?> tagNode = findTagNode(tree, tag);
     if (tagNode == null) return new EmptyData();
     return new AllUnderData(tagNode);
-  }
-
-  @NotNull
-  public static VcsTreeModelData allUnder(@NotNull ChangesBrowserNode node) {
-    return new AllUnderData(node);
   }
 
   @NotNull
@@ -389,7 +384,7 @@ public abstract class VcsTreeModelData {
 
 
   @Nullable
-  public static ChangesBrowserNode<?> findTagNode(@NotNull JTree tree, @NotNull Object tag) {
+  private static ChangesBrowserNode<?> findTagNode(@NotNull JTree tree, @NotNull Object tag) {
     ChangesBrowserNode<?> root = (ChangesBrowserNode<?>)tree.getModel().getRoot();
     @SuppressWarnings({"unchecked", "rawtypes"})
     Enumeration<ChangesBrowserNode<?>> children = (Enumeration)root.children();

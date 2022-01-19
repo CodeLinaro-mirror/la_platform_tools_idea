@@ -1,6 +1,6 @@
 <html>
 <body>
-Reports assignments to, <code>catch</code> block parameters.
+Reports an assignment to a variable declared as a <code>catch</code> block parameter.
 <p>Changing a <code>catch</code> block parameter is very confusing and should be discouraged.</p>
 <p>The quick-fix adds a declaration of a new variable.</p>
 <p><b>Example:</b></p>
@@ -8,7 +8,8 @@ Reports assignments to, <code>catch</code> block parameters.
   void processFile(String fileName) throws Exception {
     try {
       doProcessFile(fileName);
-    } catch(Exception ex) {
+    }
+    catch(Exception ex) {
       if (ex instanceof UncheckedIOException) {
         // Warning: catch block parameter reassigned
         ex = ((UncheckedIOException) ex).getCause();
@@ -19,10 +20,7 @@ Reports assignments to, <code>catch</code> block parameters.
 </code></pre>
 <p>After the quick-fix is applied:</p>
 <pre><code>
-  void processFile(String fileName) throws Exception {
-    try {
-      doProcessFile(fileName);
-    } catch(Exception ex) {
+    catch(Exception ex) {
       Exception unwrapped = ex;
       if (unwrapped instanceof UncheckedIOException) {
         unwrapped = ((UncheckedIOException)
@@ -30,8 +28,9 @@ Reports assignments to, <code>catch</code> block parameters.
       }
       throw unwrapped;
     }
-  }
 </code></pre>
+<p>Parameters of multi-catch blocks are not reported because such parameters
+  are implicitly <code>final</code> and reassigning them causes a compilation error.</p>
 <!-- tooltip end -->
 </body>
 </html>

@@ -3,7 +3,6 @@ package com.intellij.util.indexing
 
 import com.intellij.find.ngrams.TrigramIndex
 import com.intellij.ide.highlighter.JavaFileType
-import com.intellij.ide.plugins.DynamicPluginsTestUtil
 import com.intellij.ide.scratch.ScratchRootType
 import com.intellij.ide.todo.TodoConfiguration
 import com.intellij.java.index.StringIndex
@@ -95,6 +94,8 @@ import org.jetbrains.plugins.groovy.GroovyLanguage
 
 import java.util.concurrent.CountDownLatch
 
+import static com.intellij.ide.plugins.DynamicPluginsTestUtil.loadExtensionWithText
+
 @SkipSlowTestLocally
 class IndexTest extends JavaCodeInsightFixtureTestCase {
 
@@ -102,9 +103,9 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
   protected void tuneFixture(JavaModuleFixtureBuilder moduleBuilder) throws Exception {
     if (getName() == "test indexed state for file without content requiring indices") {
       // should add file to test dire as soon as possible
-      String otherRoot = myFixture.getTempDirPath() + "/otherRoot"
-      assertTrue(new File(otherRoot).mkdirs())
-      assertTrue(new File(otherRoot, "intellij.exe").createNewFile())
+      String otherRoot = myFixture.getTempDirPath() + "/otherRoot";
+      assertTrue(new File(otherRoot).mkdirs());
+      assertTrue(new File(otherRoot, "intellij.exe").createNewFile());
       moduleBuilder.addSourceContentRoot(otherRoot)
     }
   }
@@ -875,18 +876,18 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     final VirtualFile testFile = myFixture.addFileToProject(fileName, "test").getVirtualFile()
 
     assertEquals("file: $fileName; " +
-                 "operation: UPDATE ADD", listener.indexingOperation(testFile))
+                 "operation: UPDATE-REMOVE UPDATE ADD", listener.indexingOperation(testFile))
 
     FileContentUtilCore.reparseFiles(Collections.singletonList(testFile))
 
     assertEquals("file: $fileName; " +
-                 "operation: ADD", listener.indexingOperation(testFile))
+                 "operation: REMOVE ADD", listener.indexingOperation(testFile))
 
     WriteAction.run { VfsUtil.saveText(testFile, "foo") }
     WriteAction.run { VfsUtil.saveText(testFile, "bar") }
 
     assertEquals("file: $fileName; " +
-                 "operation: UPDATE", listener.indexingOperation(testFile))
+                 "operation: UPDATE-REMOVE UPDATE", listener.indexingOperation(testFile))
 
     WriteAction.run { VfsUtil.saveText(testFile, "baz") }
     WriteAction.run { testFile.delete(null) }
@@ -925,7 +926,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     StringIndex index = createIndex(getTestName(false), new EnumeratorStringDescriptor(), true)
 
     try {
-      IndexDebugProperties.IS_UNIT_TEST_MODE = false
+      IndexDebugProperties.IS_UNIT_TEST_MODE = false;
       assertFalse(index.update("qwe/asd", "some_string"))
       def rebuildThrowable = index.getRebuildThrowable()
       assertInstanceOf(rebuildThrowable, StorageException.class)
@@ -933,7 +934,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
       assertInstanceOf(rebuildCause, IncorrectOperationException.class)
     }
     finally {
-      IndexDebugProperties.IS_UNIT_TEST_MODE = true
+      IndexDebugProperties.IS_UNIT_TEST_MODE = true;
       index.dispose()
     }
   }
@@ -1257,7 +1258,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     StringIndex index = createIndex(getTestName(false), new EnumeratorStringDescriptor(), false)
     try {
       def stamp = index.getModificationStamp()
-      index.clear()
+      index.clear();
       assertTrue(stamp != index.getModificationStamp())
     }
     finally {
@@ -1404,8 +1405,8 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     }
     def idQuery = CachedValuesManager.getManager(project).createCachedValue {
       indexQueries++
-      GlobalSearchScope fileScope = GlobalSearchScope.fileScope(clazz.containingFile)
-      IdIndexEntry key = new IdIndexEntry('Foo', true)
+      GlobalSearchScope fileScope = GlobalSearchScope.fileScope(clazz.containingFile);
+      IdIndexEntry key = new IdIndexEntry('Foo', true);
       def hasId = !FileBasedIndex.instance.getContainingFiles(IdIndex.NAME, key, fileScope).isEmpty()
       CachedValueProvider.Result.create(hasId, PsiModificationTracker.MODIFICATION_COUNT)
     }
@@ -1489,7 +1490,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     def file = ScratchRootType.getInstance().createScratchFile(project, "Foo.java", JavaLanguage.INSTANCE, "class Foo {}")
 
     def text = "<fileBasedIndex implementation=\"" + CountingFileBasedIndexExtension.class.getName() + "\"/>"
-    Disposer.register(testRootDisposable, DynamicPluginsTestUtil.loadExtensionWithText(text))
+    Disposer.register(testRootDisposable, loadExtensionWithText(text))
 
     FileBasedIndex.getInstance().getFileData(CountingFileBasedIndexExtension.INDEX_ID, file, project)
     assertTrue(CountingFileBasedIndexExtension.COUNTER.get() > 0)
@@ -1520,31 +1521,6 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     fileBasedIndex.ensureUpToDate(trigramId, project, GlobalSearchScope.everythingScope(project))
     assertEmpty(fileBasedIndex.getIndex(trigramId).getIndexedFileData(fileId).values())
     assertFalse(((VirtualFileSystemEntry)file).isFileIndexed())
-  }
-
-  void 'test stub index updated after language level change'() {
-    def file = myFixture.addFileToProject("src1/A.java", "class A {}").virtualFile
-
-    def languageLevel = file.parent.getUserData(LanguageLevel.KEY)
-    assertNotNull(languageLevel)
-    assertNotNull(findClass("A"))
-
-    // be a :hacker:😀
-    // do it manually somehow
-    // seems property pushers are crazy, we know it from its name
-    file.parent.putUserData(LanguageLevel.KEY, null)
-    // fire any event
-    FileContentUtilCore.reparseFiles(file)
-
-    assertNull(file.parent.getUserData(LanguageLevel.KEY))
-    assertNull(findClass("A"))
-
-    // and return everything to a normal state
-    file.parent.putUserData(LanguageLevel.KEY, languageLevel)
-    FileContentUtilCore.reparseFiles(file)
-
-    assertNotNull(file.parent.getUserData(LanguageLevel.KEY))
-    assertNotNull(findClass("A"))
   }
 
   private static <T> ThrowableComputable<T, RuntimeException> asComputable(CachedValue<T> cachedValue) {

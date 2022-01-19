@@ -3,7 +3,6 @@ package com.intellij.diff;
 
 import com.intellij.codeInsight.daemon.OutsidersPsiFileSupport;
 import com.intellij.diff.actions.DocumentFragmentContent;
-import com.intellij.diff.actions.ImmutableDocumentFragmentContent;
 import com.intellij.diff.contents.*;
 import com.intellij.diff.tools.util.DiffNotifications;
 import com.intellij.diff.util.DiffNotificationProvider;
@@ -17,7 +16,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.diff.DiffBundle;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.EditorFactory;
-import com.intellij.openapi.editor.impl.DocumentImpl;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.*;
 import com.intellij.openapi.ide.CopyPasteManager;
@@ -211,12 +209,6 @@ public class DiffContentFactoryImpl extends DiffContentFactoryEx {
   @NotNull
   @Override
   public DocumentContent createFragment(@Nullable Project project, @NotNull DocumentContent content, @NotNull TextRange range) {
-    Document document = content.getDocument();
-    if (document instanceof DocumentImpl && ((DocumentImpl)document).acceptsSlashR()) {
-      LOG.warn("Create immutable fragment content - can't handle CR");
-      return new ImmutableDocumentFragmentContent(content, range);
-    }
-
     return new DocumentFragmentContent(project, content, range);
   }
 

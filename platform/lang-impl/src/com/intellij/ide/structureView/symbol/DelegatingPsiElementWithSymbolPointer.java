@@ -33,18 +33,13 @@ import java.util.Collection;
  * @see StructureViewComponent.MyNodeWrapper#equals(Object)
  * @see StructureViewComponent#unwrapElement(Object)
  */
-public class DelegatingPsiElementWithSymbolPointer implements PsiElement {
+class DelegatingPsiElementWithSymbolPointer implements PsiElement {
   private final @NotNull PsiElement myDeclarationElement;
   private final @NotNull Pointer<? extends Symbol> mySymbolPointer;
 
   DelegatingPsiElementWithSymbolPointer(@NotNull PsiElement declarationElement, @NotNull Pointer<? extends Symbol> symbolPointer) {
     myDeclarationElement = declarationElement;
     mySymbolPointer = symbolPointer;
-  }
-
-  public static @NotNull DelegatingPsiElementWithSymbolPointer createDelegatingElement(
-    @NotNull PsiElement declarationElement, @NotNull Pointer<? extends Symbol> symbolPointer) {
-    return new DelegatingPsiElementWithSymbolPointer(declarationElement, symbolPointer);
   }
 
   @Override
@@ -176,7 +171,7 @@ public class DelegatingPsiElementWithSymbolPointer implements PsiElement {
   @Override
   @Contract(pure = true)
   public PsiElement getOriginalElement() {
-    return this;
+    return myDeclarationElement.getOriginalElement();
   }
 
   @Override
@@ -385,10 +380,6 @@ public class DelegatingPsiElementWithSymbolPointer implements PsiElement {
   @Override
   public <T> void putUserData(@NotNull Key<T> key, @Nullable T value) {
     myDeclarationElement.putUserData(key, value);
-  }
-  
-  public @NotNull Pointer<? extends Symbol> getSymbolPointer() {
-    return mySymbolPointer;
   }
 
   @Override

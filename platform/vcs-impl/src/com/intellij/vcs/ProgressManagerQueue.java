@@ -32,18 +32,22 @@ import java.util.Queue;
 public class ProgressManagerQueue {
   private static final Logger LOG = Logger.getInstance(ProgressManagerQueue.class);
 
+  private final Task.Backgroundable myQueuePollTask;
   private final Object myLock = new Object();
   private final Queue<Runnable> myQueue = new ArrayDeque<>();
-
   @NotNull private final Project myProject;
-  @NotNull private final @NlsContexts.ProgressTitle String myTitle;
 
   private boolean myIsStarted;
   private boolean myActive;
 
   public ProgressManagerQueue(@NotNull Project project, @NotNull @NlsContexts.ProgressTitle String title) {
     myProject = project;
-    myTitle = title;
+    myQueuePollTask = new Task.Backgroundable(project, title) {
+      @Override
+      public void run(@NotNull ProgressIndicator indicator) {
+        pumpQueue();
+      }
+    };
   }
 
   public void start() {
@@ -60,13 +64,7 @@ public class ProgressManagerQueue {
       if (!myIsStarted || myActive || myQueue.isEmpty()) return;
       myActive = true;
     }
-
-    new Task.Backgroundable(myProject, myTitle) {
-      @Override
-      public void run(@NotNull ProgressIndicator indicator) {
-        pumpQueue();
-      }
-    }.queue();
+    myQueuePollTask.queue();
   }
 
   public void run(@NotNull final Runnable stuff) {

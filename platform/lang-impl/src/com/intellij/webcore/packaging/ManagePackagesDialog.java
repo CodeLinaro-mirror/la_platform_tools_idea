@@ -78,12 +78,6 @@ public class ManagePackagesDialog extends DialogWrapper {
 
   public ManagePackagesDialog(@NotNull Project project, final PackageManagementService packageManagementService,
                               @Nullable final PackageManagementService.Listener packageListener) {
-    this(project, packageManagementService, packageListener, new PackagesNotificationPanel());
-  }
-
-  public ManagePackagesDialog(@NotNull Project project, final PackageManagementService packageManagementService,
-                              @Nullable final PackageManagementService.Listener packageListener,
-                              @NotNull final PackagesNotificationPanel notificationPanel) {
     super(project, true);
     myProject = project;
     myController = packageManagementService;
@@ -92,7 +86,7 @@ public class ManagePackagesDialog extends DialogWrapper {
     init();
     setTitle(IdeBundle.message("available.packages.dialog.title"));
     myPackages = new JBList();
-    myNotificationArea = notificationPanel;
+    myNotificationArea = new PackagesNotificationPanel();
     myNotificationsAreaPlaceholder.add(myNotificationArea.getComponent(), BorderLayout.CENTER);
 
     final AnActionButton reloadButton =

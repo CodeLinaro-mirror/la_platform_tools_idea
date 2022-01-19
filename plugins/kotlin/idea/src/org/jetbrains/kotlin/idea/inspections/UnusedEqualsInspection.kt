@@ -29,14 +29,7 @@ class UnusedEqualsInspection : AbstractKotlinInspection() {
 
                 if (expression.operationToken == KtTokens.EQEQ) {
                     val parent = expression.parent
-
-                    val shouldReport = when {
-                        parent.parent is KtIfExpression -> true
-                        parent is KtBlockExpression -> parent.parent !is KtCodeFragment || parent.statements.lastOrNull() != expression
-                        else -> false
-                    }
-
-                    if (shouldReport) {
+                    if ((parent is KtBlockExpression && parent.parent !is KtCodeFragment) || parent.parent is KtIfExpression) {
                         reportIfNotUsedAsExpression(expression)
                     }
                 }

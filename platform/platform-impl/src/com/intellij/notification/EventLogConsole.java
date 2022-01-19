@@ -164,7 +164,7 @@ final class EventLogConsole {
                                                      @NotNull EditorMouseEvent event,
                                                      @NotNull DefaultActionGroup actions) {
     LogicalPosition position = editor.xyToLogicalPosition(event.getMouseEvent().getPoint());
-    if (EditorCoreUtil.inVirtualSpace(editor, position)) {
+    if (EditorUtil.inVirtualSpace(editor, position)) {
       return;
     }
     int offset = editor.logicalPositionToOffset(position);

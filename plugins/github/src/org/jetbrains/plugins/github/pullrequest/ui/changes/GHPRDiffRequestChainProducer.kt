@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.changes
 
 import com.intellij.diff.chains.AsyncDiffRequestChain
@@ -38,12 +38,11 @@ import org.jetbrains.plugins.github.util.DiffRequestChainProducer
 import org.jetbrains.plugins.github.util.GHToolbarLabelAction
 import java.util.concurrent.CompletableFuture
 
-open class GHPRDiffRequestChainProducer(
-  private val project: Project,
-  private val dataProvider: GHPRDataProvider,
-  private val avatarIconsProvider: GHAvatarIconsProvider,
-  private val currentUser: GHUser
-) : DiffRequestChainProducer {
+class GHPRDiffRequestChainProducer(private val project: Project,
+                                   private val dataProvider: GHPRDataProvider,
+                                   private val avatarIconsProvider: GHAvatarIconsProvider,
+                                   private val currentUser: GHUser)
+  : DiffRequestChainProducer {
 
   override fun getRequestChain(changes: ListSelection<Change>): DiffRequestChain {
     val changesData = dataProvider.changesData
@@ -54,17 +53,13 @@ open class GHPRDiffRequestChainProducer(
     return object : AsyncDiffRequestChain() {
       override fun loadRequestProducers(): ListSelection<out DiffRequestProducer> {
         return changes.map { change ->
-          val indicator = ProgressManager.getInstance().progressIndicator
-          val changeDataKeys = loadRequestDataKeys(indicator, change, changesProviderFuture, fetchFuture)
-          val customDataKeys = createCustomContext(change)
-
-          ChangeDiffRequestProducer.create(project, change, changeDataKeys + customDataKeys)
+          val changeDataKeys = loadRequestDataKeys(ProgressManager.getInstance().progressIndicator, change,
+                                                   changesProviderFuture, fetchFuture)
+          ChangeDiffRequestProducer.create(project, change, changeDataKeys)
         }
       }
     }
   }
-
-  protected open fun createCustomContext(change: Change): Map<Key<*>, Any> = emptyMap()
 
   private fun loadRequestDataKeys(indicator: ProgressIndicator,
                                   change: Change,

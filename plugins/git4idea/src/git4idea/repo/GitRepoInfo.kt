@@ -2,7 +2,6 @@
 package git4idea.repo
 
 import com.intellij.dvcs.repo.Repository
-import com.intellij.util.containers.CollectionFactory
 import com.intellij.vcs.log.Hash
 import git4idea.GitLocalBranch
 import git4idea.GitReference
@@ -21,7 +20,7 @@ data class GitRepoInfo(val currentBranch: GitLocalBranch?,
                        val hooksInfo: GitHooksInfo,
                        val isShallow: Boolean) {
   val branchTrackInfosMap: Map<String, GitBranchTrackInfo> =
-    branchTrackInfos.associateByTo(CollectionFactory.createCustomHashingStrategyMap(GitReference.BRANCH_NAME_HASHING_STRATEGY)) { it.localBranch.name }
+    branchTrackInfos.associateByTo(Object2ObjectOpenCustomHashMap(GitReference.BRANCH_NAME_HASHING_STRATEGY)) { it.localBranch.name }
 
   val remoteBranches: Collection<GitRemoteBranch>
     @Deprecated("")

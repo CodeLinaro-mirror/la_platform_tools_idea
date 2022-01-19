@@ -15,13 +15,14 @@
  */
 package com.intellij.xdebugger.impl.settings;
 
+import com.intellij.openapi.options.Configurable;
 import com.intellij.xdebugger.XDebuggerBundle;
 import com.intellij.xdebugger.settings.DebuggerSettingsCategory;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-class DataViewsConfigurable extends SubCompositeConfigurable {
+class DataViewsConfigurable extends SubCompositeConfigurable implements Configurable.NoScroll {
   @NotNull
   @Override
   public String getId() {

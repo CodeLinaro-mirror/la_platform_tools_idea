@@ -1,10 +1,13 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.net;
 
+import com.github.markusbernhardt.proxy.ProxySearch;
+import com.github.markusbernhardt.proxy.selector.misc.BufferedProxySelector;
+import com.github.markusbernhardt.proxy.selector.pac.PacProxySelector;
+import com.github.markusbernhardt.proxy.selector.pac.UrlPacScriptSource;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.SystemProperties;
 import com.intellij.util.proxy.CommonProxy;
 import org.jetbrains.annotations.NotNull;
 
@@ -65,7 +68,12 @@ public final class IdeaWideProxySelector extends ProxySelector {
         LOG.error("Cannot select using PAC", e);
       }
       finally {
-        SystemProperties.setProperty(DOCUMENT_BUILDER_FACTORY_KEY, oldDocumentBuilderFactory);
+        if (oldDocumentBuilderFactory == null) {
+          System.clearProperty(DOCUMENT_BUILDER_FACTORY_KEY);
+        }
+        else {
+          System.setProperty(DOCUMENT_BUILDER_FACTORY_KEY, oldDocumentBuilderFactory);
+        }
       }
     }
 
@@ -83,7 +91,16 @@ public final class IdeaWideProxySelector extends ProxySelector {
     }
 
     if (pair == null) {
-      ProxySelector newProxySelector = NetUtils.getProxySelector(pacUrlForUse);
+      ProxySelector newProxySelector;
+      if (pacUrlForUse == null) {
+        ProxySearch proxySearch = ProxySearch.getDefaultProxySearch();
+        // cache 32 urls for up to 10 min
+        proxySearch.setPacCacheSettings(32, 10 * 60 * 1000, BufferedProxySelector.CacheScope.CACHE_SCOPE_HOST);
+        newProxySelector = proxySearch.getProxySelector();
+      }
+      else {
+        newProxySelector = new PacProxySelector(new UrlPacScriptSource(pacUrlForUse));
+      }
 
       pair = Pair.create(newProxySelector, pacUrlForUse);
       myPacProxySelector.lazySet(pair);

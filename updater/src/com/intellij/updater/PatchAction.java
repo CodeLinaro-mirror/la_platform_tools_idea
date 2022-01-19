@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.updater;
 
 import java.io.*;
@@ -144,39 +144,37 @@ public abstract class PatchAction {
     if (!toFile.exists() || toFile.isDirectory()) return null;
     ValidationResult result = validateProcessLock(toFile, action);
     if (result != null) return result;
-    if (checkWriteable) {
-      String problem = isWritable(toFile.toPath());
-      if (problem != null) {
-        ValidationResult.Option[] options = {myPatch.isStrict() ? ValidationResult.Option.NONE : ValidationResult.Option.IGNORE};
-        return new ValidationResult(ValidationResult.Kind.ERROR, getReportPath(), toFile, action, ValidationResult.ACCESS_DENIED_MESSAGE, problem, options);
-      }
-    }
-    return null;
+    if (!checkWriteable || isWritable(toFile.toPath())) return null;
+    ValidationResult.Option[] options = {myPatch.isStrict() ? ValidationResult.Option.NONE : ValidationResult.Option.IGNORE};
+    return new ValidationResult(ValidationResult.Kind.ERROR, getReportPath(), toFile, action, ValidationResult.ACCESS_DENIED_MESSAGE, options);
   }
 
-  private static String isWritable(Path path) {
+  private static boolean isWritable(Path path) {
     if (!Files.isReadable(path)) {
-      return "not readable";
+      LOG.warning("unreadable: " + path);
+      return false;
     }
     if (!Files.isWritable(path)) {
-      return "not writable";
+      LOG.warning("read-only: " + path);
+      return false;
     }
     try (FileChannel ch = FileChannel.open(path, StandardOpenOption.WRITE, StandardOpenOption.APPEND); FileLock lock = ch.tryLock()) {
       if (lock == null) {
-        return "locked by another process";
+        LOG.warning("cannot lock: " + path);
+        return false;
       }
     }
     catch (OverlappingFileLockException | IOException e) {
       LOG.log(Level.WARNING, path.toString(), e);
-      return "cannot lock: " + e.getMessage();
+      return false;
     }
-    return null;
+    return true;
   }
 
   private ValidationResult validateProcessLock(File toFile, ValidationResult.Action action) {
     List<NativeFileManager.Process> processes = NativeFileManager.getProcessesUsing(toFile);
     if (processes.isEmpty()) return null;
-    String message = "Locked by: " + processes.stream().map(p -> "[" + p.pid + "] " + p.name).collect(Collectors.joining(", "));
+    String message = "Locked by: " + processes.stream().map(p -> p.name).collect(Collectors.joining(", "));
     return new ValidationResult(ValidationResult.Kind.ERROR, getReportPath(), toFile, action, message, ValidationResult.Option.KILL_PROCESS);
   }
 
@@ -200,8 +198,7 @@ public abstract class PatchAction {
             options = new ValidationResult.Option[]{ValidationResult.Option.IGNORE};
           }
         }
-        String details = "expected 0x" + Long.toHexString(myChecksum) + ", actual 0x" + Long.toHexString(myPatch.digestFile(toFile, myPatch.isNormalized()));
-        return new ValidationResult(ValidationResult.Kind.ERROR, getReportPath(), toFile, action, ValidationResult.MODIFIED_MESSAGE, details, options);
+        return new ValidationResult(ValidationResult.Kind.ERROR, getReportPath(), toFile, action, ValidationResult.MODIFIED_MESSAGE, options);
       }
     }
     else if (!isOptional()) {

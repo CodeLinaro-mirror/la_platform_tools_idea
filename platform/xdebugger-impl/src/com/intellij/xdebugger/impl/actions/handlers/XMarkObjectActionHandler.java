@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl.actions.handlers;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.xdebugger.XDebugSession;
+import com.intellij.xdebugger.XDebuggerManager;
 import com.intellij.xdebugger.frame.XValue;
 import com.intellij.xdebugger.impl.XDebugSessionImpl;
 import com.intellij.xdebugger.impl.actions.MarkObjectActionHandler;
@@ -21,12 +22,12 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 
-import static com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT;
+import static com.intellij.openapi.actionSystem.PlatformDataKeys.CONTEXT_COMPONENT;
 
 public class XMarkObjectActionHandler extends MarkObjectActionHandler {
   @Override
   public void perform(@NotNull Project project, AnActionEvent event) {
-    XDebugSession session = DebuggerUIUtil.getSession(event);
+    XDebugSession session = XDebuggerManager.getInstance(project).getCurrentSession();
     if (session == null) return;
 
     XValueMarkers<?, ?> markers = ((XDebugSessionImpl)session).getValueMarkers();
@@ -63,7 +64,7 @@ public class XMarkObjectActionHandler extends MarkObjectActionHandler {
 
   @Override
   public boolean isEnabled(@NotNull Project project, AnActionEvent event) {
-    XValueMarkers<?, ?> markers = getValueMarkers(event);
+    XValueMarkers<?, ?> markers = getValueMarkers(project);
     if (markers == null) return false;
 
     XValue value = XDebuggerTreeActionBase.getSelectedValue(event.getDataContext());
@@ -72,7 +73,7 @@ public class XMarkObjectActionHandler extends MarkObjectActionHandler {
 
   @Override
   public boolean isMarked(@NotNull Project project, @NotNull AnActionEvent event) {
-    XValueMarkers<?, ?> markers = getValueMarkers(event);
+    XValueMarkers<?, ?> markers = getValueMarkers(project);
     if (markers == null) return false;
 
     XValue value = XDebuggerTreeActionBase.getSelectedValue(event.getDataContext());
@@ -81,12 +82,12 @@ public class XMarkObjectActionHandler extends MarkObjectActionHandler {
 
   @Override
   public boolean isHidden(@NotNull Project project, AnActionEvent event) {
-    return getValueMarkers(event) == null;
+    return getValueMarkers(project) == null;
   }
 
   @Nullable
-  private static XValueMarkers<?, ?> getValueMarkers(AnActionEvent event) {
-    XDebugSession session = DebuggerUIUtil.getSession(event);
+  private static XValueMarkers<?, ?> getValueMarkers(@NotNull Project project) {
+    XDebugSession session = XDebuggerManager.getInstance(project).getCurrentSession();
     return session != null ? ((XDebugSessionImpl)session).getValueMarkers() : null;
   }
 }

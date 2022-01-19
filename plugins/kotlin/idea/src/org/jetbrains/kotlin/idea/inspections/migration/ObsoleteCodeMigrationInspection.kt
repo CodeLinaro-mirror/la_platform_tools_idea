@@ -8,10 +8,10 @@ import com.intellij.codeInspection.actions.RunInspectionIntention
 import com.intellij.codeInspection.ex.InspectionManagerEx
 import com.intellij.codeInspection.ex.InspectionProfileImpl
 import com.intellij.codeInspection.ex.InspectionToolWrapper
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
 import com.intellij.psi.search.GlobalSearchScope
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.configuration.MigrationInfo
@@ -22,7 +22,6 @@ import org.jetbrains.kotlin.idea.quickfix.migration.MigrationFix
 import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.stubindex.KotlinSourceFilterScope
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.parents
@@ -39,7 +38,7 @@ internal abstract class ObsoleteCodeMigrationInspection : AbstractKotlinInspecti
     final override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): KtVisitorVoid {
         return simpleNameExpressionVisitor(fun(simpleNameExpression) {
             val versionIsSatisfied = simpleNameExpression.languageVersionSettings.languageVersion >= toVersion
-            if (!versionIsSatisfied && !isUnitTestMode()) {
+            if (!versionIsSatisfied && !ApplicationManager.getApplication().isUnitTestMode) {
                 return
             }
 
@@ -89,7 +88,7 @@ internal abstract class ObsoleteCodeInWholeProjectFix : LocalQuickFix {
 
     // Overcome failure during profile creating because of absent tools in tests
     private inline fun <T> runInInspectionProfileInitMode(runnable: () -> T): T {
-        return if (!isUnitTestMode()) {
+        return if (!ApplicationManager.getApplication().isUnitTestMode) {
             runnable()
         } else {
             val old = InspectionProfileImpl.INIT_INSPECTIONS
@@ -123,7 +122,6 @@ internal abstract class ObsoleteImportsUsageReporter : ObsoleteCodeProblemReport
     protected open val importsToRemove: Set<String> = emptySet()
 
     protected abstract val wholeProjectFix: LocalQuickFix
-    @Nls
     protected abstract fun problemMessage(): String
 
     protected abstract fun wrapFix(fix: ObsoleteCodeFix): LocalQuickFix

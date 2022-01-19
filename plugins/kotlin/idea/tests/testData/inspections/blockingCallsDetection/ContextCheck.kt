@@ -1,35 +1,27 @@
 @file:Suppress("UNUSED_PARAMETER")
 
 import kotlin.coroutines.*
-import org.jetbrains.annotations.BlockingExecutor
-import org.jetbrains.annotations.NonBlockingExecutor
-import java.lang.Thread
+import org.jetbrains.annotations.BlockingContext
+import java.lang.Thread.sleep
 
 suspend fun testFunction() {
-    @BlockingExecutor
+    @BlockingContext
     val ctx = getContext()
     // no warnings with @BlockingContext annotation on ctx object
-    withContext(ctx) { Thread.sleep(1) }
+    withContext(ctx) {Thread.sleep (2)}
 
     // no warnings with @BlockingContext annotation on getContext() method
-    withContext(getContext()) { Thread.sleep(2) }
+    withContext(getContext()) {Thread.sleep(3)}
 
     withContext(getNonBlockingContext()) {
-        Thread.<warning descr="Possibly blocking call in non-blocking context could lead to thread starvation">sleep</warning>(3)
-    }
-
-    withContext(getExplicitlyNonBlockingContext()) {
-        Thread.<warning descr="Possibly blocking call in non-blocking context could lead to thread starvation">sleep</warning>(4)
+        Thread.<warning descr="Inappropriate blocking method call">sleep</warning>(3);
     }
 }
 
-@BlockingExecutor
+@BlockingContext
 fun getContext(): CoroutineContext = TODO()
 
 fun getNonBlockingContext(): CoroutineContext = TODO()
-
-@NonBlockingExecutor
-fun getExplicitlyNonBlockingContext(): CoroutineContext = TODO()
 
 suspend fun <T> withContext(
     context: CoroutineContext,

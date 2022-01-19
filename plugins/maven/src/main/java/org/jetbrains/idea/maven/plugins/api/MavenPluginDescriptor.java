@@ -11,7 +11,6 @@ import com.intellij.util.xml.DomElement;
 import com.intellij.util.xml.DomUtil;
 import com.intellij.util.xml.Required;
 import com.intellij.util.xmlb.annotations.*;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.idea.maven.dom.model.MavenDomConfiguration;
 import org.jetbrains.idea.maven.dom.model.MavenDomGoal;
@@ -24,10 +23,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Extension point - plugin info data.
  * @author Sergey Evdokimov
  */
-@ApiStatus.Internal
 public final class MavenPluginDescriptor implements PluginAware {
   public static final ExtensionPointName<MavenPluginDescriptor> EP_NAME =
     new ExtensionPointName<>("org.jetbrains.idea.maven.pluginDescriptor");

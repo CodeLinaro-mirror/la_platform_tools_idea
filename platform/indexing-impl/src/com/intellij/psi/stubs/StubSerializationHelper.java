@@ -46,7 +46,6 @@ final class StubSerializationHelper extends StubTreeSerializerBase<IntEnumerator
                                                             @NotNull IntEnumerator enumerator) throws SerializerNotFoundException {
     int id = enumerator.valueOf(localId);
     return myEnumerator.getClassById((id1, name, externalId) -> {
-      myEnumerator.tryDiagnose();
       var root = ourRootStubSerializer.get();
       return (root != null ? StubSerializationUtil.brokenStubFormat(root) : "") +
              "No serializer is registered for stub ID: " +

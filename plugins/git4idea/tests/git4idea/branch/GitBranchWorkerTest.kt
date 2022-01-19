@@ -9,7 +9,6 @@ import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.Executor.*
-import com.intellij.openapi.vcs.VcsNotifier
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -17,7 +16,6 @@ import com.intellij.project.stateStore
 import com.intellij.testFramework.runInEdtAndWait
 import com.intellij.util.LineSeparator
 import git4idea.GitCommit
-import git4idea.GitNotificationIdsHolder
 import git4idea.branch.GitBranchUiHandler.DeleteRemoteBranchDecision
 import git4idea.branch.GitBranchUtil.getTrackInfoForBranch
 import git4idea.branch.GitDeleteBranchOperation.*
@@ -58,7 +56,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   }
 
   fun `test create new branch without problems`() {
-    checkoutNewBranch("feature", TestUiHandler(project))
+    checkoutNewBranch("feature", TestUiHandler())
 
     assertCurrentBranch("feature")
     assertSuccessfulNotification("Branch ${bcode("feature")} was created")
@@ -68,7 +66,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     val hashMap = myRepositories.map { it to it.currentRevision!! }.toMap()
     myRepositories.forEach { cd(it); it.tac("f.txt") }
 
-    GitBranchWorker(project, git, TestUiHandler(project)).createBranch("feature", myRepositories.map{ it to "HEAD^" }.toMap())
+    GitBranchWorker(project, git, TestUiHandler()).createBranch("feature", myRepositories.map{ it to "HEAD^" }.toMap())
 
     assertCurrentBranch("master")
     myRepositories.forEach {
@@ -82,7 +80,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test if create new branch fails with error in first repo, then notification should be shown`() {
     git.onCheckoutNewBranch { if (it == first) GitCommandResult.error(UNKNOWN_ERROR_TEXT) else null}
 
-    checkoutNewBranch("feature", TestUiHandler(project))
+    checkoutNewBranch("feature", TestUiHandler())
 
     assertErrorNotification("Couldn't create new branch feature", "unknown error")
   }
@@ -91,7 +89,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     git.onCheckoutNewBranch { if (it == second) GitCommandResult.error(UNKNOWN_ERROR_TEXT) else null}
 
     var rollbackProposed = false
-    checkoutNewBranch("feature", object : TestUiHandler(project) {
+    checkoutNewBranch("feature", object : TestUiHandler() {
       override fun notifyErrorWithRollbackProposal(title: String, message: String, rollbackProposal: String): Boolean {
         rollbackProposed = true
         return false
@@ -104,7 +102,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test rollback create new branch should delete branch`() {
     git.onCheckoutNewBranch { if (it == second) GitCommandResult.error(UNKNOWN_ERROR_TEXT) else null}
 
-    checkoutNewBranch("feature", object : TestUiHandler(project) {
+    checkoutNewBranch("feature", object : TestUiHandler() {
       override fun notifyErrorWithRollbackProposal(title: String, message: String, rollbackProposal: String): Boolean {
         return true
       }
@@ -117,7 +115,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test deny rollback create new branch should leave new branch`() {
     git.onCheckoutNewBranch { if (it == second) GitCommandResult.error(UNKNOWN_ERROR_TEXT) else null}
 
-    checkoutNewBranch("feature", object : TestUiHandler(project) {
+    checkoutNewBranch("feature", object : TestUiHandler() {
       override fun notifyErrorWithRollbackProposal(title: String, message: String, rollbackProposal: String): Boolean {
         return false
       }
@@ -131,7 +129,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test checkout without problems`() {
     branchWithCommit(myRepositories, "feature")
 
-    checkoutBranch("feature", TestUiHandler(project))
+    checkoutBranch("feature", TestUiHandler())
 
     assertCurrentBranch("feature")
     assertEquals("Notification about successful branch checkout is incorrect", "Checked out " + bcode("feature"),
@@ -143,7 +141,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     unmergedFiles(first)
 
     var notificationShown = false
-    checkoutBranch("feature", object : TestUiHandler(project) {
+    checkoutBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesNotification(operationName: String, repositories: Collection<GitRepository>) {
         notificationShown = true
       }
@@ -157,7 +155,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     unmergedFiles(second)
 
     var rollbackProposed = false
-    checkoutBranch("feature", object : TestUiHandler(project) {
+    checkoutBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String): Boolean {
         rollbackProposed = true
         return false
@@ -171,7 +169,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     branchWithCommit(myRepositories, "feature")
     unmergedFiles(second)
 
-    checkoutBranch("feature", object : TestUiHandler(project) {
+    checkoutBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String) = true
     })
 
@@ -182,7 +180,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     branchWithCommit(myRepositories, "feature")
     unmergedFiles(second)
 
-    checkoutBranch("feature", object : TestUiHandler(project) {
+    checkoutBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String) = false
     })
 
@@ -194,7 +192,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test checkout revision checkout branch with complete success`() {
     branchWithCommit(myRepositories, "feature")
 
-    checkoutRevision("feature", TestUiHandler(project))
+    checkoutRevision("feature", TestUiHandler())
 
     assertDetachedState("feature")
     assertSuccessfulNotification("Checked out ${bcode("feature")}")
@@ -203,7 +201,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test checkout revision checkout ref with complete success`() {
     branchWithCommit(myRepositories, "feature")
 
-    checkoutRevision("feature~1", TestUiHandler(project))
+    checkoutRevision("feature~1", TestUiHandler())
 
     assertDetachedState("master")
     assertSuccessfulNotification("Checked out ${bcode("feature~1")}")
@@ -212,7 +210,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test checkout revision checkout ref with complete failure`() {
     branchWithCommit(myRepositories, "feature")
 
-    checkoutRevision("unknown_ref", TestUiHandler(project))
+    checkoutRevision("unknown_ref", TestUiHandler())
 
     assertCurrentBranch("master")
     assertCurrentRevision("master")
@@ -222,7 +220,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test checkout revision checkout ref with partial success`() {
     branchWithCommit(listOf(first, second), "feature")
 
-    checkoutRevision("feature", TestUiHandler(project))
+    checkoutRevision("feature", TestUiHandler())
 
     assertCurrentBranch(last, "master")
     assertDetachedState(first, "feature")
@@ -253,7 +251,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     untrackedFileOverwrittenBy(first, "feature", files)
 
     var notificationShown = false
-    checkoutOrMerge(operation, "feature", object : TestUiHandler(project) {
+    checkoutOrMerge(operation, "feature", object : TestUiHandler() {
       override fun showUntrackedFilesNotification(operationName: String,
                                                   root: VirtualFile,
                                                   relativePaths: Collection<String>) {
@@ -280,7 +278,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     untrackedFileOverwrittenBy(second, "feature", untracked)
 
     val untrackedPaths = mutableListOf<String>()
-    checkoutOrMerge(operation, "feature", object : TestUiHandler(project) {
+    checkoutOrMerge(operation, "feature", object : TestUiHandler() {
       override fun showUntrackedFilesDialogWithRollback(operationName: String,
                                                         rollbackProposal: String,
                                                         root: VirtualFile,
@@ -311,7 +309,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     val expectedChanges = prepareLocalChangesOverwrittenBy(repoWithLocalChangesProblem, numFiles)
 
     val actualChanges = mutableListOf<Change>()
-    checkoutOrMerge(operation, "feature", object : TestUiHandler(project) {
+    checkoutOrMerge(operation, "feature", object : TestUiHandler() {
       override fun showSmartOperationDialog(project: Project,
                                             changes: List<Change>,
                                             paths: Collection<String>,
@@ -357,7 +355,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
 
   private fun `agree to smart operation`(operation: String, expectedSuccessMessage: String): List<String> {
     val localChanges = prepareLocalChangesOverwrittenBy(last)
-    checkoutOrMerge(operation, "feature", TestUiHandler(project))
+    checkoutOrMerge(operation, "feature", TestUiHandler())
     assertSuccessfulNotification(expectedSuccessMessage)
     return localChanges
   }
@@ -408,7 +406,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
 
     var smartOperationDialogTimes = 0
     val filesInDialog = mutableListOf<String>()
-    checkoutOrMerge("checkout", "feature", object : TestUiHandler(project) {
+    checkoutOrMerge("checkout", "feature", object : TestUiHandler() {
       override fun showSmartOperationDialog(project: Project,
                                             changes: List<Change>,
                                             paths: Collection<String>,
@@ -427,7 +425,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   private fun `check deny to smart operation in first repo should show nothing`(operation: String) {
     prepareLocalChangesOverwrittenBy(first)
 
-    checkoutOrMerge(operation, "feature", object : TestUiHandler(project) {
+    checkoutOrMerge(operation, "feature", object : TestUiHandler() {
       override fun showSmartOperationDialog(project: Project,
                                             changes: List<Change>,
                                             paths: Collection<String>,
@@ -454,7 +452,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     prepareLocalChangesOverwrittenBy(second)
 
     val rollbackMsg = Ref.create<String>()
-    checkoutOrMerge(operation, "feature", object : TestUiHandler(project) {
+    checkoutOrMerge(operation, "feature", object : TestUiHandler() {
       override fun showSmartOperationDialog(project: Project,
                                             changes: List<Change>,
                                             paths: Collection<String>,
@@ -476,7 +474,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     // IDEA-99849
     prepareLocalChangesOverwrittenBy(last)
 
-    val brancher = GitBranchWorker(project, git, object : TestUiHandler(project) {
+    val brancher = GitBranchWorker(project, git, object : TestUiHandler() {
       override fun showSmartOperationDialog(project: Project,
                                             changes: List<Change>,
                                             paths: Collection<String>,
@@ -499,7 +497,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     unmergedFiles(second)
 
     var rollbackProposed = false
-    val brancher = GitBranchWorker(project, git, object : TestUiHandler(project) {
+    val brancher = GitBranchWorker(project, git, object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String): Boolean {
         rollbackProposed = true
         return true
@@ -518,7 +516,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
       repository.git("branch $todelete")
     }
 
-    deleteBranch(todelete, TestUiHandler(project))
+    deleteBranch(todelete, TestUiHandler())
 
     `assert successful deleted branch notification`(todelete, false, RESTORE)
   }
@@ -560,7 +558,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
 
   fun `test ok in unmerged branch dialog should force delete branch`() {
     prepareUnmergedBranch(last)
-    deleteBranch("todelete", object : TestUiHandler(project) {
+    deleteBranch("todelete", object : TestUiHandler() {
       override fun showBranchIsNotFullyMergedDialog(project: Project,
                                                     history: Map<GitRepository, List<GitCommit>>,
                                                     baseBranches: Map<GitRepository, String>,
@@ -573,7 +571,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     prepare_delete_branch_failure_in_2nd_repo()
 
     var rollbackMsg: String? = null
-    deleteBranch("todelete", object : TestUiHandler(project) {
+    deleteBranch("todelete", object : TestUiHandler() {
       override fun notifyErrorWithRollbackProposal(title: String, message: String, rollbackProposal: String): Boolean {
         rollbackMsg = message
         return true
@@ -590,7 +588,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     prepare_delete_branch_failure_in_2nd_repo()
 
     var rollbackMsg: String? = null
-    deleteBranch("todelete", object : TestUiHandler(project) {
+    deleteBranch("todelete", object : TestUiHandler() {
       override fun notifyErrorWithRollbackProposal(title: String, message: String, rollbackProposal: String): Boolean {
         rollbackMsg = message
         return false
@@ -621,7 +619,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
 
     // delete feature fully merged to current HEAD, but not to the upstream
     var dialogShown = false
-    val brancher = GitBranchWorker(project, git, object : TestUiHandler(project) {
+    val brancher = GitBranchWorker(project, git, object : TestUiHandler() {
       override fun showBranchIsNotFullyMergedDialog(project: Project,
                                                     history: Map<GitRepository, List<GitCommit>>,
                                                     baseBranches: Map<GitRepository, String>,
@@ -652,7 +650,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test simple merge without problems`() {
     branchWithCommit(myRepositories, "master2", "branch_file.txt", "branch content")
 
-    mergeBranch("master2", TestUiHandler(project))
+    mergeBranch("master2", TestUiHandler())
 
     assertSuccessfulNotification("Merged ${bcode("master2")} to ${bcode("master")}<br/>" +
                                  "<a href=\"delete\">Delete master2</a>")
@@ -708,7 +706,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
       repository.git("branch master2")
     }
 
-    mergeBranch("master2", TestUiHandler(project))
+    mergeBranch("master2", TestUiHandler())
 
     assertNotNull("Success message wasn't shown", vcsNotifier.lastNotification)
     assertEquals("Success message is incorrect", "Already up-to-date<br/><a href=\"delete\">Delete master2</a>",
@@ -720,7 +718,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     last.git("branch master2")
     second.git("branch master2")
 
-    mergeBranch("master2", TestUiHandler(project))
+    mergeBranch("master2", TestUiHandler())
 
     assertNotNull("Success message wasn't shown", vcsNotifier.lastNotification)
     assertEquals("Success message is incorrect",
@@ -734,7 +732,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     unmergedFiles(first)
 
     var notificationShown = false
-    mergeBranch("feature", object : TestUiHandler(project) {
+    mergeBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesNotification(operationName: String,
                                                  repositories: Collection<GitRepository>) {
         notificationShown = true
@@ -748,7 +746,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     unmergedFiles(second)
 
     var rollbackProposed = false
-    mergeBranch("feature", object : TestUiHandler(project) {
+    mergeBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String): Boolean {
         rollbackProposed = true
         return false
@@ -762,7 +760,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     val ultimateTip = tip(last)
     unmergedFiles(second)
 
-    mergeBranch("feature", object : TestUiHandler(project) {
+    mergeBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String): Boolean {
         return true
       }
@@ -777,7 +775,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     val firstTipAfterMerge = git("rev-list -1 feature")
     unmergedFiles(second)
 
-    mergeBranch("feature", object : TestUiHandler(project) {
+    mergeBranch("feature", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String): Boolean {
         return false
       }
@@ -793,7 +791,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     first.commit("msg")
     first.git("checkout HEAD^")
 
-    checkoutBranch("master", TestUiHandler(project))
+    checkoutBranch("master", TestUiHandler())
     assertCurrentBranch("master")
   }
 
@@ -801,7 +799,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   fun `test checkout to common branch when branches have diverged`() {
     branchWithCommit(last, "feature", "feature-file.txt", "feature_content", false)
     branchWithCommit(first, "newbranch", "newbranch-file.txt", "newbranch_content", false)
-    checkoutBranch("master", TestUiHandler(project))
+    checkoutBranch("master", TestUiHandler())
     assertCurrentBranch("master")
   }
 
@@ -810,7 +808,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     branchWithCommit(first, "newbranch", "newbranch-file.txt", "newbranch_content", false)
     unmergedFiles(second)
 
-    checkoutBranch("master", object : TestUiHandler(project) {
+    checkoutBranch("master", object : TestUiHandler() {
       override fun showUnmergedFilesMessageWithRollback(operationName: String, rollbackProposal: String): Boolean {
         return true
       }
@@ -845,7 +843,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     prepareLocalAndRemoteBranch("feature", track = true)
     last.git("checkout feature")
 
-    GitBranchWorker(project, git, object : TestUiHandler(project) {
+    GitBranchWorker(project, git, object : TestUiHandler() {
       override fun confirmRemoteBranchDeletion(branchNames: List<String>,
                                                trackingBranches: Collection<String>,
                                                repositories: Collection<GitRepository>): DeleteRemoteBranchDecision {
@@ -950,7 +948,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   }
 
   private fun deleteRemoteBranch(branchName: String, decision: DeleteRemoteBranchDecision) {
-    GitBranchWorker(project, git, object : TestUiHandler(project) {
+    GitBranchWorker(project, git, object : TestUiHandler() {
       override fun confirmRemoteBranchDeletion(branchNames: List<String>,
                                                trackingBranches: Collection<String>,
                                                repositories: Collection<GitRepository>): DeleteRemoteBranchDecision {
@@ -961,7 +959,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
   }
 
   private fun GitRepository.deleteBranch(branchName: String) {
-    GitBranchWorker(project, git, TestUiHandler(project)).deleteBranch(branchName, listOf(this))
+    GitBranchWorker(project, git, TestUiHandler()).deleteBranch(branchName, listOf(this))
   }
 
   private fun `assert successful deleted branch notification`(branchName: String,
@@ -974,7 +972,7 @@ class GitBranchWorkerTest : GitPlatformTest() {
     return notification
   }
 
-  open class TestUiHandler(private val project: Project) : GitBranchUiHandler {
+  open class TestUiHandler : GitBranchUiHandler {
     override fun getProgressIndicator() = EmptyProgressIndicator()
 
     override fun showSmartOperationDialog(project: Project,
@@ -988,10 +986,6 @@ class GitBranchWorkerTest : GitPlatformTest() {
                                                   baseBranches: Map<GitRepository, String>,
                                                   removedBranch: String): Boolean {
       throw UnsupportedOperationException()
-    }
-
-    override fun notifyError(title: String, message: String) {
-      VcsNotifier.getInstance(project).notifyError(GitNotificationIdsHolder.BRANCH_OPERATION_ERROR, title, message)
     }
 
     override fun notifyErrorWithRollbackProposal(title: String, message: String, rollbackProposal: String): Boolean {

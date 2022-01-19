@@ -35,7 +35,6 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.PairConsumer;
 import com.intellij.util.ThrowableConsumer;
 import com.intellij.util.concurrency.FutureResult;
-import com.intellij.util.containers.CollectionFactory;
 import com.intellij.vcs.commit.AmendCommitAware;
 import com.intellij.vcs.commit.EditedCommitDetails;
 import com.intellij.vcs.log.Hash;
@@ -57,6 +56,7 @@ import git4idea.repo.GitCommitTemplateTracker;
 import git4idea.repo.GitRepository;
 import git4idea.repo.GitRepositoryManager;
 import git4idea.util.GitFileUtils;
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -712,7 +712,7 @@ public final class GitCheckinEnvironment implements CheckinEnvironment, AmendCom
   private static void resetExcluded(@NotNull Project project,
                                     @NotNull VirtualFile root,
                                     @NotNull Collection<? extends ChangedPath> changes) throws VcsException {
-    Set<FilePath> allPaths = CollectionFactory.createCustomHashingStrategySet(CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY);
+    Set<FilePath> allPaths = new ObjectOpenCustomHashSet<>(CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY);
     for (ChangedPath change : changes) {
       addIfNotNull(allPaths, change.afterPath);
       addIfNotNull(allPaths, change.beforePath);
@@ -959,6 +959,11 @@ public final class GitCheckinEnvironment implements CheckinEnvironment, AmendCom
     @Override
     public void restoreState() {
       myOptionsUi.restoreState();
+    }
+
+    @Override
+    public void refresh() {
+      myOptionsUi.refresh();
     }
 
     @Override

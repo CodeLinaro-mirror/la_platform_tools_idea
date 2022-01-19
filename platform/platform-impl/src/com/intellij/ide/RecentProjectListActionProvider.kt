@@ -75,11 +75,7 @@ open class RecentProjectListActionProvider {
     for (group in groups.filter { projectGroup -> projectGroup.isBottomGroup == bottom }) {
       val children = mutableListOf<AnAction>()
       for (path in group.projects) {
-        val action = createOpenAction(path!!, duplicates)
-        if (action is ReopenProjectAction) {
-          action.setProjectGroup(group)
-        }
-        children.add(action)
+        children.add(createOpenAction(path!!, duplicates))
         if (addClearListItem && children.size >= RecentProjectsManagerBase.MAX_PROJECTS_IN_MAIN_MENU) {
           break
         }

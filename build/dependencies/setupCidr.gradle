@@ -1,8 +1,6 @@
 import org.gradle.internal.os.OperatingSystem
-
 import java.util.concurrent.TimeUnit
 
-apply from: 'retries.gradle'
 final def IJ_DIR = project.file("../../..").canonicalFile
 final def REPOSITORY = "https://repo.labs.intellij.net/clion"
 final def SETUP_ALL_PLATFORMS = Boolean.getBoolean("intellij.cidr.setup.all.platforms")
@@ -34,10 +32,10 @@ task setupCidr
     path: "CIDR/clion/bin/clang"
   ],
   lldb: [
-    version: "d37893e63d098eef2c75de1e339770f18fb4b600",
+    version: "e0cccbacab5cf5ee621edddca1ea452353192e6b",
     platforms: [
       win: [
-        version: "6f6d0a12e1260e0fd79fbcd1f5df2ebb48002db8",
+        version: "1e0f8f649a3b18bcc2ddda7311cdb9b9faabd042",
         archs: ["x64", "x86"]
       ],
       linux: [archs: ["x64"]],
@@ -46,7 +44,7 @@ task setupCidr
     path: "CIDR/cidr-debugger/bin/lldb"
   ],
   lldbfrontend: [
-    version: "8f9ae7691a192ae946846ab978b28ceb2a8f0fe5",
+    version: "57652c6285a0868fa01dd55e8646577b3d48917a",
     platforms: [
       win: [archs: ["x64", "x86"]],
       linux: [archs: ["x64"]],
@@ -63,7 +61,7 @@ task setupCidr
     no_platform_subdir: true
   ],
   jbdevice: [
-    version: "78c68ee",
+    version: "810660",
     platforms: [
       "mac": [archs: ["x64"]]
     ],
@@ -71,7 +69,7 @@ task setupCidr
     no_platform_subdir: true
   ],
   objchelper: [
-    version: "f0d856",
+    version: "e9b1fe3",
     platforms: [
       "mac": [archs: ["x64"]],
       "linux": [archs: ["x64"]]
@@ -103,14 +101,13 @@ task setupCidr
         outputs.file(packageArchive)
 
         doLast {
-          project.ext.retry {
-            download {
-              src downloadUrl
-              dest packageArchive
-              tempAndMove true
-              connectTimeout TimeUnit.SECONDS.toMillis(30).toInteger()
-              readTimeout TimeUnit.MINUTES.toMillis(5).toInteger()
-            }
+          download {
+            src downloadUrl
+            dest packageArchive
+            tempAndMove true
+            connectTimeout TimeUnit.SECONDS.toMillis(30).toInteger()
+            readTimeout TimeUnit.MINUTES.toMillis(5).toInteger()
+            retries 10
           }
         }
       }

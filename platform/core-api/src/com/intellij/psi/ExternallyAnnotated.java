@@ -11,9 +11,8 @@ import org.jetbrains.annotations.Nullable;
 @FunctionalInterface
 public interface ExternallyAnnotated {
   /**
-   * If an inspection started for files with ForeignLeaf substitutions finds any problem in them,
-   * it should be able to display it locally.
-   * This method allows defining such substitution text range.
+   * If inspection started for files with ForeignLeaf substitutions founds any problem in them
+   * it should be able to display it locally. This method allows to define such substitution text range.
    * An example from C/C++ macro substitution:<br/><pre>
    * #define T(x) int x
    * int k;

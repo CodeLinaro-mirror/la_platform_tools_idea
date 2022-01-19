@@ -20,10 +20,10 @@ class GoogleAuthorizationManager(private val project: Project) {
   }
 
   private fun createNewAccount(): GoogleCredentials? {
-    val googleAppCred = getGoogleAppCredentials(project) ?: return null
-
-    val oAuthService = service<GoogleOAuthService>()
-    val credentialsFuture = oAuthService.authorize(GoogleOAuthRequest(googleAppCred))
+    val oAuthService = service<GoogleOAuthService>().apply {
+      googleAppCred = getGoogleAppCredentials(project) ?: return null
+    }
+    val credentialsFuture = oAuthService.authorize()
 
     try {
       return ProgressManager.getInstance().runProcessWithProgressSynchronously(ThrowableComputable {

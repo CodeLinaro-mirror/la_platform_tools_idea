@@ -89,14 +89,12 @@ public class FontEditorPreview implements PreviewPanel{
     myTopPanel = new JPanel(new BorderLayout());
     myTopPanel.add(myEditor.getComponent(), BorderLayout.CENTER);
 
-    if (editable) {
-      JLabel previewLabel = new JLabel(ApplicationBundle.message("settings.editor.font.preview.hint"));
-      previewLabel.setFont(JBUI.Fonts.smallFont());
-      previewLabel.setForeground(UIUtil.getContextHelpForeground());
-      previewLabel.setBorder(JBUI.Borders.empty(10, 15, 10, 0));
-      previewLabel.setBackground(myEditor.getBackgroundColor());
-      myTopPanel.add(previewLabel, BorderLayout.SOUTH);
-    }
+    JLabel previewLabel = new JLabel(ApplicationBundle.message("settings.editor.font.preview.hint"));
+    previewLabel.setFont(JBUI.Fonts.smallFont());
+    previewLabel.setForeground(UIUtil.getContextHelpForeground());
+    previewLabel.setBorder(JBUI.Borders.empty(10, 15, 10, 0));
+    previewLabel.setBackground(myEditor.getBackgroundColor());
+    myTopPanel.add(previewLabel, BorderLayout.SOUTH);
     myTopPanel.setBackground(myEditor.getBackgroundColor());
     myTopPanel.setBorder(getBorder());
 
@@ -216,7 +214,7 @@ public class FontEditorPreview implements PreviewPanel{
 
   @Override
   public void disposeUIResources() {
-    if (myTextModel.isDefault() || myTextModel.getRawText().isEmpty()) {
+    if (myTextModel.isDefault()) {
       PropertiesComponent.getInstance().unsetValue(PREVIEW_TEXT_KEY);
     }
     else {

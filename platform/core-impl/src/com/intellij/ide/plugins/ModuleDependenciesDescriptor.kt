@@ -6,7 +6,6 @@ import com.intellij.openapi.extensions.PluginId
 import org.jetbrains.annotations.ApiStatus
 import java.util.*
 
-@ApiStatus.Internal
 class ModuleDependenciesDescriptor(@JvmField val modules: List<ModuleReference>, @JvmField val plugins: List<PluginReference>) {
   companion object {
     @JvmField val EMPTY = ModuleDependenciesDescriptor(Collections.emptyList(), Collections.emptyList())
@@ -30,7 +29,8 @@ class PluginContentDescriptor(@JvmField val modules: List<ModuleItem>) {
   }
 
   @ApiStatus.Internal
-  class ModuleItem(@JvmField val name: String, @JvmField val configFile: String?) {
+  class ModuleItem(@JvmField val name: String,
+                   @JvmField val configFile: String?) {
     @JvmField internal var descriptor: IdeaPluginDescriptorImpl? = null
 
     fun requireDescriptor() = descriptor ?: throw IllegalStateException("Descriptor is not set for $this")
@@ -38,5 +38,7 @@ class PluginContentDescriptor(@JvmField val modules: List<ModuleItem>) {
     override fun toString() = "ModuleItem(name=$name, descriptor=$descriptor, configFile=$configFile)"
   }
 
-  override fun toString() = "PluginContentDescriptor(modules=$modules)"
+  override fun toString(): String {
+    return "PluginContentDescriptor(modules=$modules)"
+  }
 }

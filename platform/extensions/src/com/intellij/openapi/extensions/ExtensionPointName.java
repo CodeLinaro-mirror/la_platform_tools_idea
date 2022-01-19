@@ -59,7 +59,7 @@ public final class ExtensionPointName<T> extends BaseExtensionPointName<T> {
   }
 
   public @NotNull List<T> getExtensionsIfPointIsRegistered(@Nullable AreaInstance areaInstance) {
-    //noinspection deprecation
+    @SuppressWarnings("deprecation")
     ExtensionsArea area = areaInstance == null ? Extensions.getRootArea() : areaInstance.getExtensionArea();
     ExtensionPoint<T> point = area == null ? null : area.getExtensionPointIfRegistered(getName());
     return point == null ? Collections.emptyList() : point.getExtensionList();
@@ -99,6 +99,7 @@ public final class ExtensionPointName<T> extends BaseExtensionPointName<T> {
    * to access project-level and module-level extensions
    */
   @Deprecated
+  @SuppressWarnings("DeprecatedIsStillUsed")
   public @NotNull ExtensionPoint<T> getPoint(@Nullable AreaInstance areaInstance) {
     return getPointImpl(areaInstance);
   }
@@ -118,6 +119,17 @@ public final class ExtensionPointName<T> extends BaseExtensionPointName<T> {
 
   public @Nullable <V extends T> V findFirstAssignableExtension(@NotNull Class<V> instanceOf) {
     return getPointImpl(null).findExtension(instanceOf, true, ThreeState.NO);
+  }
+
+  /**
+   * @deprecated use {@link #findExtensionOrFail(Class)} to access application-level extensions and
+   * {@link ProjectExtensionPointName#findExtensionOrFail(Class, AreaInstance)} to access project-level and module-level extensions
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public @NotNull <V extends T> V findExtensionOrFail(@NotNull Class<V> instanceOf, @Nullable AreaInstance areaInstance) {
+    //noinspection ConstantConditions
+    return getPointImpl(areaInstance).findExtension(instanceOf, true, ThreeState.UNSURE);
   }
 
   /**
@@ -146,6 +158,15 @@ public final class ExtensionPointName<T> extends BaseExtensionPointName<T> {
 
   public void addExtensionPointListener(@NotNull ExtensionPointListener<T> listener, @Nullable Disposable parentDisposable) {
     getPointImpl(null).addExtensionPointListener(listener, false, parentDisposable);
+  }
+
+  /**
+   * @deprecated Use {@link #addChangeListener(Runnable, Disposable)}
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public void addExtensionPointListener(@NotNull ExtensionPointChangeListener listener, @Nullable Disposable parentDisposable) {
+    getPointImpl(null).addChangeListener(listener::extensionListChanged, parentDisposable);
   }
 
   public void addChangeListener(@NotNull Runnable listener, @Nullable Disposable parentDisposable) {

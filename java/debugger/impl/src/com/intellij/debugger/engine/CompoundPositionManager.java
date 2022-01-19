@@ -28,7 +28,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class CompoundPositionManager implements PositionManagerWithConditionEvaluation, MultiRequestPositionManager {
+public class CompoundPositionManager extends PositionManagerEx implements MultiRequestPositionManager{
   private static final Logger LOG = Logger.getInstance(CompoundPositionManager.class);
 
   public static final CompoundPositionManager EMPTY = new CompoundPositionManager();
@@ -171,31 +171,23 @@ public class CompoundPositionManager implements PositionManagerWithConditionEval
     }, Collections.emptyList(), position);
   }
 
-  @NotNull
-  public List<XStackFrame> createStackFrames(@NotNull StackFrameDescriptorImpl descriptor) {
-    Location location = descriptor.getLocation();
+  @Nullable
+  @Override
+  public XStackFrame createStackFrame(@NotNull StackFrameDescriptorImpl descriptor) {
     for (PositionManager positionManager : myPositionManagers) {
-      try {
-        if (positionManager instanceof PositionManagerWithMultipleStackFrames && location != null) {
-          List<XStackFrame> stackFrames = ((PositionManagerWithMultipleStackFrames)positionManager).createStackFrames(
-            descriptor.getFrameProxy(), (DebugProcessImpl)descriptor.getDebugProcess(), location
-          );
-          if (stackFrames != null) {
-            return stackFrames;
-          }
-        }
-        else if (positionManager instanceof PositionManagerEx) {
+      if (positionManager instanceof PositionManagerEx) {
+        try {
           XStackFrame xStackFrame = ((PositionManagerEx)positionManager).createStackFrame(descriptor);
           if (xStackFrame != null) {
-            return Collections.singletonList(xStackFrame);
+            return xStackFrame;
           }
         }
-      }
-      catch (Throwable e) {
-        DebuggerUtilsImpl.logError(e);
+        catch (Throwable e) {
+          DebuggerUtilsImpl.logError(e);
+        }
       }
     }
-    return Collections.emptyList();
+    return null;
   }
 
   @Override
@@ -204,10 +196,9 @@ public class CompoundPositionManager implements PositionManagerWithConditionEval
                                       @NotNull Location location,
                                       @NotNull String expression) {
     for (PositionManager positionManager : myPositionManagers) {
-      if (positionManager instanceof PositionManagerWithConditionEvaluation) {
+      if (positionManager instanceof PositionManagerEx) {
         try {
-          PositionManagerWithConditionEvaluation manager = (PositionManagerWithConditionEvaluation)positionManager;
-          ThreeState result = manager.evaluateCondition(context, frame, location, expression);
+          ThreeState result = ((PositionManagerEx)positionManager).evaluateCondition(context, frame, location, expression);
           if (result != ThreeState.UNSURE) {
             return result;
           }

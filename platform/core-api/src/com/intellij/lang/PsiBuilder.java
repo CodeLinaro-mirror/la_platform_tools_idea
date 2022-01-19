@@ -16,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
  * @see PsiParser
  * @see ASTNode
  */
+@SuppressWarnings("deprecation")
 public interface PsiBuilder extends SyntaxTreeBuilder, UserDataHolder, UserDataHolderUnprotected {
   /**
    * Returns a project for which PSI builder was created (see {@link PsiBuilderFactory}).

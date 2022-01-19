@@ -8,20 +8,32 @@ import com.intellij.util.containers.HashSetInterner
 import com.intellij.workspaceModel.storage.WorkspaceEntity
 import com.intellij.workspaceModel.storage.impl.ConnectionId.ConnectionType
 import com.intellij.workspaceModel.storage.impl.containers.*
-import it.unimi.dsi.fastutil.ints.IntArrayList
 import java.util.function.IntFunction
 
+/**
+ * [isChildNullable] property is ignored for [ConnectionType.ONE_TO_ABSTRACT_MANY] and [ConnectionType.ONE_TO_MANY]
+ */
 internal class ConnectionId private constructor(
   val parentClass: Int,
   val childClass: Int,
   val connectionType: ConnectionType,
-  val isParentNullable: Boolean
+  val isParentNullable: Boolean,
+  val isChildNullable: Boolean
 ) {
   enum class ConnectionType {
     ONE_TO_ONE,
     ONE_TO_MANY,
     ONE_TO_ABSTRACT_MANY,
     ABSTRACT_ONE_TO_ONE
+  }
+
+  /**
+   * This function returns true if this connection allows removing children of parent.
+   *
+   * E.g. child is nullable for parent entity, so the child can be safely removed.
+   */
+  fun canRemoveChild(): Boolean {
+    return connectionType == ConnectionType.ONE_TO_ABSTRACT_MANY || connectionType == ConnectionType.ONE_TO_MANY || isChildNullable
   }
 
   /**
@@ -41,6 +53,7 @@ internal class ConnectionId private constructor(
     if (childClass != other.childClass) return false
     if (connectionType != other.connectionType) return false
     if (isParentNullable != other.isParentNullable) return false
+    if (isChildNullable != other.isChildNullable) return false
 
     return true
   }
@@ -50,12 +63,15 @@ internal class ConnectionId private constructor(
     result = 31 * result + childClass.hashCode()
     result = 31 * result + connectionType.hashCode()
     result = 31 * result + isParentNullable.hashCode()
+    result = 31 * result + isChildNullable.hashCode()
     return result
   }
 
   override fun toString(): String {
-    return "Connection(parent=${ClassToIntConverter.getClassOrDie(parentClass).simpleName} " +
-           "child=${ClassToIntConverter.getClassOrDie(childClass).simpleName} $connectionType)"
+    return "Connection(parent=${ClassToIntConverter.getClassOrDie(
+      parentClass).simpleName} " +
+           "child=${ClassToIntConverter.getClassOrDie(
+             childClass).simpleName} $connectionType)"
   }
 
   fun debugStr(): String = """
@@ -64,6 +80,7 @@ internal class ConnectionId private constructor(
       - Child class: ${this.childClass.findEntityClass<WorkspaceEntity>()}
       - Connection type: $connectionType
       - Parent of child is nullable: $isParentNullable
+      - Child of parent is nullable: $isChildNullable
   """.trimIndent()
 
   companion object {
@@ -73,9 +90,10 @@ internal class ConnectionId private constructor(
       parentClass: Class<Parent>,
       childClass: Class<Child>,
       connectionType: ConnectionType,
-      isParentNullable: Boolean
+      isParentNullable: Boolean,
+      isChildNullable: Boolean
     ): ConnectionId {
-      val connectionId = ConnectionId(parentClass.toClassId(), childClass.toClassId(), connectionType, isParentNullable)
+      val connectionId = ConnectionId(parentClass.toClassId(), childClass.toClassId(), connectionType, isParentNullable, isChildNullable)
       return interner.intern(connectionId)
     }
 
@@ -189,10 +207,6 @@ internal class MutableRefsTable(
     getOneToOneMutableMap(connectionId).removeValue(parentId)
   }
 
-  fun removeOneToAbstractOneRefByParent(connectionId: ConnectionId, parentId: ParentEntityId) {
-    getAbstractOneToOneMutableMap(connectionId).inverse().remove(parentId)
-  }
-
   fun removeOneToOneRefByChild(connectionId: ConnectionId, childId: Int) {
     getOneToOneMutableMap(connectionId).removeKey(childId)
   }
@@ -244,7 +258,7 @@ internal class MutableRefsTable(
   fun <Child : WorkspaceEntityBase> updateOneToManyChildrenOfParent(connectionId: ConnectionId, parentId: Int, childrenEntities: Sequence<Child>) {
     val copiedMap = getOneToManyMutableMap(connectionId)
     copiedMap.removeValue(parentId)
-    val children = childrenEntities.mapToIntArray { it.id.arrayId }
+    val children = childrenEntities.map { it.id.arrayId }.toList().toIntArray()
     copiedMap.putAll(children, parentId)
   }
 
@@ -281,7 +295,7 @@ internal class MutableRefsTable(
   fun <Parent : WorkspaceEntityBase> updateOneToOneParentOfChild(connectionId: ConnectionId, childId: Int, parentEntity: Parent) {
     val copiedMap = getOneToOneMutableMap(connectionId)
     copiedMap.removeKey(childId)
-    copiedMap.putForce(childId, parentEntity.id.arrayId)
+    copiedMap.put(childId, parentEntity.id.arrayId)
   }
 
   internal fun updateParentOfChild(connectionId: ConnectionId, childId: ChildEntityId, parentId: ParentEntityId) {
@@ -341,15 +355,6 @@ internal class MutableRefsTable(
       HashMap(other.oneToAbstractManyContainer),
       HashMap(other.abstractOneToOneContainer))
   }
-
-  private fun <T> Sequence<T>.mapToIntArray(action: (T) -> Int): IntArray {
-    val intArrayList = IntArrayList()
-    this.forEach { item ->
-      intArrayList.add(action(item))
-    }
-
-    return intArrayList.toIntArray()
-  }
 }
 
 internal sealed class AbstractRefsTable {
@@ -385,7 +390,7 @@ internal sealed class AbstractRefsTable {
     for ((connectionId, bimap) in filteredOneToMany) {
       if (!bimap.containsKey(childArrayId)) continue
       val value = bimap.get(childArrayId)
-      val existingValue = res.putIfAbsent(connectionId, createEntityId(value, connectionId.parentClass).asParent())
+      val existingValue = res.putIfAbsent(connectionId, EntityId(value, connectionId.parentClass).asParent())
       if (existingValue != null) thisLogger().error("This parent already exists")
     }
 
@@ -393,7 +398,7 @@ internal sealed class AbstractRefsTable {
     for ((connectionId, bimap) in filteredOneToOne) {
       if (!bimap.containsKey(childArrayId)) continue
       val value = bimap.get(childArrayId)
-      val existingValue = res.putIfAbsent(connectionId, createEntityId(value, connectionId.parentClass).asParent())
+      val existingValue = res.putIfAbsent(connectionId, EntityId(value, connectionId.parentClass).asParent())
       if (existingValue != null) thisLogger().error("This parent already exists")
     }
 
@@ -429,7 +434,7 @@ internal sealed class AbstractRefsTable {
     for ((connectionId, bimap) in filteredOneToOne) {
       if (!bimap.containsKey(childArrayId)) continue
       val value = bimap.get(childArrayId)
-      val existingValue = res.putIfAbsent(connectionId, createEntityId(value, connectionId.parentClass).asParent())
+      val existingValue = res.putIfAbsent(connectionId, EntityId(value, connectionId.parentClass).asParent())
       if (existingValue != null) thisLogger().error("This parent already exists")
     }
 
@@ -456,7 +461,7 @@ internal sealed class AbstractRefsTable {
     for ((connectionId, bimap) in filteredOneToMany) {
       val keys = bimap.getKeys(parentArrayId)
       if (!keys.isEmpty()) {
-        val children = keys.map { createEntityId(it, connectionId.childClass) }.mapTo(ArrayList()) { it.asChild() }
+        val children = keys.map { EntityId(it, connectionId.childClass) }.mapTo(ArrayList()) { it.asChild() }
         val existingValue = res.putIfAbsent(connectionId, children)
         if (existingValue != null) thisLogger().error("These children already exist")
       }
@@ -466,7 +471,7 @@ internal sealed class AbstractRefsTable {
     for ((connectionId, bimap) in filteredOneToOne) {
       if (!bimap.containsValue(parentArrayId)) continue
       val key = bimap.getKey(parentArrayId)
-      val existingValue = res.putIfAbsent(connectionId, listOf(createEntityId(key, connectionId.childClass).asChild()))
+      val existingValue = res.putIfAbsent(connectionId, listOf(EntityId(key, connectionId.childClass).asChild()))
       if (existingValue != null) thisLogger().error("These children already exist")
     }
 
@@ -503,7 +508,7 @@ internal sealed class AbstractRefsTable {
     for ((connectionId, bimap) in filteredOneToOne) {
       if (!bimap.containsValue(parentArrayId)) continue
       val key = bimap.getKey(parentArrayId)
-      val existingValue = res.putIfAbsent(connectionId, createEntityId(key, connectionId.childClass).asChild())
+      val existingValue = res.putIfAbsent(connectionId, EntityId(key, connectionId.childClass).asChild())
       if (existingValue != null) thisLogger().error("These children already exist")
     }
 
@@ -560,16 +565,8 @@ internal sealed class AbstractRefsTable {
 }
 
 // TODO: 25.05.2021 Make it value class
-internal data class ChildEntityId(val id: EntityId) {
-  override fun toString(): String {
-    return "ChildEntityId(id=${id.asString()})"
-  }
-}
-internal data class ParentEntityId(val id: EntityId) {
-  override fun toString(): String {
-    return "ParentEntityId(id=${id.asString()})"
-  }
-}
+internal data class ChildEntityId(val id: EntityId)
+internal data class ParentEntityId(val id: EntityId)
 
 internal fun EntityId.asChild(): ChildEntityId = ChildEntityId(this)
 internal fun EntityId.asParent(): ParentEntityId = ParentEntityId(this)

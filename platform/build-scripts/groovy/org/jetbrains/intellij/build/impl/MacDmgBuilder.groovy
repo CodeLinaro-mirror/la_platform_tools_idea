@@ -7,7 +7,10 @@ import groovy.transform.CompileStatic
 import groovy.transform.TypeCheckingMode
 import org.apache.tools.ant.BuildException
 import org.jetbrains.annotations.NotNull
-import org.jetbrains.intellij.build.*
+import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.BuildOptions
+import org.jetbrains.intellij.build.MacDistributionCustomizer
+import org.jetbrains.intellij.build.MacHostProperties
 import org.jetbrains.intellij.build.impl.productInfo.ProductInfoValidator
 
 import java.nio.file.Files
@@ -38,11 +41,9 @@ final class MacDmgBuilder {
     this.remoteDir = remoteDir
   }
 
-  static void signBinaryFiles(BuildContext buildContext,
-                              MacDistributionCustomizer customizer, MacHostProperties macHostProperties,
-                              @NotNull Path macDistPath, @NotNull JvmArchitecture arch) {
+  static void signBinaryFiles(BuildContext buildContext, MacDistributionCustomizer customizer, MacHostProperties macHostProperties, @NotNull Path macDistPath) {
     MacDmgBuilder dmgBuilder = createInstance(buildContext, customizer, macHostProperties)
-    dmgBuilder.doSignBinaryFiles(macDistPath, arch)
+    dmgBuilder.doSignBinaryFiles(macDistPath)
   }
 
   static void signAndBuildDmg(BuildContext buildContext, MacDistributionCustomizer customizer,
@@ -64,7 +65,7 @@ final class MacDmgBuilder {
   }
 
   @CompileStatic(TypeCheckingMode.SKIP)
-  private void doSignBinaryFiles(@NotNull Path macDistPath, @NotNull JvmArchitecture arch) {
+  private void doSignBinaryFiles(@NotNull Path macDistPath) {
     ftpAction("mkdir") {}
     ftpAction("put", false, "777") {
       ant.fileset(file: "${buildContext.paths.communityHome}/platform/build-scripts/tools/mac/scripts/signbin.sh")
@@ -74,9 +75,9 @@ final class MacDmgBuilder {
     Files.createDirectories(signedFilesDir)
 
     List<String> failedToSign = []
-    customizer.getBinariesToSign(buildContext, arch).each { relativePath ->
+    customizer.binariesToSign.each { relativePath ->
       buildContext.messages.progress("Signing $relativePath")
-      Path fullPath = macDistPath.resolve(relativePath)
+      Path fullPath = macDistPath.resolveSibling(relativePath)
       ftpAction("put") {
         ant.fileset(file: fullPath.toString())
       }

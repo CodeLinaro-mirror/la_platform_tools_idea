@@ -46,7 +46,6 @@ public class MagicConstantInspectionTest extends LightJavaCodeInsightFixtureTest
   public void testWithLibrary() { doTest(); }
   public void testSpecialCases() { doTest(); }
   public void testVarargMethodCall() { doTest(); }
-  public void testEnumConstructor() { doTest(); }
 
   private void doTest() {
     myFixture.configureByFile(getTestName(false) + ".java");

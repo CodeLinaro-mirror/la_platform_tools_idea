@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2021 Dave Griffith, Bas Leijdekkers
+ * Copyright 2003-2017 Dave Griffith, Bas Leijdekkers
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,11 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public final class TypeUtils {
   private static final String[] EQUAL_CONTRACT_CLASSES = {CommonClassNames.JAVA_UTIL_LIST,
@@ -142,8 +145,12 @@ public final class TypeUtils {
     if (type instanceof PsiDisjunctionType) {
       type = ((PsiDisjunctionType)type).getLeastUpperBound();
     }
+    final PsiClass aClass = PsiUtil.resolveClassInClassTypeOnly(type);
+    if (aClass == null) {
+      return null;
+    }
     for (String typeName : typeNames) {
-      if (InheritanceUtil.isInheritor(type, typeName)) {
+      if (InheritanceUtil.isInheritor(aClass, typeName)) {
         return typeName;
       }
     }
@@ -154,15 +161,12 @@ public final class TypeUtils {
     if (expression == null) {
       return false;
     }
-    PsiType type = FunctionalExpressionUtils.getFunctionalExpressionType(expression);
-    if (type == null) {
+    final PsiClass aClass = PsiUtil.resolveClassInClassTypeOnly(expression.getType());
+    if (aClass == null) {
       return false;
     }
-    if (type instanceof PsiDisjunctionType) {
-      type = ((PsiDisjunctionType)type).getLeastUpperBound();
-    }
     for (String typeName : typeNames) {
-      if (InheritanceUtil.isInheritor(type, typeName)) {
+      if (InheritanceUtil.isInheritor(aClass, typeName)) {
         return true;
       }
     }
@@ -173,12 +177,12 @@ public final class TypeUtils {
     if (variable == null) {
       return false;
     }
-    PsiType type = variable.getType();
-    if (type instanceof PsiDisjunctionType) {
-      type = ((PsiDisjunctionType)type).getLeastUpperBound();
+    final PsiClass aClass = PsiUtil.resolveClassInClassTypeOnly(variable.getType());
+    if (aClass == null) {
+      return false;
     }
     for (String typeName : typeNames) {
-      if (InheritanceUtil.isInheritor(type, typeName)) {
+      if (InheritanceUtil.isInheritor(aClass, typeName)) {
         return true;
       }
     }

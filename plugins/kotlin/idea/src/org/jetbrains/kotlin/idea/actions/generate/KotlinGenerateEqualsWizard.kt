@@ -49,13 +49,13 @@ class KotlinGenerateEqualsWizard(
 
         init {
             equalsPanel = if (needEquals) {
-                KotlinMemberSelectionPanel(@Suppress("DialogTitleCapitalization") KotlinBundle.message("action.generate.equals.choose.equals"), memberInfos).apply {
+                KotlinMemberSelectionPanel(KotlinBundle.message("action.generate.equals.choose.equals"), memberInfos, null).apply {
                     table.memberInfoModel = MemberInfoModelImpl
                 }
             } else null
 
             hashCodePanel = if (needHashCode) {
-                KotlinMemberSelectionPanel(@Suppress("DialogTitleCapitalization") KotlinBundle.message("action.generate.equals.choose.hashcode"), memberInfos).apply {
+                KotlinMemberSelectionPanel(KotlinBundle.message("action.generate.equals.choose.hashcode"), memberInfos, null).apply {
                     table.memberInfoModel = MemberInfoModelImpl
                 }
             } else null

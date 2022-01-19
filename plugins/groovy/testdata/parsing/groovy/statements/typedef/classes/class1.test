@@ -13,8 +13,6 @@ Groovy script
       <empty list>
     Implements clause
       <empty list>
-    Permits clause
-      <empty list>
     PsiWhiteSpace(' ')
     Type definition body
       PsiElement({)('{')
@@ -27,8 +25,6 @@ Groovy script
         PsiWhiteSpace(' ')
         PsiElement(identifier)('a')
         Extends clause
-          <empty list>
-        Permits clause
           <empty list>
         PsiWhiteSpace(' ')
         Type definition body

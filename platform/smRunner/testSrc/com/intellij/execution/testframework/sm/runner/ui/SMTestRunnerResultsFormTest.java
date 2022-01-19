@@ -24,7 +24,6 @@ import com.intellij.execution.testframework.sm.runner.SMTestProxy;
 import com.intellij.execution.testframework.sm.runner.events.*;
 import com.intellij.execution.testframework.sm.runner.states.TestStateInfo;
 import com.intellij.execution.testframework.stacktrace.DiffHyperlink;
-import com.intellij.openapi.ListSelection;
 import com.intellij.openapi.progress.util.ColorProgressBar;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.testFramework.PlatformTestUtil;
@@ -595,12 +594,12 @@ public class SMTestRunnerResultsFormTest extends BaseSMTRunnerTestCase {
     test2.setFinished();
     suite2.setFinished();
 
-    ListSelection<DiffHyperlink> hyperlinks = ViewAssertEqualsDiffAction.showDiff(suite2, myResultsViewer);
-    List<DiffHyperlink> providers = hyperlinks.getList();
-    assertEquals(2, providers.size());
-    assertEquals(1, hyperlinks.getSelectedIndex());
-    DiffHyperlink selectedProvider = providers.get(0);
-    assertEquals("m1", selectedProvider.getLeft());
-    assertEquals("m2", selectedProvider.getRight());
+    ViewAssertEqualsDiffAction.showDiff(suite2, myResultsViewer, (providers, idx) -> {
+      assertEquals(2, providers.size());
+      assertEquals(Integer.valueOf(1), idx);
+      DiffHyperlink selectedProvider = providers.get(0);
+      assertEquals("m1", selectedProvider.getLeft());
+      assertEquals("m2", selectedProvider.getRight());
+    });
   }
 }

@@ -4,12 +4,11 @@
   <xi:include href="/META-INF/python-community-plugin-core.xml" xpointer="xpointer(/idea-plugin/*)"/>
 
   <extensions defaultExtensionNs="com.intellij">
-    <projectConfigurable groupId="build"
+    <projectConfigurable groupId="build" groupWeight="118"
                          id="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
                          bundle="messages.PyBundle"
                          key="configurable.PyActiveSdkModuleConfigurable.python.interpreter.display.name"
-                         instance="com.jetbrains.python.minor.sdk.PyPluginSdkModuleConfigurable"
-                         groupWeight="118"/> <!-- id is used in InterpreterSettingsQuickFix.showPythonInterpreterSettings -->
+                         instance="com.jetbrains.python.minor.sdk.PyPluginSdkModuleConfigurable"/>
 
     <facetType implementation="com.jetbrains.python.minor.facet.PythonFacetType"/>
   </extensions>

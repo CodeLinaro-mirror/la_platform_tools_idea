@@ -2,7 +2,6 @@
 package org.jetbrains.intellij.build
 
 import groovy.transform.CompileStatic
-import org.jetbrains.intellij.build.impl.support.RepairUtilityBuilder
 
 import java.nio.file.Path
 
@@ -52,7 +51,5 @@ abstract class LinuxDistributionCustomizer {
    * Override this method to copy additional files to Linux distribution of the product.
    * @param targetDirectory contents of this directory will be packed into .tar.gz archive under {@link #getRootDirectoryName(ApplicationInfoProperties, String)}
    */
-  void copyAdditionalFiles(BuildContext context, Path targetDir) {
-    RepairUtilityBuilder.bundle(context, OsFamily.LINUX, JvmArchitecture.x64, targetDir)
-  }
+  void copyAdditionalFiles(BuildContext context, Path targetDir) {}
 }

@@ -19,11 +19,9 @@ import org.jetbrains.kotlin.resolve.BindingTraceContext
 import org.jetbrains.kotlin.resolve.ImportPath
 import org.jetbrains.kotlin.resolve.QualifiedExpressionResolver
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
-import org.jetbrains.kotlin.resolve.lazy.NoDescriptorForDeclarationException
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 fun KtElement.getResolutionFacade(): ResolutionFacade =
-    KotlinCacheService.getInstance(project).getResolutionFacade(this)
+    KotlinCacheService.getInstance(project).getResolutionFacade(listOf(this))
 
 /**
  * For local declarations is equivalent to unsafeResolveToDescriptor(bodyResolveMode)
@@ -169,15 +167,9 @@ inline fun <reified T> T.analyzeWithContent(): BindingContext where T : KtDeclar
 fun KtFile.analyzeWithAllCompilerChecks(vararg extraFiles: KtFile): AnalysisResult =
     this.analyzeWithAllCompilerChecks(null, *extraFiles)
 
-fun KtFile.analyzeWithAllCompilerChecks(callback: ((Diagnostic) -> Unit)?, vararg extraFiles: KtFile): AnalysisResult {
-    return if (extraFiles.isEmpty()) {
-        KotlinCacheService.getInstance(project).getResolutionFacade(this)
-            .analyzeWithAllCompilerChecks(this, callback)
-    } else {
-        KotlinCacheService.getInstance(project).getResolutionFacade(listOf(this) + extraFiles.toList())
-            .analyzeWithAllCompilerChecks(this, callback)
-    }
-}
+fun KtFile.analyzeWithAllCompilerChecks(callback: ((Diagnostic) -> Unit)?, vararg extraFiles: KtFile): AnalysisResult =
+    KotlinCacheService.getInstance(project).getResolutionFacade(listOf(this) + extraFiles.toList())
+        .analyzeWithAllCompilerChecks(listOf(this), callback)
 
 /**
  * This function is expected to produce the same result as compiler for the given element and its children (including diagnostics,
@@ -195,7 +187,7 @@ fun KtFile.analyzeWithAllCompilerChecks(callback: ((Diagnostic) -> Unit)?, varar
     "Use either KtFile.analyzeWithAllCompilerChecks() or KtElement.analyzeAndGetResult()",
     ReplaceWith("analyzeAndGetResult()")
 )
-fun KtElement.analyzeWithAllCompilerChecks(): AnalysisResult = getResolutionFacade().analyzeWithAllCompilerChecks(this)
+fun KtElement.analyzeWithAllCompilerChecks(): AnalysisResult = getResolutionFacade().analyzeWithAllCompilerChecks(listOf(this))
 
 // this method don't check visibility and collect all descriptors with given fqName
 @OptIn(FrontendInternals::class)
@@ -221,12 +213,3 @@ fun ResolutionFacade.resolveImportReference(
     DeprecationLevel.ERROR
 )
 fun KtElement.analyzeFully(): BindingContext = analyzeWithAllCompilerChecks().bindingContext
-
-val Exception.isItNoDescriptorForDeclarationException: Boolean
-    get() = this is NoDescriptorForDeclarationException || cause?.safeAs<Exception>()?.isItNoDescriptorForDeclarationException == true
-
-inline fun <T> Exception.returnIfNoDescriptorForDeclarationException(crossinline computable: () -> T): T {
-    if (this.isItNoDescriptorForDeclarationException)
-        return computable()
-    else throw this
-}

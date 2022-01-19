@@ -5,7 +5,6 @@ package org.jetbrains.kotlin.idea.quickfix
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.Errors
@@ -37,7 +36,6 @@ object AddStarProjectionsFixFactory : KotlinSingleIntentionActionFactory() {
     }
 }
 
-@Nls
 private val starProjectionFixFamilyName = KotlinBundle.message("fix.add.star.projection.family")
 
 class AddStarProjectionsFix(element: KtUserType, private val argumentCount: Int) : KotlinQuickFixAction<KtUserType>(element) {

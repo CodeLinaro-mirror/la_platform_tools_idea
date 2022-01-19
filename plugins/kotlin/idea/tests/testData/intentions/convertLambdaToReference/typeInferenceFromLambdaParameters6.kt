@@ -1,6 +1,3 @@
-// AFTER-WARNING: Parameter 'fn' is never used
-// AFTER-WARNING: Parameter 'p' is never used
-// AFTER-WARNING: Parameter 'p' is never used
 fun overloadFun(p: Int) {}
 fun overloadFun(p: String) {}
 

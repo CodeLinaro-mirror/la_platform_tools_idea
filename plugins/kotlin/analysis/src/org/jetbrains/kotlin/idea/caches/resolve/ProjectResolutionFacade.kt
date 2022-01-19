@@ -158,55 +158,37 @@ internal class ProjectResolutionFacade(
     ): AnalysisResult {
         assert(elements.isNotEmpty()) { "elements collection should not be empty" }
 
-        val cache = analysisResultsSimpleLock.guarded { analysisResults.value!! }
-        val results = elements.map { analysisResultForElement(it, cache, callback) }
+        val cache = analysisResultsSimpleLock.guarded {
+            analysisResults.value!!
+        }
+        val results =
+            elements.map {
+                val containingKtFile = it.containingKtFile
+                val perFileCache = cache[containingKtFile]
+                try {
+                    perFileCache.getAnalysisResults(it, callback)
+                } catch (e: Throwable) {
+                    if (e is ControlFlowException) {
+                        throw e
+                    }
+                    val actualCache = analysisResultsSimpleLock.guarded {
+                        analysisResults.upToDateOrNull?.get()
+                    }
+                    if (cache !== actualCache) {
+                        throw IllegalStateException("Cache has been invalidated during performing analysis for $containingKtFile", e)
+                    }
+                    throw e
+                }
+            }
+
+        val withError = results.firstOrNull { it.isError() }
         val bindingContext = CompositeBindingContext.create(results.map { it.bindingContext })
-        results.firstOrNull { it.isError() }?.let {
-            return AnalysisResult.internalError(bindingContext, it.error)
+        if (withError != null) {
+            return AnalysisResult.internalError(bindingContext, withError.error)
         }
 
         //TODO: (module refactoring) several elements are passed here in debugger
         return AnalysisResult.success(bindingContext, findModuleDescriptor(elements.first().getModuleInfo()))
-    }
-
-    internal fun getAnalysisResultsForElement(
-        element: KtElement,
-        callback: DiagnosticSink.DiagnosticsCallback? = null
-    ): AnalysisResult {
-        val cache = analysisResultsSimpleLock.guarded {
-            analysisResults.value!!
-        }
-        val result = analysisResultForElement(element, cache, callback)
-        val bindingContext = result.bindingContext
-        result.takeIf { it.isError() }?.let {
-            return AnalysisResult.internalError(bindingContext, it.error)
-        }
-
-        //TODO: (module refactoring) several elements are passed here in debugger
-        return AnalysisResult.success(bindingContext, findModuleDescriptor(element.getModuleInfo()))
-    }
-
-    private fun analysisResultForElement(
-        element: KtElement,
-        cache: SLRUCache<KtFile, PerFileAnalysisCache>,
-        callback: DiagnosticSink.DiagnosticsCallback?
-    ): AnalysisResult {
-        val containingKtFile = element.containingKtFile
-        val perFileCache = cache[containingKtFile]
-        return try {
-            perFileCache.getAnalysisResults(element, callback)
-        } catch (e: Throwable) {
-            if (e is ControlFlowException) {
-                throw e
-            }
-            val actualCache = analysisResultsSimpleLock.guarded {
-                analysisResults.upToDateOrNull?.get()
-            }
-            if (cache !== actualCache) {
-                throw IllegalStateException("Cache has been invalidated during performing analysis for $containingKtFile", e)
-            }
-            throw e
-        }
     }
 
     internal fun fetchAnalysisResultsForElement(element: KtElement): AnalysisResult? {

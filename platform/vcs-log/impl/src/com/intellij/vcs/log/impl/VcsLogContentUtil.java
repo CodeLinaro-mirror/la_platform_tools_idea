@@ -20,6 +20,7 @@ import com.intellij.vcs.log.VcsLogUi;
 import com.intellij.vcs.log.ui.MainVcsLogUi;
 import com.intellij.vcs.log.ui.VcsLogPanel;
 import com.intellij.vcs.log.ui.VcsLogUiEx;
+import com.intellij.vcs.log.ui.VcsLogUiImpl;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -156,6 +157,15 @@ public final class VcsLogContentUtil {
       }
       return false;
     });
+  }
+
+  /**
+   * @deprecated replaced by {@link VcsLogContentUtil#runInMainLog(Project, Consumer)}
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public static void openMainLogAndExecute(@NotNull Project project, @NotNull Consumer<? super VcsLogUiImpl> consumer) {
+    runInMainLog(project, ui -> consumer.consume((VcsLogUiImpl)ui));
   }
 
   public static void runInMainLog(@NotNull Project project, @NotNull Consumer<? super MainVcsLogUi> consumer) {

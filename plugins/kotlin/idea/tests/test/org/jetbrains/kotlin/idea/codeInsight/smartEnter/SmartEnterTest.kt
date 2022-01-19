@@ -2,10 +2,9 @@
 
 package org.jetbrains.kotlin.idea.codeInsight.smartEnter
 
-import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.testFramework.LightProjectDescriptor
-import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
+import com.intellij.testFramework.fixtures.LightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.junit.internal.runners.JUnit38ClassRunner
@@ -94,24 +93,6 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             """
     )
 
-    fun testIfCondition7() = doFunTest(
-        """
-            if<caret>
-        
-            if (true && 
-                false
-            ) return
-            """,
-        """
-            if (<caret>) {
-            }
-        
-            if (true && 
-                false
-            ) return
-            """
-    )
-
     fun testIfThenOneLine1() = doFunTest(
         """
             if (true) println()<caret>
@@ -128,20 +109,6 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             """,
         """
             if (true) println()
-            <caret>
-            """
-    )
-
-    fun testIfThenOneLine3() = doFunTest(
-        """
-            if (true &&
-                false
-            ) <caret>println()
-            """,
-        """
-            if (true &&
-                false
-            ) println()
             <caret>
             """
     )
@@ -1474,63 +1441,6 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
         """
     )
 
-    fun testClassBodyHasNotInitializedJavaInterfaceSuperType() = doFileTest(
-        before = """
-                    class A : I<caret>
-                """,
-        after = """
-                    class A : I {
-                        <caret>
-                    }
-                """,
-        javaFile = """
-                    interface I {}
-                """
-    )
-
-    fun testClassBodyHasNotInitializedJavaClassSuperType() = doFileTest(
-        before = """
-                    class A : C<caret>
-                """,
-        after = """
-                    class A : C() {
-                        <caret>
-                    }
-                """,
-        javaFile = """
-                    class C {}
-                """
-    )
-
-    fun testClassBodyHasNotInitializedAbstractJavaClassSuperType() = doFileTest(
-        before = """
-                    class A : C<caret>
-                """,
-        after = """
-                    class A : C() {
-                        <caret>
-                    }
-                """,
-        javaFile = """
-                    abstract class C {}
-                """
-    )
-
-    fun testClassBodyHasNotInitializedJavaInterfaceAndClassSuperType() = doFileTest(
-        before = """
-                    class A : C, I<caret>
-                """,
-        after = """
-                    class A : C(), I {
-                        <caret>
-                    }
-                """,
-        javaFile = """
-                    interface I {}
-                    class C {}
-                """
-    )
-
     fun testEmptyLine() = doFileTest(
         """fun foo() {}
 <caret>""",
@@ -1646,7 +1556,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
         }
         """
     )
-    
+
     fun doFunTest(before: String, after: String) {
         fun String.withFunContext(): String {
             val bodyText = "//----\n${this.trimIndent()}\n//----"
@@ -1658,8 +1568,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
         doTest(before.withFunContext(), after.withFunContext())
     }
 
-    fun doFileTest(before: String, after: String, javaFile: String = "") {
-        if (javaFile.isNotEmpty()) myFixture.configureByText(JavaFileType.INSTANCE, javaFile.trimIndent().removeFirstEmptyLines())
+    fun doFileTest(before: String, after: String) {
         doTest(before.trimIndent().removeFirstEmptyLines(), after.trimIndent().removeFirstEmptyLines())
     }
 
@@ -1669,7 +1578,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
         myFixture.checkResult(after)
     }
 
-    override fun getProjectDescriptor(): LightProjectDescriptor = LightJavaCodeInsightFixtureTestCase.JAVA_LATEST
+    override fun getProjectDescriptor(): LightProjectDescriptor = LightCodeInsightFixtureTestCase.JAVA_LATEST
 
     private fun String.removeFirstEmptyLines() = this.split("\n").dropWhile { it.isEmpty() }.joinToString(separator = "\n")
 

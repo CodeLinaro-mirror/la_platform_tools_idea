@@ -522,7 +522,7 @@ public class ButtonlessScrollBarUI extends BasicScrollBarUI {
       };
 
 
-      myMacScrollbarFadeTimer = new Alarm();
+      myMacScrollbarFadeTimer = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
       myMacScrollbarFadeAnimator = new Animator("Mac scrollbar fade animator", 30, 300, false) {
         @Override
         protected void paintCycleEnd() {

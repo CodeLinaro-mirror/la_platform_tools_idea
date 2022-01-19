@@ -23,7 +23,6 @@ public class EditorConfigOptionValuePairImpl extends EditorConfigDescribableElem
     visitor.visitOptionValuePair(this);
   }
 
-  @Override
   public void accept(@NotNull PsiElementVisitor visitor) {
     if (visitor instanceof EditorConfigVisitor) accept((EditorConfigVisitor)visitor);
     else super.accept(visitor);
@@ -42,17 +41,20 @@ public class EditorConfigOptionValuePairImpl extends EditorConfigDescribableElem
   }
 
   @Override
-  public @NotNull EditorConfigDescribableElement getFirst() {
+  @NotNull
+  public EditorConfigDescribableElement getFirst() {
     return EditorConfigPsiImplUtils.getFirst(this);
   }
 
   @Override
-  public @NotNull EditorConfigDescribableElement getSecond() {
+  @NotNull
+  public EditorConfigDescribableElement getSecond() {
     return EditorConfigPsiImplUtils.getSecond(this);
   }
 
   @Override
-  public @Nullable EditorConfigDescriptor getDescriptor(boolean smart) {
+  @Nullable
+  public EditorConfigDescriptor getDescriptor(boolean smart) {
     return EditorConfigPsiImplUtils.getDescriptor(this, smart);
   }
 

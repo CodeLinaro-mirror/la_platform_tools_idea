@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.ui;
 
 import com.intellij.icons.AllIcons;
@@ -177,6 +177,17 @@ public class JBUI {
   @NotNull
   public static <T extends JBScalableIcon> T scale(@NotNull T icon) {
     return JBUIScale.scaleIcon(icon);
+  }
+
+  /**
+   * @deprecated Use {@link JBUIScale#scaleIcon(JBScalableIcon)}.
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  @NotNull
+  public static <T extends JBIcon> T scale(@NotNull T icon) {
+    //noinspection unchecked
+    return (T)icon.withIconPreScaled(false);
   }
 
   @NotNull
@@ -409,7 +420,7 @@ public class JBUI {
     }
 
     public static final class ActionsList {
-      public static final Color MNEMONIC_FOREGROUND = JBColor.namedColor("Component.infoForeground", new JBColor(Gray.x99, Gray.x78));
+      public static final Color MNEMONIC_FOREGROUND = JBColor.namedColor("Label.infoForeground", new JBColor(Gray.x78, Gray.x8C));
 
       @NotNull
       public static Insets numberMnemonicInsets() {
@@ -428,7 +439,7 @@ public class JBUI {
 
       @NotNull
       public static int mnemonicIconGap() {
-        return new JBValue.UIInteger("ActionsList.mnemonic.icon.gap", scale(6)).get();
+        return new JBValue.UIInteger("ActionsList.mnemonic.icon.gap", scale(4)).get();
       }
 
       @NotNull
@@ -608,10 +619,6 @@ public class JBUI {
         return getInt("EditorTabs.underlineHeight", DefaultTabs.underlineHeight());
       }
 
-      public static int underlineArc() {
-        return getInt("EditorTabs.underlineArc", 0);
-      }
-
       @NotNull
       public static Color inactiveUnderlineColor() {
         return JBColor.namedColor("EditorTabs.inactiveUnderlineColor", DefaultTabs.inactiveUnderlineColor());
@@ -641,15 +648,6 @@ public class JBUI {
       }
 
       @NotNull
-      public static Color hoverBackground(boolean selected, boolean active) {
-        String key = selected
-                     ? active ? "EditorTabs.hoverSelectedBackground" : "EditorTabs.hoverSelectedInactiveBackground"
-                     : active ? "EditorTabs.hoverBackground" : "EditorTabs.hoverInactiveBackground";
-
-        return JBColor.namedColor(key, Gray.TRANSPARENT);
-      }
-
-      @NotNull
       public static Color inactiveColoredFileBackground() {
         return JBColor.namedColor("EditorTabs.inactiveColoredFileBackground", DefaultTabs.inactiveColoredTabBackground());
       }
@@ -657,16 +655,6 @@ public class JBUI {
       @NotNull
       public static Color underlinedTabForeground() {
         return JBColor.namedColor("EditorTabs.underlinedTabForeground", DefaultTabs.underlinedTabForeground());
-      }
-    }
-
-    public interface DragAndDrop {
-      Color BORDER_COLOR = JBColor.namedColor("DragAndDrop.borderColor", 0x2675BF, 0x2F65CA);
-      Color ROW_BACKGROUND = JBColor.namedColor("DragAndDrop.rowBackground", 0x2675BF26, 0x2F65CA33);
-
-      interface Area {
-        Color FOREGROUND = JBColor.namedColor("DragAndDrop.areaForeground", 0x787878, 0xBABABA);
-        Color BACKGROUND = JBColor.namedColor("DragAndDrop.areaBackground", 0x3D7DCC, 0x404A57);
       }
     }
 
@@ -689,11 +677,6 @@ public class JBUI {
     }
 
     public static final class ToolWindow {
-      @NotNull
-      public static Color background() {
-        return JBColor.namedColor("ToolWindow.background", JBColor.background());
-      }
-
       @NotNull
       public static Color borderColor() {
         return JBColor.namedColor("ToolWindow.HeaderTab.borderColor", DefaultTabs.borderColor());
@@ -736,11 +719,6 @@ public class JBUI {
         return JBColor.namedColor("ToolWindow.HeaderTab.underlinedTabInactiveForeground", underlinedTabForeground());
       }
 
-      @NotNull
-      public static int headerTabPadding() {
-        return getInt("ToolWindow.HeaderTab.padding", JBUIScale.scale(6));
-      }
-
       /**
        * @deprecated obsolete UI
        */
@@ -764,6 +742,16 @@ public class JBUI {
         return hoverInactiveBackground();
       }
 
+      /**
+       * @deprecated obsolete UI
+       */
+      @Deprecated
+      @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+      @NotNull
+      public static Color tabHoveredBackground(boolean active) {
+        return active ? hoverBackground() : hoverInactiveBackground();
+      }
+
       @NotNull
       public static Color headerBackground(boolean active) {
         return active ? headerActiveBackground() : headerBackground();
@@ -782,10 +770,6 @@ public class JBUI {
       @NotNull
       public static Color headerActiveBackground() {
         return JBColor.namedColor("ToolWindow.Header.background", JBColor.namedColor("ToolWindow.header.active.background", 0xE2E6EC));
-      }
-
-      public static int headerPadding() {
-        return getInt("ToolWindow.Header.padding", JBUIScale.scale(6));
       }
 
       /**
@@ -1372,18 +1356,6 @@ public class JBUI {
     return value instanceof Integer ? (Integer)value : defaultValue;
   }
 
-  public static float getFloat(@NonNls @NotNull String propertyName, float defaultValue) {
-    Object value = UIManager.get(propertyName);
-    if (value instanceof Float) return (Float)value;
-    if (value instanceof Double) return ((Double)value).floatValue();
-    if (value instanceof String) {
-      try {
-        return Float.parseFloat((String)value);
-      } catch (NumberFormatException ignore) {}
-    }
-    return defaultValue;
-  }
-
   @NotNull
   private static Icon getIcon(@NonNls @NotNull String propertyName, @NotNull Icon defaultIcon) {
     Icon icon = UIManager.getIcon(propertyName);
@@ -1450,6 +1422,21 @@ public class JBUI {
     @Override
     public boolean update(@Nullable BaseScaleContext context) {
       return super.update(context);
+    }
+  }
+
+  /**
+   * @deprecated Use {@link JBScalableIcon}.
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  @SuppressWarnings("DeprecatedIsStillUsed")
+  public abstract static class JBIcon<T extends JBScalableIcon> extends JBScalableIcon {
+    public JBIcon() {
+      super();
+    }
+    public JBIcon(T icon) {
+      super(icon);
     }
   }
 }

@@ -74,7 +74,6 @@ public final class ThreadTracker {
       "AWT-Shutdown",
       "AWT-Windows",
       "Batik CleanerThread",
-      "Cidr Symbol Building Thread", // ForkJoinPool com.jetbrains.cidr.lang.symbols.symtable.building.OCBuildingActivityExecutionService
       "Cleaner-0", // Thread[Cleaner-0,8,InnocuousThreadGroup], java.lang.ref.Cleaner in android layoutlib, Java9+
       "CompilerThread0",
       "dockerjava-netty",
@@ -99,6 +98,7 @@ public final class ThreadTracker {
       "RMI GC Daemon",
       "RMI TCP ",
       "Save classpath indexes for file loader",
+    "SeedGenerator Thread", // Android Studio: for failures on remote bazel execution
       "Signal Dispatcher",
       "tc-okhttp-stream", // Dockers "com.github.dockerjava.okhttp.UnixDomainSocket.recv"
       "timer-int", //serverIm,

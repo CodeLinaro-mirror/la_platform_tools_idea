@@ -21,8 +21,6 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
-import static com.intellij.execution.ui.FragmentedSettingsBuilder.TOP_INSET;
-
 public class CommandLinePanel extends JPanel {
   private final List<JComponent> myComponents;
   private final JLabel myHintLabel;
@@ -51,7 +49,7 @@ public class CommandLinePanel extends JPanel {
   }
 
   private void buildRows() {
-    WrapLayout layout = new WrapLayout(FlowLayout.LEFT, 0, JBUI.scale(TOP_INSET));
+    WrapLayout layout = new WrapLayout(FlowLayout.LEFT, 0, FragmentedSettingsBuilder.TOP_INSET);
     layout.setFillWidth(true);
     JPanel mainPanel = new JPanel(layout);
     for (JComponent component : myComponents) {

@@ -259,6 +259,7 @@ public final class TreeConflictRefreshablePanel implements Disposable {
           new VcsBackgroundTask<>(
             myVcs.getProject(),
             message("progress.title.accepting.theirs.for.path", filePath(paths.myMainPath)),
+            PerformInBackgroundOption.ALWAYS_BACKGROUND,
             Collections.singletonList(description),
             true
           ) {
@@ -326,6 +327,7 @@ public final class TreeConflictRefreshablePanel implements Disposable {
           new VcsBackgroundTask<>(
             myVcs.getProject(),
             message("progress.title.accepting.yours.for.path", filePath(paths.myMainPath)),
+            PerformInBackgroundOption.ALWAYS_BACKGROUND,
             Collections.singletonList(description),
             true
           ) {

@@ -10,25 +10,22 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * Searches external system project configuration files and build scripts.
+ * @author Denis Zhdanov
  */
 public interface ExternalSystemConfigLocator {
 
   ExtensionPointName<ExternalSystemConfigLocator> EP_NAME = ExtensionPointName.create("com.intellij.externalSystemConfigLocator");
-
-  /**
-   * External system id is needed to find applicable config locator.
-   */
+  
   @NotNull ProjectSystemId getTargetExternalSystemId();
-
+  
   /**
-   * Finds any of external system configuration files which are under {@code configPath}.
-   * <p>
-   * Example: 'gradle' external system stores config file parent as config path, and we might want to locate exact config file
+   * Allows to adjust target external system config file.
+   * <p/>
+   * Example: 'gradle' external system stores config file parent as config path and we might want to locate exact config file
    * given it's directory file.
-   *
-   * @param configPath base config file
-   * @return config file to use (if any)
+   * 
+   * @param configPath  base config file
+   * @return            config file to use (if any)
    */
   @Nullable
   VirtualFile adjust(@NotNull VirtualFile configPath);

@@ -16,12 +16,11 @@ class MarkdownTextExtractor : TextExtractor() {
     if (allowedDomains.contains(TextContent.TextDomain.PLAIN_TEXT) &&
         (MarkdownPsiUtils.isHeaderContent(root) || MarkdownPsiUtils.isParagraph(root))) {
       return TextContentBuilder.FromPsi
-        .withUnknown { it.node.isMarkdownCodeType() }
-        .excluding { e ->
+        .withUnknown { e ->
+          e.node.isMarkdownCodeType() ||
           e.elementType == MarkdownElementTypes.IMAGE ||
           e.firstChild == null && e.parent.node.isMarkdownLinkType() && !isLinkText(e)
         }
-        .removingIndents(" \t")
         .build(root, TextContent.TextDomain.PLAIN_TEXT)
     }
     return null

@@ -15,8 +15,6 @@
  */
 package com.intellij.vcs.log.visible;
 
-import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcs.log.VcsLogDataPack;
@@ -33,11 +31,9 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
-public class VisiblePack implements VcsLogDataPack, UserDataHolder {
+public class VisiblePack implements VcsLogDataPack {
   @NotNull
   public static final VisiblePack EMPTY =
     new VisiblePack(DataPack.EMPTY, EmptyVisibleGraph.getInstance(), false, VcsLogFilterObject.EMPTY_COLLECTION) {
@@ -51,25 +47,25 @@ public class VisiblePack implements VcsLogDataPack, UserDataHolder {
   @NotNull private final VisibleGraph<Integer> myVisibleGraph;
   private final boolean myCanRequestMore;
   @NotNull private final VcsLogFilterCollection myFilters;
-  @NotNull private final Map<Key, Object> myAdditionalData = new ConcurrentHashMap<>();
+  @Nullable private final Object myAdditionalData;
 
   public VisiblePack(@NotNull DataPackBase dataPack,
                      @NotNull VisibleGraph<Integer> graph,
                      boolean canRequestMore,
                      @NotNull VcsLogFilterCollection filters) {
-    this(dataPack, graph, canRequestMore, filters, Collections.emptyMap());
+    this(dataPack, graph, canRequestMore, filters, null);
   }
 
   public VisiblePack(@NotNull DataPackBase dataPack,
                      @NotNull VisibleGraph<Integer> graph,
                      boolean canRequestMore,
                      @NotNull VcsLogFilterCollection filters,
-                     @NotNull Map<Key, Object> additionalData) {
+                     @Nullable Object data) {
     myDataPack = dataPack;
     myVisibleGraph = graph;
     myCanRequestMore = canRequestMore;
     myFilters = filters;
-    myAdditionalData.putAll(additionalData);
+    myAdditionalData = data;
   }
 
   @NotNull
@@ -118,20 +114,8 @@ public class VisiblePack implements VcsLogDataPack, UserDataHolder {
     return myDataPack.getRefsModel().rootAtHead(head);
   }
 
-  @SuppressWarnings("unchecked")
-  @Override
-  public <T> @Nullable T getUserData(@NotNull Key<T> key) {
-    return (T)myAdditionalData.get(key);
-  }
-
-  @Override
-  public <T> void putUserData(@NotNull Key<T> key, @Nullable T value) {
-    myAdditionalData.put(key, value);
-  }
-
-  @NotNull
-  public Map<Key, Object> getAdditionalData() {
-    return myAdditionalData;
+  public <T> T getAdditionalData() {
+    return (T)myAdditionalData;
   }
 
   @Override
@@ -160,7 +144,7 @@ public class VisiblePack implements VcsLogDataPack, UserDataHolder {
     @NotNull private final Throwable myError;
 
     public ErrorVisiblePack(@NotNull DataPackBase dataPack, @NotNull VcsLogFilterCollection filters, @NotNull Throwable error) {
-      super(dataPack, EmptyVisibleGraph.getInstance(), false, filters);
+      super(dataPack, EmptyVisibleGraph.getInstance(), false, filters, null);
       myError = error;
     }
 

@@ -2,8 +2,8 @@
 package com.intellij.ui.tabs.impl
 
 import com.intellij.openapi.rd.fill2DRect
-import com.intellij.openapi.rd.fill2DRoundRect
 import com.intellij.openapi.rd.paint2DLine
+import com.intellij.openapi.util.registry.ExperimentalUI
 import com.intellij.ui.paint.LinePainter2D
 import com.intellij.ui.tabs.JBTabPainter
 import com.intellij.ui.tabs.JBTabsPosition
@@ -50,7 +50,8 @@ open class JBDefaultTabPainter(val theme : TabTheme = DefaultTabTheme()) : JBTab
     }
 
     if(hovered) {
-      (if (active) theme.hoverSelectedBackground else theme.hoverSelectedInactiveBackground).let{
+      if (ExperimentalUI.isNewEditorTabs()) return;
+      (if (active) theme.hoverBackground else theme.hoverInactiveBackground)?.let{
         g.fill2DRect(rect, it)
       }
     }
@@ -64,13 +65,7 @@ open class JBDefaultTabPainter(val theme : TabTheme = DefaultTabTheme()) : JBTab
                               g: Graphics2D,
                               active: Boolean) {
     val underline = underlineRectangle(position, rect, theme.underlineHeight)
-    val arc = theme.underlineArc
-    val color = if (active) theme.underlineColor else theme.inactiveUnderlineColor
-    if (arc > 0) {
-      g.fill2DRoundRect(underline, arc.toDouble(), color)
-    } else {
-      g.fill2DRect(underline, color)
-    }
+    g.fill2DRect(underline, if (active) theme.underlineColor else theme.inactiveUnderlineColor)
   }
 
   override fun paintBorderLine(g: Graphics2D, thickness: Int, from: Point, to: Point) {

@@ -38,5 +38,4 @@ public class DataFlowInspection16Test extends DataFlowInspectionTestCase {
                        "public @interface NonnullByDefault {}");
     doTest(); 
   }
-  public void testStaticFieldInAnonymous() { doTest(); }
 }

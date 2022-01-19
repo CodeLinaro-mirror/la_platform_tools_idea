@@ -1,5 +1,3 @@
-// AFTER-WARNING: Parameter 'action' is never used
-// AFTER-WARNING: Parameter 't' is never used
 package one.two.three
 
 fun Int.test() = Unit

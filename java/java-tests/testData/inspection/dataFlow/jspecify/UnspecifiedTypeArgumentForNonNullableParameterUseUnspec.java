@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import org.jspecify.nullness.NullMarked;
-import org.jspecify.nullness.NullnessUnspecified;
+import org.jspecify.annotations.DefaultNonNull;
+import org.jspecify.annotations.NullnessUnspecified;
 
-@NullMarked
+@DefaultNonNull
 class UnspecifiedTypeArgumentForNonNullableParameterUseUnspec {
   interface SupplierWithNonNullableBound<E> {
     @NullnessUnspecified

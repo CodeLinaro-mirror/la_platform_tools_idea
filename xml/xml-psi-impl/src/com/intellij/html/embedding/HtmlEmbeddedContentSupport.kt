@@ -12,7 +12,6 @@ import com.intellij.openapi.application.Application
 import com.intellij.openapi.extensions.ExtensionPoint
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.psi.tree.IElementType
-import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.TestOnly
 import java.util.stream.Stream
@@ -25,9 +24,7 @@ interface HtmlEmbeddedContentSupport {
   fun createEmbeddedContentProviders(lexer: BaseHtmlLexer): List<HtmlEmbeddedContentProvider> = emptyList()
 
   companion object {
-    @JvmField
-    @ApiStatus.Internal
-    val EP_NAME: ExtensionPointName<HtmlEmbeddedContentSupport> = ExtensionPointName.create(
+    internal val EP_NAME: ExtensionPointName<HtmlEmbeddedContentSupport> = ExtensionPointName.create(
       "com.intellij.html.embeddedContentSupport")
 
     fun getContentSupports(): @NotNull Stream<HtmlEmbeddedContentSupport> {

@@ -3,8 +3,6 @@ package com.intellij.coverage;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
-import com.intellij.openapi.util.Ref;
-import com.intellij.psi.PsiClass;
 import com.intellij.rt.coverage.instrumentation.SourceLineCounter;
 import org.jetbrains.coverage.gnu.trove.TIntObjectHashMap;
 import org.jetbrains.coverage.org.objectweb.asm.ClassReader;
@@ -14,39 +12,35 @@ import java.util.List;
 import java.util.Set;
 
 public final class SourceLineCounterUtil {
-  public static boolean collectNonCoveredClassInfo(final PackageAnnotator.ClassCoverageInfo classCoverageInfo, byte[] content,
+  public static boolean collectNonCoveredClassInfo(final PackageAnnotator.ClassCoverageInfo classCoverageInfo,
+                                                   final PackageAnnotator.PackageCoverageInfo packageCoverageInfo, byte[] content,
                                                    final boolean excludeLines, final boolean ignoreEmptyPrivateConstructors,
-                                                   final boolean ignoreGeneratedDefaultConstructor, PsiClass psiClass) {
+                                                   final Condition<? super String> includeDescriptionCondition) {
     if (content == null) return false;
     ClassReader reader = new ClassReader(content, 0, content.length);
 
     SourceLineCounter counter = new SourceLineCounter(null, excludeLines, null, ignoreEmptyPrivateConstructors);
-    reader.accept(counter, ClassReader.SKIP_FRAMES);
-    Set<String> descriptions = new HashSet<>();
-    TIntObjectHashMap<String> lines = counter.getSourceLines();
-    Ref<Boolean> isDefaultConstructorGenerated = new Ref<>();
+    reader.accept(counter, 0);
+    Set<Object> descriptions = new HashSet<>();
+    TIntObjectHashMap lines = counter.getSourceLines();
     lines.forEachEntry((line, description) -> {
-      if (isDefaultConstructorGenerated.isNull() &&
-          ignoreGeneratedDefaultConstructor &&
-          PackageAnnotator.isDefaultConstructor(description)) {
-        isDefaultConstructorGenerated.set(PackageAnnotator.isGeneratedDefaultConstructor(psiClass, description));
+      if (includeDescriptionCondition.value((String)description)) {
+        classCoverageInfo.totalLineCount++;
+        packageCoverageInfo.totalLineCount++;
+        descriptions.add(description);
       }
-      if (!isDefaultConstructorGenerated.isNull() &&
-          isDefaultConstructorGenerated.get() &&
-          PackageAnnotator.isDefaultConstructor(description)) {
-        return true;
-      }
-      classCoverageInfo.totalLineCount++;
-      descriptions.add(description);
       return true;
     });
 
     classCoverageInfo.totalMethodCount += descriptions.size();
-    classCoverageInfo.totalBranchCount += counter.getTotalBranches();
+    packageCoverageInfo.totalMethodCount += descriptions.size();
 
     if (!counter.isInterface()) {
-      classCoverageInfo.totalClassCount = 1;
+      packageCoverageInfo.totalClassCount++;
     }
+
+    packageCoverageInfo.totalBranchCount += counter.getTotalBranches();
+    classCoverageInfo.totalBranchCount += counter.getTotalBranches();
 
     return !counter.isInterface();
   }
@@ -61,9 +55,9 @@ public final class SourceLineCounterUtil {
 
     String qualifiedName = reader.getClassName();
     Condition<String> includeDescriptionCondition = description -> !JavaCoverageOptionsProvider.getInstance(project).isGeneratedConstructor(qualifiedName, description);
-    TIntObjectHashMap<String> lines = collector.getSourceLines();
+    TIntObjectHashMap lines = collector.getSourceLines();
     lines.forEachEntry((line, description) -> {
-      if (includeDescriptionCondition.value(description)) {
+      if (includeDescriptionCondition.value((String)description)) {
         line--;
         uncoveredLines.add(line);
       }

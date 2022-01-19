@@ -213,11 +213,6 @@ public class PyUnusedLocalInspectionTest extends PyInspectionTestCase {
     doTest();
   }
 
-  // PY-50943
-  public void testIncompleteFunctionWithoutName() {
-    doTest();
-  }
-
   @NotNull
   @Override
   protected Class<? extends PyInspection> getInspectionClass() {

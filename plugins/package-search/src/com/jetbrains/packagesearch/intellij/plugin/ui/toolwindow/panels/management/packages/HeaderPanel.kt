@@ -10,20 +10,24 @@ import com.jetbrains.packagesearch.intellij.plugin.fus.PackageSearchEventsLogger
 import com.jetbrains.packagesearch.intellij.plugin.ui.PackageSearchUI
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.operations.PackageSearchOperation
 import com.jetbrains.packagesearch.intellij.plugin.ui.updateAndRepaint
+import com.jetbrains.packagesearch.intellij.plugin.ui.util.Displayable
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.ScaledPixels
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.emptyBorder
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.scaled
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.scaledEmptyBorder
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.scrollbarWidth
-import kotlinx.coroutines.Deferred
+import com.jetbrains.packagesearch.intellij.plugin.util.AppUI
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.jetbrains.annotations.Nls
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import javax.swing.JLabel
 
 @Suppress("MagicNumber") // Swing dimension constants
 internal class HeaderPanel(
-    onUpdateAllLinkClicked: (Deferred<List<PackageSearchOperation<*>>>) -> Unit
-) : BorderLayoutPanel() {
+    onUpdateAllLinkClicked: (List<PackageSearchOperation<*>>) -> Unit
+) : BorderLayoutPanel(), Displayable<HeaderPanel.ViewModel> {
 
     private val titleLabel = JLabel().apply {
         border = scaledEmptyBorder(right = 20)
@@ -48,7 +52,7 @@ internal class HeaderPanel(
         insets.top = 3.scaled()
     }
 
-    private var updateAllOperations: Deferred<List<PackageSearchOperation<*>>>? = null
+    private var updateAllOperations: List<PackageSearchOperation<*>> = emptyList()
 
     init {
         PackageSearchUI.setHeight(this, PackageSearchUI.SmallHeaderHeight)
@@ -75,7 +79,7 @@ internal class HeaderPanel(
         )
 
         updateAllLink.addHyperlinkListener {
-            updateAllOperations?.let { onUpdateAllLinkClicked(it) }
+            onUpdateAllLinkClicked(updateAllOperations)
             PackageSearchEventsLogger.logUpgradeAll()
         }
     }
@@ -90,11 +94,22 @@ internal class HeaderPanel(
         }
     }
 
-    fun display(viewModel: PackagesHeaderData) {
-        titleLabel.text = viewModel.labelText
+    internal data class ViewModel(
+        @Nls val title: String,
+        val rowsCount: Int?,
+        val availableUpdatesCount: Int,
+        val updateOperations: List<PackageSearchOperation<*>>
+    )
 
-        countLabel.isVisible = true
-        countLabel.text = viewModel.count.toString()
+    override suspend fun display(viewModel: ViewModel) = withContext(Dispatchers.AppUI) {
+        titleLabel.text = viewModel.title
+
+        if (viewModel.rowsCount != null) {
+            countLabel.isVisible = true
+            countLabel.text = viewModel.rowsCount.toString()
+        } else {
+            countLabel.isVisible = false
+        }
 
         updateAllOperations = viewModel.updateOperations
         if (viewModel.availableUpdatesCount > 0) {

@@ -4,7 +4,6 @@ package com.intellij.openapi.options.ex;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.codeStyle.DisplayPrioritySortable;
-import org.jetbrains.annotations.ApiStatus;
 
 import java.util.Comparator;
 
@@ -13,8 +12,7 @@ import java.util.Comparator;
  *
  * @see DisplayPrioritySortable
  */
-@ApiStatus.Internal
-public interface Weighted {
+interface Weighted {
   int getWeight();
 
   Comparator<Configurable> COMPARATOR = (configurable1, configurable2) -> {

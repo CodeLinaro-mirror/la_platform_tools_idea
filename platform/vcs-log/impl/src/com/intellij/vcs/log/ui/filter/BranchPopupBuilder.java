@@ -4,7 +4,6 @@ package com.intellij.vcs.log.ui.filter;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
-import com.intellij.openapi.actionSystem.Separator;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -36,11 +35,11 @@ public abstract class BranchPopupBuilder {
   @NotNull
   protected abstract AnAction createAction(@NotNull @NlsActions.ActionText String name, @NotNull Collection<? extends VcsRef> refs);
 
-  protected void createRecentAction(@NotNull List<AnAction> actionGroup, @NotNull List<String> recentItem) {
+  protected void createRecentAction(@NotNull DefaultActionGroup actionGroup, @NotNull List<String> recentItem) {
     assert myRecentItems == null;
   }
 
-  protected void createFavoritesAction(@NotNull List<AnAction> actionGroup, @NotNull List<String> favorites) {
+  protected void createFavoritesAction(@NotNull DefaultActionGroup actionGroup, @NotNull List<String> favorites) {
   }
 
   @NotNull
@@ -74,17 +73,15 @@ public abstract class BranchPopupBuilder {
 
   @NotNull
   private DefaultActionGroup createActions(@NotNull Groups groups) {
-    List<AnAction> actionGroup = new ArrayList<>();
+    DefaultActionGroup actionGroup = new DefaultActionGroup();
     for (Map.Entry<@NlsActions.ActionText String, Collection<VcsRef>> entry : groups.singletonGroups.entrySet()) {
       actionGroup.add(createAction(entry.getKey(), entry.getValue()));
     }
     if (!groups.recentGroups.isEmpty()) {
-      List<AnAction> recents = new ArrayList<>();
+      DefaultActionGroup recentGroup = new DefaultActionGroup(VcsLogBundle.message("vcs.log.filter.recent"), true);
       for (List<String> recentItem : groups.recentGroups) {
-        createRecentAction(recents, recentItem);
+        createRecentAction(recentGroup, recentItem);
       }
-      DefaultActionGroup recentGroup = new DefaultActionGroup(VcsLogBundle.message("vcs.log.filter.recent"), recents);
-      recentGroup.setPopup(true);
       actionGroup.add(recentGroup);
     }
     if (groups.favoriteGroups.size() > 1) {
@@ -95,22 +92,20 @@ public abstract class BranchPopupBuilder {
       actionGroup.add(createAction(entry.getKey(), entry.getValue()));
     }
     for (Map.Entry<@NlsContexts.Separator String, TreeMap<@NlsActions.ActionText String, Collection<VcsRef>>> group : groups.expandedGroups.entrySet()) {
-      actionGroup.add(Separator.create(group.getKey()));
+      actionGroup.addSeparator(group.getKey());
       for (Map.Entry<@NlsActions.ActionText String, Collection<VcsRef>> entry : group.getValue().entrySet()) {
         actionGroup.add(createAction(entry.getKey(), entry.getValue()));
       }
     }
-    actionGroup.add(Separator.getInstance());
+    actionGroup.addSeparator();
     for (Map.Entry<@NlsActions.ActionText String, TreeMap<@NlsActions.ActionText String, Collection<VcsRef>>> group : groups.collapsedGroups.entrySet()) {
-      List<AnAction> collapsed = new ArrayList<>();
+      DefaultActionGroup popupGroup = DefaultActionGroup.createPopupGroup(() -> group.getKey());
       for (Map.Entry<@NlsActions.ActionText String, Collection<VcsRef>> entry : group.getValue().entrySet()) {
-        collapsed.add(createCollapsedAction(entry.getKey(), entry.getValue()));
+        popupGroup.add(createCollapsedAction(entry.getKey(), entry.getValue()));
       }
-      DefaultActionGroup popupGroup = new DefaultActionGroup(group.getKey(), collapsed);
-      popupGroup.setPopup(true);
       actionGroup.add(popupGroup);
     }
-    return new DefaultActionGroup(actionGroup);
+    return actionGroup;
   }
 
   private static class Groups {

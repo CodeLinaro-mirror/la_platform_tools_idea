@@ -170,7 +170,6 @@ open class KotlinElementDescriptionProviderBase : ElementDescriptionProvider {
                         namedElement !is KtTypeParameter &&
                         namedElement !is KtParameter &&
                         namedElement !is KtConstructor<*>
-                @Suppress("HardCodedStringLiteral")
                 val desc = when (namedElement) {
                     is KtFunction -> {
                         val baseText = buildString {

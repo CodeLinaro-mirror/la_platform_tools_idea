@@ -56,7 +56,7 @@ internal fun deleteInplaceTemplateSegments(
     Pair(marker, content)
   }
 
-  DocumentUtil.executeInBulk(document) {
+  DocumentUtil.executeInBulk(document, true) {
     for (range in templateSegmentRanges.asReversed()) {
       document.deleteString(range.startOffset, range.endOffset)
     }
@@ -64,7 +64,7 @@ internal fun deleteInplaceTemplateSegments(
 
   return Runnable {
     WriteCommandAction.writeCommandAction(project).run<Throwable> {
-      DocumentUtil.executeInBulk(document) {
+      DocumentUtil.executeInBulk(document, true) {
         for ((marker: RangeMarker, content: String) in stateBefore) {
           document.replaceString(marker.startOffset, marker.endOffset, content)
         }

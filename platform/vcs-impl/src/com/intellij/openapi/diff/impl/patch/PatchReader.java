@@ -2,7 +2,6 @@
 package com.intellij.openapi.diff.impl.patch;
 
 import com.google.common.collect.Iterables;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.text.LineTokenizer;
 import com.intellij.openapi.util.text.StringUtil;
@@ -552,7 +551,7 @@ public final class PatchReader {
         pos = fileName.indexOf(' ');
       }
       if (pos >= 0) {
-        @NlsSafe String versionId = fileName.substring(pos).trim();
+        String versionId = fileName.substring(pos).trim();
         fileName = fileName.substring(0, pos);
         if (versionId.length() > 0 && !ourEmptyRevisionInfoPattern.matcher(versionId).matches()) {
           if (before) {

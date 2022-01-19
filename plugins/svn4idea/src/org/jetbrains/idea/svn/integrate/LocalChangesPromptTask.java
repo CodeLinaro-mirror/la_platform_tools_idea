@@ -69,7 +69,7 @@ public class LocalChangesPromptTask extends BaseMergeTask {
 
   @Override
   public void run() {
-    List<LocalChangeList> localChangeLists = ChangeListManager.getInstance(myMergeContext.getProject()).getChangeLists();
+    List<LocalChangeList> localChangeLists = ChangeListManager.getInstance(myMergeContext.getProject()).getChangeListsCopy();
     Intersection intersection = myChangeListsToMerge != null
                                 ? getChangesIntersection(localChangeLists, myChangeListsToMerge)
                                 : getAllChangesIntersection(localChangeLists);

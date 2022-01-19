@@ -1,7 +1,8 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.diagnostic;
 
 import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.PathUtilRt;
@@ -9,19 +10,11 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Base64;
 
-/**
- * @see com.intellij.diagnostic.AttachmentFactory
- */
-public final class Attachment {
+public class Attachment {
   private static final Logger LOG = Logger.getInstance(Attachment.class);
 
   public static final Attachment[] EMPTY_ARRAY = new Attachment[0];
@@ -29,9 +22,8 @@ public final class Attachment {
   private final String myPath;
   private final String myDisplayText;
   private final byte @Nullable [] myBytes;
-  private final @Nullable Path myTemporaryFile;
-  // opt-out for traces, opt-in otherwise
-  private boolean myIncluded;
+  private final @Nullable File myTemporaryFile;
+  private boolean myIncluded;   // opt-out for traces, opt-in otherwise
 
   public Attachment(@NotNull @NonNls String name, @NotNull Throwable throwable) {
     this(name + ".trace", ExceptionUtil.getThrowableText(throwable));
@@ -55,7 +47,7 @@ public final class Attachment {
     myPath = path;
     myDisplayText = displayText;
     myBytes = bytes;
-    myTemporaryFile = temporaryFile == null ? null : temporaryFile.toPath();
+    myTemporaryFile = temporaryFile;
   }
 
   @NotNull
@@ -87,7 +79,7 @@ public final class Attachment {
 
     if (myTemporaryFile != null) {
       try {
-        return Files.readAllBytes(myTemporaryFile);
+        return FileUtil.loadFileBytes(myTemporaryFile);
       }
       catch (IOException e) {
         LOG.error("Failed to read attachment content from temp. file " + myTemporaryFile, e);
@@ -105,9 +97,9 @@ public final class Attachment {
 
     if (myTemporaryFile != null) {
       try {
-        return Files.newInputStream(myTemporaryFile);
+        return new FileInputStream(myTemporaryFile);
       }
-      catch (IOException e) {
+      catch (FileNotFoundException e) {
         LOG.error("Failed to read attachment content from temp. file " + myTemporaryFile, e);
       }
     }

@@ -9,7 +9,6 @@ import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollect
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.SaveAndSyncHandler;
 import com.intellij.ide.lightEdit.LightEdit;
-import com.intellij.ide.lightEdit.LightEditService;
 import com.intellij.ide.lightEdit.LightEditUtil;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationGroup;
@@ -244,11 +243,11 @@ public abstract class ProjectManagerImpl extends ProjectManagerEx implements Dis
     return true;
   }
 
+  @SuppressWarnings({"AssignmentToStaticFieldFromInstanceMethod", "deprecation"})
   void updateTheOnlyProjectField() {
     boolean isDefaultInitialized = isDefaultProjectInitialized();
-    boolean isLightEditActive = LightEditService.getInstance().getProject() != null;
     synchronized (lock) {
-      ProjectCoreUtil.updateInternalTheOnlyProjectFieldTemporarily(myOpenProjects.length == 1 && !isDefaultInitialized && !isLightEditActive ? myOpenProjects[0] : null);
+      ProjectCoreUtil.theProject = myOpenProjects.length == 1 && !isDefaultInitialized ? myOpenProjects[0] : null;
     }
   }
 
@@ -282,11 +281,6 @@ public abstract class ProjectManagerImpl extends ProjectManagerEx implements Dis
   @Override
   public boolean forceCloseProject(@NotNull Project project) {
     return closeProject(project, /* isSaveProject = */ false, /* dispose = */ true, /* checkCanClose = */ false);
-  }
-
-  @Override
-  public boolean saveAndForceCloseProject(@NotNull Project project) {
-    return closeProject(project, /* isSaveProject = */ true, /* dispose = */ true, /* checkCanClose = */ false);
   }
 
   // return true if successful
@@ -473,8 +467,7 @@ public abstract class ProjectManagerImpl extends ProjectManagerEx implements Dis
     });
     // see "why is called after message bus" in the fireProjectOpened
     for (int i = projectComponents.size() - 1; i >= 0; i--) {
-      //noinspection deprecation
-      ProjectComponent component = projectComponents.get(i);
+      @SuppressWarnings("deprecation") ProjectComponent component = projectComponents.get(i);
       try {
         component.projectClosed();
       }
@@ -511,7 +504,7 @@ public abstract class ProjectManagerImpl extends ProjectManagerEx implements Dis
 
     for (ProjectManagerListener listener : getAllListeners(project)) {
       try {
-        //noinspection deprecation
+        @SuppressWarnings("deprecation")
         boolean canClose = listener instanceof VetoableProjectManagerListener ? ((VetoableProjectManagerListener)listener).canClose(project) : listener.canCloseProject(project);
         if (!canClose) {
           LOG.debug("close canceled by " + listener);

@@ -201,8 +201,7 @@ public class GotoFileItemProvider extends DefaultChooseByNameItemProvider {
     return matching;
   }
 
-  private boolean isSubpath(@NotNull String path, String subpath) {
-    subpath = ChooseByNamePopup.getTransformedPattern(subpath, myModel).stripTrailing();
+  private static boolean isSubpath(@NotNull String path, String subpath) {
     path = FileUtilRt.toSystemIndependentName(path);
     subpath = FileUtilRt.toSystemIndependentName(subpath);
     return path.endsWith(subpath);

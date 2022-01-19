@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.engine;
 
 import com.intellij.debugger.JavaDebuggerBundle;
@@ -10,7 +10,6 @@ import com.intellij.debugger.engine.evaluation.TextWithImportsImpl;
 import com.intellij.debugger.engine.events.DebuggerContextCommandImpl;
 import com.intellij.debugger.impl.DebuggerContextImpl;
 import com.intellij.debugger.impl.DebuggerSession;
-import com.intellij.debugger.impl.DebuggerUtilsAsync;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.jdi.*;
 import com.intellij.debugger.settings.DebuggerSettings;
@@ -161,19 +160,16 @@ public class JavaStackFrame extends XStackFrame implements JVMStackFrameInfoProv
     return null;
   }
 
-  protected void addStaticGroup(EvaluationContextImpl evaluationContext, XCompositeNode node) {
+  @Nullable
+  protected XValueGroup createStaticGroup(EvaluationContextImpl evaluationContext) {
     Location location = myDescriptor.getLocation();
     if (location != null && myDescriptor.getThisObject() == null) {
-      ReferenceType type = location.declaringType();
-      // preload fields
-      DebuggerUtilsAsync.allFields(type).thenAccept(__ -> {
-        StaticDescriptorImpl staticDescriptor = myNodeManager.getStaticDescriptor(myDescriptor, type);
-        if (staticDescriptor.isExpandable()) {
-          node.addChildren(
-            XValueChildrenList.topGroups(List.of(new JavaStaticGroup(staticDescriptor, evaluationContext, myNodeManager))), false);
-        }
-      });
+      StaticDescriptorImpl staticDescriptor = myNodeManager.getStaticDescriptor(myDescriptor, location.declaringType());
+      if (staticDescriptor.isExpandable()) {
+        return new JavaStaticGroup(staticDescriptor, evaluationContext, myNodeManager);
+      }
     }
+    return null;
   }
 
   @NotNull
@@ -216,11 +212,9 @@ public class JavaStackFrame extends XStackFrame implements JVMStackFrameInfoProv
       if (evaluationContext == null) {
         return;
       }
-
-      // the message is disabled, see IDEA-281129
-      //if (!debuggerContext.isEvaluationPossible()) {
-      //  node.setErrorMessage(MessageDescriptor.EVALUATION_NOT_POSSIBLE.getLabel());
-      //}
+      if (!debuggerContext.isEvaluationPossible()) {
+        node.setErrorMessage(MessageDescriptor.EVALUATION_NOT_POSSIBLE.getLabel());
+      }
 
       // this node
       XNamedValue thisNode = createThisNode(evaluationContext);
@@ -229,7 +223,10 @@ public class JavaStackFrame extends XStackFrame implements JVMStackFrameInfoProv
       }
 
       // static group
-      addStaticGroup(evaluationContext, node);
+      XValueGroup staticGroup = createStaticGroup(evaluationContext);
+      if (staticGroup != null) {
+        children.addTopGroup(staticGroup);
+      }
 
       // last method return value if any
       createReturnValueNodes(evaluationContext).forEach(children::add);
@@ -366,11 +363,11 @@ public class JavaStackFrame extends XStackFrame implements JVMStackFrameInfoProv
     Set<String> alreadyCollected = new HashSet<>(usedVars.first);
     usedVars.second.stream().map(TextWithImports::getText).forEach(alreadyCollected::add);
     Set<TextWithImports> extra = new HashSet<>();
-    FrameExtraVariablesProvider.EP_NAME.forEachExtensionSafe(provider -> {
+    for (FrameExtraVariablesProvider provider : FrameExtraVariablesProvider.EP_NAME.getExtensionList()) {
       if (provider.isAvailable(sourcePosition, evalContext)) {
         extra.addAll(provider.collectVariables(sourcePosition, evalContext, alreadyCollected));
       }
-    });
+    }
     return extra;
   }
 
@@ -418,7 +415,9 @@ public class JavaStackFrame extends XStackFrame implements JVMStackFrameInfoProv
   }
 
   protected void superBuildVariables(final EvaluationContextImpl evaluationContext, XValueChildrenList children) throws EvaluateException {
-    buildLocalVariables(evaluationContext, children, getVisibleVariables());
+    for (LocalVariableProxyImpl local : getVisibleVariables()) {
+      children.add(JavaValue.create(myNodeManager.getLocalVariableDescriptor(null, local), evaluationContext, myNodeManager));
+    }
   }
 
   @NotNull

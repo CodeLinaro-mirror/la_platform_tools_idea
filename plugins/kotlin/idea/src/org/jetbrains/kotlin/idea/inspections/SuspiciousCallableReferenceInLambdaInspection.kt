@@ -49,7 +49,7 @@ class SuspiciousCallableReferenceInLambdaInspection : AbstractKotlinInspection()
             }
 
             val quickFix = if (canMove(lambdaExpression, callableReference, context))
-                IntentionWrapper(MoveIntoParenthesesIntention())
+                IntentionWrapper(MoveIntoParenthesesIntention(), lambdaExpression.containingFile)
             else
                 null
 

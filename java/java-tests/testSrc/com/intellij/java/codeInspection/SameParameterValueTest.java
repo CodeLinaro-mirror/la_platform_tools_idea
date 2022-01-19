@@ -62,13 +62,7 @@ public class SameParameterValueTest extends JavaInspectionTestCase {
   }
 
   public void testSimpleVararg() {
-    boolean previous = myTool.ignoreWhenRefactoringIsComplicated;
-    try {
-      myTool.ignoreWhenRefactoringIsComplicated = false;
-      doTest(getTestDir(), myTool, false, true);
-    } finally {
-      myTool.ignoreWhenRefactoringIsComplicated = previous;
-    }
+    doTest(getTestDir(), myTool, false, true);
   }
   
   public void testMethodWithSuper() {

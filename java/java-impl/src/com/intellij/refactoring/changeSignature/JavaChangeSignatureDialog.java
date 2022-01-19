@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.changeSignature;
 
 import com.intellij.codeInsight.completion.CompletionResultSet;
@@ -362,8 +362,7 @@ public class JavaChangeSignatureDialog extends ChangeSignatureDialogBase<Paramet
               additionalPanel.add(createLabeledPanel(message, myDefaultValueEditor), BorderLayout.WEST);
 
               if (!isGenerateDelegate()) {
-                myAnyVar = new JCheckBox(JavaRefactoringBundle.message("change.signature.use.any.checkbox"),
-                                         item.parameter.isUseAnySingleVariable());
+                myAnyVar = new JCheckBox(JavaRefactoringBundle.message("change.signature.use.any.checkbox"));
                 UIUtil.applyStyle(UIUtil.ComponentStyle.SMALL, myAnyVar);
                 DialogUtil.registerMnemonic(myAnyVar, '&');
                 myAnyVar.addActionListener(new ActionListener() {
@@ -372,7 +371,11 @@ public class JavaChangeSignatureDialog extends ChangeSignatureDialogBase<Paramet
                     item.parameter.setUseAnySingleVariable(myAnyVar.isSelected());
                   }
                 });
-                additionalPanel.add(createLabeledPanel(" "/* for correct vertical alignment */, myAnyVar), BorderLayout.CENTER);
+                final JPanel anyVarPanel = new JPanel(new BorderLayout());
+                anyVarPanel.add(myAnyVar, BorderLayout.SOUTH);
+                UIUtil.addInsets(anyVarPanel, JBUI.insetsBottom(8));
+                additionalPanel.add(anyVarPanel, BorderLayout.CENTER);
+                //additionalPanel.setPreferredSize(new Dimension(t.getWidth() / 3, -1));
               }
               add(additionalPanel, BorderLayout.SOUTH);
             }

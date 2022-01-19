@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.plugins.github.pullrequest.action
 
@@ -19,9 +19,6 @@ class GHPRReloadChangesAction
   }
 
   override fun actionPerformed(e: AnActionEvent) {
-    val dataProvider = e.getRequiredData(GHPRActionKeys.PULL_REQUEST_DATA_PROVIDER)
-
-    dataProvider.changesData.reloadChanges()
-    dataProvider.viewedStateData.reset()
+    e.getRequiredData(GHPRActionKeys.PULL_REQUEST_DATA_PROVIDER).changesData.reloadChanges()
   }
 }

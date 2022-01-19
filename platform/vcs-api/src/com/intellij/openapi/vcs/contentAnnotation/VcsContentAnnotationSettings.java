@@ -44,7 +44,7 @@ public class VcsContentAnnotationSettings implements PersistentStateComponent<Vc
     return (int)TimeUnit.MILLISECONDS.toDays(myState.myLimit);
   }
 
-  public void setLimitDays(int days) {
+  public void setLimit(int days) {
     myState.myLimit = TimeUnit.DAYS.toMillis(days);
   }
 

@@ -1,8 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.ui.preview.html
 
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
@@ -10,38 +8,18 @@ import org.intellij.markdown.html.GeneratingProvider
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.html.entities.EntityConverter
 import org.intellij.plugins.markdown.extensions.MarkdownCodeFencePluginGeneratingProvider
-import org.intellij.plugins.markdown.extensions.common.highlighter.MarkdownCodeFencePreviewHighlighter
-import org.intellij.plugins.markdown.extensions.jcef.commandRunner.CommandRunnerExtension
+import java.util.*
 
-internal class MarkdownCodeFenceGeneratingProvider(private val pluginCacheProviders: Array<MarkdownCodeFencePluginGeneratingProvider>,
-                                                   private val project: Project? = null,
-                                                   private val file: VirtualFile? = null)
+internal class MarkdownCodeFenceGeneratingProvider(private val pluginCacheProviders: Array<MarkdownCodeFencePluginGeneratingProvider>)
   : GeneratingProvider {
 
-  private fun pluginGeneratedHtml(language: String?, codeFenceContent: String, codeFenceRawContent: String, node: ASTNode): String {
-    if (language == null) {
-      return insertCodeOffsets(codeFenceContent, node)
-    }
-    val html = pluginCacheProviders
+  private fun pluginGeneratedHtml(language: String, codeFenceContent: String, codeFenceRawContent: String, node: ASTNode): String {
+    return pluginCacheProviders
       .filter { it.isApplicable(language) }.stream()
       .findFirst()
-      .map {
-        if (it is MarkdownCodeFencePreviewHighlighter && file != null) {
-          it.generateHtmlForFile(language, codeFenceRawContent, node, file)
-        } else {
-          it.generateHtml(language, codeFenceRawContent, node)
-        }
-      }
+      .map { it.generateHtml(language, codeFenceRawContent, node) }
       .orElse(insertCodeOffsets(codeFenceContent, node))
-
-    return processCodeBlock(codeFenceRawContent, language) + html
   }
-
-  private fun processCodeBlock(codeFenceRawContent: String, language: String): String =
-    CommandRunnerExtension.getRunnerByFile(file)?.processCodeBlock(codeFenceRawContent, language) ?: ""
-
-  private fun processCodeLine(rawCodeLine: String): String =
-    CommandRunnerExtension.getRunnerByFile(file)?.processCodeLine(rawCodeLine, true) ?: ""
 
   override fun processNode(visitor: HtmlGenerator.HtmlGeneratingVisitor, text: String, node: ASTNode) {
     val indentBefore = node.getTextInNode(text).commonPrefixWith(" ".repeat(10)).length
@@ -79,7 +57,10 @@ internal class MarkdownCodeFenceGeneratingProvider(private val pluginCacheProvid
 
     if (state == 1) {
       visitor.consumeHtml(
-        pluginGeneratedHtml(language, codeFenceContent.toString(), codeFenceRawContent.toString(), node)
+        if (language != null) {
+          pluginGeneratedHtml(language, codeFenceContent.toString(), codeFenceRawContent.toString(), node)
+        }
+        else insertCodeOffsets(codeFenceContent.toString(), node)
       )
     }
 
@@ -104,7 +85,7 @@ internal class MarkdownCodeFenceGeneratingProvider(private val pluginCacheProvid
     var left = baseOffset
     for (line in content.lines()) {
       val right = left + line.length
-      lines.add("<span ${HtmlGenerator.SRC_ATTRIBUTE_NAME}='$left..${left + line.length}'>${processCodeLine(line) + escape(line)}</span>")
+      lines.add("<span ${HtmlGenerator.SRC_ATTRIBUTE_NAME}='$left..${left + line.length}'>${escape(line)}</span>")
       left = right + 1
     }
     return lines.joinToString(

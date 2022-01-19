@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.openapi.Disposable;
@@ -11,8 +11,6 @@ import com.intellij.util.indexing.UnindexedFilesUpdater;
 import junit.framework.*;
 import org.jetbrains.annotations.NotNull;
 import org.junit.internal.MethodSorter;
-import org.junit.runner.Describable;
-import org.junit.runner.Description;
 
 import java.lang.reflect.*;
 
@@ -217,7 +215,7 @@ public interface TestIndexingModeSupporter {
      * }
      */
     private static class MyHackyJUnitTaskMirrorImpl {
-      private static class VmExitErrorTest implements Test, Describable {
+      private static class VmExitErrorTest implements Test {
         private final TestCase myTestCase;
         private final IndexingMode myMode;
 
@@ -250,18 +248,13 @@ public interface TestIndexingModeSupporter {
         public String toString() {
           return myTestCase.getClass().getName() + "." + myTestCase.getName() + " with IndexingMode " + myMode.name();
         }
-
-        @Override
-        public Description getDescription() {
-          return Description.createTestDescription(myTestCase.getClass(), myTestCase.getName() + "[" + myMode.name() + "]");
-        }
       }
     }
   }
 
   class FullIndexSuite extends TestIndexingModeSupporter.IndexingModeTestHandler {
     public FullIndexSuite() {
-      super("Full index", "Full index ", IndexingMode.DUMB_FULL_INDEX);
+      super("Full index", "Full index: ", IndexingMode.DUMB_FULL_INDEX);
     }
 
     @Override
@@ -273,7 +266,7 @@ public interface TestIndexingModeSupporter {
   class RuntimeOnlyIndexSuite extends TestIndexingModeSupporter.IndexingModeTestHandler {
 
     public RuntimeOnlyIndexSuite() {
-      super("RuntimeOnlyIndex", "Runtime only index ", IndexingMode.DUMB_RUNTIME_ONLY_INDEX);
+      super("RuntimeOnlyIndex", "Runtime only index: ", IndexingMode.DUMB_RUNTIME_ONLY_INDEX);
     }
 
     @Override
@@ -285,7 +278,7 @@ public interface TestIndexingModeSupporter {
   class EmptyIndexSuite extends TestIndexingModeSupporter.IndexingModeTestHandler {
 
     public EmptyIndexSuite() {
-      super("Empty index", "Empty index ", DUMB_EMPTY_INDEX);
+      super("Empty index", "Empty index:", DUMB_EMPTY_INDEX);
     }
 
     @Override

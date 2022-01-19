@@ -31,8 +31,9 @@ import com.intellij.util.text.CharArrayUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
-
+/**
+ * @author lesya
+ */
 public class ImportsFormatter extends XmlRecursiveElementVisitor {
   private static final Logger LOG = Logger.getInstance(ImportsFormatter.class);
   
@@ -44,7 +45,7 @@ public class ImportsFormatter extends XmlRecursiveElementVisitor {
   private final PostFormatProcessorHelper myPostProcessor;
 
   public ImportsFormatter(@NotNull CodeStyleSettings settings, @NotNull PsiFile file) {
-    myPostProcessor = new PostFormatProcessorHelper(settings.getCommonSettings(file.getLanguage()));
+    myPostProcessor = new PostFormatProcessorHelper(settings);
     myDocumentModel = FormattingDocumentModelImpl.createOn(file);
     myIndentOptions = settings.getIndentOptionsByFile(file);
   }
@@ -71,7 +72,7 @@ public class ImportsFormatter extends XmlRecursiveElementVisitor {
         final int oldLength = attribute.getTextLength();
         ASTNode valueToken = findValueToken(valueElement.getNode());
         if (valueToken != null) {
-          String newAttributeValue = formatImports(valueToken.getStartOffset(), Objects.requireNonNull(attribute.getValue()));
+          String newAttributeValue = formatImports(valueToken.getStartOffset(), attribute.getValue());
           try {
             attribute.setValue(newAttributeValue);
           }
@@ -110,7 +111,9 @@ public class ImportsFormatter extends XmlRecursiveElementVisitor {
     final int emptyLineEnd = CharArrayUtil.shiftForward(myDocumentModel.getDocument().getCharsSequence(), lineStartOffset, " \t");
     final CharSequence spaces = myDocumentModel.getText(new TextRange(lineStartOffset, emptyLineEnd));
 
-    result.append(spaces);
+    if (spaces != null) {
+      result.append(spaces.toString());
+    }
 
     appendSpaces(result, startOffset - emptyLineEnd);
 

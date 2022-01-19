@@ -1,7 +1,5 @@
 package test
 
-// SKIP_SYNTHETIC_METHODS: true
-
 fun main() {
     val foo = FooImpl()
     //Breakpoint!
@@ -25,4 +23,4 @@ interface Foo {
 class FooImpl : Foo
 
 // STEP_INTO: 2
-// STEP_OVER: 5
+// STEP_OVER: 7

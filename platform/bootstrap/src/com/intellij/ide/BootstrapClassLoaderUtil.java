@@ -3,10 +3,10 @@ package com.intellij.ide;
 
 import com.intellij.idea.Main;
 import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.util.lang.PathClassLoader;
 import com.intellij.util.lang.UrlClassLoader;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -23,7 +23,6 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-@ApiStatus.Internal
 public final class BootstrapClassLoaderUtil {
   private static final String PROPERTY_IGNORE_CLASSPATH = "ignore.classpath";
   private static final String PROPERTY_ALLOW_BOOTSTRAP_RESOURCES = "idea.allow.bootstrap.resources";
@@ -33,25 +32,13 @@ public final class BootstrapClassLoaderUtil {
 
   private BootstrapClassLoaderUtil() { }
 
-  private static boolean isDevServer() {
-    return Boolean.getBoolean("idea.use.dev.build.server");
-  }
-
-  // for CWM
-  // Marketplace plugin, PROPERTY_IGNORE_CLASSPATH and PROPERTY_ADDITIONAL_CLASSPATH is not supported by intention
-  public static @NotNull Collection<Path> getProductClassPath() throws IOException {
-    Path distDir = Path.of(PathManager.getHomePath());
-    if (isDevServer()) {
-      return loadClassPathFromDevBuildServer(distDir);
-    }
-    else {
-      return computeClassPath(distDir.resolve("lib"));
-    }
+  private static Logger getLogger() {
+    return Logger.getInstance(BootstrapClassLoaderUtil.class);
   }
 
   public static @NotNull PathClassLoader initClassLoader() throws IOException {
     Path distDir = Path.of(PathManager.getHomePath());
-    if (isDevServer()) {
+    if (Boolean.getBoolean("idea.use.dev.build.server")) {
       ClassLoader classLoader = BootstrapClassLoaderUtil.class.getClassLoader();
       if (!(classLoader instanceof PathClassLoader)) {
         //noinspection SpellCheckingInspection,UseOfSystemOutOrSystemErr
@@ -120,11 +107,12 @@ public final class BootstrapClassLoaderUtil {
     return new PathClassLoader(builder);
   }
 
-  private static @NotNull Path findMarketplaceBootDir(Path pluginDir) {
+  @NotNull
+  private static Path findMarketplaceBootDir(Path pluginDir) {
     return pluginDir.resolve(MARKETPLACE_PLUGIN_DIR).resolve("lib/boot");
   }
 
-  private static @NotNull List<Path> loadClassPathFromDevBuildServer(@NotNull Path distDir) throws IOException {
+  private static List<Path> loadClassPathFromDevBuildServer(@NotNull Path distDir) throws IOException {
     String platformPrefix = System.getProperty("idea.platform.prefix", "idea");
     URL serverUrl = new URL("http://127.0.0.1:20854/build?platformPrefix=" + platformPrefix);
     //noinspection UseOfSystemOutOrSystemErr
@@ -143,7 +131,7 @@ public final class BootstrapClassLoaderUtil {
 
     connection.disconnect();
     if (responseCode != HttpURLConnection.HTTP_OK) {
-      throw new RuntimeException("Dev Build server is not able to handle build request, see server's log for details");
+      throw new RuntimeException("Dev Build server not able to handle build request, see server's log for details");
     }
 
     List<Path> result = new ArrayList<>();
@@ -209,8 +197,7 @@ public final class BootstrapClassLoaderUtil {
     catch (NoSuchFileException ignored) {
     }
     catch (Exception e) {
-      //noinspection UseOfSystemOutOrSystemErr
-      System.err.println("Cannot read " + classPathFile + ": " + e);
+      getLogger().error("Cannot read " + classPathFile + ": ", e);
     }
 
     // no classpath file - compute classpath
@@ -269,7 +256,6 @@ public final class BootstrapClassLoaderUtil {
         }
       }
     }
-    // must be mutable (see UrlClassLoader.addFiles)
     return new ArrayList<>(classpath);
   }
 

@@ -16,8 +16,9 @@ class ContinuationHolder private constructor(val context: DefaultExecutionContex
     private val locationCache = LocationCache(context)
     private val debugProbesImpl = DebugProbesImpl.instance(context)
     private val javaLangObjectToString = JavaLangObjectToString(context)
+    private val log by logger
 
-    fun extractCoroutineInfoData(continuation: ObjectReference): CompleteCoroutineInfoData? {
+    fun extractCoroutineInfoData(continuation: ObjectReference): CoroutineInfoData? {
         try {
             val consumer = mutableListOf<CoroutineStackFrameItem>()
             val continuationStack = debugMetadata?.fetchContinuationStack(continuation, context) ?: return null
@@ -38,44 +39,43 @@ class ContinuationHolder private constructor(val context: DefaultExecutionContex
     private fun findCoroutineInformation(
             coroutineOwner: ObjectReference?,
             stackFrameItems: List<CoroutineStackFrameItem>
-    ): CompleteCoroutineInfoData? {
+    ): CoroutineInfoData? {
         val creationStackTrace = mutableListOf<CreationCoroutineStackFrameItem>()
         val realState = if (coroutineOwner?.type()?.isAbstractCoroutine() == true) {
             state(coroutineOwner) ?: return null
         } else {
             val ci = debugProbesImpl?.getCoroutineInfo(coroutineOwner, context)
             if (ci != null) {
-                val providedCreationStackTrace = ci.creationStackTraceProvider.getStackTrace()
-                if (providedCreationStackTrace != null)
-                    for (index in providedCreationStackTrace.indices) {
-                        val frame = providedCreationStackTrace[index]
+                if (ci.creationStackTrace != null)
+                    for (index in ci.creationStackTrace.indices) {
+                        val frame = ci.creationStackTrace[index]
                         val ste = frame.stackTraceElement()
                         val location = locationCache.createLocation(ste)
                         creationStackTrace.add(CreationCoroutineStackFrameItem(ste, location, index == 0))
                     }
-                CoroutineDescriptor.instance(ci)
+                CoroutineNameIdState.instance(ci)
             } else {
-                CoroutineDescriptor(CoroutineInfoData.DEFAULT_COROUTINE_NAME, "-1", State.UNKNOWN, null)
+                CoroutineNameIdState(CoroutineInfoData.DEFAULT_COROUTINE_NAME, "-1", State.UNKNOWN, null)
             }
         }
-        return CompleteCoroutineInfoData(realState, stackFrameItems, creationStackTrace)
+        return CoroutineInfoData(realState, stackFrameItems, creationStackTrace)
     }
 
-    fun state(value: ObjectReference?): CoroutineDescriptor? {
+    fun state(value: ObjectReference?): CoroutineNameIdState? {
         value ?: return null
         val standaloneCoroutine = StandaloneCoroutine.instance(context) ?: return null
         val standAloneCoroutineMirror = standaloneCoroutine.mirror(value, context)
         if (standAloneCoroutineMirror?.context is MirrorOfCoroutineContext) {
             val id = standAloneCoroutineMirror.context.id
             val name = standAloneCoroutineMirror.context.name ?: CoroutineInfoData.DEFAULT_COROUTINE_NAME
-            val toString = javaLangObjectToString.mirror(value, context) ?: return null
+            val toString = javaLangObjectToString.mirror(value, context)
             // trying to get coroutine information by calling JobSupport.toString(), ${nameString()}{${stateString(state)}}@$hexAddress
             val r = """\w+\{(\w+)}@([\w\d]+)""".toRegex()
             val matcher = r.toPattern().matcher(toString)
             if (matcher.matches()) {
                 val state = stateOf(matcher.group(1))
                 val hexAddress = matcher.group(2)
-                return CoroutineDescriptor(name, id?.toString() ?: hexAddress, state, standAloneCoroutineMirror.context.dispatcher)
+                return CoroutineNameIdState(name, id?.toString() ?: hexAddress, state, standAloneCoroutineMirror.context.dispatcher)
             }
         }
         return null

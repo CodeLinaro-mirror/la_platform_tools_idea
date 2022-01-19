@@ -1,6 +1,3 @@
-// AFTER-WARNING: Redundant spread (*) operator
-// AFTER-WARNING: Parameter 'n' is never used
-// AFTER-WARNING: Parameter 's' is never used
 fun foo(n: Int, vararg s: String){}
 
 fun bar(array: Array<String>) {

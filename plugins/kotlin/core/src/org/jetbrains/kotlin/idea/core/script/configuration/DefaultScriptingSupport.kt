@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.core.script.configuration
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
-import com.intellij.ide.scratch.ScratchUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.extensions.ProjectExtensionPointName
 import com.intellij.openapi.project.Project
@@ -28,7 +27,6 @@ import org.jetbrains.kotlin.idea.core.script.configuration.utils.*
 import org.jetbrains.kotlin.idea.core.script.settings.KotlinScriptingSettings
 import org.jetbrains.kotlin.idea.core.util.EDT
 import org.jetbrains.kotlin.idea.util.application.getServiceSafe
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinition
 import org.jetbrains.kotlin.scripting.definitions.findScriptDefinition
@@ -93,7 +91,7 @@ import kotlin.script.experimental.api.ScriptDiagnostic
 class DefaultScriptingSupport(manager: CompositeScriptConfigurationManager) : DefaultScriptingSupportBase(manager) {
     // TODO public for tests
     val backgroundExecutor: BackgroundExecutor =
-        if (isUnitTestMode()) TestingBackgroundExecutor(manager)
+        if (ApplicationManager.getApplication().isUnitTestMode) TestingBackgroundExecutor(manager)
         else DefaultBackgroundExecutor(project, manager)
 
     private val outsiderLoader = ScriptOutsiderFileConfigurationLoader(project)
@@ -163,7 +161,7 @@ class DefaultScriptingSupport(manager: CompositeScriptConfigurationManager) : De
     ): Boolean {
         val virtualFile = file.originalFile.virtualFile ?: return false
 
-        if (project.isDisposed || !ScriptDefinitionsManager.getInstance(project).isReady()) return false
+        if (!ScriptDefinitionsManager.getInstance(project).isReady()) return false
         val scriptDefinition = file.findScriptDefinition() ?: return false
 
         val (async, sync) = loaders.partition { it.shouldRunInBackground(scriptDefinition) }
@@ -544,17 +542,9 @@ abstract class DefaultScriptingSupportBase(val manager: CompositeScriptConfigura
 
         // own builder for saving to storage
         val rootsStorage = ScriptClassRootsStorage.getInstance(project)
-        val storageBuilder = ScriptClassRootsBuilder.fromStorage(project, rootsStorage)
-        val ownBuilder = ScriptClassRootsBuilder(storageBuilder)
-        cache.allApplied().forEach { (vFile, configuration) ->
-            ownBuilder.add(vFile, configuration)
-            if (!ScratchUtil.isScratch(vFile)) {
-                // do not store (to disk) scratch file configurations due to huge dependencies
-                // (to be indexed next time - even if you don't use scratches at all)
-                storageBuilder.add(vFile, configuration)
-            }
-        }
-        storageBuilder.toStorage(rootsStorage)
+        val ownBuilder = ScriptClassRootsBuilder.fromStorage(project, rootsStorage)
+        cache.allApplied().forEach { (vFile, configuration) -> ownBuilder.add(vFile, configuration) }
+        ownBuilder.toStorage(rootsStorage)
 
         builder.add(ownBuilder)
     }

@@ -267,7 +267,7 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
 
   private ModifiableWorkspace doGetModifiableWorkspace() {
     return ReadAction.compute(() -> myProject.getService(ExternalProjectsWorkspaceImpl.class)
-                  .createModifiableWorkspace(() -> Arrays.asList(getModules())));
+                  .createModifiableWorkspace(this));
   }
 
   private Graph<Module> getModuleGraph() {

@@ -1,7 +1,7 @@
 JsonPathFile
   JsonPathRootSegmentImpl(ROOT_SEGMENT)
     PsiElement($)('$')
-  JsonPathExpressionSegmentImpl(EXPRESSION_SEGMENT)
+  JsonPathQuotedSegmentImpl(QUOTED_SEGMENT)
     PsiElement([)('[')
     JsonPathQuotedPathsListImpl(QUOTED_PATHS_LIST)
       JsonPathStringLiteralImpl(STRING_LITERAL)

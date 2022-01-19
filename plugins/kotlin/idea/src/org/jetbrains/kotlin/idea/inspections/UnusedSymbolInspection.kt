@@ -11,7 +11,8 @@ import com.intellij.codeInspection.deadCode.UnusedDeclarationInspection
 import com.intellij.codeInspection.ex.EntryPointsManager
 import com.intellij.codeInspection.ex.EntryPointsManagerBase
 import com.intellij.codeInspection.ex.EntryPointsManagerImpl
-import com.intellij.openapi.application.invokeLater
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiClass
@@ -28,7 +29,6 @@ import com.intellij.psi.search.searches.MethodReferencesSearch
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.safeDelete.SafeDeleteHandler
 import com.intellij.util.Processor
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.asJava.LightClassUtil
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
 import org.jetbrains.kotlin.asJava.toLightClass
@@ -40,15 +40,13 @@ import org.jetbrains.kotlin.idea.caches.project.implementingDescriptors
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.findModuleDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
-import org.jetbrains.kotlin.idea.completion.KotlinIdeaCompletionBundle
 import org.jetbrains.kotlin.idea.core.isInheritable
 import org.jetbrains.kotlin.idea.core.script.configuration.DefaultScriptingSupport
 import org.jetbrains.kotlin.idea.core.toDescriptor
 import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesHandlerFactory
 import org.jetbrains.kotlin.idea.findUsages.handlers.KotlinFindClassUsagesHandler
-import org.jetbrains.kotlin.idea.highlighter.isAnnotationClass
-import org.jetbrains.kotlin.idea.intentions.isFinalizeMethod
 import org.jetbrains.kotlin.idea.intentions.isReferenceToBuiltInEnumFunction
+import org.jetbrains.kotlin.idea.intentions.isFinalizeMethod
 import org.jetbrains.kotlin.idea.isMainFunction
 import org.jetbrains.kotlin.idea.project.languageVersionSettings
 import org.jetbrains.kotlin.idea.quickfix.RemoveUnusedFunctionParameterFix
@@ -107,15 +105,6 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
                 is KtNamedFunction, is KtSecondaryConstructor -> LightClassUtil.getLightClassMethod(declaration as KtFunction)
                 is KtProperty, is KtParameter -> {
                     if (declaration is KtParameter && !declaration.hasValOrVar()) return false
-                    // we may handle only annotation parameters so far
-                    if (declaration is KtParameter && isAnnotationParameter(declaration)) {
-                        val lightAnnotationMethods = LightClassUtil.getLightClassPropertyMethods(declaration).toList()
-                        for (javaParameterPsi in lightAnnotationMethods) {
-                            if (javaInspection.isEntryPoint(javaParameterPsi)) {
-                                return true
-                            }
-                        }
-                    }
                     // can't rely on light element, check annotation ourselves
                     val entryPointsManager = EntryPointsManager.getInstance(declaration.project) as EntryPointsManagerBase
                     return checkAnnotatedUsingPatterns(
@@ -129,14 +118,6 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
             if (isCheapEnough.value == TOO_MANY_OCCURRENCES) return false
 
             return javaInspection.isEntryPoint(lightElement)
-        }
-
-        private fun isAnnotationParameter(parameter: KtParameter): Boolean {
-            val ktConstructor = parameter.ownerFunction
-            if (ktConstructor !is KtConstructor<*>) return false
-
-            val containingClass = ktConstructor.containingClass()
-            return containingClass?.isAnnotationClass() ?: false
         }
 
         private fun isCheapEnoughToSearchUsages(declaration: KtNamedDeclaration): SearchCostResult {
@@ -254,7 +235,7 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
     override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
         return namedDeclarationVisitor(fun(declaration) {
             ProgressManager.checkCanceled()
-            val message = declaration.describe()?.let { KotlinIdeaCompletionBundle.message("inspection.message.never.used", it) } ?: return
+            val message = declaration.describe()?.let { "$it is never used" } ?: return
 
             if (!ProjectRootsUtil.isInProjectSource(declaration)) return
 
@@ -488,16 +469,12 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
 
         if (declaration is KtEnumEntry) {
             val enumClass = declaration.containingClass()?.takeIf { it.isEnum() }
-            if (hasBuiltInEnumFunctionReference(enumClass, useScope)) return true
+            if (enumClass != null
+                && ReferencesSearch.search(KotlinReferencesSearchParameters(enumClass, useScope)).any(::hasBuiltInEnumFunctionReference)
+            ) return true
         }
 
         return referenceUsed || checkPrivateDeclaration(declaration, descriptor)
-    }
-
-    private fun hasBuiltInEnumFunctionReference(enumClass: KtClass?, useScope: SearchScope): Boolean {
-        if (enumClass == null) return false
-        return enumClass.anyDescendantOfType(KtExpression::isReferenceToBuiltInEnumFunction) ||
-                ReferencesSearch.search(KotlinReferencesSearchParameters(enumClass, useScope)).any(::hasBuiltInEnumFunctionReference)
     }
 
     private fun hasBuiltInEnumFunctionReference(reference: PsiReference): Boolean {
@@ -585,11 +562,13 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
                 commonModuleDescriptor.hasActualsFor(descriptor)
     }
 
-    override fun createOptionsPanel(): JComponent = JPanel(GridBagLayout()).apply {
-        add(
+    override fun createOptionsPanel(): JComponent? {
+        val panel = JPanel(GridBagLayout())
+        panel.add(
             EntryPointsManagerImpl.createConfigureAnnotationsButton(),
             GridBagConstraints(0, 0, 1, 1, 1.0, 1.0, GridBagConstraints.NORTHWEST, GridBagConstraints.NONE, Insets(0, 0, 0, 0), 0, 0)
         )
+        return panel
     }
 
     private fun createQuickFixes(declaration: KtNamedDeclaration): List<LocalQuickFix> {
@@ -611,7 +590,7 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
 
             val intentionAction = createAddToDependencyInjectionAnnotationsFix(declaration.project, fqName)
 
-            list.add(IntentionWrapper(intentionAction))
+            list.add(IntentionWrapper(intentionAction, declaration.containingFile))
         }
 
         return list
@@ -621,7 +600,6 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
 }
 
 class SafeDeleteFix(declaration: KtDeclaration) : LocalQuickFix {
-    @Nls
     private val name: String =
         if (declaration is KtConstructor<*>) KotlinBundle.message("safe.delete.constructor")
         else QuickFixBundle.message("safe.delete.text", declaration.name)
@@ -638,10 +616,10 @@ class SafeDeleteFix(declaration: KtDeclaration) : LocalQuickFix {
         if (declaration is KtParameter && declaration.parent is KtParameterList && declaration.parent?.parent is KtFunction) {
             RemoveUnusedFunctionParameterFix(declaration).invoke(project, declaration.findExistingEditor(), declaration.containingKtFile)
         } else {
-            val declarationPointer = declaration.createSmartPointer()
-            invokeLater {
-                declarationPointer.element?.let { safeDelete(project, it) }
-            }
+            ApplicationManager.getApplication().invokeLater(
+                { safeDelete(project, declaration) },
+                ModalityState.NON_MODAL
+            )
         }
     }
 }

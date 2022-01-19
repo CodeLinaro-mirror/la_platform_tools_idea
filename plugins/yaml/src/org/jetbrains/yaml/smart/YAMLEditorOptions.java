@@ -3,7 +3,6 @@ package org.jetbrains.yaml.smart;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
@@ -11,8 +10,7 @@ import org.jetbrains.annotations.NotNull;
 
 @State(
   name = "YamlEditorOptions",
-  storages = @Storage("editor.xml"),
-  category = SettingsCategory.CODE
+  storages = @Storage("editor.xml")
 )
 public class YAMLEditorOptions implements PersistentStateComponent<YAMLEditorOptions> {
   private boolean myUseSmartPaste = true;

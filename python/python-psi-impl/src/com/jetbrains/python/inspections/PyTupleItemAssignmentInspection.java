@@ -27,7 +27,6 @@ import com.jetbrains.python.psi.PyReferenceExpression;
 import com.jetbrains.python.psi.PySubscriptionExpression;
 import com.jetbrains.python.psi.types.PyTupleType;
 import com.jetbrains.python.psi.types.PyType;
-import com.jetbrains.python.psi.types.TypeEvalContext;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -38,13 +37,13 @@ public class PyTupleItemAssignmentInspection extends PyInspection {
   @NotNull
   @Override
   public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
-    return new Visitor(holder, PyInspectionVisitor.getContext(session));
+    return new Visitor(holder, session);
   }
 
   private static class Visitor extends PyInspectionVisitor {
 
-    Visitor(final ProblemsHolder holder, @NotNull TypeEvalContext context) {
-      super(holder, context);
+    Visitor(final ProblemsHolder holder, LocalInspectionToolSession session) {
+      super(holder, session);
     }
 
     @Override

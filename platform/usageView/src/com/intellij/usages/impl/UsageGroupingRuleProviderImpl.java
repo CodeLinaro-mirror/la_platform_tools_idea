@@ -90,7 +90,7 @@ public class UsageGroupingRuleProviderImpl implements UsageGroupingRuleProviderE
   }
 
   /**
-   * @deprecated Get the action from ActionManager directly.
+   * Deprecated. Get the action from ActionManager directly.
    */
   @Deprecated
   public static @NotNull GroupByFileStructureAction createGroupByFileStructureAction(UsageViewImpl impl) {

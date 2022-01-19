@@ -5,6 +5,7 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.ui.panel.ComponentPanelBuilder;
 import com.intellij.ui.components.ActionLink;
+import com.intellij.ui.components.DropDownLink;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.table.TableView;
@@ -60,13 +61,14 @@ class ActionOnSaveColumnInfo extends SameRendererAndEditorColumnInfo<ActionOnSav
       }
     }
 
-    for (JComponent control : info.getDropDownLinks()) {
-      Dimension linkSize = control.getPreferredSize();
+    DropDownLink<?> dropDownLink = info.getInPlaceConfigDropDownLink();
+    if (dropDownLink != null) {
+      Dimension linkSize = dropDownLink.getPreferredSize();
       int baselineDelta =
-        anchorBaseline - control.getBaseline(linkSize.width, linkSize.height);
+        anchorBaseline - dropDownLink.getBaseline(linkSize.width, linkSize.height);
       //noinspection UseDPIAwareInsets   - baselineDelta is already scaled
       gbc.insets = new Insets(baselineDelta, JBUI.scale(5), 0, JBUI.scale(7));
-      resultPanel.add(control, gbc);
+      resultPanel.add(dropDownLink, gbc);
     }
 
     setupTableCellBackground(resultPanel, hovered);

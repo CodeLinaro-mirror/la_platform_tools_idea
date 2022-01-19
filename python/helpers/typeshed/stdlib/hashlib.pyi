@@ -1,16 +1,17 @@
 import sys
-from _typeshed import ReadableBuffer, Self
-from typing import AbstractSet
+from _typeshed import ReadableBuffer
+from typing import AbstractSet, Optional
 
 class _Hash(object):
-    @property
-    def digest_size(self) -> int: ...
-    @property
-    def block_size(self) -> int: ...
-    @property
-    def name(self) -> str: ...
+    digest_size: int
+    block_size: int
+
+    # [Python documentation note] Changed in version 3.4: The name attribute has
+    # been present in CPython since its inception, but until Python 3.4 was not
+    # formally specified, so may not exist on some platforms
+    name: str
     def __init__(self, data: ReadableBuffer = ...) -> None: ...
-    def copy(self: Self) -> Self: ...
+    def copy(self) -> _Hash: ...
     def digest(self) -> bytes: ...
     def hexdigest(self) -> str: ...
     def update(self, __data: ReadableBuffer) -> None: ...
@@ -46,7 +47,7 @@ algorithms_guaranteed: AbstractSet[str]
 algorithms_available: AbstractSet[str]
 
 def pbkdf2_hmac(
-    hash_name: str, password: ReadableBuffer, salt: ReadableBuffer, iterations: int, dklen: int | None = ...
+    hash_name: str, password: ReadableBuffer, salt: ReadableBuffer, iterations: int, dklen: Optional[int] = ...
 ) -> bytes: ...
 
 class _VarLenHash(object):
@@ -69,10 +70,10 @@ shake_256 = _VarLenHash
 def scrypt(
     password: ReadableBuffer,
     *,
-    salt: ReadableBuffer | None = ...,
-    n: int | None = ...,
-    r: int | None = ...,
-    p: int | None = ...,
+    salt: Optional[ReadableBuffer] = ...,
+    n: Optional[int] = ...,
+    r: Optional[int] = ...,
+    p: Optional[int] = ...,
     maxmem: int = ...,
     dklen: int = ...,
 ) -> bytes: ...

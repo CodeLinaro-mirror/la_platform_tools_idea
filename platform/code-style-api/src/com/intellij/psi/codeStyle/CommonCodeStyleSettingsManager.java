@@ -213,7 +213,7 @@ final class CommonCodeStyleSettingsManager {
         final Language language = Language.findLanguageByID(id);
         if (language != null && myCommonSettingsMap.containsKey(id)) {
           final CommonCodeStyleSettings commonSettings = myCommonSettingsMap.get(id);
-          LanguageCodeStyleProvider provider = LanguageCodeStyleProvider.forLanguage(language);
+          LanguageCodeStyleProvider provider = CodeStyleSettingsService.getLanguageCodeStyleProvider(language);
           if (provider != null) {
             Element commonSettingsElement = writeCommonSettings(id, commonSettings, provider);
             if (!commonSettingsElement.getChildren().isEmpty()) {

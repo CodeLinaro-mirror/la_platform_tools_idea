@@ -52,7 +52,6 @@ class KotlinComponentUsageInDestructuring(element: KtDestructuringDeclarationEnt
             appendFixedText(")")
         }
         replaceListPsiAndKeepDelimiters(
-            changeInfo,
             declaration,
             newDestructuring,
             {

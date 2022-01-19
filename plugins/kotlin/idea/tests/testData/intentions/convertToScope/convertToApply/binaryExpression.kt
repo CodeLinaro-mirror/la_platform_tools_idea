@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Variable 'a' is never used
 class A {
     fun foo() {}
     fun bar(): Int = 1

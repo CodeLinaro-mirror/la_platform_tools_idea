@@ -4,17 +4,16 @@ package com.intellij.openapi.editor.impl;
 import com.intellij.diagnostic.PluginException;
 import com.intellij.openapi.editor.EditorCustomElementRenderer;
 import com.intellij.openapi.editor.Inlay;
-import com.intellij.openapi.editor.InlayProperties;
 import com.intellij.openapi.editor.VisualPosition;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.util.List;
 
-final class AfterLineEndInlayImpl<R extends EditorCustomElementRenderer> extends InlayImpl<R, AfterLineEndInlayImpl<?>> {
+public final class AfterLineEndInlayImpl<R extends EditorCustomElementRenderer> extends InlayImpl<R, AfterLineEndInlayImpl<?>> {
   private static int ourGlobalCounter = 0;
-  final boolean mySoftWrappable;
-  final int myPriority;
+  private final boolean mySoftWrappable;
+  public final int myPriority;
   final int myOrder;
 
   AfterLineEndInlayImpl(@NotNull EditorImpl editor,
@@ -69,17 +68,13 @@ final class AfterLineEndInlayImpl<R extends EditorCustomElementRenderer> extends
     return new VisualPosition(position.line, position.column + 1 + order);
   }
 
-  @Override
-  public int getHeightInPixels() {
-    return myEditor.getLineHeight();
+  public boolean isSoftWrappable() {
+    return mySoftWrappable;
   }
 
   @Override
-  public @NotNull InlayProperties getProperties() {
-    return new InlayProperties()
-      .relatesToPrecedingText(isRelatedToPrecedingText())
-      .disableSoftWrapping(!mySoftWrappable)
-      .priority(myPriority);
+  public int getHeightInPixels() {
+    return myEditor.getLineHeight();
   }
 
   @Override

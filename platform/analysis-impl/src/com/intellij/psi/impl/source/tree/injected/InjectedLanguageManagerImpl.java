@@ -200,9 +200,14 @@ public final class InjectedLanguageManagerImpl extends InjectedLanguageManager i
   }
 
   @Override
-  public void registerMultiHostInjector(@NotNull MultiHostInjector injector, @NotNull Disposable parentDisposable) {
+  public void registerMultiHostInjector(@NotNull MultiHostInjector injector) {
     myManualInjectors.add(injector);
     clearInjectorCache();
+  }
+
+  @Override
+  public void registerMultiHostInjector(@NotNull MultiHostInjector injector, @NotNull Disposable parentDisposable) {
+    registerMultiHostInjector(injector);
     Disposer.register(parentDisposable, () -> unregisterMultiHostInjector(injector));
   }
 

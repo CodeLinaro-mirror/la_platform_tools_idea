@@ -23,7 +23,6 @@ import com.intellij.openapi.roots.ui.configuration.projectRoot.LibrariesContaine
 import com.intellij.openapi.roots.ui.configuration.projectRoot.LibrariesContainerFactory;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.components.panels.VerticalLayout;
@@ -36,6 +35,7 @@ import org.jetbrains.kotlin.idea.KotlinJvmBundle;
 import org.jetbrains.kotlin.idea.formatter.KotlinStyleGuideCodeStyle;
 import org.jetbrains.kotlin.idea.formatter.ProjectCodeStyleImporter;
 import org.jetbrains.kotlin.platform.TargetPlatform;
+import org.jetbrains.kotlin.platform.TargetPlatformKt;
 import org.jetbrains.kotlin.platform.js.JsPlatformKt;
 import org.jetbrains.kotlin.platform.jvm.JvmPlatformKt;
 
@@ -69,9 +69,9 @@ public class KotlinModuleSettingStep extends ModuleWizardStep {
             TargetPlatform targetPlatform,
             ModuleBuilder moduleBuilder,
             @NotNull SettingsStep settingsStep,
-            @NotNull WizardContext wizardContext
+            @Nullable WizardContext wizardContext
     ) {
-        isNewProject = wizardContext.isCreatingNewProject();
+        isNewProject = wizardContext != null && wizardContext.isCreatingNewProject();
         myDisposable = wizardContext.getDisposable();
 
         if (!(JvmPlatformKt.isJvm(targetPlatform))) {
@@ -121,7 +121,6 @@ public class KotlinModuleSettingStep extends ModuleWizardStep {
         return panel;
     }
 
-    @NlsContexts.BorderTitle
     @NotNull
     protected String getLibraryLabelText() {
         if (JvmPlatformKt.isJvm(targetPlatform)) return KotlinJvmBundle.message("library.label.jvm");
@@ -188,7 +187,7 @@ public class KotlinModuleSettingStep extends ModuleWizardStep {
 
             Field modelField = ArraysKt.singleOrNull(
                     panelClass.getDeclaredFields(),
-                    new Function1<>() {
+                    new Function1<Field, Boolean>() {
                         @Override
                         public Boolean invoke(Field field) {
                             return RadioButtonEnumModel.class.isAssignableFrom(field.getType());
@@ -207,7 +206,7 @@ public class KotlinModuleSettingStep extends ModuleWizardStep {
             if (ordinal == 0) {
                 Field libComboboxField = ArraysKt.singleOrNull(
                         panelClass.getDeclaredFields(),
-                        new Function1<>() {
+                        new Function1<Field, Boolean>() {
                             @Override
                             public Boolean invoke(Field field) {
                                 return JComboBox.class.isAssignableFrom(field.getType());

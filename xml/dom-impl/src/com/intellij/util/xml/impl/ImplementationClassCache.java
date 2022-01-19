@@ -8,6 +8,8 @@ import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.util.containers.MultiMap;
+import com.intellij.util.xml.DomReflectionUtil;
+import com.intellij.util.xml.Implementation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -36,7 +38,9 @@ final class ImplementationClassCache {
       return set.first();
     }
 
-    return concreteInterface;
+    @SuppressWarnings("deprecation")
+    Implementation implementation = DomReflectionUtil.findAnnotationDFS(concreteInterface, Implementation.class);
+    return implementation == null ? concreteInterface : implementation.value();
   });
 
   ImplementationClassCache(ExtensionPointName<DomImplementationClassEP> epName) {

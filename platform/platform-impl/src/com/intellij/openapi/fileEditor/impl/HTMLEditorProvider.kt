@@ -33,17 +33,21 @@ class HTMLEditorProvider : FileEditorProvider, DumbAware {
   override fun getPolicy(): FileEditorPolicy = FileEditorPolicy.HIDE_DEFAULT_EDITOR
 
   companion object {
-    val AFFINITY_KEY: Key<String> = Key.create("html.editor.affinity.key")
-    val EDITOR_KEY: Key<FileEditor> = Key.create("html.editor.component.key")
+    private val AFFINITY_KEY: Key<String> = Key.create("html.editor.affinity.key")
+    private val EDITOR_KEY: Key<FileEditor> = Key.create("html.editor.component.key")
 
     @JvmStatic
     fun openEditor(project: Project, @DialogTitle title: String, @DetailedDescription html: String) {
-      HTMLEditorProviderManager.getInstance(project).openEditor(title, html)
+      val file = LightVirtualFile(title, WebPreviewFileType.INSTANCE, html)
+      file.putUserData(AFFINITY_KEY, "")
+      FileEditorManager.getInstance(project).openFile(file, true)
     }
 
     @JvmStatic
     fun openEditor(project: Project, @DialogTitle title: String, url: String, @DetailedDescription timeoutHtml: String? = null) {
-      HTMLEditorProviderManager.getInstance(project).openEditor(title,url, timeoutHtml)
+      val file = LightVirtualFile(title, WebPreviewFileType.INSTANCE, timeoutHtml ?: "")
+      file.putUserData(AFFINITY_KEY, url)
+      FileEditorManager.getInstance(project).openFile(file, true)
     }
 
     @JvmStatic

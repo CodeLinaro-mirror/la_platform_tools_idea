@@ -12,7 +12,6 @@ import com.intellij.project.ProjectKt;
 import com.intellij.projectImport.ProjectOpenProcessor;
 import com.intellij.util.SystemProperties;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
@@ -38,8 +37,8 @@ public class OpenProjectFileChooserDescriptor extends FileChooserDescriptor {
   }
 
   @Override
-  public boolean isFileSelectable(@Nullable VirtualFile file) {
-    return file != null && (isProjectDirectory(file) || isProjectFile(file));
+  public boolean isFileSelectable(VirtualFile file) {
+    return isProjectDirectory(file) || isProjectFile(file);
   }
 
   @Override

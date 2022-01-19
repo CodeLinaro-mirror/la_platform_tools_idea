@@ -2,13 +2,13 @@
 // OPTIONS: derivedClasses
 
 fun foo() {
-    open class Z : A() {
+    interface Z: A {
 
     }
 
-    val O1 = object : A() {}
+    object O1: A()
 
     fun bar() {
-        val O2 = object : Z() {}
+        object O2: Z
     }
 }

@@ -62,15 +62,15 @@ class VfsEventsTest : BareTestFixtureTestCase() {
     val dir = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(tempDir.newDirectory("vDir"))
     Assert.assertNotNull(dir)
     dir!!.children
-    var eventFired = false
+    val eventFired = Ref.create(false)
     VirtualFileManager.getInstance().addVirtualFileListener(object : VirtualFileListener {
       override fun fileCreated(event: VirtualFileEvent) {
-        eventFired= true
+        eventFired.set(true)
       }
     }, testRootDisposable)
 
     addChild(dir, "x.txt")
-    Assert.assertTrue(eventFired)
+    Assert.assertTrue(eventFired.get())
   }
 
   @Test

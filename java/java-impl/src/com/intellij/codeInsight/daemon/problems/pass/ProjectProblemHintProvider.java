@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.problems.pass;
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
@@ -7,10 +7,10 @@ import com.intellij.codeInsight.daemon.problems.*;
 import com.intellij.codeInsight.hints.*;
 import com.intellij.codeInsight.hints.presentation.InlayPresentation;
 import com.intellij.codeInsight.hints.presentation.PresentationFactory;
+import com.intellij.codeInsight.hints.settings.InlayHintsConfigurable;
 import com.intellij.java.JavaBundle;
 import com.intellij.lang.Language;
 import com.intellij.lang.java.JavaLanguage;
-import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.editor.BlockInlayPriority;
@@ -144,12 +144,8 @@ public class ProjectProblemHintProvider implements InlayHintsProvider<NoSettings
     return JavaBundle.message("project.problems.title");
   }
 
-  @Override
-  public @NotNull InlayGroup getGroup() {
-    return InlayGroup.CODE_VISION_GROUP;
-  }
-
-  private static final SettingsKey<NoSettings> KEY = new SettingsKey<>("RelatedProblems");
+  private static final String RELATED_PROBLEMS_ID = "RelatedProblems";
+  private static final SettingsKey<NoSettings> KEY = new SettingsKey<>(RELATED_PROBLEMS_ID);
 
   @NotNull
   @Override
@@ -165,13 +161,6 @@ public class ProjectProblemHintProvider implements InlayHintsProvider<NoSettings
   @Override
   public String getPreviewText() {
     return null;
-  }
-
-  @Nls
-  @Nullable
-  @Override
-  public String getProperty(@NotNull String key) {
-    return JavaBundle.message(key);
   }
 
   @NotNull
@@ -198,9 +187,8 @@ public class ProjectProblemHintProvider implements InlayHintsProvider<NoSettings
     return true;
   }
 
-  static @NotNull List<AnAction> getPopupActions() {
-    return InlayHintsUtils.INSTANCE.getDefaultInlayHintsProviderPopupActions(
-      KEY, JavaBundle.messagePointer("title.related.problems.inlay.hints")
-    );
+  static void openSettings(@NotNull Project project) {
+    InlayHintsConfigurable.showSettingsDialogForLanguage(project, JavaLanguage.INSTANCE,
+                                                         model -> model.getId().equals(RELATED_PROBLEMS_ID));
   }
 }

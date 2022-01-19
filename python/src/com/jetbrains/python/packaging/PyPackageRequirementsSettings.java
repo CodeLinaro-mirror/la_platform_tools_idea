@@ -15,15 +15,14 @@
  */
 package com.jetbrains.python.packaging;
 
-import com.intellij.openapi.components.RoamingType;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.module.Module;
 import com.intellij.util.xmlb.annotations.OptionTag;
-import com.jetbrains.python.defaultProjectAwareService.PyDefaultProjectAwareModuleConfiguratorImpl;
 import com.jetbrains.python.defaultProjectAwareService.PyDefaultProjectAwareService;
-import com.jetbrains.python.defaultProjectAwareService.PyDefaultProjectAwareServiceClasses;
 import com.jetbrains.python.defaultProjectAwareService.PyDefaultProjectAwareServiceModuleConfigurator;
+import com.jetbrains.python.defaultProjectAwareService.PyDefaultProjectAwareModuleConfiguratorImpl;
+import com.jetbrains.python.defaultProjectAwareService.PyDefaultProjectAwareServiceClasses;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -125,7 +124,7 @@ public abstract class PyPackageRequirementsSettings extends PyDefaultProjectAwar
     public boolean myKeepMatchingSpecifier = true;
   }
 
-  @State(name = "AppPackageRequirementsSettings", storages = @Storage(value = "PackageRequirementsSettings.xml", roamingType = RoamingType.DISABLED))
+  @State(name = "AppPackageRequirementsSettings", storages = @Storage("PackageRequirementsSettings.xml"))
   public static final class AppService extends PyPackageRequirementsSettings {
 
   }

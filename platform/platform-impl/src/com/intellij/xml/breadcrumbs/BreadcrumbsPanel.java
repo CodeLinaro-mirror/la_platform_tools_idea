@@ -31,10 +31,8 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.DirtyUI;
 import com.intellij.ui.Gray;
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider;
-import com.intellij.ui.components.breadcrumbs.Breadcrumbs;
 import com.intellij.ui.components.breadcrumbs.Crumb;
 import com.intellij.util.concurrency.NonUrgentExecutor;
-import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.MouseEventAdapter;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.update.MergingUpdateQueue;
@@ -127,7 +125,6 @@ public abstract class BreadcrumbsPanel extends JComponent implements Disposable 
     JScrollPane pane = createScrollPane(breadcrumbs, true);
     pane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
     pane.getHorizontalScrollBar().setEnabled(false);
-    setBorder(JBUI.Borders.emptyLeft(getLeftOffset()));
     setLayout(new BorderLayout());
     add(BorderLayout.CENTER, pane);
 
@@ -145,8 +142,7 @@ public abstract class BreadcrumbsPanel extends JComponent implements Disposable 
         @DirtyUI
         @Override
         public void componentResized(ComponentEvent event) {
-          //breadcrumbs.updateBorder(getLeftOffset());
-          setBorder(JBUI.Borders.emptyLeft(getLeftOffset()));
+          breadcrumbs.updateBorder(getLeftOffset());
           breadcrumbs.setFont(getNewFont(myEditor));
         }
       };
@@ -159,7 +155,7 @@ public abstract class BreadcrumbsPanel extends JComponent implements Disposable 
         gutterComponent.removeComponentListener(resizeListener);
         breadcrumbs.removeMouseListener(mouseListener);
       });
-      setBorder(JBUI.Borders.emptyLeft(getLeftOffset()));
+      breadcrumbs.updateBorder(getLeftOffset());
     }
     else {
       breadcrumbs.updateBorder(0);
@@ -175,10 +171,6 @@ public abstract class BreadcrumbsPanel extends JComponent implements Disposable 
     }
 
     queueUpdate();
-  }
-
-  public Breadcrumbs getBreadcrumbs() {
-    return breadcrumbs;
   }
 
   protected int getLeftOffset() {

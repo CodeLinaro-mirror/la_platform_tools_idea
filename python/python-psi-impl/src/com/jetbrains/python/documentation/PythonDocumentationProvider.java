@@ -29,7 +29,6 @@ import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
 import com.jetbrains.python.psi.types.*;
 import com.jetbrains.python.toolbox.ChainIterable;
 import one.util.streamex.StreamEx;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -55,7 +54,7 @@ public class PythonDocumentationProvider implements DocumentationProvider {
   // provides ctrl+hover info
   @Override
   @Nullable
-  public @Nls String getQuickNavigateInfo(PsiElement element, @NotNull PsiElement originalElement) {
+  public String getQuickNavigateInfo(PsiElement element, @NotNull PsiElement originalElement) {
     for (PythonDocumentationQuickInfoProvider point : PythonDocumentationQuickInfoProvider.EP_NAME.getExtensions()) {
       final String info = point.getQuickInfo(originalElement);
       if (info != null) {
@@ -491,7 +490,7 @@ public class PythonDocumentationProvider implements DocumentationProvider {
 
   // provides ctrl+Q doc
   @Override
-  public @Nls String generateDoc(@NotNull PsiElement element, @Nullable PsiElement originalElement) {
+  public String generateDoc(@NotNull PsiElement element, @Nullable PsiElement originalElement) {
     final PythonRuntimeService runtimeService = PythonRuntimeService.getInstance();
     if (runtimeService.isInPydevConsole(element) || originalElement != null && runtimeService.isInPydevConsole(originalElement)) {
       return runtimeService.createPydevDoc(element, originalElement);

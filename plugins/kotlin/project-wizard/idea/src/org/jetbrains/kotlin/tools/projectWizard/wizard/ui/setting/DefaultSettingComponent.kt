@@ -3,8 +3,6 @@ package org.jetbrains.kotlin.tools.projectWizard.wizard.ui.setting
 
 import com.intellij.openapi.ui.ComboBox
 import org.jetbrains.kotlin.tools.projectWizard.core.Context
-import org.jetbrains.kotlin.tools.projectWizard.core.entity.ValidationResult
-import org.jetbrains.kotlin.tools.projectWizard.core.entity.isSpecificError
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settingValidator
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.*
 import org.jetbrains.kotlin.tools.projectWizard.settings.DisplayableSettingItem
@@ -124,7 +122,7 @@ class DropdownSettingComponent(
         onValueUpdate = handleValueUpdate()
     ).asSubComponent()
 
-    override fun shouldBeShown(): Boolean =
+    override fun shouldBeShow(): Boolean =
         uiComponent.valuesCount > 1
 }
 
@@ -167,15 +165,6 @@ class StringSettingComponent(
     fun onUserType(action: () -> Unit) {
         uiComponent.onUserType(action)
     }
-
-    override val validationIndicator: ValidationIndicator = IdeaBasedComponentValidator(this, component)
-
-    override fun navigateTo(error: ValidationResult.ValidationError) {
-        val validationState = validationIndicator.validationState
-        if (validationState.isSpecificError(error)) {
-            uiComponent.focusOn()
-        }
-    }
 }
 
 class PathSettingComponent(
@@ -196,14 +185,5 @@ class PathSettingComponent(
 
     fun onUserType(action: () -> Unit) {
         uiComponent.onUserType(action)
-    }
-
-    override val validationIndicator: ValidationIndicator = IdeaBasedComponentValidator(this, component)
-
-    override fun navigateTo(error: ValidationResult.ValidationError) {
-        val validationState = validationIndicator.validationState
-        if (validationState.isSpecificError(error)) {
-            uiComponent.focusOn()
-        }
     }
 }

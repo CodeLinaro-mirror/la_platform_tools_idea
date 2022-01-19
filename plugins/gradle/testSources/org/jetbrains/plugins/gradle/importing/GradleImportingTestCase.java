@@ -1,10 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.importing;
 
 import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory;
 import com.intellij.execution.RunManagerEx;
 import com.intellij.execution.RunnerAndConfigurationSettings;
-import com.intellij.execution.wsl.WSLDistribution;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.externalSystem.importing.ImportSpec;
@@ -30,6 +29,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.ExtensionTestUtil;
 import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.RunAll;
+import com.intellij.testFramework.UsefulTestCaseKt;
 import com.intellij.util.PathUtil;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
@@ -73,7 +73,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
-import java.util.function.Consumer;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
@@ -102,14 +101,12 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
   public void setUp() throws Exception {
     assumeThat(gradleVersion, versionMatcherRule.getMatcher());
     myProjectSettings = new GradleProjectSettings().withQualifiedModuleNames();
-
     super.setUp();
-
     WriteAction.runAndWait(this::configureJDKTable);
     System.setProperty(ExternalSystemExecutionSettings.REMOTE_PROCESS_IDLE_TTL_IN_MS_KEY, String.valueOf(GRADLE_DAEMON_TTL_MS));
 
     ExtensionTestUtil.maskExtensions(UnknownSdkResolver.EP_NAME, List.of(TestUnknownSdkResolver.INSTANCE), getTestRootDisposable());
-    setRegistryPropertyForTest("unknown.sdk.auto", "false");
+    UsefulTestCaseKt.setRegistryPropertyForTest(this, "unknown.sdk.auto", false);
     TestUnknownSdkResolver.INSTANCE.setUnknownSdkFixMode(TestUnknownSdkResolver.TestUnknownSdkFixMode.REAL_LOCAL_FIX);
 
     cleanScriptsCacheIfNeeded();
@@ -190,9 +187,6 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
 
   @NotNull
   private String requireRealJdkHome() {
-    if (myWSLDistribution != null) {
-      return requireWslJdkHome(myWSLDistribution);
-    }
     JavaVersion javaRuntimeVersion = JavaVersion.current();
     assumeTestJavaRuntime(javaRuntimeVersion);
     GradleVersion baseVersion = getCurrentGradleBaseVersion();
@@ -216,14 +210,6 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
     else {
       return IdeaTestUtil.requireRealJdkHome();
     }
-  }
-
-  private String requireWslJdkHome(WSLDistribution distribution) {
-    String jdkPath = System.getProperty("wsl.jdk.path");
-    if (jdkPath == null) {
-      jdkPath = "/usr/lib/jvm/java-11-openjdk-amd64";
-    }
-    return distribution.getWindowsPath(jdkPath);
   }
 
   protected void collectAllowedRoots(final List<String> roots, PathAssembler.LocalDistribution distribution) {
@@ -269,11 +255,6 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
 
   @Parameterized.Parameters(name = "{index}: with Gradle-{0}")
   public static Collection<Object[]> data() {
-    String gradleVersionsString = System.getProperty("gradle.versions.to.run");
-    if (gradleVersionsString != null && !gradleVersionsString.isEmpty()) {
-      String[] gradleVersionsToRun = gradleVersionsString.split(",");
-      return ContainerUtil.map(gradleVersionsToRun, it -> new String[]{it});
-    }
     return Arrays.asList(SUPPORTED_GRADLE_VERSIONS);
   }
 
@@ -331,13 +312,9 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
     importProject(config, null);
   }
 
-  protected @NotNull TestGradleBuildScriptBuilder createBuildScriptBuilder() {
-    return new TestGradleBuildScriptBuilder(getCurrentGradleVersion())
+  protected @NotNull GradleBuildScriptBuilder createBuildScriptBuilder() {
+    return new GradleBuildScriptBuilder(getCurrentGradleVersion())
       .addPrefix(MAVEN_REPOSITORY_PATCH_PLACE, "");
-  }
-
-  protected @NotNull String script(@NotNull Consumer<TestGradleBuildScriptBuilder> configure) {
-    return TestGradleBuildScriptBuilder.Companion.buildscript(this, configure);
   }
 
   protected @NotNull String getJUnitTestAnnotationClass() {
@@ -461,10 +438,6 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
     else {
       assertModuleModuleDepScope(moduleName, depName, DependencyScope.PROVIDED, DependencyScope.TEST, DependencyScope.RUNTIME);
     }
-  }
-
-  protected boolean isJavaLibraryPluginSupported() {
-    return GradleBuildScriptBuilderUtil.isSupportedJavaLibraryPlugin(getCurrentGradleVersion());
   }
 
   protected boolean isGradleOlderThan(@NotNull String ver) {

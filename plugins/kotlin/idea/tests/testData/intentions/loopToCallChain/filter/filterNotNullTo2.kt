@@ -1,7 +1,6 @@
 // WITH_RUNTIME
 // INTENTION_TEXT: "Replace with 'filterNotNullTo()'"
 // IS_APPLICABLE_2: false
-// AFTER-WARNING: Variable 'target' is never used
 import java.util.ArrayList
 
 fun foo(list: List<String?>) {

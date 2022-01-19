@@ -72,7 +72,7 @@ fun IndexingJobStatistics.IndexedFile.toJson() = JsonFileProviderIndexStatistics
   wasFullyIndexedByExtensions = wasFullyIndexedByExtensions
 )
 
-fun ProjectIndexingHistoryImpl.IndexingTimesImpl.toJson() =
+fun ProjectIndexingHistory.IndexingTimes.toJson() =
   JsonProjectIndexingHistoryTimes(
     indexingReason = indexingReason,
     totalUpdatingTime = JsonDuration(totalUpdatingTime),
@@ -89,7 +89,7 @@ fun ProjectIndexingHistoryImpl.IndexingTimesImpl.toJson() =
 
 private fun calculatePercentages(part: Long, total: Long): JsonPercentages = JsonPercentages(part, total)
 
-fun ProjectIndexingHistoryImpl.toJson(): JsonProjectIndexingHistory {
+fun ProjectIndexingHistory.toJson(): JsonProjectIndexingHistory {
   times.contentLoadingDuration = Duration.ofNanos(providerStatistics.sumOf { it.contentLoadingTime.nano })
   return JsonProjectIndexingHistory(
     projectName = project.name,
@@ -102,7 +102,7 @@ fun ProjectIndexingHistoryImpl.toJson(): JsonProjectIndexingHistory {
   )
 }
 
-private fun ProjectIndexingHistoryImpl.getFileCount() = JsonProjectIndexingFileCount(
+private fun ProjectIndexingHistory.getFileCount() = JsonProjectIndexingFileCount(
   numberOfFileProviders = scanningStatistics.size,
   numberOfScannedFiles = scanningStatistics.sumBy { it.numberOfScannedFiles },
   numberOfFilesIndexedByInfrastructureExtensionsDuringScan = scanningStatistics.sumOf { it.numberOfFilesFullyIndexedByInfrastructureExtensions },
@@ -111,7 +111,7 @@ private fun ProjectIndexingHistoryImpl.getFileCount() = JsonProjectIndexingFileC
   numberOfFilesIndexedWithLoadingContent = providerStatistics.sumOf { it.totalNumberOfIndexedFiles }
 )
 
-private fun ProjectIndexingHistoryImpl.aggregateStatsPerFileType(): List<JsonProjectIndexingHistory.JsonStatsPerFileType> {
+private fun ProjectIndexingHistory.aggregateStatsPerFileType(): List<JsonProjectIndexingHistory.JsonStatsPerFileType> {
   val totalProcessingTime = totalStatsPerFileType.values.sumOf { it.totalProcessingTimeInAllThreads }
   val fileTypeToProcessingTimePart = totalStatsPerFileType.mapValues {
     calculatePercentages(it.value.totalProcessingTimeInAllThreads, totalProcessingTime)
@@ -148,7 +148,7 @@ private fun ProjectIndexingHistoryImpl.aggregateStatsPerFileType(): List<JsonPro
   }
 }
 
-private fun ProjectIndexingHistoryImpl.aggregateStatsPerIndexer(): List<JsonProjectIndexingHistory.JsonStatsPerIndexer> {
+private fun ProjectIndexingHistory.aggregateStatsPerIndexer(): List<JsonProjectIndexingHistory.JsonStatsPerIndexer> {
   val totalIndexingTime = totalStatsPerIndexer.values.sumOf { it.totalIndexingTimeInAllThreads }
   val indexIdToIndexingTimePart = totalStatsPerIndexer.mapValues {
     calculatePercentages(it.value.totalIndexingTimeInAllThreads, totalIndexingTime)

@@ -7,8 +7,6 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.ThrowableComputable
-import com.intellij.util.SlowOperations
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.core.ShortenReferences
 import org.jetbrains.kotlin.idea.quickfix.KotlinQuickFixAction
@@ -17,7 +15,6 @@ import org.jetbrains.kotlin.idea.refactoring.introduce.showErrorHint
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.idea.util.reformatted
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.createSmartPointer
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 
 abstract class AbstractCreateDeclarationFix<D : KtNamedDeclaration>(
@@ -51,16 +48,11 @@ abstract class AbstractCreateDeclarationFix<D : KtNamedDeclaration>(
         targetFile: KtFile,
         targetClass: KtClassOrObject?
     ) {
+        val element = element ?: return
         val factory = KtPsiFactory(project)
-        val targetClassPointer = targetClass?.createSmartPointer()
-        val targetFilePointer = targetFile.createSmartPointer()
-        DumbService.getInstance(project).runWhenSmart(fun() {
+        DumbService.getInstance(project).runWhenSmart {
             val generated = try {
-                element?.let {
-                    SlowOperations.allowSlowOperations(ThrowableComputable {
-                        factory.generateIt(project, TypeAccessibilityChecker.create(project, module), it)
-                    })
-                }
+                factory.generateIt(project, TypeAccessibilityChecker.create(project, module), element) ?: return@runWhenSmart
             } catch (e: KotlinTypeInaccessibleException) {
                 if (editor != null) {
                     showErrorHint(
@@ -69,45 +61,41 @@ abstract class AbstractCreateDeclarationFix<D : KtNamedDeclaration>(
                         KotlinBundle.message("fix.create.declaration.error.inaccessible.type")
                     )
                 }
-                null
-            } ?: return
+                return@runWhenSmart
+            }
 
-            val shortened = project.executeWriteCommand(KotlinBundle.message("fix.create.expect.actual"), null) {
-                val resultTargetFile = targetFilePointer.element ?: return@executeWriteCommand null
-                if (resultTargetFile.packageDirective?.fqName != originalFile.packageDirective?.fqName &&
-                    resultTargetFile.declarations.isEmpty()
+            project.executeWriteCommand(KotlinBundle.message("fix.create.expect.actual")) {
+                if (targetFile.packageDirective?.fqName != originalFile.packageDirective?.fqName &&
+                    targetFile.declarations.isEmpty()
                 ) {
                     val packageDirective = originalFile.packageDirective
                     if (packageDirective != null) {
-                        val oldPackageDirective = resultTargetFile.packageDirective
+                        val oldPackageDirective = targetFile.packageDirective
                         val newPackageDirective = packageDirective.copy() as KtPackageDirective
                         if (oldPackageDirective != null) {
-                            if (oldPackageDirective.text.isEmpty()) resultTargetFile.addAfter(factory.createNewLine(2), oldPackageDirective)
+                            if (oldPackageDirective.text.isEmpty()) targetFile.addAfter(factory.createNewLine(2), oldPackageDirective)
                             oldPackageDirective.replace(newPackageDirective)
                         } else {
-                            resultTargetFile.add(newPackageDirective)
+                            targetFile.add(newPackageDirective)
                         }
                     }
                 }
-
-                val resultTargetClass = targetClassPointer?.element
                 val generatedDeclaration = when {
-                    resultTargetClass != null -> {
-                        if (generated is KtPrimaryConstructor && resultTargetClass is KtClass)
-                            resultTargetClass.createPrimaryConstructorIfAbsent().replace(generated)
+                    targetClass != null -> {
+                        if (generated is KtPrimaryConstructor && targetClass is KtClass)
+                            targetClass.createPrimaryConstructorIfAbsent().replace(generated)
                         else
-                            resultTargetClass.addDeclaration(generated as KtNamedDeclaration)
+                            targetClass.addDeclaration(generated as KtNamedDeclaration)
                     }
-                    else -> resultTargetFile.add(generated) as KtElement
+                    else -> targetFile.add(generated) as KtElement
                 }
 
-                ShortenReferences.DEFAULT.process(generatedDeclaration.reformatted() as KtElement)
-            } ?: return
-
-            EditorHelper.openInEditor(shortened)?.caretModel?.moveToOffset(
-                (shortened as? KtNamedDeclaration)?.nameIdentifier?.startOffset ?: shortened.startOffset,
-                true,
-            )
-        })
+                val shortened = ShortenReferences.DEFAULT.process(generatedDeclaration.reformatted() as KtElement)
+                EditorHelper.openInEditor(shortened)?.caretModel?.moveToOffset(
+                    (shortened as? KtNamedDeclaration)?.nameIdentifier?.startOffset ?: shortened.startOffset,
+                    true
+                )
+            }
+        }
     }
 }

@@ -5,8 +5,7 @@ import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.VisualPosition;
 import com.intellij.openapi.editor.colors.FontPreferences;
-import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.PlainTextFileType;
+import com.intellij.testFramework.TestFileType;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -20,10 +19,10 @@ public abstract class AbstractRtlTest extends AbstractEditorTest {
   private static final char BIDI_BOUNDARY_MARKER = '|';
 
   protected void prepareText(String text) {
-    prepare(text, PlainTextFileType.INSTANCE);
+    prepare(text, TestFileType.TEXT);
   }
   
-  protected void prepare(String text, FileType fileType) {
+  protected void prepare(String text, TestFileType fileType) {
     init(text.replace(RTL_CHAR_REPRESENTATION, RTL_CHAR), fileType);
   }
   

@@ -3,7 +3,6 @@ package com.intellij.ide.actions;
 
 import com.intellij.ide.AboutPopupDescriptionProvider;
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.nls.NlsMessages;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CustomShortcutSet;
 import com.intellij.openapi.application.ApplicationNamesInfo;
@@ -22,9 +21,11 @@ import com.intellij.ui.LicensingFacade;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.scale.ScaleContext;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.JBFont;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.components.BorderLayoutPanel;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,47 +34,37 @@ import javax.swing.event.HyperlinkEvent;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
-import java.text.DateFormat;
-import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
-import java.util.*;
+import java.util.Properties;
 
 /**
  * @author Konstantin Bulenkov
  */
 public class AboutDialog extends DialogWrapper {
-
-  /**
-   * Use paragraph to support copy/paste multilines
-   */
-  private static final String EOL = "<p>";
-
   private final List<String> myInfo = new ArrayList<>();
 
-  public AboutDialog(@Nullable Project project) {
+  public AboutDialog(Project project) {
+    this(project, false);
+  }
+
+  public AboutDialog(Project project, boolean showDebugInfo) {
     super(project, false);
     String appName = ApplicationNamesInfo.getInstance().getFullProductName();
     setResizable(false);
     setTitle(IdeBundle.message("about.popup.about.app", appName));
 
     init();
-  }
 
-  @Override
-  protected JComponent createSouthPanel() {
-    JComponent result = super.createSouthPanel();
-
-    // Register copy action on buttons panel only, because it conflicts with copyable labels in center panel
     new DumbAwareAction() {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e) {
         copyAboutInfoToClipboard();
         close(OK_EXIT_CODE);
       }
-    }.registerCustomShortcutSet(CustomShortcutSet.fromString("meta C", "control C"), result, getDisposable());
-
-    return result;
+    }.registerCustomShortcutSet(CustomShortcutSet.fromString("meta C", "control C"), getContentPanel(), getDisposable());
   }
 
   @Override
@@ -113,80 +104,64 @@ public class AboutDialog extends DialogWrapper {
     catch (Exception ignore) { }
   }
 
-  public String getExtendedAboutText() {
+  private String getExtendedAboutText() {
     return StringUtil.join(myInfo, "\n") + "\n" + AboutPopup.getExtraInfo();
   }
 
-  @SuppressWarnings("DuplicatedCode")
+  @NonNls
   private Box getText() {
-    Box box = Box.createVerticalBox();
-    List<String> lines = new ArrayList<>();
+    Box lines = Box.createVerticalBox();
     ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
     String appName = appInfo.getFullApplicationName(); //NON-NLS
     String edition = ApplicationNamesInfo.getInstance().getEditionName();
     if (edition != null) appName += " (" + edition + ")";
-    box.add(label(appName, JBFont.h3().asBold()));
-    box.add(Box.createVerticalStrut(10));
-    myInfo.add(appName);
+    addLine(lines, appName, JBFont.h3().asBold());
+    lines.add(Box.createVerticalStrut(10));
 
     String buildInfo = IdeBundle.message("about.box.build.number", appInfo.getBuild().asString());
-    String buildInfoNonLocalized = MessageFormat.format("Build #{0}", appInfo.getBuild().asString());
     Date timestamp = appInfo.getBuildDate().getTime();
     if (appInfo.getBuild().isSnapshot()) {
-      String time = new SimpleDateFormat("HH:mm").format(timestamp);
-      buildInfo += IdeBundle.message("about.box.build.date.time", NlsMessages.formatDateLong(timestamp), time);
-      buildInfoNonLocalized += MessageFormat.format(", built on {0} at {1}",
-                                                    DateFormat.getDateInstance(DateFormat.LONG, Locale.US).format(timestamp), time);
+      buildInfo += IdeBundle.message("about.box.build.date.time", DateFormatUtil.formatAboutDialogDate(timestamp), new SimpleDateFormat("HH:mm").format(timestamp));
     }
     else {
-      buildInfo += IdeBundle.message("about.box.build.date", NlsMessages.formatDateLong(timestamp));
-      buildInfoNonLocalized += MessageFormat.format(", built on {0}",
-                                                    DateFormat.getDateInstance(DateFormat.LONG, Locale.US).format(timestamp));
+      buildInfo += IdeBundle.message("about.box.build.date", DateFormatUtil.formatAboutDialogDate(timestamp));
     }
-    lines.add(buildInfo);
-    lines.add("");
-    myInfo.add(buildInfoNonLocalized);
+    addLine(lines, buildInfo);
+    addEmptyLine(lines);
 
     LicensingFacade la = LicensingFacade.getInstance();
     if (la != null) {
       final String licensedTo = la.getLicensedToMessage(); //NON-NLS
       if (licensedTo != null) {
-        lines.add(licensedTo);
-        myInfo.add(licensedTo);
+        addLine(lines, licensedTo);
       }
 
-      lines.addAll(la.getLicenseRestrictionsMessages());
-      myInfo.addAll(la.getLicenseRestrictionsMessages());
+      la.getLicenseRestrictionsMessages()
+        .forEach(text -> addLine(lines, text)); //NON-NLS
     }
-    lines.add("");
+    addEmptyLine(lines);
 
     Properties properties = System.getProperties();
     String javaVersion = properties.getProperty("java.runtime.version", properties.getProperty("java.version", "unknown"));
     String arch = properties.getProperty("os.arch", "");
     String jreInfo = IdeBundle.message("about.box.jre", javaVersion, arch);
-    lines.add(jreInfo);
-    myInfo.add(MessageFormat.format("Runtime version: {0} {1}", javaVersion, arch));
+    addLine(lines, jreInfo);
 
     String vmVersion = properties.getProperty("java.vm.name", "unknown");
     String vmVendor = properties.getProperty("java.vendor", "unknown");
     String vmVendorInfo = IdeBundle.message("about.box.vm", vmVersion, vmVendor);
-    lines.add(vmVendorInfo);
-    lines.add("");
-    myInfo.add(MessageFormat.format("VM: {0} by {1}", vmVersion, vmVendor));
+    addLine(lines, vmVendorInfo);
+    addEmptyLine(lines);
 
     //Print extra information from plugins
     ExtensionPointName<AboutPopupDescriptionProvider> ep = new ExtensionPointName<>("com.intellij.aboutPopupDescriptionProvider");
     for (AboutPopupDescriptionProvider aboutInfoProvider : ep.getExtensions()) {
       String description = aboutInfoProvider.getDescription(); //NON-NLS
       if (description != null) {
-        lines.add(description);
-        lines.add("");
+        addLineWithoutLog(lines, description);
+        addEmptyLine(lines);
       }
     }
-
-    String text = String.join(EOL, lines); //NON-NLS
-    box.add(label(text, getDefaultTextFont()));
-    addEmptyLine(box);
 
     //Link to open-source projects
     HyperlinkLabel openSourceSoftware = new HyperlinkLabel();
@@ -202,13 +177,13 @@ public class AboutDialog extends DialogWrapper {
     JBLabel poweredBy = new JBLabel(IdeBundle.message("about.box.powered.by") + " ").withFont(getDefaultTextFont());
     BorderLayoutPanel panel = JBUI.Panels.simplePanel(openSourceSoftware).addToLeft(poweredBy);
     panel.setAlignmentX(Component.LEFT_ALIGNMENT);
-    box.add(panel);
+    lines.add(panel);
 
     //Copyright
-    box.add(label(AboutPopup.getCopyrightText(), getDefaultTextFont()));
-    addEmptyLine(box);
+    addLineWithoutLog(lines, AboutPopup.getCopyrightText());
+    addEmptyLine(lines);
 
-    return box;
+    return lines;
   }
 
   private static JBFont getDefaultTextFont() {
@@ -219,9 +194,23 @@ public class AboutDialog extends DialogWrapper {
     box.add(Box.createVerticalStrut(18));
   }
 
-  private static JLabel label(@NlsContexts.Label String text, JBFont font) {
+  private void addLine(JComponent panel, @NlsContexts.Label String text, JBFont font) {
+    addLine(panel, text, font, true);
+  }
+  private void addLine(JComponent panel, @NlsContexts.Label String text, JBFont font, boolean log) {
     JBLabel label = new JBLabel(text).withFont(font);
-    label.setCopyable(true);
-    return label;
+    panel.add(label);
+
+    if (log) {
+      myInfo.add(text);
+    }
+  }
+
+  private void addLineWithoutLog(JComponent panel, @NlsContexts.Label String text) {
+    addLine(panel, text, getDefaultTextFont(), false);
+  }
+
+  private void addLine(JComponent panel, @NlsContexts.Label String text) {
+    addLine(panel, text, getDefaultTextFont());
   }
 }

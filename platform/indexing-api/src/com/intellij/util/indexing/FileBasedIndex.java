@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.indexing;
 
-import com.intellij.diagnostic.PluginException;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.fileTypes.FileType;
@@ -276,7 +275,7 @@ public abstract class FileBasedIndex {
    * which optimized to perform several queries for different indexes.
    */
   @ApiStatus.Experimental
-  public boolean processFilesContainingAllKeys(@NotNull Collection<? extends AllKeysQuery<?, ?>> queries,
+  public boolean processFilesContainingAllKeys(@NotNull Collection<AllKeysQuery<?, ?>> queries,
                                                @NotNull GlobalSearchScope filter,
                                                @NotNull Processor<? super VirtualFile> processor) {
     throw new UnsupportedOperationException();
@@ -300,15 +299,17 @@ public abstract class FileBasedIndex {
   /**
    * An input filter which accepts {@link IndexedFile} as parameter.
    * One could use this interface for filters which require {@link Project} instance to filter out files.
-   * <p>
-   * Note that in most the cases no one needs this filter.
-   * And the only use case is to optimize indexed file count when the corresponding indexer is relatively slow.
+   * <br>
+   * Note, that in most of cases no one needs this filter.
+   * And the only use case is to optimize indexed file count when corresponding indexer is relatively slow.
    */
   @ApiStatus.Experimental
   public interface ProjectSpecificInputFilter extends InputFilter {
     @Override
     default boolean acceptInput(@NotNull VirtualFile file) {
-      PluginException.reportDeprecatedDefault(getClass(), "acceptInput", "`acceptInput(IndexedFile)` should be called");
+      DeprecatedMethodException.reportDefaultImplementation(ProjectSpecificInputFilter.class,
+                                                            "acceptInput",
+                                                            "acceptInput(IndexedFile) should be called");
       return false;
     }
 
@@ -334,11 +335,11 @@ public abstract class FileBasedIndex {
   public static boolean isIndexAccessDuringDumbModeEnabled() {
     return !ourDisableIndexAccessDuringDumbMode;
   }
-  private static final boolean ourDisableIndexAccessDuringDumbMode = Boolean.getBoolean("idea.disable.index.access.during.dumb.mode");
+  private static final boolean ourDisableIndexAccessDuringDumbMode = SystemProperties.getBooleanProperty("idea.disable.index.access.during.dumb.mode", false);
 
   @ApiStatus.Internal
-  public static final boolean USE_IN_MEMORY_INDEX = Boolean.getBoolean("idea.use.in.memory.file.based.index");
+  public static final boolean USE_IN_MEMORY_INDEX = SystemProperties.is("idea.use.in.memory.file.based.index");
 
   @ApiStatus.Internal
-  public static final boolean IGNORE_PLAIN_TEXT_FILES = Boolean.getBoolean("idea.ignore.plain.text.indexing");
+  public static final boolean IGNORE_PLAIN_TEXT_FILES = SystemProperties.is("idea.ignore.plain.text.indexing");
 }

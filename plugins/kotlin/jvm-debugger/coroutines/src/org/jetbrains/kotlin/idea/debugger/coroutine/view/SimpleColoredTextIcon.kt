@@ -100,23 +100,21 @@ fun fromState(state: State): Icon =
     }
 
 class SimpleColoredTextIconPresentationRenderer {
-    companion object {
-        val log by logger
-    }
-
+    val log by logger
     private val settings: ThreadsViewSettings = ThreadsViewSettings.getInstance()
 
     fun render(infoData: CoroutineInfoData): SimpleColoredTextIcon {
         val thread = infoData.activeThread
-        val name = thread?.name()?.substringBefore(" @${infoData.descriptor.name}") ?: ""
+        val name = thread?.name()?.substringBefore(" @${infoData.key.name}") ?: ""
         val threadState = if (thread != null) DebuggerUtilsEx.getThreadStatusText(thread.status()) else ""
 
-        val icon = fromState(infoData.descriptor.state)
+        val icon = fromState(infoData.key.state)
 
-        val label = SimpleColoredTextIcon(icon, !infoData.isCreated())
+        val hasChildren = infoData.stackTrace.isNotEmpty() || infoData.creationStackTrace.isNotEmpty()
+        val label = SimpleColoredTextIcon(icon, hasChildren)
         label.append("\"")
-        label.appendValue(infoData.descriptor.formatName())
-        label.append("\": ${infoData.descriptor.state}")
+        label.appendValue(infoData.key.formatName())
+        label.append("\": ${infoData.key.state}")
         if (name.isNotEmpty()) {
             label.append(" on thread \"")
             label.appendValue(name)
@@ -144,13 +142,13 @@ class SimpleColoredTextIconPresentationRenderer {
             label.append("" + DebuggerUtilsEx.getLineNumber(location, false))
         }
         if (settings.SHOW_CLASS_NAME) {
-            val name = try {
+            val name: String?
+            name = try {
                 val refType: ReferenceType = location.declaringType()
                 refType.name()
             } catch (e: InternalError) {
                 e.toString()
             }
-
             if (name != null) {
                 label.append(", ")
                 val dotIndex = name.lastIndexOf('.')
@@ -175,7 +173,7 @@ class SimpleColoredTextIconPresentationRenderer {
         return label
     }
 
-    fun renderCreationNode() =
+    fun renderCreationNode(infoData: CoroutineInfoData) =
         SimpleColoredTextIcon(
             AllIcons.Debugger.ThreadSuspended,
             true,

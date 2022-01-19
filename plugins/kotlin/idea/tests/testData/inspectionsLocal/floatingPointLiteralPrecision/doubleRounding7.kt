@@ -1,4 +1,0 @@
-// WITH_RUNTIME
-// PROBLEM: none
-
-val x = <caret>1.0000000000000002

@@ -48,7 +48,6 @@ public abstract class ChangesBrowserBase extends JPanel implements DataProvider 
   private final AnAction myShowDiffAction;
 
   @Nullable private Runnable myInclusionChangedListener;
-  @Nullable private DiffPreview myDiffPreview;
 
 
   protected ChangesBrowserBase(@NotNull Project project,
@@ -65,7 +64,7 @@ public abstract class ChangesBrowserBase extends JPanel implements DataProvider 
     myViewer.installPopupHandler(myPopupMenuGroup);
 
     myViewerScrollPane = ScrollPaneFactory.createScrollPane(myViewer, true);
-    setViewerBorder(createViewerBorder());
+    myViewerScrollPane.setBorder(createViewerBorder());
 
     myShowDiffAction = new MyShowDiffAction();
   }
@@ -131,33 +130,6 @@ public abstract class ChangesBrowserBase extends JPanel implements DataProvider 
   @NotNull
   protected Border createViewerBorder() {
     return IdeBorderFactory.createBorder(SideBorder.ALL);
-  }
-
-  public void setViewerBorder(@NotNull Border border) {
-    myViewerScrollPane.setBorder(border);
-  }
-
-  public void hideViewerBorder() {
-    int borders;
-    switch (myToolbarAnchor) {
-      case SwingConstants.TOP:
-        borders = SideBorder.TOP;
-        break;
-      case SwingConstants.BOTTOM:
-        borders = SideBorder.BOTTOM;
-        break;
-      case SwingConstants.LEFT:
-        borders = SideBorder.LEFT;
-        break;
-      case SwingConstants.RIGHT:
-        borders = SideBorder.RIGHT;
-        break;
-      default:
-        borders = SideBorder.NONE;
-        break;
-    }
-
-    setViewerBorder(IdeBorderFactory.createBorder(borders));
   }
 
   @MagicConstant(intValues = {SwingConstants.TOP, SwingConstants.BOTTOM, SwingConstants.LEFT, SwingConstants.RIGHT})
@@ -290,11 +262,7 @@ public abstract class ChangesBrowserBase extends JPanel implements DataProvider 
 
   @Nullable
   protected DiffPreview getShowDiffActionPreview() {
-    return myDiffPreview;
-  }
-
-  protected void setShowDiffActionPreview(@Nullable DiffPreview diffPreview) {
-    myDiffPreview = diffPreview;
+    return null;
   }
 
   public void showDiff() {

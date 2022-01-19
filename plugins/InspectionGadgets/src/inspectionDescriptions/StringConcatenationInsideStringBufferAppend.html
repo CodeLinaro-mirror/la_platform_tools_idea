@@ -9,12 +9,12 @@ Reports <code>String</code> concatenation used as the argument to <code>StringBu
   worsen performance.
 </p>
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   void bar(StringBuilder builder, String name) {
     builder.append("Hello," + name);    //warning
     builder.append("Hello," + "world"); //no warning
   }
-</code></pre>
+</pre>
 <!-- tooltip end -->
 <p>
 

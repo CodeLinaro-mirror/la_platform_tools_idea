@@ -47,7 +47,7 @@ public class PatternParser {
       return primaryPattern;
     }
     builder.advanceLexer();
-    PsiBuilder.Marker guardingExpression = myParser.getExpressionParser().parseConditionalAnd(builder, ExpressionParser.FORBID_LAMBDA_MASK);
+    PsiBuilder.Marker guardingExpression = myParser.getExpressionParser().parseAssignment(builder);
     if (guardingExpression == null) {
       error(builder, JavaPsiBundle.message("expected.expression"));
     }

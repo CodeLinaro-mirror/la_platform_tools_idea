@@ -4,7 +4,6 @@ package org.jetbrains.plugins.groovy.settings;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
@@ -14,7 +13,7 @@ import org.jetbrains.annotations.NotNull;
  * @author ilyas
  */
 
-@State(name = "GroovyApplicationSettings", storages = @Storage("groovy_config.xml"), category = SettingsCategory.CODE)
+@State(name = "GroovyApplicationSettings", storages = @Storage("groovy_config.xml"))
 public class GroovyApplicationSettings implements PersistentStateComponent<GroovyApplicationSettings> {
 
   public boolean INTRODUCE_LOCAL_CREATE_FINALS = false;

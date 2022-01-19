@@ -55,7 +55,7 @@ public class GitResetOperation {
     myIndicator = indicator;
     myGit = Git.getInstance();
     myNotifier = VcsNotifier.getInstance(project);
-    myUiHandler = new GitBranchUiHandlerImpl(myProject, indicator);
+    myUiHandler = new GitBranchUiHandlerImpl(myProject, myGit, indicator);
   }
 
   public void execute() {

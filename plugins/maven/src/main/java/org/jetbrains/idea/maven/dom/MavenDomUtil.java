@@ -10,7 +10,6 @@ import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
@@ -82,15 +81,6 @@ public final class MavenDomUtil {
     if (!(file instanceof XmlFile)) return false;
 
     return MavenConstants.PROFILES_XML.equals(file.getName());
-  }
-
-  public static @Nullable @NlsSafe String getXmlSettingsNameSpace(PsiFile file) {
-    if (!(file instanceof XmlFile)) return null;
-
-    XmlTag rootTag = ((XmlFile)file).getRootTag();
-    if (rootTag == null || !"settings".equals(rootTag.getName())) return null;
-
-    return rootTag.getAttributeValue("xmlns");
   }
 
   public static boolean isSettingsFile(PsiFile file) {

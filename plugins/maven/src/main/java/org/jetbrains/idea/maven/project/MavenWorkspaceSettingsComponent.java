@@ -27,9 +27,13 @@ public final class MavenWorkspaceSettingsComponent implements PersistentStateCom
   public MavenWorkspaceSettingsComponent(@NotNull Project project) {
     myProject = project;
     mySettings = new MavenWorkspaceSettings();
-    mySettings.getGeneralSettings().setProject(project);
-    applyDefaults(mySettings);
-
+    mySettings.generalSettings.setProject(project);
+    if (ApplicationManager.getApplication().isUnitTestMode()) {
+      mySettings.generalSettings.setMavenHome(MavenServerManager.BUNDLED_MAVEN_3);
+    }
+    else {
+      applyDefaults(mySettings);
+    }
   }
 
   public static MavenWorkspaceSettingsComponent getInstance(@NotNull Project project) {
@@ -57,15 +61,15 @@ public final class MavenWorkspaceSettingsComponent implements PersistentStateCom
   }
 
   private void applyDefaults(MavenWorkspaceSettings settings) {
-    settings.getGeneralSettings().setProject(myProject);
-    if (StringUtil.isEmptyOrSpaces(settings.getGeneralSettings().getMavenHome())) {
+    settings.generalSettings.setProject(myProject);
+    if (StringUtil.isEmptyOrSpaces(settings.generalSettings.getMavenHome())) {
       String home = MavenWslUtil.resolveWslAware(myProject,
                                               () -> MavenServerManager.BUNDLED_MAVEN_3,
                                               wsl -> {
                                                 File file = MavenWslUtil.resolveMavenHomeDirectory(wsl, null);
                                                 return file == null ? null : file.getAbsolutePath();
                                               });
-      settings.getGeneralSettings().setMavenHome(home);
+      settings.generalSettings.setMavenHome(home);
     }
   }
 

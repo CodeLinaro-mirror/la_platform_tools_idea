@@ -7,7 +7,6 @@ import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.application.runWriteActionAndWait
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.AnnotationOrderRootType
-import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.libraries.Library
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar
 import com.intellij.openapi.util.io.FileUtil
@@ -17,7 +16,6 @@ import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory
 import com.intellij.testFramework.runInEdtAndGet
 import com.intellij.testFramework.runInEdtAndWait
 import com.intellij.util.ui.UIUtil
-import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.concurrency.Promise
 import org.junit.Test
 import java.io.File
@@ -31,7 +29,6 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
   private lateinit var myMavenRepo: File
   private lateinit var myTestLocalMvnCache: File
   private lateinit var myTestRepo: RemoteRepositoryDescription
-  private lateinit var annotationsRootType: OrderRootType
 
   override fun setUp() {
     super.setUp()
@@ -43,7 +40,6 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     myTestLocalMvnCache = FileUtil.createTempDirectory("maven", "cache")
     myTestRepo = RemoteRepositoryDescription("id", "name", myMavenRepo.toURI().toURL().toString())
     JarRepositoryManager.setLocalRepositoryPath(myTestLocalMvnCache)
-    annotationsRootType = AnnotationOrderRootType.getInstance()
   }
 
   override fun tearDown() {
@@ -71,7 +67,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     val result = getResult(promise)
     assertNotNull(result)
     result!!
-    assertTrue(result.getFiles(annotationsRootType).isNotEmpty())
+    assertTrue(result.getFiles(AnnotationOrderRootType.getInstance()).isNotEmpty())
   }
 
   private fun createLibrary(): Library {
@@ -98,7 +94,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     }
 
     resolver.resolve(myProject, library, "myGroup:myArtifact:1.0")
-    assertTrue(library.getFiles(annotationsRootType).isNotEmpty())
+    assertTrue(library.getFiles(AnnotationOrderRootType.getInstance()).isNotEmpty())
   }
 
   @Test fun testAnnotationsSyncResolutionUsingLocation() {
@@ -111,7 +107,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     }
 
     resolver.resolve(myProject, library, AnnotationsLocation("myGroup", "myArtifact", "1.0", myTestRepo.url))
-    assertTrue(library.getFiles(annotationsRootType).isNotEmpty())
+    assertTrue(library.getFiles(AnnotationOrderRootType.getInstance()).isNotEmpty())
   }
 
   @Test fun testThirdPartyAnnotationsResolution() {
@@ -128,7 +124,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     }
 
     resolver.resolve(myProject, library, "myGroup:myArtifact:1.0")
-    assertTrue(library.getFiles(annotationsRootType).isNotEmpty())
+    assertTrue(library.getFiles(AnnotationOrderRootType.getInstance()).isNotEmpty())
   }
 
   @Test fun testThirdPartyAnnotationsResolutionAsync() {
@@ -148,7 +144,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     val result = getResult(promise)
     assertNotNull(result)
     result!!
-    assertTrue(result.getFiles(annotationsRootType).isNotEmpty())
+    assertTrue(result.getFiles(AnnotationOrderRootType.getInstance()).isNotEmpty())
   }
 
 
@@ -170,7 +166,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     }
 
     resolver.resolve(myProject, library, "myGroup:myArtifact:1.1")
-    assertTrue("Annotations root is not attached to library", library.getFiles(annotationsRootType).isNotEmpty())
+    assertTrue("Annotations root is not attached to library", library.getFiles(AnnotationOrderRootType.getInstance()).isNotEmpty())
   }
 
 
@@ -178,12 +174,10 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     val resolver = ExternalAnnotationsRepositoryResolver()
     val library = createLibrary()
     val modifiableModel = library.modifiableModel
-
-    modifiableModel.addRoot("file:///fake.url", annotationsRootType)
+    modifiableModel.addRoot("file://fake.url", AnnotationOrderRootType.getInstance())
     runWriteAction { modifiableModel.commit() }
 
-    assertThat(library.getUrls(annotationsRootType).single())
-      .endsWith("/fake.url")
+    assertTrue(library.getUrls(AnnotationOrderRootType.getInstance()).single() == "file://fake.url")
 
     RemoteRepositoriesConfiguration.getInstance(myProject).repositories = listOf(myTestRepo)
 
@@ -193,8 +187,7 @@ class ExternalAnnotationsRepositoryResolverTest: UsefulTestCase() {
     }
 
     resolver.resolve(myProject, library, "myGroup:myArtifact:1.0")
-    assertThat(library.getUrls(annotationsRootType).single())
-      .endsWith("myGroup/myArtifact/1.0-an1/myArtifact-1.0-an1-annotations.zip!/")
+    assertTrue(library.getUrls(AnnotationOrderRootType.getInstance()).single().endsWith("myGroup/myArtifact/1.0-an1/myArtifact-1.0-an1-annotations.zip!/"))
   }
 
   private fun <T> getResult(promise: Promise<T>): T? {

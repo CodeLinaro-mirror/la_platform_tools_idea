@@ -4,7 +4,6 @@ package com.intellij.lang.xml;
 import com.intellij.lang.CompositeLanguage;
 import com.intellij.lang.Language;
 import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
 
 public class XMLLanguage extends CompositeLanguage {
 
@@ -14,7 +13,7 @@ public class XMLLanguage extends CompositeLanguage {
     super("XML", "application/xml", "text/xml");
   }
 
-  protected XMLLanguage(@NotNull Language baseLanguage, @NonNls @NotNull String name, @NonNls @NotNull String @NotNull ... mime) {
+  protected XMLLanguage(Language baseLanguage, @NonNls String name, @NonNls String... mime) {
     super(baseLanguage, name, mime);
   }
 }

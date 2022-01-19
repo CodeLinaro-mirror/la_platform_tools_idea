@@ -432,8 +432,12 @@ public final class BuildManager implements Disposable {
     mySuspendBackgroundTasksCounter.decrementAndGet();
   }
 
-  private static @NotNull String getFallbackSdkHome() {
+  @Nullable
+  private static String getFallbackSdkHome() {
     String home = SystemProperties.getJavaHome(); // should point either to jre or jdk
+    if (home == null) {
+      return null;
+    }
     if (!JdkUtil.checkForJdk(home)) {
       String parent = new File(home).getParent();
       if (parent != null && JdkUtil.checkForJdk(parent)) {
@@ -968,9 +972,6 @@ public final class BuildManager implements Disposable {
                 messageHandler.handleCompileMessage(
                   sessionId, CmdlineProtoUtil.createCompileProgressMessageResponse("Build: waiting for debugger connection on port " + debugPort //NON-NLS
                 ).getCompileMessage());
-                // additional support for debugger auto-attach feature
-                //noinspection UseOfSystemOutOrSystemErr
-                System.out.println("Build: Listening for transport dt_socket at address: " + debugPort.intValue()); //NON-NLS
               }
 
               while (!processHandler.waitFor()) {
@@ -1416,7 +1417,7 @@ public final class BuildManager implements Disposable {
     final DynamicBundle.LanguageBundleEP languageBundle = DynamicBundle.findLanguageBundle();
     if (languageBundle != null) {
       final PluginDescriptor pluginDescriptor = languageBundle.pluginDescriptor;
-      final ClassLoader loader = pluginDescriptor == null ? null : pluginDescriptor.getClassLoader();
+      final ClassLoader loader = pluginDescriptor == null ? null : pluginDescriptor.getPluginClassLoader();
       final String bundlePath = loader == null ? null : PathManager.getResourceRoot(loader, "META-INF/plugin.xml");
       if (bundlePath != null) {
         cmdLine.addParameter("-D"+ GlobalOptions.LANGUAGE_BUNDLE + "=" + FileUtil.toSystemIndependentName(bundlePath));

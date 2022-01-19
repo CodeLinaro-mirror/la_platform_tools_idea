@@ -1,36 +1,39 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.highlighter;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.lang.xml.XMLLanguage;
 import com.intellij.openapi.fileTypes.OSFileIdeAssociation;
 import com.intellij.xml.psi.XmlPsiBundle;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 
 public final class XmlFileType extends XmlLikeFileType implements DomSupportEnabled, OSFileIdeAssociation {
   public static final XmlFileType INSTANCE = new XmlFileType();
-
-  public static final String DEFAULT_EXTENSION = "xml";
-  public static final String DOT_DEFAULT_EXTENSION = "." + DEFAULT_EXTENSION;
+  @NonNls public static final String DEFAULT_EXTENSION = "xml";
+  @NonNls public static final String DOT_DEFAULT_EXTENSION = "."+DEFAULT_EXTENSION;
 
   private XmlFileType() {
     super(XMLLanguage.INSTANCE);
   }
 
   @Override
-  public @NotNull String getName() {
+  @NotNull
+  public String getName() {
     return "XML";
   }
 
   @Override
-  public @NotNull String getDescription() {
+  @NotNull
+  public String getDescription() {
     return XmlPsiBundle.message("filetype.xml.description");
   }
 
   @Override
-  public @NotNull String getDefaultExtension() {
+  @NotNull
+  public String getDefaultExtension() {
     return DEFAULT_EXTENSION;
   }
 
@@ -40,7 +43,7 @@ public final class XmlFileType extends XmlLikeFileType implements DomSupportEnab
   }
 
   @Override
-  public @NotNull ExtensionMode getExtensionMode() {
+  public ExtensionMode getExtensionsMode() {
     return ExtensionMode.Selected;
   }
 }

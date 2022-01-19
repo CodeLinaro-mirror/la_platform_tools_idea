@@ -56,7 +56,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
   @NotNull
   public String getID() {
     if (myNameProvider instanceof LocalDefaultNameProvider) {
-      String id = ((LocalDefaultNameProvider)myNameProvider).getDefaultID();
+      final String id = ((LocalDefaultNameProvider)myNameProvider).getDefaultID();
       if (id != null) {
         return id;
       }
@@ -122,7 +122,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
    * @see PsiRecursiveVisitor
    */
   @NotNull
-  public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
+  public PsiElementVisitor buildVisitor(@NotNull final ProblemsHolder holder, final boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
     return buildVisitor(holder, isOnTheFly);
   }
 
@@ -138,14 +138,14 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
    * @see PsiRecursiveVisitor
    */
   @NotNull
-  public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
+  public PsiElementVisitor buildVisitor(@NotNull final ProblemsHolder holder, final boolean isOnTheFly) {
     return new PsiElementVisitor() {
       @Override
       public void visitFile(@NotNull PsiFile file) {
         addDescriptors(checkFile(file, holder.getManager(), isOnTheFly));
       }
 
-      private void addDescriptors(ProblemDescriptor[] descriptors) {
+      private void addDescriptors(final ProblemDescriptor[] descriptors) {
         if (descriptors != null) {
           for (ProblemDescriptor descriptor : descriptors) {
             if (descriptor != null) {
@@ -176,24 +176,16 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
     return psiElement.getContainingFile();
   }
 
-  /**
-   * Called before this inspection tool' visitor started processing any PSI elements the IDE wanted it to process in this session.
-   * There are no guarantees about which thread it's called from or whether there is a read/write action it's called under.
-   */
   public void inspectionStarted(@NotNull LocalInspectionToolSession session, boolean isOnTheFly) {}
 
-  /**
-   * Called when this inspection tool' visitor finished processing all PSI elements the IDE wanted it to process in this session.
-   * There are no guarantees about which thread it's called from or whether there is a read/write action it's called under.
-   */
   public void inspectionFinished(@NotNull LocalInspectionToolSession session, @NotNull ProblemsHolder problemsHolder) {
   }
 
   @NotNull
   public List<ProblemDescriptor> processFile(@NotNull PsiFile file, @NotNull InspectionManager manager) {
-    ProblemsHolder holder = new ProblemsHolder(manager, file, false);
+    final ProblemsHolder holder = new ProblemsHolder(manager, file, false);
     LocalInspectionToolSession session = new LocalInspectionToolSession(file, 0, file.getTextLength());
-    PsiElementVisitor customVisitor = buildVisitor(holder, false, session);
+    final PsiElementVisitor customVisitor = buildVisitor(holder, false, session);
     LOG.assertTrue(!(customVisitor instanceof PsiRecursiveVisitor),
                    "The visitor returned from LocalInspectionTool.buildVisitor() must not be recursive: " + customVisitor);
 
@@ -203,7 +195,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
 
     inspectionStarted(session, false);
 
-    InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(holder.getProject());
+    final InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(holder.getProject());
     file.accept(new PsiRecursiveElementWalkingVisitor() {
       @Override
       public void visitElement(@NotNull PsiElement element) {
@@ -215,7 +207,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
 
       private void processInjectedFile(PsiElement element) {
         if (element instanceof PsiLanguageInjectionHost) {
-          List<Pair<PsiElement, TextRange>> files = injectedLanguageManager.getInjectedPsiFiles(element);
+          final List<Pair<PsiElement, TextRange>> files = injectedLanguageManager.getInjectedPsiFiles(element);
           if (files != null) {
             for (Pair<PsiElement, TextRange> pair : files) {
               pair.first.accept(new PsiRecursiveElementWalkingVisitor() {

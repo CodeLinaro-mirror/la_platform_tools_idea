@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'c' is never used
 inline fun <reified T> foo<caret>() = of(T::class.java)
 
 class Foo<F>

@@ -1,6 +1,5 @@
 // IS_APPLICABLE: true
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'arg' is never used
 
 fun foo() {
     listOf(1).forEach { (-it).let(<caret>it::bar) }

@@ -24,7 +24,6 @@ import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.hasJvmFieldAnnotation
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
-import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
@@ -204,7 +203,6 @@ class ConvertPropertyToFunctionIntention : SelfTargetingIntention<KtProperty>(
                 && !element.isLocal
                 && (element.initializer == null || element.getter == null)
                 && !element.hasJvmFieldAnnotation()
-                && !element.hasModifier(KtTokens.CONST_KEYWORD)
     }
 
     override fun applyTo(element: KtProperty, editor: Editor?) {

@@ -15,16 +15,20 @@ import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.AllClassesSearch;
 import com.intellij.util.Processor;
 import com.intellij.util.QueryExecutor;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 
 public class AllClassesSearchExecutor implements QueryExecutor<PsiClass, AllClassesSearch.SearchParameters> {
   @Override
   public boolean execute(@NotNull final AllClassesSearch.SearchParameters queryParameters, @NotNull final Processor<? super PsiClass> consumer) {
     SearchScope scope = queryParameters.getScope();
 
-    if (SearchScope.isEmptyScope(scope)) {
+    if (scope == GlobalSearchScope.EMPTY_SCOPE) {
       return true;
     }
 
@@ -49,7 +53,7 @@ public class AllClassesSearchExecutor implements QueryExecutor<PsiClass, AllClas
   private static boolean processAllClassesInGlobalScope(@NotNull final GlobalSearchScope scope,
                                                         @NotNull final AllClassesSearch.SearchParameters parameters,
                                                         @NotNull Processor<? super PsiClass> processor) {
-    final Set<String> names = new HashSet<>(10000);
+    final Set<String> names = new THashSet<>(10000);
     Project project = parameters.getProject();
     processClassNames(project, scope, s -> {
       if (parameters.nameMatches(s)) {

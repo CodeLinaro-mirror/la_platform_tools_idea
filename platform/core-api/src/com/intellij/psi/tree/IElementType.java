@@ -10,7 +10,6 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.*;
 
-import java.lang.annotation.ElementType;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -103,7 +102,7 @@ public class IElementType {
   }
 
   /**
-   * Allows constructing element types for some temporary purposes without registering them.
+   * Allows to construct element types for some temporary purposes without registering them.
    * This is not default behavior and not recommended. A lot of other functionality (e.g. {@link TokenSet}) won't work with such element types.
    * Please use {@link #IElementType(String, Language)} unless you know what you're doing.
    */
@@ -162,10 +161,6 @@ public class IElementType {
     return getDebugName();
   }
 
-  /**
-   * Don't use it directly. Override or call {@link ElementType#toString()}.
-   * Note, it should be used only for testing and logging purposes.
-   */
   @NonNls
   @NotNull
   @ApiStatus.Internal

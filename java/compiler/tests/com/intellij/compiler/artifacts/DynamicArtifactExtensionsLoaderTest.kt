@@ -16,12 +16,13 @@ import com.intellij.packaging.ui.ArtifactPropertiesEditor
 import com.intellij.packaging.ui.PackagingElementPresentation
 import com.intellij.testFramework.HeavyPlatformTestCase
 import com.intellij.util.ui.EmptyIcon
+import java.util.function.Consumer
 import java.util.function.Supplier
 import javax.swing.Icon
 
 class DynamicArtifactExtensionsLoaderTest : HeavyPlatformTestCase() {
   fun `test unload and load artifact type`() {
-    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(testRootDisposable, {})
+    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(Consumer {}, testRootDisposable)
     val artifactManager = ArtifactManager.getInstance(myProject)
     runWithRegisteredExtension(MockArtifactType(), ArtifactType.EP_NAME) {
       artifactManager.addArtifact("mock", MockArtifactType.getInstance(), PackagingElementFactory.getInstance().createArtifactRootElement())
@@ -52,7 +53,7 @@ class DynamicArtifactExtensionsLoaderTest : HeavyPlatformTestCase() {
     assertOneElement(artifactManager.allArtifactsIncludingInvalid)
     val artifact = assertOneElement(artifactManager.getArtifactsByType(PlainArtifactType.getInstance()))
     assertEquals("mock", artifact.name)
-    assertEmpty(artifact.rootElement.children)
+    assertEquals("data", (artifact.rootElement.children.single() as MockPackagingElement).state.data)
   }
 
   fun `test unload and load artifact properties`() {
@@ -98,7 +99,7 @@ class DynamicArtifactExtensionsLoaderTest : HeavyPlatformTestCase() {
 
   override fun setUp() {
     super.setUp()
-    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(testRootDisposable, {})
+    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(Consumer {}, testRootDisposable)
   }
 }
 

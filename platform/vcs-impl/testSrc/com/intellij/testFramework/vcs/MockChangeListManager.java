@@ -8,6 +8,7 @@ import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.changes.*;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.Consumer;
 import com.intellij.util.ThreeState;
 import com.intellij.vcsUtil.VcsUtil;
 import org.jetbrains.annotations.NotNull;
@@ -49,19 +50,34 @@ public class MockChangeListManager extends ChangeListManagerEx {
   }
 
   @Override
+  public void invokeAfterUpdate(@NotNull Runnable afterUpdate,
+                                @NotNull InvokeAfterUpdateMode mode,
+                                String title,
+                                Consumer<? super VcsDirtyScopeManager> dirtyScopeManager,
+                                ModalityState state) {
+    afterUpdate.run();
+  }
+
+  @Override
   public boolean areChangeListsEnabled() {
     return true;
   }
 
   @Override
   public int getChangeListsNumber() {
-    return getChangeLists().size();
+    return getChangeListsCopy().size();
+  }
+
+  @NotNull
+  @Override
+  public List<LocalChangeList> getChangeListsCopy() {
+    return new ArrayList<>(myChangeLists.values());
   }
 
   @NotNull
   @Override
   public List<LocalChangeList> getChangeLists() {
-    return new ArrayList<>(myChangeLists.values());
+    return getChangeListsCopy();
   }
 
   @NotNull

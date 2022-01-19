@@ -242,7 +242,7 @@ public class PluginXmlCapitalizationInspection extends DevKitPluginXmlInspection
         }
         else {
           assert domElement instanceof GenericDomValue : domElement;
-          ((GenericDomValue<?>)domElement).setStringValue(NlsCapitalizationUtil.fixValue(value, capitalization));
+          ((GenericDomValue)domElement).setStringValue(NlsCapitalizationUtil.fixValue(value, capitalization));
         }
       }
     };
@@ -251,7 +251,7 @@ public class PluginXmlCapitalizationInspection extends DevKitPluginXmlInspection
     holder.createProblem(domElement,
                          DevKitBundle.message("inspections.plugin.xml.capitalization.error",
                                               escapedValue,
-                                              capitalization == Nls.Capitalization.Title ? 0 : 1),
+                                              StringUtil.toLowerCase(capitalization.toString())),
                          quickFix);
   }
 }

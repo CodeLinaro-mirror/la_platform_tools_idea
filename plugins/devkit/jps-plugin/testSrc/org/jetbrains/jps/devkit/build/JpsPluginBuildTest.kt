@@ -44,19 +44,14 @@ class JpsPluginBuildTest : JpsBuildTestCase() {
 
     val library = m.libraryCollection.addLibrary("l", JpsJavaLibraryType.INSTANCE)
     m.dependenciesList.addLibraryDependency(library)
-    val libDir = createDir("lib")
-    directoryContent {
-      zip("a.jar") { file("a.txt") }
-    }.generate(File(libDir))
-
-    library.addRoot(File(libDir, "a.jar"), JpsOrderRootType.COMPILED)
+    library.addRoot(File(createFile("lib/a.jar")), JpsOrderRootType.COMPILED)
     library.addRoot(File(createFile("lib/a.so")), JpsNativeLibraryRootType.INSTANCE)
 
     doBuild(CompileScopeTestBuilder.rebuild().allModules().allArtifacts()).assertSuccessful()
 
     File(sandboxDir, "plugins/${m.name}").assertMatches(directoryContent {
       dir("lib") {
-        zip("a.jar") { file("a.txt") }
+        file("a.jar")
         file("a.so")
       }
     })

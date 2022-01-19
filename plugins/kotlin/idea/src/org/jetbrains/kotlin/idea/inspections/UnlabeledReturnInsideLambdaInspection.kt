@@ -28,7 +28,10 @@ class UnlabeledReturnInsideLambdaInspection : AbstractKotlinInspection() {
                 returnExpression.returnKeyword,
                 KotlinBundle.message("unlabeled.return.inside.lambda"),
                 ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
-                IntentionWrapper(ChangeToLabeledReturnFix(returnExpression, labeledReturn = "return@${parentFunction.name}"))
+                IntentionWrapper(
+                    ChangeToLabeledReturnFix(returnExpression, labeledReturn = "return@${parentFunction.name}"),
+                    returnExpression.containingFile
+                )
             )
         })
 }

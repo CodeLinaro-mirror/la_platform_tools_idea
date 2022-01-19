@@ -359,9 +359,6 @@
   <action id="ShowBookmarks">
     <keyboard-shortcut first-keystroke="shift F11"/>
   </action>
-  <action id="ShowTypeBookmarks">
-    <keyboard-shortcut first-keystroke="control shift F11"/>
-  </action>
   <action id="HighlightUsagesInFile">
     <keyboard-shortcut first-keystroke="control shift F7"/> 
   </action>
@@ -769,7 +766,7 @@
   <action id="XDebugger.AttachToProcess">
     <keyboard-shortcut first-keystroke="control alt F5"/>
   </action>
-  <action id="XDebugger.JumpToTypeSource">
+  <action id="Debugger.EditTypeSource">
     <keyboard-shortcut first-keystroke="shift F4"/>
   </action>
     <action id="ToggleBookmark">
@@ -917,8 +914,7 @@
   <action id="ActivateProjectToolWindow">
     <keyboard-shortcut first-keystroke="alt 1"/>
   </action>
-  <action id="ActivateFavoritesToolWindow"/>
-  <action id="ActivateBookmarksToolWindow">
+  <action id="ActivateFavoritesToolWindow">
     <keyboard-shortcut first-keystroke="alt 2"/>
   </action>
   <action id="ActivateFindToolWindow">
@@ -1010,6 +1006,9 @@
   </action>
   <action id="EditorDeleteToWordEnd">
     <keyboard-shortcut first-keystroke="control DELETE"/>
+  </action>
+  <action id="ProjectViewChangeView">
+    <keyboard-shortcut first-keystroke="alt F1"/>
   </action>
   <action id="ChooseRunConfiguration">
     <keyboard-shortcut first-keystroke="alt shift F10"/>
@@ -1251,15 +1250,6 @@
   </action>
   <action id="UsageGrouping.DirectoryStructure">
     <keyboard-shortcut first-keystroke="control alt D"/>
-  </action>
-  <action id="UsageFiltering.ReadAccess">
-    <keyboard-shortcut first-keystroke="control R"/>
-  </action>
-  <action id="UsageFiltering.WriteAccess">
-    <keyboard-shortcut first-keystroke="control W"/>
-  </action>
-  <action id="UsageFiltering.Imports">
-    <keyboard-shortcut first-keystroke="control I"/>
   </action>
   <action id="SwitchHeaderSource">
     <keyboard-shortcut first-keystroke="F10"/>

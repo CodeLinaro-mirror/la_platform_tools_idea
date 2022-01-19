@@ -7,10 +7,10 @@ _ParamsType = Union[str, None, Tuple[str, Optional[str], str]]
 class MIMEImage(MIMENonMultipart):
     def __init__(
         self,
-        _imagedata: str | bytes,
-        _subtype: str | None = ...,
+        _imagedata: Union[str, bytes],
+        _subtype: Optional[str] = ...,
         _encoder: Callable[[MIMEImage], None] = ...,
         *,
-        policy: Policy | None = ...,
+        policy: Optional[Policy] = ...,
         **_params: _ParamsType,
     ) -> None: ...

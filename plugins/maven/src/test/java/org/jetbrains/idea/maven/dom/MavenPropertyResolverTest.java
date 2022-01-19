@@ -74,7 +74,6 @@ public class MavenPropertyResolverTest extends MavenMultiVersionImportingTestCas
     importProject("  <groupId>parent.test</groupId>" +
                   "  <artifactId>parent.project</artifactId>" +
                   "  <version>parent.1</version>" +
-                  "  <packaging>pom</packaging>" +
 
                   "<modules>" +
                   "  <module>test</module>" +

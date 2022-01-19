@@ -261,7 +261,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, private val sourcePositi
 
             DebugLabelPropertyDescriptorProvider(codeFragment, debugProcess).supplyDebugLabels()
 
-            val analysisResult = resolutionFacade.analyzeWithAllCompilerChecks(codeFragment)
+            val analysisResult = resolutionFacade.analyzeWithAllCompilerChecks(listOf(codeFragment))
 
             if (analysisResult.isError()) {
                 status.error(EvaluationError.FrontendException)

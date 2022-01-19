@@ -3,7 +3,6 @@ package com.intellij.openapi.roots.libraries;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.roots.ProjectModelExternalSource;
-import com.intellij.util.concurrency.annotations.RequiresWriteLock;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -78,7 +77,6 @@ public interface LibraryTable {
   }
 
   interface Listener extends EventListener {
-    @RequiresWriteLock(generateAssertion = false)
     default void afterLibraryAdded(@NotNull Library newLibrary) {
     }
 

@@ -1,9 +1,10 @@
 from logging import Logger
 from threading import Condition, Event, Lock
-from typing import Any, Callable, Mapping, TypeVar
+from typing import Any, Callable, Mapping, Optional, Tuple, TypeVar
 
-from paramiko.buffered_pipe import BufferedPipe
+from paramiko.buffered_pipe import BufferedPipe, PipeTimeout
 from paramiko.file import BufferedFile
+from paramiko.message import Message
 from paramiko.transport import Transport
 from paramiko.util import ClosingContextManager
 
@@ -14,13 +15,13 @@ def open_only(func: _F) -> Callable[[_F], _F]: ...
 class Channel(ClosingContextManager):
     chanid: int
     remote_chanid: int
-    transport: Transport | None
+    transport: Optional[Transport]
     active: bool
     eof_received: int
     eof_sent: int
-    in_buffer: BufferedPipe[Any]
-    in_stderr_buffer: BufferedPipe[Any]
-    timeout: float | None
+    in_buffer: BufferedPipe
+    in_stderr_buffer: BufferedPipe
+    timeout: Optional[float]
     closed: bool
     ultra_debug: bool
     lock: Lock
@@ -55,10 +56,10 @@ class Channel(ClosingContextManager):
     def request_x11(
         self,
         screen_number: int = ...,
-        auth_protocol: str | None = ...,
-        auth_cookie: str | None = ...,
+        auth_protocol: Optional[str] = ...,
+        auth_cookie: Optional[str] = ...,
         single_connection: bool = ...,
-        handler: Callable[[Channel, tuple[str, int]], None] | None = ...,
+        handler: Optional[Callable[[Channel, Tuple[str, int]], None]] = ...,
     ) -> bytes: ...
     def request_forward_agent(self, handler: Callable[[Channel], None]) -> bool: ...
     def get_transport(self) -> Transport: ...
@@ -66,8 +67,8 @@ class Channel(ClosingContextManager):
     def get_name(self) -> str: ...
     def get_id(self) -> int: ...
     def set_combine_stderr(self, combine: bool) -> bool: ...
-    def settimeout(self, timeout: float | None) -> None: ...
-    def gettimeout(self) -> float | None: ...
+    def settimeout(self, timeout: Optional[float]) -> None: ...
+    def gettimeout(self) -> Optional[float]: ...
     def setblocking(self, blocking: bool) -> None: ...
     def getpeername(self) -> str: ...
     def close(self) -> None: ...
@@ -88,7 +89,7 @@ class Channel(ClosingContextManager):
     def shutdown_read(self) -> None: ...
     def shutdown_write(self) -> None: ...
 
-class ChannelFile(BufferedFile[Any]):
+class ChannelFile(BufferedFile):
     channel: Channel
     def __init__(self, channel: Channel, mode: str = ..., bufsize: int = ...) -> None: ...
 

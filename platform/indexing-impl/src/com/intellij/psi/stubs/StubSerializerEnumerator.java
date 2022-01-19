@@ -9,7 +9,6 @@ import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ConcurrentIntObjectMap;
 import com.intellij.util.io.DataEnumeratorEx;
 import com.intellij.util.io.PersistentStringEnumerator;
-import com.intellij.util.io.SelfDiagnosing;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -187,12 +186,6 @@ final class StubSerializerEnumerator implements Flushable, Closeable {
       LOG.error(e);
     }
     return Collections.emptyMap();
-  }
-
-  public void tryDiagnose() {
-    if (myNameStorage instanceof SelfDiagnosing) {
-      ((SelfDiagnosing)myNameStorage).diagnose();
-    }
   }
 
   @FunctionalInterface

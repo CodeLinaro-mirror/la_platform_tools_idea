@@ -16,10 +16,10 @@ kotlin {
         compilations.all {
             kotlinOptions.jvmTarget = "1.8"
         }
-        withJava()
         testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
+            useJUnit()
         }
+        withJava()
     }
     js(LEGACY) {
         binaries.executable()
@@ -46,8 +46,8 @@ kotlin {
         val jvmTest by getting
         val jsMain by getting {
             dependencies {
-                implementation("org.jetbrains.kotlin-wrappers:kotlin-react:17.0.2-pre.206-kotlin-1.5.10")
-                implementation("org.jetbrains.kotlin-wrappers:kotlin-react-dom:17.0.2-pre.206-kotlin-1.5.10")
+                implementation("org.jetbrains.kotlin-wrappers:kotlin-react:17.0.2-pre.206-kotlin-KOTLIN_VERSION")
+                implementation("org.jetbrains.kotlin-wrappers:kotlin-react-dom:17.0.2-pre.206-kotlin-KOTLIN_VERSION")
             }
         }
         val jsTest by getting
@@ -55,7 +55,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("me.user.application.ServerKt")
+    mainClass.set("ServerKt")
 }
 
 tasks.named<Copy>("jvmProcessResources") {

@@ -6,7 +6,10 @@ import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.ReportValue;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.PlatformUtils;
@@ -22,7 +25,7 @@ import org.jetbrains.annotations.SystemDependent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 
-@State(name = "GeneralSettings", storages = @Storage(GeneralSettings.IDE_GENERAL_XML), category = SettingsCategory.SYSTEM)
+@State(name = "GeneralSettings", storages = @Storage(GeneralSettings.IDE_GENERAL_XML))
 public final class GeneralSettings implements PersistentStateComponent<GeneralSettings> {
   public static final String IDE_GENERAL_XML = "ide.general.xml";
 
@@ -58,7 +61,7 @@ public final class GeneralSettings implements PersistentStateComponent<GeneralSe
   private boolean mySearchInBackground;
   private boolean myConfirmExit = true;
   private boolean myShowWelcomeScreen = true;
-  private int myConfirmOpenNewProject = PlatformUtils.isDataSpell() ? OPEN_PROJECT_SAME_WINDOW_ATTACH : OPEN_PROJECT_ASK;
+  private int myConfirmOpenNewProject = PlatformUtils.isPyCharmDs() ? OPEN_PROJECT_SAME_WINDOW_ATTACH : OPEN_PROJECT_ASK;
   private ProcessCloseConfirmation myProcessCloseConfirmation = ProcessCloseConfirmation.ASK;
   private String myDefaultProjectDirectory = "";
 
@@ -229,7 +232,7 @@ public final class GeneralSettings implements PersistentStateComponent<GeneralSe
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public void setConfirmExtractFiles(boolean value) { }
+  public void setConfirmExtractFiles(@SuppressWarnings("unused") boolean value) { }
 
   public boolean isConfirmExit() {
     return myConfirmExit;

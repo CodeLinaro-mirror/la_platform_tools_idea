@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2021 Dave Griffith, Bas Leijdekkers
+ * Copyright 2003-2015 Dave Griffith, Bas Leijdekkers
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,12 +41,11 @@ import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class NonBooleanMethodNameMayNotStartWithQuestionInspection extends BaseInspection {
-  public static final @NonNls String DEFAULT_QUESTION_WORDS =
-    "are,can,check,contains,could,endsWith,equals,has,is,matches,must,shall,should,startsWith,was,were,will,would";
+public class NonBooleanMethodNameMayNotStartWithQuestionInspection extends
+                                                                   BaseInspection {
 
   @SuppressWarnings("PublicField")
-  @NonNls public String questionString = DEFAULT_QUESTION_WORDS;
+  @NonNls public String questionString = BooleanMethodNameMustStartWithQuestionInspection.DEFAULT_QUESTION_WORDS;
   @SuppressWarnings("PublicField")
   public boolean ignoreBooleanMethods = false;
   @SuppressWarnings("PublicField")
@@ -58,7 +57,7 @@ public class NonBooleanMethodNameMayNotStartWithQuestionInspection extends BaseI
   }
 
   @Override
-  public @NotNull MultipleCheckboxOptionsPanel createOptionsPanel() {
+  public JComponent createOptionsPanel() {
     final var panel = new MultipleCheckboxOptionsPanel(this);
 
     final ListTable table = new ListTable(new ListWrappingTableModel(questionList, InspectionGadgetsBundle
@@ -109,7 +108,8 @@ public class NonBooleanMethodNameMayNotStartWithQuestionInspection extends BaseI
     return new NonBooleanMethodNameMayNotStartWithQuestionVisitor();
   }
 
-  private class NonBooleanMethodNameMayNotStartWithQuestionVisitor extends BaseInspectionVisitor {
+  private class NonBooleanMethodNameMayNotStartWithQuestionVisitor
+    extends BaseInspectionVisitor {
 
     @Override
     public void visitMethod(@NotNull PsiMethod method) {
@@ -121,7 +121,22 @@ public class NonBooleanMethodNameMayNotStartWithQuestionInspection extends BaseI
       if (ignoreBooleanMethods && returnType.equalsToText(CommonClassNames.JAVA_LANG_BOOLEAN)) {
         return;
       }
-      if (!startsWithQuestionWord(method.getName())) {
+      final String name = method.getName();
+      boolean startsWithQuestionWord = false;
+      for (String question : questionList) {
+        if (name.startsWith(question)) {
+          if (name.length() == question.length()) {
+            startsWithQuestionWord = true;
+            break;
+          }
+          final char nextChar = name.charAt(question.length());
+          if (Character.isUpperCase(nextChar) || nextChar == '_') {
+            startsWithQuestionWord = true;
+            break;
+          }
+        }
+      }
+      if (!startsWithQuestionWord) {
         return;
       }
       if (onlyWarnOnBaseMethods) {
@@ -134,20 +149,5 @@ public class NonBooleanMethodNameMayNotStartWithQuestionInspection extends BaseI
       }
       registerMethodError(method, method);
     }
-  }
-
-  protected boolean startsWithQuestionWord(String name) {
-    for (String question : questionList) {
-      if (name.startsWith(question)) {
-        if (name.length() == question.length()) {
-          return true;
-        }
-        final char nextChar = name.charAt(question.length());
-        if (Character.isUpperCase(nextChar) || nextChar == '_') {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 }

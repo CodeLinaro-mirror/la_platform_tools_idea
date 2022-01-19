@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
 import com.intellij.ide.IdeBundle;
@@ -24,7 +24,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -105,24 +104,8 @@ public final class ToggleToolbarAction extends ToggleAction implements DumbAware
     }
   }
 
-  public static boolean isToolbarVisible(@NotNull String property) {
-    return isToolbarVisible(property, PropertiesComponent.getInstance());
-  }
-
-  public static boolean isToolbarVisible(@NotNull String property, @NotNull Project project) {
-    return isToolbarVisible(property, PropertiesComponent.getInstance(project));
-  }
-
   public static boolean isToolbarVisible(@NotNull String property, @NotNull PropertiesComponent properties) {
     return isSelectedImpl(properties, getShowToolbarProperty(property));
-  }
-
-  public static boolean isToolbarVisible(@NotNull ToolWindow toolWindow) {
-    return isToolbarVisible(toolWindow, PropertiesComponent.getInstance());
-  }
-
-  public static boolean isToolbarVisible(@NotNull ToolWindow toolWindow, @NotNull Project project) {
-    return isToolbarVisible(toolWindow, PropertiesComponent.getInstance(project));
   }
 
   public static boolean isToolbarVisible(@NotNull ToolWindow toolWindow, @NotNull PropertiesComponent properties) {
@@ -147,11 +130,6 @@ public final class ToggleToolbarAction extends ToggleAction implements DumbAware
     super.update(e);
     boolean hasToolbars = iterateToolbars(myProducer.get()).iterator().hasNext();
     e.getPresentation().setVisible(hasToolbars);
-  }
-
-  public static boolean hasVisibleToolwindowToolbars(@NotNull ToolWindow toolWindow) {
-    Iterator<ActionToolbar> iterator = iterateToolbars(Collections.singletonList(toolWindow.getContentManager().getComponent())).iterator();
-    return iterator.hasNext() && iterator.next().getComponent().isVisible();
   }
 
   @Override

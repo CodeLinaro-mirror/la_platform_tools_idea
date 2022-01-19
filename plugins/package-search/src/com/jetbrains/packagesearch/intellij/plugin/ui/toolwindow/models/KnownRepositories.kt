@@ -11,7 +11,7 @@ internal sealed class KnownRepositories(
     fun findById(id: String) = find { repo -> repo.id == id }
 
     fun excludingById(repoIdsToExclude: Iterable<String>) =
-        filter { repo -> repoIdsToExclude.contains(repo.id) }
+        repositories.filter { repo -> repoIdsToExclude.contains(repo.id) }
 
     data class All(override val repositories: List<RepositoryModel>) : KnownRepositories(repositories) {
 
@@ -23,7 +23,8 @@ internal sealed class KnownRepositories(
                     targetModules.modules.map { it.projectModule }
                         .contains(usageInfo.projectModule)
                 }
-            }, this)
+            }
+        )
 
         companion object {
 
@@ -31,14 +32,12 @@ internal sealed class KnownRepositories(
         }
     }
 
-    data class InTargetModules(
-        override val repositories: List<RepositoryModel>,
-        val allKnownRepositories: All
-    ) : KnownRepositories(repositories) {
+    data class InTargetModules(override val repositories: List<RepositoryModel>) : KnownRepositories(repositories) {
 
         fun repositoryToAddWhenInstallingOrUpgrading(
             packageModel: PackageModel,
-            selectedVersion: PackageVersion
+            selectedVersion: PackageVersion,
+            allKnownRepositories: All
         ): RepositoryModel? {
             val versionRepositoryIds = packageModel.remoteInfo?.versions
                 ?.find { it.version == selectedVersion.versionName }
@@ -52,7 +51,7 @@ internal sealed class KnownRepositories(
 
         companion object {
 
-            val EMPTY = InTargetModules(emptyList(), All.EMPTY)
+            val EMPTY = InTargetModules(emptyList())
         }
     }
 }

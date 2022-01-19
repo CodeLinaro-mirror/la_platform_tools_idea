@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.debugger;
 
-import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
@@ -11,7 +10,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.xdebugger.XDebugSession;
-import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
+import com.intellij.xdebugger.XDebuggerManager;
 import com.jetbrains.python.PyTokenTypes;
 import com.jetbrains.python.psi.*;
 import org.jetbrains.annotations.NotNull;
@@ -101,8 +100,8 @@ public final class PyDebugSupportUtils {
     return false;
   }
 
-  public static boolean isCurrentPythonDebugProcess(@NotNull AnActionEvent event) {
-    XDebugSession session = DebuggerUIUtil.getSession(event);
+  public static boolean isCurrentPythonDebugProcess(@NotNull Project project) {
+    XDebugSession session = XDebuggerManager.getInstance(project).getCurrentSession();
     return session != null && session.getDebugProcess() instanceof PyDebugProcess;
   }
 }

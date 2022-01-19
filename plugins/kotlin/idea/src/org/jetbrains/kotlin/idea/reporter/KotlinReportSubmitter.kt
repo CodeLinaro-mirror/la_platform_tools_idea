@@ -2,6 +2,7 @@
 
 package org.jetbrains.kotlin.idea.reporter
 
+import com.intellij.diagnostic.DiagnosticBundle
 import com.intellij.diagnostic.ReportMessages
 import com.intellij.ide.DataManager
 import com.intellij.ide.util.PropertiesComponent
@@ -15,13 +16,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.util.Consumer
 import com.intellij.util.ThreeState
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.KotlinPluginUpdater
 import org.jetbrains.kotlin.idea.KotlinPluginUtil
 import org.jetbrains.kotlin.idea.PluginUpdateStatus
-import org.jetbrains.kotlin.idea.util.application.isApplicationInternalMode
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.isEap
 import java.awt.Component
 import java.io.IOException
@@ -62,7 +60,7 @@ class KotlinReportSubmitter : ITNReporterCompat() {
         private const val NUMBER_OF_REPORTING_DAYS_FROM_RELEASE = 7
 
         fun setupReportingFromRelease() {
-            if (isUnitTestMode()) {
+            if (ApplicationManager.getApplication().isUnitTestMode) {
                 return
             }
 
@@ -171,12 +169,12 @@ class KotlinReportSubmitter : ITNReporterCompat() {
     private var hasLatestVersion = false
 
     override fun showErrorInRelease(event: IdeaLoggingEvent): Boolean {
-        if (isApplicationInternalMode()) {
+        if (ApplicationManager.getApplication().isInternal) {
             // Reporting is always enabled for internal mode in the platform
             return true
         }
 
-        if (isUnitTestMode()) {
+        if (ApplicationManager.getApplication().isUnitTestMode) {
             return true
         }
 
@@ -218,7 +216,7 @@ class KotlinReportSubmitter : ITNReporterCompat() {
         consumer: Consumer<in SubmittedReportInfo>
     ): Boolean {
         if (hasUpdate) {
-            if (isApplicationInternalMode()) {
+            if (ApplicationManager.getApplication().isInternal) {
                 return super.submitCompat(events, additionalInfo, parentComponent, consumer)
             }
 
@@ -243,7 +241,7 @@ class KotlinReportSubmitter : ITNReporterCompat() {
             if (status is PluginUpdateStatus.Update) {
                 hasUpdate = true
 
-                if (isApplicationInternalMode()) {
+                if (ApplicationManager.getApplication().isInternal) {
                     super.submitCompat(events, additionalInfo, parentComponent, consumer)
                 }
 
@@ -272,7 +270,7 @@ class KotlinReportSubmitter : ITNReporterCompat() {
         return true
     }
 
-    fun showDialog(parent: Component?, @Nls message: String, @Nls title: String, options: Array<String>, defaultOptionIndex: Int, icon: Icon?): Int {
+    fun showDialog(parent: Component?, message: String, title: String, options: Array<String>, defaultOptionIndex: Int, icon: Icon?): Int {
         return if (parent != null) {
             Messages.showDialog(parent, message, title, options, defaultOptionIndex, icon)
         } else {

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.extensions;
 
 import com.intellij.openapi.util.NlsSafe;
@@ -12,16 +12,10 @@ import java.nio.file.Path;
 import java.util.Date;
 
 public interface PluginDescriptor {
+  @NotNull
+  PluginId getPluginId();
 
-  @NotNull PluginId getPluginId();
-
-  @Nullable ClassLoader getPluginClassLoader();
-
-  @ApiStatus.Experimental
-  default @NotNull ClassLoader getClassLoader() {
-    ClassLoader classLoader = getPluginClassLoader();
-    return classLoader != null ? classLoader : getClass().getClassLoader();
-  }
+  ClassLoader getPluginClassLoader();
 
   default boolean isBundled() {
     return false;
@@ -38,15 +32,18 @@ public interface PluginDescriptor {
 
   Path getPluginPath();
 
-  @Nullable @Nls String getDescription();
+  @Nullable
+  @Nls String getDescription();
 
-  @Nullable String getChangeNotes();
+  String getChangeNotes();
 
   @NlsSafe String getName();
 
-  @Nullable String getProductCode();
+  @Nullable
+  String getProductCode();
 
-  @Nullable Date getReleaseDate();
+  @Nullable
+  Date getReleaseDate();
 
   int getReleaseVersion();
 
@@ -58,10 +55,10 @@ public interface PluginDescriptor {
   @Deprecated
   PluginId @NotNull [] getOptionalDependentPluginIds();
 
-  @Nullable @NlsSafe String getVendor();
+  @NlsSafe String getVendor();
 
   //TODO: remove default implementation in 2021.3
-  default @Nullable @NlsSafe String getOrganization() {
+  @NlsSafe default String getOrganization() {
     return "";
   }
 
@@ -69,26 +66,26 @@ public interface PluginDescriptor {
 
   @Nullable String getResourceBundleBaseName();
 
-  @Nullable @NlsSafe String getCategory();
+  @NlsSafe String getCategory();
 
-  @Nullable String getVendorEmail();
+  String getVendorEmail();
 
-  @Nullable String getVendorUrl();
+  String getVendorUrl();
 
-  @Nullable String getUrl();
+  String getUrl();
 
   /**
    * @deprecated doesn't make sense for installed plugins; use PluginNode#getDownloads
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
-  default @Nullable String getDownloads() {
+  default String getDownloads() {
     return null;
   }
 
-  @Nullable @NlsSafe String getSinceBuild();
+  @NlsSafe String getSinceBuild();
 
-  @Nullable @NlsSafe String getUntilBuild();
+  @NlsSafe String getUntilBuild();
 
   default boolean allowBundledUpdate() {
     return false;

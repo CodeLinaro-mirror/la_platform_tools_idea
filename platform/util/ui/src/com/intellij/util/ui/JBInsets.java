@@ -11,12 +11,9 @@ import java.awt.*;
  * @author Konstantin Bulenkov
  */
 public class JBInsets extends Insets {
-  private final Insets unscaled;
-  
   /**
    * Creates and initializes a new {@code Insets} object with the
    * specified top, left, bottom, and right insets.
-   * You should pass unscaled values only!
    *
    * @param top    the inset from the top.
    * @param left   the inset from the left.
@@ -25,12 +22,10 @@ public class JBInsets extends Insets {
    */
   public JBInsets(int top, int left, int bottom, int right) {
     super(JBUIScale.scale(top), JBUIScale.scale(left), JBUIScale.scale(bottom), JBUIScale.scale(right));
-    //noinspection UseDPIAwareInsets
-    unscaled = new Insets(top, left, bottom, right);
   }
 
-  private JBInsets(int topBottom, int leftRight) {
-    this(topBottom, leftRight, topBottom, leftRight);
+  private JBInsets(int topBottom, int leftRight, @SuppressWarnings("unused") boolean _scaled) {
+    super(topBottom, leftRight, topBottom, leftRight);
   }
 
   public int width() {
@@ -41,16 +36,15 @@ public class JBInsets extends Insets {
     return top + bottom;
   }
 
-  /**
-   * topBottom and leftRight should be unscaled
-   */
-  public static @NotNull JBInsets create(int topBottom, int leftRight) {
+  @NotNull
+  public static JBInsets create(int topBottom, int leftRight) {
     int topBottomScaled = JBUIScale.scale(topBottom);
     int leftRightScaled = JBUIScale.scale(leftRight);
-    return new JBInsets(topBottomScaled, leftRightScaled);
+    return new JBInsets(topBottomScaled, leftRightScaled, true);
   }
 
-  public static @NotNull JBInsets create(@NotNull Insets insets) {
+  @NotNull
+  public static JBInsets create(@NotNull Insets insets) {
     if (insets instanceof JBInsets) {
       JBInsets copy = new JBInsets(0, 0, 0, 0);
       copy.top = insets.top;
@@ -60,14 +54,6 @@ public class JBInsets extends Insets {
       return copy;
     }
      return new JBInsets(insets.top, insets.left, insets.bottom, insets.right);
-  }
-
-  /**
-   * Returns unscaled insets
-   */
-  public Insets getUnscaled() {
-    //noinspection UseDPIAwareInsets
-    return new Insets(unscaled.top, unscaled.left, unscaled.bottom, unscaled.right);
   }
 
   public JBInsetsUIResource asUIResource() {

@@ -1,7 +1,4 @@
-from typing import Any, Callable, Iterator
-
-def py_encode_basestring(s: str) -> str: ...  # undocumented
-def py_encode_basestring_ascii(s: str) -> str: ...  # undocumented
+from typing import Any, Callable, Iterator, Optional, Tuple
 
 class JSONEncoder:
     item_separator: str
@@ -21,9 +18,9 @@ class JSONEncoder:
         check_circular: bool = ...,
         allow_nan: bool = ...,
         sort_keys: bool = ...,
-        indent: int | None = ...,
-        separators: tuple[str, str] | None = ...,
-        default: Callable[..., Any] | None = ...,
+        indent: Optional[int] = ...,
+        separators: Optional[Tuple[str, str]] = ...,
+        default: Optional[Callable[..., Any]] = ...,
     ) -> None: ...
     def default(self, o: Any) -> Any: ...
     def encode(self, o: Any) -> str: ...

@@ -2,7 +2,6 @@
 package org.jetbrains.plugins.gradle.importing
 
 import org.gradle.util.GradleVersion
-import org.jetbrains.plugins.gradle.importing.TestGradleBuildScriptBuilder.Companion.buildscript
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 import org.junit.Test
 
@@ -13,9 +12,9 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
   fun `test build script errors on Build`() {
     createSettingsFile("include 'api', 'impl', 'brokenProject' ")
     createProjectSubFile("impl/build.gradle",
-                         buildscript {
-                           addImplementationDependency(project(":api"))
-                         })
+                         "dependencies {\n" +
+                         "   compile project(':api')\n" +
+                         "}")
     createProjectSubFile("api/src/main/java/my/pack/Api.java",
                          "package my.pack;\n" +
                          "public interface Api {\n" +
@@ -119,7 +118,7 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                               "  :testClasses")
 
     // check unresolved dependency w/o repositories
-    buildScript.addTestImplementationDependency("junit:junit:4.12")
+    buildScript.addDependency("testCompile 'junit:junit:4.12'")
     createProjectConfig(buildScript.generate())
     compileModules("project.test")
 
@@ -164,7 +163,7 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
     // check unresolved dependency for offline mode
     GradleSettings.getInstance(myProject).isOfflineWork = true
     buildScript.withMavenCentral(isGradleNewerOrSameAs("6.0"))
-    buildScript.addTestImplementationDependency("junit:junit:99.99")
+    buildScript.addDependency("testCompile 'junit:junit:99.99'")
     createProjectConfig(buildScript.generate())
     compileModules("project.test")
 

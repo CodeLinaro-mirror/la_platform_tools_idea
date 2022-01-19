@@ -2,7 +2,6 @@
 package org.jetbrains.debugger
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
@@ -143,9 +142,7 @@ class VariableView(override val variableName: String, private val variable: Vari
   }
 
   override fun computeChildren(node: XCompositeNode) {
-    ApplicationManager.getApplication().executeOnPooledThread {
-      computeChildren(0, node)
-    }
+    computeChildren(0, node)
   }
 
   private fun computeChildren(remainingChildrenOffset: Int, node: XCompositeNode) {

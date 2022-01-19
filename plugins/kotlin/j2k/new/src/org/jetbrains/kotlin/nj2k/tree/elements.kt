@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.nj2k.tree
 
-import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.nj2k.symbols.JKClassSymbol
 
 import org.jetbrains.kotlin.nj2k.tree.visitors.JKVisitor
@@ -221,7 +220,7 @@ class JKJavaTryCatchSection(
     override fun accept(visitor: JKVisitor) = visitor.visitJavaTryCatchSection(this)
 }
 
-sealed class JKJavaSwitchCase : JKTreeElement() {
+abstract class JKJavaSwitchCase : JKTreeElement() {
     abstract fun isDefault(): Boolean
     abstract var statements: List<JKStatement>
 }
@@ -232,30 +231,15 @@ class JKJavaDefaultSwitchCase(statements: List<JKStatement>) : JKJavaSwitchCase(
     override fun accept(visitor: JKVisitor) = visitor.visitJavaDefaultSwitchCase(this)
 }
 
-sealed class JKJavaLabelSwitchCase : JKJavaSwitchCase() {
-    abstract val labels: List<JKExpression>
-    final override fun isDefault(): Boolean = false
+class JKJavaLabelSwitchCase(
+    label: JKExpression,
+    statements: List<JKStatement>
+) : JKJavaSwitchCase(), PsiOwner by PsiOwnerImpl() {
+    override var statements: List<JKStatement> by children(statements)
+    var label: JKExpression by child(label)
+    override fun isDefault(): Boolean = false
     override fun accept(visitor: JKVisitor) = visitor.visitJavaLabelSwitchCase(this)
 }
-
-class JKJavaClassicLabelSwitchCase(
-    labels: List<JKExpression>,
-    statements: List<JKStatement>
-) : JKJavaLabelSwitchCase(), PsiOwner by PsiOwnerImpl() {
-    override var statements: List<JKStatement> by children(statements)
-    override var labels: List<JKExpression> by children(labels)
-    override fun accept(visitor: JKVisitor) = visitor.visitJavaClassicLabelSwitchCase(this)
-}
-
-class JKJavaArrowSwitchLabelCase(
-    labels: List<JKExpression>,
-    statements: List<JKStatement>
-) : JKJavaLabelSwitchCase(), PsiOwner by PsiOwnerImpl() {
-    override var statements: List<JKStatement> by children(statements)
-    override var labels: List<JKExpression> by children(labels)
-    override fun accept(visitor: JKVisitor) = visitor.visitJavaArrowLabelSwitchCase(this)
-}
-
 
 class JKKtTryCatchSection(
     parameter: JKParameter,
@@ -266,30 +250,11 @@ class JKKtTryCatchSection(
     override fun accept(visitor: JKVisitor) = visitor.visitKtTryCatchSection(this)
 }
 
-interface JKJavaSwitchBlock : JKElement {
-    val expression: JKExpression
-    val cases: List<JKJavaSwitchCase>
-}
-
-interface JKKtWhenBlock : JKElement, JKFormattingOwner {
-    val expression: JKExpression
-    val cases: List<JKKtWhenCase>
-}
-
-
 sealed class JKJavaResourceElement : JKTreeElement(), PsiOwner by PsiOwnerImpl()
 
 class JKJavaResourceExpression(expression: JKExpression) : JKJavaResourceElement() {
     var expression by child(expression)
 }
-
 class JKJavaResourceDeclaration(declaration: JKLocalVariable) : JKJavaResourceElement() {
     var declaration by child(declaration)
-}
-
-class JKJavaErrorResourceDeclaration
-
-interface JKErrorElement: JKElement {
-    val psi: PsiElement?
-    val reason: String?
 }

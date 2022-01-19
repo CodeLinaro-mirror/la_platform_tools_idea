@@ -31,7 +31,7 @@ data class PipelineTask(
     val after: List<PipelineTask>,
     val phase: GenerationPhase,
     val isAvailable: Checker,
-    @Nls val title: String?
+    val title: String?
 ) : Task() {
     class Builder(
         private val name: String,

@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'i' is never used
 import Outer.Middle.Inner as F
 import Outer.Middle.Inner.Companion as Inner1
 

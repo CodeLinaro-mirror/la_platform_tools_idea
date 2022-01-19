@@ -2,17 +2,14 @@
 package com.intellij.codeInspection.dataFlow.java;
 
 import com.intellij.codeInspection.dataFlow.TypeConstraint;
-import com.intellij.codeInspection.dataFlow.TypeConstraints;
 import com.intellij.codeInspection.dataFlow.memory.DfaMemoryState;
 import com.intellij.codeInspection.dataFlow.types.DfPrimitiveType;
 import com.intellij.codeInspection.dataFlow.types.DfReferenceType;
 import com.intellij.codeInspection.dataFlow.types.DfType;
-import com.intellij.codeInspection.dataFlow.types.DfTypes;
 import com.intellij.codeInspection.dataFlow.value.DfaValue;
 import com.intellij.codeInspection.dataFlow.value.DfaVariableValue;
 import com.intellij.codeInspection.dataFlow.value.DfaWrappedValue;
-import com.intellij.psi.*;
-import com.intellij.psi.util.PsiUtil;
+import com.intellij.psi.CommonClassNames;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -60,21 +57,5 @@ public class JavaDfaHelpers {
       }
       type = arrayComponentType;
     }
-  }
-
-  /**
-   * @param expression functional expression
-   * @return DfType that describes the type of supplied expression as precise as possible
-   */
-  public static @NotNull DfType getFunctionDfType(@NotNull PsiFunctionalExpression expression) {
-    PsiElement parent = PsiUtil.skipParenthesizedExprUp(expression.getParent());
-    PsiType psiType;
-    if (parent instanceof PsiTypeCastExpression) {
-      psiType = ((PsiTypeCastExpression)parent).getType();
-    }
-    else {
-      psiType = expression.getFunctionalInterfaceType();
-    }
-    return (psiType == null ? DfType.TOP : TypeConstraints.exactSubtype(expression, psiType).asDfType()).meet(DfTypes.NOT_NULL_OBJECT);
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.data
 
 import com.intellij.collaboration.async.CompletableFutureUtil.submitIOTask
@@ -29,10 +29,7 @@ import org.jetbrains.plugins.github.pullrequest.GHPRDiffRequestModelImpl
 import org.jetbrains.plugins.github.pullrequest.data.service.*
 import org.jetbrains.plugins.github.pullrequest.search.GHPRSearchQueryHolderImpl
 import org.jetbrains.plugins.github.ui.avatars.GHAvatarIconsProvider
-import org.jetbrains.plugins.github.util.CachingGHUserAvatarLoader
-import org.jetbrains.plugins.github.util.GitRemoteUrlCoordinates
-import org.jetbrains.plugins.github.util.GithubSharedProjectSettings
-import org.jetbrains.plugins.github.util.LazyCancellableBackgroundProcessValue
+import org.jetbrains.plugins.github.util.*
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
 
@@ -122,7 +119,6 @@ internal class GHPRDataContextRepository(private val project: Project) {
     val changesService = GHPRChangesServiceImpl(ProgressManager.getInstance(), project, requestExecutor,
                                                 remoteCoordinates, apiRepositoryCoordinates)
     val reviewService = GHPRReviewServiceImpl(ProgressManager.getInstance(), securityService, requestExecutor, apiRepositoryCoordinates)
-    val filesService = GHPRFilesServiceImpl(ProgressManager.getInstance(), requestExecutor, apiRepositoryCoordinates)
 
     val searchHolder = GHPRSearchQueryHolderImpl().apply {
       query = GHPRSearchQuery.DEFAULT
@@ -135,7 +131,7 @@ internal class GHPRDataContextRepository(private val project: Project) {
                                           }))
     val listUpdatesChecker = GHPRListETagUpdateChecker(ProgressManager.getInstance(), requestExecutor, account.server, apiRepositoryPath)
 
-    val dataProviderRepository = GHPRDataProviderRepositoryImpl(detailsService, stateService, reviewService, filesService, commentService,
+    val dataProviderRepository = GHPRDataProviderRepositoryImpl(detailsService, stateService, reviewService, commentService,
                                                                 changesService) { id ->
       GHGQLPagedListLoader(ProgressManager.getInstance(),
                            SimpleGHGQLPagesLoader(requestExecutor, { p ->

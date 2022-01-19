@@ -2,12 +2,10 @@
 package com.intellij.codeInspection;
 
 import com.intellij.openapi.extensions.ExtensionPointName;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-@ApiStatus.Internal
 public interface InspectionApplicationFactory {
   ExtensionPointName<InspectionApplicationFactory> EP_NAME = ExtensionPointName.create("com.intellij.inspectionApplicationFactory");
 

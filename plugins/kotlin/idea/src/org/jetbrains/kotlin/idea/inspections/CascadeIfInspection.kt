@@ -49,7 +49,7 @@ class CascadeIfInspection : AbstractKotlinInspection() {
                 expression.ifKeyword,
                 KotlinBundle.message("cascade.if.should.be.replaced.with.when"),
                 ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
-                IntentionWrapper(IfToWhenIntention())
+                IntentionWrapper(IfToWhenIntention(), expression.containingKtFile)
             )
         })
 }

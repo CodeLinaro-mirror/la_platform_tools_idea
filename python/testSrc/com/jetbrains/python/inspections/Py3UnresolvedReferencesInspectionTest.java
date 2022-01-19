@@ -311,9 +311,4 @@ public class Py3UnresolvedReferencesInspectionTest extends PyInspectionTestCase 
   public void testClassLevelDunderAll() {
     doMultiFileTest("a.py");
   }
-
-  // PY-50885
-  public void testNamespacePackageReferenceInDocstringType() {
-    doMultiFileTest();
-  }
 }

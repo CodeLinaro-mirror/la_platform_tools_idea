@@ -5,8 +5,8 @@ import com.intellij.application.options.colors.fileStatus.FileStatusColorsConfig
 import com.intellij.openapi.extensions.BaseExtensionPointName;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurableEP;
+import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
-import com.intellij.openapi.options.ex.SortedConfigurableGroup;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vcs.AbstractVcs;
@@ -18,7 +18,9 @@ import com.intellij.openapi.vcs.changes.ui.IgnoredSettingsPanel;
 import com.intellij.openapi.vcs.impl.VcsEP;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -27,18 +29,13 @@ import java.util.List;
 import static com.intellij.openapi.options.ex.ConfigurableWrapper.wrapConfigurable;
 import static com.intellij.util.containers.ContainerUtil.addIfNotNull;
 
-public final class VcsManagerConfigurable extends SortedConfigurableGroup implements Configurable.WithEpDependencies {
-  private static final String ID = "project.propVCSSupport";
-  private static final int GROUP_WEIGHT = 45;
-
+public final class VcsManagerConfigurable extends SearchableConfigurable.Parent.Abstract
+  implements Configurable.NoScroll, Configurable.WithEpDependencies {
   @NotNull private final Project myProject;
+  private VcsDirectoryConfigurationPanel myMappings;
+  private VcsGeneralConfigurationConfigurable myGeneralPanel;
 
   public VcsManagerConfigurable(@NotNull Project project) {
-    super(ID,
-          VcsBundle.message("version.control.main.configurable.name"),
-          VcsBundle.message("version.control.main.configurable.description"),
-          VcsMappingConfigurable.HELP_ID,
-          GROUP_WEIGHT);
     myProject = project;
   }
 
@@ -50,16 +47,78 @@ public final class VcsManagerConfigurable extends SortedConfigurableGroup implem
   }
 
   @Override
+  public JComponent createComponent() {
+    myMappings = new VcsDirectoryConfigurationPanel(myProject);
+    return myMappings;
+  }
+
+  @Override
+  public boolean hasOwnContent() {
+    return true;
+  }
+
+  @Override
+  public boolean isModified() {
+    return myMappings != null && myMappings.isModified();
+  }
+
+  @Override
+  public void apply() throws ConfigurationException {
+    super.apply();
+    myMappings.apply();
+  }
+
+  @Override
+  public void reset() {
+    super.reset();
+    myMappings.reset();
+  }
+
+  @Override
+  public void disposeUIResources() {
+    super.disposeUIResources();
+    if (myMappings != null) {
+      myMappings.disposeUIResources();
+    }
+    if (myGeneralPanel != null) {
+      myGeneralPanel.disposeUIResources();
+    }
+    myMappings = null;
+  }
+
+  @Override
+  public String getDisplayName() {
+    return VcsBundle.message("version.control.main.configurable.name");
+  }
+
+  @Override
+  @NotNull
+  public String getHelpTopic() {
+    return "project.propVCSSupport.Mappings";
+  }
+
+  @Override
+  @NotNull
+  public String getId() {
+    return getHelpTopic();
+  }
+
+  @Override
   protected Configurable[] buildConfigurables() {
+    myGeneralPanel = new VcsGeneralConfigurationConfigurable(myProject, this);
+
     List<Configurable> result = new ArrayList<>();
 
-    result.add(new VcsGeneralSettingsConfigurable(myProject));
-    result.add(new VcsMappingConfigurable(myProject));
-    if (Registry.is("vcs.ignorefile.generation", true)) {
+    result.add(myGeneralPanel);
+    result.add(new VcsBackgroundOperationsConfigurable(myProject));
+    boolean ignoreSettingsAvailable = Registry.is("vcs.ignorefile.generation", true);
+    if (!myProject.isDefault() && ignoreSettingsAvailable) {
       result.add(new IgnoredSettingsPanel(myProject));
     }
-    result.add(new IssueNavigationConfigurable(myProject));
-    result.add(new ChangelistConflictConfigurable(myProject));
+    result.add(new IssueNavigationConfigurationPanel(myProject));
+    if (!myProject.isDefault()) {
+      result.add(new ChangelistConflictConfigurable(myProject));
+    }
     result.add(new CommitDialogConfigurable(myProject));
     result.add(new ShelfProjectConfigurable(myProject));
     for (VcsConfigurableProvider provider : VcsConfigurableProvider.EP_NAME.getExtensions()) {
@@ -76,6 +135,11 @@ public final class VcsManagerConfigurable extends SortedConfigurableGroup implem
     }
 
     return result.toArray(new Configurable[0]);
+  }
+
+  @Nullable
+  public VcsDirectoryConfigurationPanel getMappings() {
+    return myMappings;
   }
 
   @NotNull

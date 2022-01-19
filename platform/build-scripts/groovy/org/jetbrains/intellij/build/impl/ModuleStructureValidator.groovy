@@ -35,7 +35,7 @@ final class ModuleStructureValidator {
   private BuildContext buildContext
   private MultiMap<String, String> moduleJars = new MultiMap<String, String>()
   private Set<String> moduleNames = new HashSet<String>()
-  private List<String> errors = new ArrayList<>()
+  private List<GString> errors = new ArrayList<>()
 
   ModuleStructureValidator(BuildContext buildContext, MultiMap<String, String> moduleJars) {
     this.buildContext = buildContext
@@ -49,9 +49,7 @@ final class ModuleStructureValidator {
     }
   }
 
-  List<String> validate() {
-    errors.clear()
-
+  void validate() {
     buildContext.messages.info("Validating jars...")
     validateJarModules()
 
@@ -70,8 +68,11 @@ final class ModuleStructureValidator {
     if (errors.isEmpty()) {
       buildContext.messages.info("Validation finished successfully")
     }
-
-    return errors
+    else {
+      if (errors.any()) {
+        buildContext.messages.warning("Validation errors: \n" + errors.join("\n"))
+      }
+    }
   }
 
   private void validateJarModules() {
@@ -110,7 +111,7 @@ final class ModuleStructureValidator {
         }
 
         if (!moduleNames.contains(dependantModule.name)) {
-          errors.add("Missing dependency found: ${module.name} -> ${dependantModule.name} [${role.scope.name()}]".toString())
+          errors.add("Missing dependency found: ${module.name} -> ${dependantModule.name} [${role.scope.name()}]")
           continue
         }
 
@@ -129,10 +130,10 @@ final class ModuleStructureValidator {
     }
 
     // Start validating from product xml descriptor
-    def productDescriptorName = "META-INF/${buildContext.productProperties.platformPrefix}Plugin.xml"
+    def productDescriptorName = "META-INF\\${buildContext.productProperties.platformPrefix}Plugin.xml"
     def productDescriptorFile = findDescriptorFile(productDescriptorName, roots)
     if (productDescriptorFile == null) {
-      errors.add("Can not find product descriptor $productDescriptorName".toString())
+      errors.add("Can not find product descriptor $productDescriptorName")
       return
     }
 
@@ -160,7 +161,7 @@ final class ModuleStructureValidator {
           buildContext.messages.info("Ignore optional missing xml descriptor '$ref' referenced in '${descriptor.name}'")
         }
         else {
-          errors.add("Can not find xml descriptor '$ref' referenced in '${descriptor.name}'".toString())
+          errors.add("Can not find xml descriptor '$ref' referenced in '${descriptor.name}'")
         }
       }
       else {
@@ -188,14 +189,15 @@ final class ModuleStructureValidator {
     def classes = new HashSet<String>(predefinedTypes)
     for (moduleName in moduleNames) {
       def outputDirectory = JpsJavaExtensionService.instance.getOutputDirectory(buildContext.findModule(moduleName), false)
-      def outputDirectoryPrefix = outputDirectory.path.replace("\\", "/") + "/"
       outputDirectory.eachFileRecurse(FileType.FILES) {
         if (!it.name.endsWith('.class') || it.name.endsWith("Kt.class")) {
           return
         }
 
-        def normalizedPath = it.path.replace("\\", "/")
-        def className = removeSuffixStrict(removePrefixStrict(normalizedPath, outputDirectoryPrefix), ".class").replace("/", ".")
+        def className = it.path
+          .replace(outputDirectory.path + "\\", "")
+          .replace(".class", "")
+          .replace("\\", ".")
         classes.add(className)
       }
     }
@@ -205,30 +207,6 @@ final class ModuleStructureValidator {
       def xml = new XmlParser().parse(descriptor)
       validateXmlRegistrationsRec(descriptor.name, xml, classes)
     }
-  }
-
-  private String removePrefixStrict(String string, String prefix) {
-    if (prefix == null || prefix.isEmpty()) {
-      throw new IllegalArgumentException("'prefix' is null or empty")
-    }
-
-    if (!string.startsWith(prefix)) {
-      throw new IllegalStateException("String must start with '$prefix': $string")
-    }
-
-    return string.substring(prefix.length())
-  }
-
-  private String removeSuffixStrict(String string, String suffix) {
-    if (suffix == null || suffix.isEmpty()) {
-      throw new IllegalArgumentException("'suffix' is null or empty")
-    }
-
-    if (!string.endsWith(suffix)) {
-      throw new IllegalStateException("String must end with '$suffix': $string")
-    }
-
-    return string.substring(0, string.length() - suffix.length())
   }
 
   private void validateXmlRegistrationsRec(String source, Node xml, HashSet<String> classes) {
@@ -268,6 +246,6 @@ final class ModuleStructureValidator {
     if (value.isEmpty() || classes.contains(value)) {
       return
     }
-    errors.add("Unresolved registration '$value' in $source".toString())
+    errors.add("Unresolved registration '$value' in $source")
   }
 }

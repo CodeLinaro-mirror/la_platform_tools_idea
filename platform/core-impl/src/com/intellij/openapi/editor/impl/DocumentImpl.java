@@ -128,11 +128,10 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
 
   static final Key<Reference<RangeMarkerTree<RangeMarkerEx>>> RANGE_MARKERS_KEY = Key.create("RANGE_MARKERS_KEY");
   static final Key<Reference<RangeMarkerTree<RangeMarkerEx>>> PERSISTENT_RANGE_MARKERS_KEY = Key.create("PERSISTENT_RANGE_MARKERS_KEY");
-  @ApiStatus.Internal
-  public void documentCreatedFrom(@NotNull VirtualFile f, int tabSize) {
+  public void documentCreatedFrom(@NotNull VirtualFile f) {
     processQueue();
-    getSaveRMTree(f, RANGE_MARKERS_KEY, myRangeMarkers, tabSize);
-    getSaveRMTree(f, PERSISTENT_RANGE_MARKERS_KEY, myPersistentRangeMarkers, tabSize);
+    getSaveRMTree(f, RANGE_MARKERS_KEY, myRangeMarkers);
+    getSaveRMTree(f, PERSISTENT_RANGE_MARKERS_KEY, myPersistentRangeMarkers);
   }
 
   // are some range markers retained by strong references?
@@ -145,9 +144,7 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
   }
 
   private void getSaveRMTree(@NotNull VirtualFile f,
-                             @NotNull Key<Reference<RangeMarkerTree<RangeMarkerEx>>> key,
-                             @NotNull RangeMarkerTree<RangeMarkerEx> tree,
-                             int tabSize) {
+                             @NotNull Key<Reference<RangeMarkerTree<RangeMarkerEx>>> key, @NotNull RangeMarkerTree<RangeMarkerEx> tree) {
     RMTreeReference freshRef = new RMTreeReference(tree, f);
     Reference<RangeMarkerTree<RangeMarkerEx>> oldRef;
     do {
@@ -163,9 +160,10 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
     }
 
     // old tree was saved in the virtual file. Have to transfer markers from there.
-    oldTree.processAll(r -> {
-      if (r.isValid()) {
-        ((RangeMarkerImpl)r).reRegister(this, tabSize);
+    TextRange myDocumentRange = new TextRange(0, getTextLength());
+    oldTree.processAll(r ->{
+      if (r.isValid() && myDocumentRange.contains(r)) {
+        registerRangeMarker(r, r.getStartOffset(), r.getEndOffset(), r.isGreedyToLeft(), r.isGreedyToRight(), 0);
       }
       else {
         ((RangeMarkerImpl)r).invalidate("document was gc-ed and re-created");
@@ -174,11 +172,9 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
     });
   }
 
-  // track GC of RangeMarkerTree: means no-one is interested in range markers for this file anymore
   private static final ReferenceQueue<RangeMarkerTree<RangeMarkerEx>> rmTreeQueue = new ReferenceQueue<>();
   private static class RMTreeReference extends WeakReference<RangeMarkerTree<RangeMarkerEx>> {
-    @NotNull
-    private final VirtualFile virtualFile;
+    @NotNull private final VirtualFile virtualFile;
 
     RMTreeReference(@NotNull RangeMarkerTree<RangeMarkerEx> referent, @NotNull VirtualFile virtualFile) {
       super(referent, rmTreeQueue);
@@ -1186,15 +1182,15 @@ public final class DocumentImpl extends UserDataHolderBase implements DocumentEx
   }
 
   @NotNull
-  public String dumpState() {
+  String dumpState() {
     @NonNls StringBuilder result = new StringBuilder();
-    result.append("intervals:\n");
-    int lineCount = getLineCount();
-    for (int line = 0; line < lineCount; line++) {
-      result.append(line).append(": ").append(getLineStartOffset(line)).append("-").append(getLineEndOffset(line)).append(", ");
+    result.append(", intervals:\n");
+    for (int line = 0; line < getLineCount(); line++) {
+      result.append(line).append(": ").append(getLineStartOffset(line)).append("-")
+        .append(getLineEndOffset(line)).append(", ");
     }
-    if (lineCount > 0) {
-      result.setLength(result.length() - 2);
+    if (result.length() > 0) {
+      result.setLength(result.length() - 1);
     }
     return result.toString();
   }

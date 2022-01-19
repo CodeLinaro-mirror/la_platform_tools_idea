@@ -9,7 +9,7 @@ class MakeNonNullImpl implements MakeNonNull {
   @NotNull
   @Override
   public String getSnapshot(@NotNull Integer arg) {
-    return arg.toString();
+    return "1";
   }
 }
 

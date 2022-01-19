@@ -4,10 +4,7 @@ import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.Application;
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.PluginPathManager;
+import com.intellij.openapi.application.*;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.impl.FileTypeManagerImpl;
@@ -20,7 +17,6 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.Interner;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -103,7 +99,7 @@ public final class TextMateServiceImpl extends TextMateService {
 
     if (!oldExtensionsMapping.equals(newExtensionsMapping)) {
       if (fireEvents) {
-        fireFileTypesChangedEvent("old mappings = " + oldExtensionsMapping + ", new mappings" + newExtensionsMapping, () -> {
+        fireFileTypesChangedEvent(() -> {
           myExtensionsMapping = newExtensionsMapping;
         });
       }
@@ -114,11 +110,13 @@ public final class TextMateServiceImpl extends TextMateService {
     mySyntaxTable.compact();
   }
 
-  private static void fireFileTypesChangedEvent(@NonNls @NotNull String reason, @NotNull Runnable update) {
+  private static void fireFileTypesChangedEvent(@NotNull Runnable update) {
     ApplicationManager.getApplication().invokeLater(() -> {
       ApplicationManager.getApplication().runWriteAction(() -> {
         FileTypeManagerImpl fileTypeManager = (FileTypeManagerImpl)FileTypeManager.getInstance();
-        fileTypeManager.makeFileTypesChange(reason, update);
+        fileTypeManager.fireBeforeFileTypesChanged();
+        update.run();
+        fileTypeManager.fireFileTypesChanged();
       });
     }, ModalityState.NON_MODAL);
   }

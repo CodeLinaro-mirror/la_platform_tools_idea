@@ -1,7 +1,6 @@
 package com.intellij.psi.search.scope;
 
 import com.intellij.openapi.application.ReadAction;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
@@ -16,8 +15,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 
 public abstract class RangeBasedLocalSearchScope extends LocalSearchScope {
-  private static final Logger ourLogger = Logger.getInstance(RangeBasedLocalSearchScope.class);
-
   protected final boolean myIgnoreInjectedPsi;
   @NotNull
   protected final @Nls String  myDisplayName;
@@ -41,11 +38,7 @@ public abstract class RangeBasedLocalSearchScope extends LocalSearchScope {
       return;
     }
     int modifiedEnd = end;
-    int length = psiFile.getTextLength();
-    if (end > length)
-      ourLogger.error("Range extends beyond the PSI file range. Maybe PSI file is not actual");
-
-    if (end == length)
+    if (end == psiFile.getTextLength())
       modifiedEnd--;
 
     final PsiElement endElement = psiFile.findElementAt(modifiedEnd);
@@ -59,18 +52,11 @@ public abstract class RangeBasedLocalSearchScope extends LocalSearchScope {
 
     final PsiElement[] children = parent.getChildren();
     TextRange range = new TextRange(start, end);
-    if (children.length == 0) {
-      if (parent.getContainingFile() != null && range.intersects(parent.getTextRange())) {
-        elements.add(parent);
-      }
-    }
-    else {
-      for (PsiElement child : children) {
-        if (!(child instanceof PsiWhiteSpace) &&
-            child.getContainingFile() != null &&
-            range.intersects(child.getTextRange())) {
-          elements.add(child);
-        }
+    for (PsiElement child : children) {
+      if (!(child instanceof PsiWhiteSpace) &&
+          child.getContainingFile() != null &&
+          range.intersects(child.getTextRange())) {
+        elements.add(child);
       }
     }
   }

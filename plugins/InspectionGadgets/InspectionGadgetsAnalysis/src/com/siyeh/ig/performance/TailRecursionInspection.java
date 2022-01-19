@@ -36,7 +36,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public final class TailRecursionInspection extends BaseInspection {
+public class TailRecursionInspection extends BaseInspection {
+
   @Override
   @NotNull
   protected String buildErrorString(Object... infos) {
@@ -66,7 +67,8 @@ public final class TailRecursionInspection extends BaseInspection {
     return true;
   }
 
-  private static final class RemoveTailRecursionFix extends InspectionGadgetsFix {
+  private static class RemoveTailRecursionFix extends InspectionGadgetsFix {
+
     @Override
     @NotNull
     public String getFamilyName() {

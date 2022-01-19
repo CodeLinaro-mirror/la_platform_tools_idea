@@ -105,13 +105,13 @@ class BaseCodeExecutor(object):
                         import pydevd_tracing
                         pydevd_tracing.SetTrace(self.debugger.trace_dispatch)
 
-                    more, exception_occurred = self.do_add_exec(code_fragment)
+                    more = self.do_add_exec(code_fragment)
 
                     if hasattr(self, 'debugger'):
                         import pydevd_tracing
                         pydevd_tracing.SetTrace(None)
 
-                    self.finish_exec(more, exception_occurred)
+                    self.finish_exec(more)
                 finally:
                     if help is not None:
                         try:
@@ -129,7 +129,7 @@ class BaseCodeExecutor(object):
         except:
             traceback.print_exc()
 
-        return more, exception_occurred
+        return more
 
     def do_add_exec(self, codeFragment):
         '''
@@ -193,7 +193,7 @@ class BaseCodeExecutor(object):
     def start_exec(self):
         self.interruptable = True
 
-    def finish_exec(self, more, exception_occurred):
+    def finish_exec(self, more):
         self.interruptable = False
         return True
 
@@ -262,7 +262,7 @@ class BaseCodeExecutor(object):
                         thread.interrupt_main()
                     else:
                         self.mainThread._thread.interrupt()  # Jython
-            self.finish_exec(False, False)
+            self.finish_exec(False)
             return True
         except:
             traceback.print_exc()

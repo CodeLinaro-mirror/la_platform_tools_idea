@@ -646,7 +646,7 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
   @NotNull
   public DocCommentSettings getDocCommentSettings(@NotNull PsiFile file) {
     Language language = file.getLanguage();
-    LanguageCodeStyleProvider settingsProvider = LanguageCodeStyleProvider.forLanguage(language);
+    LanguageCodeStyleProvider settingsProvider = CodeStyleSettingsService.getLanguageCodeStyleProvider(language);
     if (settingsProvider != null) {
       return settingsProvider.getDocCommentSettings(CodeStyle.getSettings(file));
     }

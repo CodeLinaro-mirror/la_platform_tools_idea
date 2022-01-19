@@ -80,11 +80,11 @@ class RecentProjectsTest {
 
   @Test
   fun timestampForOpenProjectUpdatesWhenGetStateCalled() {
-    val z1 = tempDir.newPath("z1")
-    var project = PlatformTestUtil.loadAndOpenProject(z1, disposableRule.disposable)
+    val path = tempDir.newPath("z1")
+    var project = PlatformTestUtil.loadAndOpenProject(path, disposableRule.disposable)
     try {
       PlatformTestUtil.forceCloseProjectWithoutSaving(project)
-      project = PlatformTestUtil.loadAndOpenProject(z1, disposableRule.disposable)
+      project = PlatformTestUtil.loadAndOpenProject(path, disposableRule.disposable)
       val timestamp = getProjectOpenTimestamp("z1")
       RecentProjectsManagerBase.instanceEx.updateLastProjectPath()
       // "Timestamp for opened project has not been updated"
@@ -103,7 +103,7 @@ class RecentProjectsTest {
     val projectDir = Paths.get("${PlatformTestUtil.getPlatformTestDataPath()}/recentProjects/dotNetSampleRecent/Povysh")
     val slnFile = projectDir.resolve("Povysh.sln")
 
-    val icon = (rpm.getProjectIcon(slnFile.toString(), false) as DeferredIconImpl<*>).evaluate()
+    val icon = (rpm.getProjectIcon(slnFile.toString(), false, false) as DeferredIconImpl<*>).evaluate()
 
     assertThat(icon).isNotInstanceOf(EmptyIcon::class.java)
   }

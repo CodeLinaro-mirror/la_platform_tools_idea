@@ -9,7 +9,6 @@ import training.dsl.TaskContext
 import training.dsl.parseLessonSample
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
-import training.util.isToStringContains
 
 class PythonSmartCompletionLesson
   : KLesson("Smart completion", LessonsBundle.message("smart.completion.lesson.name")) {
@@ -33,7 +32,7 @@ class PythonSmartCompletionLesson
           text(PythonLessonsBundle.message("python.smart.completion.use.smart.completion",
                                            code("x"), action(it)))
           triggerByListItemAndHighlight { ui ->
-            ui.isToStringContains(methodName)
+            ui.toString().contains(methodName)
           }
           proposeRestoreMe()
           test { actions(it) }
@@ -59,9 +58,4 @@ class PythonSmartCompletionLesson
       checkExpectedStateOfEditor(sample)
     }
   }
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(PythonLessonsBundle.message("python.smart.completion.help.link"),
-         LessonUtil.getHelpLink("pycharm", "auto-completing-code.html#smart_type_matching_completion")),
-  )
 }

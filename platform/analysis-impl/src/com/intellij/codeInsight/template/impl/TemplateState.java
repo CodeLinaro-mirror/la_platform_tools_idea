@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.template.impl;
 
 import com.intellij.codeInsight.lookup.*;
@@ -88,10 +88,6 @@ public final class TemplateState extends TemplateStateBase implements Disposable
     myProject = project;
     myLiveTemplateProcessor = processor;
     myEventPublisher = project.getMessageBus().syncPublisher(TEMPLATE_STARTED_TOPIC);
-  }
-
-  public Project getProject() {
-    return myProject;
   }
 
   private void initListeners() {
@@ -667,7 +663,7 @@ public final class TemplateState extends TemplateStateBase implements Disposable
         return startDiff != 0 ? startDiff : o2.segmentNumber - o1.segmentNumber;
       });
     }
-    DocumentUtil.executeInBulk(getDocument(), () -> {
+    DocumentUtil.executeInBulk(getDocument(), true, () -> {
       for (TemplateDocumentChange change : changes) {
         replaceString(change.newValue, change.startOffset, change.endOffset, change.segmentNumber);
       }
@@ -1292,7 +1288,7 @@ public final class TemplateState extends TemplateStateBase implements Disposable
     int finalSelectionStartLine = selectionStartLine;
     int finalSelectionEndLine = selectionEndLine;
     int finalSelectionIndent = selectionIndent;
-    DocumentUtil.executeInBulk(getDocument(), () -> {
+    DocumentUtil.executeInBulk(getDocument(), true, () -> {
       for (int i = startLineNum + 1; i <= endLineNum; i++) {
         if (i > finalSelectionStartLine && i <= finalSelectionEndLine) {
           getDocument().insertString(getDocument().getLineStartOffset(i), StringUtil.repeatSymbol(' ', finalSelectionIndent));

@@ -224,9 +224,6 @@ public final class AddImportHelper {
         feeler = feeler.getNextSibling();
       }
       else if (PsiTreeUtil.instanceOf(feeler, OuterLanguageElement.class)) {
-        if (skippedOverStatements) {
-          break;
-        }
         feeler = feeler.getNextSibling();
         seeker = feeler;
       }

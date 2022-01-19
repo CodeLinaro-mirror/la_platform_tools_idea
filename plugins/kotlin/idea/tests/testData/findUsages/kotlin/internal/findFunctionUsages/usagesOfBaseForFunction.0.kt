@@ -2,11 +2,10 @@
 // OPTIONS: usages, skipImports
 
 interface A {
-    @Suppress("WRONG_MODIFIER_CONTAINING_DECLARATION")
     internal fun foo()
 }
 
-class B : A {
+class B: A {
     override fun foo() {} // Find usages gives no results
 }
 
@@ -15,4 +14,5 @@ fun main(a: A) {
 }
 
 // for KT-3769 Find usages gives no result for overrides
+// ERROR: Modifier 'internal' is not applicable inside 'interface'
 // FIR_COMPARISON

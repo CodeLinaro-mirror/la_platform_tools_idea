@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'a' is never used
 inline fun block(block: () -> String) = block()
 
 val test = <caret>fun(i: Int, s: String): String {

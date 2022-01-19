@@ -28,7 +28,6 @@ import com.intellij.openapi.util.UserDataHolder
 import javax.swing.JComponent
 
 class MutableDiffRequestChain : DiffRequestChainBase {
-  private val producer = MyDiffRequestProducer()
   private val requestUserData: MutableMap<Key<*>, Any> = mutableMapOf()
 
   var content1: DiffContent
@@ -62,7 +61,7 @@ class MutableDiffRequestChain : DiffRequestChainBase {
     requestUserData.put(key, value)
   }
 
-  override fun getRequests(): List<DiffRequestProducer> = listOf(producer)
+  override fun getRequests(): List<DiffRequestProducer> = listOf(MyDiffRequestProducer())
 
   private inner class MyDiffRequestProducer : DiffRequestProducer {
     override fun getName(): String {

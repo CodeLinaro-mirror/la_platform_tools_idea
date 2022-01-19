@@ -17,7 +17,6 @@ package com.jetbrains.rest.completion;
 
 import com.intellij.codeInsight.completion.*;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
-import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.patterns.PsiElementPattern;
@@ -34,7 +33,7 @@ import static com.intellij.patterns.StandardPatterns.or;
 /**
  * User : ktisha
  */
-public class SphinxDirectiveCompletionContributor extends CompletionContributor implements DumbAware {
+public class SphinxDirectiveCompletionContributor extends CompletionContributor {
   public static final PsiElementPattern.Capture<PsiElement> DIRECTIVE_PATTERN = psiElement().afterSibling(or(psiElement().
     withElementType(RestTokenTypes.WHITESPACE).afterSibling(psiElement(RestReferenceTarget.class)),
        psiElement().withElementType(RestTokenTypes.EXPLISIT_MARKUP_START)));

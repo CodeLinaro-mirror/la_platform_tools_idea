@@ -17,7 +17,6 @@ package org.jetbrains.idea.maven.project;
 
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import org.apache.commons.lang.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.model.MavenConstants;
@@ -25,8 +24,6 @@ import org.jetbrains.idea.maven.model.MavenId;
 import org.jetbrains.idea.maven.utils.MavenArtifactUtil;
 
 import java.io.File;
-
-import static org.jetbrains.idea.maven.dom.MavenDomProjectProcessorUtils.DEFAULT_RELATIVE_PATH;
 
 public abstract class MavenParentProjectFileProcessor<RESULT_TYPE> {
   @Nullable
@@ -47,13 +44,6 @@ public abstract class MavenParentProjectFileProcessor<RESULT_TYPE> {
       result = processManagedParent(parentFile);
     }
 
-    if (result == null && StringUtils.isEmpty(parentDesc.getParentRelativePath())) {
-      result = findInLocalRepository(generalSettings, parentDesc);
-      if (result == null) {
-        parentDesc = new MavenParentDesc(parentDesc.getParentId(), DEFAULT_RELATIVE_PATH);
-      }
-    }
-
     if (result == null && projectFile.getParent() != null) {
       parentFile = projectFile.getParent().findFileByRelativePath(parentDesc.getParentRelativePath());
       if (parentFile != null && parentFile.isDirectory()) {
@@ -65,22 +55,14 @@ public abstract class MavenParentProjectFileProcessor<RESULT_TYPE> {
     }
 
     if (result == null) {
-      result = findInLocalRepository(generalSettings, parentDesc);
+      File parentIoFile = MavenArtifactUtil.getArtifactFile(generalSettings.getEffectiveLocalRepository(),
+                                                            parentDesc.getParentId(), "pom");
+      parentFile = LocalFileSystem.getInstance().findFileByIoFile(parentIoFile);
+      if (parentFile != null) {
+        result = processRepositoryParent(parentFile);
+      }
     }
 
-    return result;
-  }
-
-  private RESULT_TYPE findInLocalRepository(@NotNull MavenGeneralSettings generalSettings,
-                                            @NotNull MavenParentDesc parentDesc) {
-    RESULT_TYPE result = null;
-    VirtualFile parentFile;
-    File parentIoFile = MavenArtifactUtil.getArtifactFile(generalSettings.getEffectiveLocalRepository(),
-                                                          parentDesc.getParentId(), "pom");
-    parentFile = LocalFileSystem.getInstance().findFileByIoFile(parentIoFile);
-    if (parentFile != null) {
-      result = processRepositoryParent(parentFile);
-    }
     return result;
   }
 

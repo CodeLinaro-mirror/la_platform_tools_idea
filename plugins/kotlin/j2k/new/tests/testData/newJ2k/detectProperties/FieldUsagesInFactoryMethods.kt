@@ -11,4 +11,5 @@ internal class C(val arg1: Int) {
         this.arg2 = arg2
         arg3 = 0
     }
+
 }

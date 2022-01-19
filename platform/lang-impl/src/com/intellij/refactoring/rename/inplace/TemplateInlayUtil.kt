@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.rename.inplace
 
 import com.intellij.codeInsight.hints.InlayPresentationFactory
@@ -11,7 +11,6 @@ import com.intellij.internal.statistic.eventLog.events.FusInputEvent
 import com.intellij.lang.LangBundle
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ActionUtil
-import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors.*
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.Inlay
@@ -40,7 +39,6 @@ import java.awt.*
 import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import javax.swing.JLabel
-import javax.swing.JPanel
 import javax.swing.LayoutFocusTraversalPolicy
 
 @ApiStatus.Experimental
@@ -75,24 +73,11 @@ object TemplateInlayUtil {
     }
   }
 
-  @Deprecated("Use overload with JPanel",
-              ReplaceWith("createNavigatableButtonWithPopup(templateState, inEditorOffset, presentation, panel as JPanel, templateElement, logStatisticsOnHide)"))
   @JvmStatic
   fun createNavigatableButtonWithPopup(templateState: TemplateState,
                                        inEditorOffset: Int,
                                        presentation: SelectableInlayPresentation,
                                        panel: DialogPanel,
-                                       templateElement: SelectableTemplateElement = SelectableTemplateElement(presentation),
-                                       logStatisticsOnHide: () -> Unit = {}): Inlay<PresentationRenderer>? {
-    return createNavigatableButtonWithPopup(templateState, inEditorOffset, presentation, panel as JPanel, templateElement, logStatisticsOnHide)
-  }
-  
-  @JvmOverloads
-  @JvmStatic
-  fun createNavigatableButtonWithPopup(templateState: TemplateState,
-                                       inEditorOffset: Int,
-                                       presentation: SelectableInlayPresentation,
-                                       panel: JPanel,
                                        templateElement: SelectableTemplateElement = SelectableTemplateElement(presentation),
                                        logStatisticsOnHide: () -> Unit = {}): Inlay<PresentationRenderer>? {
     val editor = templateState.editor
@@ -101,9 +86,8 @@ object TemplateInlayUtil {
       try {
         editor.putUserData(PopupFactoryImpl.ANCHOR_POPUP_POSITION, inlay.visualPosition)
         panel.border = JBEmptyBorder(JBInsets.create(Insets(8, 12, 4, 12)))
-        val focusedComponent = if (panel is DialogPanel) panel.preferredFocusedComponent else panel
         val popup = JBPopupFactory.getInstance()
-          .createComponentPopupBuilder(panel, focusedComponent)
+          .createComponentPopupBuilder(panel, panel.preferredFocusedComponent)
           .setRequestFocus(true)
           .addListener(object : JBPopupListener {
             override fun onClosed(event: LightweightWindowEvent) {
@@ -113,27 +97,25 @@ object TemplateInlayUtil {
             }
           })
           .createPopup()
-        val customEnterAction = object : DumbAwareAction() {
-          override fun actionPerformed(e: AnActionEvent) {
-            popup.cancel()
-            CommandProcessor.getInstance().executeCommand(templateState.project, {templateState.nextTab()}, null, null)
-          }
-        }
-        customEnterAction.registerCustomShortcutSet(KeymapUtil.getActiveKeymapShortcuts(IdeActions.ACTION_EDITOR_ENTER), panel)
-        Disposer.register(popup) {
-          customEnterAction.unregisterCustomShortcutSet(panel)
-        }
+        DumbAwareAction.create {
+          popup.cancel()
+          templateState.nextTab()
+          logStatisticsOnHide.invoke()
+        }.registerCustomShortcutSet(KeymapUtil.getActiveKeymapShortcuts(IdeActions.ACTION_EDITOR_ENTER), panel)
         popup.showInBestPositionFor(editor)
       }
       finally {
         editor.putUserData(PopupFactoryImpl.ANCHOR_POPUP_POSITION, null)
       }
     }
-    presentation.addSelectionListener { isSelected -> if (isSelected) showPopup() }
+    presentation.addSelectionListener(object : SelectableInlayPresentation.SelectionListener {
+      override fun selectionChanged(isSelected: Boolean) {
+        if (isSelected) showPopup()
+      }
+    })
     return inlay
   }
 
-  @JvmOverloads
   @JvmStatic
   fun createSettingsPresentation(editor: EditorImpl, onClick: (MouseEvent) -> Unit = {}): SelectableInlayPresentation {
     val factory = PresentationFactory(editor)
@@ -279,7 +261,7 @@ object TemplateInlayUtil {
       }
       optionsListener.invoke(newOptions)
     }
-    return createNavigatableButtonWithPopup(templateState, offset, presentation, panel as JPanel, templateElement) {
+    return createNavigatableButtonWithPopup(templateState, offset, presentation, panel, templateElement) {
       logStatisticsOnHide(editor, initOptions, currentOptions)
     }
   }

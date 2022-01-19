@@ -14,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 
 public class BackwardDependenciesAction extends BaseAnalysisAction {
-  private BackwardDependenciesAdditionalUi myPanel;
+  private AdditionalSettingsPanelUi myPanel;
 
 
   public BackwardDependenciesAction() {
@@ -48,7 +48,7 @@ public class BackwardDependenciesAction extends BaseAnalysisAction {
   @Override
   @Nullable
   protected JComponent getAdditionalActionSettings(final Project project, final BaseAnalysisActionDialog dialog) {
-    myPanel = new BackwardDependenciesAdditionalUi();
+    myPanel = new AdditionalSettingsPanelUi();
     myPanel.getScopeChooserCombo().init(project, null);
     return myPanel.getPanel();
   }

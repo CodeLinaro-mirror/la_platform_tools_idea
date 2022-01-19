@@ -248,9 +248,6 @@ public class JavaLineMarkerProvider extends LineMarkerProviderDescriptor {
 
   @NotNull
   protected List<LineMarkerInfo<PsiElement>> collectInheritingClasses(@NotNull PsiClass aClass) {
-    if (!myImplementedOption.isEnabled() && !myOverriddenOption.isEnabled()) {
-      return Collections.emptyList();
-    }
     if (aClass.hasModifierProperty(PsiModifier.FINAL)) {
       return Collections.emptyList();
     }

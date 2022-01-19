@@ -18,7 +18,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public class ToggleLaggingModeAction extends AnAction implements DumbAware {
   private volatile boolean myLagging = false;
-  private final Alarm myAlarm = new Alarm();
+  private final Alarm myAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {

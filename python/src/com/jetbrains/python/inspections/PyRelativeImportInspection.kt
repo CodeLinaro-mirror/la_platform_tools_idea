@@ -23,7 +23,6 @@ import com.jetbrains.python.psi.LanguageLevel
 import com.jetbrains.python.psi.PyElementGenerator
 import com.jetbrains.python.psi.PyFromImportStatement
 import com.jetbrains.python.psi.PyUtil
-import com.jetbrains.python.psi.types.TypeEvalContext
 
 class PyRelativeImportInspection : PyInspection() {
   override fun buildVisitor(holder: ProblemsHolder,
@@ -33,10 +32,10 @@ class PyRelativeImportInspection : PyInspection() {
         LanguageLevel.forElement(holder.file).isOlderThan(LanguageLevel.PYTHON34)) {
       return PsiElementVisitor.EMPTY_VISITOR
     }
-    return Visitor(holder, PyInspectionVisitor.getContext(session))
+    return Visitor(holder, session)
   }
 
-  private class Visitor(holder: ProblemsHolder, context: TypeEvalContext) : PyInspectionVisitor(holder, context) {
+  private class Visitor(holder: ProblemsHolder, session: LocalInspectionToolSession) : PyInspectionVisitor(holder, session) {
     override fun visitPyFromImportStatement(node: PyFromImportStatement) {
       val directory = node.containingFile?.containingDirectory ?: return
       if (node.relativeLevel > 0 && !PyUtil.isExplicitPackage(directory) && !isInsideOrdinaryPackage(directory)) {

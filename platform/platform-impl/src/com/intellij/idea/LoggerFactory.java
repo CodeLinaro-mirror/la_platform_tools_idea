@@ -5,7 +5,6 @@ import com.intellij.diagnostic.DialogAppender;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.JDOMUtil;
-import com.intellij.util.SystemProperties;
 import org.apache.log4j.*;
 import org.apache.log4j.varia.LevelRangeFilter;
 import org.apache.log4j.xml.DOMConfigurator;
@@ -63,8 +62,7 @@ public final class LoggerFactory implements Logger.Factory {
     text = text.replace(LOG_DIR_MACRO, PathManager.getLogPath().replace("\\", "\\\\"));
 
     // JDOM is used instead of XML DOM because of IDEA-173468 (`DOMConfigurator` really wants `Document`)
-    //noinspection deprecation
-    Document document = JDOMUtil.loadDocument(new StringReader(text));
+    @SuppressWarnings("deprecation") Document document = JDOMUtil.loadDocument(new StringReader(text));
     Element element = new DOMOutputter(new JAXPDOMAdapter() {
       @Override
       public org.w3c.dom.Document createDocument() throws JDOMException {
@@ -74,7 +72,12 @@ public final class LoggerFactory implements Logger.Factory {
           return super.createDocument();
         }
         finally {
-          SystemProperties.setProperty(key, property);
+          if (property == null) {
+            System.clearProperty(key);
+          }
+          else {
+            System.setProperty(key, property);
+          }
         }
       }
     }, null, null).output(document).getDocumentElement();

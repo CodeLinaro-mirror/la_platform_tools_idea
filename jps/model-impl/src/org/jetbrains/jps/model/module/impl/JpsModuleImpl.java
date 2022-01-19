@@ -240,9 +240,4 @@ public class JpsModuleImpl<P extends JpsElement> extends JpsNamedCompositeElemen
   public JpsModuleType<P> getModuleType() {
     return myModuleType;
   }
-
-  @Override
-  public String toString() {
-    return "JpsModuleImpl: "+getName();
-  }
 }

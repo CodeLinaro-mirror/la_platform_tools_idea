@@ -12,7 +12,6 @@ import com.intellij.psi.codeStyle.JavaCodeStyleSettings;
 import com.intellij.psi.javadoc.PsiDocComment;
 import com.intellij.psi.search.TodoPattern;
 import com.intellij.util.text.CharArrayUtil;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -370,8 +369,8 @@ public class JDParser {
     if (TodoConfiguration.getInstance().isMultiLine()) {
       for (TodoPattern todoPattern : TodoConfiguration.getInstance().getTodoPatterns()) {
         Pattern p = todoPattern.getPattern();
-        if (p != null && p.matcher(line.trim()).matches()) {
-          return true;
+        if (p != null) {
+          return p.matcher(line.trim()).matches();
         }
       }
     }
@@ -439,7 +438,7 @@ public class JDParser {
    * @param width width of the wrapped text
    * @return array of strings (lines)
    */
-  @Contract("null, _ -> null")
+  @Nullable
   private List<String> toArrayWrapping(@Nullable String s, int width) {
     List<String> list = new ArrayList<>();
     List<Pair<String, Boolean>> pairs = splitToParagraphs(s);
@@ -499,7 +498,7 @@ public class JDParser {
    * @param s   string to process
    * @return    processing result
    */
-  @Contract("null -> null")
+  @Nullable
   private List<Pair<String, Boolean>> splitToParagraphs(@Nullable String s) {
     if (s == null) return null;
     s = s.trim();

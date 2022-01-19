@@ -4,11 +4,6 @@ package test
 
 class Test(str: String) {
     var myStr = "String2"
-
-    init {
-        myStr = str
-    }
-
     fun sout(str: String) {
         // UNNECESSARY_NOT_NULL_ASSERTION heuristic does not work any more, instead we can skip generating !! altogether
         println(str)
@@ -24,5 +19,9 @@ class Test(str: String) {
         sout(test)
         sout(dummy(test))
         Test(test)
+    }
+
+    init {
+        myStr = str
     }
 }

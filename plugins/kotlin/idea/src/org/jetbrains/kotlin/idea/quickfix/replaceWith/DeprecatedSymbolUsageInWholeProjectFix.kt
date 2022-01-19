@@ -5,7 +5,6 @@ package org.jetbrains.kotlin.idea.quickfix.replaceWith
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.codeInliner.UsageReplacementStrategy
@@ -20,7 +19,7 @@ import org.jetbrains.kotlin.renderer.ParameterNameRenderingPolicy
 class DeprecatedSymbolUsageInWholeProjectFix(
     element: KtReferenceExpression,
     replaceWith: ReplaceWith,
-    @Nls private val text: String
+    private val text: String
 ) : DeprecatedSymbolUsageFixBase(element, replaceWith) {
 
     override fun getFamilyName() = KotlinBundle.message("replace.deprecated.symbol.usage.in.whole.project")
@@ -37,8 +36,7 @@ class DeprecatedSymbolUsageInWholeProjectFix(
         replacementStrategy.replaceUsagesInWholeProject(
             psiElement,
             progressTitle = KotlinBundle.message("applying.0", text),
-            commandName = text,
-            unwrapSpecialUsages = false,
+            commandName = text
         )
     }
 

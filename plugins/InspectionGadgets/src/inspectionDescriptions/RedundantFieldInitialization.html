@@ -2,28 +2,28 @@
 <body>
 Reports fields explicitly initialized to their default values.
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   class Foo {
     int foo = 0;
     List bar = null;
   }
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
+<pre>
   class Foo {
     int foo;
     List bar;
   }
-</code></pre>
+</pre>
 <!-- tooltip end -->
 <p>
   Use the inspection settings to only report explicit <code>null</code> initialization, for example:
 </p>
-<pre><code>
+<pre>
   class Foo {
     int foo = 0;     // no warning
     List bar = null; // redundant field initialization warning
   }
-</code></pre>
+</pre>
 </body>
 </html>

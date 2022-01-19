@@ -25,19 +25,13 @@ public final class EclipseProjectOpenProcessor extends ProjectOpenProcessorBase<
 
   @Override
   public boolean doQuickImport(@NotNull VirtualFile file, @NotNull final WizardContext wizardContext) {
-    String rootDirectory = file.getParent().getPath();
-    getBuilder().setRootDirectory(rootDirectory);
+    getBuilder().setRootDirectory(file.getParent().getPath());
 
     final List<String> projects = getBuilder().getList();
-    if (projects == null || projects.isEmpty()) {
+    if (projects == null || projects.size() != 1) {
       return false;
     }
-    if (projects.size() > 1) {
-      if (!projects.contains(rootDirectory)) {
-        return false;
-      }
-      getBuilder().setList(List.of(rootDirectory));
-    }
+    getBuilder().setList(projects);
     wizardContext.setProjectName(EclipseProjectFinder.findProjectName(projects.get(0)));
     return true;
   }

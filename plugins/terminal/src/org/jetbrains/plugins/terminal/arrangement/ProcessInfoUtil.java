@@ -13,7 +13,6 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.pty4j.windows.WinPtyProcess;
-import com.pty4j.windows.conpty.WinConPtyProcess;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -53,10 +52,7 @@ public final class ProcessInfoUtil {
       if (process instanceof WinPtyProcess) {
         return ((WinPtyProcess)process).getWorkingDirectory();
       }
-      if (process instanceof WinConPtyProcess) {
-        return ((WinConPtyProcess)process).getWorkingDirectory();
-      }
-      throw new IllegalStateException("Cwd cannot be fetched for " + process.getClass());
+      throw new IllegalStateException("Cwd can be fetched for " + WinPtyProcess.class + " only, got " + process.getClass());
     }
     throw new IllegalStateException("Unsupported OS: " + SystemInfo.OS_NAME);
   }

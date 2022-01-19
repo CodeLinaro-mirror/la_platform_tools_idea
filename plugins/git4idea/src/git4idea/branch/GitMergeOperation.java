@@ -329,7 +329,7 @@ class GitMergeOperation extends GitBranchOperation {
 
   @NotNull
   @Override
-  protected String getSuccessMessage() {
+  public String getSuccessMessage() {
     return GitBundle
       .message("merge.operation.merged.to", bold(code(myBranchToMerge)), bold(code(stringifyBranchesByRepos(myCurrentHeads))));
   }

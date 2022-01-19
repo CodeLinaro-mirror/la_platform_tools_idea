@@ -1,6 +1,5 @@
 // PSI_ELEMENT: com.intellij.psi.PsiMethod
 // OPTIONS: overrides
-
 import java.util.Collection;
 
 abstract public class MyJavaCLass {

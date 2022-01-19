@@ -1,9 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.env.python.testing;
 
-import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.roots.ModuleRootManager;
 import com.jetbrains.env.PyExecutionFixtureTestTask;
 import com.jetbrains.python.run.targetBasedConfiguration.PyRunTargetVariant;
 import com.jetbrains.python.sdk.InvalidSdkException;
@@ -34,16 +32,6 @@ public abstract class CreateConfigurationTestTask<T extends AbstractPythonTestRu
                               @NotNull final Class<T> expectedConfigurationType) {
     super(expectedConfigurationType, "/testRunner/env/createConfigurationTest/");
     myTestRunnerName = testRunnerName;
-  }
-
-  protected void markFolderAsTestRoot(@NotNull String folderName) {
-    WriteAction.runAndWait(() -> {
-      var manager = ModuleRootManager.getInstance(myFixture.getModule());
-      var model = manager.getModifiableModel();
-      var testRoot = myFixture.findFileInTempDir(folderName);
-      model.getContentEntries()[0].addSourceFolder(testRoot, true);
-      model.commit();
-    });
   }
 
   @Override

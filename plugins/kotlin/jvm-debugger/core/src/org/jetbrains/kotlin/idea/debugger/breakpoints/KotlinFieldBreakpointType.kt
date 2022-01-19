@@ -10,7 +10,6 @@ import com.intellij.debugger.ui.breakpoints.JavaBreakpointType
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiDocumentManager
@@ -59,7 +58,7 @@ class KotlinFieldBreakpointType :
 
     override fun getPriority() = 120
 
-    override fun createBreakpointProperties(file: VirtualFile, line: Int): KotlinPropertyBreakpointProperties {
+    override fun createBreakpointProperties(file: VirtualFile, line: Int): KotlinPropertyBreakpointProperties? {
         return KotlinPropertyBreakpointProperties()
     }
 
@@ -92,8 +91,8 @@ class KotlinFieldBreakpointType :
                     }.firstOrNull()
 
                     is KtLightClassForSourceDeclaration -> {
-                        val ktClassOrObject = psiClass.kotlinOrigin
-                        createBreakpointIfPropertyExists(ktClassOrObject, ktClassOrObject.containingKtFile, className, fieldName)
+                        val jetClass = psiClass.kotlinOrigin
+                        createBreakpointIfPropertyExists(jetClass, jetClass.containingKtFile, className, fieldName)
                     }
                     else -> null
                 }
@@ -134,7 +133,7 @@ class KotlinFieldBreakpointType :
         }
     }
 
-    private fun reportError(project: Project, @NlsContexts.DialogMessage message: String) {
+    private fun reportError(project: Project, message: String) {
         Messages.showMessageDialog(project, message, JavaDebuggerBundle.message("add.field.breakpoint.dialog.title"), Messages.getErrorIcon())
     }
 
@@ -150,16 +149,17 @@ class KotlinFieldBreakpointType :
 
     override fun canBeHitInOtherPlaces() = true
 
-    override fun getShortText(breakpoint: XLineBreakpoint<KotlinPropertyBreakpointProperties>): String {
+    override fun getShortText(breakpoint: XLineBreakpoint<KotlinPropertyBreakpointProperties>): String? {
         val properties = breakpoint.properties
         val className = properties.myClassName
-        @Suppress("HardCodedStringLiteral")
         return if (className.isNotEmpty()) className + "." + properties.myFieldName else properties.myFieldName
     }
 
-    override fun createProperties(): KotlinPropertyBreakpointProperties = KotlinPropertyBreakpointProperties()
+    override fun createProperties(): KotlinPropertyBreakpointProperties? {
+        return KotlinPropertyBreakpointProperties()
+    }
 
-    override fun createCustomPropertiesPanel(): XBreakpointCustomPropertiesPanel<XLineBreakpoint<KotlinPropertyBreakpointProperties>> {
+    override fun createCustomPropertiesPanel(): XBreakpointCustomPropertiesPanel<XLineBreakpoint<KotlinPropertyBreakpointProperties>>? {
         return KotlinFieldBreakpointPropertiesPanel()
     }
 
@@ -170,7 +170,7 @@ class KotlinFieldBreakpointType :
 
     override fun getEditorsProvider(): XDebuggerEditorsProvider? = null
 
-    override fun createCustomRightPropertiesPanel(project: Project): XBreakpointCustomPropertiesPanel<XLineBreakpoint<KotlinPropertyBreakpointProperties>> {
+    override fun createCustomRightPropertiesPanel(project: Project): XBreakpointCustomPropertiesPanel<XLineBreakpoint<KotlinPropertyBreakpointProperties>>? {
         return KotlinBreakpointFiltersPanel(project)
     }
 

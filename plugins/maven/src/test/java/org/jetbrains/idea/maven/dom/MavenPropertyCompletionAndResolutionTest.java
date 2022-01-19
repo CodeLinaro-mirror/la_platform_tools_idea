@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.dom;
 
 import com.intellij.codeInsight.completion.CompletionType;
@@ -12,10 +12,12 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.xml.XmlTag;
+import com.intellij.testFramework.TemporaryDirectory;
 import org.jetbrains.idea.maven.MavenCustomRepositoryHelper;
 import org.jetbrains.idea.maven.dom.converters.MavenDependencyCompletionUtil;
 import org.jetbrains.idea.maven.dom.model.*;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
+import org.jetbrains.idea.maven.utils.Path;
 import org.jetbrains.idea.maven.vfs.MavenPropertiesVirtualFileSystem;
 import org.junit.Test;
 
@@ -25,8 +27,8 @@ import java.util.List;
 
 public class MavenPropertyCompletionAndResolutionTest extends MavenDomTestCase {
   @Override
-  protected void setUp() throws Exception {
-    super.setUp();
+  protected void setUpInWriteAction() throws Exception {
+    super.setUpInWriteAction();
 
     importProject("<groupId>test</groupId>" +
                   "<artifactId>project</artifactId>" +
@@ -753,7 +755,6 @@ public class MavenPropertyCompletionAndResolutionTest extends MavenDomTestCase {
     createProjectPom("<groupId>test</groupId>" +
                      "<artifactId>project</artifactId>" +
                      "<version>1</version>" +
-                     "<packaging>pom</packaging>" +
                      "<modules>" +
                      "   <module>m1</module>" +
                      "</modules>" +
@@ -772,6 +773,7 @@ public class MavenPropertyCompletionAndResolutionTest extends MavenDomTestCase {
     createModulePom("m1", "<parent>" +
                           "    <groupId>test</groupId>" +
                           "    <artifactId>project</artifactId>" +
+                          "    " +
                           "    <version>1</version>" +
                           "  </parent>" +
                           "<artifactId>m1</artifactId>" +
@@ -781,7 +783,7 @@ public class MavenPropertyCompletionAndResolutionTest extends MavenDomTestCase {
                           "    <artifactId>something</artifactId>" +
                           "  </dependency>" +
                           "</dependencies>");
-    importProjectWithErrors();
+    importProject();
 
 
     MavenDomProjectModel model = MavenDomUtil.getMavenDomModel(myProject, myProjectPom, MavenDomProjectModel.class);

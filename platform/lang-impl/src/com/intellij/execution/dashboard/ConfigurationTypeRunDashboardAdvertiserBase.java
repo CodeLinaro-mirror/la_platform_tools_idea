@@ -24,7 +24,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Supplier;
 
 public abstract class ConfigurationTypeRunDashboardAdvertiserBase implements RunManagerListener, Disposable {
   private static final String DASHBOARD_NOTIFICATION_GROUP_ID = "Services Tool Window";
@@ -48,16 +47,15 @@ public abstract class ConfigurationTypeRunDashboardAdvertiserBase implements Run
     }
   }
 
-  public final void subscribe(Supplier<? extends Disposable> parentDisposableSupplier) {
+  public final void subscribe() {
     if (myProject.isDefault() || ApplicationManager.getApplication().isUnitTestMode() || myProject.isDisposed()) {
       return;
     }
 
     if (!isEnabled(myProject)) return;
 
-    Disposable parentDisposable = parentDisposableSupplier.get();
-    MessageBusConnection connection = myProject.getMessageBus().connect(parentDisposable);
-    Disposer.register(parentDisposable, this);
+    MessageBusConnection connection = myProject.getMessageBus().connect();
+    Disposer.register(connection, this);
     connection.subscribe(RunManagerListener.TOPIC, this);
     checkRunDashboardAvailability();
   }
@@ -84,39 +82,35 @@ public abstract class ConfigurationTypeRunDashboardAdvertiserBase implements Run
 
     if (myNotification != null && !myNotification.isExpired()) return;
 
-    myNotification = createNotification(myProject, type.getId(), type.getDisplayName());
-    myNotification.notify(myProject);
-  }
-
-  private static Notification createNotification(Project project, String typeId, String typeDisplayName) {
     String toolWindowName = UIBundle.message("tool.window.name.services");
-    return NotificationGroupManager.getInstance().getNotificationGroup(DASHBOARD_NOTIFICATION_GROUP_ID)
-      .createNotification(ExecutionBundle.message("run.dashboard.multiple.run.config.notification", typeDisplayName, toolWindowName),
-                          NotificationType.INFORMATION)
+    String typeId = type.getId();
+    myNotification = NotificationGroupManager.getInstance().getNotificationGroup(DASHBOARD_NOTIFICATION_GROUP_ID)
+      .createNotification(ExecutionBundle.message("run.dashboard.multiple.run.config.notification", type.getDisplayName(), toolWindowName), NotificationType.INFORMATION)
       .setDisplayId(DASHBOARD_MULTIPLE_RUN_CONFIGURATIONS_NOTIFICATION_ID)
       .setIcon(AllIcons.Nodes.Services)
       .addAction(new NotificationAction(ExecutionBundle.message("run.dashboard.use.services.action", toolWindowName)) {
         @Override
         public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
           notification.hideBalloon();
-          showInRunDashboard(project, typeId);
+          showInRunDashboard(typeId);
         }
       })
       .addAction(new NotificationAction(ExecutionBundle.message("run.dashboard.hide.multiple.run.config.notification.action")) {
         @Override
         public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
-          PropertiesComponent.getInstance(project).setValue(SHOW_RUN_DASHBOARD_NOTIFICATION, false, true);
+          PropertiesComponent.getInstance(myProject).setValue(SHOW_RUN_DASHBOARD_NOTIFICATION, false, true);
           notification.expire();
         }
       });
+    myNotification.notify(myProject);
   }
 
   private static boolean isEnabled(Project project) {
     return PropertiesComponent.getInstance(project).getBoolean(SHOW_RUN_DASHBOARD_NOTIFICATION, true);
   }
 
-  private static void showInRunDashboard(Project project, String typeId) {
-    RunDashboardManager dashboardManager = RunDashboardManager.getInstance(project);
+  private void showInRunDashboard(String typeId) {
+    RunDashboardManager dashboardManager = RunDashboardManager.getInstance(myProject);
     Set<String> types = new HashSet<>(dashboardManager.getTypes());
     types.add(typeId);
     dashboardManager.setTypes(types);

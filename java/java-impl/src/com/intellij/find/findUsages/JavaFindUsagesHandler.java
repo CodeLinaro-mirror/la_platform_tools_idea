@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.find.findUsages;
 
 import com.intellij.find.FindBundle;
 import com.intellij.ide.util.SuperMethodWarningUtil;
 import com.intellij.java.JavaBundle;
 import com.intellij.openapi.actionSystem.DataContext;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
@@ -12,7 +13,6 @@ import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.codeStyle.VariableKind;
 import com.intellij.psi.impl.PsiSuperMethodImplUtil;
-import com.intellij.psi.impl.light.LightRecordCanonicalConstructor;
 import com.intellij.psi.impl.search.ThrowSearchUtil;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.LocalSearchScope;
@@ -86,20 +86,23 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
     elementsToSearch.add(parameter);
     int idx = ReadAction.compute(() -> method.getParameterList().getParameterIndex(parameter));
     for (PsiMethod override : overrides) {
-      final PsiParameter[] parameters = ReadAction.compute(() -> override.getParameterList().getParameters());
+      final PsiParameter[] parameters = ReadAction.compute(()->override.getParameterList().getParameters());
       if (idx < parameters.length) {
         elementsToSearch.add(parameters[idx]);
       }
     }
 
-    FunctionalExpressionSearch.search(method).forEach(element -> {
-      if (element instanceof PsiLambdaExpression) {
-        PsiParameter[] parameters = ((PsiLambdaExpression)element).getParameterList().getParameters();
-        if (idx < parameters.length) {
-          elementsToSearch.add(parameters[idx]);
+    final PsiClass aClass = ReadAction.compute(method::getContainingClass);
+    if (aClass != null) {
+      FunctionalExpressionSearch.search(aClass).forEach(element -> {
+        if (element instanceof PsiLambdaExpression) {
+          PsiParameter[] parameters = ReadAction.compute(() ->((PsiLambdaExpression)element).getParameterList().getParameters());
+          if (idx < parameters.length) {
+            elementsToSearch.add(parameters[idx]);
+          }
         }
-      }
-    });
+      });
+    }
 
     return PsiUtilCore.toPsiElementArray(elementsToSearch);
   }
@@ -119,7 +122,7 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
 
           ProgressManager pm = ProgressManager.getInstance();
           boolean hasOverriden = pm.runProcessWithProgressSynchronously(() ->
-              OverridingMethodsSearch.search(method).findFirst() != null || FunctionalExpressionSearch.search(method).findFirst() != null,
+              OverridingMethodsSearch.search(method).findFirst() != null || FunctionalExpressionSearch.search(aClass).findFirst() != null,
             JavaBundle.message("progress.title.detect.overridden.methods"), true, getProject()) == Boolean.TRUE;
 
           if (hasOverriden && myFactory.getFindVariableOptions().isSearchInOverridingMethods) {
@@ -138,6 +141,7 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
   @Override
   public PsiElement @NotNull [] getSecondaryElements() {
     PsiElement element = getPsiElement();
+    if (ApplicationManager.getApplication().isUnitTestMode()) return PsiElement.EMPTY_ARRAY;
     if (element instanceof PsiField) {
       Set<PsiMethod> accessors = getFieldAccessors((PsiField)element);
       if (!accessors.isEmpty()) {
@@ -156,9 +160,6 @@ public class JavaFindUsagesHandler extends FindUsagesHandler {
           return PsiUtilCore.toPsiElementArray(elements);
         }
       }
-    }
-    else if (element instanceof PsiClass && ((PsiClass)element).isRecord()) {
-      return ContainerUtil.findAllAsArray(((PsiClass)element).getConstructors(), LightRecordCanonicalConstructor.class);
     }
     return super.getSecondaryElements();
   }

@@ -11,7 +11,8 @@ private class IdeFeaturesTrainerModuleRuleValidator : CustomValidationRule() {
   override fun acceptRuleId(ruleId: String?): Boolean = (ruleId == MODULE_NAME)
 
   override fun doValidate(data: String, context: EventContext): ValidationResultType {
-    return if (CourseManager.instance.modules.any { it.id == data && !CourseManager.instance.isModuleExternal(it) })
+    return if (CourseManager.instance.modules
+        .firstOrNull { it.name == data } != null)
       ValidationResultType.ACCEPTED
     else
       ValidationResultType.REJECTED

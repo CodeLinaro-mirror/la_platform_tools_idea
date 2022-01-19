@@ -26,6 +26,8 @@ final class ShRunLineMarkerContributor extends RunLineMarkerContributor implemen
       return null;
     PsiFile psiFile = element.getContainingFile();
     if (!(psiFile instanceof ShFile) && !element.getText().startsWith("#!")) return null;
+    InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(element.getProject());
+    if (injectedLanguageManager.isInjectedFragment(psiFile)) return null;
 
     AnAction[] actions = {ActionManager.getInstance().getAction(ShRunFileAction.ID)};
     return new Info(AllIcons.RunConfigurations.TestState.Run, actions,

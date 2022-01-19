@@ -16,5 +16,15 @@
 
 package com.intellij.openapi.vcs;
 
-public interface VcsListener extends VcsMappingListener, PluginVcsMappingListener {
+import java.util.EventListener;
+
+/**
+ * <p>Allows to receive notifications about changes in VCS configuration for the project.</p>
+ * <p>Use the {@link ProjectLevelVcsManager#VCS_CONFIGURATION_CHANGED} MessageBus topic to subscribe.</p>
+ */
+public interface VcsListener extends EventListener {
+  /**
+   * Notifies that the per-directory VCS mapping has changed.
+   */
+  void directoryMappingChanged();
 }

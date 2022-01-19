@@ -20,7 +20,6 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.components.fields.ExpandableTextField;
 import com.intellij.util.Function;
 import com.intellij.util.execution.ParametersListUtil;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -97,10 +96,5 @@ public class RawCommandLineEditor extends JPanel implements TextAccessor {
   public void setEnabled(boolean enabled) {
     super.setEnabled(enabled);
     myEditor.setEnabled(enabled);
-  }
-
-  public @NotNull RawCommandLineEditor withMonospaced(boolean monospaced) {
-    myEditor.setMonospaced(monospaced);
-    return this;
   }
 }

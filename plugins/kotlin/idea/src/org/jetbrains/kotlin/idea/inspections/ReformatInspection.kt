@@ -4,6 +4,7 @@ package org.jetbrains.kotlin.idea.inspections
 
 import com.intellij.codeInsight.actions.VcsFacade
 import com.intellij.codeInspection.*
+import com.intellij.codeInspection.ex.ProblemDescriptorImpl
 import com.intellij.codeInspection.ui.SingleCheckboxOptionsPanel
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
@@ -19,7 +20,10 @@ import org.jetbrains.kotlin.psi.KtFile
 import javax.swing.JComponent
 
 class ReformatInspection(@JvmField var processChangedFilesOnly: Boolean = false) : LocalInspectionTool() {
-    override fun checkFile(file: PsiFile, manager: InspectionManager, isOnTheFly: Boolean): Array<ProblemDescriptor>? {
+    override fun checkFile(file: PsiFile, manager: InspectionManager, isOnTheFly: Boolean): Array<out ProblemDescriptor>? =
+        checkFile(file, isOnTheFly)?.toTypedArray()
+
+    private fun checkFile(file: PsiFile, isOnTheFly: Boolean): List<ProblemDescriptor>? {
         if (file !is KtFile || !file.isWritable || !ProjectRootsUtil.isInProjectSource(file)) {
             return null
         }
@@ -28,27 +32,31 @@ class ReformatInspection(@JvmField var processChangedFilesOnly: Boolean = false)
             return null
         }
 
-        return collectFormattingChanges(file)
-            .takeIf { it.isNotEmpty() }
-            ?.mapNotNull(fun(change: FormattingChange): ProblemDescriptor? {
-                val rangeOffset = when (change) {
-                    is ShiftIndentInsideRange -> change.range.startOffset
-                    is ReplaceWhiteSpace -> change.textRange.startOffset
-                }
+        val changes = collectFormattingChanges(file)
+        if (changes.isEmpty()) return null
 
-                val leaf = file.findElementAt(rangeOffset) ?: return null
-                if (!leaf.isValid) return null
-                if (leaf is PsiWhiteSpace && isEmptyLineReformat(leaf, change)) return null
+        val elements = changes.asSequence().map {
+            val rangeOffset = when (it) {
+                is ShiftIndentInsideRange -> it.range.startOffset
+                is ReplaceWhiteSpace -> it.textRange.startOffset
+            }
 
-                return manager.createProblemDescriptor(
-                    leaf,
-                    KotlinBundle.message("file.is.not.properly.formatted"),
-                    ReformatQuickFix,
-                    ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
-                    isOnTheFly
-                )
-            })
-            ?.toTypedArray()
+            val leaf = file.findElementAt(rangeOffset) ?: return@map null
+            if (!leaf.isValid) return@map null
+            if (leaf is PsiWhiteSpace && isEmptyLineReformat(leaf, it)) return@map null
+
+            leaf
+        }.filterNotNull().toList()
+
+        return elements.map {
+            ProblemDescriptorImpl(
+                it, it,
+                KotlinBundle.message("file.is.not.properly.formatted"),
+                arrayOf(ReformatQuickFix),
+                ProblemHighlightType.GENERIC_ERROR_OR_WARNING, false, null,
+                isOnTheFly
+            )
+        }
     }
 
     override fun createOptionsPanel(): JComponent = SingleCheckboxOptionsPanel(

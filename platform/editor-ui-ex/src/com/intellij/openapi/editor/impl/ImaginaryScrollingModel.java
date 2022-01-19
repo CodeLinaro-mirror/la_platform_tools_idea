@@ -10,14 +10,10 @@ import org.jetbrains.annotations.NotNull;
 import java.awt.*;
 
 public class ImaginaryScrollingModel implements ScrollingModel {
-  private final @NotNull ImaginaryEditor myEditor;
+  private final ImaginaryEditor myEditor;
 
-  public ImaginaryScrollingModel(@NotNull ImaginaryEditor editor) {
+  public ImaginaryScrollingModel(ImaginaryEditor editor) {
     myEditor = editor;
-  }
-
-  protected @NotNull ImaginaryEditor getEditor() {
-    return myEditor;
   }
 
   private RuntimeException notImplemented() {
@@ -61,12 +57,12 @@ public class ImaginaryScrollingModel implements ScrollingModel {
 
   @Override
   public int getVerticalScrollOffset() {
-    return 0;
+    throw notImplemented();
   }
 
   @Override
   public int getHorizontalScrollOffset() {
-    return 0;
+    throw notImplemented();
   }
 
   @Override

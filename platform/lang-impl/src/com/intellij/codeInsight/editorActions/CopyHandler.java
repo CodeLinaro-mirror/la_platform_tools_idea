@@ -2,13 +2,9 @@
 
 package com.intellij.codeInsight.editorActions;
 
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.DataManager;
-import com.intellij.idea.ActionsBundle;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Editor;
@@ -20,15 +16,12 @@ import com.intellij.openapi.editor.actions.EditorActionUtil;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.impl.EditorCopyPasteHelperImpl;
 import com.intellij.openapi.ide.CopyPasteManager;
-import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.SlowOperations;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -68,14 +61,12 @@ public class CopyHandler extends EditorActionHandler implements CopyAction.Trans
       if (CopyAction.isSkipCopyPasteForEmptySelection()) {
         return;
       }
-      FeatureUsageTracker.getInstance().triggerFeatureUsed("editing.copy.line");
       editor.getCaretModel().runForEachCaret(__ -> selectionModel.selectLineAtCaret());
       if (!selectionModel.hasSelection(true)) return;
       editor.getCaretModel().runForEachCaret(__ -> EditorActionUtil.moveCaretToLineStartIgnoringSoftWraps(editor));
     }
 
     Transferable transferable = getSelection(editor, project, file);
-    if (transferable == null) return;
 
     CopyPasteManager.getInstance().setContents(transferable);
     if (editor instanceof EditorEx) {
@@ -95,16 +86,11 @@ public class CopyHandler extends EditorActionHandler implements CopyAction.Trans
     return getSelection(editor, project, file);
   }
 
-  /**
-   * @return transferable, or null if copy action was cancelled by a user
-   */
-  private static @Nullable Transferable getSelection(@NotNull Editor editor, @NotNull Project project, @NotNull PsiFile file) {
+  private static @NotNull Transferable getSelection(@NotNull Editor editor, @NotNull Project project, @NotNull PsiFile file) {
     TypingActionsExtension typingActionsExtension = TypingActionsExtension.findForContext(project, editor);
     try {
       typingActionsExtension.startCopy(project, editor);
-      return ProgressManager.getInstance().runProcessWithProgressSynchronously(
-        () -> ReadAction.compute(() -> getSelectionAction(editor, project, file)),
-        ActionsBundle.message("action.EditorCopy.text"), true, project);
+      return getSelectionAction(editor, project, file);
     }
     finally {
       typingActionsExtension.endCopy(project, editor);
@@ -118,13 +104,10 @@ public class CopyHandler extends EditorActionHandler implements CopyAction.Trans
 
     final List<TextBlockTransferableData> transferableDataList = new ArrayList<>();
 
-    DumbService.getInstance(project).withAlternativeResolveEnabled(() -> {
+    DumbService.getInstance(project).withAlternativeResolveEnabled(() -> SlowOperations.allowSlowOperations(() -> {
       for (CopyPastePostProcessor<? extends TextBlockTransferableData> processor : CopyPastePostProcessor.EP_NAME.getExtensionList()) {
         try {
           transferableDataList.addAll(processor.collectTransferableData(file, editor, startOffsets, endOffsets));
-        }
-        catch (ProcessCanceledException ex) {
-          throw ex;
         }
         catch (IndexNotReadyException e) {
           LOG.debug(e);
@@ -133,7 +116,7 @@ public class CopyHandler extends EditorActionHandler implements CopyAction.Trans
           LOG.error(e);
         }
       }
-    });
+    }));
 
     String text = editor.getCaretModel().supportsMultipleCarets()
                   ? EditorCopyPasteHelperImpl.getSelectedTextForClipboard(editor, transferableDataList)
@@ -143,9 +126,6 @@ public class CopyHandler extends EditorActionHandler implements CopyAction.Trans
     for (CopyPastePreProcessor processor : CopyPastePreProcessor.EP_NAME.getExtensionList()) {
       try {
         escapedText = processor.preprocessOnCopy(file, startOffsets, endOffsets, rawText);
-      }
-      catch (ProcessCanceledException ex) {
-        throw ex;
       }
       catch (Throwable e) {
         LOG.error(e);

@@ -83,7 +83,6 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
   private final PersistentEnumeratorBase<Key> myEnumerator;
   private final boolean myCompactOnClose;
   private final ReentrantReadWriteLock myLock = new ReentrantReadWriteLock(true);
-  private final PersistentMapWal<Key, Value> myWal;
 
   @TestOnly
   public boolean isCorrupted() {
@@ -142,9 +141,6 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
     myStorageFile = file;
     myKeyDescriptor = keyDescriptor;
 
-    Path walFile = file.resolveSibling(file.getFileName().toString() + ".wal");
-    myWal = builder.isEnableWal() ? new PersistentMapWal<>(keyDescriptor, valueExternalizer, options.useCompression(), walFile, builder.getWalExecutor(), true) : null;
-
     final PersistentEnumeratorBase.@NotNull RecordBufferHandler<PersistentEnumeratorBase<?>> recordHandler = myEnumerator.getRecordHandler();
     myParentValueRefOffset = recordHandler.getRecordBuffer(myEnumerator).length;
     myIntMapping = valueExternalizer instanceof IntInlineKeyDescriptor && builder.getInlineValues(false);
@@ -161,14 +157,7 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
       myValueExternalizer = valueExternalizer;
       myValueStorage = myIntMapping ? null : new PersistentHashMapValueStorage(getDataFile(file), options);
       myAppendCache = myIntMapping ? null : createAppendCache(keyDescriptor);
-      myAppendCacheFlusher = myIntMapping ? null : LowMemoryWatcher.register(() -> {
-        try {
-          force();
-        }
-        catch (IOException e) {
-          LOG.error(e);
-        }
-      });
+      myAppendCacheFlusher = myIntMapping ? null : LowMemoryWatcher.register(this::force);
       myLiveAndGarbageKeysCounter = myEnumerator.getMetaData();
       long data2 = myEnumerator.getMetaData2();
       myLargeIndexWatermarkId = (int)(data2 & DEAD_KEY_NUMBER_MASK);
@@ -196,7 +185,7 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
       }
       catch (Throwable ignored) {
       }
-      throw new CorruptedException(file);
+      throw new PersistentEnumeratorBase.CorruptedException(file);
     }
   }
 
@@ -302,12 +291,6 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
     }
     catch (IOException ignored) {}
     IOUtil.deleteAllFilesStartingWith(baseFile.toFile());
-    try {
-      if (myWal != null) {
-        myWal.closeAndDelete();
-      }
-    }
-    catch (IOException ignored) {}
   }
 
   @TestOnly // public for tests
@@ -351,10 +334,6 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
   @Override
   public final void put(Key key, Value value) throws IOException {
     if (myIsReadOnly) throw new IncorrectOperationException();
-    if (myWal != null) {
-      myWal.put(key, value);
-    }
-
     getWriteLock().lock();
     try {
       doPut(key, value);
@@ -439,9 +418,6 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
   @Override
   public final void appendData(Key key, @NotNull AppendablePersistentMap.ValueDataAppender appender) throws IOException {
     if (myIsReadOnly) throw new IncorrectOperationException();
-    if (myWal != null) {
-      myWal.appendData(key, appender);
-    }
 
     getWriteLock().lock();
     try {
@@ -672,10 +648,6 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
   @Override
   public final void remove(Key key) throws IOException {
     if (myIsReadOnly) throw new IncorrectOperationException();
-    if (myWal != null) {
-      myWal.remove(key);
-    }
-
     getWriteLock().lock();
     try {
       doRemove(key);
@@ -719,12 +691,9 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
   }
 
   @Override
-  public final void force() throws IOException {
+  public final void force() {
     if (myIsReadOnly) return;
     if (myDoTrace) LOG.info("Forcing " + myStorageFile);
-    if (myWal != null) {
-      myWal.flush();
-    }
     getWriteLock().lock();
     try {
       doForce();
@@ -762,14 +731,9 @@ public class PersistentMapImpl<Key, Value> implements PersistentMapBase<Key, Val
 
   private void close(boolean emergency) throws IOException {
     if (myDoTrace) LOG.info("Closed " + myStorageFile);
-
     getWriteLock().lock();
     try {
       if (isClosed()) return;
-
-      if (myWal != null) {
-        myWal.close();
-      }
 
       try {
         if (!emergency && myCompactOnClose && isCompactionSupported()) {

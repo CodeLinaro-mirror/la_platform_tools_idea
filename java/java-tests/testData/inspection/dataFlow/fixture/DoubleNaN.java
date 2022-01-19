@@ -1,13 +1,4 @@
 public class DoubleNaN {
-  void test(double x, double y) {
-    if (x > y) {}
-    else if (x == y) {}
-    else if (x < y) {}
-    else {
-      // x or y is NaN
-    }
-  }
-
   native double getSomeDouble();
 
   void testComparison() {

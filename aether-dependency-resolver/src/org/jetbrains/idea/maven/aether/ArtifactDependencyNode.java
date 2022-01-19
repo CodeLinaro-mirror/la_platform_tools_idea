@@ -9,12 +9,10 @@ import java.util.List;
 public class ArtifactDependencyNode {
   private final Artifact myArtifact;
   private final List<ArtifactDependencyNode> myDependencies;
-  private final boolean myRejected;
 
-  public ArtifactDependencyNode(@NotNull Artifact artifact, @NotNull List<ArtifactDependencyNode> dependencies, boolean rejected) {
+  public ArtifactDependencyNode(@NotNull Artifact artifact, @NotNull List<ArtifactDependencyNode> dependencies) {
     myArtifact = artifact;
     myDependencies = dependencies;
-    myRejected = rejected;
   }
 
   @NotNull
@@ -25,12 +23,5 @@ public class ArtifactDependencyNode {
   @NotNull
   public List<ArtifactDependencyNode> getDependencies() {
     return myDependencies;
-  }
-
-  /**
-   * Returns {@code true} if this dependency was rejected by conflict resolution process
-   */
-  public boolean isRejected() {
-    return myRejected;
   }
 }

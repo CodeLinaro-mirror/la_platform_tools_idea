@@ -1,22 +1,16 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.introduceParameter;
 
-import com.intellij.codeInsight.hint.EditorCodePreview;
-import com.intellij.codeInsight.template.impl.TemplateManagerImpl;
-import com.intellij.codeInsight.template.impl.TemplateState;
-import com.intellij.ide.DataManager;
-import com.intellij.lang.LangBundle;
-import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
-import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.impl.EditorImpl;
-import com.intellij.openapi.editor.markup.*;
+import com.intellij.openapi.editor.impl.DocumentMarkupModel;
+import com.intellij.openapi.editor.markup.EffectType;
+import com.intellij.openapi.editor.markup.HighlighterTargetArea;
+import com.intellij.openapi.editor.markup.MarkupModel;
+import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
@@ -26,16 +20,11 @@ import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.refactoring.JavaRefactoringSettings;
 import com.intellij.refactoring.RefactoringActionHandler;
-import com.intellij.refactoring.introduceVariable.IntroduceVariableBase;
-import com.intellij.refactoring.rename.inplace.SelectableInlayPresentation;
-import com.intellij.refactoring.rename.inplace.TemplateInlayUtil;
 import com.intellij.refactoring.ui.TypeSelectorManagerImpl;
 import com.intellij.ui.JBColor;
-import com.intellij.ui.components.labels.LinkLabel;
-import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.JBInsets;
 import gnu.trove.TIntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
-import kotlin.ranges.IntRange;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -49,7 +38,6 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
   private final PsiMethod myMethod;
   private final PsiMethod myMethodToSearchFor;
   private final boolean myMustBeFinal;
-  private @NotNull IntroduceVariableBase.JavaReplaceChoice myReplaceChoice;
 
   private int myParameterIndex = -1;
   private final InplaceIntroduceParameterUI myPanel;
@@ -64,15 +52,15 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
                                  final PsiMethod methodToSearchFor,
                                  final PsiExpression[] occurrences,
                                  final IntList parametersToRemove,
-                                 final boolean mustBeFinal,
-                                 final IntroduceVariableBase.@NotNull JavaReplaceChoice replaceChoice) {
+                                 final boolean mustBeFinal) {
     super(project, editor, expr, localVar, occurrences, typeSelectorManager, IntroduceParameterHandler.getRefactoringName()
     );
     myMethod = method;
     myMethodToSearchFor = methodToSearchFor;
     myMustBeFinal = mustBeFinal;
-    myReplaceChoice = replaceChoice;
 
+    myWholePanel.add(getPreviewComponent(), new GridBagConstraints(0, GridBagConstraints.RELATIVE, 2, 1, 1, 0, GridBagConstraints.NORTHWEST, GridBagConstraints.HORIZONTAL,
+                                                                   JBInsets.create(0, 5), 0, 0));
     myPanel = new InplaceIntroduceParameterUI(project, localVar, expr, method, parametersToRemove, typeSelectorManager,
                                               myOccurrences) {
       @Override
@@ -100,21 +88,7 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
         return parameters;
       }
     };
-    final GridBagConstraints gc =
-      new GridBagConstraints(0, GridBagConstraints.RELATIVE, 1, 1, 0, 0, GridBagConstraints.NORTHWEST, GridBagConstraints.NONE, JBUI.insetsLeft(6), 0, 0);
-    myPanel.createDelegateCb(gc, myWholePanel);
-    gc.insets.top = JBUI.scale(6);
-    myWholePanel.add(new LinkLabel<>(LangBundle.message("inlay.rename.link.label.more.options"), null){
-      @Override
-      public void doClick() {
-        new IntroduceParameterHandler().invoke(myProject, myEditor, myMethod.getContainingFile(), DataManager.getInstance().getDataContext(myEditor.getComponent()));
-      }
-    }, gc);
-  }
-
-  @Override
-  protected void showDialogAdvertisement(@NonNls String actionId) {
-    initPopupOptionsAdvertisement();
+    myPanel.appendOccurrencesDelegate(myWholePanel);
   }
 
   @Override
@@ -162,72 +136,12 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
 
   @Override
   protected JComponent getComponent() {
-    return null;
+    return myWholePanel;
   }
 
-  @Override
-  protected void afterTemplateStart() {
-     super.afterTemplateStart();
-    TemplateState templateState = TemplateManagerImpl.getTemplateState(myEditor);
-    if (templateState == null) return;
-
-    TextRange currentVariableRange = templateState.getCurrentVariableRange();
-    if (currentVariableRange == null) return;
-    
-    IntroduceParameterUsagesCollector.started.log(IntroduceParameterUsagesCollector.replaceAll.with(myReplaceChoice.isAll()));
-
-    SelectableInlayPresentation presentation = TemplateInlayUtil.createSettingsPresentation((EditorImpl)templateState.getEditor(), 
-                                                                                            IntroduceParameterHelperKt.logStatisticsOnShowCallback(myProject));
-
-    TemplateInlayUtil.SelectableTemplateElement templateElement = new TemplateInlayUtil.SelectableTemplateElement(presentation) {
-      @Override
-      public void onSelect(@NotNull TemplateState templateState) {
-        super.onSelect(templateState);
-        IntroduceParameterHelperKt.logStatisticsOnShow(null, myProject);
-      }
-    };
-    TemplateInlayUtil.createNavigatableButtonWithPopup(templateState, 
-                                                       currentVariableRange.getEndOffset(),
-                                                       presentation, 
-                                                       myWholePanel, 
-                                                       templateElement, 
-                                                       IntroduceParameterHelperKt.logStatisticsOnHideCallback(myProject, myPanel::isGenerateDelegate));
-
-    PsiParameter parameter = getParameter();
-    if (parameter == null) return;
-    
-    showPreview(parameter, templateState);
-  }
-
-  
-  private void showPreview(PsiParameter psiParameter, Disposable parentDisposable) {
-    MarkupModel markupModel = myEditor.getMarkupModel();
-    TextRange newParameterRange = psiParameter.getTextRange();
-    List<RangeHighlighter> highlighters = new ArrayList<>();
-    highlighters.add(markupModel.addRangeHighlighter(newParameterRange.getStartOffset(), newParameterRange.getEndOffset(), 0, getTextAttributesForAdd(myEditor), HighlighterTargetArea.EXACT_RANGE));
-    PsiParameterList list = myMethod.getParameterList();
-    for (PsiParameter parameter : list.getParameters()) {
-      if (parameter != psiParameter && myPanel.isParamToRemove(parameter)) {
-        TextRange range = parameter.getTextRange();
-        highlighters.add(markupModel.addRangeHighlighter(range.getStartOffset(), range.getEndOffset(), 0, getTestAttributesForRemoval(), HighlighterTargetArea.EXACT_RANGE));
-      }
-    }
-    EditorCodePreview preview = EditorCodePreview.Companion.create(myEditor);
-    Document document = myEditor.getDocument();
-    
-    preview.addPreview(new IntRange(document.getLineNumber(myMethod.getTextOffset()), document.getLineNumber(list.getTextRange().getEndOffset())), 
-                       IntroduceParameterHelperKt.onClickCallback(psiParameter));
-    Disposer.register(parentDisposable, () -> {
-      Disposer.dispose(preview);
-      for (RangeHighlighter highlighter : highlighters) {
-        highlighter.dispose();
-      }
-    });
-  }
-  
   @Override
   public boolean isReplaceAllOccurrences() {
-    return myReplaceChoice.isAll();
+    return myPanel.isReplaceAllOccurences();
   }
 
   @Override
@@ -264,10 +178,9 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
       new IntroduceParameterProcessor(myProject, myMethod,
                                       myMethodToSearchFor, parameterInitializer, myExpr,
                                       (PsiLocalVariable)getLocalVariable(), isDeleteLocalVariable, getInputName(),
-                                      myReplaceChoice,
+                                      myPanel.isReplaceAllOccurences(),
                                       myPanel.getReplaceFieldsWithGetters(), myMustBeFinal || myPanel.isGenerateFinal(),
                                       isGenerateDelegate(),
-                                      false,
                                       getType(),
                                       parametersToRemove);
     final Runnable runnable = () -> {
@@ -281,7 +194,12 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
           super.saveSettings(parameter);
         }
       };
-      ApplicationManager.getApplication().invokeLater(performRefactoring, myProject.getDisposed());
+      if (ApplicationManager.getApplication().isUnitTestMode()) {
+        performRefactoring.run();
+      }
+      else {
+        ApplicationManager.getApplication().invokeLater(performRefactoring, myProject.getDisposed());
+      }
     };
     CommandProcessor.getInstance().executeCommand(myProject, runnable, getCommandName(), null);
   }
@@ -290,14 +208,59 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
     return myPanel.isGenerateDelegate();
   }
 
-  @NotNull
-  public IntroduceVariableBase.JavaReplaceChoice getReplaceChoice() {
-    return myReplaceChoice;
+  @Override
+  protected void updateTitle(@Nullable PsiVariable variable) {
+    if (variable == null) return;
+    updateTitle(variable, variable.getName());
   }
 
-  private static TextAttributes getTextAttributesForAdd(Editor editor) {
+  @Override
+  protected void updateTitle(@Nullable final PsiVariable variable, final String value) {
+    final PsiElement declarationScope = variable != null ? ((PsiParameter)variable).getDeclarationScope() : null;
+    if (declarationScope instanceof PsiMethod) {
+      final PsiMethod psiMethod = (PsiMethod)declarationScope;
+      final @NonNls StringBuilder buf = new StringBuilder();
+      buf.append(psiMethod.getName()).append(" (");
+      boolean frst = true;
+      final List<TextRange> ranges2Remove = new ArrayList<>();
+      TextRange addedRange = null;
+      for (PsiParameter parameter : psiMethod.getParameterList().getParameters()) {
+        if (frst) {
+          frst = false;
+        }
+        else {
+          buf.append(", ");
+        }
+        int startOffset = buf.length();
+        if (myMustBeFinal || myPanel.isGenerateFinal()) {
+          buf.append("final ");
+        }
+        buf.append(parameter.getType().getPresentableText()).append(" ").append(variable == parameter ? value : parameter.getName());
+        int endOffset = buf.length();
+        if (variable == parameter) {
+          addedRange = new TextRange(startOffset, endOffset);
+        }
+        else if (myPanel.isParamToRemove(parameter)) {
+          ranges2Remove.add(new TextRange(startOffset, endOffset));
+        }
+      }
+
+      buf.append(")");
+      setPreviewText(buf.toString());
+      final MarkupModel markupModel = DocumentMarkupModel.forDocument(getPreviewEditor().getDocument(), myProject, true);
+      markupModel.removeAllHighlighters();
+      for (TextRange textRange : ranges2Remove) {
+        markupModel.addRangeHighlighter(textRange.getStartOffset(), textRange.getEndOffset(), 0, getTestAttributesForRemoval(), HighlighterTargetArea.EXACT_RANGE);
+      }
+      markupModel.addRangeHighlighter(addedRange.getStartOffset(), addedRange.getEndOffset(), 0, getTextAttributesForAdd(), HighlighterTargetArea.EXACT_RANGE);
+      revalidate();
+    }
+  }
+
+  private static TextAttributes getTextAttributesForAdd() {
     final TextAttributes textAttributes = new TextAttributes();
-    textAttributes.setBackgroundColor(editor.getColorsScheme().getColor(EditorColors.ADDED_LINES_COLOR));
+    textAttributes.setEffectType(EffectType.ROUNDED_BOX);
+    textAttributes.setEffectColor(JBColor.RED);
     return textAttributes;
   }
 
@@ -323,8 +286,8 @@ public class InplaceIntroduceParameterPopup extends AbstractJavaInplaceIntroduce
   }
 
   @Override
-  public void setReplaceAllOccurrences(boolean replaceAll) { 
-    myReplaceChoice = replaceAll ? IntroduceVariableBase.JavaReplaceChoice.ALL : IntroduceVariableBase.JavaReplaceChoice.NO;
+  public void setReplaceAllOccurrences(boolean replaceAll) {
+    myPanel.setReplaceAllOccurrences(replaceAll);
   }
 
   public PsiMethod getMethodToIntroduceParameter() {

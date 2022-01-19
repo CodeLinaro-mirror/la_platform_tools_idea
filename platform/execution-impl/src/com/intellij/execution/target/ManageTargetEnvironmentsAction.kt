@@ -3,6 +3,7 @@ package com.intellij.execution.target
 
 import com.intellij.execution.ExecutionBundle
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.Experiments
 import com.intellij.openapi.project.DumbAwareAction
 
 class ManageTargetEnvironmentsAction : DumbAwareAction(ExecutionBundle.message("action.manage.targets.text")) {
@@ -13,6 +14,6 @@ class ManageTargetEnvironmentsAction : DumbAwareAction(ExecutionBundle.message("
   override fun update(e: AnActionEvent) {
     super.update(e)
     e.presentation.isEnabledAndVisible = RunTargetsEnabled.get() &&
-                                         TargetEnvironmentType.getTargetTypesForRunConfigurations().isNotEmpty()
+                                         TargetEnvironmentType.EXTENSION_NAME.extensionList.isNotEmpty()
   }
 }

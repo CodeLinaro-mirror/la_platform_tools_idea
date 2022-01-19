@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.search.scope.packageSet;
 
 import com.intellij.openapi.Disposable;
@@ -49,6 +49,15 @@ public abstract class NamedScopesHolder implements PersistentStateComponent<Elem
   }
 
   private final List<ScopeListener> myScopeListeners = ContainerUtil.createLockFreeCopyOnWriteList();
+
+  /**
+   * @deprecated use {@link #addScopeListener(ScopeListener, Disposable)} instead
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public void addScopeListener(@NotNull ScopeListener scopeListener) {
+    myScopeListeners.add(scopeListener);
+  }
 
   public void addScopeListener(@NotNull ScopeListener scopeListener, @NotNull Disposable parentDisposable) {
     myScopeListeners.add(scopeListener);
@@ -147,12 +156,11 @@ public abstract class NamedScopesHolder implements PersistentStateComponent<Elem
   @Override
   public void loadState(@NotNull Element state) {
     List<Element> sets = state.getChildren(SCOPE_TAG);
-    NamedScope [] scopes = new NamedScope[sets.size()];
+    myScopes = new NamedScope[sets.size()];
     for (int i = 0; i < sets.size(); i++) {
       Element set = sets.get(i);
-      scopes[i] = readScope(set);
+      myScopes[i] = readScope(set);
     }
-    myScopes = scopes;
     fireScopeListeners();
   }
 

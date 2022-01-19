@@ -1,9 +1,8 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.welcomeScreen;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.IdeCoreBundle;
 import com.intellij.ide.ProjectGroupActionGroup;
 import com.intellij.ide.RecentProjectListActionProvider;
 import com.intellij.ide.dnd.DnDEvent;
@@ -24,9 +23,11 @@ import com.intellij.openapi.wm.WelcomeTabFactory;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.ScrollingUtil;
 import com.intellij.ui.SearchTextField;
+import com.intellij.ui.UIBundle;
 import com.intellij.ui.border.CustomLineBorder;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBTextField;
+import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.speedSearch.NameFilteringListModel;
 import com.intellij.ui.speedSearch.SpeedSearch;
 import com.intellij.util.BooleanFunction;
@@ -46,7 +47,8 @@ import java.util.List;
 import static com.intellij.openapi.actionSystem.impl.ActionButton.HIDE_DROPDOWN_ICON;
 import static com.intellij.openapi.wm.impl.welcomeScreen.WelcomeScreenActionsUtil.ToolbarTextButtonWrapper;
 import static com.intellij.openapi.wm.impl.welcomeScreen.WelcomeScreenActionsUtil.splitAndWrapActions;
-import static com.intellij.openapi.wm.impl.welcomeScreen.WelcomeScreenComponentFactory.createNotificationPanel;
+import static com.intellij.openapi.wm.impl.welcomeScreen.WelcomeScreenComponentFactory.createErrorsLink;
+import static com.intellij.openapi.wm.impl.welcomeScreen.WelcomeScreenComponentFactory.createEventLink;
 import static com.intellij.openapi.wm.impl.welcomeScreen.WelcomeScreenUIManager.getProjectsBackground;
 
 final class ProjectsTabFactory implements WelcomeTabFactory {
@@ -84,7 +86,7 @@ final class ProjectsTabFactory implements WelcomeTabFactory {
           northPanel.add(projectActionsPanel, BorderLayout.EAST);
           mainPanel.add(northPanel, BorderLayout.NORTH);
           mainPanel.add(projectsPanel, BorderLayout.CENTER);
-          mainPanel.add(createNotificationPanel(parentDisposable), BorderLayout.SOUTH);
+          mainPanel.add(createNotificationsPanel(parentDisposable), BorderLayout.SOUTH);
         }
         DnDNativeTarget target = createDropFileTarget();
         DnDSupport.createBuilder(mainPanel)
@@ -102,7 +104,7 @@ final class ProjectsTabFactory implements WelcomeTabFactory {
           @Override
           protected JBList<AnAction> createList(AnAction[] recentProjectActions, Dimension size) {
             JBList<AnAction> projectsList = super.createList(recentProjectActions, size);
-            projectsList.setEmptyText(IdeCoreBundle.message("message.nothingToShow"));
+            projectsList.setEmptyText(UIBundle.message("message.nothingToShow"));
             SpeedSearch speedSearch = new SpeedSearch();
 
             NameFilteringListModel<AnAction> model = new NameFilteringListModel<>(
@@ -218,9 +220,18 @@ final class ProjectsTabFactory implements WelcomeTabFactory {
     };
   }
 
+  static JPanel createNotificationsPanel(@NotNull Disposable parentDisposable) {
+    JPanel notificationsPanel = new NonOpaquePanel(new FlowLayout(FlowLayout.RIGHT));
+    notificationsPanel.setBorder(JBUI.Borders.emptyTop(10));
+    Component eventLink = createEventLink("", parentDisposable);
+    notificationsPanel.add(createErrorsLink(parentDisposable));
+    notificationsPanel.add(eventLink);
+    return notificationsPanel;
+  }
+
   @Override
   public boolean isApplicable() {
-    return !PlatformUtils.isDataSpell();
+    return !PlatformUtils.isPyCharmDs();
   }
 
   private static @NotNull DnDNativeTarget createDropFileTarget() {

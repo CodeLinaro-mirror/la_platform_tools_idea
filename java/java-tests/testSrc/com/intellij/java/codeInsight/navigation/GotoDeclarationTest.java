@@ -121,47 +121,38 @@ public class GotoDeclarationTest extends LightJavaCodeInsightTestCase {
   }
 
   public void testPatternMatchingGuardInSwitchExpression() {
-    doTestGoToField();
+    doTestPatternMatchingGuard();
   }
 
   public void testPatternMatchingGuardInSwitchStatement() {
-    doTestGoToField();
+    doTestPatternMatchingGuard();
   }
 
   public void testPatternMatchingWithParensAroundReference() {
-    doTestGoToField();
+    doTestPatternMatchingGuard();
   }
 
 
   public void testReferenceFieldInPatternMatchingInSwitchStatement() {
-    doTestGoToField();
+    doTestPatternMatchingGuard();
   }
 
-  public void testCaseNullAfterPatternMatching() {
-    doTestGoToPatternVariable();
-  }
-
-  public void testCaseNullAfterPatternMatchingExpr() {
-    doTestGoToPatternVariable();
-  }
-
-  public void testDefaultAfterPatternMatching() {
-    doTestGoToField();
-  }
-
-  public void testDefaultAfterPatternMatchingExpr() {
-    doTestGoToField();
+  public void testCaseNullDefaultAfterPatternMatching() {
+    configure();
+    final PsiElement patternVariable = PsiTreeUtil.findChildOfType(getFile(), PsiPatternVariable.class);
+    final PsiElement element = GotoDeclarationAction.findTargetElement(getProject(), getEditor(), getEditor().getCaretModel().getOffset());
+    assertThat(element).isEqualTo(patternVariable);
   }
 
   public void testGuardWithInstanceOfPatternMatchingInIf() {
-    doTestGoToSecondPatternVariable();
+    doTestGoToPatternVariable();
   }
 
   public void testGuardWithInstanceOfPatternMatchingInSwitch() {
-    doTestGoToSecondPatternVariable();
+    doTestGoToPatternVariable();
   }
 
-  private void doTestGoToField() {
+  private void doTestPatternMatchingGuard() {
     configure();
     final PsiField field = PsiTreeUtil.findChildOfType(getFile(), PsiField.class);
     final PsiElement element = GotoDeclarationAction.findTargetElement(getProject(), getEditor(), getEditor().getCaretModel().getOffset());
@@ -169,13 +160,6 @@ public class GotoDeclarationTest extends LightJavaCodeInsightTestCase {
   }
 
   private void doTestGoToPatternVariable() {
-    configure();
-    final PsiPatternVariable patternVariable = PsiTreeUtil.findChildOfType(getFile(), PsiPatternVariable.class);
-    final PsiElement element = GotoDeclarationAction.findTargetElement(getProject(), getEditor(), getEditor().getCaretModel().getOffset());
-    assertThat(element).isEqualTo(patternVariable);
-  }
-
-  private void doTestGoToSecondPatternVariable() {
     configure();
     final Iterator<PsiPatternVariable> iterator = PsiTreeUtil.findChildrenOfType(getFile(), PsiPatternVariable.class).iterator();
     iterator.next();

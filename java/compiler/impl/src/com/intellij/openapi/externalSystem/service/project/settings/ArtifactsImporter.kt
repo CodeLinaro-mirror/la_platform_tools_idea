@@ -176,9 +176,9 @@ class BuildArtifactsTaskImporter: BeforeRunTaskImporter {
                        modelsProvider: IdeModifiableModelsProvider,
                        runConfiguration: RunConfiguration,
                        beforeRunTasks: MutableList<BeforeRunTask<*>>,
-                       configurationData: MutableMap<String, Any>): MutableList<BeforeRunTask<*>> {
+                       cfg: MutableMap<String, Any>): MutableList<BeforeRunTask<*>> {
 
-    consumeIfCast(configurationData["artifactName"], String::class.java) { artifactName ->
+    consumeIfCast(cfg["artifactName"], String::class.java) { artifactName ->
       val artifact = ArtifactManager.getInstance(project).findArtifact(artifactName)
       val hasTask = beforeRunTasks
         .filterIsInstance<BuildArtifactsBeforeRunTask>()

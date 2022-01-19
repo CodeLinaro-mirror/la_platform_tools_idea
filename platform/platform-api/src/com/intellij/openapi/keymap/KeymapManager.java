@@ -44,6 +44,13 @@ public abstract class KeymapManager {
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public abstract void addKeymapManagerListener(@NotNull KeymapManagerListener listener);
+
+  /**
+   * @deprecated use {@link KeymapManagerListener#TOPIC} instead
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public abstract void addKeymapManagerListener(@NotNull KeymapManagerListener listener, @NotNull Disposable parentDisposable);
 
   /**

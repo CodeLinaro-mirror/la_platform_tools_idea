@@ -2,14 +2,13 @@
 package com.intellij.openapi.diff.impl.patch;
 
 import com.intellij.openapi.util.text.StringUtil;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
 public abstract class FilePatch {
   private String myBeforeName;
   private String myAfterName;
-  @Nullable private @Nls String myBeforeVersionId;
-  @Nullable private @Nls String myAfterVersionId;
+  @Nullable private String myBeforeVersionId;
+  @Nullable private String myAfterVersionId;
   private String myBaseRevisionText;
   // store file mode in 6 digit format a.e. 100655, -1 means file mode was not changed in the patch
   private int myNewFileMode = -1;
@@ -41,20 +40,20 @@ public abstract class FilePatch {
   }
 
   @Nullable
-  public @Nls String getBeforeVersionId() {
+  public String getBeforeVersionId() {
     return myBeforeVersionId;
   }
 
-  public void setBeforeVersionId(@Nullable @Nls String beforeVersionId) {
+  public void setBeforeVersionId(@Nullable final String beforeVersionId) {
     myBeforeVersionId = beforeVersionId;
   }
 
   @Nullable
-  public @Nls String getAfterVersionId() {
+  public String getAfterVersionId() {
     return myAfterVersionId;
   }
 
-  public void setAfterVersionId(@Nullable @Nls String afterVersionId) {
+  public void setAfterVersionId(@Nullable final String afterVersionId) {
     myAfterVersionId = afterVersionId;
   }
 

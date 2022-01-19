@@ -3,7 +3,6 @@ package com.intellij.execution;
 
 import com.intellij.execution.configurations.RuntimeConfigurationException;
 import com.intellij.execution.target.*;
-import com.intellij.execution.target.local.LocalTargetType;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -13,7 +12,6 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.ui.ColoredListCellRenderer;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.SeparatorWithText;
-import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -23,33 +21,29 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Supplier;
 
 public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
   public static final Logger LOGGER = Logger.getInstance(RunOnTargetComboBox.class);
   @NotNull private final Project myProject;
   @Nullable private LanguageRuntimeType<?> myDefaultRuntimeType;
   private boolean hasSavedTargets = false;
-  @NotNull private final MyRenderer myRenderer = new MyRenderer(() -> hasSavedTargets);
 
   public RunOnTargetComboBox(@NotNull Project project) {
     super();
     setModel(new MyModel());
     myProject = project;
-    setRenderer(myRenderer);
+    setRenderer(new MyRenderer());
     addActionListener(e -> validateSelectedTarget());
   }
 
   public void initModel() {
-    myRenderer.setProjectDefaultTarget(TargetEnvironmentsManager.getInstance(myProject).getDefaultTarget());
-
     hasSavedTargets = false;
     MyModel model = (MyModel)getModel();
     model.removeAllElements();
     model.addElement(null);
 
     Collection<Type<?>> types = new ArrayList<>();
-    for (TargetEnvironmentType<?> type : TargetEnvironmentType.getTargetTypesForRunConfigurations()) {
+    for (TargetEnvironmentType<?> type : TargetEnvironmentType.EXTENSION_NAME.getExtensionList()) {
       if (type.isSystemCompatible() && type.providesNewWizard(myProject, myDefaultRuntimeType)) {
         types.add(new Type<>(type));
       }
@@ -75,18 +69,17 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
     if (!hasSavedTargets) {
       hasSavedTargets = true;
       ((MyModel)getModel()).insertElementAt(new Separator(ExecutionBundle.message("run.on.targets.label.saved.targets")), 1);
-      ((MyModel)getModel()).insertElementAt(new LocalTarget(), 2);
     }
-    ((MyModel)getModel()).insertElementAt(new SavedTarget(config), index);
+    ((MyModel)getModel()).insertElementAt(new Target(config), index);
   }
 
   @Nullable
   public String getSelectedTargetName() {
-    return ObjectUtils.doIfCast(getSelectedItem(), Target.class, i -> i.getTargetName());
+    return ObjectUtils.doIfCast(getSelectedItem(), Item.class, i -> i.getDisplayName());
   }
 
   public void addTargets(List<? extends TargetEnvironmentConfiguration> configs) {
-    int index = 3;
+    int index = 2;
     for (TargetEnvironmentConfiguration config : configs) {
       addTarget(config, index);
       index++;
@@ -100,7 +93,7 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
     }
     for (int i = 0; i < getModel().getSize(); i++) {
       Item at = getModel().getElementAt(i);
-      if (at instanceof Target && configName.equals(((Target)at).getTargetName())) {
+      if (at instanceof Target && configName.equals(at.getDisplayName())) {
         setSelectedItem(at);
       }
     }
@@ -110,8 +103,8 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
   private void validateSelectedTarget() {
     Object selected = getSelectedItem();
     boolean hasErrors = false;
-    if (selected instanceof SavedTarget) {
-      SavedTarget target = (SavedTarget)selected;
+    if (selected instanceof Target) {
+      Target target = (Target)selected;
       target.revalidateConfiguration();
       hasErrors = target.hasErrors();
     }
@@ -143,29 +136,11 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
     }
   }
 
-  private static abstract class Target extends Item {
-    private final @NotNull String myTargetName;
-
-    private Target(@NlsContexts.Label @NotNull String displayName, Icon icon) {
-      super(displayName, icon);
-      myTargetName = displayName;
-    }
-
-    protected Target(@NlsContexts.Label @NotNull String displayName, @NotNull Icon icon, @NotNull String targetName) {
-      super(displayName, icon);
-      myTargetName = targetName;
-    }
-
-    protected @NotNull String getTargetName() {
-      return myTargetName;
-    }
-  }
-
-  private static final class SavedTarget extends Target {
+  private static final class Target extends Item {
     private final TargetEnvironmentConfiguration myConfig;
     @Nullable private ValidationInfo myValidationInfo;
 
-    private SavedTarget(TargetEnvironmentConfiguration config) {
+    private Target(TargetEnvironmentConfiguration config) {
       super(config.getDisplayName(), TargetEnvironmentConfigurationKt.getTargetType(config).getIcon());
       myConfig = config;
       revalidateConfiguration();
@@ -195,15 +170,6 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
       Icon rawIcon = super.getIcon();
       return rawIcon != null && hasErrors() ?
              LayeredIcon.create(rawIcon, AllIcons.RunConfigurations.InvalidConfigurationLayer) : rawIcon;
-    }
-  }
-
-  /**
-   * Represents the "local machine" target.
-   */
-  private static final class LocalTarget extends Target {
-    private LocalTarget() {
-      super(ExecutionBundle.message("local.machine"), AllIcons.Nodes.HomeFolder, LocalTargetType.LOCAL_TARGET_NAME);
     }
   }
 
@@ -245,30 +211,6 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
   }
 
   private static class MyRenderer extends ColoredListCellRenderer<RunOnTargetComboBox.Item> {
-    /**
-     * This is the cached item of the "project default" target.
-     * <p>
-     * When this field is {@code null} it means that the "project default" is local machine.
-     */
-    @Nullable private Item myProjectDefaultTargetItem;
-
-    /**
-     * We render the project default target item as "Local Machine" without "Project Default" prefix if we do not have any saved targets in
-     * the list.
-     * <p>
-     * We cannot use the size of the model explicitly in {@code customizeCellRenderer(...)} method to determine whether there are
-     * "Saved targets" items because the model also contains "New Target" section with the corresponding items.
-     */
-    @NotNull private final Supplier<Boolean> myHasSavedTargetsSupplier;
-
-    private MyRenderer(@NotNull Supplier<Boolean> hasSavedTargetsSupplier) {
-      myHasSavedTargetsSupplier = hasSavedTargetsSupplier;
-    }
-
-    public void setProjectDefaultTarget(@Nullable TargetEnvironmentConfiguration projectDefaultTarget) {
-      myProjectDefaultTargetItem = projectDefaultTarget != null ? new SavedTarget(projectDefaultTarget) : null;
-    }
-
     @Override
     public Component getListCellRendererComponent(JList<? extends Item> list, Item value, int index, boolean selected, boolean hasFocus) {
       if (value instanceof Separator) {
@@ -281,22 +223,9 @@ public class RunOnTargetComboBox extends ComboBox<RunOnTargetComboBox.Item> {
 
     @Override
     protected void customizeCellRenderer(@NotNull JList<? extends Item> list, Item value, int index, boolean selected, boolean hasFocus) {
-      if (value == null && !myHasSavedTargetsSupplier.get()) {
-        /* `value` is expected to be `null` here */
+      if (value == null) {
         append(ExecutionBundle.message("local.machine"));
         setIcon(AllIcons.Nodes.HomeFolder);
-      }
-      else if (value == null) {
-        // this is the project default target
-        append(ExecutionBundle.message("targets.details.project.default")).append(" ");
-        if (myProjectDefaultTargetItem == null) {
-          append(ExecutionBundle.message("local.machine"), SimpleTextAttributes.GRAYED_ATTRIBUTES);
-          setIcon(AllIcons.Nodes.HomeFolder);
-        }
-        else {
-          append(myProjectDefaultTargetItem.getDisplayName(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
-          setIcon(myProjectDefaultTargetItem.icon);
-        }
       }
       else {
         append(value.getDisplayName());

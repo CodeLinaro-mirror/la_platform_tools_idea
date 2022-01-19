@@ -5,29 +5,27 @@ import com.intellij.lang.IdeLanguageCustomization;
 import com.intellij.lang.Language;
 import com.intellij.openapi.fileTypes.ExtensionFileNameMatcher;
 import com.intellij.openapi.fileTypes.FileTypeManager;
-import com.intellij.openapi.fileTypes.LanguageFileType;
-import com.intellij.util.ArrayUtil;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.JBIterable;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
-import java.util.Objects;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.Set;
 
-final class LangFindSettingsImpl extends FindSettingsImpl {
+public final class LangFindSettingsImpl extends FindSettingsImpl {
 
   @Override
-  public void noStateLoaded() {
-    Collection<String> extensions = IdeLanguageCustomization.getInstance().getPrimaryIdeLanguages()
-      .stream()
-      .map(Language::getAssociatedFileType)
-      .filter(Objects::nonNull)
-      .flatMap(fileType -> Stream.concat(
-                 Stream.of(fileType.getDefaultExtension()),
-                 getAssociatedExtensions(fileType)
-               )
-      ).collect(Collectors.toCollection(LinkedHashSet::new));
+  public void loadState(@NotNull FindSettingsImpl state) {
+    super.loadState(state);
+
+    Set<String> extensions = JBIterable.from(IdeLanguageCustomization.getInstance().getPrimaryIdeLanguages())
+      .filterMap(Language::getAssociatedFileType)
+      .flatten(o -> JBIterable.of(o.getDefaultExtension())
+        .append(JBIterable.from(FileTypeManager.getInstance().getAssociations(o))
+                  .filter(ExtensionFileNameMatcher.class)
+                  .filterMap(ExtensionFileNameMatcher::getExtension)))
+      .addAllTo(new LinkedHashSet<>());
     if (extensions.contains("java")) {
       extensions.add("properties");
       extensions.add("jsp");
@@ -37,18 +35,8 @@ final class LangFindSettingsImpl extends FindSettingsImpl {
       extensions.add("html");
       extensions.add("css");
     }
-
-    String[] extensionsArray = ArrayUtil.toStringArray(extensions);
-    for (int i = extensionsArray.length - 1; i >= 0; i--) {
-      FindInProjectSettingsBase.addRecentStringToList("*." + extensionsArray[i], recentFileMasks);
+    for (String ext : ContainerUtil.reverse(new ArrayList<>(extensions))) {
+      FindInProjectSettingsBase.addRecentStringToList("*." + ext, recentFileMasks);
     }
-  }
-
-  private static @NotNull Stream<String> getAssociatedExtensions(@NotNull LanguageFileType fileType) {
-    return FileTypeManager.getInstance().getAssociations(fileType)
-      .stream()
-      .filter(ExtensionFileNameMatcher.class::isInstance)
-      .map(ExtensionFileNameMatcher.class::cast)
-      .map(ExtensionFileNameMatcher::getExtension);
   }
 }

@@ -13,7 +13,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.resolve.FileContextUtil;
 import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.PsiElementProcessor;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.testFramework.LightVirtualFile;
@@ -347,7 +346,7 @@ public class MockPsiFile extends MockPsiElement implements PsiFile {
   @Override
   @NotNull
   public SearchScope getUseScope() {
-    return LocalSearchScope.EMPTY;
+    return GlobalSearchScope.EMPTY_SCOPE;
   }
 
   @Override

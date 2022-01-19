@@ -15,7 +15,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Computable
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
@@ -163,17 +162,15 @@ class KotlinBytecodeToolWindow(private val myProject: Project, private val toolW
         val optionPanel = JPanel(FlowLayout())
         add(optionPanel, BorderLayout.NORTH)
 
-        val decompilerFacade = KotlinJvmDecompilerFacade.getInstance()
-
         decompile = JButton(KotlinJvmBundle.message("button.text.decompile"))
-        if (decompilerFacade != null) {
+        if (KotlinDecompilerService.getInstance() != null) {
             optionPanel.add(decompile)
             decompile.addActionListener {
                 val location = Location.fromEditor(FileEditorManager.getInstance(myProject).selectedTextEditor, myProject)
                 val file = location.kFile
                 if (file != null) {
                     try {
-                        decompilerFacade.showDecompiledCode(file)
+                        showDecompiledCode(file)
                     } catch (ex: DecompileFailedException) {
                         LOG.info(ex)
                         Messages.showErrorDialog(
@@ -192,16 +189,14 @@ class KotlinBytecodeToolWindow(private val myProject: Project, private val toolW
         enableOptimization = JCheckBox(KotlinJvmBundle.message("checkbox.text.optimization"), true)
         enableAssertions = JCheckBox(KotlinJvmBundle.message("checkbox.text.assertions"), true)
         jvmTargets = ComboBox(JvmTarget.values().map { it.description }.toTypedArray())
-        @NlsSafe
-        val description = JvmTarget.DEFAULT.description
-        jvmTargets.selectedItem = description
+        jvmTargets.selectedItem = JvmTarget.DEFAULT.description
         ir = JCheckBox(KotlinJvmBundle.message("checkbox.text.ir"), false)
         optionPanel.add(enableInline)
         optionPanel.add(enableOptimization)
         optionPanel.add(enableAssertions)
         optionPanel.add(ir)
 
-        optionPanel.add(JLabel(KotlinJvmBundle.message("bytecode.toolwindow.label.target")))
+        optionPanel.add(JLabel("Target:"))
         optionPanel.add(jvmTargets)
 
         InfinitePeriodicalTask(

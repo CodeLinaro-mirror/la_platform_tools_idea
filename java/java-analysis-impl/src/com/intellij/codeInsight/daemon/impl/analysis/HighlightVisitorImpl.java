@@ -146,7 +146,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  protected HighlightVisitorImpl(@NotNull PsiResolveHelper psiResolveHelper) {
+  protected HighlightVisitorImpl(@SuppressWarnings("unused") @NotNull PsiResolveHelper psiResolveHelper) {
   }
 
   @NotNull
@@ -397,16 +397,13 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     if (!myHolder.hasErrorResults()) {
       functionalInterfaceType = expression.getFunctionalInterfaceType();
       if (functionalInterfaceType != null) {
-        myHolder.add(HighlightClassUtil.checkExtendsSealedClass(expression, functionalInterfaceType));
-        if (!myHolder.hasErrorResults()) {
-          final String notFunctionalMessage = LambdaHighlightingUtil.checkInterfaceFunctional(functionalInterfaceType);
-          if (notFunctionalMessage != null) {
-            myHolder.add(HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expression)
-                           .descriptionAndTooltip(notFunctionalMessage).create());
-          }
-          else {
-            checkFunctionalInterfaceTypeAccessible(expression, functionalInterfaceType);
-          }
+        final String notFunctionalMessage = LambdaHighlightingUtil.checkInterfaceFunctional(functionalInterfaceType);
+        if (notFunctionalMessage != null) {
+          myHolder.add(HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expression)
+                         .descriptionAndTooltip(notFunctionalMessage).create());
+        }
+        else {
+          checkFunctionalInterfaceTypeAccessible(expression, functionalInterfaceType);
         }
       }
       else if (LambdaUtil.getFunctionalInterfaceType(expression, true) != null) {
@@ -473,19 +470,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   public void visitYieldStatement(PsiYieldStatement statement) {
     super.visitYieldStatement(statement);
     if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkYieldOutsideSwitchExpression(statement));
-    if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkYieldExpressionType(statement.getExpression()));
-  }
-
-  @Override
-  public void visitExpressionStatement(PsiExpressionStatement statement) {
-    super.visitExpressionStatement(statement);
-    PsiElement parent = statement.getParent();
-    if (parent instanceof PsiSwitchLabeledRuleStatement) {
-      PsiSwitchBlock switchBlock = ((PsiSwitchLabeledRuleStatement)parent).getEnclosingSwitchBlock();
-      if (switchBlock instanceof PsiSwitchExpression && !PsiPolyExpressionUtil.isPolyExpression((PsiExpression)switchBlock)) {
-        myHolder.add(HighlightUtil.checkYieldExpressionType(statement.getExpression()));
-      }
-    }
+    if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkYieldExpressionType(statement));
   }
 
   @Override
@@ -1131,12 +1116,12 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     if (!myHolder.hasErrorResults()) myHolder.add(GenericsHighlightUtil.checkTypeParameterInstantiation(expression));
     if (aClass != null && !myHolder.hasErrorResults()) myHolder.add(HighlightClassUtil.checkInstantiationOfAbstractClass(aClass, expression));
     if (!myHolder.hasErrorResults()) myHolder.add(GenericsHighlightUtil.checkEnumInstantiation(expression, aClass));
-    if (!myHolder.hasErrorResults()) myHolder.add(GenericsHighlightUtil.checkGenericArrayCreation(expression, type));
-    if (!myHolder.hasErrorResults()) registerConstructorCall(expression);
     try {
       if (!myHolder.hasErrorResults()) HighlightMethodUtil.checkNewExpression(expression, type, myHolder, myJavaSdkVersion);
     }
     catch (IndexNotReadyException ignored) { }
+    if (!myHolder.hasErrorResults()) myHolder.add(GenericsHighlightUtil.checkGenericArrayCreation(expression, type));
+    if (!myHolder.hasErrorResults()) registerConstructorCall(expression);
 
     if (!myHolder.hasErrorResults()) visitExpression(expression);
 
@@ -1464,10 +1449,6 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
       }
     }
 
-    if (!myHolder.hasErrorResults() && resultForIncompleteCode != null && HighlightingFeature.PATTERNS_IN_SWITCH.isAvailable(expression)) {
-      myHolder.add(HighlightUtil.checkPatternVariableRequired(expression, resultForIncompleteCode));
-    }
-
     if (!myHolder.hasErrorResults() && resultForIncompleteCode != null) {
       myHolder.add(HighlightUtil.checkExpressionRequired(expression, resultForIncompleteCode));
     }
@@ -1559,9 +1540,6 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     }
 
     if (functionalInterfaceType != null) {
-      if (!myHolder.hasErrorResults()) {
-        myHolder.add(HighlightClassUtil.checkExtendsSealedClass(expression, functionalInterfaceType));
-      }
       if (!myHolder.hasErrorResults()) {
         boolean isFunctional = LambdaUtil.isFunctionalType(functionalInterfaceType);
         if (!isFunctional) {

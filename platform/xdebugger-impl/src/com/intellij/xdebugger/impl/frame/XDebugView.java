@@ -13,7 +13,6 @@ import com.intellij.xdebugger.XDebugSession;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
 import java.awt.*;
 import java.util.EventObject;
 
@@ -36,11 +35,6 @@ public abstract class XDebugView implements Disposable {
     else {
       myClearAlarm.cancelAndRequest();
     }
-  }
-
-  @Nullable
-  public JComponent getMainComponent() {
-    return null;
   }
 
   protected final void cancelClear() {

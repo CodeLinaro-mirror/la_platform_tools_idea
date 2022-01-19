@@ -29,18 +29,15 @@ interface ResourceProvider {
    */
   fun loadResource(resourceName: String): Resource?
 
-  /**
-   * Default resource provider implementation with
-   * [canProvide] and [loadResource] returning always false and null.
-   */
-  class DefaultResourceProvider: ResourceProvider {
+  private class DefaultResourceProvider: ResourceProvider {
     override fun canProvide(resourceName: String): Boolean = false
     override fun loadResource(resourceName: String): Resource? = null
   }
 
   companion object {
     /**
-     * Shared instance of [DefaultResourceProvider].
+     * Default resource provider implementation with
+     * [canProvide] and [loadResource] returning always false and null.
      */
     val default: ResourceProvider = DefaultResourceProvider()
 

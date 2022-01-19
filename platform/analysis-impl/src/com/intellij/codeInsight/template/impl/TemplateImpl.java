@@ -385,7 +385,6 @@ public class TemplateImpl extends TemplateBase implements SchemeElement {
     return myVariables.get(i).skipOnStart();
   }
 
-  @Override
   public ArrayList<Variable> getVariables() {
     return new ArrayList<>(myVariables);
   }

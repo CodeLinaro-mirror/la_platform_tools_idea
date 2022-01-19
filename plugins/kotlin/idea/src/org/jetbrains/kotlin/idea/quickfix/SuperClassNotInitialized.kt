@@ -5,9 +5,9 @@ package org.jetbrains.kotlin.idea.quickfix
 import com.intellij.codeInsight.hint.ShowParameterInfoHandler
 import com.intellij.codeInsight.intention.HighPriorityAction
 import com.intellij.codeInsight.intention.IntentionAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.idea.KotlinBundle
@@ -19,7 +19,6 @@ import org.jetbrains.kotlin.idea.core.isVisible
 import org.jetbrains.kotlin.idea.core.moveCaret
 import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.createSmartPointer
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
@@ -131,7 +130,7 @@ object SuperClassNotInitialized : KotlinIntentionActionsFactory() {
                 if (editor != null) {
                     val offset = newSpecifier.valueArgumentList!!.leftParenthesis!!.endOffset
                     editor.moveCaret(offset)
-                    if (!isUnitTestMode()) {
+                    if (!ApplicationManager.getApplication().isUnitTestMode) {
                         ShowParameterInfoHandler.invoke(project, editor, file, offset - 1, null, true)
                     }
                 }
@@ -144,7 +143,7 @@ object SuperClassNotInitialized : KotlinIntentionActionsFactory() {
         classDeclaration: KtClass,
         parametersToAdd: Collection<KtParameter>,
         private val argumentText: String,
-        @Nls private val text: String
+        private val text: String
     ) : KotlinQuickFixAction<KtSuperTypeEntry>(element) {
         private val classDeclarationPointer = classDeclaration.createSmartPointer()
         private val parametersToAddPointers = parametersToAdd.map { it.createSmartPointer() }
@@ -154,7 +153,7 @@ object SuperClassNotInitialized : KotlinIntentionActionsFactory() {
                 element: KtSuperTypeEntry,
                 classDeclaration: KtClass,
                 superConstructor: ConstructorDescriptor,
-                @Nls text: String
+                text: String
             ): AddParametersFix? {
                 val superParameters = superConstructor.valueParameters
                 assert(superParameters.isNotEmpty())

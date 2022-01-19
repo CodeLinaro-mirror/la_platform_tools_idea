@@ -15,9 +15,7 @@
  */
 package org.jetbrains.idea.maven.server;
 
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
 import org.jetbrains.idea.maven.model.MavenModel;
 
@@ -28,6 +26,7 @@ import java.util.Collection;
 import org.jetbrains.idea.maven.server.security.MavenToken;
 
 public interface MavenServer extends Remote {
+  void set(MavenServerLogger logger, MavenServerDownloadListener downloadListener, MavenToken token) throws RemoteException;
 
   MavenServerEmbedder createEmbedder(MavenEmbedderSettings settings, MavenToken token) throws RemoteException;
 
@@ -42,10 +41,4 @@ public interface MavenServer extends Remote {
                                          File basedir,
                                          MavenExplicitProfiles explicitProfiles,
                                          Collection<String> alwaysOnProfiles, MavenToken token) throws RemoteException;
-
-  @Nullable
-  MavenPullServerLogger createPullLogger(MavenToken token) throws RemoteException;
-
-  @Nullable
-  MavenPullDownloadListener createPullDownloadListener(MavenToken token) throws RemoteException;
 }

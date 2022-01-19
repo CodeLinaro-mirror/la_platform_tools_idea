@@ -258,8 +258,6 @@ internal val collectionTerminationFunctionNames = listOf(
     "find",
     "findLast",
     "first",
-    "firstNotNullOf",
-    "firstNotNullOfOrNull",
     "firstOrNull",
     "fold",
     "foldIndexed",

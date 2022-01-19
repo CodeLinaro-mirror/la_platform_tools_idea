@@ -7,6 +7,7 @@ from typing import (
     Iterator,
     List,
     NamedTuple,
+    Optional,
     Sequence,
     Text,
     Tuple,
@@ -29,7 +30,7 @@ class Match(NamedTuple):
 
 class SequenceMatcher(Generic[_T]):
     def __init__(
-        self, isjunk: Callable[[_T], bool] | None = ..., a: Sequence[_T] = ..., b: Sequence[_T] = ..., autojunk: bool = ...
+        self, isjunk: Optional[Callable[[_T], bool]] = ..., a: Sequence[_T] = ..., b: Sequence[_T] = ..., autojunk: bool = ...
     ) -> None: ...
     def set_seqs(self, a: Sequence[_T], b: Sequence[_T]) -> None: ...
     def set_seq1(self, a: Sequence[_T]) -> None: ...
@@ -53,7 +54,7 @@ def get_close_matches(
 ) -> List[Sequence[_T]]: ...
 
 class Differ:
-    def __init__(self, linejunk: _JunkCallback | None = ..., charjunk: _JunkCallback | None = ...) -> None: ...
+    def __init__(self, linejunk: Optional[_JunkCallback] = ..., charjunk: Optional[_JunkCallback] = ...) -> None: ...
     def compare(self, a: Sequence[_StrType], b: Sequence[_StrType]) -> Iterator[_StrType]: ...
 
 def IS_LINE_JUNK(line: _StrType, pat: Any = ...) -> bool: ...  # pat is undocumented
@@ -79,16 +80,16 @@ def context_diff(
     lineterm: _StrType = ...,
 ) -> Iterator[_StrType]: ...
 def ndiff(
-    a: Sequence[_StrType], b: Sequence[_StrType], linejunk: _JunkCallback | None = ..., charjunk: _JunkCallback | None = ...
+    a: Sequence[_StrType], b: Sequence[_StrType], linejunk: Optional[_JunkCallback] = ..., charjunk: Optional[_JunkCallback] = ...
 ) -> Iterator[_StrType]: ...
 
 class HtmlDiff(object):
     def __init__(
         self,
         tabsize: int = ...,
-        wrapcolumn: int | None = ...,
-        linejunk: _JunkCallback | None = ...,
-        charjunk: _JunkCallback | None = ...,
+        wrapcolumn: Optional[int] = ...,
+        linejunk: Optional[_JunkCallback] = ...,
+        charjunk: Optional[_JunkCallback] = ...,
     ) -> None: ...
     def make_file(
         self,

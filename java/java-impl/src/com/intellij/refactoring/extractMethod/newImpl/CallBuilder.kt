@@ -46,15 +46,11 @@ class CallBuilder(project: Project, private val context: PsiElement) {
   private fun conditionalExit(methodCall: String, flow: ConditionalFlow, dataOutput: DataOutput): List<PsiStatement> {
     val exit = when (dataOutput) {
       is VariableOutput -> "if (${dataOutput.name} == null) ${flow.statements.first().text}"
-      is ExpressionOutput -> "if (${dataOutput.name} != null) ${exitStatementOf(flow)} ${dataOutput.name};"
+      is ExpressionOutput -> "if (${dataOutput.name} != null) return ${dataOutput.name};"
       ArtificialBooleanOutput -> "if ($methodCall) ${flow.statements.first().text}"
       is EmptyOutput -> throw IllegalArgumentException()
     }
     return statementsOf(exit)
-  }
-
-  private fun exitStatementOf(flow: FlowOutput): String {
-    return if (flow.statements.firstOrNull() is PsiYieldStatement) "yield" else "return"
   }
 
   private fun unconditionalExit(methodCall: String, flow: UnconditionalFlow, dataOutput: DataOutput): List<PsiStatement> {
@@ -63,7 +59,7 @@ class CallBuilder(project: Project, private val context: PsiElement) {
         flow.statements.first().text
       )
       is ExpressionOutput -> statementsOf(
-        "${exitStatementOf(flow)} $methodCall;"
+        "return $methodCall;"
       )
       ArtificialBooleanOutput -> throw IllegalStateException()
       is EmptyOutput -> when {

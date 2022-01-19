@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2021 Dave Griffith, Bas Leijdekkers
+ * Copyright 2003-2017 Dave Griffith, Bas Leijdekkers
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,9 @@ public class StaticVariableUninitializedUseInspection extends BaseInspection {
 
   @Override
   public JComponent createOptionsPanel() {
-    return new SingleCheckboxOptionsPanel(InspectionGadgetsBundle.message("primitive.fields.ignore.option"),
+    return new SingleCheckboxOptionsPanel(
+      InspectionGadgetsBundle.message(
+        "primitive.fields.ignore.option"),
       this, "m_ignorePrimitives");
   }
 
@@ -92,7 +94,7 @@ public class StaticVariableUninitializedUseInspection extends BaseInspection {
 
         final PsiMethod[] methods = aClass.getMethods();
         for (PsiMethod method : methods) {
-          if (!method.hasModifierProperty(PsiModifier.STATIC) || !method.isPhysical() /* EA-263167 */) {
+          if (!method.hasModifierProperty(PsiModifier.STATIC)) {
             continue;
           }
           final PsiCodeBlock body = method.getBody();

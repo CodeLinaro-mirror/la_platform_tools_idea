@@ -9,7 +9,6 @@ import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.rules.ProjectModelRule
 import com.intellij.util.io.assertMatches
 import com.intellij.util.io.directoryContentOf
-import com.intellij.util.io.impl.FileTextMatchers
 import com.intellij.util.io.systemIndependentPath
 import org.junit.ClassRule
 import org.junit.Rule
@@ -35,7 +34,7 @@ class SaveProjectTest {
   fun `save single module`() {
     projectModel.createModule("foo")
     projectModel.saveProjectState()
-    assertMatches("single-module")
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("single-module")))
   }
 
   @Test
@@ -51,15 +50,15 @@ class SaveProjectTest {
 
     setGroupPath(arrayOf("group"))
     projectModel.saveProjectState()
-    assertMatches("module-in-group")
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("module-in-group")))
 
     setGroupPath(arrayOf("group", "subGroup"))
     projectModel.saveProjectState()
-    assertMatches("module-in-sub-group")
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("module-in-sub-group")))
 
     setGroupPath(null)
     projectModel.saveProjectState()
-    assertMatches("single-module")
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("single-module")))
   }
 
   @Test
@@ -69,7 +68,7 @@ class SaveProjectTest {
     projectModel.saveProjectState()
     projectModel.removeModule(module)
     projectModel.saveProjectState()
-    assertMatches("detached-module")
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("detached-module")))
   }
 
   @Test
@@ -79,7 +78,7 @@ class SaveProjectTest {
                  OrderRootType.CLASSES)
     }
     projectModel.saveProjectState()
-    assertMatches("single-library")
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("single-library")))
   }
 
   @Test
@@ -89,12 +88,6 @@ class SaveProjectTest {
     model.renameModule(module, "bar")
     runWriteActionAndWait { model.commit() }
     projectModel.saveProjectState()
-    assertMatches("single-module-renamed")
-  }
-
-  private fun assertMatches(name: String) {
-    projectModel.baseProjectDir.root.assertMatches(
-      directoryContentOf(configurationStoreTestDataRoot.resolve(name)),
-      fileTextMatcher = FileTextMatchers.lines)
+    projectModel.baseProjectDir.root.assertMatches(directoryContentOf(configurationStoreTestDataRoot.resolve("single-module-renamed")))
   }
 }

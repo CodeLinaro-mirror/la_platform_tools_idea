@@ -7,7 +7,6 @@ import com.intellij.openapi.externalSystem.model.project.ExternalSystemSourceTyp
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.io.StreamUtil;
 import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.UsefulTestCase;
 import com.intellij.util.Function;
@@ -27,7 +26,6 @@ import org.gradle.tooling.model.idea.IdeaProject;
 import org.gradle.util.GradleVersion;
 import org.hamcrest.CustomMatcher;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.plugins.gradle.frameworkSupport.buildscript.GradleBuildScriptBuilderUtil;
 import org.jetbrains.plugins.gradle.model.BuildScriptClasspathModel;
 import org.jetbrains.plugins.gradle.model.ClassSetImportModelProvider;
 import org.jetbrains.plugins.gradle.model.ClasspathEntryModel;
@@ -48,10 +46,8 @@ import org.junit.runners.Parameterized;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
@@ -108,19 +104,8 @@ public abstract class AbstractModelBuilderTest {
     testDir = new File(ourTempDir, methodName);
     FileUtil.ensureExists(testDir);
 
-    GradleVersion _gradleVersion = GradleVersion.version(gradleVersion);
-    String compileConfiguration = GradleBuildScriptBuilderUtil.isSupportedJavaLibraryPlugin(_gradleVersion) ? "implementation" : "compile";
-    String testCompileConfiguration = GradleBuildScriptBuilderUtil.isSupportedJavaLibraryPlugin(_gradleVersion)
-                                      ? "testImplementation" : "testCompile";
-    String integrationTestCompileConfiguration = GradleBuildScriptBuilderUtil.isSupportedJavaLibraryPlugin(_gradleVersion)
-                                                 ? "integrationTestImplementation"
-                                                 : "integrationTestCompile";
     try (InputStream buildScriptStream = getClass().getResourceAsStream('/' + methodName + '/' + GradleConstants.DEFAULT_SCRIPT_NAME)) {
-      String text = StreamUtil.readText(new InputStreamReader(buildScriptStream, StandardCharsets.UTF_8));
-      text = text.replaceAll("<<compile>>", compileConfiguration);
-      text = text.replaceAll("<<testCompile>>", testCompileConfiguration);
-      text = text.replaceAll("<<integrationTestCompile>>", testCompileConfiguration);
-      FileUtil.writeToFile(new File(testDir, GradleConstants.DEFAULT_SCRIPT_NAME), text, StandardCharsets.UTF_8);
+      Files.copy(buildScriptStream, new File(testDir, GradleConstants.DEFAULT_SCRIPT_NAME).toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
 
     try (InputStream settingsStream = getClass().getResourceAsStream('/' + methodName + '/' + GradleConstants.SETTINGS_FILE_NAME)) {
@@ -133,6 +118,7 @@ public abstract class AbstractModelBuilderTest {
     IdeaForkJoinWorkerThreadFactory.setupForkJoinCommonPool(true);
     GradleConnector connector = GradleConnector.newConnector();
 
+    GradleVersion _gradleVersion = GradleVersion.version(gradleVersion);
     final URI distributionUri = new DistributionLocator().getDistributionFor(_gradleVersion);
     connector.useDistribution(distributionUri);
     connector.forProjectDirectory(testDir);

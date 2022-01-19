@@ -5,9 +5,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.Serializable;
-
-public class Version implements Comparable<Version>, Serializable {
+public class Version implements Comparable<Version> {
   public final int major;
   public final int minor;
   public final int bugfix;

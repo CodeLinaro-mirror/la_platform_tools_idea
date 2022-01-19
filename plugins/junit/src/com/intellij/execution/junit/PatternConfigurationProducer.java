@@ -4,7 +4,6 @@ package com.intellij.execution.junit;
 
 import com.intellij.execution.Location;
 import com.intellij.execution.actions.ConfigurationContext;
-import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.junit2.PsiMemberParameterizedLocation;
 import com.intellij.execution.testframework.AbstractPatternBasedConfigurationProducer;
 import com.intellij.openapi.module.Module;
@@ -20,9 +19,8 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class PatternConfigurationProducer extends AbstractPatternBasedConfigurationProducer<JUnitConfiguration> {
-  @Override
-  public @NotNull ConfigurationFactory getConfigurationFactory() {
-    return JUnitConfigurationType.getInstance().getFactory();
+  public PatternConfigurationProducer() {
+    super(JUnitConfigurationType.getInstance());
   }
 
   @Override

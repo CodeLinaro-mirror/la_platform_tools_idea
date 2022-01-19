@@ -230,7 +230,6 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
       .expireWith(this)
       .finishOnUiThread(ModalityState.stateForComponent(this), filters -> {
         myPredefinedFilters = filters;
-        rehighlightHyperlinksAndFoldings();
       }).submit(AppExecutorUtil.getAppExecutorService());
   }
 
@@ -318,17 +317,12 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
         flushDeferredText();
         Editor editor = getEditor();
         if (editor == null) return;
-        int moveOffset = getEffectiveOffset(editor);
-        editor.getCaretModel().moveToOffset(moveOffset);
-        editor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
-      }
-
-      private int getEffectiveOffset(@NotNull Editor editor) {
         int moveOffset = Math.min(offset, editor.getDocument().getTextLength());
         if (ConsoleBuffer.useCycleBuffer() && moveOffset >= editor.getDocument().getTextLength()) {
           moveOffset = 0;
         }
-        return moveOffset;
+        editor.getCaretModel().moveToOffset(moveOffset);
+        editor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
       }
     }
     addFlushRequest(0, new ScrollRunnable());
@@ -753,7 +747,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     Document document = editor.getDocument();
     int documentTextLength = document.getTextLength();
     if (documentTextLength > 0) {
-      DocumentUtil.executeInBulk(document, () -> document.deleteString(0, documentTextLength));
+      DocumentUtil.executeInBulk(document, true, () -> document.deleteString(0, documentTextLength));
     }
     synchronized (LOCK) {
       clearHyperlinkAndFoldings();
@@ -763,7 +757,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     editor.getInlayModel().getInlineElementsInRange(0, 0).forEach(Disposer::dispose); // remove inlays if any
   }
 
-  protected static boolean isStickingToEnd(@NotNull Editor editor) {
+  private static boolean isStickingToEnd(@NotNull Editor editor) {
     Document document = editor.getDocument();
     int caretOffset = editor.getCaretModel().getOffset();
     return document.getLineNumber(caretOffset) >= document.getLineCount() - 1;
@@ -809,7 +803,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     if (CommonDataKeys.EDITOR.is(dataId)) {
       return editor;
     }
-    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return myHelpId;
     }
     if (LangDataKeys.CONSOLE_VIEW.is(dataId)) {
@@ -1584,3 +1578,4 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     return getEditor().getDocument().getText();
   }
 }
+

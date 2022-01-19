@@ -28,8 +28,8 @@ class SliceForwardHandler extends SliceHandler {
     Module module = ModuleUtilCore.findModuleForPsiElement(element);
 
     Project myProject = element.getProject();
-    final SliceForwardAdditionalUi ui = new SliceForwardAdditionalUi();
-    ui.getMyShowDerefs().setSelected(storedSettingsBean.showDereferences);
+    final SliceForwardForm form = new SliceForwardForm();
+    form.init(storedSettingsBean.showDereferences);
 
     AnalysisUIOptions analysisUIOptions = new AnalysisUIOptions();
     analysisUIOptions.loadState(storedSettingsBean.analysisUIOptions);
@@ -39,7 +39,7 @@ class SliceForwardHandler extends SliceHandler {
                                                                    items, analysisUIOptions, true) {
       @Override
       protected JComponent getAdditionalActionSettings(Project project) {
-        return ui.getPanel();
+        return form.getComponent();
       }
     };
     if (!dialog.showAndGet()) {
@@ -47,14 +47,14 @@ class SliceForwardHandler extends SliceHandler {
     }
 
     storedSettingsBean.analysisUIOptions.loadState(analysisUIOptions);
-    storedSettingsBean.showDereferences = ui.getMyShowDerefs().isSelected();
+    storedSettingsBean.showDereferences = form.isToShowDerefs();
 
     AnalysisScope scope = dialog.getScope(analysisScope);
 
     SliceAnalysisParams params = new SliceAnalysisParams();
     params.scope = scope;
     params.dataFlowToThis = myDataFlowToThis;
-    params.showInstanceDereferences = ui.getMyShowDerefs().isSelected();
+    params.showInstanceDereferences = form.isToShowDerefs();
     return params;
   }
 }

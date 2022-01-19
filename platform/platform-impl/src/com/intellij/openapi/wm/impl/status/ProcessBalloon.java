@@ -115,8 +115,6 @@ class ProcessBalloon {
   }
 
   private static @NotNull Balloon create(@NotNull JRootPane pane, @NotNull Disposable parentDisposable, @NotNull JComponent content) {
-    content.putClientProperty(InfoAndProgressPanel.FAKE_BALLOON, new Object());
-
     Balloon balloon = JBPopupFactory.getInstance().createBalloonBuilder(content)
       .setFadeoutTime(0)
       .setFillColor(Gray.TRANSPARENT)

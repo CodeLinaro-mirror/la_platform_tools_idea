@@ -1,6 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
-// AFTER-WARNING: Parameter 'j' is never used
-// AFTER-WARNING: Variable 'test' is never used
 class bar() {
     operator fun invoke(i: Any?, j: Any?) : Boolean {
         return true

@@ -334,6 +334,10 @@ final class TestEditorManagerImpl extends FileEditorManagerEx implements Disposa
   }
 
   @Override
+  public void updateFilePresentation(@NotNull VirtualFile file) {
+  }
+
+  @Override
   public void unsplitWindow() {
 
   }

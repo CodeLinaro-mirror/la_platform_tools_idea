@@ -3,7 +3,6 @@ package com.intellij.codeInsight.hints.settings
 
 import com.intellij.codeInsight.hints.InlayHintsProviderExtension
 import com.intellij.codeInsight.hints.InlayHintsSettings
-import com.intellij.codeInsight.hints.InlayParameterHintsExtension
 import com.intellij.codeInsight.hints.settings.language.SingleLanguageInlayHintsConfigurable
 import com.intellij.codeInsight.hints.withSettings
 import com.intellij.ide.ui.search.SearchableOptionContributor
@@ -15,19 +14,11 @@ private class InlayHintsSettingsSearchableContributor : SearchableOptionContribu
       val provider = providerInfo.provider
       val name = provider.name
       val id = SingleLanguageInlayHintsConfigurable.getId(providerInfo.language)
-      addOption(processor, name, id)
+      processor.addOptions(name, null, null, id, null, false)
       val providerWithSettings = provider.withSettings(providerInfo.language, InlayHintsSettings.instance())
       for (case in providerWithSettings.configurable.cases) {
-        addOption(processor, case.name, id)
+        processor.addOptions(case.name, null, null, id, null, false)
       }
     }
-    InlayParameterHintsExtension.point?.extensions?.flatMap { it.instance.supportedOptions }?.forEach { addOption(processor, it.name, null) }
-  }
-
-  private fun addOption(processor: SearchableOptionProcessor, name: String, id: String?) {
-    if (id != null) {
-      processor.addOptions(name, null, null, id, null, false)
-    }
-    processor.addOptions(name, null, null, INLAY_ID, null, false)
   }
 }

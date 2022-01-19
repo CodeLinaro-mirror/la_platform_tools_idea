@@ -20,6 +20,10 @@ public class IndexedFileImpl extends UserDataHolderBase implements IndexedFile {
 
   private final @Nullable FileType myType;
 
+  public IndexedFileImpl(@NotNull VirtualFile file) {
+    this(file, null);
+  }
+
   public IndexedFileImpl(@NotNull VirtualFile file, Project project) {
     this(file, null, project);
   }

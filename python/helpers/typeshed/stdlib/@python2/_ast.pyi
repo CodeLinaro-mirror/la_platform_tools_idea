@@ -1,4 +1,5 @@
 import typing
+from typing import Optional
 
 __version__: str
 PyCF_ONLY_AST: int
@@ -40,7 +41,7 @@ class ClassDef(stmt):
     decorator_list: typing.List[expr]
 
 class Return(stmt):
-    value: expr | None
+    value: Optional[expr]
 
 class Delete(stmt):
     targets: typing.List[expr]
@@ -55,7 +56,7 @@ class AugAssign(stmt):
     value: expr
 
 class Print(stmt):
-    dest: expr | None
+    dest: Optional[expr]
     values: typing.List[expr]
     nl: bool
 
@@ -77,13 +78,13 @@ class If(stmt):
 
 class With(stmt):
     context_expr: expr
-    optional_vars: expr | None
+    optional_vars: Optional[expr]
     body: typing.List[stmt]
 
 class Raise(stmt):
-    type: expr | None
-    inst: expr | None
-    tback: expr | None
+    type: Optional[expr]
+    inst: Optional[expr]
+    tback: Optional[expr]
 
 class TryExcept(stmt):
     body: typing.List[stmt]
@@ -96,20 +97,20 @@ class TryFinally(stmt):
 
 class Assert(stmt):
     test: expr
-    msg: expr | None
+    msg: Optional[expr]
 
 class Import(stmt):
     names: typing.List[alias]
 
 class ImportFrom(stmt):
-    module: _identifier | None
+    module: Optional[_identifier]
     names: typing.List[alias]
-    level: int | None
+    level: Optional[int]
 
 class Exec(stmt):
     body: expr
-    globals: expr | None
-    locals: expr | None
+    globals: Optional[expr]
+    locals: Optional[expr]
 
 class Global(stmt):
     names: typing.List[_identifier]
@@ -125,9 +126,9 @@ class slice(AST): ...
 _slice = slice  # this lets us type the variable named 'slice' below
 
 class Slice(slice):
-    lower: expr | None
-    upper: expr | None
-    step: expr | None
+    lower: Optional[expr]
+    upper: Optional[expr]
+    step: Optional[expr]
 
 class ExtSlice(slice):
     dims: typing.List[slice]
@@ -188,7 +189,7 @@ class GeneratorExp(expr):
     generators: typing.List[comprehension]
 
 class Yield(expr):
-    value: expr | None
+    value: Optional[expr]
 
 class Compare(expr):
     left: expr
@@ -199,8 +200,8 @@ class Call(expr):
     func: expr
     args: typing.List[expr]
     keywords: typing.List[keyword]
-    starargs: expr | None
-    kwargs: expr | None
+    starargs: Optional[expr]
+    kwargs: Optional[expr]
 
 class Repr(expr):
     value: expr
@@ -281,16 +282,16 @@ class comprehension(AST):
 class excepthandler(AST): ...
 
 class ExceptHandler(excepthandler):
-    type: expr | None
-    name: expr | None
+    type: Optional[expr]
+    name: Optional[expr]
     body: typing.List[stmt]
     lineno: int
     col_offset: int
 
 class arguments(AST):
     args: typing.List[expr]
-    vararg: _identifier | None
-    kwarg: _identifier | None
+    vararg: Optional[_identifier]
+    kwarg: Optional[_identifier]
     defaults: typing.List[expr]
 
 class keyword(AST):
@@ -299,4 +300,4 @@ class keyword(AST):
 
 class alias(AST):
     name: _identifier
-    asname: _identifier | None
+    asname: Optional[_identifier]

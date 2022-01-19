@@ -1834,10 +1834,9 @@ class InternalConsoleExec(InternalThreadCommand):
                 #don't trace new threads created by console command
                 disable_trace_thread_modules()
 
-                result, exception_occurred = pydevd_console_integration.console_exec(self.thread_id, self.frame_id, self.expression, dbg)
+                result = pydevd_console_integration.console_exec(self.thread_id, self.frame_id, self.expression, dbg)
                 xml = "<xml>"
                 xml += pydevd_xml.var_to_xml(result, "")
-                xml += pydevd_xml.var_to_xml(exception_occurred, "exception_occurred")
                 xml += "</xml>"
                 cmd = dbg.cmd_factory.make_evaluate_expression_message(self.sequence, xml)
                 dbg.writer.add_command(cmd)

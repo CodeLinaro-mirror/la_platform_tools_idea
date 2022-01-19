@@ -1,7 +1,6 @@
 package com.intellij.codeInspection.tests.kotlin;
 
-import com.intellij.jvm.analysis.KotlinJvmAnalysisTestUtil;
-import com.intellij.openapi.application.PathManager;
+import com.intellij.jvm.analysis.JvmAnalysisKtTestsUtil;
 import com.intellij.psi.PsiFile;
 import com.intellij.testFramework.TestDataPath;
 import com.intellij.testFramework.builders.JavaModuleFixtureBuilder;
@@ -12,7 +11,6 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.uast.ULiteralExpression;
 import org.junit.Assume;
 
-import java.io.File;
 import java.util.Set;
 
 import static com.intellij.codeInspection.NonNlsUastUtil.isNonNlsStringLiteral;
@@ -28,12 +26,7 @@ public class KtNonNlsUastUtilTest extends JavaCodeInsightFixtureTestCase {
 
   @Override
   protected String getBasePath() {
-    return KotlinJvmAnalysisTestUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + "/codeInspection/nonNls";
-  }
-
-  @Override
-  protected String getTestDataPath() {
-    return PathManager.getCommunityHomePath().replace(File.separatorChar, '/') + getBasePath();
+    return JvmAnalysisKtTestsUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + "/codeInspection/nonNls";
   }
 
   @Override

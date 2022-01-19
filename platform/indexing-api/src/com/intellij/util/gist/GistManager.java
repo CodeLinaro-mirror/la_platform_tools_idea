@@ -58,4 +58,5 @@ public abstract class GistManager {
    * Force all gists for the given file to be recalculated on the next request.
    */
   public abstract void invalidateData(@NotNull VirtualFile file);
+
 }

@@ -18,7 +18,6 @@ import org.jetbrains.kotlin.idea.refactoring.chooseContainerElementIfNecessary
 import org.jetbrains.kotlin.idea.refactoring.getExtractionContainers
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.*
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.toRange
 import org.jetbrains.kotlin.idea.util.reformatted
@@ -127,7 +126,7 @@ class ConvertObjectLiteralToClassIntention : SelfTargetingRangeIntention<KtObjec
 
         val containers = element.getExtractionContainers(strict = true, includeAll = true)
 
-        if (isUnitTestMode()) {
+        if (ApplicationManager.getApplication().isUnitTestMode) {
             val targetComment = element.containingKtFile.findDescendantOfType<PsiComment>()?.takeIf {
                 it.text == "// TARGET_BLOCK:"
             }

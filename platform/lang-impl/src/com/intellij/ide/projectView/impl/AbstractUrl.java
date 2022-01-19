@@ -35,10 +35,6 @@ public abstract class AbstractUrl {
     this.moduleName = moduleName;
   }
 
-  public @NotNull String getURL() {
-    return url;
-  }
-
   @SuppressWarnings({"HardCodedStringLiteral"})
   public void write(Element element) {
     element.setAttribute("url", url);

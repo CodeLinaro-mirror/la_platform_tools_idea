@@ -1,6 +1,7 @@
 from socket import socket
-from typing import Iterable, Mapping, NoReturn, Type
+from typing import Any, Dict, Iterable, Mapping, NoReturn, Optional, Tuple, Type, Union
 
+from paramiko.agent import Agent
 from paramiko.channel import Channel, ChannelFile, ChannelStderrFile, ChannelStdinFile
 from paramiko.hostkeys import HostKeys
 from paramiko.pkey import PKey
@@ -10,44 +11,44 @@ from paramiko.util import ClosingContextManager
 
 class SSHClient(ClosingContextManager):
     def __init__(self) -> None: ...
-    def load_system_host_keys(self, filename: str | None = ...) -> None: ...
+    def load_system_host_keys(self, filename: Optional[str] = ...) -> None: ...
     def load_host_keys(self, filename: str) -> None: ...
     def save_host_keys(self, filename: str) -> None: ...
     def get_host_keys(self) -> HostKeys: ...
     def set_log_channel(self, name: str) -> None: ...
-    def set_missing_host_key_policy(self, policy: Type[MissingHostKeyPolicy] | MissingHostKeyPolicy) -> None: ...
+    def set_missing_host_key_policy(self, policy: Union[Type[MissingHostKeyPolicy], MissingHostKeyPolicy]) -> None: ...
     def connect(
         self,
         hostname: str,
         port: int = ...,
-        username: str | None = ...,
-        password: str | None = ...,
-        pkey: PKey | None = ...,
-        key_filename: str | None = ...,
-        timeout: float | None = ...,
+        username: Optional[str] = ...,
+        password: Optional[str] = ...,
+        pkey: Optional[PKey] = ...,
+        key_filename: Optional[str] = ...,
+        timeout: Optional[float] = ...,
         allow_agent: bool = ...,
         look_for_keys: bool = ...,
         compress: bool = ...,
-        sock: socket | None = ...,
+        sock: Optional[socket] = ...,
         gss_auth: bool = ...,
         gss_kex: bool = ...,
         gss_deleg_creds: bool = ...,
-        gss_host: str | None = ...,
-        banner_timeout: float | None = ...,
-        auth_timeout: float | None = ...,
+        gss_host: Optional[str] = ...,
+        banner_timeout: Optional[float] = ...,
+        auth_timeout: Optional[float] = ...,
         gss_trust_dns: bool = ...,
-        passphrase: str | None = ...,
-        disabled_algorithms: dict[str, Iterable[str]] | None = ...,
+        passphrase: Optional[str] = ...,
+        disabled_algorithms: Optional[Dict[str, Iterable[str]]] = ...,
     ) -> None: ...
     def close(self) -> None: ...
     def exec_command(
         self,
         command: str,
         bufsize: int = ...,
-        timeout: float | None = ...,
+        timeout: Optional[float] = ...,
         get_pty: bool = ...,
-        environment: dict[str, str] | None = ...,
-    ) -> tuple[ChannelStdinFile, ChannelFile, ChannelStderrFile]: ...
+        environment: Optional[Dict[str, str]] = ...,
+    ) -> Tuple[ChannelStdinFile, ChannelFile, ChannelStderrFile]: ...
     def invoke_shell(
         self,
         term: str = ...,
@@ -55,10 +56,10 @@ class SSHClient(ClosingContextManager):
         height: int = ...,
         width_pixels: int = ...,
         height_pixels: int = ...,
-        environment: Mapping[str, str] | None = ...,
+        environment: Optional[Mapping[str, str]] = ...,
     ) -> Channel: ...
     def open_sftp(self) -> SFTPClient: ...
-    def get_transport(self) -> Transport | None: ...
+    def get_transport(self) -> Optional[Transport]: ...
 
 class MissingHostKeyPolicy:
     def missing_host_key(self, client: SSHClient, hostname: str, key: PKey) -> None: ...

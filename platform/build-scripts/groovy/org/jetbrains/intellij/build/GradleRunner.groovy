@@ -1,20 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build
 
-
-import com.intellij.openapi.util.SystemInfoRt
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import groovy.transform.CompileStatic
 import org.jetbrains.jps.model.java.JdkVersionDetector
 
 @CompileStatic
-final class GradleRunner {
+class GradleRunner {
   final File gradleProjectDir
   private final String projectDir
   private final BuildMessages messages
   private final String javaHome
   private final List<String> additionalParams
-  private final BuildOptions options
 
   @Lazy
   private volatile GradleRunner modularGradleRunner = {
@@ -25,12 +23,10 @@ final class GradleRunner {
     File gradleProjectDir,
     String projectDir,
     BuildMessages messages,
-    BuildOptions options,
     String javaHome,
     List<String> additionalParams = getDefaultAdditionalParams()
   ) {
     this.messages = messages
-    this.options = options
     this.projectDir = projectDir
     this.gradleProjectDir = gradleProjectDir
     this.javaHome = javaHome
@@ -72,7 +68,7 @@ final class GradleRunner {
   }
 
   GradleRunner withParams(List<String> additionalParams) {
-    return new GradleRunner(gradleProjectDir, projectDir, messages, options, javaHome, this.additionalParams + additionalParams)
+    return new GradleRunner(gradleProjectDir, projectDir, messages, javaHome, this.additionalParams + additionalParams)
   }
 
   private static List<String> getDefaultAdditionalParams() {
@@ -82,14 +78,6 @@ final class GradleRunner {
     }
 
     return Arrays.asList(rawParams.split(" "))
-  }
-
-  boolean runOneTask(String task) {
-    boolean result = runInner(null, task)
-    if (!result) {
-      messages.error("Failed to complete `gradle $task`")
-    }
-    return result
   }
 
   private boolean runInner(String title, File buildFile, boolean force, String... tasks) {
@@ -111,12 +99,10 @@ final class GradleRunner {
   }
 
   private boolean runInner(File buildFile, String... tasks) {
-    String gradleScript = SystemInfoRt.isWindows ? "gradlew.bat" : "gradlew"
+    def gradleScript = SystemInfo.isWindows ? 'gradlew.bat' : 'gradlew'
     List<String> command = new ArrayList()
     command.add("${gradleProjectDir.absolutePath}/$gradleScript".toString())
     command.add("-Djava.io.tmpdir=${System.getProperty('java.io.tmpdir')}".toString())
-    command.add("-Dorg.gradle.internal.repository.max.tentatives=${options.resolveDependenciesMaxAttempts}".toString())
-    command.add("-Dorg.gradle.internal.repository.initial.backoff=${options.resolveDependenciesDelayMs}".toString())
     command.add('--stacktrace')
     if (System.getProperty("intellij.build.use.gradle.daemon", "false").toBoolean()) {
       command.add('--daemon')
@@ -150,10 +136,10 @@ final class GradleRunner {
     }
     run('Downloading JBR 11', 'setupJbr11')
     def modularRuntime = "$projectDir/build/jdk/11"
-    if (SystemInfoRt.isMac) {
+    if (SystemInfo.isMac) {
       modularRuntime += '/Contents/Home'
     }
     modularRuntime = FileUtil.toSystemIndependentName(new File(modularRuntime).canonicalPath)
-    return new GradleRunner(gradleProjectDir, projectDir, messages, options, modularRuntime)
+    return new GradleRunner(gradleProjectDir, projectDir, messages, modularRuntime)
   }
 }

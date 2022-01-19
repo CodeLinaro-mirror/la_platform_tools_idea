@@ -7,7 +7,10 @@ import com.intellij.execution.target.TargetEnvironmentsManager;
 import com.intellij.ide.util.BrowseFilesListener;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.*;
+import com.intellij.openapi.ui.ComponentWithBrowseButton;
+import com.intellij.openapi.ui.LabeledComponent;
+import com.intellij.openapi.ui.TextComponentAccessor;
+import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.io.FileUtil;
@@ -24,7 +27,6 @@ import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.idea.maven.config.MavenConfig;
 import org.jetbrains.idea.maven.execution.MavenRCSettingsWatcher;
 import org.jetbrains.idea.maven.execution.MavenSettingsObservable;
 import org.jetbrains.idea.maven.execution.target.MavenRuntimeTargetConfiguration;
@@ -61,7 +63,7 @@ public class MavenEnvironmentForm implements PanelWithAnchor, MavenSettingsObser
   private final PathOverrider localRepositoryOverrider;
 
   private boolean isUpdating = false;
-  private final Alarm myUpdateAlarm = new Alarm();
+  private final Alarm myUpdateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
   private String myTargetName;
   private Project myProject;
 
@@ -108,18 +110,22 @@ public class MavenEnvironmentForm implements PanelWithAnchor, MavenSettingsObser
 
   @NotNull
   private File doResolveDefaultLocalRepository() {
-    MavenProjectsManager projectsManager = MavenProjectsManager.getInstance(myProject);
-    MavenConfig config = projectsManager != null ? projectsManager.getGeneralSettings().getMavenConfig() : null;
-    return MavenWslUtil.getLocalRepo(myProject, "",
-                                     FileUtil.toSystemIndependentName(mavenHomeField.getText().trim()),
-                                     settingsFileComponent.getComponent().getText(), config);
+    return MavenWslUtil.resolveWslAware(myProject,
+                                        () -> MavenUtil.resolveLocalRepository("",
+                                                                               FileUtil.toSystemIndependentName(
+                                                                                 mavenHomeField.getText().trim()),
+                                                                               settingsFileComponent.getComponent().getText()),
+                                        wsl -> MavenWslUtil.resolveLocalRepository(wsl, "",
+                                                                                   FileUtil.toSystemIndependentName(
+                                                                                     mavenHomeField.getText().trim()),
+                                                                                   settingsFileComponent.getComponent().getText()));
   }
 
   @NotNull
   private File doResolveDefaultUserSettingsFile() {
-    MavenProjectsManager projectsManager = MavenProjectsManager.getInstance(myProject);
-    MavenConfig config = projectsManager != null ? projectsManager.getGeneralSettings().getMavenConfig() : null;
-    return MavenWslUtil.getUserSettings(myProject, "", config);
+    return MavenWslUtil.resolveWslAware(myProject,
+                                        () -> MavenUtil.resolveUserSettingsFile(""),
+                                        wsl -> MavenWslUtil.resolveUserSettingsFile(wsl, ""));
   }
 
   private void createUIComponents() {
@@ -234,7 +240,7 @@ public class MavenEnvironmentForm implements PanelWithAnchor, MavenSettingsObser
     mavenHomeComponent.getComponent().addBrowseFolderListener(MavenProjectBundle.message("maven.select.maven.home.directory"),
                                                               "",
                                                               null, BrowseFilesListener.SINGLE_DIRECTORY_DESCRIPTOR,
-                                                              TextComponentAccessors.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT);
+                                                              TextComponentAccessor.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT);
     mavenHomeField.addDocumentListener(new DocumentAdapter() {
       @Override
       protected void textChanged(@NotNull DocumentEvent e) {

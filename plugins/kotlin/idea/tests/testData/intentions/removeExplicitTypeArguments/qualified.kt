@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'p' is never used
 interface I<T>
 
 fun <T> Int.foo(p: I<T>){}

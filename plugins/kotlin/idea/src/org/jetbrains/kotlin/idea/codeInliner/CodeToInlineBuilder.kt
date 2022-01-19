@@ -37,7 +37,6 @@ import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
 import org.jetbrains.kotlin.resolve.scopes.utils.findClassifier
 import org.jetbrains.kotlin.types.ErrorUtils
-import org.jetbrains.kotlin.types.typeUtil.unCapture
 import org.jetbrains.kotlin.utils.addToStdlib.cast
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.kotlin.utils.sure
@@ -234,10 +233,6 @@ class CodeToInlineBuilder(
             val typeArguments = InsertExplicitTypeArgumentsIntention.createTypeArguments(it, bindingContext)!!
             codeToInline.addPreCommitAction(it) { callExpression ->
                 callExpression.addAfter(typeArguments, callExpression.calleeExpression)
-                callExpression.typeArguments.forEach { typeArgument ->
-                    val reference = typeArgument.typeReference?.typeElement?.safeAs<KtUserType>()?.referenceExpression
-                    reference?.putCopyableUserData(CodeToInline.TYPE_PARAMETER_USAGE_KEY, Name.identifier(reference.text))
-                }
             }
         }
     }
@@ -358,7 +353,7 @@ class CodeToInlineBuilder(
                         val resolutionScope = expression.getResolutionScope(bindingContext, resolutionFacade)
                         val receiverExpressionToInline = receiver.asExpression(resolutionScope, psiFactory)
                         if (receiverExpressionToInline != null) {
-                            val receiverType = receiver.type.unCapture()
+                            val receiverType = receiver.type
                             codeToInline.addPreCommitAction(expressionToResolve) { expr ->
                                 val expressionToReplace = expr.parent as? KtCallExpression ?: expr
                                 val replaced = codeToInline.replaceExpression(

@@ -8,7 +8,6 @@ import com.intellij.openapi.util.NlsContexts.PopupTitle;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ActiveComponent;
-import com.intellij.ui.JBSplitter;
 import com.intellij.ui.popup.HintUpdateSupply;
 import com.intellij.util.BooleanFunction;
 import com.intellij.util.Consumer;
@@ -33,7 +32,6 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
   private @PopupTitle String myTitle;
   private final ArrayList<KeyStroke> myAdditionalKeystrokes = new ArrayList<>();
   private Runnable myItemChosenRunnable;
-  private JBSplitter myContentSplitter;
   private JComponent myNorthComponent;
   private JComponent mySouthComponent;
   private JComponent myEastComponent;
@@ -198,11 +196,6 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
     return this;
   }
 
-  public PopupChooserBuilder<T> setContentSplitter(@NotNull JBSplitter splitter) {
-    myContentSplitter = splitter;
-    return this;
-  }
-
   @Override
   public PopupChooserBuilder<T> setCouldPin(@Nullable Processor<? super JBPopup> callback){
     myCouldPin = callback;
@@ -320,27 +313,25 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
       myChooserComponent.autoSelect();
     }
 
-    if (myCloseOnEnter || myItemChosenRunnable != null) {
-      myChooserComponent.addMouseListener(new MouseAdapter() {
-        @Override
-        public void mouseReleased(MouseEvent e) {
-          if (UIUtil.isActionClick(e, MouseEvent.MOUSE_RELEASED) && !UIUtil.isSelectionButtonDown(e) && !e.isConsumed()) {
-            if (myCloseOnEnter) {
-              closePopup(e, true);
-            }
-            else {
-              myItemChosenRunnable.run();
-            }
+    myChooserComponent.addMouseListener(new MouseAdapter() {
+      @Override
+      public void mouseReleased(MouseEvent e) {
+        if (UIUtil.isActionClick(e, MouseEvent.MOUSE_RELEASED) && !UIUtil.isSelectionButtonDown(e) && !e.isConsumed()) {
+          if (myCloseOnEnter) {
+            closePopup(e, true);
+          }
+          else {
+            myItemChosenRunnable.run();
           }
         }
-      });
-    }
+      }
+    });
 
     registerClosePopupKeyboardAction(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), false);
     if (myCloseOnEnter) {
       registerClosePopupKeyboardAction(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), true);
     }
-    else if (myItemChosenRunnable != null) {
+    else {
       registerKeyboardAction(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), __ -> myItemChosenRunnable.run());
     }
     for (KeyStroke keystroke : myAdditionalKeystrokes) {
@@ -355,14 +346,11 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
     ((JComponent)myScrollPane.getViewport().getView()).setBorder(
       BorderFactory.createEmptyBorder(viewportPadding.top, viewportPadding.left, viewportPadding.bottom, viewportPadding.right));
 
-    JComponent contentComponent = myChooserComponent.hasOwnScrollPane() ? myPreferableFocusComponent : myScrollPane;
-
-    if (myContentSplitter != null) {
-      myContentSplitter.setFirstComponent(contentComponent);
-      addCenterComponentToContentPane(contentPane, myContentSplitter);
+    if (myChooserComponent.hasOwnScrollPane()) {
+      addCenterComponentToContentPane(contentPane, myPreferableFocusComponent);
     }
     else {
-      addCenterComponentToContentPane(contentPane, contentComponent);
+      addCenterComponentToContentPane(contentPane, myScrollPane);
     }
 
     if (myNorthComponent != null) {

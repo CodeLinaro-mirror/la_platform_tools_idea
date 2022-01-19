@@ -3,6 +3,7 @@
 package com.theoryinpractice.testng.configuration;
 
 import com.intellij.execution.actions.ConfigurationContext;
+import com.intellij.execution.configurations.ConfigurationType;
 import com.intellij.execution.testframework.AbstractPatternBasedConfigurationProducer;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.util.Ref;
@@ -17,7 +18,8 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 public abstract class AbstractTestNGPatternConfigurationProducer extends AbstractPatternBasedConfigurationProducer<TestNGConfiguration> {
-  protected AbstractTestNGPatternConfigurationProducer() {
+  protected AbstractTestNGPatternConfigurationProducer(ConfigurationType configurationType) {
+    super(configurationType);
   }
 
   @Override

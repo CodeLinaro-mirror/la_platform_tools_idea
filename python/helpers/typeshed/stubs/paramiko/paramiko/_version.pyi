@@ -1,1 +1,3 @@
-__version_info__: tuple[int, int, int]
+from typing import Tuple
+
+__version_info__: Tuple[int, int, int]

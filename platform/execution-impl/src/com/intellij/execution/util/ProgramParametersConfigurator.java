@@ -9,7 +9,10 @@ import com.intellij.execution.configurations.SimpleProgramParameters;
 import com.intellij.ide.macro.Macro;
 import com.intellij.ide.macro.MacroManager;
 import com.intellij.ide.macro.PromptingMacro;
-import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.actionSystem.DataContext;
+import com.intellij.openapi.actionSystem.DataKey;
+import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.components.PathMacroManager;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.module.Module;
@@ -84,7 +87,7 @@ public class ProgramParametersConfigurator {
   private DataContext projectContext(Project project, Module module) {
     return dataId -> {
       if (CommonDataKeys.PROJECT.is(dataId)) return project;
-      if (PlatformCoreDataKeys.MODULE.is(dataId) || LangDataKeys.MODULE_CONTEXT.is(dataId)) return module;
+      if (LangDataKeys.MODULE.is(dataId) || LangDataKeys.MODULE_CONTEXT.is(dataId)) return module;
       if (VALIDATION_MODE.is(dataId)) return myValidation;
       return null;
     };

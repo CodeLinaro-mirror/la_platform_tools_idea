@@ -6,10 +6,9 @@ class Foo {
         fun f() {
         }
 
-        @JvmStatic
-        fun s() {
+        @JvmStatic fun s() {
         }
 
-        const val CONST = 42
+        val CONST = 42
     }
 }

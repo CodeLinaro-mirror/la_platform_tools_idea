@@ -112,11 +112,11 @@ fun LinearGraph.subgraphDifference(node1: Int, node2: Int): IntSet {
 }
 
 private fun Iterable<Int>.minOrDefault(): Int {
-  return minOrNull() ?: Int.MAX_VALUE
+  return min() ?: Int.MAX_VALUE
 }
 
 private fun Iterable<Int>.maxOrDefault(): Int {
-  return maxOrNull() ?: Int.MIN_VALUE
+  return max() ?: Int.MIN_VALUE
 }
 
 /**

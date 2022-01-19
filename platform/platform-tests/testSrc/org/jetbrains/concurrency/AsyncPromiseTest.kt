@@ -356,12 +356,14 @@ class AsyncPromiseTest {
   @Test
   fun testExceptionInsideComputationIsLogged() {
     val loggedError = AtomicBoolean()
-    LoggedErrorProcessor.executeWith<RuntimeException>(object : LoggedErrorProcessor() {
+    LoggedErrorProcessor.setNewInstance(object : LoggedErrorProcessor() {
       override fun processError(category: String, message: String?, t: Throwable?, details: Array<out String>): Boolean {
         loggedError.set(true)
         return false
       }
-    }) {
+    })
+
+    try {
       val promise = ReadAction.nonBlocking {
         throw UnsupportedOperationException()
       }
@@ -379,6 +381,9 @@ class AsyncPromiseTest {
 
       assertThat(cause).isInstanceOf(UnsupportedOperationException::class.java)
       assertThat(loggedError.get()).isTrue()
+    }
+    finally {
+      LoggedErrorProcessor.restoreDefaultProcessor()
     }
   }
 }

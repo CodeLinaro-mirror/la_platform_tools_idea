@@ -1,8 +1,8 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
-import com.intellij.util.containers.ObjectIntHashMap;
-import com.intellij.util.containers.ObjectIntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,7 +15,7 @@ import java.util.List;
  */
 public final class ListFocusTraversalPolicy extends LayoutFocusTraversalPolicy {
   private final Component[] myComponents;
-  private final ObjectIntMap<Component> myComponentToIndex;
+  private final Object2IntMap<Component> myComponentToIndex;
 
   public ListFocusTraversalPolicy(@NotNull List<? extends Component> components) {
     myComponents = components.toArray(new Component[0]);
@@ -42,8 +42,7 @@ public final class ListFocusTraversalPolicy extends LayoutFocusTraversalPolicy {
     if (!myComponentToIndex.containsKey(aComponent)) {
       return null;
     }
-    int i = myComponentToIndex.get(aComponent);
-    return getNextComponent((i==-1?0:i) + 1);
+    return getNextComponent(myComponentToIndex.getInt(aComponent) + 1);
   }
 
   @Override
@@ -51,8 +50,7 @@ public final class ListFocusTraversalPolicy extends LayoutFocusTraversalPolicy {
     if (!myComponentToIndex.containsKey(aComponent)) {
       return null;
     }
-    int i = myComponentToIndex.get(aComponent);
-    return getPreviousComponent((i==-1 ?0:i) - 1);
+    return getPreviousComponent(myComponentToIndex.getInt(aComponent) - 1);
   }
 
   @Nullable
@@ -89,12 +87,10 @@ public final class ListFocusTraversalPolicy extends LayoutFocusTraversalPolicy {
     return null;
   }
 
-  private static @NotNull <X> ObjectIntMap<X> indexMap(X @NotNull [] array) {
-    ObjectIntMap<X> map = new ObjectIntHashMap<>(array.length);
+  private static @NotNull <X> Object2IntMap<X> indexMap(X @NotNull [] array) {
+    Object2IntMap<X> map = new Object2IntOpenHashMap<>(array.length);
     for (X x : array) {
-      if (!map.containsKey(x)) {
-        map.put(x, map.size());
-      }
+      map.putIfAbsent(x, map.size());
     }
     return map;
   }

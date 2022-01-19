@@ -1,4 +1,4 @@
-from typing import Any, Pattern
+from typing import Pattern
 
 from .compat import tobytes as tobytes
 
@@ -13,4 +13,4 @@ VCHAR: str
 FIELD_VCHAR: str
 FIELD_CONTENT: str
 FIELD_VALUE: str
-HEADER_FIELD: Pattern[Any]
+HEADER_FIELD: Pattern

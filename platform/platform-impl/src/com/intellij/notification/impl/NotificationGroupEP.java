@@ -111,15 +111,12 @@ public final class NotificationGroupEP implements PluginAware {
       return id;
     }
 
-    ResourceBundle resourceBundle = DynamicBundle.INSTANCE.getResourceBundle(baseName,
-                                                                             pluginDescriptor.getClassLoader());
+    ResourceBundle resourceBundle = DynamicBundle.INSTANCE.getResourceBundle(baseName, pluginDescriptor.getPluginClassLoader());
     return BundleBase.messageOrDefault(resourceBundle, key, null);
   }
 
   public @Nullable Icon getIcon(@NotNull PluginDescriptor pluginDescriptor) {
-    return icon != null ?
-           IconLoader.findIcon(icon, pluginDescriptor.getClassLoader()) :
-           null;
+    return icon == null ? null : IconLoader.findIcon(icon, pluginDescriptor.getPluginClassLoader());
   }
 
   //@Transient

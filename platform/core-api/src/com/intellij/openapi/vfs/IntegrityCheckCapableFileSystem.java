@@ -5,12 +5,11 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
-import java.util.Map;
 
 @ApiStatus.Internal
+@ApiStatus.Experimental
 public interface IntegrityCheckCapableFileSystem {
 
-  @NotNull
-  Map<String, Long> getArchiveCrcHashes(@NotNull VirtualFile file) throws IOException;
+  long getEntryCrc(@NotNull VirtualFile file) throws IOException;
 
 }

@@ -1,5 +1,3 @@
-// AFTER-WARNING: Variable 'i' is never used
-// AFTER-WARNING: Variable 'i' is never used
 import Outer.Inner
 
 class Outer {

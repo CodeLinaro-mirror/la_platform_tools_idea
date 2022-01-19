@@ -1580,7 +1580,7 @@ public final class MVStore implements AutoCloseable {
     private void serializeAndStore(long reservedLow, LongSupplier reservedHighSupplier,
                                    List<Page<?, ?>> changed, long time, long version) {
         serializationLock.lock();
-        boolean isBufReleased = false;
+        boolean isFinished = false;
         ByteBuf buf = null;
         try {
             Chunk chunk = createChunk(time, version);
@@ -1593,8 +1593,8 @@ public final class MVStore implements AutoCloseable {
 
             buf = PooledByteBufAllocator.DEFAULT.ioBuffer(DataUtil.roundUpInt(memory, BLOCK_SIZE));
             serializeToBuffer(buf, changed, chunk, reservedLow, reservedHighSupplier);
-            isBufReleased = true;
             storeBuffer(chunk, buf, changed);
+            isFinished = true;
         } catch (MVStoreException e) {
             panic(e);
         } catch (Throwable e) {
@@ -1604,7 +1604,7 @@ public final class MVStore implements AutoCloseable {
                 serializationLock.unlock();
             }
             finally {
-                if (!isBufReleased && buf != null) {
+                if (!isFinished && buf != null) {
                     buf.release();
                 }
             }

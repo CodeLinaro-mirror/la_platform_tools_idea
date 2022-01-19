@@ -12,4 +12,6 @@
               topic="com.intellij.codeInsight.lookup.LookupManagerListener"
               activeInTestMode="false"/>
   </projectListeners>
+
+  <depends>com.intellij.ml.local.models</depends>
 </idea-plugin>

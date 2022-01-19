@@ -2,11 +2,9 @@
 
 package org.jetbrains.kotlin.idea.quickfix
 
-import com.intellij.codeInsight.daemon.impl.actions.IntentionActionWithFixAllOption
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.core.quickfix.QuickFixUtil
@@ -20,9 +18,8 @@ class RemoveModifierFix(
     element: KtModifierListOwner,
     private val modifier: KtModifierKeywordToken,
     private val isRedundant: Boolean
-) : KotlinCrossLanguageQuickFixAction<KtModifierListOwner>(element), IntentionActionWithFixAllOption {
+) : KotlinCrossLanguageQuickFixAction<KtModifierListOwner>(element) {
 
-    @Nls
     private val text = run {
         val modifierText = modifier.value
         when {

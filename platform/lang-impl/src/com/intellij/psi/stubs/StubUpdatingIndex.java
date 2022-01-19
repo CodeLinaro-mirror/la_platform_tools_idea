@@ -371,11 +371,6 @@ public final class StubUpdatingIndex extends SingleEntryFileBasedIndexExtension<
   }
 
   @Override
-  public boolean enableWal() {
-    return true;
-  }
-
-  @Override
   public void handleInitializationError(@NotNull Throwable e) {
     ((StubIndexImpl)StubIndex.getInstance()).initializationFailed(e);
   }

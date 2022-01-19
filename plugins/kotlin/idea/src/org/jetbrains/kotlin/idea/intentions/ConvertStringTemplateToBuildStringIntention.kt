@@ -37,7 +37,7 @@ class ConvertStringTemplateToBuildStringIntention : SelfTargetingIntention<KtStr
                     appendExpression(singleEntry.expression)
                 } else {
                     appendFixedText("\"")
-                    it.forEach { entry -> appendNonFormattedText(entry.text) }
+                    it.forEach { entry -> appendFixedText(entry.text) }
                     appendFixedText("\"")
                 }
                 appendFixedText(")\n")

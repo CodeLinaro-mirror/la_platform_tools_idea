@@ -2,6 +2,7 @@
 package com.intellij.workspaceModel.ide.impl.legacyBridge.module.roots
 
 import com.intellij.configurationStore.serializeStateInto
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
@@ -40,7 +41,7 @@ import org.jetbrains.jps.model.module.JpsModuleSourceRoot
 import org.jetbrains.jps.model.module.JpsModuleSourceRootType
 import java.util.concurrent.ConcurrentHashMap
 
-internal class ModifiableRootModelBridgeImpl(
+class ModifiableRootModelBridgeImpl(
   diff: WorkspaceEntityStorageBuilder,
   override val moduleBridge: ModuleBridge,
   override val accessor: RootConfigurationAccessor,
@@ -60,17 +61,7 @@ internal class ModifiableRootModelBridgeImpl(
   private var savedModuleEntity: ModuleEntity
 
   init {
-    savedModuleEntity = getModuleEntity(entityStorageOnDiff.current, module)
-                        ?: error("Cannot find module entity for ${module.moduleEntityId}. Bridge: '$moduleBridge'. Store: $diff")
-  }
-
-  private fun getModuleEntity(current: WorkspaceEntityStorage, myModuleBridge: ModuleBridge): ModuleEntity? {
-    // Try to get entity by module id
-    // In some cases this won't work. These cases can happen during maven or gradle import where we provide a general builder.
-    //   The case: we rename the module. Since the changes not yet committed, the module will remain with the old persistentId. After that
-    //   we try to get modifiableRootModel. In general case it would work fine because the builder will be based on main store, but
-    //   in case of gradle/maven import we take the builder that was used for renaming. So, the old name cannot be found in the new store.
-    return current.resolve(myModuleBridge.moduleEntityId) ?: current.findModuleEntity(myModuleBridge)
+    savedModuleEntity = entityStorageOnDiff.current.findModuleEntity(module) ?: error("Cannot find module entity for '$moduleBridge'")
   }
 
   override fun getModificationCount(): Long = diff.modificationCount
@@ -89,7 +80,7 @@ internal class ModifiableRootModelBridgeImpl(
 
   internal val moduleEntity: ModuleEntity
     get() {
-      val actualModuleEntity = getModuleEntity(entityStorageOnDiff.current, module) ?: return savedModuleEntity
+      val actualModuleEntity = entityStorageOnDiff.current.findModuleEntity(module) ?: return savedModuleEntity
       savedModuleEntity = actualModuleEntity
       return actualModuleEntity
     }
@@ -570,7 +561,7 @@ internal class ModifiableRootModelBridgeImpl(
       }
     }
     else {
-      if (ModifiableRootModelBridge.findSdk(jdk.name, jdk.sdkType.name) == null) {
+      if (SdkOrderEntryBridge.findSdk(jdk.name, jdk.sdkType.name) == null) {
         error("setSdk: sdk '${jdk.name}' type '${jdk.sdkType.name}' is not registered in ProjectJdkTable")
       }
       setInvalidSdk(jdk.name, jdk.sdkType.name)
@@ -625,7 +616,7 @@ internal class ModifiableRootModelBridgeImpl(
 
   private val modelValue = CachedValue { storage ->
     RootModelBridgeImpl(
-      moduleEntity = getModuleEntity(storage, moduleBridge),
+      moduleEntity = storage.findModuleEntity(moduleBridge),
       storage = entityStorageOnDiff,
       itemUpdater = null,
       rootModel = this,

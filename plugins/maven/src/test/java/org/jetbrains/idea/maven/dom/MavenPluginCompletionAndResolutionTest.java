@@ -1,4 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2000-2017 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.jetbrains.idea.maven.dom;
 
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -18,8 +32,8 @@ public class MavenPluginCompletionAndResolutionTest extends MavenDomWithIndicesT
   }
 
   @Override
-  protected void setUp() throws Exception {
-    super.setUp();
+  protected void setUpInWriteAction() throws Exception {
+    super.setUpInWriteAction();
 
     importProject("<groupId>test</groupId>" +
                   "<artifactId>project</artifactId>" +
@@ -124,17 +138,17 @@ public class MavenPluginCompletionAndResolutionTest extends MavenDomWithIndicesT
                      "  </plugins>" +
                      "</build>");
 
-    assertDependencyCompletionVariantsInclude(myProjectPom,
+    assertCompletionVariantsInclude(myProjectPom, LOOKUP_STRING,
                                     "org.apache.maven.plugins:maven-clean-plugin:2.5",
-                                    "org.apache.maven.plugins:maven-compiler-plugin",
+                                    "org.apache.maven.plugins:maven-jar-plugin:2.4",
+                                    "org.apache.maven.plugins:maven-war-plugin:2.1-alpha-1",
                                     "org.apache.maven.plugins:maven-deploy-plugin:2.7",
+                                    "org.apache.maven.plugins:maven-resources-plugin:2.6",
                                     "org.apache.maven.plugins:maven-eclipse-plugin:2.4",
                                     "org.apache.maven.plugins:maven-install-plugin:2.4",
-                                    "org.apache.maven.plugins:maven-jar-plugin:2.4",
-                                    "org.apache.maven.plugins:maven-resources-plugin:2.6",
+                                    "org.apache.maven.plugins:maven-compiler-plugin:3.1",
                                     "org.apache.maven.plugins:maven-site-plugin:3.3",
-                                    "org.apache.maven.plugins:maven-surefire-plugin",
-                                    "org.apache.maven.plugins:maven-war-plugin:2.1-alpha-1",
+                                    "org.apache.maven.plugins:maven-surefire-plugin:2.12.4",
                                     "org.codehaus.mojo:build-helper-maven-plugin:1.0",
                                     "test:project:1");
   }

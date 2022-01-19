@@ -35,7 +35,7 @@ public final class JsonTrailingCommaRemover implements PreFormatProcessor {
     if (document == null) {
       return range;
     }
-    DocumentUtil.executeInBulk(document, () -> {
+    DocumentUtil.executeInBulk(document, true, () -> {
       psiDocumentManager.doPostponedOperationsAndUnblockDocument(document);
       PsiElementVisitor visitor = new Visitor(document);
       rootPsi.accept(visitor);

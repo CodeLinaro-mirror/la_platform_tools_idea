@@ -54,6 +54,7 @@ public class MissingOverrideAnnotationInspection extends AbstractBaseJavaLocalIn
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
+  @SuppressWarnings("unused")
   protected InspectionGadgetsFix buildFix(Object... infos) {
     return new InspectionGadgetsFix() {
       private final AnnotateMethodFix myFix = new AnnotateMethodFix(CommonClassNames.JAVA_LANG_OVERRIDE);
@@ -77,6 +78,7 @@ public class MissingOverrideAnnotationInspection extends AbstractBaseJavaLocalIn
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
+  @SuppressWarnings("unused")
   protected String buildErrorString(Object... infos) {
     throw new UnsupportedOperationException();
   }

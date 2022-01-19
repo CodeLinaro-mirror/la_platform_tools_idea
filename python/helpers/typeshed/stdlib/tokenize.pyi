@@ -2,7 +2,22 @@ import sys
 from _typeshed import StrOrBytesPath
 from builtins import open as _builtin_open
 from token import *  # noqa: F403
-from typing import Any, Callable, Generator, Iterable, NamedTuple, Pattern, Sequence, Set, TextIO, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    NamedTuple,
+    Optional,
+    Pattern,
+    Sequence,
+    Set,
+    TextIO,
+    Tuple,
+    Union,
+)
 
 if sys.version_info < (3, 7):
     COMMENT: int
@@ -32,22 +47,22 @@ class TokenError(Exception): ...
 class StopTokenizing(Exception): ...  # undocumented
 
 class Untokenizer:
-    tokens: list[str]
+    tokens: List[str]
     prev_row: int
     prev_col: int
-    encoding: str | None
+    encoding: Optional[str]
     def __init__(self) -> None: ...
     def add_whitespace(self, start: _Position) -> None: ...
     def untokenize(self, iterable: Iterable[_Token]) -> str: ...
-    def compat(self, token: Sequence[int | str], iterable: Iterable[_Token]) -> None: ...
+    def compat(self, token: Sequence[Union[int, str]], iterable: Iterable[_Token]) -> None: ...
 
 # the docstring says "returns bytes" but is incorrect --
 # if the ENCODING token is missing, it skips the encode
 def untokenize(iterable: Iterable[_Token]) -> Any: ...
-def detect_encoding(readline: Callable[[], bytes]) -> tuple[str, Sequence[bytes]]: ...
+def detect_encoding(readline: Callable[[], bytes]) -> Tuple[str, Sequence[bytes]]: ...
 def tokenize(readline: Callable[[], bytes]) -> Generator[TokenInfo, None, None]: ...
 def generate_tokens(readline: Callable[[], str]) -> Generator[TokenInfo, None, None]: ...  # undocumented
-def open(filename: StrOrBytesPath | int) -> TextIO: ...
+def open(filename: Union[StrOrBytesPath, int]) -> TextIO: ...
 def group(*choices: str) -> str: ...  # undocumented
 def any(*choices: str) -> str: ...  # undocumented
 def maybe(*choices: str) -> str: ...  # undocumented
@@ -94,7 +109,7 @@ ContStr: str  # undocumented
 PseudoExtras: str  # undocumented
 PseudoToken: str  # undocumented
 
-endpats: dict[str, str]  # undocumented
+endpats: Dict[str, str]  # undocumented
 single_quoted: Set[str]  # undocumented
 triple_quoted: Set[str]  # undocumented
 

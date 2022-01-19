@@ -13,7 +13,6 @@ import com.intellij.openapi.ui.popup.ListPopup;
 import git4idea.branch.GitBranchUtil;
 import git4idea.i18n.GitBundle;
 import git4idea.repo.GitRepository;
-import git4idea.ui.branch.BranchIconUtil;
 import git4idea.ui.branch.GitBranchPopup;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -40,8 +39,8 @@ public class GitBranchesComboBoxAction extends ComboBoxAction implements DumbAwa
     String branchName = repo.getCurrentRevision() != null ? GitBranchUtil.getDisplayableBranchText(repo)
                                                           : GitBundle.message("no.revisions.available");
     String name = DvcsBranchUtil.shortenBranchName(branchName);
-    presentation.setText(name, false);
-    presentation.setIcon(BranchIconUtil.Companion.getBranchIcon(repo));
+    presentation.setText(name);
+    presentation.setIcon(AllIcons.Vcs.Branch);
     presentation.setEnabledAndVisible(true);
   }
 

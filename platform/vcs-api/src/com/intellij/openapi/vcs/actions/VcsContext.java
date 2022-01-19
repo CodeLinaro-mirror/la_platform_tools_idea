@@ -21,6 +21,7 @@ import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ChangeList;
+import com.intellij.openapi.vcs.ui.Refreshable;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.PlaceProvider;
 import com.intellij.util.containers.ContainerUtil;
@@ -78,6 +79,8 @@ public interface VcsContext extends PlaceProvider {
   File[] getSelectedIOFiles();
 
   int getModifiers();
+
+  Refreshable getRefreshableDialog();
 
   File getSelectedIOFile();
 

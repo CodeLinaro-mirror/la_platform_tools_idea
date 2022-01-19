@@ -3,34 +3,15 @@
 package org.jetbrains.kotlin.idea.kdoc
 
 import com.intellij.codeInsight.documentation.DocumentationManagerUtil
-import com.intellij.lang.Language
 import com.intellij.lang.documentation.DocumentationMarkup.*
-import com.intellij.lang.documentation.DocumentationSettings
-import com.intellij.lang.documentation.DocumentationSettings.InlineCodeHighlightingMode
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.editor.DefaultLanguageHighlighterColors
-import com.intellij.openapi.editor.HighlighterColors
-import com.intellij.openapi.editor.colors.CodeInsightColors
-import com.intellij.openapi.editor.colors.EditorColorsManager
-import com.intellij.openapi.editor.colors.TextAttributesKey
-import com.intellij.openapi.editor.markup.TextAttributes
-import com.intellij.openapi.editor.richcopy.HtmlSyntaxInfoUtil
-import com.intellij.openapi.project.DumbService
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.flavours.gfm.GFMElementTypes
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
-import org.intellij.markdown.flavours.gfm.GFMTokenTypes
+import org.intellij.markdown.flavours.commonmark.CommonMarkFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import org.jetbrains.kotlin.idea.KotlinBundle
-import org.jetbrains.kotlin.idea.KotlinLanguage
-import org.jetbrains.kotlin.idea.highlighter.KotlinHighlightingColors
-import org.jetbrains.kotlin.idea.highlighter.textAttributesKeyForKtElement
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.wrapTag
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocLink
@@ -39,95 +20,55 @@ import org.jetbrains.kotlin.kdoc.psi.impl.KDocSection
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocTag
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtDeclarationWithBody
-import org.jetbrains.kotlin.psi.psiUtil.findDescendantOfType
 import org.jetbrains.kotlin.psi.psiUtil.getChildrenOfType
-
 
 object KDocRenderer {
 
+    private fun renderKDocContent(docComment: KDocTag) =
+        markdownToHtml(docComment.getContent(), allowSingleParagraph = true)
+
     fun StringBuilder.appendKDocContent(docComment: KDocTag): StringBuilder =
-        append(markdownToHtml(docComment, allowSingleParagraph = true))
+        append(renderKDocContent(docComment))
 
     fun StringBuilder.appendKDocSections(sections: List<KDocSection>) {
         fun findTagsByName(name: String) =
             sequence { sections.forEach { yieldAll(it.findTagsByName(name)) } }
+                .filterNotNull()
 
         fun findTagByName(name: String) = findTagsByName(name).firstOrNull()
 
-        appendTag(findTagByName("receiver"), KotlinBundle.message("kdoc.section.title.receiver"))
+        renderTag(findTagByName("receiver"), KotlinBundle.message("kdoc.section.title.receiver"), this)
 
         val paramTags = findTagsByName("param").filter { it.getSubjectName() != null }
-        appendTagList(paramTags, KotlinBundle.message("kdoc.section.title.parameters"), KotlinHighlightingColors.PARAMETER)
+        renderTagList(paramTags, KotlinBundle.message("kdoc.section.title.parameters"), this)
 
         val propertyTags = findTagsByName("property").filter { it.getSubjectName() != null }
-        appendTagList(
-            propertyTags, KotlinBundle.message("kdoc.section.title.properties"), KotlinHighlightingColors.INSTANCE_PROPERTY
-        )
+        renderTagList(propertyTags, KotlinBundle.message("kdoc.section.title.properties"), this)
 
-        appendTag(findTagByName("constructor"), KotlinBundle.message("kdoc.section.title.constructor"))
+        renderTag(findTagByName("constructor"), KotlinBundle.message("kdoc.section.title.constructor"), this)
 
-        appendTag(findTagByName("return"), KotlinBundle.message("kdoc.section.title.returns"))
+        renderTag(findTagByName("return"), KotlinBundle.message("kdoc.section.title.returns"), this)
 
         val throwTags = findTagsByName("throws").filter { it.getSubjectName() != null }
         val exceptionTags = findTagsByName("exception").filter { it.getSubjectName() != null }
-        appendThrows(throwTags, exceptionTags)
+        renderThrows(throwTags, exceptionTags, this)
 
-        appendTag(findTagByName("author"), KotlinBundle.message("kdoc.section.title.author"))
-        appendTag(findTagByName("since"), KotlinBundle.message("kdoc.section.title.since"))
-        appendTag(findTagByName("suppress"), KotlinBundle.message("kdoc.section.title.suppress"))
+        renderTag(findTagByName("author"), KotlinBundle.message("kdoc.section.title.author"), this)
+        renderTag(findTagByName("since"), KotlinBundle.message("kdoc.section.title.since"), this)
+        renderTag(findTagByName("suppress"), KotlinBundle.message("kdoc.section.title.suppress"), this)
 
-        appendSeeAlso(findTagsByName("see"))
+        renderSeeAlso(findTagsByName("see"), this)
 
         val sampleTags = findTagsByName("sample").filter { it.getSubjectLink() != null }
-        appendSamplesList(sampleTags)
+        renderSamplesList(sampleTags, this)
     }
 
-    private fun StringBuilder.appendHyperlink(kDocLink: KDocLink) {
-        if (DumbService.isDumb(kDocLink.project)) {
-            append(kDocLink.getLinkText())
-        } else {
-            DocumentationManagerUtil.createHyperlink(
-                this,
-                kDocLink.getLinkText(),
-                highlightQualifiedName(kDocLink.getLinkText(), getTargetLinkElementAttributes(kDocLink.getTargetElement())),
-                false,
-                true
-            )
-        }
-    }
-
-    private fun getTargetLinkElementAttributes(element: PsiElement?): TextAttributes {
-        return element
-            ?.let { textAttributesKeyForKtElement(it) }
-            ?.let { getTargetLinkElementAttributes(it) }
-            ?: TextAttributes().apply {
-                foregroundColor = EditorColorsManager.getInstance().globalScheme.getColor(DefaultLanguageHighlighterColors.DOC_COMMENT_LINK)
-            }
-    }
-
-    private fun getTargetLinkElementAttributes(key: TextAttributesKey): TextAttributes {
-        return tuneAttributesForLink(EditorColorsManager.getInstance().globalScheme.getAttributes(key))
-    }
-
-    private fun highlightQualifiedName(qualifiedName: String, lastSegmentAttributes: TextAttributes): String {
-        val linkComponents = qualifiedName.split(".")
-        val qualifiedPath = linkComponents.subList(0, linkComponents.lastIndex)
-        val elementName = linkComponents.last()
-        return buildString {
-            for (pathSegment in qualifiedPath) {
-                val segmentAttributes = when {
-                    pathSegment.isEmpty() || pathSegment.first().isLowerCase() -> DefaultLanguageHighlighterColors.IDENTIFIER
-                    else -> KotlinHighlightingColors.CLASS
-                }
-                appendStyledSpan(DocumentationSettings.isSemanticHighlightingOfLinksEnabled(), segmentAttributes, pathSegment)
-                appendStyledSpan(DocumentationSettings.isSemanticHighlightingOfLinksEnabled(), KotlinHighlightingColors.DOT, ".")
-            }
-            appendStyledSpan(DocumentationSettings.isSemanticHighlightingOfLinksEnabled(), lastSegmentAttributes, elementName)
-        }
+    private fun KDocLink.createHyperlink(to: StringBuilder) {
+        DocumentationManagerUtil.createHyperlink(to, getLinkText(), getLinkText(), false)
     }
 
     private fun KDocLink.getTargetElement(): PsiElement? {
-        return getChildrenOfType<KDocName>().last().mainReference.resolve()
+        return this.getChildrenOfType<KDocName>().last().mainReference.resolve()
     }
 
     private fun PsiElement.extractExampleText() = when (this) {
@@ -148,38 +89,27 @@ object KDocRenderer {
         return lines.joinToString("\n") { it.drop(minIndent) }
     }
 
-    private fun StringBuilder.appendSection(title: String, content: StringBuilder.() -> Unit) {
+    private fun StringBuilder.renderSection(title: String, content: StringBuilder.() -> Unit) {
         append(SECTION_HEADER_START, title, ":", SECTION_SEPARATOR)
         content()
         append(SECTION_END)
     }
 
-    private fun StringBuilder.appendSamplesList(sampleTags: Sequence<KDocTag>) {
+    private fun renderSamplesList(sampleTags: Sequence<KDocTag>, to: StringBuilder) {
         if (!sampleTags.any()) return
 
-        appendSection(KotlinBundle.message("kdoc.section.title.samples")) {
+        to.renderSection(KotlinBundle.message("kdoc.section.title.samples")) {
             sampleTags.forEach {
                 it.getSubjectLink()?.let { subjectLink ->
                     append("<p>")
-                    this@appendSamplesList.appendHyperlink(subjectLink)
+                    subjectLink.createHyperlink(to)
+                    val target = subjectLink.getTargetElement()
                     wrapTag("pre") {
                         wrapTag("code") {
-                            if (DumbService.isDumb(subjectLink.project)) {
-                                append("// " + KotlinBundle.message("kdoc.comment.unresolved"))
+                            if (target == null) {
+                                to.append("// " + KotlinBundle.message("kdoc.comment.unresolved"))
                             } else {
-                                val codeSnippet = when (val target = subjectLink.getTargetElement()) {
-                                    null -> "// " + KotlinBundle.message("kdoc.comment.unresolved")
-                                    else -> trimCommonIndent(target.extractExampleText()).htmlEscape()
-                                }
-                                this@appendSamplesList.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
-                                    when (DocumentationSettings.isHighlightingOfCodeBlocksEnabled()) {
-                                        true -> InlineCodeHighlightingMode.SEMANTIC_HIGHLIGHTING
-                                        false -> InlineCodeHighlightingMode.NO_HIGHLIGHTING
-                                    },
-                                    subjectLink.project,
-                                    KotlinLanguage.INSTANCE,
-                                    codeSnippet
-                                )
+                                to.append(trimCommonIndent(target.extractExampleText()).htmlEscape())
                             }
                         }
                     }
@@ -188,45 +118,38 @@ object KDocRenderer {
         }
     }
 
-    private fun StringBuilder.appendSeeAlso(seeTags: Sequence<KDocTag>) {
+    private fun renderSeeAlso(seeTags: Sequence<KDocTag>, to: StringBuilder) {
         if (!seeTags.any()) return
 
         val iterator = seeTags.iterator()
 
-        appendSection(KotlinBundle.message("kdoc.section.title.see.also")) {
+        to.renderSection(KotlinBundle.message("kdoc.section.title.see.also")) {
             while (iterator.hasNext()) {
                 val tag = iterator.next()
                 val subjectName = tag.getSubjectName()
-                val link = tag.getChildrenOfType<KDocLink>().lastOrNull()
-                when {
-                    link != null -> this.appendHyperlink(link)
-                    subjectName != null -> DocumentationManagerUtil.createHyperlink(this, subjectName, subjectName, false, true)
-                    else -> append(tag.getContent())
+                if (subjectName != null) {
+                    DocumentationManagerUtil.createHyperlink(this, subjectName, subjectName, false)
+                } else {
+                    append(tag.getContent())
                 }
                 if (iterator.hasNext()) {
-                    append(",<br>")
+                    append(", ")
                 }
             }
         }
     }
 
-    private fun StringBuilder.appendThrows(throwsTags: Sequence<KDocTag>, exceptionsTags: Sequence<KDocTag>) {
+    private fun renderThrows(throwsTags: Sequence<KDocTag>, exceptionsTags: Sequence<KDocTag>, to: StringBuilder) {
         if (!throwsTags.any() && !exceptionsTags.any()) return
 
-        appendSection(KotlinBundle.message("kdoc.section.title.throws")) {
+        to.renderSection(KotlinBundle.message("kdoc.section.title.throws")) {
 
             fun KDocTag.append() {
                 val subjectName = getSubjectName()
                 if (subjectName != null) {
                     append("<p><code>")
-                    val highlightedLinkLabel =
-                        highlightQualifiedName(subjectName, getTargetLinkElementAttributes(KotlinHighlightingColors.CLASS))
-                    DocumentationManagerUtil.createHyperlink(this@appendSection, subjectName, highlightedLinkLabel, false, true)
-                    append("</code>")
-                    val exceptionDescription = markdownToHtml(this)
-                    if (exceptionDescription.isNotBlank()) {
-                        append(" - $exceptionDescription")
-                    }
+                    DocumentationManagerUtil.createHyperlink(this@renderSection, subjectName, subjectName, false)
+                    append("</code> - ${markdownToHtml(getContent().trimStart())}")
                 }
             }
 
@@ -236,40 +159,31 @@ object KDocRenderer {
     }
 
 
-    private fun StringBuilder.appendTagList(tags: Sequence<KDocTag>, title: String, titleAttributes: TextAttributesKey) {
+    private fun renderTagList(tags: Sequence<KDocTag>, title: String, to: StringBuilder) {
         if (!tags.any()) {
             return
         }
-        appendSection(title) {
+        to.renderSection(title) {
             tags.forEach {
                 val subjectName = it.getSubjectName()
                 if (subjectName != null) {
-                    append("<p><code>")
-                    when (val link = it.getChildrenOfType<KDocLink>().firstOrNull()) {
-                        null -> appendStyledSpan(DocumentationSettings.isSemanticHighlightingOfLinksEnabled(), titleAttributes, subjectName)
-                        else -> appendHyperlink(link)
-                    }
-                    append("</code>")
-                    val elementDescription = markdownToHtml(it)
-                    if (elementDescription.isNotBlank()) {
-                        append(" - $elementDescription")
-                    }
+                    append("<p><code>$subjectName</code> - ${markdownToHtml(it.getContent().trimStart())}")
                 }
             }
         }
     }
 
-    private fun StringBuilder.appendTag(tag: KDocTag?, title: String) {
+    private fun renderTag(tag: KDocTag?, title: String, to: StringBuilder) {
         if (tag != null) {
-            appendSection(title) {
-                append(markdownToHtml(tag))
+            to.renderSection(title) {
+                append(markdownToHtml(tag.getContent()))
             }
         }
     }
 
-    private fun markdownToHtml(comment: KDocTag, allowSingleParagraph: Boolean = false): String {
-        val markdownTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(comment.getContent())
-        val markdownNode = MarkdownNode(markdownTree, null, comment)
+    private fun markdownToHtml(markdown: String, allowSingleParagraph: Boolean = false): String {
+        val markdownTree = MarkdownParser(CommonMarkFlavourDescriptor()).buildMarkdownTreeFromString(markdown)
+        val markdownNode = MarkdownNode(markdownTree, null, markdown)
 
         // Avoid wrapping the entire converted contents in a <p> tag if it's just a single paragraph
         val maybeSingleParagraph = markdownNode.children.singleOrNull { it.type != MarkdownTokenTypes.EOL }
@@ -282,12 +196,12 @@ object KDocRenderer {
         }
     }
 
-    class MarkdownNode(val node: ASTNode, val parent: MarkdownNode?, val comment: KDocTag) {
-        val children: List<MarkdownNode> = node.children.map { MarkdownNode(it, this, comment) }
+    class MarkdownNode(val node: ASTNode, val parent: MarkdownNode?, val markdown: String) {
+        val children: List<MarkdownNode> = node.children.map { MarkdownNode(it, this, markdown) }
         val endOffset: Int get() = node.endOffset
         val startOffset: Int get() = node.startOffset
         val type: IElementType get() = node.type
-        val text: String get() = comment.getContent().substring(startOffset, endOffset)
+        val text: String get() = markdown.substring(startOffset, endOffset)
         fun child(type: IElementType): MarkdownNode? = children.firstOrNull { it.type == type }
     }
 
@@ -303,8 +217,6 @@ object KDocRenderer {
         if (node.type == MarkdownTokenTypes.WHITE_SPACE) {
             return text   // do not trim trailing whitespace
         }
-
-        var currentCodeFenceLang = "kotlin"
 
         val sb = StringBuilder()
         visit { node, processChildren ->
@@ -323,7 +235,6 @@ object KDocRenderer {
                 MarkdownElementTypes.LIST_ITEM -> wrapChildren("li")
                 MarkdownElementTypes.EMPH -> wrapChildren("em")
                 MarkdownElementTypes.STRONG -> wrapChildren("strong")
-                GFMElementTypes.STRIKETHROUGH -> wrapChildren("del")
                 MarkdownElementTypes.ATX_1 -> wrapChildren("h1")
                 MarkdownElementTypes.ATX_2 -> wrapChildren("h2")
                 MarkdownElementTypes.ATX_3 -> wrapChildren("h3")
@@ -339,25 +250,15 @@ object KDocRenderer {
                     val startDelimiter = node.child(MarkdownTokenTypes.BACKTICK)?.text
                     if (startDelimiter != null) {
                         val text = node.text.substring(startDelimiter.length).removeSuffix(startDelimiter)
-                        sb.append("<code style='font-size:${DocumentationSettings.getMonospaceFontSizeCorrection(true)}%;'>")
-                        sb.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
-                            DocumentationSettings.getInlineCodeHighlightingMode(),
-                            comment.project,
-                            KotlinLanguage.INSTANCE,
-                            text
-                        )
-                        sb.append("</code>")
+                        sb.append("<code>").append(text.htmlEscape()).append("</code>")
                     }
                 }
                 MarkdownElementTypes.CODE_BLOCK,
                 MarkdownElementTypes.CODE_FENCE -> {
                     sb.trimEnd()
-                    sb.append("<pre><code style='font-size:${DocumentationSettings.getMonospaceFontSizeCorrection(true)}%;'>")
+                    sb.append("<pre><code>")
                     processChildren()
                     sb.append("</code></pre>")
-                }
-                MarkdownTokenTypes.FENCE_LANG -> {
-                    currentCodeFenceLang = nodeText
                 }
                 MarkdownElementTypes.SHORT_REFERENCE_LINK,
                 MarkdownElementTypes.FULL_REFERENCE_LINK -> {
@@ -368,23 +269,7 @@ object KDocRenderer {
                     if (linkLabelContent != null) {
                         val label = linkLabelContent.joinToString(separator = "") { it.text }
                         val linkText = node.child(MarkdownElementTypes.LINK_TEXT)?.toHtml() ?: label
-                        if (DumbService.isDumb(comment.project)) {
-                            sb.append(linkText)
-                        } else {
-                            comment.findDescendantOfType<KDocName> { it.text == label }
-                                ?.mainReference
-                                ?.resolve()
-                                ?.let { resolvedLinkElement ->
-                                    DocumentationManagerUtil.createHyperlink(
-                                        sb,
-                                        label,
-                                        highlightQualifiedName(linkText, getTargetLinkElementAttributes(resolvedLinkElement)),
-                                        false,
-                                        true
-                                    )
-                                }
-                                ?: sb.appendStyledSpan(true, KotlinHighlightingColors.RESOLVED_TO_ERROR, label)
-                        }
+                        DocumentationManagerUtil.createHyperlink(sb, label, linkText, true)
                     } else {
                         sb.append(node.text)
                     }
@@ -407,21 +292,14 @@ object KDocRenderer {
                 MarkdownTokenTypes.RPAREN,
                 MarkdownTokenTypes.LBRACKET,
                 MarkdownTokenTypes.RBRACKET,
-                MarkdownTokenTypes.EXCLAMATION_MARK,
-                GFMTokenTypes.CHECK_BOX -> {
+                MarkdownTokenTypes.EXCLAMATION_MARK -> {
                     sb.append(nodeText)
                 }
-                MarkdownTokenTypes.CODE_LINE,
+                MarkdownTokenTypes.CODE_LINE -> {
+                    sb.append(nodeText.removePrefix(KDocTag.indentationWhiteSpaces).htmlEscape())
+                }
                 MarkdownTokenTypes.CODE_FENCE_CONTENT -> {
-                    sb.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
-                        when (DocumentationSettings.isHighlightingOfCodeBlocksEnabled()) {
-                            true -> InlineCodeHighlightingMode.SEMANTIC_HIGHLIGHTING
-                            false -> InlineCodeHighlightingMode.NO_HIGHLIGHTING
-                        },
-                        comment.project,
-                        guessLanguage(currentCodeFenceLang) ?: KotlinLanguage.INSTANCE,
-                        nodeText
-                    )
+                    sb.append(nodeText.htmlEscape())
                 }
                 MarkdownTokenTypes.EOL -> {
                     val parentType = node.parent?.type
@@ -448,38 +326,6 @@ object KDocRenderer {
                     }
                 }
 
-                GFMTokenTypes.TILDE -> {
-                    if (node.parent?.type != GFMElementTypes.STRIKETHROUGH) {
-                        sb.append(node.text)
-                    }
-                }
-
-                GFMElementTypes.TABLE -> {
-                    val alignment: List<String> = getTableAlignment(node)
-                    var addedBody = false
-                    sb.append("<table>")
-
-                    for (child in node.children) {
-                        if (child.type == GFMElementTypes.HEADER) {
-                            sb.append("<thead>")
-                            processTableRow(sb, child, "th", alignment)
-                            sb.append("</thead>")
-                        } else if (child.type == GFMElementTypes.ROW) {
-                            if (!addedBody) {
-                                sb.append("<tbody>")
-                                addedBody = true
-                            }
-
-                            processTableRow(sb, child, "td", alignment)
-                        }
-                    }
-
-                    if (addedBody) {
-                        sb.append("</tbody>")
-                    }
-                    sb.append("</table>")
-                }
-
                 else -> {
                     processChildren()
                 }
@@ -495,101 +341,4 @@ object KDocRenderer {
     }
 
     private fun String.htmlEscape(): String = replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    private fun processTableRow(sb: StringBuilder, node: MarkdownNode, cellTag: String, alignment: List<String>) {
-        sb.append("<tr>")
-        for ((i, child) in node.children.filter { it.type == GFMTokenTypes.CELL }.withIndex()) {
-            val alignValue = alignment.getOrElse(i) { "" }
-            val alignTag = if (alignValue.isEmpty()) "" else " align=\"$alignValue\""
-            sb.append("<$cellTag$alignTag>")
-            sb.append(child.toHtml())
-            sb.append("</$cellTag>")
-        }
-        sb.append("</tr>")
-    }
-
-    private fun getTableAlignment(node: MarkdownNode): List<String> {
-        val separatorRow = node.child(GFMTokenTypes.TABLE_SEPARATOR)
-            ?: return emptyList()
-
-        return separatorRow.text.split('|').filterNot { it.isBlank() }.map {
-            val trimmed = it.trim()
-            val left = trimmed.startsWith(':')
-            val right = trimmed.endsWith(':')
-            if (left && right) "center"
-            else if (right) "right"
-            else if (left) "left"
-            else ""
-        }
-    }
-
-    private fun StringBuilder.appendStyledSpan(doHighlighting: Boolean, attributesKey: TextAttributesKey, value: String?): StringBuilder {
-        if (doHighlighting) {
-            HtmlSyntaxInfoUtil.appendStyledSpan(this, attributesKey, value, DocumentationSettings.getHighlightingSaturation(true))
-        } else {
-            append(value)
-        }
-        return this
-    }
-
-    private fun StringBuilder.appendStyledSpan(doHighlighting: Boolean, attributes: TextAttributes, value: String?): StringBuilder {
-        if (doHighlighting) {
-            HtmlSyntaxInfoUtil.appendStyledSpan(this, attributes, value, DocumentationSettings.getHighlightingSaturation(true))
-        } else {
-            append(value)
-        }
-        return this
-    }
-
-    private fun StringBuilder.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
-        highlightingMode: InlineCodeHighlightingMode,
-        project: Project,
-        language: Language,
-        codeSnippet: String
-    ): StringBuilder {
-        val codeSnippetBuilder = StringBuilder()
-        if (highlightingMode == InlineCodeHighlightingMode.SEMANTIC_HIGHLIGHTING) { // highlight code by lexer
-            HtmlSyntaxInfoUtil.appendHighlightedByLexerAndEncodedAsHtmlCodeSnippet(
-                codeSnippetBuilder, project, language, codeSnippet, false, DocumentationSettings.getHighlightingSaturation(true)
-            )
-        } else {
-            codeSnippetBuilder.append(StringUtil.escapeXmlEntities(codeSnippet))
-        }
-        if (highlightingMode != InlineCodeHighlightingMode.NO_HIGHLIGHTING) {
-            // set code text color as editor default code color instead of doc component text color
-            val codeAttributes = EditorColorsManager.getInstance().globalScheme.getAttributes(HighlighterColors.TEXT).clone()
-            codeAttributes.backgroundColor = null
-            appendStyledSpan(true, codeAttributes, codeSnippetBuilder.toString())
-        } else {
-            append(codeSnippetBuilder.toString())
-        }
-        return this
-    }
-
-    /**
-     * If highlighted links has the same color as highlighted inline code blocks they will be indistinguishable.
-     * In this case we should change link color to standard hyperlink color which we believe is apriori different.
-     */
-    private fun tuneAttributesForLink(attributes: TextAttributes): TextAttributes {
-        val globalScheme = EditorColorsManager.getInstance().globalScheme
-        if (attributes.foregroundColor == globalScheme.getAttributes(HighlighterColors.TEXT).foregroundColor
-            || attributes.foregroundColor == globalScheme.getAttributes(DefaultLanguageHighlighterColors.IDENTIFIER).foregroundColor
-        ) {
-            val tuned = attributes.clone()
-            if (ApplicationManager.getApplication().isUnitTestMode) {
-                tuned.foregroundColor = globalScheme.getAttributes(CodeInsightColors.HYPERLINK_ATTRIBUTES).foregroundColor
-            }
-            else {
-                tuned.foregroundColor = globalScheme.getColor(DefaultLanguageHighlighterColors.DOC_COMMENT_LINK)
-            }
-            return tuned
-        }
-        return attributes
-    }
-
-    private fun guessLanguage(name: String): Language? {
-        val lower = StringUtil.toLowerCase(name)
-        return Language.findLanguageByID(lower)
-            ?: Language.getRegisteredLanguages().firstOrNull { StringUtil.toLowerCase(it.id) == lower }
-    }
 }

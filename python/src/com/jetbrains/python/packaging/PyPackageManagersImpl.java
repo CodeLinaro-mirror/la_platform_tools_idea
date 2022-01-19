@@ -12,7 +12,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ArrayUtil;
 import com.jetbrains.python.packaging.ui.PyCondaManagementService;
 import com.jetbrains.python.packaging.ui.PyPackageManagementService;
-import com.jetbrains.python.sdk.PySdkExtKt;
 import com.jetbrains.python.sdk.PySdkProvider;
 import com.jetbrains.python.sdk.PythonSdkType;
 import com.jetbrains.python.sdk.PythonSdkUtil;
@@ -42,7 +41,7 @@ public class PyPackageManagersImpl extends PyPackageManagers {
   @NotNull
   public synchronized PyPackageManager forSdk(@NotNull final Sdk sdk) {
     if (sdk instanceof Disposable) {
-      LOG.assertTrue(!Disposer.isDisposed((Disposable)sdk),
+      LOG.assertTrue(!Disposer.isDisposed((Disposable)sdk), 
                      "Requesting a package manager for an already disposed SDK " + sdk + " (" + sdk.getClass() + ")");
     }
     final String key = PythonSdkType.getSdkKey(sdk);
@@ -60,10 +59,7 @@ public class PyPackageManagersImpl extends PyPackageManagers {
       }
       else {
         cache = myStandardManagers;
-        if (PySdkExtKt.isTargetBased(sdk)) {
-          manager = new PyTargetEnvironmentPackageManager(sdk);
-        }
-        else if (PythonSdkUtil.isRemote(sdk)) {
+        if (PythonSdkUtil.isRemote(sdk)) {
           manager = new PyUnsupportedPackageManager(sdk);
         }
         else if (PythonSdkUtil.isConda(sdk) &&
@@ -86,7 +82,7 @@ public class PyPackageManagersImpl extends PyPackageManagers {
   @Override
   public PyPackageManagementService getManagementService(Project project, Sdk sdk) {
     if (sdk instanceof Disposable) {
-      LOG.assertTrue(!Disposer.isDisposed((Disposable)sdk),
+      LOG.assertTrue(!Disposer.isDisposed((Disposable)sdk), 
                      "Requesting a package service for an already disposed SDK " + sdk + " (" + sdk.getClass() + ")");
     }
     Optional<PyPackageManagementService> provided = PySdkProvider.EP_NAME.extensions()

@@ -565,7 +565,7 @@ class BuiltinMembersConversion(context: NewJ2kConverterContext) : RecursiveAppli
 
     private fun JKExpression.callOn(symbol: JKMethodSymbol, arguments: List<JKArgument> = emptyList()) =
         JKQualifiedExpression(
-            this.parenthesizeIfBinaryExpression(),
+            this,
             JKCallExpressionImpl(
                 symbol,
                 JKArgumentList(arguments),

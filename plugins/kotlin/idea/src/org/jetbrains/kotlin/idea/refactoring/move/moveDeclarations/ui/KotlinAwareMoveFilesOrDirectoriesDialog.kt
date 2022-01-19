@@ -5,13 +5,14 @@ package org.jetbrains.kotlin.idea.refactoring.move.moveDeclarations.ui
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.openapi.ui.TextComponentAccessors
+import com.intellij.openapi.ui.TextComponentAccessor
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiDirectory
@@ -35,7 +36,6 @@ import org.jetbrains.kotlin.idea.core.util.onTextChange
 import org.jetbrains.kotlin.idea.refactoring.isInKotlinAwareSourceRoot
 import org.jetbrains.kotlin.idea.refactoring.move.logFusForMoveRefactoring
 import org.jetbrains.kotlin.idea.util.application.executeCommand
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.psi.KtFile
 import javax.swing.JComponent
 
@@ -53,13 +53,13 @@ class KotlinAwareMoveFilesOrDirectoriesDialog(
         private const val HELP_ID = "refactoring.moveFile"
 
         private fun setConfigurationValue(id: String, value: Boolean, defaultValue: Boolean) {
-            if (!isUnitTestMode()) {
+            if (!ApplicationManager.getApplication().isUnitTestMode) {
                 PropertiesComponent.getInstance().setValue(id, value, defaultValue)
             }
         }
 
         private fun getConfigurationValue(id: String, defaultValue: Boolean) =
-            !isUnitTestMode() && PropertiesComponent.getInstance().getBoolean(id, defaultValue)
+            !ApplicationManager.getApplication().isUnitTestMode && PropertiesComponent.getInstance().getBoolean(id, defaultValue)
     }
 
     private data class CheckboxesState(
@@ -108,7 +108,7 @@ class KotlinAwareMoveFilesOrDirectoriesDialog(
             RefactoringBundle.message("the.file.will.be.moved.to.this.directory"),
             project,
             descriptor,
-            TextComponentAccessors.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT
+            TextComponentAccessor.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT
         )
         val textField = targetDirectoryField.childComponent.textEditor
         FileChooserFactory.getInstance().installFileCompletion(textField, descriptor, true, disposable)
@@ -153,14 +153,14 @@ class KotlinAwareMoveFilesOrDirectoriesDialog(
         validateOKButton()
 
         with(updatePackageDirectiveCb) {
-            val ktFiles = psiElements.filterIsInstance<KtFile>().filter(KtFile::isInKotlinAwareSourceRoot)
+            val jetFiles = psiElements.filterIsInstance<KtFile>().filter(KtFile::isInKotlinAwareSourceRoot)
 
-            if (ktFiles.isEmpty()) {
+            if (jetFiles.isEmpty()) {
                 parent.remove(updatePackageDirectiveCb)
                 return
             }
 
-            val singleFile = ktFiles.singleOrNull()
+            val singleFile = jetFiles.singleOrNull()
             isSelected = singleFile == null || singleFile.packageMatchesDirectoryOrImplicit()
             text = KotlinBundle.message("checkbox.text.update.package.directive")
         }

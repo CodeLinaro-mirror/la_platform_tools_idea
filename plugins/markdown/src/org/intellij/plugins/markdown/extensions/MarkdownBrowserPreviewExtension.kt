@@ -1,15 +1,12 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.extensions
 
-import com.intellij.openapi.Disposable
-import com.intellij.openapi.extensions.ExtensionPointName
-import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanel
 import org.intellij.plugins.markdown.ui.preview.ResourceProvider
 
 /**
  * Base interface for browser-based preview extensions.
  */
-interface MarkdownBrowserPreviewExtension: Comparable<MarkdownBrowserPreviewExtension>, Disposable {
+interface MarkdownBrowserPreviewExtension : MarkdownExtension, Comparable<MarkdownBrowserPreviewExtension> {
   /**
    * The value on which the resource load order will be based on. Any non special extesnion
    * should use [Priority.DEFAULT] value.
@@ -50,15 +47,13 @@ interface MarkdownBrowserPreviewExtension: Comparable<MarkdownBrowserPreviewExte
     return priority.value.compareTo(other.priority.value).inv()
   }
 
-  fun interface Provider {
-    fun createBrowserExtension(panel: MarkdownHtmlPanel): MarkdownBrowserPreviewExtension?
+  companion object {
+    @JvmStatic
+    val all: List<MarkdownBrowserPreviewExtension>
+      get() = MarkdownExtension.all.filterIsInstance<MarkdownBrowserPreviewExtension>()
 
-    companion object {
-      val extensionPointName: ExtensionPointName<Provider> = ExtensionPointName("org.intellij.markdown.browserPreviewExtensionProvider")
-
-      @JvmStatic
-      val all: List<Provider>
-        get() = extensionPointName.extensionList
-    }
+    @JvmStatic
+    val allSorted: List<MarkdownBrowserPreviewExtension>
+      get() = all.sorted()
   }
 }

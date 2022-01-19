@@ -17,7 +17,6 @@ public class OptionalGetWithoutIsPresentInspectionTest extends LightJavaCodeInsi
   public void testFinalInheritance() { doTest(); }
   public void testOptionalGet() { doTest(); }
   public void testOptionalGetInlineLambda() { doTest(); }
-  public void testOptionalGetMethodReference() { doTest(); }
 
   @NotNull
   @Override

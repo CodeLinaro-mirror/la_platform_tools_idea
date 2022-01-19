@@ -243,11 +243,11 @@ public final class ComponentTree extends Tree implements DataProvider {
       return elements.size() == 0 ? null : elements.toArray(LwInspectionSuppression.EMPTY_ARRAY);
     }
 
-    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return ourHelpID;
     }
 
-    if (PlatformCoreDataKeys.FILE_EDITOR.is(dataId)) {
+    if (PlatformDataKeys.FILE_EDITOR.is(dataId)) {
       return myFormEditor;
     }
 
@@ -256,7 +256,7 @@ public final class ComponentTree extends Tree implements DataProvider {
       return null;
     }
 
-    if (PlatformCoreDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
+    if (PlatformDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
       return Collections.<DataProvider>singletonList(realDataId -> getSlowData(selectedComponent, realDataId));
     }
     return null;
@@ -311,9 +311,9 @@ public final class ComponentTree extends Tree implements DataProvider {
     for (TreePath path : paths) {
       final DefaultMutableTreeNode node = (DefaultMutableTreeNode)path.getLastPathComponent();
       Object userObject = node.getUserObject();
-      if (userObject instanceof NodeDescriptor && elementClass.isInstance(((NodeDescriptor<?>) userObject).getElement())) {
+      if (userObject instanceof NodeDescriptor && elementClass.isInstance(((NodeDescriptor) userObject).getElement())) {
         //noinspection unchecked
-        result.add((T)((NodeDescriptor<?>) node.getUserObject()).getElement());
+        result.add((T)((NodeDescriptor) node.getUserObject()).getElement());
       }
     }
     return result;
@@ -395,7 +395,7 @@ public final class ComponentTree extends Tree implements DataProvider {
 
     @Override
     public void customizeCellRenderer(
-      final @NotNull JTree tree,
+      final JTree tree,
       final Object value,
       final boolean selected,
       final boolean expanded,

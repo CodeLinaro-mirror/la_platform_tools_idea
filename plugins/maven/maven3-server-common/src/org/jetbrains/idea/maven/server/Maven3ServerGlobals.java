@@ -3,15 +3,20 @@ package org.jetbrains.idea.maven.server;
 
 
 public final class Maven3ServerGlobals {
-  private static MavenServerLoggerWrapper myLogger = new MavenServerLoggerWrapper();
-  private static MavenServerDownloadListenerWrapper myDownloadListener = new MavenServerDownloadListenerWrapper();
+  private static MavenServerLoggerWrapper myLogger;
+  private static MavenServerDownloadListener myDownloadListener;
 
   public static MavenServerLoggerWrapper getLogger() {
     return myLogger;
   }
 
-  public static MavenServerDownloadListenerWrapper getDownloadListener() {
+  public static MavenServerDownloadListener getDownloadListener() {
     return myDownloadListener;
   }
 
+
+  public static void set(MavenServerLogger logger, MavenServerDownloadListener downloadListener) {
+    myLogger = new MavenServerLoggerWrapper(logger);
+    myDownloadListener = downloadListener;
+  }
 }

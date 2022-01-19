@@ -4,22 +4,18 @@ import com.intellij.openapi.components.BaseState
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.util.xmlb.annotations.OptionTag
 import com.jetbrains.packagesearch.intellij.plugin.configuration.PackageSearchGeneralConfiguration
 
+fun packageSearchGradleConfigurationForProject(project: Project): PackageSearchGradleConfiguration =
+    project.getService(PackageSearchGradleConfiguration::class.java)
+
 @State(
     name = "PackageSearchGradleConfiguration",
-    storages = [(Storage(PackageSearchGeneralConfiguration.StorageFileName))],
+    storages = [(Storage(PackageSearchGeneralConfiguration.StorageFileName))]
 )
-internal class PackageSearchGradleConfiguration : BaseState(), PersistentStateComponent<PackageSearchGradleConfiguration> {
-
-    companion object {
-
-        @JvmStatic
-        fun getInstance(project: Project) = project.service<PackageSearchGradleConfiguration>()
-    }
+class PackageSearchGradleConfiguration : BaseState(), PersistentStateComponent<PackageSearchGradleConfiguration> {
 
     override fun getState(): PackageSearchGradleConfiguration = this
 
@@ -31,7 +27,7 @@ internal class PackageSearchGradleConfiguration : BaseState(), PersistentStateCo
     var gradleScopes by string(PackageSearchGradleConfigurationDefaults.GradleScopes)
 
     @get:OptionTag("GRADLE_SCOPES_DEFAULT")
-    var defaultGradleScope by string(PackageSearchGradleConfigurationDefaults.GradleDefaultScope)
+    var defaultGradleScope by string(PackageSearchGradleConfigurationDefaults.GradleScope)
 
     @get:OptionTag("UPDATE_SCOPES_ON_USE")
     var updateScopesOnUsage by property(true)
@@ -40,7 +36,7 @@ internal class PackageSearchGradleConfiguration : BaseState(), PersistentStateCo
         if (!defaultGradleScope.isNullOrEmpty()) {
             defaultGradleScope!!
         } else {
-            PackageSearchGradleConfigurationDefaults.GradleDefaultScope
+            PackageSearchGradleConfigurationDefaults.GradleScope
         }
 
     fun addGradleScope(scope: String) {

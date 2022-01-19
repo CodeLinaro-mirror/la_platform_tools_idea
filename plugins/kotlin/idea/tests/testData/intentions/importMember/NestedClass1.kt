@@ -1,6 +1,5 @@
 // INTENTION_TEXT: "Add import for 'ppp.Foo.Bar'"
 // WITH_RUNTIME
-// AFTER-WARNING: Check for instance is always 'true'
 package ppp
 
 sealed class Foo {

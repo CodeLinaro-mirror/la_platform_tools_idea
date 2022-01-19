@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.lang;
 
 import com.intellij.openapi.diagnostic.LoggerRt;
@@ -297,34 +297,32 @@ final class FileLoader extends Loader {
       return;
     }
 
-    Executors.newSingleThreadScheduledExecutor(r -> {
-      Thread thread = new Thread(r, "Save classpath indexes for file loader");
-      thread.setDaemon(true);
-      thread.setPriority(Thread.MIN_PRIORITY);
-      return thread;
-    }).schedule(() -> {
-      while (true) {
-        try {
-          Map.Entry<ClasspathCache.LoaderData, Path> entry = loaderDataToSave.takeFirst();
-          Path finalFile = entry.getValue();
-          Path tempFile = finalFile.getParent().resolve("classpath.index.tmp");
+    //noinspection SSBasedInspection
+    Executors.newSingleThreadScheduledExecutor().schedule(() -> {
+      new Thread(() -> {
+        while (true) {
           try {
-            saveToIndex(entry.getKey(), tempFile);
+            Map.Entry<ClasspathCache.LoaderData, Path> entry = loaderDataToSave.takeFirst();
+            Path finalFile = entry.getValue();
+            Path tempFile = finalFile.getParent().resolve("classpath.index.tmp");
             try {
-              Files.move(tempFile, finalFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+              saveToIndex(entry.getKey(), tempFile);
+              try {
+                Files.move(tempFile, finalFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+              }
+              catch (AtomicMoveNotSupportedException e) {
+                Files.move(tempFile, finalFile, StandardCopyOption.REPLACE_EXISTING);
+              }
             }
-            catch (AtomicMoveNotSupportedException e) {
-              Files.move(tempFile, finalFile, StandardCopyOption.REPLACE_EXISTING);
+            catch (Exception e) {
+              LoggerRt.getInstance(FileLoader.class).warn("Cannot save classpath index for module " + finalFile.getParent().getFileName(), e);
             }
           }
-          catch (Exception e) {
-            LoggerRt.getInstance(FileLoader.class).warn("Cannot save classpath index for module " + finalFile.getParent().getFileName(), e);
+          catch (InterruptedException ignored) {
+            break;
           }
         }
-        catch (InterruptedException ignored) {
-          break;
-        }
-      }
+      }, "Save classpath indexes for file loader").start();
     }, 10, TimeUnit.SECONDS);
   }
 

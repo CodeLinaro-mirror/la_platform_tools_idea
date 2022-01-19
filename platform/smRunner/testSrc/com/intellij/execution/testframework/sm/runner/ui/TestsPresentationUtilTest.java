@@ -678,7 +678,7 @@ public class TestsPresentationUtilTest extends BaseSMTRunnerTestCase {
 
   public void testGetTestStatusPresentation_Progress() {
     mySimpleTest.setStarted();
-    assertEquals("Running…", TestsPresentationUtil.getTestStatusPresentation(mySimpleTest));
+    assertEquals("Running...", TestsPresentationUtil.getTestStatusPresentation(mySimpleTest));
   }
 
   public void testGetTestStatusPresentation_Passed() {

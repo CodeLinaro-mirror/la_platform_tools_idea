@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'b' is never used
 class Outer {
     class Middle<T> {}
 }

@@ -28,7 +28,6 @@
     <action id="Git.Init" class="git4idea.actions.GitInit">
       <add-to-group group-id="Vcs.Import"/>
       <add-to-group group-id="Vcs.Operations.Popup.NonVcsAware" relative-to-action="Start.Use.Vcs" anchor="before"/>
-      <add-to-group group-id="Vcs.ToolWindow.CreateRepository"/>
     </action>
 
     <action id="Git.Log" class="git4idea.log.GitShowExternalLogAction">
@@ -45,7 +44,6 @@
     <action class="git4idea.actions.GitCheckoutRevisionAction" id="Git.CheckoutRevision"/>
     <action class="git4idea.actions.GitCreateNewBranchAction" id="Git.CreateNewBranch"/>
     <action class="git4idea.actions.GitCreateTagAction" id="Git.CreateNewTag"/>
-    <action  id="Git.PushUpToCommit" class="git4idea.actions.GitPushUpToCommitAction"/>
     <action id="Git.Reset.In.Log" class="git4idea.reset.GitResetAction" icon="AllIcons.Actions.Rollback"/>
     <action id="Git.Revert.In.Log" class="git4idea.revert.GitRevertAction"/>
     <action id="Git.Uncommit" class="git4idea.reset.GitUncommitAction"/>
@@ -64,7 +62,7 @@
             class="git4idea.ui.branch.dashboard.BranchesDashboardActions$NavigateLogToSelectedBranchAction"/>
     <action id="Git.Log.Hide.Branches" class="git4idea.ui.branch.dashboard.BranchesDashboardActions$HideBranchesAction"
             icon="AllIcons.Actions.ArrowCollapse"/>
-    <group id="Git.Log.Branches.Settings" popup="true" icon="AllIcons.General.GearPlain" class="com.intellij.ide.actions.NonTrivialActionGroup">
+    <group id="Git.Log.Branches.Settings" popup="true" icon="AllIcons.General.GearPlain">
       <separator key="group.Git.Log.Branches.Settings.Separator.text"/>
       <action id="Git.Log.Branches.Change.Branch.Filter.On.Selection"
               class="git4idea.ui.branch.dashboard.BranchesDashboardActions$ChangeBranchFilterAction"/>
@@ -256,7 +254,6 @@
       <reference id="Git.Drop.Commits"/>
       <reference id="Git.Squash.Commits" />
       <reference id="Git.Interactive.Rebase"/>
-      <reference id="Git.PushUpToCommit"/>
       <separator/>
       <reference id="Git.BranchOperationGroup"/>
       <reference id="Git.CreateNewBranch"/>
@@ -380,21 +377,7 @@
       <reference id="Diff.ShowDiff"/>
       <reference ref="Diff.ShowStandaloneDiff"/>
       <reference id="Vcs.ShowDiffWithLocal"/>
-    </group>
-    <group id="Git.Stash.ChangesBrowser.ContextMenu">
-      <reference ref="Vcs.ShowDiffWithLocal"/>
-      <reference ref="Vcs.ShowDiffWithLocal.Before"/>
-      <reference ref="Vcs.EditSource"/>
-      <reference ref="Vcs.OpenRepositoryVersion"/>
-      <reference ref="Vcs.ApplySelectedChanges"/>
-    </group>
-
-    <group id="Git.Experimental.Branch.Popup.Actions">
-      <reference ref="Vcs.UpdateProject"/>
-      <reference ref="CheckinProject"/>
-      <reference ref="Git.Commit.Stage"/>
-      <reference ref="Vcs.Push"/>
-      <reference ref="Vcs.QuickListPopupAction"/>
+      <reference id="Vcs.ShowDiffWithLocal.Before"/>
     </group>
   </actions>
 
@@ -474,8 +457,6 @@
                  description="If set to a value &gt; 0, load base contents for shelving in batches: by reading the given number of files at once. If set to -1, contents are loaded as usual, one by one."/>
     <registryKey key="git.allow.wsl1.executables" defaultValue="false"
                  description="If set to false, IDE will ignore configured WSL1 executables. See IDEA-242469"/>
-    <registryKey key="git.detect.wsl.executables" defaultValue="true"
-                 description="Search for available executables in WSL on Windows"/>
     <registryKey key="git.enable.stash.toolwindow" defaultValue="false"
                  description="Show toolwindow tab with stashes"/>
     <registryKey key="git.can.use.restore.command" defaultValue="true"
@@ -484,7 +465,7 @@
                  description="Do not record stage operations in the undo stack of the document"/>
     <registryKey key="git.show.full.branch.name.instead.current.selected"
                  description="Show full branch names instead of Current/Selected"
-                 defaultValue="true"/>
+                 defaultValue="false"/>
 
     <search.projectOptionsTopHitProvider implementation="git4idea.config.GitOptionsTopHitProvider"/>
     <vcs name="Git" vcsClass="git4idea.GitVcs" displayName="Git" administrativeAreaName=".git"/>
@@ -500,7 +481,6 @@
     <unresolvedMergeCheckProvider implementation="git4idea.checkin.GitUnresolvedMergeCheckProvider"/>
     <logProvider implementation="git4idea.log.GitLogProvider"/>
     <vcsLogCustomColumn implementation="git4idea.log.GitCommitSignatureLogColumn"/>
-    <vcsLogCommitStatusProvider implementation="git4idea.log.GitCommitSignatureStatusProvider"/>
     <vcsChangesViewRefresher implementation="git4idea.changes.GitChangesViewRefresher" />
     <vcs.branchStateProvider implementation="git4idea.branch.GitBranchStateProvider"/>
     <pushSupport implementation="git4idea.push.GitPushSupport"/>
@@ -510,7 +490,6 @@
     <statistics.projectUsagesCollector implementation="git4idea.GitStatisticsCollector"/>
     <statistics.notificationIdsHolder implementation="git4idea.GitNotificationIdsHolder"/>
     <vcsRepositoryInitializer implementation="git4idea.repo.GitRepositoryInitializer"/>
-    <gitRepositoryInitializer implementation="git4idea.repo.GitRepositoryInitializerImpl"/>
     <openapi.vcs.changes.actions.diff.ChangeDiffRequestProvider
         implementation="git4idea.diff.GitSubmoduleDiffRequestProvider"/>
     <vcs.ignoredFilesHolder implementation="git4idea.repo.GitIgnoredFilesHolder$Provider"/>
@@ -589,10 +568,6 @@
     <registryKey key="git.search.everywhere.commit.by.message" defaultValue="true"
                  description="Use Git log index to lookup commits by message in Search Everywhere" restartRequired="false"/>
 
-    <registryKey key="git.push.upto.commit.with.head.reference" defaultValue="false"
-                 description="Detect HEAD relative reference while pushing up to selected commit to the current branch"
-                 restartRequired="false"/>
-
     <vcs.actions.ScheduleForAdditionActionExtension implementation="git4idea.actions.GitAdd"/>
     <completion.contributor language="TEXT" implementationClass="git4idea.commit.GitCommitCompletionContributor"
                             order="first, before commitCompletion"/>
@@ -651,7 +626,6 @@
     <postStartupActivity implementation="git4idea.stash.ui.GitStashStartupActivity"/>
     <diff.actions.ShowDiffAction.ExtensionProvider implementation="git4idea.stash.ui.GitShowDiffFromStashAction"/>
     <diff.actions.ShowStandaloneDiffAction.ExtensionProvider implementation="git4idea.stash.ui.GitShowDiffFromStashAction"/>
-    <openapi.vcs.history.actions.ShowDiffAfterWithLocalAction.ExtensionProvider implementation="git4idea.stash.ui.GitCompareWithLocalFromStashAction"/>
 
     <vcs.consoleFolding implementation="git4idea.console.GitConsoleFolding"/>
     <console.folding implementation="git4idea.console.GitProgressOutputConsoleFolding"/>
@@ -688,7 +662,5 @@
               activeInHeadlessMode="false" activeInTestMode="false"/>
     <listener class="git4idea.index.CommitModeListener" topic="com.intellij.vcs.commit.CommitModeManager$CommitModeListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
-    <listener class="git4idea.actions.GitQuickActionsToolbarPopup$MyGitRepositoryListener" activeInHeadlessMode="false" activeInTestMode="false"
-              topic="com.intellij.dvcs.repo.VcsRepositoryMappingListener"/>
   </projectListeners>
 </idea-plugin>

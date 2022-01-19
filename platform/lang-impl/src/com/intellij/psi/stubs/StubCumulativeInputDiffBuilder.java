@@ -3,7 +3,6 @@ package com.intellij.psi.stubs;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.impl.DebugUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.FileBasedIndexImpl;
@@ -114,8 +113,12 @@ class StubCumulativeInputDiffBuilder extends DirectInputDataDiffBuilder<Integer,
     String newTreeDump = "\nnew tree " + dumpStub(newTree);
     byte[] hash = newTree.getTreeHash();
     LOG.info("Stub tree hashing collision. " +
-             "Different trees have the same hash = " + StringUtil.toHexString(hash) + ". " +
+             "Different trees have the same hash = " + toHexString(hash, hash.length) + ". " +
              oldTreeDump + newTreeDump, new Exception());
+  }
+
+  private static String toHexString(byte[] hash, int length) {
+    return IntStreamEx.of(hash).limit(length).mapToObj(b -> String.format("%02x", b & 0xFF)).joining();
   }
 
   @NotNull
@@ -128,6 +131,6 @@ class StubCumulativeInputDiffBuilder extends DirectInputDataDiffBuilder<Integer,
       LOG.error(e);
       deserialized = "error while stub deserialization: " + e.getMessage();
     }
-    return deserialized + "\n bytes: " + StringUtil.toHexString(tree.myTreeBytes);
+    return deserialized + "\n bytes: " + toHexString(tree.myTreeBytes, tree.myTreeByteLength);
   }
 }

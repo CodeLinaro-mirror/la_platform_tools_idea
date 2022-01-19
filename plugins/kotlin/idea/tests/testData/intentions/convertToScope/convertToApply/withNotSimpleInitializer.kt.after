@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Variable 'c' is never used
 
 class MyClass {
     fun foo() {

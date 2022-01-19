@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.compiled;
 
 import com.intellij.diagnostic.PluginException;
@@ -543,8 +543,8 @@ public class ClsFileImpl extends PsiBinaryFileImpl
 
   public static @NotNull CharSequence decompile(@NotNull VirtualFile file) {
     PsiManager manager = PsiManager.getInstance(DefaultProjectFactory.getInstance().getDefaultProject());
-    ClsFileImpl clsFile = new ClsFileImpl(new ClassFileViewProvider(manager, file), true);
-    StringBuilder buffer = new StringBuilder();
+    final ClsFileImpl clsFile = new ClsFileImpl(new ClassFileViewProvider(manager, file), true);
+    final StringBuilder buffer = new StringBuilder();
     ApplicationManager.getApplication().runReadAction(() -> clsFile.appendMirrorText(buffer));
     return buffer;
   }
@@ -562,7 +562,7 @@ public class ClsFileImpl extends PsiBinaryFileImpl
       JavaSdkVersion jdkVersion = ClsParsingUtil.getJdkVersionByBytecode(reader.readUnsignedShort(6));
       LanguageLevel level = jdkVersion != null ? jdkVersion.getMaxLanguageLevel() : null;
       if (level != null && level.isAtLeast(LanguageLevel.JDK_11) && ClsParsingUtil.isPreviewLevel(reader.readUnsignedShort(4))) {
-        level = notNull(level.getPreviewLevel(), LanguageLevel.HIGHEST);
+        level = notNull(level.getPreviewLevel(), level);
       }
 
       if (module) {

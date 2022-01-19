@@ -238,7 +238,7 @@ public class PersistentMapTest extends PersistentMapTestBase {
     try {
       myMap = new PersistentHashMap<>(myFile, EnumeratorStringDescriptor.INSTANCE, EnumeratorStringDescriptor.INSTANCE);
       fail();
-    } catch (VersionUpdatedException ignore) {}
+    } catch (PersistentEnumeratorBase.VersionUpdatedException ignore) {}
     finally {
       PersistentHashMapValueStorage.CreationTimeOptions.HAS_NO_CHUNKS.set(Boolean.FALSE);
     }
@@ -468,13 +468,6 @@ public class PersistentMapTest extends PersistentMapTestBase {
 
     runIteration(mapConstructorWithBrokenKeyDescriptor);
     runIteration(mapConstructorWithBrokenValueDescriptor);
-
-    try {
-      myMap.close();
-      fail();
-    }
-    catch (Exception ignored) {
-    }
   }
 
   public void testExistingKeys() throws IOException {

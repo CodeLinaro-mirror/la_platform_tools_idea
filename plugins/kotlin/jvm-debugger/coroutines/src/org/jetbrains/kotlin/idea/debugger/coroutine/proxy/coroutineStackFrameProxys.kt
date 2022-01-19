@@ -51,7 +51,7 @@ class CoroutineStackFrameProxyImpl(
         }
 
         val debugProcess = virtualMachine.debugProcess as? DebugProcessImpl ?: return null
-        val suspendContext = debugProcess.suspendManager.pausedContext ?: return null
+        val suspendContext = debugProcess.suspendManager.pausedContext
         val evaluationContext = EvaluationContextImpl(suspendContext, this)
         return CoroutineScopeExtractor.extractCoroutineScope(continuation, evaluationContext)
     }

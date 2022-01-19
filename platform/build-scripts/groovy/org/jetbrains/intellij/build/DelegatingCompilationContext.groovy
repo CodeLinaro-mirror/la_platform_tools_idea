@@ -57,6 +57,11 @@ abstract class DelegatingCompilationContext implements CompilationContext {
   }
 
   @Override
+  KotlinBinaries getKotlinBinaries() {
+    return delegate.getKotlinBinaries()
+  }
+
+  @Override
   File getProjectOutputDirectory() {
     return delegate.getProjectOutputDirectory()
   }

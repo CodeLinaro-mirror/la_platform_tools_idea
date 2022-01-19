@@ -11,7 +11,6 @@ import git4idea.commands.Git;
 import git4idea.commands.GitCommandResult;
 import git4idea.i18n.GitBundle;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import static git4idea.GitNotificationIdsHolder.INIT_ERROR;
 import static git4idea.GitNotificationIdsHolder.REPOSITORY_CREATED;
@@ -19,24 +18,24 @@ import static git4idea.GitNotificationIdsHolder.REPOSITORY_CREATED;
 public final class GitIntegrationEnabler extends VcsIntegrationEnabler {
   private static final Logger LOG = Logger.getInstance(GitIntegrationEnabler.class);
 
-  public GitIntegrationEnabler(@NotNull GitVcs vcs, @Nullable VirtualFile targetDirectory) {
-    super(vcs, targetDirectory);
+  public GitIntegrationEnabler(@NotNull GitVcs vcs) {
+    super(vcs);
   }
 
   @Override
-  protected boolean initOrNotifyError(@NotNull final VirtualFile directory) {
+  protected boolean initOrNotifyError(@NotNull final VirtualFile projectDir) {
     VcsNotifier vcsNotifier = VcsNotifier.getInstance(myProject);
-    GitCommandResult result = Git.getInstance().init(myProject, directory);
+    GitCommandResult result = Git.getInstance().init(myProject, projectDir);
     if (result.success()) {
-      refreshVcsDir(directory, GitUtil.DOT_GIT);
+      refreshVcsDir(projectDir, GitUtil.DOT_GIT);
       vcsNotifier.notifySuccess(REPOSITORY_CREATED,
                                 "",
-                                GitBundle.message("git.integration.created.git.repository.in", directory.getPresentableUrl()));
+                                GitBundle.message("git.integration.created.git.repository.in", projectDir.getPresentableUrl()));
       return true;
     }
     else {
       vcsNotifier.notifyError(INIT_ERROR,
-                              GitBundle.message("git.integration.could.not.git.init", directory.getPresentableUrl()),
+                              GitBundle.message("git.integration.could.not.git.init", projectDir.getPresentableUrl()),
                               result.getErrorOutputAsHtmlString(),
                               true);
       LOG.info(result.getErrorOutputAsHtmlString());

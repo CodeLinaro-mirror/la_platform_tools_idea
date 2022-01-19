@@ -20,16 +20,13 @@ import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.psi.PsiDocumentManager;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SlowOperations;
+import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import java.awt.*;
@@ -67,7 +64,8 @@ public final class ActionUtil {
     DumbService.getInstance(project).showDumbModeNotification(getActionUnavailableMessage(actionNames));
   }
 
-  private static @NotNull @NlsContexts.PopupContent String getActionUnavailableMessage(@NotNull List<String> actionNames) {
+  @NotNull
+  private static @NlsContexts.PopupContent String getActionUnavailableMessage(@NotNull List<String> actionNames) {
     String message;
     if (actionNames.isEmpty()) {
       message = getUnavailableMessage("This action", false);
@@ -82,7 +80,8 @@ public final class ActionUtil {
     return message;
   }
 
-  public static @NotNull @NlsContexts.PopupContent String getUnavailableMessage(@NotNull String action, boolean plural) {
+  @NotNull
+  public static @NlsContexts.PopupContent String getUnavailableMessage(@NotNull String action, boolean plural) {
     if (plural) {
       return IdeBundle.message("popup.content.actions.not.available.while.updating.indices", action, ApplicationNamesInfo.getInstance().getProductName());
     }
@@ -122,7 +121,7 @@ public final class ActionUtil {
     action.applyTextOverride(e);
 
     try {
-      Runnable runnable = () -> {
+      ThrowableRunnable<RuntimeException> runnable = () -> {
         e.setInjectedContext(action.isInInjectedContext());
         if (beforeActionPerformed) {
           action.beforeActionPerformedUpdate(e);
@@ -181,7 +180,7 @@ public final class ActionUtil {
    *   without leaving inconsistent data behind, this exception doesn't need to be caught and processed.
    */
   public static <T> T underModalProgress(@NotNull Project project,
-                                         @NotNull @NlsContexts.ProgressTitle String progressTitle,
+                                         @NotNull @Nls(capitalization = Nls.Capitalization.Title) String progressTitle,
                                          @NotNull Computable<T> computable) throws ProcessCanceledException {
     DumbService dumbService = DumbService.getInstance(project);
     boolean useAlternativeResolve = dumbService.isAlternativeResolveEnabled();
@@ -209,12 +208,9 @@ public final class ActionUtil {
   }
 
   public static boolean lastUpdateAndCheckDumb(@NotNull AnAction action, @NotNull AnActionEvent e, boolean visibilityMatters) {
-    Project project = e.getProject();
-    if (project != null && PerformWithDocumentsCommitted.isPerformWithDocumentsCommitted(action)) {
-      PsiDocumentManager.getInstance(project).commitAllDocuments();
-    }
     performDumbAwareUpdate(false, action, e, true);
 
+    Project project = e.getProject();
     if (project != null && DumbService.getInstance(project).isDumb() && !action.isDumbAware()) {
       if (Boolean.FALSE.equals(e.getPresentation().getClientProperty(WOULD_BE_ENABLED_IF_NOT_DUMB_MODE))) {
         return false;
@@ -251,7 +247,7 @@ public final class ActionUtil {
     IndexNotReadyException indexError = null;
     ActionManagerEx manager = ActionManagerEx.getInstanceEx();
     manager.fireBeforeActionPerformed(action, event);
-    Component component = event.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT);
+    Component component = event.getData(PlatformDataKeys.CONTEXT_COMPONENT);
     if (component != null && !UIUtil.isShowing(component) &&
         !ActionPlaces.TOUCHBAR_GENERAL.equals(event.getPlace())) {
       String id = StringUtil.notNullize(event.getActionManager().getId(action), action.getClass().getName());
@@ -299,7 +295,8 @@ public final class ActionUtil {
     }
   }
 
-  public static @NotNull AnActionEvent createEmptyEvent() {
+  @NotNull
+  public static AnActionEvent createEmptyEvent() {
     return AnActionEvent.createFromDataContext(ActionPlaces.UNKNOWN, null, dataId -> null);
   }
 
@@ -333,7 +330,8 @@ public final class ActionUtil {
     }
   }
 
-  public static @NotNull List<AnAction> getActions(@NotNull JComponent component) {
+  @NotNull
+  public static List<AnAction> getActions(@NotNull JComponent component) {
     return ContainerUtil.notNullize(ComponentUtil.getClientProperty(component, AnAction.ACTIONS_KEY));
   }
 
@@ -395,7 +393,7 @@ public final class ActionUtil {
   }
 
   /**
-   * Convenience method for merging non-null properties from a registered action
+   * Convenience method for merging not null properties from a registered action
    *
    * @param action action to merge to
    * @param actionId action id to merge from
@@ -450,7 +448,8 @@ public final class ActionUtil {
     }
   }
 
-  public static @NotNull ActionListener createActionListener(@NotNull String actionId, @NotNull Component component, @NotNull String place) {
+  @NotNull
+  public static ActionListener createActionListener(@NotNull String actionId, @NotNull Component component, @NotNull String place) {
     return e -> {
       AnAction action = getAction(actionId);
       if (action == null) {
@@ -460,7 +459,8 @@ public final class ActionUtil {
     };
   }
 
-  public static @Nullable ShortcutSet getMnemonicAsShortcut(@NotNull AnAction action) {
+  @Nullable
+  public static ShortcutSet getMnemonicAsShortcut(@NotNull AnAction action) {
     return KeymapUtil.getMnemonicAsShortcut(action.getTemplatePresentation().getMnemonic());
   }
 

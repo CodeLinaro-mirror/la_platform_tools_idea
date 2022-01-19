@@ -401,15 +401,13 @@ final class EditorSizeManager implements PrioritizedDocumentListener, Disposable
     VisualLinesIterator iterator = new VisualLinesIterator(myEditor, startVisualLine);
     int maxWidth = 0;
     int largestLineNumber = 0;
-    int caretVisualLine = myEditor.getCaretModel().getVisualPosition().line;
     while (!iterator.atEnd()) {
-      int visualLine = iterator.getVisualLine();
-      int width = getVisualLineWidth(iterator, visualLine != caretVisualLine);
+      int width = getVisualLineWidth(iterator, true);
       if (width > maxWidth) {
         maxWidth = width;
-        largestLineNumber = visualLine;
+        largestLineNumber = iterator.getVisualLine();
       }
-      if (visualLine >= endVisualLine) break;
+      if (iterator.getVisualLine() >= endVisualLine) break;
       iterator.advance();
     }
     return new IntPair(maxWidth, largestLineNumber);

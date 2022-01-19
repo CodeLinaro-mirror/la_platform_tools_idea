@@ -14,7 +14,6 @@ import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import com.jediterm.terminal.CursorShape;
@@ -92,6 +91,9 @@ public class JBTerminalSystemSettingsProviderBase extends DefaultTabbedSettingsP
   @Override
   public @NotNull TerminalActionPresentation getClearBufferActionPresentation() {
     List<KeyStroke> strokes = getKeyStrokesByActionId("Terminal.ClearBuffer");
+    if (strokes.isEmpty()) {
+      return super.getClearBufferActionPresentation();
+    }
     return new TerminalActionPresentation(IdeBundle.message("terminal.action.ClearBuffer.text"), strokes);
   }
 
@@ -243,16 +245,6 @@ public class JBTerminalSystemSettingsProviderBase extends DefaultTabbedSettingsP
   }
 
   @Override
-  public boolean copyOnSelect() {
-    return SystemInfo.isLinux;
-  }
-
-  @Override
-  public boolean pasteOnMiddleMouseClick() {
-    return true;
-  }
-
-  @Override
   public int getBufferMaxLinesCount() {
     final int linesCount = AdvancedSettings.getInt("terminal.buffer.max.lines.count");
     if (linesCount > 0) {
@@ -274,8 +266,7 @@ public class JBTerminalSystemSettingsProviderBase extends DefaultTabbedSettingsP
 
   @Override
   public int caretBlinkingMs() {
-    EditorSettingsExternalizable instance = EditorSettingsExternalizable.getInstance();
-    return instance.isBlinkCaret() ? instance.getBlinkPeriod() : 0;
+    return EditorSettingsExternalizable.getInstance().getBlinkPeriod();
   }
 
   public @NotNull CursorShape getCursorShape() {

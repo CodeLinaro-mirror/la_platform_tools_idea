@@ -122,7 +122,7 @@ final class ServiceViewNavBarPanel extends NavBarPanel {
     }
 
     @Override
-    public List<Object> getChildren(Object object) {
+    protected List<Object> getChildren(Object object) {
       if (object == myRoot) {
         return new ArrayList<>(myViewModel.getVisibleRoots());
       }

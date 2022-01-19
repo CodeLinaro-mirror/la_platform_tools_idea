@@ -44,11 +44,6 @@ final class YAMLBlockScalarItemBlock implements Block {
     myAlignment = alignment;
   }
 
-  @Override
-  public String toString() {
-    return "YAMLBlockScalarItemBlock(" + getTextRange() + ")";
-  }
-
   @NotNull
   @Override
   public TextRange getTextRange() {

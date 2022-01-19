@@ -4,8 +4,6 @@ package org.jetbrains.jps.incremental.groovy;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.util.Function;
-import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -126,12 +124,8 @@ public class GroovyBuilder extends ModuleLevelBuilder {
     return chunk.getModules().iterator().next().getSdk(JpsJavaSdkType.INSTANCE);
   }
 
-  static List<String> getGroovyRtRoots(boolean addClassLoaderJar) {
-    List<String> roots = GroovyRtJarPaths.getGroovyRtRoots(ClasspathBootstrap.getResourceFile(GroovyBuilder.class), addClassLoaderJar);
-    if (addClassLoaderJar) {
-      return ContainerUtil.append(roots, ClasspathBootstrap.getResourcePath(Function.class)); // intellij.platform.util.rt
-    }
-    return roots;
+  static List<String> getGroovyRtRoots() {
+    return GroovyRtJarPaths.getGroovyRtRoots(ClasspathBootstrap.getResourceFile(GroovyBuilder.class));
   }
 
   public static boolean isGroovyFile(String path) {

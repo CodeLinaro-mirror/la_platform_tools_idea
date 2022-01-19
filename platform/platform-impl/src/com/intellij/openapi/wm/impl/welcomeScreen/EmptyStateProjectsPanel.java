@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.welcomeScreen;
 
 import com.intellij.ide.DataManager;
@@ -84,14 +84,14 @@ class EmptyStateProjectsPanel extends BorderLayoutPanel {
   private static ActionToolbarImpl createActionsToolbar(ActionGroup actionGroup) {
     ActionToolbarImpl actionToolbar = new ActionToolbarImpl(ActionPlaces.WELCOME_SCREEN, actionGroup, true) {
       private boolean wasFocusRequested = false;
+
       @Override
-      protected void actionsUpdated(boolean forced,
-                                    @NotNull List<? extends AnAction> newVisibleActions) {
+      protected void actionsUpdated(boolean forced, @NotNull List<? extends AnAction> newVisibleActions) {
         super.actionsUpdated(forced, newVisibleActions);
         if (forced && !newVisibleActions.isEmpty() && getComponents().length > 0 && !wasFocusRequested) {
           ObjectUtils.doIfNotNull(FocusUtil.findFocusableComponentIn(getComponents()[0], null),
                                   (Function<Component, Object>)component -> {
-                                    wasFocusRequested =true;
+                                    wasFocusRequested = true;
                                     return IdeFocusManager.getGlobalInstance().requestFocus(component, true);
                                   });
         }
@@ -100,7 +100,6 @@ class EmptyStateProjectsPanel extends BorderLayoutPanel {
     actionToolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY);
     actionToolbar.setTargetComponent(actionToolbar.getComponent());
     actionToolbar.setBorder(JBUI.Borders.emptyTop(27));
-    actionToolbar.setTargetComponent(actionToolbar.getComponent());
     actionToolbar.setOpaque(false);
     return actionToolbar;
   }
@@ -142,7 +141,7 @@ class EmptyStateProjectsPanel extends BorderLayoutPanel {
       vPanel.add(promotion);
       hasPromotion = true;
     }
-    JPanel notification = WelcomeScreenComponentFactory.createNotificationPanel(parentDisposable);
+    JPanel notification = ProjectsTabFactory.createNotificationsPanel(parentDisposable);
     if (!hasPromotion) return notification;
     vPanel.add(notification);
     return vPanel;

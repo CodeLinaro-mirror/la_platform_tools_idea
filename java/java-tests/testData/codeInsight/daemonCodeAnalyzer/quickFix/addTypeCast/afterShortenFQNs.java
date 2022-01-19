@@ -1,6 +1,6 @@
 import java.util.List;
 
-// "Cast argument to 'List'" "true"
+// "Cast parameter to 'java.util.List'" "true"
 class Test {
   void m(Object o) {
     foo((List) o);

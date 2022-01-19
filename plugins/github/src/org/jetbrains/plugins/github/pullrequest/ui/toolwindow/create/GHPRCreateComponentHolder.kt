@@ -1,10 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.toolwindow.create
 
 import com.intellij.collaboration.async.CompletableFutureUtil.completionOnEdt
 import com.intellij.collaboration.async.CompletableFutureUtil.successOnEdt
 import com.intellij.collaboration.ui.SingleValueModel
-import com.intellij.collaboration.ui.codereview.commits.CommitsBrowserComponentBuilder
+import com.intellij.collaboration.ui.codereview.commits.CommitsBrowserComponentFactory
 import com.intellij.diff.chains.DiffRequestChain
 import com.intellij.diff.util.DiffUserDataKeysEx
 import com.intellij.ide.DataManager
@@ -22,10 +22,7 @@ import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.history.VcsDiffUtil
-import com.intellij.ui.IdeBorderFactory
-import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.ScrollPaneFactory
-import com.intellij.ui.SideBorder
+import com.intellij.ui.*
 import com.intellij.util.EditSourceOnDoubleClickHandler
 import com.intellij.util.Processor
 import com.intellij.util.ui.UIUtil
@@ -36,7 +33,6 @@ import git4idea.history.GitCommitRequirements
 import git4idea.history.GitLogUtil
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
-import kotlinx.coroutines.flow.map
 import org.jetbrains.annotations.Nls
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestShort
 import org.jetbrains.plugins.github.i18n.GithubBundle
@@ -79,8 +75,7 @@ internal class GHPRCreateComponentHolder(private val actionManager: ActionManage
   private val changesLoadingModel = GHIOExecutorLoadingModel<Collection<Change>>(disposable)
   private val commitsLoadingModel = GHIOExecutorLoadingModel<List<VcsCommitMetadata>>(disposable)
   private val commitChangesLoadingModel = GHIOExecutorLoadingModel<Collection<Change>>(disposable)
-  private val filesCountFlow = changesLoadingModel.getResultFlow().map { it?.size }
-  private val commitsCountFlow = commitsLoadingModel.getResultFlow().map { it?.size }
+  private val filesCountModel = createCountModel(changesLoadingModel)
   private val commitsCountModel = createCountModel(commitsLoadingModel)
 
   private val existenceCheckLoadingModel = GHIOExecutorLoadingModel<GHPRIdentifier?>(disposable)
@@ -145,8 +140,7 @@ internal class GHPRCreateComponentHolder(private val actionManager: ActionManage
 
   private fun checkUpdateHead() {
     val headRepo = directionModel.headRepo
-    if (headRepo != null && !directionModel.headSetByUser) directionModel.setHead(headRepo,
-                                                                                  headRepo.gitRemoteUrlCoordinates.repository.currentBranch)
+    if (headRepo != null && !directionModel.headSetByUser) directionModel.setHead(headRepo, headRepo.gitRemoteUrlCoordinates.repository.currentBranch)
   }
 
   private val changesLoadingErrorHandler = GHRetryLoadingErrorHandler {
@@ -170,8 +164,8 @@ internal class GHPRCreateComponentHolder(private val actionManager: ActionManage
 
     GHPRViewTabsFactory(project, viewController::viewList, uiDisposable)
       .create(infoComponent, diffController,
-              createFilesComponent(), filesCountFlow, null,
-              createCommitsComponent(), commitsCountFlow).apply {
+              createFilesComponent(), filesCountModel,
+              createCommitsComponent(), commitsCountModel).apply {
         setDataProvider { dataId ->
           if (DiffRequestChainProducer.DATA_KEY.`is`(dataId)) diffRequestProducer
           else null
@@ -208,11 +202,18 @@ internal class GHPRCreateComponentHolder(private val actionManager: ActionManage
                                                     GithubBundle.message("cannot.load.commits"),
                                                     commitsLoadingErrorHandler)
       .createWithUpdatesStripe(uiDisposable) { _, model ->
-        CommitsBrowserComponentBuilder(project, model)
-          .installPopupActions(DefaultActionGroup(actionManager.getAction("Github.PullRequest.Changes.Reload")), "GHPRCommitsPopup")
-          .setEmptyCommitListText(GithubBundle.message("pull.request.does.not.contain.commits"))
-          .onCommitSelected { commitSelectionModel.value = it }
-          .create()
+        val (commitBrowser, commitList) = CommitsBrowserComponentFactory(project).create(model) { commit ->
+          commitSelectionModel.value = commit
+        }
+
+        commitList.emptyText.text = GithubBundle.message("pull.request.does.not.contain.commits")
+
+        PopupHandler.installSelectionListPopup(
+          commitList,
+          DefaultActionGroup(actionManager.getAction("Github.PullRequest.Changes.Reload")),
+          "GHPRCommitsPopup")
+
+        commitBrowser
       }
 
     val changesLoadingPanel = GHLoadingPanelFactory(commitChangesLoadingModel,

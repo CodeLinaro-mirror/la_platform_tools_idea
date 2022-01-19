@@ -1,28 +1,19 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.documentation;
 
 import com.intellij.codeInsight.documentation.DocumentationManagerProtocol;
 import com.intellij.codeInsight.documentation.DocumentationManagerUtil;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.extensions.ExtensionPointName;
-import com.intellij.openapi.module.Module;
-import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.*;
+import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.openapi.util.text.HtmlChunk;
-import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocCommentBase;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
-import com.intellij.psi.search.LocalSearchScope;
-import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
-import com.intellij.util.concurrency.annotations.RequiresReadLock;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -65,7 +56,7 @@ public interface DocumentationProvider {
    * HTML markup. If HTML special characters need to be shown in popup, they should be properly escaped.
    */
   @Nullable
-  default @Nls String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {
+  default String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {
     return null;
   }
 
@@ -110,7 +101,7 @@ public interface DocumentationProvider {
    * for the given element
    */
   @Nullable
-  default @Nls String generateDoc(PsiElement element, @Nullable PsiElement originalElement) {
+  default @NlsSafe String generateDoc(PsiElement element, @Nullable PsiElement originalElement) {
     return null;
   }
 
@@ -121,7 +112,7 @@ public interface DocumentationProvider {
    * {@link #generateDoc(PsiElement, PsiElement)} will be used to fetch corresponding content.
    */
   @Nullable
-  default @Nls String generateHoverDoc(@NotNull PsiElement element, @Nullable PsiElement originalElement) {
+  default String generateHoverDoc(@NotNull PsiElement element, @Nullable PsiElement originalElement) {
     return generateDoc(element, originalElement);
   }
 
@@ -130,7 +121,7 @@ public interface DocumentationProvider {
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.2")
-  default @Nls @Nullable String generateRenderedDoc(@NotNull PsiElement element) {
+  default @Nullable @NlsSafe String generateRenderedDoc(@NotNull PsiElement element) {
     return null;
   }
 
@@ -140,7 +131,7 @@ public interface DocumentationProvider {
    * @see #collectDocComments(PsiFile, Consumer)
    */
   @ApiStatus.Experimental
-  default @Nls @Nullable String generateRenderedDoc(@NotNull PsiDocCommentBase comment) {
+  default @Nullable @NlsSafe String generateRenderedDoc(@NotNull PsiDocCommentBase comment) {
     PsiElement target = comment.getOwner();
     return generateRenderedDoc(target == null ? comment : target);
   }
@@ -155,7 +146,7 @@ public interface DocumentationProvider {
    * documentation view to work correctly.
    */
   @ApiStatus.Experimental
-  default void collectDocComments(@NotNull PsiFile file, @NotNull Consumer<? super @NotNull PsiDocCommentBase> sink) { }
+  default void collectDocComments(@NotNull PsiFile file, @NotNull Consumer<? super @NotNull PsiDocCommentBase> sink) {}
 
   /**
    * This method is needed to support rendered representation of documentation comments in editor. It should return doc comment located at
@@ -196,8 +187,8 @@ public interface DocumentationProvider {
    * referenced at target offset) isn't suitable for your language. For example, it could be a keyword where there's no
    * {@link com.intellij.psi.PsiReference}, but for which users might benefit from context help.
    *
-   * @param targetOffset   equals to caret offset for 'Quick Documentation' action, and to offset under mouse cursor for documentation shown
-   *                       on mouse hover
+   * @param targetOffset equals to caret offset for 'Quick Documentation' action, and to offset under mouse cursor for documentation shown
+   *                     on mouse hover
    * @param contextElement the leaf PSI element in {@code file} at target offset
    * @return target PSI element to show documentation for, or {@code null} if it should be determined by standard platform's logic (default
    * behaviour)

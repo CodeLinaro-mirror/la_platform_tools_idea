@@ -164,7 +164,7 @@ public abstract class PropertyReferenceBase implements PsiPolyVariantReference, 
   @Nullable
   protected abstract List<PropertiesFile> getPropertiesFiles();
 
-  protected boolean isProperty(PsiElement element) {
+  private static boolean isProperty(PsiElement element) {
     if (element instanceof IProperty) {
       return true;
     }

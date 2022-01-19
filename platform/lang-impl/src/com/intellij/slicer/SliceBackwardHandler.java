@@ -11,11 +11,14 @@ import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
 import com.intellij.ui.DocumentAdapter;
+import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBTextField;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
+import java.awt.*;
 import java.util.List;
 
 class SliceBackwardHandler extends SliceHandler {
@@ -38,7 +41,7 @@ class SliceBackwardHandler extends SliceHandler {
     SliceLanguageSupportProvider provider = LanguageSlicing.getProvider(element);
     boolean supportFilter = provider.supportValueFilters(element);
     class BackwardHandlerDialog extends BaseAnalysisActionDialog {
-      private SliceBackwardAdditionalUi myUi;
+      private JBTextField field;
       
       private BackwardHandlerDialog() {
         super(dialogTitle, LangBundle.message("separator.analyze.scope"), myProject, items, analysisUIOptions, true);
@@ -47,8 +50,15 @@ class SliceBackwardHandler extends SliceHandler {
       @Override
       protected @Nullable JComponent getAdditionalActionSettings(Project project) {
         if (!supportFilter) return null;
-        myUi = new SliceBackwardAdditionalUi();
-        final JTextField field = myUi.getField();
+        JPanel panel = new JPanel(new GridBagLayout());
+        JBLabel label = new JBLabel(LangBundle.message("label.filter.value") + " ");
+        panel.add(label);
+        field = new JBTextField();
+        Dimension size = field.getPreferredSize();
+        size.width = 400;
+        field.setPreferredSize(size);
+        panel.add(field);
+        label.setLabelFor(field);
         field.getDocument().addDocumentListener(new DocumentAdapter() {
           @Override
           protected void textChanged(@NotNull DocumentEvent e) {
@@ -61,12 +71,11 @@ class SliceBackwardHandler extends SliceHandler {
             }
           }
         });
-        return myUi.getPanel();
+        return panel;
       }
 
       private @Nullable SliceValueFilter getFilter() throws SliceFilterParseException {
-        if (myUi == null) return null;
-        final JTextField field = myUi.getField();
+        if (field == null) return null;
         String text = field.getText().trim();
         if (!text.isEmpty()) {
           return provider.parseFilter(element, text);

@@ -1,15 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.ui;
 
 import com.intellij.codeInsight.ExpectedTypeInfo;
 import com.intellij.codeInsight.ExpectedTypeUtil;
 import com.intellij.codeInsight.ExpectedTypesProvider;
 import com.intellij.codeInsight.TailType;
-import com.intellij.java.JavaBundle;
-import com.intellij.openapi.application.ReadAction;
-import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Ref;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.statistics.StatisticsInfo;
@@ -82,16 +78,8 @@ public class TypeSelectorManagerImpl implements TypeSelectorManager {
     myOccurrences = occurrences;
 
     myOccurrenceClassProvider = createOccurrenceClassProvider();
-
-    Ref<PsiType[]> mainTypes = new Ref<>();
-    Ref<PsiType[]> allTypes = new Ref<>();
-    ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> ReadAction.run(() -> {
-      mainTypes.set(getTypesForMain());
-      allTypes.set(getTypesForAll(true));
-    }), JavaBundle.message("progress.title.calculate.applicable.types"), false, project);
-    
-    myTypesForMain = mainTypes.get();
-    myTypesForAll = allTypes.get();
+    myTypesForMain = getTypesForMain();
+    myTypesForAll = getTypesForAll(true);
 
     if (containingMethod != null) {
       if (PsiUtil.resolveClassInType(type) != null) {

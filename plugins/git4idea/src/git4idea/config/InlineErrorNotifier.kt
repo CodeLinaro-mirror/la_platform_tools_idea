@@ -17,14 +17,12 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.labels.LinkLabel
 import com.intellij.util.Alarm.ThreadToUse.SWING_THREAD
 import com.intellij.util.SingleAlarm
-import com.intellij.util.concurrency.EdtScheduledExecutorService
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.components.BorderLayoutPanel
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.Nls.Capitalization.Sentence
 import org.jetbrains.annotations.Nls.Capitalization.Title
 import org.jetbrains.annotations.NotNull
-import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingConstants
@@ -115,12 +113,12 @@ class GitExecutableInlineComponent(private val container: BorderLayoutPanel,
     }
 
     progressShown = true
-    EdtScheduledExecutorService.getInstance().schedule({
+    SingleAlarm(Runnable {
       if (progressShown) {
         container.addToLeft(pi.component)
         panelToValidate?.validate()
       }
-    }, modalityState, DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS.toLong(), TimeUnit.MILLISECONDS)
+    }, delay = DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS, threadToUse = SWING_THREAD).request(modalityState)
 
     return pi
   }

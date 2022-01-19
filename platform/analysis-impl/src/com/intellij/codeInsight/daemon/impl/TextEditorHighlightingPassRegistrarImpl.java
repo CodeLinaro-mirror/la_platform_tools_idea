@@ -15,7 +15,6 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.containers.ContainerUtil;
 import it.unimi.dsi.fastutil.ints.*;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -32,9 +31,9 @@ public final class TextEditorHighlightingPassRegistrarImpl extends TextEditorHig
   public static final ExtensionPointName<TextEditorHighlightingPassFactoryRegistrar> EP_NAME = new ExtensionPointName<>("com.intellij.highlightingPassFactory");
 
   private final Int2ObjectMap<PassConfig> myRegisteredPassFactories = new Int2ObjectOpenHashMap<>();
-  private final List<DirtyScopeTrackingHighlightingPassFactory> myDirtyScopeTrackingFactories = ContainerUtil.createConcurrentList();
+  private final List<DirtyScopeTrackingHighlightingPassFactory> myDirtyScopeTrackingFactories = new ArrayList<>();
   private final AtomicInteger nextAvailableId = new AtomicInteger();
-  private boolean checkedForCycles; // guarded by this
+  private boolean checkedForCycles;
   private final Project myProject;
   private boolean serializeCodeInsightPasses;
 
@@ -102,8 +101,10 @@ public final class TextEditorHighlightingPassRegistrarImpl extends TextEditorHig
                                                              int forcedPassId) {
     assert !checkedForCycles;
     PassConfig info = new PassConfig(factory,
-             runAfterCompletionOf == null || runAfterCompletionOf.length == 0 ? ArrayUtilRt.EMPTY_INT_ARRAY : runAfterCompletionOf,
-             runAfterOfStartingOf == null || runAfterOfStartingOf.length == 0 ? ArrayUtilRt.EMPTY_INT_ARRAY : runAfterOfStartingOf);
+                                     runAfterCompletionOf == null || runAfterCompletionOf.length == 0 ? ArrayUtilRt.EMPTY_INT_ARRAY
+                                                                                                      : runAfterCompletionOf,
+                                     runAfterOfStartingOf == null || runAfterOfStartingOf.length == 0 ? ArrayUtilRt.EMPTY_INT_ARRAY
+                                                                                                      : runAfterOfStartingOf);
     int passId = forcedPassId == -1 ? nextAvailableId.incrementAndGet() : forcedPassId;
     PassConfig registered = myRegisteredPassFactories.get(passId);
     assert registered == null: "Pass id "+passId +" has already been registered in: "+ registered.passFactory;
@@ -148,7 +149,8 @@ public final class TextEditorHighlightingPassRegistrarImpl extends TextEditorHig
 
       PassConfig passConfig = myRegisteredPassFactories.get(passId);
       TextEditorHighlightingPassFactory factory = passConfig.passFactory;
-      TextEditorHighlightingPass pass = isDumb && !DumbService.isDumbAware(factory) ? null : factory.createHighlightingPass(psiFile, editor);
+      TextEditorHighlightingPass pass = isDumb && !DumbService.isDumbAware(factory)
+                                              ? null : factory.createHighlightingPass(psiFile, editor);
       if (pass == null || isDumb && !DumbService.isDumbAware(pass)) {
         passesRefusedToCreate.add(passId);
       }
@@ -233,7 +235,7 @@ public final class TextEditorHighlightingPassRegistrarImpl extends TextEditorHig
 
   @NotNull
   @Override
-  public Iterable<DirtyScopeTrackingHighlightingPassFactory> getDirtyScopeTrackingFactories() {
+  public List<DirtyScopeTrackingHighlightingPassFactory> getDirtyScopeTrackingFactories() {
     return myDirtyScopeTrackingFactories;
   }
 }

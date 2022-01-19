@@ -1,5 +1,4 @@
 // IS_APPLICABLE: false
-// AFTER-WARNING: The expression is unused
 fun <T> doSomething(a: T) {}
 
 fun foo() {

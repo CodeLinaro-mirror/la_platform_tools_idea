@@ -223,9 +223,6 @@ internal class TestObjectBean {
 
   @JvmField
   val children = mutableListOf<TestObjectBean>()
-
-  @JvmField
-  val singletonSet = setOf("a")
 }
 
 @Suppress("unused")

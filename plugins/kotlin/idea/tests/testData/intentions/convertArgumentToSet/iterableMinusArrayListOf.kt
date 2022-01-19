@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Variable 'c' is never used
 
 fun <T : CharSequence> foo(a: Iterable<T>) {
     val b = arrayListOf("a", "b", "c", "e")

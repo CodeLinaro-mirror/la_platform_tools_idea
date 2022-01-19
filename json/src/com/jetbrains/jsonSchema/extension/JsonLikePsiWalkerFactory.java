@@ -21,7 +21,7 @@ import com.jetbrains.jsonSchema.impl.JsonSchemaObject;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Implement to contribute a JSON-adapter for your language. This allows to run JSON Schemas on non JSON languages.
+ * @author Irina.Chernushina on 3/7/2017.
  */
 public interface JsonLikePsiWalkerFactory {
   ExtensionPointName<JsonLikePsiWalkerFactory> EXTENSION_POINT_NAME = ExtensionPointName.create("com.intellij.json.jsonLikePsiWalkerFactory");

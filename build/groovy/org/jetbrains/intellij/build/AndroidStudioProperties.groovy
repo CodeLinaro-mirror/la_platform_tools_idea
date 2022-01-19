@@ -51,10 +51,9 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     productLayout.productImplementationModules = JAVA_IDE_IMPLEMENTATION_MODULES +
                                                   ["intellij.platform.duplicates.analysis", "intellij.platform.structuralSearch", "intellij.platform.main"] -
                                                   ["intellij.platform.jps.model.impl", "intellij.platform.jps.model.serialization"]
-    productLayout.withAdditionalPlatformJar("resources.jar", "intellij.idea.community.resources", "intellij.android.adt.branding")
+    productLayout.additionalPlatformJars.putAll("resources.jar", "intellij.idea.community.resources", "intellij.android.adt.branding")
 
     productLayout.bundledPluginModules = ProductModulesLayout.DEFAULT_BUNDLED_PLUGINS + BUNDLED_PLUGIN_MODULES + [
-      "intellij.toml",  // b/184090375
       // Android Studio: package CIDR plugins. This list is based on what we have been shipping in Android Studio
       // and the structure of CIDR plugins.
       "intellij.c.clangd",
@@ -108,12 +107,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         withModule("intellij.cidr.modulemap.language", mainJarName)
       },
     ]
-  }
-
-  @Override
-  List<Path> getAdditionalPluginPaths(BuildContext context) {
-    def workspaceRoot = "$context.paths.communityHome/../.."
-    return [Path.of("$workspaceRoot/prebuilts/tools/common/kotlin-plugin/Kotlin").toAbsolutePath().normalize()]
   }
 
   @Override

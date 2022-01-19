@@ -10,13 +10,14 @@ import org.jetbrains.annotations.NotNull;
 import java.nio.charset.Charset;
 
 public class PythonProcessHandler extends KillableColoredProcessHandler {
-
-  public static boolean softKillOnWin() {
-    return Registry.is("kill.windows.processes.softly", false);
-  }
+  public static final boolean SOFT_KILL_ON_WIN = Registry.is("kill.windows.processes.softly", false);
 
   public PythonProcessHandler(@NotNull GeneralCommandLine commandLine) throws ExecutionException {
-    super(commandLine);
+    this(commandLine, SOFT_KILL_ON_WIN);
+  }
+
+  public PythonProcessHandler(@NotNull GeneralCommandLine commandLine, boolean softKillOnWin) throws ExecutionException {
+    super(commandLine, softKillOnWin);
   }
 
   public PythonProcessHandler(Process process, @NotNull String commandLine, @NotNull Charset charset) {

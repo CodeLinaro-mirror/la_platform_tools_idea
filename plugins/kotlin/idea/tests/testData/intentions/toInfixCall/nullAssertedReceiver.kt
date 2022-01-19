@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'p' is never used
 infix fun String.xxx(p: Int): String = this
 
 fun foo(x: String?) {

@@ -9,7 +9,6 @@ import com.intellij.openapi.vcs.AbstractVcs;
 import com.intellij.openapi.vcs.ProjectLevelVcsManager;
 import com.intellij.openapi.vcs.VcsBundle;
 import com.intellij.ui.SimpleListCellRenderer;
-import com.intellij.util.PathUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -22,22 +21,18 @@ import java.util.Comparator;
 
 import static com.intellij.openapi.util.SystemInfo.isMac;
 
-public class StartUseVcsDialog extends DialogWrapper {
+class StartUseVcsDialog extends DialogWrapper {
   @NonNls private static final String GIT = "Git";
 
   private final ComboBox<AbstractVcs> myVcsCombo;
-
-  @NotNull
-  private final String myTargetDirectory;
 
   private static final Comparator<AbstractVcs> VCS_COMPARATOR = Comparator
     .comparingInt((AbstractVcs vcs) -> GIT.equals(vcs.getName()) ? -1 : 0)
     .thenComparing(vcs -> vcs.getDisplayName(), String.CASE_INSENSITIVE_ORDER);
 
-  public StartUseVcsDialog(@NotNull Project project, @NotNull String targetDirectory) {
+  StartUseVcsDialog(@NotNull Project project) {
     super(project, true);
 
-    myTargetDirectory = targetDirectory;
     AbstractVcs[] vcses = ProjectLevelVcsManager.getInstance(project).getAllSupportedVcss();
     ContainerUtil.sort(vcses, VCS_COMPARATOR);
     myVcsCombo = new ComboBox<>(vcses);
@@ -55,8 +50,7 @@ public class StartUseVcsDialog extends DialogWrapper {
 
   @Override
   protected JComponent createCenterPanel() {
-    JLabel selectText = new JLabel(
-      VcsBundle.message("dialog.enable.version.control.integration.select.vcs.label.text", PathUtil.getFileName(myTargetDirectory)));
+    JLabel selectText = new JLabel(VcsBundle.message("dialog.enable.version.control.integration.select.vcs.label.text"));
     selectText.setUI(new MultiLineLabelUI());
 
     JPanel mainPanel = new JPanel(new GridBagLayout());
@@ -92,7 +86,7 @@ public class StartUseVcsDialog extends DialogWrapper {
   }
 
   @NotNull
-  public AbstractVcs getVcs() {
+  AbstractVcs getVcs() {
     return myVcsCombo.getItem();
   }
 }

@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.module.impl;
 
 import com.intellij.configurationStore.RenameableStateStorageManager;
 import com.intellij.ide.highlighter.ModuleFileType;
 import com.intellij.ide.plugins.ContainerDescriptor;
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl;
+import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.*;
 import com.intellij.openapi.components.impl.stores.IComponentStore;
@@ -89,7 +90,7 @@ public class ModuleImpl extends ComponentManagerImpl implements ModuleEx {
   public void init(@Nullable Runnable beforeComponentCreation) {
     // do not measure (activityNamePrefix method not overridden by this class)
     // because there are a lot of modules and no need to measure each one
-    registerComponents();
+    registerComponents(PluginManagerCore.getLoadedPlugins(null), ApplicationManager.getApplication(), null, null);
     if (!isPersistent()) {
       registerService(IComponentStore.class,
                       NonPersistentModuleStore.class,
@@ -165,7 +166,7 @@ public class ModuleImpl extends ComponentManagerImpl implements ModuleEx {
     }
   }
 
-  protected @NotNull IComponentStore getStore() {
+  private @NotNull IComponentStore getStore() {
     return Objects.requireNonNull(getService(IComponentStore.class));
   }
 
@@ -243,12 +244,11 @@ public class ModuleImpl extends ComponentManagerImpl implements ModuleEx {
     return isModuleAdded;
   }
 
+  @SuppressWarnings("deprecation")
   @Override
   public void moduleAdded() {
     isModuleAdded = true;
-    //noinspection deprecation
     processInitializedComponents(ModuleComponent.class, (component, __) -> {
-      //noinspection deprecation
       component.moduleAdded();
       return Unit.INSTANCE;
     });

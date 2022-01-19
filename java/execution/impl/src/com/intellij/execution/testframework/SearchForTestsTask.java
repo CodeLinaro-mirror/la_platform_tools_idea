@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.testframework;
 
 import com.intellij.execution.ExecutionBundle;
@@ -217,44 +217,43 @@ public abstract class SearchForTestsTask extends Task.Backgroundable {
   public void arrangeForIndexAccess() {
     if (!requiresSmartMode() || !DumbService.isDumb(myProject)) return;
 
-    AtomicBoolean canProceedWithTests = new AtomicBoolean();
-    ApplicationManager.getApplication().invokeAndWait(() -> {
-      JLabel component = new JLabel(new HtmlBuilder()
-                                      .appendRaw(ExecutionBundle.message("tests.wait.or.use.partial.index"))
-                                      .wrapWithHtmlBody()
-                                      .toString());
 
-      DialogWrapper dialog = new DialogWrapper(myProject) {
-        {
-          setTitle(IndexingBundle.message("progress.indexing.updating"));
-          setOKButtonText(ExecutionBundle.message("test.button.run.with.partial.index"));
-          init();
-          LaterInvocator.markTransparent(ModalityState.stateForComponent(component));
-        }
 
-        @Override
-        protected JComponent createCenterPanel() {
-          return component;
-        }
-      };
+    JLabel component = new JLabel(new HtmlBuilder()
+                                    .appendRaw(ExecutionBundle.message("tests.wait.or.use.partial.index"))
+                                    .wrapWithHtmlBody()
+                                    .toString());
 
-      myProject.getMessageBus().connect(dialog.getDisposable()).subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
-        @Override
-        public void exitDumbMode() {
-          canProceedWithTests.set(true);
-          Window window = ComponentUtil.getWindow(component);
-          if (window != null) {
-            window.setVisible(false);
-          }
+    DialogWrapper dialog = new DialogWrapper(myProject) {
+      {
+        setTitle(IndexingBundle.message("progress.indexing.updating"));
+        setOKButtonText(ExecutionBundle.message("test.button.run.with.partial.index"));
+        init();
+        LaterInvocator.markTransparent(ModalityState.stateForComponent(component));
+      }
+      @Override
+      protected JComponent createCenterPanel() {
+        return component;
+      }
+    };
+
+    AtomicBoolean finishedItself = new AtomicBoolean();
+    myProject.getMessageBus().connect(dialog.getDisposable()).subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
+      @Override
+      public void exitDumbMode() {
+        finishedItself.set(true);
+        Window window = ComponentUtil.getWindow(component);
+        if (window != null) {
+          window.setVisible(false);
         }
-      });
-      if (dialog.showAndGet()) {
-        myAllowIndexInDumbMode = true;
-        canProceedWithTests.set(true);
       }
     });
+    if (dialog.showAndGet()) {
+      myAllowIndexInDumbMode = true;
+      return;
+    }
 
-    if (canProceedWithTests.get()) {
+    if (finishedItself.get()) {
       return;
     }
     throw new ProcessCanceledException();

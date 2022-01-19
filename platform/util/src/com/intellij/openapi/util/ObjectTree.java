@@ -219,10 +219,7 @@ final class ObjectTree {
         if (object == null) continue;
         ObjectNode objectNode = getNode(object);
         if (objectNode == null) continue;
-        while (objectNode.getParent() != null) {
-          objectNode = objectNode.getParent();
-        }
-        final Throwable trace = objectNode.getTrace();
+        final Throwable trace = getRegistrationTrace(objectNode);
         String message = "Memory leak detected: '" + object + "' of " + object.getClass() + " is registered in Disposer but wasn't disposed.\n" +
                          "Register it with a proper parentDisposable or ensure that it's always disposed by direct Disposer.dispose call.\n" +
                          "See https://jetbrains.org/intellij/sdk/docs/basics/disposers.html for more details.\n" +
@@ -239,6 +236,13 @@ final class ObjectTree {
   Throwable getRegistrationTrace(Disposable object) {
     ObjectNode objectNode = getNode(object);
     if (objectNode == null) return null;
+    return getRegistrationTrace(objectNode);
+  }
+
+  private static Throwable getRegistrationTrace(ObjectNode objectNode) {
+    while (objectNode.getParent() != null) {
+      objectNode = objectNode.getParent();
+    }
     return objectNode.getTrace();
   }
 

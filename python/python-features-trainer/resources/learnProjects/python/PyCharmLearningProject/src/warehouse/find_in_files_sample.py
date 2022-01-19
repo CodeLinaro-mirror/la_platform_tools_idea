@@ -1,4 +1,4 @@
-from warehouse import Warehouse
+from warehouse.warehouse import Warehouse
 
 warehouse = Warehouse()
 warehouse.add_fruits('peach', 3)

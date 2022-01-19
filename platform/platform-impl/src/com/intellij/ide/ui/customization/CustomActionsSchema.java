@@ -1,16 +1,14 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui.customization;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.ide.IdeBundle;
-import com.intellij.ide.ui.ToolbarSettings;
+import com.intellij.ide.ui.experimental.toolbar.ExperimentalToolbarSettings;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
@@ -23,6 +21,7 @@ import com.intellij.openapi.util.DefaultJDOMExternalizer;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
 import com.intellij.openapi.wm.impl.ProjectFrameHelper;
@@ -44,7 +43,7 @@ import java.util.List;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-@State(name = "com.intellij.ide.ui.customization.CustomActionsSchema", storages = @Storage("customization.xml"), category = SettingsCategory.UI)
+@State(name = "com.intellij.ide.ui.customization.CustomActionsSchema", storages = @Storage("customization.xml"))
 public final class CustomActionsSchema implements PersistentStateComponent<Element> {
   private static final Logger LOG = Logger.getInstance(CustomActionsSchema.class);
 
@@ -60,7 +59,6 @@ public final class CustomActionsSchema implements PersistentStateComponent<Eleme
   private final Map<String, String> myIconCustomizations = new HashMap<>();
   private final Map<String, @Nls String> myIdToName = new LinkedHashMap<>();
   private final Map<String, ActionGroup> myIdToActionGroup = new HashMap<>();
-  private final Set<String> myExtGroupIds = new HashSet<>();
 
   private List<ActionUrl> myActions = new ArrayList<>();
   private boolean isFirstLoadState = true;
@@ -69,7 +67,7 @@ public final class CustomActionsSchema implements PersistentStateComponent<Eleme
 
   public CustomActionsSchema() {
     myIdToName.put(IdeActions.GROUP_MAIN_MENU, ActionsTreeUtil.getMainMenuTitle());
-    if (ToolbarSettings.getInstance().isEnabled()) {
+    if(Registry.is(ExperimentalToolbarSettings.newToolbarRegistryKey)) {
       myIdToName.put(IdeActions.GROUP_EXPERIMENTAL_TOOLBAR, ActionsTreeUtil.getExperimentalToolbar());
     }
     myIdToName.put(IdeActions.GROUP_MAIN_TOOLBAR, ActionsTreeUtil.getMainToolbar());
@@ -84,31 +82,18 @@ public final class CustomActionsSchema implements PersistentStateComponent<Eleme
     myIdToName.put(IdeActions.GROUP_NAVBAR_POPUP, ActionsTreeUtil.getNavigationBarPopupMenu());
     myIdToName.put(IdeActions.GROUP_NAVBAR_TOOLBAR, ActionsTreeUtil.getNavigationBarToolbar());
 
-    fillExtGroups();
-    CustomizableActionGroupProvider.EP_NAME.addChangeListener(this::fillExtGroups, null);
-
-    myIdToName.putAll(ourAdditionalIdToName);
-  }
-
-  private void fillExtGroups() {
-    for (String id : myExtGroupIds) {
-      myIdToName.remove(id);
-    }
-    myExtGroupIds.clear();
-
     List<Pair<String, @Nls String>> extList = new ArrayList<>();
     CustomizableActionGroupProvider.CustomizableActionGroupRegistrar registrar =
-      (groupId, groupTitle) -> {
-        extList.add(Pair.create(groupId, groupTitle));
-      };
+      (groupId, groupTitle) -> extList.add(Pair.create(groupId, groupTitle));
     for (CustomizableActionGroupProvider provider : CustomizableActionGroupProvider.EP_NAME.getExtensions()) {
       provider.registerGroups(registrar);
     }
     extList.sort((o1, o2) -> StringUtil.naturalCompare(o1.second, o2.second));
     for (Pair<String, @Nls String> couple : extList) {
-      myExtGroupIds.add(couple.first);
       myIdToName.put(couple.first, couple.second);
     }
+
+    myIdToName.putAll(ourAdditionalIdToName);
   }
 
   public static void addSettingsGroup(@NotNull String itemId, @Nls @NotNull String itemName) {
@@ -173,8 +158,10 @@ public final class CustomActionsSchema implements PersistentStateComponent<Eleme
   public boolean isModified(CustomActionsSchema schema) {
     List<ActionUrl> storedActions = schema.getActions();
     if (ApplicationManager.getApplication().isUnitTestMode() && !storedActions.isEmpty()) {
-      LOG.error(IdeBundle.message("custom.action.stored", storedActions));
-      LOG.error(IdeBundle.message("custom.action.actual", getActions()));
+      //noinspection UseOfSystemOutOrSystemErr
+      System.err.println("stored: " + storedActions.toString());
+      //noinspection UseOfSystemOutOrSystemErr
+      System.err.println("actual: " + getActions().toString());
     }
     if (storedActions.size() != getActions().size()) {
       return true;
@@ -217,7 +204,8 @@ public final class CustomActionsSchema implements PersistentStateComponent<Eleme
     }
 
     if (ApplicationManager.getApplication().isUnitTestMode()) {
-      LOG.error(IdeBundle.message("custom.option.testmode", myActions.toString()));
+      //noinspection UseOfSystemOutOrSystemErr
+      System.err.println("read custom actions: " + myActions.toString());
     }
 
     for (Element action : element.getChildren(ELEMENT_ACTION)) {

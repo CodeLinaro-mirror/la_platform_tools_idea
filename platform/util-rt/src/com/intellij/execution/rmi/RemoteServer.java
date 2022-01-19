@@ -147,9 +147,7 @@ public class RemoteServer {
 
         @Override
         public Socket createSocket(String host, int port) throws IOException {
-          Socket socket = new Socket(host, port);
-          socket.setKeepAlive(true);
-          return socket;
+          return new Socket(host, port);
         }
 
         @Override

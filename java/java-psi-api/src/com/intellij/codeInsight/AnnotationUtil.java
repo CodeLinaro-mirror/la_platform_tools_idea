@@ -122,12 +122,11 @@ public class AnnotationUtil {
   }
 
   @Nullable
-  private static List<PsiAnnotation> findNonCodeAnnotations(@NotNull PsiModifierListOwner element, @NotNull Collection<String> annotationNames) {
-    if (element instanceof PsiLocalVariable) {
+  private static List<PsiAnnotation> findNonCodeAnnotations(@NotNull PsiModifierListOwner listOwner, @NotNull Collection<String> annotationNames) {
+    if (listOwner instanceof PsiLocalVariable) {
       // Non-code annotations for local variables are not supported: don't bother to search them
       return null;
     }
-    PsiModifierListOwner listOwner = AnnotationCacheOwnerNormalizer.normalize(element);
     Map<Collection<String>, List<PsiAnnotation>> map = CachedValuesManager.getCachedValue(
       listOwner,
       () -> {
@@ -182,20 +181,19 @@ public class AnnotationUtil {
 
   @NotNull
   public static <T extends PsiModifierListOwner> List<T> getSuperAnnotationOwners(@NotNull T element) {
-    PsiModifierListOwner listOwner = AnnotationCacheOwnerNormalizer.normalize(element);
-    return CachedValuesManager.getCachedValue(listOwner, () -> {
+    return CachedValuesManager.getCachedValue(element, () -> {
       Set<PsiModifierListOwner> result = new LinkedHashSet<>();
-      if (listOwner instanceof PsiMethod) {
-        if (!listOwner.hasModifierProperty(PsiModifier.STATIC)) {
-          collectSuperMethods(result, ((PsiMethod)listOwner).getHierarchicalMethodSignature(), listOwner,
-                              JavaPsiFacade.getInstance(listOwner.getProject()).getResolveHelper());
+      if (element instanceof PsiMethod) {
+        if (!element.hasModifierProperty(PsiModifier.STATIC)) {
+          collectSuperMethods(result, ((PsiMethod)element).getHierarchicalMethodSignature(), element,
+                              JavaPsiFacade.getInstance(element.getProject()).getResolveHelper());
         }
       }
-      else if (listOwner instanceof PsiClass) {
-        InheritanceUtil.processSupers((PsiClass)listOwner, false, Processors.cancelableCollectProcessor(result));
+      else if (element instanceof PsiClass) {
+        InheritanceUtil.processSupers((PsiClass)element, false, Processors.cancelableCollectProcessor(result));
       }
-      else if (listOwner instanceof PsiParameter) {
-        collectSuperParameters(result, (PsiParameter)listOwner);
+      else if (element instanceof PsiParameter) {
+        collectSuperParameters(result, (PsiParameter)element);
       }
 
       List<T> list;

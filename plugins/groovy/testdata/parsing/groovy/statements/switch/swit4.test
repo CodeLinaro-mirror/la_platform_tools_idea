@@ -1,6 +1,6 @@
 switch (a){
 case 1: break
-default:
+default: 
 }
 -----
 Groovy script
@@ -14,18 +14,22 @@ Groovy script
     PsiElement({)('{')
     PsiWhiteSpace('\n')
     Case section
-      PsiElement(case)('case')
-      PsiWhiteSpace(' ')
-      Expression list
+      Case label
+        PsiElement(case)('case')
+        PsiWhiteSpace(' ')
         Literal
           PsiElement(Integer)('1')
-      PsiElement(:)(':')
+        PsiElement(:)(':')
       PsiWhiteSpace(' ')
       BREAK statement
         PsiElement(break)('break')
       PsiElement(new line)('\n')
     Case section
-      PsiElement(default)('default')
-      PsiElement(:)(':')
+      Case label
+        PsiElement(default)('default')
+        PsiElement(:)(':')
+      PsiWhiteSpace(' ')
       PsiElement(new line)('\n')
+      PsiErrorElement:<statement> expected, got '}'
+        <empty list>
     PsiElement(})('}')

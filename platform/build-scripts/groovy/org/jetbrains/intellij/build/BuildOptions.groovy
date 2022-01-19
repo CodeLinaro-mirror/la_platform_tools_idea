@@ -44,22 +44,22 @@ class BuildOptions {
   /**
    * Pass comma-separated names of build steps (see below) to this system property to skip them.
    */
-  private static final String BUILD_STEPS_TO_SKIP_PROPERTY = "intellij.build.skip.build.steps"
+  public static final String BUILD_STEPS_TO_SKIP_PROPERTY = "intellij.build.skip.build.steps"
 
   /**
-   * Pass comma-separated names of build steps (see below) to {@link BuildOptions#BUILD_STEPS_TO_SKIP_PROPERTY} system property to skip them when building locally.
+   * Pass comma-separated names of build steps (see below) to 'intellij.build.skip.build.steps' system property to skip them when building locally.
    */
-  Set<String> buildStepsToSkip = new HashSet<>(Arrays.asList(System.getProperty(BUILD_STEPS_TO_SKIP_PROPERTY, "").split(",")).findAll {!it.isBlank() })
+  Set<String> buildStepsToSkip = new HashSet<>(Arrays.asList(System.getProperty(BUILD_STEPS_TO_SKIP_PROPERTY, "").split(",")))
   /** Pre-builds SVG icons for all SVG resource files into *.jpix resources to speedup icons loading at runtime */
-  public static final String SVGICONS_PREBUILD_STEP = "svg_icons_prebuild"
+  static final String SVGICONS_PREBUILD_STEP = "svg_icons_prebuild"
   /** Build actual searchableOptions.xml file. If skipped; the (possibly outdated) source version of the file will be used. */
-  public static final String SEARCHABLE_OPTIONS_INDEX_STEP = "search_index"
-  public static final String BROKEN_PLUGINS_LIST_STEP = "broken_plugins_list"
+  static final String SEARCHABLE_OPTIONS_INDEX_STEP = "search_index"
+  static final String BROKEN_PLUGINS_LIST_STEP = "broken_plugins_list"
   static final String PROVIDED_MODULES_LIST_STEP = "provided_modules_list"
-  public static final String GENERATE_JAR_ORDER_STEP = "jar_order"
+  static final String GENERATE_JAR_ORDER_STEP = "jar_order"
   static final String SOURCES_ARCHIVE_STEP = "sources_archive"
-  public static final String SCRAMBLING_STEP = "scramble"
-  public static final String NON_BUNDLED_PLUGINS_STEP = "non_bundled_plugins"
+  static final String SCRAMBLING_STEP = "scramble"
+  static final String NON_BUNDLED_PLUGINS_STEP = "non_bundled_plugins"
   /** Build Maven artifacts for IDE modules. */
   static final String MAVEN_ARTIFACTS_STEP = "maven_artifacts"
   /** Build macOS artifacts. */
@@ -86,8 +86,6 @@ class BuildOptions {
   static final String THIRD_PARTY_LIBRARIES_LIST_STEP = "third_party_libraries"
   /** Build community distributives */
   static final String COMMUNITY_DIST_STEP = "community_dist"
-  public static final String PREBUILD_SHARED_INDEXES = "prebuild_shared_indexes"
-  public static final String SETUP_BUNDLED_MAVE = "setup_bundled_maven"
   /**
    * Publish artifacts to TeamCity storage while the build is still running, immediately after the artifacts are built.
    * Comprises many small publication steps.
@@ -97,17 +95,7 @@ class BuildOptions {
   /**
    * @see org.jetbrains.intellij.build.fus.StatisticsRecorderBundledMetadataProvider
    */
-  public static final String FUS_METADATA_BUNDLE_STEP = "fus_metadata_bundle_step"
-
-  /**
-   * @see org.jetbrains.intellij.build.impl.support.RepairUtilityBuilder
-   */
-  static final String REPAIR_UTILITY_BUNDLE_STEP = "repair_utility_bundle_step"
-
-  /**
-   * May be useful to skip this step in TeamCity build to use experimental JBR provided via artifact dependency.
-   */
-  static final String RUNTIME_DOWNLOADING_STEP = "runtime_downloading_step"
+  static final String FUS_METADATA_BUNDLE_STEP = "fus_metadata_bundle_step"
 
   /**
    * Pass 'true' to this system property to produce an additional .dmg archive for macOS without bundled JRE.
@@ -165,13 +153,6 @@ class BuildOptions {
    * change the output directory.
    */
   String outputRootPath = System.getProperty("intellij.build.output.root")
-
-  String logPath = System.getProperty("intellij.build.log.root")
-
-  /**
-   * If {@code true} write a separate compilation.log for all compilation messages
-   */
-  Boolean compilationLogEnabled = SystemProperties.getBooleanProperty("intellij.build.compilation.log.enabled", true)
 
   static final String CLEAN_OUTPUT_FOLDER_PROPERTY = "intellij.build.clean.output.root"
   boolean cleanOutputFolder = SystemProperties.getBooleanProperty(CLEAN_OUTPUT_FOLDER_PROPERTY, true)
@@ -247,25 +228,15 @@ class BuildOptions {
   boolean validateModuleStructure = System.getProperty(VALIDATE_MODULES_STRUCTURE, "false").toBoolean()
 
   /**
-   * Max attempts of dependencies resolution on fault. "1" means no retries.
-   *
-   * @see {@link org.jetbrains.intellij.build.impl.JpsCompilationRunner#resolveProjectDependencies}
+   * Path to prebuilt Kotlin plugin (not zipped).
+   * Currently fully-fledged Kotlin plugin distribution is being on TeamCity only via kombo.gant script.
+   * If this path is not specified then distribution without LLDB debugger is going to be built locally (for tests only).
    */
-  public static final String RESOLVE_DEPENDENCIES_MAX_ATTEMPTS_PROPERTY = "intellij.build.dependencies.resolution.retry.max.attempts"
-  int resolveDependenciesMaxAttempts = System.getProperty(RESOLVE_DEPENDENCIES_MAX_ATTEMPTS_PROPERTY, "2").toInteger()
-
-  /**
-   * Initial delay in milliseconds between dependencies resolution retries on fault. Default is 1000
-   *
-   * @see {@link org.jetbrains.intellij.build.impl.JpsCompilationRunner#resolveProjectDependencies}
-   */
-  public static final String RESOLVE_DEPENDENCIES_DELAY_MS_PROPERTY = "intellij.build.dependencies.resolution.retry.delay.ms"
-  long resolveDependenciesDelayMs = System.getProperty(RESOLVE_DEPENDENCIES_DELAY_MS_PROPERTY, "1000").toLong()
-
-  static final String TARGET_OS = "intellij.build.target.os"
+  static final String PREBUILT_KOTLIN_PLUGIN_PATH = "intellij.build.kotlin.plugin.path"
+  String prebuiltKotlinPluginPath = System.getProperty(PREBUILT_KOTLIN_PLUGIN_PATH)
 
   BuildOptions() {
-    targetOS = System.getProperty(TARGET_OS)
+    targetOS = System.getProperty("intellij.build.target.os")
     if (targetOS == OS_CURRENT) {
       targetOS = SystemInfo.isWindows ? OS_WINDOWS :
                  SystemInfo.isMac ? OS_MAC :

@@ -17,9 +17,6 @@ public interface RegExpLanguageHost {
   boolean characterNeedsEscaping(char c);
   boolean supportsPerl5EmbeddedComments();
   boolean supportsPossessiveQuantifiers();
-  default boolean isDuplicateGroupNamesAllowed(@NotNull RegExpGroup group) {
-    return false;
-  }
 
   /**
    * @return true, if this dialects support conditionals, i.e. the following construct: {@code (?(1)then|else)}

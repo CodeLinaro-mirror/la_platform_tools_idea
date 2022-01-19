@@ -1,11 +1,11 @@
-interface T : A
-
 fun foo() {
-    open class X : A
+    open class X: A
+
+    interface T: A
 
     fun bar() {
-        open class Y : X()
+        public open class Y: X()
 
-        class Z : T
+        public class Z: T
     }
 }

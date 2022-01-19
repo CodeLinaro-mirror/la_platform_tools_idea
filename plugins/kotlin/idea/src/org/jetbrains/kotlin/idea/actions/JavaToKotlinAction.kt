@@ -10,7 +10,7 @@ import com.intellij.ide.scratch.ScratchRootType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
+import com.intellij.openapi.actionSystem.LangDataKeys
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -107,14 +107,13 @@ class JavaToKotlinAction : AnAction() {
         }
 
         fun convertFiles(
-            files: List<PsiJavaFile>,
+            javaFiles: List<PsiJavaFile>,
             project: Project,
             module: Module,
             enableExternalCodeProcessing: Boolean = true,
             askExternalCodeProcessing: Boolean = true,
             forceUsingOldJ2k: Boolean = false
         ): List<KtFile> {
-            val javaFiles = files.filter { it.virtualFile.isWritable }.ifEmpty { return emptyList() }
             var converterResult: FilesResult? = null
             fun convert() {
                 val converter =
@@ -215,7 +214,7 @@ class JavaToKotlinAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val javaFiles = selectedJavaFiles(e).filter { it.isWritable }.toList()
         val project = CommonDataKeys.PROJECT.getData(e.dataContext) ?: return
-        val module = e.getData(PlatformCoreDataKeys.MODULE) ?: return
+        val module = e.getData(LangDataKeys.MODULE) ?: return
 
         if (javaFiles.isEmpty()) {
             val statusBar = WindowManager.getInstance().getStatusBar(project)
@@ -266,7 +265,7 @@ class JavaToKotlinAction : AnAction() {
         if (isRunningInCidrIde) return false
         val virtualFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY) ?: return false
         val project = e.project ?: return false
-        e.getData(PlatformCoreDataKeys.MODULE) ?: return false
+        e.getData(LangDataKeys.MODULE) ?: return false
         return isAnyJavaFileSelected(project, virtualFiles)
     }
 

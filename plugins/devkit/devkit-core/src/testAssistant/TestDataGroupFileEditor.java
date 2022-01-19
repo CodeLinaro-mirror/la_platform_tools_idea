@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.testAssistant;
 
 import com.intellij.codeHighlighting.BackgroundEditorHighlighter;
@@ -13,7 +13,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Splitter;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.UserDataHolderBase;
-import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.pom.Navigatable;
 import com.intellij.reference.SoftReference;
@@ -29,22 +28,24 @@ import java.awt.*;
 import java.beans.PropertyChangeListener;
 import java.lang.ref.WeakReference;
 
+
 public class TestDataGroupFileEditor extends UserDataHolderBase implements TextEditor {
-  private final Project myProject;
+  private WeakReference<Splitter> myComponent;
   private final TestDataGroupVirtualFile myFile;
+  private final Project myProject;
   private final TextEditor myBeforeEditor;
   private final TextEditor myAfterEditor;
-  private WeakReference<Splitter> myComponent;
 
   public TestDataGroupFileEditor(Project project, TestDataGroupVirtualFile file) {
-    myProject = project;
     myFile = file;
+    myProject = project;
     myBeforeEditor = (TextEditor)TextEditorProvider.getInstance().createEditor(project, file.getBeforeFile());
     myAfterEditor = (TextEditor)TextEditorProvider.getInstance().createEditor(project, file.getAfterFile());
   }
 
   @Override
-  public @NotNull JComponent getComponent() {
+  @NotNull
+  public JComponent getComponent() {
     Splitter result = SoftReference.dereference(myComponent);
     if (result == null) {
       myComponent = new WeakReference<>(result = createComponent());
@@ -59,9 +60,13 @@ public class TestDataGroupFileEditor extends UserDataHolderBase implements TextE
     return splitter;
   }
 
+  @NotNull
   @Override
-  public @NotNull Editor getEditor() {
-    return (SwingUtilities.isEventDispatchThread() && isBeforeEditorFocused() ? myBeforeEditor : myAfterEditor).getEditor();
+  public Editor getEditor() {
+    if (SwingUtilities.isEventDispatchThread() && isBeforeEditorFocused()) {
+      return myBeforeEditor.getEditor();
+    }
+    return myAfterEditor.getEditor();
   }
 
   private boolean isBeforeEditorFocused() {
@@ -77,11 +82,12 @@ public class TestDataGroupFileEditor extends UserDataHolderBase implements TextE
   }
 
   @Override
-  public void navigateTo(@NotNull Navigatable navigatable) { }
+  public void navigateTo(@NotNull Navigatable navigatable) {
+  }
 
-  private static JComponent wrapWithTitle(@NlsSafe String name, FileEditor beforeEditor) {
+  private static JComponent wrapWithTitle(@NlsSafe String name, final FileEditor beforeEditor) {
     JPanel panel = new JPanel(new BorderLayout());
-    JLabel label = new JBLabel(name, UIUtil.ComponentStyle.SMALL);
+    final JLabel label = new JBLabel(name, UIUtil.ComponentStyle.SMALL);
     label.setBorder(JBUI.Borders.empty(1, 4, 2, 0));
     panel.add(BorderLayout.NORTH, label);
     panel.add(BorderLayout.CENTER, beforeEditor.getComponent());
@@ -94,12 +100,14 @@ public class TestDataGroupFileEditor extends UserDataHolderBase implements TextE
   }
 
   @Override
-  public @NotNull String getName() {
+  @NotNull
+  public String getName() {
     return myFile.getName();
   }
 
   @Override
-  public void setState(@NotNull FileEditorState state) { }
+  public void setState(@NotNull FileEditorState state) {
+  }
 
   @Override
   public boolean isModified() {
@@ -112,16 +120,20 @@ public class TestDataGroupFileEditor extends UserDataHolderBase implements TextE
   }
 
   @Override
-  public void selectNotify() { }
+  public void selectNotify() {
+  }
 
   @Override
-  public void deselectNotify() { }
+  public void deselectNotify() {
+  }
 
   @Override
-  public void addPropertyChangeListener(@NotNull PropertyChangeListener listener) { }
+  public void addPropertyChangeListener(@NotNull PropertyChangeListener listener) {
+  }
 
   @Override
-  public void removePropertyChangeListener(@NotNull PropertyChangeListener listener) { }
+  public void removePropertyChangeListener(@NotNull PropertyChangeListener listener) {
+  }
 
   @Override
   public BackgroundEditorHighlighter getBackgroundHighlighter() {
@@ -136,11 +148,6 @@ public class TestDataGroupFileEditor extends UserDataHolderBase implements TextE
   @Override
   public StructureViewBuilder getStructureViewBuilder() {
     return null;
-  }
-
-  @Override
-  public @NotNull VirtualFile getFile() {
-    return myFile;
   }
 
   @Override

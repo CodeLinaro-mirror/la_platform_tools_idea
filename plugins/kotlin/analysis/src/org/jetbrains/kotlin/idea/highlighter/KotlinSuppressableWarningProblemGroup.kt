@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.idea.quickfix.AnnotationHostKind
 import org.jetbrains.kotlin.idea.quickfix.KotlinSuppressIntentionAction
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
+import java.util.*
 
 class KotlinSuppressableWarningProblemGroup(
     private val diagnosticFactory: DiagnosticFactory<*>
@@ -23,16 +24,21 @@ class KotlinSuppressableWarningProblemGroup(
 
     override fun getProblemName() = diagnosticFactory.name
 
-    override fun getSuppressActions(element: PsiElement?): Array<SuppressIntentionAction> =
-        element?.let { createSuppressWarningActions(it, diagnosticFactory).toTypedArray() } ?: SuppressIntentionAction.EMPTY_ARRAY
+    override fun getSuppressActions(element: PsiElement?): Array<SuppressIntentionAction> {
+        if (element == null)
+            return SuppressIntentionAction.EMPTY_ARRAY
+
+        return createSuppressWarningActions(element, diagnosticFactory).toTypedArray()
+    }
 
 }
 
 fun createSuppressWarningActions(element: PsiElement, diagnosticFactory: DiagnosticFactory<*>): List<SuppressIntentionAction> =
-    createSuppressWarningActions(element, diagnosticFactory.severity, diagnosticFactory.name)
+    createSuppressWarningActions(element, diagnosticFactory.severity, diagnosticFactory.name!!)
+
 
 fun createSuppressWarningActions(element: PsiElement, severity: Severity, suppressionKey: String): List<SuppressIntentionAction> {
-    if (severity != Severity.WARNING) return emptyList()
+    if (severity != Severity.WARNING) return Collections.emptyList()
 
     val actions = arrayListOf<SuppressIntentionAction>()
     var current: PsiElement? = element

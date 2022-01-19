@@ -5,6 +5,7 @@ package org.jetbrains.kotlin.idea.scratch.actions
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnActionEvent
 import org.jetbrains.kotlin.idea.KotlinJvmBundle
+import org.jetbrains.kotlin.idea.scratch.getScratchFileFromSelectedEditor
 
 class StopScratchAction : ScratchAction(
     KotlinJvmBundle.message("scratch.stop.button"),
@@ -18,7 +19,8 @@ class StopScratchAction : ScratchAction(
     override fun update(e: AnActionEvent) {
         super.update(e)
 
-        val scratchFile = e.currentScratchFile ?: return
+        val project = e.project ?: return
+        val scratchFile = getScratchFileFromSelectedEditor(project) ?: return
 
         e.presentation.isEnabledAndVisible = ScratchCompilationSupport.isInProgress(scratchFile)
     }

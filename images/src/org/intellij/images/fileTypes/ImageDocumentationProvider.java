@@ -1,18 +1,15 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.images.fileTypes;
 
 import com.intellij.lang.documentation.AbstractDocumentationProvider;
 import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.text.HtmlBuilder;
-import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileSystemItem;
-import org.intellij.images.ImagesBundle;
 import org.intellij.images.index.ImageInfoIndex;
 import org.intellij.images.util.ImageInfo;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
@@ -25,7 +22,9 @@ public class ImageDocumentationProvider extends AbstractDocumentationProvider {
   private static final int MAX_IMAGE_SIZE = 300;
 
   @Override
-  public @Nls String generateDoc(PsiElement element, @Nullable PsiElement originalElement) {
+  public String generateDoc(PsiElement element, @Nullable PsiElement originalElement) {
+    final Ref<String> result = Ref.create();
+
     if (element instanceof PsiFileSystemItem && !((PsiFileSystemItem)element).isDirectory()) {
       final VirtualFile file = ((PsiFileSystemItem)element).getVirtualFile();
       if (!DumbService.isDumb(element.getProject())) {
@@ -46,12 +45,8 @@ public class ImageDocumentationProvider extends AbstractDocumentationProvider {
               path = "/" + path;
             }
             final String url = new URI("file", null, path, null).toString();
-            HtmlChunk.Element img = HtmlChunk.tag("img")
-              .attr("src", url)
-              .attr("width", imageWidth)
-              .attr("height", imageHeight);
-            String message = ImagesBundle.message("image.description", imageInfo.width, imageInfo.height, imageInfo.bpp);
-            return new HtmlBuilder().append(img).append(HtmlChunk.p().addText(message)).toString();
+            result.set(String.format("<img src=\"%s\" width=\"%s\" height=\"%s\"><p>%sx%s, %sbpp</p>", url, imageWidth,
+                                     imageHeight, imageInfo.width, imageInfo.height, imageInfo.bpp));
           }
           catch (URISyntaxException ignored) {
             // nothing
@@ -60,6 +55,6 @@ public class ImageDocumentationProvider extends AbstractDocumentationProvider {
       }
     }
 
-    return null;
+    return result.get();
   }
 }

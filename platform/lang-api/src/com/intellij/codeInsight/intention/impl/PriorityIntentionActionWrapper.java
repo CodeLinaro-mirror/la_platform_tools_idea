@@ -64,8 +64,11 @@ public final class PriorityIntentionActionWrapper implements IntentionAction, Pr
   }
 
   @Override
-  public boolean invokeForPreview(@NotNull Project project, Editor editor, PsiFile file) {
-    return myAction.invokeForPreview(project, editor, file);
+  public @Nullable FileModifier getFileModifierForPreview(@NotNull PsiFile target) {
+    IntentionAction delegate = ObjectUtils.tryCast(myAction.getFileModifierForPreview(target), IntentionAction.class);
+    return delegate == null ? null :
+           delegate == myAction ? this :
+           new PriorityIntentionActionWrapper(delegate, myPriority);
   }
 
   @Override

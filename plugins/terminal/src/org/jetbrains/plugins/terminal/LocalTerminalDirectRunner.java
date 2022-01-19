@@ -4,7 +4,10 @@ package org.jetbrains.plugins.terminal;
 import com.google.common.collect.ImmutableList;
 import com.intellij.execution.TaskExecutor;
 import com.intellij.execution.configuration.EnvironmentVariablesData;
-import com.intellij.execution.process.*;
+import com.intellij.execution.process.ProcessAdapter;
+import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessWaitFor;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PathMacroManager;
@@ -24,6 +27,7 @@ import com.jediterm.terminal.TtyConnector;
 import com.pty4j.PtyProcess;
 import com.pty4j.PtyProcessBuilder;
 import com.pty4j.unix.UnixPtyProcess;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,8 +37,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -125,7 +129,6 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
     EnvironmentVariablesData envData = TerminalProjectOptionsProvider.getInstance(myProject).getEnvData();
     if (envData.isPassParentEnvs()) {
       envs.putAll(System.getenv());
-      EnvironmentRestorer.restoreOverriddenVars(envs);
     }
 
     if (!SystemInfo.isWindows) {
@@ -178,8 +181,7 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
         .setEnvironment(envs)
         .setDirectory(workingDir)
         .setInitialColumns(options.getInitialColumns())
-        .setInitialRows(options.getInitialRows())
-        .setUseWinConPty(LocalPtyOptions.shouldUseWinConPty());
+        .setInitialRows(options.getInitialRows());
       PtyProcess process = builder.start();
       if (LOG.isDebugEnabled()) {
         LOG.debug("Started " + process.getClass().getName() + " from " + Arrays.toString(command) + " in " + workingDir +
@@ -254,8 +256,26 @@ public class LocalTerminalDirectRunner extends AbstractTerminalRunner<PtyProcess
    *         {@link LocalTerminalCustomizer#customizeCommandAndEnvironment} to it.
    */
   public @NotNull List<String> getInitialCommand(@NotNull Map<String, String> envs) {
+    return getCommands(envs);
+  }
+
+  /**
+   * @deprecated use {@link #getInitialCommand(Map)} instead
+   */
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
+  @Deprecated
+  public @NotNull List<String> getCommands(@NotNull Map<String, String> envs) {
+    return Arrays.asList(getCommand(envs));
+  }
+
+  /**
+   * @deprecated use {@link #getInitialCommand(Map)} instead
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
+  public String[] getCommand(Map<String, String> envs) {
     String shellPath = getShellPath();
-    return getCommand(shellPath, envs, TerminalOptionsProvider.getInstance().shellIntegration());
+    return ArrayUtil.toStringArray(getCommand(shellPath, envs, TerminalOptionsProvider.getInstance().shellIntegration()));
   }
 
   private @NotNull String getShellPath() {

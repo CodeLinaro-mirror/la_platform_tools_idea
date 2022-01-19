@@ -14,7 +14,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.project.Project;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.frame.XStackFrame;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
@@ -48,10 +47,8 @@ public abstract class GotoFrameSourceAction extends DebuggerAction{
           JavaExecutionStack executionStack =
             new JavaExecutionStack(threadProxy, process, Objects.equals(threadSuspendContext.getThread(), threadProxy));
           executionStack.initTopFrame();
-          XStackFrame frame = ContainerUtil.getFirstItem(executionStack.createStackFrames(frameProxy));
-          if (frame != null) {
-            DebuggerUIUtil.invokeLater(() -> session.setCurrentStackFrame(executionStack, frame));
-          }
+          XStackFrame frame = executionStack.createStackFrame(frameProxy);
+          DebuggerUIUtil.invokeLater(() -> session.setCurrentStackFrame(executionStack, frame));
         }
       });
     }

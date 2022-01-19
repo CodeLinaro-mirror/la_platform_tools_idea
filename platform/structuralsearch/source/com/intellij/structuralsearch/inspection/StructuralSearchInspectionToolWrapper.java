@@ -41,7 +41,7 @@ public class StructuralSearchInspectionToolWrapper extends LocalInspectionToolWr
   }
 
   @Override
-  public @NotNull String getID() {
+  public String getID() {
     return getTool().getID();
   }
 

@@ -279,6 +279,12 @@ public final class RecursionUtils {
       return referenceExpressionDefinitelyRecurses(
         (PsiReferenceExpression)exp, method);
     }
+    if (exp instanceof PsiLiteralExpression ||
+        exp instanceof PsiClassObjectAccessExpression ||
+        exp instanceof PsiThisExpression ||
+        exp instanceof PsiSuperExpression) {
+      return false;
+    }
     return false;
   }
 

@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 's' is never used
 class C {
     companion object {
         operator fun contains(s: String) = true

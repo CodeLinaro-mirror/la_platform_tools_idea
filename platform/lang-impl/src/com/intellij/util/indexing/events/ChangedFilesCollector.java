@@ -56,15 +56,33 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
   private final Executor
     myVfsEventsExecutor = SequentialTaskExecutor.createSequentialApplicationPoolExecutor("FileBasedIndex Vfs Event Processor");
   private final AtomicInteger myScheduledVfsEventsWorkers = new AtomicInteger();
-  private final FileBasedIndexImpl myFileBasedIndex = (FileBasedIndexImpl)FileBasedIndex.getInstance();
+  private final FileBasedIndexImpl myManager = (FileBasedIndexImpl)FileBasedIndex.getInstance();
+
+  private final AtomicInteger myUpdatingFiles = new AtomicInteger();
+
+  @Override
+  protected void buildIndicesForFileRecursively(@NotNull VirtualFile file, boolean contentChange) {
+    IndexingFlag.cleanProcessedFlagRecursively(file);
+    if (!contentChange) {
+      myUpdatingFiles.incrementAndGet();
+    }
+
+    super.buildIndicesForFileRecursively(file, contentChange);
+
+    if (!contentChange) {
+      if (myUpdatingFiles.decrementAndGet() == 0) {
+        myManager.incrementFilesModCount();
+      }
+    }
+  }
 
   @Override
   protected void iterateIndexableFiles(@NotNull VirtualFile file, @NotNull ContentIterator iterator) {
-    if (myFileBasedIndex.belongsToIndexableFiles(file)) {
+    if (myManager.belongsToIndexableFiles(file)) {
       VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
         @Override
         public boolean visitFile(@NotNull VirtualFile file11) {
-          if (!myFileBasedIndex.belongsToIndexableFiles(file11)) return false;
+          if (!myManager.belongsToIndexableFiles(file11)) return false;
           iterator.processFile(file11);
           return true;
         }
@@ -72,17 +90,23 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
     }
   }
 
+  public boolean isUpdateInProgress() {
+    return myUpdatingFiles.get() > 0;
+  }
+
   public void scheduleForUpdate(@NotNull VirtualFile file) {
+    if (VfsEventsMerger.LOG != null) {
+      VfsEventsMerger.LOG.info("File " + file + " is scheduled for update");
+    }
     int fileId = FileBasedIndex.getFileId(file);
     if (!(file instanceof DeletedVirtualFileStub)) {
-      Set<Project> projects = myFileBasedIndex.getContainingProjects(file);
+      Set<Project> projects = myManager.getContainingProjects(file);
       if (projects.isEmpty()) {
         removeNonIndexableFileData(file, fileId);
         return;
       }
     }
 
-    VfsEventsMerger.tryLog("ADD_TO_UPDATE", file);
     myFilesToUpdate.put(fileId, file);
   }
 
@@ -90,7 +114,6 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
     int fileId = FileBasedIndex.getFileId(file);
     VirtualFile alreadyScheduledFile = myFilesToUpdate.get(fileId);
     if (!(alreadyScheduledFile instanceof DeletedVirtualFileStub)) {
-      VfsEventsMerger.tryLog("PULL_OUT_FROM_UPDATE", file);
       myFilesToUpdate.remove(fileId);
     }
   }
@@ -143,7 +166,7 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
       @Override
       public void beforeVfsChange() {
         if (shouldCleanup) {
-          myFileBasedIndex.cleanupMemoryStorage(false);
+          myManager.cleanupMemoryStorage(false);
         }
         superApplier.beforeVfsChange();
       }
@@ -151,7 +174,7 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
       @Override
       public void afterVfsChange() {
         superApplier.afterVfsChange();
-        RegisteredIndexes registeredIndexes = myFileBasedIndex.getRegisteredIndexes();
+        RegisteredIndexes registeredIndexes = myManager.getRegisteredIndexes();
         if (registeredIndexes != null && registeredIndexes.isInitialized()) ensureUpToDateAsync();
       }
     };
@@ -161,7 +184,7 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
     if (CLEAR_NON_INDEXABLE_FILE_DATA) {
       List<ID<?, ?>> extensions = getIndexedContentDependentExtensions(fileId);
       if (!extensions.isEmpty()) {
-        myFileBasedIndex.removeDataFromIndicesForFile(fileId, file, "non_indexable_file");
+        myManager.removeDataFromIndicesForFile(fileId, file);
       }
       IndexingFlag.cleanProcessingFlag(file);
     }
@@ -186,7 +209,7 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
       return;
     }
     //assert ApplicationManager.getApplication().isReadAccessAllowed() || ShutDownTracker.isShutdownHookRunning();
-    myFileBasedIndex.waitUntilIndicesAreInitialized();
+    myManager.waitUntilIndicesAreInitialized();
 
     if (ApplicationManager.getApplication().isReadAccessAllowed()) {
       processFilesToUpdateInReadAction();
@@ -231,10 +254,11 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
     processFilesInReadAction(info -> {
       int fileId = info.getFileId();
       VirtualFile file = info.getFile();
-      if (info.isTransientStateChanged()) myFileBasedIndex.doTransientStateChangeForFile(fileId, file);
-      if (info.isContentChanged()) myFileBasedIndex.scheduleFileForIndexing(fileId, file, true);
-      if (info.isFileRemoved()) myFileBasedIndex.doInvalidateIndicesForFile(fileId, file);
-      if (info.isFileAdded()) myFileBasedIndex.scheduleFileForIndexing(fileId, file, false);
+      if (info.isTransientStateChanged()) myManager.doTransientStateChangeForFile(fileId, file);
+      if (info.isBeforeContentChanged()) myManager.doInvalidateIndicesForFile(fileId, file, true);
+      if (info.isContentChanged()) myManager.scheduleFileForIndexing(fileId, file, true);
+      if (info.isFileRemoved()) myManager.doInvalidateIndicesForFile(fileId, file, false);
+      if (info.isFileAdded()) myManager.scheduleFileForIndexing(fileId, file, false);
       return true;
     });
   }
@@ -251,9 +275,9 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
     myWorkersFinishedSync.register();
     int phase = myWorkersFinishedSync.getPhase();
     try {
-      myFileBasedIndex.waitUntilIndicesAreInitialized();
+      myManager.waitUntilIndicesAreInitialized();
       getEventMerger().processChanges(info ->
-        ConcurrencyUtil.withLock(myFileBasedIndex.myWriteLock, () -> {
+        ConcurrencyUtil.withLock(myManager.myWriteLock, () -> {
           try {
             ProgressManager.getInstance().executeNonCancelableSection(() -> {
               processor.process(info);
@@ -297,7 +321,7 @@ public final class ChangedFilesCollector extends IndexedFilesListener {
 
   private @NotNull List<ID<?, ?>> getIndexedContentDependentExtensions(int fileId) {
     List<ID<?, ?>> indexedStates = IndexingStamp.getNontrivialFileIndexedStates(fileId);
-    RegisteredIndexes registeredIndexes = myFileBasedIndex.getRegisteredIndexes();
+    RegisteredIndexes registeredIndexes = myManager.getRegisteredIndexes();
     List<ID<?, ?>> contentDependentIndexes;
     if (registeredIndexes == null) {
       Set<? extends ID<?, ?>> allContentDependentIndexes =

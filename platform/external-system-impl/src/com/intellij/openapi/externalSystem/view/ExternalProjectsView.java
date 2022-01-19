@@ -28,18 +28,13 @@ import java.awt.event.InputEvent;
 import java.util.List;
 
 /**
- * Describes what data and how it should be shown in external project tree view.
- * Also, this view is a container of project structure UI info and UI utils.
- *
- * @see ExternalProjectsStructure
- * @see com.intellij.ui.treeStructure.Tree
- * @see com.intellij.openapi.externalSystem.service.ui.SelectExternalSystemNodeDialog
- * @see com.intellij.openapi.externalSystem.service.task.ui.AbstractExternalSystemToolWindowFactory
+ * @author Vladislav.Soroka
  */
 public interface ExternalProjectsView {
   ExternalSystemUiAware getUiAware();
 
-  @Nullable ExternalProjectsStructure getStructure();
+  @Nullable
+  ExternalProjectsStructure getStructure();
 
   ExternalSystemShortcutsManager getShortcutsManager();
 

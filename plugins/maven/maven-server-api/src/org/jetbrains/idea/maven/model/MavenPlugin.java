@@ -119,20 +119,6 @@ public class MavenPlugin implements Serializable {
     return null;
   }
 
-  public List<Element> getCompileExecutionConfigurations() {
-    List<Element> result = new ArrayList<Element>();
-    for (MavenPlugin.Execution each : getExecutions()) {
-      if (isCompileExecution(each) && each.getConfigurationElement() != null) {
-        result.add(each.getConfigurationElement());
-      }
-    }
-    return result;
-  }
-
-  private static boolean isCompileExecution(Execution each) {
-    return "default-compile".equals(each.getExecutionId()) || (each.getGoals() != null && each.getGoals().contains("compile"));
-  }
-
   public String getDisplayString() {
     StringBuilder builder = new StringBuilder();
 

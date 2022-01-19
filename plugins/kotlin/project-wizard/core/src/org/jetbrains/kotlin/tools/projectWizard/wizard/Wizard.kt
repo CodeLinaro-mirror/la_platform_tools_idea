@@ -3,7 +3,6 @@ package org.jetbrains.kotlin.tools.projectWizard.wizard
 
 import org.jetbrains.kotlin.tools.projectWizard.core.*
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.*
-import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.PluginSetting
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.SettingSerializer
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.reference
 import org.jetbrains.kotlin.tools.projectWizard.core.service.ServicesManager
@@ -43,17 +42,14 @@ abstract class Wizard(createPlugins: PluginsCreator, servicesManager: ServicesMa
         }
     }
 
-    fun validate(phases: Set<GenerationPhase>, toBeValidated: (PluginSetting<*, *>.() -> Boolean) = { true }): ValidationResult =
-        context.read {
-            pluginSettings.map { setting ->
-                val value = setting.notRequiredSettingValue ?: return@map ValidationResult.OK
-                if (setting.toBeValidated() && setting.neededAtPhase in phases && setting.isActive(this)) {
-                    val validator = setting.validator.safeAs<SettingValidator<Any>>()
-                    validator?.validate?.let { it(this, value) } ?: ValidationResult.OK
-                }
-                else ValidationResult.OK
-            }.fold()
-        }
+    fun validate(phases: Set<GenerationPhase>): ValidationResult = context.read {
+        pluginSettings.map { setting ->
+            val value = setting.notRequiredSettingValue ?: return@map ValidationResult.OK
+            if (setting.validateOnProjectCreation && setting.neededAtPhase in phases && setting.isActive(this))
+                (setting.validator as SettingValidator<Any>).validate(this, value)
+            else ValidationResult.OK
+        }.fold()
+    }
 
     private fun saveSettingValues(phases: Set<GenerationPhase>) = context.read {
         for (setting in pluginSettings) {
@@ -76,7 +72,7 @@ abstract class Wizard(createPlugins: PluginsCreator, servicesManager: ServicesMa
         initPluginSettingsDefaultValues()
         initNonPluginDefaultValues()
         checkAllRequiredSettingPresent(phases).ensure()
-        validate(phases) { validateOnProjectCreation }.toResult().ensure()
+        validate(phases).toResult().ensure()
         saveSettingValues(phases)
         val (tasksSorted) = context.sortTasks().map { tasks ->
             tasks.groupBy { it.phase }.toList().sortedBy { it.first }.flatMap { it.second }

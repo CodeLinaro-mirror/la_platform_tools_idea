@@ -42,8 +42,6 @@ class ImplicitTypeInlayProvider : InlayHintsProvider<NoSettings> {
 
   override val name: String
     get() = JavaBundle.message("settings.inlay.java.implicit.types")
-  override val group: InlayGroup
-    get() = InlayGroup.TYPES_GROUP
   override val key: SettingsKey<NoSettings>
     get() = SettingsKey("java.implicit.types")
   override val previewText: String?

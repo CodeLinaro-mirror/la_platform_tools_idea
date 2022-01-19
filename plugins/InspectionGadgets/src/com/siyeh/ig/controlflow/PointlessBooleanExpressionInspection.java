@@ -592,8 +592,7 @@ public class PointlessBooleanExpressionInspection extends BaseInspection {
     @Override
     public void visitReferenceExpression(PsiReferenceExpression expression) {
       final PsiElement target = expression.resolve();
-      if (target instanceof PsiVariable && ((PsiVariable)target).hasModifierProperty(PsiModifier.FINAL) &&
-          ((PsiVariable)target).hasInitializer()) {
+      if (target instanceof PsiField && ExpressionUtils.isConstant((PsiField)target)) {
         referenceFound = true;
       }
       else {

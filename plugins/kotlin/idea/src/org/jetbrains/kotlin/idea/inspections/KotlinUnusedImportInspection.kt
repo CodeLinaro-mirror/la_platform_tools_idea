@@ -25,6 +25,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.util.PsiEditorUtil
 import com.intellij.psi.util.PsiModificationTracker
+import com.intellij.psi.util.PsiUtilBase
 import com.intellij.util.DocumentUtil
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
@@ -145,7 +146,6 @@ class KotlinUnusedImportInspection : AbstractKotlinInspection() {
         val invokeFixLater = Disposable {
             // later because should invoke when highlighting is finished
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
                 val editor = PsiEditorUtil.findEditor(file)
                 val currentModificationCount = PsiModificationTracker.SERVICE.getInstance(project).modificationCount
                 if (editor != null && currentModificationCount == modificationCount && timeToOptimizeImportsOnTheFly(

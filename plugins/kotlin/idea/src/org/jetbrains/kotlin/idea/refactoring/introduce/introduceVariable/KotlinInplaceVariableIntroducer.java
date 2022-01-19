@@ -8,7 +8,9 @@ import com.intellij.codeInsight.template.impl.TemplateManagerImpl;
 import com.intellij.codeInsight.template.impl.TemplateState;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.Result;
 import com.intellij.openapi.command.CommandProcessor;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.project.Project;
@@ -24,7 +26,6 @@ import kotlin.collections.ArraysKt;
 import kotlin.collections.CollectionsKt;
 import kotlin.jvm.functions.Function0;
 import kotlin.jvm.functions.Function1;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.idea.KotlinBundle;
@@ -43,8 +44,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
-
-import static com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction;
 
 public class KotlinInplaceVariableIntroducer<D extends KtCallableDeclaration> extends InplaceVariableIntroducer<KtExpression> {
     private static final Key<KotlinInplaceVariableIntroducer> ACTIVE_INTRODUCER = Key.create("ACTIVE_INTRODUCER");
@@ -115,7 +114,7 @@ public class KotlinInplaceVariableIntroducer<D extends KtCallableDeclaration> ex
 
     public KotlinInplaceVariableIntroducer(
             PsiNamedElement elementToRename, Editor editor, Project project,
-            @Nls String title, KtExpression[] occurrences,
+            String title, KtExpression[] occurrences,
             @Nullable KtExpression expr, boolean replaceOccurrence,
             D declaration, boolean isVar, boolean doNotChangeVar,
             @Nullable KotlinType exprType, boolean noTypeInference
@@ -238,18 +237,21 @@ public class KotlinInplaceVariableIntroducer<D extends KtCallableDeclaration> ex
                 varCheckbox.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(@NotNull ActionEvent e) {
-                        runWriteCommandAction(myProject, getCommandName(), getCommandName(), () -> {
-                            PsiDocumentManager.getInstance(myProject).commitDocument(myEditor.getDocument());
+                        new WriteCommandAction(myProject, getCommandName(), getCommandName()) {
+                            @Override
+                            protected void run(@NotNull Result result) {
+                                PsiDocumentManager.getInstance(myProject).commitDocument(myEditor.getDocument());
 
-                            KtPsiFactory psiFactory = new KtPsiFactory(myProject);
-                            PsiElement keyword =
-                                    varCheckbox.isSelected() ? psiFactory.createVarKeyword() : psiFactory.createValKeyword();
+                                KtPsiFactory psiFactory = new KtPsiFactory(myProject);
+                                PsiElement keyword =
+                                        varCheckbox.isSelected() ? psiFactory.createVarKeyword() : psiFactory.createValKeyword();
 
-                            PsiElement valOrVar = myDeclaration instanceof KtProperty
-                                                  ? ((KtProperty) myDeclaration).getValOrVarKeyword()
-                                                  : ((KtParameter) myDeclaration).getValOrVarKeyword();
-                            valOrVar.replace(keyword);
-                        });
+                                PsiElement valOrVar = myDeclaration instanceof KtProperty
+                                                      ? ((KtProperty) myDeclaration).getValOrVarKeyword()
+                                                      : ((KtParameter) myDeclaration).getValOrVarKeyword();
+                                valOrVar.replace(keyword);
+                            }
+                        }.execute();
                     }
                 });
 
@@ -260,32 +262,35 @@ public class KotlinInplaceVariableIntroducer<D extends KtCallableDeclaration> ex
 
     protected final void runWriteActionAndRestartRefactoring(final Runnable runnable) {
         final Ref<Boolean> greedyToRight = new Ref<>();
-        runWriteCommandAction(myProject, getCommandName(), getCommandName(), () -> {
-            PsiDocumentManager.getInstance(myProject).commitDocument(myEditor.getDocument());
+        new WriteCommandAction(myProject, getCommandName(), getCommandName()) {
+            @Override
+            protected void run(@NotNull Result result) {
+                PsiDocumentManager.getInstance(myProject).commitDocument(myEditor.getDocument());
 
-            ASTNode identifier = myDeclaration.getNode().findChildByType(KtTokens.IDENTIFIER);
-            if (identifier != null) {
-                TextRange range = identifier.getTextRange();
-                RangeHighlighter[] highlighters = myEditor.getMarkupModel().getAllHighlighters();
-                for (RangeHighlighter highlighter : highlighters) {
-                    if (highlighter.getStartOffset() == range.getStartOffset()) {
-                        if (highlighter.getEndOffset() == range.getEndOffset()) {
-                            greedyToRight.set(highlighter.isGreedyToRight());
-                            highlighter.setGreedyToRight(false);
+                ASTNode identifier = myDeclaration.getNode().findChildByType(KtTokens.IDENTIFIER);
+                if (identifier != null) {
+                    TextRange range = identifier.getTextRange();
+                    RangeHighlighter[] highlighters = myEditor.getMarkupModel().getAllHighlighters();
+                    for (RangeHighlighter highlighter : highlighters) {
+                        if (highlighter.getStartOffset() == range.getStartOffset()) {
+                            if (highlighter.getEndOffset() == range.getEndOffset()) {
+                                greedyToRight.set(highlighter.isGreedyToRight());
+                                highlighter.setGreedyToRight(false);
+                            }
                         }
                     }
                 }
-            }
 
-            runnable.run();
+                runnable.run();
 
-            TemplateState templateState =
-                    TemplateManagerImpl.getTemplateState(InjectedLanguageUtil.getTopLevelEditor(myEditor));
-            if (templateState != null) {
-                myEditor.putUserData(INTRODUCE_RESTART, true);
-                templateState.gotoEnd(true);
+                TemplateState templateState =
+                        TemplateManagerImpl.getTemplateState(InjectedLanguageUtil.getTopLevelEditor(myEditor));
+                if (templateState != null) {
+                    myEditor.putUserData(INTRODUCE_RESTART, true);
+                    templateState.gotoEnd(true);
+                }
             }
-        });
+        }.execute();
         ApplicationManager.getApplication().runReadAction(() -> {
             ASTNode identifier = myDeclaration.getNode().findChildByType(KtTokens.IDENTIFIER);
             if (identifier != null) {

@@ -99,6 +99,7 @@ public interface ExtensionPoint<@NotNull T> {
    *
    * Consider to use {@link ExtensionNotApplicableException} instead.
    */
+  @SuppressWarnings("unused")
   void unregisterExtension(@NotNull Class<? extends T> extensionClass);
 
   /**

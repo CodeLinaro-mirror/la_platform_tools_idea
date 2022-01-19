@@ -131,14 +131,6 @@ class LessonManager {
     learnPanel?.removeMessage(index)
   }
 
-  fun removeMessageAndRepaint(index: Int) {
-    learnPanel?.let {
-      it.removeMessage(index)
-      it.lessonMessagePane.redrawMessages()
-      it.adjustMessagesArea()
-    }
-  }
-
   fun messagesNumber(): Int = learnPanel?.messagesNumber() ?: 0
 
   fun passExercise() {

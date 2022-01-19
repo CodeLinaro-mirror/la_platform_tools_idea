@@ -25,31 +25,25 @@ public final class NioFiles {
    */
   public static @NotNull Path createDirectories(@NotNull Path path) throws IOException {
     try {
-      tryCreateDirectory(path);
-    }
-    catch (FileAlreadyExistsException e) {
-      throw e;
-    }
-    catch (IOException e) {
-      Path parent = path.getParent();
-      if (parent == null) {
-        throw e;
+      if (!Files.isDirectory(path)) {
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+          throw new FileAlreadyExistsException(path.toString(), null, "already exists");
+        }
+        else {
+          Path parent = path.getParent();
+          if (parent != null) {
+            createDirectories(parent);
+          }
+          Files.createDirectory(path);
+        }
       }
-      createDirectories(parent);
-      tryCreateDirectory(path);
+    }
+    catch (FileAlreadyExistsException err) {
+      if (!Files.isDirectory(path)) {
+        throw err;
+      }
     }
     return path;
-  }
-
-  private static void tryCreateDirectory(Path path) throws IOException {
-    try {
-      Files.createDirectory(path);
-    }
-    catch (FileAlreadyExistsException e) {
-      if (!Files.isDirectory(path)) {
-        throw e;
-      }
-    }
   }
 
   /**

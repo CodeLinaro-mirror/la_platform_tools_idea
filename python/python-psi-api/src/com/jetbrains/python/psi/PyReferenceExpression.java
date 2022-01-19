@@ -15,6 +15,7 @@
  */
 package com.jetbrains.python.psi;
 
+import com.google.common.base.Predicates;
 import com.intellij.psi.PsiPolyVariantReference;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.resolve.QualifiedRatedResolveResult;
@@ -50,7 +51,7 @@ public interface PyReferenceExpression extends PyQualifiedExpression, PyReferenc
    */
   @NotNull
   default List<QualifiedRatedResolveResult> multiFollowAssignmentsChain(@NotNull PyResolveContext resolveContext) {
-    return multiFollowAssignmentsChain(resolveContext, __->true);
+    return multiFollowAssignmentsChain(resolveContext, Predicates.alwaysTrue());
   }
 
   /**

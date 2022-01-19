@@ -33,12 +33,12 @@ public class PyAttributeOutsideInitInspectionTest extends PyInspectionTestCase {
   }
 
   public void testTestClass() {
-    myFixture.configureByFile("packages/unittest/unittest.py");
+    myFixture.configureByFile("unittest.py");
     doTest();
   }
 
   public void testUnitTest() {
-    myFixture.configureByFile("packages/unittest/unittest.py");
+    myFixture.configureByFile("unittest.py");
     doTest();
   }
 

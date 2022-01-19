@@ -13,7 +13,6 @@ import training.dsl.restoreAfterStateBecomeFalse
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
 import training.learn.course.LessonType
-import training.util.isToStringContains
 
 abstract class FileStructureLesson
   : KLesson("File structure", LessonsBundle.message("file.structure.lesson.name")) {
@@ -54,7 +53,7 @@ abstract class FileStructureLesson
       if (ActionManager.getInstance().getAction("ActivateStructureToolWindow") != null) {
         task("ActivateStructureToolWindow") {
           text(LessonsBundle.message("file.structure.toolwindow", action(it)))
-          stateCheck { focusOwner?.javaClass?.name.isToStringContains("StructureViewComponent") }
+          stateCheck { focusOwner?.javaClass?.name?.contains("StructureViewComponent") ?: false }
           test { actions(it) }
         }
       }
@@ -68,11 +67,4 @@ abstract class FileStructureLesson
     }
     return false
   }
-
-  override val suitableTips = listOf("FileStructurePopup")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(LessonsBundle.message("file.structure.help.link"),
-         LessonUtil.getHelpLink("viewing-structure-of-a-source-file.html")),
-  )
 }

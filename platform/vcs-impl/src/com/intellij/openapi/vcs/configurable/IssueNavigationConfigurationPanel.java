@@ -5,6 +5,8 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonShortcuts;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.application.ApplicationNamesInfo;
+import com.intellij.openapi.options.Configurable;
+import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -24,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 
-public class IssueNavigationConfigurationPanel extends JPanel {
+public class IssueNavigationConfigurationPanel extends JPanel implements SearchableConfigurable, Configurable.NoScroll {
   private final JBTable myLinkTable;
   private final Project myProject;
   private List<IssueNavigationLink> myLinks;
@@ -99,16 +101,19 @@ public class IssueNavigationConfigurationPanel extends JPanel {
         .disableUpDownActions().createPanel(), BorderLayout.CENTER);
   }
 
+  @Override
   public void apply() {
     IssueNavigationConfiguration configuration = IssueNavigationConfiguration.getInstance(myProject);
     configuration.setLinks(myLinks);
   }
 
+  @Override
   public boolean isModified() {
     IssueNavigationConfiguration configuration = IssueNavigationConfiguration.getInstance(myProject);
     return !myLinks.equals(configuration.getLinks());
   }
 
+  @Override
   public void reset() {
     IssueNavigationConfiguration configuration = IssueNavigationConfiguration.getInstance(myProject);
     myLinks = new ArrayList<>();
@@ -120,6 +125,28 @@ public class IssueNavigationConfigurationPanel extends JPanel {
       myLinks,
       0);
     myLinkTable.setModel(myModel);
+  }
+
+  @Override
+  public String getDisplayName() {
+    return VcsBundle.message("configurable.IssueNavigationConfigurationPanel.display.name");
+  }
+
+  @Override
+  public String getHelpTopic() {
+    return "project.propVCSSupport.Issue.Navigation";
+  }
+
+  @Override
+  @NotNull
+  public String getId() {
+    return getHelpTopic();
+  }
+
+  @Override
+  public JComponent createComponent() {
+    SwingUtilities.updateComponentTreeUI(this); // TODO: create Swing components in this method (see javadoc)
+    return this;
   }
 
   private class AddYouTrackLinkAction extends DumbAwareAction {

@@ -16,8 +16,6 @@ Groovy script
         PsiElement(identifier)('B')
     Implements clause
       <empty list>
-    Permits clause
-      <empty list>
     PsiElement(new line)('\n')
     Type definition body
       PsiElement({)('{')

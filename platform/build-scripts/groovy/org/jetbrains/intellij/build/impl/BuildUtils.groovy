@@ -1,8 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.text.StringUtilRt
-import com.intellij.util.XmlDomReader
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import org.apache.tools.ant.AntClassLoader
@@ -11,13 +10,10 @@ import org.apache.tools.ant.Main
 import org.apache.tools.ant.Project
 import org.apache.tools.ant.util.SplitClassLoader
 import org.jetbrains.annotations.NotNull
-import org.jetbrains.annotations.Nullable
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.jps.model.library.JpsOrderRootType
 
-import java.nio.file.FileSystems
 import java.nio.file.Files
-import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 @CompileStatic
@@ -156,15 +152,9 @@ final class BuildUtils {
   static List<String> propertiesToJvmArgs(Map<String, Object> properties) {
     List<String> result = new ArrayList<String>(properties.size())
     for (Map.Entry<String, Object> entry : properties.entrySet()) {
-      addVmProperty(result, entry.key, entry.value.toString())
+      result.add("-D" + entry.key + "=" + entry.value)
     }
     return result
-  }
-
-  static void addVmProperty(@NotNull List<String> args, @NotNull String key, @Nullable String value) {
-    if (value != null) {
-      args.add("-D" + key + "=" + value)
-    }
   }
 
   static void convertLineSeparators(@NotNull Path file, @NotNull String newLineSeparator) {
@@ -172,25 +162,6 @@ final class BuildUtils {
     String convertedData = StringUtilRt.convertLineSeparators(data, newLineSeparator)
     if (data != convertedData) {
       Files.writeString(file, convertedData)
-    }
-  }
-
-  static List<Path> getPluginJars(Path pluginPath) {
-    return Files.newDirectoryStream(pluginPath.resolve("lib"), "*.jar").withCloseable { it.toList() }
-  }
-
-  @Nullable
-  static String readPluginId(Path pluginJar) {
-    if (!pluginJar.toString().endsWith(".jar") || !Files.isRegularFile(pluginJar)) {
-      return null
-    }
-
-    try {
-      FileSystems.newFileSystem(pluginJar, null).withCloseable {
-        return XmlDomReader.readXmlAsModel(Files.newInputStream(it.getPath("META-INF/plugin.xml"))).getChild("id")?.content
-      }
-    }
-    catch (NoSuchFileException ignore) {
     }
   }
 }

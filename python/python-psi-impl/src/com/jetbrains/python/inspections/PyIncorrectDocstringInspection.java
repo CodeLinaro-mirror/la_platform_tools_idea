@@ -42,7 +42,7 @@ public class PyIncorrectDocstringInspection extends PyBaseDocstringInspection {
   @NotNull
   @Override
   public Visitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
-    return new Visitor(holder, PyInspectionVisitor.getContext(session)) {
+    return new Visitor(holder, session) {
 
       @Override
       protected void checkDocString(@NotNull PyDocStringOwner node) {

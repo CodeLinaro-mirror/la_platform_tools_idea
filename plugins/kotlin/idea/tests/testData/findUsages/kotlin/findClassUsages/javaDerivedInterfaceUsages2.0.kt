@@ -4,14 +4,15 @@ interface <caret>X {
 
 }
 
-open class A : X {
+open class A: X {
 
 }
 
-open class C : Y {
+open class C: Y {
 
 }
 
-open class Z : A() {
+interface Z: A {
 
 }
+// DISABLE-ERRORS

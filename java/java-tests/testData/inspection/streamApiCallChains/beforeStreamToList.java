@@ -1,4 +1,4 @@
-// "Replace 'collect(toList())' with 'toList()'" "true"
+// "Replace with 'java.util.ArrayList' constructor" "true"
 
 import java.util.List;
 import java.util.stream.*;

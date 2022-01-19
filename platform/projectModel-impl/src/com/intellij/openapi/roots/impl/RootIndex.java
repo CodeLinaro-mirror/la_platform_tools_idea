@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -177,7 +177,6 @@ class RootIndex {
   private RootInfo buildRootInfo(@NotNull Project project) {
     final RootInfo info = new RootInfo();
     ModuleManager moduleManager = ModuleManager.getInstance(project);
-    boolean includeProjectJdk = true;
     for (final Module module : moduleManager.getModules()) {
       final ModuleRootManager moduleRootManager = ModuleRootManager.getInstance(module);
 
@@ -220,7 +219,23 @@ class RootIndex {
           VirtualFile[] sourceRoots = myRootSupplier.getLibraryRoots(entry, OrderRootType.SOURCES);
           VirtualFile[] classRoots = myRootSupplier.getLibraryRoots(entry, OrderRootType.CLASSES);
 
-          fillIndexWithLibraryRoots(info, entry, sourceRoots, classRoots);
+          // Init library sources
+          for (final VirtualFile sourceRoot : sourceRoots) {
+            if (!ensureValid(sourceRoot, entry)) continue;
+
+            info.classAndSourceRoots.add(sourceRoot);
+            info.libraryOrSdkSources.add(sourceRoot);
+            info.packagePrefix.put(sourceRoot, "");
+          }
+
+          // init library classes
+          for (final VirtualFile classRoot : classRoots) {
+            if (!ensureValid(classRoot, entry)) continue;
+
+            info.classAndSourceRoots.add(classRoot);
+            info.libraryOrSdkClasses.add(classRoot);
+            info.packagePrefix.put(classRoot, "");
+          }
 
           if (orderEntry instanceof LibraryOrderEntry) {
             Library library = ((LibraryOrderEntry)orderEntry).getLibrary();
@@ -242,20 +257,10 @@ class RootIndex {
               }
             }
           }
-          else {
-            includeProjectJdk = false;
-          }
         }
       }
     }
 
-    if (includeProjectJdk) {
-      Sdk sdk = ProjectRootManager.getInstance(project).getProjectSdk();
-      if (sdk != null) {
-        fillIndexWithLibraryRoots(info, sdk, myRootSupplier.getSdkRoots(sdk, OrderRootType.SOURCES), myRootSupplier.getSdkRoots(sdk, OrderRootType.CLASSES));
-      }
-    }
-    
     for (AdditionalLibraryRootsProvider provider : AdditionalLibraryRootsProvider.EP_NAME.getExtensionList()) {
       Collection<SyntheticLibrary> libraries = provider.getAdditionalProjectLibraries(project);
       for (SyntheticLibrary library : libraries) {
@@ -328,26 +333,6 @@ class RootIndex {
       }
     }
     return info;
-  }
-
-  private static void fillIndexWithLibraryRoots(RootInfo info, Object container, VirtualFile[] sourceRoots, VirtualFile[] classRoots) {
-    // Init library sources
-    for (final VirtualFile sourceRoot : sourceRoots) {
-      if (!ensureValid(sourceRoot, container)) continue;
-
-      info.classAndSourceRoots.add(sourceRoot);
-      info.libraryOrSdkSources.add(sourceRoot);
-      info.packagePrefix.put(sourceRoot, "");
-    }
-
-    // init library classes
-    for (final VirtualFile classRoot : classRoots) {
-      if (!ensureValid(classRoot, container)) continue;
-
-      info.classAndSourceRoots.add(classRoot);
-      info.libraryOrSdkClasses.add(classRoot);
-      info.packagePrefix.put(classRoot, "");
-    }
   }
 
   private static boolean ensureValid(@NotNull VirtualFile file, @NotNull Object container) {
@@ -863,7 +848,7 @@ class RootIndex {
     @Nullable
     private Pair<VirtualFile, List<Condition<? super VirtualFile>>> findLibraryRootInfo(@NotNull List<? extends VirtualFile> hierarchy,
                                                                                         boolean source) {
-      Set</*Library|SyntheticLibrary*/ Object> librariesToIgnore = createLibrarySet();
+      Set</*Library|SyntheticLibrary*/ Object> librariesToIgnore = new HashSet<>();
       for (VirtualFile root : hierarchy) {
         librariesToIgnore.addAll(excludedFromLibraries.get(root));
         if (source && libraryOrSdkSources.contains(root)) {
@@ -876,22 +861,6 @@ class RootIndex {
         }
       }
       return null;
-    }
-
-    @NotNull
-    private static Set</*Library|SyntheticLibrary*/ Object> createLibrarySet() {
-      return CollectionFactory.createCustomHashingStrategySet(new HashingStrategy<>() {
-        @Override
-        public int hashCode(Object object) {
-          // reduce complexity of hashCode calculation to speed it up
-          return Objects.hashCode(object instanceof Library ? ((Library)object).getName() : object);
-        }
-
-        @Override
-        public boolean equals(Object o1, Object o2) {
-          return Objects.equals(o1, o2);
-        }
-      });
     }
 
     private static List<Condition<? super VirtualFile>> findInLibraryProducers(@NotNull VirtualFile root,

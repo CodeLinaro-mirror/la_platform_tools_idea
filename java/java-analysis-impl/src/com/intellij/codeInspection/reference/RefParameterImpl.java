@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.reference;
 
@@ -20,19 +20,24 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 public class RefParameterImpl extends RefJavaElementImpl implements RefParameter {
-  private static final int USED_FOR_READING_MASK = 0b1_00000000_00000000;
-  private static final int USED_FOR_WRITING_MASK = 0b10_00000000_00000000;
+  private static final int USED_FOR_READING_MASK = 0x10000;
+  private static final int USED_FOR_WRITING_MASK = 0x20000;
+
 
   private final short myIndex;
-  private Object myActualValueTemplate; // guarded by this
-  private int myUsageCount; // guarded by this
+  private Object myActualValueTemplate;
+  private int myUsageCount;
 
-  RefParameterImpl(UParameter parameter, PsiElement psi, int index, RefManager manager, RefElement refElement) {
+  RefParameterImpl(UParameter parameter,
+                   PsiElement psi,
+                   int index,
+                   RefManager manager,
+                   RefMethod refMethod) {
     super(parameter, psi, manager);
 
     myIndex = (short)index;
     myActualValueTemplate = VALUE_UNDEFINED;
-    final RefElementImpl owner = (RefElementImpl)refElement;
+    final RefElementImpl owner = (RefElementImpl)refMethod;
     if (owner != null) {
       owner.add(this);
     }
@@ -47,8 +52,7 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
   public void parameterReferenced(boolean forWriting) {
     if (forWriting) {
       setUsedForWriting();
-    }
-    else {
+    } else {
       setUsedForReading();
     }
   }
@@ -63,7 +67,7 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
   }
 
   @Override
-  public synchronized int getUsageCount() {
+  public int getUsageCount() {
     return myUsageCount;
   }
 
@@ -80,8 +84,7 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
   public void accept(@NotNull final RefVisitor visitor) {
     if (visitor instanceof RefJavaVisitor) {
       ApplicationManager.getApplication().runReadAction(() -> ((RefJavaVisitor)visitor).visitParameter(this));
-    }
-    else {
+    } else {
       super.accept(visitor);
     }
   }
@@ -103,11 +106,11 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
     }
   }
 
-  synchronized void clearTemplateValue() {
+  void clearTemplateValue() {
     myActualValueTemplate = VALUE_IS_NOT_CONST;
   }
 
-  synchronized void updateTemplateValue(UExpression expression, @Nullable PsiElement accessPlace) {
+  void updateTemplateValue(UExpression expression, @Nullable PsiElement accessPlace) {
     myUsageCount++;
     if (myActualValueTemplate == VALUE_IS_NOT_CONST) return;
 
@@ -122,7 +125,7 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
 
   @Nullable
   @Override
-  public synchronized Object getActualConstValue() {
+  public Object getActualConstValue() {
     return myActualValueTemplate;
   }
 
@@ -154,17 +157,17 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
   @Nullable
   public static Object getAccessibleExpressionValue(UExpression expression, Supplier<? extends PsiElement> accessPlace) {
     if (expression instanceof UReferenceExpression) {
-      UReferenceExpression referenceExpression = (UReferenceExpression)expression;
+      UReferenceExpression referenceExpression = (UReferenceExpression) expression;
       UElement resolved = UResolvableKt.resolveToUElement(referenceExpression);
       if (resolved instanceof UField) {
-        UField uField = (UField)resolved;
+        UField uField = (UField) resolved;
         PsiElement element = accessPlace.get();
         if (uField.isStatic() && uField.isFinal()) {
           if (element == null || !isAccessible(uField, element)) {
             return VALUE_IS_NOT_CONST;
           }
           UDeclaration containingClass = UDeclarationKt.getContainingDeclaration(uField);
-          if (containingClass instanceof UClass && ((UClass)containingClass).getQualifiedName() != null) {
+          if (containingClass instanceof UClass && ((UClass) containingClass).getQualifiedName() != null) {
             return uField;
           }
         }
@@ -177,7 +180,7 @@ public class RefParameterImpl extends RefJavaElementImpl implements RefParameter
       }
       //don't unescape/escape to insert into the source file
       PsiElement sourcePsi = Objects.requireNonNull(expression.getSourcePsi());
-      return value instanceof String ? ("\"" + StringUtil.unquoteString(sourcePsi.getText()) + "\"") : value;
+      return value instanceof String ? ("\"" + StringUtil.unquoteString(sourcePsi.getText()) + "\""): value;
     }
     Object constValue = expression.evaluate(); //JavaConstantExpressionEvaluator.computeConstantExpression(expression, false);
     return constValue == null ? VALUE_IS_NOT_CONST : constValue instanceof String ? "\"" + constValue + "\"" : constValue;

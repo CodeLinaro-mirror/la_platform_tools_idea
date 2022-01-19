@@ -5,7 +5,6 @@ import com.intellij.codeInspection.dataFlow.interpreter.DataFlowInterpreter;
 import com.intellij.codeInspection.dataFlow.java.anchor.JavaExpressionAnchor;
 import com.intellij.codeInspection.dataFlow.java.inst.AssignInstruction;
 import com.intellij.codeInspection.dataFlow.jvm.JvmDfaMemoryStateImpl;
-import com.intellij.codeInspection.dataFlow.jvm.problems.ContractFailureProblem;
 import com.intellij.codeInspection.dataFlow.jvm.problems.JvmDfaProblem;
 import com.intellij.codeInspection.dataFlow.lang.DfaAnchor;
 import com.intellij.codeInspection.dataFlow.lang.UnsatisfiedConditionProblem;
@@ -56,9 +55,7 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
     super.afterMerge(other);
     assert other instanceof TrackingDfaMemoryState;
     MemoryStateChange otherHistory = ((TrackingDfaMemoryState)other).myHistory;
-    myHistory = myHistory == null ? otherHistory :
-                otherHistory == null ? myHistory :
-                myHistory.merge(otherHistory);
+    myHistory = myHistory == null ? otherHistory : myHistory.merge(otherHistory);
   }
 
   private Map<DfaVariableValue, Set<Relation>> getRelations() {
@@ -157,7 +154,7 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
    * Records a bridge changes. A bridge states are states which process the same input instruction,
    * but in result jump to another place in the program (other than this state target).
    * A bridge change is the difference between this state and all states which have different
-   * target instruction. Bridges allow tracking what else is processed in parallel with current state,
+   * target instruction. Bridges allow to track what else is processed in parallel with current state,
    * including states which may not arrive into target place. E.g. consider two states like this:
    *
    * <pre>
@@ -353,10 +350,10 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
           }
           if (change.myInstruction instanceof AssignInstruction && change.myTopOfStack == value && change.getPrevious() != null) {
             FactDefinition<T> fact = change.getPrevious().findFact(value, extractor);
-            return new FactDefinition<>(change, fact.myFact, fact.myOldFact);
+            return new FactDefinition<>(change, fact.myFact);
           }
         }
-        return new FactDefinition<>(null, extractor.extract(((DfaVariableValue)value).getInherentType()), null);
+        return new FactDefinition<>(null, extractor.extract(((DfaVariableValue)value).getInherentType()));
       }
       if (value instanceof DfaBinOpValue) {
         DfaBinOpValue binOp = (DfaBinOpValue)value;
@@ -366,15 +363,10 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
           LongRangeBinOp op = binOp.getOperation();
           @SuppressWarnings("unchecked")
           T result = (T)op.eval((LongRangeSet)left.myFact, (LongRangeSet)right.myFact, binOp.getDfType().getLongRangeType());
-          T oldFact = null;
-          if (left.myOldFact != null && right.myOldFact != null) {
-            //noinspection unchecked
-            oldFact = (T)op.eval((LongRangeSet)left.myOldFact, (LongRangeSet)right.myOldFact, binOp.getDfType().getLongRangeType());
-          }
-          return new FactDefinition<>(null, Objects.requireNonNull(result), oldFact);
+          return new FactDefinition<>(null, Objects.requireNonNull(result));
         }
       }
-      return new FactDefinition<>(null, extractor.extract(value.getDfType()), null);
+      return new FactDefinition<>(null, extractor.extract(value.getDfType()));
     }
 
     @Nullable
@@ -394,11 +386,7 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
         T newFact = extractor.extract(varChange.myNewType);
         T oldFact = extractor.extract(varChange.myOldType);
         if (!newFact.equals(oldFact)) {
-          if (change.myInstruction instanceof EnsureInstruction &&
-              ((EnsureInstruction)change.myInstruction).getProblem() instanceof ContractFailureProblem) {
-            change = change.getPrevious();
-          }
-          return new FactDefinition<>(change, newFact, oldFact);
+          return new FactDefinition<>(change, newFact);
         }
       }
       return null;
@@ -435,7 +423,7 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
     }
 
     @NotNull
-    public MemoryStateChange merge(@NotNull MemoryStateChange change) {
+    public MemoryStateChange merge(MemoryStateChange change) {
       if (change == this) return this;
       Set<MemoryStateChange> previous = new LinkedHashSet<>();
       if (myInstruction instanceof MergeInstruction) {
@@ -514,15 +502,11 @@ public class TrackingDfaMemoryState extends JvmDfaMemoryStateImpl {
 
   static class FactDefinition<T> {
     final @Nullable MemoryStateChange myChange;
-    /** Fact value after change */
     final @NotNull T myFact;
-    /** Fact value before change, if known */
-    final @Nullable T myOldFact;
 
-    FactDefinition(@Nullable MemoryStateChange change, @NotNull T fact, @Nullable T oldFact) {
+    FactDefinition(@Nullable MemoryStateChange change, @NotNull T fact) {
       myChange = change;
       myFact = fact;
-      myOldFact = oldFact;
     }
 
     @Override

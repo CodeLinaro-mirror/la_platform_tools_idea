@@ -126,7 +126,7 @@ public final class PluginUtilImpl implements PluginUtil {
       String message = "Detected a plugin " + id + " by class " + className;
       IdeaPluginDescriptor descriptor = PluginManagerCore.getPlugin(id);
       if (descriptor != null) {
-        ClassLoader loader = descriptor.getClassLoader();
+        ClassLoader loader = descriptor.getPluginClassLoader();
         message += "; loader=" + loader + '/' + loader.getClass();
         if (loader instanceof PluginClassLoader) {
           message += "; loaded class: " + ((PluginClassLoader)loader).hasLoadedClass(className);

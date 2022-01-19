@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.actions;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.UpdateInBackground;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vcs.AbstractVcs;
@@ -75,8 +76,8 @@ public class TabbedShowHistoryAction extends DumbAwareAction implements UpdateIn
   }
 
   private static boolean canShowNewFileHistory(@NotNull Project project, @NotNull Collection<FilePath> paths) {
-    VcsLogFileHistoryProvider historyProvider = project.getService(VcsLogFileHistoryProvider.class);
-    return historyProvider != null && historyProvider.canShowFileHistory(paths, null);
+    VcsLogFileHistoryProvider historyProvider = ApplicationManager.getApplication().getService(VcsLogFileHistoryProvider.class);
+    return historyProvider != null && historyProvider.canShowFileHistory(project, paths, null);
   }
 
   @Nullable
@@ -99,8 +100,8 @@ public class TabbedShowHistoryAction extends DumbAwareAction implements UpdateIn
   }
 
   private static void showNewFileHistory(@NotNull Project project, @NotNull Collection<FilePath> paths) {
-    VcsLogFileHistoryProvider historyProvider = project.getService(VcsLogFileHistoryProvider.class);
-    historyProvider.showFileHistory(paths, null);
+    VcsLogFileHistoryProvider historyProvider = ApplicationManager.getApplication().getService(VcsLogFileHistoryProvider.class);
+    historyProvider.showFileHistory(project, paths, null);
   }
 
   private static void showOldFileHistory(@NotNull Project project, @NotNull AbstractVcs vcs, @NotNull FilePath path) {

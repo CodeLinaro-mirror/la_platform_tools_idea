@@ -11,7 +11,10 @@ import com.intellij.grazie.ide.msg.GrazieInitializerManager
 import com.intellij.grazie.jlanguage.Lang
 import com.intellij.grazie.jlanguage.LangTool
 import com.intellij.grazie.text.Rule
-import com.intellij.openapi.components.*
+import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.State
+import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.util.containers.CollectionFactory
 import com.intellij.util.xmlb.annotations.Property
@@ -21,7 +24,7 @@ import java.util.*
 @State(name = "GraziConfig", presentableName = GrazieConfig.PresentableNameGetter::class, storages = [
   Storage("grazie_global.xml"),
   Storage(value = "grazi_global.xml", deprecated = true)
-], category = SettingsCategory.CODE)
+])
 class GrazieConfig : PersistentStateComponent<GrazieConfig.State> {
   @Suppress("unused")
   enum class Version : VersionedState.Version<State> {
@@ -122,14 +125,6 @@ class GrazieConfig : PersistentStateComponent<GrazieConfig.State> {
     /** Update Grazie config state */
     @Synchronized
     fun update(change: (State) -> State) = instance.loadState(change(get()))
-
-    fun stateChanged(prevState: State, newState: State) {
-      service<GrazieInitializerManager>().publisher.update(prevState, newState)
-
-      ProjectManager.getInstance().openProjects.forEach {
-        DaemonCodeAnalyzer.getInstance(it).restart()
-      }
-    }
   }
 
   class PresentableNameGetter : com.intellij.openapi.components.State.NameGetter() {
@@ -145,7 +140,11 @@ class GrazieConfig : PersistentStateComponent<GrazieConfig.State> {
     myState = migrateLTRuleIds(VersionedState.migrate(state))
 
     if (prevState != myState) {
-      stateChanged(prevState, myState)
+      service<GrazieInitializerManager>().publisher.update(prevState, myState)
+
+      ProjectManager.getInstance().openProjects.forEach {
+        DaemonCodeAnalyzer.getInstance(it).restart()
+      }
     }
   }
 }

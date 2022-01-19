@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.inline;
 
 import com.intellij.codeInsight.ExceptionUtil;
@@ -42,6 +42,7 @@ import com.intellij.refactoring.util.CommonRefactoringUtil;
 import com.intellij.refactoring.util.InlineUtil;
 import com.intellij.refactoring.util.RefactoringUtil;
 import com.intellij.util.ArrayUtil;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
@@ -172,19 +173,23 @@ public class InlineLocalHandler extends JavaInlineActionHandler {
 
     final String localName = local.getName();
 
-    final List<PsiElement> innerClassesWithUsages = new ArrayList<>();
-    final List<PsiElement> innerClassUsages = new ArrayList<>();
-    final PsiElement containingClass = LambdaUtil.getContainingClassOrLambda(local);
+    final List<PsiElement> innerClassesWithUsages = Collections.synchronizedList(new ArrayList<>());
+    final List<PsiElement> innerClassUsages = Collections.synchronizedList(new ArrayList<>());
+    final PsiElement containingClass = PsiTreeUtil.getParentOfType(local, PsiClass.class, PsiLambdaExpression.class);
     for (PsiElement element : allRefs) {
-      PsiElement innerClass = element;
-      while (innerClass != null) {
-        final PsiElement parentPsiClass = LambdaUtil.getContainingClassOrLambda(innerClass.getParent());
+      PsiElement innerClass = PsiTreeUtil.getParentOfType(element, PsiClass.class, PsiLambdaExpression.class);
+      while (innerClass != containingClass && innerClass != null) {
+        final PsiElement parentPsiClass = PsiTreeUtil.getParentOfType(innerClass.getParent(), PsiClass.class, PsiLambdaExpression.class);
         if (parentPsiClass == containingClass) {
-          if (innerClass != element) {
-            innerClassesWithUsages.add(innerClass);
-            innerClassUsages.add(element);
+          if (innerClass instanceof PsiLambdaExpression) {
+            if (PsiTreeUtil.isAncestor(innerClass, local, false)) {
+              innerClassesWithUsages.add(element);
+              innerClass = parentPsiClass;
+              continue;
+            }
           }
-          break;
+          innerClassesWithUsages.add(innerClass);
+          innerClassUsages.add(element);
         }
         innerClass = parentPsiClass;
       }

@@ -3,13 +3,12 @@ package training.learn.lesson
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
-import com.intellij.openapi.components.SettingsCategory
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import training.learn.course.Lesson
 import training.util.trainerPluginConfigName
 
-@State(name = "LessonStateBase", storages = [Storage(value = trainerPluginConfigName)], category = SettingsCategory.TOOLS)
+@State(name = "LessonStateBase", storages = [Storage(value = trainerPluginConfigName)])
 private class LessonStateBase : PersistentStateComponent<LessonStateBase> {
 
   override fun getState(): LessonStateBase = this

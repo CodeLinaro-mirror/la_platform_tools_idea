@@ -1,5 +1,3 @@
-// AFTER-WARNING: Parameter 'a' is never used
-// AFTER-WARNING: Parameter 'fn' is never used
 fun <T> doSomething(a: T) {}
 
 fun test() {

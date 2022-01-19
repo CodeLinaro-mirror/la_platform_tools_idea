@@ -3,6 +3,7 @@ package de.plushnikov.intellij.plugin.util;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiJavaCodeReferenceElement;
+import com.intellij.psi.PsiModifierList;
 import com.intellij.psi.PsiModifierListOwner;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
@@ -41,14 +42,15 @@ public class PsiAnnotationSearchUtil {
 
   public static List<PsiAnnotation> findAllAnnotations(@NotNull PsiModifierListOwner listOwner,
                                                        @NotNull Collection<String> annotationNames) {
-    if (annotationNames.isEmpty()) {
-      return Collections.emptyList();
-    }
+    List<PsiAnnotation> result = Collections.emptyList();
 
-    List<PsiAnnotation> result = new ArrayList<>();
-    for (PsiAnnotation annotation : listOwner.getAnnotations()) {
-      if (ContainerUtil.exists(annotationNames, annotation::hasQualifiedName)) {
-        result.add(annotation);
+    final PsiModifierList psiModifierList = listOwner.getModifierList();
+    if (psiModifierList != null && !annotationNames.isEmpty()) {
+      result = new ArrayList<>();
+      for (PsiAnnotation annotation : psiModifierList.getAnnotations()) {
+        if (ContainerUtil.exists(annotationNames, annotation::hasQualifiedName)) {
+          result.add(annotation);
+        }
       }
     }
     return result;
@@ -62,10 +64,13 @@ public class PsiAnnotationSearchUtil {
 
   public static boolean checkAnnotationsSimpleNameExistsIn(@NotNull PsiModifierListOwner modifierListOwner,
                                                            @NotNull Collection<String> annotationNames) {
-    for (PsiAnnotation psiAnnotation : modifierListOwner.getAnnotations()) {
-      final String shortName = getShortNameOf(psiAnnotation);
-      if (annotationNames.contains(shortName)) {
-        return true;
+    final PsiModifierList modifierList = modifierListOwner.getModifierList();
+    if (null != modifierList) {
+      for (PsiAnnotation psiAnnotation : modifierList.getAnnotations()) {
+        final String shortName = getShortNameOf(psiAnnotation);
+        if (annotationNames.contains(shortName)) {
+          return true;
+        }
       }
     }
     return false;

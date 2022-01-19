@@ -5,7 +5,6 @@ import com.intellij.compiler.server.BuildProcessParametersProvider;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import de.plushnikov.intellij.plugin.Version;
-import de.plushnikov.intellij.plugin.settings.ProjectSettings;
 import de.plushnikov.intellij.plugin.util.LombokLibraryUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -30,8 +29,7 @@ public final class LombokBuildProcessParametersProvider extends BuildProcessPara
     List<String> result = new ArrayList<>();
 
     final String lombokVersion = LombokLibraryUtil.getLombokVersionCached(myProject);
-    if (ProjectSettings.isEnabled(myProject, ProjectSettings.IS_LOMBOK_JPS_FIX_ENABLED) &&
-        Version.isLessThan(lombokVersion, Version.LAST_LOMBOK_VERSION_WITH_JPS_FIX)) {
+    if (Version.isLessThan(lombokVersion, Version.LAST_LOMBOK_VERSION_WITH_JPS_FIX)) {
       result.add("-Djps.track.ap.dependencies=false");
     }
 

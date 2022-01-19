@@ -42,11 +42,6 @@ public class ConvertInterfaceToClassFix extends LocalQuickFixAndIntentionActionO
   }
 
   @Override
-  public boolean startInWriteAction() {
-    return false;
-  }
-
-  @Override
   public @NotNull Priority getPriority() {
     return Priority.LOW;
   }

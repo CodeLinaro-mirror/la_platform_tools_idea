@@ -91,8 +91,8 @@ public class CustomDictionariesPanel extends JPanel {
   private void doChooseFiles(@NotNull Project project, @NotNull Consumer<? super List<VirtualFile>> consumer) {
     final FileChooserDescriptor fileChooserDescriptor = new FileChooserDescriptor(true, false, false, false, false, true) {
       @Override
-      public boolean isFileSelectable(@Nullable VirtualFile file) {
-        return file != null && extensionEquals(file.getPath(), "dic");
+      public boolean isFileSelectable(VirtualFile file) {
+        return extensionEquals(file.getPath(), "dic");
       }
     };
 
@@ -122,11 +122,8 @@ public class CustomDictionariesPanel extends JPanel {
   }
 
   public void apply() {
-    final List<String> oldPaths = mySettings.getCustomDictionariesPaths();
-    final List<String> newPaths = new ArrayList<>(ContainerUtil.filter(myCustomDictionariesTableView.getItems(),
-                                                                       dict -> !defaultDictionaries.contains(dict)));
-    mySettings.setCustomDictionariesPaths(newPaths);
-    myManager.updateBundledDictionaries(ContainerUtil.filter(oldPaths, o -> !newPaths.contains(o)));
+    mySettings.setCustomDictionariesPaths(new ArrayList<>(ContainerUtil.filter(myCustomDictionariesTableView.getItems(),
+                                                                               dict -> !defaultDictionaries.contains(dict))));
   }
 
   public List<String> getValues() {

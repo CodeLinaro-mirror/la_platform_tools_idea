@@ -9,7 +9,6 @@ import com.intellij.openapi.externalSystem.ui.ExternalSystemIconProvider
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.DumbAwareAction
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsActions
 import com.intellij.openapi.util.text.NaturalComparator
 import javax.swing.Icon
@@ -17,7 +16,12 @@ import javax.swing.Icon
 class ProjectRefreshAction : DumbAwareAction() {
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project ?: return
-    refreshProject(project)
+    val projectNotificationAware = ProjectNotificationAware.getInstance(project)
+    val systemIds = projectNotificationAware.getSystemIds()
+    if (ExternalSystemUtil.confirmLoadingUntrustedProject(project, systemIds)) {
+      val projectTracker = ExternalSystemProjectTracker.getInstance(project)
+      projectTracker.scheduleProjectRefresh()
+    }
   }
 
   override fun update(e: AnActionEvent) {
@@ -58,16 +62,5 @@ class ProjectRefreshAction : DumbAwareAction() {
     templatePresentation.icon = DefaultExternalSystemIconProvider.reloadIcon
     templatePresentation.text = ExternalSystemBundle.message("external.system.reload.notification.action.reload.text.empty")
     templatePresentation.description = ExternalSystemBundle.message("external.system.reload.notification.action.reload.description.empty", productName)
-  }
-
-  companion object {
-    fun refreshProject(project: Project) {
-      val projectNotificationAware = ProjectNotificationAware.getInstance(project)
-      val systemIds = projectNotificationAware.getSystemIds()
-      if (ExternalSystemUtil.confirmLoadingUntrustedProject(project, systemIds)) {
-        val projectTracker = ExternalSystemProjectTracker.getInstance(project)
-        projectTracker.scheduleProjectRefresh()
-      }
-    }
   }
 }

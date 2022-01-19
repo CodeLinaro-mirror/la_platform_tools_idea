@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.dataFlow.types;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -23,14 +23,12 @@ import static com.intellij.util.containers.ContainerUtil.*;
  */
 public class TypesSemilattice implements Semilattice<TypeDfaState> {
   private final PsiManager myManager;
-  private final Map<VariableDescriptor, Integer> varIndexes;
 
   private final TypeDfaState initialState;
 
-  public TypesSemilattice(@NotNull PsiManager manager, @NotNull TypeDfaState initialState, Map<VariableDescriptor, Integer> varIndexes) {
+  public TypesSemilattice(@NotNull PsiManager manager, @NotNull TypeDfaState initialState) {
     myManager = manager;
     this.initialState = initialState;
-    this.varIndexes = varIndexes;
   }
 
   @Override
@@ -50,7 +48,7 @@ public class TypesSemilattice implements Semilattice<TypeDfaState> {
     }
 
     for (int i = 1; i < ins.size(); i++) {
-      result.joinState(ins.get(i), myManager, varIndexes);
+      result.joinState(ins.get(i), myManager);
     }
     return result;
   }
@@ -58,38 +56,6 @@ public class TypesSemilattice implements Semilattice<TypeDfaState> {
   @Override
   public boolean eq(@NotNull TypeDfaState e1, @NotNull TypeDfaState e2) {
     return e1.contentsEqual(e2);
-  }
-
-  public static Map<VariableDescriptor, DFAType> mergeForCaching(Map<VariableDescriptor, DFAType> cached,
-                                                                 TypeDfaState another,
-                                                                 Map<VariableDescriptor, Integer> varIndexes) {
-    if (another.getVarTypes().isEmpty()) {
-      return cached;
-    }
-    Map<VariableDescriptor, DFAType> mapToPublish = getMapToPublish(another, varIndexes);
-    checkDfaStatesConsistency(cached, mapToPublish);
-    Map<VariableDescriptor, DFAType> newState = new HashMap<>(cached);
-    newState.putAll(mapToPublish);
-    return newState;
-  }
-
-  private static Map<VariableDescriptor, DFAType> getMapToPublish(TypeDfaState another,
-                                                                  Map<VariableDescriptor, Integer> varIndexes) {
-    return filter(another.getVarTypes(), descriptor -> !another.getProhibitedCachingVars().get(varIndexes.getOrDefault(descriptor, 0)));
-  }
-
-  private static void checkDfaStatesConsistency(@NotNull Map<VariableDescriptor, DFAType> cached,
-                                                @NotNull Map<VariableDescriptor, DFAType> incoming) {
-    if (!ApplicationManager.getApplication().isUnitTestMode() ||
-        ApplicationManagerEx.isInStressTest() ||
-        DfaCacheConsistencyKt.mustSkipConsistencyCheck()) {
-      return;
-    }
-    Collection<VariableDescriptor> commonDescriptors = intersection(cached.keySet(), incoming.keySet());
-    Map<VariableDescriptor, Couple<DFAType>> differingEntries = filter(diff(cached, incoming), commonDescriptors::contains);
-    if (!differingEntries.isEmpty()) {
-      throw new IllegalStateException("Attempt to cache different types: " + differingEntries);
-    }
   }
 }
 
@@ -106,27 +72,54 @@ class TypeDfaState {
    * This is why we need this field:
    * it should carry information about erased types to distinguish them from not-yet-processed ones.
    */
-  private final BitSet myProhibitedCachingVars;
+  private final Set<VariableDescriptor> myProhibitedCachingVars;
 
   TypeDfaState() {
     myVarTypes = new HashMap<>();
-    myProhibitedCachingVars = new BitSet();
+    myProhibitedCachingVars = new HashSet<>();
   }
 
   TypeDfaState(TypeDfaState another) {
     myVarTypes = new HashMap<>(another.myVarTypes);
-    myProhibitedCachingVars = BitSet.valueOf(another.myProhibitedCachingVars.toLongArray());
+    myProhibitedCachingVars = new HashSet<>(another.myProhibitedCachingVars);
   }
 
   Map<VariableDescriptor, DFAType> getVarTypes() {
     return myVarTypes;
   }
 
-  void joinState(TypeDfaState another, PsiManager manager, Map<VariableDescriptor, Integer> varIndexes) {
-    myVarTypes.keySet().removeIf(var -> another.myProhibitedCachingVars.get(varIndexes.get(var)));
+  TypeDfaState mergeWith(TypeDfaState another) {
+    if (another.myVarTypes.isEmpty()) {
+      return this;
+    }
+    checkDfaStatesConsistency(this, another);
+    TypeDfaState state = new TypeDfaState(this);
+    Map<VariableDescriptor, DFAType> retainedDescriptors =
+      filter(another.myVarTypes, descriptor -> !another.myProhibitedCachingVars.contains(descriptor));
+    state.myVarTypes.putAll(retainedDescriptors);
+    return state;
+  }
+
+  private static void checkDfaStatesConsistency(@NotNull TypeDfaState state, @NotNull TypeDfaState another) {
+    if (!ApplicationManager.getApplication().isUnitTestMode() ||
+        ApplicationManagerEx.isInStressTest() ||
+        DfaCacheConsistencyKt.mustSkipConsistencyCheck()) {
+      return;
+    }
+    Map<VariableDescriptor, DFAType> anotherTypes =
+      filter(another.myVarTypes, descriptor -> !another.myProhibitedCachingVars.contains(descriptor));
+    Collection<VariableDescriptor> commonDescriptors = intersection(state.myVarTypes.keySet(), anotherTypes.keySet());
+    Map<VariableDescriptor, Couple<DFAType>> differingEntries = filter(diff(state.myVarTypes, anotherTypes), commonDescriptors::contains);
+    if (!differingEntries.isEmpty()) {
+      throw new IllegalStateException("Attempt to cache different types: " + differingEntries.toString());
+    }
+  }
+
+  void joinState(TypeDfaState another, PsiManager manager) {
+    myVarTypes.keySet().removeAll(another.myProhibitedCachingVars);
     for (Map.Entry<VariableDescriptor, DFAType> entry : another.myVarTypes.entrySet()) {
       final VariableDescriptor descriptor = entry.getKey();
-      if (myProhibitedCachingVars.get(varIndexes.getOrDefault(descriptor, 0))) {
+      if (myProhibitedCachingVars.contains(descriptor)) {
         continue;
       }
       final DFAType t1 = entry.getValue();
@@ -144,7 +137,7 @@ class TypeDfaState {
         myVarTypes.put(descriptor, dfaType.addFlushingType(t1.getFlushingType(), manager));
       }
     }
-    myProhibitedCachingVars.or(another.myProhibitedCachingVars);
+    myProhibitedCachingVars.addAll(another.myProhibitedCachingVars);
   }
 
   boolean contentsEqual(TypeDfaState another) {
@@ -174,23 +167,20 @@ class TypeDfaState {
   @Override
   @NonNls
   public String toString() {
-    return myVarTypes.toString();
+    String evicted = myProhibitedCachingVars.isEmpty() ? "" : " (caching prohibited: " + myProhibitedCachingVars.toString() + ")";
+    return myVarTypes.toString() + evicted;
   }
 
   public boolean containsVariable(@NotNull VariableDescriptor descriptor) {
     return myVarTypes.containsKey(descriptor);
   }
 
-  public void removeBinding(@NotNull VariableDescriptor descriptor, Map<VariableDescriptor, Integer> varIndexes) {
-    myProhibitedCachingVars.set(varIndexes.getOrDefault(descriptor, 0));
+  public void removeBinding(@NotNull VariableDescriptor descriptor) {
+    myProhibitedCachingVars.add(descriptor);
     myVarTypes.remove(descriptor);
   }
 
-  BitSet getProhibitedCachingVars() {
-    return myProhibitedCachingVars;
-  }
-
-  public void restoreBinding(@NotNull VariableDescriptor descriptor, Map<VariableDescriptor, Integer> varIndexes) {
-    myProhibitedCachingVars.set(varIndexes.getOrDefault(descriptor, 0), false);
+  public void restoreBinding(@NotNull VariableDescriptor descriptor) {
+    myProhibitedCachingVars.remove(descriptor);
   }
 }

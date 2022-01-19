@@ -5,7 +5,6 @@ import gnu.trove.TIntObjectHashMap;
 import gnu.trove.TIntObjectProcedure;
 
 import java.util.Collection;
-import java.util.function.Supplier;
 
 /**
  * @author: db
@@ -13,9 +12,9 @@ import java.util.function.Supplier;
 class IntObjectTransientMultiMaplet<V> extends IntObjectMultiMaplet<V> {
 
   private final TIntObjectHashMap<Collection<V>> myMap = new TIntObjectHashMap<>();
-  private final Supplier<? extends Collection<V>> myCollectionFactory;
+  private final BuilderCollectionFactory<V> myCollectionFactory;
 
-  IntObjectTransientMultiMaplet(Supplier<? extends Collection<V>> collectionFactory) {
+  IntObjectTransientMultiMaplet(BuilderCollectionFactory<V> collectionFactory) {
     myCollectionFactory = collectionFactory;
   }
 
@@ -65,7 +64,7 @@ class IntObjectTransientMultiMaplet<V> extends IntObjectMultiMaplet<V> {
   public void put(final int key, final V value) {
     final Collection<V> collection = myMap.get(key);
     if (collection == null) {
-      final Collection<V> x = myCollectionFactory.get();
+      final Collection<V> x = myCollectionFactory.create();
       x.add(value);
       myMap.put(key, x);
     }

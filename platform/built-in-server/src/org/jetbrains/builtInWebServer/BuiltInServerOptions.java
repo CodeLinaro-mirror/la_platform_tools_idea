@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.builtInWebServer;
 
-import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
@@ -78,8 +77,9 @@ public final class BuiltInServerOptions implements PersistentStateComponent<Buil
   public static final class MyCustomPortServerManager extends CustomPortServerManagerBase {
     @Override
     public void cannotBind(@NotNull Exception e, int port) {
-      String message = BuiltInServerBundle.message("notification.content.cannot.start.built.in.http.server.on.custom.port", port, ApplicationNamesInfo.getInstance().getFullProductName());
-      new Notification(BuiltInServerManagerImpl.NOTIFICATION_GROUP, message, NotificationType.ERROR).notify(null);
+      BuiltInServerManagerImpl.NOTIFICATION_GROUP.getValue().createNotification(BuiltInServerBundle.message(
+        "notification.content.cannot.start.built.in.http.server.on.custom.port", port,
+        ApplicationNamesInfo.getInstance().getFullProductName()), NotificationType.ERROR).notify(null);
     }
 
     @Override

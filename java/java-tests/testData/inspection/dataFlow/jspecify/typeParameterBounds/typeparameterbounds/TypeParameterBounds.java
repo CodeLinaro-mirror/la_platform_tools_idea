@@ -16,18 +16,18 @@
 
 package typeparameterbounds;
 
-import org.jspecify.nullness.NullMarked;
-import org.jspecify.nullness.Nullable;
-import org.jspecify.nullness.NullnessUnspecified;
+import org.jspecify.annotations.DefaultNonNull;
+import org.jspecify.annotations.Nullable;
+import org.jspecify.annotations.NullnessUnspecified;
 
-@NullMarked
+@DefaultNonNull
 class A<T> {
   public void foo(@NullnessUnspecified T t) {}
 
   public <E> void bar(E e) {}
 }
 
-@NullMarked
+@DefaultNonNull
 class B<T> {
   public void foo(T t) {}
 
@@ -36,7 +36,7 @@ class B<T> {
 
 class Test {}
 
-@NullMarked
+@DefaultNonNull
 public class TypeParameterBounds {
   <T extends Test> void main(
       // jspecify_nullness_mismatch

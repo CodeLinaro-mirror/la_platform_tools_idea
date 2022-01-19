@@ -6,7 +6,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.NlsContexts;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtilCore;
@@ -276,7 +275,7 @@ public class CodeInsightUtils {
 
     public static void showErrorHint(
             @NotNull Project project, @NotNull Editor editor,
-            @NlsContexts.DialogMessage @NotNull String message, @NlsContexts.DialogTitle @NotNull String title,
+            @NotNull String message, @NotNull String title,
             @Nullable String helpId
     ) {
         if (ApplicationManager.getApplication().isUnitTestMode()) throw new CommonRefactoringUtil.RefactoringErrorHintException(message);

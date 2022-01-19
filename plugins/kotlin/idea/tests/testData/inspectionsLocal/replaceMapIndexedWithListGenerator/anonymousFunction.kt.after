@@ -1,6 +1,0 @@
-// WITH_RUNTIME
-fun test() {
-    List(emptyList<String>().size, fun(index: Int): Int {
-        return index
-    })
-}

@@ -45,7 +45,6 @@ public class MethodResolveProcessor implements PsiScopeProcessor, ElementClassHi
     return true;
   }
 
-  @SuppressWarnings("unchecked")
   @Override
   public <T> T getHint(@NotNull Key<T> hintKey) {
     if (hintKey == ElementClassHint.KEY) {

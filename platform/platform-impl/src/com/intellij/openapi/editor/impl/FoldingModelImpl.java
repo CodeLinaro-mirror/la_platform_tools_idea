@@ -18,10 +18,9 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.ModificationTracker;
 import com.intellij.util.DocumentEventUtil;
 import com.intellij.util.DocumentUtil;
-import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.HashingStrategy;
 import com.intellij.util.containers.MultiMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -110,17 +109,6 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     updateTextAttributes();
   }
 
-  private static final HashingStrategy<FoldRegion> OFFSET_BASED_HASHING_STRATEGY = new HashingStrategy<>() {
-    @Override
-    public int hashCode(@Nullable FoldRegion o) {
-      return o == null ? 0 : o.getStartOffset() * 31 + o.getEndOffset();
-    }
-
-    @Override
-    public boolean equals(@Nullable FoldRegion o1, @Nullable FoldRegion o2) {
-      return o1 == o2 || (o1 != null && o2 != null && o1.getStartOffset() == o2.getStartOffset() && o1.getEndOffset() == o2.getEndOffset());
-    }
-  };
   @Override
   @NotNull
   public List<FoldRegion> getGroupedRegions(@NotNull FoldingGroup group) {
@@ -188,7 +176,7 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     if (!myIsBatchFoldingProcessing) {
       LOG.error("Fold regions must be changed inside batchFoldProcessing() only");
     }
-    notifyListenersOnFoldProcessingStartIfNeeded();
+    myFoldRegionsProcessed = true;
     myEditor.myView.invalidateFoldRegionLayout(region);
     notifyListenersOnFoldRegionStateChange(region);
   }
@@ -244,13 +232,12 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     myRegionTree.addInterval(region, startOffset, endOffset, false, false, false, 0);
     LOG.assertTrue(region.isValid());
 
-    collapseFoldRegion(region, false);
+    collapseFoldRegion(region, true);
     if (region.isExpanded()) { // caret inside region and 'do not collapse caret' flag is active
       region.putUserData(DO_NOT_NOTIFY, Boolean.TRUE);
       myRegionTree.removeInterval(region);
       return null;
     }
-    notifyListenersOnFoldRegionStateChange(region);
 
     LOG.assertTrue(region.isValid());
     return region;
@@ -365,10 +352,12 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     if (!myIsBatchFoldingProcessing) {
       LOG.error("Fold regions must be added or removed inside batchFoldProcessing() only.");
     }
-    notifyListenersOnFoldProcessingStartIfNeeded();
+
     ((FoldRegionImpl)region).setExpanded(true, false);
     notifyListenersOnFoldRegionStateChange(region);
     notifyListenersOnFoldRegionRemove(region);
+
+    myFoldRegionsProcessed = true;
     region.dispose();
   }
 
@@ -377,7 +366,7 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     if (!myEditor.getFoldingModel().isInBatchFoldingOperation()) {
       LOG.error("Fold regions must be added or removed inside batchFoldProcessing() only.");
     }
-    notifyListenersOnFoldProcessingStartIfNeeded();
+    myFoldRegionsProcessed = true;
     myRegionTree.removeInterval(region);
     removeRegionFromGroup(region);
   }
@@ -398,9 +387,6 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
       return;
     }
     FoldRegion[] regions = getAllFoldRegions();
-    if (regions.length > 0) {
-      notifyListenersOnFoldProcessingStartIfNeeded();
-    }
     for (FoldRegion region : regions) {
       if (!region.isExpanded()) notifyListenersOnFoldRegionStateChange(region);
       notifyListenersOnFoldRegionRemove(region);
@@ -437,7 +423,8 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
         caret.putUserData(SAVED_CARET_POSITION, new SavedCaretPosition(caret));
       }
     }
-    notifyListenersOnFoldProcessingStartIfNeeded();
+
+    myFoldRegionsProcessed = true;
     myExpansionCounter.incrementAndGet();
     ((FoldRegionImpl) region).setExpandedInternal(true);
     if (notify) notifyListenersOnFoldRegionStateChange(region);
@@ -465,7 +452,8 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
         }
       }
     }
-    notifyListenersOnFoldProcessingStartIfNeeded();
+
+    myFoldRegionsProcessed = true;
     ((FoldRegionImpl) region).setExpandedInternal(false);
     if (notify) notifyListenersOnFoldRegionStateChange(region);
   }
@@ -721,15 +709,6 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     Disposer.register(parentDisposable, () -> myListeners.remove(listener));
   }
 
-  private void notifyListenersOnFoldProcessingStartIfNeeded() {
-    if (!myFoldRegionsProcessed) {
-      for (FoldingListener listener : myListeners) {
-        listener.onFoldProcessingStart();
-      }
-      myFoldRegionsProcessed = true;
-    }
-  }
-
   private void notifyListenersOnFoldRegionStateChange(@NotNull FoldRegion foldRegion) {
     for (FoldingListener listener : myListeners) {
       listener.onFoldRegionStateChange(foldRegion);
@@ -819,7 +798,7 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
         if (!r2.isExpanded() && r2s <= r1s && r2e >= r1e && (r1s != r2s || r1e != r2e || r2c)) invisibleRegions[i] = true;
       }
     }
-    Set<FoldRegion> visibleRegions = CollectionFactory.createCustomHashingStrategySet(OFFSET_BASED_HASHING_STRATEGY);
+    Set<FoldRegion> visibleRegions = new ObjectOpenCustomHashSet<>(FoldRegionsTree.OFFSET_BASED_HASHING_STRATEGY);
     List<FoldRegion> topLevelRegions = new ArrayList<>();
     for (int i = 0; i < allFoldRegions.length; i++) {
       if (!invisibleRegions[i]) {
@@ -844,7 +823,7 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     if (actualTopLevels != null) {
       LOG.assertTrue(actualTopLevels.length == topLevelRegions.size(), "Wrong number of top-level regions");
       for (int i = 0; i < actualTopLevels.length; i++) {
-        LOG.assertTrue(OFFSET_BASED_HASHING_STRATEGY.equals(actualTopLevels[i], topLevelRegions.get(i)),
+        LOG.assertTrue(FoldRegionsTree.OFFSET_BASED_HASHING_STRATEGY.equals(actualTopLevels[i], topLevelRegions.get(i)),
                        "Unexpected top-level region");
       }
     }
@@ -904,16 +883,14 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
     }
 
     @Override
-    void collectAffectedMarkersAndShiftSubtrees(@Nullable IntervalNode<FoldRegionImpl> root,
+    boolean collectAffectedMarkersAndShiftSubtrees(@Nullable IntervalNode<FoldRegionImpl> root,
                                                    int start, int end, int lengthDelta,
                                                    @NotNull List<? super IntervalNode<FoldRegionImpl>> affected) {
-      if (inCollectCall) {
-        super.collectAffectedMarkersAndShiftSubtrees(root, start, end, lengthDelta, affected);
-        return;
-      }
+      if (inCollectCall) return super.collectAffectedMarkersAndShiftSubtrees(root, start, end, lengthDelta, affected);
       inCollectCall = true;
+      boolean result;
       try {
-        super.collectAffectedMarkersAndShiftSubtrees(root, start, end, lengthDelta, affected);
+        result = super.collectAffectedMarkersAndShiftSubtrees(root, start, end, lengthDelta, affected);
       }
       finally {
         inCollectCall = false;
@@ -929,6 +906,7 @@ public final class FoldingModelImpl extends InlayModel.SimpleAdapter
           region.mySizeBeforeUpdate = region.isExpanded() ? 0 : node.intervalEnd() - node.intervalStart();
         }
       }
+      return result;
     }
 
     @Override

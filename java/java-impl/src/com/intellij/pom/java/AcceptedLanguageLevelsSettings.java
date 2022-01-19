@@ -10,7 +10,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.module.LanguageLevelUtil;
@@ -33,15 +32,12 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.event.HyperlinkEvent;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.TreeSet;
+import java.util.*;
 
 @State(
   name = "AcceptedLanguageLevels",
-  storages = @Storage("acceptedLanguageLevels.xml"),
-  category = SettingsCategory.CODE
+  storages = @Storage("acceptedLanguageLevels.xml")
 )
 public class AcceptedLanguageLevelsSettings implements PersistentStateComponent<AcceptedLanguageLevelsSettings>, StartupActivity {
   private static final NotificationGroup NOTIFICATION_GROUP =

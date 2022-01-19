@@ -29,10 +29,6 @@ public class PressureShortcut extends MouseShortcut {
     this.myStage = stage;
   }
 
-  public double getStage() {
-    return myStage;
-  }
-
   @Override
   public int getButton() {
     return MouseEvent.BUTTON1;

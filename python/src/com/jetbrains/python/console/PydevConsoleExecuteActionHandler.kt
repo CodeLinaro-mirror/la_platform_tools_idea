@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.console
 
-import com.intellij.application.options.RegistryManager
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.execution.console.LanguageConsoleImpl
 import com.intellij.execution.console.LanguageConsoleView
@@ -9,13 +8,9 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.CommandProcessor
-import com.intellij.openapi.components.service
-import com.intellij.openapi.editor.Document
-import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.psi.util.PsiTreeUtil
-import com.jetbrains.python.console.actions.CommandQueueForPythonConsoleService
 import com.jetbrains.python.console.pydev.ConsoleCommunication
 import com.jetbrains.python.console.pydev.ConsoleCommunicationListener
 import com.jetbrains.python.psi.PyElementGenerator
@@ -31,10 +26,6 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
   private val project = myConsoleView.project
   private val myEnterHandler = PyConsoleEnterHandler()
   private var myIpythonInputPromptCount = 2
-
-  fun decreaseInputPromptCount(value : Int) {
-    myIpythonInputPromptCount -= value
-  }
 
   override var isEnabled: Boolean = false
     set(value) {
@@ -75,12 +66,8 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
     if (ipythonEnabled && !consoleComm.isWaitingForInput && !code.getText().isBlank()) {
       ++myIpythonInputPromptCount
     }
-    if (RegistryManager.getInstance().`is`("python.console.CommandQueue")) {
-      // add new command to CommandQueue service
-      service<CommandQueueForPythonConsoleService>().addNewCommand(this, code)
-    } else {
-      consoleComm.execInterpreter(code) {}
-    }
+
+    consoleComm.execInterpreter(code) {}
   }
 
   override fun updateConsoleState() {
@@ -99,11 +86,7 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
       }
     }
     else {
-      if (RegistryManager.getInstance().`is`("python.console.CommandQueue")) {
-        inPrompt()
-      } else {
-        executingPrompt()
-      }
+      executingPrompt()
     }
   }
 
@@ -136,7 +119,7 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
       }
     })
 
-    val prompt = "In [$myIpythonInputPromptCount]:"
+    val prompt = "In[$myIpythonInputPromptCount]:"
     val indentPrompt = PyConsoleUtil.IPYTHON_INDENT_PROMPT.padStart(prompt.length)
     myConsoleView.prompt = prompt
     myConsoleView.indentPrompt = indentPrompt
@@ -191,15 +174,11 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
 
   override fun runExecuteAction(console: LanguageConsoleView) {
     if (isEnabled) {
-      if (RegistryManager.getInstance().`is`("python.console.CommandQueue")) {
+      if (!canExecuteNow()) {
+        HintManager.getInstance().showErrorHint(console.consoleEditor, prevCommandRunningMessage)
+      }
+      else {
         doRunExecuteAction(console)
-      } else {
-        if (!canExecuteNow()) {
-          HintManager.getInstance().showErrorHint(console.consoleEditor, prevCommandRunningMessage)
-        }
-        else {
-          doRunExecuteAction(console)
-        }
       }
     }
     else {
@@ -208,21 +187,27 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
   }
 
   private fun doRunExecuteAction(console: LanguageConsoleView) {
-  val doc = myConsoleView.editorDocument
-  val endMarker = doc.createRangeMarker(doc.textLength, doc.textLength)
-  endMarker.isGreedyToLeft = false
-  endMarker.isGreedyToRight = true
-  val isComplete = myEnterHandler.handleEnterPressed(console.consoleEditor)
-  if (isComplete || consoleCommunication.isWaitingForInput) {
+    val doc = myConsoleView.editorDocument
+    val endMarker = doc.createRangeMarker(doc.textLength, doc.textLength)
+    endMarker.isGreedyToLeft = false
+    endMarker.isGreedyToRight = true
+    val isComplete = myEnterHandler.handleEnterPressed(console.consoleEditor)
+    if (isComplete || consoleCommunication.isWaitingForInput) {
 
-    deleteString(doc, endMarker)
-    if (shouldCopyToHistory(console)) {
-      copyToHistoryAndExecute(console)
+      if (endMarker.endOffset - endMarker.startOffset > 0) {
+        ApplicationManager.getApplication().runWriteAction {
+          CommandProcessor.getInstance().runUndoTransparentAction {
+            doc.deleteString(endMarker.startOffset, endMarker.endOffset)
+          }
+        }
+      }
+      if (shouldCopyToHistory(console)) {
+        copyToHistoryAndExecute(console)
+      }
+      else {
+        processLine(myConsoleView.consoleEditor.document.text)
+      }
     }
-    else {
-      processLine(myConsoleView.consoleEditor.document.text)
-    }
-  }
   }
 
   private fun copyToHistoryAndExecute(console: LanguageConsoleView) = super.runExecuteAction(console)
@@ -242,17 +227,6 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
 
     private fun shouldCopyToHistory(console: LanguageConsoleView): Boolean {
       return !PyConsoleUtil.isPagingPrompt(console.prompt)
-    }
-
-
-    fun deleteString(document: Document, endMarker : RangeMarker) {
-      if (endMarker.endOffset - endMarker.startOffset > 0) {
-        ApplicationManager.getApplication().runWriteAction {
-          CommandProcessor.getInstance().runUndoTransparentAction {
-            document.deleteString(endMarker.startOffset, endMarker.endOffset)
-          }
-        }
-      }
     }
   }
 }

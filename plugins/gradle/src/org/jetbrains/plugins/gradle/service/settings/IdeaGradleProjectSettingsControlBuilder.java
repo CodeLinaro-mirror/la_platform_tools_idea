@@ -87,7 +87,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
   @NotNull
   private final GradleProjectSettings myInitialSettings;
   @NotNull
-  private final Alarm myAlarm = new Alarm();
+  private final Alarm myAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
   /**
    * The target {@link Project} reference of the UI control.
    * It can be the current project of the settings UI configurable (see {@org.jetbrains.plugins.gradle.service.settings.GradleConfigurable}),
@@ -546,12 +546,12 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
     }
 
     if (myDelegateBuildCombobox != null && myDelegateBuildCombobox.getSelectedItem() instanceof MyItem
-        && !Objects.equals(((MyItem<?>)myDelegateBuildCombobox.getSelectedItem()).value, myInitialSettings.getDelegatedBuild())) {
+        && !Objects.equals(((MyItem)myDelegateBuildCombobox.getSelectedItem()).value, myInitialSettings.getDelegatedBuild())) {
       return true;
     }
 
     if (myTestRunnerCombobox != null && myTestRunnerCombobox.getSelectedItem() instanceof MyItem
-        && !Objects.equals(((MyItem<?>)myTestRunnerCombobox.getSelectedItem()).value, myInitialSettings.getTestRunner())) {
+        && !Objects.equals(((MyItem)myTestRunnerCombobox.getSelectedItem()).value, myInitialSettings.getTestRunner())) {
       return true;
     }
 

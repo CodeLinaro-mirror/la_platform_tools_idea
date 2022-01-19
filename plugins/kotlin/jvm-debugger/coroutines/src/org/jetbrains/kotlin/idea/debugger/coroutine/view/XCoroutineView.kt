@@ -3,6 +3,7 @@
 package org.jetbrains.kotlin.idea.debugger.coroutine.view
 
 import com.intellij.debugger.engine.SuspendContextImpl
+import com.intellij.ide.CommonActionsManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
@@ -11,6 +12,7 @@ import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.CaptionPanel
+import com.intellij.ui.ComboboxSpeedSearch
 import com.intellij.ui.border.CustomLineBorder
 import com.intellij.ui.components.panels.Wrapper
 import com.intellij.util.SingleAlarm
@@ -36,12 +38,14 @@ import org.jetbrains.kotlin.idea.debugger.coroutine.util.*
 import java.awt.BorderLayout
 import javax.swing.JPanel
 
+
 class XCoroutineView(val project: Project, val session: XDebugSession) :
     Disposable, XDebugSessionListenerProvider, CreateContentParamsProvider {
+    val log by logger
     private val versionedImplementationProvider = VersionedImplementationProvider()
 
     private val mainPanel = JPanel(BorderLayout())
-    private val someCombobox = ComboBox<String>()
+    val someCombobox = ComboBox<String>()
     val panel = XDebuggerTreePanel(project, session.debugProcess.editorsProvider, this, null, XCOROUTINE_POPUP_ACTION_GROUP, null)
     val alarm = SingleAlarm({ resetRoot() }, VIEW_CLEAR_DELAY, this)
     val renderer = SimpleColoredTextIconPresentationRenderer()
@@ -52,7 +56,6 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
 
     companion object {
         private const val VIEW_CLEAR_DELAY = 100 //ms
-        val log by logger
     }
 
     init {
@@ -61,15 +64,16 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
         val myToolbar = createToolbar()
         val myThreadsPanel = Wrapper()
         myThreadsPanel.border = CustomLineBorder(CaptionPanel.CNT_ACTIVE_BORDER_COLOR, 0, 0, 1, 0)
-        myThreadsPanel.add(myToolbar.component, BorderLayout.EAST)
+        myThreadsPanel.add(myToolbar?.component, BorderLayout.EAST)
         myThreadsPanel.add(someCombobox, BorderLayout.CENTER)
         mainPanel.add(panel.mainPanel, BorderLayout.CENTER)
         selectedNodeListener = XDebuggerTreeSelectedNodeListener(session, panel.tree)
         selectedNodeListener?.installOn()
     }
 
-    private fun createToolbar(): ActionToolbarImpl {
+    private fun createToolbar(): ActionToolbarImpl? {
         val framesGroup = DefaultActionGroup()
+        val actionsManager = CommonActionsManager.getInstance()
         framesGroup
             .addAll(ActionManager.getInstance().getAction(XDebuggerActions.FRAMES_TOP_TOOLBAR_GROUP))
         val toolbar = ActionManager.getInstance().createActionToolbar(
@@ -147,7 +151,7 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
                     val coroutineCache = debugProbesProxy.dumpCoroutines()
                     if (coroutineCache.isOk()) {
                         val children = XValueChildrenList()
-                        val groups = coroutineCache.cache.groupBy { it.descriptor.dispatcher }
+                        val groups = coroutineCache.cache.groupBy { it.key.dispatcher }
                         for (dispatcher in groups.keys) {
                             children.add(CoroutineContainer(suspendContext, dispatcher ?: emptyDispatcherName, groups[dispatcher]))
                         }
@@ -206,7 +210,7 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
                     children.add(CoroutineFrameValue(it))
                 }
                 doubleFrameList?.creationFrames?.let {
-                    children.add(CreationFramesContainer(it))
+                    children.add(CreationFramesContainer(infoData, it))
                 }
                 node.addChildren(children, true)
             }
@@ -214,8 +218,9 @@ class XCoroutineView(val project: Project, val session: XDebugSession) :
     }
 
     inner class CreationFramesContainer(
+        private val infoData: CoroutineInfoData,
         private val creationFrames: List<CreationCoroutineStackFrameItem>
-    ) : RendererContainer(renderer.renderCreationNode()) {
+    ) : RendererContainer(renderer.renderCreationNode(infoData)) {
 
         override fun computeChildren(node: XCompositeNode) {
             val children = XValueChildrenList()

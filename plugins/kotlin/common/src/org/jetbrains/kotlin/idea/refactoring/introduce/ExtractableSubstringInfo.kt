@@ -9,7 +9,6 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.idea.analysis.analyzeInContext
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.resolve.getLanguageVersionSettings
-import org.jetbrains.kotlin.idea.util.application.withPsiAttachment
 import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
@@ -78,8 +77,8 @@ class ExtractableSubstringInfo(
         val endIndex = oldEntries.indexOf(endEntry)
         if (startIndex < 0 || startIndex >= newEntries.size || endIndex < 0 || endIndex >= newEntries.size) {
             throw KotlinExceptionWithAttachments("Old template($startIndex..$endIndex): $template, new template: $newTemplate")
-                .withPsiAttachment("template", template)
-                .withPsiAttachment("newTemplate", newTemplate)
+                .withAttachment("template", template.text)
+                .withAttachment("newTemplate", newTemplate.text)
         }
         return ExtractableSubstringInfo(newEntries[startIndex], newEntries[endIndex], prefix, suffix, type)
     }

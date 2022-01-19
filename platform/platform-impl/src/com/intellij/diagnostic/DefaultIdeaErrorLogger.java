@@ -1,7 +1,8 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diagnostic;
 
 import com.intellij.diagnostic.VMOptions.MemoryKind;
+import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollector;
 import com.intellij.ide.AndroidStudioSystemHealthMonitorAdapter;
 import com.intellij.ide.plugins.PluginUtil;
 import com.intellij.notification.Notification;
@@ -54,6 +55,8 @@ public class DefaultIdeaErrorLogger implements ErrorLogger {
 
       final MemoryKind kind = getOOMErrorKind(event.getThrowable());
       boolean isOOM = kind != null;
+
+      LifecycleUsageTriggerCollector.onError(pluginId, t, kind);
 
       return notificationEnabled ||
              showPluginError ||

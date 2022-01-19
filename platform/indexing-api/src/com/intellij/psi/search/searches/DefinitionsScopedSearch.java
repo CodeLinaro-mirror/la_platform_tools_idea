@@ -24,7 +24,6 @@ import org.jetbrains.annotations.NotNull;
 public final class DefinitionsScopedSearch extends ExtensibleQueryFactory<PsiElement, DefinitionsScopedSearch.SearchParameters> {
   public static final ExtensionPointName<QueryExecutor<PsiElement, DefinitionsScopedSearch.SearchParameters>> EP_NAME = ExtensionPointName.create("com.intellij.definitionsScopedSearch");
   public static final DefinitionsScopedSearch INSTANCE = new DefinitionsScopedSearch();
-  private static final @NotNull ExtensionPointName<QueryExecutor<PsiElement, PsiElement>> DEFINITIONS_SEARCH_EP_NAME = ExtensionPointName.create("com.intellij.definitionsSearch");
 
   private DefinitionsScopedSearch() {
     super(EP_NAME);
@@ -32,7 +31,8 @@ public final class DefinitionsScopedSearch extends ExtensibleQueryFactory<PsiEle
 
   static {
     INSTANCE.registerExecutor((queryParameters, consumer) -> {
-      for (QueryExecutor<PsiElement, PsiElement> executor : DEFINITIONS_SEARCH_EP_NAME.getExtensions()) {
+      //noinspection deprecation
+      for (QueryExecutor<PsiElement, PsiElement> executor : DefinitionsSearch.EP_NAME.getExtensions()) {
         if (!executor.execute(queryParameters.getElement(), consumer))
           return false;
       }

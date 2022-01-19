@@ -33,10 +33,9 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
       { 'modules delegate'() },
       { 'modules module delegate'() },
       { 'classpath configuration'() },
-      { 'archives configuration'() },
-      { 'archives configuration via property' },
+      { 'compile configuration'() },
       { 'buildscript classpath configuration'() },
-      { 'buildscript archives configuration'() }
+      { 'buildscript compile configuration'() }
     ).run()
   }
 
@@ -48,18 +47,18 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
 
   void 'add external module dependency delegate'() {
     def data = [
-      'dependencies { add("archives", name: 42) { <caret> } }',
-      'dependencies { add("archives", [name:42]) { <caret> } }',
-      'dependencies { add("archives", ":42") { <caret> } }',
-      'dependencies { archives(name: 42) { <caret> } }',
-      'dependencies { archives([name:42]) { <caret> } }',
-      'dependencies { archives(":42") { <caret> } }',
-      'dependencies.add("archives", name: 42) { <caret> }',
-      'dependencies.add("archives", [name:42]) { <caret> }',
-      'dependencies.add("archives", ":42") { <caret> }',
-      'dependencies.archives(name: 42) { <caret> }',
-      'dependencies.archives([name:42]) { <caret> }',
-      'dependencies.archives(":42") { <caret> }',
+      'dependencies { add("compile", name: 42) { <caret> } }',
+      'dependencies { add("compile", [name:42]) { <caret> } }',
+      'dependencies { add("compile", ":42") { <caret> } }',
+      'dependencies { compile(name: 42) { <caret> } }',
+      'dependencies { compile([name:42]) { <caret> } }',
+      'dependencies { compile(":42") { <caret> } }',
+      'dependencies.add("compile", name: 42) { <caret> }',
+      'dependencies.add("compile", [name:42]) { <caret> }',
+      'dependencies.add("compile", ":42") { <caret> }',
+      'dependencies.compile(name: 42) { <caret> }',
+      'dependencies.compile([name:42]) { <caret> }',
+      'dependencies.compile(":42") { <caret> }',
     ]
     doTest(data) {
       closureDelegateTest(GRADLE_API_ARTIFACTS_EXTERNAL_MODULE_DEPENDENCY, 1)
@@ -68,14 +67,14 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
 
   void 'add self resolving dependency delegate'() {
     def data = [
-      'dependencies { add("archives", files()) { <caret> } }',
-      'dependencies { add("archives", fileTree("libs")) { <caret> } }',
-      'dependencies { archives(files()) { <caret> } }',
-      'dependencies { archives(fileTree("libs")) { <caret> } }',
-      'dependencies.add("archives", files()) { <caret> }',
-      'dependencies.add("archives", fileTree("libs")) { <caret> }',
-      'dependencies.archives(files()) { <caret> }',
-      'dependencies.archives(fileTree("libs")) { <caret> }',
+      'dependencies { add("compile", files()) { <caret> } }',
+      'dependencies { add("compile", fileTree("libs")) { <caret> } }',
+      'dependencies { compile(files()) { <caret> } }',
+      'dependencies { compile(fileTree("libs")) { <caret> } }',
+      'dependencies.add("compile", files()) { <caret> }',
+      'dependencies.add("compile", fileTree("libs")) { <caret> }',
+      'dependencies.compile(files()) { <caret> }',
+      'dependencies.compile(fileTree("libs")) { <caret> }',
     ]
     doTest(data) {
       closureDelegateTest(GRADLE_API_ARTIFACTS_SELF_RESOLVING_DEPENDENCY, 1)
@@ -84,10 +83,10 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
 
   void 'add project dependency delegate'() {
     def data = [
-      'dependencies { add("archives", project(":")) { <caret> } }',
-      'dependencies { archives(project(":")) { <caret> } }',
-      'dependencies.add("archives", project(":")) { <caret> }',
-      'dependencies.archives(project(":")) { <caret> }',
+      'dependencies { add("compile", project(":")) { <caret> } }',
+      'dependencies { compile(project(":")) { <caret> } }',
+      'dependencies.add("compile", project(":")) { <caret> }',
+      'dependencies.compile(project(":")) { <caret> }',
     ]
     doTest(data) {
       closureDelegateTest(GRADLE_API_ARTIFACTS_PROJECT_DEPENDENCY, 1)
@@ -95,7 +94,7 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
   }
 
   void 'add delegate method setter'() {
-    doTest('dependencies { add("archives", "notation") { <caret>transitive(false) } }') {
+    doTest('dependencies { add("compile", "notation") { <caret>transitive(false) } }') {
       setterMethodTest('transitive', 'setTransitive', GRADLE_API_ARTIFACTS_MODULE_DEPENDENCY)
     }
   }
@@ -136,14 +135,14 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
     }
   }
 
-  void 'archives configuration'() {
-    doTest('dependencies { <caret>archives("hi") }') {
-      methodTest(resolveTest(PsiMethod), "archives", GRADLE_API_DEPENDENCY_HANDLER)
+  void 'compile configuration'() {
+    doTest('dependencies { <caret>compile("hi") }') {
+      methodTest(resolveTest(PsiMethod), "compile", GRADLE_API_DEPENDENCY_HANDLER)
     }
   }
 
-  void 'archives configuration via property'() {
-    doTest('dependencies.<caret>archives("hi")') {
+  void 'compile confiduration via property'() {
+    doTest('dependencies.<caret>testCompile("hi")') {
       methodTest(resolveTest(PsiMethod), "testCompile", GRADLE_API_DEPENDENCY_HANDLER)
     }
   }
@@ -154,8 +153,8 @@ class GradleDependenciesTest extends GradleHighlightingBaseTest implements Resol
     }
   }
 
-  void 'buildscript archives configuration'() {
-    doTest('buildscript { dependencies { <caret>archives("hi") } }') {
+  void 'buildscript compile configuration'() {
+    doTest('buildscript { dependencies { <caret>compile("hi") } }') {
       resolveTest(null)
     }
   }

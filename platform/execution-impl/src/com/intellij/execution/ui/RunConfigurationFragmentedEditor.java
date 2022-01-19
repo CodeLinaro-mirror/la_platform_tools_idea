@@ -56,11 +56,7 @@ public abstract class RunConfigurationFragmentedEditor<Settings extends RunConfi
   @Override
   protected final List<SettingsEditorFragment<Settings, ?>> createFragments() {
     List<SettingsEditorFragment<Settings, ?>> fragments = new ArrayList<>(createRunFragments());
-    for (SettingsEditor<Settings> editor: myExtensionsManager.createFragments(mySettings)) {
-      if (editor instanceof SettingsEditorFragment<?, ?>) {
-        fragments.add((SettingsEditorFragment<Settings, ?>) editor);
-      }
-    }
+    fragments.addAll(myExtensionsManager.createFragments(mySettings));
     addRunnerSettingsEditors(fragments);
 //    dump fragment ids for FUS
 //    String ids = StringUtil.join(ContainerUtil.sorted(ContainerUtil.map(fragments, (f) -> "\"" + f.getId() + "\"")), ",");
@@ -172,17 +168,15 @@ public abstract class RunConfigurationFragmentedEditor<Settings extends RunConfi
     for (SettingsEditorFragment<Settings, ?> fragment : fragments) {
       JComponent component = fragment.getEditorComponent();
       if (component == null) continue;
-      FocusListener listener = new FocusListener() {
+      component.addFocusListener(new FocusListener() {
         @Override
-        public void focusGained(FocusEvent e) { }
+        public void focusGained(FocusEvent e) {}
 
         @Override
         public void focusLost(FocusEvent e) {
           checkGotIt(fragment);
         }
-      };
-      component.addFocusListener(listener);
-      Disposer.register(fragment, () -> component.removeFocusListener(listener));
+      });
     }
   }
 

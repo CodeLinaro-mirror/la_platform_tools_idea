@@ -1,7 +1,5 @@
 package functionCallStoredToVariable
 
-// SKIP_SYNTHETIC_METHODS: true
-
 fun main(args: Array<String>) {
     val a = inlineFunInt {
         // STEP_OVER: 1

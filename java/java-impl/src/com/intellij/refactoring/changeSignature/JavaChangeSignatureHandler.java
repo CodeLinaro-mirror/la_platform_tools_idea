@@ -183,17 +183,11 @@ public class JavaChangeSignatureHandler implements ChangeSignatureHandler {
       }
       return elementParent;
     }
-    if (elementParent instanceof PsiClass) {
-      PsiClass psiClass = (PsiClass)elementParent;
-      if (psiClass.getNameIdentifier() == element) {
-        if (psiClass.isAnnotationType() || psiClass.isEnum()) {
-          return null;
-        }
-        if (psiClass.isRecord()) {
-          return JavaPsiRecordUtil.findCanonicalConstructor(psiClass);
-        }
-        return elementParent;
+    if (elementParent instanceof PsiClass && ((PsiClass)elementParent).getNameIdentifier()==element) {
+      if (((PsiClass)elementParent).isAnnotationType() || ((PsiClass)elementParent).isEnum()) {
+        return null;
       }
+      return elementParent;
     }
 
     final PsiCallExpression expression = PsiTreeUtil.getParentOfType(element, PsiCallExpression.class);

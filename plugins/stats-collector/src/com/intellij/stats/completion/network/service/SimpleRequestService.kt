@@ -22,7 +22,6 @@ class SimpleRequestService : RequestService() {
       val zippedArray = LineStorage.readAsZipArray(file)
       return HttpRequests.post(url, "application/json").tuner {
         it.setRequestProperty(HttpHeaders.CONTENT_ENCODING, "gzip")
-        it.setRequestProperty(HttpHeaders.CONTENT_LENGTH, zippedArray.size.toString())
       }.connect { request ->
         request.write(zippedArray)
         return@connect request.connection.asResponseData(zippedArray.size)

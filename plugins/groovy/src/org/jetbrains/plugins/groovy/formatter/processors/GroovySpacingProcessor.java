@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.formatter.processors;
 
 import com.intellij.formatting.Block;
@@ -27,7 +27,6 @@ import org.jetbrains.plugins.groovy.lang.groovydoc.parser.GroovyDocElementTypes;
 import org.jetbrains.plugins.groovy.lang.groovydoc.psi.api.*;
 import org.jetbrains.plugins.groovy.lang.lexer.GroovyTokenTypes;
 import org.jetbrains.plugins.groovy.lang.lexer.TokenSets;
-import org.jetbrains.plugins.groovy.lang.parser.GrBlockElementType;
 import org.jetbrains.plugins.groovy.lang.parser.GroovyElementTypes;
 import org.jetbrains.plugins.groovy.lang.parser.GroovyEmptyStubElementTypes;
 import org.jetbrains.plugins.groovy.lang.parser.GroovyStubElementTypes;
@@ -54,7 +53,6 @@ import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.path.GrI
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.path.GrMethodCallExpression;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.params.GrParameterList;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.GrAnonymousClassDefinition;
-import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.GrRecordDefinition;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.GrTypeDefinition;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.GrTypeDefinitionBody;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.members.GrAnnotationMethod;
@@ -649,14 +647,6 @@ public class GroovySpacingProcessor extends GroovyElementVisitor {
   }
 
   @Override
-  public void visitRecordDefinition(@NotNull GrRecordDefinition recordDefinition) {
-    if (myType2 == PARAMETER_LIST) {
-      createSpaceInCode(myGroovySettings.SPACE_BEFORE_RECORD_PARENTHESES);
-    }
-    visitTypeDefinition(recordDefinition);
-  }
-
-  @Override
   public void visitParameterList(@NotNull GrParameterList parameterList) {
     processParentheses(
       mySettings.SPACE_WITHIN_METHOD_PARENTHESES,
@@ -904,7 +894,8 @@ public class GroovySpacingProcessor extends GroovyElementVisitor {
     }
   }
 
-  private void visitSwitchElement() {
+  @Override
+  public void visitSwitchStatement(@NotNull GrSwitchStatement switchStatement) {
     if (myType1 == GroovyTokenTypes.kSWITCH && myType2 == GroovyTokenTypes.mLPAREN) {
       createSpaceInCode(mySettings.SPACE_BEFORE_SWITCH_PARENTHESES);
     }
@@ -918,16 +909,6 @@ public class GroovySpacingProcessor extends GroovyElementVisitor {
     else if (isWithinBraces()) {
       createLF(true);
     }
-  }
-
-  @Override
-  public void visitSwitchStatement(@NotNull GrSwitchStatement switchStatement) {
-    visitSwitchElement();
-  }
-
-  @Override
-  public void visitSwitchExpression(@NotNull GrSwitchExpression switchExpression) {
-    visitSwitchElement();
   }
 
   @Override
@@ -1117,7 +1098,7 @@ public class GroovySpacingProcessor extends GroovyElementVisitor {
   }
 
   private static boolean isOpenBlock(IElementType type) {
-    return type instanceof GrBlockElementType || type == GroovyElementTypes.CONSTRUCTOR_BODY;
+    return type == GroovyElementTypes.OPEN_BLOCK || type == GroovyElementTypes.CONSTRUCTOR_BODY;
   }
 
   @Nullable

@@ -1,6 +1,6 @@
 // "Change type to MutableSet" "false"
 // DISABLE-ERRORS
-// ACTION: Converts the assignment statement to an expression
+// ACTION: Convert assignment to assignment expression
 // ACTION: Replace overloaded operator with function call
 // WITH_RUNTIME
 fun main() {

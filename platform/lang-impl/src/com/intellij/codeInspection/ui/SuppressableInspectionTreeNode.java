@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.ui;
 
 import com.intellij.codeInspection.CommonProblemDescriptor;
@@ -36,7 +36,7 @@ public abstract class SuppressableInspectionTreeNode extends InspectionTreeNode 
   }
 
   void nodeAdded() {
-    super.dropProblemCountCaches();
+    dropProblemCountCaches();
     ReadAction.run(() -> myValid = calculateIsValid());
     //force calculation
     getProblemLevels();
@@ -61,24 +61,23 @@ public abstract class SuppressableInspectionTreeNode extends InspectionTreeNode 
   public abstract boolean isQuickFixAppliedFromView();
 
   @Override
-  void dropProblemCountCaches() {
-    super.dropProblemCountCaches();
+  protected boolean isProblemCountCacheValid() {
     NodeState currentState = calculateState();
     if (!currentState.equals(myPreviousState)) {
       myPreviousState = currentState;
+      return false;
     }
+    return true;
   }
 
   @NotNull
   public synchronized Set<SuppressIntentionAction> getAvailableSuppressActions() {
-    if (myAvailableSuppressActions == null) {
-      updateAvailableSuppressActions();
+    Set<SuppressIntentionAction> actions = myAvailableSuppressActions;
+    if (actions == null) {
+      actions = calculateAvailableSuppressActions();
+      myAvailableSuppressActions = actions;
     }
-    return myAvailableSuppressActions;
-  }
-
-  public void updateAvailableSuppressActions() {
-    myAvailableSuppressActions = calculateAvailableSuppressActions();
+    return actions;
   }
 
   public void removeSuppressActionFromAvailable(@NotNull SuppressIntentionAction action) {
@@ -92,7 +91,7 @@ public abstract class SuppressableInspectionTreeNode extends InspectionTreeNode 
   public final synchronized boolean isValid() {
     Boolean valid = myValid;
     if (valid == null) {
-      valid = ReadAction.compute(() -> calculateIsValid());
+      valid = calculateIsValid();
       myValid = valid;
     }
     return valid;
@@ -106,6 +105,18 @@ public abstract class SuppressableInspectionTreeNode extends InspectionTreeNode 
       myPresentableName = name;
     }
     return name;
+  }
+
+  @Override
+  void uiRequested() {
+    nodeAdded();
+    ReadAction.run(() -> {
+      if (myPresentableName == null) {
+        myPresentableName = calculatePresentableName();
+        myValid = calculateIsValid();
+        myAvailableSuppressActions = calculateAvailableSuppressActions();
+      }
+    });
   }
 
   @Nullable
@@ -151,19 +162,16 @@ public abstract class SuppressableInspectionTreeNode extends InspectionTreeNode 
 
   protected abstract boolean calculateIsValid();
 
-  protected void dropCaches() {
-    doDropCache();
-    dropProblemCountCaches();
+  protected void dropCache() {
+    ReadAction.run(() -> doDropCache());
   }
 
   private void doDropCache() {
     myProblemLevels.drop();
     if (isQuickFixAppliedFromView() || isAlreadySuppressedFromView()) return;
     // calculate all data on background thread
-    ReadAction.run(() -> {
-      myValid = calculateIsValid();
-      myPresentableName = calculatePresentableName();
-    });
+    myValid = calculateIsValid();
+    myPresentableName = calculatePresentableName();
 
     for (InspectionTreeNode child : getChildren()) {
       if (child instanceof SuppressableInspectionTreeNode) {

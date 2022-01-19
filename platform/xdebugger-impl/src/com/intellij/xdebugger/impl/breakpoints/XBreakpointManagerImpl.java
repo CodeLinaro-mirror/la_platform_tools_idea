@@ -101,8 +101,6 @@ public final class XBreakpointManagerImpl implements XBreakpointManager {
     XBreakpointType.EXTENSION_POINT_NAME.addExtensionPointListener(new ExtensionPointListener<>() {
       @Override
       public void extensionAdded(@NotNull XBreakpointType type, @NotNull PluginDescriptor pluginDescriptor) {
-        //the project may be 'temporarily disposed' in tests if this class was created from a light test
-        if (project.isDisposed()) return;
         //noinspection unchecked
         WriteAction.run(() -> addDefaultBreakpoint(type));
       }
@@ -507,7 +505,7 @@ public final class XBreakpointManagerImpl implements XBreakpointManager {
       return false;
     }
 
-    BreakpointState defaultState = ((XBreakpointBase<?, ?, ?>)defaultBreakpoint).getState();
+    BreakpointState defaultState = ((XBreakpointBase)defaultBreakpoint).getState();
     return statesAreDifferent(state, defaultState, false);
   }
 
@@ -696,7 +694,7 @@ public final class XBreakpointManagerImpl implements XBreakpointManager {
     }
 
     boolean isRestorable() {
-      return !(myBreakpoint instanceof XLineBreakpointImpl) || ((XLineBreakpointImpl<?>)myBreakpoint).getFile() != null;
+      return !(myBreakpoint instanceof XLineBreakpointImpl) || ((XLineBreakpointImpl)myBreakpoint).getFile() != null;
     }
 
     @Nullable

@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
 fun foo(i :Int) {}
 
 fun test(i: Int, b: Boolean) {

@@ -1,7 +1,9 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.yaml.formatter;
 
-import com.intellij.formatting.*;
+import com.intellij.formatting.Block;
+import com.intellij.formatting.Indent;
+import com.intellij.formatting.Spacing;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.formatter.common.AbstractBlock;
@@ -34,7 +36,7 @@ class YAMLFormattingBlock extends AbstractBlock {
     myIndent = myContext.computeBlockIndent(myNode);
     myIsIncomplete = myContext.isIncomplete(myNode);
     myNewChildIndent = myContext.computeNewChildIndent(myNode);
-    myTextRange = myNode.getTextRange();
+    myTextRange = excludeTrailingEOLs(myNode);
   }
 
   @Nullable
@@ -77,7 +79,7 @@ class YAMLFormattingBlock extends AbstractBlock {
   }
 
   @NotNull
-  private List<Block> buildSubBlocks(@NotNull YAMLFormattingContext context, @NotNull ASTNode node) {
+  private static List<Block> buildSubBlocks(@NotNull YAMLFormattingContext context, @NotNull ASTNode node) {
     List<Block> res = new SmartList<>();
     for (ASTNode subNode = node.getFirstChildNode(); subNode != null; subNode = subNode.getTreeNext()) {
       IElementType subNodeType = PsiUtilCore.getElementType(subNode);
@@ -88,16 +90,28 @@ class YAMLFormattingBlock extends AbstractBlock {
         res.addAll(buildSubBlocks(context, subNode));
       }
       else if (YAMLElementTypes.CONTAINERS.contains(subNodeType)) {
-        res.addAll(YamlInjectedBlockFactory.substituteInjectedBlocks(
-          context.mySettings,
-          buildSubBlocks(context, subNode),
-          subNode, getWrap(), context.computeAlignment(subNode)
-        ));
+        res.addAll(buildSubBlocks(context, subNode));
       }
       else {
         res.add(YAMLFormattingModelBuilder.createBlock(context, subNode));
       }
     }
     return res;
+  }
+
+  private static TextRange excludeTrailingEOLs(@NotNull ASTNode node) {
+    CharSequence text = node.getChars();
+    int last = text.length() - 1;
+    if (last == -1 || text.charAt(last) != '\n') {
+      return node.getTextRange();
+    }
+    for (int i = last; i >= 0; i--) {
+      if (text.charAt(i) != '\n') {
+        int start = node.getTextRange().getStartOffset();
+        return new TextRange(start, start + i + 1);
+      }
+    }
+    // It seems this node is a file and this file consists of only empty lines
+    return node.getTextRange();
   }
 }

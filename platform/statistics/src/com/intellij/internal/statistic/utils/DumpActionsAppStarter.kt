@@ -41,7 +41,7 @@ class DumpActionsAppStarter : ApplicationStarter {
   }
 
   private fun collectMainMenuActions(groups: HashMap<String, String>, action: AnAction, parentName: String?) {
-    if (action is SeparatorAction) return
+    if (action is Separator) return
     try {
       val path = appendName(action, parentName)
       if (action is ActionGroup) {
@@ -64,7 +64,7 @@ class DumpActionsAppStarter : ApplicationStarter {
                             visitedActions: HashSet<String>,
                             actionsDescriptions: HashSet<ActionDescription>) {
     if (action == null) return
-    if (action is SeparatorAction) return
+    if (action is Separator) return
     try {
       val id = actionId ?: ActionManager.getInstance().getId(action) ?: action.javaClass.name
       if (visitedActions.contains(id)) {

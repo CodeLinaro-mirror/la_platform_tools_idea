@@ -39,7 +39,7 @@ public class PsiTypeVariableFactory {
     myClusters.add(cluster);
 
     for (final PsiTypeVariable aCluster : cluster) {
-      myVarCluster.put(Integer.valueOf(aCluster.getIndex()), cluster);
+      myVarCluster.put(new Integer(aCluster.getIndex()), cluster);
     }
   }
 
@@ -48,7 +48,7 @@ public class PsiTypeVariableFactory {
   }
 
   public final Set<PsiTypeVariable> getClusterOf(final int var) {
-    return myVarCluster.get(Integer.valueOf(var));
+    return myVarCluster.get(new Integer(var));
   }
 
   public final PsiTypeVariable create() {

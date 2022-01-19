@@ -112,8 +112,6 @@
     },
 
     "DragAndDrop": {
-      "borderColor": "#3366FF",
-      "rowBackground": "#3366FF80",
       "areaForeground": "#FFFFFF",
       "areaBackground": "#00EAFF7F",
       "areaBorderColor": "#1AEBFF"
@@ -145,8 +143,7 @@
       "Blue": "#00004D",
       "Violet": "#471747",
       "Orange": "#733000",
-      "Rose": "#4D0F22",
-      "Gray": "#062329"
+      "Rose": "#4D0F22"
     },
 
     "FlameGraph": {
@@ -217,11 +214,6 @@
       }
     },
 
-    "NotificationsToolwindow": {
-      "newNotification.background": "#450073",
-      "newNotification.hoverBackground": "#450073"
-    },
-
     "OptionButton" : {
       "default.separatorColor": "#000000",
       "separatorColor": "#FFFFFF"
@@ -276,7 +268,7 @@
 
     "PopupMenu": {
       "borderWidth": 1,
-      "borderInsets": "8,1,8,1"
+      "borderInsets": "4,1,4,1"
     },
 
     "ProgressBar": {
@@ -290,17 +282,17 @@
       "passedEndColor": "#15451E"
     },
 
-    "BookmarkMnemonicAvailable": {
+    "AvailableMnemonic": {
       "foreground": "#FFFFFF",
       "background": "#000000",
       "borderColor": "#FFFFFF"
     },
-    "BookmarkMnemonicAssigned": {
+    "AssignedMnemonic": {
       "foreground": "#000000",
       "background": "#FF8C21",
       "borderColor": "#FF8C21"
     },
-    "BookmarkMnemonicCurrent": {
+    "CurrentMnemonic": {
       "foreground": "#FFFFFF",
       "background": "#3333FF",
       "borderColor": "#3333FF"
@@ -308,7 +300,7 @@
     "BookmarkIcon": {
       "background": "#E0861F"
     },
-    "BookmarkMnemonicIcon": {
+    "MnemonicIcon": {
       "foreground": "#FFFFFF",
       "background": "#000000",
       "borderColor": "#E0861F"
@@ -471,9 +463,7 @@
       "separatorColor": "#e6e6e6"
     },
 
-    "Window.border" : "1,1,1,1,E6E6E6",
-
-    "textInactiveText" : "#E0861F"
+    "Window.border" : "1,1,1,1,E6E6E6"
   },
 
   "icons": {

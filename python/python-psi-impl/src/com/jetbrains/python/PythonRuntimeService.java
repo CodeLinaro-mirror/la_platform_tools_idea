@@ -12,7 +12,6 @@ import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyReferenceExpression;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,7 +27,7 @@ public class PythonRuntimeService {
     return null;
   }
 
-  public @Nls String createPydevDoc(PsiElement element, PsiElement originalElement) {
+  public String createPydevDoc(PsiElement element, PsiElement originalElement) {
     return null;
   }
 

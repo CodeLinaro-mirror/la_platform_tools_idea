@@ -1,10 +1,3 @@
-// AFTER-WARNING: Parameter 'a' is never used
-// AFTER-WARNING: Parameter 'a' is never used
-// AFTER-WARNING: Parameter 'b' is never used
-// AFTER-WARNING: Parameter 'b' is never used
-// AFTER-WARNING: Parameter 'c' is never used
-// AFTER-WARNING: Parameter 'c' is never used
-// AFTER-WARNING: Parameter 'd' is never used
 fun foo() {
     f(
         1,

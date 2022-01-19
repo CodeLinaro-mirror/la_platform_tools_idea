@@ -41,4 +41,7 @@ class PyAutoDetectTestConfiguration(project: Project, factory: PyAutoDetectionCo
     return object : PyAbstractTestSettingsEditor(PyTestSharedForm.create(this)) {}
   }
 
+  override fun isFrameworkInstalled(): Boolean {
+    return true // Depends on setting
+  }
 }

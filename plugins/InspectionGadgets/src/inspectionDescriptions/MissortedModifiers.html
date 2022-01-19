@@ -3,17 +3,17 @@
 Reports declarations whose modifiers are not in the canonical
 preferred order (as stated in the Java Language Specification).
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   class Foo {
     native public final void foo();
   }
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
+<pre>
   class Foo {
     public final native void foo();
   }
-</code></pre>
+</pre>
 <!-- tooltip end -->
 <p>Use the inspection settings to:</p>
 <ul>

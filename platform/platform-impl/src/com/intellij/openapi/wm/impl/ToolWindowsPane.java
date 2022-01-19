@@ -12,7 +12,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Splitter;
 import com.intellij.openapi.ui.ThreeComponentsSplitter;
 import com.intellij.openapi.util.Pair;
-import com.intellij.ui.ExperimentalUI;
+import com.intellij.openapi.util.registry.ExperimentalUI;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.registry.RegistryValue;
 import com.intellij.openapi.util.registry.RegistryValueListener;
@@ -158,9 +158,6 @@ public final class ToolWindowsPane extends JBLayeredPane implements UISettingsLi
     setFocusTraversalPolicy(new LayoutFocusTraversalPolicy());
     if (Registry.is("ide.new.tool.window.dnd")) {
       new ToolWindowDragHelper(parentDisposable, this).start();
-    }
-    if (Registry.is("ide.allow.split.and.reorder.in.tool.window")) {
-      new ToolWindowInnerDragHelper(parentDisposable, this).start();
     }
   }
 

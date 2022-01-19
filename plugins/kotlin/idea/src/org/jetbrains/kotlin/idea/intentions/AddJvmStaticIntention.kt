@@ -13,7 +13,6 @@ import org.jetbrains.kotlin.asJava.elements.KtLightElement
 import org.jetbrains.kotlin.asJava.elements.KtLightField
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.core.util.runSynchronouslyWithProgress
-import org.jetbrains.kotlin.idea.search.codeUsageScope
 import org.jetbrains.kotlin.idea.search.restrictByFileType
 import org.jetbrains.kotlin.idea.util.addAnnotation
 import org.jetbrains.kotlin.idea.util.application.runReadAction
@@ -64,7 +63,7 @@ class AddJvmStaticIntention : SelfTargetingRangeIntention<KtNamedDeclaration>(
         val expressionsToReplaceWithQualifier =
             project.runSynchronouslyWithProgress(KotlinBundle.message("looking.for.usages.in.java.files"), true) {
                 runReadAction {
-                    val searchScope = element.codeUsageScope().restrictByFileType(JavaFileType.INSTANCE)
+                    val searchScope = element.useScope.restrictByFileType(JavaFileType.INSTANCE)
                     ReferencesSearch
                         .search(element, searchScope)
                         .mapNotNull {

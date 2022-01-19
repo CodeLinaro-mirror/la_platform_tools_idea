@@ -20,24 +20,25 @@ import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Module
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.SourcesetType
 
 
-object SimpleNodeJsTemplate : Template() {
+class SimpleNodeJsTemplate : Template() {
     override val title: String = KotlinNewProjectWizardBundle.message("module.template.simple.nodejs.title")
 
     override val description: String = KotlinNewProjectWizardBundle.message("module.template.simple.nodejs.description")
 
 
-    override fun isApplicableTo(module: Module, projectKind: ProjectKind, reader: Reader): Boolean =
+    override fun isSupportedByModuleType(module: Module, projectKind: ProjectKind): Boolean =
         module.configurator.moduleType == ModuleType.js
-                && when (module.configurator) {
-                    JsNodeTargetConfigurator, NodeJsSinglePlatformModuleConfigurator -> true
-                    else -> false
-                }
 
     @NonNls
     override val id: String = "simpleNodeJs"
 
-    private const val mainFile = "Main.kt"
-    override val filesToOpenInEditor = listOf(mainFile)
+    override fun isApplicableTo(
+        reader: Reader,
+        module: Module
+    ): Boolean = when (module.configurator) {
+        JsNodeTargetConfigurator, NodeJsSinglePlatformModuleConfigurator -> true
+        else -> false
+    }
 
     val useKotlinxNodejs by booleanSetting(
         KotlinNewProjectWizardBundle.message("module.template.simple.nodejs.use.kotlinx.nodejs"),
@@ -68,7 +69,7 @@ object SimpleNodeJsTemplate : Template() {
     override fun Reader.getFileTemplates(module: ModuleIR): List<FileTemplateDescriptorWithPath> =
         withSettingsOf(module.originalModule) {
             buildList {
-                +(FileTemplateDescriptor("$id/main.kt.vm", mainFile.asPath()) asSrcOf SourcesetType.main)
+                +(FileTemplateDescriptor("$id/main.kt.vm", "Main.kt".asPath()) asSrcOf SourcesetType.main)
                 +(FileTemplateDescriptor("$id/GreetingTest.kt.vm") asSrcOf SourcesetType.test)
             }
         }

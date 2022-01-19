@@ -4,32 +4,38 @@ import com.intellij.ide.CopyProvider
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.project.Project
 import com.intellij.ui.SpeedSearchComparator
 import com.intellij.ui.TableSpeedSearch
 import com.intellij.ui.TableUtil
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.UIUtil
+import com.jetbrains.packagesearch.intellij.plugin.configuration.PackageSearchGeneralConfiguration
 import com.jetbrains.packagesearch.intellij.plugin.fus.PackageSearchEventsLogger
 import com.jetbrains.packagesearch.intellij.plugin.ui.PackageSearchUI
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.KnownRepositories
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.OperationExecutor
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageModel
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageScope
+import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageVersion
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.TargetModules
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.UiPackageModel
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.operations.PackageSearchOperation
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.operations.PackageSearchOperationFactory
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.NormalizedPackageVersion
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.ActionsColumn
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.NameColumn
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.ScopeColumn
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.columns.VersionColumn
 import com.jetbrains.packagesearch.intellij.plugin.ui.updateAndRepaint
+import com.jetbrains.packagesearch.intellij.plugin.ui.util.Displayable
+import com.jetbrains.packagesearch.intellij.plugin.ui.util.autosizeColumnsAt
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.onMouseMotion
 import com.jetbrains.packagesearch.intellij.plugin.ui.util.scaled
+import com.jetbrains.packagesearch.intellij.plugin.util.AppUI
+import com.jetbrains.packagesearch.intellij.plugin.util.TraceInfo
 import com.jetbrains.packagesearch.intellij.plugin.util.logDebug
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.awt.Dimension
 import java.awt.KeyboardFocusManager
 import java.awt.event.ComponentAdapter
@@ -44,19 +50,24 @@ import javax.swing.table.TableCellRenderer
 import javax.swing.table.TableColumn
 import kotlin.math.roundToInt
 
-internal typealias SearchResultStateChangeListener =
-    (PackageModel.SearchResult, NormalizedPackageVersion<*>?, PackageScope?) -> Unit
+internal typealias SelectedPackageModelListener = (UiPackageModel<*>?) -> Unit
+internal typealias SearchResultStateChangeListener = (PackageModel.SearchResult, PackageVersion?, PackageScope?) -> Unit
 
 @Suppress("MagicNumber") // Swing dimension constants
 internal class PackagesTable(
+    project: Project,
     private val operationExecutor: OperationExecutor,
+    operationFactory: PackageSearchOperationFactory,
+    private val onItemSelectionChanged: SelectedPackageModelListener,
     private val onSearchResultStateChanged: SearchResultStateChangeListener
-) : JBTable(), CopyProvider, DataProvider {
+) : JBTable(), CopyProvider, DataProvider, Displayable<PackagesTable.ViewModel> {
 
     private val operationFactory = PackageSearchOperationFactory()
 
     private val tableModel: PackagesTableModel
         get() = model as PackagesTableModel
+
+    private var selectedUiPackageModel: UiPackageModel<*>? = null
 
     var transferFocusUp: () -> Unit = { transferFocusBackward() }
 
@@ -75,27 +86,29 @@ internal class PackagesTable(
         updatePackageVersion(packageModel, newVersion)
     }
 
-    private val actionsColumn = ActionsColumn(operationExecutor = ::executeActionColumnOperations)
+    private val actionsColumn = ActionsColumn(
+        operationExecutor = ::executeActionColumnOperations,
+        operationFactory = operationFactory
+    )
 
     private val actionsColumnIndex: Int
 
     private val autosizingColumnsIndices: List<Int>
 
     private var targetModules: TargetModules = TargetModules.None
-
     private var knownRepositoriesInTargetModules = KnownRepositories.InTargetModules.EMPTY
-
-    val selectedPackageStateFlow = MutableStateFlow<UiPackageModel<*>?>(null)
+    private var allKnownRepositories = KnownRepositories.All.EMPTY
 
     private val listSelectionListener = ListSelectionListener {
         val item = getSelectedTableItem()
         if (selectedIndex >= 0 && item != null) {
             TableUtil.scrollSelectionToVisible(this)
             updateAndRepaint()
-            selectedPackageStateFlow.tryEmit(item.uiPackageModel)
+            selectedUiPackageModel = item.uiPackageModel
+            onItemSelectionChanged(selectedUiPackageModel)
             PackageSearchEventsLogger.logPackageSelected(item is PackagesTableItem.InstalledPackage)
         } else {
-            selectedPackageStateFlow.tryEmit(null)
+            selectedUiPackageModel = null
         }
     }
 
@@ -119,10 +132,8 @@ internal class PackagesTable(
         require(columnWeights.sum() == 1.0f) { "The column weights must sum to 1.0" }
 
         model = PackagesTableModel(
-            nameColumn = nameColumn,
-            scopeColumn = scopeColumn,
-            versionColumn = versionColumn,
-            actionsColumn = actionsColumn
+            onlyStable = PackageSearchGeneralConfiguration.getInstance(project).onlyStable,
+            columns = arrayOf(nameColumn, scopeColumn, versionColumn, actionsColumn)
         )
 
         val columnInfos = tableModel.columnInfos
@@ -243,47 +254,54 @@ internal class PackagesTable(
         val onlyStable: Boolean,
         val targetModules: TargetModules,
         val knownRepositoriesInTargetModules: KnownRepositories.InTargetModules,
+        val allKnownRepositories: KnownRepositories.All,
+        val traceInfo: TraceInfo
     ) {
 
         data class TableItems(
             val items: List<PackagesTableItem<*>>,
+            val indexToSelect: Int?
         ) : List<PackagesTableItem<*>> by items {
 
             companion object {
 
-                val EMPTY = TableItems(items = emptyList())
+                val EMPTY = TableItems(items = emptyList(), indexToSelect = null)
             }
         }
     }
 
-    fun display(viewModel: ViewModel) {
+    override suspend fun display(viewModel: ViewModel) = withContext(Dispatchers.AppUI) {
         knownRepositoriesInTargetModules = viewModel.knownRepositoriesInTargetModules
+        allKnownRepositories = viewModel.allKnownRepositories
         targetModules = viewModel.targetModules
+
+        logDebug(viewModel.traceInfo, "PackagesTable#displayData()") { "Displaying ${viewModel.items.size} item(s)" }
 
         // We need to update those immediately before setting the items, on EDT, to avoid timing issues
         // where the target modules or only stable flags get updated after the items data change, thus
         // causing issues when Swing tries to render things (e.g., targetModules doesn't match packages' usages)
         versionColumn.updateData(viewModel.onlyStable, viewModel.targetModules)
-        actionsColumn.updateData(
-            viewModel.onlyStable,
-            viewModel.targetModules,
-            viewModel.knownRepositoriesInTargetModules
-        )
+        actionsColumn.updateData(viewModel.onlyStable, viewModel.targetModules, knownRepositoriesInTargetModules, allKnownRepositories)
 
-        // TODO save current selection and attempt to re-select
-        val previouslySelectedPackage = selectedPackageStateFlow.value?.packageModel?.identifier
+        val previouslySelectedPackage = selectedUiPackageModel?.packageModel?.identifier
         selectionModel.removeListSelectionListener(listSelectionListener)
         tableModel.items = viewModel.items
 
         if (viewModel.items.isEmpty() || previouslySelectedPackage == null) {
             selectionModel.addListSelectionListener(listSelectionListener)
-            return
+            onItemSelectionChanged(null)
+            return@withContext
         }
 
-        // TODO size columns
+        autosizeColumnsAt(autosizingColumnsIndices)
 
         selectionModel.addListSelectionListener(listSelectionListener)
 
+        if (viewModel.items.indexToSelect != null) {
+            selectedIndex = viewModel.items.indexToSelect
+        } else {
+            logDebug(viewModel.traceInfo, "PackagesTable#displayData()") { "Previous selection not available anymore, clearing..." }
+        }
         updateAndRepaint()
     }
 
@@ -323,8 +341,7 @@ internal class PackagesTable(
                 operationExecutor.executeOperations(operations)
             }
             is UiPackageModel.SearchResult -> {
-                val selectedVersion = uiPackageModel.selectedVersion
-                onSearchResultStateChanged(uiPackageModel.packageModel, selectedVersion, newScope)
+                onSearchResultStateChanged(uiPackageModel.packageModel, uiPackageModel.selectedVersion, newScope)
 
                 logDebug("PackagesTable#updatePackageScope()") {
                     "The user has selected a new scope for search result ${uiPackageModel.identifier}: '$newScope'."
@@ -334,18 +351,19 @@ internal class PackagesTable(
         }
     }
 
-    private fun updatePackageVersion(uiPackageModel: UiPackageModel<*>, newVersion: NormalizedPackageVersion<*>) {
+    private fun updatePackageVersion(uiPackageModel: UiPackageModel<*>, newVersion: PackageVersion) {
         when (uiPackageModel) {
             is UiPackageModel.Installed -> {
                 val operations = uiPackageModel.packageModel.usageInfo.flatMap {
                     val repoToInstall = knownRepositoriesInTargetModules.repositoryToAddWhenInstallingOrUpgrading(
                         uiPackageModel.packageModel,
-                        newVersion.originalVersion
+                        newVersion,
+                        allKnownRepositories
                     )
 
                     operationFactory.createChangePackageVersionOperations(
                         packageModel = uiPackageModel.packageModel,
-                        newVersion = newVersion.originalVersion,
+                        newVersion = newVersion,
                         targetModules = targetModules,
                         repoToInstall = repoToInstall
                     )
@@ -368,9 +386,9 @@ internal class PackagesTable(
         }
     }
 
-    private fun executeActionColumnOperations(operations: Deferred<List<PackageSearchOperation<*>>>) {
+    private fun executeActionColumnOperations(operations: List<PackageSearchOperation<*>>) {
         logDebug("PackagesTable#executeActionColumnOperations()") {
-            "The user has clicked the action for a package. This resulted in many operation(s)."
+            "The user has clicked the action for a package. This resulted in ${operations.size} operation(s)."
         }
         operationExecutor.executeOperations(operations)
     }

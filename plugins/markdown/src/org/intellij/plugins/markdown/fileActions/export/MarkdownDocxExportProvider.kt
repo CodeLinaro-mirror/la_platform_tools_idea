@@ -15,7 +15,6 @@ import org.intellij.plugins.markdown.fileActions.MarkdownFileActionFormat
 import org.intellij.plugins.markdown.fileActions.utils.MarkdownImportExportUtils
 import org.intellij.plugins.markdown.lang.MarkdownFileType
 import org.intellij.plugins.markdown.settings.pandoc.PandocExecutableDetector
-import java.util.*
 
 internal class MarkdownDocxExportProvider : MarkdownExportProvider {
   override val formatDescription: MarkdownFileActionFormat
@@ -27,7 +26,7 @@ internal class MarkdownDocxExportProvider : MarkdownExportProvider {
 
   override fun validate(project: Project, file: VirtualFile): String? {
     return when {
-      PandocExecutableDetector.detect().isEmpty() -> MarkdownBundle.message("markdown.export.to.docx.failure.msg")
+      PandocExecutableDetector().detect().isEmpty() -> MarkdownBundle.message("markdown.export.to.docx.failure.msg")
       else -> null
     }
   }
@@ -69,7 +68,7 @@ internal class MarkdownDocxExportProvider : MarkdownExportProvider {
         "pandoc",
         srcFile.path,
         "-f",
-        MarkdownFileType.INSTANCE.name.lowercase(Locale.getDefault()),
+        MarkdownFileType.INSTANCE.name.toLowerCase(),
         "-t",
         formatDescription.extension,
         "-o",
@@ -84,6 +83,6 @@ internal class MarkdownDocxExportProvider : MarkdownExportProvider {
 
   companion object {
     @JvmStatic
-    val format = MarkdownFileActionFormat("Microsoft Word", "docx")
+    val format = MarkdownFileActionFormat("docx", "docx")
   }
 }

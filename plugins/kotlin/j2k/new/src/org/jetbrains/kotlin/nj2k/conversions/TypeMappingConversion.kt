@@ -34,7 +34,7 @@ class TypeMappingConversion(
                         element::typeArgumentList.detached().fixTypeArguments(newClassSymbol),
                         element::classBody.detached(),
                         element.isAnonymousClass
-                    ).withPsiAndFormattingFrom(element)
+                    ).withFormattingFrom(element)
                 )
             }
         }

@@ -59,7 +59,7 @@ public final class PyPySdkFlavor extends PythonSdkFlavor {
   }
 
   @Override
-  public @NotNull String getVersionOption() {
+  public String getVersionOption() {
     return "--version";
   }
 
@@ -116,7 +116,7 @@ public final class PyPySdkFlavor extends PythonSdkFlavor {
   }
 
   @Override
-  public @NotNull Icon getIcon() {
+  public Icon getIcon() {
     return PythonIcons.Python.Pypy;
   }
 }

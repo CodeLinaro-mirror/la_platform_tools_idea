@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 't' is never used
 fun test() {
     class X
 

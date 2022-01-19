@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.refactoring.RefactoringActionHandler
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.core.util.CodeInsightUtils
 import org.jetbrains.kotlin.idea.refactoring.getExtractionContainers
@@ -16,11 +15,9 @@ import org.jetbrains.kotlin.idea.refactoring.introduce.extractFunction.ui.Kotlin
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.*
 import org.jetbrains.kotlin.idea.refactoring.introduce.selectElementsWithTargetSibling
 import org.jetbrains.kotlin.idea.refactoring.introduce.validateExpressionElements
-import org.jetbrains.kotlin.idea.util.nonBlocking
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.toRange
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 class ExtractKotlinFunctionHandler(
     private val allContainersEnabled: Boolean = false,
@@ -46,13 +43,10 @@ class ExtractKotlinFunctionHandler(
         elements: List<PsiElement>,
         targetSibling: PsiElement
     ) {
-        nonBlocking(file.project, {
-            val adjustedElements = elements.singleOrNull().safeAs<KtBlockExpression>()?.statements ?: elements
-            ExtractionData(file, adjustedElements.toRange(false), targetSibling)
-        }) { extractionData ->
-            ExtractionEngine(helper).run(editor, extractionData) {
-                processDuplicates(it.duplicateReplacers, file.project, editor)
-            }
+        val adjustedElements = (elements.singleOrNull() as? KtBlockExpression)?.statements ?: elements
+        val extractionData = ExtractionData(file, adjustedElements.toRange(false), targetSibling)
+        ExtractionEngine(helper).run(editor, extractionData) {
+            processDuplicates(it.duplicateReplacers, file.project, editor)
         }
     }
 
@@ -79,6 +73,4 @@ class ExtractKotlinFunctionHandler(
     }
 }
 
-val EXTRACT_FUNCTION: String
-    @Nls
-    get() = KotlinBundle.message("extract.function")
+val EXTRACT_FUNCTION: String = KotlinBundle.message("extract.function")

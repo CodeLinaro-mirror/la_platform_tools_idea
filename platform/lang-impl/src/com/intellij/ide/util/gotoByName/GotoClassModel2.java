@@ -140,4 +140,9 @@ public class GotoClassModel2 extends FilteringGotoByModel<LanguageRef> {
   public boolean willOpenEditor() {
     return true;
   }
+
+  @Override
+  public boolean sameNamesForProjectAndLibraries() {
+    return false;
+  }
 }

@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.formatter
 
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.psi.codeStyle.CodeStyleSettings
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings
 import org.jetbrains.kotlin.idea.KotlinLanguage
@@ -20,9 +19,7 @@ class KotlinObsoleteCodeStyle : KotlinPredefinedCodeStyle(CODE_STYLE_TITLE, Kotl
 
         const val CODE_STYLE_ID = "KOTLIN_OLD_DEFAULTS"
         const val CODE_STYLE_SETTING = "obsolete"
-        val CODE_STYLE_TITLE
-            @NlsContexts.ListItem
-            get() = KotlinStyleBundle.message("list.item.kotlin.obsolete.intellij.idea.codestyle")
+        const val CODE_STYLE_TITLE = "Kotlin obsolete IntelliJ IDEA codestyle"
 
         fun apply(settings: CodeStyleSettings) {
             applyToKotlinCustomSettings(settings.kotlinCustomSettings)

@@ -1,8 +1,7 @@
-open class X : A()
+public open class X: A()
 
-@Suppress("INTERFACE_WITH_SUPERCLASS")
-interface T : A
+public interface T: A
 
-open class Y : X()
+public open class Y: X()
 
-class Z : Y(), T
+public class Z: Y(), T

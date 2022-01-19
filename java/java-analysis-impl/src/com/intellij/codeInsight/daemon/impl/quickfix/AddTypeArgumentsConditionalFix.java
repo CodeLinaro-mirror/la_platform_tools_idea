@@ -16,7 +16,6 @@
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
-import com.intellij.codeInsight.intention.HighPriorityAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.diagnostic.Logger;
@@ -31,7 +30,7 @@ import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class AddTypeArgumentsConditionalFix implements IntentionAction, HighPriorityAction {
+public class AddTypeArgumentsConditionalFix implements IntentionAction {
   private static final Logger LOG = Logger.getInstance(AddTypeArgumentsConditionalFix.class);
 
   private final PsiSubstitutor mySubstitutor;
@@ -100,7 +99,7 @@ public class AddTypeArgumentsConditionalFix implements IntentionAction, HighPrio
     return true;
   }
 
-  public static void register(HighlightInfo highlightInfo, @Nullable PsiExpression expression, @NotNull PsiType lType) {
+  public static void register(HighlightInfo highlightInfo, PsiExpression expression, @NotNull PsiType lType) {
     if (lType != PsiType.NULL && expression instanceof PsiConditionalExpression) {
       final PsiExpression thenExpression = ((PsiConditionalExpression)expression).getThenExpression();
       final PsiExpression elseExpression = ((PsiConditionalExpression)expression).getElseExpression();

@@ -180,7 +180,7 @@ public final class ProjectCodeStyleSettingsManager extends CodeStyleSettingsMana
   }
 
   @Override
-  protected @NotNull Collection<CodeStyleSettings> enumSettings() {
+  protected Collection<CodeStyleSettings> enumSettings() {
     return Collections.unmodifiableCollection(mySettingsMap.values());
   }
 

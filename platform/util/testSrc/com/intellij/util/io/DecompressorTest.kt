@@ -13,7 +13,6 @@ import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Condition
 import org.junit.Rule
 import org.junit.Test
@@ -27,6 +26,7 @@ import java.util.function.Predicate
 import java.util.zip.ZipEntry
 import java.util.zip.ZipException
 import java.util.zip.ZipOutputStream
+import kotlin.runCatching
 
 @Suppress("UsePropertyAccessSyntax")
 class DecompressorTest {
@@ -105,14 +105,12 @@ class DecompressorTest {
     Decompressor.Zip(zip).extract(dir)
   }
 
-  @Test
+  @Test(expected = ZipException::class)
   fun failsOnCorruptedExtZip() {
     val zip = tempDir.newFile("test.zip")
     zip.writeText("whatever")
     val dir = tempDir.newDirectory("unpacked").toPath()
-    assertThatThrownBy {
-      Decompressor.Zip(zip).withZipExtensions().extract(dir)
-    }.hasRootCauseInstanceOf(ZipException::class.java)
+    Decompressor.Zip(zip).withZipExtensions().extract(dir)
   }
 
   @Test fun tarFileModes() {

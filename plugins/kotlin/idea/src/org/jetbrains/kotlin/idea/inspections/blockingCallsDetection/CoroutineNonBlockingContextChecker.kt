@@ -2,15 +2,11 @@
 
 package org.jetbrains.kotlin.idea.inspections.blockingCallsDetection
 
-import com.intellij.codeInspection.blockingCallsDetection.ContextType
-import com.intellij.codeInspection.blockingCallsDetection.ContextType.*
-import com.intellij.codeInspection.blockingCallsDetection.ElementContext
 import com.intellij.codeInspection.blockingCallsDetection.NonBlockingContextChecker
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiRecursiveElementVisitor
 import com.intellij.psi.util.parentsOfType
-import com.intellij.util.castSafelyTo
 import org.jetbrains.kotlin.builtins.getReceiverTypeFromFunctionType
 import org.jetbrains.kotlin.builtins.isBuiltinFunctionalType
 import org.jetbrains.kotlin.builtins.isSuspendFunctionType
@@ -20,17 +16,10 @@ import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.descriptors.isOverridableOrOverrides
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToCall
-import org.jetbrains.kotlin.idea.core.receiverValue
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.BLOCKING_EXECUTOR_ANNOTATION
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.COROUTINE_CONTEXT
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.COROUTINE_SCOPE
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.DEFAULT_DISPATCHER_FQN
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.FLOW_PACKAGE_FQN
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.IO_DISPATCHER_FQN
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.MAIN_DISPATCHER_FQN
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.NONBLOCKING_EXECUTOR_ANNOTATION
-import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.findFlowOnCall
+import org.jetbrains.kotlin.idea.debugger.sequence.psi.receiverValue
+import org.jetbrains.kotlin.idea.inspections.collections.isCalling
 import org.jetbrains.kotlin.idea.intentions.getCallableDescriptor
 import org.jetbrains.kotlin.idea.project.getLanguageVersionSettings
 import org.jetbrains.kotlin.idea.project.languageVersionSettings
@@ -44,11 +33,11 @@ import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypes
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.parents
+import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.calls.callUtil.getParameterForArgument
 import org.jetbrains.kotlin.resolve.calls.checkers.isRestrictsSuspensionReceiver
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameOrNull
-import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitClassReceiver
@@ -57,59 +46,45 @@ import org.jetbrains.kotlin.types.KotlinType
 class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
 
     override fun isApplicable(file: PsiFile): Boolean {
-        if (file !is KtFile) return false
-
         val languageVersionSettings = getLanguageVersionSettings(file)
         return languageVersionSettings.supportsFeature(LanguageFeature.ReleaseCoroutines)
     }
 
-    override fun computeContextType(elementContext: ElementContext): ContextType {
-        val element = elementContext.element
-        if (element !is KtCallExpression) return Unsure
+    override fun isContextNonBlockingFor(element: PsiElement): Boolean {
+        if (element !is KtCallExpression) return false
 
         val containingLambda = element.parents
-            .filterIsInstance<KtLambdaExpression>()
-            .firstOrNull()
+            .firstOrNull { it is KtLambdaExpression && it.analyze().get(BindingContext.LAMBDA_INVOCATIONS, it) == null }
         val containingArgument = containingLambda?.getParentOfType<KtValueArgument>(true, KtCallableDeclaration::class.java)
         if (containingArgument != null) {
-            val callExpression = containingArgument.getStrictParentOfType<KtCallExpression>() ?: return Blocking
-            val call = callExpression.resolveToCall(BodyResolveMode.PARTIAL) ?: return Blocking
+            val callExpression = containingArgument.getStrictParentOfType<KtCallExpression>() ?: return false
+            val call = callExpression.resolveToCall(BodyResolveMode.PARTIAL) ?: return false
 
-            val blockingFriendlyDispatcherUsed = checkBlockingFriendlyDispatcherUsed(call, callExpression)
-            if (blockingFriendlyDispatcherUsed.isDefinitelyKnown) return blockingFriendlyDispatcherUsed
+            val isBlockFriendlyDispatcherUsed = call.hasBlockFriendlyDispatcherParameter()
+                    || callExpression.isInFunctionWithDefaultDispatcher()
+                    || callExpression.isFlowChainElementWithIODispatcher()
+            if (isBlockFriendlyDispatcherUsed) return false
 
-            val parameterForArgument = call.getParameterForArgument(containingArgument) ?: return Blocking
-            val type = parameterForArgument.returnType ?: return Blocking
+            val parameterForArgument = call.getParameterForArgument(containingArgument) ?: return false
+            val type = parameterForArgument.returnType ?: return false
 
-            if (type.isBuiltinFunctionalType) {
-                val hasRestrictSuspensionAnnotation = type.getReceiverTypeFromFunctionType()
-                    ?.isRestrictsSuspensionReceiver(getLanguageVersionSettings(element)) ?: false
-                return if (!hasRestrictSuspensionAnnotation && type.isSuspendFunctionType) NonBlocking.INSTANCE else Blocking
-            }
+            val hasRestrictSuspensionAnnotation = if (type.isBuiltinFunctionalType) {
+                type.getReceiverTypeFromFunctionType()?.isRestrictsSuspensionReceiver(getLanguageVersionSettings(element))
+            } else null
+
+            return hasRestrictSuspensionAnnotation != true && type.isSuspendFunctionType
         }
 
         if (containingLambda == null) {
-            val isInSuspendFunctionBody = element.parentsOfType<KtNamedFunction>()
+            return element.parentsOfType<KtNamedFunction>()
                 .take(2)
                 .firstOrNull { function -> function.nameIdentifier != null }
                 ?.hasModifier(KtTokens.SUSPEND_KEYWORD) ?: false
-            return if (isInSuspendFunctionBody) NonBlocking.INSTANCE else Blocking
         }
         val containingPropertyOrFunction: KtCallableDeclaration? =
             containingLambda.getParentOfTypes(true, KtProperty::class.java, KtNamedFunction::class.java)
-        if (containingPropertyOrFunction?.typeReference?.hasModifier(KtTokens.SUSPEND_KEYWORD) == true) return NonBlocking.INSTANCE
-        return if (containingPropertyOrFunction?.hasModifier(KtTokens.SUSPEND_KEYWORD) == true) NonBlocking.INSTANCE else Blocking
-    }
-
-    private fun checkBlockingFriendlyDispatcherUsed(
-        call: ResolvedCall<out CallableDescriptor>,
-        callExpression: KtCallExpression
-    ): ContextType {
-        return union(
-            { checkBlockFriendlyDispatcherParameter(call) },
-            { checkFunctionWithDefaultDispatcher(callExpression) },
-            { checkFlowChainElementWithIODispatcher(call, callExpression) }
-        )
+        if (containingPropertyOrFunction?.typeReference?.hasModifier(KtTokens.SUSPEND_KEYWORD) == true) return true
+        return containingPropertyOrFunction?.hasModifier(KtTokens.SUSPEND_KEYWORD) == true
     }
 
     private fun getLanguageVersionSettings(psiElement: PsiElement): LanguageVersionSettings =
@@ -121,47 +96,52 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
     private fun KotlinType.isCoroutineContext(): Boolean =
         (this.constructor.supertypes + this).any { it.fqName?.asString() == COROUTINE_CONTEXT }
 
-    private fun checkBlockFriendlyDispatcherParameter(call: ResolvedCall<*>): ContextType {
-        val argumentDescriptor = call.getFirstArgument()?.resolveToCall()?.resultingDescriptor ?: return Unsure
+
+    private fun ResolvedCall<*>.hasBlockFriendlyDispatcherParameter(): Boolean {
+        val argumentDescriptor = this.getFirstArgument()?.resolveToCall()?.resultingDescriptor
         return argumentDescriptor.isBlockFriendlyDispatcher()
     }
 
-    private fun checkFunctionWithDefaultDispatcher(callExpression: KtCallExpression): ContextType {
-        val classDescriptor =
-            callExpression.receiverValue().castSafelyTo<ImplicitClassReceiver>()?.classDescriptor ?: return Unsure
-        if (classDescriptor.typeConstructor.supertypes.none { it.fqName?.asString() == COROUTINE_SCOPE }) return Unsure
+    private fun KtCallExpression?.isInFunctionWithDefaultDispatcher(): Boolean {
+        val classDescriptor = (this?.receiverValue() as? ImplicitClassReceiver)?.classDescriptor ?: return false
+        if (classDescriptor.typeConstructor.supertypes.none { it.fqName?.asString() == COROUTINE_SCOPE }) return false
         val propertyDescriptor = classDescriptor
             .unsubstitutedMemberScope
             .getContributedDescriptors(DescriptorKindFilter.VARIABLES)
             .filterIsInstance<PropertyDescriptor>()
             .singleOrNull { it.isOverridableOrOverrides && it.type.isCoroutineContext() }
-            ?: return Unsure
+            ?: return false
 
-        val initializer = propertyDescriptor.findPsi().castSafelyTo<KtProperty>()?.initializer ?: return Unsure
-        return initializer.hasBlockFriendlyDispatcher()
+        val initializer = (propertyDescriptor.findPsi() as? KtProperty)?.initializer
+        return initializer?.hasBlockFriendlyDispatcher() ?: false
     }
 
-    private fun checkFlowChainElementWithIODispatcher(
-        call: ResolvedCall<out CallableDescriptor>,
-        callExpression: KtCallExpression
-    ): ContextType {
-        val isInsideFlow = call.resultingDescriptor.fqNameSafe.asString().startsWith(FLOW_PACKAGE_FQN)
-        if (!isInsideFlow) return Unsure
-        val flowOnCall = callExpression.findFlowOnCall() ?: return NonBlocking.INSTANCE
-        return checkBlockFriendlyDispatcherParameter(flowOnCall)
+    private fun KtCallExpression?.isFlowChainElementWithIODispatcher(): Boolean {
+        tailrec fun KtExpression.findFlowOnCall(): ResolvedCall<out CallableDescriptor>? {
+            val dotQualifiedExpression = this.getStrictParentOfType<KtDotQualifiedExpression>() ?: return null
+            val candidate = dotQualifiedExpression
+                .children
+                .asSequence()
+                .filterIsInstance<KtCallExpression>()
+                .mapNotNull { it.resolveToCall(BodyResolveMode.PARTIAL) }
+                .firstOrNull { it.isCalling(FqName(FLOW_ON_FQN)) }
+            return candidate ?: dotQualifiedExpression.findFlowOnCall()
+        }
+
+        val flowOnCall = this?.findFlowOnCall() ?: return false
+        return flowOnCall.hasBlockFriendlyDispatcherParameter()
     }
 
-    private fun KtExpression.hasBlockFriendlyDispatcher(): ContextType {
+
+    private fun KtExpression.hasBlockFriendlyDispatcher(): Boolean {
         class RecursiveExpressionVisitor : PsiRecursiveElementVisitor() {
-            var allowsBlocking: ContextType = Unsure
+            var isBlockFriendlyDispatcherFound: Boolean = false
 
             override fun visitElement(element: PsiElement) {
                 if (element is KtExpression) {
                     val callableDescriptor = element.getCallableDescriptor()
-                    val allowsBlocking = callableDescriptor.castSafelyTo<DeclarationDescriptor>()
-                        ?.isBlockFriendlyDispatcher()
-                    if (allowsBlocking != null && allowsBlocking != Unsure) {
-                        this.allowsBlocking = allowsBlocking
+                    if ((callableDescriptor as? DeclarationDescriptor).isBlockFriendlyDispatcher()) {
+                        isBlockFriendlyDispatcherFound = true
                         return
                     }
                 }
@@ -169,31 +149,23 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
             }
         }
 
-        return RecursiveExpressionVisitor().also(this::accept).allowsBlocking
+        return RecursiveExpressionVisitor().also { this.accept(it) }.isBlockFriendlyDispatcherFound
     }
 
-    private fun DeclarationDescriptor?.isBlockFriendlyDispatcher(): ContextType {
-        if (this == null) return Unsure
+    private fun DeclarationDescriptor?.isBlockFriendlyDispatcher(): Boolean {
+        if (this == null) return false
 
-        val hasBlockingAnnotation = annotations.hasAnnotation(FqName(BLOCKING_EXECUTOR_ANNOTATION))
-        if (hasBlockingAnnotation) return Blocking
+        val hasBlockingAnnotation = this.annotations.hasAnnotation(FqName(BLOCKING_CONTEXT_ANNOTATION))
+        if (hasBlockingAnnotation) return true
 
-        val hasNonBlockingAnnotation = annotations.hasAnnotation(FqName(NONBLOCKING_EXECUTOR_ANNOTATION))
-        if (hasNonBlockingAnnotation) return NonBlocking.INSTANCE
-
-        val fqnOrNull = fqNameOrNull()?.asString() ?: return NonBlocking.INSTANCE
-        return when(fqnOrNull) {
-            IO_DISPATCHER_FQN -> Blocking
-            MAIN_DISPATCHER_FQN, DEFAULT_DISPATCHER_FQN -> NonBlocking.INSTANCE
-            else -> Unsure
-        }
+        return this.fqNameOrNull()?.asString() == IO_DISPATCHER_FQN
     }
 
-    private fun union(vararg checks: () -> ContextType): ContextType {
-        for (check in checks) {
-            val iterationResult = check()
-            if (iterationResult != Unsure) return iterationResult
-        }
-        return Unsure
+    companion object {
+        private const val BLOCKING_CONTEXT_ANNOTATION = "org.jetbrains.annotations.BlockingContext"
+        private const val IO_DISPATCHER_FQN = "kotlinx.coroutines.Dispatchers.IO"
+        private const val COROUTINE_SCOPE = "kotlinx.coroutines.CoroutineScope"
+        private const val COROUTINE_CONTEXT = "kotlin.coroutines.CoroutineContext"
+        private const val FLOW_ON_FQN = "kotlinx.coroutines.flow.flowOn"
     }
 }

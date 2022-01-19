@@ -102,7 +102,8 @@ public class RollbackWorker {
       final Runnable rollbackAction = new MyRollbackRunnable(otherChanges, deleteLocallyAddedFiles, afterRefresh);
 
       if (ApplicationManager.getApplication().isDispatchThread() && !myInvokedFromModalContext) {
-        ProgressManager.getInstance().run(new Task.Backgroundable(myProject, myOperationName, false) {
+        ProgressManager.getInstance().run(new Task.Backgroundable(myProject, myOperationName, false,
+                                                                  VcsConfiguration.getInstance(myProject).getRollbackOption()) {
           @Override
           public void run(@NotNull ProgressIndicator indicator) {
             rollbackAction.run();

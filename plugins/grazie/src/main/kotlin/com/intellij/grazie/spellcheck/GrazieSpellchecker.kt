@@ -108,9 +108,6 @@ object GrazieSpellchecker : GrazieStateLifecycle {
           false -> isAlien = false
         }
       }
-      catch (e: ProcessCanceledException) {
-        throw e
-      }
       catch (t: Throwable) {
         if (t.isFromHunspellRuleInit()) {
           disableHunspellRuleInitialization(speller.speller)

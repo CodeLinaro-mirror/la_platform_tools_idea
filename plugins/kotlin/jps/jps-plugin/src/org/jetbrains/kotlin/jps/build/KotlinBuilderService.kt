@@ -4,8 +4,7 @@ package org.jetbrains.kotlin.jps.build
 
 import org.jetbrains.jps.incremental.BuilderService
 import org.jetbrains.jps.incremental.ModuleLevelBuilder
-import org.jetbrains.kotlin.jps.incremental.KotlinCompilerReferenceIndexBuilder
 
 class KotlinBuilderService : BuilderService() {
-    override fun createModuleLevelBuilders(): List<ModuleLevelBuilder> = listOf(KotlinBuilder(), KotlinCompilerReferenceIndexBuilder())
+    override fun createModuleLevelBuilders(): List<ModuleLevelBuilder> = listOf(KotlinBuilder())
 }

@@ -398,8 +398,6 @@ public class RunConfigurationStorageUi {
       default:
         throw new IllegalStateException("Unexpected value: " + myRCStorageType);
     }
-    myRCStorageTypeInitial = myRCStorageType;
-    myFolderPathIfStoredInArbitraryFileInitial = myFolderPathIfStoredInArbitraryFile;
   }
 
   private static class RunConfigurationStoragePopup {
@@ -470,8 +468,7 @@ public class RunConfigurationStorageUi {
         }
 
         @Override
-        public boolean isFileSelectable(@Nullable VirtualFile file) {
-          if (file == null) return false;
+        public boolean isFileSelectable(VirtualFile file) {
           if (file.getPath().equals(myDotIdeaStoragePath)) return true;
           return file.isDirectory() &&
                  super.isFileSelectable(file) &&

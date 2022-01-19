@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.codeInsight.AnnotationTargetUtil;
@@ -104,11 +104,7 @@ public final class AnnotationsHighlightUtil {
       if (Objects.equals(attribute.getName(), name)) {
         String description = JavaErrorBundle.message("annotation.duplicate.attribute",
                                                        name == null ? PsiAnnotation.DEFAULT_REFERENCED_METHOD_NAME : name);
-        HighlightInfo info =
-          HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(pair).descriptionAndTooltip(description).create();
-        QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createDeleteFix(pair));
-        QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createMergeDuplicateAttributesFix(pair));
-        return info;
+        return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(pair).descriptionAndTooltip(description).create();
       }
     }
 
@@ -233,7 +229,7 @@ public final class AnnotationsHighlightUtil {
         return annotationError(annotationToCheck, description);
       }
     }
-    if (isAnnotationRepeatedTwice(owner, annotationType.getQualifiedName())) {
+    else if (isAnnotationRepeatedTwice(owner, annotationType.getQualifiedName())) {
       if (!languageLevel.isAtLeast(LanguageLevel.JDK_1_8)) {
         String description = JavaErrorBundle.message("annotation.duplicate.annotation");
         return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(element).descriptionAndTooltip(description).create();
@@ -400,13 +396,7 @@ public final class AnnotationsHighlightUtil {
     if (applicable == null) {
       String target = JavaAnalysisBundle.message("annotation.target." + targets[0]);
       String message = JavaErrorBundle.message("annotation.not.applicable", nameRef.getText(), target);
-      HighlightInfo info = annotationError(annotation, message);
-      if (Objects.requireNonNull(annotation.resolveAnnotationType()).isWritable()) {
-        for (PsiAnnotation.TargetType targetType : targets) {
-          QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createAddAnnotationTargetFix(annotation, targetType));
-        }
-      }
-      return info;
+      return annotationError(annotation, message);
     }
 
     if (applicable == PsiAnnotation.TargetType.TYPE_USE) {
@@ -684,7 +674,7 @@ public final class AnnotationsHighlightUtil {
     PsiClass container = getRepeatableContainer(annotation);
     if (container == null) return null;
 
-    PsiMethod[] methods = !container.isAnnotationType() ? PsiMethod.EMPTY_ARRAY
+    PsiMethod[] methods = !container.isAnnotationType() ? PsiMethod.EMPTY_ARRAY 
                                                         : container.findMethodsByName("value", false);
     if (methods.length == 0) {
       return JavaErrorBundle.message("annotation.container.no.value", container.getQualifiedName());
@@ -708,21 +698,8 @@ public final class AnnotationsHighlightUtil {
     Set<PsiAnnotation.TargetType> repeatableTargets = AnnotationTargetUtil.getAnnotationTargets((PsiClass)target);
     if (repeatableTargets != null) {
       Set<PsiAnnotation.TargetType> containerTargets = AnnotationTargetUtil.getAnnotationTargets(container);
-      if (containerTargets != null) {
-        for (PsiAnnotation.TargetType containerTarget : containerTargets) {
-          if (repeatableTargets.contains(containerTarget)) {
-            continue;
-          }
-          if (containerTarget == PsiAnnotation.TargetType.ANNOTATION_TYPE &&
-              (repeatableTargets.contains(PsiAnnotation.TargetType.TYPE) || repeatableTargets.contains(PsiAnnotation.TargetType.TYPE_USE))) {
-            continue;
-          }
-          if ((containerTarget == PsiAnnotation.TargetType.TYPE || containerTarget == PsiAnnotation.TargetType.TYPE_PARAMETER) &&
-              repeatableTargets.contains(PsiAnnotation.TargetType.TYPE_USE)) {
-            continue;
-          }
-          return JavaErrorBundle.message("annotation.container.wide.target", container.getQualifiedName());
-        }
+      if (containerTargets != null && !repeatableTargets.containsAll(containerTargets)) {
+        return JavaErrorBundle.message("annotation.container.wide.target", container.getQualifiedName());
       }
     }
 
@@ -772,11 +749,11 @@ public final class AnnotationsHighlightUtil {
       String text = JavaErrorBundle.message("receiver.static.context");
       HighlightInfo info =
         HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(parameter.getIdentifier()).descriptionAndTooltip(text).create();
-      QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createDeleteFix(parameter));
       QuickFixAction.registerQuickFixAction(
         info,
         QUICK_FIX_FACTORY.createModifierListFix(method.getModifierList(), PsiModifier.STATIC, false, false)
       );
+      QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createDeleteFix(parameter));
       return info;
     }
 
@@ -784,11 +761,11 @@ public final class AnnotationsHighlightUtil {
       String text = JavaErrorBundle.message("receiver.wrong.position");
       HighlightInfo info =
         HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(parameter.getIdentifier()).descriptionAndTooltip(text).create();
-      QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createDeleteFix(parameter));
       PsiReceiverParameter firstReceiverParameter = PsiTreeUtil.getChildOfType(method.getParameterList(), PsiReceiverParameter.class);
       if (!PsiUtil.isJavaToken(PsiTreeUtil.skipWhitespacesAndCommentsBackward(firstReceiverParameter), JavaTokenType.LPARENTH)) {
         QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createMakeReceiverParameterFirstFix(parameter));
       }
+      QuickFixAction.registerQuickFixAction(info, QUICK_FIX_FACTORY.createDeleteFix(parameter));
       return info;
     }
 

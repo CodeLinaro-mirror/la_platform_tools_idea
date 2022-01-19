@@ -18,9 +18,7 @@ import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.Inter
 import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.InternalJavaEnvironment
 import org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.build.InternalBuildEnvironment
 import org.slf4j.LoggerFactory
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.ObjectOutputStream
 
 object Main {
   const val LOCAL_BUILD_PROPERTY = "idea.gradle.target.local"
@@ -69,15 +67,7 @@ object Main {
       val result = connector.connect().use { runBuildAndGetResult(targetBuildParameters, it, workingDirectory) }
       LOG.debug("operation result: $result")
       val adapted = maybeConvert(result)
-      val bos = ByteArrayOutputStream()
-      var bytes = ByteArray(1);
-      ObjectOutputStream(bos).use {
-        it.writeObject(adapted)
-        it.flush()
-        bytes = bos.toByteArray()
-      }
-
-      incomingConnectionHandler.dispatch(Success(bytes))
+      incomingConnectionHandler.dispatch(Success(adapted))
     }
     catch (t: Throwable) {
       LOG.debug("GradleConnectionException: $t")

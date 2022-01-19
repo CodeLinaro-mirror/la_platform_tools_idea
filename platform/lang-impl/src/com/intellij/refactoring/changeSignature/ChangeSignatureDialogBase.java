@@ -82,7 +82,7 @@ public abstract class ChangeSignatureDialogBase<ParamInfo extends ParameterInfo,
   protected final ParameterTableModel myParametersTableModel;
   protected final UpdateSignatureListener mySignatureUpdater = new UpdateSignatureListener();
   private MethodSignatureComponent mySignatureArea;
-  private final Alarm myUpdateSignatureAlarm = new Alarm();
+  private final Alarm myUpdateSignatureAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
 
   protected VisibilityPanelBase<Visibility> myVisibilityPanel;
 
@@ -229,7 +229,7 @@ public abstract class ChangeSignatureDialogBase<ParamInfo extends ParameterInfo,
     JPanel visibilityPanel = createVisibilityPanel();
 
     if (myMethod.canChangeVisibility() && myVisibilityPanel instanceof ComboBoxVisibilityPanel) {
-      ((ComboBoxVisibilityPanel<?>)myVisibilityPanel).registerUpDownActionsFor(myNameField);
+      ((ComboBoxVisibilityPanel)myVisibilityPanel).registerUpDownActionsFor(myNameField);
       visibilityPanel.setBorder(new EmptyBorder(0, 0, 0, 8));
       panel.add(visibilityPanel, gbc);
       gbc.gridx++;
@@ -244,7 +244,7 @@ public abstract class ChangeSignatureDialogBase<ParamInfo extends ParameterInfo,
       myReturnTypeCodeFragment = createReturnTypeCodeFragment();
       final Document document = PsiDocumentManager.getInstance(myProject).getDocument(myReturnTypeCodeFragment);
       myReturnTypeField = createReturnTypeTextField(document);
-      ((ComboBoxVisibilityPanel<?>)myVisibilityPanel).registerUpDownActionsFor(myReturnTypeField);
+      ((ComboBoxVisibilityPanel)myVisibilityPanel).registerUpDownActionsFor(myReturnTypeField);
       typeLabel.setLabelFor(myReturnTypeField);
 
       if (myMethod.canChangeReturnType() == MethodDescriptor.ReadWriteOption.ReadWrite) {

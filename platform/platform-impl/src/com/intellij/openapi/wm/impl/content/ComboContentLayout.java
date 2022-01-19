@@ -4,12 +4,13 @@ package com.intellij.openapi.wm.impl.content;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.NlsActions;
-import com.intellij.openapi.util.registry.Registry;
+import com.intellij.ui.ColorUtil;
 import com.intellij.ui.MouseDragHelper;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.content.ContentManager;
 import com.intellij.ui.content.ContentManagerEvent;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
@@ -25,7 +26,7 @@ final class ComboContentLayout extends ContentLayout {
   public void init(@NotNull ContentManager contentManager) {
     reset();
 
-    myIdLabel = new BaseLabel(myUi, Registry.is("ide.experimental.ui"));
+    myIdLabel = new BaseLabel(myUi, false);
     MouseDragHelper.setComponentDraggable(myIdLabel, true);
     myComboLabel = new ContentComboLabel(this);
   }
@@ -65,6 +66,13 @@ final class ComboContentLayout extends ContentLayout {
 
   @Override
   public void paintComponent(Graphics g) {
+    if (!isToDrawCombo() || !myIdLabel.isVisible()) return;
+
+    Rectangle r = myIdLabel.getBounds();
+    g.setColor(ColorUtil.toAlpha(UIUtil.getLabelForeground(), 20));
+    g.drawLine(r.width, 0, r.width, r.height);
+    g.setColor(UIUtil.CONTRAST_BORDER_COLOR);
+    g.drawLine(r.width - 1, 0, r.width - 1, r.height);
   }
 
   @Override

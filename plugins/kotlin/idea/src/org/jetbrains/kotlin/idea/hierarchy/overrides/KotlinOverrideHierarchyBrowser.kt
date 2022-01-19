@@ -33,7 +33,7 @@ class KotlinOverrideHierarchyBrowser(
 
         BaseOnThisMethodAction().registerCustomShortcutSet(actionManager.getAction(IdeActions.ACTION_METHOD_HIERARCHY).shortcutSet, tree)
 
-        trees[getMethodType()] = tree
+        trees[METHOD_TYPE] = tree
     }
 
     override fun createLegendPanel(): JPanel? =
@@ -49,7 +49,7 @@ class KotlinOverrideHierarchyBrowser(
         psiElement.isOverrideHierarchyElement()
 
     override fun createHierarchyTreeStructure(typeName: String, psiElement: PsiElement): HierarchyTreeStructure? =
-        if (typeName == getMethodType()) KotlinOverrideTreeStructure(myProject, psiElement as KtCallableDeclaration) else null
+        if (typeName == METHOD_TYPE) KotlinOverrideTreeStructure(myProject, psiElement as KtCallableDeclaration) else null
 
     override fun getComparator() = JavaHierarchyUtil.getComparator(myProject)
 

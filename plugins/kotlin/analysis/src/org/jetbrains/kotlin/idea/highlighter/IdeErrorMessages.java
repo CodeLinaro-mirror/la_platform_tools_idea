@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.idea.highlighter;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.openapi.util.NlsSafe;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
@@ -29,8 +28,6 @@ import static org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm.*;
 public class IdeErrorMessages {
     private static final DiagnosticFactoryToRendererMap MAP = new DiagnosticFactoryToRendererMap("IDE");
 
-    // TODO: i18n
-    @NlsSafe
     @NotNull
     public static String render(@NotNull UnboundDiagnostic diagnostic) {
         DiagnosticRenderer renderer = MAP.get(diagnostic.getFactory());

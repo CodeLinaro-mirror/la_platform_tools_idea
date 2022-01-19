@@ -118,10 +118,6 @@ public class YAMLFormattingTest extends BasePlatformTestCase {
   public void testParsingBug2() {
     doWholeFileTest();
   }
-  
-  public void testAnchorRef() {
-    doWholeFileTest();
-  }
 
   @NotNull
   private CommonCodeStyleSettings getCommonSettings() {

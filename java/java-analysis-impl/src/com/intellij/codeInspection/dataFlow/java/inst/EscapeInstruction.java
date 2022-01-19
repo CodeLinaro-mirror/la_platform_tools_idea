@@ -18,11 +18,11 @@ import java.util.Set;
  * Marks given variables as escaped (usually necessary for captured variables in lambdas/local classes)
  */
 public class EscapeInstruction extends Instruction {
-  private final @NotNull Set<@NotNull DfaVariableValue> myEscapedVars;
+  private final Set<DfaVariableValue> myEscapedVars;
 
-  public EscapeInstruction(@NotNull Set<@NotNull DfaVariableValue> escapedVars) {myEscapedVars = escapedVars;}
+  public EscapeInstruction(Set<DfaVariableValue> escapedVars) {myEscapedVars = escapedVars;}
 
-  public @NotNull Set<@NotNull DfaVariableValue> getEscapedVars() {
+  public Set<DfaVariableValue> getEscapedVars() {
     return myEscapedVars;
   }
 

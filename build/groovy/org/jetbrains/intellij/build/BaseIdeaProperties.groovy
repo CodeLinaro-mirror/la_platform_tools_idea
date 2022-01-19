@@ -3,34 +3,34 @@ package org.jetbrains.intellij.build
 
 import groovy.transform.CompileStatic
 import groovy.transform.TypeCheckingMode
+import org.jetbrains.annotations.NotNull
 import org.jetbrains.intellij.build.impl.BaseLayout
 import org.jetbrains.intellij.build.impl.BuildHelper
 import org.jetbrains.intellij.build.impl.PlatformLayout
-import org.jetbrains.intellij.build.impl.ProjectLibraryData
-import org.jetbrains.intellij.build.kotlin.KotlinPluginBuilder
 
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.function.Consumer
+
 /**
  * Base class for all editions of IntelliJ IDEA
  */
 @CompileStatic
 abstract class BaseIdeaProperties extends JetBrainsProductProperties {
-  public static final List<String> JAVA_IDE_API_MODULES = List.of(
+  public static final List<String> JAVA_IDE_API_MODULES = [
     "intellij.xml.dom",
     "intellij.java.testFramework",
     "intellij.platform.testFramework.core",
     "intellij.platform.uast.tests",
     "intellij.jsp.base"
-  )
-
-  public static final List<String> JAVA_IDE_IMPLEMENTATION_MODULES = List.of(
+  ]
+  public static final List<String> JAVA_IDE_IMPLEMENTATION_MODULES = [
     "intellij.xml.dom.impl",
     "intellij.platform.testFramework",
     "intellij.tools.testsBootstrap"
-  )
+  ]
 
-  protected static final List<String> BUNDLED_PLUGIN_MODULES = List.of(
+  protected static final List<String> BUNDLED_PLUGIN_MODULES = [
     "intellij.java.plugin",
     "intellij.java.ide.customization",
     "intellij.copyright",
@@ -78,79 +78,72 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "intellij.javaFX.community",
     "intellij.featuresTrainer",
     "intellij.vcs.git.featuresTrainer",
-    "intellij.lombok",
+    "intellij.lombok"
     "intellij.maven",
     "intellij.java.guiForms.designer",
     "intellij.packageSearch",
-    "intellij.platform.tracing.ide",
-    "intellij.searchEverywhereMl",
     "intellij.statsCollector",
     "intellij.xpath",
     "intellij.xslt.debugger",
-    KotlinPluginBuilder.MAIN_KOTLIN_PLUGIN_MODULE,
     */
-    )
-
-  private static final Map<String, String> BASE_CLASS_VERSIONS = [
-    ""                                                      : "11",
-    "lib/idea_rt.jar"                                       : "1.6",
-    "lib/forms_rt.jar"                                      : "1.6",
-    "lib/annotations.jar"                                   : "1.6",
-    // JAR contains class files for Java 1.8 and 11 (several modules packed into it)
-    "lib/util.jar!/com/intellij/serialization/"             : "1.8",
-    "lib/external-system-rt.jar"                            : "1.6",
-    "plugins/coverage/lib/coverage_rt.jar"                  : "1.6",
-    "plugins/javaFX/lib/rt/sceneBuilderBridge.jar"          : "11",
-    "plugins/junit/lib/junit-rt.jar"                        : "1.6",
-    "plugins/junit/lib/junit5-rt.jar"                       : "1.8",
-    "plugins/gradle/lib/gradle-tooling-extension-api.jar"   : "1.6",
-    "plugins/gradle/lib/gradle-tooling-extension-impl.jar"  : "1.6",
-    "plugins/maven/lib/maven-server-api.jar"                : "1.6",
-    "plugins/maven/lib/maven2-server.jar"                   : "1.6",
-    "plugins/maven/lib/maven3-server-common.jar"            : "1.6",
-    "plugins/maven/lib/maven30-server.jar"                  : "1.6",
-    "plugins/maven/lib/maven3-server.jar"                   : "1.6",
-    "plugins/maven/lib/artifact-resolver-m2.jar"            : "1.6",
-    "plugins/maven/lib/artifact-resolver-m3.jar"            : "1.6",
-    "plugins/maven/lib/artifact-resolver-m31.jar"           : "1.6",
-    "plugins/xpath/lib/rt/xslt-rt.jar"                      : "1.6",
-    "plugins/xslt-debugger/lib/xslt-debugger-rt.jar"        : "1.6",
-    "plugins/xslt-debugger/lib/rt/xslt-debugger-impl-rt.jar": "1.8",
   ]
 
-  protected static final Map<String, String> CE_CLASS_VERSIONS = BASE_CLASS_VERSIONS + [
-    "plugins/java/lib/jshell-frontend.jar"      : "9",
-    "plugins/java/lib/sa-jdwp"                  : "",  // ignored
-    "plugins/java/lib/rt/debugger-agent.jar"    : "1.6",
-    "plugins/Groovy/lib/groovy-rt.jar"          : "1.6",
-    "plugins/Groovy/lib/groovy-constants-rt.jar": "1.6",
+  protected static final Map<String, String> CE_CLASS_VERSIONS = [
+    ""                                                          : "11",
+    "lib/idea_rt.jar"                                           : "1.6",
+    "lib/forms_rt.jar"                                          : "1.6",
+    "lib/annotations.jar"                                       : "1.6",
+    // JAR contains class files for Java 1.8 and 11 (several modules packed into it)
+    "lib/util.jar!/com/intellij/serialization/"                  : "1.8",
+    "lib/external-system-rt.jar"                                : "1.6",
+    "lib/jshell-frontend.jar"                                   : "9",
+    "plugins/java/lib/sa-jdwp"                                  : "",  // ignored
+    "plugins/java/lib/rt/debugger-agent.jar"                    : "1.6",
+    "plugins/java/lib/rt/debugger-agent-storage.jar"            : "1.6",
+    "plugins/Groovy/lib/groovy-rt.jar"                          : "1.6",
+    "plugins/Groovy/lib/groovy-constants-rt.jar"                : "1.6",
+    "plugins/coverage/lib/coverage_rt.jar"                      : "1.6",
+    "plugins/javaFX/lib/rt/sceneBuilderBridge.jar"              : "11",
+    "plugins/junit/lib/junit-rt.jar"                            : "1.6",
+    "plugins/junit/lib/junit5-rt.jar"                           : "1.8",
+    "plugins/gradle/lib/gradle-tooling-extension-api.jar"       : "1.6",
+    "plugins/gradle/lib/gradle-tooling-extension-impl.jar"      : "1.6",
+    "plugins/maven/lib/maven-server-api.jar"                    : "1.6",
+    "plugins/maven/lib/maven2-server.jar"                  : "1.6",
+    "plugins/maven/lib/maven3-server-common.jar"                : "1.6",
+    "plugins/maven/lib/maven30-server.jar"                 : "1.6",
+    "plugins/maven/lib/maven3-server.jar"                  : "1.6",
+    "plugins/maven/lib/artifact-resolver-m2.jar"                : "1.6",
+    "plugins/maven/lib/artifact-resolver-m3.jar"                : "1.6",
+    "plugins/maven/lib/artifact-resolver-m31.jar"               : "1.6",
+    "plugins/xpath/lib/rt/xslt-rt.jar"                          : "1.6",
+    "plugins/xslt-debugger/lib/xslt-debugger-rt.jar"            : "1.6",
+    "plugins/xslt-debugger/lib/rt/xslt-debugger-impl-rt.jar"    : "1.8",
+    "plugins/android/lib/layoutlib-27.2.0.0.jar"                : "9",
   ]
 
   BaseIdeaProperties() {
     productLayout.mainJarName = "idea.jar"
 
-    productLayout.withAdditionalPlatformJar(BaseLayout.PLATFORM_JAR, "intellij.java.ide.resources")
+    productLayout.additionalPlatformJars.put(BaseLayout.PLATFORM_JAR, "intellij.java.ide.resources")
 
     productLayout.platformLayoutCustomizer = { PlatformLayout layout ->
       layout.customize {
         for (String name : JAVA_IDE_API_MODULES) {
-          if (!productLayout.productApiModules.contains(name)) {
-            withModule(name)
-          }
+          withModule(name)
         }
         for (String name : JAVA_IDE_IMPLEMENTATION_MODULES) {
-          if (!productLayout.productImplementationModules.contains(name)) {
-            withModule(name)
-          }
+          withModule(name)
         }
 
         //todo currently intellij.platform.testFramework included into idea.jar depends on this jar so it cannot be moved to java plugin
         withModule("intellij.java.rt", "idea_rt.jar")
 
-        // for compatibility with users' projects which take these libraries from IDEA installation
-        withProjectLibrary("jetbrains-annotations", ProjectLibraryData.PackMode.STANDALONE_SEPARATE_WITHOUT_VERSION_NAME)
-        // for compatibility with users projects which refer to IDEA_HOME/lib/junit.jar
-        withProjectLibrary("JUnit3", ProjectLibraryData.PackMode.STANDALONE_SEPARATE_WITHOUT_VERSION_NAME)
+        //for compatibility with users' projects which take these libraries from IDEA installation
+        withProjectLibrary("jetbrains-annotations")
+        removeVersionFromProjectLibraryJarNames("jetbrains-annotations")
+        withProjectLibrary("JUnit3")
+        removeVersionFromProjectLibraryJarNames("JUnit3") //for compatibility with users projects which refer to IDEA_HOME/lib/junit.jar
         withProjectLibrary("commons-net")
 
         withoutProjectLibrary("Ant")
@@ -167,11 +160,24 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
 
     productLayout.compatiblePluginsToIgnore = [
       "intellij.java.plugin",
+      "kotlin.idea"
     ]
     additionalModulesToCompile = ["intellij.tools.jps.build.standalone"]
     modulesToCompileTests = ["intellij.platform.jps.build"]
 
     isAntRequired = true
+  }
+
+  @Override
+  List<Path> getAdditionalPluginPaths(@NotNull BuildContext context) {
+    /* Android Studio: bundle our own Kotlin plugin instead
+    return [context.kotlinBinaries.setUpPlugin(context)]
+    */
+    def workspaceRoot = "$context.paths.communityHome/../.."
+    return [
+      Path.of("$workspaceRoot/prebuilts/tools/common/kotlin-plugin/Kotlin").toAbsolutePath().normalize(),
+      Path.of("$workspaceRoot/prebuilts/tools/common/toml-plugin/intellij-toml").toAbsolutePath().normalize()  // until included in the platform
+    ]
   }
 
   @Override
@@ -194,7 +200,7 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
       }
     }
 
-    Path targetDir = Path.of(targetDirectory).toAbsolutePath().normalize()
+    Path targetDir = Paths.get(targetDirectory).toAbsolutePath().normalize()
 
     /* Disabled in Android Studio:
     Path java8AnnotationsJar = targetDir.resolve("lib/annotations.jar")

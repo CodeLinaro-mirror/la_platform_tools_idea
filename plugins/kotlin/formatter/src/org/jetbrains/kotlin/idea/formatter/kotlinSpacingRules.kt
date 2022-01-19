@@ -587,20 +587,24 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
                 kotlinCommonSettings.createSpaceBeforeRBrace(1, parent.textRange)
             }
 
-            inPosition(parent = BLOCK, right = RBRACE).customRule(fun(block: ASTBlock, left: ASTBlock, _: ASTBlock): Spacing? {
+            inPosition(parent = BLOCK, right = RBRACE).customRule { block, left, _ ->
                 val psiElement = block.requireNode().treeParent.psi
 
                 val empty = left.requireNode().elementType == LBRACE
 
                 when (psiElement) {
-                    is KtDeclarationWithBody -> if (psiElement.name != null && !empty) return null
-                    is KtWhenEntry, is KtClassInitializer -> if (!empty) return null
-                    else -> return null
+                    is KtFunction -> {
+                        if (psiElement.name != null && !empty) return@customRule null
+                    }
+                    is KtPropertyAccessor ->
+                        if (!empty) return@customRule null
+                    else ->
+                        return@customRule null
                 }
 
                 val spaces = if (empty) 0 else spacesInSimpleFunction
-                return kotlinCommonSettings.createSpaceBeforeRBrace(spaces, psiElement.textRangeWithoutComments)
-            })
+                kotlinCommonSettings.createSpaceBeforeRBrace(spaces, psiElement.textRangeWithoutComments)
+            }
 
             inPosition(parent = BLOCK, left = LBRACE).customRule { parent, _, _ ->
                 val psiElement = parent.requireNode().treeParent.psi

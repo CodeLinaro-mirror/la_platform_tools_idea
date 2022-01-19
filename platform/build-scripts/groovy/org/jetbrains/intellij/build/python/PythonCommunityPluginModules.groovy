@@ -22,7 +22,6 @@ class PythonCommunityPluginModules {
     "intellij.python.reStructuredText",
     "intellij.python.sdk",
     "intellij.python.featuresTrainer",
-    "intellij.jupyter.core"
   ]
   static String pythonCommunityName = "python-ce"
 

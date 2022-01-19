@@ -111,6 +111,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
   @NonNls private static final String SEARCH_DIMENSION_SERVICE_KEY = "#com.intellij.structuralsearch.plugin.ui.StructuralSearchDialog";
   @NonNls private static final String REPLACE_DIMENSION_SERVICE_KEY = "#com.intellij.structuralsearch.plugin.ui.StructuralReplaceDialog";
 
+  @NonNls private static final String RECURSIVE_STATE = "structural.search.recursive";
   @NonNls private static final String SHORTEN_FQN_STATE = "structural.search.shorten.fqn";
   @NonNls private static final String REFORMAT_STATE = "structural.search.reformat";
   @NonNls private static final String USE_STATIC_IMPORT_STATE = "structural.search.use.static.import";
@@ -272,16 +273,14 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     initValidation();
   }
 
-  private void initializeFilterPanel(@Nullable CompiledPattern compiledPattern) {
+  private void initializeFilterPanel() {
     final MatchOptions matchOptions = getConfiguration().getMatchOptions();
-    final CompiledPattern finalCompiledPattern = compiledPattern == null
-                                                 ? PatternCompiler.compilePattern(getProject(), matchOptions, false, false)
-                                                 : compiledPattern;
-    if (finalCompiledPattern == null) return;
+    final CompiledPattern compiledPattern = PatternCompiler.compilePattern(getProject(), matchOptions, false, false);
+    if (compiledPattern == null) return;
     ApplicationManager.getApplication().invokeLater(() -> {
       SubstitutionShortInfoHandler.updateEditorInlays(mySearchCriteriaEdit.getEditor());
       if (myReplace) SubstitutionShortInfoHandler.updateEditorInlays(myReplaceCriteriaEdit.getEditor());
-      myFilterPanel.setCompiledPattern(finalCompiledPattern);
+      myFilterPanel.setCompiledPattern(compiledPattern);
       if (myFilterPanel.getVariable() == null) {
         myFilterPanel.initFilters(UIUtil.getOrAddVariableConstraint(Configuration.CONTEXT_VAR_NAME, myConfiguration));
       }
@@ -594,6 +593,25 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
         initValidation();
       }
     };
+    final CheckboxAction recursive = new CheckboxAction(SSRBundle.message("recursive.matching.checkbox")) {
+
+      @Override
+      public void update(@NotNull AnActionEvent e) {
+        super.update(e);
+        e.getPresentation().setEnabledAndVisible(!myReplace);
+      }
+
+      @Override
+      public boolean isSelected(@NotNull AnActionEvent e) {
+        return myConfiguration.getMatchOptions().isRecursiveSearch();
+      }
+
+      @Override
+      public void setSelected(@NotNull AnActionEvent e, boolean state) {
+        myConfiguration.getMatchOptions().setRecursiveSearch(state);
+        initValidation();
+      }
+    };
     final CheckboxAction matchCase = new CheckboxAction(FindBundle.message("find.popup.case.sensitive")) {
       @Override
       public boolean isSelected(@NotNull AnActionEvent e) {
@@ -726,7 +744,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
       }
     };
     final DefaultActionGroup optionsActionGroup =
-      new DefaultActionGroup(injected, matchCase, myFileTypeChooser, filterAction, templateActionGroup);
+      new DefaultActionGroup(injected, recursive, matchCase, myFileTypeChooser, filterAction, templateActionGroup);
     myOptionsToolbar = (ActionToolbarImpl)actionManager.createActionToolbar("StructuralSearchDialog", optionsActionGroup, true);
     myOptionsToolbar.setTargetComponent(mySearchCriteriaEdit);
     myOptionsToolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY);
@@ -854,7 +872,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     if (myEditConfigOnly || myRangeHighlighters.isEmpty()) {
       return;
     }
-    // retrieval of editor needs to be outside invokeLater(), otherwise the editor might have already changed.
+    // retrieval of editor needs to be outside of invokeLater(), otherwise the editor might have already changed.
     final Editor editor = myEditor;
     if (editor == null) {
       return;
@@ -884,7 +902,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
       return;
     }
     final Document document = editor.getDocument();
-    final PsiFile file = ReadAction.nonBlocking(() -> PsiDocumentManager.getInstance(project).getPsiFile(document)).executeSynchronously();
+    final PsiFile file = ReadAction.compute(() -> PsiDocumentManager.getInstance(project).getPsiFile(document));
     if (file == null) {
       return;
     }
@@ -999,7 +1017,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
         }
       }
 
-      initializeFilterPanel(compiledPattern);
+      initializeFilterPanel();
       if (compiledPattern != null) {
         addMatchHighlights();
       }
@@ -1156,6 +1174,7 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     }
     UIUtil.setContent(mySearchCriteriaEdit, matchOptions.getSearchPattern());
 
+    final PropertiesComponent properties = PropertiesComponent.getInstance();
     if (myReplace) {
       final Editor replaceEditor = myReplaceCriteriaEdit.getEditor();
       if (replaceEditor != null) {
@@ -1168,6 +1187,11 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
       }
       else {
         UIUtil.setContent(myReplaceCriteriaEdit, matchOptions.getSearchPattern());
+      }
+    }
+    else {
+      if (configuration instanceof ReplaceConfiguration) {
+        matchOptions.setRecursiveSearch(properties.getBoolean(RECURSIVE_STATE));
       }
     }
   }
@@ -1190,15 +1214,19 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     matchOptions.setDialect(myDialect);
     matchOptions.setPatternContext(myPatternContext);
     matchOptions.setSearchPattern(getPattern(mySearchCriteriaEdit));
-    matchOptions.setRecursiveSearch(!myReplace);
+
 
     final PropertiesComponent properties = PropertiesComponent.getInstance();
     if (myReplace) {
       final ReplaceOptions replaceOptions = myConfiguration.getReplaceOptions();
       replaceOptions.setReplacement(getPattern(myReplaceCriteriaEdit));
+      matchOptions.setRecursiveSearch(false);
       properties.setValue(SHORTEN_FQN_STATE, replaceOptions.isToShortenFQN());
       properties.setValue(USE_STATIC_IMPORT_STATE, replaceOptions.isToUseStaticImport());
       properties.setValue(REFORMAT_STATE, replaceOptions.isToReformatAccordingToStyle());
+    }
+    else {
+      properties.setValue(RECURSIVE_STATE, matchOptions.isRecursiveSearch());
     }
   }
 
@@ -1206,11 +1234,11 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     final StructuralSearchProfile profile = StructuralSearchUtil.getProfileByFileType(myFileType);
     if (profile != null) {
       final Document document = textField.getDocument();
-      final String pattern = ReadAction.nonBlocking(() -> {
+      final String pattern = ReadAction.compute(() -> {
         final PsiFile file = PsiDocumentManager.getInstance(getProject()).getPsiFile(document);
         assert file != null;
         return profile.getCodeFragmentText(file);
-      }).executeSynchronously();
+      });
       return pattern.isEmpty() ? textField.getText() : pattern;
     }
     return textField.getText();
@@ -1227,9 +1255,8 @@ public class StructuralSearchDialog extends DialogWrapper implements DocumentLis
     getProject().putUserData(STRUCTURAL_SEARCH_PREVIOUS_CONFIGURATION, myConfiguration);
     storeDimensions();
 
-    if (mySearchEditorPanel != null) {
-      PropertiesComponent.getInstance().setValue(FILTERS_VISIBLE_STATE, isFilterPanelVisible(), true);
-    }
+    final PropertiesComponent properties = PropertiesComponent.getInstance();
+    properties.setValue(FILTERS_VISIBLE_STATE, isFilterPanelVisible(), true);
     StructuralSearchPlugin.getInstance(getProject()).setDialog(null);
     myAlarm.cancelAllRequests();
     mySearchCriteriaEdit.removeNotify();

@@ -609,6 +609,10 @@ public class RecentProjectPanel extends JPanel {
     }
 
     @Override
+    public void applicationDeactivated(@NotNull IdeFrame ideFrame) {
+    }
+
+    @Override
     public void powerSaveStateChanged() {
       onAppStateChanged();
     }

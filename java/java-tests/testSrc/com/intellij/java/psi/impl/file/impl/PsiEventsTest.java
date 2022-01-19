@@ -10,7 +10,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.ex.FileTypeManagerEx;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
-import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -525,8 +524,8 @@ public class PsiEventsTest extends JavaPsiTestCase {
     myPsiManager.addPsiTreeChangeListener(listener,getTestRootDisposable());
 
     ApplicationManager.getApplication().runWriteAction(() -> {
-      FileTypeManagerEx fileTypeManagerEx = (FileTypeManagerEx)FileTypeManager.getInstance();
-      fileTypeManagerEx.makeFileTypesChange("psi events test", EmptyRunnable.getInstance());
+      ((FileTypeManagerEx)FileTypeManager.getInstance()).fireBeforeFileTypesChanged();
+      ((FileTypeManagerEx)FileTypeManager.getInstance()).fireFileTypesChanged();
     });
 
 

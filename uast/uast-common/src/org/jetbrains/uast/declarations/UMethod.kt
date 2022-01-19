@@ -115,3 +115,7 @@ interface UAnnotationMethod : UMethod, PsiAnnotationMethod {
 
   override fun asLogString(): String = log("name = $name")
 }
+
+@Deprecated("no more needed, use UMethod", ReplaceWith("UMethod"))
+@ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+interface UMethodTypeSpecific : UMethod

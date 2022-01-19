@@ -18,7 +18,11 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.*;
+import com.intellij.openapi.vfs.VirtualFileManager;
+import com.intellij.openapi.vfs.VirtualFileWithId;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiFileSystemItem;
+import com.intellij.psi.PsiMethod;
 import com.intellij.psi.codeStyle.NameUtil;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
@@ -347,14 +351,14 @@ public final class TestDataGuessByExistingFilesUtil {
     final String pathSuffix;
     final boolean startWithLowerCase;
     final boolean isFromCurrentModule;
-    private final SmartPsiElementPointer<PsiFile> filePointer;
+    final int matchedVFileId;
 
-    private TestLocationDescriptor(String pathPrefix, String pathSuffix, boolean startWithLowerCase, boolean isFromCurrentModule, SmartPsiElementPointer<PsiFile> filePointer) {
+    private TestLocationDescriptor(String pathPrefix, String pathSuffix, boolean startWithLowerCase, boolean isFromCurrentModule, int id) {
       this.pathPrefix = pathPrefix;
       this.pathSuffix = pathSuffix;
       this.startWithLowerCase = startWithLowerCase;
       this.isFromCurrentModule = isFromCurrentModule;
-      this.filePointer = filePointer;
+      matchedVFileId = id;
     }
 
     static TestLocationDescriptor create(@NotNull String testName, @NotNull VirtualFile matched, @NotNull Project project, @Nullable Module module) {
@@ -379,13 +383,8 @@ public final class TestDataGuessByExistingFilesUtil {
       if (module != null) {
         isFromCurrentModule = module.equals(ModuleUtilCore.findModuleForFile(matched, project));
       }
-      PsiFile file = PsiManager.getInstance(project).findFile(matched);
-      if (file == null) return null;
-      return new TestLocationDescriptor(pathPrefix,
-                                        pathSuffix,
-                                        startWithLowerCase,
-                                        isFromCurrentModule,
-                                        SmartPointerManager.getInstance(project).createSmartPsiElementPointer(file));
+      int matchedVFileId = ((VirtualFileWithId)matched).getId();
+      return new TestLocationDescriptor(pathPrefix, pathSuffix, startWithLowerCase, isFromCurrentModule, matchedVFileId);
     }
 
     @Override
@@ -428,8 +427,8 @@ public final class TestDataGuessByExistingFilesUtil {
     @NotNull
     public List<TestDataFile> restoreFiles() {
       return ContainerUtil.mapNotNull(myDescriptors, d -> {
-        PsiFile file = ReadAction.compute(() -> d.filePointer.getElement());
-        return file == null ? null : new TestDataFile.Existing(file.getVirtualFile());
+        VirtualFile file = ReadAction.compute(() -> VirtualFileManager.getInstance().findFileById(d.matchedVFileId));
+        return file == null ? null : new TestDataFile.Existing(file);
       });
     }
 

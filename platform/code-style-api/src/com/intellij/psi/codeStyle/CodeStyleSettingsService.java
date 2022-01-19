@@ -17,13 +17,14 @@ public interface CodeStyleSettingsService {
     return ApplicationManager.getApplication().getService(CodeStyleSettingsService.class);
   }
 
-  /**
-   * @deprecated Use {@link LanguageCodeStyleProvider#forLanguage(Language)}.
-   */
-  @Deprecated
   @Nullable
   static LanguageCodeStyleProvider getLanguageCodeStyleProvider(Language language) {
-    return LanguageCodeStyleProvider.forLanguage(language);
+    for (LanguageCodeStyleProvider provider : getInstance().getLanguageCodeStyleProviders()) {
+      if (provider.getLanguage().equals(language)) {
+        return provider;
+      }
+    }
+    return null;
   }
 
   void addListener(@NotNull CodeStyleSettingsServiceListener listener, @Nullable Disposable disposable);

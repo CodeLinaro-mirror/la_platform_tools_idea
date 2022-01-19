@@ -19,9 +19,6 @@ public interface SearchEverywhereManager {
 
   boolean isShown();
 
-  @NotNull
-  SearchEverywhereUI getCurrentlyShownUI();
-
   void show(@NotNull String contributorID, @Nullable String searchText, @NotNull AnActionEvent initEvent);
 
   @NotNull

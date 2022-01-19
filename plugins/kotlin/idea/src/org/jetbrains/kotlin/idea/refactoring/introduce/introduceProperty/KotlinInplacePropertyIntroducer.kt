@@ -10,7 +10,6 @@ import com.intellij.openapi.util.Pass
 import com.intellij.psi.PsiElement
 import com.intellij.ui.NonFocusableCheckBox
 import com.intellij.ui.PopupMenuListenerAdapter
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.ExtractionResult
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.ExtractionTarget
@@ -31,7 +30,7 @@ class KotlinInplacePropertyIntroducer(
     property: KtProperty,
     editor: Editor,
     project: Project,
-    @Nls title: String,
+    title: String,
     doNotChangeVar: Boolean,
     exprType: KotlinType?,
     private var extractionResult: ExtractionResult,

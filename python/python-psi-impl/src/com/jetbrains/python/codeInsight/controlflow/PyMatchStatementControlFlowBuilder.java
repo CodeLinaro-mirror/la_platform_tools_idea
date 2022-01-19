@@ -3,6 +3,7 @@ package com.jetbrains.python.codeInsight.controlflow;
 import com.intellij.codeInsight.controlflow.ConditionalInstruction;
 import com.intellij.codeInsight.controlflow.ControlFlowBuilder;
 import com.intellij.codeInsight.controlflow.Instruction;
+import com.intellij.openapi.util.Ref;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.containers.ContainerUtil;
@@ -23,7 +24,7 @@ public final class PyMatchStatementControlFlowBuilder {
     myBaseVisitor = baseVisitor;
   }
 
-  public void build(@NotNull PyMatchStatement matchStatement) {
+  public final void build(@NotNull PyMatchStatement matchStatement) {
     myBuilder.startNode(matchStatement);
     PyExpression subject = matchStatement.getSubject();
     if (subject != null) {
@@ -68,7 +69,7 @@ public final class PyMatchStatementControlFlowBuilder {
   }
 
   private void processPattern(@NotNull PyPattern pattern) {
-    boolean isRefutable = !pattern.isIrrefutable();
+    boolean isRefutable = !isIrrefutablePattern(pattern);
     if (isRefutable) {
       RefutablePatternInstruction instruction = new RefutablePatternInstruction(myBuilder, pattern, false);
       myBuilder.addNodeAndCheckPending(instruction);
@@ -130,6 +131,52 @@ public final class PyMatchStatementControlFlowBuilder {
     if (isRefutable) {
       myBuilder.addNode(new RefutablePatternInstruction(myBuilder, pattern, true));
     }
+  }
+
+  private static boolean isIrrefutablePattern(@NotNull PyPattern pattern) {
+    Ref<Boolean> result = Ref.create(false);
+    pattern.accept(new PyElementVisitor() {
+      @Override
+      public void visitPyAsPattern(@NotNull PyAsPattern node) {
+        result.set(isIrrefutablePattern(node.getPattern()));
+      }
+
+      @Override
+      public void visitPyCapturePattern(@NotNull PyCapturePattern node) {
+        result.set(true);
+      }
+
+      @Override
+      public void visitWildcardPattern(@NotNull PyWildcardPattern node) {
+        result.set(true);
+      }
+
+      @Override
+      public void visitPyDoubleStarPattern(@NotNull PyDoubleStarPattern node) {
+        result.set(true);
+      }
+
+      @Override
+      public void visitPySingleStarPattern(@NotNull PySingleStarPattern node) {
+        result.set(true);
+      }
+
+      @Override
+      public void visitPyGroupPattern(@NotNull PyGroupPattern node) {
+        result.set(isIrrefutablePattern(node.getPattern()));
+      }
+
+      @Override
+      public void visitPyOrPattern(@NotNull PyOrPattern node) {
+        result.set(ContainerUtil.exists(node.getAlternatives(), p -> isIrrefutablePattern(p)));
+      }
+
+      @Override
+      public void visitPyPattern(@NotNull PyPattern node) {
+        result.set(false);
+      }
+    });
+    return result.get();
   }
 
   private void retargetOutgoingEdges(@NotNull PsiElement scopeAncestor,

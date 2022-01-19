@@ -1,5 +1,4 @@
 // COMPILER_ARGUMENTS: -XXLanguage:+SuspendConversion
-// AFTER-WARNING: Parameter 'a' is never used
 fun foo(a: suspend () -> Unit) {}
 
 fun action() {}

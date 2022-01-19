@@ -5,7 +5,6 @@ import com.jetbrains.python.ift.PythonLessonsBundle
 import training.dsl.*
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.learn.course.KLesson
-import training.util.isToStringContains
 import javax.swing.JList
 
 class PythonTabCompletionLesson
@@ -25,7 +24,7 @@ class PythonTabCompletionLesson
 
   private val sample = createFromTemplate(template, "current")
 
-  private val isTotalItem = { item: Any -> item.isToStringContains("total") }
+  private val isTotalItem = { item: Any -> item.toString().contains("total") }
 
   override val lessonContent: LessonContext.() -> Unit
     get() {
@@ -84,6 +83,4 @@ class PythonTabCompletionLesson
       checkExpectedStateOfEditor(sample)
     }
   }
-
-  override val suitableTips = listOf("TabInLookups")
 }

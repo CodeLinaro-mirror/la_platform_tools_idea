@@ -13,9 +13,35 @@ import kotlin.math.pow
 class DockerLauncher(private val paths: PathsProvider, private val options: DockerLauncherOptions) {
   companion object {
     private val logger = Logger.getLogger(DockerLauncher::class.java)
+    private val random = Random()
+  }
+
+  private val UBUNTU_18_04_WITH_USER_TEMPLATE = "ubuntu-18-04-docker-launcher"
+
+  fun assertCanRun() = dockerInfo()
+
+  fun runInContainer(cmd: List<String>): Process {
+    // we try to make everything the same as on the host folder, e.g. UID, paths
+    val username = System.getProperty("user.name")
+    val uid = UnixSystem().uid.toString()
+    val userHomePath = File(System.getProperty("user.home"))
 
     // e.g. ~/.m2/ will be /mnt/cache/.m2 on TC
-    fun File.pathNotResolvingSymlinks(): String = this.absoluteFile.normalize().path
+    fun File.pathNotResolvingSymlinks() = this.absoluteFile.normalize().path
+
+    if (!userHomePath.exists()) error("Home directory ${userHomePath.pathNotResolvingSymlinks()} of user=$username, uid=$uid does not exist")
+
+    val imageName = "$UBUNTU_18_04_WITH_USER_TEMPLATE-user-$username-uid-$uid"
+
+    val buildArgs = mapOf(
+      "USER_NAME" to username,
+      "USER_ID" to UnixSystem().uid.toString(),
+      "USER_HOME" to userHomePath.pathNotResolvingSymlinks()
+    )
+
+    dockerBuild(imageName, buildArgs)
+
+    val containerIdFile = File.createTempFile("cwm.docker.cid", "")
 
     fun MutableList<String>.addVolume(volume: File, isWritable: Boolean) {
       fun volumeParameter(volume: String, isWritable: Boolean) = "--volume=$volume:$volume:${if (isWritable) "rw" else "ro"}"
@@ -31,34 +57,6 @@ class DockerLauncher(private val paths: PathsProvider, private val options: Dock
 
     fun MutableList<String>.addReadonly(volume: File) = addVolume(volume, false)
     fun MutableList<String>.addWriteable(volume: File) = addVolume(volume, true)
-
-  }
-
-  private val UBUNTU_18_04_WITH_USER_TEMPLATE = "ubuntu-18-04-docker-launcher"
-
-  fun assertCanRun() = dockerInfo()
-
-  fun runInContainer(cmd: List<String>): Process {
-    // we try to make everything the same as on the host folder, e.g. UID, paths
-    val username = System.getProperty("user.name")
-    val uid = UnixSystem().uid.toString()
-    val userHomePath = File(System.getProperty("user.home"))
-
-
-
-    if (!userHomePath.exists()) error("Home directory ${userHomePath.pathNotResolvingSymlinks()} of user=$username, uid=$uid does not exist")
-
-    val imageName = "$UBUNTU_18_04_WITH_USER_TEMPLATE-user-$username-uid-$uid"
-
-    val buildArgs = mapOf(
-      "USER_NAME" to username,
-      "USER_ID" to UnixSystem().uid.toString(),
-      "USER_HOME" to userHomePath.pathNotResolvingSymlinks()
-    )
-
-    dockerBuild(imageName, buildArgs)
-
-    val containerIdFile = File.createTempFile("cwm.docker.cid", "")
 
     val dockerCmd = mutableListOf(
       "docker",
@@ -86,7 +84,7 @@ class DockerLauncher(private val paths: PathsProvider, private val options: Dock
                            paths.configFolder,
                            paths.systemFolder,
                            paths.outputRootFolder, // classpath index making a lot of noise
-                           paths.sourcesRootFolder.resolve("platform/cwm-tests/general/data"), // classpath index making a lot of noise in stderr
+                           paths.ultimateRootFolder.resolve("platform/cwm-tests/general/data"), // classpath index making a lot of noise in stderr
                            paths.communityRootFolder.resolve("build/download")) // quiche lib
 
     // docker can create these under root, so we create them ourselves
@@ -101,9 +99,9 @@ class DockerLauncher(private val paths: PathsProvider, private val options: Dock
     // jars
     dockerCmd.addReadonly(paths.communityBinFolder)
     dockerCmd.addReadonly(paths.communityRootFolder.resolve("lib"))
-    dockerCmd.addReadonly(paths.sourcesRootFolder.resolve("lib"))
-    dockerCmd.addReadonly(paths.sourcesRootFolder.resolve("plugins"))
-    dockerCmd.addReadonly(paths.sourcesRootFolder.resolve("contrib"))
+    dockerCmd.addReadonly(paths.ultimateRootFolder.resolve("lib"))
+    dockerCmd.addReadonly(paths.ultimateRootFolder.resolve("plugins"))
+    dockerCmd.addReadonly(paths.ultimateRootFolder.resolve("contrib"))
 
     // a lot of jars in classpaths, /plugins, /xml, so we'll just mount the whole root
     dockerCmd.addReadonly(paths.communityRootFolder)
@@ -115,7 +113,7 @@ class DockerLauncher(private val paths: PathsProvider, private val options: Dock
     dockerCmd.addReadonly(paths.mavenRepositoryFolder)
     
     // quiche
-    dockerCmd.addReadonly(paths.sourcesRootFolder.resolve(".idea"))
+    dockerCmd.addReadonly(paths.ultimateRootFolder.resolve(".idea"))
 
     // user-provided volumes
     paths.dockerVolumesToWritable.forEach { (volume, isWriteable) -> dockerCmd.addVolume(volume, isWriteable) }

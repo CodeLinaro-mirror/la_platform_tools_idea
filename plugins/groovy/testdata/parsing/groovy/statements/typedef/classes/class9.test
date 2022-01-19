@@ -34,8 +34,6 @@ Groovy script
           PsiElement(in)('in')
         PsiElement(.)('.')
         PsiElement(identifier)('c')
-    Permits clause
-      <empty list>
     PsiWhiteSpace(' ')
     Type definition body
       PsiElement({)('{')

@@ -161,18 +161,14 @@ fun getLambdasAtLineIfAny(sourcePosition: SourcePosition): List<KtFunction> {
     return getLambdasAtLineIfAny(file, lineNumber)
 }
 
-inline fun <reified T : PsiElement> getElementsAtLineIfAny(file: KtFile, line: Int): List<T> {
+fun getLambdasAtLineIfAny(file: KtFile, line: Int): List<KtFunction> {
     val lineElement = findElementAtLine(file, line) as? KtElement ?: return emptyList()
 
     val start = lineElement.startOffset
     val end = lineElement.endOffset
 
-    return CodeInsightUtils.findElementsOfClassInRange(file, start, end, T::class.java)
-        .filterIsInstance<T>()
-}
-
-fun getLambdasAtLineIfAny(file: KtFile, line: Int): List<KtFunction> {
-    val allLiterals = getElementsAtLineIfAny<KtFunction>(file, line)
+    val allLiterals = CodeInsightUtils.findElementsOfClassInRange(file, start, end, KtFunction::class.java)
+        .filterIsInstance<KtFunction>()
         // filter function literals and functional expressions
         .filter { it is KtFunctionLiteral || it.name == null }
         .toSet()

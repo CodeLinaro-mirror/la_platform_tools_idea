@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import org.jspecify.nullness.NullMarked;
+import org.jspecify.annotations.DefaultNonNull;
 
 class CastOfCaptureOfNotNullAwareUnboundedWildcardForObjectBoundedTypeParameter {
-  @NullMarked
+  @DefaultNonNull
   interface Super {
     void consume(Bar bar);
   }
@@ -30,11 +30,11 @@ class CastOfCaptureOfNotNullAwareUnboundedWildcardForObjectBoundedTypeParameter 
     }
   }
 
-  @NullMarked
+  @DefaultNonNull
   interface Supplier<T> {
     T get();
   }
 
-  @NullMarked
+  @DefaultNonNull
   interface Bar {}
 }

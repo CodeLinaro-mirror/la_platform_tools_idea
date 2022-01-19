@@ -430,11 +430,14 @@ abstract public class IntroduceHandler implements RefactoringActionHandler {
 
   private void performActionOnElement(IntroduceOperation operation) {
     if (!checkEnabled(operation)) {
-      showCanNotIntroduceErrorHint(operation.getProject(), operation.getEditor());
       return;
     }
     final PsiElement element = operation.getElement();
-    final PyExpression initializer = getInitializerForElement(element);
+
+    final PsiElement parent = element.getParent();
+    final PyExpression initializer = parent instanceof PyAssignmentStatement ?
+                                    ((PyAssignmentStatement)parent).getAssignedValue() :
+                                    (PyExpression)element;
     operation.setInitializer(initializer);
 
     if (initializer != null) {
@@ -447,8 +450,6 @@ abstract public class IntroduceHandler implements RefactoringActionHandler {
 
     performActionOnElementOccurrences(operation);
   }
-
-  protected void showCanNotIntroduceErrorHint(@NotNull Project project, @NotNull Editor editor) {}
 
   protected void performActionOnElementOccurrences(final IntroduceOperation operation) {
     final Editor editor = operation.getEditor();
@@ -470,13 +471,6 @@ abstract public class IntroduceHandler implements RefactoringActionHandler {
     else {
       performIntroduceWithDialog(operation);
     }
-  }
-
-  protected @Nullable PyExpression getInitializerForElement(@Nullable PsiElement element) {
-    if (element == null) return null;
-    final PsiElement parent = element.getParent();
-    return parent instanceof PyAssignmentStatement ? ((PyAssignmentStatement)parent).getAssignedValue() :
-           element instanceof PyExpression ? (PyExpression)element : null;
   }
 
   protected void performInplaceIntroduce(IntroduceOperation operation) {

@@ -1,9 +1,0 @@
-{
-    "mainFile": "Main.kt",
-    "usages": [
-        "Boo.kt",
-        "Foo.kt",
-        "Main.kt",
-        "TypeAlias.kt"
-    ]
-}

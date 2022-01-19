@@ -24,6 +24,7 @@ from typing import (
     Iterator,
     List,
     Mapping,
+    Optional,
     Sequence,
     Text,
     Type,
@@ -45,9 +46,9 @@ class excel_tab(excel):
     delimiter: str
 
 class DictReader(Generic[_T], Iterator[_DictReadMapping[_T, str]]):
-    fieldnames: Sequence[_T] | None
-    restkey: str | None
-    restval: str | None
+    fieldnames: Optional[Sequence[_T]]
+    restkey: Optional[str]
+    restval: Optional[str]
     reader: _reader
     dialect: _DialectLike
     line_num: int
@@ -56,8 +57,8 @@ class DictReader(Generic[_T], Iterator[_DictReadMapping[_T, str]]):
         self,
         f: Iterable[Text],
         fieldnames: Sequence[_T],
-        restkey: str | None = ...,
-        restval: str | None = ...,
+        restkey: Optional[str] = ...,
+        restval: Optional[str] = ...,
         dialect: _DialectLike = ...,
         *args: Any,
         **kwds: Any,
@@ -66,9 +67,9 @@ class DictReader(Generic[_T], Iterator[_DictReadMapping[_T, str]]):
     def __init__(
         self: DictReader[str],
         f: Iterable[Text],
-        fieldnames: Sequence[str] | None = ...,
-        restkey: str | None = ...,
-        restval: str | None = ...,
+        fieldnames: Optional[Sequence[str]] = ...,
+        restkey: Optional[str] = ...,
+        restval: Optional[str] = ...,
         dialect: _DialectLike = ...,
         *args: Any,
         **kwds: Any,
@@ -78,14 +79,14 @@ class DictReader(Generic[_T], Iterator[_DictReadMapping[_T, str]]):
 
 class DictWriter(Generic[_T]):
     fieldnames: Sequence[_T]
-    restval: Any | None
+    restval: Optional[Any]
     extrasaction: str
     writer: _writer
     def __init__(
         self,
         f: Any,
         fieldnames: Sequence[_T],
-        restval: Any | None = ...,
+        restval: Optional[Any] = ...,
         extrasaction: str = ...,
         dialect: _DialectLike = ...,
         *args: Any,
@@ -98,5 +99,5 @@ class DictWriter(Generic[_T]):
 class Sniffer(object):
     preferred: List[str]
     def __init__(self) -> None: ...
-    def sniff(self, sample: str, delimiters: str | None = ...) -> Type[Dialect]: ...
+    def sniff(self, sample: str, delimiters: Optional[str] = ...) -> Type[Dialect]: ...
     def has_header(self, sample: str) -> bool: ...

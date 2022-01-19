@@ -1,5 +1,3 @@
-// AFTER-WARNING: Variable 'a' is never used
-// AFTER-WARNING: Variable 'b' is never used
 package test
 
 interface T {

@@ -1,4 +1,4 @@
-// "Cast argument to 'Map<Foo, Bar>'" "true"
+// "Cast parameter to 'java.util.Map<Foo,Bar>'" "true"
 
 import java.util.*;
 

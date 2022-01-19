@@ -12,16 +12,13 @@ import java.awt.Component
 import javax.swing.JList
 import javax.swing.ListCellRenderer
 
-class CommitsListCellRenderer : ListCellRenderer<VcsCommitMetadata>, BorderLayoutPanel() {
+class CommitsListCellRenderer : ListCellRenderer<VcsCommitMetadata> {
+
   private val nodeComponent = CommitNodeComponent().apply {
     foreground = DefaultColorGenerator().getColor(1)
   }
   private val messageComponent = SimpleColoredComponent()
-
-  init {
-    addToLeft(nodeComponent)
-    addToCenter(messageComponent)
-  }
+  val panel = BorderLayoutPanel().addToLeft(nodeComponent).addToCenter(messageComponent)
 
   override fun getListCellRendererComponent(list: JList<out VcsCommitMetadata>,
                                             value: VcsCommitMetadata?,
@@ -34,9 +31,13 @@ class CommitsListCellRenderer : ListCellRenderer<VcsCommitMetadata>, BorderLayou
     SpeedSearchUtil.applySpeedSearchHighlighting(list, messageComponent, true, isSelected)
 
     val size = list.model.size
-    nodeComponent.type = CommitNodeComponent.typeForListItem(index, size)
-
-    this.background = UIUtil.getListBackground(isSelected, cellHasFocus)
-    return this
+    when {
+      size <= 1 -> nodeComponent.type = CommitNodeComponent.Type.SINGLE
+      index == 0 -> nodeComponent.type = CommitNodeComponent.Type.FIRST
+      index == size - 1 -> nodeComponent.type = CommitNodeComponent.Type.LAST
+      else -> nodeComponent.type = CommitNodeComponent.Type.MIDDLE
+    }
+    panel.background = UIUtil.getListBackground(isSelected, cellHasFocus)
+    return panel
   }
 }

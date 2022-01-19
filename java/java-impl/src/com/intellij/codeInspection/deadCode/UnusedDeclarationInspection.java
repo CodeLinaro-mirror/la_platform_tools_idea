@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.deadCode;
 
 import com.intellij.analysis.AnalysisScope;
@@ -12,8 +12,6 @@ import com.intellij.codeInspection.ui.InspectionToolPresentation;
 import com.intellij.codeInspection.unusedSymbol.UnusedSymbolLocalInspection;
 import com.intellij.codeInspection.unusedSymbol.UnusedSymbolLocalInspectionBase;
 import com.intellij.java.JavaBundle;
-import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.psi.*;
 import com.intellij.psi.controlFlow.DefUseUtil;
 import com.intellij.ui.ScrollPaneFactory;
@@ -31,10 +29,8 @@ import org.jetbrains.uast.*;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionListener;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public final class UnusedDeclarationInspection extends UnusedDeclarationInspectionBase {
   private final UnusedParametersInspection myUnusedParameters = new UnusedParametersInspection();
@@ -46,6 +42,7 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
     super(enabledInEditor);
   }
 
+  @Nullable
   @Override
   public String getAlternativeID() {
     return UnusedSymbolLocalInspectionBase.UNUSED_PARAMETERS_SHORT_NAME;
@@ -59,22 +56,14 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
     if (myLocalInspectionBase.PARAMETER) {
       globalContext.getRefManager().iterate(new RefVisitor() {
         @Override public void visitElement(@NotNull RefEntity refEntity) {
-          try {
-            if (!(refEntity instanceof RefMethod) ||
-                !globalContext.shouldCheck(refEntity, UnusedDeclarationInspection.this) ||
-                !UnusedDeclarationPresentation.compareVisibilities((RefMethod)refEntity, myLocalInspectionBase.getParameterVisibility())) {
-              return;
-            }
-            CommonProblemDescriptor[] descriptors = myUnusedParameters.checkElement(refEntity, scope, manager, globalContext, problemDescriptionsProcessor);
-            if (descriptors != null) {
-              problemDescriptionsProcessor.addProblemElement(refEntity, descriptors);
-            }
+          if (!(refEntity instanceof RefMethod) ||
+              !globalContext.shouldCheck(refEntity, UnusedDeclarationInspection.this) ||
+              !UnusedDeclarationPresentation.compareVisibilities((RefMethod)refEntity, myLocalInspectionBase.getParameterVisibility())) {
+            return;
           }
-          catch (ProcessCanceledException | IndexNotReadyException e) {
-            throw e;
-          }
-          catch (Throwable e) {
-            LOG.error("Exception on '" + refEntity.getExternalName() + "'", e);
+          CommonProblemDescriptor[] descriptors = myUnusedParameters.checkElement(refEntity, scope, manager, globalContext, problemDescriptionsProcessor);
+          if (descriptors != null) {
+            problemDescriptionsProcessor.addProblemElement(refEntity, descriptors);
           }
         }
       });
@@ -82,6 +71,7 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
     super.runInspection(scope, manager, globalContext, problemDescriptionsProcessor);
   }
 
+  @Nullable
   @Override
   public RefGraphAnnotator getAnnotator(@NotNull RefManager refManager) {
     return new UnusedVariablesGraphAnnotator(InspectionManager.getInstance(refManager.getProject()), refManager);
@@ -92,7 +82,7 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
                                              @NotNull GlobalInspectionContext globalContext,
                                              @NotNull ProblemDescriptionsProcessor problemDescriptionsProcessor) {
     final boolean requests = super.queryExternalUsagesRequests(manager, globalContext, problemDescriptionsProcessor);
-    if (!requests && myLocalInspectionBase.PARAMETER) {
+    if (!requests) {
       myUnusedParameters.queryExternalUsagesRequests(manager, globalContext, problemDescriptionsProcessor);
     }
     return requests;
@@ -235,12 +225,12 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
   private class UnusedVariablesGraphAnnotator extends RefGraphAnnotator {
     private final InspectionManager myInspectionManager;
     private final GlobalInspectionContextImpl myContext;
-    private final Tools myTools;
+    private final Map<String, Tools> myTools;
 
     UnusedVariablesGraphAnnotator(InspectionManager inspectionManager, RefManager refManager) {
       myInspectionManager = inspectionManager;
       myContext = (GlobalInspectionContextImpl)((RefManagerImpl)refManager).getContext();
-      myTools = myContext.getTools().get(getShortName());
+      myTools = myContext.getTools();
     }
 
     @Override
@@ -262,26 +252,15 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
           }
         }
       }
-      else if (refElement instanceof RefField) {
-        UField field = ((RefField)refElement).getUastElement();
-        if (field != null) {
-          UExpression initializer = field.getUastInitializer();
-          if (initializer != null) {
-            initializer = UastUtils.skipParenthesizedExprDown(initializer);
-            if (initializer instanceof ULambdaExpression) {
-              findUnusedLocalVariables(((ULambdaExpression)initializer).getBody(), refElement);
-            }
-          }
-        }
-      }
     }
 
     private void findUnusedLocalVariables(UExpression body, RefElement refElement) {
       if (body == null) return;
       PsiCodeBlock bodySourcePsi = ObjectUtils.tryCast(body.getSourcePsi(), PsiCodeBlock.class);
       if (bodySourcePsi == null) return;
-      if (!myTools.isEnabled(bodySourcePsi)) return;
-      InspectionToolWrapper toolWrapper = myTools.getInspectionTool(bodySourcePsi);
+      Tools tools = myTools.get(getShortName());
+      if (!tools.isEnabled(bodySourcePsi)) return;
+      InspectionToolWrapper toolWrapper = tools.getInspectionTool(bodySourcePsi);
       InspectionToolPresentation presentation = myContext.getPresentation(toolWrapper);
       if (((UnusedDeclarationInspection)toolWrapper.getTool()).getSharedLocalInspectionTool().LOCAL_VARIABLE) {
         List<CommonProblemDescriptor> descriptors = new ArrayList<>();
@@ -314,18 +293,14 @@ public final class UnusedDeclarationInspection extends UnusedDeclarationInspecti
 
         @Override
         public void visitLambdaExpression(PsiLambdaExpression lambdaExpr) {
-          RefElement lambdaRef = myContext.getRefManager().getReference(lambdaExpr);
-          if (lambdaRef instanceof RefFunctionalExpression) {
-            ULambdaExpression lambda = ObjectUtils.tryCast(((RefFunctionalExpression)lambdaRef).getUastElement(), ULambdaExpression.class);
-            if (lambda != null) {
-              findUnusedLocalVariables(lambda.getBody(), lambdaRef);
-            }
+          PsiCodeBlock lambdaBody = ObjectUtils.tryCast(lambdaExpr.getBody(), PsiCodeBlock.class);
+          if (lambdaBody != null) {
+            findUnusedLocalVariablesInCodeBlock(lambdaBody, descriptors);
           }
         }
 
         @Override
         public void visitLocalVariable(PsiLocalVariable variable) {
-          super.visitLocalVariable(variable);
           if (!usedVariables.contains(variable) && variable.getInitializer() == null &&
               !SuppressionUtil.inspectionResultSuppressed(variable, UnusedDeclarationInspection.this)) {
             descriptors.add(createProblemDescriptor(variable));

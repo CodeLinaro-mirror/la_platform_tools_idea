@@ -573,9 +573,8 @@ class A {{
     myFixture.completeBasic()
     assert myFixture.lookup
     myFixture.type("sout")
-    //This assert fails sporadically
-    //assert myFixture.lookup
-    //assert myFixture.lookupElementStrings == []
+    assert myFixture.lookup
+    assert myFixture.lookupElementStrings == []
     myFixture.type('\t')
     myFixture.checkResult "class Foo {{\n    System.out.println(<caret>);\n}}"
   }

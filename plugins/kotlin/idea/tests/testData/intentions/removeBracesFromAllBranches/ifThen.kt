@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
 fun test(i: Int) {
     if (i == 1) {
         prin<caret>tln(1)

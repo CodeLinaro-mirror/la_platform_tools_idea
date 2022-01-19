@@ -7,7 +7,6 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.psi.stubs.StubIndex
 import org.intellij.plugins.markdown.lang.index.MarkdownHeadersIndex
-import java.util.*
 
 interface MarkdownAnchorReference : PsiPolyVariantReference {
   companion object {
@@ -29,7 +28,7 @@ interface MarkdownAnchorReference : PsiPolyVariantReference {
     }
 
     fun dashed(it: String): String =
-      it.lowercase(Locale.getDefault())
+      it.toLowerCase()
         .trimStart()
         .replace(Regex("[^\\w\\- ]"), "")
         .replace(" ", "-")

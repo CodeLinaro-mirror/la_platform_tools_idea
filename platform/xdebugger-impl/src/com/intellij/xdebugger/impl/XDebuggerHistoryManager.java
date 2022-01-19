@@ -7,7 +7,6 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
-import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xmlb.annotations.Tag;
@@ -26,6 +25,7 @@ import java.util.Map;
 
 @State(name = "debuggerHistoryManager", storages = @Storage(StoragePathMacros.PRODUCT_WORKSPACE_FILE))
 public final class XDebuggerHistoryManager implements PersistentStateComponent<Element> {
+  public static final int MAX_RECENT_EXPRESSIONS = 10;
   private static final String STATE_TAG = "root";
   private static final String ID_ATTRIBUTE = "id";
   private static final String EXPRESSIONS_TAG = "expressions";
@@ -43,8 +43,7 @@ public final class XDebuggerHistoryManager implements PersistentStateComponent<E
     }
 
     LinkedList<XExpression> list = myRecentExpressions.computeIfAbsent(id, k -> new LinkedList<>());
-    int max = AdvancedSettings.getInt("debugger.max.recent.expressions");
-    while (list.size() >= max) {
+    if (list.size() == MAX_RECENT_EXPRESSIONS) {
       list.removeLast();
     }
 

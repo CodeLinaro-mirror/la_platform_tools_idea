@@ -84,7 +84,7 @@ class GitCheckoutNewBranchOperation extends GitBranchOperation {
 
   @NotNull
   @Override
-  protected String getSuccessMessage() {
+  public String getSuccessMessage() {
     return GitBundle.message("checkout.new.branch.operation.branch.was.created", bold(code(myNewBranchName)));
   }
 

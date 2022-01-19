@@ -67,7 +67,6 @@
     <keyboard-shortcut first-keystroke="alt 1"/>
   </action>
   <action id="ActivateFavoritesToolWindow"/>
-  <action id="ActivateBookmarksToolWindow"/>
   <action id="ActivateFindToolWindow">
     <keyboard-shortcut first-keystroke="alt 2"/>
   </action>
@@ -81,7 +80,6 @@
   <action id="ShowBookmarks">
     <keyboard-shortcut first-keystroke="alt M"/>
   </action>
-  <action id="ShowTypeBookmarks"/>
   <action id="ExportToTextFile"/>
   <action id="RecentFiles">
     <keyboard-shortcut first-keystroke="alt O"/>

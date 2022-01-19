@@ -4,7 +4,6 @@ package com.intellij.ide.ui.search;
 import com.intellij.BundleBase;
 import com.intellij.application.options.SkipSelfSearchComponent;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.*;
 import com.intellij.openapi.options.ex.ConfigurableWrapper;
 import com.intellij.openapi.util.NlsSafe;
@@ -23,9 +22,6 @@ import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.TitledBorder;
 import javax.swing.plaf.basic.BasicComboPopup;
-import javax.swing.text.BadLocationException;
-import javax.swing.text.Document;
-import javax.swing.text.View;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
@@ -41,8 +37,6 @@ public final class SearchUtil {
 
   public static final String HIGHLIGHT_WITH_BORDER = "searchUtil.highlightWithBorder";
   private static final String STYLE_END = "</style>";
-
-  private static final Logger LOGGER = Logger.getInstance(SearchUtil.class);
 
   private SearchUtil() { }
 
@@ -193,51 +187,20 @@ public final class SearchUtil {
     }
   }
 
-  /**
-   * This method tries to extract a user-visible text (as opposed to a HTML markup string) from a Swing text component.
-   */
-  @Nullable
-  private static String getLabelFromTextView(@NotNull JComponent component) {
-    Object view = component.getClientProperty("html");
-    if (!(view instanceof View)) return null;
-    Document document = ((View)view).getDocument();
-    if (document == null) return null;
-    int length = document.getLength();
-    try {
-      return document.getText(0, length);
-    }
-    catch (BadLocationException e) {
-      LOGGER.error(e);
-      return null;
-    }
-  }
-
-  private static String getLabelFromComponent(@NotNull JLabel label) {
-    String text = getLabelFromTextView(label);
-    if (text == null) text = label.getText();
-    return text;
-  }
-
-  private static String getLabelFromComponent(@NotNull AbstractButton button) {
-    String text = getLabelFromTextView(button);
-    if (text == null) text = button.getText();
-    return text;
-  }
-
   @Nullable
   private static String getLabelFromComponent(@Nullable Component component) {
     String label = null;
     if (component instanceof JLabel) {
-      label = getLabelFromComponent((JLabel)component);
+      label = ((JLabel)component).getText();
     }
     else if (component instanceof JCheckBox) {
-      label = getLabelFromComponent((JCheckBox)component);
+      label = ((JCheckBox)component).getText();
     }
     else if (component instanceof JRadioButton) {
-      label = getLabelFromComponent((JRadioButton)component);
+      label = ((JRadioButton)component).getText();
     }
     else if (component instanceof JButton) {
-      label = getLabelFromComponent((JButton)component);
+      label = ((JButton)component).getText();
     }
     return Strings.nullize(label, true);
   }

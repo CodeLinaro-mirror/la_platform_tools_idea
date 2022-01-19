@@ -1,1 +1,3 @@
-DEBUG: bool | None
+from typing import Optional
+
+DEBUG: Optional[bool]

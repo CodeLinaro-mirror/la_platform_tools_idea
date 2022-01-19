@@ -9,7 +9,6 @@ import com.intellij.configurationStore.XmlSerializer;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageExtensionPoint;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
@@ -26,7 +25,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-@State(name = "PostfixTemplatesSettings", storages = @Storage("postfixTemplates.xml"), category = SettingsCategory.CODE)
+@State(name = "PostfixTemplatesSettings", storages = @Storage("postfixTemplates.xml"))
 public class PostfixTemplatesSettings implements PersistentStateComponent<Element> {
   public static final Factory<Set<String>> SET_FACTORY = () -> new HashSet<>();
   private Map<String, Set<String>> myProviderToDisabledTemplates = new HashMap<>();

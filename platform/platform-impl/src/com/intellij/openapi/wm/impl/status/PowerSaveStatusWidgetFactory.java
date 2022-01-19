@@ -42,10 +42,8 @@ public class PowerSaveStatusWidgetFactory implements StatusBarWidgetFactory {
 
   @Override
   public @NotNull StatusBarWidget createWidget(@NotNull Project project) {
-    StatusBar statusBar = WindowManager.getInstance().getStatusBar(project);
-    if (statusBar != null) {
-      ApplicationManager.getApplication().getMessageBus().connect().subscribe(PowerSaveMode.TOPIC, () -> statusBar.updateWidget(getId()));
-    }
+    ApplicationManager.getApplication().getMessageBus().connect().subscribe(PowerSaveMode.TOPIC,
+      () -> WindowManager.getInstance().getStatusBar(project).updateWidget(getId()));
     return new PowerWidget();
   }
 

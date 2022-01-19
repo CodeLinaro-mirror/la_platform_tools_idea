@@ -23,12 +23,13 @@ import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.util.Consumer;
 import com.intellij.util.PlatformIcons;
 import com.intellij.util.SlowOperations;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.*;
 import java.util.*;
-import java.util.List;
 
 import static com.intellij.openapi.util.NlsContexts.DialogTitle;
 
@@ -153,14 +154,6 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
     }
 
     @Override
-    public Builder setDefaultText(String text) {
-      JTextField nameField = myDialog.getNameField();
-      nameField.setText(text);
-      nameField.selectAll();
-      return this;
-    }
-
-    @Override
     public Builder addKind(@Nls @NotNull String name, @Nullable Icon icon, @NotNull String templateName,
                            @Nullable InputValidator extraValidator) {
       myDialog.getKindCombo().addItem(name, icon, templateName);
@@ -177,11 +170,6 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
     public Builder setValidator(InputValidator validator) {
       myDialog.myInputValidator = validator;
       return this;
-    }
-
-    @Override
-    public Builder setDialogOwner(@Nullable Component owner) {
-      throw new UnsupportedOperationException("Dialog owner is supposed to be baked in CreateFileFromTemplateDialog passed via constructor");
     }
 
     @Override
@@ -240,23 +228,15 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
     @NotNull private final Project myProject;
 
     private @NlsContexts.PopupTitle String myTitle = LangBundle.message("popup.title.default.title");
-    private String myDefaultText = null;
     private final List<Trinity<String, Icon, String>> myTemplatesList = new ArrayList<>();
     private InputValidator myInputValidator;
     private final Map<String, InputValidator> myExtraValidators = new HashMap<>();
-    private @Nullable Component dialogOwner;
 
     private NonBlockingPopupBuilderImpl(@NotNull Project project) {myProject = project;}
 
     @Override
     public Builder setTitle(@NlsContexts.PopupTitle String title) {
       myTitle = title;
-      return this;
-    }
-
-    @Override
-    public Builder setDefaultText(String text) {
-      myDefaultText = text;
       return this;
     }
 
@@ -273,12 +253,6 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
     @Override
     public Builder setValidator(InputValidator validator) {
       myInputValidator = validator;
-      return this;
-    }
-
-    @Override
-    public Builder setDialogOwner(@Nullable Component owner) {
-      dialogOwner = owner;
       return this;
     }
 
@@ -314,11 +288,6 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
       };
 
       JBPopup popup = NewItemPopupUtil.createNewItemPopup(myTitle, contentPanel, contentPanel.getNameField());
-      if (myDefaultText != null) {
-        JTextField textField = contentPanel.getTextField();
-        textField.setText(myDefaultText);
-        textField.selectAll();
-      }
       contentPanel.setApplyAction(e -> {
         String newElementName = contentPanel.getEnteredName();
         if (StringUtil.isEmptyOrSpaces(newElementName)) return;
@@ -344,10 +313,7 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
       });
 
       Disposer.register(popup, contentPanel);
-      if (dialogOwner == null)
-        popup.showCenteredInCurrentWindow(myProject);
-      else
-        popup.showInCenterOf(dialogOwner);
+      popup.showCenteredInCurrentWindow(myProject);
     }
 
     @Nullable
@@ -366,8 +332,6 @@ public class CreateFileFromTemplateDialog extends DialogWrapper {
   public interface Builder {
     Builder setTitle(@DialogTitle String title);
     Builder setValidator(InputValidator validator);
-    Builder setDefaultText(String text);
-    Builder setDialogOwner(@Nullable Component owner);
 
     default Builder addKind(@NlsContexts.ListItem @NotNull String kind, @Nullable Icon icon, @NonNls @NotNull String templateName) {
       return addKind(kind, icon, templateName, null);

@@ -18,12 +18,10 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Pair
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
-import com.intellij.util.ui.TimerUtil
 import training.dsl.TaskContext
 import training.dsl.impl.LessonExecutor
 import training.learn.exceptons.NoTextEditor
 import training.learn.lesson.LessonManager
-import training.statistic.LessonStartingWay
 import training.statistic.StatisticBase
 import training.ui.LearningUiManager
 import training.util.DataLoader
@@ -32,7 +30,6 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import java.beans.PropertyChangeListener
 import java.util.concurrent.CompletableFuture
-import javax.swing.Timer
 
 private val LOG = logger<ActionsRecorder>()
 
@@ -49,7 +46,6 @@ internal class ActionsRecorder(private val project: Project,
   var disposed = false
     private set
 
-  private var timer: Timer? = null
   private val busConnection = ApplicationManager.getApplication().messageBus.connect(this)
 
   /** Currently registered command listener */
@@ -207,20 +203,6 @@ internal class ActionsRecorder(private val project: Project,
     return future
   }
 
-  fun timerCheck(delayMillis: Int = 200, checkFunction: () -> Boolean): CompletableFuture<Boolean> {
-    val future: CompletableFuture<Boolean> = CompletableFuture()
-    val t = timer ?: TimerUtil.createNamedTimer("State Timer Check", delayMillis).also {
-      timer = it
-      it.start()
-    }
-    t.addActionListener {
-      if (checkFunction()) {
-        future.complete(true)
-      }
-    }
-    return future
-  }
-
   fun futureCheck(checkFunction: () -> Boolean): CompletableFuture<Boolean> {
     val future: CompletableFuture<Boolean> = CompletableFuture()
 
@@ -306,8 +288,6 @@ internal class ActionsRecorder(private val project: Project,
     commandListener = null
     editorListener = null
     focusChangeListener?.let { KeyboardFocusManager.getCurrentKeyboardFocusManager().removePropertyChangeListener("focusOwner", it) }
-    timer?.stop()
-    timer = null
   }
 
   private fun getActionId(action: AnAction): String {
@@ -331,7 +311,7 @@ internal class ActionsRecorder(private val project: Project,
       val lesson = LessonManager.instance.currentLesson
       if (activeToolWindow != null && lesson != null) {
         val notification = TaskContext.RestoreNotification(LearnBundle.message("learn.restore.notification.editor.closed")) {
-          CourseManager.instance.openLesson(activeToolWindow.project, lesson, LessonStartingWay.RESTORE_LINK)
+          CourseManager.instance.openLesson(activeToolWindow.project, lesson)
         }
         LessonManager.instance.setRestoreNotification(notification)
       }

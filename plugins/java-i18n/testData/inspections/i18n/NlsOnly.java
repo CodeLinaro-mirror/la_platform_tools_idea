@@ -7,9 +7,4 @@ class Foo {
     foo("text"); //NON-NLS
     bar("text");
   }
-
-  void test(@org.jetbrains.annotations.Nls String str) {
-    if (str.equals(<warning descr="Hardcoded string literal: \"Hello World\"">"Hello World"</warning>)) {}
-    if (str.startsWith(<warning descr="Hardcoded string literal: \"Hello World\"">"Hello World"</warning>)) { }
-  }
 }

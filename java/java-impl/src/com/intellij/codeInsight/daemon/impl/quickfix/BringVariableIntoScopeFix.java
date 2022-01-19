@@ -4,7 +4,6 @@ package com.intellij.codeInsight.daemon.impl.quickfix;
 import com.intellij.codeInsight.daemon.QuickFixBundle;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightControlFlowUtil;
 import com.intellij.codeInsight.intention.FileModifier;
-import com.intellij.codeInsight.intention.HighPriorityAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.impl.BaseIntentionAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -23,7 +22,7 @@ import java.util.Objects;
 /**
  * @author ven
  */
-public final class BringVariableIntoScopeFix implements IntentionAction, HighPriorityAction {
+public final class BringVariableIntoScopeFix implements IntentionAction {
   private static final Logger LOG = Logger.getInstance(BringVariableIntoScopeFix.class);
   private final @NotNull PsiReferenceExpression myUnresolvedReference;
   private final @NotNull PsiLocalVariable myOutOfScopeVariable;
@@ -33,17 +32,14 @@ public final class BringVariableIntoScopeFix implements IntentionAction, HighPri
     myOutOfScopeVariable = variable;
   }
 
-  public PsiLocalVariable getVariable() {
-    return myOutOfScopeVariable;
-  }
-
-  public static @Nullable BringVariableIntoScopeFix fromReference(PsiReferenceExpression unresolvedReference) {
+  static @Nullable BringVariableIntoScopeFix fromReference(PsiReferenceExpression unresolvedReference) {
     if (unresolvedReference.isQualified()) return null;
     final String referenceName = unresolvedReference.getReferenceName();
     if (referenceName == null) return null;
 
-    PsiElement container = getContainer(unresolvedReference);
-    if (container == null) return null;
+    PsiElement container = PsiTreeUtil.getParentOfType(unresolvedReference, PsiCodeBlock.class, PsiClass.class);
+    if (!(container instanceof PsiCodeBlock)) return null;
+    while(container.getParent() instanceof PsiStatement || container.getParent() instanceof PsiCatchSection) container = container.getParent();
 
     class Visitor extends JavaRecursiveElementWalkingVisitor {
       int variableCount = 0;
@@ -73,15 +69,6 @@ public final class BringVariableIntoScopeFix implements IntentionAction, HighPri
 
     if (visitor.variableCount != 1 || visitor.myOutOfScopeVariable instanceof PsiResourceVariable) return null;
     return new BringVariableIntoScopeFix(unresolvedReference, visitor.myOutOfScopeVariable);
-  }
-
-  public static @Nullable PsiElement getContainer(PsiElement unresolvedReference) {
-    PsiElement container = PsiTreeUtil.getParentOfType(unresolvedReference, PsiCodeBlock.class, PsiClass.class);
-    if (!(container instanceof PsiCodeBlock)) return null;
-    while (container.getParent() instanceof PsiStatement || container.getParent() instanceof PsiCatchSection) {
-      container = container.getParent();
-    }
-    return container;
   }
 
   @Override

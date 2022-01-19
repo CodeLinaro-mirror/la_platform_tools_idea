@@ -86,8 +86,7 @@ public final class MavenDependencyCompletionUtil {
   }
 
   public static LookupElementBuilder lookupElement(MavenRepositoryArtifactInfo info, String presentableText) {
-
-    LookupElementBuilder elementBuilder = LookupElementBuilder.create(info, getLookupString(info))
+    LookupElementBuilder elementBuilder = LookupElementBuilder.create(info, getLookupString(info.getItems()[0]))
       .withPresentableText(presentableText);
     elementBuilder.putUserData(BaseCompletionLookupArranger.FORCE_MIDDLE_MATCH, new Object());
     if (info.getItems().length == 1) {
@@ -109,14 +108,6 @@ public final class MavenDependencyCompletionUtil {
       return AllIcons.Nodes.Module;
     }
     return null;
-  }
-
-  public static String getLookupString(MavenRepositoryArtifactInfo info) {
-    MavenDependencyCompletionItem[] infoItems = info.getItems();
-    if (infoItems.length > 0) {
-      return getLookupString(infoItems[0]);
-    }
-    return info.getGroupId() + ":" + info.getArtifactId();
   }
 
   public static String getLookupString(MavenDependencyCompletionItem description) {

@@ -32,7 +32,7 @@ public class PyMissingTypeHintsInspection extends PyInspection {
   @NotNull
   @Override
   public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
-    return new PyInspectionVisitor(holder, PyInspectionVisitor.getContext(session)) {
+    return new PyInspectionVisitor(holder, session) {
       @Override
       public void visitPyFunction(@NotNull PyFunction function) {
         if (function.getTypeComment() == null &&

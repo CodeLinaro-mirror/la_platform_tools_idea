@@ -9,25 +9,25 @@ internal class IncrementalProjectIndexableFilesFilter : IdFilter() {
   private var fileIds: ConcurrentBitSet = ConcurrentBitSet.create()
   private var previousFileIds: ConcurrentBitSet? = null
 
-  override fun getFilteringScopeType(): FilterScopeType = FilterScopeType.PROJECT_AND_LIBRARIES
-
-  override fun containsFileId(fileId: Int): Boolean = fileIds.get(fileId)
+  override fun containsFileId(fileId: Int): Boolean {
+    return fileIds.get(fileId)
+  }
 
   @Suppress("LocalVariableName")
-  fun ensureFileIdPresent(fileId: Int, add: () -> Boolean): FileAddStatus {
+  fun ensureFileIdPresent(fileId: Int, add: () -> Boolean): Boolean {
     assert(fileId > 0)
 
     val _fileIds = fileIds
     if (_fileIds.get(fileId)) {
-      return FileAddStatus.PRESENT
+      return false
     }
 
     if (add()) {
       _fileIds.set(fileId)
       val _previousFileIds = previousFileIds
-      return if (_previousFileIds == null || !_previousFileIds.get(fileId)) FileAddStatus.ADDED else FileAddStatus.PRESENT
+      return _previousFileIds == null || !_previousFileIds.get(fileId)
     }
-    return FileAddStatus.SKIPPED
+    return false
   }
 
   fun removeFileId(fileId: Int) {

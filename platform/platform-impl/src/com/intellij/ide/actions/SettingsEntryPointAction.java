@@ -1,20 +1,23 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.ui.ToolbarSettings;
-import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.ui.UISettingsListener;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.TooltipDescriptionProvider;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.ui.popup.*;
+import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.ui.popup.JBPopupListener;
+import com.intellij.openapi.ui.popup.LightweightWindowEvent;
+import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.ui.popup.util.PopupUtil;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsActions;
@@ -22,8 +25,8 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.wm.*;
 import com.intellij.openapi.wm.impl.status.widget.StatusBarWidgetsManager;
 import com.intellij.ui.AnActionButton;
-import com.intellij.ui.popup.PopupState;
 import com.intellij.util.Consumer;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -34,24 +37,21 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author Alexander Lobas
  */
 public final class SettingsEntryPointAction extends DumbAwareAction implements RightAlignedToolbarAction, TooltipDescriptionProvider {
-  private final PopupState<JBPopup> myPopupState = PopupState.forPopup();
-
-  public SettingsEntryPointAction() {
-    super(IdeBundle.messagePointer("settings.entry.point.tooltip"));
-  }
+  private boolean myShowPopup = true;
 
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
     resetActionIcon();
 
-    if (myPopupState.isHidden() && !myPopupState.isRecentlyHidden()) {
-      ListPopup popup = createMainPopup(e.getDataContext());
-      myPopupState.prepareToShow(popup);
+    if (myShowPopup) {
+      myShowPopup = false;
+      ListPopup popup = createMainPopup(e.getDataContext(), () -> myShowPopup = true);
       PopupUtil.showForActionButtonEvent(popup, e);
     }
   }
@@ -59,7 +59,7 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
   @Override
   public void update(@NotNull AnActionEvent e) {
     Presentation presentation = e.getPresentation();
-    if (e.isFromActionToolbar()) presentation.setText("");
+    presentation.setText("");
     presentation.setDescription(getActionTooltip());
     presentation.setIcon(getActionIcon());
   }
@@ -70,7 +70,7 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
   }
 
   @NotNull
-  private static ListPopup createMainPopup(@NotNull DataContext context) {
+  private static ListPopup createMainPopup(@NotNull DataContext context, @NotNull Runnable disposeCallback) {
     List<AnAction> appActions = new ArrayList<>();
     List<AnAction> pluginActions = new ArrayList<>();
 
@@ -105,12 +105,12 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
       }
       else {
         String text = child.getTemplateText();
-        if (text != null && !(text.endsWith("...") || text.endsWith("…") )) {
+        if (text != null && !text.endsWith("...")) {
           AnActionButton button = new AnActionButton.AnActionButtonWrapper(child.getTemplatePresentation(), child) {
             @Override
             public void updateButton(@NotNull AnActionEvent e) {
               getDelegate().update(e);
-              e.getPresentation().setText(e.getPresentation().getText() + "…");
+              e.getPresentation().setText(e.getPresentation().getText() + "...");
             }
 
             @Override
@@ -129,7 +129,10 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
     }
 
     return JBPopupFactory.getInstance()
-      .createActionGroupPopup(null, group, context, JBPopupFactory.ActionSelectionAid.MNEMONICS, true);
+      .createActionGroupPopup(null, group, context, JBPopupFactory.ActionSelectionAid.MNEMONICS, true, () -> {
+        AppExecutorUtil.getAppScheduledExecutorService().schedule(
+          () -> ApplicationManager.getApplication().invokeLater(disposeCallback, ModalityState.any()), 250, TimeUnit.MILLISECONDS);
+      }, -1);
   }
 
   private static boolean ourShowPlatformUpdateIcon;
@@ -211,11 +214,7 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
 
   private static boolean isAvailableInStatusBar() {
     initUISettingsListener();
-    UISettings uiSettings = UISettings.getInstance();
-    ToolbarSettings toolbarSettings = ToolbarSettings.getInstance();
-    return !uiSettings.getShowMainToolbar() &&
-           !uiSettings.getShowNavigationBar() &&
-           !(toolbarSettings.isEnabled() && toolbarSettings.isVisible());
+    return ToolbarSettings.Companion.getInstance().showSettingsEntryPointInStatusBar();
   }
 
   private static final String WIDGET_ID = "settingsEntryPointWidget";
@@ -253,8 +252,8 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
   }
 
   private static class MyStatusBarWidget implements StatusBarWidget, StatusBarWidget.IconPresentation {
-    private final PopupState<JBPopup> myPopupState = PopupState.forPopup();
     private StatusBar myStatusBar;
+    private boolean myShowPopup = true;
 
     @Override
     public @NotNull String ID() {
@@ -282,13 +281,13 @@ public final class SettingsEntryPointAction extends DumbAwareAction implements R
         resetActionIcon();
         myStatusBar.updateWidget(WIDGET_ID);
 
-        if (!myPopupState.isHidden() || myPopupState.isRecentlyHidden()) {
+        if (!myShowPopup) {
           return;
         }
+        myShowPopup = false;
 
         Component component = event.getComponent();
-        ListPopup popup = createMainPopup(DataManager.getInstance().getDataContext(component));
-        myPopupState.prepareToShow(popup);
+        ListPopup popup = createMainPopup(DataManager.getInstance().getDataContext(component), () -> myShowPopup = true);
         popup.addListener(new JBPopupListener() {
           @Override
           public void beforeShown(@NotNull LightweightWindowEvent event) {

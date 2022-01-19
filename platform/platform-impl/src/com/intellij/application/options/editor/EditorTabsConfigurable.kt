@@ -7,7 +7,6 @@ import com.intellij.openapi.application.ApplicationBundle.message
 import com.intellij.openapi.options.BoundSearchableConfigurable
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.layout.*
 import com.intellij.ui.tabs.impl.JBTabsImpl
 import com.intellij.ui.tabs.impl.tabsLayout.TabsLayoutInfo
@@ -59,29 +58,19 @@ class EditorTabsConfigurable : BoundSearchableConfigurable(
               myEditorTabPlacement = tabPlacementComboBox().component
             }
           }
-          if (ExperimentalUI.isNewEditorTabs()) {
+          row {
+            myOneRowCheckbox = checkBox(showTabsInOneRow)
+              .enableIf(myEditorTabPlacement.selectedValueIs(SwingConstants.TOP)).component
             row {
-              cell(false, false) {
-                checkBox(hideTabsIfNeeded)
-                  .enableIf(myEditorTabPlacement.selectedValueMatches { it == SwingConstants.TOP })
-                  .component
-              }
-            }
-          } else {
-            row {
-              myOneRowCheckbox = checkBox(showTabsInOneRow)
-                .enableIf(myEditorTabPlacement.selectedValueIs(SwingConstants.TOP)).component
-              row {
-                cell(false, false) {
-                  checkBox(hideTabsIfNeeded).enableIf(
-                    myEditorTabPlacement.selectedValueMatches { it == SwingConstants.TOP || it == SwingConstants.BOTTOM }
-                      and myOneRowCheckbox.selected).component
-                }
-              }
+              cell(false, false, {
+                checkBox(hideTabsIfNeeded).enableIf(
+                  myEditorTabPlacement.selectedValueMatches { it == SwingConstants.TOP || it == SwingConstants.BOTTOM }
+                    and myOneRowCheckbox.selected).component
+              })
             }
           }
-          row { checkBox(showPinnedTabsInASeparateRow).enableIf(myEditorTabPlacement.selectedValueIs(SwingConstants.TOP)) }
         }
+        row { checkBox(showPinnedTabsInASeparateRow).enableIf(myEditorTabPlacement.selectedValueIs(SwingConstants.TOP)) }
         row { checkBox(useSmallFont).enableIfTabsVisible() }
         row { checkBox(showFileIcon).enableIfTabsVisible() }
         row { checkBox(showFileExtension).enableIfTabsVisible() }

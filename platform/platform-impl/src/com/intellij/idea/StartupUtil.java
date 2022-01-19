@@ -6,7 +6,10 @@ import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory;
 import com.intellij.diagnostic.Activity;
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.diagnostic.StartUpMeasurer;
-import com.intellij.ide.*;
+import com.intellij.ide.AssertiveRepaintManager;
+import com.intellij.ide.BootstrapBundle;
+import com.intellij.ide.CliResult;
+import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.customize.CommonCustomizeIDEWizardDialog;
 import com.intellij.ide.gdpr.Agreements;
 import com.intellij.ide.gdpr.EndUserAgreement;
@@ -34,7 +37,6 @@ import com.intellij.ui.IconManager;
 import com.intellij.ui.mac.MacOSApplicationProvider;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.EnvironmentUtil;
-import com.intellij.util.PlatformUtils;
 import com.intellij.util.lang.Java11Shim;
 import com.intellij.util.lang.ZipFilePool;
 import com.intellij.util.ui.StartupUiUtil;
@@ -76,10 +78,8 @@ import java.util.concurrent.*;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
-import static java.util.Objects.requireNonNullElse;
-
-@ApiStatus.Internal
 @SuppressWarnings("LoggerInitializedWithForeignClass")
+@ApiStatus.Internal
 public final class StartupUtil {
   @SuppressWarnings("StaticNonFinalField")
   public static BiFunction<String, String[], Integer> LISTENER = (integer, s) -> Main.ACTIVATE_NOT_INITIALIZED;
@@ -87,7 +87,7 @@ public final class StartupUtil {
   private static final String IDEA_CLASS_BEFORE_APPLICATION_PROPERTY = "idea.class.before.app";
   // see `ApplicationImpl#USE_SEPARATE_WRITE_THREAD`
   private static final String USE_SEPARATE_WRITE_THREAD_PROPERTY = "idea.use.separate.write.thread";
-  private static final String PROJECTOR_LAUNCHER_CLASS_NAME = "org.jetbrains.projector.server.ProjectorLauncher$Starter";
+  private static final String PROJECTOR_LAUNCHER_CLASS_NAME = "org.jetbrains.projector.server.ProjectorLauncher";
 
   private static final String MAGIC_MAC_PATH = "/AppTranslocation/";
 
@@ -139,18 +139,15 @@ public final class StartupUtil {
     activity = activity.endAndStart("log4j configuration");
     configureLog4j();
 
-    if (args.length > 0 && (Main.CWM_HOST_COMMAND.equals(args[0]) || Main.CWM_HOST_NO_LOBBY_COMMAND.equals(args[0]))) {
+    if (args.length > 0 && Main.CWM_HOST_COMMAND.equals(args[0])) {
       activity = activity.endAndStart("Cwm Host init");
       try {
         Class<?> projectorMainClass = StartupUtil.class.getClassLoader().loadClass(PROJECTOR_LAUNCHER_CLASS_NAME);
-        MethodHandles.privateLookupIn(projectorMainClass, MethodHandles.lookup())
-          .findStatic(projectorMainClass, "runProjectorServer", MethodType.methodType(boolean.class)).invoke();
-      }
-      catch (RuntimeException e) {
+        MethodHandles.lookup().findStatic(projectorMainClass, "runProjectorServer", MethodType.methodType(boolean.class)).invoke();
+      } catch (RuntimeException e) {
         throw e;
-      }
-      catch (Throwable t) {
-        throw new RuntimeException(t);
+      } catch (Throwable e) {
+        throw new RuntimeException(e);
       }
     }
 
@@ -216,7 +213,7 @@ public final class StartupUtil {
     Logger log = setupLogger();
     activity.end();
 
-    // plugins cannot be loaded when config import is needed, because plugins may be added after importing
+    // plugins cannot be loaded at this moment if needed to import configs, because plugins may be added after importing
     if (!configImportNeeded) {
       ZipFilePool.POOL = new ZipFilePoolImpl();
       PluginManagerCore.scheduleDescriptorLoading();
@@ -225,7 +222,7 @@ public final class StartupUtil {
 
     forkJoinPool.execute(() -> {
       setupSystemLibraries();
-      logEssentialInfoAboutIde(log, ApplicationInfoImpl.getShadowInstance(), args);
+      logEssentialInfoAboutIde(log, ApplicationInfoImpl.getShadowInstance());
       loadSystemLibraries(log);
     });
 
@@ -240,7 +237,7 @@ public final class StartupUtil {
       runPreAppClass(log, args);
     }
 
-    // may be called from EDT, but other events in the queue should be processed before the `#patchSystem`
+    // maybe called in EDT, but other events in queue should be processed before patchSystem
     CompletableFuture<@Nullable Void> prepareUiFuture = agreementDialogWasShown
       .thenRunAsync(() -> {
         patchSystem(log);
@@ -292,7 +289,7 @@ public final class StartupUtil {
       });
 
     // prevent JVM from exiting - because in FJP pool "all worker threads are initialized with {@link Thread#isDaemon} set {@code true}"
-    // `awaitQuiescence` allows us to reuse the main thread instead of creating another one
+    // awaitQuiescence allows us to reuse main thread instead of creating another one
     do {
       forkJoinPool.awaitQuiescence(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
     }
@@ -302,15 +299,15 @@ public final class StartupUtil {
 
   private static boolean checkGraphics() {
     if (GraphicsEnvironment.isHeadless()) {
-      Main.showMessage(BootstrapBundle.message("bootstrap.error.title.startup.error"), BootstrapBundle.message("bootstrap.error.message.no.graphics.environment"), true);
+      Main.showMessage(BootstrapBundle.message("bootstrap.error.title.startup.error"),
+                  BootstrapBundle.message("bootstrap.error.message.no.graphics.environment"),
+                  true);
       return false;
     }
-    else {
-      return true;
-    }
+    return true;
   }
 
-  /** Called via reflection from {@link WindowsCommandLineProcessor#processWindowsLauncherCommandLine}. */
+  /** Called via reflection from {@link com.intellij.ide.WindowsCommandLineProcessor#processWindowsLauncherCommandLine}. */
   @SuppressWarnings("UnusedDeclaration")
   public static int processWindowsLauncherCommandLine(String currentDirectory, String[] args) {
     return LISTENER.apply(currentDirectory, args);
@@ -321,8 +318,10 @@ public final class StartupUtil {
   }
 
   // called by the app after startup
-  public static synchronized void addExternalInstanceListener(@NotNull Function<List<String>, Future<CliResult>> processor) {
-    if (socketLock == null) throw new AssertionError("Not initialized yet");
+  public static synchronized void addExternalInstanceListener(@Nullable Function<? super List<String>, ? extends Future<CliResult>> processor) {
+    if (socketLock == null) {
+      throw new AssertionError("Not initialized yet");
+    }
     socketLock.setCommandProcessor(processor);
   }
 
@@ -343,7 +342,7 @@ public final class StartupUtil {
     return shellEnvLoadFuture;
   }
 
-  private static CompletableFuture<@Nullable("if accepted") Object> scheduleEuaDocumentLoading() {
+  private static @NotNull CompletableFuture<@Nullable("if accepted") Object> scheduleEuaDocumentLoading() {
     return CompletableFuture.supplyAsync(() -> {
       String vendorAsProperty = System.getProperty("idea.vendor.name", "");
       if (vendorAsProperty.isEmpty()
@@ -374,7 +373,7 @@ public final class StartupUtil {
     default void importFinished(@NotNull Path newConfigDir) {}
   }
 
-  private static void runPreAppClass(Logger log, String[] args) {
+  private static void runPreAppClass(@NotNull Logger log, String @NotNull [] args) {
     String classBeforeAppProperty = System.getProperty(IDEA_CLASS_BEFORE_APPLICATION_PROPERTY);
     if (classBeforeAppProperty != null) {
       Activity activity = StartUpMeasurer.startActivity("pre app class running");
@@ -391,7 +390,10 @@ public final class StartupUtil {
     }
   }
 
-  private static void importConfig(List<String> args, Logger log, AppStarter appStarter, CompletableFuture<Boolean> agreementShown) throws Exception {
+  private static void importConfig(@NotNull List<String> args,
+                                   @NotNull Logger log,
+                                   @NotNull AppStarter appStarter,
+                                   @NotNull CompletableFuture<Boolean> agreementDialogWasShown) throws Exception {
     Activity activity = StartUpMeasurer.startActivity("screen reader checking");
     try {
       EventQueue.invokeAndWait(AccessibilityUtils::enableScreenReaderSupportIfNecessary);
@@ -402,19 +404,21 @@ public final class StartupUtil {
     activity = activity.endAndStart("config importing");
     appStarter.beforeImportConfigs();
     Path newConfigDir = PathManager.getConfigDir();
-    EventQueue.invokeAndWait(() -> ConfigImportHelper.importConfigsTo(agreementShown.join(), newConfigDir, args, log));
+    EventQueue.invokeAndWait(() -> ConfigImportHelper.importConfigsTo(agreementDialogWasShown.join(), newConfigDir, args, log));
     appStarter.importFinished(newConfigDir);
 
-    activity.end();
-
-    if (!PlatformUtils.isRider() || ConfigImportHelper.isConfigImported()) {
-      PluginManagerCore.scheduleDescriptorLoading();
+    if (!ConfigImportHelper.isConfigImported()) {
+      // exception handler is already set by ConfigImportHelper; event queue and icons already initialized as part of old config import
+      EventQueue.invokeAndWait(() -> runStartupWizard(appStarter));
     }
+    activity.end();
+    PluginManagerCore.scheduleDescriptorLoading();
   }
 
-  private static CompletableFuture<?> scheduleInitUi(Thread busyThread) {
-    // calls `sun.util.logging.PlatformLogger#getLogger` - it takes enormous time (up to 500 ms)
-    // only non-logging tasks can be executed before `setupLogger`
+  private static @NotNull CompletableFuture<?> scheduleInitUi(@NotNull Thread busyThread) {
+    // mainly call sun.util.logging.PlatformLogger.getLogger - it takes enormous time (up to 500 ms)
+    // Before lockDirsAndConfigureLogger can be executed only tasks that do not require log,
+    // because we don't want to complicate logging. It is OK, because lockDirsAndConfigureLogger is not so heavy-weight as UI tasks.
     Activity activityQueue = StartUpMeasurer.startActivity("LaF initialization (schedule)");
     CompletableFuture<Void> initUiFuture = CompletableFuture.runAsync(() -> {
         checkHiDPISettings();
@@ -464,11 +468,11 @@ public final class StartupUtil {
         }
 
         activity = activity.endAndStart("base LaF initialization");
-        // LaF is useless until initialized (`getDefaults` "should only be invoked ... after `initialize` has been invoked.")
+        // as stated in javadoc - `getDefaults` should only be invoked ... after initialize has been invoked
         baseLaF.initialize();
 
-        // to compute system scale factor on non-macOS (JRE HiDPI is not enabled), we need to know system font data,
-        // and to compute system font data we need to know `Label.font` UI default (that's why we compute base LaF first)
+        // to compute system scale factor on non-macOS (JRE HiDpi is not enabled) we need to know system font data,
+        // and to compute system font data we need to know `Label.font` ui default (that's why we compute base LaF first)
         activity = activity.endAndStart("system font data initialization");
         JBUIScale.getSystemFontData(() -> {
           Activity subActivity = StartUpMeasurer.startActivity("base LaF defaults getting");
@@ -481,8 +485,8 @@ public final class StartupUtil {
         JBUIScale.scale(1f);
 
         activity = activity.endAndStart("LaF initialization");
+        // it is required even if headless because some tests creates configurable, so, our LaF is expected
         try {
-          // required even in a headless mode, because some tests create configurables and our LaF is expected
           UIManager.setLookAndFeel(new IntelliJLaf(baseLaF));
         }
         catch (UnsupportedLookAndFeelException e) {
@@ -495,13 +499,13 @@ public final class StartupUtil {
         activity.end();
 
         /*
-          Make EDT to always persist while the main thread is alive. Otherwise, it's possible to have EDT being
-          terminated by {@link AWTAutoShutdown}, which will break a `ReadMostlyRWLock` instance.
-          {@link AWTAutoShutdown#notifyThreadBusy(Thread)} will put the main thread into the thread map,
+          Make EDT to always persist while main thread is alive. Otherwise, it's possible to have EDT being
+          terminated by {@link AWTAutoShutdown}, which will have negative impact on a ReadMostlyRWLock instance.
+          {@link AWTAutoShutdown#notifyThreadBusy(Thread)} will put a main thread into the thread map,
           and thus will effectively disable auto shutdown behavior for this application.
          */
         AWTAutoShutdown.getInstance().notifyThreadBusy(busyThread);
-      }, it -> EventQueue.invokeLater(it) /* don't use a method reference here (`EventQueue` class must be loaded on demand) */);
+      }, it -> EventQueue.invokeLater(it)/* don't use here method reference (EventQueue class must be loaded on demand) */);
 
     if (isUsingSeparateWriteThread()) {
       return CompletableFuture.allOf(initUiFuture, CompletableFuture.runAsync(() -> {
@@ -520,10 +524,11 @@ public final class StartupUtil {
   }
 
   /*
-   * The method should be called before `Toolkit#initAssistiveTechnologies`, which is called from `Toolkit#getDefaultToolkit`.
+   * The method should be called before java.awt.Toolkit.initAssistiveTechnologies()
+   * which is called from Toolkit.getDefaultToolkit().
    */
   private static void blockATKWrapper() {
-    // the registry must not be used here, because this method is called before application loading
+    // registry must be not used here, because this method called before application loading
     //noinspection SpellCheckingInspection
     if (!SystemInfoRt.isLinux || !Boolean.parseBoolean(System.getProperty("linux.jdk.accessibility.atkwrapper.block", "true"))) {
       return;
@@ -538,11 +543,13 @@ public final class StartupUtil {
     activity.end();
   }
 
+
   private static void loadSystemFontsAndDnDCursors() {
     Activity activity = StartUpMeasurer.startActivity("system fonts loading");
-    // forces loading of all system fonts; the following statement alone might not do it (see JBR-1825)
+    // this forces loading of all system fonts, the following statement itself might not do it (see JBR-1825)
     new Font("N0nEx1st5ntF0nt", Font.PLAIN, 1).getFamily();
-    // caches available font family names (for the default locale), to speed up editor reopening (`ComplementaryFontsRegistry` initialization)
+    // This caches available font family names (for the default locale) to make corresponding call
+    // during editors reopening (in ComplementaryFontsRegistry's initialization code) instantaneous
     GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames();
 
     // pre-load cursors used by drag-n-drop AWT subsystem
@@ -551,7 +558,8 @@ public final class StartupUtil {
     activity.end();
   }
 
-  private static boolean showEuaAndScheduleSplashIfNeeded(String[] args, @Nullable Object euaDocument) {
+  @SuppressWarnings("SpellCheckingInspection")
+  private static boolean showEuaAndScheduleSplashIfNeeded(@NotNull String @NotNull [] args, @Nullable Object euaDocument) {
     Activity activity = StartUpMeasurer.startActivity("eua showing");
     EndUserAgreement.Document document = (EndUserAgreement.Document)euaDocument;
 
@@ -580,7 +588,7 @@ public final class StartupUtil {
       }
 
       if (showSplash == -1) {
-        // products may specify `splash` VM property; `nosplash` is deprecated and should be checked first
+        // product specifies `splash` VM properties, `nosplash` is deprecated property, it should be checked first
         if (Boolean.getBoolean(CommandLineArgs.NO_SPLASH)) {
           showSplash = 0;
         }
@@ -605,9 +613,9 @@ public final class StartupUtil {
     AppUIUtil.updateFrameClass(Toolkit.getDefaultToolkit());
 
     activity = activity.endAndStart("update window icon");
-    // `updateWindowIcon` should be called after `UIUtil#initSystemFontData`, because it uses computed system font data for scale context
+    // updateWindowIcon should be after UIUtil.initSystemFontData because uses computed system font data for scale context
     if (!PluginManagerCore.isRunningFromSources() && !AppUIUtil.isWindowIconAlreadyExternallySet()) {
-      // most of the time is consumed by loading SVG and can be done in parallel
+      // most of the time consumed to load SVG - so, can be done in parallel
       AppUIUtil.updateWindowIcon(JOptionPane.getRootFrame());
     }
     activity.end();
@@ -615,7 +623,8 @@ public final class StartupUtil {
 
   private static void configureLog4j() {
     Activity activity = StartUpMeasurer.startActivity("console logger configuration");
-    System.setProperty("log4j.defaultInitOverride", "true");  // suppresses Log4j "no appenders" warning
+    // avoiding "log4j:WARN No appenders could be found"
+    System.setProperty("log4j.defaultInitOverride", "true");
     @SuppressWarnings("deprecation")
     org.apache.log4j.Logger root = org.apache.log4j.Logger.getRootLogger();
     if (!root.getAllAppenders().hasMoreElements()) {
@@ -654,7 +663,7 @@ public final class StartupUtil {
     }
   }
 
-  private static boolean checkSystemDirs(Path configPath, Path systemPath) {
+  private static boolean checkSystemDirs(@NotNull Path configPath, @NotNull Path systemPath) {
     if (configPath.equals(systemPath)) {
       Main.showMessage(BootstrapBundle.message("bootstrap.error.title.invalid.config.or.system.path"),
                        BootstrapBundle.message("bootstrap.error.message.config.0.and.system.1.paths.must.be.different",
@@ -681,7 +690,7 @@ public final class StartupUtil {
                           false, SystemInfoRt.isUnix && !SystemInfoRt.isMac);
   }
 
-  private static boolean checkDirectory(Path directory, String kind, String property, boolean checkWrite, boolean checkLock, boolean checkExec) {
+  private static boolean checkDirectory(@NotNull Path directory, String kind, String property, boolean checkWrite, boolean checkLock, boolean checkExec) {
     String problem = null;
     String reason = null;
     Path tempFile = null;
@@ -745,7 +754,7 @@ public final class StartupUtil {
     }
   }
 
-  private static void lockSystemDirs(Path configPath, Path systemPath, String[] args) throws Exception {
+  private static void lockSystemDirs(@NotNull Path configPath, @NotNull Path systemPath, @NotNull String @NotNull[] args) throws Exception {
     if (socketLock != null) {
       throw new AssertionError("Already initialized");
     }
@@ -782,7 +791,7 @@ public final class StartupUtil {
   }
 
   @SuppressWarnings("UseOfSystemOutOrSystemErr")
-  private static Logger setupLogger() {
+  private static @NotNull Logger setupLogger() {
     try {
       Logger.setFactory(new LoggerFactory());
     }
@@ -832,7 +841,7 @@ public final class StartupUtil {
     subActivity.end();
   }
 
-  private static void loadSystemLibraries(Logger log) {
+  private static void loadSystemLibraries(@NotNull Logger log) {
     Activity activity = StartUpMeasurer.startActivity("system libs loading");
     JnaLoader.load(log);
     if (SystemInfoRt.isWindows) {
@@ -842,7 +851,7 @@ public final class StartupUtil {
     activity.end();
   }
 
-  private static void logEssentialInfoAboutIde(Logger log, ApplicationInfo appInfo, String[] args) {
+  private static void logEssentialInfoAboutIde(@NotNull Logger log, @NotNull ApplicationInfo appInfo) {
     Activity activity = StartUpMeasurer.startActivity("essential IDE info logging");
 
     ApplicationNamesInfo namesInfo = ApplicationNamesInfo.getInstance();
@@ -852,12 +861,20 @@ public final class StartupUtil {
     log.info("JRE: " + System.getProperty("java.runtime.version", "-") + " (" + System.getProperty("java.vendor", "-") + ")");
     log.info("JVM: " + System.getProperty("java.vm.version", "-") + " (" + System.getProperty("java.vm.name", "-") + ")");
 
-    List<String> jvmOptions = ManagementFactory.getRuntimeMXBean().getInputArguments();
-    if (jvmOptions != null) {
-      log.info("JVM options: " + jvmOptions);
+    List<String> arguments = ManagementFactory.getRuntimeMXBean().getInputArguments();
+    if (arguments != null) {
+      log.info("JVM Args: " + String.join(" ", arguments));
     }
 
-    log.info("args: " + Arrays.toString(args));
+    String extDirs = System.getProperty("java.ext.dirs");
+    if (extDirs != null) {
+      for (String dir : extDirs.split(File.pathSeparator)) {
+        String[] content = new File(dir).list();
+        if (content != null && content.length > 0) {
+          log.info("ext: " + dir + ": " + Arrays.toString(content));
+        }
+      }
+    }
 
     log.info("library path: " + System.getProperty("java.library.path"));
     log.info("boot library path: " + System.getProperty("sun.boot.library.path"));
@@ -873,11 +890,12 @@ public final class StartupUtil {
       "\n  " + PathManager.PROPERTY_CONFIG_PATH + '=' + logPath(PathManager.getConfigPath()) +
       "\n  " + PathManager.PROPERTY_SYSTEM_PATH + '=' + logPath(PathManager.getSystemPath()) +
       "\n  " + PathManager.PROPERTY_PLUGINS_PATH + '=' + logPath(PathManager.getPluginsPath()) +
-      "\n  " + PathManager.PROPERTY_LOG_PATH + '=' + logPath(PathManager.getLogPath()));
+      "\n  " + PathManager.PROPERTY_LOG_PATH + '=' + logPath(PathManager.getLogPath())
+    );
 
-    int cores = Runtime.getRuntime().availableProcessors();
-    ForkJoinPool pool = ForkJoinPool.commonPool();
-    log.info("CPU cores: " + cores + "; ForkJoinPool.commonPool: " + pool + "; factory: " + pool.getFactory());
+    log.info("CPU cores: " + Runtime.getRuntime().availableProcessors() +
+             "; ForkJoinPool.commonPool: " + ForkJoinPool.commonPool() +
+             "; factory: " + ForkJoinPool.commonPool().getFactory());
 
     activity.end();
   }
@@ -896,14 +914,17 @@ public final class StartupUtil {
     return path;
   }
 
-  public static void runStartupWizard() {
+  /**
+   * Used in Rider
+   */
+  private static void runStartupWizard(@NotNull AppStarter appStarter) {
     String stepsDialogName = ApplicationInfoImpl.getShadowInstance().getWelcomeWizardDialog();
     if (stepsDialogName == null) return;
 
     try {
       Class<?> dialogClass = Class.forName(stepsDialogName);
-      Constructor<?> ctor = dialogClass.getConstructor(AppStarter.class);
-      ((CommonCustomizeIDEWizardDialog)ctor.newInstance((AppStarter)null)).showIfNeeded();
+      Constructor<?> constr = dialogClass.getConstructor(AppStarter.class);
+      ((CommonCustomizeIDEWizardDialog) constr.newInstance(appStarter)).showIfNeeded();
     }
     catch (Throwable e) {
       Main.showMessage(BootstrapBundle.message("bootstrap.error.title.configuration.wizard.failed"), e);
@@ -911,11 +932,10 @@ public final class StartupUtil {
     }
 
     PluginManagerCore.invalidatePlugins();
-    PluginManagerCore.scheduleDescriptorLoading();
   }
 
   // must be called from EDT
-  private static void patchSystem(Logger log) {
+  private static void patchSystem(@NotNull Logger log) {
     assert EventQueue.isDispatchThread() : Thread.currentThread();
 
     Activity activity = StartUpMeasurer.startActivity("event queue replacing");
@@ -936,7 +956,7 @@ public final class StartupUtil {
       if (SystemInfoRt.isXWindow) {
         activity = activity.endAndStart("linux wm set");
         String wmName = X11UiUtil.getWmName();
-        log.info("WM detected: " + wmName + ", desktop: " + requireNonNullElse(System.getenv("XDG_CURRENT_DESKTOP"), "-"));
+        log.info("WM detected: " + wmName);
         if (wmName != null) {
           X11UiUtil.patchDetectedWm(wmName);
         }
@@ -949,9 +969,9 @@ public final class StartupUtil {
     activity.end();
   }
 
-  static @NotNull Path canonicalPath(@NotNull String path) {
+  public static @NotNull Path canonicalPath(@NotNull String path) {
     try {
-      // `toRealPath` doesn't restore a canonical file name on case-insensitive UNIX filesystems
+      // toRealPath doesn't properly restore actual name of file on case-insensitive fs (see LockSupportTest.testUseCanonicalPathLock)
       return Path.of(new File(path).getCanonicalPath());
     }
     catch (IOException ignore) {
@@ -977,8 +997,13 @@ public final class StartupUtil {
     }
 
     @Override
-    public <E> @NotNull List<E> copyOfCollection(Collection<? extends E> collection) {
+    public <E> @NotNull List<E> copyOf(List<? extends E> collection) {
       return List.copyOf(collection);
+    }
+
+    @Override
+    public @NotNull <E> List<E> listOf(E[] collection) {
+      return List.of(collection);
     }
   }
 }

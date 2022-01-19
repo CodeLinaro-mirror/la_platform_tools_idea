@@ -2,7 +2,6 @@
 package com.intellij.ui.mac.touchbar;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.ide.IdeBundle;
 import com.intellij.ide.ui.customization.CustomActionsSchema;
 import com.intellij.ide.ui.customization.CustomisedActionGroup;
 import com.intellij.openapi.actionSystem.*;
@@ -10,6 +9,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.openapi.wm.impl.welcomeScreen.WelcomePopupAction;
+import com.intellij.ui.mac.TouchbarDataKeys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,6 +20,7 @@ import java.util.Map;
 class ActionsLoader {
   private static final Logger LOG = Logger.getInstance(ActionsLoader.class);
   private static final boolean ENABLE_FN_MODE = Boolean.getBoolean("touchbar.fn.mode.enable");
+  private static final String FN_KEYS = "FN-keys";
   private static int FN_WIDTH = Integer.getInteger("touchbar.fn.width", 68);
 
   private static final boolean TOOLWINDOW_CROSS_ESC = !Boolean.getBoolean("touchbar.toolwindow.esc");
@@ -83,8 +84,8 @@ class ActionsLoader {
           butt.setText(presentation.getText());
           butt.setIconFromPresentation(presentation);
         } else {
-          TouchbarActionCustomizations customizations = parentInfo == null ? null : parentInfo.getCustomizations();
-          butt.setIconAndTextFromPresentation(presentation, customizations);
+          TouchbarDataKeys.ActionDesc pd = parentInfo == null ? null : parentInfo.getDesc();
+          butt.setIconAndTextFromPresentation(presentation, pd);
         }
 
         if (isRunConfigPopover) {
@@ -183,7 +184,7 @@ class ActionsLoader {
   }
 
   static @NotNull Pair<Map<Long, ActionGroup>, Customizer> getFnActionGroup() {
-    final DefaultActionGroup result = new DefaultActionGroup(IdeBundle.message("action.fn.keys.text"), false);
+    final DefaultActionGroup result = new DefaultActionGroup(FN_KEYS, false);
     for (int c = 1; c <= 12; ++c) {
       result.add(new FNKeyAction(c));
     }

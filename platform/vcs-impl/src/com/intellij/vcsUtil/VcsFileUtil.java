@@ -18,7 +18,7 @@ import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ThrowableConsumer;
-import com.intellij.util.containers.HashingStrategy;
+import it.unimi.dsi.fastutil.Hash;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.SystemIndependent;
 
@@ -530,9 +530,9 @@ public final class VcsFileUtil {
     return rc.toString();
   }
 
-  public static final HashingStrategy<FilePath> CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY = new FilePathCaseSensitiveStrategy();
+  public static final Hash.Strategy<FilePath> CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY = new FilePathCaseSensitiveStrategy();
 
-  private static class FilePathCaseSensitiveStrategy implements HashingStrategy<FilePath> {
+  private static class FilePathCaseSensitiveStrategy implements Hash.Strategy<FilePath> {
 
     @Override
     public boolean equals(FilePath path1, FilePath path2) {

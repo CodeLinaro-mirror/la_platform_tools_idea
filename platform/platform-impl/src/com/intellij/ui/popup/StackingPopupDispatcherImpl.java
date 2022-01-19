@@ -9,7 +9,6 @@ import com.intellij.openapi.ui.popup.StackingPopupDispatcher;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.util.containers.Stack;
 import com.intellij.util.containers.WeakList;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -139,8 +138,8 @@ public final class StackingPopupDispatcherImpl extends StackingPopupDispatcher i
     }
   }
 
-  @ApiStatus.Internal
-  public @Nullable JBPopup findPopup() {
+  @Nullable
+  private JBPopup findPopup() {
     while (!myStack.isEmpty()) {
       final AbstractPopup each = (AbstractPopup)myStack.peek();
       if (each != null && !each.isDisposed()) {

@@ -16,7 +16,6 @@
 package com.intellij.execution.ui;
 
 import com.intellij.openapi.actionSystem.LangDataKeys;
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.components.PathMacroManager;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
@@ -43,7 +42,7 @@ public class MacroComboBoxWithBrowseButton extends ComboBox<String> implements T
     Runnable action = new BrowseFolderRunnable<ComboBox<String>>(null, null, project, descriptor, this, accessor) {
       private Module getModule() {
         if (module == null) module = myFileChooserDescriptor.getUserData(LangDataKeys.MODULE_CONTEXT);
-        if (module == null) module = myFileChooserDescriptor.getUserData(PlatformCoreDataKeys.MODULE);
+        if (module == null) module = myFileChooserDescriptor.getUserData(LangDataKeys.MODULE);
         return module;
       }
 

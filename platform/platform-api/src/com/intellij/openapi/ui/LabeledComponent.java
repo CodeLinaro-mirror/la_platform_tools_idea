@@ -147,11 +147,6 @@ public class LabeledComponent<Comp extends JComponent> extends JPanel implements
     myLabel.setAnchor(labelAnchor);
   }
 
-  @Override
-  public @Nullable JComponent getOwnAnchor() {
-    return myLabel;
-  }
-
   public static class TextWithMnemonic {
     private final @NlsContexts.Label String myText;
     private final int myMnemonicIndex;

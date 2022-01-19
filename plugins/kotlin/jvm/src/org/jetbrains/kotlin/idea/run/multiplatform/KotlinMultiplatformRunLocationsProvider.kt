@@ -7,7 +7,6 @@ import com.intellij.execution.PsiLocation
 import com.intellij.execution.actions.MultipleRunLocationsProvider
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.ModuleRootManager
-import com.intellij.openapi.util.NlsSafe
 import org.jetbrains.kotlin.config.KotlinModuleKind
 import org.jetbrains.kotlin.idea.caches.project.SourceType
 import org.jetbrains.kotlin.idea.caches.project.implementingModules
@@ -21,10 +20,7 @@ import org.jetbrains.kotlin.idea.facet.KotlinFacet
 class KotlinMultiplatformRunLocationsProvider : MultipleRunLocationsProvider() {
     override fun getLocationDisplayName(locationCreatedFrom: Location<*>, originalLocation: Location<*>): String? {
         val module = locationCreatedFrom.module ?: return null
-        @Suppress("UnnecessaryVariable")
-        @NlsSafe
-        val name = "[${compactedGradleProjectId(module) ?: module.name}]"
-        return name
+        return "[${compactedGradleProjectId(module) ?: module.name}]"
     }
 
     override fun getAlternativeLocations(originalLocation: Location<*>): List<Location<*>> {
@@ -39,12 +35,12 @@ class KotlinMultiplatformRunLocationsProvider : MultipleRunLocationsProvider() {
     }
 }
 
-private fun compactedGradleProjectId(module: Module): String {
-    return if (module.isNewMPPModule) {
+private fun compactedGradleProjectId(module: Module): String? {
+    if (module.isNewMPPModule) {
         // TODO: more robust way to get compilation/sourceSet name
-        module.name.substringAfterLast('_')
+        return module.name.substringAfterLast('_')
     } else {
-        module.toModuleGroup().baseModule.name
+        return module.toModuleGroup().baseModule.name
     }
 }
 

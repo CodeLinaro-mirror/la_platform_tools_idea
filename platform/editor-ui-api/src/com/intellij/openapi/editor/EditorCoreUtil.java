@@ -151,8 +151,4 @@ public final class EditorCoreUtil {
     }
     return result;
   }
-
-  public static boolean inVirtualSpace(@NotNull Editor editor, @NotNull LogicalPosition logicalPosition) {
-    return !editor.offsetToLogicalPosition(editor.logicalPositionToOffset(logicalPosition)).equals(logicalPosition);
-  }
 }

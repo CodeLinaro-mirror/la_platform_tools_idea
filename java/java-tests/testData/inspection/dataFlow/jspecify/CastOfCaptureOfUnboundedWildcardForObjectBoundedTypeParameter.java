@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import org.jspecify.nullness.NullMarked;
+import org.jspecify.annotations.DefaultNonNull;
 
-@NullMarked
+@DefaultNonNull
 abstract class CastOfCaptureOfUnboundedWildcardForObjectBoundedTypeParameter {
   abstract void consume(Bar bar);
 

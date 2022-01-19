@@ -1,4 +1,5 @@
-from typing import Any, Pattern
+from collections import namedtuple
+from typing import Any, Optional, Pattern
 
 PY37: Any
 __deprecated__: Any
@@ -7,10 +8,10 @@ STX: str
 ETX: str
 INLINE_PLACEHOLDER_PREFIX: Any
 INLINE_PLACEHOLDER: Any
-INLINE_PLACEHOLDER_RE: Pattern[str]
+INLINE_PLACEHOLDER_RE: Pattern
 AMP_SUBSTITUTE: Any
 HTML_PLACEHOLDER: Any
-HTML_PLACEHOLDER_RE: Pattern[str]
+HTML_PLACEHOLDER_RE: Pattern
 TAG_PLACEHOLDER: Any
 INSTALLED_EXTENSIONS: Any
 RTL_BIDI_RANGES: Any
@@ -24,7 +25,7 @@ class AtomicString(str): ...
 
 class Processor:
     md: Any
-    def __init__(self, md: Any | None = ...) -> None: ...
+    def __init__(self, md: Optional[Any] = ...) -> None: ...
     @property
     def markdown(self): ...
 

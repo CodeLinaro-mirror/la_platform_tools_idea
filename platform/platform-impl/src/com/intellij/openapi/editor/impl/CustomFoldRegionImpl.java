@@ -66,7 +66,7 @@ public class CustomFoldRegionImpl extends FoldRegionImpl implements CustomFoldRe
   public void update() {
     ApplicationManager.getApplication().assertIsDispatchThread();
     if (myEditor.isDisposed() || !isValid()) return;
-    if (myEditor.myDocumentChangeInProgress) {
+    if (myEditor.getDocument().isInEventsHandling()) {
       throw new IllegalStateException("Custom fold region shouldn't be updated during document change");
     }
     int oldWidth = myWidthInPixels;

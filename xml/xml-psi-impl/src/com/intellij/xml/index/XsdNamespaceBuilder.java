@@ -15,29 +15,35 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * @author Dmitry Avdeev
  */
-public class XsdNamespaceBuilder implements Comparable<XsdNamespaceBuilder> {
+public class XsdNamespaceBuilder implements Comparable<XsdNamespaceBuilder>, NanoXmlBuilder {
   public static String computeNamespace(final InputStream is) {
     return computeNamespace(new InputStreamReader(is, StandardCharsets.UTF_8)).getNamespace();
   }
 
   public static XsdNamespaceBuilder computeNamespace(@NotNull Reader reader) {
-    try (reader) {
-      XsdNamespaceBuilder xsdBuilder = new XsdNamespaceBuilder();
-      NanoXmlBuilder builder = xsdBuilder.new NanoBuilder();
+    try {
+      final XsdNamespaceBuilder builder = new XsdNamespaceBuilder();
       NanoXmlUtil.parse(reader, builder);
-      HashSet<String> tags = new HashSet<>(xsdBuilder.getTags());
-      tags.removeAll(xsdBuilder.myReferencedTags);
-      xsdBuilder.getRootTags().addAll(tags);
-      return xsdBuilder;
+      HashSet<String> tags = new HashSet<>(builder.getTags());
+      tags.removeAll(builder.myReferencedTags);
+      builder.getRootTags().addAll(tags);
+      return builder;
     }
-    catch (IOException e) {
-      // can never happen
-      throw new RuntimeException(e);
+    finally {
+      try {
+        reader.close();
+      }
+      catch (IOException e) {
+        // can never happen
+      }
     }
   }
 
@@ -52,41 +58,39 @@ public class XsdNamespaceBuilder implements Comparable<XsdNamespaceBuilder> {
   private final List<String> myRootTags;
   private final List<String> myAttributes = new ArrayList<>();
 
-  private class NanoBuilder implements NanoXmlBuilder {
-    @Override
-    public void startElement(@NonNls final String name, @NonNls final String nsPrefix, @NonNls final String nsURI, final String systemID, final int lineNr)
-        throws Exception {
+  @Override
+  public void startElement(@NonNls final String name, @NonNls final String nsPrefix, @NonNls final String nsURI, final String systemID, final int lineNr)
+      throws Exception {
 
-      if (XmlUtil.XML_SCHEMA_URI.equals(nsURI)) {
-        myCurrentTag = name;
-      }
-      myCurrentDepth++;
+    if (XmlUtil.XML_SCHEMA_URI.equals(nsURI)) {
+      myCurrentTag = name;
     }
+    myCurrentDepth++;
+  }
 
-    @Override
-    public void endElement(String name, String nsPrefix, String nsURI) {
-      myCurrentDepth--;
-      myCurrentTag = null;
-    }
+  @Override
+  public void endElement(String name, String nsPrefix, String nsURI) {
+    myCurrentDepth--;
+    myCurrentTag = null;
+  }
 
-    @Override
-    public void addAttribute(@NonNls final String key, final String nsPrefix, final String nsURI, final String value, final String type)
-        throws Exception {
-      if (myCurrentDepth == 1 && "schema".equals(myCurrentTag)) {
-        if ("targetNamespace".equals(key)) {
-          myNamespace = value;
-        }
-        else if ("version".equals(key)) {
-          myVersion = value;
-        }
+  @Override
+  public void addAttribute(@NonNls final String key, final String nsPrefix, final String nsURI, final String value, final String type)
+      throws Exception {
+    if (myCurrentDepth == 1 && "schema".equals(myCurrentTag)) {
+      if ("targetNamespace".equals(key)) {
+        myNamespace = value;
       }
-      else if ("element".equals(myCurrentTag)) {
-        if (myCurrentDepth < 3 && "name".equals(key)) {
-          myTags.add(value);
-        }
-        else if ("ref".equals(key)) {
-          myReferencedTags.add(XmlUtil.getLocalName(value).toString());
-        }
+      else if ("version".equals(key)) {
+        myVersion = value;
+      }
+    }
+    else if ("element".equals(myCurrentTag)) {
+      if (myCurrentDepth < 3 && "name".equals(key)) {
+        myTags.add(value);
+      }
+      else if ("ref".equals(key)) {
+        myReferencedTags.add(XmlUtil.getLocalName(value).toString());
       }
     }
   }
@@ -150,9 +154,9 @@ public class XsdNamespaceBuilder implements Comparable<XsdNamespaceBuilder> {
 
     XsdNamespaceBuilder builder = (XsdNamespaceBuilder)o;
 
-    if (!Objects.equals(myNamespace, builder.myNamespace)) return false;
-    if (!Objects.equals(myVersion, builder.myVersion)) return false;
-    if (!Objects.equals(myTags, builder.myTags)) return false;
+    if (myNamespace != null ? !myNamespace.equals(builder.myNamespace) : builder.myNamespace != null) return false;
+    if (myVersion != null ? !myVersion.equals(builder.myVersion) : builder.myVersion != null) return false;
+    if (myTags != null ? !myTags.equals(builder.myTags) : builder.myTags != null) return false;
 
     return true;
   }

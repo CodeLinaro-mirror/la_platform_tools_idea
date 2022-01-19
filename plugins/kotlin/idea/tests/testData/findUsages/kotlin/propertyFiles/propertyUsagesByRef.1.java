@@ -1,5 +1,5 @@
 class A {
     void test() {
-        PropertyUsagesByRef_0Kt.message("foo.bar");
+        PropertyUsages_1Kt.message("foo.bar");
     }
 }

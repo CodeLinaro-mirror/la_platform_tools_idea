@@ -57,7 +57,7 @@ fun <T> resolvedCancellablePromise(result: T): CancellablePromise<T> {
 
 @Suppress("UNCHECKED_CAST")
 /**
- * Consider passing error.
+ * Consider to pass error.
  */
 fun <T> rejectedPromise(): Promise<T> = REJECTED as Promise<T>
 

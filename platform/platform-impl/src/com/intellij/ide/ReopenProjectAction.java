@@ -15,7 +15,6 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.wm.impl.welcomeScreen.ProjectDetector;
 import com.intellij.util.BitUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -31,7 +30,6 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
   private final String myProjectPath;
   private final String myProjectName;
   private boolean myIsRemoved = false;
-  @Nullable private ProjectGroup myProjectGroup;
 
   public ReopenProjectAction(@NotNull @SystemIndependent String projectPath, @NlsSafe String projectName, @NlsSafe String displayName) {
     myProjectPath = projectPath;
@@ -67,9 +65,6 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
                                   || e.getPlace() == ActionPlaces.WELCOME_SCREEN
                                   || LightEdit.owns(project);
     RecentProjectsManagerBase.getInstanceEx().openProject(file, OpenProjectTask.withProjectToClose(project, forceOpenInNewFrame).withRunConfigurators());
-    for (ProjectDetector extension : ProjectDetector.EXTENSION_POINT_NAME.getExtensions()) {
-      extension.logRecentProjectOpened(myProjectGroup);
-    }
   }
 
   @SystemIndependent
@@ -105,9 +100,5 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
   @Override
   public String getTemplateText() {
     return IdeBundle.message("action.ReopenProject.reopen.project.text");
-  }
-
-  public void setProjectGroup(@Nullable ProjectGroup projectGroup) {
-    myProjectGroup = projectGroup;
   }
 }

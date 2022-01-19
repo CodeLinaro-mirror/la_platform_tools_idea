@@ -7,7 +7,6 @@ import com.jetbrains.python.ift.PythonLessonsBundle
 import training.dsl.*
 import training.dsl.LessonUtil.checkExpectedStateOfEditor
 import training.learn.course.KLesson
-import training.util.isToStringContains
 import javax.swing.JLabel
 import javax.swing.JPanel
 
@@ -50,7 +49,7 @@ class PythonInPlaceRefactoringLesson
         PythonLessonsBundle.message("python.in.place.refactoring.invoke.intentions",
                                     icon(AllIcons.Gutter.SuggestedRefactoringBulb), action(it)))
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { ui -> // no highlighting
-        ui.isToStringContains("'s'")
+        ui.toString().contains("'s'")
       }
       proposeRestore {
         checkFirstChange()
@@ -112,7 +111,7 @@ class PythonInPlaceRefactoringLesson
       val updateUsagesText = RefactoringBundle.message("suggested.refactoring.change.signature.intention.text",
                                                        RefactoringBundle.message("suggested.refactoring.usages"))
       triggerByListItemAndHighlight(highlightBorder = true, highlightInside = false) { item ->
-        item.isToStringContains(updateUsagesText)
+        item.toString().contains(updateUsagesText)
       }
       proposeRestore {
         checkSecondChange()
@@ -171,13 +170,4 @@ class PythonInPlaceRefactoringLesson
     }
     return result.toString()
   }
-
-  override val suitableTips = listOf("InPlaceRefactoring")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(PythonLessonsBundle.message("python.in.place.refactoring.help.rename.link"),
-         LessonUtil.getHelpLink("rename-refactorings.html#inplace_rename")),
-    Pair(PythonLessonsBundle.message("python.in.place.refactoring.help.signature.link"),
-         LessonUtil.getHelpLink("pycharm", "change-signature.html#inplace_change_signature_python")),
-  )
 }

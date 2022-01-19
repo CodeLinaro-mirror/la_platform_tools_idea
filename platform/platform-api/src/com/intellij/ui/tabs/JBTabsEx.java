@@ -41,8 +41,4 @@ public interface JBTabsEx extends JBTabs {
   void updateTabsLayout(@NotNull TabsLayoutInfo newTabsLayoutInfo);
 
   void setTitleProducer(@Nullable Producer<Pair<Icon, String>> titleProducer);
-
-  void setHideTopPanel(boolean isHideTopPanel);
-
-  boolean isHideTopPanel();
 }

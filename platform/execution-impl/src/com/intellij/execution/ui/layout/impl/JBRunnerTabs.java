@@ -118,7 +118,7 @@ public class JBRunnerTabs extends SingleHeightTabs implements JBRunnerTabsBase {
 
   }
 
-  public class JBRunnerTabsBorder extends JBTabsBorder {
+  class JBRunnerTabsBorder extends JBTabsBorder {
     private int mySideMask = SideBorder.LEFT;
 
     JBRunnerTabsBorder(@NotNull JBTabsImpl tabs) {
@@ -153,7 +153,7 @@ public class JBRunnerTabs extends SingleHeightTabs implements JBRunnerTabsBase {
       }
     }
 
-    public void setSideMask(@SideBorder.SideMask int mask) {
+    void setSideMask(@SideBorder.SideMask int mask) {
       mySideMask = mask;
     }
   }

@@ -1,1 +1,3 @@
-topics: dict[str, str]
+from typing import Dict
+
+topics: Dict[str, str]

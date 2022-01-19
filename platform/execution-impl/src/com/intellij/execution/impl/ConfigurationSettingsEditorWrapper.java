@@ -39,10 +39,8 @@ public final class ConfigurationSettingsEditorWrapper extends SettingsEditor<Run
   private JPanel myBeforeLaunchContainer;
   private JBCheckBox myIsAllowRunningInParallelCheckBox;
   private JPanel myRCStoragePanel;
-  private final RunOnTargetPanel myRunOnTargetPanel;
   private final @Nullable RunConfigurationStorageUi myRCStorageUi;
   private final BeforeRunStepsPanel myBeforeRunStepsPanel;
-  private JPanel myTargetPanel;
 
   private final ConfigurationSettingsEditor myEditor;
   private final HideableDecorator myDecorator;
@@ -59,15 +57,11 @@ public final class ConfigurationSettingsEditorWrapper extends SettingsEditor<Run
                                              @NotNull SettingsEditor<RunConfiguration> configurationEditor) {
     Project project = settings.getConfiguration().getProject();
     // RunConfigurationStorageUi for non-template settings is managed by com.intellij.execution.impl.SingleConfigurationConfigurable
-    if (!project.isDefault() && settings.isTemplate()) {
-      myRCStorageUi = new RunConfigurationStorageUi(project, () -> fireEditorStateChanged());
+    myRCStorageUi = !project.isDefault() && settings.isTemplate()
+                    ? new RunConfigurationStorageUi(project, () -> fireEditorStateChanged())
+                    : null;
+    if (myRCStorageUi != null) {
       myRCStoragePanel.add(myRCStorageUi.createComponent());
-      myRunOnTargetPanel = new RunOnTargetPanel(settings, this);
-      myRunOnTargetPanel.buildUi(myTargetPanel, null);
-    }
-    else {
-      myRCStorageUi = null;
-      myRunOnTargetPanel = null;
     }
 
     myEditor = new ConfigurationSettingsEditor(settings, configurationEditor);
@@ -106,7 +100,6 @@ public final class ConfigurationSettingsEditorWrapper extends SettingsEditor<Run
 
     if (myRCStorageUi != null) {
       myRCStorageUi.reset(settings);
-      myRunOnTargetPanel.reset();
     }
   }
 
@@ -138,7 +131,6 @@ public final class ConfigurationSettingsEditorWrapper extends SettingsEditor<Run
     if (myRCStorageUi != null) {
       // editing a template run configuration
       myRCStorageUi.apply(settings);
-      myRunOnTargetPanel.apply();
     }
   }
 

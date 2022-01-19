@@ -3,48 +3,40 @@ package com.intellij.collaboration.auth
 
 import com.intellij.collaboration.auth.services.OAuthService
 import com.intellij.util.Url
-import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.*
 import org.jetbrains.ide.RestService
-import org.jetbrains.io.response
 import org.jetbrains.io.send
 
 /**
  * The base class of the callback handler for authorization services
  */
 abstract class OAuthCallbackHandlerBase : RestService() {
-  protected val service: OAuthService<*> get() = oauthService()
+  companion object {
+    private const val INVALID_REQUEST_ERROR = "Invalid Request"
+  }
 
+  protected val service: OAuthService<*> get() = oauthService()
   abstract fun oauthService(): OAuthService<*>
+
+  private val QueryStringDecoder.isAuthorizationCodeUrl: Boolean get() = path() == service.authorizationCodeUrl.path
+  private val QueryStringDecoder.authorizationCode: String? get() = parameters()["code"]?.firstOrNull()
 
   override fun getServiceName(): String = service.name
 
   override fun execute(urlDecoder: QueryStringDecoder, request: FullHttpRequest, context: ChannelHandlerContext): String? {
-    val isCodeAccepted = service.handleServerCallback(urlDecoder.path(), urlDecoder.parameters())
+    if (!urlDecoder.isAuthorizationCodeUrl) return INVALID_REQUEST_ERROR
+    val code = urlDecoder.authorizationCode ?: return INVALID_REQUEST_ERROR
 
-    when (val handleResult = handleAcceptCode(isCodeAccepted)) {
-      is AcceptCodeHandleResult.Page -> {
-        response(
-          "text/html",
-          Unpooled.wrappedBuffer(handleResult.html.toByteArray(Charsets.UTF_8))
-        ).send(context.channel(), request)
-      }
-      is AcceptCodeHandleResult.Redirect -> sendRedirect(request, context, handleResult.url)
-    }
+    val isCodeAccepted = service.acceptCode(code)
+    val redirectUrl = if (isCodeAccepted) service.successRedirectUrl else service.errorRedirectUrl
 
+    sendRedirect(request, context, redirectUrl)
     return null
   }
-
-  protected abstract fun handleAcceptCode(isAccepted: Boolean): AcceptCodeHandleResult
 
   private fun sendRedirect(request: FullHttpRequest, context: ChannelHandlerContext, url: Url) {
     val headers = DefaultHttpHeaders().set(HttpHeaderNames.LOCATION, url.toExternalForm())
     HttpResponseStatus.FOUND.send(context.channel(), request, null, headers)
-  }
-
-  protected sealed class AcceptCodeHandleResult {
-    class Redirect(val url: Url) : AcceptCodeHandleResult()
-    class Page(val html: String) : AcceptCodeHandleResult()
   }
 }

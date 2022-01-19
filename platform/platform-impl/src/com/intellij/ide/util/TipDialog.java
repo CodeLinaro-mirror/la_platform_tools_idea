@@ -31,12 +31,12 @@ public final class TipDialog extends DialogWrapper {
   private final TipPanel myTipPanel;
   private final boolean myShowingOnStartup;
 
-  TipDialog(@NotNull final Window parent, @Nullable final Project project) {
+  TipDialog(@NotNull final Window parent) {
     super(parent, true);
     setModal(false);
     setTitle(IdeBundle.message("title.tip.of.the.day"));
     setCancelButtonText(CommonBundle.getCloseButtonText());
-    myTipPanel = new TipPanel(project);
+    myTipPanel = new TipPanel();
     setDoNotAskOption(myTipPanel);
     myShowingOnStartup = myTipPanel.isToBeShown();
     setHorizontalStretch(1.33f);
@@ -96,7 +96,7 @@ public final class TipDialog extends DialogWrapper {
     if (ourInstance != null && ourInstance.isVisible()) {
       ourInstance.dispose();
     }
-    ourInstance = new TipDialog(w, project);
+    ourInstance = new TipDialog(w);
     ourInstance.show();
   }
 

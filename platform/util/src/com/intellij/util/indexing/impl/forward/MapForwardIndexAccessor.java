@@ -26,7 +26,6 @@ public class MapForwardIndexAccessor<Key, Value> extends AbstractMapForwardIndex
   @Nullable
   @Override
   public Map<Key, Value> convertToDataType(@NotNull InputData<Key, Value> data) {
-    Map<Key, Value> map = data.getKeyValues();
-    return map.isEmpty() ? null : map;
+    return data.getKeyValues();
   }
 }

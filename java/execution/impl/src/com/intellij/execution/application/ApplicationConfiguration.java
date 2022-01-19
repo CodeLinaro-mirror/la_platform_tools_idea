@@ -11,7 +11,6 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.target.LanguageRuntimeType;
 import com.intellij.execution.target.TargetEnvironmentAwareRunProfile;
 import com.intellij.execution.target.TargetEnvironmentConfiguration;
-import com.intellij.execution.target.TargetEnvironmentConfigurations;
 import com.intellij.execution.target.java.JavaLanguageRuntimeConfiguration;
 import com.intellij.execution.target.java.JavaLanguageRuntimeType;
 import com.intellij.execution.util.JavaParametersUtil;
@@ -158,7 +157,7 @@ public class ApplicationConfiguration extends JavaRunConfigurationBase
 
   @Override
   public void checkConfiguration() throws RuntimeConfigurationException {
-    if (TargetEnvironmentConfigurations.getEffectiveTargetName(this, getProject()) == null) {
+    if (getDefaultTargetName() == null) {
       JavaParametersUtil.checkAlternativeJRE(this);
     }
     final JavaRunConfigurationModule configurationModule = checkClass();
@@ -296,7 +295,7 @@ public class ApplicationConfiguration extends JavaRunConfigurationBase
 
   @Override
   public boolean needPrepareTarget() {
-    return TargetEnvironmentAwareRunProfile.super.needPrepareTarget() || runsUnderWslJdk();
+    return getDefaultTargetName() != null || runsUnderWslJdk();
   }
 
   @Override

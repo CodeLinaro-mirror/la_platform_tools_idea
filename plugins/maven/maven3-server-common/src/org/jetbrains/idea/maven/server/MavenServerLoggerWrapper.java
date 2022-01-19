@@ -15,39 +15,28 @@
  */
 package org.jetbrains.idea.maven.server;
 
-import com.intellij.util.ExceptionUtilRt;
-import org.jetbrains.annotations.Nullable;
-
 import java.rmi.RemoteException;
-import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
-public class MavenServerLoggerWrapper extends MavenRemoteObject implements MavenPullServerLogger  {
-  private final ConcurrentLinkedQueue<ServerLogEvent> myPullingQueue = new ConcurrentLinkedQueue<ServerLogEvent>();
+public class MavenServerLoggerWrapper extends MavenRemoteObject {
+  MavenServerLogger myWrappee;
+
+  public MavenServerLoggerWrapper(MavenServerLogger wrappee) {
+    myWrappee = wrappee;
+  }
 
   public void info(Throwable e) throws RemoteException {
-    myPullingQueue.add(new ServerLogEvent(ServerLogEvent.Type.INFO, serialize(e)));
+    myWrappee.info(wrapException(e));
   }
 
   public void warn(Throwable e) throws RemoteException {
-    myPullingQueue.add(new ServerLogEvent(ServerLogEvent.Type.WARN, serialize(e)));
+    myWrappee.warn(wrapException(e));
   }
 
   public void error(Throwable e) throws RemoteException {
-    myPullingQueue.add(new ServerLogEvent(ServerLogEvent.Type.ERROR, serialize(e)));
+    myWrappee.error(wrapException(e));
   }
 
   public void print(String o) throws RemoteException {
-    myPullingQueue.add(new ServerLogEvent(ServerLogEvent.Type.PRINT, o));
-  }
-
-  @Nullable
-  @Override
-  public List<ServerLogEvent> pull() {
-    return MavenRemotePullUtil.pull(myPullingQueue);
-  }
-
-  private String serialize(Throwable e){
-    return ExceptionUtilRt.getThrowableText(wrapException(e), "");
+    myWrappee.print(o);
   }
 }

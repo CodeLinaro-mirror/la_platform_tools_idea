@@ -36,21 +36,14 @@ open class AttachProjectAction : AnAction(ActionsBundle.message("action.AttachPr
     chooseAndAttachToProject(project)
   }
 
-  open fun validateDirectory(project: Project, directory: VirtualFile): Boolean {
-    return true
-  }
-
-  fun chooseAndAttachToProject(project: Project) {
-    val descriptor = OpenProjectFileChooserDescriptor(true)
-    FileChooser.chooseFiles(descriptor, project, null) {
-      val directory = it[0]
-      if (validateDirectory(project, directory)) {
-        attachProject(directory, project)
+  companion object {
+    fun chooseAndAttachToProject(project: Project) {
+      val descriptor = OpenProjectFileChooserDescriptor(true)
+      FileChooser.chooseFiles(descriptor, project, null) {
+        attachProject(it[0], project)
       }
     }
-  }
 
-  companion object {
     fun attachProject(virtualFile: VirtualFile, project: Project) {
       var baseDir: VirtualFile? = virtualFile
       if (!virtualFile.isDirectory) {

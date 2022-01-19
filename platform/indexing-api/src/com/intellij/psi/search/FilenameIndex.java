@@ -43,9 +43,8 @@ public final class FilenameIndex {
   }
 
   /**
-   * @deprecated Use {@link FilenameIndex#getVirtualFilesByName(String, GlobalSearchScope)}
+   * Use {@link FilenameIndex#getVirtualFilesByName(String, GlobalSearchScope)}
    */
-  @SuppressWarnings("unused")
   @Deprecated
   @NotNull
   public static Collection<VirtualFile> getVirtualFilesByName(final Project project, @NotNull String name, @NotNull GlobalSearchScope scope) {

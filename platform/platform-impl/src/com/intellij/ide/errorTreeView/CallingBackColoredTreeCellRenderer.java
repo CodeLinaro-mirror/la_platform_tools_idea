@@ -3,7 +3,6 @@ package com.intellij.ide.errorTreeView;
 
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.CustomizeColoredTreeCellRenderer;
-import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 
@@ -11,7 +10,7 @@ public class CallingBackColoredTreeCellRenderer extends ColoredTreeCellRenderer 
   private CustomizeColoredTreeCellRenderer myCurrentCallback;
 
   @Override
-  public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
+  public void customizeCellRenderer(JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
     if (myCurrentCallback != null) {
       myCurrentCallback.customizeCellRenderer(this, tree, value, selected, expanded, leaf, row, hasFocus);
     }

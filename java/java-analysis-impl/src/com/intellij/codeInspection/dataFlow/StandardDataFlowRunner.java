@@ -243,7 +243,7 @@ public class StandardDataFlowRunner {
       Collection<DfaMemoryState> states = closures.get(closure);
       if (!unusedVars.isEmpty()) {
         List<DfaMemoryState> stateList = StreamEx.of(states)
-          .peek(state -> state.flushVariables(unusedVars::contains))
+          .peek(state -> unusedVars.forEach(state::flushVariable))
           .distinct().toList();
         states = StateQueue.squash(stateList);
       }

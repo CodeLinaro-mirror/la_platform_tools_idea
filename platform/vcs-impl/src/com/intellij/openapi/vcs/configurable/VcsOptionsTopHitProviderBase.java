@@ -5,10 +5,10 @@ import com.intellij.ide.ui.OptionsSearchTopHitProvider;
 import com.intellij.ide.ui.OptionsTopHitProvider;
 import com.intellij.ide.ui.ProjectTopHitCache;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManagerListener;
 import com.intellij.openapi.vcs.AbstractVcs;
 import com.intellij.openapi.vcs.ProjectLevelVcsManager;
 import com.intellij.openapi.vcs.VcsKey;
-import com.intellij.openapi.vcs.VcsMappingListener;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,18 +24,16 @@ public abstract class VcsOptionsTopHitProviderBase implements OptionsSearchTopHi
     return ContainerUtil.exists(activeVcses, it -> vcsKey.equals(it.getKeyInstanceMethod()));
   }
 
-  public static class InitMappingsListenerActivity implements VcsMappingListener {
-    private final Project myProject;
-
-    public InitMappingsListenerActivity(@NotNull Project project) {
-      myProject = project;
+  public static class InitMappingsListenerActivity implements ProjectManagerListener {
+    @Override
+    public void projectOpened(@NotNull Project project) {
+      project.getMessageBus().connect().subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, () -> invalidateTopHitCaches(project));
     }
 
-    @Override
-    public void directoryMappingChanged() {
+    private static void invalidateTopHitCaches(@NotNull Project project) {
       for (ProjectLevelProvider provider : OptionsTopHitProvider.PROJECT_LEVEL_EP.getExtensionList()) {
         if (provider instanceof VcsOptionsTopHitProviderBase) {
-          ProjectTopHitCache.getInstance(myProject).invalidateCachedOptions(provider.getClass());
+          ProjectTopHitCache.getInstance(project).invalidateCachedOptions(provider.getClass());
         }
       }
     }

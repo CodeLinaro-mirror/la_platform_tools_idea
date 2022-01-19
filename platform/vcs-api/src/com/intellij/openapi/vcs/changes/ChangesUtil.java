@@ -14,8 +14,9 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.HashingStrategy;
 import com.intellij.vcsUtil.VcsUtil;
+import it.unimi.dsi.fastutil.Hash;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,12 +25,13 @@ import java.util.*;
 import java.util.stream.Stream;
 
 import static java.util.Objects.hash;
+import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toList;
 
 public final class ChangesUtil {
   private static final Key<Boolean> INTERNAL_OPERATION_KEY = Key.create("internal vcs operation");
 
-  public static final HashingStrategy<FilePath> CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY = new HashingStrategy<>() {
+  public static final Hash.Strategy<FilePath> CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY = new Hash.Strategy<>() {
     @Override
     public int hashCode(@Nullable FilePath path) {
       return path != null ? hash(path.getPath(), path.isDirectory()) : 0;
@@ -277,14 +279,11 @@ public final class ChangesUtil {
   public static <T> void processItemsByVcs(@NotNull Collection<? extends T> items,
                                            @NotNull VcsSeparator<? super T> separator,
                                            @NotNull PerVcsProcessor<T> processor) {
-    Map<AbstractVcs, List<T>> changesByVcs = new HashMap<>();
-    ReadAction.run(() -> {
-      for (T item : items) {
-        AbstractVcs vcs = separator.getVcsFor(item);
-        if (vcs != null) {
-          changesByVcs.computeIfAbsent(vcs, __ -> new ArrayList<>()).add(item);
-        }
-      }
+    Map<AbstractVcs, List<T>> changesByVcs = ReadAction.compute(() -> {
+      return StreamEx.<T>of(items)
+        .mapToEntry(separator::getVcsFor, identity())
+        .nonNullKeys()
+        .grouping();
     });
 
     changesByVcs.forEach(processor::process);
@@ -346,7 +345,7 @@ public final class ChangesUtil {
   }
 
   /**
-   * Find common ancestor for changes (including both before and after files)
+   * Find common ancestor for changes (included both before and after files)
    */
   @Nullable
   public static File findCommonAncestor(@NotNull Collection<? extends Change> changes) {

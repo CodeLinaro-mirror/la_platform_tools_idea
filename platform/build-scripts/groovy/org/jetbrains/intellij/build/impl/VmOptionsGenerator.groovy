@@ -8,7 +8,6 @@ import org.jetbrains.intellij.build.ProductProperties
 final class VmOptionsGenerator {
   @SuppressWarnings('SpellCheckingInspection')
   static final List<String> COMMON_VM_OPTIONS = List.of(
-    '-XX:+IgnoreUnrecognizedVMOptions',
     '-XX:+UseG1GC',
     '-XX:SoftRefLRUPolicyMSPerMB=50',
     '-XX:CICompilerCount=2',
@@ -19,15 +18,16 @@ final class VmOptionsGenerator {
     '-Djdk.http.auth.tunneling.disabledSchemes=""',
     '-Djdk.attach.allowAttachSelf=true',
     '-Djdk.module.illegalAccess.silent=true',
+    '-Dkotlinx.coroutines.debug=off',
     '-Djna.nosys=true',  // Android Studio: added by Change Ie7351d92
     '-Djna.boot.library.path=',  // Android Studio: added by Change Ie7351d92
     '-Didea.vendor.name=Google',  // Android Studio: added by Change Ie6d690b5
-    '-Dkotlinx.coroutines.debug=off')
+    )
 
-  static final List<Map.Entry<String, String>> MEMORY_OPTIONS = List.of(
-    Map.entry('-Xms', '256m'),  // Android Studio: modified by Change Ie7351d92
-    Map.entry('-Xmx', '1280m'),  // Android Studio: modified by Change Ie7351d92
-    Map.entry('-XX:ReservedCodeCacheSize=', '512m'))
+  static final Map<String, String> MEMORY_OPTIONS = Map.of(
+    '-Xms', '256m',  // Android Studio: modified by Change Ie7351d92
+    '-Xmx', '1280m',  // Android Studio: modified by Change Ie7351d92
+    '-XX:ReservedCodeCacheSize=', '512m')
 
   static List<String> computeVmOptions(boolean isEAP, ProductProperties productProperties) {
     List<String> result = new ArrayList<>()
@@ -35,17 +35,14 @@ final class VmOptionsGenerator {
     Map<String, String> memory =  new LinkedHashMap<>()
     memory.putAll(MEMORY_OPTIONS)
     memory.putAll(productProperties.customJvmMemoryOptions)
-    memory.each { k, v -> result.add(k + v) }
-
-    result.addAll(COMMON_VM_OPTIONS)
+    memory.each {k,v -> result.add(k + v) }
 
     if (isEAP) {
-      int place = result.indexOf('-ea')
-      if (place < 0) place = result.findIndexOf { it.startsWith('-D') }
-      if (place < 0) place = result.size()
-      result.add(place, '-XX:MaxJavaStackTraceDepth=10000')  // must be consistent with `ConfigImportHelper#updateVMOptions`
+      // must be consistent with `com.intellij.openapi.application.ConfigImportHelper#updateVMOptions`
+      result.add('-XX:MaxJavaStackTraceDepth=10000')
     }
 
+    result.addAll(COMMON_VM_OPTIONS)
     return result
   }
 }

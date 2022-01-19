@@ -1,12 +1,12 @@
-<error descr="Cyclic inheritance involving 'A'">interface A extends C</error> {
+interface A extends C {
   void foo();
 }
-<error descr="Cyclic inheritance involving 'B'">interface B extends A</error> {
+interface B extends A {
   void foo();
 }
-<error descr="Cyclic inheritance involving 'C'">interface C extends B</error> {
+interface C extends B {
   void foo();
 }
-<error descr="Cyclic inheritance involving 'C'">class D implements C</error> {
-  public void foo() {}
+class D implements C {
+  void foo();
 }

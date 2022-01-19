@@ -2,7 +2,7 @@ class w {
   final def w () {
     super()
   }
-}
+}  
 -----
 Groovy script
   Class definition
@@ -14,8 +14,6 @@ Groovy script
     Extends clause
       <empty list>
     Implements clause
-      <empty list>
-    Permits clause
       <empty list>
     PsiWhiteSpace(' ')
     Type definition body
@@ -48,3 +46,4 @@ Groovy script
           PsiElement(})('}')
       PsiElement(new line)('\n')
       PsiElement(})('}')
+  PsiWhiteSpace('  ')

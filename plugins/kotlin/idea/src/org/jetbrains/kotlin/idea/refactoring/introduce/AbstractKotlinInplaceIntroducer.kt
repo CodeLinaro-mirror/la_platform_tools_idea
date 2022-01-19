@@ -9,7 +9,6 @@ import com.intellij.psi.PsiFile
 import com.intellij.refactoring.introduce.inplace.AbstractInplaceIntroducer
 import com.intellij.refactoring.rename.inplace.InplaceRefactoring
 import com.intellij.util.ui.FormBuilder
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
@@ -24,7 +23,7 @@ abstract class AbstractKotlinInplaceIntroducer<D : KtNamedDeclaration>(
     localVariable: D?,
     expression: KtExpression?,
     occurrences: Array<KtExpression>,
-    @Nls title: String,
+    title: String,
     project: Project,
     editor: Editor
 ) : AbstractInplaceIntroducer<D, KtExpression>(project, editor, expression, localVariable, occurrences, title, KotlinFileType.INSTANCE) {

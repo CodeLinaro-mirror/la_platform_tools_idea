@@ -73,7 +73,7 @@ public class ApplyChangesState extends State {
     Document document = documentModel.getDocument();
     CaretOffsetUpdater caretOffsetUpdater = new CaretOffsetUpdater(document);
 
-    DocumentUtil.executeInBulk(document, ()->{
+    DocumentUtil.executeInBulk(document, true, ()->{
       List<TextChange> changes = new ArrayList<>();
       int shift = 0;
       int currentIterationShift = 0;

@@ -37,8 +37,6 @@ public class JsonSchemaPerformanceTest extends JsonSchemaHeavyAbstractTest {
 
   private void doPerformanceTest(int expectedMs, String jsonFileNameWithoutExtension) {
     myFixture.configureByFiles("/" + jsonFileNameWithoutExtension + ".json");
-    PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue(); // process VFS events before perf test
-
     final ThrowableRunnable<Exception> test = () -> skeleton(new Callback() {
       @Override
       public void registerSchemes() {

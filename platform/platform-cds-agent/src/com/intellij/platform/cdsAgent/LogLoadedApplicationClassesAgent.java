@@ -18,6 +18,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -77,10 +78,13 @@ public final class LogLoadedApplicationClassesAgent {
 
     final TransitiveClassesCollector myAllClasses = new TransitiveClassesCollector();
 
-    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
-      Thread thread = new Thread(r, "LogLoadedApplicationClassesAgent-watcher");
-      thread.setDaemon(true);
-      return thread;
+    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+      @Override
+      public Thread newThread(@NotNull Runnable r) {
+        Thread thread = new Thread(r, "LogLoadedApplicationClassesAgent-watcher");
+        thread.setDaemon(true);
+        return thread;
+      }
     });
 
     executor.scheduleWithFixedDelay(() -> myAllClasses.addClasses(inst), 0, 20, TimeUnit.MILLISECONDS);

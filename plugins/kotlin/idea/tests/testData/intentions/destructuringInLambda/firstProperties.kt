@@ -1,6 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Destructured parameter 'a' is never used
-// AFTER-WARNING: Destructured parameter 'b' is never used
 
 fun foo() {
     val list = listOf(MyClass(1, 2, 3), MyClass(2, 3, 4))

@@ -113,7 +113,7 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
     logStream = logStreamCandidate;
   }
 
-  private final IdeaPluginDescriptorImpl[] parents;
+  private IdeaPluginDescriptorImpl[] parents;
 
   // cache of computed list of all parents (not only direct)
   private volatile ClassLoader[] allParents;
@@ -275,9 +275,11 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
                                                                                                    pluginClassLoader.packagePrefix,
                                                                                                    forceLoadFromSubPluginClassloader);
             if (consistencyError != null) {
-              if (!consistencyError.isEmpty() && error == null) {
-                // yes, we blame requestor plugin
-                error = new PluginException(consistencyError, pluginId);
+              if (!consistencyError.isEmpty()) {
+                if (error == null) {
+                  // yes, we blame requestor plugin
+                  error = new PluginException(consistencyError, pluginId);
+                }
               }
               continue;
             }
@@ -361,7 +363,7 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
 
   private void collectClassLoaders(@NotNull Deque<ClassLoader> queue) {
     for (IdeaPluginDescriptorImpl parent : parents) {
-      ClassLoader classLoader = parent.getPluginClassLoader();
+      ClassLoader classLoader = parent.classLoader;
       if (classLoader != null && classLoader != coreLoader) {
         queue.add(classLoader);
       }
@@ -434,7 +436,7 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
 
   @Override
   public @Nullable URL findResource(@NotNull String name) {
-    return doFindResource(name, Resource::getURL, ClassLoader::getResource);
+    return findResource(name, Resource::getURL, ClassLoader::getResource);
   }
 
   @Override
@@ -457,11 +459,20 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
         return null;
       }
     };
-    return doFindResource(name, f1, f2);
+    return findResource(name, f1, f2);
   }
 
-  private <T> @Nullable T doFindResource(String name, Function<Resource, T> f1, BiFunction<ClassLoader, String, T> f2) {
+  private <T> @Nullable T findResource(String name, Function<Resource, T> f1, BiFunction<ClassLoader, String, T> f2) {
     String canonicalPath = toCanonicalPath(name);
+
+    if (canonicalPath.startsWith("/")) {
+      //noinspection SpellCheckingInspection
+      if (!canonicalPath.startsWith("/org/bridj/")) {
+        String message = "Do not request resource from classloader using path with leading slash";
+        Logger.getInstance(PluginClassLoader.class).error(message, new PluginException(name, pluginId));
+      }
+      canonicalPath = canonicalPath.substring(1);
+    }
 
     Resource resource = classPath.findResource(canonicalPath);
     if (resource != null) {
@@ -481,13 +492,6 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
           return t;
         }
       }
-    }
-
-    if (canonicalPath.startsWith("/") && classPath.findResource(canonicalPath.substring(1)) != null) {
-      // reporting malformed paths only when there's a resource at the right one - which is rarely the case
-      // (see also `UrlClassLoader#doFindResource`)
-      String message = "Calling `ClassLoader#getResource` with leading slash doesn't work; strip";
-      Logger.getInstance(PluginClassLoader.class).error(message, new PluginException(name, pluginId));
     }
 
     return null;
@@ -551,10 +555,10 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
   }
 
   private static final class DeepEnumeration implements Enumeration<URL> {
-    private final @NotNull List<Enumeration<URL>> list;
+    private final @NotNull List<? extends Enumeration<URL>> list;
     private int myIndex;
 
-    DeepEnumeration(@NotNull List<Enumeration<URL>> enumerations) {
+    DeepEnumeration(@NotNull List<? extends Enumeration<URL>> enumerations) {
       list = enumerations;
     }
 
@@ -580,9 +584,48 @@ public final class PluginClassLoader extends UrlClassLoader implements PluginAwa
   }
 
   @TestOnly
+  @ApiStatus.Internal
   public @NotNull List<IdeaPluginDescriptorImpl> _getParents() {
     //noinspection SSBasedInspection
     return Collections.unmodifiableList(Arrays.asList(parents));
+  }
+
+  @ApiStatus.Internal
+  public void attachParent(@NotNull IdeaPluginDescriptorImpl parent) {
+    //noinspection SSBasedInspection
+    if (Arrays.stream(parents).anyMatch(it -> it == parent)) {
+      return;
+    }
+
+    int length = parents.length;
+    IdeaPluginDescriptorImpl[] result = new IdeaPluginDescriptorImpl[length + 1];
+    System.arraycopy(parents, 0, result, 0, length);
+    result[length] = parent;
+    parents = result;
+    allParents = null;
+    parentListCacheIdCounter.incrementAndGet();
+  }
+
+  /**
+   * You must clear allParents cache for all loaded plugins.
+   */
+  @ApiStatus.Internal
+  public boolean detachParent(@NotNull IdeaPluginDescriptorImpl parent) {
+    for (int i = 0; i < parents.length; i++) {
+      if (parent != parents[i]) {
+        continue;
+      }
+
+      int length = parents.length;
+      IdeaPluginDescriptorImpl[] result = new IdeaPluginDescriptorImpl[length - 1];
+      System.arraycopy(parents, 0, result, 0, i);
+      System.arraycopy(parents, i + 1, result, i, length - i - 1);
+      parents = result;
+      allParents = null;
+      parentListCacheIdCounter.incrementAndGet();
+      return true;
+    }
+    return false;
   }
 
   @Override

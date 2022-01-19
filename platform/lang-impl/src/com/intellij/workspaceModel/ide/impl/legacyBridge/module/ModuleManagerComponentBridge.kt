@@ -51,7 +51,7 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
       val busConnection = project.messageBus.connect(this)
       busConnection.subscribe(ProjectManager.TOPIC, object : ProjectManagerListener {
         override fun projectOpened(eventProject: Project) {
-          val activity = StartUpMeasurer.startActivity("firing modules_added event", ActivityCategory.DEFAULT)
+          val activity = StartUpMeasurer.startActivity("events modules added", ActivityCategory.DEFAULT)
           if (project == eventProject) {
             fireModulesAdded()
             for (module in modules()) {
@@ -73,10 +73,6 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
       val rootsChangeListener = ProjectRootsChangeListener(project)
       WorkspaceModelTopics.getInstance(project).subscribeAfterModuleLoading(busConnection, object : WorkspaceModelChangeListener {
         override fun beforeChanged(event: VersionedStorageChange) {
-          if (!VirtualFileUrlWatcher.getInstance(project).isInsideFilePointersUpdate) {
-            //the old implementation doesn't fire rootsChanged event when roots are moved or renamed, let's keep this behavior for now
-            rootsChangeListener.beforeChanged(event)
-          }
           for (change in event.getChanges(FacetEntity::class.java)) {
             LOG.debug { "Fire 'before' events for facet change $change" }
             FacetEntityChangeListener.getInstance(project).processBeforeChange(change)
@@ -90,6 +86,11 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
                 fireBeforeModuleRemoved(module)
               }
             }
+          }
+
+          if (!VirtualFileUrlWatcher.getInstance(project).isInsideFilePointersUpdate) {
+            //the old implementation doesn't fire rootsChanged event when roots are moved or renamed, let's keep this behavior for now
+            rootsChangeListener.beforeChanged(event)
           }
         }
 
@@ -217,13 +218,6 @@ class ModuleManagerComponentBridge(private val project: Project) : ModuleManager
           if (module != null) {
             module.rename(newId.name, getModuleVirtualFileUrl(change.newEntity), true)
             oldModuleNames[module] = oldId.name
-          }
-        }
-        else if (getImlFileDirectory(change.oldEntity) != getImlFileDirectory(change.newEntity)) {
-          val module = event.storageBefore.findModuleByEntity(change.newEntity)
-          val imlFilePath = getModuleVirtualFileUrl(change.newEntity)
-          if (module != null && imlFilePath != null) {
-            module.onImlFileMoved(imlFilePath)
           }
         }
       }

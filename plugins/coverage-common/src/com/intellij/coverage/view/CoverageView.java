@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.coverage.view;
 
 import com.intellij.CommonBundle;
@@ -16,8 +16,6 @@ import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.ide.util.treeView.NodeDescriptor;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.DumbAwareAction;
@@ -33,8 +31,6 @@ import com.intellij.psi.PsiManager;
 import com.intellij.ui.*;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.table.JBTable;
-import com.intellij.util.SlowOperations;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.StatusText;
 import com.intellij.util.ui.components.BorderLayoutPanel;
@@ -215,18 +211,13 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
   private void drillDown(CoverageViewTreeStructure treeStructure) {
     final AbstractTreeNode element = getSelectedValue();
     if (element == null) return;
-    ReadAction.nonBlocking(() -> treeStructure.getChildElements(element))
-      .expireWith(this)
-      .finishOnUiThread(ModalityState.NON_MODAL, children -> {
-        if (children.length == 0) {
-          if (element.canNavigate()) {
-            element.navigate(true);
-          }
-          return;
-        }
-        myBuilder.drillDown(element, children);
-      })
-      .submit(AppExecutorUtil.getAppScheduledExecutorService());
+    if (treeStructure.getChildElements(element).length == 0) {
+      if (element.canNavigate()) {
+        element.navigate(true);
+      }
+      return;
+    }
+    myBuilder.drillDown();
   }
 
   public void updateParentTitle() {
@@ -262,7 +253,7 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
     if (CommonDataKeys.NAVIGATABLE.is(dataId)) {
       return getSelectedValue();
     }
-    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return HELP_ID;
     }
     return null;
@@ -281,7 +272,7 @@ public class CoverageView extends BorderLayoutPanel implements DataProvider, Dis
         NodeDescriptor descriptor = (NodeDescriptor)value;
         setIcon(descriptor.getIcon());
         setText(descriptor.toString());
-        if (!isSelected) setForeground(SlowOperations.allowSlowOperations(() -> ((CoverageListNode)descriptor).getFileStatus()).getColor());
+        if (!isSelected) setForeground(((CoverageListNode)descriptor).getFileStatus().getColor());
       }
       return component;
     }

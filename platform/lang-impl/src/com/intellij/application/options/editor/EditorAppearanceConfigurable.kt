@@ -1,7 +1,7 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.application.options.editor
 
-import com.intellij.codeInsight.actions.ReaderModeSettingsListener
+import com.intellij.codeInsight.actions.ReaderModeSettingsListener.Companion.createReaderModeComment
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings
 import com.intellij.codeInsight.documentation.render.DocRenderManager
 import com.intellij.ide.IdeBundle
@@ -17,10 +17,6 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.UnnamedConfigurable
 import com.intellij.openapi.options.ex.ConfigurableWrapper
 import com.intellij.openapi.ui.DialogPanel
-import com.intellij.ui.components.JBCheckBox
-import com.intellij.ui.dsl.builder.*
-import com.intellij.ui.dsl.builder.Cell
-import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.layout.*
 import com.intellij.util.PlatformUtils
 
@@ -54,12 +50,10 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
     val model = EditorSettingsExternalizable.getInstance()
     return panel {
       row {
-        val cbBlinkCaret = checkBox(myCbBlinkCaret)
-          .gap(RightGap.SMALL)
-        intTextField(range = EditorSettingsExternalizable.BLINKING_RANGE.asRange(), keyboardStep = 100)
-          .bindIntText(model::getBlinkPeriod, model::setBlinkPeriod)
-          .columns(5)
-          .enabledIf(cbBlinkCaret.selected)
+        cell(isFullWidth = true) {
+          val cbBlinkCaret = checkBox(myCbBlinkCaret)
+          intTextField(model::getBlinkPeriod, model::setBlinkPeriod, columns = 5).enableIf(cbBlinkCaret.selected)
+        }
       }
       row {
         checkBox(myCbBlockCursor)
@@ -73,26 +67,18 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
       row {
         checkBox(myCbShowMethodSeparators)
       }
-
-      lateinit var cbWhitespace: Cell<JBCheckBox>
       row {
-        cbWhitespace = checkBox(myWhitespacesCheckbox)
+        val cbWhitespace = checkBox(myWhitespacesCheckbox)
+        row {
+          checkBox(myLeadingWhitespacesCheckBox).enableIf(cbWhitespace.selected)
+        }
+        row {
+          checkBox(myInnerWhitespacesCheckBox).enableIf(cbWhitespace.selected)
+        }
+        row {
+          checkBox(myTrailingWhitespacesCheckBox).enableIf(cbWhitespace.selected)
+        }
       }
-
-      indent {
-        rowsRange {
-          row {
-            checkBox(myLeadingWhitespacesCheckBox)
-          }
-          row {
-            checkBox(myInnerWhitespacesCheckBox)
-          }
-          row {
-            checkBox(myTrailingWhitespacesCheckBox)
-          }
-        }.enabledIf(cbWhitespace.selected)
-      }
-
       row {
         checkBox(myShowVerticalIndentGuidesCheckBox)
       }
@@ -105,17 +91,15 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
         checkBox(myCbShowIntentionBulbCheckBox)
       }
       row {
-        checkBox(myRenderedDocCheckBox)
-        commentHtml(IdeBundle.message("checkbox.also.in.reader.mode")) {
-          ReaderModeSettingsListener.goToEditorReaderMode()
-        }
+        checkBox(myCodeLensCheckBox)
       }
       row {
-        checkBox(myCodeLensCheckBox)
+        checkBox(myRenderedDocCheckBox)
+        component(createReaderModeComment()).withLargeLeftGap()
       }
 
       for (configurable in configurables) {
-        appendDslConfigurable(configurable)
+        appendDslConfigurableRow(configurable)
       }
     }
   }
@@ -151,3 +135,4 @@ class EditorAppearanceConfigurable : BoundCompositeSearchableConfigurable<Unname
     private val EP_NAME = ExtensionPointName.create<EditorAppearanceConfigurableEP>("com.intellij.editorAppearanceConfigurable")
   }
 }
+

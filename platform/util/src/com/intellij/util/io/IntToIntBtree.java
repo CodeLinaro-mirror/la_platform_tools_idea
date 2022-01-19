@@ -127,7 +127,7 @@ public final class IntToIntBtree {
     int persistInt(int offset, int value, boolean toDisk) throws IOException;
   }
 
-  private final class BtreeRootNode {
+  final static class BtreeRootNode {
     int address;
     final BtreeIndexNodeView nodeView;
     boolean initialized;
@@ -292,7 +292,7 @@ public final class IntToIntBtree {
     assert b;
   }
 
-  private static class BtreePage {
+  static class BtreePage {
     static final int RESERVED_META_PAGE_LEN = 8;
     static final int FLAGS_SHIFT = 24;
     static final int LENGTH_SHIFT = 8;
@@ -387,7 +387,7 @@ public final class IntToIntBtree {
   // (value_address {<0 if address in duplicates segment}, hash key) {getChildrenCount()}
   // (|next_node {<0} , hash key|) {getChildrenCount()} , next_node {<0}
   // next_node[i] is pointer to all less than hash_key[i] except for the last
-  private final class BtreeIndexNodeView extends BtreePage {
+  private static final class BtreeIndexNodeView extends BtreePage {
     static final int INTERIOR_SIZE = 8;
     static final int KEY_OFFSET = 4;
     static final int MIN_ITEMS_TO_SHARE = 20;
@@ -402,7 +402,7 @@ public final class IntToIntBtree {
 
     private static final int HASH_FREE = 0;
 
-    private int search(final int value) throws IOException {
+    private int search(final int value) {
       if (isIndexLeaf() && isHashedLeaf()) {
         return hashIndex(value);
       }
@@ -540,12 +540,12 @@ public final class IntToIntBtree {
       return !myBufferWrapper.isReleased();
     }
 
-    private final class HashLeafData {
+    private static final class HashLeafData {
       final BtreeIndexNodeView nodeView;
       final int[] keys;
       final Int2IntMap values;
 
-      HashLeafData(BtreeIndexNodeView _nodeView, int recordCount) throws IOException {
+      HashLeafData(BtreeIndexNodeView _nodeView, int recordCount) {
         nodeView = _nodeView;
 
         final IntToIntBtree btree = _nodeView.btree;
@@ -561,7 +561,7 @@ public final class IntToIntBtree {
           if (key != HASH_FREE) {
             int value = nodeView.myBufferWrapper.getInt(offset);
 
-            if (keyNumber == keys.length) throw new CorruptedException(storage.getPagedFileStorage().getFile());
+            if (keyNumber == keys.length) throw new IllegalStateException("Index corrupted");
             keys[keyNumber++] = key;
             values.put(key, value);
           }
@@ -938,7 +938,7 @@ public final class IntToIntBtree {
         int i = search(valueHC);
 
         ++searched;
-        if (searched > maxHeight) throw new CorruptedException(storage.getPagedFileStorage().getFile());
+        if (searched > maxHeight) throw new IllegalStateException();
 
         if (isIndexLeaf()) {
           btree.height = Math.max(btree.height, searched);
@@ -1028,7 +1028,7 @@ public final class IntToIntBtree {
     }
 
     private static final boolean useDoubleHash = true;
-    private int hashIndex(int value) throws IOException {
+    private int hashIndex(int value) {
       final int length = btree.hashPageCapacity;
       int hash = value & 0x7fffffff;
       int index = hash % length;
@@ -1049,7 +1049,7 @@ public final class IntToIntBtree {
             keyAtIndex = keyAt(index);
             ++total;
             if (total > length) {
-              throw new CorruptedException(storage.getPagedFileStorage().getFile()); // violation of Euler's theorem
+              throw new IllegalStateException("Index corrupted"); // violation of Euler's theorem
             }
           }
           while (keyAtIndex != value && keyAtIndex != HASH_FREE);
@@ -1061,7 +1061,7 @@ public final class IntToIntBtree {
           keyAtIndex = keyAt(index);
           ++total;
 
-          if (total > length) throw new CorruptedException(storage.getPagedFileStorage().getFile()); // violation of Euler's theorem
+          if (total > length) throw new IllegalStateException("Index corrupted"); // violation of Euler's theorem
         }
       }
 

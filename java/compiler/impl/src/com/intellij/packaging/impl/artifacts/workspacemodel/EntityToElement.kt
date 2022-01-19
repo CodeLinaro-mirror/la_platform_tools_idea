@@ -32,6 +32,12 @@ internal fun CompositePackagingElementEntity.toCompositeElement(
       element
     }
     is ArchivePackagingElementEntity -> {
+      val mapping = storage.getExternalMapping<CompositePackagingElement<*>>("intellij.artifacts.packaging.elements")
+      val data = mapping.getDataByEntity(this)
+      if (data != null) {
+        return data
+      }
+
       val element = ArchivePackagingElement(this.fileName)
       this.children.pushTo(element, project, storage)
       element

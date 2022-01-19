@@ -1,24 +1,30 @@
 package com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models
 
-import com.intellij.openapi.project.Project
+import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModule
 
 internal sealed class TargetModules(
     open val modules: List<ModuleModel>,
     open val isMixedBuildSystems: Boolean
 ) : Collection<ModuleModel> by modules {
 
-    fun declaredScopes(project: Project): List<PackageScope> =
-        modules.flatMap { it.projectModule.moduleType.userDefinedScopes(project) }
-            .map { rawScope -> PackageScope.from(rawScope) }
-            .distinct()
-            .sorted()
-
-    fun defaultScope(project: Project): PackageScope =
-        if (!isMixedBuildSystems) {
-            PackageScope.from(modules.first().projectModule.moduleType.defaultScope(project))
-        } else {
-            PackageScope.Missing
+    fun refreshWith(modules: List<ProjectModule>): TargetModules {
+        val availableModules = filter { it.projectModule in modules && !it.projectModule.nativeModule.isDisposed }
+        return when (availableModules.size) {
+            0 -> None
+            1 -> One(availableModules.first())
+            else -> all(availableModules)
         }
+    }
+
+    fun declaredKnownRepositories(installedKnownRepositories: List<RepositoryModel>): List<RepositoryModel> {
+        val declaredReposInTargetModules = modules.flatMap { it.declaredRepositories }
+            .asSequence()
+            .distinct()
+
+        return installedKnownRepositories.filter { knownRepo ->
+            declaredReposInTargetModules.any { repo -> knownRepo.isEquivalentTo(repo) }
+        }
+    }
 
     object None : TargetModules(emptyList(), isMixedBuildSystems = false) {
 

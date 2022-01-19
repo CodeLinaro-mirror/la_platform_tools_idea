@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.debugger
 
-import com.intellij.openapi.application.ApplicationManager
 import org.jetbrains.concurrency.Promise
 import org.jetbrains.debugger.values.ValueManager
 
@@ -60,16 +59,12 @@ abstract class ContextDependentAsyncResultConsumer<T>(private val context: Suspe
 
 inline fun <T> Promise<T>.onSuccess(context: SuspendContext<*>, crossinline handler: (result: T) -> Unit): Promise<T> {
   return onSuccess(object : ContextDependentAsyncResultConsumer<T>(context) {
-    override fun accept(result: T, vm: Vm) {
-      ApplicationManager.getApplication().executeOnPooledThread { handler(result) }
-    }
+    override fun accept(result: T, vm: Vm) = handler(result)
   })
 }
 
 inline fun Promise<*>.onError(context: SuspendContext<*>, crossinline handler: (error: Throwable) -> Unit): Promise<out Any> {
   return onError(object : ContextDependentAsyncResultConsumer<Throwable>(context) {
-    override fun accept(result: Throwable, vm: Vm) {
-      ApplicationManager.getApplication().executeOnPooledThread { handler(result) }
-    }
+    override fun accept(result: Throwable, vm: Vm) = handler(result)
   })
 }

@@ -27,7 +27,7 @@ import com.intellij.openapi.editor.colors.impl.DelegateColorScheme;
 import com.intellij.openapi.editor.colors.impl.EditorColorsManagerImpl;
 import com.intellij.openapi.editor.colors.impl.FontPreferencesImpl;
 import com.intellij.openapi.editor.ex.EditorEx;
-import com.intellij.openapi.fileTypes.PlainTextFileType;
+import com.intellij.testFramework.TestFileType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
@@ -71,7 +71,7 @@ public class EditorColorsSchemeDelegateTest extends AbstractEditorTest {
     FontPreferences tempCopy = new FontPreferencesImpl();
     globalPrefs.copyTo(tempCopy);
     try {
-      init("blah", PlainTextFileType.INSTANCE);
+      init("blah", TestFileType.TEXT);
 
       assertInstanceOf(globalPrefs, ModifiableFontPreferences.class);
       ((ModifiableFontPreferences)globalPrefs).register(secondaryFont, globalPrefs.getSize(globalPrefs.getFontFamily()));

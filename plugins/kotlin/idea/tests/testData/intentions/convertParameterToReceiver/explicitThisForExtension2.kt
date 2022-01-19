@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'init' is never used
 interface I
 interface J
 

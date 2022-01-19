@@ -22,6 +22,7 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.util.MathUtil;
+import com.intellij.util.PlatformUtils;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -29,6 +30,8 @@ import com.intellij.util.lang.JavaVersion;
 import com.intellij.util.system.CpuArch;
 import com.intellij.util.ui.IoErrorText;
 import com.sun.jna.*;
+import com.sun.jna.platform.mac.SystemB;
+import com.sun.jna.ptr.IntByReference;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.PropertyKey;
@@ -48,7 +51,7 @@ import java.util.stream.Stream;
 
 final class SystemHealthMonitor extends PreloadingActivity {
   private static final Logger LOG = Logger.getInstance(SystemHealthMonitor.class);
-  private static final String NOTIFICATION_GROUP_ID = "System Health";
+  private static final String DISPLAY_ID = "System Health";
 
   @Override
   public void preload(@NotNull ProgressIndicator indicator) {
@@ -99,13 +102,13 @@ final class SystemHealthMonitor extends PreloadingActivity {
   }
 
   private static void checkRuntime() {
-    if (!CpuArch.isEmulated()) return;
-    LOG.info(CpuArch.CURRENT + " appears to be emulated");
-
-    if (SystemInfo.isMac && CpuArch.isIntel64()) {
-      NotificationAction downloadAction = NotificationAction.createSimpleExpiring(
-        IdeBundle.message("bundled.jre.m1.arch.message.download"),
-        () -> BrowserUtil.browse("https://developer.android.com/studio"));  // Android Studio: b/191780967
+    // Temporary disable notification for Rider only for 212 release because we don't have M1 build yet.
+    if (isUnderRosetta() && !PlatformUtils.isRider()) {
+      NotificationAction downloadAction =
+        NotificationAction.createSimpleExpiring(
+          IdeBundle.message("bundled.jre.m1.arch.message.download"), () ->
+            BrowserUtil.browse("https://developer.android.com/studio")  // Android Studio: b/191780967
+          );
       showNotification("bundled.jre.m1.arch.message", true, downloadAction, ApplicationNamesInfo.getInstance().getFullProductName());
     }
 
@@ -128,14 +131,14 @@ final class SystemHealthMonitor extends PreloadingActivity {
             catch (IOException x) {
               LOG.warn("cannot delete " + configFile, x);
               String content = IdeBundle.message("cannot.delete.jre.config", configFile, IoErrorText.message(x));
-              new Notification(NOTIFICATION_GROUP_ID, content, NotificationType.ERROR).notify(null);
+              Notifications.Bus.notify(new Notification(DISPLAY_ID, "", content, NotificationType.ERROR));
             }
           });
         }
       }
 
       jreHome = StringUtil.trimEnd(jreHome, "/Contents/Home");
-      showNotification("bundled.jre.version.message", false, switchAction, JavaVersion.current(), System.getProperty("java.vendor"), jreHome);
+      showNotification("bundled.jre.version.message", true, switchAction, JavaVersion.current(), System.getProperty("java.vendor"), jreHome);
     }
   }
 
@@ -157,6 +160,27 @@ final class SystemHealthMonitor extends PreloadingActivity {
       catch (ExecutionException e) {
         LOG.debug(e);
       }
+    }
+
+    return false;
+  }
+
+  private static boolean isUnderRosetta() {
+    // Use "sysctl.proc_translated" to check if running in Rosetta
+    // See https://developer.apple.com/documentation/apple-silicon/about-the-rosetta-translation-environment#Determine-Whether-Your-App-Is-Running-as-a-Translated-Binary
+    // for more details
+
+    if (!SystemInfo.isMac || !CpuArch.isIntel64()) {
+      return false;
+    }
+
+    IntByReference size = new IntByReference(SystemB.INT_SIZE);
+    Pointer p = new Memory(size.getValue());
+
+    if (SystemB.INSTANCE.sysctlbyname(
+      "sysctl.proc_translated", p, size, null, 0) != -1)
+    {
+      return p.getInt(0) == 1;
     }
 
     return false;
@@ -222,7 +246,7 @@ final class SystemHealthMonitor extends PreloadingActivity {
       if (ignored) return;
     }
 
-    Notification notification = new MyNotification(IdeBundle.message(key, params), NotificationType.WARNING, key);
+    Notification notification = new MyNotification(IdeBundle.message(key, params));
     if (action != null) {
       notification.addAction(action);
     }
@@ -233,6 +257,12 @@ final class SystemHealthMonitor extends PreloadingActivity {
     notification.setImportant(true);
 
     Notifications.Bus.notify(notification);
+  }
+
+  private static final class MyNotification extends Notification implements NotificationFullContent {
+    MyNotification(@NotNull @NlsContexts.NotificationContent String content) {
+      super(DISPLAY_ID, "", content, NotificationType.WARNING);
+    }
   }
 
   private static void startDiskSpaceMonitoring() {
@@ -294,8 +324,8 @@ final class SystemHealthMonitor extends PreloadingActivity {
                   restart(delaySeconds);
                 }
                 else {
-                  new MyNotification(file.getPath(), NotificationType.ERROR, "low.disk")
-                    .setTitle(message)
+                  NotificationGroupManager.getInstance().getNotificationGroup(DISPLAY_ID)
+                    .createNotification(message, file.getPath(), NotificationType.ERROR)
                     .whenExpired(() -> {
                       reported.compareAndSet(true, false);
                       restart(delaySeconds);
@@ -318,13 +348,6 @@ final class SystemHealthMonitor extends PreloadingActivity {
         AppExecutorUtil.getAppScheduledExecutorService().schedule(this, delaySeconds, TimeUnit.SECONDS);
       }
     }, 1, TimeUnit.SECONDS);
-  }
-
-  private static final class MyNotification extends Notification implements NotificationFullContent {
-    private MyNotification(@NlsContexts.NotificationContent String content, NotificationType type, @Nullable String displayId) {
-      super(NOTIFICATION_GROUP_ID, content, type);
-      if (displayId != null) setDisplayId(displayId);
-    }
   }
 
   private interface LibC extends Library {

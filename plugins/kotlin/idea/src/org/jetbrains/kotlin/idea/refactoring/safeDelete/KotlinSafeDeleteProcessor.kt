@@ -2,6 +2,7 @@
 
 package org.jetbrains.kotlin.idea.refactoring.safeDelete
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -34,7 +35,6 @@ import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOpt
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchParameters
 import org.jetbrains.kotlin.idea.search.projectScope
 import org.jetbrains.kotlin.idea.search.usagesSearch.processDelegationCallConstructorUsages
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.isExpectDeclaration
 import org.jetbrains.kotlin.idea.util.liftToExpected
 import org.jetbrains.kotlin.idea.util.runOnExpectAndAllActuals
@@ -309,10 +309,10 @@ class KotlinSafeDeleteProcessor : JavaSafeDeleteProcessor() {
 
     override fun findConflicts(element: PsiElement, allElementsToDelete: Array<out PsiElement>): MutableCollection<String>? {
         if (element is KtNamedFunction || element is KtProperty) {
-            val ktClass = element.getNonStrictParentOfType<KtClass>()
-            if (ktClass == null || ktClass.body != element.parent) return null
+            val jetClass = element.getNonStrictParentOfType<KtClass>()
+            if (jetClass == null || jetClass.body != element.parent) return null
 
-            val modifierList = ktClass.modifierList
+            val modifierList = jetClass.modifierList
             if (modifierList != null && modifierList.hasModifier(KtTokens.ABSTRACT_KEYWORD)) return null
 
             val bindingContext = (element as KtElement).analyze()
@@ -355,7 +355,7 @@ class KotlinSafeDeleteProcessor : JavaSafeDeleteProcessor() {
         }
 
         if (overridingMethodUsages.isNotEmpty()) {
-            if (isUnitTestMode()) {
+            if (ApplicationManager.getApplication()!!.isUnitTestMode) {
                 result.addAll(overridingMethodUsages)
             } else {
                 val dialog = KotlinOverridingDialog(project, overridingMethodUsages)
@@ -420,7 +420,7 @@ class KotlinSafeDeleteProcessor : JavaSafeDeleteProcessor() {
     }
 
     private fun shouldAllowPropagationToExpected(parameter: KtParameter): Boolean {
-        if (isUnitTestMode()) return parameter.project.ALLOW_LIFTING_ACTUAL_PARAMETER_TO_EXPECTED
+        if (ApplicationManager.getApplication().isUnitTestMode) return parameter.project.ALLOW_LIFTING_ACTUAL_PARAMETER_TO_EXPECTED
 
         return Messages.showYesNoDialog(
             KotlinBundle.message("do.you.want.to.delete.this.parameter.in.expected.declaration.and.all.related.actual.ones"),
@@ -430,7 +430,7 @@ class KotlinSafeDeleteProcessor : JavaSafeDeleteProcessor() {
     }
 
     private fun shouldAllowPropagationToExpected(): Boolean {
-        if (isUnitTestMode()) return true
+        if (ApplicationManager.getApplication().isUnitTestMode) return true
 
         return Messages.showYesNoDialog(
             KotlinBundle.message("do.you.want.to.delete.expected.declaration.together.with.all.related.actual.ones"),
@@ -473,7 +473,7 @@ class KotlinSafeDeleteProcessor : JavaSafeDeleteProcessor() {
 
         return when (element) {
             is KtNamedFunction, is KtProperty -> {
-                if (isUnitTestMode()) return Collections.singletonList(element)
+                if (ApplicationManager.getApplication()!!.isUnitTestMode) return Collections.singletonList(element)
                 checkSuperMethods(element as KtDeclaration, allElementsToDelete, KotlinBundle.message("delete.with.usage.search"))
             }
             else ->

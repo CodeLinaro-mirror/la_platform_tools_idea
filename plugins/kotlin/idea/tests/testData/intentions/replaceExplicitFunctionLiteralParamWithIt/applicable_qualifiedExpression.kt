@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'f' is never used
 fun test() {
     C().foo { <caret>i -> i + 1 }
 }

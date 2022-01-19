@@ -2,7 +2,6 @@
 package com.siyeh.ig.migration;
 
 import com.intellij.codeInspection.ProblemDescriptor;
-import com.intellij.codeInspection.SetInspectionOptionFix;
 import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
@@ -17,7 +16,6 @@ import com.siyeh.HardcodedMethodConstants;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
-import com.siyeh.ig.DelegatingFix;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.*;
 import org.intellij.lang.annotations.Pattern;
@@ -45,16 +43,8 @@ public class ForCanBeForeachInspection extends BaseInspection {
   public boolean ignoreUntypedCollections;
 
   @Override
-  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
-    boolean indexed = (boolean)infos[0];
-    if (indexed) {
-      return new InspectionGadgetsFix[]{
-        new ForCanBeForeachFix(ignoreUntypedCollections),
-        new DelegatingFix(new SetInspectionOptionFix(this, "REPORT_INDEXED_LOOP",
-                                                     InspectionGadgetsBundle.message("for.can.be.foreach.fix.no.indexed"), false))
-      };
-    }
-    return new InspectionGadgetsFix[]{new ForCanBeForeachFix(ignoreUntypedCollections)};
+  public InspectionGadgetsFix buildFix(Object... infos) {
+    return new ForCanBeForeachFix(ignoreUntypedCollections);
   }
 
   @Override
@@ -909,11 +899,9 @@ public class ForCanBeForeachInspection extends BaseInspection {
     @Override
     public void visitForStatement(@NotNull PsiForStatement forStatement) {
       super.visitForStatement(forStatement);
-      if (isArrayLoopStatement(forStatement) || isCollectionLoopStatement(forStatement, ignoreUntypedCollections)) {
-        registerStatementError(forStatement, false);
-      }
-      else if (REPORT_INDEXED_LOOP && isIndexedListLoopStatement(forStatement, ignoreUntypedCollections)) {
-        registerStatementError(forStatement, true);
+      if (isArrayLoopStatement(forStatement) || isCollectionLoopStatement(forStatement, ignoreUntypedCollections) ||
+          REPORT_INDEXED_LOOP && isIndexedListLoopStatement(forStatement, ignoreUntypedCollections)) {
+        registerStatementError(forStatement);
       }
     }
   }

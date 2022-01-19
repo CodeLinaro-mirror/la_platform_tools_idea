@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
-import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.ex.DocumentEx;
@@ -26,9 +25,6 @@ class ErrorStripeMarkerImpl extends RangeMarkerImpl {
 
   @Override
   protected void changedUpdateImpl(@NotNull DocumentEvent e) {
-    int oldStart = intervalStart();
-    int oldEnd = intervalEnd();
-
     if (myHighlighter.isPersistent()) {
       persistentHighlighterUpdate(e, myHighlighter.getTargetArea() == HighlighterTargetArea.LINES_IN_RANGE);
     }
@@ -36,44 +32,23 @@ class ErrorStripeMarkerImpl extends RangeMarkerImpl {
       super.changedUpdateImpl(e);
     }
 
-    validateState(e, oldStart, oldEnd);
+    validateState(e);
   }
 
-  private void validateState(DocumentEvent e, int oldStart, int oldEnd) {
+  private void validateState(DocumentEvent e) {
     if (myHighlighter.isValid()) {
       if (!isValid()) {
-        reportError("Base highlighter " + myHighlighter + " is valid, mirror " +
-                    this + "(prev state: " + oldStart + "-" + oldEnd + ") is invalid after " + e);
+        LOG.error("Base highlighter " + myHighlighter + " is valid, mirror " + this + " is invalid after " + e);
       }
       else if (intervalStart() != myHighlighter.getStartOffset() || intervalEnd() != myHighlighter.getEndOffset()) {
-        reportError("Mirror highlighter " + this + "(prev state: " + oldStart + "-" + oldEnd +
-                    ") diverged from base one " + myHighlighter + " after " + e);
+        LOG.error("Mirror highlighter " + this + " diverged from base one " + myHighlighter + " after " + e);
         setIntervalStart(myHighlighter.getStartOffset());
         setIntervalEnd(myHighlighter.getEndOffset());
       }
     }
     else if (isValid()) {
-      reportError("Base highlighter " + myHighlighter + " is invalid, mirror " + this + "(prev state: " + oldStart + "-" + oldEnd +
-                  ") is valid after " + e);
+      LOG.error("Base highlighter " + myHighlighter + " is invalid, mirror " + this + " is valid after " + e);
       invalidate(e);
     }
-  }
-
-  private void reportError(String message) {
-    DocumentEx document = getDocument();
-    LOG.error(message,
-              new Attachment("document.txt", document instanceof DocumentImpl ? ((DocumentImpl)document).dumpState() : "" ),
-              new Attachment("originalTree.txt", myHighlighter instanceof RangeHighlighterImpl ?
-                                                 ((RangeHighlighterImpl)myHighlighter).myNode.getTree().dumpState() : ""),
-              new Attachment("mirrorTree.txt", myNode.getTree().dumpState()));
-  }
-
-  @Override
-  public String toString() {
-    String result = super.toString();
-    if (myNode.isFlagSet(RangeHighlighterTree.RHNode.IS_PERSISTENT)) {
-      result += "(persistent)";
-    }
-    return result;
   }
 }

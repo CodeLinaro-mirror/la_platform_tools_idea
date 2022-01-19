@@ -200,7 +200,7 @@ class ChangelistsLocalLineStatusTracker(project: Project,
     val changelistId = if (!isInitialized) initialChangeListId else null
     initialChangeListId = null
 
-    setBaseRevisionContent(vcsContent) {
+    setBaseRevision(vcsContent) {
       if (changelistId != null) {
         activeChangeListTracker.runUnderChangeList(changelistId) {
           documentTracker.writeLock {

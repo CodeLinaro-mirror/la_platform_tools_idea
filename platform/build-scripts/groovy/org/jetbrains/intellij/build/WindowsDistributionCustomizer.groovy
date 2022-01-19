@@ -2,9 +2,6 @@
 package org.jetbrains.intellij.build
 
 import groovy.transform.CompileStatic
-import org.jetbrains.intellij.build.impl.support.RepairUtilityBuilder
-
-import java.nio.file.Paths
 
 @CompileStatic
 abstract class WindowsDistributionCustomizer {
@@ -80,9 +77,7 @@ abstract class WindowsDistributionCustomizer {
    * @param targetDirectory contents of this directory will be packed into zip archive and exe installer, so when the product is installed
    * it'll be placed under its root directory.
    */
-  void copyAdditionalFiles(BuildContext context, String targetDirectory) {
-    RepairUtilityBuilder.bundle(context, OsFamily.WINDOWS, JvmArchitecture.x64, Paths.get(targetDirectory))
-  }
+  void copyAdditionalFiles(BuildContext context, String targetDirectory) {}
 
   /**
    * The returned name will be shown in Windows Installer and used in Registry keys

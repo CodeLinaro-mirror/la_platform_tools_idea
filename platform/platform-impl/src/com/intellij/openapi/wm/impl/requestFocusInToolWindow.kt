@@ -4,7 +4,6 @@ package com.intellij.openapi.wm.impl
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.wm.WindowManager
-import com.intellij.ui.content.impl.ContentManagerImpl
 import java.awt.Component
 import java.awt.KeyboardFocusManager
 import javax.swing.SwingUtilities
@@ -53,18 +52,8 @@ private fun bringOwnerToFront(toolWindow: ToolWindowImpl) {
 }
 
 internal fun getShowingComponentToRequestFocus(toolWindow: ToolWindowImpl): Component? {
-  val manager = toolWindow.contentManager
-  val lastFocusedContent = toolWindow.getLastFocusedContent()
-  if (lastFocusedContent != null) {
-    return lastFocusedContent.preferredFocusableComponent
-  }
-  if (manager is ContentManagerImpl) {
-    manager.contentsRecursively.forEach { content -> if (content.isSelected) return content?.preferredFocusableComponent }
-  }
-  else {
-    manager.selectedContent?.preferredFocusableComponent?.let {
-      return it
-    }
+  toolWindow.contentManager.selectedContent?.preferredFocusableComponent?.let {
+    return it
   }
 
   val container = toolWindow.getComponentIfInitialized()

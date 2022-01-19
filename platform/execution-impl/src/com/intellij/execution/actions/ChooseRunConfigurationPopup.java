@@ -24,7 +24,7 @@ import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.DoNotAskOption;
+import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.MessageDialogBuilder;
 import com.intellij.openapi.ui.popup.ListPopupStep;
 import com.intellij.openapi.ui.popup.ListSeparator;
@@ -210,7 +210,7 @@ public final class ChooseRunConfigurationPopup implements ExecutorProvider {
       popup.myPopup.cancel();
       confirmed = MessageDialogBuilder.yesNo(CommonBundle.message("title.confirmation"),
                                              ExecutionBundle.message("are.you.sure.you.want.to.delete.0", configurationSettings.getName()))
-                    .doNotAsk(new DoNotAskOption.Adapter() {
+                    .doNotAsk(new DialogWrapper.DoNotAskOption.Adapter() {
                       @Override
                       public void rememberChoice(boolean isSelected, int exitCode) {
                         runManagerConfig.setDeletionFromPopupRequiresConfirmation(!isSelected);
@@ -337,7 +337,7 @@ public final class ChooseRunConfigurationPopup implements ExecutorProvider {
       if (this == o) return true;
       if (!(o instanceof ItemWrapper)) return false;
 
-      if (!Objects.equals(myValue, ((ItemWrapper<?>)o).myValue)) return false;
+      if (!Objects.equals(myValue, ((ItemWrapper)o).myValue)) return false;
       return true;
     }
 
@@ -625,7 +625,7 @@ public final class ChooseRunConfigurationPopup implements ExecutorProvider {
               if (dynamic) {
                 manager.setTemporaryConfiguration(settings);
               }
-              if (!manager.isRunWidgetActive()) manager.setSelectedConfiguration(settings);
+              manager.setSelectedConfiguration(settings);
               ExecutionUtil.runConfiguration(settings, executor);
             }
           });
@@ -725,7 +725,7 @@ public final class ChooseRunConfigurationPopup implements ExecutorProvider {
       if (myListPopup.getSpeedSearch().isHoldingFilter())
         return;
       for (final Object item : myListPopup.getListStep().getValues()) {
-        if (item instanceof ItemWrapper && ((ItemWrapper<?>)item).getMnemonic() == myNumber) {
+        if (item instanceof ItemWrapper && ((ItemWrapper)item).getMnemonic() == myNumber) {
           myListPopup.setFinalRunnable(() -> execute((ItemWrapper)item, myExecutor));
           myListPopup.closeOk(null);
         }
@@ -807,8 +807,8 @@ public final class ChooseRunConfigurationPopup implements ExecutorProvider {
       }
 
       final Object o = getListModel().get(index);
-      if (o instanceof ItemWrapper && ((ItemWrapper<?>)o).canBeDeleted()) {
-        deleteConfiguration(ChooseRunConfigurationPopup.this, myProject, (RunnerAndConfigurationSettings)((ItemWrapper<?>)o).getValue());
+      if (o instanceof ItemWrapper && ((ItemWrapper)o).canBeDeleted()) {
+        deleteConfiguration(ChooseRunConfigurationPopup.this, myProject, (RunnerAndConfigurationSettings)((ItemWrapper)o).getValue());
         getListModel().deleteItem(o);
         final List<Object> values = getListStep().getValues();
         values.remove(o);

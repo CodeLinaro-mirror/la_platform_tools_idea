@@ -34,6 +34,7 @@ interface AddValVarToConstructorParameterAction {
         if (element.containingClass()?.isInline() == true || editor == null) return
 
         val parameter = element.createSmartPointer().let {
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
             PsiDocumentManager.getInstance(project).doPostponedOperationsAndUnblockDocument(editor.document)
             it.element
         } ?: return

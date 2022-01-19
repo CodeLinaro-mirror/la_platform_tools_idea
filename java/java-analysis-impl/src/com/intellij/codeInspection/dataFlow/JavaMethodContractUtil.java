@@ -12,6 +12,8 @@ import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
+import com.siyeh.ig.psiutils.ExpressionUtils;
+import com.siyeh.ig.psiutils.MethodCallUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -255,6 +257,16 @@ public final class JavaMethodContractUtil {
     List<? extends MethodContract> contracts = getMethodCallContracts(call);
     ContractReturnValue returnValue = getNonFailingReturnValue(contracts);
     if (returnValue == null) return null;
-    return returnValue.findPlace(call);
+    if (returnValue.equals(ContractReturnValue.returnThis())) {
+      return ExpressionUtils.getEffectiveQualifier(call.getMethodExpression());
+    }
+    if (returnValue instanceof ContractReturnValue.ParameterReturnValue) {
+      int number = ((ContractReturnValue.ParameterReturnValue)returnValue).getParameterNumber();
+      PsiExpression[] args = call.getArgumentList().getExpressions();
+      if (args.length <= number) return null;
+      if (args.length == number + 1 && MethodCallUtils.isVarArgCall(call)) return null;
+      return args[number];
+    }
+    return null;
   }
 }

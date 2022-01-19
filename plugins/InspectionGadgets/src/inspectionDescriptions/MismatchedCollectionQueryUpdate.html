@@ -14,19 +14,19 @@ not updated, or updated and not queried.
 <p>
 <p><b>Example:</b></p>
 <p>Suppose you have your custom <code>FixedStack</code> class with method <code>store()</code>:
-<pre><code>
+<pre>
   public class FixedStack&lt;T&gt; extends Collection&lt;T&gt; {
     public T store(T t) {
       // implementation
     }
   }
-</code></pre>
+</pre>
 <p>You can add <code>store</code> to the update methods table in order to report mismatched queries like:
-<pre><code>
+<pre>
   void test(int i) {
     FixedStack&lt;Integer&gt; stack = new FixedStack&lt;&gt;();
     stack.store(i);
   }
-</code></pre>
+</pre>
 </body>
 </html>

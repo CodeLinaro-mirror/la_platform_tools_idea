@@ -1,9 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.java.actions
 
 import com.intellij.codeInsight.daemon.QuickFixBundle
-import com.intellij.codeInsight.intention.FileModifier
-import com.intellij.codeInsight.intention.AddAnnotationPsiFix
 import com.intellij.lang.jvm.actions.AnnotationAttributeValueRequest
 import com.intellij.lang.jvm.actions.AnnotationRequest
 import com.intellij.openapi.diagnostic.logger
@@ -14,14 +12,13 @@ import com.intellij.openapi.util.text.StringUtilRt
 import com.intellij.psi.*
 import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.codeStyle.JavaCodeStyleManager
-import com.intellij.psi.util.PsiTreeUtil
 
 
 internal class CreateAnnotationAction(target: PsiModifierListOwner, override val request: AnnotationRequest) :
   CreateTargetAction<PsiModifierListOwner>(target, request) {
 
   override fun getText(): String =
-    AddAnnotationPsiFix.calcText(target, StringUtilRt.getShortName(request.qualifiedName))
+    QuickFixBundle.message("create.annotation.text", StringUtilRt.getShortName(request.qualifiedName))
 
   override fun getFamilyName(): String = QuickFixBundle.message("create.annotation.family")
 
@@ -30,26 +27,14 @@ internal class CreateAnnotationAction(target: PsiModifierListOwner, override val
     addAnnotationToModifierList(modifierList, request)
   }
 
-  override fun getFileModifierForPreview(targetFile: PsiFile): FileModifier {
-    val copy = PsiTreeUtil.findSameElementInCopy(target, targetFile)
-    return CreateAnnotationAction(copy, request)
-  }
-
   companion object {
     private val LOG = logger<CreateAnnotationAction>()
     internal fun addAnnotationToModifierList(modifierList: PsiModifierList, annotationRequest: AnnotationRequest) {
-      val list = AddAnnotationPsiFix.expandParameterIfNecessary(modifierList)
-      addAnnotationToAnnotationOwner(modifierList, list, annotationRequest)
-    }
-
-    internal fun addAnnotationToAnnotationOwner(context: PsiElement,
-                                                list: PsiAnnotationOwner,
-                                                annotationRequest: AnnotationRequest) {
-      val project = context.project
-      val annotation = list.addAnnotation(annotationRequest.qualifiedName)
+      val project = modifierList.project
+      val annotation = modifierList.addAnnotation(annotationRequest.qualifiedName)
       val psiElementFactory = PsiElementFactory.getInstance(project)
 
-      fillAnnotationAttributes(annotation, annotationRequest, psiElementFactory, context)
+      fillAnnotationAttributes(annotation, annotationRequest, psiElementFactory, modifierList)
 
       val formatter = CodeStyleManager.getInstance(project)
       val codeStyleManager = JavaCodeStyleManager.getInstance(project)
@@ -90,7 +75,7 @@ internal class CreateAnnotationAction(target: PsiModifierListOwner, override val
         dummyAnnotation.findAttributeValue(null)
       }
       else -> {
-        LOG.error("adding annotation members of ${value.javaClass} type is not implemented")
+        LOG.error("adding annotation members of ${value.javaClass} type is not implemented");
         null
       }
     }

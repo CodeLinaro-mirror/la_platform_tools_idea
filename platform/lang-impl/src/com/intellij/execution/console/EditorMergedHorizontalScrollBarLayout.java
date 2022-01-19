@@ -45,11 +45,7 @@ public class EditorMergedHorizontalScrollBarLayout extends AbstractLayoutManager
     }
 
     final Dimension panelSize = parent.getSize();
-    final Dimension historySize = history.getContentSize();
-    final Dimension inputSize = input.getContentSize();
-
-    var scrollBarNeeded = historySize.width > panelSize.width || inputSize.width > panelSize.width;
-    if (scrollBarNeeded && myScrollBar.isVisible()) {
+    if (myScrollBar.isVisible()) {
       Dimension size = myScrollBar.getPreferredSize();
       if (panelSize.height < size.height) return;
       panelSize.height -= size.height;
@@ -58,6 +54,8 @@ public class EditorMergedHorizontalScrollBarLayout extends AbstractLayoutManager
     if (panelSize.getHeight() <= 0) {
       return;
     }
+    final Dimension historySize = history.getContentSize();
+    final Dimension inputSize = input.getContentSize();
 
     // deal with width
     if (myForceAdditionalColumnsUsage) {
@@ -101,10 +99,9 @@ public class EditorMergedHorizontalScrollBarLayout extends AbstractLayoutManager
 
     int oldHistoryHeight = history.getComponent().getHeight();
     int newHistoryHeight = panelSize.height - newInputHeight;
-
-    var normalizedHeights = normalizeHeights(newHistoryHeight, newInputHeight);
-    newHistoryHeight = normalizedHeights.historyConsoleHeight;
-    newInputHeight = normalizedHeights.inputConsoleHeight;
+    int delta = newHistoryHeight - ((newHistoryHeight / history.getLineHeight()) * history.getLineHeight());
+    newHistoryHeight -= delta;
+    newInputHeight += delta;
 
     // apply new bounds & scroll history viewer
     input.getComponent().setBounds(0, newHistoryHeight, panelSize.width, newInputHeight);
@@ -116,21 +113,6 @@ public class EditorMergedHorizontalScrollBarLayout extends AbstractLayoutManager
       Point position = viewport.getViewPosition();
       position.translate(0, oldHistoryHeight - newHistoryHeight);
       viewport.setViewPosition(position);
-    }
-  }
-
-  protected HeightOfComponents normalizeHeights(int newHistoryHeight, int newInputHeight){
-    var history = myFirst;
-    int delta = newHistoryHeight - ((newHistoryHeight / history.getLineHeight()) * history.getLineHeight());
-    return new HeightOfComponents(newHistoryHeight - delta, newInputHeight + delta);
-  }
-
-  protected static class HeightOfComponents {
-    public int historyConsoleHeight, inputConsoleHeight;
-
-    public HeightOfComponents(int historyHeight, int inputHeight) {
-      historyConsoleHeight = historyHeight;
-      inputConsoleHeight = inputHeight;
     }
   }
 }

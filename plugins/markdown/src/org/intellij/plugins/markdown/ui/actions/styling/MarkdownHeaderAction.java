@@ -41,10 +41,9 @@ public abstract class MarkdownHeaderAction extends AnAction implements DumbAware
   @NotNull
   protected abstract Function<Integer, Integer> getLevelFunction();
 
-  protected abstract boolean isEnabledForCaret(@NotNull PsiFile psiFile, @NotNull Caret caret);
-
   @Override
   public void update(@NotNull AnActionEvent e) {
+
     final Editor editor = MarkdownActionUtil.findMarkdownTextEditor(e);
     final PsiFile psiFile = e.getData(CommonDataKeys.PSI_FILE);
     if (editor == null || psiFile == null || !psiFile.isValid()) {
@@ -52,12 +51,13 @@ public abstract class MarkdownHeaderAction extends AnAction implements DumbAware
     }
 
     for (Caret caret : ContainerUtil.reverse(editor.getCaretModel().getAllCarets())) {
-      if (!isEnabledForCaret(psiFile, caret)) {
+      if (findParent(psiFile, caret) == null) {
         e.getPresentation().setEnabled(false);
         return;
       }
+
+      e.getPresentation().setEnabled(true);
     }
-    e.getPresentation().setEnabled(true);
   }
 
   @Override
@@ -68,7 +68,7 @@ public abstract class MarkdownHeaderAction extends AnAction implements DumbAware
       return;
     }
 
-    WriteCommandAction.runWriteCommandAction(psiFile.getProject(), null, null, () -> {
+    WriteCommandAction.runWriteCommandAction(psiFile.getProject(), () -> {
       if (!psiFile.isValid()) {
         return;
       }
@@ -84,11 +84,11 @@ public abstract class MarkdownHeaderAction extends AnAction implements DumbAware
           parent.replace(createHeaderForText(parent));
         }
       }
-    }, psiFile);
+    });
   }
 
   @Nullable
-  protected static PsiElement findParent(@NotNull PsiFile psiFile, @NotNull Caret caret) {
+  private static PsiElement findParent(@NotNull PsiFile psiFile, @NotNull Caret caret) {
     final Couple<PsiElement> elements = MarkdownActionUtil.getElementsUnderCaretOrSelection(psiFile, caret);
 
     if (elements == null) {
@@ -133,20 +133,16 @@ public abstract class MarkdownHeaderAction extends AnAction implements DumbAware
     return null;
   }
 
-  private static int sanitizeHeaderLevel(int level) {
-    return Math.min(Math.max(level, 0), 6);
-  }
-
   @NotNull
   public MarkdownPsiElement createHeaderForText(@NotNull PsiElement textElement) {
-    int level = sanitizeHeaderLevel(getLevelFunction().fun(0));
+    int level = (getLevelFunction().fun(0) + 7) % 7;
 
     return MarkdownPsiElementFactory.createHeader(textElement.getProject(), textElement.getText(), level);
   }
 
   @NotNull
   public MarkdownPsiElement createNewLevelHeader(@NotNull MarkdownHeaderImpl header) {
-    int level = sanitizeHeaderLevel(getLevelFunction().fun(Objects.requireNonNull(header).getHeaderNumber()));
+    int level = getLevelFunction().fun(Objects.requireNonNull(header).getHeaderNumber()) % 7;
 
     MarkdownPsiElement newElement;
     Project project = header.getProject();

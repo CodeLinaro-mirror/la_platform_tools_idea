@@ -11,17 +11,10 @@ import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * This extension allows to modify the behaviour of 'Enter' action in editor (usually bound to 'Enter' key).
- */
+
 public interface EnterHandlerDelegate {
   ExtensionPointName<EnterHandlerDelegate> EP_NAME = ExtensionPointName.create("com.intellij.enterHandlerDelegate");
 
-  /**
-   * Value returned from {@link #preprocessEnter(PsiFile, Editor, Ref, Ref, DataContext, EditorActionHandler)} and
-   * {@link #postProcessEnter(PsiFile, Editor, DataContext)}. Meaning of specific enum constants is explained in respective methods'
-   * documentation.
-   */
   enum Result {
     Default, Continue, DefaultForceIndent, DefaultSkipIndent, Stop
   }
@@ -64,19 +57,7 @@ public interface EnterHandlerDelegate {
    * @param caretAdvance    A reference to the number of columns by which the caret must be moved forward.
    * @param dataContext     The data context passed to the enter handler.
    * @param originalHandler The original handler.
-   * @return One of <code>{@link Result} values</code>, defining next steps in action processing:
-   *         <table>
-   *         <tr><td>{@code Default}<td>default 'Enter' logic should be executed, without calling other extensions'
-   *                                    {@code preprocessEnter} methods
-   *         <tr><td>{@code Continue}<td>processing should proceed normally, i.e. other extensions should be processed,
-   *                                     and default 'Enter' logic should be executed
-   *         <tr><td>{@code DefaultForceIndent}<td>same as {@code Default}, but also forces the indentation of newly created line in editor
-   *                                               (when not forced, this is only performed if 'Smart indent' is enabled in editor settings)
-   *         <tr><td>{@code DefaultSkipIndent}<td>same as {@code Default}, but also disables any post-processing after executing basic
-   *                                              'Enter' logic (including 'smart' indenting and post-processing defined by extensions)
-   *         <tr><td>{@code Stop}<td>aborts action execution, so that no other processing (either default or defined by extensions) is
-   *                                 performed
-   *         </table>
+   * @return One of <code>{@link Result} values.</code>
    */
   Result preprocessEnter(@NotNull final PsiFile file, @NotNull final Editor editor, @NotNull final Ref<Integer> caretOffset,
                          @NotNull final Ref<Integer> caretAdvance, @NotNull final DataContext dataContext,
@@ -95,11 +76,7 @@ public interface EnterHandlerDelegate {
    * @param file        The PSI file associated with the document.
    * @param editor      The editor.
    * @param dataContext The data context passed to the Enter handler.
-   * @return One of <code>{@link Result} values</code>, defining next steps in action processing:
-   *         <table>
-   *         <tr><td>{@code Stop}<td>forbids post-processing from further extensions
-   *         <tr><td>any other value<td>processing should proceed normally, i.e. post-processing other extensions should be executed
-   *         </table>
+   * @return One of <code>{@link Result} values.</code>
    * @see DataContext
    * @see com.intellij.psi.PsiDocumentManager
    */

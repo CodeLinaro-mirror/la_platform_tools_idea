@@ -27,7 +27,7 @@ public class MultiMap<K, V> implements Serializable {
   private Collection<V> values;
 
   public MultiMap() {
-    myMap = new HashMap<>();
+    myMap = createMap();
   }
 
   public MultiMap(@NotNull Map<K, Collection<V>> map) {
@@ -50,6 +50,15 @@ public class MultiMap<K, V> implements Serializable {
 
   public MultiMap(int initialCapacity, float loadFactor) {
     myMap = new HashMap<>(initialCapacity, loadFactor);
+  }
+
+  /**
+   * @deprecated Pass map to constructor.
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  protected @NotNull Map<K, Collection<V>> createMap() {
+    return new HashMap<>();
   }
 
   protected @NotNull Collection<V> createCollection() {
@@ -240,6 +249,15 @@ public class MultiMap<K, V> implements Serializable {
 
   public final @Nullable Collection<V> remove(K key) {
     return myMap.remove(key);
+  }
+
+  /**
+   * @deprecated Use {@link #empty()}
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public static @NotNull <K, V> MultiMap<K, V> emptyInstance() {
+    return empty();
   }
 
   public static @NotNull <K, V> MultiMap<K, V> create() {

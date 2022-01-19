@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.hints
 
 import com.intellij.codeInsight.CodeInsightBundle
@@ -66,7 +66,7 @@ class ExcludeListDialog(val language: Language, private val patternToAdd: String
         row {
           right {
             link(LangBundle.message("action.link.reset")) {
-              setLanguageExcludelistToDefault(language)
+              setLanguageBlacklistToDefault(language)
             }
           }
         }
@@ -78,7 +78,7 @@ class ExcludeListDialog(val language: Language, private val patternToAdd: String
           baseLanguageComment(provider)?.also {
             commentRow(it)
           }
-          commentRow(getExcludeListExplanationHTML(language))
+          commentRow(getBlacklistExplanationHTML(language))
         }
       }
     }
@@ -86,13 +86,13 @@ class ExcludeListDialog(val language: Language, private val patternToAdd: String
 
   private fun baseLanguageComment(provider: InlayParameterHintsProvider): String? {
     return provider.blackListDependencyLanguage
-      ?.let { CodeInsightBundle.message("inlay.hints.base.exclude.list.description", it.displayName) }
+      ?.let { CodeInsightBundle.message("inlay.hints.base.blacklist.description", it.displayName) }
   }
 
-  private fun setLanguageExcludelistToDefault(language: Language) {
+  private fun setLanguageBlacklistToDefault(language: Language) {
     val provider = InlayParameterHintsExtension.forLanguage(language)
-    val defaultExcludeList = provider!!.defaultBlackList
-    myEditor.text = StringUtil.join(defaultExcludeList, "\n")
+    val defaultBlacklist = provider!!.defaultBlackList
+    myEditor.text = StringUtil.join(defaultBlacklist, "\n")
   }
 
   private fun updateOkEnabled(editorTextField: EditorTextField) {
@@ -115,12 +115,12 @@ class ExcludeListDialog(val language: Language, private val patternToAdd: String
   }
 
   private fun storeExcludeListDiff(language: Language, text: String) {
-    val updatedExcludeList = text.split("\n").filter { e -> e.trim { it <= ' ' }.isNotEmpty() }.toSet()
+    val updatedBlackList = text.split("\n").filter { e -> e.trim { it <= ' ' }.isNotEmpty() }.toSet()
 
     val provider = InlayParameterHintsExtension.forLanguage(language)
-    val defaultExcludeList = provider.defaultBlackList
-    val diff = Diff.build(defaultExcludeList, updatedExcludeList)
-    ParameterNameHintsSettings.getInstance().setExcludeListDiff(getLanguageForSettingKey(language), diff)
+    val defaultBlackList = provider.defaultBlackList
+    val diff = Diff.build(defaultBlackList, updatedBlackList)
+    ParameterNameHintsSettings.getInstance().setBlackListDiff(getLanguageForSettingKey(language), diff)
     ParameterHintsPassFactory.forceHintsUpdateOnNextPass()
   }
 }
@@ -128,7 +128,7 @@ class ExcludeListDialog(val language: Language, private val patternToAdd: String
 
 private fun getLanguageExcludeList(language: Language): String {
   val hintsProvider = InlayParameterHintsExtension.forLanguage(language) ?: return ""
-  val diff = ParameterNameHintsSettings.getInstance().getExcludeListDiff(getLanguageForSettingKey(language))
+  val diff = ParameterNameHintsSettings.getInstance().getBlackListDiff(getLanguageForSettingKey(language))
   val excludeList = diff.applyOn(hintsProvider.defaultBlackList)
   return StringUtil.join(excludeList, "\n")
 }
@@ -158,8 +158,8 @@ private fun highlightErrorLines(lines: List<Int>, editor: Editor) {
 }
 
 @NlsContexts.DetailedDescription
-private fun getExcludeListExplanationHTML(language: Language): String {
+private fun getBlacklistExplanationHTML(language: Language): String {
   val hintsProvider = InlayParameterHintsExtension.forLanguage(language) ?: return CodeInsightBundle.message(
-    "inlay.hints.exclude.list.pattern.explanation")
+    "inlay.hints.blacklist.pattern.explanation")
   return hintsProvider.blacklistExplanationHTML
 }

@@ -1,2 +1,3 @@
-__version_info__: tuple[int, int, int, str, int]
-__version__: str
+from typing import Any
+
+__version_info__: Any

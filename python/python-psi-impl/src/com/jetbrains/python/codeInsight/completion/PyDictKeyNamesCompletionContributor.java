@@ -6,7 +6,6 @@ import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
@@ -31,7 +30,7 @@ import static com.intellij.patterns.PlatformPatterns.psiElement;
  * <p/>
  * Complete known keys for dictionaries
  */
-public class PyDictKeyNamesCompletionContributor extends CompletionContributor implements DumbAware {
+public class PyDictKeyNamesCompletionContributor extends CompletionContributor {
   public PyDictKeyNamesCompletionContributor() {
     extend(
       CompletionType.BASIC,

@@ -38,11 +38,11 @@ class IPythonCodeExecutor(BaseCodeExecutor):
         if code_fragment.text.rstrip().endswith('??'):
             print('IPython-->')
         try:
-            more, exception_occurred = self.interpreter.add_exec(code_fragment.text)
+            res = bool(self.interpreter.add_exec(code_fragment.text))
         finally:
             if code_fragment.text.rstrip().endswith('??'):
                 print('<--IPython')
-        return bool(more), exception_occurred
+        return res
 
     def get_namespace(self):
         return self.interpreter.get_namespace()

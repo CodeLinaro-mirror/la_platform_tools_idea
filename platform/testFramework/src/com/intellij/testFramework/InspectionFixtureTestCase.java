@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.codeInspection.LocalInspectionTool;
@@ -10,12 +10,11 @@ import org.jetbrains.annotations.NotNull;
 
 
 public abstract class InspectionFixtureTestCase extends CodeInsightFixtureTestCase {
-
-  public void doTest(@NonNls String folderName, LocalInspectionTool tool) {
+  public void doTest(@NonNls String folderName, LocalInspectionTool tool) throws Exception {
     doTest(folderName, new LocalInspectionToolWrapper(tool));
   }
 
-  public void doTest(@NonNls String folderName, @NotNull InspectionToolWrapper toolWrapper) {
+  public void doTest(@NonNls String folderName, @NotNull InspectionToolWrapper toolWrapper) throws Exception {
     myFixture.testInspection(folderName, toolWrapper);
   }
 }

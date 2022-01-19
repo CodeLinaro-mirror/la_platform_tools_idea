@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij;
 
 import com.intellij.idea.Bombed;
@@ -89,7 +89,7 @@ public class TestCaseLoader {
     System.out.println(myTestClassesFilter);
   }
 
-  private static TestClassesFilter calcTestClassFilter(String classFilterName) {
+  private TestClassesFilter calcTestClassFilter(String classFilterName) {
     String patterns = getTestPatterns();
     if (!StringUtil.isEmpty(patterns)) {
       System.out.println("Using patterns: [" + patterns + "]");
@@ -225,7 +225,7 @@ public class TestCaseLoader {
   }
 
   private boolean shouldExcludeTestClass(String moduleName, Class<?> testCaseClass) {
-    if (!myForceLoadPerformanceTests && !shouldIncludePerformanceTestCase(testCaseClass.getSimpleName())) return true;
+    if (!myForceLoadPerformanceTests && !shouldIncludePerformanceTestCase(testCaseClass)) return true;
     String className = testCaseClass.getName();
     return !myTestClassesFilter.matches(className, moduleName) || isBombed(testCaseClass) || isExcludeFromTestDiscovery(testCaseClass);
   }
@@ -254,8 +254,8 @@ public class TestCaseLoader {
     }
   }
 
-  protected static ClassLoader getClassLoader() {
-    return TestCaseLoader.class.getClassLoader();
+  protected ClassLoader getClassLoader() {
+    return getClass().getClassLoader();
   }
 
   public List<Throwable> getClassLoadingErrors() {
@@ -350,29 +350,14 @@ public class TestCaseLoader {
     return INCLUDE_PERFORMANCE_TESTS;
   }
 
-  public static boolean shouldIncludePerformanceTestCase(String className) {
-    return isIncludingPerformanceTestsRun() || isPerformanceTestsRun() || !isPerformanceTest(null, className);
+  static boolean shouldIncludePerformanceTestCase(Class<?> aClass) {
+    return isIncludingPerformanceTestsRun() || isPerformanceTestsRun() || !isPerformanceTest(null, aClass);
   }
 
-  static boolean isPerformanceTest(String methodName, String className) {
-    return TestFrameworkUtil.isPerformanceTest(methodName, className);
+  static boolean isPerformanceTest(String methodName, Class<?> aClass) {
+    return TestFrameworkUtil.isPerformanceTest(methodName, aClass.getSimpleName());
   }
 
-  private static TestClassesFilter ourFilter;
-  public static boolean isClassIncluded(String className) {
-    if (!INCLUDE_UNCONVENTIONALLY_NAMED_TESTS && 
-        !className.endsWith("Test")) {
-      return false;
-    }
-
-    if (ourFilter == null) {
-      ourFilter = calcTestClassFilter("tests/testGroups.properties");
-    }
-    return shouldIncludePerformanceTestCase(className) &&
-           matchesCurrentBucket(className) &&
-           ourFilter.matches(className);
-  }
-  
   public void fillTestCases(String rootPackage, List<Path> classesRoots) {
     long t = System.nanoTime();
 

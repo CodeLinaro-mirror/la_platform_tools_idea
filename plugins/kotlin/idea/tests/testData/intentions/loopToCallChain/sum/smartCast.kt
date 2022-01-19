@@ -1,7 +1,6 @@
 // WITH_RUNTIME
 // INTENTION_TEXT: "Replace with 'filterIsInstance<>().sum()'"
 // INTENTION_TEXT_2: "Replace with 'asSequence().filterIsInstance<>().sum()'"
-// AFTER-WARNING: Variable 'result' is never used
 fun foo(list: List<Any>){
     var result = 0
     <caret>for (l in list)

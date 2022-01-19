@@ -63,6 +63,7 @@ public class DataNode<T> implements UserDataHolderEx, Serializable {
   }
 
   // deserialization, data decoded on demand
+  @SuppressWarnings("unused")
   private DataNode() {
   }
 

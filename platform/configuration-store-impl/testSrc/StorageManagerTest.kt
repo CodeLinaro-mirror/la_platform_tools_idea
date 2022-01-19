@@ -2,7 +2,6 @@
 package com.intellij.configurationStore
 
 import com.intellij.openapi.components.RoamingType
-import com.intellij.openapi.util.io.FileUtil
 import com.intellij.testFramework.ProjectRule
 import junit.framework.TestCase
 import org.assertj.core.api.Assertions.assertThat
@@ -47,7 +46,7 @@ internal class StorageManagerTest {
       TestCase.fail("Exception expected")
     }
     catch (e: IllegalStateException) {
-      assertThat(e.message).isEqualTo("Cannot resolve \$UNKNOWN_MACRO\$/test.xml in [Macro(key=\$MACRO1\$, value=${FileUtil.toSystemDependentName("/temp/m1")})]")
+      assertThat(e.message).isEqualTo("Cannot resolve \$UNKNOWN_MACRO\$/test.xml in [Macro(key=\$MACRO1\$, value=/temp/m1)]")
     }
   }
 

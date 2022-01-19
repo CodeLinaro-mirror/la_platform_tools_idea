@@ -7,9 +7,6 @@ on:
 permissions:
   contents: read
 
-env:
-  PIP_DISABLE_PIP_VERSION_CHECK: 1
-
 jobs:
   file-consistency:
     name: Check file consistency
@@ -17,16 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
-      - run: pip install $(grep tomli== requirements-tests-py3.txt)
-      - run: ./tests/check_consistent.py
-
-  new-syntax:
-    name: Ensure new syntax usage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-      - run: ./tests/check_new_syntax.py
+      - run: |
+          pip install toml
+          ./tests/check_consistent.py
 
   flake8:
     name: Lint with flake8
@@ -34,8 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
-      - run: pip install $(grep flake8 requirements-tests-py3.txt)
-      - run: flake8
+      - run: |
+          pip install $(grep flake8 requirements-tests-py3.txt)
+          flake8
 
   black:
     name: Check formatting with black
@@ -43,8 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
-      - run: pip install $(grep black requirements-tests-py3.txt)
-      - run: black --check --diff stdlib stubs
+      - run: |
+          pip install $(grep black requirements-tests-py3.txt)
+          black --check --diff stdlib stubs
 
   isort:
     name: Check imports with isort
@@ -52,8 +44,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
-      - run: pip install $(grep isort requirements-tests-py3.txt)
-      - run: isort --check-only --diff stdlib stubs
+      - run: |
+          pip install $(grep isort requirements-tests-py3.txt)
+          isort --check-only --diff stdlib stubs
 
   pytype:
     name: Run pytype against the stubs
@@ -72,13 +65,21 @@ jobs:
     strategy:
       matrix:
         platform: ["linux", "win32", "darwin"]
-        python-version: ["2.7", "3.6", "3.7", "3.8", "3.9", "3.10"]
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
-      - run: pip install $(grep tomli== requirements-tests-py3.txt) $(grep mypy== requirements-tests-py3.txt)
-      - run: ./tests/mypy_test.py --platform=${{ matrix.platform }} --python-version=${{ matrix.python-version }}
+      - run: pip install -U git+git://github.com/python/mypy
+      - run: ./tests/mypy_test.py --platform=${{ matrix.platform }}
+
+  mypy-test-suite:
+    name: Run the mypy test suite
+    # Ubuntu 20.04 doesn't have the Python 2 venv module.
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+      - run: ./tests/mypy_test_suite.py
 
   pyright:
     name: Run pyright against the stubs
@@ -86,34 +87,24 @@ jobs:
     strategy:
       matrix:
         python-platform: ["Linux", "Windows", "Darwin"]
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        python-version: [3.6, 3.7, 3.8, 3.9, '3.10']
       fail-fast: false
-    env:
-      PYRIGHT_VERSION: 1.1.175 # Must match pyright_test.py.
     steps:
       - uses: actions/checkout@v2
       - uses: jakebailey/pyright-action@v1
         with:
-          version: ${{ env.PYRIGHT_VERSION }}
-          python-platform: ${{ matrix.python-platform }}
-          python-version: ${{ matrix.python-version }}
-          no-comments: ${{ matrix.python-version != '3.9' || matrix.python-platform != 'Linux' }}  # Having each job create the same comment is too noisy.
-          project: ./pyrightconfig.stricter.json
-      - uses: jakebailey/pyright-action@v1
-        with:
-          version: ${{ env.PYRIGHT_VERSION }}
+          version: 1.1.142  # Must match pyright_test.py.
           python-platform: ${{ matrix.python-platform }}
           python-version: ${{ matrix.python-version }}
           no-comments: ${{ matrix.python-version != '3.9' || matrix.python-platform != 'Linux' }}  # Having each job create the same comment is too noisy.
 
-  stubtest-stdlib:
+  stubtest:
     name: Check stdlib with stubtest
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: ["ubuntu-latest", "windows-latest", "macos-latest"]
-        # Python 3.9.7 is required due to changes to ForwardRef.
-        python-version: ["3.6", "3.7", "3.8", "3.9.7", "3.10"]
+        python-version: [3.6, 3.7, 3.8, 3.9, '3.10.0-beta.1']
       fail-fast: false
 
     steps:
@@ -122,26 +113,10 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Update pip
-        run: python -m pip install -U pip
+      # Keep the mypy version in sync with what we use for stubtest in stubtest-unused-whitelist.yml
       - name: Install dependencies
-        run: pip install $(grep tomli== requirements-tests-py3.txt) $(grep mypy== requirements-tests-py3.txt)
+        run: |
+          python -m pip install -U pip
+          pip install -U git+git://github.com/python/mypy@master
       - name: Run stubtest
-        run: python tests/stubtest_stdlib.py --ignore-unused-allowlist
-
-  stubtest-third-party:
-    name: Check third party stubs with stubtest
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        shard-index: [0, 1, 2, 3]
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: pip install $(grep tomli== requirements-tests-py3.txt)
-      - name: Run stubtest
-        run: python tests/stubtest_third_party.py --num-shards 4 --shard-index ${{ matrix.shard-index }}
+        run: python tests/stubtest_test.py --ignore-unused-whitelist

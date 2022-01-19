@@ -7,6 +7,7 @@ import com.intellij.codeInsight.highlighting.HighlightUsagesHandler
 import com.intellij.find.FindManager
 import com.intellij.find.FindModel
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -40,7 +41,6 @@ class OpenFileQuickFix(private val path: Path, private val search: String?) : Bu
   }
 
   companion object {
-    @JvmStatic
     fun showFile(project: Project, path: Path, search: String?) {
       ApplicationManager.getApplication().invokeLater {
         val file = VfsUtil.findFileByIoFile(path.toFile(), false) ?: return@invokeLater

@@ -1,5 +1,3 @@
-// AFTER-WARNING: Parameter 'a' is never used
-// AFTER-WARNING: Variable 'coercion' is never used
 public class TestingUse {
     fun test5(coerced: (x: Int) -> Unit, a: Int): Unit {
         return coerced(5)

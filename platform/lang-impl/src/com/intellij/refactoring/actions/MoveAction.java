@@ -16,6 +16,7 @@
 
 package com.intellij.refactoring.actions;
 
+import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.editor.Editor;
@@ -36,6 +37,12 @@ public class MoveAction extends BaseRefactoringAction {
   @Override
   public boolean isAvailableInEditorOnly() {
     return false;
+  }
+
+  @Override
+  protected boolean isAvailableForLanguage(Language language){
+    // move is supported in any language
+    return true;
   }
 
   @Override

@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes.ui;
 
-import com.intellij.diagnostic.PluginException;
 import com.intellij.ide.util.treeView.FileNameComparator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
@@ -16,6 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.VfsPresentationUtil;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
+import com.intellij.util.DeprecatedMethodException;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.Convertor;
 import com.intellij.util.containers.JBIterable;
@@ -32,7 +32,6 @@ import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -62,7 +61,7 @@ public abstract class ChangesBrowserNode<T> extends DefaultMutableTreeNode imple
   protected static final int IGNORED_SORT_WEIGHT = 11;
 
   public static final Convertor<TreePath, String> TO_TEXT_CONVERTER =
-    path -> ((ChangesBrowserNode<?>)path.getLastPathComponent()).getTextPresentation();
+    path -> ((ChangesBrowserNode)path.getLastPathComponent()).getTextPresentation();
 
   private int myFileCount = -1;
   private int myDirectoryCount = -1;
@@ -205,13 +204,7 @@ public abstract class ChangesBrowserNode<T> extends DefaultMutableTreeNode imple
   }
 
   public @NotNull JBIterable<?> traverseObjectsUnder() {
-    return traverse().map(TreeUtil::getUserObject);
-  }
-
-  public @NotNull JBIterable<ChangesBrowserNode<?>> traverse() {
-    JBIterable<?> iterable = TreeUtil.treeNodeTraverser(this).traverse();
-    //noinspection unchecked
-    return (JBIterable<ChangesBrowserNode<?>>)iterable;
+    return TreeUtil.treeNodeTraverser(this).traverse().map(TreeUtil::getUserObject);
   }
 
   @NotNull
@@ -278,8 +271,9 @@ public abstract class ChangesBrowserNode<T> extends DefaultMutableTreeNode imple
   /**
    * Used by speedsearch, copy-to-clipboard and default renderer.
    */
-  public @Nls String getTextPresentation() {
-    PluginException.reportDeprecatedDefault(getClass(), "getTextPresentation", "A proper implementation required");
+  @Nls
+  public String getTextPresentation() {
+    DeprecatedMethodException.reportDefaultImplementation(getClass(), "getTextPresentation", "A proper implementation required");
     return userObject == null ? "" : userObject.toString(); //NON-NLS
   }
 
@@ -391,21 +385,23 @@ public abstract class ChangesBrowserNode<T> extends DefaultMutableTreeNode imple
     }
   }
 
-  public static class WrapperTag extends ValueTag<Object> {
+  public static class WrapperTag implements Tag {
     public static Tag wrap(@Nullable Object object) {
       if (object == null) return null;
       if (object instanceof Tag) return (Tag)object;
       return new WrapperTag(object);
     }
 
-    private WrapperTag(@NotNull Object value) {
-      super(value);
+    private final @NotNull Object myValue;
+
+    public WrapperTag(@NotNull Object value) {
+      myValue = value;
     }
 
     @Nls
     @Override
     public String toString() {
-      return value.toString(); //NON-NLS
+      return myValue.toString(); //NON-NLS
     }
   }
 
@@ -422,32 +418,6 @@ public abstract class ChangesBrowserNode<T> extends DefaultMutableTreeNode imple
     @Override
     public String toString() {
       return VcsBundle.message(myKey);
-    }
-  }
-
-  public static abstract class ValueTag<T> implements ChangesBrowserNode.Tag {
-    public final T value;
-
-    public ValueTag(@NotNull T value) {
-      this.value = value;
-    }
-
-    @NotNull
-    protected T getValue() {
-      return value;
-    }
-
-    @Override
-    public final boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      ValueTag<?> tag = (ValueTag<?>)o;
-      return Objects.equals(value, tag.value);
-    }
-
-    @Override
-    public final int hashCode() {
-      return Objects.hash(value);
     }
   }
 }

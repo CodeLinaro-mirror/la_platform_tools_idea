@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'value' is never used
 
 @set:Throws(RuntimeException::class, Exception::class)
 var setter: String = ""

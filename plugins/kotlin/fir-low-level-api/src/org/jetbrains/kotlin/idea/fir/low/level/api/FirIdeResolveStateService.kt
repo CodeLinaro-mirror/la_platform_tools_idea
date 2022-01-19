@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.idea.fir.low.level.api
 
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootModificationTracker
 import org.jetbrains.annotations.TestOnly
@@ -13,6 +14,7 @@ import org.jetbrains.kotlin.idea.caches.project.ModuleSourceInfo
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirModuleResolveState
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyDeclarationResolver
 import org.jetbrains.kotlin.idea.fir.low.level.api.sessions.FirIdeSessionProviderStorage
+import org.jetbrains.kotlin.idea.fir.low.level.api.trackers.KotlinFirOutOfBlockModificationTrackerFactory
 import org.jetbrains.kotlin.idea.util.cachedValue
 import org.jetbrains.kotlin.idea.util.getValue
 import org.jetbrains.kotlin.trackers.createProjectWideOutOfBlockModificationTracker
@@ -33,7 +35,7 @@ internal class FirIdeResolveStateService(project: Project) {
         stateCache.computeIfAbsent(moduleInfo) { createResolveStateFor(moduleInfo, sessionProviderStorage) }
 
     companion object {
-        fun getInstance(project: Project): FirIdeResolveStateService = project.getService(FirIdeResolveStateService::class.java)
+        fun getInstance(project: Project): FirIdeResolveStateService = project.service()
 
         internal fun createResolveStateFor(
             moduleInfo: IdeaModuleInfo,

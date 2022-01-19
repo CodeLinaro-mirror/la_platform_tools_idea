@@ -1,5 +1,5 @@
 from logging import Logger
-from typing import Any, Type
+from typing import Any, Dict, Optional, Type
 
 from paramiko.channel import Channel
 from paramiko.server import ServerInterface, SubsystemHandler
@@ -13,10 +13,10 @@ class SFTPServer(BaseSFTP, SubsystemHandler):
     logger: Logger
     ultra_debug: bool
     next_handle: int
-    file_table: dict[bytes, SFTPHandle]
-    folder_table: dict[bytes, SFTPHandle]
+    file_table: Dict[bytes, SFTPHandle]
+    folder_table: Dict[bytes, SFTPHandle]
     server: SFTPServerInterface
-    sock: Channel | None
+    sock: Optional[Channel]
     def __init__(
         self, channel: Channel, name: str, server: ServerInterface, sftp_si: Type[SFTPServerInterface], *largs: Any, **kwargs: Any
     ) -> None: ...

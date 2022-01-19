@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xml.util.documentation;
 
 import com.intellij.documentation.mdn.MdnSymbolDocumentation;
@@ -18,7 +18,6 @@ import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.XmlElementDescriptor;
 import com.intellij.xml.util.XmlUtil;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -52,7 +51,7 @@ public class HtmlDocumentationProvider implements DocumentationProvider {
 
   @Override
   @Nullable
-  public @Nls String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {
+  public String getQuickNavigateInfo(PsiElement element, PsiElement originalElement) {
     if (element instanceof SchemaPrefix) {
       return ((SchemaPrefix)element).getQuickNavigateInfo();
     }
@@ -71,7 +70,7 @@ public class HtmlDocumentationProvider implements DocumentationProvider {
   }
 
   @Override
-  public @Nls String generateDoc(PsiElement element, PsiElement originalElement) {
+  public String generateDoc(PsiElement element, PsiElement originalElement) {
     String result = generateDocForHtml(element, originalElement);
     if (result != null) return result;
     return generateDocFromStyleOrScript(element, originalElement);
@@ -138,7 +137,6 @@ public class HtmlDocumentationProvider implements DocumentationProvider {
     return result;
   }
 
-  @Nls
   private String generateDocFromStyleOrScript(PsiElement element, PsiElement originalElement) {
     DocumentationProvider styleProvider = getStyleProvider();
     if (styleProvider != null) {
@@ -181,7 +179,6 @@ public class HtmlDocumentationProvider implements DocumentationProvider {
     return attributeDescriptor;
   }
 
-  @Nls
   private String generateDocForHtml(PsiElement element, PsiElement originalElement) {
     MdnSymbolDocumentation documentation = getDocumentation(element, originalElement);
     if (documentation != null) {
@@ -196,12 +193,6 @@ public class HtmlDocumentationProvider implements DocumentationProvider {
   }
 
   private PsiMetaData findDescriptor(PsiManager psiManager, String text, PsiElement context) {
-    if (context != null
-        && (context.getNode() == null
-            || context.getNode().getElementType() == XmlTokenType.XML_END_TAG_START
-            || context.getParent() instanceof XmlText)) {
-      return null;
-    }
     String key = StringUtil.toLowerCase(text);
     final HtmlTagDescriptor descriptor = HtmlDescriptorsTable.getTagDescriptor(key);
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.sh;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
@@ -22,9 +22,9 @@ import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import com.intellij.psi.impl.source.tree.TreeUtil;
 import com.intellij.sh.psi.ShGenericCommandDirective;
 import com.intellij.sh.psi.ShLiteral;
+import com.intellij.sh.statistics.ShFeatureUsagesCollector;
 import com.intellij.util.EnvironmentUtil;
 import com.intellij.util.io.URLUtil;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,11 +33,10 @@ import java.io.File;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 
-import static com.intellij.sh.statistics.ShCounterUsagesCollector.DOCUMENTATION_PROVIDER_USED_EVENT_ID;
-
 final class ShDocumentationProvider implements DocumentationProvider {
   private static final int TIMEOUT_IN_MILLISECONDS = 3 * 1000;
   private final static Logger LOG = Logger.getInstance(ShDocumentationProvider.class);
+  @NonNls private static final String FEATURE_ACTION_ID = "DocumentationProviderUsed";
 
   private static final NullableLazyValue<String> myManExecutable = new AtomicNullableLazyValue<>() {
     @Nullable
@@ -55,10 +54,10 @@ final class ShDocumentationProvider implements DocumentationProvider {
   };
 
   @Override
-  public @NlsSafe String generateDoc(PsiElement o, PsiElement originalElement) {
+  public String generateDoc(PsiElement o, PsiElement originalElement) {
     if (!wordWithDocumentation(o)) return null;
 
-    DOCUMENTATION_PROVIDER_USED_EVENT_ID.log();
+    ShFeatureUsagesCollector.logFeatureUsage(FEATURE_ACTION_ID);
     return wrapIntoHtml(fetchInfo(o.getText()));
   }
 

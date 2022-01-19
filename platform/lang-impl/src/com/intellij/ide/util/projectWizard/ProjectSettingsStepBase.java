@@ -44,9 +44,7 @@ import java.util.List;
 
 import static com.intellij.openapi.wm.impl.welcomeScreen.FlatWelcomeFrame.BOTTOM_PANEL;
 
-/**
- * {@link AbstractNewProjectStep}
- */
+@SuppressWarnings("ComponentNotRegistered")
 public class ProjectSettingsStepBase<T> extends AbstractActionWithPanel implements DumbAware, Disposable {
   protected DirectoryProjectGenerator<T> myProjectGenerator;
   protected AbstractNewProjectStep.AbstractCallback<T> myCallback;
@@ -320,9 +318,7 @@ public class ProjectSettingsStepBase<T> extends AbstractActionWithPanel implemen
     final FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor();
     myLocationField.addBrowseFolderListener(IdeBundle.message("directory.project.location.title"),
                                             IdeBundle.message("directory.project.location.description"), null, descriptor);
-    return LabeledComponent.create(myLocationField,
-                                   BundleBase.replaceMnemonicAmpersand(IdeBundle.message("directory.project.location.label")),
-                                   BorderLayout.WEST);
+    return LabeledComponent.create(myLocationField, BundleBase.replaceMnemonicAmpersand(IdeBundle.message("directory.project.location.label")), BorderLayout.WEST);
   }
 
   @NotNull
@@ -331,5 +327,5 @@ public class ProjectSettingsStepBase<T> extends AbstractActionWithPanel implemen
   }
 
   @Override
-  public void dispose() { }
+  public void dispose() {}
 }

@@ -1,4 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2000-2016 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.intellij.codeInsight.hints.settings
 
 import com.intellij.codeInsight.hints.InlayInfo
@@ -41,11 +55,11 @@ class ParameterNameSettingsTest : TestCase() {
     val base = inlayProvider.defaultBlackList
     val diff = Diff.build(base, setOf(*newPatternSet))
     
-    settings.setExcludeListDiff(PlainTextLanguage.INSTANCE, diff)
+    settings.setBlackListDiff(PlainTextLanguage.INSTANCE, diff)
   }
   
   fun getIgnoreSet(): Set<String> {
-    val diff = settings.getExcludeListDiff(PlainTextLanguage.INSTANCE)
+    val diff = settings.getBlackListDiff(PlainTextLanguage.INSTANCE)
     return diff.applyOn(inlayProvider.defaultBlackList)
   }
 
@@ -113,12 +127,12 @@ class ParameterNameSettingsTest : TestCase() {
     val added = setOf("added")
     val removed = setOf("removed")
     
-    settings.setExcludeListDiff(PlainTextLanguage.INSTANCE, Diff(added, removed))
+    settings.setBlackListDiff(PlainTextLanguage.INSTANCE, Diff(added, removed))
     
     val state = settings.state
     settings.loadState(state)
 
-    val diff = settings.getExcludeListDiff(PlainTextLanguage.INSTANCE)
+    val diff = settings.getBlackListDiff(PlainTextLanguage.INSTANCE)
     assert(diff.added.contains("added"))
     assert(diff.added.size == 1)
     
@@ -154,7 +168,7 @@ class ParameterNameSettingsTest : TestCase() {
     val root = SAXBuilder().build(StringReader(text)).rootElement
     settings.loadState(root)
     
-    val diff = settings.getExcludeListDiff(PlainTextLanguage.INSTANCE)
+    val diff = settings.getBlackListDiff(PlainTextLanguage.INSTANCE)
     assert(diff.added.contains("added"))
     assert(diff.added.size == 1)
     

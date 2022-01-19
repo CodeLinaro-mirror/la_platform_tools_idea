@@ -165,13 +165,13 @@ class BaseInterpreterInterface(BaseCodeExecutor):
         if server is not None:
             server.showConsole()
 
-    def finish_exec(self, more, exception_occurred):
+    def finish_exec(self, more):
         self.interruptable = False
 
         server = self.get_server()
 
         if server is not None:
-            return server.notifyFinished(more, exception_occurred)
+            return server.notifyFinished(more)
         else:
             return True
 

@@ -253,15 +253,6 @@ public final class PluginXmlDomInspection extends DevKitPluginXmlInspectionBase 
         descriptor.getPlugin().isEmpty()) {
       holder.createProblem(descriptor, HighlightSeverity.ERROR,
                            DevKitBundle.message("inspections.plugin.xml.dependency.descriptor.at.least.one.dependency"));
-      return;
-    }
-
-    final IdeaPlugin ideaPlugin = descriptor.getParentOfType(IdeaPlugin.class, false);
-    assert ideaPlugin != null;
-    for (Dependency dependency : ideaPlugin.getDepends()) {
-      if (dependency.getOptional().getValue() == Boolean.TRUE) continue;
-      holder.createProblem(dependency, HighlightSeverity.ERROR,
-                           DevKitBundle.message("inspections.plugin.xml.dependency.descriptor.cannot.use.depends")).highlightWholeElement();
     }
   }
 

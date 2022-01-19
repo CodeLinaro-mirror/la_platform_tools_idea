@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'i' is never used, could be renamed to _
 fun foo() {
     val list = 1..4
 

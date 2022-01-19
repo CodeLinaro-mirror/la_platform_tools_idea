@@ -117,7 +117,9 @@ char_class_letter ::= CHARCLASS_LETTER {
 
 // ---- ---- Option ---- ----
 
-option ::= option_with_raw_value | simple_option {
+option ::= option_key (SEPARATOR option_value?)? {
+  pin=1
+  recoverWhile=not_next_entry
   mixin="org.editorconfig.language.psi.base.EditorConfigOptionBase"
   implements="org.editorconfig.language.psi.interfaces.EditorConfigDescribableElement"
   methods=[
@@ -128,17 +130,6 @@ option ::= option_with_raw_value | simple_option {
     getDescriptor
   ]
 }
-
-private simple_option ::= option_key (SEPARATOR option_value?)? {
-  pin=1
-  recoverWhile=not_next_entry
-}
-
-private option_with_raw_value ::= <<isOptionWithRawValueKeyAhead>> option_key SEPARATOR <<rawOptionValue>>
-
-// This line exists to generate the class for that node.
-// The node itself is parsed manually
-raw_option_value ::=
 
 // it might be worth it to get rid of flat option key
 // and treat it as qualified key with only one part

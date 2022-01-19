@@ -14,7 +14,6 @@ import org.assertj.core.api.Condition
 import org.gradle.tooling.model.BuildModel
 import org.gradle.tooling.model.ProjectModel
 import org.gradle.util.GradleVersion
-import org.jetbrains.plugins.gradle.importing.TestGradleBuildScriptBuilder.Companion.buildscript
 import org.jetbrains.plugins.gradle.model.ModelsHolder
 import org.jetbrains.plugins.gradle.model.Project
 import org.jetbrains.plugins.gradle.model.ProjectImportAction
@@ -185,11 +184,14 @@ class GradlePartialImportingTest : BuildViewMessagesImportingTestCase() {
   }
 
   private fun createAndImportTestCompositeProject() {
-    createProjectSubFile("buildSrc/build.gradle", buildscript {
-      withGroovyPlugin()
-      addImplementationDependency(code("gradleApi()"))
-      addImplementationDependency(code("localGroovy()"))
-    })
+    createProjectSubFile(
+      "buildSrc/build.gradle",
+      "apply plugin: 'groovy'\n" +
+      "dependencies {\n" +
+      " compile gradleApi()\n" +
+      " compile localGroovy()\n" +
+      "}"
+    )
     createProjectSubFile(
       "gradle.properties",
       "prop_loaded_1=val1\n" +
@@ -197,11 +199,14 @@ class GradlePartialImportingTest : BuildViewMessagesImportingTestCase() {
     )
     createProjectSubFile("includedBuild/settings.gradle", "include 'subProject'")
     createProjectSubDir("includedBuild/subProject")
-    createProjectSubFile("includedBuild/buildSrc/build.gradle", buildscript {
-      withGroovyPlugin()
-      addImplementationDependency(code("gradleApi()"))
-      addImplementationDependency(code("localGroovy()"))
-    })
+    createProjectSubFile(
+      "includedBuild/buildSrc/build.gradle",
+      "apply plugin: 'groovy'\n" +
+      "dependencies {\n" +
+      " compile gradleApi()\n" +
+      " compile localGroovy()\n" +
+      "}"
+    )
     createSettingsFile("includeBuild 'includedBuild'")
     createProjectSubFile(
       "includedBuild/gradle.properties",
@@ -278,7 +283,11 @@ class GradlePartialImportingTest : BuildViewMessagesImportingTestCase() {
       "prop_finished_2=val2\n"
     )
 
-    importProject(buildscript { withJavaPlugin() })
+    importProject(
+      createBuildScriptBuilder()
+        .withJavaPlugin()
+        .generate()
+    )
   }
 
   private fun assertReceivedModels(

@@ -86,6 +86,8 @@ fun askCredentials(project: Project?,
   }
 }
 
+data class CredentialRequestResult(val credentials: Credentials, val isRemember: Boolean)
+
 object RememberCheckBoxState {
   val isSelected: Boolean
     get() = PasswordSafe.instance.isRememberPasswordByDefault

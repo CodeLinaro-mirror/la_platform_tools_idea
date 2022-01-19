@@ -10,7 +10,7 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.LightPlatformCodeInsightTestCase
 import org.intellij.plugins.markdown.injection.alias.LanguageGuesser.guessLanguageForInjection
 import org.intellij.plugins.markdown.lang.MarkdownLanguage
-import org.intellij.plugins.markdown.settings.MarkdownSettings
+import org.intellij.plugins.markdown.settings.MarkdownApplicationSettings
 
 class MarkdownInjectionTest : LightPlatformCodeInsightTestCase() {
   fun `test fence with injection empty`() {
@@ -140,10 +140,10 @@ class MarkdownInjectionTest : LightPlatformCodeInsightTestCase() {
   }
 
   fun `test fence with lang with disabled auto injection`() {
-    val markdownSettings = MarkdownSettings.getInstance(project)
-    val oldValue = markdownSettings.areInjectionsEnabled
+    val markdownSettings = MarkdownApplicationSettings.getInstance()
+    val oldValue = markdownSettings.isDisableInjections
     try {
-      markdownSettings.areInjectionsEnabled = false
+      markdownSettings.isDisableInjections = true
       doTest(
         """
         ```text
@@ -155,7 +155,7 @@ class MarkdownInjectionTest : LightPlatformCodeInsightTestCase() {
         """.trimIndent(), false)
     }
     finally {
-      markdownSettings.areInjectionsEnabled = oldValue
+      markdownSettings.isDisableInjections = oldValue
     }
   }
 

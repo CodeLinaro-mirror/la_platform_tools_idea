@@ -29,8 +29,4 @@ public class SoutPostfixTemplateTest extends PostfixTemplateTestCase {
   public void testIncompleteExpression() {
     doTest();
   }
-
-  public void testWithComment() {
-    doTest();
-  }
 }

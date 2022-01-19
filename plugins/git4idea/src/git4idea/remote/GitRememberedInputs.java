@@ -4,7 +4,6 @@ package git4idea.remote;
 import com.intellij.dvcs.DvcsRememberedInputs;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import org.jetbrains.annotations.NotNull;
@@ -14,8 +13,7 @@ import org.jetbrains.annotations.NotNull;
  */
 @State(
   name = "GitRememberedInputs",
-  storages = @Storage("vcs.xml"),
-  category = SettingsCategory.TOOLS
+  storages = @Storage("vcs.xml")
 )
 public class GitRememberedInputs extends DvcsRememberedInputs implements PersistentStateComponent<DvcsRememberedInputs.State> {
 

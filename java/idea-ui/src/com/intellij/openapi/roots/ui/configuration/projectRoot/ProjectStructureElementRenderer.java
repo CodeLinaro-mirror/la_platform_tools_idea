@@ -25,7 +25,6 @@ import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.util.ui.UIUtil;
-import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
@@ -38,7 +37,7 @@ class ProjectStructureElementRenderer extends ColoredTreeCellRenderer {
   }
 
   @Override
-  public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
+  public void customizeCellRenderer(JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
     if (value instanceof MasterDetailsComponent.MyNode) {
       final MasterDetailsComponent.MyNode node = (MasterDetailsComponent.MyNode)value;
 
@@ -59,7 +58,7 @@ class ProjectStructureElementRenderer extends ColoredTreeCellRenderer {
       }
       else if (namedConfigurable instanceof ProjectStructureElementConfigurable) {
         final ProjectStructureElement projectStructureElement =
-          ((ProjectStructureElementConfigurable<?>)namedConfigurable).getProjectStructureElement();
+          ((ProjectStructureElementConfigurable)namedConfigurable).getProjectStructureElement();
         if (projectStructureElement != null) {
           final ProjectStructureDaemonAnalyzer daemonAnalyzer = myContext.getDaemonAnalyzer();
           final ProjectStructureProblemsHolderImpl problemsHolder = daemonAnalyzer.getProblemsHolder(projectStructureElement);

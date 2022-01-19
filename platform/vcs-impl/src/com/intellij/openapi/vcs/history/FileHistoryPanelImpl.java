@@ -46,7 +46,6 @@ import com.intellij.util.TreeItem;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.DateFormatUtil;
-import com.intellij.util.text.JBDateFormat;
 import com.intellij.util.ui.ColumnInfo;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.StatusText;
@@ -487,7 +486,7 @@ public final class FileHistoryPanelImpl extends JPanel implements DataProvider, 
     else if (VcsInternalDataKeys.FILE_HISTORY_REFRESHER.is(dataId)) {
       return myRefresherI;
     }
-    else if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    else if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return myHelpId;
     }
     return null;
@@ -685,7 +684,7 @@ public final class FileHistoryPanelImpl extends JPanel implements DataProvider, 
           setOpaque(selected);
           Date date = (Date)value;
           if (date != null) {
-            append(JBDateFormat.getFormatter().formatPrettyDateTime(date), getDefaultAttributes());
+            append(DateFormatUtil.formatDateTime(date), getDefaultAttributes());
           }
           SpeedSearchUtil.applySpeedSearchHighlighting(table, this, false, selected);
         }

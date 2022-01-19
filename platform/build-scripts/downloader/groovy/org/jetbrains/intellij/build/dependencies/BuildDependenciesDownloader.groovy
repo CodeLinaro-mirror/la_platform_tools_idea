@@ -1,4 +1,3 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.dependencies
 
 import groovy.transform.CompileStatic
@@ -12,7 +11,7 @@ import java.nio.file.attribute.FileTime
 import java.time.Instant
 
 @CompileStatic
-final class BuildDependenciesDownloader {
+class BuildDependenciesDownloader {
   private static String HTTP_HEADER_CONTENT_LENGTH = "Content-Length"
 
   static void debug(String message) {
@@ -23,27 +22,34 @@ final class BuildDependenciesDownloader {
     println(message)
   }
 
-  static Properties getDependenciesProperties(Path communityRoot) {
-    Path propertiesFile = communityRoot.resolve("build").resolve("dependencies").resolve("gradle.properties")
-    return loadProperties(propertiesFile)
-  }
+  static Path getCommunityRootFromWorkingDirectory() {
+    // This method assumes the current working directory is inside intellij-based product checkout root
+    Path workingDirectory = Paths.get(System.getProperty("user.dir"))
 
-  static Properties loadProperties(Path file) {
-    info("Loading properties from $file")
-    Properties properties = new Properties()
-    Files.newInputStream(file).withCloseable { properties.load(it) }
-    return properties
-  }
+    Path current = workingDirectory
+    while (current.parent != null) {
+      for (def pathCandidate : [".", "community", "ultimate/community"]) {
+        def probeFile = current.resolve(pathCandidate).resolve("intellij.idea.community.main.iml")
+        if (Files.exists(probeFile)) {
+          return probeFile.parent
+        }
+      }
 
-  static URI getUriForMavenArtifact(String mavenRepository, String groupId, String artifactId, String version, String packaging) {
-    String result = mavenRepository
-    if (!result.endsWith("/")) {
-      result += "/"
+      current = current.parent
     }
 
-    result += "${groupId.replace('.', '/')}/$artifactId/$version/$artifactId-$version.$packaging"
+    throw new IllegalStateException("IDEA Community root was not found from current working directory $workingDirectory")
+  }
 
-    return new URI(result)
+  // Only for manual running (e.g. from main()), use DependenciesProperties in build scripts
+  static Properties getDependenciesPropertiesFromWorkingDirectory() {
+    Path communityRoot = getCommunityRootFromWorkingDirectory()
+    Path propertiesFile = communityRoot.resolve("build").resolve("dependencies").resolve("gradle.properties")
+
+    println("Loading properties from $propertiesFile")
+    Properties properties = new Properties()
+    Files.newBufferedReader(propertiesFile).withCloseable { properties.load(it) }
+    return properties
   }
 
   static void checkCommunityRoot(Path communityRoot) {
@@ -55,12 +61,6 @@ final class BuildDependenciesDownloader {
     if (!Files.exists(probeFile)) {
       throw new IllegalStateException("community root was not found at $communityRoot")
     }
-  }
-
-  private static Path getProjectLocalDownloadCache(Path communityRoot) {
-    Path projectLocalDownloadCache = communityRoot.resolve("build").resolve("download")
-    Files.createDirectories(projectLocalDownloadCache)
-    return projectLocalDownloadCache
   }
 
   private static Path getDownloadCachePath(Path communityRoot) {
@@ -75,7 +75,7 @@ final class BuildDependenciesDownloader {
       path = Paths.get(persistentCachePath)
     }
     else {
-      path = getProjectLocalDownloadCache(communityRoot)
+      path = communityRoot.resolve("build").resolve("download")
     }
 
     Files.createDirectories(path)
@@ -85,7 +85,7 @@ final class BuildDependenciesDownloader {
   static synchronized Path downloadFileToCacheLocation(Path communityRoot, URI uri) {
     def uriString = uri.toString()
     def lastNameFromUri = uriString.substring(uriString.lastIndexOf('/') + 1)
-    def fileName = uriString.sha256().substring(0, 10) + "-" + lastNameFromUri
+    def fileName = lastNameFromUri.sha256().substring(0, 10) + "-" + lastNameFromUri
     def targetFile = getDownloadCachePath(communityRoot).resolve(fileName)
 
     downloadFile(uri, targetFile)
@@ -93,80 +93,59 @@ final class BuildDependenciesDownloader {
   }
 
   static synchronized Path extractFileToCacheLocation(Path communityRoot, Path archiveFile) {
-    String directoryName = archiveFile.toString().sha256().substring(0, 6) + "-" + archiveFile.fileName.toString()
-    Path cacheDirectory = getDownloadCachePath(communityRoot).resolve(directoryName + ".d")
-
-    // Maintain one top-level directory (cacheDirectory) under persistent cache directory, since
-    // TeamCity removes whole top-level directories upon cleanup, so both flag and extract directory
-    // will be deleted at the same time
-    Path flagFile = cacheDirectory.resolve(".flag")
-    Path extractDirectory = cacheDirectory.resolve(archiveFile.fileName.toString() + ".d")
-    extractFileWithFlagFileLocation(archiveFile, extractDirectory, flagFile)
-
-    // Update file modification time to maintain FIFO caches i.e.
-    // in persistent cache folder on TeamCity agent
-    Files.setLastModifiedTime(cacheDirectory, FileTime.from(Instant.now()))
-
-    return extractDirectory
+    def directoryName = archiveFile.toString().sha256().substring(0, 6) + "-" + archiveFile.fileName.toString()
+    def targetDirectory = getDownloadCachePath(communityRoot).resolve(directoryName + ".d")
+    extractFile(archiveFile, targetDirectory)
+    return targetDirectory
   }
 
-  private static byte[] getExpectedFlagFileContent(Path archiveFile, Path targetDirectory) {
+  private static byte[] getExpectedFlagFileContent(Path archiveFile) {
     // Increment this number to force all clients to extract content again
     // e.g. when some issues in extraction code were fixed
-    def codeVersion = 2
+    def codeVersion = 1
 
-    long numberOfTopLevelEntries = Files.list(targetDirectory).withCloseable { it.count() }
-
-    return "$codeVersion\n$archiveFile\ntopLevelDirectoryEntries:$numberOfTopLevelEntries".getBytes(StandardCharsets.UTF_8)
+    return "$codeVersion\n$archiveFile\n".getBytes(StandardCharsets.UTF_8)
   }
 
-  private static boolean checkFlagFile(Path archiveFile, Path flagFile, Path targetDirectory) {
-    if (!Files.isRegularFile(flagFile) || !Files.isDirectory(targetDirectory)) {
+  private static boolean checkFlagFile(Path archiveFile, Path flagFile) {
+    if (!Files.isRegularFile(flagFile)) {
       return false
     }
 
     def existingContent = Files.readAllBytes(flagFile)
-    return existingContent == getExpectedFlagFileContent(archiveFile, targetDirectory)
+    return existingContent == getExpectedFlagFileContent(archiveFile)
   }
 
-  // assumes file at `archiveFile` is immutable
-  private static void extractFileWithFlagFileLocation(Path archiveFile, Path targetDirectory, Path flagFile) {
-    if (checkFlagFile(archiveFile, flagFile, targetDirectory)) {
-      debug("Skipping extract to $targetDirectory since flag file $flagFile is correct")
+  // assumes file at path location is immutable
+  static void extractFile(Path archiveFile, Path target) {
+    def flagFile = target.resolve(".flag.txt")
+    if (checkFlagFile(archiveFile, flagFile)) {
+      debug("Skipping extract to $target since flag file is correct")
 
       // Update file modification time to maintain FIFO caches i.e.
       // in persistent cache folder on TeamCity agent
-      Files.setLastModifiedTime(targetDirectory, FileTime.from(Instant.now()))
+      Files.setLastModifiedTime(target, FileTime.from(Instant.now()))
 
       return
     }
 
-    if (Files.exists(targetDirectory)) {
-      if (!Files.isDirectory(targetDirectory)) {
-        throw new IllegalStateException("Target '$targetDirectory' exists, but it's not a directory. Please delete it manually")
+    if (Files.exists(target)) {
+      if (!Files.isDirectory(target)) {
+        throw new IllegalStateException("Target '$target' exists, but it's not a directory. Please delete it manually")
       }
 
-      BuildDependenciesUtil.cleanDirectory(targetDirectory)
+      BuildDependenciesUtil.cleanDirectory(target)
     }
 
-    info(" * Extracting $archiveFile to $targetDirectory")
+    info(" * Extracting $archiveFile to $target")
 
-    Files.createDirectories(targetDirectory)
-    BuildDependenciesUtil.extractZip(archiveFile, targetDirectory)
+    Files.createDirectories(target)
+    BuildDependenciesUtil.extractZip(archiveFile, target)
 
-    Files.write(flagFile, getExpectedFlagFileContent(archiveFile, targetDirectory))
-    if (!checkFlagFile(archiveFile, flagFile, targetDirectory)) {
-      throw new IllegalStateException("checkFlagFile must be true right after extracting the archive. flagFile:$flagFile archiveFile:$archiveFile target:$targetDirectory")
-    }
+    Files.write(flagFile, getExpectedFlagFileContent(archiveFile))
   }
 
-  static void extractFile(Path archiveFile, Path target, Path communityRoot) {
-    Path flagFile = getProjectLocalDownloadCache(communityRoot)
-      .resolve(archiveFile.toString().sha256().substring(0, 6) + "-" + archiveFile.fileName.toString() + ".flag.txt")
-    extractFileWithFlagFileLocation(archiveFile, target, flagFile)
-  }
-
-  private static void downloadFile(URI uri, Path target) {
+  static void downloadFile(URI uri, Path target) {
     if (Files.exists(target)) {
       debug("Target file $target already exists, skipping download from $uri")
 
@@ -179,18 +158,18 @@ final class BuildDependenciesDownloader {
 
     info(" * Downloading $uri -> $target")
 
-    Path tempFile = Files.createTempFile(target.parent, target.fileName.toString(), ".tmp")
+    def tempFile = Files.createTempFile(target.parent, target.fileName.toString(), ".tmp")
     try {
       def connection = (HttpURLConnection)uri.toURL().openConnection()
       connection.instanceFollowRedirects = true
 
       if (connection.responseCode != 200) {
-        throw new IllegalStateException("Error downloading $uri: non-200 http status code ${connection.responseCode}")
+        throw new IllegalStateException("Error download $uri: non-200 http status code ${connection.responseCode}")
       }
 
       connection.inputStream.withStream { inputStream ->
-        Files.newOutputStream(tempFile).withCloseable { outputStream ->
-          inputStream.transferTo(outputStream)
+        new FileOutputStream(tempFile.toFile()).withStream { outputStream ->
+          BuildDependenciesUtil.copyStream(inputStream, outputStream)
         }
       }
 

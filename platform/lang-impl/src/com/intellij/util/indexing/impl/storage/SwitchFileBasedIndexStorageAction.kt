@@ -19,9 +19,9 @@ class SwitchFileBasedIndexStorageAction : DumbAwareAction() {
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project ?: return
     val allStorages = customIndexStorageDescriptors() + defaultIndexStorageDescriptor()
-    val activeStorage = allStorages.find { it.bean == FileBasedIndexLayoutSettings.getUsedLayout()}
+
     val popupContext = IndexStorageDescriptorPopupContext(project, allStorages)
-    ComboBoxPopup(popupContext, activeStorage, Consumer {
+    ComboBoxPopup(popupContext, null, Consumer {
       restartIndexesWithStorage(it)
     }).showInBestPositionFor(e.dataContext)
   }
@@ -29,13 +29,13 @@ class SwitchFileBasedIndexStorageAction : DumbAwareAction() {
   private fun restartIndexesWithStorage(indexStorage: IndexStorageDescriptor) {
     val usedLayout = FileBasedIndexLayoutSettings.getUsedLayout()
     if (usedLayout != indexStorage.bean) {
-      val switcher = FileBasedIndexTumbler("Index Storage Switching")
+      val switcher = FileBasedIndexTumbler()
       switcher.turnOff()
       try {
         FileBasedIndexLayoutSettings.setUsedLayout(indexStorage.bean)
       }
       finally {
-        switcher.turnOn(null)
+        switcher.turnOn(null, "Index Storage Switching")
       }
     }
   }

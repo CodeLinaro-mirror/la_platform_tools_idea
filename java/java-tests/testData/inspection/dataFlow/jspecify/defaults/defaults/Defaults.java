@@ -16,11 +16,11 @@
 
 package defaults;
 
-import org.jspecify.nullness.NullMarked;
-import org.jspecify.nullness.Nullable;
-import org.jspecify.nullness.NullnessUnspecified;
+import org.jspecify.annotations.DefaultNonNull;
+import org.jspecify.annotations.Nullable;
+import org.jspecify.annotations.NullnessUnspecified;
 
-@NullMarked
+@DefaultNonNull
 public class Defaults {
   // jspecify_nullness_mismatch
   public Foo defaultField = null;
@@ -57,7 +57,7 @@ class Foo {
   }
 }
 
-@NullMarked
+@DefaultNonNull
 class Instances {
   static final Defaults DEFAULTS = new Defaults();
   static final Foo FOO = new Foo();

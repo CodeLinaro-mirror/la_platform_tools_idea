@@ -3,12 +3,11 @@ package com.intellij.ui.jcef;
 
 import com.intellij.credentialStore.Credentials;
 import com.intellij.icons.AllIcons;
-import com.intellij.ide.BrowserUtil;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.scale.ScaleContext;
@@ -87,7 +86,6 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   private volatile @Nullable ErrorPage myErrorPage;
   protected final @NotNull PropertiesHelper myPropertiesHelper = new PropertiesHelper();
   private final @NotNull AtomicBoolean myIsCreateStarted = new AtomicBoolean(false);
-  private @Nullable CefRequestHandler myHrefProcessingRequestHandler;
 
   private static final LazyInitializer.LazyValue<@NotNull String> ERROR_PAGE_READER = LazyInitializer.create(() -> {
     try {
@@ -95,7 +93,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
         JBCefApp.class.getResourceAsStream("resources/load_error.html"))), StandardCharsets.UTF_8);
     }
     catch (IOException | NullPointerException e) {
-      Logger.getInstance(JBCefBrowserBase.class).error("couldn't find load_error.html", e);
+      Logger.getInstance(JBCefBrowser.class).error("couldn't find load_error.html", e);
     }
     return "";
   });
@@ -109,7 +107,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
           return Base64.getEncoder().encodeToString(out.toByteArray());
         }
         catch (IOException ex) {
-          Logger.getInstance(JBCefBrowserBase.class).error("couldn't write an error image", ex);
+          Logger.getInstance(JBCefBrowser.class).error("couldn't write an error image", ex);
         }
         return "";
       });
@@ -132,7 +130,6 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   protected final @NotNull JBCefClient myCefClient;
   protected final @NotNull CefBrowser myCefBrowser;
   private final boolean myIsOffScreenRendering;
-  private final boolean myEnableOpenDevToolsMenuItem;
   private final @Nullable CefLifeSpanHandler myLifeSpanHandler;
   private final @Nullable CefLoadHandler myLoadHandler;
   private final @Nullable CefRequestHandler myRequestHandler;
@@ -146,7 +143,6 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
     myCefClient = ObjectUtils.notNull(builder.myClient, () -> JBCefApp.getInstance().createClient(true));
 
     myIsOffScreenRendering = builder.myIsOffScreenRendering;
-    myEnableOpenDevToolsMenuItem = builder.myEnableOpenDevToolsMenuItem;
     boolean isDefaultBrowserCreated = false;
     CefBrowser cefBrowser = builder.myCefBrowser;
 
@@ -371,47 +367,6 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   }
 
   /**
-   * Adds handler that opens any links clicked by user in external browser
-   */
-  public void setOpenLinksInExternalBrowser(boolean openLinksInExternalBrowser) {
-    if (openLinksInExternalBrowser) {
-      enableExternalBrowserLinks();
-    }
-    else {
-      disableExternalBrowserLinks();
-    }
-  }
-
-  private void enableExternalBrowserLinks() {
-    if (myHrefProcessingRequestHandler != null) return;
-    var hrefProcessingRequestHandler = new CefRequestHandlerAdapter() {
-      @Override
-      public boolean onBeforeBrowse(CefBrowser browser,
-                                    CefFrame frame,
-                                    CefRequest request,
-                                    boolean user_gesture,
-                                    boolean is_redirect) {
-        if (user_gesture) {
-          BrowserUtil.open(request.getURL());
-          return true;
-        }
-        return false;
-      }
-    };
-    this.myCefClient.addRequestHandler(hrefProcessingRequestHandler, myCefBrowser);
-    myHrefProcessingRequestHandler = hrefProcessingRequestHandler;
-  }
-
-  private void disableExternalBrowserLinks() {
-    var hrefProcessingRequestHandler = myHrefProcessingRequestHandler;
-    if (hrefProcessingRequestHandler != null) {
-      myCefClient.removeRequestHandler(hrefProcessingRequestHandler, myCefBrowser);
-      myHrefProcessingRequestHandler = null;
-    }
-
-  }
-
-  /**
    * Returns the component representing the browser in the UI hierarchy.
    */
   public abstract @Nullable JComponent getComponent();
@@ -430,7 +385,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
     // [tav] todo: this can be thread race prone
     return isCefBrowserCreated(myCefBrowser);
   }
-
+  
   static boolean isCefBrowserCreated(@NotNull CefBrowser cefBrowser) {
     return ((CefNativeAdapter)cefBrowser).getNativeRef("CefBrowser") != 0;
   }
@@ -458,7 +413,6 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
       if (myLifeSpanHandler != null) getJBCefClient().removeLifeSpanHandler(myLifeSpanHandler, getCefBrowser());
       if (myLoadHandler != null) getJBCefClient().removeLoadHandler(myLoadHandler, getCefBrowser());
       if (myRequestHandler != null) getJBCefClient().removeRequestHandler(myRequestHandler, getCefBrowser());
-      if (myHrefProcessingRequestHandler != null) getJBCefClient().removeRequestHandler(myHrefProcessingRequestHandler, getCefBrowser());
       if (myContextMenuHandler != null) getJBCefClient().removeContextMenuHandler(myContextMenuHandler, getCefBrowser());
 
       myCefBrowser.stopLoad();
@@ -644,19 +598,15 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   }
 
   protected DefaultCefContextMenuHandler createDefaultContextMenuHandler() {
-    return new DefaultCefContextMenuHandler();
+    return new DefaultCefContextMenuHandler(ApplicationManager.getApplication().isInternal());
   }
 
   protected class DefaultCefContextMenuHandler extends CefContextMenuHandlerAdapter {
     protected static final int DEBUG_COMMAND_ID = MENU_ID_USER_LAST;
-    private final boolean isOpenDevToolsItemEnabled;
+    private final boolean isInternal;
 
-    public DefaultCefContextMenuHandler() {
-      this.isOpenDevToolsItemEnabled = myEnableOpenDevToolsMenuItem || Registry.is("ide.browser.jcef.contextMenu.devTools.enabled");
-    }
-
-    public DefaultCefContextMenuHandler(boolean isOpenDevToolsItemEnabled) {
-      this.isOpenDevToolsItemEnabled = isOpenDevToolsItemEnabled;
+    public DefaultCefContextMenuHandler(boolean isInternal) {
+      this.isInternal = isInternal;
     }
 
     @Override
@@ -665,7 +615,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
         model.clear();
         return;
       }
-      if (isOpenDevToolsItemEnabled) {
+      if (isInternal) {
         model.addItem(DEBUG_COMMAND_ID, "Open DevTools");
       }
     }
@@ -732,7 +682,13 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
     }
   }
 
+  // temporary possibility for debug (browser creation with empty url theoretically still can cause side-effects)
+  // TODO: remove after testing
+  private static final boolean USE_ABOUT_BLANK = Boolean.getBoolean("jcef.browser.use.about.blank");
+
   private static @NotNull String validateUrl(@Nullable String url) {
-    return url != null && !url.isEmpty() ? url : "";
+    if (url != null && !url.isEmpty())
+      return url;
+    return USE_ABOUT_BLANK ? BLANK_URI : "";
   }
 }

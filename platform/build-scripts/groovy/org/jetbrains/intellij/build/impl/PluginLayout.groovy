@@ -9,8 +9,9 @@ import org.jetbrains.intellij.build.PluginBundlingRestrictions
 import org.jetbrains.intellij.build.ResourcesGenerator
 
 import java.nio.file.Path
+import java.util.function.BiFunction
 import java.util.function.BiPredicate
-import java.util.function.Consumer
+
 /**
  * Describes layout of a plugin in the product distribution
  */
@@ -18,22 +19,17 @@ import java.util.function.Consumer
 final class PluginLayout extends BaseLayout {
   final String mainModule
   String directoryName
-  VersionEvaluator versionEvaluator = { pluginXmlFile, ideVersion, context -> ideVersion } as VersionEvaluator
-  Consumer<Path> pluginXmlPatcher = { } as Consumer<Path>
-  List<Pair<String, ResourcesGenerator>> moduleOutputPatches = []
+  BiFunction<Path, String, String> versionEvaluator = { pluginXmlFile, ideVersion -> ideVersion } as BiFunction<Path, String, String>
   boolean directoryNameSetExplicitly
   PluginBundlingRestrictions bundlingRestrictions
-  final List<String> pathsToScramble = new ArrayList<>()
-  Collection<Pair<String /*plugin name*/, String /*relative path*/>> scrambleClasspathPlugins = []
+  Collection<String> pathsToScramble = []
+  Collection<String> scrambleClasspathPlugins = []
   BiPredicate<BuildContext, File> scrambleClasspathFilter = { context, file -> return true } as BiPredicate<BuildContext, File>
-  /**
-   * See {@link org.jetbrains.intellij.build.impl.PluginLayout.PluginLayoutSpec#zkmScriptStub}
-   */
   String zkmScriptStub
   Boolean pluginCompatibilityExactVersion = false
   Boolean retainProductDescriptorForBundledPlugin = false
 
-  private PluginLayout(@NotNull String mainModule) {
+  private PluginLayout(String mainModule) {
     this.mainModule = mainModule
   }
 
@@ -97,10 +93,10 @@ final class PluginLayout extends BaseLayout {
     void withModule(String moduleName) {
       if (moduleName.endsWith(".jps") || moduleName.endsWith(".rt")) {
         // must be in a separate JAR
-        layout.withModule(moduleName)
+        super.withModule(moduleName)
       }
       else {
-        layout.withModule(moduleName, mainJarName)
+        layout.moduleJars.putValue(mainJarName, moduleName)
       }
     }
 
@@ -140,23 +136,6 @@ final class PluginLayout extends BaseLayout {
     }
 
     /**
-     * @param binPathRelativeToCommunity path to resource file or directory relative to the intellij-community repo root
-     * @param outputPath target path relative to the plugin root directory
-     */
-    def withBin(String binPathRelativeToCommunity, String outputPath, boolean skipIfDoesntExist = false) {
-      withGeneratedResources(new ResourcesGenerator() {
-        @Override
-        File generateResources(BuildContext context) {
-          def file = context.paths.communityHomeDir.resolve(binPathRelativeToCommunity).toFile()
-          if (!skipIfDoesntExist && !file.exists()) {
-            throw new IllegalStateException("'$file' doesn't exist")
-          }
-          return file.exists() ? file : null
-        }
-      }, outputPath)
-    }
-
-    /**
      * @param resourcePath path to resource file or directory relative to the plugin's main module content root
      * @param relativeOutputPath target path relative to the plugin root directory
      */
@@ -169,7 +148,7 @@ final class PluginLayout extends BaseLayout {
      * @param relativeOutputPath target path relative to the plugin root directory
      */
     void withResourceFromModule(String moduleName, String resourcePath, String relativeOutputPath) {
-      layout.resourcePaths.add(new ModuleResourceData(moduleName, resourcePath, relativeOutputPath, false))
+      layout.resourcePaths << new ModuleResourceData(moduleName, resourcePath, relativeOutputPath, false)
     }
 
     /**
@@ -177,7 +156,12 @@ final class PluginLayout extends BaseLayout {
      * @param relativeOutputFile target path relative to the plugin root directory
      */
     void withResourceArchive(String resourcePath, String relativeOutputFile) {
-      layout.resourcePaths.add(new ModuleResourceData(layout.mainModule, resourcePath, relativeOutputFile, true))
+      layout.resourcePaths << new ModuleResourceData(layout.mainModule, resourcePath, relativeOutputFile, true)
+    }
+
+    /* Android Studio: added by Change Id269d9e0 (commit c35a403) */
+    void withResourceArchiveFromModule(String moduleName, String resourcePath, String relativeOutputFile) {
+      layout.resourcePaths << new ModuleResourceData(moduleName, resourcePath, relativeOutputFile, true)
     }
 
     /**
@@ -188,21 +172,15 @@ final class PluginLayout extends BaseLayout {
     }
 
     /**
-     * Patches module output with content produced {@code generator}
-     */
-    void withModuleOutputPatches(String moduleName, ResourcesGenerator generator) {
-      layout.moduleOutputPatches.add(Pair.create(moduleName, generator))
-    }
-
-    /**
      * By default, version of a plugin is equal to the build number of the IDE it's built with. This method allows to specify custom version evaluator.
+     * In {@linkplain BiFunction}:
+     * <ol>
+     *   <li> the first {@linkplain File} argument is the plugin.xml file.
+     *   <li> the second {@linkplain String} argument is the default version (build number of the IDE).
+     * </ol>
      */
-    void withCustomVersion(VersionEvaluator versionEvaluator) {
+    void withCustomVersion(BiFunction<Path, String, String> versionEvaluator) {
       layout.versionEvaluator = versionEvaluator
-    }
-
-    void withPluginXmlPatcher(Consumer<Path> pluginXmlPatcher) {
-      layout.pluginXmlPatcher = pluginXmlPatcher
     }
 
     /**
@@ -249,14 +227,13 @@ final class PluginLayout extends BaseLayout {
     }
 
     /**
-     * Specifies a relative to {@link org.jetbrains.intellij.build.BuildPaths#communityHome} path to a zkm script stub file.
-     * If scramble tool is not defined, scramble toot will expect to find the script stub file at "{@link org.jetbrains.intellij.build.BuildPaths#projectHome}/plugins/{@code pluginName}/build/script.zkm.stub".
-     * Project home cannot be used since it is not constant (for example for Rider).
+     * Specifies a relative to $buildContext.paths.projectHome path to a zkm script stub file.
+     * If scramble tool is not defined, scramble toot will expect to find the script stub file at "$buildContext.paths.projectHome/plugins/{@code pluginName}/build/script.zkm.stub"
      *
-     * @param communityRelativePath - a path to a jar file relative to community project home directory
+     * @param relativePath - a path to a jar file relative to project home directory
      */
-    void zkmScriptStub(String communityRelativePath) {
-      layout.zkmScriptStub = communityRelativePath
+    void zkmScriptStub(String relativePath) {
+      layout.zkmScriptStub = relativePath
     }
 
     /**
@@ -266,10 +243,9 @@ final class PluginLayout extends BaseLayout {
      * Multiple invocations of this method will add corresponding plugin names to a list of name to be added to scramble classpath
      *
      * @param pluginName - a name of dependent plugin, whose jars should be added to scramble classpath
-     * @param relativePath - a directory where jars should be searched (relative to plugin home directory, "lib" by default)
      */
-    void scrambleClasspathPlugin(String pluginName, String relativePath = "lib") {
-      layout.scrambleClasspathPlugins.add(new Pair(pluginName, relativePath))
+    void scrambleClasspathPlugin(String pluginName) {
+      layout.scrambleClasspathPlugins.add(pluginName)
     }
 
     /**
@@ -279,9 +255,5 @@ final class PluginLayout extends BaseLayout {
     void filterScrambleClasspath(BiPredicate<BuildContext, File> filter) {
       layout.scrambleClasspathFilter = filter
     }
-  }
-
-  interface VersionEvaluator {
-    String evaluate(Path pluginXml, String ideBuildVersion, BuildContext context)
   }
 }

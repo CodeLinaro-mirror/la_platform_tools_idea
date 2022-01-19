@@ -1,7 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl.compilation
 
+
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.util.io.StreamUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.io.Compressor
 import groovy.transform.CompileStatic
@@ -22,7 +24,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @CompileStatic
-final class PortableCompilationCacheUploader {
+class PortableCompilationCacheUploader {
   private final CompilationContext context
   private final BuildMessages messages
   private final String remoteCacheUrl
@@ -86,7 +88,7 @@ final class PortableCompilationCacheUploader {
     }
     finally {
       executor.close()
-      CloseStreamUtil.closeStream(uploader)
+      StreamUtil.closeStream(uploader)
     }
   }
 
@@ -234,7 +236,7 @@ final class PortableCompilationCacheUploader {
         throw new UploadException("Failed to GET $path: " + e.getMessage(), e)
       }
       finally {
-        CloseStreamUtil.closeStream(response)
+        StreamUtil.closeStream(response)
       }
     }
 

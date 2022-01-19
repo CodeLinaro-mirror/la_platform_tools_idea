@@ -22,7 +22,6 @@ import com.intellij.execution.runners.ExecutionUtil
 import com.intellij.execution.runners.ProgramRunner
 import com.intellij.execution.target.TargetEnvironmentAwareRunProfile
 import com.intellij.execution.target.TargetProgressIndicator
-import com.intellij.execution.target.getEffectiveTargetName
 import com.intellij.execution.ui.ConsoleView
 import com.intellij.execution.ui.RunContentDescriptor
 import com.intellij.execution.ui.RunContentManager
@@ -64,7 +63,6 @@ import java.io.OutputStream
 import java.util.*
 import java.util.concurrent.Callable
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.function.Consumer
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 
@@ -77,10 +75,10 @@ class ExecutionManagerImpl(private val project: Project) : ExecutionManager(), D
     internal val DELEGATED_RUN_PROFILE_KEY = Key.create<RunProfile>("DELEGATED_RUN_PROFILE_KEY")
 
     @JvmField
-    val EXECUTION_SESSION_ID_KEY = ExecutionManager.EXECUTION_SESSION_ID_KEY
+    val EXECUTION_SESSION_ID_KEY = Key.create<Any>("EXECUTION_SESSION_ID_KEY")
 
     @JvmField
-    val EXECUTION_SKIP_RUN = ExecutionManager.EXECUTION_SKIP_RUN
+    val EXECUTION_SKIP_RUN = Key.create<Boolean>("EXECUTION_SKIP_RUN")
 
     @JvmStatic
     fun getInstance(project: Project) = project.service<ExecutionManager>() as ExecutionManagerImpl
@@ -150,7 +148,7 @@ class ExecutionManagerImpl(private val project: Project) : ExecutionManager(), D
   @Volatile
   var forceCompilationInTests = false
 
-  private val awaitingTerminationAlarm = Alarm()
+  private val awaitingTerminationAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD)
   private val awaitingRunProfiles = HashMap<RunProfile, ExecutionEnvironment>()
   private val runningConfigurations: MutableList<RunningConfigurationEntry> = ContainerUtil.createLockFreeCopyOnWriteList()
 
@@ -450,8 +448,7 @@ class ExecutionManagerImpl(private val project: Project) : ExecutionManager(), D
                                  executor: Executor,
                                  target: ExecutionTarget,
                                  configuration: RunnerAndConfigurationSettings?,
-                                 processHandler: ProcessHandler?,
-                                 environmentCustomization: Consumer<ExecutionEnvironment>?) {
+                                 processHandler: ProcessHandler?) {
     val builder = createEnvironmentBuilder(project, executor, configuration)
     if (processHandler != null) {
       for (descriptor in getAllDescriptors(project)) {
@@ -461,9 +458,7 @@ class ExecutionManagerImpl(private val project: Project) : ExecutionManager(), D
         }
       }
     }
-    val environment = builder.target(target).build()
-    environmentCustomization?.accept(environment)
-    restartRunProfile(environment)
+    restartRunProfile(builder.target(target).build())
   }
 
   override fun restartRunProfile(environment: ExecutionEnvironment) {
@@ -582,7 +577,7 @@ class ExecutionManagerImpl(private val project: Project) : ExecutionManager(), D
 
     val component = TargetPrepareComponent(consoleView)
     val buildContentManager = BuildContentManager.getInstance(environment.project)
-    val contentName = targetEnvironmentAwareRunProfile.getEffectiveTargetName(environment.project)?.let {
+    val contentName = targetEnvironmentAwareRunProfile.defaultTargetName?.let {
       ExecutionBundle.message("tab.title.prepare.environment", it, environment.runProfile.name)
     } ?: ExecutionBundle.message("tab.title.prepare.target.environment", environment.runProfile.name)
     val toolWindow = buildContentManager.orCreateToolWindow

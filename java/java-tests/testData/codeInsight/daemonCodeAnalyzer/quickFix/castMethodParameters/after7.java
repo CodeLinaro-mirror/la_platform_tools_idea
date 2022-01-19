@@ -1,4 +1,4 @@
-// "Cast argument to 'a'" "true"
+// "Cast parameter to 'a'" "true"
 class a {
     void test()  {}
     void test(int i)  {}

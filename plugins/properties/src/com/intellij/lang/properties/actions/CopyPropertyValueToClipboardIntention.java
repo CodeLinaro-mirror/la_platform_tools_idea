@@ -21,7 +21,7 @@ public final class CopyPropertyValueToClipboardIntention implements IntentionAct
 
   @Override
   public @NotNull String getText() {
-    return getFamilyName();
+    return PropertiesBundle.message("copy.property.value.to.clipboard.intention.name");
   }
 
   @Override

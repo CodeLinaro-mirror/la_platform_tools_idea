@@ -1,5 +1,7 @@
 package com.jetbrains.packagesearch.intellij.plugin.api.http
 
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.castSafelyTo
 import com.intellij.util.io.HttpRequests
@@ -10,14 +12,14 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
+@Suppress("TooGenericExceptionCaught") // Putting any potential issues in an Either.Left
 internal suspend fun requestString(
     url: String,
     acceptContentType: String,
     timeoutInSeconds: Int = 10,
     headers: List<Pair<String, String>>
-): String = suspendCancellableCoroutine { cont ->
+): ApiResult<String> = suspendCancellableCoroutine { cont ->
     try {
         val builder = HttpRequests.request(url)
             .productNameAsUserAgent()
@@ -48,13 +50,26 @@ internal suspend fun requestString(
                 )
             }
 
-            when {
-                responseText.isEmpty() -> cont.resumeWithException(EmptyBodyException())
-                else -> cont.resume(responseText)
+            val r = when {
+                responseText.isEmpty() -> ApiResult.Failure(EmptyBodyException())
+                else -> ApiResult.Success(responseText)
             }
+            cont.resume(r)
         }
     } catch (t: Throwable) {
-        cont.resumeWithException(t)
+        t.log()
+        cont.resume(ApiResult.Failure(t.log()))
+    }
+}
+
+private fun String.asJSONObject(): JsonObject = JsonParser.parseString(this).asJsonObject
+
+private fun Throwable.log() = apply {
+    @Suppress("TooGenericExceptionCaught") // Guarding against random runtime failures
+    try {
+        Logger.getInstance(this.javaClass).warn("Error occurred while performing a request", this)
+    } catch (t: Throwable) {
+        // IntelliJ logger rethrows logged exception
     }
 }
 
@@ -73,6 +88,7 @@ private fun InputStream.copyTo(out: OutputStream, bufferSize: Int = DEFAULT_BUFF
     }
     return bytesCopied
 }
+
 
 private fun InputStream.readBytes(cancellationRequested: () -> Boolean): ByteArray {
     val buffer = ByteArrayOutputStream(maxOf(DEFAULT_BUFFER_SIZE, this.available()))

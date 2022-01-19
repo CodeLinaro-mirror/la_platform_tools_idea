@@ -2,7 +2,6 @@
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.SystemInfo
-import com.intellij.openapi.util.io.FileUtil
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -54,7 +53,7 @@ abstract class BundledJreManager {  // Android Studio: only instantiate subclass
 
     Path destinationDir = targetDir.resolve("jbr")
     buildContext.messages.block("Extracting $archive into $destinationDir") {
-      FileUtil.delete(destinationDir)
+      destinationDir.deleteDir()
       untar(archive, destinationDir.toString())
       fixJbrPermissions(destinationDir, os == OsFamily.WINDOWS)
     }
@@ -145,7 +144,6 @@ abstract class BundledJreManager {  // Android Studio: only instantiate subclass
    * Update this method together with:
    *  `build/dependencies/setupJbre.gradle`
    *  `build/dependencies/setupJdk.gradle`
-   *  `com.jetbrains.gateway.downloader.CodeWithMeClientDownloader#downloadClientAndJdk(java.lang.String, java.lang.String, com.intellij.openapi.progress.ProgressIndicator)`
   */
   private String jbrArchiveName(String jreBuild, int version, JvmArchitecture arch, OsFamily os) {
     String update, build

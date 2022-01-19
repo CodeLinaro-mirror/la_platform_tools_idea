@@ -3,9 +3,8 @@
 package com.intellij.ide.projectView.impl.nodes;
 
 import com.intellij.codeInsight.navigation.NavigationUtil;
-import com.intellij.ide.bookmark.Bookmark;
-import com.intellij.ide.bookmark.BookmarkType;
-import com.intellij.ide.bookmark.BookmarksManager;
+import com.intellij.ide.bookmarks.Bookmark;
+import com.intellij.ide.bookmarks.BookmarkManager;
 import com.intellij.ide.projectView.PresentationData;
 import com.intellij.ide.projectView.ProjectViewNode;
 import com.intellij.ide.projectView.ProjectViewSettings;
@@ -169,7 +168,8 @@ public abstract class AbstractPsiBasedNode<Value> extends ProjectViewNode<Value>
       final Icon tagIcon;
       final ColoredText tagText;
       if (!TagManager.isEnabled()) {
-        tagIcon = getBookmarkIcon(myProject, value);
+        Bookmark bookmark = BookmarkManager.getInstance(myProject).findElementBookmark(value);
+        tagIcon = bookmark == null ? null : bookmark.getIcon();
         tagText = null;
       }
       else {
@@ -216,11 +216,11 @@ public abstract class AbstractPsiBasedNode<Value> extends ProjectViewNode<Value>
 
     Icon icon = original;
 
-    Icon bookmarkIcon = getBookmarkIcon(project, file);
-    if (bookmarkIcon != null) {
+    final Bookmark bookmarkAtFile = BookmarkManager.getInstance(project).findFileBookmark(file);
+    if (bookmarkAtFile != null) {
       final RowIcon composite = IconManager.getInstance().createRowIcon(2, RowIcon.Alignment.CENTER);
       composite.setIcon(icon, 0);
-      composite.setIcon(bookmarkIcon, 1);
+      composite.setIcon(bookmarkAtFile.getIcon(), 1);
       icon = composite;
     }
 
@@ -229,16 +229,6 @@ public abstract class AbstractPsiBasedNode<Value> extends ProjectViewNode<Value>
     }
 
     return icon;
-  }
-
-  private static @Nullable Icon getBookmarkIcon(@NotNull Project project, @Nullable Object context) {
-    BookmarksManager manager = BookmarksManager.getInstance(project);
-    if (manager == null) return null; // bookmarks manager is not available
-    Bookmark bookmark = manager.createBookmark(context);
-    if (bookmark == null) return null; // bookmark cannot be created
-    BookmarkType type = manager.getType(bookmark);
-    if (type == null) return null; // bookmark is not set
-    return type.getIcon();
   }
 
   protected boolean isDeprecated() {

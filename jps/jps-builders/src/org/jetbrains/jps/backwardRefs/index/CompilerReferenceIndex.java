@@ -309,8 +309,12 @@ public class CompilerReferenceIndex<Input> {
                                            16 * 1024,
                                            false,
                                            true,
-                                           false,
                                            readOnly,
-                                           null);
+                                           null) {
+      @Override
+      public void checkCanceled() {
+        //TODO
+      }
+    };
   }
 }

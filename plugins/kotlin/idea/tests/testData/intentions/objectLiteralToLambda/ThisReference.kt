@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'b' is never used
 
 class Test {
     fun foo() {

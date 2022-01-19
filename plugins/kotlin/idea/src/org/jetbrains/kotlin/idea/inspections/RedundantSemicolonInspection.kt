@@ -2,6 +2,7 @@
 
 package org.jetbrains.kotlin.idea.inspections
 
+import com.intellij.codeInsight.FileModificationService
 import com.intellij.codeInspection.*
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiComment
@@ -134,6 +135,7 @@ class RedundantSemicolonInspection : AbstractKotlinInspection(), CleanupLocalIns
             override fun getFamilyName() = name
 
             override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
+                if (!FileModificationService.getInstance().preparePsiElementForWrite(descriptor.psiElement)) return
                 descriptor.psiElement.delete()
             }
         }

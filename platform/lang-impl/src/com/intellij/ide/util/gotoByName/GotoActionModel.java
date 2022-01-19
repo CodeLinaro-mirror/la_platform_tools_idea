@@ -170,28 +170,34 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
     myUpdateSession = newUpdateSession();
   }
 
-  public enum MatchedValueType { ABBREVIATION, INTENTION, TOP_HIT, OPTION, ACTION }
-
   public static class MatchedValue {
     @NotNull public final Object value;
-    @NotNull final MatchedValueType type;
     @NotNull final String pattern;
     final int matchingDegree;
+    final boolean isAbbreviation;
 
-    MatchedValue(@NotNull Object value, @NotNull String pattern, @NotNull MatchedValueType type) {
+    MatchedValue(@NotNull Object value, @NotNull String pattern) {
       assert value instanceof OptionDescription || value instanceof ActionWrapper;
       this.value = value;
       this.pattern = pattern;
       matchingDegree = calcMatchingDegree();
-      this.type = type;
+      this.isAbbreviation = false;
     }
 
-    MatchedValue(@NotNull Object value, @NotNull String pattern, int degree, @NotNull MatchedValueType type) {
+    MatchedValue(@NotNull Object value, @NotNull String pattern, int degree) {
       assert value instanceof OptionDescription || value instanceof ActionWrapper;
       this.value = value;
       this.pattern = pattern;
       matchingDegree = degree;
-      this.type = type;
+      this.isAbbreviation = false;
+    }
+
+    MatchedValue(@NotNull Object value, @NotNull String pattern, int degree, boolean isAbbreviation) {
+      assert value instanceof OptionDescription || value instanceof ActionWrapper;
+      this.value = value;
+      this.pattern = pattern;
+      matchingDegree = degree;
+      this.isAbbreviation = isAbbreviation;
     }
 
     @Nullable
@@ -210,13 +216,8 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
       return matchingDegree;
     }
 
-    @NotNull
-    public MatchedValueType getType() {
-      return type;
-    }
-
-    public int getValueTypeWeight() {
-      return getTypeWeight(value);
+    public boolean isAbbreviation() {
+      return isAbbreviation;
     }
 
     private int calcMatchingDegree() {
@@ -324,6 +325,16 @@ public final class GotoActionModel implements ChooseByNameModel, Comparator<Obje
     if (ChooseByNameBase.EXTRA_ELEM.equals(o1)) return 1;
     if (ChooseByNameBase.EXTRA_ELEM.equals(o2)) return -1;
     return ((MatchedValue)o1).compareWeights((MatchedValue)o2);
+  }
+
+  /**
+   * @deprecated Please use {@link GotoActionModel#defaultActionForeground(boolean, boolean, Presentation)} instead.
+   * This method may be removed in future versions
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  public static Color defaultActionForeground(boolean isSelected, @Nullable Presentation presentation) {
+    return defaultActionForeground(isSelected, true, presentation);
   }
 
   public static Color defaultActionForeground(boolean isSelected, boolean hasFocus, @Nullable Presentation presentation) {

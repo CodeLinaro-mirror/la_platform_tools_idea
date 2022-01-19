@@ -59,14 +59,13 @@ public class CodeStyleSettingsManager implements PersistentStateComponentWithMod
   }
 
   @TestOnly
-  @NotNull
   public final CodeStyleSettings createTemporarySettings() {
     myTemporarySettings = new CodeStyleSettings(true, false);
     return myTemporarySettings;
   }
 
   @SuppressWarnings("MethodMayBeStatic")
-  public final @NotNull CodeStyleSettings cloneSettings(@NotNull CodeStyleSettings settings) {
+  public final CodeStyleSettings cloneSettings(@NotNull CodeStyleSettings settings) {
     CodeStyleSettings clonedSettings = new CodeStyleSettings(true, false);
     clonedSettings.copyFrom(settings);
     registerSettings(clonedSettings);
@@ -74,7 +73,7 @@ public class CodeStyleSettingsManager implements PersistentStateComponentWithMod
   }
 
   @TestOnly
-  public static @NotNull CodeStyleSettings createTestSettings(@Nullable CodeStyleSettings baseSettings) {
+  public static CodeStyleSettings createTestSettings(@Nullable CodeStyleSettings baseSettings) {
     final CodeStyleSettings testSettings = new CodeStyleSettings(true, false);
     if (baseSettings != null) {
       testSettings.copyFrom(baseSettings);
@@ -82,7 +81,7 @@ public class CodeStyleSettingsManager implements PersistentStateComponentWithMod
     return testSettings;
   }
 
-  private @NotNull Collection<CodeStyleSettings> getAllSettings() {
+  private Collection<CodeStyleSettings> getAllSettings() {
     List<CodeStyleSettings> allSettings = new ArrayList<>(enumSettings());
     allSettings.addAll(ourReferencedSettings.toStrongList());
     return allSettings;
@@ -143,7 +142,6 @@ public class CodeStyleSettingsManager implements PersistentStateComponentWithMod
     }, disposable);
   }
 
-  @NotNull
   protected Collection<CodeStyleSettings> enumSettings() { return Collections.emptyList(); }
 
   @ApiStatus.Internal

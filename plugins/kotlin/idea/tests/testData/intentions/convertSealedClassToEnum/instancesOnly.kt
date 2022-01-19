@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Variable 'n' is never used
 
 sealed class <caret>MyClass(val s: String = "") {
     object FOO : MyClass("FOO")

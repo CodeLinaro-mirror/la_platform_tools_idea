@@ -1,4 +1,4 @@
-// "Replace lambda with method reference" "false"
+// "Replace lambda with method reference" "true"
 import java.util.prefs.Preferences;
 
 class Test {

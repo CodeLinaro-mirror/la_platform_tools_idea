@@ -1,1 +1,0 @@
-new Duckling("Franklin", Color.YELLOW)

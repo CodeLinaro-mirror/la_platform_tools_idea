@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.navigator;
 
 import com.intellij.execution.ProgramRunnerUtil;
@@ -9,7 +9,6 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.util.treeView.NodeDescriptor;
-import com.intellij.ide.wizard.UIWizardUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
@@ -46,6 +45,7 @@ import org.jetbrains.idea.maven.execution.MavenRunConfigurationType;
 import org.jetbrains.idea.maven.execution.MavenRunner;
 import org.jetbrains.idea.maven.model.*;
 import org.jetbrains.idea.maven.project.MavenProject;
+import org.jetbrains.idea.maven.project.MavenProjectBundle;
 import org.jetbrains.idea.maven.project.MavenProjectsManager;
 import org.jetbrains.idea.maven.statistics.MavenActionsUsagesCollector;
 import org.jetbrains.idea.maven.tasks.MavenShortcutsManager;
@@ -212,7 +212,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
       if (aggregator != null) {
         ProjectNode aggregatorNode = findNodeFor(aggregator);
         if (aggregatorNode != null && aggregatorNode.isVisible()) {
-          newParentNode = aggregatorNode;
+          newParentNode = aggregatorNode.getModulesNode();
         }
       }
     }
@@ -220,7 +220,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     node.updateProject();
     reconnectNode(node, newParentNode);
 
-    ProjectsGroupNode newModulesParentNode = myProjectsNavigator.getGroupModules() && node.isVisible() ? node : myRoot;
+    ProjectsGroupNode newModulesParentNode = myProjectsNavigator.getGroupModules() && node.isVisible() ? node.getModulesNode() : myRoot;
     for (MavenProject each : myProjectsManager.getModules(project)) {
       ProjectNode moduleNode = findNodeFor(each);
       if (moduleNode != null && !moduleNode.getParent().equals(newModulesParentNode)) {
@@ -549,7 +549,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
 
     public ProjectsGroupNode(MavenSimpleNode parent) {
       super(parent);
-      getTemplatePresentation().setIcon(MavenIcons.ModulesClosed);
+      setUniformIcon(MavenIcons.ModulesClosed);
     }
 
     @Override
@@ -739,7 +739,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
                   return result;
                 }
               })
-              .setTitle(message("maven.notification.choose.file.to.open"))
+              .setTitle(MavenProjectBundle.message("maven.notification.choose.file.to.open"))
               .setItemChosenCallback((value) -> {
                 final Navigatable navigatable = getNavigatable(value);
                 if (navigatable != null) navigatable.navigate(requestFocus);
@@ -769,11 +769,12 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     }
   }
 
-  public class ProjectNode extends ProjectsGroupNode {
+  public class ProjectNode extends GroupNode {
     private final MavenProject myMavenProject;
     private final LifecycleNode myLifecycleNode;
     private final PluginsNode myPluginsNode;
     private final DependenciesNode myDependenciesNode;
+    private final ModulesNode myModulesNode;
     private final RunConfigurationsNode myRunConfigurationsNode;
 
     private @NlsContexts.Tooltip String myTooltipCache;
@@ -785,9 +786,10 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
       myLifecycleNode = new LifecycleNode(this);
       myPluginsNode = new PluginsNode(this);
       myDependenciesNode = new DependenciesNode(this, mavenProject);
+      myModulesNode = new ModulesNode(this);
       myRunConfigurationsNode = new RunConfigurationsNode(this);
 
-      getTemplatePresentation().setIcon(MavenIcons.MavenProject);
+      setUniformIcon(MavenIcons.MavenProject);
     }
 
     public MavenProject getMavenProject() {
@@ -806,10 +808,11 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
 
     @Override
     protected List<? extends MavenSimpleNode> doGetChildren() {
-      return ContainerUtil.concat(
-        Arrays.asList(myLifecycleNode, myPluginsNode, myRunConfigurationsNode, myDependenciesNode),
-        super.doGetChildren()
-      );
+      return Arrays.asList(myLifecycleNode, myPluginsNode, myRunConfigurationsNode, myDependenciesNode, myModulesNode);
+    }
+
+    public ModulesNode getModulesNode() {
+      return myModulesNode;
     }
 
     private void updateProject() {
@@ -876,27 +879,18 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     @NlsContexts.DetailedDescription
     private String makeDescription() {
       StringBuilder desc = new StringBuilder();
-
-      desc.append("<html>")
-        .append("<table>");
-
-      desc.append("<tr>")
-        .append("<td nowrap>").append("<table>")
-        .append("<tr>")
-        .append("<td nowrap>").append(message("detailed.description.project")).append("</td>")
-        .append("<td nowrap>").append(myMavenProject.getMavenId()).append("</td>")
-        .append("</tr>")
-        .append("<tr>")
-        .append("<td nowrap>").append(message("detailed.description.location")).append("</td>")
-        .append("<td nowrap>").append(UIWizardUtil.getPresentablePath(myMavenProject.getPath())).append("</td>")
-        .append("</tr>")
-        .append("</table>").append("</td>")
-        .append("</tr>");
+      desc.append("<html>" + "<table>" + "<tr>" + "<td nowrap>" + "<table>" + "<tr>" + "<td nowrap>")
+        .append(MavenProjectBundle.message("detailed.description.project")).append("</td>").append("<td nowrap>").append(myMavenProject.getMavenId()).append("</td>" + "</tr>" + "<tr>" + "<td nowrap>")
+        .append(MavenProjectBundle.message("detailed.description.location")).append(":</td>").append("<td nowrap>").append(myMavenProject.getPath())
+        .append("</td>" +
+                "</tr>" +
+                "</table>" +
+                "</td>" +
+                "</tr>");
 
       appendProblems(desc);
 
-      desc.append("</table>")
-        .append("</html>");
+      desc.append("</table></html>");
 
       return desc.toString(); //NON-NLS
     }
@@ -914,7 +908,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
         desc.append("<tr>");
         if (first) {
           desc.append("<td nowrap valign=top>").append(MavenUtil.formatHtmlImage(ERROR_ICON_URL)).append("</td>");
-          desc.append("<td nowrap valign=top>").append(message("detailed.description.problems")).append("</td>");
+          desc.append("<td nowrap valign=top>").append(MavenProjectBundle.message("detailed.description.problems")).append("</td>");
           first = false;
         }
         else {
@@ -974,7 +968,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
   public class ModulesNode extends ProjectsGroupNode {
     public ModulesNode(ProjectNode parent) {
       super(parent);
-      getTemplatePresentation().setIcon(MavenIcons.ModulesClosed);
+      setUniformIcon(MavenIcons.ModulesClosed);
     }
 
     @Override
@@ -1088,7 +1082,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
       for (String goal : PHASES) {
         myGoalNodes.add(new StandardGoalNode(this, goal));
       }
-      getTemplatePresentation().setIcon(AllIcons.Nodes.ConfigFolder);
+      setUniformIcon(AllIcons.Nodes.ConfigFolder);
     }
 
     @Override
@@ -1118,7 +1112,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
 
     public PluginsNode(ProjectNode parent) {
       super(parent);
-      getTemplatePresentation().setIcon(AllIcons.Nodes.ConfigFolder);
+      setUniformIcon(AllIcons.Nodes.ConfigFolder);
     }
 
     @Override
@@ -1146,7 +1140,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
       super(parent);
       myPlugin = plugin;
 
-      getTemplatePresentation().setIcon(MavenIcons.MavenPlugin);
+      setUniformIcon(MavenIcons.MavenPlugin);
       updatePlugin(pluginInfo);
     }
 
@@ -1199,7 +1193,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
 
     public PluginGoalNode(PluginNode parent, String goal, String unqualifiedGoal, String displayName) {
       super(parent, goal, displayName);
-      getTemplatePresentation().setIcon(MavenIcons.PluginGoal);
+      setUniformIcon(MavenIcons.PluginGoal);
       myUnqualifiedGoal = unqualifiedGoal;
     }
 
@@ -1321,7 +1315,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
   public class DependenciesNode extends BaseDependenciesNode {
     public DependenciesNode(ProjectNode parent, MavenProject mavenProject) {
       super(parent, mavenProject);
-      getTemplatePresentation().setIcon(AllIcons.Nodes.PpLibFolder);
+      setUniformIcon(AllIcons.Nodes.PpLibFolder);
     }
 
     @Override
@@ -1390,7 +1384,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     }
 
     private void updateDependency() {
-      setErrorLevel(MavenArtifactUtilKt.resolved(myArtifact) ? ErrorLevel.NONE : ErrorLevel.ERROR);
+      setErrorLevel(myArtifact.isResolved() ? ErrorLevel.NONE : ErrorLevel.ERROR);
     }
 
     @Override
@@ -1421,7 +1415,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
 
     public RunConfigurationsNode(ProjectNode parent) {
       super(parent);
-      getTemplatePresentation().setIcon(Task);
+      setUniformIcon(Task);
     }
 
     @Override
@@ -1481,7 +1475,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     public RunConfigurationNode(RunConfigurationsNode parent, RunnerAndConfigurationSettings settings) {
       super(parent);
       mySettings = settings;
-      getTemplatePresentation().setIcon(ProgramRunnerUtil.getConfigurationIcon(settings, false));
+      setUniformIcon(ProgramRunnerUtil.getConfigurationIcon(settings, false));
     }
 
     public RunnerAndConfigurationSettings getSettings() {
@@ -1513,7 +1507,7 @@ public class MavenProjectsStructure extends SimpleTreeStructure {
     @Override
     public void handleDoubleClickOrEnter(SimpleTree tree, InputEvent inputEvent) {
       MavenActionsUsagesCollector
-        .trigger(myProject, MavenActionsUsagesCollector.EXECUTE_MAVEN_CONFIGURATION, TOOL_WINDOW_PLACE_ID, false, null);
+        .trigger(myProject, MavenActionsUsagesCollector.ActionID.ExecuteMavenRunConfigurationAction, TOOL_WINDOW_PLACE_ID, false, null);
       ProgramRunnerUtil.executeConfiguration(mySettings, DefaultRunExecutor.getRunExecutorInstance());
     }
   }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.ex;
 
 import com.intellij.DynamicBundle;
@@ -16,7 +16,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.util.ResourceUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -108,7 +107,7 @@ public abstract class InspectionToolWrapper<T extends InspectionProfileEntry, E 
     return isApplicable(language, langId);
   }
 
-  private boolean isApplicable(@NotNull Language language, @Nullable String toolLang) {
+  private boolean isApplicable(@NotNull Language language, String toolLang) {
     if (toolLang == null) {
       return true;
     }
@@ -141,7 +140,6 @@ public abstract class InspectionToolWrapper<T extends InspectionProfileEntry, E 
     return myEP != null ? myEP.getShortName() : getTool().getShortName();
   }
 
-  @NotNull
   public String getID() {
     return getShortName();
   }
@@ -206,7 +204,7 @@ public abstract class InspectionToolWrapper<T extends InspectionProfileEntry, E 
     return getTool().loadDescription();
   }
 
-  private @Nullable InputStream getDescriptionStream() {
+  private InputStream getDescriptionStream() {
     Application app = ApplicationManager.getApplication();
     String fileName = getDescriptionFileName();
 
@@ -217,8 +215,7 @@ public abstract class InspectionToolWrapper<T extends InspectionProfileEntry, E 
       return ResourceUtil.getResourceAsStream(getDescriptionContextClass().getClassLoader(), "inspectionDescriptions", fileName);
     }
 
-    return getPluginClassLoaderStream(myEP.getPluginDescriptor().getPluginClassLoader(),
-                                      fileName);
+    return myEP.getPluginDescriptor().getPluginClassLoader().getResourceAsStream("inspectionDescriptions/" + fileName);
   }
 
   @Nullable
@@ -227,9 +224,12 @@ public abstract class InspectionToolWrapper<T extends InspectionProfileEntry, E 
     if (langBundle == null) return null;
 
     PluginDescriptor langPluginDescriptor = langBundle.pluginDescriptor;
-    return langPluginDescriptor != null ?
-           getPluginClassLoaderStream(langPluginDescriptor.getPluginClassLoader(), fileName) :
-           null;
+    if (langPluginDescriptor == null) return null;
+
+    ClassLoader classLoader = langPluginDescriptor.getPluginClassLoader();
+    if (classLoader == null) return null;
+
+    return classLoader.getResourceAsStream("inspectionDescriptions/" + fileName);
   }
 
   @NotNull
@@ -275,12 +275,5 @@ public abstract class InspectionToolWrapper<T extends InspectionProfileEntry, E 
       myDisplayKey = key = HighlightDisplayKey.find(getShortName());
     }
     return key;
-  }
-
-  private static @Nullable InputStream getPluginClassLoaderStream(@Nullable ClassLoader classLoader,
-                                                                  @NotNull @NlsSafe String fileName) {
-    return classLoader != null ?
-           classLoader.getResourceAsStream("inspectionDescriptions/" + fileName) :
-           null;
   }
 }

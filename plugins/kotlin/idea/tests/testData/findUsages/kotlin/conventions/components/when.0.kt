@@ -18,8 +18,7 @@ fun when1(o: Any) {
 
 fun when2(o: Any) {
     when (o) {
-        !is A -> {
-        }
+        !is A -> { }
 
         else -> {
             val (x, y) = o

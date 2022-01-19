@@ -1,4 +1,5 @@
 from logging import Logger
+from typing import Dict, List, Optional
 
 from paramiko.channel import Channel
 
@@ -40,7 +41,7 @@ SFTP_NO_CONNECTION: int
 SFTP_CONNECTION_LOST: int
 SFTP_OP_UNSUPPORTED: int
 
-SFTP_DESC: list[str]
+SFTP_DESC: List[str]
 
 SFTP_FLAG_READ: int
 SFTP_FLAG_WRITE: int
@@ -49,12 +50,12 @@ SFTP_FLAG_CREATE: int
 SFTP_FLAG_TRUNC: int
 SFTP_FLAG_EXCL: int
 
-CMD_NAMES: dict[int, str]
+CMD_NAMES: Dict[int, str]
 
 class SFTPError(Exception): ...
 
 class BaseSFTP:
     logger: Logger
-    sock: Channel | None
+    sock: Optional[Channel]
     ultra_debug: bool
     def __init__(self) -> None: ...

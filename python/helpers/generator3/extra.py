@@ -130,10 +130,11 @@ def add_to_zip(zip, paths):
 
             for root, files in walk_python_path(path):
                 for name in files:
-                    file_path = os.path.join(root, name)
-                    arcpath = os.path.relpath(file_path, path)
+                    if name.endswith('.py') or name.endswith('-nspkg.pth'):
+                        file_path = os.path.join(root, name)
+                        arcpath = os.path.relpath(file_path, path)
 
-                    zip.write(file_path, os.path.join(str(hash(path)), arcpath))
+                        zip.write(file_path, os.path.join(str(hash(path)), arcpath))
     except:
         import traceback
 

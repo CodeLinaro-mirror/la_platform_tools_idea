@@ -7,15 +7,15 @@ import org.jetbrains.kotlin.tools.projectWizard.KotlinNewProjectWizardBundle
 import org.jetbrains.kotlin.tools.projectWizard.Versions
 import org.jetbrains.kotlin.tools.projectWizard.core.Reader
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.ModuleConfiguratorSetting
+import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.ModuleConfiguratorSettingReference
+import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.SettingReference
+import org.jetbrains.kotlin.tools.projectWizard.core.safeAs
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.*
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.gradle.irsList
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.maven.MavenOnlyPluginIR
 import org.jetbrains.kotlin.tools.projectWizard.library.MavenArtifact
-import org.jetbrains.kotlin.tools.projectWizard.moduleConfigurators.JvmModuleConfigurator.Companion.testFramework
 import org.jetbrains.kotlin.tools.projectWizard.phases.GenerationPhase
-import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.BuildSystemType
-import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.buildSystemType
-import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.isGradle
+import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.*
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.KotlinPlugin
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModuleType
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModulesToIrConversionData
@@ -26,14 +26,37 @@ import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.ModuleKind
 
 interface ModuleConfiguratorWithTests : ModuleConfiguratorWithSettings {
     companion object : ModuleConfiguratorSettings() {
-
-        val useKotlinTest by booleanSetting(
-            KotlinNewProjectWizardBundle.message("module.configurator.tests.setting.kotlin.test.title"),
-            GenerationPhase.PROJECT_GENERATION
+        val testFramework by enumSetting<KotlinTestFramework>(
+            KotlinNewProjectWizardBundle.message("module.configurator.tests.setting.framework"),
+            neededAtPhase = GenerationPhase.PROJECT_GENERATION
         ) {
-            defaultValue = value(true)
-            description = KotlinNewProjectWizardBundle.message("module.configurator.tests.setting.kotlin.test.desc")
+            filter = filter@{ reference, kotlinTestFramework ->
+                val module = getModule(reference) ?: return@filter false
+                val configurator = module.configurator
+                when {
+                    kotlinTestFramework == KotlinTestFramework.NONE -> {
+                        val parent = module.parent
+                        module.kind != ModuleKind.target || (parent?.let { getTestFramework(it) } == KotlinTestFramework.NONE)
+                    }
+                    configurator == MppModuleConfigurator -> kotlinTestFramework == KotlinTestFramework.COMMON
+                    configurator is ModuleConfiguratorWithModuleType -> configurator.moduleType in kotlinTestFramework.moduleTypes
+                    else -> false
+                }
+            }
+            defaultValue = dynamic { reference ->
+                if (buildSystemType == BuildSystemType.Jps) return@dynamic KotlinTestFramework.NONE
+                val module = getModule(reference) ?: return@dynamic KotlinTestFramework.NONE
+                module.configurator.safeAs<ModuleConfiguratorWithTests>()?.defaultTestFramework()
+            }
         }
+
+        private fun getModule(reference: SettingReference<*, *>): Module? {
+            if (reference !is ModuleConfiguratorSettingReference<*, *>) return null
+            return reference.module
+        }
+
+        private fun Reader.getTestFramework(module: Module): KotlinTestFramework =
+            inContextOfModuleConfigurator(module) { testFramework.reference.settingValue }
     }
 
     fun defaultTestFramework(): KotlinTestFramework
@@ -46,19 +69,9 @@ interface ModuleConfiguratorWithTests : ModuleConfiguratorWithSettings {
         reader {
             if (buildSystemType.isGradle) {
                 val mppModule = module.parent
-
-                val moduleToLookAt = if (module.configurator is CommonTargetConfigurator) mppModule!! else module
-                val useKotlinTest = settingValue(moduleToLookAt, useKotlinTest)
-
-                val testFramework = if (useKotlinTest != null) {
-                    if (useKotlinTest) {
-                        resolveKotlinTestToFramework(moduleToLookAt)
-                    } else {
-                        KotlinTestFramework.NONE
-                    }
-                } else {
-                    settingValue(moduleToLookAt, testFramework)
-                }
+                val testFramework = getTestFramework(
+                    if (module.configurator is CommonTargetConfigurator) mppModule!! else module
+                )
 
                 if (testFramework != KotlinTestFramework.NONE) {
                     if (module.configurator !is TargetConfigurator
@@ -78,33 +91,13 @@ interface ModuleConfiguratorWithTests : ModuleConfiguratorWithSettings {
         }
     }
 
-    fun resolveKotlinTestToFramework(module: Module): KotlinTestFramework =
-        if (module.configurator is MppModuleConfigurator) {
-            KotlinTestFramework.COMMON
-        } else {
-            KotlinTestFramework.JS
-        }
-
-    fun Reader.getTestFramework(module: Module): KotlinTestFramework = if (settingValue(module, useKotlinTest) == true) {
-        resolveKotlinTestToFramework(module)
-    } else {
-        KotlinTestFramework.NONE
-    }
-
-    fun ModuleConfiguratorContext.getTestFramework(reader: Reader, module: Module): KotlinTestFramework = reader {
-        if (settingValue(module, useKotlinTest) == true) {
-            resolveKotlinTestToFramework(module)
-        } else {
-            KotlinTestFramework.NONE
-        }
-    }
 
     override fun createBuildFileIRs(reader: Reader, configurationData: ModulesToIrConversionData, module: Module) = irsList {
-        val testFramework = inContextOfModuleConfigurator(module) { getTestFramework(reader, module) }
+        val testFramework = inContextOfModuleConfigurator(module) { reader { testFramework.reference.settingValue } }
         val buildSystemType = reader { buildSystemType }
         if (testFramework != KotlinTestFramework.NONE) {
             when {
-                module.kind.isSinglePlatform && buildSystemType.isGradle -> {
+                module.kind.isSingleplatform && buildSystemType.isGradle -> {
                     testFramework.usePlatform?.let { usePlatform ->
                         val testTaskAccess = if (buildSystemType == BuildSystemType.GradleKotlinDsl) "tasks.test" else "test"
                         testTaskAccess {
@@ -120,7 +113,7 @@ interface ModuleConfiguratorWithTests : ModuleConfiguratorWithSettings {
         }
     }
 
-    override fun getConfiguratorSettings(): List<ModuleConfiguratorSetting<*, *>> = listOf(useKotlinTest)
+    override fun getConfiguratorSettings(): List<ModuleConfiguratorSetting<*, *>> = listOf(testFramework)
 
     private fun Reader.createTestFramework(name: String, module: Module) = KotlinArbitraryDependencyIR(
         name = name,

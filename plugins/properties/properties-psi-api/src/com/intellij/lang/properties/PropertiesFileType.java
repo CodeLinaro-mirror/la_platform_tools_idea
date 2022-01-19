@@ -3,10 +3,11 @@ package com.intellij.lang.properties;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.lang.properties.charset.Native2AsciiCharset;
+import com.intellij.openapi.fileEditor.impl.LoadTextUtil;
 import com.intellij.openapi.fileTypes.LanguageFileType;
-import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.encoding.EncodingRegistry;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -15,8 +16,8 @@ import java.nio.charset.StandardCharsets;
 
 public final class PropertiesFileType extends LanguageFileType {
   public static final LanguageFileType INSTANCE = new PropertiesFileType();
-  public static final String DEFAULT_EXTENSION = "properties";
-  public static final String DOT_DEFAULT_EXTENSION = "."+DEFAULT_EXTENSION;
+  @NonNls public static final String DEFAULT_EXTENSION = "properties";
+  @NonNls public static final String DOT_DEFAULT_EXTENSION = "."+DEFAULT_EXTENSION;
   public static final Charset PROPERTIES_DEFAULT_CHARSET = StandardCharsets.ISO_8859_1;
 
   private PropertiesFileType() {
@@ -24,17 +25,20 @@ public final class PropertiesFileType extends LanguageFileType {
   }
 
   @Override
-  public @NotNull String getName() {
+  @NotNull
+  public String getName() {
     return "Properties";
   }
 
   @Override
-  public @NotNull String getDescription() {
+  @NotNull
+  public String getDescription() {
     return PropertiesBundle.message("filetype.properties.description");
   }
 
   @Override
-  public @NotNull String getDefaultExtension() {
+  @NotNull
+  public String getDefaultExtension() {
     return DEFAULT_EXTENSION;
   }
 
@@ -44,9 +48,9 @@ public final class PropertiesFileType extends LanguageFileType {
   }
 
   @Override
-  public String getCharset(@NotNull VirtualFile file, byte @NotNull [] content) {
-    Charset guessed = content.length == 0 ? null : new CharsetToolkit(content, PROPERTIES_DEFAULT_CHARSET, true).guessEncoding(content.length);
-    Charset charset = guessed == null ? EncodingRegistry.getInstance().getDefaultCharsetForPropertiesFiles(file) : guessed;
+  public String getCharset(@NotNull VirtualFile file, final byte @NotNull [] content) {
+    LoadTextUtil.DetectResult guessed = LoadTextUtil.guessFromContent(file, content);
+    Charset charset = guessed.hardCodedCharset == null ? EncodingRegistry.getInstance().getDefaultCharsetForPropertiesFiles(file) : guessed.hardCodedCharset;
     if (charset == null) {
       charset = PROPERTIES_DEFAULT_CHARSET;
     }

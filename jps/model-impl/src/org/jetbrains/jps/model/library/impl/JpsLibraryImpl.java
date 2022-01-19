@@ -168,9 +168,4 @@ public final class JpsLibraryImpl<P extends JpsElement> extends JpsNamedComposit
       }
     }
   }
-
-  @Override
-  public String toString() {
-    return "JpsLibraryImpl: "+getName();
-  }
 }

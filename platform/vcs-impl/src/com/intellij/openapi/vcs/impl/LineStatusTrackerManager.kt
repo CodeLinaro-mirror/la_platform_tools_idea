@@ -27,12 +27,10 @@ import com.intellij.openapi.editor.event.EditorFactoryListener
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.fileEditor.FileDocumentManagerListener
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.text.StringUtil
@@ -316,7 +314,7 @@ class LineStatusTrackerManager(private val project: Project) : LineStatusTracker
     data.clmFilePath = filePath
   }
 
-  private fun unregisterTrackerInCLM(data: TrackerData, wasUnbound: Boolean = false) {
+  private fun unregisterTrackerInCLM(data: TrackerData) {
     val tracker = data.tracker
     if (tracker !is ChangelistsLocalLineStatusTracker) return
 
@@ -330,7 +328,7 @@ class LineStatusTrackerManager(private val project: Project) : LineStatusTracker
     data.clmFilePath = null
 
     val actualFilePath = VcsUtil.getFilePath(tracker.virtualFile)
-    if (filePath != actualFilePath && !wasUnbound) {
+    if (filePath != actualFilePath) {
       LOG.error("[unregisterTrackerInCLM] unexpected file path: expected: $filePath, actual: $actualFilePath")
     }
   }
@@ -421,11 +419,11 @@ class LineStatusTrackerManager(private val project: Project) : LineStatusTracker
   }
 
   @RequiresEdt
-  private fun releaseTracker(document: Document, wasUnbound: Boolean = false) {
+  private fun releaseTracker(document: Document) {
     val data = trackers.remove(document) ?: return
 
     eventDispatcher.multicaster.onTrackerRemoved(data.tracker)
-    unregisterTrackerInCLM(data, wasUnbound)
+    unregisterTrackerInCLM(data)
     data.tracker.release()
 
     log("Tracker released", data.tracker.virtualFile)
@@ -717,16 +715,6 @@ class LineStatusTrackerManager(private val project: Project) : LineStatusTracker
         val data = trackers[document] ?: return
 
         action(data)
-      }
-    }
-  }
-
-  internal class MyFileDocumentManagerListener : FileDocumentManagerListener {
-    override fun afterDocumentUnbound(file: VirtualFile, document: Document) {
-      val projectManager = ProjectManager.getInstanceIfCreated() ?: return
-      for (project in projectManager.openProjects) {
-        val lstm = project.getServiceIfCreated(LineStatusTrackerManagerI::class.java) as? LineStatusTrackerManager ?: continue
-        lstm.releaseTracker(document, wasUnbound = true)
       }
     }
   }

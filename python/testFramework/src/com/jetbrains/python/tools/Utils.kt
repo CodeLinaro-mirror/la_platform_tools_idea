@@ -81,7 +81,7 @@ fun openProjectWithSdk(projectPath: String,
 }
 
 fun getOrCreateModule(project: Project, projectPath: String, moduleTypeId: String): Module {
-  var module = ModuleManager.getInstance(project).modules.firstOrNull()
+  var module = ModuleManager.getInstance(project).modules.first()
   if (module == null) {
     module = runWriteAction {
       ModuleManager.getInstance(project).newModule(projectPath, moduleTypeId)

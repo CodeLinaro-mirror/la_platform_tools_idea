@@ -37,11 +37,11 @@ public final class InlayModelImpl implements InlayModel, PrioritizedDocumentList
     .thenComparing(i -> i.getPlacement() == Inlay.Placement.ABOVE_LINE ? i.myPriority : -i.myPriority);
   private static final Comparator<AfterLineEndInlayImpl> AFTER_LINE_END_ELEMENTS_OFFSET_COMPARATOR = Comparator
     .comparingInt((AfterLineEndInlayImpl i) -> i.getOffset())
-    .thenComparing(i -> !i.mySoftWrappable)
+    .thenComparing(i -> !i.isSoftWrappable())
     .thenComparingInt(i -> -i.myPriority)
     .thenComparingInt(i -> i.myOrder);
   private static final Comparator<AfterLineEndInlayImpl> AFTER_LINE_END_ELEMENTS_COMPARATOR = Comparator
-    .comparing((AfterLineEndInlayImpl i) -> !i.mySoftWrappable)
+    .comparing((AfterLineEndInlayImpl i) -> !i.isSoftWrappable())
     .thenComparingInt(i -> -i.myPriority)
     .thenComparingInt(i -> i.myOrder);
 
@@ -493,7 +493,6 @@ public final class InlayModelImpl implements InlayModel, PrioritizedDocumentList
     return (List)result;
   }
 
-  @Override
   public boolean hasAfterLineEndElements() {
     return myAfterLineEndElementsTree.size() > 0;
   }

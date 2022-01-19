@@ -5,7 +5,6 @@ import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.application.Experiments
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -40,7 +39,7 @@ class PySdkPopupFactory(val project: Project, val module: Module) {
       DataManager.getInstance()
         .dataContextFromFocusAsync
         .onSuccess {
-          val popup = PySdkPopupFactory(project, module).createPopup(it)
+          val popup = PySdkPopupFactory(project, module).createPopup(it) ?: return@onSuccess
 
           val component = SwingHelper.getComponentFromRecentMouseEvent()
           if (component != null) {
@@ -74,16 +73,8 @@ class PySdkPopupFactory(val project: Project, val module: Module) {
     }
 
     if (moduleSdksByTypes.isNotEmpty()) group.addSeparator()
-    if (Experiments.getInstance().isFeatureEnabled("add.python.interpreter.dialog.on.targets")) {
-      val addNewInterpreterPopupGroup = DefaultActionGroup(PyBundle.message("python.sdk.action.add.new.interpreter.text"), true)
-      addNewInterpreterPopupGroup.addAll(collectAddInterpreterActions(project, module) { switchToSdk(it, currentSdk) })
-      group.add(addNewInterpreterPopupGroup)
-      group.addSeparator()
-    }
     group.add(InterpreterSettingsAction())
-    if (!Experiments.getInstance().isFeatureEnabled("add.python.interpreter.dialog.on.targets")) {
-      group.add(AddInterpreterAction(currentSdk))
-    }
+    group.add(AddInterpreterAction(currentSdk))
 
     return JBPopupFactory.getInstance().createActionGroupPopup(
       PyBundle.message("configurable.PyActiveSdkModuleConfigurable.python.interpreter.display.name"),

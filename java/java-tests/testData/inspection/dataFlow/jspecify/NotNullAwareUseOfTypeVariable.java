@@ -14,25 +14,25 @@
  * limitations under the License.
  */
 
-import org.jspecify.nullness.NullMarked;
-import org.jspecify.nullness.Nullable;
-import org.jspecify.nullness.NullnessUnspecified;
+import org.jspecify.annotations.DefaultNonNull;
+import org.jspecify.annotations.Nullable;
+import org.jspecify.annotations.NullnessUnspecified;
 
 class NotNullAwareUseOfTypeVariable {
   interface Super<T extends @Nullable Object> {
     T get();
   }
 
-  @NullMarked
+  @DefaultNonNull
   interface SubObject extends Super<Object> {}
 
-  @NullMarked
+  @DefaultNonNull
   interface SubObjectUnspec extends Super<@NullnessUnspecified Object> {}
 
-  @NullMarked
+  @DefaultNonNull
   interface SubObjectUnionNull extends Super<@Nullable Object> {}
 
-  @NullMarked
+  @DefaultNonNull
   class Caller {
     Object x0(SubObject s) {
       // jspecify_nullness_not_enough_information

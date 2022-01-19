@@ -2,7 +2,6 @@
 package com.intellij.ide.plugins.newui;
 
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.plugins.enums.PluginsGroupType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.util.text.StringUtil;
@@ -24,26 +23,21 @@ public abstract class SearchResultPanel {
 
   protected final PluginsGroupComponent myPanel;
   private JScrollBar myVerticalScrollBar;
-  private PluginsGroup myGroup;
+  private PluginsGroup myGroup = new PluginsGroup(IdeBundle.message("title.search.results"));
   private String myQuery;
   private AtomicBoolean myRunQuery;
   private boolean myEmpty = true;
-  private boolean isMarketplace;
 
   protected Runnable myPostFillGroupCallback;
 
   public SearchResultPanel(@Nullable SearchPopupController controller,
                            @NotNull PluginsGroupComponent panel,
-                           boolean isMarketplace,
                            int tabIndex,
                            int backTabIndex) {
     this.controller = controller;
     myPanel = panel;
     this.tabIndex = tabIndex;
     this.backTabIndex = backTabIndex;
-    this.isMarketplace = isMarketplace;
-    myGroup = new PluginsGroup(IdeBundle.message("title.search.results"),
-                               isMarketplace ? PluginsGroupType.SEARCH : PluginsGroupType.SEARCH_INSTALLED);
 
     setEmptyText("");
 
@@ -207,8 +201,7 @@ public abstract class SearchResultPanel {
       myPanel.removeGroup(myGroup);
       fullRepaint();
     }
-    myGroup = new PluginsGroup(IdeBundle.message("title.search.results"),
-                               isMarketplace ? PluginsGroupType.SEARCH : PluginsGroupType.SEARCH_INSTALLED);
+    myGroup = new PluginsGroup(IdeBundle.message("title.search.results"));
   }
 
   public void fullRepaint() {

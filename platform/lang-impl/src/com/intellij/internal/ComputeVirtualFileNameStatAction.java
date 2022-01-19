@@ -1,4 +1,5 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+
 package com.intellij.internal;
 
 import com.intellij.idea.ActionsBundle;
@@ -11,16 +12,15 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualFileSystemEntry;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import gnu.trove.TObjectIntHashMap;
+import gnu.trove.TObjectIntProcedure;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-@SuppressWarnings("SSBasedInspection")
-public final class ComputeVirtualFileNameStatAction extends AnAction implements DumbAware {
+public class ComputeVirtualFileNameStatAction extends AnAction implements DumbAware {
   public ComputeVirtualFileNameStatAction() {
     super(ActionsBundle.messagePointer("action.ComputeVirtualFileNameStatAction.text"));
   }
@@ -37,9 +37,13 @@ public final class ComputeVirtualFileNameStatAction extends AnAction implements 
     }
 
     final List<Pair<String,Integer>> names = new ArrayList<>(nameCount.size());
-    for (Object2IntMap.Entry<String> entry : nameCount.object2IntEntrySet()) {
-      names.add(new Pair<>(entry.getKey(), entry.getIntValue()));
-    }
+    nameCount.forEachEntry(new TObjectIntProcedure<>() {
+      @Override
+      public boolean execute(String name, int count) {
+        names.add(Pair.create(name, count));
+        return true;
+      }
+    });
     names.sort((o1, o2) -> o2.second - o1.second);
 
     System.out.println("Most frequent names ("+names.size()+" total):");
@@ -59,11 +63,15 @@ public final class ComputeVirtualFileNameStatAction extends AnAction implements 
     show(suffixes);
 
 
-    final Object2IntMap<String> save = new Object2IntOpenHashMap<>();
+    final TObjectIntHashMap<String> save = new TObjectIntHashMap<>();
     // compute economy
-    for (Object2IntMap.Entry<String> entry : suffixes.object2IntEntrySet()) {
-      save.put(entry.getKey(), entry.getIntValue() * entry.getKey().length());
-    }
+    suffixes.forEachEntry(new TObjectIntProcedure<>() {
+      @Override
+      public boolean execute(String s, int count) {
+        save.put(s, count * s.length());
+        return true;
+      }
+    });
 
     System.out.println("Supposed save by stripping suffixes: ("+save.size()+" total)");
     final List<Pair<String, Integer>> saveSorted = show(save);
@@ -97,18 +105,20 @@ public final class ComputeVirtualFileNameStatAction extends AnAction implements 
       saveSorted.clear();
 
       // adjust
-      for (Object2IntMap.Entry<String> entry : suffixes.object2IntEntrySet()) {
-        String s = entry.getKey();
-        int count = entry.getIntValue();
-        for (int i = picked.size() - 1; i >= 0; i--) {
-          String pick = picked.get(i);
-          if (pick.endsWith(s)) {
-            count -= suffixes.getInt(pick);
-            break;
+      suffixes.forEachEntry(new TObjectIntProcedure<>() {
+        @Override
+        public boolean execute(String s, int count) {
+          for (int i = picked.size() - 1; i >= 0; i--) {
+            String pick = picked.get(i);
+            if (pick.endsWith(s)) {
+              count -= suffixes.get(pick);
+              break;
+            }
           }
+          saveSorted.add(Pair.create(s, s.length() * count));
+          return true;
         }
-        saveSorted.add(Pair.create(s, s.length() * count));
-      }
+      });
       saveSorted.sort((o1, o2) -> o2.second.compareTo(o1.second));
     }
 
@@ -120,11 +130,11 @@ public final class ComputeVirtualFileNameStatAction extends AnAction implements 
     int saved = 0;
     for (int i = 0; i < picked.size(); i++) {
       String s = picked.get(i);
-      int count = suffixes.getInt(s);
+      int count = suffixes.get(s);
       for (int k=0; k<i;k++) {
         String prev = picked.get(k);
         if (prev.endsWith(s)) {
-          count -= suffixes.getInt(prev);
+          count -= suffixes.get(prev);
           break;
         }
       }
@@ -134,11 +144,15 @@ public final class ComputeVirtualFileNameStatAction extends AnAction implements 
     System.out.println("Time spent: " + (System.currentTimeMillis() - start));
   }
 
-  private static List<Pair<String,Integer>> show(final Object2IntMap<String> prefixes) {
+  private static List<Pair<String,Integer>> show(final TObjectIntHashMap<String> prefixes) {
     final List<Pair<String,Integer>> prefs = new ArrayList<>(prefixes.size());
-    for (Object2IntMap.Entry<String> entry : prefixes.object2IntEntrySet()) {
-      prefs.add(new Pair<>(entry.getKey(), entry.getIntValue()));
-    }
+    prefixes.forEachEntry(new TObjectIntProcedure<>() {
+      @Override
+      public boolean execute(String s, int count) {
+        prefs.add(Pair.create(s, count));
+        return true;
+      }
+    });
     prefs.sort((o1, o2) -> o2.second.compareTo(o1.second));
     int i =0;
     for (Pair<String, Integer> pref : prefs) {
@@ -153,17 +167,17 @@ public final class ComputeVirtualFileNameStatAction extends AnAction implements 
   }
 
   //TObjectIntHashMap<String> prefixes = new TObjectIntHashMap<String>();
-  Object2IntOpenHashMap<String> suffixes = new Object2IntOpenHashMap<>();
-  Object2IntOpenHashMap<String> nameCount = new Object2IntOpenHashMap<>();
+  TObjectIntHashMap<String> suffixes = new TObjectIntHashMap<>();
+  TObjectIntHashMap<String> nameCount = new TObjectIntHashMap<>();
   private void compute(VirtualFile root) {
     String name = root.getName();
-    nameCount.addTo(name, 1);
+    if (!nameCount.increment(name)) nameCount.put(name, 1);
     for (int i=1; i<=name.length(); i++) {
       //String prefix = name.substring(0, i);
       //if (!prefixes.increment(prefix)) prefixes.put(prefix, 1);
 
       String suffix = name.substring(name.length()-i);
-      suffixes.addTo(suffix, 1);
+      if (!suffixes.increment(suffix)) suffixes.put(suffix, 1);
     }
     Collection<VirtualFile> cachedChildren = ((VirtualFileSystemEntry)root).getCachedChildren();
     //VirtualFile[] cachedChildren = ((VirtualFileSystemEntry)root).getChildren();

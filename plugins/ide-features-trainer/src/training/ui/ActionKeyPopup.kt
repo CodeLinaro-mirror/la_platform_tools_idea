@@ -3,6 +3,7 @@ package training.ui
 
 import com.intellij.execution.target.TargetEnvironmentWizardStepKt
 import com.intellij.ide.plugins.newui.VerticalLayout
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.keymap.impl.ActionShortcutRestrictions
@@ -17,7 +18,6 @@ import org.jetbrains.annotations.NonNls
 import training.learn.LearnBundle
 import training.statistic.StatisticBase
 import training.util.KeymapUtil
-import training.util.getActionById
 import training.util.invokeActionForFocusContext
 import java.awt.Component
 import java.awt.Insets
@@ -26,7 +26,7 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 
 internal fun showActionKeyPopup(parent: Component, point: Point, height: Int, actionId: String) {
-  val action = getActionById(actionId)
+  val action = ActionManager.getInstance().getAction(actionId) ?: return
 
   lateinit var balloon: Balloon
   val jPanel = JPanel()

@@ -41,8 +41,6 @@ class ExtractSelector {
       singleElement is PsiBlockStatement -> if (singleElement.codeBlock.firstBodyElement != null) listOf(singleElement) else emptyList()
       singleElement is PsiCodeBlock -> alignCodeBlock(singleElement)
       singleElement is PsiExpression -> listOfNotNull(alignExpression(singleElement))
-      singleElement is PsiSwitchLabeledRuleStatement -> listOfNotNull(singleElement.body)
-      singleElement is PsiExpressionStatement -> listOf(alignExpressionStatement(singleElement))
       else -> elements
     }
     return when {
@@ -51,13 +49,6 @@ class ExtractSelector {
       alignedElements.first() !== elements.first() || alignedElements.last() !== elements.last() -> alignElements(alignedElements)
       else -> alignedElements
     }
-  }
-
-  private fun alignExpressionStatement(statement: PsiExpressionStatement): PsiElement {
-    val switchRule = statement.parent as? PsiSwitchLabeledRuleStatement
-    val switchExpression = PsiTreeUtil.getParentOfType(switchRule, PsiSwitchExpression::class.java)
-    if (switchExpression != null) return statement.expression
-    return statement
   }
 
   private fun isControlFlowStatement(statement: PsiStatement?): Boolean {
@@ -95,8 +86,11 @@ class ExtractSelector {
     val filteredStatements = statements
       .dropWhile { it is PsiSwitchLabelStatement || it is PsiWhiteSpace }
       .dropLastWhile { it is PsiSwitchLabelStatement || it is PsiWhiteSpace }
-    if (filteredStatements.any { it is PsiSwitchLabelStatementBase }) return emptyList()
-    return filteredStatements
+    return if (filteredStatements.any { it is PsiSwitchLabelStatement }) {
+      emptyList()
+    } else {
+      filteredStatements
+    }
   }
 
   private fun isInsideAnnotation(expression: PsiExpression): Boolean {

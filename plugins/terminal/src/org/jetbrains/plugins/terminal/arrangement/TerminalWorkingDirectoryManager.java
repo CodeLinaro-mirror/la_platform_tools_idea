@@ -1,9 +1,12 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.terminal.arrangement;
 
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.terminal.JBTerminalWidget;
 import com.intellij.ui.content.Content;
@@ -11,6 +14,7 @@ import com.intellij.ui.content.ContentManager;
 import com.intellij.ui.content.ContentManagerEvent;
 import com.intellij.ui.content.ContentManagerListener;
 import com.intellij.util.Alarm;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.TimeoutUtil;
 import com.jediterm.terminal.ProcessTtyConnector;
 import org.jetbrains.annotations.NotNull;
@@ -21,9 +25,6 @@ import org.jetbrains.plugins.terminal.TerminalView;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -88,7 +89,12 @@ public class TerminalWorkingDirectoryManager {
     dataRef.set(data);
     JBTerminalWidget widget = Objects.requireNonNull(TerminalView.getWidgetByContent(content));
     widget.getTerminalPanel().addCustomKeyListener(listener);
-    Disposer.register(content, () -> widget.getTerminalPanel().removeCustomKeyListener(listener));
+    Disposer.register(content, new Disposable() {
+      @Override
+      public void dispose() {
+        widget.getTerminalPanel().removeCustomKeyListener(listener);
+      }
+    });
     myDataByContentMap.put(content, data);
   }
 
@@ -99,18 +105,18 @@ public class TerminalWorkingDirectoryManager {
     }
   }
 
-  public static @Nullable String getWorkingDirectory(@NotNull JBTerminalWidget widget, @Nullable String name) {
+  @Nullable
+  public static String getWorkingDirectory(@NotNull JBTerminalWidget widget, @Nullable String name) {
     ProcessTtyConnector connector = ShellTerminalWidget.getProcessTtyConnector(widget.getTtyConnector());
     if (connector == null) return null;
     try {
       long startNano = System.nanoTime();
       Future<String> cwd = ProcessInfoUtil.getCurrentWorkingDirectory(connector.getProcess());
       String result = cwd.get(FETCH_WAIT_MILLIS, TimeUnit.MILLISECONDS);
-      boolean exists = checkDirectory(result);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Cwd (" + result + ", exists=" + exists + ") fetched in " + TimeoutUtil.getDurationMillis(startNano) + " ms");
+        LOG.debug("Cwd (" + result + ") fetched in " + TimeoutUtil.getDurationMillis(startNano) + " ms");
       }
-      return exists ? result : null;
+      return result;
     }
     catch (InterruptedException ignored) {
     }
@@ -127,17 +133,6 @@ public class TerminalWorkingDirectoryManager {
       LOG.warn("Timeout fetching cwd for " + name, e);
     }
     return null;
-  }
-
-  private static boolean checkDirectory(@Nullable String directory) {
-    if (directory == null) return false;
-    try {
-      Path path = Path.of(directory);
-      return path.isAbsolute() && Files.isDirectory(path);
-    }
-    catch (InvalidPathException e) {
-      return false;
-    }
   }
 
   private void unwatchTab(@NotNull Content content) {
@@ -158,6 +153,11 @@ public class TerminalWorkingDirectoryManager {
       LOG.error("No associated data");
     }
     return data;
+  }
+
+  public static void setInitialWorkingDirectory(@NotNull Content content, @Nullable VirtualFile fileOrDir) {
+    VirtualFile dir = fileOrDir != null && !fileOrDir.isDirectory() ? fileOrDir.getParent() : fileOrDir;
+    content.putUserData(INITIAL_CWD_KEY, dir != null ? FileUtil.toSystemDependentName(dir.getPath()) : null);
   }
 
   public static void setInitialWorkingDirectory(@NotNull Content content, @Nullable String directory) {

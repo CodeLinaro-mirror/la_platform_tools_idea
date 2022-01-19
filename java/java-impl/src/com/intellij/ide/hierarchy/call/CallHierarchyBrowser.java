@@ -16,7 +16,6 @@ import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiMember;
 import com.intellij.psi.PsiMethod;
 import com.intellij.ui.PopupHandler;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -31,7 +30,7 @@ public class CallHierarchyBrowser extends CallHierarchyBrowserBase {
   }
 
   @Override
-  protected void createTrees(@NotNull Map<? super @Nls String, ? super JTree> type2TreeMap) {
+  protected void createTrees(@NotNull Map<? super String, ? super JTree> type2TreeMap) {
     JTree tree1 = createTree(false);
     PopupHandler.installPopupMenu(tree1, IdeActions.GROUP_CALL_HIERARCHY_POPUP, ActionPlaces.CALL_HIERARCHY_VIEW_POPUP);
     BaseOnThisMethodAction baseOnThisMethodAction = new BaseOnThisMethodAction();

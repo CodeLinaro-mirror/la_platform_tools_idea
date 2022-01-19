@@ -29,6 +29,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 public class ArtifactConfigurable extends ArtifactConfigurableBase {
+  private boolean myIsInUpdateName;
+
   public ArtifactConfigurable(Artifact originalArtifact, ArtifactsStructureConfigurableContextImpl artifactsStructureContext, final Runnable updateTree) {
     super(originalArtifact, artifactsStructureContext, updateTree, true);
   }
@@ -36,9 +38,20 @@ public class ArtifactConfigurable extends ArtifactConfigurableBase {
   @Override
   public void setDisplayName(String name) {
     final String oldName = getArtifact().getName();
-    if (name != null && !name.equals(oldName) && !isUpdatingNameFieldFromDisplayName()) {
+    if (name != null && !name.equals(oldName) && !myIsInUpdateName) {
       myArtifactsStructureContext.getOrCreateModifiableArtifactModel().getOrCreateModifiableArtifact(myOriginalArtifact).setName(name);
       getEditor().updateOutputPath(oldName, name);
+    }
+  }
+
+  @Override
+  public void updateName() {
+    myIsInUpdateName = true;
+    try {
+      super.updateName();
+    }
+    finally {
+      myIsInUpdateName = false;
     }
   }
 

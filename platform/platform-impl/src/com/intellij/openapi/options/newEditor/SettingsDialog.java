@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.options.newEditor;
 
 import com.intellij.CommonBundle;
@@ -20,6 +20,7 @@ import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,12 +34,12 @@ import java.util.List;
 import static com.intellij.openapi.actionSystem.IdeActions.ACTION_FIND;
 
 public class SettingsDialog extends DialogWrapper implements DataProvider {
-  public static final String DIMENSION_KEY = "SettingsEditor";
+  @NonNls public static final String DIMENSION_KEY = "SettingsEditor";
 
   private final String myDimensionServiceKey;
   private final AbstractEditor myEditor;
   private final boolean myApplyButtonNeeded;
-  private final boolean myResetButtonNeeded;
+  private boolean myResetButtonNeeded;
   private final JLabel myHintLabel = new JLabel();
 
   public SettingsDialog(Project project, String key, @NotNull Configurable configurable, boolean showApplyButton, boolean showResetButton) {
@@ -61,27 +62,24 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
 
   public SettingsDialog(@NotNull Project project, @NotNull List<? extends ConfigurableGroup> groups, @Nullable Configurable configurable, @Nullable String filter) {
     super(project, true);
+
     myDimensionServiceKey = DIMENSION_KEY;
     myEditor = new SettingsEditor(myDisposable, project, groups, configurable, filter, this::treeViewFactory);
     myApplyButtonNeeded = true;
-    myResetButtonNeeded = false;
     init(null, project);
   }
 
-  public SettingsDialog(@NotNull Project project,
-                        @Nullable Component parentComponent,
-                        @NotNull List<? extends ConfigurableGroup> groups,
-                        @Nullable Configurable configurable,
-                        @Nullable String filter) {
+  public SettingsDialog(@NotNull Project project, @Nullable Component parentComponent, @NotNull List<? extends ConfigurableGroup> groups, @Nullable Configurable configurable, @Nullable String filter) {
     super(project, parentComponent, true, IdeModalityType.IDE);
+
     myDimensionServiceKey = DIMENSION_KEY;
     myEditor = new SettingsEditor(myDisposable, project, groups, configurable, filter, this::treeViewFactory);
     myApplyButtonNeeded = true;
-    myResetButtonNeeded = false;
     init(null, project);
   }
 
-  protected @NotNull SettingsTreeView treeViewFactory(@NotNull SettingsFilter filter, @NotNull List<? extends ConfigurableGroup> groups) {
+  @NotNull
+  protected SettingsTreeView treeViewFactory(@NotNull SettingsFilter filter, @NotNull List<? extends ConfigurableGroup> groups) {
     return new SettingsTreeView(filter, groups);
   }
 
@@ -135,8 +133,9 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
     return myEditor.getPreferredFocusedComponent();
   }
 
+  @NotNull
   @Override
-  protected @NotNull DialogStyle getStyle() {
+  protected DialogStyle getStyle() {
     return DialogStyle.COMPACT;
   }
 
@@ -145,8 +144,9 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
     return myEditor;
   }
 
+  @Nullable
   @Override
-  protected @Nullable JPanel createSouthAdditionalPanel() {
+  protected JPanel createSouthAdditionalPanel() {
     JPanel panel = new NonOpaquePanel(new BorderLayout());
     panel.setBorder(JBUI.Borders.emptyLeft(10));
     panel.add(myHintLabel);
@@ -157,7 +157,7 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
   @SuppressWarnings("unused") // used in Rider
   protected void tryAddOptionsListener(OptionsEditorColleague colleague) {
     if (myEditor instanceof SettingsEditor) {
-      ((SettingsEditor)myEditor).addOptionsListener(colleague);
+      ((SettingsEditor) myEditor).addOptionsListener(colleague);
     }
   }
 
@@ -180,8 +180,9 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
     return actions.toArray(new Action[0]);
   }
 
+  @Nullable
   @Override
-  protected @Nullable String getHelpId() {
+  protected String getHelpId() {
     return myEditor.getHelpTopic();
   }
 
@@ -213,7 +214,8 @@ public class SettingsDialog extends DialogWrapper implements DataProvider {
     super.doCancelAction(source);
   }
 
-  static @Nullable ShortcutSet getFindActionShortcutSet() {
+  @Nullable
+  static ShortcutSet getFindActionShortcutSet() {
     AnAction action = ActionManager.getInstance().getAction(ACTION_FIND);
     return action == null ? null : action.getShortcutSet();
   }

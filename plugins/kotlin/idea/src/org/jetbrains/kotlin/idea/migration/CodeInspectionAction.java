@@ -11,7 +11,6 @@ import com.intellij.codeInspection.ex.InspectionProfileImpl;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,7 +20,7 @@ public class CodeInspectionAction extends BaseAnalysisAction {
     private GlobalInspectionContextImpl myGlobalInspectionContext;
     private InspectionProfileImpl myExternalProfile;
 
-    public CodeInspectionAction(@Nls String title, @Nls String analysisNoon) {
+    public CodeInspectionAction(String title, String analysisNoon) {
         super(title, analysisNoon);
     }
 

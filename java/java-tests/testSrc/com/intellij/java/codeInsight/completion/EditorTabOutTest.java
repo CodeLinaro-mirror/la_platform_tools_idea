@@ -1,9 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight.completion;
 
 import com.intellij.codeInsight.CodeInsightSettings;
-import com.intellij.codeInsight.lookup.LookupElement;
-import com.intellij.codeInsight.lookup.impl.LookupImpl;
 import com.intellij.java.codeInsight.AbstractParameterInfoTestCase;
 import com.intellij.openapi.actionSystem.IdeActions;
 
@@ -145,48 +143,6 @@ public class EditorTabOutTest extends AbstractParameterInfoTestCase {
                 "  static void injected(@Language(\"JAVA\") String value){}" +
                 "}"
     );
-  }
-
-  public void testAnonymousClass() {
-    myFixture.addClass("package p; public class ABC<T> {}");
-    configureJava("class Main {\n" +
-                  "  static {\n" +
-                  "    new Runnable() {\n" +
-                  "      {\n" +
-                  "      A<caret>\n" +
-                  "      }\n" +
-                  "    };\n" +
-                  "  }\n" +
-                  "}");
-
-    final LookupElement[] elements = myFixture.completeBasic();
-    final LookupElement element = findLookupElementContainingText(elements, "ABC");
-
-    final LookupImpl lookup = getLookup();
-    lookup.finishLookup('<', element);
-
-    waitForParameterInfo();
-    checkResult("import p.ABC;\n\n" +
-                "class Main {\n" +
-                "  static {\n" +
-                "    new Runnable() {\n" +
-                "      {\n" +
-                "          ABC<<caret>>\n" +
-                "      }\n" +
-                "    };\n" +
-                "  }\n" +
-                "}");
-    tabOut();
-    checkResult("import p.ABC;\n\n" +
-                "class Main {\n" +
-                "  static {\n" +
-                "    new Runnable() {\n" +
-                "      {\n" +
-                "          ABC<><caret>\n" +
-                "      }\n" +
-                "    };\n" +
-                "  }\n" +
-                "}");
   }
 
   private void tabOut() {

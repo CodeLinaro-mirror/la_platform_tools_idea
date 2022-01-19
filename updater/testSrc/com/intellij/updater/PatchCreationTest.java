@@ -1,10 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.updater;
 
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.IoTestUtil;
-import com.sun.jna.platform.win32.Kernel32;
 import org.junit.Test;
 
 import java.io.*;
@@ -85,7 +84,7 @@ public class PatchCreationTest extends PatchTestCase {
 
     File idea = new File(myOlderDir, "bin/idea.bat");
     FileUtil.writeToFile(new File(myOlderDir, "bin/idea.bat"), "changed");
-    File focusKiller = new File(myOlderDir, "bin/focuskiller.dll");
+    File focuskiller = new File(myOlderDir, "bin/focuskiller.bat");
     FileUtil.writeToFile(new File(myOlderDir, "bin/focuskiller.dll"), "changed");
     FileUtil.createDirectory(new File(myOlderDir, "extraDir"));
     FileUtil.writeToFile(new File(myOlderDir, "extraDir/extraFile.txt"), "");
@@ -103,7 +102,7 @@ public class PatchCreationTest extends PatchTestCase {
     assertThat(sortResults(patch.validate(myOlderDir, TEST_UI))).containsExactly(
       new ValidationResult(ValidationResult.Kind.CONFLICT,
                            "bin/focuskiller.dll",
-                           focusKiller,
+                           focuskiller,
                            ValidationResult.Action.DELETE,
                            ValidationResult.MODIFIED_MESSAGE,
                            ValidationResult.Option.DELETE, ValidationResult.Option.KEEP),
@@ -133,7 +132,7 @@ public class PatchCreationTest extends PatchTestCase {
                            ValidationResult.Option.IGNORE),
       new ValidationResult(ValidationResult.Kind.ERROR,
                            "bin/focuskiller.dll",
-                           focusKiller,
+                           focuskiller,
                            ValidationResult.Action.UPDATE,
                            ValidationResult.MODIFIED_MESSAGE,
                            ValidationResult.Option.IGNORE),
@@ -206,8 +205,7 @@ public class PatchCreationTest extends PatchTestCase {
     Patch patch = createPatch();
     File f = new File(myOlderDir, "Readme.txt");
     try (FileOutputStream s = new FileOutputStream(f, true); FileLock ignored = s.getChannel().lock()) {
-      String message = Utils.IS_WINDOWS ? "Locked by: [" + Kernel32.INSTANCE.GetCurrentProcessId() + "] OpenJDK Platform binary"
-                                        : ValidationResult.ACCESS_DENIED_MESSAGE;
+      String message = Utils.IS_WINDOWS ? "Locked by: OpenJDK Platform binary" : ValidationResult.ACCESS_DENIED_MESSAGE;
       ValidationResult.Option option = Utils.IS_WINDOWS ? ValidationResult.Option.KILL_PROCESS : ValidationResult.Option.IGNORE;
       assertThat(patch.validate(myOlderDir, TEST_UI)).containsExactly(
         new ValidationResult(ValidationResult.Kind.ERROR,

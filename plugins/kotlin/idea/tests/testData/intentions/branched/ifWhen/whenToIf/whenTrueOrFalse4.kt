@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'i' is never used
 fun foo(b: Boolean?) {
     <caret>when (b) {
         true -> print(1)

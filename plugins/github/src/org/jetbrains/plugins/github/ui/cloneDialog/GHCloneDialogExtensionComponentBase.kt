@@ -492,7 +492,7 @@ internal abstract class GHCloneDialogExtensionComponentBase(
       val user = userDetailsByAccount[account]
 
       val accountTitle = user?.login ?: account.name
-      val serverInfo = CollaborationToolsUIUtil.cleanupUrl(account.server.toUrl())
+      val serverInfo = account.server.toUrl().removePrefix("http://").removePrefix("https://")
       val avatar = avatarsByAccount[account] ?: defaultPopupAvatar
       val accountActions = mutableListOf<Action>()
       val showSeparatorAbove = index != 0

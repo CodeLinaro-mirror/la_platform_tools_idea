@@ -1,4 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2007-2018 Bas Leijdekkers
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.siyeh.ig.numeric;
 
 import com.intellij.codeInspection.*;
@@ -8,9 +22,7 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
-import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.InspectionGadgetsBundle;
-import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.PsiReplacementUtil;
@@ -25,25 +37,11 @@ import java.util.List;
 
 import static com.siyeh.ig.numeric.UnaryPlusInspection.ConvertDoubleUnaryToPrefixOperationFix;
 
-/**
- * @author Bas Leijdekkers
- */
-public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
+public final class UnnecessaryUnaryMinusInspection extends LocalInspectionTool {
 
   @Override
-  @NotNull
-  protected String buildErrorString(Object... infos) {
-    return InspectionGadgetsBundle.message("unnecessary.unary.minus.problem.descriptor");
-  }
-
-  @Override
-  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
-    return (InspectionGadgetsFix[])infos[0];
-  }
-
-  @Override
-  public BaseInspectionVisitor buildVisitor() {
-    return new UnnecessaryUnaryMinusVisitor();
+  public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
+    return new UnnecessaryUnaryMinusVisitor(holder, isOnTheFly);
   }
 
   private static class ReplaceParentOperatorFix extends InspectionGadgetsFix {
@@ -155,6 +153,14 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
   }
 
   private static class UnnecessaryUnaryMinusVisitor extends BaseInspectionVisitor {
+    private final ProblemsHolder myProblemsHolder;
+    private final boolean myOnTheFly;
+
+    private UnnecessaryUnaryMinusVisitor(@NotNull ProblemsHolder problemsHolder, boolean onTheFly) {
+      myProblemsHolder = problemsHolder;
+      myOnTheFly = onTheFly;
+    }
+
     @Override
     public void visitPrefixExpression(PsiPrefixExpression prefixExpr) {
       super.visitPrefixExpression(prefixExpr);
@@ -165,62 +171,66 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
       if (operand == null) {
         return;
       }
-      final List<InspectionGadgetsFix> fixes = new SmartList<>();
-      ContainerUtil.addIfNotNull(fixes, createReplaceParentOperatorFix(prefixExpr));
-      if (isOnTheFly()) {
-        ContainerUtil.addIfNotNull(fixes, ConvertDoubleUnaryToPrefixOperationFix.createFix(prefixExpr));
-        ContainerUtil.addIfNotNull(fixes, createRemoveDoubleUnaryMinusFix(prefixExpr));
+      final List<LocalQuickFix> fixes = new SmartList<>();
+      addReplaceParentOperatorFix(fixes, prefixExpr);
+      if (myOnTheFly) {
+        LocalQuickFix decrementFix = ConvertDoubleUnaryToPrefixOperationFix.createFix(prefixExpr);
+        if (decrementFix != null) {
+          fixes.add(decrementFix);
+        }
+        addRemoveDoubleUnaryMinusFix(fixes, prefixExpr);
       }
       if (!fixes.isEmpty()) {
-        registerError(prefixExpr.getOperationSign(), ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                      (Object)fixes.toArray(InspectionGadgetsFix.EMPTY_ARRAY));
+        myProblemsHolder.registerProblem(prefixExpr.getOperationSign(),
+                                         InspectionGadgetsBundle.message("unnecessary.unary.minus.problem.descriptor"),
+                                         ProblemHighlightType.LIKE_UNUSED_SYMBOL, fixes.toArray(LocalQuickFix[]::new));
       }
     }
 
-    private static InspectionGadgetsFix createReplaceParentOperatorFix(@NotNull PsiPrefixExpression prefixExpr) {
+    private static void addReplaceParentOperatorFix(@NotNull List<LocalQuickFix> fixes, @NotNull PsiPrefixExpression prefixExpr) {
       final PsiElement parent = prefixExpr.getParent();
       if (parent instanceof PsiPolyadicExpression) {
         final PsiPolyadicExpression polyadicExpression = (PsiPolyadicExpression)parent;
         if (ExpressionUtils.hasType(polyadicExpression, CommonClassNames.JAVA_LANG_STRING)) {
-          return null;
+          return;
         }
         final PsiJavaToken token = polyadicExpression.getTokenBeforeOperand(prefixExpr);
         if (token == null) {
-          return null;
+          return;
         }
         final IElementType tokenType = token.getTokenType();
         if (!JavaTokenType.PLUS.equals(tokenType) && !JavaTokenType.MINUS.equals(tokenType)) {
-          return null;
+          return;
         }
-        return new ReplaceParentOperatorFix();
+        fixes.add(new ReplaceParentOperatorFix());
       }
       else if (parent instanceof PsiAssignmentExpression) {
         final PsiAssignmentExpression assignmentExpression = (PsiAssignmentExpression)parent;
         if (ExpressionUtils.hasType(assignmentExpression, CommonClassNames.JAVA_LANG_STRING)) {
-          return null;
+          return;
         }
         final IElementType assignmentTokenType = assignmentExpression.getOperationTokenType();
         if (!JavaTokenType.PLUSEQ.equals(assignmentTokenType)) {
-          return null;
+          return;
         }
         final PsiExpression rhs = assignmentExpression.getRExpression();
         if (!prefixExpr.equals(rhs)) {
           // don't warn on broken code.
-          return null;
+          return;
         }
-        return new ReplaceParentOperatorFix();
+        fixes.add(new ReplaceParentOperatorFix());
       }
-      return null;
     }
 
-    private static InspectionGadgetsFix createRemoveDoubleUnaryMinusFix(@NotNull PsiPrefixExpression prefixExpr) {
+    private static void addRemoveDoubleUnaryMinusFix(@NotNull List<LocalQuickFix> fixes,
+                                                     @NotNull PsiPrefixExpression prefixExpr) {
       final PsiElement parent = PsiUtil.skipParenthesizedExprUp(prefixExpr.getParent());
       final PsiExpression operandExpr;
       final PsiExpression expr;
       final boolean minusOnTheLeft;
       final PsiExpression operand = PsiUtil.skipParenthesizedExprDown(prefixExpr.getOperand());
       if (operand == null) {
-        return null;
+        return;
       }
       if (parent instanceof PsiPrefixExpression &&
           ConvertDoubleUnaryToPrefixOperationFix.isDesiredPrefixExpression((PsiPrefixExpression)parent, false)) {
@@ -235,16 +245,16 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
         minusOnTheLeft = true;
       }
       else {
-        return null;
+        return;
       }
       if (operandExpr == null) {
-        return null;
+        return;
       }
       final PsiType type = operandExpr.getType();
       if (TypeUtils.unaryNumericPromotion(type) != type && MethodCallUtils.isNecessaryForSurroundingMethodCall(expr, operandExpr)) {
-        return null;
+        return;
       }
-      return new RemoveDoubleUnaryMinusFix(minusOnTheLeft);
+      fixes.add(new RemoveDoubleUnaryMinusFix(minusOnTheLeft));
     }
   }
 }

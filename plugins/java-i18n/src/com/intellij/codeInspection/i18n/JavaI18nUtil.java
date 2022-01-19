@@ -19,8 +19,6 @@ import com.intellij.psi.scope.util.PsiScopesUtil;
 import com.intellij.psi.util.PsiConcatenationUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.ObjectUtils;
-import com.intellij.codeInspection.restriction.AnnotationContext;
-import com.intellij.codeInspection.restriction.StringFlowUtil;
 import kotlin.sequences.SequencesKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -72,7 +70,7 @@ public final class JavaI18nUtil {
   }
 
   public static boolean mustBePropertyKey(@NotNull UExpression expression, @Nullable Ref<? super UExpression> resourceBundleRef) {
-    expression = StringFlowUtil.goUp(expression, false, NlsInfo.factory());
+    expression = NlsInfo.goUp(expression, false);
     AnnotationContext context = AnnotationContext.fromExpression(expression);
     return context.allItems().anyMatch(owner -> {
       PsiAnnotation annotation = owner.findAnnotation(AnnotationUtil.PROPERTY_KEY);
@@ -180,6 +178,10 @@ public final class JavaI18nUtil {
       containedInPropertiesFile |= propertiesFile.findPropertyByKey(key) != null;
     }
     return containedInPropertiesFile;
+  }
+
+  public static @NotNull List<PropertiesFile> propertiesFilesByBundleName(@Nullable String resourceBundleName, @NotNull PsiElement context) {
+    return I18nUtil.propertiesFilesByBundleName(resourceBundleName, context);
   }
 
   public static @NotNull Set<String> suggestExpressionOfType(final PsiClassType type, final PsiElement context) {

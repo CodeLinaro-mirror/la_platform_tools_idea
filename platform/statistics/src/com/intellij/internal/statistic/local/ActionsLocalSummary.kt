@@ -2,7 +2,6 @@
 package com.intellij.internal.statistic.local
 
 import com.intellij.internal.statistic.utils.getPluginInfo
-import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ex.AnActionListener
@@ -23,7 +22,7 @@ class ActionsLocalSummary : PersistentStateComponent<ActionsLocalSummaryState>, 
   @Volatile
   private var state = ActionsLocalSummaryState()
   @Volatile
-  private var totalSummary: ActionsTotalSummary = ActionsTotalSummary(0, Integer.MAX_VALUE, 0, Integer.MAX_VALUE)
+  private var totalSummary: ActionsTotalSummary = ActionsTotalSummary()
 
   override fun getState() = state
 
@@ -34,107 +33,35 @@ class ActionsLocalSummary : PersistentStateComponent<ActionsLocalSummaryState>, 
 
   private fun calculateTotalSummary(state: ActionsLocalSummaryState): ActionsTotalSummary {
     var maxUsageCount = 0
-    var maxUsageCountFromSe = 0
-
     var minUsageCount = Integer.MAX_VALUE
-    var minUsageCountFromSe = Integer.MAX_VALUE
-
     for (value in state.data.values) {
       maxUsageCount = max(maxUsageCount, value.usageCount)
       minUsageCount = min(minUsageCount, value.usageCount)
-      maxUsageCountFromSe = max(maxUsageCountFromSe, value.usageFromSearchEverywhere)
-      minUsageCountFromSe = min(minUsageCountFromSe, value.usageFromSearchEverywhere)
     }
-
-    return ActionsTotalSummary(maxUsageCount, minUsageCount, maxUsageCountFromSe, minUsageCountFromSe)
+    return ActionsTotalSummary(maxUsageCount, minUsageCount)
   }
 
   @Synchronized
   fun getTotalStats(): ActionsTotalSummary = totalSummary
 
   @Synchronized
-  fun getActionsStats(): Map<String, ActionSummary> {
-    if (state.data.isEmpty()) {
-      return emptyMap()
-    }
-
-    val result = hashMapOf<String, ActionSummary>()
-    for (datum in state.data) {
-      val summary = ActionSummary()
-      summary.usageCount = datum.value.usageCount
-      summary.lastUsedTimestamp = datum.value.lastUsedTimestamp
-      result[datum.key] = summary
-    }
-    return result
-  }
+  fun getActionsStats(): Map<String, ActionSummary> = if (state.data.isEmpty()) emptyMap() else HashMap(state.data)
 
   @Synchronized
-  fun getActionStatsById(actionId: String): ActionExtendedSummary? = state.data[actionId]
+  fun getActionStatsById(actionId: String): ActionSummary? = state.data[actionId]
 
   @Synchronized
-  internal fun updateActionsSummary(actionId: String, place: String) {
-    val isFromSearchEverywhere = place == ActionPlaces.ACTION_SEARCH
-    val summary = state.data.computeIfAbsent(actionId) { ActionExtendedSummary() }
+  internal fun updateActionsSummary(actionId: String) {
+    val summary = state.data.computeIfAbsent(actionId) { ActionSummary() }
+    summary.lastUsedTimestamp = System.currentTimeMillis()
+    summary.usageCount++
 
-    summary.incrementUsage(isFromSearchEverywhere)
-    totalSummary.updateUsage(summary, isFromSearchEverywhere)
+    totalSummary.maxUsageCount = max(summary.usageCount, totalSummary.maxUsageCount)
+    totalSummary.minUsageCount = min(summary.usageCount, totalSummary.minUsageCount)
     incModificationCount()
   }
 }
 
-@Tag("i")
-class ActionExtendedSummary {
-  @Attribute("c")
-  @JvmField
-  var usageCount = 0
-
-  @Attribute("d")
-  @JvmField
-  var usageFromSearchEverywhere = 0
-
-  @Attribute("l")
-  @JvmField
-  var lastUsedTimestamp = 0L
-
-  @Attribute("k")
-  @JvmField
-  var lastUsedFromSearchEverywhere = 0L
-
-  fun incrementUsage(isFromSearchEverywhere: Boolean) {
-    lastUsedTimestamp = System.currentTimeMillis()
-    usageCount++
-
-    if (isFromSearchEverywhere) {
-      lastUsedFromSearchEverywhere = lastUsedTimestamp
-      usageFromSearchEverywhere++
-    }
-  }
-
-  override fun equals(other: Any?): Boolean {
-    if (this === other) return true
-    if (javaClass != other?.javaClass) return false
-
-    other as ActionExtendedSummary
-    return usageCount == other.usageCount &&
-           usageFromSearchEverywhere == other.usageFromSearchEverywhere &&
-           lastUsedTimestamp == other.lastUsedTimestamp &&
-           lastUsedFromSearchEverywhere == other.lastUsedFromSearchEverywhere
-  }
-
-  override fun hashCode(): Int {
-    var result = usageCount
-    result = 31 * result + usageFromSearchEverywhere
-    result = 31 * result + lastUsedTimestamp.hashCode()
-    result = 31 * result + lastUsedFromSearchEverywhere.hashCode()
-    return result
-  }
-}
-
-/**
- * Class left for compatibility with Tips of the Day service
- *
- * @see com.intellij.ide.util.TipsOrderUtil
- */
 @Tag("i")
 class ActionSummary {
   @Attribute("c")
@@ -156,25 +83,9 @@ class ActionSummary {
   override fun hashCode() = (31 * usageCount) + lastUsedTimestamp.hashCode()
 }
 
-data class ActionsLocalSummaryState(
-  @get:XMap(entryTagName = "e", keyAttributeName = "n") @get:Property(surroundWithTag = false)
-  internal val data: MutableMap<String, ActionExtendedSummary> = HashMap()
-)
+data class ActionsLocalSummaryState(@get:XMap(entryTagName = "e", keyAttributeName = "n") @get:Property(surroundWithTag = false) internal val data: MutableMap<String, ActionSummary> = HashMap())
 
-data class ActionsTotalSummary(
-  var maxUsageCount: Int, var minUsageCount: Int,
-  var maxUsageFromSearchEverywhere: Int, var minUsageFromSearchEverywhere: Int
-) {
-  fun updateUsage(newUsageSummary: ActionExtendedSummary, isFromSearchEverywhere: Boolean) {
-    maxUsageCount = max(newUsageSummary.usageCount, maxUsageCount)
-    minUsageCount = min(newUsageSummary.usageCount, minUsageCount)
-
-    if (isFromSearchEverywhere) {
-      maxUsageFromSearchEverywhere = max(newUsageSummary.usageFromSearchEverywhere, maxUsageFromSearchEverywhere)
-      minUsageFromSearchEverywhere = min(newUsageSummary.usageFromSearchEverywhere, minUsageFromSearchEverywhere)
-    }
-  }
-}
+data class ActionsTotalSummary(var maxUsageCount: Int = 0, var minUsageCount: Int = 0)
 
 private class ActionsLocalSummaryListener : AnActionListener {
   private val service = ApplicationManager.getApplication().getService(ActionsLocalSummary::class.java)
@@ -182,7 +93,7 @@ private class ActionsLocalSummaryListener : AnActionListener {
 
   override fun beforeActionPerformed(action: AnAction, event: AnActionEvent) {
     if (getPluginInfo(action::class.java).isSafeToReport()) {
-      service.updateActionsSummary(event.actionManager.getId(action) ?: action.javaClass.name, event.place)
+      service.updateActionsSummary(event.actionManager.getId(action) ?: action.javaClass.name)
     }
   }
 }

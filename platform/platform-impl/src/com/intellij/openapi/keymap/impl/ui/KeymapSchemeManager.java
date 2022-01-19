@@ -199,12 +199,10 @@ public final class KeymapSchemeManager extends AbstractSchemeActions<KeymapSchem
     HashSet<String> set = new HashSet<>();
     for (KeymapScheme scheme : list) {
       String name = scheme.getName();
-      boolean hasUniqueName = set.add(name);
-      if (!scheme.isMutable()) continue;
       if (isEmptyOrSpaces(name)) {
         return KeyMapBundle.message("configuration.all.keymaps.should.have.non.empty.names.error.message");
       }
-      if (!hasUniqueName) {
+      if (!set.add(name)) {
         return KeyMapBundle.message("configuration.all.keymaps.should.have.unique.names.error.message");
       }
     }

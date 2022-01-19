@@ -2,6 +2,7 @@
 package com.intellij.ui.mac.touchbar;
 
 import com.intellij.ide.IdeBundle;
+import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.ui.customization.CustomActionsSchema;
@@ -21,15 +22,14 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.AWTEventListener;
 
 public class TouchbarSupport {
   private static final String IS_ENABLED_KEY = "ide.mac.touchbar.enabled";
   private static final Logger LOG = Logger.getInstance(TouchbarSupport.class);
-  private static final @NotNull AWTEventListener ourAWTEventListener = e -> {
+  private static final @NotNull IdeEventQueue.EventDispatcher ourAWTEventDispatcher = e -> {
     TouchBarsManager.processAWTEvent(e);
+    return false;
   };
-  private static final long ourEventMask = AWTEvent.FOCUS_EVENT_MASK | AWTEvent.KEY_EVENT_MASK;
 
   private static volatile boolean isInitialized;
   private static volatile boolean isEnabled = true;
@@ -77,7 +77,7 @@ public class TouchbarSupport {
     isEnabled = true;
 
     // initialize keyboard listener
-    Toolkit.getDefaultToolkit().addAWTEventListener(ourAWTEventListener, ourEventMask);
+    IdeEventQueue.getInstance().addDispatcher(ourAWTEventDispatcher, null);
 
     // initialize default and tool-window contexts
     CtxDefault.initialize();
@@ -102,7 +102,7 @@ public class TouchbarSupport {
 
     if (!enable) {
       if (isEnabled) {
-        Toolkit.getDefaultToolkit().removeAWTEventListener(ourAWTEventListener);
+        IdeEventQueue.getInstance().removeDispatcher(ourAWTEventDispatcher);
 
         TouchBarsManager.clearAll();
         CtxDefault.disable();
@@ -158,16 +158,16 @@ public class TouchbarSupport {
       Disposer.register(popup, tb);
   }
 
-  public static @Nullable Disposable showWindowActions(@NotNull Component contentPane) {
+  public static @Nullable Disposable showDialogButtons(@NotNull Container contentPane) {
     if (!isInitialized || !isEnabled()) {
       return null;
     }
 
-    return CtxDialogs.showWindowActions(contentPane);
+    return CtxDialogs.showDialogButtons(contentPane);
   }
 
-  public static void showWindowActions(@NotNull Disposable parent, @NotNull Component contentPane) {
-    Disposable tb = showWindowActions(contentPane);
+  public static void showDialogButtons(@NotNull Disposable parent, @NotNull Container contentPane) {
+    Disposable tb = showDialogButtons(contentPane);
     if (tb != null) {
       Disposer.register(parent, tb);
     }

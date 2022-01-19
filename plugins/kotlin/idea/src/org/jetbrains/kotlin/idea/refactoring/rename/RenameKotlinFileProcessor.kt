@@ -24,13 +24,6 @@ class RenameKotlinFileProcessor : RenamePsiFileProcessor() {
         private val file: KtFile
     ) : KtLightClass by psiClass {
         override fun isValid() = file.isValid
-        override fun equals(other: Any?): Boolean = other === this ||
-                other is FileRenamingPsiClassWrapper &&
-                other.psiClass == psiClass &&
-                other.file == file
-
-        override fun hashCode(): Int = psiClass.hashCode() * 31 + file.hashCode()
-        override fun getSourceElement(): PsiElement? = psiClass.sourceElement
     }
 
     override fun canProcessElement(element: PsiElement) =
@@ -42,21 +35,21 @@ class RenameKotlinFileProcessor : RenamePsiFileProcessor() {
         allRenames: MutableMap<PsiElement, String>,
         scope: SearchScope
     ) {
-        val ktFile = element as? KtFile ?: return
+        val jetFile = element as? KtFile ?: return
         if (FileTypeManager.getInstance().getFileTypeByFileName(newName) != KotlinFileType.INSTANCE) {
             return
         }
 
         val module = ModuleUtilCore.findModuleForPsiElement(element) ?: return
 
-        val fileInfo = JvmFileClassUtil.getFileClassInfoNoResolve(ktFile)
+        val fileInfo = JvmFileClassUtil.getFileClassInfoNoResolve(jetFile)
         if (!fileInfo.withJvmName) {
             val facadeFqName = fileInfo.facadeClassFqName
-            val project = ktFile.project
+            val project = jetFile.project
             val facadeClass = JavaPsiFacade.getInstance(project)
                 .findClass(facadeFqName.asString(), GlobalSearchScope.moduleScope(module)) as? KtLightClass
             if (facadeClass != null) {
-                allRenames[FileRenamingPsiClassWrapper(facadeClass, ktFile)] = PackagePartClassUtils.getFilePartShortName(newName)
+                allRenames[FileRenamingPsiClassWrapper(facadeClass, jetFile)] = PackagePartClassUtils.getFilePartShortName(newName)
             }
         }
     }

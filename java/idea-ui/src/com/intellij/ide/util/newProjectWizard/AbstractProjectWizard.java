@@ -4,7 +4,6 @@ package com.intellij.ide.util.newProjectWizard;
 import com.google.common.annotations.VisibleForTesting;
 import com.intellij.ide.highlighter.ModuleFileType;
 import com.intellij.ide.highlighter.ProjectFileType;
-import com.intellij.ide.projectWizard.ProjectSettingsStep;
 import com.intellij.ide.util.projectWizard.ModuleBuilder;
 import com.intellij.ide.util.projectWizard.ModuleWizardStep;
 import com.intellij.ide.util.projectWizard.ProjectBuilder;
@@ -23,7 +22,6 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.platform.templates.TemplateModuleBuilder;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.*;
 
@@ -40,16 +38,16 @@ public abstract class AbstractProjectWizard extends AbstractWizard<ModuleWizardS
   @Nullable
   private WizardDelegate myDelegate;
 
-  public AbstractProjectWizard(@Nls String title, @Nullable Project project, String defaultPath) {
+  public AbstractProjectWizard(@Nls String title, Project project, String defaultPath) {
     super(title, project);
     myWizardContext = initContext(project, defaultPath, getDisposable());
-    myWizardContext.putUserData(AbstractWizard.KEY, this);
+    myWizardContext.setWizard(this);
   }
 
-  public AbstractProjectWizard(@NlsContexts.DialogTitle String title, @Nullable Project project, Component dialogParent) {
+  public AbstractProjectWizard(@NlsContexts.DialogTitle String title, Project project, Component dialogParent) {
     super(title, dialogParent);
     myWizardContext = initContext(project, null, getDisposable());
-    myWizardContext.putUserData(AbstractWizard.KEY, this);
+    myWizardContext.setWizard(this);
   }
 
   @Override
@@ -310,11 +308,6 @@ public abstract class AbstractProjectWizard extends AbstractWizard<ModuleWizardS
   }
 
   private boolean isLastStep(int step) {
-    if (AbstractWizard.isNewWizard()
-        && mySteps.get(getNextStep(step)) instanceof ProjectSettingsStep
-        && myWizardContext.getProjectBuilder() instanceof TemplateModuleBuilder) {
-      return true;
-    }
     return getNextStep(step) == step && !isStepWithNotCompletedSubSteps(mySteps.get(step));
   }
 

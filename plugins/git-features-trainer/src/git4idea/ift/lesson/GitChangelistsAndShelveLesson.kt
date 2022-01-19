@@ -8,7 +8,6 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.actionSystem.impl.ActionMenuItem
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx
@@ -21,7 +20,6 @@ import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.patch.ApplyPatchDifferentiatedDialog
 import com.intellij.openapi.vcs.changes.shelf.ShelveChangesAction
 import com.intellij.openapi.vcs.changes.shelf.ShelveChangesManager
-import com.intellij.openapi.vcs.changes.shelf.UnshelveWithDialogAction
 import com.intellij.openapi.vcs.changes.ui.ChangesListView
 import com.intellij.openapi.vcs.changes.ui.CommitChangeListDialog
 import com.intellij.openapi.vfs.VirtualFile
@@ -32,15 +30,11 @@ import com.intellij.ui.components.DropDownLink
 import com.intellij.util.DocumentUtil
 import git4idea.ift.GitLessonsBundle
 import git4idea.ift.GitLessonsUtil.openCommitWindowText
-import git4idea.ift.GitLessonsUtil.restoreByUiAndBackgroundTask
-import git4idea.ift.GitLessonsUtil.restoreCommitWindowStateInformer
 import git4idea.ift.GitLessonsUtil.showWarningIfCommitWindowClosed
 import git4idea.ift.GitLessonsUtil.showWarningIfModalCommitEnabled
-import git4idea.ift.GitLessonsUtil.showWarningIfStagingAreaEnabled
 import training.dsl.*
 import training.dsl.LessonUtil.adjustPopupPosition
 import training.dsl.LessonUtil.restorePopupPosition
-import training.ui.LearningUiUtil.findComponentWithTimeout
 import java.awt.Point
 import java.awt.Rectangle
 import javax.swing.JButton
@@ -60,7 +54,7 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
     |        condition: hungry
     |        actions: [ fry self-grown potatoes ]""".trimMargin()
 
-  override val testScriptProperties = TaskTestContext.TestScriptProperties(duration = 40)
+  override val testScriptProperties = TaskTestContext.TestScriptProperties(skipTesting = true)
 
   override val lessonContent: LessonContext.() -> Unit = {
     val defaultChangelistName = VcsBundle.message("changes.default.changelist.name")
@@ -72,32 +66,29 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
     }
 
     showWarningIfModalCommitEnabled()
-    showWarningIfStagingAreaEnabled()
 
-    lateinit var highlightLineMarkerTaskId: TaskContext.TaskId
     task {
-      highlightLineMarkerTaskId = taskId
       triggerByPartOfComponent(highlightInside = true, usePulsation = true) l@{ ui: EditorGutterComponentEx ->
         if (CommonDataKeys.EDITOR.getData(ui as DataProvider) != editor) return@l null
-        ui.getLineMarkerRect(commentText)
+        val offset = editor.document.charsSequence.indexOf(commentText)
+        if (offset == -1) {
+          thisLogger().warn("Failed to find '${commentText}' in the editor text:\n${editor.document.charsSequence}")
+          return@l null
+        }
+        val line = editor.offsetToVisualLine(offset, true)
+        val y = editor.visualLineToY(line)
+        return@l Rectangle(ui.x + ui.width - 15, y, 10, editor.lineHeight)
       }
     }
 
+    lateinit var clickLineMarkerTaskId: TaskContext.TaskId
     task {
+      clickLineMarkerTaskId = taskId
       text(GitLessonsBundle.message("git.changelists.shelf.introduction"))
       text(GitLessonsBundle.message("git.changelists.shelf.click.line.marker.balloon"),
            LearningBalloonConfig(Balloon.Position.below, 0))
       triggerByUiComponentAndHighlight(highlightInside = false) { ui: DropDownLink<*> ->
         ui.text?.contains(defaultChangelistName) == true
-      }
-      test {
-        ideFrame {
-          val gutter = findComponentWithTimeout(defaultTimeout) { ui: EditorGutterComponentEx ->
-            CommonDataKeys.EDITOR.getData(ui as DataProvider) == editor
-          }
-          val rect = gutter.getLineMarkerRect(commentText) ?: error("Failed to find '$commentText' in the editor")
-          robot.click(gutter, Point(rect.centerX.toInt(), rect.centerY.toInt()))
-        }
       }
     }
 
@@ -108,13 +99,7 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
       triggerByUiComponentAndHighlight(highlightBorder = false, highlightInside = false) { ui: EditorComponentImpl ->
         ui.text.contains(defaultChangelistName)
       }
-      restoreByUi(highlightLineMarkerTaskId)
-      test {
-        ideFrame {
-          button(defaultChangelistName).click()
-          jList(newChangelistText).clickItem(newChangelistText)
-        }
-      }
+      restoreByUi()
     }
 
     var newChangeListName = "Comments"
@@ -129,14 +114,10 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
         }
         else false
       }
-      restoreState(highlightLineMarkerTaskId) {
+      restoreState(clickLineMarkerTaskId) {
         (previous.ui?.isShowing != true).also {
           if (it) HintManager.getInstance().hideAllHints()
         }
-      }
-      test(waitEditorToBeReady = false) {
-        type(newChangeListName)
-        invokeActionViaShortcut("ENTER")
       }
     }
 
@@ -149,7 +130,6 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
       stateCheck {
         ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.COMMIT)?.isVisible == true
       }
-      test { actions(it) }
     }
 
     task {
@@ -163,43 +143,31 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
     task {
       text(GitLessonsBundle.message("git.changelists.shelf.explanation", strong(shelfText)))
       proceedLink()
-      showWarningIfCommitWindowClosed()
     }
 
-    lateinit var letsShelveTaskId: TaskContext.TaskId
     task {
-      letsShelveTaskId = taskId
       triggerByFoundPathAndHighlight(highlightInside = true) { _, path ->
         path.getPathComponent(path.pathCount - 1).toString().contains(newChangeListName)
       }
     }
 
+    lateinit var letsShelveTaskId: TaskContext.TaskId
     task {
+      letsShelveTaskId = taskId
       text(GitLessonsBundle.message("git.changelists.shelf.open.context.menu"))
       text(GitLessonsBundle.message("git.changelists.shelf.click.changelist.tooltip", strong(newChangeListName)),
            LearningBalloonConfig(Balloon.Position.above, 250))
       triggerByUiComponentAndHighlight(highlightInside = false) { ui: ActionMenuItem ->
         ui.anAction is ShelveChangesAction
       }
-      showWarningIfCommitWindowClosed(restoreTaskWhenResolved = true)
-      test {
-        ideFrame {
-          val tree = jTree { path -> path.getPathComponent(path.pathCount - 1).toString() == newChangeListName }
-          tree.rightClickPath(newChangeListName)
-        }
-      }
+      showWarningIfCommitWindowClosed()
     }
 
     task {
       text(GitLessonsBundle.message("git.changelists.shelf.open.shelf.dialog",
                                     strong(ActionsBundle.message("action.ChangesView.Shelve.text")), strong(shelfText)))
       triggerStart("ChangesView.Shelve")
-      restoreByUi(letsShelveTaskId, delayMillis = defaultRestoreDelay)
-      test {
-        ideFrame {
-          jMenuItem { item: ActionMenuItem -> item.anAction is ShelveChangesAction }.click()
-        }
-      }
+      restoreByUi(delayMillis = defaultRestoreDelay)
     }
 
     val shelveChangesButtonText = VcsBundle.message("shelve.changes.action").dropMnemonic()
@@ -220,9 +188,6 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
         ShelveChangesManager.getInstance(project).allLists.size == 1
       }
       restoreByUi(letsShelveTaskId)
-      test {
-        ideFrame { button(shelveChangesButtonText).click() }
-      }
     }
 
     val removeButtonText = VcsBundle.message("button.remove")
@@ -235,9 +200,6 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
     task {
       text(GitLessonsBundle.message("git.changelists.shelf.remove.changelist", strong(removeButtonText)))
       stateCheck { previous.ui?.isShowing != true }
-      test(waitEditorToBeReady = false) {
-        ideFrame { button(removeButtonText).click() }
-      }
     }
 
     task {
@@ -255,13 +217,6 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
         ui.text?.contains(unshelveChangesButtonText) == true
       }
       showWarningIfCommitWindowClosed()
-      test {
-        ideFrame {
-          val tree = jTree { path -> path.getPathComponent(path.pathCount - 1).toString() == newChangeListName }
-          tree.rightClickPath(newChangeListName)
-          jMenuItem { item: ActionMenuItem -> item.anAction is UnshelveWithDialogAction }.click()
-        }
-      }
     }
 
     task {
@@ -272,18 +227,12 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
       }
       text(GitLessonsBundle.message("git.changelists.shelf.unshelve.changelist", strong(unshelveChangesButtonText)))
       stateCheck { editor.document.text.contains(commentText) }
-      restoreByUiAndBackgroundTask(VcsBundle.message("vcs.unshelving.changes"), delayMillis = defaultRestoreDelay)
-      test(waitEditorToBeReady = false) {
-        Thread.sleep(500)
-        ideFrame { button(unshelveChangesButtonText).click() }
-      }
+      restoreByUi(delayMillis = 4 * defaultRestoreDelay)
     }
 
     task {
       text(GitLessonsBundle.message("git.changelists.shelf.congratulations"))
     }
-
-    restoreCommitWindowStateInformer()
   }
 
   override fun onLessonEnd(project: Project, lessonPassed: Boolean) {
@@ -318,23 +267,4 @@ class GitChangelistsAndShelveLesson : GitLesson("Git.ChangelistsAndShelf", GitLe
       document.insertString(offset + commentingLineText.length, "  $commentText")
     }
   }
-
-  private fun EditorGutterComponentEx.getLineMarkerRect(partOfLine: String): Rectangle? {
-    val editor = CommonDataKeys.EDITOR.getData(this as DataProvider) ?: error("Not found editor for gutter component")
-    val offset = editor.document.charsSequence.indexOf(partOfLine)
-    if (offset == -1) {
-      thisLogger().warn("Failed to find '${partOfLine}' in the editor text:\n${editor.document.charsSequence}")
-      return null
-    }
-    val y = invokeAndWaitIfNeeded {
-      val line = editor.offsetToVisualLine(offset, true)
-      editor.visualLineToY(line)
-    }
-    return Rectangle(this.x + this.width - 15, y, 10, editor.lineHeight)
-  }
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(GitLessonsBundle.message("git.changelists.shelf.help.link"),
-         LessonUtil.getHelpLink("work-on-several-features-simultaneously.html")),
-  )
 }

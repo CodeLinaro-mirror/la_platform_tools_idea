@@ -156,7 +156,8 @@ public class CreateDirectoryOrPackageHandler implements InputValidatorEx {
   private Boolean suggestCreatingFileInstead(String subDirName) {
     Boolean createFile = false;
     if (StringUtil.countChars(subDirName, '.') == 1 && Registry.is("ide.suggest.file.when.creating.filename.like.directory")) {
-      if (findFileTypeBoundToName(subDirName) != null) {
+      FileType fileType = findFileTypeBoundToName(subDirName);
+      if (fileType != null) {
         String message = LangBundle.message("dialog.message.name.you.entered", subDirName);
         int ec = Messages.showYesNoCancelDialog(myProject, message,
                                                 LangBundle.message("dialog.title.file.name.detected"),
@@ -165,7 +166,7 @@ public class CreateDirectoryOrPackageHandler implements InputValidatorEx {
                                                                                        LangBundle.message("button.no.create.directory") :
                                                                                        LangBundle.message("button.no.create.package")),
                                                 CommonBundle.getCancelButtonText(),
-                                                Messages.getQuestionIcon());
+                                                fileType.getIcon());
         if (ec == Messages.CANCEL) {
           createFile = null;
         }

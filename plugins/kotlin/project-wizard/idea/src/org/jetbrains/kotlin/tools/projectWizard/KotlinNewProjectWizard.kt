@@ -2,104 +2,72 @@
 package org.jetbrains.kotlin.tools.projectWizard
 
 import com.intellij.ide.JavaUiBundle
-import com.intellij.ide.wizard.*
+import com.intellij.ide.LabelAndComponent
+import com.intellij.ide.NewProjectWizard
+import com.intellij.ide.util.projectWizard.WizardContext
+import com.intellij.ide.wizard.BuildSystemWithSettings
+import com.intellij.openapi.observable.properties.GraphProperty
+import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
+import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.ui.dsl.builder.BottomGap
-import com.intellij.ui.dsl.builder.EMPTY_LABEL
-import com.intellij.ui.dsl.builder.Panel
-import com.intellij.util.SystemProperties
-import org.jetbrains.kotlin.idea.KotlinBundle
-import org.jetbrains.kotlin.tools.projectWizard.core.asPath
-import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.reference
-import org.jetbrains.kotlin.tools.projectWizard.phases.GenerationPhase
-import org.jetbrains.kotlin.tools.projectWizard.plugins.StructurePlugin
-import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.BuildSystemPlugin
-import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.BuildSystemType
-import org.jetbrains.kotlin.tools.projectWizard.plugins.projectTemplates.applyProjectTemplate
-import org.jetbrains.kotlin.tools.projectWizard.projectTemplates.ConsoleApplicationProjectTemplate
-import org.jetbrains.kotlin.tools.projectWizard.wizard.NewProjectWizardModuleBuilder
-import java.util.*
+import com.intellij.openapi.roots.ui.configuration.JdkComboBox
+import com.intellij.openapi.roots.ui.configuration.projectRoot.ProjectSdksModel
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.layout.*
+import java.awt.Dimension
+import java.awt.event.ItemListener
+import javax.swing.JComponent
 
-class KotlinNewProjectWizard : LanguageNewProjectWizard {
+class KotlinNewProjectWizard : NewProjectWizard<KotlinSettings> {
+  override val language: String = "Kotlin"
+  override var settingsFactory = { KotlinSettings() }
 
-    companion object {
-        private const val DEFAULT_GROUP_ID = "me.user"
+  override fun settingsList(settings: KotlinSettings): List<LabelAndComponent> {
+      val buildSystems = settings.buildSystems.value
+      var component: JComponent = JBLabel()
+      panel {
+          row {
+              component = buttonSelector(buildSystems, settings.buildSystemProperty) { it.name }.component
+          }
+      }
 
-        fun generateProject(
-            presetBuilder: NewProjectWizardModuleBuilder? = null,
-            project: Project,
-            projectPath: String,
-            projectName: String,
-            sdk: Sdk?,
-            buildSystemType: BuildSystemType,
-            projectGroupId: String? = suggestGroupId(),
-            artifactId: String? = projectName,
-            version: String? = "1.0-SNAPSHOT"
-        ) {
-            val builder = presetBuilder ?: NewProjectWizardModuleBuilder()
-            val modules = builder.apply {
-                wizard.apply(emptyList(), setOf(GenerationPhase.PREPARE))
+      settings.propertyGraph.afterPropagation {
+          buildSystems.forEach { it.advancedSettings().apply { isVisible = false } }
+          settings.buildSystemProperty.get().advancedSettings().apply { isVisible = true }
+      }
 
-                wizard.jdk = sdk
-                wizard.context.writeSettings {
-                    StructurePlugin.name.reference.setValue(projectName)
-                    StructurePlugin.projectPath.reference.setValue(projectPath.asPath())
+      val sdkCombo = JdkComboBox(null, ProjectSdksModel(), null, null, null, null)
+          .apply { minimumSize = Dimension(0, 0) }
+          .also { combo -> combo.addItemListener(ItemListener { settings.sdk = combo.selectedJdk }) }
 
-                    projectGroupId?.let { StructurePlugin.groupId.reference.setValue(it) }
-                    artifactId?.let { StructurePlugin.artifactId.reference.setValue(it) }
-                    version?.let { StructurePlugin.version.reference.setValue(it) }
+      // These are IDE-plugin based build-systems, i.e. Gradle and Maven
+      if (buildSystems.isNotEmpty()) {
+          settings.buildSystemProperty.set(buildSystems.first())
+      }
 
-                    BuildSystemPlugin.type.reference.setValue(buildSystemType)
+      return listOf(
+          LabelAndComponent(JBLabel(JavaUiBundle.message("label.project.wizard.new.project.build.system")), component),
+          LabelAndComponent(JBLabel(JavaUiBundle.message("label.project.wizard.new.project.jdk")), sdkCombo)
+      ).plus(buildSystems.map { LabelAndComponent(component = it.advancedSettings()) })
+  }
 
-                    applyProjectTemplate(ConsoleApplicationProjectTemplate)
-                }
-            }.commit(project, null, null)
-        }
+  override fun setupProject(project: Project, settings: KotlinSettings, context: WizardContext) {
+    settings.buildSystemProperty.get().setupProject(project, settings)
+  }
+}
 
-        private fun suggestGroupId(): String {
-            val username = SystemProperties.getUserName()
-            if (!username.matches("[\\w\\s]+".toRegex())) return DEFAULT_GROUP_ID
-            val usernameAsGroupId = username.trim().lowercase(Locale.getDefault()).split("\\s+".toRegex()).joinToString(separator = ".")
-            return "me.$usernameAsGroupId"
-        }
+class KotlinSettings {
+    var sdk: Sdk? = null
+    val propertyGraph: PropertyGraph = PropertyGraph()
+    val buildSystems: Lazy<List<KotlinBuildSystemWithSettings<out Any?>>> = lazy {
+        KotlinBuildSystemType.EP_NAME.extensionList.map { KotlinBuildSystemWithSettings(it) }
     }
 
-    override val name: String = "Kotlin"
-
-    override fun createStep(parent: NewProjectWizardLanguageStep) =
-        CommentStep(parent)
-            .chain(::Step)
-
-    class CommentStep(parent: NewProjectWizardLanguageStep) :
-        AbstractNewProjectWizardStep(parent),
-        NewProjectWizardLanguageData by parent {
-
-        override fun setupUI(builder: Panel) {
-            with(builder) {
-                row(EMPTY_LABEL) {
-                    commentHtml(KotlinBundle.message("project.wizard.new.project.kotlin.comment")) {
-                        context.requestSwitchTo(NewProjectWizardModuleBuilder.MODULE_BUILDER_ID)
-                    }
-                }.bottomGap(BottomGap.SMALL)
-            }
-        }
-
-        override fun setupProject(project: Project) {}
-    }
-
-    class Step(parent: CommentStep) :
-        AbstractNewProjectWizardMultiStep<Step>(parent, BuildSystemKotlinNewProjectWizard.EP_NAME),
-        NewProjectWizardLanguageData by parent,
-        NewProjectWizardBuildSystemData {
-
-        override val self = this
-        override val label = JavaUiBundle.message("label.project.wizard.new.project.build.system")
-        override val buildSystemProperty by ::stepProperty
-        override val buildSystem by ::step
-
-        init {
-            data.putUserData(NewProjectWizardBuildSystemData.KEY, this)
-        }
+    val buildSystemProperty: GraphProperty<KotlinBuildSystemWithSettings<*>> = propertyGraph.graphProperty {
+        buildSystems.value.first()
     }
 }
+
+open class KotlinBuildSystemWithSettings<P>(val buildSystemType: KotlinBuildSystemType<P>) :
+    BuildSystemWithSettings<KotlinSettings, P>(buildSystemType)

@@ -1,4 +1,3 @@
-version = "3.3.*"
+version = "0.1"
 python2 = true
 requires = ["types-enum34", "types-ipaddress"]
-obsolete_since = "3.4.4"

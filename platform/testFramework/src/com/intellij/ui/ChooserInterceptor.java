@@ -3,8 +3,9 @@ package com.intellij.ui;
 
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.ui.components.JBList;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
+import one.util.streamex.IntStreamEx;
+import one.util.streamex.StreamEx;
 import org.intellij.lang.annotations.RegExp;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -12,8 +13,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.List;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.junit.Assert.*;
 
@@ -43,11 +42,11 @@ public class ChooserInterceptor extends UiInterceptors.UiInterceptor<JBPopup> {
       fail("JBList not found under " + popup.getContent());
     }
     ListModel<?> model = content.getModel();
-    List<String> actualOptions = IntStream.range(0, model.getSize()).mapToObj(model::getElementAt).map(Object::toString).collect(Collectors.toList());
+    List<String> actualOptions = IntStreamEx.range(model.getSize()).mapToObj(model::getElementAt).map(Object::toString).toList();
     if (myOptions != null) {
       assertEquals(myOptions, actualOptions);
     }
-    List<String> matched = ContainerUtil.filter(actualOptions, opt -> myToSelect.matcher(opt).matches());
+    List<String> matched = StreamEx.of(actualOptions).filter(opt -> myToSelect.matcher(opt).matches()).toList();
     if (matched.isEmpty()) {
       fail("No option matches pattern " + myToSelect + " (available options: " + String.join(", ", actualOptions) + ")");
     }

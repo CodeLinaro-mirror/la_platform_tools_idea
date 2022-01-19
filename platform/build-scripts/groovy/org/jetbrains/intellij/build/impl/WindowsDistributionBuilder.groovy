@@ -14,7 +14,6 @@ import org.jetbrains.annotations.NotNull
 import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.impl.productInfo.ProductInfoGenerator
 import org.jetbrains.intellij.build.impl.productInfo.ProductInfoValidator
-import org.jetbrains.intellij.build.impl.support.RepairUtilityBuilder
 import org.jetbrains.jps.model.library.JpsOrderRootType
 import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.model.module.JpsModuleSourceRoot
@@ -111,16 +110,7 @@ Android Studio: suppress error in code added by commit 8272ffe8 */
     }
 
     if (customizer.buildZipArchive) {
-      List<Path> jreDirectoryPaths
-      if (customizer.zipArchiveWithBundledJre) {
-        if (jreDir == null) {
-          buildContext.messages.error("Bundled jre is not found, but it's required for .win.zip")
-        }
-
-        jreDirectoryPaths = [jreDir]
-      } else {
-        jreDirectoryPaths = []
-      }
+      List<Path> jreDirectoryPaths = customizer.zipArchiveWithBundledJre ? [jreDir] : []
       zipPath = buildWinZip(jreDirectoryPaths, ".win", winDistPath)
     }
 
@@ -146,13 +136,12 @@ Android Studio: suppress error in code added by commit 8272ffe8 */
     Path tempZip = Files.createTempDirectory(buildContext.paths.tempDir, "zip-")
     Path tempExe = Files.createTempDirectory(buildContext.paths.tempDir, "exe-")
     try {
-      BuildHelper.runProcess(buildContext, List.of("7z", "x", "-bd", exePath), tempExe)
       BuildHelper.runProcess(buildContext, List.of("unzip", "-qq", zipPath), tempZip)
+      BuildHelper.runProcess(buildContext, List.of("7z", "x", "-bd", exePath), tempExe)
       //noinspection SpellCheckingInspection
       FileUtil.delete(tempExe.resolve("\$PLUGINSDIR"))
 
       BuildHelper.runProcess(buildContext, List.of("diff", "-q", "-r", tempZip.toString(), tempExe.toString()))
-      RepairUtilityBuilder.generateManifest(buildContext, tempExe.toString(), Paths.get(exePath).fileName.toString())
     }
     finally {
       FileUtil.delete(tempZip)
@@ -167,10 +156,10 @@ Android Studio: suppress error in code added by commit 8272ffe8 */
     String scriptName = "${baseName}.bat"
     String vmOptionsFileName = "${baseName}%BITS%.exe"
 
-    String classPath = "SET \"CLASS_PATH=%IDE_HOME%\\lib\\${buildContext.bootClassPathJarNames[0]}\"\n"
-    classPath += buildContext.bootClassPathJarNames[1..-1].collect { "SET \"CLASS_PATH=%CLASS_PATH%;%IDE_HOME%\\lib\\$it\"" }.join("\n")
+    String classPath = "SET CLASS_PATH=%IDE_HOME%\\lib\\${buildContext.bootClassPathJarNames[0]}\n"
+    classPath += buildContext.bootClassPathJarNames[1..-1].collect { "SET CLASS_PATH=%CLASS_PATH%;%IDE_HOME%\\lib\\$it" }.join("\n")
     if (buildContext.productProperties.toolsJarRequired) {
-      classPath += "\nSET \"CLASS_PATH=%CLASS_PATH%;%JDK%\\lib\\tools.jar\""
+      classPath += "\nSET CLASS_PATH=%CLASS_PATH%;%JDK%\\lib\\tools.jar"
     }
 
     buildContext.ant.copy(todir: distBinDir.toString()) {

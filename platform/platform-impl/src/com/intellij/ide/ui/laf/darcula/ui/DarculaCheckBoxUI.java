@@ -36,7 +36,7 @@ public class DarculaCheckBoxUI extends MetalCheckBoxUI {
   @Override
   public void installUI(JComponent c) {
     super.installUI(c);
-    if (ComponentUtil.getParentOfType(CellRendererPane.class, c) != null) {
+    if (ComponentUtil.getParentOfType((Class<? extends CellRendererPane>)CellRendererPane.class, (Component)c) != null) {
       c.setBorder(null);
     }
   }

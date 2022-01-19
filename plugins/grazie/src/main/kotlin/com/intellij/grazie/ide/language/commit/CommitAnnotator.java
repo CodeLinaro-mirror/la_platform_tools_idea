@@ -1,7 +1,6 @@
 package com.intellij.grazie.ide.language.commit;
 
 import com.intellij.codeInsight.intention.IntentionAction;
-import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.QuickFix;
 import com.intellij.grazie.GrazieConfig;
 import com.intellij.grazie.text.*;
@@ -26,36 +25,29 @@ public class CommitAnnotator implements Annotator {
       return;
     }
 
-    for (TextContent text : TextExtractor.findTextsAt(element, EnumSet.of(TextContent.TextDomain.PLAIN_TEXT))) {
-      checkText(holder, text);
-    }
-  }
+    TextContent text = TextExtractor.findTextAt(element, EnumSet.of(TextContent.TextDomain.PLAIN_TEXT));
+    if (text == null) return;
 
-  private static void checkText(AnnotationHolder holder, TextContent text) {
     List<TextChecker> checkers = TextChecker.allCheckers();
     CheckerRunner runner = new CheckerRunner(text);
-    runner.run(checkers, problem -> {
+    List<TextProblem> descriptors = runner.run(checkers);
+    for (var problem : descriptors) {
       if (problem.fitsGroup(RuleGroup.UNDECORATED_SINGLE_SENTENCE) &&
           Text.isSingleSentence(Text.findParagraphRange(text, problem.getReplacementRange()).subSequence(text))) {
-        return null;
+        continue;
       }
 
-      List<ProblemDescriptor> descriptors = runner.toProblemDescriptors(problem, true);
-      if (descriptors.isEmpty()) return null;
-
-      ProblemDescriptor descriptor = descriptors.get(0);
-
+      String message = problem.getDescriptionTemplate(true);
       AnnotationBuilder annotation = holder
-        .newAnnotation(HighlightSeverity.WARNING, problem.getDescriptionTemplate(true))
-        .tooltip(problem.getTooltipTemplate())
+        .newAnnotation(HighlightSeverity.WARNING, message)
+        .tooltip(message)
         .textAttributes(SpellCheckerSeveritiesProvider.TYPO_KEY)
         .range(text.textRangeToFile(problem.getHighlightRange()));
-      for (QuickFix<?> fix : runner.toFixes(problem, descriptor)) {
+      for (QuickFix<?> fix : runner.toFixes(problem)) {
         annotation = annotation.withFix((IntentionAction)fix);
       }
       annotation.create();
-      return null;
-    });
+    }
   }
 
 }

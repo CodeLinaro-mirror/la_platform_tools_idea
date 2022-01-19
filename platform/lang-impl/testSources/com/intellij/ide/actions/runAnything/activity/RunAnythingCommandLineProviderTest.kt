@@ -6,28 +6,28 @@ import org.junit.Test
 class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCase() {
   @Test
   fun `test command line parsing`() {
-    withCommandLineFor("start") {
+    withCommandLineFor("") {
       assertOrderedEquals(it.parameters)
       assertOrderedEquals(it.completedParameters)
       assertEquals("", it.command)
       assertEquals("", it.prefix)
       assertEquals("", it.toComplete)
     }
-    withCommandLineFor("start task") {
+    withCommandLineFor("task") {
       assertOrderedEquals(it.parameters, "task")
       assertOrderedEquals(it.completedParameters)
       assertEquals("task", it.command)
       assertEquals("", it.prefix)
       assertEquals("task", it.toComplete)
     }
-    withCommandLineFor("start task1 task2") {
+    withCommandLineFor("task1 task2") {
       assertOrderedEquals(it.parameters, "task1", "task2")
       assertOrderedEquals(it.completedParameters, "task1")
       assertEquals("task1 task2", it.command)
       assertEquals("task1", it.prefix)
       assertEquals("task2", it.toComplete)
     }
-    withCommandLineFor("start task1 task2 ") {
+    withCommandLineFor("task1 task2 ") {
       assertOrderedEquals(it.parameters, "task1", "task2")
       assertOrderedEquals(it.completedParameters, "task1", "task2")
       assertEquals("task1 task2", it.command)
@@ -35,7 +35,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertEquals("", it.toComplete)
     }
     val doubleQuotedTask = "\"task with spaces\""
-    withCommandLineFor("start task1 task2 $doubleQuotedTask") {
+    withCommandLineFor("task1 task2 $doubleQuotedTask") {
       assertOrderedEquals(it.parameters, "task1", "task2", doubleQuotedTask)
       assertOrderedEquals(it.completedParameters, "task1", "task2")
       assertEquals("task1 task2 $doubleQuotedTask", it.command)
@@ -43,7 +43,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertEquals(doubleQuotedTask, it.toComplete)
     }
     val incompleteDoubleQuotedTask = "\"incomplete 'task"
-    withCommandLineFor("start task1 task2 $incompleteDoubleQuotedTask") {
+    withCommandLineFor("task1 task2 $incompleteDoubleQuotedTask") {
       assertOrderedEquals(it.parameters, "task1", "task2", incompleteDoubleQuotedTask)
       assertOrderedEquals(it.completedParameters, "task1", "task2")
       assertEquals("task1 task2 $incompleteDoubleQuotedTask", it.command)
@@ -51,7 +51,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertEquals(incompleteDoubleQuotedTask, it.toComplete)
     }
     val superDoubleQuotedTask = "super\"complex task 'with \\\" escaped\"quote"
-    withCommandLineFor("start task $superDoubleQuotedTask") {
+    withCommandLineFor("task $superDoubleQuotedTask") {
       assertOrderedEquals(it.parameters, "task", superDoubleQuotedTask)
       assertOrderedEquals(it.completedParameters, "task")
       assertEquals("task $superDoubleQuotedTask", it.command)
@@ -59,7 +59,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertEquals(superDoubleQuotedTask, it.toComplete)
     }
     val singleQuotedTask = "'task with spaces'"
-    withCommandLineFor("start task1 task2 $singleQuotedTask") {
+    withCommandLineFor("task1 task2 $singleQuotedTask") {
       assertOrderedEquals(it.parameters, "task1", "task2", singleQuotedTask)
       assertOrderedEquals(it.completedParameters, "task1", "task2")
       assertEquals("task1 task2 $singleQuotedTask", it.command)
@@ -67,7 +67,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertEquals(singleQuotedTask, it.toComplete)
     }
     val incompleteSingleQuotedTask = "'incomplete \"task"
-    withCommandLineFor("start task1 task2 $incompleteSingleQuotedTask") {
+    withCommandLineFor("task1 task2 $incompleteSingleQuotedTask") {
       assertOrderedEquals(it.parameters, "task1", "task2", incompleteSingleQuotedTask)
       assertOrderedEquals(it.completedParameters, "task1", "task2")
       assertEquals("task1 task2 $incompleteSingleQuotedTask", it.command)
@@ -75,7 +75,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertEquals(incompleteSingleQuotedTask, it.toComplete)
     }
     val superSingleQuotedTask = "super'complex task \"with \\' escaped'quote"
-    withCommandLineFor("start task $superSingleQuotedTask") {
+    withCommandLineFor("task $superSingleQuotedTask") {
       assertOrderedEquals(it.parameters, "task", superSingleQuotedTask)
       assertOrderedEquals(it.completedParameters, "task")
       assertEquals("task $superSingleQuotedTask", it.command)
@@ -101,7 +101,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
       assertOrderedEquals(getValuesFor("task", "task1", "task2", prefix = "starts"), "task1", "task2")
     }
     withHelpCommands("start", "starts", "run") {
-      withCommandLineFor("run task ") {
+      withCommandLineFor("task ", prefix = "run") {
         assertOrderedEquals(it.parameters, "task")
         assertOrderedEquals(it.completedParameters, "task")
         assertEquals("run", it.helpCommand)
@@ -109,7 +109,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
         assertEquals("task", it.prefix)
         assertEquals("", it.toComplete)
       }
-      withCommandLineFor("start task ") {
+      withCommandLineFor("task ", prefix = "start") {
         assertOrderedEquals(it.parameters, "task")
         assertOrderedEquals(it.completedParameters, "task")
         assertEquals("start", it.helpCommand)
@@ -117,7 +117,7 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
         assertEquals("task", it.prefix)
         assertEquals("", it.toComplete)
       }
-      withCommandLineFor("starts task ") {
+      withCommandLineFor("task ", prefix = "starts") {
         assertOrderedEquals(it.parameters, "task")
         assertOrderedEquals(it.completedParameters, "task")
         assertEquals("starts", it.helpCommand)
@@ -130,38 +130,14 @@ class RunAnythingCommandLineProviderTest : RunAnythingCommandLineProviderTestCas
 
   @Test
   fun `test recognition of command prefix`() {
-    assertMatchingValue("", null)
-    assertMatchingValue("s", null)
-    assertMatchingValue("st", null)
-    assertMatchingValue("start", "start")
-    assertMatchingValue("start ", "start ")
-    assertMatchingValue("start 123", "start 123")
-    assertMatchingValue("start1", null)
-    assertMatchingValue("starts", null)
-
-    withCommandLineFor("") {
-      assertEquals("start", it.helpCommand)
-      assertEquals("", it.command)
-    }
-    withCommandLineFor("") {
-      assertEquals("start", it.helpCommand)
-      assertEquals("", it.command)
-    }
-    withCommandLineFor("s") {
-      assertEquals("start", it.helpCommand)
-      assertEquals("", it.command)
-    }
-    withCommandLineFor("st") {
-      assertEquals("start", it.helpCommand)
-      assertEquals("", it.command)
-    }
-    withCommandLineFor("start") {
-      assertEquals("start", it.helpCommand)
-      assertEquals("", it.command)
-    }
-    withCommandLineFor("start ") {
-      assertEquals("start", it.helpCommand)
-      assertEquals("", it.command)
-    }
+    val provider = createDummyCommandLineProvider()
+    assertEquals("", provider.findMatchingValue({}, ""))
+    assertEquals("s", provider.findMatchingValue({}, "s"))
+    assertEquals("st", provider.findMatchingValue({}, "st"))
+    assertEquals("start", provider.findMatchingValue({}, "start"))
+    assertEquals("start ", provider.findMatchingValue({}, "start "))
+    assertEquals("start 123", provider.findMatchingValue({}, "start 123"))
+    assertEquals(null, provider.findMatchingValue({}, "start1"))
+    assertEquals(null, provider.findMatchingValue({}, "starts"))
   }
 }

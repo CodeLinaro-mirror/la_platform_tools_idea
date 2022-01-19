@@ -76,15 +76,15 @@ internal class MapBinding(keyType: Type, valueType: Type, context: BindingInitia
     }
 
     @Suppress("UNCHECKED_CAST")
-    var result = property.readUnsafe(hostObject) as Map<Any?, Any?>?
+    var result = property.readUnsafe(hostObject) as MutableMap<Any?, Any?>?
     if (result != null && ClassUtil.isMutableMap(result)) {
-      (result as MutableMap<Any?, Any?>).clear()
+      result.clear()
     }
     else {
       result = HashMap()
       property.set(hostObject, result)
     }
-    readInto(result as MutableMap<Any?, Any?>, context, hostObject)
+    readInto(result, context, hostObject)
   }
 
   override fun deserialize(context: ReadContext, hostObject: Any?): Any {

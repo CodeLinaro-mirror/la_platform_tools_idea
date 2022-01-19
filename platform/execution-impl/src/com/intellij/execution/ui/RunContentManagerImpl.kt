@@ -7,7 +7,6 @@ import com.intellij.execution.KillableProcess
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.configurations.RunConfiguration
 import com.intellij.execution.dashboard.RunDashboardManager
-import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
@@ -19,7 +18,7 @@ import com.intellij.ide.plugins.DynamicPluginListener
 import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataProvider
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
+import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.AppUIExecutor
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.serviceIfCreated
@@ -31,11 +30,8 @@ import com.intellij.openapi.wm.RegisterToolWindowTask
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
-import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.AppUIUtil
 import com.intellij.ui.content.*
-import com.intellij.ui.content.Content.CLOSE_LISTENER_KEY
-import com.intellij.ui.content.impl.ContentManagerImpl
 import com.intellij.ui.docking.DockManager
 import com.intellij.util.ObjectUtils
 import com.intellij.util.SmartList
@@ -47,6 +43,7 @@ import java.util.function.Predicate
 import javax.swing.Icon
 
 private val EXECUTOR_KEY: Key<Executor> = Key.create("Executor")
+private val CLOSE_LISTENER_KEY: Key<ContentManagerListener> = Key.create("CloseListener")
 
 class RunContentManagerImpl(private val project: Project) : RunContentManager {
   private val toolWindowIdToBaseIcon: MutableMap<String, Icon> = HashMap()
@@ -137,13 +134,10 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
 
     toolWindow = toolWindowManager.registerToolWindow(RegisterToolWindowTask(
       id = toolWindowId, icon = executor.toolWindowIcon, stripeTitle = executor::getActionName))
-    if (DefaultRunExecutor.EXECUTOR_ID == executor.id) {
-      UIUtil.putClientProperty(toolWindow.component, ToolWindowContentUi.ALLOW_DND_FOR_TABS, true)
-    }
     val contentManager = toolWindow.contentManager
     contentManager.addDataProvider(object : DataProvider {
       override fun getData(dataId: String): Any? {
-        if (PlatformCoreDataKeys.HELP_ID.`is`(dataId)) return executor.helpId
+        if (PlatformDataKeys.HELP_ID.`is`(dataId)) return executor.helpId
         return null
       }
     })
@@ -288,7 +282,7 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
       content.putUserData(CLOSE_LISTENER_KEY, CloseListener(content, executor))
     }
     if (descriptor.isSelectContentWhenAdded /* also update selection when reused content is already selected  */
-        || oldDescriptor != null && content.manager!!.isSelected(content)) {
+        || oldDescriptor != null && contentManager.isSelected(content)) {
       content.manager!!.setSelectedContent(content)
     }
 
@@ -358,7 +352,7 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
   }
 
   private fun getContentManagerForRunner(executor: Executor, descriptor: RunContentDescriptor?): ContentManager {
-    return descriptor?.attachedContent?.manager ?: getOrCreateContentManagerForToolWindow(getToolWindowIdForRunner(executor, descriptor), executor)
+    return getOrCreateContentManagerForToolWindow(getToolWindowIdForRunner(executor, descriptor), executor)
   }
 
   private fun getOrCreateContentManagerForToolWindow(id: String, executor: Executor): ContentManager {
@@ -445,14 +439,7 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
   }
 
   private fun getDescriptorBy(handler: ProcessHandler, runnerInfo: Executor): RunContentDescriptor? {
-    fun find(manager: ContentManager?): RunContentDescriptor? {
-      if (manager == null) return null
-      val contents =
-      if (manager is ContentManagerImpl) {
-        manager.contentsRecursively
-      } else {
-        manager.contents.toList()
-      }
+    fun find(contents: Array<Content>): RunContentDescriptor? {
       for (content in contents) {
         val runContentDescriptor = getRunContentDescriptorByContent(content)
         if (runContentDescriptor?.processHandler === handler) {
@@ -462,10 +449,10 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
       return null
     }
 
-    find(getContentManagerForRunner(runnerInfo, null))?.let {
+    find(getContentManagerForRunner(runnerInfo, null).contents)?.let {
       return it
     }
-    find(getContentManagerByToolWindowId(project.serviceIfCreated<RunDashboardManager>()?.toolWindowId ?: return null) ?: return null)?.let {
+    find(getContentManagerByToolWindowId(project.serviceIfCreated<RunDashboardManager>()?.toolWindowId ?: return null)?.contents ?: return null)?.let {
       return it
     }
     return null
@@ -474,7 +461,7 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
   fun moveContent(executor: Executor, descriptor: RunContentDescriptor) {
     val content = descriptor.attachedContent ?: return
     val oldContentManager = content.manager
-    val newContentManager = getOrCreateContentManagerForToolWindow(getToolWindowIdForRunner(executor, descriptor), executor)
+    val newContentManager = getContentManagerForRunner(executor, descriptor)
     if (oldContentManager == null || oldContentManager === newContentManager) return
     val listener = content.getUserData(CLOSE_LISTENER_KEY)
     if (listener != null) {
@@ -490,7 +477,9 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
       }
     }
     newContentManager.addContent(content)
-    // Close listener is added to new content manager by propertyChangeListener in BaseContentCloseListener.
+    if (listener != null) {
+      newContentManager.addContentManagerListener(listener)
+    }
   }
 
   private fun updateToolWindowIcon(contentManagerToUpdate: ContentManager, alive: Boolean) {
@@ -523,7 +512,6 @@ class RunContentManagerImpl(private val project: Project) : RunContentManager {
 
     override fun closeQuery(content: Content, projectClosing: Boolean): Boolean {
       val descriptor = getRunContentDescriptorByContent(content) ?: return true
-      if (Content.TEMPORARY_REMOVED_KEY.get(content, false)) return true
       val processHandler = descriptor.processHandler
       if (processHandler == null || processHandler.isProcessTerminated) {
         return true
@@ -562,16 +550,8 @@ private fun chooseReuseContentForDescriptor(contentManager: ContentManager,
     // stage two: try to get content from descriptor itself
     val attachedContent = descriptor.attachedContent
     if (attachedContent != null && attachedContent.isValid
-        && (descriptor.displayName == attachedContent.displayName || !attachedContent.isPinned)) {
-      val contents =
-      if (contentManager is ContentManagerImpl) {
-        contentManager.contentsRecursively
-      } else {
-        contentManager.contents.toList()
-      }
-      if (contents.contains(attachedContent)) {
-        content = attachedContent
-      }
+        && contentManager.getIndexOfContent(attachedContent) != -1 && (descriptor.displayName == attachedContent.displayName || !attachedContent.isPinned)) {
+      content = attachedContent
     }
   }
 
@@ -597,12 +577,7 @@ private fun getContentFromManager(contentManager: ContentManager,
                                   preferredName: String?,
                                   executionId: Long,
                                   reuseCondition: Predicate<in Content>?): Content? {
-  val contents =
-    if (contentManager is ContentManagerImpl) {
-      contentManager.contentsRecursively
-    } else {
-      contentManager.contents.toMutableList()
-    }
+  val contents = contentManager.contents.toMutableList()
   val first = contentManager.selectedContent
   if (first != null && contents.remove(first)) {
     //selected content should be checked first

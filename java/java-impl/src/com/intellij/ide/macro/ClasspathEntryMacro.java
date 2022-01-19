@@ -12,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * @author Eugene Belyaev
  */
-public final class ClasspathEntryMacro extends Macro implements PathMacro {
+public final class ClasspathEntryMacro extends Macro {
   @NotNull
   @Override
   public String getName() {

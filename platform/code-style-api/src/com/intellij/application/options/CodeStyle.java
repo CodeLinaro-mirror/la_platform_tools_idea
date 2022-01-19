@@ -84,7 +84,6 @@ public final class CodeStyle {
   @NotNull
   public static CodeStyleSettings getSettings(@NotNull PsiFile file) {
     final Project project = file.getProject();
-    @SuppressWarnings("TestOnlyProblems")
     CodeStyleSettings tempSettings = CodeStyleSettingsManager.getInstance(project).getTemporarySettings();
     if (tempSettings != null) {
       return tempSettings;
@@ -297,7 +296,7 @@ public final class CodeStyle {
    * @param tempSettings  The temporary code style settings.
    * @param runnable      The runnable to execute with the temporary settings.
    */
-  @SuppressWarnings("TestOnlyProblems")
+  @TestOnly
   public static void doWithTemporarySettings(@NotNull Project project,
                                              @NotNull CodeStyleSettings tempSettings,
                                              @NotNull Runnable runnable) {
@@ -326,7 +325,7 @@ public final class CodeStyle {
    * @param baseSettings         The base settings to be cloned and used in consumer.
    * @param tempSettingsConsumer The consumer to execute with the base settings copy.
    */
-  @SuppressWarnings("TestOnlyProblems")
+  @TestOnly
   public static void doWithTemporarySettings(@NotNull Project project,
                                              @NotNull CodeStyleSettings baseSettings,
                                              @NotNull Consumer<? super CodeStyleSettings> tempSettingsConsumer) {
@@ -505,7 +504,10 @@ public final class CodeStyle {
   @NotNull
   public static CodeStyleSettingsFacade getFacade(@NotNull Project project, @NotNull Document document, @NotNull FileType fileType) {
     PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
-    return new DefaultCodeStyleSettingsFacade(psiFile == null ? getSettings(project) : getSettings(psiFile), fileType);
+    if (psiFile != null) {
+      return new DefaultCodeStyleSettingsFacade(getSettings(psiFile), fileType);
+    }
+    return new DefaultCodeStyleSettingsFacade(getSettings(project), fileType);
   }
 
   /**

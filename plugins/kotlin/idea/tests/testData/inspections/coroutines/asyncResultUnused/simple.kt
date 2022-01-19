@@ -1,7 +1,5 @@
 package kotlinx.coroutines
 
-import kotlin.test.assertNotNull
-
 interface Deferred<T> {
     suspend fun await(): T
 }
@@ -60,18 +58,4 @@ operator fun Deferred<Int>.plus(arg: Int) = this
 fun moreFalsePositives() {
     +(async { 0 })
     async { -1 } + 1
-}
-
-suspend fun kt33741() {
-    val d: Deferred<Int>? = async { 42 }
-    assertNotNull(d)
-    d.await()
-
-    val d2: Deferred<Int>? = async { 42 }
-    requireNotNull(d2)
-    d2.await()
-
-    val d3: Deferred<Int>? = async { 42 }
-    checkNotNull(d3)
-    d3.await()
 }

@@ -45,8 +45,7 @@ class QuickFixFactoryForTypeMismatchError : KotlinIntentionActionsFactory() {
     override fun doCreateActions(diagnostic: Diagnostic): List<IntentionAction> {
         val actions = LinkedList<IntentionAction>()
 
-        val file = diagnostic.psiFile as KtFile
-        val context = file.analyzeWithContent()
+        val context = (diagnostic.psiFile as KtFile).analyzeWithContent()
 
         val diagnosticElement = diagnostic.psiElement
         if (diagnosticElement !is KtExpression) {
@@ -114,11 +113,6 @@ class QuickFixFactoryForTypeMismatchError : KotlinIntentionActionsFactory() {
             if (expectedType.isMarkedNullable && expressionType.isMarkedNullable) {
                 actions.add(AddToStringFix(diagnosticElement, true))
             }
-        }
-
-        val convertKClassToClassFix = ConvertKClassToClassFix.create(file, expectedType, expressionType, diagnosticElement)
-        if (convertKClassToClassFix != null) {
-            actions.add(convertKClassToClassFix)
         }
 
         if (expectedType.isInterface()) {

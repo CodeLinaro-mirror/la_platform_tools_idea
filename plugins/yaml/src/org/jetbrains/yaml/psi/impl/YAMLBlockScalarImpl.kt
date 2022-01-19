@@ -16,45 +16,35 @@ import com.intellij.util.text.splitLineRanges
 import org.jetbrains.yaml.YAMLElementTypes
 import org.jetbrains.yaml.YAMLTokenTypes
 import org.jetbrains.yaml.YAMLUtil
+import org.jetbrains.yaml.psi.YAMLBlockScalar
 import kotlin.math.min
 
-abstract class YAMLBlockScalarImpl(node: ASTNode) : YAMLScalarImpl(node) {
+abstract class YAMLBlockScalarImpl(node: ASTNode) : YAMLScalarImpl(node), YAMLBlockScalar {
   protected abstract val contentType: IElementType
 
   override fun isMultiline(): Boolean = true
 
   override fun getContentRanges(): List<TextRange> = CachedValuesManager.getCachedValue(this, CachedValueProvider {
-    val myStart = textRange.startOffset
-    val indent = locateIndent()
+     val myStart = textRange.startOffset
+     val indent = locateIndent()
 
-    val contentRanges = linesNodes.asSequence().mapNotNull { line ->
-      val first = line.first()
-      val start = (first.textRange.startOffset - myStart
-                   + if (first.elementType == YAMLTokenTypes.INDENT) min(first.textLength, indent) else 0)
-      val end = line.last().textRange.endOffset - myStart
-      if (start <= end)
-        TextRange.create(start, end)
-      else null
-    }.fold(SmartList<TextRange>()) { list, range ->
-      list.apply {
-        if (size > 1 && last().endOffset == range.startOffset)
-          set(lastIndex, TextRange(last().startOffset, range.endOffset))
-        else
-          add(range)
-      }
-    }
+     val contentRanges = linesNodes.mapNotNull { line ->
+       val first = line.first()
+       val start = (first.textRange.startOffset - myStart
+                    + if (first.elementType == YAMLTokenTypes.INDENT) min(first.textLength, indent) else 0)
+       val end = line.last().textRange.endOffset - myStart
+       if (start <= end)
+         TextRange.create(start, end)
+       else null
+     }
 
-    CachedValueProvider.Result.create(
-      when {
-        !includeFirstLineInContent && contentRanges.size == 1 ->
-          listOf(contentRanges.single().let { TextRange.create(it.endOffset, it.endOffset) })
-        contentRanges.isEmpty() -> emptyList()
-        includeFirstLineInContent -> contentRanges
-        else -> contentRanges.tailOrEmpty()
-      }, PsiModificationTracker.MODIFICATION_COUNT)
-  })
-
-  protected open val includeFirstLineInContent: Boolean get() = false
+     CachedValueProvider.Result.create((if (contentRanges.size == 1)
+       listOf(contentRanges.single().let { TextRange.create(it.endOffset, it.endOffset) })
+     else if (contentRanges.isEmpty())
+       emptyList()
+     else
+       contentRanges.tailOrEmpty()), PsiModificationTracker.MODIFICATION_COUNT)
+   })
 
   fun hasExplicitIndent(): Boolean = explicitIndent != IMPLICIT_INDENT
 
@@ -83,7 +73,7 @@ abstract class YAMLBlockScalarImpl(node: ASTNode) : YAMLScalarImpl(node) {
     if (indent != IMPLICIT_INDENT) {
       return indent
     }
-    val firstLine = getNthContentTypeChild(if (includeFirstLineInContent) 0 else 1)
+    val firstLine = getNthContentTypeChild(1)
     if (firstLine != null) {
       return YAMLUtil.getIndentInThisLine(firstLine.psi)
     }
@@ -99,11 +89,14 @@ abstract class YAMLBlockScalarImpl(node: ASTNode) : YAMLScalarImpl(node) {
     return 0
   }) ?: IMPLICIT_INDENT
 
-  val indentString: String get() = StringUtil.repeatSymbol(' ', locateIndent())
-
   @Throws(IllegalArgumentException::class)
   override fun getEncodeReplacements(input: CharSequence): List<Pair<TextRange, String>> {
-    val indentString = indentString
+    var indent = locateIndent()
+    if (indent == 0) {
+      indent = YAMLUtil.getIndentToThisElement(this) + DEFAULT_CONTENT_INDENT
+    }
+    val indentString = StringUtil.repeatSymbol(' ', indent)
+
     return splitLineRanges(input).zipWithNext { a, b -> Pair.create(TextRange.create(a.endOffset, b.startOffset), indentString) }.toList()
   }
 
@@ -111,7 +104,7 @@ abstract class YAMLBlockScalarImpl(node: ASTNode) : YAMLScalarImpl(node) {
     get() {
       val result: MutableList<List<ASTNode>> = SmartList()
       var currentLine: MutableList<ASTNode> = SmartList()
-      var child = firstContentNode
+      var child = node.firstChildNode
       while (child != null) {
         currentLine.add(child)
         if (isEol(child)) {
@@ -129,8 +122,7 @@ abstract class YAMLBlockScalarImpl(node: ASTNode) : YAMLScalarImpl(node) {
   // YAML 1.2 standard does not allow more then 1 symbol in indentation number
   private val explicitIndent: Int
     get() {
-      if (includeFirstLineInContent) return IMPLICIT_INDENT
-      val headerNode = getNthContentTypeChild(0) ?: return IMPLICIT_INDENT
+      val headerNode = getNthContentTypeChild(0)!!
       val header = headerNode.text
       for (i in 0 until header.length) {
         if (Character.isDigit(header[i])) {

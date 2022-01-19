@@ -22,7 +22,6 @@ import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.components.JBList;
 import com.intellij.openapi.util.NlsContexts;
 import org.intellij.lang.annotations.JdkConstants;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -75,7 +74,7 @@ public class SelectFromListDialog extends DialogWrapper {
     return myMainPanel;
   }
 
-  public void addToDialog(JComponent userComponent, @NonNls @NotNull String borderLayoutConstraints) {
+  public void addToDialog(JComponent userComponent, @NotNull String borderLayoutConstraints) {
     LOG.assertTrue(!borderLayoutConstraints.equals(BorderLayout.CENTER), "Can't add any component to center");
     myMainPanel.add(userComponent, borderLayoutConstraints);
   }

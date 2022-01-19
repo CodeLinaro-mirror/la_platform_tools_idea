@@ -7,9 +7,7 @@ import java.awt.Dimension
 import java.awt.FlowLayout
 import javax.swing.JScrollPane
 import javax.swing.SwingUtilities
-import kotlin.math.floor
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.*
 
 /**
  * FlowLayout subclass that fully supports wrapping of components.
@@ -197,14 +195,17 @@ open class WrapLayout : FlowLayout {
             }
           }
           if (x == 0 || x + d.width <= maxwidth) {
-            x += d.width + hgap
+            if (x > 0) {
+              x += hgap
+            }
+            x += d.width
             rowh = max(rowh, d.height)
           }
           else {
             rowh = moveComponents(target, insets.left + hgap, y,
                                   maxwidth - x, rowh, start, i, ltr,
                                   useBaseline, ascent, descent)
-            x = d.width + hgap
+            x = d.width
             y += vgap + rowh
             rowh = d.height
             start = i

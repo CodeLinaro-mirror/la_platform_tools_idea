@@ -1,5 +1,7 @@
-codes: dict[str, int]
-messages: dict[int, str]
+from typing import Dict
+
+codes: Dict[str, int]
+messages: Dict[int, str]
 
 XML_ERROR_ABORTED: str
 XML_ERROR_ASYNC_ENTITY: str

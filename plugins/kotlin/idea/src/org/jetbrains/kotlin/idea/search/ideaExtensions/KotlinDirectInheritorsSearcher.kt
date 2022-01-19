@@ -14,19 +14,20 @@ import org.jetbrains.kotlin.idea.search.fileScope
 import org.jetbrains.kotlin.idea.stubindex.KotlinSourceFilterScope
 import org.jetbrains.kotlin.idea.stubindex.KotlinSuperClassIndex
 import org.jetbrains.kotlin.idea.stubindex.KotlinTypeAliasByExpansionShortNameIndex
+import org.jetbrains.kotlin.idea.util.application.runReadAction
 
 open class KotlinDirectInheritorsSearcher : QueryExecutorBase<PsiClass, DirectClassInheritorsSearch.SearchParameters>(true) {
     override fun processQuery(queryParameters: DirectClassInheritorsSearch.SearchParameters, consumer: Processor<in PsiClass>) {
         val baseClass = queryParameters.classToProcess
 
-        val baseClassName = baseClass.name ?: return
+        val name = baseClass.name ?: return
 
         val file = if (baseClass is KtFakeLightClass) baseClass.kotlinOrigin.containingFile else baseClass.containingFile
 
         val originalScope = queryParameters.scope
-        val scope = originalScope as? GlobalSearchScope ?: file.fileScope()
+        val scope = originalScope as? GlobalSearchScope ?: file.fileScope() ?: return
 
-        val names = mutableSetOf(baseClassName)
+        val names = mutableSetOf(name)
         val project = file.project
 
         val typeAliasIndex = KotlinTypeAliasByExpansionShortNameIndex.getInstance()
@@ -41,25 +42,18 @@ open class KotlinDirectInheritorsSearcher : QueryExecutorBase<PsiClass, DirectCl
                 .forEach(::searchForTypeAliasesRecursively)
         }
 
-        searchForTypeAliasesRecursively(baseClassName)
+        searchForTypeAliasesRecursively(name)
 
-        val noLibrarySourceScope = KotlinSourceFilterScope.projectSourceAndClassFiles(scope, project)
-        names.forEach { name ->
-            ProgressManager.checkCanceled()
-            KotlinSuperClassIndex.getInstance()
-                .get(name, project, noLibrarySourceScope).asSequence()
-                .mapNotNull { candidate ->
-                    ProgressManager.checkCanceled()
-                    candidate.toLightClassWithBuiltinMapping() ?: KtFakeLightClass(candidate)
-                }
-                .filter { candidate ->
-                    ProgressManager.checkCanceled()
-                    candidate.isInheritor(baseClass, false)
-                }
-                .forEach { candidate ->
-                    ProgressManager.checkCanceled()
-                    consumer.process(candidate)
-                }
+        runReadAction {
+            val noLibrarySourceScope = KotlinSourceFilterScope.projectSourceAndClassFiles(scope, baseClass.project)
+
+            names.forEach { name ->
+                KotlinSuperClassIndex.getInstance()
+                    .get(name, baseClass.project, noLibrarySourceScope).asSequence()
+                    .mapNotNull { candidate -> candidate.toLightClassWithBuiltinMapping() ?: KtFakeLightClass(candidate) }
+                    .filter { candidate -> candidate.isInheritor(baseClass, false) }
+                    .forEach { candidate -> consumer.process(candidate) }
+            }
         }
     }
 }

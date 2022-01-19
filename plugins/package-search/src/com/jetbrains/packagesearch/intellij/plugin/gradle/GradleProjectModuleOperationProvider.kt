@@ -9,7 +9,7 @@ import com.jetbrains.packagesearch.intellij.plugin.extensibility.AbstractProject
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.DependencyOperationMetadata
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModule
 import com.jetbrains.packagesearch.intellij.plugin.extensibility.ProjectModuleType
-import com.jetbrains.packagesearch.intellij.plugin.gradle.configuration.PackageSearchGradleConfiguration
+import com.jetbrains.packagesearch.intellij.plugin.gradle.configuration.packageSearchGradleConfigurationForProject
 
 private const val FILE_TYPE_GROOVY = "groovy"
 private const val FILE_TYPE_KOTLIN = "kotlin"
@@ -17,8 +17,6 @@ private const val EXTENSION_GRADLE = "gradle"
 private const val EXTENSION_GRADLE_KTS = "gradle.kts"
 
 internal open class GradleProjectModuleOperationProvider : AbstractProjectModuleOperationProvider() {
-
-    override fun usesSharedPackageUpdateInspection() = true
 
     override fun hasSupportFor(project: Project, psiFile: PsiFile?): Boolean {
         // Logic based on com.android.tools.idea.gradle.project.sync.GradleFiles.isGradleFile()
@@ -57,9 +55,10 @@ internal open class GradleProjectModuleOperationProvider : AbstractProjectModule
     }
 
     private fun saveAdditionalScopeToConfigurationIfNeeded(project: Project, scopeName: String) {
-        val configuration = PackageSearchGradleConfiguration.getInstance(project)
-        if (configuration.updateScopesOnUsage) {
-            configuration.addGradleScope(scopeName)
-        }
+        val configuration = packageSearchGradleConfigurationForProject(project)
+
+        if (!configuration.updateScopesOnUsage) return
+
+        configuration.addGradleScope(scopeName)
     }
 }

@@ -2,9 +2,6 @@
 package org.jetbrains.intellij.build
 
 import groovy.transform.CompileStatic
-import org.jetbrains.intellij.build.impl.support.RepairUtilityBuilder
-
-import java.nio.file.Paths
 
 @CompileStatic
 abstract class MacDistributionCustomizer {
@@ -87,14 +84,7 @@ abstract class MacDistributionCustomizer {
   /**
    * Relative paths to files in macOS distribution which should be signed
    */
-  List<String> getBinariesToSign(BuildContext context, JvmArchitecture arch) {
-    List<String> binaries = []
-    def binary = RepairUtilityBuilder.binaryFor(context, OsFamily.MACOS, arch)
-    if (binary != null) {
-      binaries += binary.relativeTargetPath
-    }
-    return binaries
-  }
+  List<String> binariesToSign = []
 
   /**
    * Path to a image which will be injected into .dmg file for EAP builds (if {@code null} dmgImagePath will be used)
@@ -143,6 +133,5 @@ abstract class MacDistributionCustomizer {
    * @param arch distribution target architecture, not null
    */
   void copyAdditionalFiles(BuildContext context, String targetDirectory, JvmArchitecture arch) {
-    RepairUtilityBuilder.bundle(context, OsFamily.MACOS, arch, Paths.get(targetDirectory))
   }
 }

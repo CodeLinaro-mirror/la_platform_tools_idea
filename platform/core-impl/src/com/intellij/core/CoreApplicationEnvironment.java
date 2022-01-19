@@ -247,10 +247,21 @@ public class CoreApplicationEnvironment {
     registerExtensionPoint(area, extensionPointName.getName(), aClass);
   }
 
+  public static <T> void registerExtensionPoint(@NotNull ExtensionsArea area,
+                                                @NotNull BaseExtensionPointName extensionPointName,
+                                                @NotNull Class<? extends T> aClass) {
+    registerExtensionPoint(area, extensionPointName.getName(), aClass);
+  }
+
   public static <T> void registerExtensionPoint(@NotNull ExtensionsArea area, @NotNull String name, @NotNull Class<? extends T> aClass) {
     registerExtensionPoint(area, name, aClass, false);
   }
 
+  public static <T> void registerDynamicExtensionPoint(@NotNull ExtensionsArea area, @NotNull String name, @NotNull Class<? extends T> aClass) {
+    registerExtensionPoint(area, name, aClass, true);
+  }
+
+  @SuppressWarnings("TestOnlyProblems")
   private static <T> void registerExtensionPoint(@NotNull ExtensionsArea area,
                                                  @NotNull String name,
                                                  @NotNull Class<? extends T> aClass,
@@ -261,12 +272,14 @@ public class CoreApplicationEnvironment {
     }
   }
 
+  @SuppressWarnings("deprecation")
   public static <T> void registerApplicationExtensionPoint(@NotNull ExtensionPointName<T> extensionPointName, @NotNull Class<? extends T> aClass) {
-    registerExtensionPoint(Extensions.getRootArea(), extensionPointName.getName(), aClass);
+    registerExtensionPoint(Extensions.getRootArea(), extensionPointName, aClass);
   }
 
+  @SuppressWarnings("deprecation")
   public static <T> void registerApplicationDynamicExtensionPoint(@NotNull String extensionPointName, @NotNull Class<? extends T> aClass) {
-    registerExtensionPoint(Extensions.getRootArea(), extensionPointName, aClass, true);
+    registerDynamicExtensionPoint(Extensions.getRootArea(), extensionPointName, aClass);
   }
 
   public static void registerExtensionPointAndExtensions(@NotNull Path pluginRoot, @NotNull String fileName, @NotNull ExtensionsArea area) {

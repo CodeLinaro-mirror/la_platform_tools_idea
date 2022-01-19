@@ -102,6 +102,7 @@ public abstract class ProjectTaskRunner {
     notifyIfNeeded(run(project, context, tasks.toArray(new ProjectTask[]{})), callback);
   }
 
+  @SuppressWarnings("deprecation")
   private static final class ProjectTaskNotificationAdapter implements ProjectTaskNotification {
     private final @NotNull AsyncPromise<? super Result> myPromise;
 
@@ -110,7 +111,7 @@ public abstract class ProjectTaskRunner {
     }
 
     @Override
-    public void finished(@SuppressWarnings("deprecation") @NotNull ProjectTaskResult taskResult) {
+    public void finished(@NotNull ProjectTaskResult taskResult) {
       myPromise.setResult(new Result() {
         @Override
         public boolean isAborted() {
@@ -125,16 +126,17 @@ public abstract class ProjectTaskRunner {
     }
   }
 
-  private static void notifyIfNeeded(@NotNull Promise<? extends Result> promise, @SuppressWarnings("deprecation") @Nullable ProjectTaskNotification callback) {
+  @SuppressWarnings("deprecation")
+  private static void notifyIfNeeded(@NotNull Promise<? extends Result> promise, @Nullable ProjectTaskNotification callback) {
     if (callback != null) {
-      //noinspection deprecation
       promise
         .onSuccess(result -> callback.finished(new ProjectTaskResult(result.isAborted(), result.hasErrors() ? 1 : 0, 0)))
         .onError(throwable -> callback.finished(new ProjectTaskResult(true, 0, 0)));
     }
   }
 
-  private void assertUnsupportedOperation(@SuppressWarnings("deprecation") @Nullable ProjectTaskNotification callback) {
+  @SuppressWarnings("deprecation")
+  private void assertUnsupportedOperation(@Nullable ProjectTaskNotification callback) {
     if (callback instanceof ProjectTaskNotificationAdapter) {
       throw new UnsupportedOperationException("Please, provide implementation non-deprecated ProjectTaskRunner.run(Project, ProjectTaskContext, ProjectTask...) method in " + getClass());
     }

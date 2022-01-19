@@ -40,8 +40,7 @@ public class FrozenDocument implements DocumentEx {
     return lineSet;
   }
 
-  @NotNull
-  public FrozenDocument applyEvent(@NotNull DocumentEvent event, int newStamp) {
+  public FrozenDocument applyEvent(DocumentEvent event, int newStamp) {
     final int offset = event.getOffset();
     final int oldEnd = offset + event.getOldLength();
     ImmutableCharSequence newText = myText.replace(offset, oldEnd, event.getNewFragment());

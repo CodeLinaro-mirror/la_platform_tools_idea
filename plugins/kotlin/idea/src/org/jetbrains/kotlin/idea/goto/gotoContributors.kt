@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.goto
 
-import com.intellij.ide.util.gotoByName.AbstractPrimeSymbolNavigationContributor
 import com.intellij.navigation.GotoClassContributor
 import com.intellij.navigation.NavigationItem
 import com.intellij.openapi.project.Project
@@ -95,8 +94,6 @@ class KotlinGotoSymbolContributor : GotoClassContributor {
 
     override fun getQualifiedNameSeparator(): String = "."
 }
-
-class KotlinGotoPrimeSymbolContributor : AbstractPrimeSymbolNavigationContributor(KotlinPrimeSymbolNameIndex.KEY)
 
 // TODO: it has to be dropped as soon as JvmFileClassUtil.getLiteralStringFromAnnotation becomes public in compiler
 private fun JvmFileClassUtil.getLiteralStringFromAnnotation(annotation: KtAnnotationEntry): String? {

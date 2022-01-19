@@ -184,7 +184,6 @@ public final class ShowIntentionsPass extends TextEditorHighlightingPass {
     public final List<AnAction> guttersToShow = ContainerUtil.createLockFreeCopyOnWriteList();
     public final List<HighlightInfo.IntentionActionDescriptor> notificationActionsToShow = ContainerUtil.createLockFreeCopyOnWriteList();
     private int myOffset;
-    private HighlightInfoType myHighlightInfoType;
 
     public void filterActions(@Nullable PsiFile psiFile) {
       IntentionActionFilter[] filters = IntentionActionFilter.EXTENSION_POINT_NAME.getExtensions();
@@ -200,14 +199,6 @@ public final class ShowIntentionsPass extends TextEditorHighlightingPass {
 
     public int getOffset() {
       return myOffset;
-    }
-
-    public HighlightInfoType getHighlightInfoType() {
-      return myHighlightInfoType;
-    }
-
-    public void setHighlightInfoType(HighlightInfoType highlightInfoType) {
-      myHighlightInfoType = highlightInfoType;
     }
 
     private static void filter(@NotNull List<HighlightInfo.IntentionActionDescriptor> descriptors,
@@ -325,7 +316,6 @@ public final class ShowIntentionsPass extends TextEditorHighlightingPass {
     }
 
     @Nullable HighlightInfo infoAtCursor = highestPriorityInfoFinder.getResult();
-    intentions.setHighlightInfoType(infoAtCursor != null ? infoAtCursor.type : null);
     if (infoAtCursor == null) {
       intentions.errorFixesToShow.addAll(fixes);
     }

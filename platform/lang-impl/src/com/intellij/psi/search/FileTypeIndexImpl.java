@@ -24,9 +24,6 @@ public final class FileTypeIndexImpl
   @NotNull
   @Override
   public DataIndexer<FileType, Void, FileContent> getIndexer() {
-    if (USE_LOG_INDEX) {
-      throw new UnsupportedOperationException();
-    }
     return in -> Collections.singletonMap(in.getFileType(), null);
   }
 

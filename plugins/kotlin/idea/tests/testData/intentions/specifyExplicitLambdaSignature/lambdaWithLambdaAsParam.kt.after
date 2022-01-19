@@ -1,6 +1,3 @@
-// AFTER-WARNING: Parameter 'funcLitfunc' is never used
-// AFTER-WARNING: Parameter 'innerfunc' is never used
-// AFTER-WARNING: Variable 'funcInfunc' is never used
 public class TestingUse {
     fun test6(funcLitfunc: ((x: Int) -> Int) -> Boolean, innerfunc: (y: Int) -> Int): Unit {
     }

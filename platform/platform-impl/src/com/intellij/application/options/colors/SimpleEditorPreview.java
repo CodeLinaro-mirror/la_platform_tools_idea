@@ -62,10 +62,9 @@ public class SimpleEditorPreview implements PreviewPanel {
     myHighlightsExtractor = new HighlightsExtractor(page.getAdditionalHighlightingTagToDescriptorMap(),
                                                     page.getAdditionalInlineElementToDescriptorMap(),
                                                     page.getAdditionalHighlightingTagToColorKeyMap());
-    EditorColorsScheme colorScheme = myPage.customizeColorScheme(myOptions.getSelectedScheme());
     myEditor = (EditorEx)FontEditorPreview.createPreviewEditor(
       myHighlightsExtractor.extractHighlights(page.getDemoText(), myHighlightData), // text without tags
-      colorScheme, false);
+      myOptions.getSelectedScheme(), false);
     if (page instanceof EditorCustomization) {
       ((EditorCustomization)page).customize(myEditor);
     }
@@ -167,7 +166,7 @@ public class SimpleEditorPreview implements PreviewPanel {
 
   @Override
   public void updateView() {
-    EditorColorsScheme scheme = myPage.customizeColorScheme(myOptions.getSelectedScheme());
+    EditorColorsScheme scheme = myOptions.getSelectedScheme();
 
     myEditor.setColorsScheme(scheme);
 
@@ -192,7 +191,7 @@ public class SimpleEditorPreview implements PreviewPanel {
       removeDecorations();
       final Map<TextAttributesKey, String> displayText = ColorSettingsUtil.keyToDisplayTextMap(myPage);
       for (final HighlightData data : myHighlightData) {
-        data.addHighlToView(myEditor, myEditor.getColorsScheme(), displayText);
+        data.addHighlToView(myEditor, myOptions.getSelectedScheme(), displayText);
       }
       if (myCustomizer != null) {
         myCustomizer.addCustomizations(myEditor, null);
@@ -310,7 +309,7 @@ public class SimpleEditorPreview implements PreviewPanel {
         prevHighlightData.setEndOffset(highlightData.getEndOffset());
       }
       else {
-        highlightData.addHighlToView(editor, myEditor.getColorsScheme(), displayText);
+        highlightData.addHighlToView(editor, myOptions.getSelectedScheme(), displayText);
       }
     }
     if (myCustomizer != null) {

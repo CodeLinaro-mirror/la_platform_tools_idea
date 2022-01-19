@@ -123,17 +123,17 @@ public class Group implements KeymapGroup {
     }
   }
 
-  public String getActionQualifiedPath(String id, boolean presentable) {
+  public String getActionQualifiedPath(String id) {
     Group cur = myParent;
     StringBuilder answer = new StringBuilder();
 
     while (cur != null && !cur.isRoot()) {
-      answer.insert(0, cur.getName(presentable) + " | ");
+      answer.insert(0, cur.getName() + " | ");
 
       cur = cur.myParent;
     }
 
-    String suffix = calcActionQualifiedPath(id, presentable);
+    String suffix = calcActionQualifiedPath(id);
     if (StringUtil.isEmpty(suffix)) return null;
 
     answer.append(suffix);
@@ -141,9 +141,9 @@ public class Group implements KeymapGroup {
     return answer.toString();
   }
 
-  private String calcActionQualifiedPath(String id, boolean presentable) {
+  private String calcActionQualifiedPath(String id) {
     if (!isRoot() && StringUtil.equals(id, myId)) {
-      return getName(presentable);
+      return getName();
     }
     for (Object child : myChildren) {
       if (child instanceof QuickList) {
@@ -151,7 +151,7 @@ public class Group implements KeymapGroup {
       }
       if (child instanceof String) {
         if (id.equals(child)) {
-          AnAction action = presentable ? ActionManager.getInstance().getActionOrStub(id) : null;
+          AnAction action = ActionManager.getInstance().getActionOrStub(id);
           String path;
           if (action != null) {
             path = action.getTemplatePresentation().getText();
@@ -159,34 +159,29 @@ public class Group implements KeymapGroup {
           else {
             path = id;
           }
-          return !isRoot() ? getName(presentable) + " | " + path : path;
+          return !isRoot() ? getName() + " | " + path : path;
         }
       }
       else if (child instanceof Group) {
-        String path = ((Group)child).calcActionQualifiedPath(id, presentable);
+        String path = ((Group)child).calcActionQualifiedPath(id);
         if (path != null) {
-          return !isRoot() ? getName(presentable) + " | " + path : path;
+          return !isRoot() ? getName() + " | " + path : path;
         }
       }
     }
     return null;
   }
 
-  @Nullable
-  private String getName(boolean presentable) {
-    return presentable ? getName() : getId();
-  }
-
   public boolean isRoot() {
     return myParent == null;
   }
 
-  public String getQualifiedPath(boolean presentable) {
+  public String getQualifiedPath() {
     StringBuilder path = new StringBuilder(64);
     Group group = this;
     while (group != null && !group.isRoot()) {
       if (path.length() > 0) path.insert(0, " | ");
-      path.insert(0, group.getName(presentable));
+      path.insert(0, group.getName());
       group = group.myParent;
     }
     return path.toString();

@@ -32,10 +32,8 @@ import com.intellij.util.ui.components.BorderLayoutPanel;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.util.ui.tree.WideSelectionTreeUI;
 import com.intellij.vcs.log.Hash;
-import com.intellij.vcs.log.VcsFullCommitDetails;
-import com.intellij.vcs.log.ui.VcsLogActionIds;
+import com.intellij.vcs.log.ui.VcsLogActionPlaces;
 import com.intellij.vcs.log.ui.details.commit.CommitDetailsPanel;
-import com.intellij.vcs.log.ui.frame.CommitPresentationUtil;
 import kotlin.Unit;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nls;
@@ -44,6 +42,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import javax.swing.border.Border;
 import javax.swing.event.*;
 import javax.swing.tree.*;
 import java.awt.*;
@@ -72,11 +71,9 @@ public final class PushLog extends JPanel implements DataProvider {
   private boolean myShouldRepaint = false;
   private boolean mySyncStrategy;
   @Nullable private @Nls String mySyncRenderedText;
-  private final @NotNull Project myProject;
   private final boolean myAllowSyncStrategy;
 
-  public PushLog(@NotNull Project project, final CheckedTreeNode root, final boolean allowSyncStrategy) {
-    myProject = project;
+  public PushLog(Project project, final CheckedTreeNode root, final boolean allowSyncStrategy) {
     myAllowSyncStrategy = allowSyncStrategy;
     DefaultTreeModel treeModel = new DefaultTreeModel(root);
     treeModel.nodeStructureChanged(root);
@@ -229,17 +226,22 @@ public final class PushLog extends JPanel implements DataProvider {
     collapseAll.registerCustomShortcutSet(ActionManager.getInstance().getAction(ACTION_COLLAPSE_ALL).getShortcutSet(), myTree);
 
     ToolTipManager.sharedInstance().registerComponent(myTree);
-    PopupHandler.installPopupMenu(myTree, VcsLogActionIds.POPUP_ACTION_GROUP, CONTEXT_MENU);
+    PopupHandler.installPopupMenu(myTree, VcsLogActionPlaces.POPUP_ACTION_GROUP, CONTEXT_MENU);
 
-    myChangesBrowser = new SimpleChangesBrowser(project, false, false);
-    myChangesBrowser.hideViewerBorder();
+    myChangesBrowser = new SimpleChangesBrowser(project, false, false) {
+      @NotNull
+      @Override
+      protected Border createViewerBorder() {
+        return IdeBorderFactory.createBorder(SideBorder.TOP);
+      }
+    };
     myChangesBrowser.getDiffAction().registerCustomShortcutSet(myChangesBrowser.getDiffAction().getShortcutSet(), myTree);
     final EditSourceForDialogAction editSourceAction = new EditSourceForDialogAction(myChangesBrowser);
     editSourceAction.registerCustomShortcutSet(CommonShortcuts.getEditSource(), myChangesBrowser);
     myChangesBrowser.addToolbarAction(editSourceAction);
     setDefaultEmptyText();
 
-    myDetailsPanel = new CommitDetailsPanel();
+    myDetailsPanel = new CommitDetailsPanel(project, e -> Unit.INSTANCE);
     JScrollPane detailsScrollPane =
       new JBScrollPane(myDetailsPanel, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     detailsScrollPane.setBorder(JBUI.Borders.empty());
@@ -410,10 +412,7 @@ public final class PushLog extends JPanel implements DataProvider {
     }
     myChangesBrowser.setChangesToDisplay(collectAllChanges(commitNodes));
     if (commitNodes.size() == 1 && getSelectedTreeNodes().stream().noneMatch(it -> it instanceof RepositoryNode)) {
-      VcsFullCommitDetails commitDetails = commitNodes.get(0).getUserObject();
-      CommitPresentationUtil.CommitPresentation presentation =
-        CommitPresentationUtil.buildPresentation(myProject, commitDetails, new HashSet<>());
-      myDetailsPanel.setCommit(presentation);
+      myDetailsPanel.setCommit(commitNodes.get(0).getUserObject());
       myShowDetailsAction.setEnabled(true);
     }
     else {

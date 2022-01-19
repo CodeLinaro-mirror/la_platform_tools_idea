@@ -1,7 +1,8 @@
 package com.intellij.codeInspection.tests.kotlin;
 
 import com.intellij.codeInspection.tests.UastCallMatcherTestBase;
-import com.intellij.jvm.analysis.KotlinJvmAnalysisTestUtil;
+import com.intellij.jvm.analysis.JvmAnalysisKtTestsUtil;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.testFramework.TestDataPath;
 import com.intellij.testFramework.builders.JavaModuleFixtureBuilder;
 import kotlin.KotlinVersion;
@@ -20,7 +21,7 @@ public class KtUastCallMatcherTest extends UastCallMatcherTestBase {
 
   @Override
   protected String getBasePath() {
-    return KotlinJvmAnalysisTestUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + "/codeInspection/uastCallMatcher";
+    return JvmAnalysisKtTestsUtil.TEST_DATA_PROJECT_RELATIVE_BASE_PATH + "/codeInspection/uastCallMatcher";
   }
 
   @Override

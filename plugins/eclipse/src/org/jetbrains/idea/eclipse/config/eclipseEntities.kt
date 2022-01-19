@@ -67,7 +67,7 @@ class ModifiableEclipseProjectPropertiesEntity : ModifiableWorkspaceEntityBase<E
   var forceConfigureJdk: Boolean by EntityDataDelegation()
   var expectedModuleSourcePlace: Int by EntityDataDelegation()
   var srcPlace: MutableMap<String, Int> by EntityDataDelegation()
-  var module: ModuleEntity by MutableOneToOneChild.NotNull(EclipseProjectPropertiesEntity::class.java, ModuleEntity::class.java)
+  var module: ModuleEntity by MutableOneToOneChild.NotNull(EclipseProjectPropertiesEntity::class.java, ModuleEntity::class.java, true)
 }
 
 fun WorkspaceEntityStorageDiffBuilder.addEclipseProjectPropertiesEntity(module: ModuleEntity, source: EntitySource)
@@ -80,8 +80,7 @@ fun WorkspaceEntityStorageDiffBuilder.addEclipseProjectPropertiesEntity(module: 
   srcPlace = LinkedHashMap()
 }
 
-private val eclipsePropertiesDelegate = OneToOneParent.Nullable<ModuleEntity, EclipseProjectPropertiesEntity>(
-  EclipseProjectPropertiesEntity::class.java, false)
+private val eclipsePropertiesDelegate = OneToOneParent.Nullable<ModuleEntity, EclipseProjectPropertiesEntity>(EclipseProjectPropertiesEntity::class.java, false)
 val ModuleEntity.eclipseProperties: EclipseProjectPropertiesEntity? by eclipsePropertiesDelegate
 
 fun ModifiableEclipseProjectPropertiesEntity.setVariable(kind: String, name: String, path: String) {

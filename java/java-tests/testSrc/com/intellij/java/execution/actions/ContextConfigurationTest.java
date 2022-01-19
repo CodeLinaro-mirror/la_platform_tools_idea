@@ -23,8 +23,7 @@ import com.intellij.execution.testframework.TestSearchScope;
 import com.intellij.java.execution.BaseConfigurationTestCase;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.actionSystem.ExecutionDataKeys;
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
+import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.util.text.StringUtil;
@@ -73,8 +72,8 @@ public class ContextConfigurationTest extends BaseConfigurationTestCase {
 
     MapDataContext dataContext = new MapDataContext();
     dataContext.put(CommonDataKeys.PROJECT, myProject);
-    if (PlatformCoreDataKeys.MODULE.getData(dataContext) == null) {
-      dataContext.put(PlatformCoreDataKeys.MODULE, ModuleUtilCore.findModuleForPsiElement(testMethod));
+    if (LangDataKeys.MODULE.getData(dataContext) == null) {
+      dataContext.put(LangDataKeys.MODULE, ModuleUtilCore.findModuleForPsiElement(testMethod));
     }
     dataContext.put(Location.DATA_KEY, MethodLocation.elementInClass(testMethod, psiClass));
 
@@ -98,8 +97,8 @@ public class ContextConfigurationTest extends BaseConfigurationTestCase {
 
     MapDataContext dataContext = new MapDataContext();
     dataContext.put(CommonDataKeys.PROJECT, myProject);
-    if (PlatformCoreDataKeys.MODULE.getData(dataContext) == null) {
-      dataContext.put(PlatformCoreDataKeys.MODULE, ModuleUtilCore.findModuleForPsiElement(testMethod));
+    if (LangDataKeys.MODULE.getData(dataContext) == null) {
+      dataContext.put(LangDataKeys.MODULE, ModuleUtilCore.findModuleForPsiElement(testMethod));
     }
     dataContext.put(Location.DATA_KEY, new PsiMemberParameterizedLocation(myProject, testMethod, psiClass, "param"));
 
@@ -155,7 +154,7 @@ public class ContextConfigurationTest extends BaseConfigurationTestCase {
     PsiPackage psiPackage = JUnitUtil.getContainingPackage(psiClass);
     final MapDataContext dataContext = new MapDataContext();
     final Module module = ModuleUtilCore.findModuleForPsiElement(psiClass);
-    dataContext.put(PlatformCoreDataKeys.MODULE.getName(), module);
+    dataContext.put(LangDataKeys.MODULE.getName(), module);
     JUnitConfiguration configuration = createJUnitConfiguration(psiPackage, AllInPackageConfigurationProducer.class, dataContext);
     checkTestObject(JUnitConfiguration.TEST_PACKAGE, configuration);
     checkPackage(PACKAGE_NAME, configuration);
@@ -168,7 +167,7 @@ public class ContextConfigurationTest extends BaseConfigurationTestCase {
     PsiPackage defaultPackage = psiPackage.getParentPackage();
     final Module module = ModuleUtilCore.findModuleForPsiElement(psiClass);
     final MapDataContext dataContext = new MapDataContext();
-    dataContext.put(PlatformCoreDataKeys.MODULE.getName(), module);
+    dataContext.put(LangDataKeys.MODULE.getName(), module);
     JUnitConfiguration configuration = createJUnitConfiguration(defaultPackage, AllInPackageConfigurationProducer.class, dataContext);
     checkTestObject(JUnitConfiguration.TEST_PACKAGE, configuration);
     checkPackage("", configuration);
@@ -192,7 +191,7 @@ public class ContextConfigurationTest extends BaseConfigurationTestCase {
       new RunnerAndConfigurationSettingsImpl(RunManagerImpl.getInstanceImpl(myProject), configuration);
     ExecutionEnvironment e = ExecutionEnvironmentBuilder.createOrNull(DefaultRunExecutor.getRunExecutorInstance(), settings).build();
     MapDataContext dataContext = new MapDataContext();
-    dataContext.put(ExecutionDataKeys.EXECUTION_ENVIRONMENT, e);
+    dataContext.put(LangDataKeys.EXECUTION_ENVIRONMENT, e);
     TestActionEvent event = new TestActionEvent(dataContext);
     new CreateAction().update(event);
     assertTrue(event.getPresentation().isEnabledAndVisible());

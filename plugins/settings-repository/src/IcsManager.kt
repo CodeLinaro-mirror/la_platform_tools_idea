@@ -131,6 +131,10 @@ class IcsManager @JvmOverloads constructor(dir: Path,
       }
     })
     messageBusConnection.subscribe(ProjectManager.TOPIC, object : ProjectManagerListener {
+      override fun projectOpened(project: Project) {
+        autoSyncManager.registerListeners(project)
+      }
+
       override fun projectClosed(project: Project) {
         if (!ApplicationManagerEx.getApplicationEx().isExitInProgress) {
           autoSyncManager.autoSync()

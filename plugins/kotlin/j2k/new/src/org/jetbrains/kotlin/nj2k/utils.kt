@@ -14,12 +14,6 @@ fun <T> List<T>.replace(element: T, replacer: T): List<T> {
     return mutableList
 }
 
-internal inline fun <T> List<T>.mutate(mutate: MutableList<T>.() -> Unit): List<T> {
-    val mutableList = toMutableList()
-    mutate(mutableList)
-    return mutableList
-}
-
 fun String.asGetterName() =
     takeIf { JvmAbi.isGetterName(it) }
         ?.removePrefix("get")

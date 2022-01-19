@@ -1,10 +1,13 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.scale;
 
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.registry.RegistryValue;
 import com.intellij.ui.JreHiDpiUtil;
+import com.intellij.ui.scale.JBUIScale;
+import com.intellij.ui.scale.ScaleContext;
+import com.intellij.ui.scale.UserScaleContext;
 import com.intellij.util.ImageLoader;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.ui.ImageUtil;
@@ -57,14 +60,23 @@ public final class TestScaleHelper {
   }
 
   public static void setRegistryProperty(@NotNull String key, @NotNull String value) {
-    RegistryValue prop = Registry.get(key);
+    final RegistryValue prop = Registry.get(key);
     if (originalRegProps.get(key) == null) originalRegProps.put(key, prop.asString());
     prop.setValue(value);
   }
 
   public static void setSystemProperty(@NotNull String name, @Nullable String value) {
     if (originalSysProps.get(name) == null) originalSysProps.put(name, System.getProperty(name));
-    SystemProperties.setProperty(name, value);
+    _setProperty(name, value);
+  }
+
+  private static void _setProperty(String name, String value) {
+    if (value != null) {
+      System.setProperty(name, value);
+    }
+    else {
+      System.clearProperty(name);
+    }
   }
 
   public static void restoreProperties() {
@@ -74,7 +86,7 @@ public final class TestScaleHelper {
 
   public static void restoreSystemProperties() {
     for (Map.Entry<String, String> entry : originalSysProps.entrySet()) {
-      SystemProperties.setProperty(entry.getKey(), entry.getValue());
+      _setProperty(entry.getKey(), entry.getValue());
     }
   }
 
@@ -89,11 +101,11 @@ public final class TestScaleHelper {
   }
 
   public static void assumeStandalone() {
-    Assume.assumeTrue("not in " + STANDALONE_PROP + " mode", Boolean.getBoolean(STANDALONE_PROP));
+    Assume.assumeTrue("not in " + STANDALONE_PROP + " mode", SystemProperties.is(STANDALONE_PROP));
   }
 
   public static void assumeHeadful() {
-    Assume.assumeFalse("should not be headless", Boolean.getBoolean("java.awt.headless"));
+    Assume.assumeFalse("should not be headless", SystemProperties.is("java.awt.headless"));
   }
 
   public static Graphics2D createGraphics(double scale) {

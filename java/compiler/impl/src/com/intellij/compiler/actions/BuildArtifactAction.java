@@ -19,7 +19,10 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.ui.configuration.ProjectSettingsService;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.ui.popup.*;
+import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.ui.popup.ListSeparator;
+import com.intellij.openapi.ui.popup.MultiSelectionListPopupStep;
+import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Pair;
@@ -96,15 +99,14 @@ public class BuildArtifactAction extends DumbAwareAction {
     final ChooseArtifactStep step = new ChooseArtifactStep(items, artifacts.get(0), project, settingsService);
     step.setDefaultOptionIndices(selectedIndices.toNativeArray());
 
-    ListPopup popup = JBPopupFactory.getInstance().createListPopup(step);
-    KeyStroke editKeyStroke = KeymapUtil.getKeyStroke(CommonShortcuts.getEditSource());
-    if (popup instanceof ListPopupImpl && settingsService != null && editKeyStroke != null) {
-      ListPopupImpl popupImpl = (ListPopupImpl)popup;
-      popupImpl.registerAction("editArtifact", editKeyStroke, new AbstractAction() {
+    final ListPopupImpl popup = (ListPopupImpl)JBPopupFactory.getInstance().createListPopup(step);
+    final KeyStroke editKeyStroke = KeymapUtil.getKeyStroke(CommonShortcuts.getEditSource());
+    if (settingsService != null && editKeyStroke != null) {
+      popup.registerAction("editArtifact", editKeyStroke, new AbstractAction() {
         @Override
         public void actionPerformed(ActionEvent e) {
-          Object[] values = popupImpl.getSelectedValues();
-          popupImpl.cancel();
+          Object[] values = popup.getSelectedValues();
+          popup.cancel();
           settingsService.openArtifactSettings(values.length > 0 ? ((ArtifactPopupItem)values[0]).getArtifact() : null);
         }
       });

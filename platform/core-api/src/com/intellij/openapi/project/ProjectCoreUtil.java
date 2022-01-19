@@ -4,7 +4,6 @@ package com.intellij.openapi.project;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.fileTypes.InternalFileType;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.ApiStatus;
@@ -13,14 +12,12 @@ import org.jetbrains.annotations.Nullable;
 
 public final class ProjectCoreUtil {
   /**
-   * @deprecated for internal use only, use {@link com.intellij.psi.PsiElement#getProject()} instead
+   * @deprecated for internal use only, see {@link #theOnlyOpenProject()}
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @ApiStatus.Internal
   public static volatile Project theProject;
-
-  private static volatile Project theOnlyProject;
 
   public static boolean isProjectOrWorkspaceFile(@NotNull VirtualFile file) {
     // do not use file.getFileType() to avoid autodetection by content loading for arbitrary files
@@ -35,6 +32,7 @@ public final class ProjectCoreUtil {
   /**
    * For internal usage only.
    *
+   * @return the only open project if there is one, {@code null} if no projects open, or several projects are open, or default project is created
    * @deprecated Please use {@link com.intellij.psi.PsiElement#getProject()} or {@link com.intellij.openapi.project.ProjectManager#getOpenProjects()} instead.
    */
   @Deprecated
@@ -42,15 +40,6 @@ public final class ProjectCoreUtil {
   @ApiStatus.Internal
   @Nullable
   public static Project theOnlyOpenProject() {
-    // piggyback Disposer.isDebugMode() to convey ApplicationManagerEx.isInStressTest info
-    return Disposer.isDebugMode() ? null : theOnlyProject;
-  }
-
-  /**
-   * Do not use to avoid internal data structures corruption
-   */
-  @ApiStatus.Internal
-  public static void updateInternalTheOnlyProjectFieldTemporarily(Project project) {
-    theOnlyProject = project;
+    return theProject;
   }
 }

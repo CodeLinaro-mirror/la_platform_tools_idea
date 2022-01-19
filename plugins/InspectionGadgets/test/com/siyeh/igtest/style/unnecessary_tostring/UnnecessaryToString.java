@@ -60,8 +60,6 @@ public class UnnecessaryToString {
     } catch (Exception | Error e) {
       org.slf4j.LoggerFactory.getLogger(UnnecessaryToString.class).info("this: {}", e.toString());
     }
-    Exception e = new Exception();
-    org.slf4j.LoggerFactory.getLogger(UnnecessaryToString.class).info("this: {}", ((Exception & java.io.Serializable)e).toString());
   }
 
   void format() {

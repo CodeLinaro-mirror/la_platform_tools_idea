@@ -7,7 +7,6 @@ import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.*
 import com.intellij.ide.IdeBundle
-import com.intellij.ide.IdeCoreBundle
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProgressManager
@@ -123,7 +122,7 @@ abstract class ProcessHandshakeLauncher<H, T : ProcessHandshakeTransport<H>, R> 
     LOG.warn("Process stderr:\n${output.stderr}")
 
     val reason = when {
-      errorExitCodeString != null -> IdeCoreBundle.message("finished.with.exit.code.text.message", errorExitCodeString)
+      errorExitCodeString != null -> IdeBundle.message("finished.with.exit.code.text.message", errorExitCodeString)
       exception == null -> ProcessHandshakeBundle.message("dialog.message.process.handshake.failed.eof")
       else -> ProcessHandshakeBundle.message("dialog.message.process.handshake.failed.ioe")
     }

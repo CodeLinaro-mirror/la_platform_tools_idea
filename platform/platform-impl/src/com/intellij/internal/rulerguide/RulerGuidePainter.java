@@ -6,13 +6,8 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ui.AbstractPainter;
 import com.intellij.openapi.ui.JBPopupMenu;
 import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.SystemInfoRt;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.IdeGlassPane;
-import com.intellij.openapi.wm.impl.ProjectFrameHelper;
-import com.intellij.ui.ComponentUtil;
 import com.intellij.util.ui.GraphicsUtil;
-import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -101,19 +96,7 @@ final class RulerGuidePainter extends AbstractPainter implements Disposable {
 
     @Override
     public void executePaint(Component component, Graphics2D g) {
-        int y = 0;
-        if (SystemInfoRt.isMac && Registry.is("ide.mac.transparentTitleBarAppearance", false)) {
-          var window = ComponentUtil.getWindow(component);
-          if (window != null && window.getType() == Window.Type.NORMAL) {
-            var pane = ComponentUtil.getParentOfType(JRootPane.class, component);
-            ProjectFrameHelper helper = ProjectFrameHelper.getFrameHelper(window);
-            if ((helper == null || !helper.isInFullScreen()) && pane != null) {
-              y -= UIUtil.getTransparentTitleBarHeight(pane);
-            }
-          }
-        }
-
-        Graphics2D g2d = (Graphics2D) g.create(0, y, component.getWidth(), component.getHeight() - y);
+        Graphics2D g2d = (Graphics2D) g.create(0, 0, component.getWidth(), component.getHeight());
         GraphicsUtil.setupAntialiasing(g2d, false, false);
         ComponentBoundsFinder.Result result = finder.getLastResult();
 

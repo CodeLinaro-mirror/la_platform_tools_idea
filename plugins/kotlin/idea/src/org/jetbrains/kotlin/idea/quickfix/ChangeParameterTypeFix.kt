@@ -4,7 +4,6 @@ package org.jetbrains.kotlin.idea.quickfix
 
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
@@ -40,41 +39,23 @@ class ChangeParameterTypeFix(element: KtParameter, type: KotlinType) : KotlinQui
         return containingDeclarationName != null
     }
 
-    override fun getText(): String = element?.let {
-        when {
+    override fun getText(): String {
+        val element = element ?: return ""
+        return when {
             isPrimaryConstructorParameter -> {
                 KotlinBundle.message(
                     "fix.change.return.type.text.primary.constructor",
-                    it.name.toString(), containingDeclarationName.toString(), typePresentation
+                    element.name.toString(), containingDeclarationName.toString(), typePresentation
                 )
             }
             else -> {
                 KotlinBundle.message(
                     "fix.change.return.type.text.function",
-                    it.name.toString(), containingDeclarationName.toString(), typePresentation
+                    element.name.toString(), containingDeclarationName.toString(), typePresentation
                 )
             }
         }
-    } ?: ""
-
-    private val commandName: String
-        @NlsContexts.Command
-        get() = element?.let {
-            when {
-                isPrimaryConstructorParameter -> {
-                    KotlinBundle.message(
-                        "fix.change.return.type.command.primary.constructor",
-                        it.name.toString(), containingDeclarationName.toString(), typePresentation
-                    )
-                }
-                else -> {
-                    KotlinBundle.message(
-                        "fix.change.return.type.command.function",
-                        it.name.toString(), containingDeclarationName.toString(), typePresentation
-                    )
-                }
-            }
-        } ?: ""
+    }
 
     override fun getFamilyName() = KotlinBundle.message("fix.change.return.type.family")
 
@@ -90,6 +71,6 @@ class ChangeParameterTypeFix(element: KtParameter, type: KotlinType) : KotlinQui
 
             override fun performSilently(affectedFunctions: Collection<PsiElement>) = true
         }
-        runChangeSignature(element.project, editor, descriptor, configuration, element, commandName)
+        runChangeSignature(element.project, editor, descriptor, configuration, element, text)
     }
 }

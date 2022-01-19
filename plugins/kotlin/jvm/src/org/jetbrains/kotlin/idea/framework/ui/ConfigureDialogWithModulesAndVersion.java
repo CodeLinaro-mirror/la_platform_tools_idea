@@ -14,7 +14,6 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.util.net.HttpConfigurable;
 import com.intellij.util.text.VersionComparatorUtil;
 import com.intellij.util.ui.AsyncProcessIcon;
@@ -25,7 +24,7 @@ import org.jetbrains.kotlin.idea.KotlinJvmBundle;
 import org.jetbrains.kotlin.idea.KotlinPluginUtil;
 import org.jetbrains.kotlin.idea.configuration.ConfigureKotlinInProjectUtilsKt;
 import org.jetbrains.kotlin.idea.configuration.KotlinProjectConfigurator;
-import org.jetbrains.kotlin.idea.extensions.gradle.RepositoryDescription;
+import org.jetbrains.kotlin.idea.configuration.RepositoryDescription;
 import org.jetbrains.kotlin.idea.util.VersioningKt;
 import org.jetbrains.kotlin.idea.versions.KotlinRuntimeLibraryUtilKt;
 
@@ -146,7 +145,7 @@ public class ConfigureDialogWithModulesAndVersion extends DialogWrapper {
         ApplicationManager.getApplication().invokeLater(() -> {
             kotlinVersionComboBox.removeAllItems();
             kotlinVersionComboBox.setEnabled(true);
-            for (@NlsSafe String newItem : newItems) {
+            for (String newItem : newItems) {
                 kotlinVersionComboBox.addItem(newItem);
             }
             kotlinVersionComboBox.setSelectedIndex(0);

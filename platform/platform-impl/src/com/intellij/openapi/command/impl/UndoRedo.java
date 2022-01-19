@@ -45,7 +45,7 @@ abstract class UndoRedo {
     return getStacksHolder().canBeUndoneOrRedone(getDocRefs());
   }
 
-  Collection<DocumentReference> getDocRefs() {
+  private Collection<DocumentReference> getDocRefs() {
     return myEditor == null ? Collections.emptySet() : UndoManagerImpl.getDocumentReferences(myEditor);
   }
 

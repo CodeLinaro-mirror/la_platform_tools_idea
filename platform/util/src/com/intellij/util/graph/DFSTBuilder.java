@@ -1,42 +1,33 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.graph;
 
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.ArrayUtilRt;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntStack;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.function.ObjIntConsumer;
-import java.util.function.ToIntFunction;
 
 /**
  * @author dsl, ven
  */
 public final class DFSTBuilder<Node> {
-  private final DFSTBuilderAwareGraph<Node> graphAdapter;
-
-  @SuppressWarnings("GrazieInspection")
-  private final ToIntFunction<Node> myNodeToNNumber; // node -> node number in topological order [0..size). Independent nodes are in reversed loading order (loading order is the graph.getNodes() order)
-  @SuppressWarnings("GrazieInspection")
+  private final OutboundSemiGraph<Node> myGraph;
+  private final Object2IntMap<Node> myNodeToNNumber; // node -> node number in topological order [0..size). Independent nodes are in reversed loading order (loading order is the graph.getNodes() order)
   private final Node[] myInvN; // node number in topological order [0..size) -> node
   private Map.Entry<Node, Node> myBackEdge;
-
-  private final Node[] allNodes;
 
   private Comparator<Node> myNComparator;
   private Comparator<Node> myTComparator;
   private final IntList mySCCs = new IntArrayList(); // strongly connected component sizes
-  private final ToIntFunction<Node> myNodeToTNumber; // node -> number in scc topological order. Independent scc are in reversed loading order
+  private final Object2IntMap<Node> myNodeToTNumber = new Object2IntOpenHashMap<>(); // node -> number in scc topological order. Independent scc are in reversed loading order
 
   private final Node[] myInvT; // number in (enumerate all nodes scc by scc) order -> node
+  private final Node[] myAllNodes;
 
   /**
    * @see DFSTBuilder#DFSTBuilder(OutboundSemiGraph, Object)
@@ -56,93 +47,31 @@ public final class DFSTBuilder<Node> {
    * @see DFSTBuilder#DFSTBuilder(OutboundSemiGraph, Object)
    */
   public DFSTBuilder(@NotNull OutboundSemiGraph<Node> graph) {
-    this(graph, null, false);
+    this(graph, null);
   }
 
+  /**
+   * @param entryNode is a first node for Tarjan's algorithm. Different entry nodes produce different node numbers in topological ordering.
+   *                  if all nodes of the graph is reachable from the entry node and the entry node doesn't have incoming edges then
+   *                  passing the entry node could be used for finding "natural" back edges (like a loop back edge)
+   */
   public DFSTBuilder(@NotNull OutboundSemiGraph<Node> graph, @Nullable Node entryNode) {
-    this(graph, entryNode, false);
-  }
-
-  @ApiStatus.Internal
-  public DFSTBuilder(@NotNull OutboundSemiGraph<Node> graph, @Nullable Node entryNode, boolean useIdentityStrategy) {
     //noinspection unchecked
-    this((Node[])graph.getNodes().toArray(), entryNode, useIdentityStrategy, new DFSTBuilderAwareGraph<Node>() {
-      @Override
-      public int[] buildOuts(@NotNull ToIntFunction<? super Node> nodeIndex, @NotNull Node node) {
-        IntList list = new IntArrayList();
-        Iterator<Node> out = graph.getOut(node);
-        while (out.hasNext()) {
-          list.add(nodeIndex.applyAsInt(out.next()));
-        }
-        return list.isEmpty() ? ArrayUtilRt.EMPTY_INT_ARRAY : list.toIntArray();
-      }
-    });
-  }
-
-  @ApiStatus.Internal
-  public DFSTBuilder(Node[] allNodes,
-                     @Nullable Node entryNode,
-                     boolean useIdentityStrategy,
-                     @Nullable DFSTBuilderAwareGraph<Node> graphAdapter) {
-    this.allNodes = allNodes;
+    myAllNodes = (Node[])graph.getNodes().toArray();
     if (entryNode != null) {
-      int index = useIdentityStrategy ? ArrayUtil.indexOfIdentity(allNodes, entryNode) : ArrayUtil.indexOf(allNodes, entryNode);
+      int index = ArrayUtil.indexOf(myAllNodes, entryNode);
       if (index != -1) {
-        ArrayUtil.swap(allNodes, 0, index);
+        ArrayUtil.swap(myAllNodes, 0, index);
       }
     }
-    int size = allNodes.length;
+    myGraph = graph;
+    int size = graph.getNodes().size();
+    myNodeToNNumber = new Object2IntOpenHashMap<>(size * 2, 0.5f);
     //noinspection unchecked
     myInvN = (Node[])new Object[size];
     //noinspection unchecked
     myInvT = (Node[])new Object[size];
-
-    this.graphAdapter = graphAdapter;
-
-    if (useIdentityStrategy) {
-      Reference2IntOpenHashMap<Node> nMap = new Reference2IntOpenHashMap<>(size * 2, 0.5f);
-      Reference2IntOpenHashMap<Node> tMap = new Reference2IntOpenHashMap<>();
-      myNodeToNNumber = nMap;
-      myNodeToTNumber = tMap;
-      new Tarjan(tMap::put, nMap::put, allNodes, true);
-    }
-    else {
-      //noinspection SSBasedInspection
-      Object2IntOpenHashMap<Node> nMap = new Object2IntOpenHashMap<>(size * 2, 0.5f);
-      //noinspection SSBasedInspection
-      Object2IntOpenHashMap<Node> tMap = new Object2IntOpenHashMap<>();
-      myNodeToNNumber = nMap;
-      myNodeToTNumber = tMap;
-      new Tarjan(tMap::put, nMap::put, allNodes, false);
-    }
-  }
-
-  @ApiStatus.Internal
-  public interface DFSTBuilderAwareGraph<Node> {
-    int[] buildOuts(@NotNull ToIntFunction<? super Node> nodeIndex, @NotNull Node node);
-  }
-
-  private static final class TarjanFrame<Node> {
-    private final int nodeI;
-    private final Node[] allNodes;
-    private final int[] out;
-    int nextUnexploredIndex;
-
-    TarjanFrame(int nodeI, Node[] allNodes, int[] out) {
-      this.nodeI = nodeI;
-      this.allNodes = allNodes;
-      this.out = out;
-    }
-
-    @Override
-    public String toString() {
-      StringBuilder o = new StringBuilder();
-      o.append(allNodes[nodeI]).append(" -> [");
-      for (int id : out) {
-        o.append(allNodes[id]).append(", ");
-      }
-      return o.append(']').toString();
-    }
+    new Tarjan().build();
   }
 
   /**
@@ -161,43 +90,54 @@ public final class DFSTBuilder<Node> {
     private final IntStack nodesOnStack = new IntArrayList();
     private final boolean[] isOnStack = new boolean[index.length];
 
-    private final Deque<TarjanFrame<Node>> frames = new ArrayDeque<>(); // recursion stack
-    private int dfsIndex;
-    private int sccsSizeCombined;
-    private final IntList topo = new IntArrayList(index.length); // nodes in reverse topological order
-    private ToIntFunction<? super Node> getNodeIndex;
-
-    private Tarjan(ObjIntConsumer<Node> putTNumber, ObjIntConsumer<Node> putNNumber, Node[] allNodes, boolean useIdentityStrategy) {
-      if (useIdentityStrategy) {
-        Reference2IntOpenHashMap<Node> nodeIndex = new Reference2IntOpenHashMap<>(allNodes.length);
-        build(putTNumber, putNNumber, allNodes, nodeIndex::put, nodeIndex);
+    private final class Frame {
+      Frame(int nodeI) {
+        this.nodeI = nodeI;
+        Iterator<Node> outNodes = myGraph.getOut(myAllNodes[nodeI]);
+        IntList list = new IntArrayList();
+        while (outNodes.hasNext()) {
+          Node node = outNodes.next();
+          list.add(nodeIndex.getInt(node));
+        }
+        out = list.toIntArray();
       }
-      else {
-        Object2IntMap<Node> nodeIndex = new Object2IntOpenHashMap<>(allNodes.length);
-        build(putTNumber, putNNumber, allNodes, nodeIndex::put, nodeIndex);
+
+      private final int nodeI;
+      private final int[] out;
+      private int nextUnexploredIndex;
+
+      @Override
+      public String toString() {
+        StringBuilder o = new StringBuilder();
+        o.append(myAllNodes[nodeI]).append(" -> [");
+        for (int id : out) {
+          o.append(myAllNodes[id]).append(", ");
+        }
+        return o.append(']').toString();
       }
     }
 
-    private void build(ObjIntConsumer<Node> putTNumber,
-                       ObjIntConsumer<Node> putNNumber,
-                       Node[] allNodes,
-                       @NotNull ObjIntConsumer<Node> putNodeIndex,
-                       @NotNull ToIntFunction<? super Node> getNodeIndex) {
-      this.getNodeIndex = getNodeIndex;
+    private final Deque<Frame> frames = new ArrayDeque<>(); // recursion stack
+    private final Object2IntMap<Node> nodeIndex = new Object2IntOpenHashMap<>();
+    private int dfsIndex;
+    private int sccsSizeCombined;
+    private final IntList topo = new IntArrayList(index.length); // nodes in reverse topological order
+
+    private void build() {
       Arrays.fill(index, -1);
-      for (int i = 0; i < allNodes.length; i++) {
-        Node node = allNodes[i];
-        putNodeIndex.accept(node, i);
+      for (int i = 0; i < myAllNodes.length; i++) {
+        Node node = myAllNodes[i];
+        nodeIndex.put(node, i);
       }
       for (int i = 0; i < index.length; i++) {
         if (index[i] != -1) {
           continue;
         }
 
-        frames.addLast(new TarjanFrame<>(i, allNodes, graphAdapter.buildOuts(getNodeIndex, allNodes[i])));
+        frames.addLast(new Frame(i));
         List<List<Node>> sccs = new ArrayList<>();
 
-        strongConnect(sccs, allNodes);
+        strongConnect(sccs);
 
         for (List<Node> scc : sccs) {
           int sccSize = scc.size();
@@ -206,7 +146,7 @@ public final class DFSTBuilder<Node> {
           int sccBase = index.length - sccsSizeCombined - sccSize;
 
           // root node should be first in scc for some reason
-          Node rootNode = allNodes[i];
+          Node rootNode = myAllNodes[i];
           int rIndex = scc.indexOf(rootNode);
           if (rIndex != -1) {
             Node e1 = scc.get(rIndex);
@@ -219,7 +159,7 @@ public final class DFSTBuilder<Node> {
             Node sccNode = scc.get(j);
             int tIndex = sccBase + j;
             myInvT[tIndex] = sccNode;
-            putTNumber.accept(sccNode, tIndex);
+            myNodeToTNumber.put(sccNode, tIndex);
           }
           sccsSizeCombined += sccSize;
         }
@@ -227,9 +167,9 @@ public final class DFSTBuilder<Node> {
 
       for (int i = 0; i < topo.size(); i++) {
         int nodeI = topo.getInt(i);
-        Node node = allNodes[nodeI];
+        Node node = myAllNodes[nodeI];
 
-        putNNumber.accept(node, index.length - 1 - i);
+        myNodeToNNumber.put(node, index.length - 1 - i);
         myInvN[index.length - 1 - i] = node;
       }
 
@@ -241,11 +181,11 @@ public final class DFSTBuilder<Node> {
       }
     }
 
-    private void strongConnect(@NotNull List<? super List<Node>> sccs, Node[] allNodes) {
+    private void strongConnect(@NotNull List<? super List<Node>> sccs) {
       int successor = -1;
       nextNode:
       while (!frames.isEmpty()) {
-        TarjanFrame<Node> pair = frames.peekLast();
+        Frame pair = frames.peekLast();
         int i = pair.nodeI;
 
         // we have returned to the node
@@ -266,14 +206,14 @@ public final class DFSTBuilder<Node> {
         while (pair.nextUnexploredIndex < pair.out.length) {
           int nextI = pair.out[pair.nextUnexploredIndex++];
           if (index[nextI] == -1) {
-            frames.addLast(new TarjanFrame<>(nextI, allNodes, graphAdapter.buildOuts(getNodeIndex, allNodes[nextI])));
+            frames.addLast(new Frame(nextI));
             continue nextNode;
           }
           if (isOnStack[nextI]) {
             lowLink[i] = Math.min(lowLink[i], index[nextI]);
 
             if (myBackEdge == null) {
-              myBackEdge = new AbstractMap.SimpleImmutableEntry<>(allNodes[nextI], allNodes[i]);
+              myBackEdge = new AbstractMap.SimpleImmutableEntry<>(myAllNodes[nextI], myAllNodes[i]);
             }
           }
         }
@@ -286,7 +226,7 @@ public final class DFSTBuilder<Node> {
           int pushedI;
           do {
             pushedI = nodesOnStack.popInt();
-            Node pushed = allNodes[pushedI];
+            Node pushed = myAllNodes[pushedI];
             isOnStack[pushedI] = false;
             scc.add(pushed);
           }
@@ -310,13 +250,13 @@ public final class DFSTBuilder<Node> {
   public Comparator<Node> comparator(boolean useNNumber) {
     if (useNNumber) {
       if (myNComparator == null) {
-        myNComparator = Comparator.comparingInt(myNodeToNNumber);
+        myNComparator = Comparator.comparingInt(myNodeToNNumber::getInt);
       }
       return myNComparator;
     }
     else {
       if (myTComparator == null) {
-        myTComparator = Comparator.comparingInt(myNodeToTNumber);
+        myTComparator = Comparator.comparingInt(myNodeToTNumber::getInt);
       }
       return myTComparator;
     }
@@ -433,9 +373,10 @@ public final class DFSTBuilder<Node> {
     }
   }
 
-  public @NotNull List<Node> getSortedNodes() {
-    Node[] result = allNodes.clone();
-    Arrays.sort(result, comparator());
-    return Arrays.asList(result);
+  @NotNull
+  public List<Node> getSortedNodes() {
+    List<Node> result = new ArrayList<>(myGraph.getNodes());
+    result.sort(comparator());
+    return result;
   }
 }

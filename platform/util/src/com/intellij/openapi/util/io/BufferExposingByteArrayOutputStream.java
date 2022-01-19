@@ -15,10 +15,6 @@ public final class BufferExposingByteArrayOutputStream extends UnsyncByteArrayOu
     super(buffer);
   }
 
-  public BufferExposingByteArrayOutputStream(@NotNull UnsyncByteArrayOutputStream.ByteArrayAllocator allocator, int initialSize) {
-    super(allocator, initialSize);
-  }
-
   public byte @NotNull [] getInternalBuffer() {
     return myBuffer;
   }

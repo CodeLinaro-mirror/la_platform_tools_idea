@@ -1,7 +1,6 @@
 // WITH_RUNTIME
 // INTENTION_TEXT: "Replace with 'map{}.maxOrNull()'"
 // INTENTION_TEXT_2: "Replace with 'asSequence().map{}.maxOrNull()'"
-// AFTER-WARNING: Parameter 'i' is never used
 import java.lang.Math.max
 
 fun getMaxLineWidth(count: Int): Double {

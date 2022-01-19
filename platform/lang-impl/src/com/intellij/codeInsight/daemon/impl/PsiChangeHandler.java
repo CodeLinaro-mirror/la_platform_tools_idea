@@ -75,18 +75,18 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
 
     connection.subscribe(PsiDocumentTransactionListener.TOPIC, new PsiDocumentTransactionListener() {
       @Override
-      public void transactionStarted(@NotNull Document doc, @NotNull PsiFile file) {
+      public void transactionStarted(final @NotNull Document doc, final @NotNull PsiFile file) {
       }
 
       @Override
-      public void transactionCompleted(@NotNull Document document, @NotNull PsiFile file) {
+      public void transactionCompleted(final @NotNull Document document, final @NotNull PsiFile file) {
         updateChangesForDocument(document);
         document.putUserData(UPDATE_ON_COMMIT_ENGAGED, null); // ensure we don't call updateChangesForDocument() twice which can lead to whole file re-highlight
       }
     });
   }
 
-  private void updateChangesForDocument(@NotNull Document document) {
+  private void updateChangesForDocument(final @NotNull Document document) {
     ApplicationManager.getApplication().assertIsWriteThread();
     if (myProject.isDisposed()) return;
     List<Pair<PsiElement, Boolean>> toUpdate = changedElements.get(document);
@@ -102,7 +102,7 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
       toUpdate = Collections.singletonList(Pair.create(file, true));
     }
     Application application = ApplicationManager.getApplication();
-    Editor editor = FileEditorManager.getInstance(myProject).getSelectedTextEditor();
+    final Editor editor = FileEditorManager.getInstance(myProject).getSelectedTextEditor();
     if (editor != null && !application.isUnitTestMode()) {
       application.invokeLater(() -> {
         if (!editor.isDisposed()) {
@@ -136,7 +136,7 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
     queueElement(event.getNewChild(), typesEqual(event.getNewChild(), event.getOldChild()), event);
   }
 
-  private static boolean typesEqual(PsiElement newChild, PsiElement oldChild) {
+  private static boolean typesEqual(final PsiElement newChild, final PsiElement oldChild) {
     return newChild != null && oldChild != null && newChild.getClass() == oldChild.getClass();
   }
 
@@ -177,7 +177,7 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
     }
   }
 
-  private void queueElement(@NotNull PsiElement child, boolean whitespaceOptimizationAllowed, @NotNull PsiTreeChangeEvent event) {
+  private void queueElement(@NotNull PsiElement child, final boolean whitespaceOptimizationAllowed, @NotNull PsiTreeChangeEvent event) {
     ApplicationManager.getApplication().assertIsWriteThread();
     PsiFile file = event.getFile();
     if (file == null) file = child.getContainingFile();
@@ -206,9 +206,9 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
     }
   }
 
-  private void updateByChange(@NotNull PsiElement child, @NotNull Document document, boolean whitespaceOptimizationAllowed) {
+  private void updateByChange(@NotNull PsiElement child, final @NotNull Document document, final boolean whitespaceOptimizationAllowed) {
     ApplicationManager.getApplication().assertIsWriteThread();
-    PsiFile file;
+    final PsiFile file;
     try {
       file = child.getContainingFile();
     }
@@ -232,7 +232,6 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
       return;
     }
 
-    TextRange existingDirtyScope = myFileStatusMap.getFileDirtyScopeForAllPassesCombined(document);
     PsiElement element = whitespaceOptimizationAllowed && UpdateHighlightersUtil.isWhitespaceOptimizationAllowed(document) ? child : child.getParent();
     while (true) {
       if (element == null || element instanceof PsiFile || element instanceof PsiDirectory) {
@@ -240,18 +239,10 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
         return;
       }
 
-      PsiElement scope = getChangeHighlightingScope(element);
+      final PsiElement scope = getChangeHighlightingScope(element);
       if (scope != null) {
-        TextRange scopeRange = scope.getTextRange();
-        // if some unrelated scope already marked dirty, we shouldn't just add another scope and return,
-        // because between these two dirty whitespaces might easily be some other non-whitespace PSI,
-        // and this PSI element is not expected to be highlighted alone, which could lead to unexpected highlighter disappearances
-        // see DaemonRespondToChangesTest.testPutArgumentsOnSeparateLinesIntentionMustNotRemoveErrorHighlighting
-        if (existingDirtyScope == null || scopeRange.contains(existingDirtyScope)) {
-          myFileStatusMap.markFileScopeDirty(document, scopeRange, fileLength, "Scope: " + scope);
-          return;
-        }
-        existingDirtyScope = existingDirtyScope.union(scopeRange);
+        myFileStatusMap.markFileScopeDirty(document, scope.getTextRange(), fileLength, "Scope: "+scope);
+        return;
       }
 
       element = element.getParent();
@@ -272,7 +263,7 @@ final class PsiChangeHandler extends PsiTreeChangeAdapter {
         defaultDetector = (DefaultChangeLocalityDetector)detector;
         continue;
       }
-      PsiElement scope = detector.getChangeHighlightingDirtyScopeFor(element);
+      final PsiElement scope = detector.getChangeHighlightingDirtyScopeFor(element);
       if (scope != null) return scope;
     }
     assert defaultDetector != null : "com.intellij.codeInsight.daemon.impl.DefaultChangeLocalityDetector is unregistered";

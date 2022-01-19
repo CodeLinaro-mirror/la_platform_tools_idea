@@ -15,7 +15,3 @@ by inserting
 calls accordingly. 
 
 To disable the instrumentation use **tmh.instrument.annotations** key in the Registry.
-
-### Limitations: ###
-
-- Only Java code is instrumented, Kotlin instrumentation is coming soon.

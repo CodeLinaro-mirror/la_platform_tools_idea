@@ -48,6 +48,7 @@ class GitRepositoryReader {
   GitRepositoryReader(@NotNull GitRepositoryFiles gitFiles) {
     myGitFiles = gitFiles;
     myHeadFile = gitFiles.getHeadFile();
+    DvcsUtil.assertFileExists(myHeadFile, ".git/HEAD file not found at " + myHeadFile);
     myRefsHeadsDir = gitFiles.getRefsHeadsFile();
     myRefsRemotesDir = gitFiles.getRefsRemotesFile();
     myPackedRefsFile = gitFiles.getPackedRefsPath();
@@ -76,7 +77,7 @@ class GitRepositoryReader {
       currentRevision = null;
     }
     if (currentBranch == null && currentRevision == null) {
-      LOG.warn("Couldn't identify neither current branch nor current revision. .git/HEAD content: [" + headInfo.content + "]");
+      LOG.error("Couldn't identify neither current branch nor current revision. .git/HEAD content: [" + headInfo.content + "]");
       LOG.debug("Dumping files in .git/refs/, and the content of .git/packed-refs. Debug enabled: " + LOG.isDebugEnabled());
       logDebugAllRefsFiles();
     }
@@ -254,7 +255,7 @@ class GitRepositoryReader {
     }
     catch (Throwable e) {
       logDebugAllRefsFiles();
-      LOG.warn("Error reading refs from files", e);
+      LOG.error("Error reading refs from files", e);
       return emptyMap();
     }
   }
@@ -358,7 +359,7 @@ class GitRepositoryReader {
       headContent = DvcsUtil.tryLoadFile(myHeadFile, CharsetToolkit.UTF8);
     }
     catch (RepoStateException e) {
-      LOG.warn(e);
+      LOG.error(e);
       return new HeadInfo(false, null);
     }
 
@@ -370,7 +371,7 @@ class GitRepositoryReader {
     if (target != null) {
       return new HeadInfo(true, target);
     }
-    LOG.warn(new RepoStateException("Invalid format of the .git/HEAD file: [" + headContent + "]")); // including "refs/tags/v1"
+    LOG.error(new RepoStateException("Invalid format of the .git/HEAD file: [" + headContent + "]")); // including "refs/tags/v1"
     return new HeadInfo(false, null);
   }
 

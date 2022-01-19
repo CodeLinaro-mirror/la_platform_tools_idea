@@ -8,8 +8,8 @@ from markdown.treeprocessors import Treeprocessor
 
 FN_BACKLINK_TEXT: Any
 NBSP_PLACEHOLDER: Any
-DEF_RE: Pattern[str]
-TABBED_RE: Pattern[str]
+DEF_RE: Pattern
+TABBED_RE: Pattern
 RE_REF_ID: Any
 
 class FootnoteExtension(Extension):

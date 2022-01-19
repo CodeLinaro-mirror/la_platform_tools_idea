@@ -34,10 +34,9 @@ public class Junit4ConverterInspectionTest extends LightJavaInspectionTestCase {
     };
   }
 
-  @SuppressWarnings("JUnitTestCaseWithNoTests")
-  public void testSimple() {
+  public void test() {
     doTest("import junit.framework.TestCase;\n" +
-           "class /*'JUnit3Test' could be converted to JUnit4 test case*//*_*/JUnit3Test/**/ extends TestCase {\n" +
+           "class /*'JUnit3TestCase' could be converted to JUnit4 test case*//*_*/JUnit3TestCase/**/ extends TestCase {\n" +
            "    public void testAddition() {\n" +
            "        assertEquals(2, 1 + 1);\n" +
            "    }\n" +
@@ -46,7 +45,7 @@ public class Junit4ConverterInspectionTest extends LightJavaInspectionTestCase {
                                                   "import org.junit.Assert;\n" +
                                                   "import org.junit.Test;\n" +
                                                   "\n" +
-                                                  "class JUnit3Test {\n" +
+                                                  "class JUnit3TestCase {\n" +
                                                   "    @Test\n" +
                                                   "    public void testAddition() {\n" +
                                                   "        Assert.assertEquals(2, 1 + 1);\n" +

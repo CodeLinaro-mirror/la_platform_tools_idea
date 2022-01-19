@@ -24,8 +24,4 @@ class ConditionalCondition {
 
     return (s != null ? !s.equals(condition.s) : condition.s != null) ? false : t.equals(condition.t);
   }
-
-  void conditionals(boolean prevConnect, boolean nextConnect) {
-    char c = prevConnect ? (nextConnect ? 'a' : 'b') : (nextConnect ? 'c' : 'd');
-  }
 }

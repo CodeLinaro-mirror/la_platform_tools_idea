@@ -1,6 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'args' is never used
-// AFTER-WARNING: Variable 'x' is never used
 val a: String?
     get() = ""
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.idea;
 
 import com.intellij.util.lang.ClassLoadingLocks;
@@ -10,7 +10,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,9 +55,9 @@ public final class ZipFilePoolImpl extends ZipFilePool {
     }
 
     @Override
-    public @Nullable InputStream loadZipEntry(@NotNull String path) throws IOException {
+    public byte @Nullable [] loadZipEntry(@NotNull String path) throws IOException {
       ImmutableZipEntry entry = zipFile.getEntry(path.charAt(0) == '/' ? path.substring(1) : path);
-      return entry == null ? null : entry.getInputStream(zipFile);
+      return entry == null ? null : entry.getData(zipFile);
     }
 
     @Override

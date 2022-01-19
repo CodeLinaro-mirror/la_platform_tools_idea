@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.execution;
 
-import com.intellij.diagnostic.PluginException;
 import com.intellij.execution.ExecutionBundle;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.configurations.ConfigurationType;
@@ -20,6 +19,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.util.DeprecatedMethodException;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -32,15 +32,17 @@ import java.util.List;
  * Basic run configuration type for external system tasks.
  */
 public abstract class AbstractExternalSystemTaskConfigurationType implements ConfigurationType {
-  private final ProjectSystemId myExternalSystemId;
-  private final ConfigurationFactory[] myFactories = new ConfigurationFactory[1];
-  private final NotNullLazyValue<Icon> myIcon;
+  @NotNull private final ProjectSystemId myExternalSystemId;
+  private final ConfigurationFactory @NotNull [] myFactories = new ConfigurationFactory[1];
 
-  protected AbstractExternalSystemTaskConfigurationType(@NotNull ProjectSystemId externalSystemId) {
+  @NotNull private final NotNullLazyValue<Icon> myIcon;
+
+  protected AbstractExternalSystemTaskConfigurationType(@NotNull final ProjectSystemId externalSystemId) {
     myExternalSystemId = externalSystemId;
     myFactories[0] = new ConfigurationFactory(this) {
+      @NotNull
       @Override
-      public @NotNull RunConfiguration createTemplateConfiguration(@NotNull Project project) {
+      public RunConfiguration createTemplateConfiguration(@NotNull Project project) {
         return doCreateConfiguration(myExternalSystemId, project, this, "");
       }
 
@@ -71,31 +73,35 @@ public abstract class AbstractExternalSystemTaskConfigurationType implements Con
   /**
    * This method must be overridden and a proper ID must be returned from it (it'll be used as a key in run configuration file).
    */
-  protected @NonNls @NotNull String getConfigurationFactoryId() {
-    PluginException.reportDeprecatedDefault(
-      getClass(), "getConfigurationFactoryId",
-      "The default implementation delegates to 'ProjectSystemId::getReadableName' which is supposed to be localized," +
-      " but return value of this method must not be localized.");
+  @NonNls
+  @NotNull
+  protected String getConfigurationFactoryId() {
+    DeprecatedMethodException.reportDefaultImplementation(getClass(), "getConfigurationFactoryId",
+      "The default implementation delegates to 'ProjectSystemId::getReadableName' which is supposed to be localized but return value of this method must not be localized.");
     return myExternalSystemId.getReadableName();
   }
 
-  public @NotNull ProjectSystemId getExternalSystemId() {
+  @NotNull
+  public ProjectSystemId getExternalSystemId() {
     return myExternalSystemId;
   }
 
-  public @NotNull ConfigurationFactory getFactory() {
+  @NotNull
+  public ConfigurationFactory getFactory() {
     return myFactories[0];
   }
 
-  protected @NotNull ExternalSystemRunConfiguration doCreateConfiguration(@NotNull ProjectSystemId externalSystemId,
-                                                                          @NotNull Project project,
-                                                                          @NotNull ConfigurationFactory factory,
-                                                                          @NotNull String name) {
+  @NotNull
+  protected ExternalSystemRunConfiguration doCreateConfiguration(@NotNull ProjectSystemId externalSystemId,
+                                                                 @NotNull Project project,
+                                                                 @NotNull ConfigurationFactory factory,
+                                                                 @NotNull String name) {
     return new ExternalSystemRunConfiguration(externalSystemId, project, factory, name);
   }
 
+  @NotNull
   @Override
-  public @NotNull String getDisplayName() {
+  public String getDisplayName() {
     return myExternalSystemId.getReadableName();
   }
 
@@ -109,8 +115,9 @@ public abstract class AbstractExternalSystemTaskConfigurationType implements Con
     return myIcon.getValue();
   }
 
+  @NotNull
   @Override
-  public @NotNull String getId() {
+  public String getId() {
     return myExternalSystemId.getReadableName() + "RunConfiguration";
   }
 
@@ -119,27 +126,30 @@ public abstract class AbstractExternalSystemTaskConfigurationType implements Con
     return myFactories;
   }
 
-  public static @NotNull @NlsActions.ActionText String generateName(@NotNull Project project, @NotNull ExternalSystemTaskExecutionSettings settings) {
+  @NotNull
+  public static @NlsActions.ActionText String generateName(@NotNull Project project, @NotNull ExternalSystemTaskExecutionSettings settings) {
     return generateName(
       project, settings.getExternalSystemId(), settings.getExternalProjectPath(), settings.getTaskNames(), settings.getExecutionName()
     );
   }
 
-  public static @NotNull @NlsActions.ActionText String generateName(@NotNull Project project,
-                                                                    @NotNull ProjectSystemId externalSystemId,
-                                                                    @Nullable String externalProjectPath,
-                                                                    @NotNull List<String> taskNames,
-                                                                    @Nullable @Nls String executionName) {
+  @NotNull
+  public static @NlsActions.ActionText String generateName(@NotNull Project project,
+                                                           @NotNull ProjectSystemId externalSystemId,
+                                                           @Nullable String externalProjectPath,
+                                                           @NotNull List<String> taskNames,
+                                                           @Nullable @Nls String executionName) {
     return generateName(project, externalSystemId, externalProjectPath, taskNames, executionName, " [", "]");
   }
 
-  public static @NotNull @NlsActions.ActionText String generateName(@NotNull Project project,
-                                                                    @NotNull ProjectSystemId externalSystemId,
-                                                                    @Nullable String externalProjectPath,
-                                                                    @NotNull List<String> taskNames,
-                                                                    @Nullable @Nls String executionName,
-                                                                    @NotNull String tasksPrefix,
-                                                                    @NotNull String tasksPostfix) {
+  @NotNull
+  public static @NlsActions.ActionText String generateName(@NotNull Project project,
+                                                           @NotNull ProjectSystemId externalSystemId,
+                                                           @Nullable String externalProjectPath,
+                                                           @NotNull List<String> taskNames,
+                                                           @Nullable @Nls String executionName,
+                                                           @NotNull String tasksPrefix,
+                                                           @NotNull String tasksPostfix) {
     if (!StringUtil.isEmpty(executionName)) {
       return executionName;
     }

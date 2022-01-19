@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.testFramework.LightVirtualFile
 import org.jetbrains.kotlin.idea.KotlinFileType
 import java.awt.BorderLayout
@@ -18,7 +17,7 @@ import javax.swing.JPanel
 
 open class DialogWithEditor(
     val project: Project,
-    @NlsContexts.DialogTitle title: String,
+    title: String,
     val initialText: String
 ) : DialogWrapper(project, true) {
     val editor: Editor = createEditor()

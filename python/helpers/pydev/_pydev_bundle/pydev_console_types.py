@@ -18,7 +18,6 @@ class Command:
         self.interpreter = interpreter
         self.code_fragment = code_fragment
         self.more = None
-        self.exception_occurred = False
 
     @staticmethod
     def symbol_for_fragment(code_fragment):

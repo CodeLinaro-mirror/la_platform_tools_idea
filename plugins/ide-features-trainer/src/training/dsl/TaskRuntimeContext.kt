@@ -79,7 +79,7 @@ open class TaskRuntimeContext internal constructor(private val lessonExecutor: L
     requestEditorFocus()
   }
 
-  fun caret(text: String, select: Boolean = false) {
+  fun caret(text: String, select: Boolean) {
     val start = getStartOffsetForText(text) ?: return
     editor.caretModel.moveToOffset(start)
     if (select) {

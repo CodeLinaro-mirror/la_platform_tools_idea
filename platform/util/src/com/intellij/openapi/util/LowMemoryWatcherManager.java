@@ -1,10 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.ConcurrencyUtil;
-import com.intellij.util.SystemProperties;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
@@ -20,20 +19,21 @@ import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 public final class LowMemoryWatcherManager implements Disposable {
-  private static @NotNull Logger getLogger() {
+  @NotNull
+  private static Logger getLogger() {
     return Logger.getInstance(LowMemoryWatcherManager.class);
   }
 
   private static final long MEM_THRESHOLD = 5 /*MB*/ * 1024 * 1024;
-  private final ExecutorService myExecutorService;
+  @NotNull private final ExecutorService myExecutorService;
 
   private Future<?> mySubmitted; // guarded by myJanitor
   private final Future<?> myMemoryPoolMXBeansFuture;
   private final Consumer<Boolean> myJanitor = new Consumer<Boolean>() {
     @Override
     public void accept(@NotNull Boolean afterGc) {
-      // Clearing `mySubmitted` before all listeners are called, to avoid data races when a listener is added in the middle of execution
-      // and is lost. This may, however, cause listeners to execute more than once (potentially even in parallel).
+      // null mySubmitted before all listeners called to avoid data race when listener added in the middle of the execution and is lost
+      // this may however cause listeners to execute more than once (potentially even in parallel)
       synchronized (myJanitor) {
         mySubmitted = null;
       }
@@ -104,7 +104,15 @@ public final class LowMemoryWatcherManager implements Disposable {
   };
 
   private static float getOccupiedMemoryThreshold() {
-    return SystemProperties.getFloatProperty("low.memory.watcher.notification.threshold", 0.95f);
+    String value = System.getProperty("low.memory.watcher.notification.threshold");
+    if (value != null) {
+      try {
+        return Float.parseFloat(value);
+      }
+      catch (NumberFormatException ignored) {
+      }
+    }
+    return 0.95f;
   }
 
   @Override

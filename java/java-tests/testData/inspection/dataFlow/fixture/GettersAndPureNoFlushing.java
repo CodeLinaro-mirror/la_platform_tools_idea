@@ -6,10 +6,6 @@ class Doo {
   @Nullable
   Object getMethod() {return null;}
 
-  @Nullable
-  @Contract(pure=true)
-  Object getMethodPure() {return null;}
-
   boolean isSomething() { return false;}
 
   @Contract(pure=true)
@@ -28,16 +24,7 @@ class Doo {
     if (getMethod() == null && !pureSomething()) {
       return;
     } else {
-      // still not sure about nullability as getMethod() is not pure
-      System.out.println(getMethod().hashCode());
-    }
-  }
-
-  public void main4() {
-    if (getMethodPure() == null && !pureSomething()) {
-      return;
-    } else {
-      System.out.println(getMethodPure().<warning descr="Method invocation 'hashCode' may produce 'NullPointerException'">hashCode</warning>());
+      System.out.println(getMethod().<warning descr="Method invocation 'hashCode' may produce 'NullPointerException'">hashCode</warning>());
     }
   }
 

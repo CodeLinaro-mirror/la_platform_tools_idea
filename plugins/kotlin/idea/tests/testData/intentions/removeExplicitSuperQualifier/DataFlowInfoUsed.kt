@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'p' is never used
 open class B {
     open fun foo(p: String){}
 

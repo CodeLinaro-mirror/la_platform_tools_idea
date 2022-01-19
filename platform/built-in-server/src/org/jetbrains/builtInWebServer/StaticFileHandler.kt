@@ -37,8 +37,7 @@ private class StaticFileHandler : WebServerFileHandler() {
       }
 
       val extraSuffix = WebServerPageConnectionService.instance.fileRequested(request, true, pathInfo::getOrResolveVirtualFile)
-      val extraBuffer = extraSuffix?.toByteArray(pathInfo.file?.charset ?: Charsets.UTF_8)
-      FileResponses.sendFile(request, channel, ioFile, extraHeaders, extraBuffer)
+      FileResponses.sendFile(request, channel, ioFile, extraHeaders, extraSuffix)
       return true
     }
 

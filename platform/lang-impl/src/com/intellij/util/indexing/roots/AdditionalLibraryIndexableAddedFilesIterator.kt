@@ -5,7 +5,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ContentIterator
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileFilter
-import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.util.indexing.IndexingBundle
 import com.intellij.util.indexing.roots.IndexableFilesIterationMethods.iterateRoots
 import com.intellij.util.indexing.roots.kind.IndexableSetOrigin
@@ -24,13 +23,11 @@ internal class AdditionalLibraryIndexableAddedFilesIterator(val presentableLibra
     IndexingBundle.message("progress.text.additional.library.scanning.added.files", it)
   } ?: IndexingBundle.message("progress.text.additional.library.scanning.unknown.added.files")
 
-  override fun getOrigin(): IndexableSetOrigin = PartialAdditionalLibraryIndexableSetOrigin(rootsToIndex)
+  override fun getOrigin(): IndexableSetOrigin = PartialAdditionalLibraryIndexableSetOrigin()
 
   override fun iterateFiles(project: Project, fileIterator: ContentIterator, fileFilter: VirtualFileFilter): Boolean {
     return iterateRoots(project, rootsToIndex, fileIterator, fileFilter, true)
   }
-
-  override fun getRootUrls(): Set<String> = rootsToIndex.map { it.url }.toSet()
 }
 
-private data class PartialAdditionalLibraryIndexableSetOrigin(val rootsToIndex: Iterable<VirtualFile>) : IndexableSetOrigin
+private class PartialAdditionalLibraryIndexableSetOrigin : IndexableSetOrigin

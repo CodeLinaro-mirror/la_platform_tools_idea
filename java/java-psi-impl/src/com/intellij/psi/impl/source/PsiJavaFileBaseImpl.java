@@ -1,11 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source;
 
 import com.intellij.lang.ASTNode;
 import com.intellij.lang.Language;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NotNullLazyKey;
@@ -38,6 +37,7 @@ import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.MostlySingularMultiMap;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.execution.ParametersListUtil;
+import com.intellij.util.indexing.IndexingDataKeys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -536,7 +536,7 @@ public abstract class PsiJavaFileBaseImpl extends PsiFileImpl implements PsiJava
     LanguageLevel forcedLanguageLevel = getUserData(PsiUtil.FILE_LANGUAGE_LEVEL_KEY);
     if (forcedLanguageLevel != null) return forcedLanguageLevel;
 
-    VirtualFile virtualFile = getVirtualFile();
+    VirtualFile virtualFile = getUserData(IndexingDataKeys.VIRTUAL_FILE);
     if (virtualFile == null) virtualFile = getViewProvider().getVirtualFile();
 
     String sourceLevel = null;
@@ -560,7 +560,6 @@ public abstract class PsiJavaFileBaseImpl extends PsiFileImpl implements PsiJava
         virtualFile.putUserData(SHEBANG_SOURCE_LEVEL, sourceLevel);
         VirtualFile file = virtualFile;
         ApplicationManager.getApplication().invokeLater(() -> FileContentUtilCore.reparseFiles(file),
-                                                        ModalityState.NON_MODAL,
                                                         ApplicationManager.getApplication().getDisposed());
       }
     }

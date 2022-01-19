@@ -20,7 +20,6 @@ import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
-import com.intellij.openapi.project.DumbAware;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiNamedElement;
@@ -45,7 +44,7 @@ import static com.intellij.patterns.StandardPatterns.or;
 /**
  * User : ktisha
  */
-public class PyDocstringCompletionContributor extends CompletionContributor implements DumbAware {
+public class PyDocstringCompletionContributor extends CompletionContributor {
   public PyDocstringCompletionContributor() {
     extend(CompletionType.BASIC,
            or(psiElement().withParent(DocStringTagCompletionContributor.DOCSTRING_PATTERN), psiComment()),

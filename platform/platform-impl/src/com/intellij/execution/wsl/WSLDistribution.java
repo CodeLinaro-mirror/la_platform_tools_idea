@@ -16,6 +16,7 @@ import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.NullableLazyValue;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
@@ -24,9 +25,9 @@ import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.impl.local.LocalFileSystemBase;
-import com.intellij.openapi.vfs.impl.wsl.WslConstants;
 import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.fmap.FMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -52,15 +53,11 @@ public class WSLDistribution {
   public static final String DEFAULT_WSL_MNT_ROOT = "/mnt/";
   private static final int RESOLVE_SYMLINK_TIMEOUT = 10000;
   private static final String RUN_PARAMETER = "run";
+  public static final String UNC_PREFIX = "\\\\wsl$\\";
+  private static final String WSLENV = "WSLENV";
   static final int DEFAULT_TIMEOUT = SystemProperties.getIntProperty("ide.wsl.probe.timeout", 20_000);
-  private static final String SHELL_PARAMETER = "$SHELL";
-  public static final String WSL_EXE = "wsl.exe";
-  public static final String DISTRIBUTION_PARAMETER = "--distribution";
-  public static final String EXIT_CODE_PARAMETER = "; exitcode=$?";
-  public static final String EXEC_PARAMETER = "--exec";
 
   private static final Key<ProcessListener> SUDO_LISTENER_KEY = Key.create("WSL sudo listener");
-  private static final String RSYNC = "rsync";
 
   private final @NotNull WslDistributionDescriptor myDescriptor;
   private final @Nullable Path myExecutablePath;
@@ -69,6 +66,7 @@ public class WSLDistribution {
   private final NullableLazyValue<String> myWslIp = NullableLazyValue.createValue(this::readWslIp);
   private final NullableLazyValue<String> myShellPath = NullableLazyValue.createValue(this::readShellPath);
   private final NullableLazyValue<String> myUserHomeProvider = NullableLazyValue.createValue(this::readUserHome);
+  private final NotNullLazyValue<FMap<String, String>> myMountedDrives = NotNullLazyValue.createValue(this::readMountInfo);
 
   protected WSLDistribution(@NotNull WSLDistribution dist) {
     this(dist.myDescriptor, dist.myExecutablePath);
@@ -85,8 +83,8 @@ public class WSLDistribution {
   }
 
   /**
-   * @return executable file, null for WSL distributions parsed from `wsl.exe --list` output
    * @deprecated please don't use it, to be removed
+   * @return executable file, null for WSL distributions parsed from `wsl.exe --list` output
    */
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   @Deprecated
@@ -181,17 +179,16 @@ public class WSLDistribution {
    * @return process output
    */
 
-  public void copyFromWsl(@NotNull String wslPath,
-                          @NotNull String windowsPath,
-                          @Nullable List<String> additionalOptions,
-                          @Nullable Consumer<? super ProcessHandler> handlerConsumer
+  @SuppressWarnings("UnusedReturnValue")
+  public ProcessOutput copyFromWsl(@NotNull String wslPath,
+                                   @NotNull String windowsPath,
+                                   @Nullable List<String> additionalOptions,
+                                   @Nullable Consumer<? super ProcessHandler> handlerConsumer
   )
     throws ExecutionException {
-
-
     //noinspection ResultOfMethodCallIgnored
     new File(windowsPath).mkdirs();
-    List<String> command = new ArrayList<>(Arrays.asList(RSYNC, "-cr"));
+    List<String> command = new ArrayList<>(Arrays.asList("rsync", "-cr"));
 
     if (additionalOptions != null) {
       command.addAll(additionalOptions);
@@ -203,16 +200,7 @@ public class WSLDistribution {
       throw new ExecutionException(IdeBundle.message("wsl.rsync.unable.to.copy.files.dialog.message", windowsPath));
     }
     command.add(targetWslPath + "/");
-    var process = executeOnWsl(command, new WSLCommandLineOptions(), -1, handlerConsumer);
-    if (process.getExitCode() != 0) {
-      // Most common problem is rsync not onstalled
-      if (executeOnWsl(10_000, "type", RSYNC).getExitCode() != 0) {
-        throw new ExecutionException(IdeBundle.message("wsl.no.rsync", this.myDescriptor.getMsId()));
-      }
-      else {
-        throw new ExecutionException(process.getStderr());
-      }
-    }
+    return executeOnWsl(command, new WSLCommandLineOptions(), -1, handlerConsumer);
   }
 
   /**
@@ -317,21 +305,21 @@ public class WSLDistribution {
     String linuxCommandStr = StringUtil.join(linuxCommand, " ");
     if (wslExe != null) {
       commandLine.setExePath(wslExe.toString());
-      commandLine.addParameters(DISTRIBUTION_PARAMETER, getMsId());
       if (isElevated) {
         commandLine.addParameters("-u", "root");
       }
+      commandLine.addParameters("--distribution", getMsId());
       if (options.isExecuteCommandInShell()) {
         // workaround WSL1 problem: https://github.com/microsoft/WSL/issues/4082
         if (options.getSleepTimeoutSec() > 0 && getVersion() == 1) {
-          linuxCommandStr += EXIT_CODE_PARAMETER + "; sleep " + options.getSleepTimeoutSec() + "; (exit $exitcode)";
+          linuxCommandStr += "; exitcode=$?; sleep " + options.getSleepTimeoutSec() + "; (exit $exitcode)";
         }
 
         if (options.isExecuteCommandInDefaultShell()) {
-          commandLine.addParameters(SHELL_PARAMETER, "-c", linuxCommandStr);
+          commandLine.addParameters("$SHELL", "-c", linuxCommandStr);
         }
         else {
-          commandLine.addParameters(EXEC_PARAMETER, options.getShellPath());
+          commandLine.addParameters("--exec", options.getShellPath());
           if (options.isExecuteCommandInInteractiveShell()) {
             commandLine.addParameters("-i");
           }
@@ -342,7 +330,7 @@ public class WSLDistribution {
         }
       }
       else {
-        commandLine.addParameter(EXEC_PARAMETER);
+        commandLine.addParameter("--exec");
         commandLine.addParameters(linuxCommand);
       }
     }
@@ -375,7 +363,7 @@ public class WSLDistribution {
   }
 
   public static @Nullable Path findWslExe() {
-    File file = PathEnvironmentVariableUtil.findInPath(WSL_EXE);
+    File file = PathEnvironmentVariableUtil.findInPath("wsl.exe");
     return file != null ? file.toPath() : null;
   }
 
@@ -396,13 +384,13 @@ public class WSLDistribution {
       }
     }
     if (builder.length() > 0) {
-      String prevValue = commandLine.getEnvironment().get(WslConstants.WSLENV);
+      String prevValue = commandLine.getEnvironment().get(WSLENV);
       if (prevValue == null) {
-        prevValue = commandLine.getParentEnvironment().get(WslConstants.WSLENV);
+        prevValue = commandLine.getParentEnvironment().get(WSLENV);
       }
       String value = prevValue != null ? StringUtil.trimEnd(prevValue, ':') + ':' + builder
                                        : builder.toString();
-      commandLine.getEnvironment().put(WslConstants.WSLENV, value);
+      commandLine.getEnvironment().put(WSLENV, value);
     }
   }
 
@@ -489,11 +477,20 @@ public class WSLDistribution {
   /**
    * @return Windows-dependent path for a file, pointed by {@code wslPath} in WSL, or {@code null} if path is unmappable
    */
+
   public @NotNull @NlsSafe String getWindowsPath(@NotNull String wslPath) {
-    String windowsPath = WSLUtil.getWindowsPath(wslPath, getMntRoot());
-    if (windowsPath != null) {
-      return windowsPath;
+    for (Map.Entry<String, String> mountInfo : getDriveMountDirs().entrySet()) {
+      String linuxPath = mountInfo.getKey();
+      if (wslPath.equals(linuxPath)) {
+        return StringUtil.trimTrailing(mountInfo.getValue(), '\\');
+      }
+      String pathWithTrailingSlash = linuxPath.endsWith("/") ? linuxPath : linuxPath + "/";
+      if (wslPath.startsWith(pathWithTrailingSlash)) {
+        return FileUtil.toSystemDependentName(
+          StringUtil.capitalize(mountInfo.getValue() + wslPath.substring(pathWithTrailingSlash.length())));
+      }
     }
+
     return getUNCRoot() + FileUtil.toSystemDependentName(FileUtil.normalize(wslPath));
   }
 
@@ -501,8 +498,8 @@ public class WSLDistribution {
    * @return Linux path for a file pointed by {@code windowsPath} or null if unavailable, like \\MACHINE\path
    */
   public @Nullable @NlsSafe String getWslPath(@NotNull String windowsPath) {
-    if (FileUtil.toSystemDependentName(windowsPath).startsWith(WslConstants.UNC_PREFIX)) {
-      windowsPath = StringUtil.trimStart(FileUtil.toSystemDependentName(windowsPath), WslConstants.UNC_PREFIX);
+    if (FileUtil.toSystemDependentName(windowsPath).startsWith(UNC_PREFIX)) {
+      windowsPath = StringUtil.trimStart(FileUtil.toSystemDependentName(windowsPath), UNC_PREFIX);
       int index = windowsPath.indexOf('\\');
       if (index == -1) return null;
 
@@ -523,9 +520,18 @@ public class WSLDistribution {
 
   /**
    * @see WslDistributionDescriptor#getMntRoot()
+   * @see getDriveMountDirs()
    */
   public final @NotNull @NlsSafe String getMntRoot() {
     return myDescriptor.getMntRoot();
+  }
+
+  /**
+   * @return mapping of mounted drives
+   * /mnt/c/ -> c:\
+   */
+  public final @NotNull Map<@NlsSafe String, @NlsSafe String> getDriveMountDirs() {
+    return myMountedDrives.getValue().toMap();
   }
 
   public final @Nullable @NlsSafe String getUserHome() {
@@ -534,6 +540,31 @@ public class WSLDistribution {
 
   private @NlsSafe @Nullable String readUserHome() {
     return getEnvironmentVariable("HOME");
+  }
+
+  private @NotNull FMap<String, String> readMountInfo() {
+    try {
+      ProcessOutput output = executeOnWsl(List.of("mount", "-t", "9p"), new WSLCommandLineOptions(), 10_000, null);
+      FMap<String, String> result = FMap.empty();
+      if (output.getExitCode() == 0) {
+        for (String line : output.getStdoutLines(true)) {
+          @NotNull List<String> mountData = StringUtil.split(line, " ");
+          if (mountData.size() < 3) continue;
+          String driveName = mountData.get(0);
+          String on = mountData.get(1);
+          String mountDir = mountData.get(2);
+          if (driveName.length() != 3) continue;
+          if (driveName.charAt(1) != ':' || driveName.charAt(2) != '\\') continue;
+          if (!"on".equals(on)) continue;
+          result = result.plus(mountDir, driveName);
+        }
+      }
+      return result;
+    }
+    catch (ExecutionException e) {
+      LOG.info("Cannot read wsl mount directories", e);
+      return FMap.empty();
+    }
   }
 
   /**
@@ -558,7 +589,7 @@ public class WSLDistribution {
 
   @Override
   public String toString() {
-    return myDescriptor.getMsId();
+    return "WSLDistribution{myDescriptor=" + myDescriptor + '}';
   }
 
   private static void prependCommand(@NotNull List<? super String> command, String @NotNull ... commandToPrepend) {
@@ -575,13 +606,11 @@ public class WSLDistribution {
     return Strings.stringHashCodeInsensitive(getMsId());
   }
 
-  /**
-   * @deprecated use {@link WSLDistribution#getUNCRootPath()} instead
-   */
+  /** @deprecated use {@link WSLDistribution#getUNCRootPath()} instead */
   @ApiStatus.ScheduledForRemoval(inVersion = "2022.1")
   @Deprecated
   public @NotNull File getUNCRoot() {
-    return new File(WslConstants.UNC_PREFIX + myDescriptor.getMsId());
+    return new File(UNC_PREFIX + myDescriptor.getMsId());
   }
 
   /**
@@ -589,7 +618,7 @@ public class WSLDistribution {
    */
   @ApiStatus.Experimental
   public @NotNull Path getUNCRootPath() {
-    return Paths.get(WslConstants.UNC_PREFIX + myDescriptor.getMsId());
+    return Paths.get(UNC_PREFIX + myDescriptor.getMsId());
   }
 
   /**
@@ -687,7 +716,7 @@ public class WSLDistribution {
   }
 
   private @Nullable String getWsl1LoopbackAddress() {
-    return getVersion() == 1 ? InetAddress.getLoopbackAddress().getHostAddress() : null;
+    return WSLUtil.isWsl1(this) == ThreeState.YES ? InetAddress.getLoopbackAddress().getHostAddress() : null;
   }
 
   public @NonNls @Nullable String getEnvironmentVariable(String name) {

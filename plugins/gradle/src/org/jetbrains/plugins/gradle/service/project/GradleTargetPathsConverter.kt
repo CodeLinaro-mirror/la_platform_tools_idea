@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.service.project
 
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemExecutionAware.Companion.getEnvironmentConfigurationProvider
 import org.jetbrains.plugins.gradle.model.ProjectImportAction.AllModels
 import org.jetbrains.plugins.gradle.settings.GradleExecutionSettings
@@ -25,8 +24,7 @@ internal class GradleTargetPathsConverter(private val executionSettings: GradleE
           field.isAccessible = true
           field[it] = localPath
         }
-        catch (reflectionError: Throwable) {
-          LOG.error("Failed to update mapped file", reflectionError)
+        catch (ignore: Throwable) {
         }
       }
     }
@@ -34,9 +32,5 @@ internal class GradleTargetPathsConverter(private val executionSettings: GradleE
 
   override fun close() {
     traverser.close()
-  }
-
-  companion object {
-    private val LOG = logger<GradleTargetPathsConverter>()
   }
 }

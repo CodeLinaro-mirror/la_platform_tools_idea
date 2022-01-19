@@ -19,7 +19,7 @@ public class PyMissingOrEmptyDocstringInspection extends PyBaseDocstringInspecti
   @NotNull
   @Override
   public Visitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly, @NotNull LocalInspectionToolSession session) {
-    return new Visitor(holder, PyInspectionVisitor.getContext(session)) {
+    return new Visitor(holder, session) {
       @Override
       protected void checkDocString(@NotNull PyDocStringOwner node) {
         final PyStringLiteralExpression docStringExpression = node.getDocStringExpression();

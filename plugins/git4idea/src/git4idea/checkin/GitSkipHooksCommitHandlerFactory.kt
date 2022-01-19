@@ -63,6 +63,8 @@ private class GitSkipHooksConfigurationPanel(
     runHooks.isSelected = if (runHooks.isEnabled) selectedState else false
   }
 
+  override fun refresh() = Unit
+
   override fun saveState() {
     commitContext.isSkipHooks = shouldSkipHook()
   }

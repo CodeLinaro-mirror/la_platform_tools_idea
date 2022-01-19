@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.execution;
 
 import com.intellij.execution.ExecutionException;
@@ -39,7 +39,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.idea.maven.aether.ArtifactRepositoryManager;
 import org.jetbrains.idea.maven.aether.ProgressConsumer;
 import org.jetbrains.jps.model.library.JpsMavenRepositoryLibraryDescriptor;
-import org.junit.Assume;
 
 import java.io.File;
 import java.text.ParseException;
@@ -141,14 +140,8 @@ public abstract class AbstractTestFrameworkIntegrationTest extends BaseConfigura
                                      JpsMavenRepositoryLibraryDescriptor descriptor,
                                      ArtifactRepositoryManager repoManager) throws Exception {
 
-    Collection<File> files = null;
-    try {
-      files = repoManager.resolveDependency(descriptor.getGroupId(), descriptor.getArtifactId(), descriptor.getVersion(),
-                                            descriptor.isIncludeTransitiveDependencies(), descriptor.getExcludedDependencies());
-    }
-    catch (Exception e) {
-      Assume.assumeTrue(false);
-    }
+    Collection<File> files = repoManager.resolveDependency(descriptor.getGroupId(), descriptor.getArtifactId(), descriptor.getVersion(),
+                                                           descriptor.isIncludeTransitiveDependencies(), descriptor.getExcludedDependencies());
     assertFalse("No files retrieved for: " + descriptor.getGroupId(), files.isEmpty());
     for (File artifact : files) {
       VirtualFile libJarLocal = LocalFileSystem.getInstance().findFileByIoFile(artifact);

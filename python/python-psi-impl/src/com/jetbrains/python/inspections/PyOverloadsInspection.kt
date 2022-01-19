@@ -12,18 +12,18 @@ import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.PyFunction
 import com.jetbrains.python.psi.PyUtil
-import com.jetbrains.python.psi.types.TypeEvalContext
 import com.jetbrains.python.pyi.PyiFile
 import com.jetbrains.python.pyi.PyiUtil
+import java.util.*
 
 class PyOverloadsInspection : PyInspection() {
 
   override fun buildVisitor(holder: ProblemsHolder,
                             isOnTheFly: Boolean,
                             session: LocalInspectionToolSession): PsiElementVisitor = Visitor(
-    holder,PyInspectionVisitor.getContext(session))
+    holder, session)
 
-  private class Visitor(holder: ProblemsHolder, context: TypeEvalContext) : PyInspectionVisitor(holder, context) {
+  private class Visitor(holder: ProblemsHolder, session: LocalInspectionToolSession) : PyInspectionVisitor(holder, session) {
 
     override fun visitPyClass(node: PyClass) {
       if (node.containingFile is PyiFile) return
@@ -54,7 +54,7 @@ class PyOverloadsInspection : PyInspection() {
 
       if (implementation == null) {
         functions
-          .maxByOrNull { it.textOffset }
+          .maxBy { it.textOffset }
           ?.let {
             registerProblem(it.nameIdentifier, if (owner is PyClass) {
               PyPsiBundle.message("INSP.overloads.series.overload.decorated.methods.should.always.be.followed.by.implementation")

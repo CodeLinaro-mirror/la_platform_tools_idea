@@ -1,4 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2000-2016 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.siyeh.ig.numeric;
 
 import com.intellij.openapi.util.text.StringUtil;
@@ -45,7 +59,7 @@ public class SuspiciousLiteralUnderscoreInspection extends BaseInspection {
       }
       boolean underscore = false;
       boolean group = false;
-      int dot = -1;
+      boolean dot = false;
       int digit = 0;
       final int index = StringUtil.indexOfAny(text, "fledFLED"); // suffixes and floating point exponent
       final int length = index > 0 ? index : text.length();
@@ -62,7 +76,7 @@ public class SuspiciousLiteralUnderscoreInspection extends BaseInspection {
           group = true;
           digit = 0;
           if (c == '.') {
-            dot = i;
+            dot = true;
           }
         }
         else if (Character.isDigit(c)) {
@@ -77,12 +91,8 @@ public class SuspiciousLiteralUnderscoreInspection extends BaseInspection {
         // literal ends with underscore (which does not compile)
         return;
       }
-      if (dot > 0 ? digit > 3 : digit != 3) {
-        final int offset = length - digit;
-        final boolean completeFractional = (offset == dot + 1);
-        if (!completeFractional) {
-          registerErrorAtOffset(expression, offset, digit);
-        }
+      if (dot ? digit > 3 : digit != 3) {
+        registerErrorAtOffset(expression, length - digit, digit);
       }
     }
   }

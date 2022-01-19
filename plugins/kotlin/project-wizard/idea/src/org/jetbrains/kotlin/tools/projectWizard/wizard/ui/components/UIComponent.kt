@@ -2,6 +2,7 @@
 
 package org.jetbrains.kotlin.tools.projectWizard.wizard.ui.components
 
+import com.intellij.openapi.Disposable
 import org.jetbrains.kotlin.tools.projectWizard.core.Context
 import org.jetbrains.kotlin.tools.projectWizard.core.Reader
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.SettingValidator
@@ -11,13 +12,11 @@ import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.SettingRefe
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.SettingType
 import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.DynamicComponent
 import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.FocusableComponent
-import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.customPanel
 import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.label
+import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.customPanel
 import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.setting.IdeaBasedComponentValidator
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import java.awt.BorderLayout
 import javax.swing.JComponent
-import javax.swing.JPanel
 
 abstract class UIComponent<V : Any>(
     context: Context,
@@ -80,7 +79,7 @@ abstract class UIComponent<V : Any>(
     }
 
     override fun focusOn() {
-        uiComponent.firstNonPanelOrNull()?.requestFocusInWindow()
+        uiComponent.requestFocus()
     }
 
     override fun navigateTo(error: ValidationResult.ValidationError) {
@@ -97,14 +96,3 @@ fun <V : Any> Reader.valueForSetting(
     uiComponent: UIComponent<V>,
     setting: SettingReference<V, SettingType<V>>
 ): V? = setting.savedOrDefaultValue ?: uiComponent.getUiValue()
-
-private fun JComponent.firstNonPanelOrNull(): JComponent? {
-    if (this !is JPanel) return this
-
-    val nestedComponents = synchronized(treeLock) { components ?: return null }
-    for (component in nestedComponents) {
-        return component.safeAs<JComponent>()?.firstNonPanelOrNull() ?: continue
-    }
-
-    return null
-}

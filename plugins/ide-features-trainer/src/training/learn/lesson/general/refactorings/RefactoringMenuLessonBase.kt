@@ -11,7 +11,6 @@ import training.dsl.LessonUtil.restoreIfModifiedOrMoved
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
 import training.util.adaptToNotNativeLocalization
-import training.util.isToStringContains
 import javax.swing.JList
 
 abstract class RefactoringMenuLessonBase(lessonId: String) : KLesson(lessonId, LessonsBundle.message("refactoring.menu.lesson.name")) {
@@ -22,7 +21,7 @@ abstract class RefactoringMenuLessonBase(lessonId: String) : KLesson(lessonId, L
       text(LessonsBundle.message("refactoring.menu.show.refactoring.list", action(it)))
       val refactorThisTitle = RefactoringBundle.message("refactor.this.title")
       triggerByUiComponentAndHighlight(false, false) { ui: EngravedLabel ->
-        ui.text.isToStringContains(refactorThisTitle)
+        ui.text?.contains(refactorThisTitle) == true
       }
       restoreIfModifiedOrMoved()
       test { actions(it) }
@@ -40,7 +39,7 @@ abstract class RefactoringMenuLessonBase(lessonId: String) : KLesson(lessonId, L
       task(ActionsBundle.message("action.IntroduceParameter.text").dropMnemonic()) {
         text(LessonsBundle.message("refactoring.menu.introduce.parameter.eng", strong(it)))
         triggerByUiComponentAndHighlight(highlightBorder = false, highlightInside = false) { ui: JList<*> ->
-          ui.model.size > 0 && ui.model.getElementAt(0).isToStringContains(it)
+          ui.model.size > 0 && ui.model.getElementAt(0).toString().contains(it)
         }
         restoreByUi(restoreId = showPopupTaskId, delayMillis = defaultRestoreDelay)
         test {
@@ -76,11 +75,4 @@ abstract class RefactoringMenuLessonBase(lessonId: String) : KLesson(lessonId, L
   }
 
   private fun TaskRuntimeContext.hasInplaceRename() = editor.getUserData(InplaceRefactoring.INPLACE_RENAMER) != null
-
-  override val suitableTips = listOf("RefactorThis")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(LessonsBundle.message("refactoring.menu.help.link"),
-         LessonUtil.getHelpLink("refactoring-source-code.html#refactoring_invoke")),
-  )
 }

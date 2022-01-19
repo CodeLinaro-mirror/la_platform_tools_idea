@@ -3,7 +3,6 @@
 package com.intellij.openapi.editor.actions;
 
 import com.intellij.codeInsight.hint.HintManagerImpl;
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.DataContext;
@@ -33,7 +32,6 @@ public class CopyAction extends TextComponentEditorAction implements HintManager
         if (isSkipCopyPasteForEmptySelection()) {
           return;
         }
-        FeatureUsageTracker.getInstance().triggerFeatureUsed("editing.copy.line");
         editor.getCaretModel().runForEachCaret(__ -> {
           editor.getSelectionModel().selectLineAtCaret();
           EditorActionUtil.moveCaretToLineStartIgnoringSoftWraps(editor);

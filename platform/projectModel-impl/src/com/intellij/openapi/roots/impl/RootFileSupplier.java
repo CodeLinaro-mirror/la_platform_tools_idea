@@ -1,10 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl;
 
 import com.intellij.model.ModelBranch;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.UnloadedModuleDescription;
-import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ContentEntry;
 import com.intellij.openapi.roots.LibraryOrSdkOrderEntry;
 import com.intellij.openapi.roots.OrderRootType;
@@ -49,10 +48,6 @@ class RootFileSupplier {
     return entry.getRootFiles(type);
   }
 
-  VirtualFile @NotNull [] getSdkRoots(@NotNull Sdk entry, OrderRootType type) {
-    return entry.getRootProvider().getFiles(type);
-  }
-
   @Nullable
   VirtualFile getContentRoot(ContentEntry contentEntry) {
     return contentEntry.getFile();
@@ -73,11 +68,6 @@ class RootFileSupplier {
       @Override
       protected VirtualFile @NotNull [] getLibraryRoots(LibraryOrSdkOrderEntry entry, OrderRootType type) {
         return ContainerUtil.mapNotNull(entry.getRootUrls(type), this::findFileByUrl).toArray(VirtualFile.EMPTY_ARRAY);
-      }
-
-      @Override
-      VirtualFile @NotNull [] getSdkRoots(@NotNull Sdk sdk, OrderRootType type) {
-        return ContainerUtil.mapNotNull(sdk.getRootProvider().getUrls(type), this::findFileByUrl).toArray(VirtualFile.EMPTY_ARRAY);
       }
 
       @Override

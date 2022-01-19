@@ -9,7 +9,6 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.OnePixelDivider
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsSafe
-import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.ui.BrowserHyperlinkListener
 import com.intellij.ui.JBColor
 import com.intellij.ui.border.CustomLineBorder
@@ -184,14 +183,14 @@ class AgreementUi private constructor(@NlsSafe val htmlText: String, val exitOnC
     return this
   }
 
-  fun setContent(newHtml: HtmlChunk): AgreementUi {
+  fun setText(newHtmlText: String): AgreementUi {
     val htmlRtfPane = htmlRtfPane
     if (htmlRtfPane != null) {
-      val pane = htmlRtfPane.replaceText(newHtml.toString())
+      val pane = htmlRtfPane.replaceText(newHtmlText)
       pane.caretPosition = 0
     }
     else {
-      viewer!!.text = newHtml.toString()
+      viewer!!.text = newHtmlText
     }
     return this
   }

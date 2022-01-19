@@ -1,8 +1,8 @@
-from _typeshed import SupportsLenAndGetItem
-from typing import overload
-from typing_extensions import Literal
+from typing import Sized, overload
+from typing_extensions import Literal, Protocol
 
-_Vector = SupportsLenAndGetItem[float]
+class _Vector(Protocol, Sized):
+    def __getitem__(self, i: int) -> float: ...
 
 class AnnoyIndex:
     f: int

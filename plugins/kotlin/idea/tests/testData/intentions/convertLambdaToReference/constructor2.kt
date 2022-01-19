@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'x' is never used
 class A {
     class B {}
 }

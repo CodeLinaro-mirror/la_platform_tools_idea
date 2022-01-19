@@ -12,6 +12,16 @@ import java.util.Collection;
 import org.jetbrains.idea.maven.server.security.MavenToken;
 
 public class Maven36ServerImpl extends MavenRemoteObject implements MavenServer {
+  @Override
+  public void set(MavenServerLogger logger, MavenServerDownloadListener downloadListener, MavenToken token) {
+    MavenServerUtil.checkToken(token);
+    try {
+      Maven3ServerGlobals.set(logger, downloadListener);
+    }
+    catch (Exception e) {
+      throw rethrowException(e);
+    }
+  }
 
   @Override
   public MavenServerEmbedder createEmbedder(MavenEmbedderSettings settings, MavenToken token) {
@@ -81,32 +91,6 @@ public class Maven36ServerImpl extends MavenRemoteObject implements MavenServer 
     }
   }
 
-
-  @Override
-  public MavenPullServerLogger createPullLogger(MavenToken token) {
-    MavenServerUtil.checkToken(token);
-    try {
-      MavenServerLoggerWrapper result = Maven3ServerGlobals.getLogger();
-      UnicastRemoteObject.exportObject(result, 0);
-      return result;
-    }
-    catch (RemoteException e) {
-      throw rethrowException(e);
-    }
-  }
-
-  @Override
-  public MavenPullDownloadListener createPullDownloadListener(MavenToken token) {
-    MavenServerUtil.checkToken(token);
-    try {
-      MavenServerDownloadListenerWrapper result = Maven3ServerGlobals.getDownloadListener();
-      UnicastRemoteObject.exportObject(result, 0);
-      return result;
-    }
-    catch (RemoteException e) {
-      throw rethrowException(e);
-    }
-  }
   @Override
   public synchronized void unreferenced() {
     System.exit(0);

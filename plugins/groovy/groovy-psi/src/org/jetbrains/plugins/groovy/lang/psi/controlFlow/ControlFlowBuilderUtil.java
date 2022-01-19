@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.controlFlow;
 
 import com.intellij.openapi.util.Pair;
@@ -26,7 +26,6 @@ import org.jetbrains.plugins.groovy.lang.psi.api.statements.clauses.GrCaseSectio
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.*;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.members.GrMethod;
 import org.jetbrains.plugins.groovy.lang.psi.api.toplevel.imports.GrImportStatement;
-import org.jetbrains.plugins.groovy.lang.psi.api.util.GrStatementOwner;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.DFAEngine;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.readWrite.ReadBeforeWriteInstance;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.readWrite.ReadBeforeWriteSemilattice;
@@ -180,21 +179,21 @@ public final class ControlFlowBuilderUtil {
     else if (parent instanceof GrCaseSection) {
       final GrStatement[] statements = ((GrCaseSection)parent).getStatements();
       final GrStatement last = ArrayUtil.getLastElement(statements);
-      final GrSwitchElement switchElement = (GrSwitchElement)parent.getParent();
-      final GrStatement switchAsStatement = switchElement instanceof GrSwitchExpression ? (GrSwitchExpression)switchElement : (GrStatement)switchElement;
+      final GrSwitchStatement switchStatement = (GrSwitchStatement)parent.getParent();
+
       if (last instanceof GrBreakStatement && statements.length > 1 && statements[statements.length - 2] == st) {
-        return isCertainlyReturnStatement(switchAsStatement);
+        return isCertainlyReturnStatement(switchStatement);
       }
       else if (st == last) {
-        if (st instanceof GrBreakStatement || isLastStatementInCaseSection((GrCaseSection)parent, switchElement)) {
-          return isCertainlyReturnStatement(switchAsStatement);
+        if (st instanceof GrBreakStatement || isLastStatementInCaseSection((GrCaseSection)parent, switchStatement)) {
+          return isCertainlyReturnStatement(switchStatement);
         }
       }
     }
     return false;
   }
 
-  private static boolean isLastStatementInCaseSection(GrCaseSection caseSection, GrSwitchElement switchStatement) {
+  private static boolean isLastStatementInCaseSection(GrCaseSection caseSection, GrSwitchStatement switchStatement) {
     final GrCaseSection[] sections = switchStatement.getCaseSections();
     final int i = ArrayUtilRt.find(sections, caseSection);
     if (i == sections.length - 1) {
@@ -210,21 +209,5 @@ public final class ControlFlowBuilderUtil {
       }
     }
     return true;
-  }
-
-  public static boolean isCertainlyYieldStatement(GrStatement statement) {
-    final PsiElement parent = statement.getParent();
-    if (parent instanceof GrOpenBlock || parent instanceof GrCaseSection) {
-      if (statement != ArrayUtil.getLastElement(((GrStatementOwner)parent).getStatements())) return false;
-
-      PsiElement pparent = parent.getParent();
-      if (parent instanceof GrCaseSection && pparent instanceof GrSwitchElement) {
-        return true;
-      }
-      if (pparent instanceof GrStatement) {
-        return isCertainlyYieldStatement((GrStatement)pparent);
-      }
-    }
-    return false;
   }
 }

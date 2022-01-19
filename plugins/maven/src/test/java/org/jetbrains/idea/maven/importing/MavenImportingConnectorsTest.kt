@@ -233,6 +233,4 @@ class MavenImportingConnectorsTest : MavenMultiVersionImportingTestCase() {
     importProject()
     assertEquals(1, MavenServerManager.getInstance().allConnectors.size);
   }
-
-
 }

@@ -1,10 +1,8 @@
 package de.plushnikov.intellij.plugin.thirdparty;
 
-import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.containers.ContainerUtil;
 
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 public enum LombokCopyableAnnotations {
@@ -15,12 +13,14 @@ public enum LombokCopyableAnnotations {
 
   private final Map<String, String> fullQualifiedToShortNames;
 
-  LombokCopyableAnnotations(String[] fqns) {
-    fullQualifiedToShortNames =
-      Collections.unmodifiableMap(ContainerUtil.map2Map(fqns, fqn -> Pair.create(fqn, StringUtil.getShortName(fqn))));
+  LombokCopyableAnnotations(String[] fullQualifiedNames) {
+    fullQualifiedToShortNames = new HashMap<>();
+    for (String qualifiedName : fullQualifiedNames) {
+      fullQualifiedToShortNames.put(qualifiedName, StringUtil.getShortName(qualifiedName));
+    }
   }
 
   public Map<String, String> getFullQualifiedToShortNames() {
-    return fullQualifiedToShortNames;
+    return new HashMap<>(fullQualifiedToShortNames);
   }
 }

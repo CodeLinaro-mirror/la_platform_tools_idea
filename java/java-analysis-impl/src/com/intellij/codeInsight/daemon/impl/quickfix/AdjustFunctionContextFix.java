@@ -16,7 +16,6 @@
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.QuickFixBundle;
-import com.intellij.codeInsight.intention.HighPriorityAction;
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
@@ -35,7 +34,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Function;
 
-public class AdjustFunctionContextFix extends LocalQuickFixAndIntentionActionOnPsiElement implements HighPriorityAction {
+public class AdjustFunctionContextFix extends LocalQuickFixAndIntentionActionOnPsiElement {
   private static final Function<PsiMethodCallExpression, Function<PsiType, String>>
     MAP_NAME_ADJUSTER = (PsiMethodCallExpression call) -> (PsiType type) -> {
     PsiExpression qualifier = call.getMethodExpression().getQualifierExpression();

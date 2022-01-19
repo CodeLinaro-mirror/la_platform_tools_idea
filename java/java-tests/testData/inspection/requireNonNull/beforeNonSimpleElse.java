@@ -3,7 +3,7 @@
 import java.util.*;
 
 class Test {
-  public Object test(Object o) {
+  public void test(Object o) {
     if<caret>(o == null) {
       return new Object();
     } else {

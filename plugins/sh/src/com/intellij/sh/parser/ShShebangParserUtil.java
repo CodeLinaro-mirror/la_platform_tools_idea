@@ -33,7 +33,11 @@ public final class ShShebangParserUtil {
       ASTNode shebang = file.getNode().findChildByType(ShTypes.SHEBANG);
       String prefix = "#!";
       if (shebang != null && shebang.getText().startsWith(prefix)) {
-        return shebang.getText().substring(prefix.length()).trim();
+        String path = shebang.getText().substring(prefix.length()).trim();
+        File ioFile = new File(path);
+        if (ioFile.isAbsolute() && ioFile.canExecute()) {
+          return ioFile.getAbsolutePath();
+        }
       }
     }
     return null;

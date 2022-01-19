@@ -1,9 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.dataFlow.fix;
 
-import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement;
+import com.intellij.codeInspection.LocalQuickFix;
+import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.java.analysis.JavaAnalysisBundle;
-import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.PsiImplUtil;
@@ -17,18 +17,16 @@ import com.siyeh.ig.psiutils.ControlFlowUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public class DeleteSwitchLabelFix extends LocalQuickFixAndIntentionActionOnPsiElement {
+public class DeleteSwitchLabelFix implements LocalQuickFix {
   private final String myName;
   private final boolean myBranch;
 
-  public DeleteSwitchLabelFix(@NotNull PsiCaseLabelElement label) {
-    super(label);
+  public DeleteSwitchLabelFix(@NotNull PsiExpression label) {
     myName = label.getText();
     PsiSwitchLabelStatementBase labelStatement = Objects.requireNonNull(PsiImplUtil.getSwitchLabel(label));
     PsiCaseLabelElementList labelElementList = labelStatement.getCaseLabelElementList();
@@ -49,7 +47,7 @@ public class DeleteSwitchLabelFix extends LocalQuickFixAndIntentionActionOnPsiEl
   @Nls(capitalization = Nls.Capitalization.Sentence)
   @NotNull
   @Override
-  public String getText() {
+  public String getName() {
     return myBranch ?
            JavaAnalysisBundle.message("remove.switch.branch.0", myName) :
            JavaAnalysisBundle.message("remove.switch.label.0", myName);
@@ -63,23 +61,16 @@ public class DeleteSwitchLabelFix extends LocalQuickFixAndIntentionActionOnPsiEl
   }
 
   @Override
-  public void invoke(@NotNull Project project,
-                     @NotNull PsiFile file,
-                     @Nullable Editor editor,
-                     @NotNull PsiElement startElement, @NotNull PsiElement endElement) {
-    PsiCaseLabelElement labelElement = ObjectUtils.tryCast(startElement, PsiCaseLabelElement.class);
-    if (labelElement == null) return;
-    deleteLabelElement(labelElement);
-  }
-
-  public static void deleteLabelElement(@NotNull PsiCaseLabelElement labelElement) {
-    PsiSwitchLabelStatementBase label = PsiImplUtil.getSwitchLabel(labelElement);
+  public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
+    PsiExpression expression = ObjectUtils.tryCast(descriptor.getStartElement(), PsiExpression.class);
+    if (expression == null) return;
+    PsiSwitchLabelStatementBase label = PsiImplUtil.getSwitchLabel(expression);
     if (label == null) return;
     PsiCaseLabelElementList labelElementList = label.getCaseLabelElementList();
     if (labelElementList != null && labelElementList.getElementCount() == 1) {
       deleteLabel(label);
     } else {
-      new CommentTracker().deleteAndRestoreComments(labelElement);
+      new CommentTracker().deleteAndRestoreComments(expression);
     }
   }
 

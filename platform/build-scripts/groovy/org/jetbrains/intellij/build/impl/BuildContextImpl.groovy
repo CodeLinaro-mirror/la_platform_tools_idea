@@ -2,11 +2,12 @@
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.Pair
-import com.intellij.openapi.util.text.Strings
+import com.intellij.openapi.util.text.StringUtil
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 import org.jetbrains.intellij.build.*
+import org.jetbrains.intellij.build.kotlin.KotlinBinaries
 import org.jetbrains.jps.model.JpsElement
 import org.jetbrains.jps.model.JpsGlobal
 import org.jetbrains.jps.model.JpsModel
@@ -77,7 +78,7 @@ final class BuildContextImpl extends BuildContext {
 
     buildNumber = options.buildNumber ?: readSnapshotBuildNumber(paths.communityHomeDir)
 
-    bootClassPathJarNames = List.of("util.jar", "bootstrap.jar")
+    bootClassPathJarNames = List.of("bootstrap.jar", "util.jar", "jna.jar")
     dependenciesProperties = new DependenciesProperties(this)
     applicationInfo = new ApplicationInfoProperties(project, productProperties, messages)
 /* Android Studio: don't patch ApplicationInfo.xml
@@ -86,12 +87,6 @@ Android Studio: don't patch ApplicationInfo.xml */
     if (productProperties.productCode == null && applicationInfo.productCode != null) {
       productProperties.productCode = applicationInfo.productCode
     }
-
-    if (systemSelector.contains(" ")) {
-      messages.error("System selector must not contain spaces: " + systemSelector)
-    }
-
-    options.buildStepsToSkip.addAll(productProperties.incompatibleBuildSteps)
     messages.info("Build steps to be skipped: ${options.buildStepsToSkip.join(',')}")
   }
 
@@ -163,6 +158,11 @@ Android Studio: don't patch ApplicationInfo.xml */
   }
 
   @Override
+  KotlinBinaries getKotlinBinaries() {
+    return compilationContext.kotlinBinaries
+  }
+
+  @Override
   File getProjectOutputDirectory() {
     return compilationContext.projectOutputDirectory
   }
@@ -215,7 +215,7 @@ Android Studio: don't patch ApplicationInfo.xml */
   @Nullable Path findFileInModuleSources(String moduleName, String relativePath) {
     for (Pair<Path, String> info : getSourceRootsWithPrefixes(findRequiredModule(moduleName)) ) {
       if (relativePath.startsWith(info.second)) {
-        Path result = info.first.resolve(Strings.trimStart(Strings.trimStart(relativePath, info.second), "/"))
+        Path result = info.first.resolve(StringUtil.trimStart(StringUtil.trimStart(relativePath, info.second), "/"))
         if (Files.exists(result)) {
           return result
         }
@@ -240,7 +240,7 @@ Android Studio: don't patch ApplicationInfo.xml */
         if (!prefix.endsWith("/")) {
           prefix += "/"
         }
-        return new Pair<>(Paths.get(JpsPathUtil.urlToPath(moduleSourceRoot.getUrl())), Strings.trimStart(prefix, "/"))
+        return new Pair<>(Paths.get(JpsPathUtil.urlToPath(moduleSourceRoot.getUrl())), StringUtil.trimStart(prefix, "/"))
       })
       .collect(Collectors.toList())
   }
@@ -336,7 +336,7 @@ Android Studio: don't patch ApplicationInfo.xml */
   @NotNull List<String> getAdditionalJvmArguments() {
     List<String> jvmArgs = new ArrayList<>()
 
-    String classLoader = productProperties.classLoader
+    def classLoader = productProperties.classLoader
     if (classLoader != null) {
       jvmArgs.add('-Djava.system.class.loader=' + classLoader)
     }
@@ -359,35 +359,6 @@ Android Studio: don't patch ApplicationInfo.xml */
       //noinspection SpellCheckingInspection
       jvmArgs.add('-Dsplash=true')
     }
-
-    if (options.bundledJreVersion >= 17) {
-      jvmArgs.addAll([
-        '--add-opens=java.base/java.lang=ALL-UNNAMED',
-        '--add-opens=java.base/java.text=ALL-UNNAMED',
-        '--add-opens=java.base/java.time=ALL-UNNAMED',
-        '--add-opens=java.base/java.util=ALL-UNNAMED',
-        '--add-opens=java.base/jdk.internal.vm=ALL-UNNAMED',
-        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
-        '--add-opens=java.desktop/java.awt=ALL-UNNAMED',
-        '--add-opens=java.desktop/java.awt.event=ALL-UNNAMED',
-        '--add-opens=java.desktop/java.awt.peer=ALL-UNNAMED',
-        '--add-opens=java.desktop/javax.swing=ALL-UNNAMED',
-        '--add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED',
-        '--add-opens=java.desktop/javax.swing.text.html=ALL-UNNAMED',
-        '--add-opens=java.desktop/sun.awt=ALL-UNNAMED',
-        '--add-opens=java.desktop/sun.awt.image=ALL-UNNAMED',
-        '--add-opens=java.desktop/sun.awt.windows=ALL-UNNAMED',
-        '--add-opens=java.desktop/sun.font=ALL-UNNAMED',
-        '--add-opens=java.desktop/sun.java2d=ALL-UNNAMED',
-        '--add-opens=java.desktop/sun.swing=ALL-UNNAMED',
-        '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED',
-        '--add-opens=java.desktop/com.apple.eawt.event=ALL-UNNAMED',
-        '--add-opens=java.desktop/com.apple.laf=ALL-UNNAMED',
-        '--add-opens=jdk.attach/sun.tools.attach=ALL-UNNAMED',
-        '--add-opens=jdk.jdi/com.sun.tools.jdi=ALL-UNNAMED'
-      ])
-    }
-
     return jvmArgs
   }
 }

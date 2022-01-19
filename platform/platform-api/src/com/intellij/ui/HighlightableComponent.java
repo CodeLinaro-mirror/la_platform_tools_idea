@@ -66,11 +66,7 @@ public class HighlightableComponent extends JComponent implements Accessible {
     }
   }
 
-  public @Nullable Icon getIcon() {
-    return myIcon;
-  }
-
-  public void setIcon(@Nullable Icon icon) {
+  public void setIcon(Icon icon) {
     myIcon = icon;
     invalidate();
     repaint();

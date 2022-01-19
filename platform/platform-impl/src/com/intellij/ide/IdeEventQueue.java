@@ -249,7 +249,7 @@ public final class IdeEventQueue extends EventQueue {
       case HierarchyEvent.ANCESTOR_RESIZED:
         Object source = event.getSource();
         if (source instanceof Component &&
-            ComponentUtil.getParentOfType(CellRendererPane.class, (Component)source) != null) {
+            ComponentUtil.getParentOfType((Class<? extends CellRendererPane>)CellRendererPane.class, (Component)source) != null) {
           return true;
         }
     }
@@ -371,13 +371,13 @@ public final class IdeEventQueue extends EventQueue {
     // DO NOT ADD ANYTHING BEFORE fixNestedSequenceEvent is called
     long startedAt = System.currentTimeMillis();
     PerformanceWatcher performanceWatcher = PerformanceWatcher.getInstanceOrNull();
-    EventWatcher eventWatcher = EventWatcher.getInstanceOrNull();
+    EventWatcher eventWatcher = EventWatcher.getInstance();
     try {
       if (performanceWatcher != null) {
         performanceWatcher.edtEventStarted();
       }
       if (eventWatcher != null) {
-        eventWatcher.edtEventStarted(e, startedAt);
+        eventWatcher.edtEventStarted(e);
       }
 
       fixNestedSequenceEvent(e);
@@ -430,16 +430,10 @@ public final class IdeEventQueue extends EventQueue {
       Runnable runnable = extractRunnable(e);
       Class<? extends Runnable> runnableClass = runnable != null ? runnable.getClass() : Runnable.class;
       Runnable processEventRunnable = () -> {
-        ProgressManager progressManager = null;
-        Application app = ApplicationManager.getApplication();
-        if (app != null && !app.isDisposed()) {
-          try {
-            progressManager = ProgressManager.getInstance();
-          }
-          catch (RuntimeException ex) {
-            LOG.warn("app services aren't yet initialized", ex);
-          }
-        }
+        Application application = ApplicationManager.getApplication();
+        ProgressManager progressManager = application != null && !application.isDisposed() ?
+                                          ProgressManager.getInstance() :
+                                          null;
 
         try (AccessToken ignored = startActivity(finalE1)) {
           if (progressManager != null) {
@@ -506,7 +500,7 @@ public final class IdeEventQueue extends EventQueue {
         performanceWatcher.edtEventFinished();
       }
       if (eventWatcher != null) {
-        eventWatcher.edtEventFinished(e, System.currentTimeMillis());
+        eventWatcher.edtEventFinished(e, startedAt);
       }
     }
   }
@@ -702,6 +696,10 @@ public final class IdeEventQueue extends EventQueue {
 
     myEventCount++;
 
+    if (e instanceof WindowEvent) {
+      processAppActivationEvent((WindowEvent)e);
+    }
+
     myKeyboardBusy = e instanceof KeyEvent || myKeyboardEventsPosted.get() > myKeyboardEventsDispatched.get();
 
     if (e instanceof KeyEvent) {
@@ -726,10 +724,6 @@ public final class IdeEventQueue extends EventQueue {
         myKeyEventDispatcher.setState(KeyState.STATE_INIT);
       }
       return;
-    }
-
-    if (e instanceof WindowEvent) {
-      processAppActivationEvent((WindowEvent)e);
     }
 
     if (dispatchByCustomDispatchers(e)) {
@@ -1322,14 +1316,12 @@ public final class IdeEventQueue extends EventQueue {
       }
     }
 
-    if (event instanceof InvocationEvent && !ClientId.isCurrentlyUnderLocalId()) {
+    if (event instanceof InvocationEvent && !ClientId.isCurrentlyUnderLocalId() && ClientId.Companion.getPropagateAcrossThreads()) {
       // only do wrapping trickery with non-local events to preserve correct behaviour - local events will get dispatched under local ID anyways
       ClientId clientId = ClientId.getCurrent();
-      super.postEvent(new InvocationEvent(event.getSource(), () -> {
-        try (AccessToken ignored = ClientId.withClientId(clientId)) {
-          dispatchEvent(event);
-        }
-      }));
+      super.postEvent(new InvocationEvent(event.getSource(), () -> ClientId.withClientId(clientId, () -> {
+        dispatchEvent(event);
+      })));
       return true;
     }
 
@@ -1461,7 +1453,7 @@ public final class IdeEventQueue extends EventQueue {
       postDelayedKeyEvents();
     }
 
-    EventWatcher watcher = EventWatcher.getInstanceOrNull();
+    EventWatcher watcher = EventWatcher.getInstance();
     if (watcher != null) {
       watcher.logTimeMillis("IdeEventQueue#flushDelayedKeyEvents", startedAt);
     }

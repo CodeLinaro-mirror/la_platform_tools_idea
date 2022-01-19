@@ -6,7 +6,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import training.FeaturesTrainerIcons
 import training.learn.CourseManager
 import training.learn.lesson.LessonManager
-import training.statistic.LessonStartingWay
 import training.statistic.StatisticBase
 import training.ui.LearningUiManager
 
@@ -15,7 +14,7 @@ private class RestartLessonAction : AnAction(FeaturesTrainerIcons.Img.ResetLesso
     val activeToolWindow = LearningUiManager.activeToolWindow ?: return
     val lesson = LessonManager.instance.currentLesson ?: return
     StatisticBase.logLessonStopped(StatisticBase.LessonStopReason.RESTART)
-    CourseManager.instance.openLesson(activeToolWindow.project, lesson, LessonStartingWay.RESTART_BUTTON)
+    CourseManager.instance.openLesson(activeToolWindow.project, lesson)
   }
 
   override fun update(e: AnActionEvent) {

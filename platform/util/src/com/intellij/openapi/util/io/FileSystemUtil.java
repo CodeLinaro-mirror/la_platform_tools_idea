@@ -52,13 +52,15 @@ public final class FileSystemUtil {
 
   private static final Mediator ourMediator = computeMediator();
 
-  static @NotNull Mediator computeMediator() {
+  @NotNull
+  static Mediator computeMediator() {
     if (!Boolean.getBoolean(FORCE_USE_NIO2_KEY)) {
       try {
         if (SystemInfo.isWindows && IdeaWin32.isAvailable()) {
           return check(new IdeaWin32MediatorImpl());
         }
-        else if ((SystemInfo.isLinux || SystemInfo.isMac) && CpuArch.isIntel64() && JnaLoader.isLoaded() && JnaLoader.isSupportsDirectMapping()) {
+        else if ((SystemInfo.isLinux || SystemInfo.isMac && CpuArch.isIntel64() || SystemInfo.isSolaris || SystemInfo.isFreeBSD) &&
+                 JnaLoader.isLoaded() && JnaLoader.isSupportsDirectMapping()) {
           return check(new JnaUnixMediatorImpl());
         }
       }
@@ -70,7 +72,8 @@ public final class FileSystemUtil {
     return new Nio2MediatorImpl();
   }
 
-  private static Mediator check(Mediator mediator) throws Exception {
+  @NotNull
+  private static Mediator check(@NotNull Mediator mediator) throws Exception {
     String quickTestPath = SystemInfo.isWindows ? "C:\\" : "/";
     mediator.getAttributes(quickTestPath);
     return mediator;
@@ -148,7 +151,8 @@ public final class FileSystemUtil {
   }
 
   /**
-   * Gives the second file permissions of the first one if possible; returns {@code true} on success; no-op on Windows.
+   * Gives the second file permissions of the first one if possible; returns true if succeed.
+   * Will do nothing on Windows.
    */
   public static boolean clonePermissions(@NotNull String source, @NotNull String target) {
     try {
@@ -161,7 +165,8 @@ public final class FileSystemUtil {
   }
 
   /**
-   * Gives the second file permissions of the first one if possible; returns {@code true} on success; no-op on Windows.
+   * Gives the second file permissions to execute of the first one if possible; returns true if succeed.
+   * Will do nothing on Windows.
    */
   public static boolean clonePermissionsToExecute(@NotNull String source, @NotNull String target) {
     try {
@@ -247,8 +252,17 @@ public final class FileSystemUtil {
       static native int __xstat64(int ver, String path, Pointer stat);
     }
 
+    private static final int[] LINUX_32 =  {16, 44, 72, 24, 28};
     private static final int[] LINUX_64 =  {24, 48, 88, 28, 32};
+    private static final int[] LNX_PPC32 = {16, 48, 80, 24, 28};
+    private static final int[] LNX_PPC64 = LINUX_64;
+    private static final int[] LNX_ARM32 = LNX_PPC32;
+    private static final int[] BSD_32 =    { 8, 48, 32, 12, 16};
     private static final int[] BSD_64 =    { 8, 72, 40, 12, 16};
+    private static final int[] BSD_32_12 = {24, 96, 64, 28, 32};
+    private static final int[] BSD_64_12 = {24,112, 64, 28, 32};
+    private static final int[] SUN_OS_32 = {20, 48, 64, 28, 32};
+    private static final int[] SUN_OS_64 = {16, 40, 64, 24, 28};
 
     private static final int STAT_VER = 1;
     private static final int OFF_MODE = 0;
@@ -266,9 +280,17 @@ public final class FileSystemUtil {
     JnaUnixMediatorImpl() {
       assert JnaLoader.isSupportsDirectMapping() : "Direct mapping not available on " + Platform.RESOURCE_PREFIX;
 
-      if ("linux-x86-64".equals(Platform.RESOURCE_PREFIX)) myOffsets = LINUX_64;
-      else if ("darwin-x86-64".equals(Platform.RESOURCE_PREFIX)) myOffsets = BSD_64;
-      else throw new IllegalStateException("Unsupported OS/arch: " + Platform.RESOURCE_PREFIX);
+      if ("linux-x86".equals(Platform.RESOURCE_PREFIX)) myOffsets = LINUX_32;
+      else if ("linux-x86-64".equals(Platform.RESOURCE_PREFIX)) myOffsets = LINUX_64;
+      else if ("linux-arm".equals(Platform.RESOURCE_PREFIX)) myOffsets = LNX_ARM32;
+      else if ("linux-ppc".equals(Platform.RESOURCE_PREFIX)) myOffsets = LNX_PPC32;
+      else if ("linux-ppc64le".equals(Platform.RESOURCE_PREFIX)) myOffsets = LNX_PPC64;
+      else if ("darwin".equals(Platform.RESOURCE_PREFIX)) myOffsets = BSD_64;
+      else if ("freebsd-x86".equals(Platform.RESOURCE_PREFIX)) myOffsets = SystemInfo.isOsVersionAtLeast("12") ? BSD_32_12 : BSD_32;
+      else if ("freebsd-x86-64".equals(Platform.RESOURCE_PREFIX)) myOffsets = SystemInfo.isOsVersionAtLeast("12") ? BSD_64_12 : BSD_64;
+      else if ("sunos-x86".equals(Platform.RESOURCE_PREFIX)) myOffsets = SUN_OS_32;
+      else if ("sunos-x86-64".equals(Platform.RESOURCE_PREFIX)) myOffsets = SUN_OS_64;
+      else throw new IllegalStateException("Unsupported OS/arch: " + SystemInfo.OS_NAME + "/" + SystemInfo.OS_ARCH);
 
       Map<String, String> options = Collections.singletonMap(Library.OPTION_STRING_ENCODING, CharsetToolkit.getPlatformCharset().name());
       NativeLibrary lib = NativeLibrary.getInstance("c", options);
@@ -463,21 +485,12 @@ public final class FileSystemUtil {
   static @NotNull FileAttributes.CaseSensitivity readParentCaseSensitivityByJavaIO(@NotNull File anyChild) {
     // try to query this path by different-case strings and deduce case sensitivity from the answers
     if (!anyChild.exists()) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("readParentCaseSensitivityByJavaIO(" + anyChild + "): does not exist");
-      }
       return FileAttributes.CaseSensitivity.UNKNOWN;
     }
-
     File parent = anyChild.getParentFile();
     if (parent == null) {
       String probe = findCaseToggleableChild(anyChild);
-      if (probe == null) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("readParentCaseSensitivityByJavaIO(" + anyChild + "): no toggleable child, parent=null isDirectory=" + anyChild.isDirectory());
-        }
-        return FileAttributes.CaseSensitivity.UNKNOWN;
-      }
+      if (probe == null) return FileAttributes.CaseSensitivity.UNKNOWN;
       parent = anyChild;
       anyChild = new File(parent, probe);
     }
@@ -488,21 +501,7 @@ public final class FileSystemUtil {
       // we have a bad case of "123" file
       name = findCaseToggleableChild(parent);
       if (name == null) {
-        if (LOG.isDebugEnabled()) {
-          String[] list = null;
-          try {
-            list = parent.list();
-          }
-          catch (Exception ignored) { }
-          if (list == null) {
-            LOG.debug("readParentCaseSensitivityByJavaIO(" + anyChild + "): parent.list() failed");
-          }
-          else {
-            LOG.debug("readParentCaseSensitivityByJavaIO(" + anyChild + "): no toggleable child among " + list.length + " siblings");
-            if (LOG.isTraceEnabled()) LOG.trace("readParentCaseSensitivityByJavaIO(" + anyChild + "): " + Arrays.toString(list));
-          }
-        }
-        // we can't find any file with a case-toggleable name
+        // we can't find any file with toggleable case.
         return FileAttributes.CaseSensitivity.UNKNOWN;
       }
       altName = toggleCase(name);
@@ -516,7 +515,7 @@ public final class FileSystemUtil {
         // couldn't file this file by other-cased name, so deduce FS is sensitive
         return FileAttributes.CaseSensitivity.SENSITIVE;
       }
-      // if changed-case file is found, there is a slim chance that the FS is still case-sensitive, but there are two files with different case
+      // if changed-case file found, there is a slim chance that the FS is still case-sensitive but there are two files with different case
       File altCanonicalFile = new File(altPath).getCanonicalFile();
       String altCanonicalName = altCanonicalFile.getName();
       if (altCanonicalName.equals(name) || altCanonicalName.equals(anyChild.getCanonicalFile().getName())) {
@@ -525,11 +524,10 @@ public final class FileSystemUtil {
       }
     }
     catch (IOException e) {
-      LOG.debug("readParentCaseSensitivityByJavaIO(" + anyChild + ")", e);
       return FileAttributes.CaseSensitivity.UNKNOWN;
     }
 
-    // it's a different file indeed; tough luck
+    // it's the different file indeed, what a bad luck
     return FileAttributes.CaseSensitivity.SENSITIVE;
   }
 
@@ -566,8 +564,8 @@ public final class FileSystemUtil {
   }
 
   // return child which name can be used for querying by different-case names (e.g "child.txt" vs "CHILD.TXT")
-  // or null if there are none (e.g., there's only one child "123.456").
-  private static @Nullable String findCaseToggleableChild(@NotNull File dir) {
+  // or null if there are none (e.g there's only one child "123.456").
+  private static @Nullable String findCaseToggleableChild(File dir) {
     try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir.toPath())) {
       for (Path path : stream) {
         String name = path.getFileName().toString();
@@ -661,12 +659,10 @@ public final class FileSystemUtil {
       byte[] buffer = path.getBytes(StandardCharsets.UTF_8);
       CoreFoundation.CFTypeRef url = cf.CFURLCreateFromFileSystemRepresentation(null, buffer, buffer.length, true);
       try {
-        PointerByReference resultPtr = new PointerByReference(), errorPtr = new PointerByReference();
+        PointerByReference resultPtr = new PointerByReference();
         Pointer result;
-        if (!cf.CFURLCopyResourcePropertyForKey(url, CoreFoundation.kCFURLVolumeSupportsCaseSensitiveNamesKey, resultPtr, errorPtr)) {
-          Pointer error = errorPtr.getValue();
-          String description = error != null ? cf.CFErrorGetDomain(error).stringValue() + '/' + cf.CFErrorGetCode(error) : "error";
-          LOG.warn("CFURLCopyResourcePropertyForKey(" + path + "): " + description);
+        if (!cf.CFURLCopyResourcePropertyForKey(url, CoreFoundation.kCFURLVolumeSupportsCaseSensitiveNamesKey, resultPtr, null)) {
+          LOG.warn("CFURLCopyResourcePropertyForKey(" + path + "): error");
         }
         else if ((result = resultPtr.getValue()) == null) {
           LOG.info("CFURLCopyResourcePropertyForKey(" + path + "): property not available");
@@ -693,10 +689,7 @@ public final class FileSystemUtil {
     CFStringRef kCFURLVolumeSupportsCaseSensitiveNamesKey = CFStringRef.createCFString("NSURLVolumeSupportsCaseSensitiveNamesKey");
 
     CFTypeRef CFURLCreateFromFileSystemRepresentation(CFAllocatorRef allocator, byte[] buffer, long bufLen, boolean isDirectory);
-    boolean CFURLCopyResourcePropertyForKey(CFTypeRef url, CFStringRef key, PointerByReference propertyValueTypeRefPtr, PointerByReference error);
-
-    CFStringRef CFErrorGetDomain(Pointer errorRef);
-    CFIndex CFErrorGetCode(Pointer errorRef);
+    boolean CFURLCopyResourcePropertyForKey(CFTypeRef url, CFStringRef key, PointerByReference propertyValueTypeRefPtr, Pointer error);
   }
   //</editor-fold>
 

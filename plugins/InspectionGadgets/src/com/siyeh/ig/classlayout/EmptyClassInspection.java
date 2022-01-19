@@ -107,15 +107,8 @@ public class EmptyClassInspection extends BaseInspection {
       PsiElement element = descriptor.getPsiElement();
       if (element == null) return;
       PsiElement parent = element.getParent();
-      final PsiAnonymousClass aClass;
-      if (parent instanceof PsiAnonymousClass) {
-        aClass = (PsiAnonymousClass)parent;
-      } else if (parent instanceof PsiEnumConstant) {
-        aClass = ((PsiEnumConstant)parent).getInitializingClass();
-        if (aClass == null) return;
-      } else {
-        return;
-      }
+      if (!(parent instanceof PsiAnonymousClass)) return;
+      PsiAnonymousClass aClass = (PsiAnonymousClass)parent;
       PsiElement lBrace = aClass.getLBrace();
       PsiElement rBrace = aClass.getRBrace();
       if (lBrace != null && rBrace != null) {

@@ -40,13 +40,13 @@ public class PluginManagerConfigurableTreeRenderer extends AncestorListenerAdapt
   }
 
   @Override
-  public @Nullable Pair<Component, Layout> getDecorator(@NotNull JComponent tree,
+  public @Nullable Pair<Component, Layout> getDecorator(@NotNull SimpleTree tree,
                                                         @Nullable UnnamedConfigurable configurable,
                                                         boolean selected) {
     if (myTree == null) {
       myService = PluginUpdatesService.connectWithCounter(this);
       tree.addAncestorListener(this);
-      myTree = (SimpleTree)tree;
+      myTree = tree;
     }
 
     Icon icon = DynamicBundle.LanguageBundleEP.EP_NAME.hasAnyExtensions() ? AllIcons.General.LocalizationSettings : null;

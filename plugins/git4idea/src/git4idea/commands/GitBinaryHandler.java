@@ -17,7 +17,6 @@ package git4idea.commands;
 
 import com.intellij.execution.ExecutionException;
 import com.intellij.ide.IdeBundle;
-import com.intellij.ide.IdeCoreBundle;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -142,7 +141,7 @@ public class GitBinaryHandler extends GitHandler {
           String message = new String(myStderr.toByteArray(), cs);
           if (message.isEmpty()) {
             if (myException.get() != null) {
-              message = IdeCoreBundle.message("finished.with.exit.code.text.message", exitCode);
+              message = IdeBundle.message("finished.with.exit.code.text.message", exitCode);
             }
             else {
               message = null;

@@ -33,7 +33,6 @@ import java.util.function.Predicate;
  */
 public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataConsumer {
   private static final boolean isParallelCapable = registerAsParallelCapable();
-  private static final ClassLoader appClassLoader = UrlClassLoader.class.getClassLoader();
 
   private static final ThreadLocal<Boolean> skipFindingResource = new ThreadLocal<>();
 
@@ -56,9 +55,10 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   /**
-   * There are two definitions of the `ClassPath` class: one from the app class loader that is used by bootstrap,
-   * and another one from the core class loader produced as a result of creating of plugin class loader.
-   * The core class loader doesn't use bootstrap class loader as a parent - instead, only platform classloader is used (only JRE classes).
+   * There are two definitions of ClassPath class.
+   * First one from app class loader that used by bootstrap.
+   * Another one from core class loader that created as result of creating of plugin class loader.
+   * Core class loader doesn't use bootstrap class loader as parent, instead, only platform classloader is used (only JDK classes).
    */
   @ApiStatus.Internal
   public final @NotNull ClassPath getClassPath() {
@@ -103,7 +103,8 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
       f.setAccessible(true);
       f.set(classLoader, f.get(parent));
     }
-    catch (Exception ignored) { }
+    catch (Exception ignored) {
+    }
   }
 
   protected static @NotNull UrlClassLoader.Builder createDefaultBuilderForJdk(@NotNull ClassLoader parent) {
@@ -198,7 +199,8 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
       try {
         result.add(file.toUri().toURL());
       }
-      catch (MalformedURLException ignored) { }
+      catch (MalformedURLException ignored) {
+      }
     }
     return result;
   }
@@ -214,10 +216,6 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
 
   @Override
   protected Class<?> findClass(@NotNull String name) throws ClassNotFoundException {
-    if (name.startsWith("com.intellij.util.lang.")) {
-      return appClassLoader.loadClass(name);
-    }
-
     Class<?> clazz;
     try {
       clazz = classPath.findClass(name, classDataConsumer);
@@ -231,14 +229,14 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     return clazz;
   }
 
-  private void definePackageIfNeeded(String name, Loader loader) throws IOException {
+  private void definePackageIfNeeded(@NotNull String name, Loader loader) throws IOException {
     int lastDotIndex = name.lastIndexOf('.');
     if (lastDotIndex == -1) {
       return;
     }
 
     String packageName = name.substring(0, lastDotIndex);
-    // check if the package is already loaded
+    // check if package already loaded
     if (isPackageDefined(packageName)) {
       return;
     }
@@ -260,12 +258,12 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
       }
     }
     catch (IllegalArgumentException ignore) {
-      // do nothing, the package is already defined by another thread
+      // do nothing, package already defined by some another thread
     }
   }
 
-  @SuppressWarnings("deprecation")
   protected boolean isPackageDefined(String packageName) {
+    //noinspection deprecation
     return getPackage(packageName) != null;
   }
 
@@ -279,13 +277,15 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   @Override
-  public Class<?> consumeClassData(@NotNull String name, byte[] data, Loader loader, @Nullable ProtectionDomain protectionDomain) throws IOException {
+  public Class<?> consumeClassData(@NotNull String name, byte[] data, Loader loader, @Nullable ProtectionDomain protectionDomain)
+    throws IOException {
     definePackageIfNeeded(name, loader);
     return super.defineClass(name, data, 0, data.length, protectionDomain == null ? getProtectionDomain() : protectionDomain);
   }
 
   @Override
-  public Class<?> consumeClassData(@NotNull String name, ByteBuffer data, Loader loader, @Nullable ProtectionDomain protectionDomain) throws IOException {
+  public Class<?> consumeClassData(@NotNull String name, ByteBuffer data, Loader loader, @Nullable ProtectionDomain protectionDomain)
+    throws IOException {
     definePackageIfNeeded(name, loader);
     return super.defineClass(name, data, protectionDomain == null ? getProtectionDomain() : protectionDomain);
   }
@@ -331,13 +331,15 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     return null;
   }
 
-  private @Nullable Resource doFindResource(String name) {
+  private @Nullable Resource doFindResource(@NotNull String name) {
     String canonicalPath = toCanonicalPath(name);
     Resource resource = classPath.findResource(canonicalPath);
-    if (resource == null && canonicalPath.startsWith("/") && classPath.findResource(canonicalPath.substring(1)) != null) {
-      // reporting malformed paths only when there's a resource at the right one - which is rarely the case
-      // (see also `PluginClassLoader#doFindResource`)
-      logError("Calling `ClassLoader#getResource` with leading slash doesn't work; strip", new IllegalArgumentException(name));
+    if (resource == null && canonicalPath.startsWith("/")) {
+      //noinspection SpellCheckingInspection
+      if (!canonicalPath.startsWith("/org/bridj/")) {
+        logError("Do not request resource from classloader using path with leading slash", new IllegalArgumentException(name));
+      }
+      resource = classPath.findResource(canonicalPath.substring(1));
     }
     return resource;
   }
@@ -359,6 +361,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   @ApiStatus.Internal
+  @ApiStatus.Experimental
   public @Nullable BiPredicate<String, Boolean> resolveScopeManager;
 
   public @Nullable Class<?> loadClassInsideSelf(@NotNull String name, boolean forceLoadFromSubPluginClassloader) throws IOException {
@@ -375,7 +378,8 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
           try {
             c = parent.loadClass(name);
           }
-          catch (ClassNotFoundException ignore) { }
+          catch (ClassNotFoundException ignore) {
+          }
         }
 
         if (c != null) {
@@ -388,9 +392,9 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
 
   /**
    * An interface for a pool to store internal caches that can be shared between different class loaders,
-   * if they contain the same URLs in their class paths.
-   * <p>
-   * The implementation is subject to change; one shouldn't rely on it.
+   * if they contain the same URLs in their class paths.<p/>
+   *
+   * The implementation is subject to change so one shouldn't rely on it.
    *
    * @see #createCachePool()
    * @see Builder#useCache
@@ -421,7 +425,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
       }
     }
 
-    // trying to speed up the common case when there are no "//" or "/."
+    // trying to speedup the common case when there are no "//" or "/."
     int index = -1;
     do {
       index = path.indexOf('/', index + 1);
@@ -475,7 +479,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   @SuppressWarnings("DuplicatedCode")
-  private static void processDots(StringBuilder result, int dots, int start) {
+  private static void processDots(@NotNull StringBuilder result, int dots, int start) {
     if (dots == 2) {
       int pos = -1;
       if (!StringUtilRt.endsWith(result, "/../") && !"../".contentEquals(result)) {
@@ -484,10 +488,10 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
           ++pos;  // separator found, trim to next char
         }
         else if (start > 0) {
-          pos = start;  // the path is absolute, trim to root ('/..' -> '/')
+          pos = start;  // path is absolute, trim to root ('/..' -> '/')
         }
         else if (result.length() > 0) {
-          pos = 0;  // the path is relative, trim to default ('a/..' -> '')
+          pos = 0;  // path is relative, trim to default ('a/..' -> '')
         }
       }
       if (pos >= 0) {
@@ -506,7 +510,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
   }
 
   @SuppressWarnings("DuplicatedCode")
-  private static int processRoot(String path, StringBuilder result) {
+  private static int processRoot(@NotNull String path, @NotNull StringBuilder result) {
     if (!path.isEmpty() && path.charAt(0) == '/') {
       result.append('/');
       return 1;
@@ -599,10 +603,9 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     }
 
     /**
-     * `ZipFile` handles opened in `JarLoader` will be kept in as soft references.
-     * Depending on OS, the option significantly speeds up classloading from libraries.
-     * Caveat: on Windows, unclosed handle locks a file, preventing its modification.
-     * Thus, the option is recommended when .jar files are not modified or a process that uses this option is transient.
+     * ZipFile handles opened in JarLoader will be kept in SoftReference. Depending on OS, the option significantly speeds up classloading
+     * from libraries. Caveat: for Windows opened handle will lock the file preventing its modification.
+     * Thus, the option is recommended when jars are not modified or process that uses this option is transient.
      */
     public @NotNull UrlClassLoader.Builder allowLock(boolean lockJars) {
       this.lockJars = lockJars;
@@ -610,7 +613,7 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     }
 
     /**
-     * Build a backward index of packages to class/resource names; allows to reduce I/O during classloading.
+     * Build backward index of packages / class or resource names that allows avoiding IO during classloading.
      */
     public @NotNull UrlClassLoader.Builder useCache() {
       useCache = true;
@@ -623,13 +626,13 @@ public class UrlClassLoader extends ClassLoader implements ClassPath.ClassDataCo
     }
 
     /**
-     * `FileLoader` will save a list of files/packages under its root and use this information instead of walking files.
-     * Should be used only when the caches can be properly invalidated (when e.g. a new file appears under `FileLoader`'s root).
-     * Currently, the flag is used for faster unit tests / debug IDE instance, because IDEA's build process (as of 14.1) ensures deletion of
+     * FileLoader will save list of files / packages under its root and use this information instead of walking filesystem for
+     * speedier classloading. Should be used only when the caches could be properly invalidated, e.g. when new file appears under
+     * FileLoader's root. Currently, the flag is used for faster unit test / developed Idea running, because Idea's make (as of 14.1) ensures deletion of
      * such information upon appearing new file for output root.
-     * <p>
-     * N.b. IDEA's build process does not ensure deletion of cached information upon deletion of some file under a local root,
-     * but false positives are not a logical error, since code is prepared for that and disk access is performed upon class/resource loading.
+     * N.b. Idea make does not ensure deletion of cached information upon deletion of some file under local root but false positives are not a
+     * logical error since code is prepared for that and disk access is performed upon class / resource loading.
+     * See also Builder#usePersistentClasspathIndexForLocalClassDirectories.
      */
     public @NotNull UrlClassLoader.Builder usePersistentClasspathIndexForLocalClassDirectories() {
       this.isClassPathIndexEnabled = isClassPathIndexEnabledGlobalValue;

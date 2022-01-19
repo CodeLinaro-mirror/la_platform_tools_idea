@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.terminal.vfs;
 
 import com.intellij.codeHighlighting.BackgroundEditorHighlighter;
@@ -13,14 +13,18 @@ import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.UserDataHolderBase;
-import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.terminal.JBTerminalWidget;
+import com.jediterm.terminal.ui.TerminalAction;
+import com.jediterm.terminal.ui.TerminalActionProviderBase;
 import com.jediterm.terminal.ui.TerminalWidgetListener;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeListener;
+import java.util.Collections;
+import java.util.List;
 
 public final class TerminalSessionEditor extends UserDataHolderBase implements FileEditor {
   private static final Logger LOG = Logger.getInstance(TerminalSessionEditor.class);
@@ -43,8 +47,9 @@ public final class TerminalSessionEditor extends UserDataHolderBase implements F
     myFile.getTerminalWidget().addListener(myListener);
   }
 
+  @NotNull
   @Override
-  public @NotNull JComponent getComponent() {
+  public JComponent getComponent() {
     return myFile.getTerminalWidget();
   }
 
@@ -53,13 +58,16 @@ public final class TerminalSessionEditor extends UserDataHolderBase implements F
     return myFile.getTerminalWidget();
   }
 
+  @NotNull
   @Override
-  public @NotNull String getName() {
+  public String getName() {
     return myFile.getName();
   }
 
   @Override
-  public void setState(@NotNull FileEditorState state) { }
+  public void setState(@NotNull FileEditorState state) {
+
+  }
 
   @Override
   public boolean isModified() {
@@ -72,30 +80,35 @@ public final class TerminalSessionEditor extends UserDataHolderBase implements F
   }
 
   @Override
-  public void selectNotify() { }
+  public void selectNotify() {
 
-  @Override
-  public void deselectNotify() { }
-
-  @Override
-  public void addPropertyChangeListener(@NotNull PropertyChangeListener listener) { }
-
-  @Override
-  public void removePropertyChangeListener(@NotNull PropertyChangeListener listener) { }
-
-  @Override
-  public @Nullable BackgroundEditorHighlighter getBackgroundHighlighter() {
-    return null;
   }
 
   @Override
-  public @Nullable FileEditorLocation getCurrentLocation() {
-    return null;
+  public void deselectNotify() {
+
   }
 
   @Override
-  public VirtualFile getFile() {
-    return myFile;
+  public void addPropertyChangeListener(@NotNull PropertyChangeListener listener) {
+
+  }
+
+  @Override
+  public void removePropertyChangeListener(@NotNull PropertyChangeListener listener) {
+
+  }
+
+  @Nullable
+  @Override
+  public BackgroundEditorHighlighter getBackgroundHighlighter() {
+    return null;
+  }
+
+  @Nullable
+  @Override
+  public FileEditorLocation getCurrentLocation() {
+    return null;
   }
 
   @Override

@@ -6,8 +6,6 @@ import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.UnorderedPair
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vcs.FilePath
-import com.intellij.util.containers.CollectionFactory
-import com.intellij.util.containers.HashingStrategy
 import com.intellij.util.containers.MultiMap
 import com.intellij.vcs.log.data.index.VcsLogPathsIndex.ChangeKind
 import com.intellij.vcs.log.graph.api.LinearGraph
@@ -18,27 +16,26 @@ import com.intellij.vcs.log.graph.impl.facade.*
 import com.intellij.vcs.log.graph.utils.LinearGraphUtils
 import com.intellij.vcs.log.graph.utils.isAncestor
 import com.intellij.vcsUtil.VcsFileUtil
+import it.unimi.dsi.fastutil.Hash
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import it.unimi.dsi.fastutil.ints.IntSet
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet
 import java.util.function.BiConsumer
 
 class FileHistory internal constructor(val commitsToPathsMap: Map<Int, MaybeDeletedFilePath>,
                                        internal val processedAdditionsDeletions: Set<AdditionDeletion> = emptySet(),
                                        internal val unmatchedAdditionsDeletions: Set<AdditionDeletion> = emptySet(),
-                                       internal val commitToRename: MultiMap<UnorderedPair<Int>, Rename> = MultiMap.empty()) {
-  companion object {
-    internal val EMPTY = FileHistory(emptyMap())
-  }
-}
+                                       internal val commitToRename: MultiMap<UnorderedPair<Int>, Rename> = MultiMap.empty())
+
+internal val EMPTY_HISTORY = FileHistory(emptyMap())
 
 internal class FileHistoryBuilder(private val startCommit: Int?,
                                   private val startPath: FilePath,
                                   private val fileHistoryData: FileHistoryData,
                                   private val oldFileHistory: FileHistory,
-                                  private val commitsToHide: Set<Int> = emptySet(),
-                                  private val removeTrivialMerges: Boolean = true,
-                                  private val refine: Boolean = true) : BiConsumer<LinearGraphController, PermanentGraphInfo<Int>> {
+                                  private val commitsToHide: Set<Int> = emptySet()) : BiConsumer<LinearGraphController, PermanentGraphInfo<Int>> {
   private val pathsMap = mutableMapOf<Int, MaybeDeletedFilePath>()
   private val processedAdditionsDeletions = mutableSetOf<AdditionDeletion>()
   private val unmatchedAdditionsDeletions = mutableSetOf<AdditionDeletion>()
@@ -48,8 +45,7 @@ internal class FileHistoryBuilder(private val startCommit: Int?,
     get() = FileHistory(pathsMap, processedAdditionsDeletions, unmatchedAdditionsDeletions, commitToRename)
 
   override fun accept(controller: LinearGraphController, permanentGraphInfo: PermanentGraphInfo<Int>) {
-    val needToRepeat = removeTrivialMerges &&
-                       removeTrivialMerges(controller, permanentGraphInfo, fileHistoryData, this::reportTrivialMerges)
+    val needToRepeat = removeTrivialMerges(controller, permanentGraphInfo, fileHistoryData, this::reportTrivialMerges)
 
     pathsMap.putAll(refine(controller, startCommit, permanentGraphInfo))
 
@@ -91,7 +87,7 @@ internal class FileHistoryBuilder(private val startCommit: Int?,
                      startCommit: Int?,
                      permanentGraphInfo: PermanentGraphInfo<Int>): Map<Int, MaybeDeletedFilePath> {
     val visibleLinearGraph = controller.compiledGraph
-    if (visibleLinearGraph.nodesCount() > 0 && fileHistoryData.hasRenames && refine) {
+    if (visibleLinearGraph.nodesCount() > 0 && fileHistoryData.hasRenames && Registry.`is`("vcs.history.refine")) {
 
       val (row, path) = startCommit?.let {
         findAncestorRowAffectingFile(startCommit, visibleLinearGraph, permanentGraphInfo)
@@ -132,14 +128,6 @@ internal class FileHistoryBuilder(private val startCommit: Int?,
 
   companion object {
     private val LOG = Logger.getInstance(FileHistoryBuilder::class.java)
-
-    @JvmField
-    internal val removeTrivialMergesValue = Registry.get("vcs.history.remove.trivial.merges")
-    @JvmField
-    internal val refineValue = Registry.get("vcs.history.refine")
-
-    internal val isRemoveTrivialMerges get() = removeTrivialMergesValue.asBoolean()
-    internal val isRefine get() = refineValue.asBoolean()
   }
 }
 
@@ -218,7 +206,7 @@ private fun hideTrivialMerge(collapsedGraph: CollapsedGraph, graph: LiteLinearGr
 
 abstract class FileHistoryData(internal val startPaths: Collection<FilePath>) {
   // file -> (commitId -> (parent commitId -> change kind))
-  private val affectedCommits = CollectionFactory.createCustomHashingStrategyMap<FilePath, Int2ObjectMap<Int2ObjectMap<ChangeKind>>>(FILE_PATH_HASHING_STRATEGY)
+  private val affectedCommits = Object2ObjectOpenCustomHashMap<FilePath, Int2ObjectMap<Int2ObjectMap<ChangeKind>>>(FILE_PATH_HASHING_STRATEGY)
   internal val commitToRename = MultiMap<UnorderedPair<Int>, Rename>()
 
   val isEmpty: Boolean
@@ -231,11 +219,11 @@ abstract class FileHistoryData(internal val startPaths: Collection<FilePath>) {
   constructor(startPath: FilePath) : this(listOf(startPath))
 
   internal fun build(oldRenames: MultiMap<UnorderedPair<Int>, Rename>): FileHistoryData {
-    val newPaths = CollectionFactory.createCustomHashingStrategySet(FILE_PATH_HASHING_STRATEGY)
+    val newPaths = ObjectOpenCustomHashSet(FILE_PATH_HASHING_STRATEGY)
     newPaths.addAll(startPaths)
 
     while (newPaths.isNotEmpty()) {
-      val commits = CollectionFactory.createCustomHashingStrategyMap<FilePath, Int2ObjectMap<Int2ObjectMap<ChangeKind>>>(FILE_PATH_HASHING_STRATEGY)
+      val commits = Object2ObjectOpenCustomHashMap<FilePath, Int2ObjectMap<Int2ObjectMap<ChangeKind>>>(FILE_PATH_HASHING_STRATEGY)
       newPaths.associateWithTo(commits) { getAffectedCommits(it) }
       affectedCommits.putAll(commits)
       newPaths.clear()
@@ -497,6 +485,6 @@ private fun <E, R> Collection<E>.firstNotNull(mapping: (E) -> R): R? {
 }
 
 @JvmField
-val FILE_PATH_HASHING_STRATEGY: HashingStrategy<FilePath> = VcsFileUtil.CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY
+val FILE_PATH_HASHING_STRATEGY: Hash.Strategy<FilePath> = VcsFileUtil.CASE_SENSITIVE_FILE_PATH_HASHING_STRATEGY
 
 data class EdgeData<T>(val parent: T, val child: T)

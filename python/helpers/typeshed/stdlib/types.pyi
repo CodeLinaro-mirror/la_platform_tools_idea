@@ -1,4 +1,5 @@
 import sys
+import typing
 from importlib.abc import _LoaderProtocol
 from importlib.machinery import ModuleSpec
 from typing import (
@@ -6,18 +7,16 @@ from typing import (
     AsyncGenerator,
     Awaitable,
     Callable,
-    Coroutine,
+    Dict,
     Generator,
     Generic,
-    ItemsView,
     Iterable,
     Iterator,
-    KeysView,
     Mapping,
+    Optional,
     Tuple,
     Type,
     TypeVar,
-    ValuesView,
     overload,
 )
 from typing_extensions import Literal, final
@@ -25,44 +24,38 @@ from typing_extensions import Literal, final
 # Note, all classes "defined" here require special handling.
 
 _T = TypeVar("_T")
-_T1 = TypeVar("_T1")
-_T2 = TypeVar("_T2")
 _T_co = TypeVar("_T_co", covariant=True)
 _T_contra = TypeVar("_T_contra", contravariant=True)
 _KT = TypeVar("_KT")
-_VT_co = TypeVar("_VT_co", covariant=True)
+_VT = TypeVar("_VT")
 _V_co = TypeVar("_V_co", covariant=True)
 
-@final
 class _Cell:
-    __hash__: None  # type: ignore
     cell_contents: Any
 
-@final
 class FunctionType:
-    __closure__: Tuple[_Cell, ...] | None
+    __closure__: Optional[Tuple[_Cell, ...]]
     __code__: CodeType
-    __defaults__: Tuple[Any, ...] | None
-    __dict__: dict[str, Any]
-    __globals__: dict[str, Any]
+    __defaults__: Optional[Tuple[Any, ...]]
+    __dict__: Dict[str, Any]
+    __globals__: Dict[str, Any]
     __name__: str
     __qualname__: str
-    __annotations__: dict[str, Any]
-    __kwdefaults__: dict[str, Any]
+    __annotations__: Dict[str, Any]
+    __kwdefaults__: Dict[str, Any]
     def __init__(
         self,
         code: CodeType,
-        globals: dict[str, Any],
-        name: str | None = ...,
-        argdefs: Tuple[object, ...] | None = ...,
-        closure: Tuple[_Cell, ...] | None = ...,
+        globals: Dict[str, Any],
+        name: Optional[str] = ...,
+        argdefs: Optional[Tuple[object, ...]] = ...,
+        closure: Optional[Tuple[_Cell, ...]] = ...,
     ) -> None: ...
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
-    def __get__(self, obj: object | None, type: type | None) -> MethodType: ...
+    def __get__(self, obj: Optional[object], type: Optional[type]) -> MethodType: ...
 
 LambdaType = FunctionType
 
-@final
 class CodeType:
     """Create a code object.  Not for the faint of heart."""
 
@@ -144,25 +137,14 @@ class CodeType:
             co_lnotab: bytes = ...,
         ) -> CodeType: ...
 
-@final
-class MappingProxyType(Mapping[_KT, _VT_co], Generic[_KT, _VT_co]):
-    __hash__: None  # type: ignore
-    def __init__(self, mapping: Mapping[_KT, _VT_co]) -> None: ...
-    def __getitem__(self, k: _KT) -> _VT_co: ...
+class MappingProxyType(Mapping[_KT, _VT], Generic[_KT, _VT]):
+    def __init__(self, mapping: Mapping[_KT, _VT]) -> None: ...
+    def __getitem__(self, k: _KT) -> _VT: ...
     def __iter__(self) -> Iterator[_KT]: ...
     def __len__(self) -> int: ...
-    def copy(self) -> dict[_KT, _VT_co]: ...
-    def keys(self) -> KeysView[_KT]: ...
-    def values(self) -> ValuesView[_VT_co]: ...
-    def items(self) -> ItemsView[_KT, _VT_co]: ...
-    if sys.version_info >= (3, 9):
-        def __class_getitem__(cls, item: Any) -> GenericAlias: ...
-        def __reversed__(self) -> Iterator[_KT]: ...
-        def __or__(self, __value: Mapping[_T1, _T2]) -> dict[_KT | _T1, _VT_co | _T2]: ...
-        def __ror__(self, __value: Mapping[_T1, _T2]) -> dict[_KT | _T1, _VT_co | _T2]: ...
+    def copy(self) -> Dict[_KT, _VT]: ...
 
 class SimpleNamespace:
-    __hash__: None  # type: ignore
     def __init__(self, **kwargs: Any) -> None: ...
     def __getattribute__(self, name: str) -> Any: ...
     def __setattr__(self, name: str, value: Any) -> None: ...
@@ -171,32 +153,30 @@ class SimpleNamespace:
 class ModuleType:
     __name__: str
     __file__: str
-    __dict__: dict[str, Any]
-    __loader__: _LoaderProtocol | None
-    __package__: str | None
-    __spec__: ModuleSpec | None
-    def __init__(self, name: str, doc: str | None = ...) -> None: ...
+    __dict__: Dict[str, Any]
+    __loader__: Optional[_LoaderProtocol]
+    __package__: Optional[str]
+    __spec__: Optional[ModuleSpec]
+    def __init__(self, name: str, doc: Optional[str] = ...) -> None: ...
 
-@final
 class GeneratorType(Generator[_T_co, _T_contra, _V_co]):
     gi_code: CodeType
     gi_frame: FrameType
     gi_running: bool
-    gi_yieldfrom: GeneratorType[_T_co, _T_contra, Any] | None
+    gi_yieldfrom: Optional[GeneratorType[_T_co, _T_contra, Any]]
     def __iter__(self) -> GeneratorType[_T_co, _T_contra, _V_co]: ...
     def __next__(self) -> _T_co: ...
     def close(self) -> None: ...
     def send(self, __arg: _T_contra) -> _T_co: ...
     @overload
     def throw(
-        self, __typ: Type[BaseException], __val: BaseException | object = ..., __tb: TracebackType | None = ...
+        self, __typ: Type[BaseException], __val: typing.Union[BaseException, object] = ..., __tb: Optional[TracebackType] = ...
     ) -> _T_co: ...
     @overload
-    def throw(self, __typ: BaseException, __val: None = ..., __tb: TracebackType | None = ...) -> _T_co: ...
+    def throw(self, __typ: BaseException, __val: None = ..., __tb: Optional[TracebackType] = ...) -> _T_co: ...
 
-@final
 class AsyncGeneratorType(AsyncGenerator[_T_co, _T_contra]):
-    ag_await: Awaitable[Any] | None
+    ag_await: Optional[Awaitable[Any]]
     ag_frame: FrameType
     ag_running: bool
     ag_code: CodeType
@@ -205,29 +185,25 @@ class AsyncGeneratorType(AsyncGenerator[_T_co, _T_contra]):
     def asend(self, __val: _T_contra) -> Awaitable[_T_co]: ...
     @overload
     def athrow(
-        self, __typ: Type[BaseException], __val: BaseException | object = ..., __tb: TracebackType | None = ...
+        self, __typ: Type[BaseException], __val: typing.Union[BaseException, object] = ..., __tb: Optional[TracebackType] = ...
     ) -> Awaitable[_T_co]: ...
     @overload
-    def athrow(self, __typ: BaseException, __val: None = ..., __tb: TracebackType | None = ...) -> Awaitable[_T_co]: ...
+    def athrow(self, __typ: BaseException, __val: None = ..., __tb: Optional[TracebackType] = ...) -> Awaitable[_T_co]: ...
     def aclose(self) -> Awaitable[None]: ...
 
-@final
-class CoroutineType(Coroutine[_T_co, _T_contra, _V_co]):
-    __name__: str
-    __qualname__: str
-    cr_await: Any | None
+class CoroutineType:
+    cr_await: Optional[Any]
     cr_code: CodeType
     cr_frame: FrameType
     cr_running: bool
     def close(self) -> None: ...
-    def __await__(self) -> Generator[Any, None, _V_co]: ...
-    def send(self, __arg: _T_contra) -> _T_co: ...
+    def send(self, __arg: Any) -> Any: ...
     @overload
     def throw(
-        self, __typ: Type[BaseException], __val: BaseException | object = ..., __tb: TracebackType | None = ...
-    ) -> _T_co: ...
+        self, __typ: Type[BaseException], __val: typing.Union[BaseException, object] = ..., __tb: Optional[TracebackType] = ...
+    ) -> Any: ...
     @overload
-    def throw(self, __typ: BaseException, __val: None = ..., __tb: TracebackType | None = ...) -> _T_co: ...
+    def throw(self, __typ: BaseException, __val: None = ..., __tb: Optional[TracebackType] = ...) -> Any: ...
 
 class _StaticFunctionType:
     """Fictional type to correct the type of MethodType.__func__.
@@ -243,22 +219,18 @@ class _StaticFunctionType:
     being bound as a method.
     """
 
-    def __get__(self, obj: object | None, type: type | None) -> FunctionType: ...
+    def __get__(self, obj: Optional[object], type: Optional[type]) -> FunctionType: ...
 
-@final
 class MethodType:
-    __closure__: Tuple[_Cell, ...] | None  # inherited from the added function
-    __defaults__: Tuple[Any, ...] | None  # inherited from the added function
     __func__: _StaticFunctionType
     __self__: object
-    __name__: str  # inherited from the added function
-    __qualname__: str  # inherited from the added function
+    __name__: str
+    __qualname__: str
     def __init__(self, func: Callable[..., Any], obj: object) -> None: ...
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
 
-@final
 class BuiltinFunctionType:
-    __self__: object | ModuleType
+    __self__: typing.Union[object, ModuleType]
     __name__: str
     __qualname__: str
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
@@ -266,14 +238,12 @@ class BuiltinFunctionType:
 BuiltinMethodType = BuiltinFunctionType
 
 if sys.version_info >= (3, 7):
-    @final
     class WrapperDescriptorType:
         __name__: str
         __qualname__: str
         __objclass__: type
         def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
         def __get__(self, obj: Any, type: type = ...) -> Any: ...
-    @final
     class MethodWrapperType:
         __self__: object
         __name__: str
@@ -282,14 +252,12 @@ if sys.version_info >= (3, 7):
         def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
         def __eq__(self, other: Any) -> bool: ...
         def __ne__(self, other: Any) -> bool: ...
-    @final
     class MethodDescriptorType:
         __name__: str
         __qualname__: str
         __objclass__: type
         def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
         def __get__(self, obj: Any, type: type = ...) -> Any: ...
-    @final
     class ClassMethodDescriptorType:
         __name__: str
         __qualname__: str
@@ -297,14 +265,13 @@ if sys.version_info >= (3, 7):
         def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
         def __get__(self, obj: Any, type: type = ...) -> Any: ...
 
-@final
 class TracebackType:
     if sys.version_info >= (3, 7):
-        def __init__(self, tb_next: TracebackType | None, tb_frame: FrameType, tb_lasti: int, tb_lineno: int) -> None: ...
-        tb_next: TracebackType | None
+        def __init__(self, tb_next: Optional[TracebackType], tb_frame: FrameType, tb_lasti: int, tb_lineno: int) -> None: ...
+        tb_next: Optional[TracebackType]
     else:
         @property
-        def tb_next(self) -> TracebackType | None: ...
+        def tb_next(self) -> Optional[TracebackType]: ...
     # the rest are read-only even in 3.7
     @property
     def tb_frame(self) -> FrameType: ...
@@ -313,22 +280,20 @@ class TracebackType:
     @property
     def tb_lineno(self) -> int: ...
 
-@final
 class FrameType:
-    f_back: FrameType | None
-    f_builtins: dict[str, Any]
+    f_back: Optional[FrameType]
+    f_builtins: Dict[str, Any]
     f_code: CodeType
-    f_globals: dict[str, Any]
+    f_globals: Dict[str, Any]
     f_lasti: int
     f_lineno: int
-    f_locals: dict[str, Any]
-    f_trace: Callable[[FrameType, str, Any], Any] | None
+    f_locals: Dict[str, Any]
+    f_trace: Optional[Callable[[FrameType, str, Any], Any]]
     if sys.version_info >= (3, 7):
         f_trace_lines: bool
         f_trace_opcodes: bool
     def clear(self) -> None: ...
 
-@final
 class GetSetDescriptorType:
     __name__: str
     __objclass__: type
@@ -336,7 +301,6 @@ class GetSetDescriptorType:
     def __set__(self, __instance: Any, __value: Any) -> None: ...
     def __delete__(self, obj: Any) -> None: ...
 
-@final
 class MemberDescriptorType:
     __name__: str
     __objclass__: type
@@ -348,8 +312,8 @@ if sys.version_info >= (3, 7):
     def new_class(
         name: str,
         bases: Iterable[object] = ...,
-        kwds: dict[str, Any] | None = ...,
-        exec_body: Callable[[dict[str, Any]], None] | None = ...,
+        kwds: Optional[Dict[str, Any]] = ...,
+        exec_body: Optional[Callable[[Dict[str, Any]], None]] = ...,
     ) -> type: ...
     def resolve_bases(bases: Iterable[object]) -> Tuple[Any, ...]: ...
 
@@ -357,21 +321,18 @@ else:
     def new_class(
         name: str,
         bases: Tuple[type, ...] = ...,
-        kwds: dict[str, Any] | None = ...,
-        exec_body: Callable[[dict[str, Any]], None] | None = ...,
+        kwds: Optional[Dict[str, Any]] = ...,
+        exec_body: Optional[Callable[[Dict[str, Any]], None]] = ...,
     ) -> type: ...
 
 def prepare_class(
-    name: str, bases: Tuple[type, ...] = ..., kwds: dict[str, Any] | None = ...
-) -> tuple[type, dict[str, Any], dict[str, Any]]: ...
+    name: str, bases: Tuple[type, ...] = ..., kwds: Optional[Dict[str, Any]] = ...
+) -> Tuple[type, Dict[str, Any], Dict[str, Any]]: ...
 
 # Actually a different type, but `property` is special and we want that too.
 DynamicClassAttribute = property
 
-def coroutine(func: Callable[..., Any]) -> CoroutineType[Any, Any, Any]: ...
-
-if sys.version_info >= (3, 8):
-    CellType = _Cell
+def coroutine(func: Callable[..., Any]) -> CoroutineType: ...
 
 if sys.version_info >= (3, 9):
     class GenericAlias:
@@ -389,8 +350,7 @@ if sys.version_info >= (3, 10):
     from builtins import _NotImplementedType
 
     NotImplementedType = _NotImplementedType  # noqa F811 from builtins
-    @final
-    class UnionType:
+    class Union:
         __args__: Tuple[Any, ...]
-        def __or__(self, obj: Any) -> UnionType: ...
-        def __ror__(self, obj: Any) -> UnionType: ...
+        def __or__(self, obj: Any) -> Union: ...
+        def __ror__(self, obj: Any) -> Union: ...

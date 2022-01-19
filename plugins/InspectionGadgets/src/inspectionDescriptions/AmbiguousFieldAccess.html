@@ -1,9 +1,11 @@
 <html>
 <body>
-Reports access to a superclass field from an anonymous, inner or local class,
-if a local variable, parameter, or field with the same name is available in the code surrounding the class.
-In this case it may seem that an element from the surrounding code is accessed,
-when in fact it is an access to a field from the superclass.
+Reports ambiguous access to a superclass field in an anonymous class,
+where a local variable, parameter, or field with the same name is available in the surrounding code.
+<p>
+  In this case it may seem that an element from the surrounding code is accessed,
+  when in fact it is an access to a field from the superclass that the anonymous class extends.
+</p>
 <p>
   To clarify the intent of the code, it is recommended to add an explicit
   <code>super</code> qualifier to the field access.
@@ -11,13 +13,13 @@ when in fact it is an access to a field from the superclass.
 <p><b>Example:</b></p>
 <pre><code>
     class First {
-      protected String ambiguous;
+      protected String test;
     }
     class Second {
-      void foo(String ambiguous) {
+      void foo(String test) {
         new First() {
           {
-            System.out.println(ambiguous); // the field is accessed, not the parameter
+            System.out.println(test); // the field is accessed, not the parameter
           }
         };
       }
@@ -26,13 +28,13 @@ when in fact it is an access to a field from the superclass.
 <p>After the quick-fix is applied:</p>
 <pre><code>
     class First {
-      protected String ambiguous;
+      protected String test;
     }
     class Second {
-      void foo(String ambiguous) {
+      void foo(String test) {
         new First() {
           {
-            System.out.println(super.ambiguous);
+            System.out.println(super.test);
           }
         };
       }

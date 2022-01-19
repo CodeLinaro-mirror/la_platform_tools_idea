@@ -1,4 +1,3 @@
-// SUGGESTED_NAMES: pair, aIntPair
 // COMPILER_ARGUMENTS: -XXLanguage:-NewInference
 // WITH_RUNTIME
 // PARAM_TYPES: A?, kotlin.Any?

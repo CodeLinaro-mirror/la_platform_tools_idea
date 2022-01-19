@@ -60,7 +60,7 @@ class OptionalExpectationInspection : AbstractKotlinInspection() {
                         displayedName,
                         platform.oldFashionedDescription
                     ),
-                    IntentionWrapper(CreateActualClassFix(classOrObject, actualModule, platform))
+                    IntentionWrapper(CreateActualClassFix(classOrObject, actualModule, platform), classOrObject.containingFile)
                 )
             }
         })

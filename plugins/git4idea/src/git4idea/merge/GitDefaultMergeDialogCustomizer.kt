@@ -16,7 +16,6 @@ import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.committed.CommittedChangesTreeBrowser
 import com.intellij.openapi.vcs.changes.ui.ChangeListViewerDialog
-import com.intellij.openapi.vcs.changes.ui.LoadingCommittedChangeListPanel
 import com.intellij.openapi.vcs.merge.MergeDialogCustomizer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.components.ActionLink
@@ -289,8 +288,8 @@ internal fun getTitleWithCommitDetailsCustomizer(
   @NlsSafe commit: String
 ) = DiffEditorTitleCustomizer {
   getTitleWithShowDetailsAction(title) {
-    val panel = LoadingCommittedChangeListPanel(repository.project)
-    panel.loadChangesInBackground {
+    val dlg = ChangeListViewerDialog(repository.project)
+    dlg.loadChangesInBackground {
       val changeList = GitChangeUtils.getRevisionChanges(
         repository.project,
         repository.root,
@@ -299,10 +298,8 @@ internal fun getTitleWithCommitDetailsCustomizer(
         false,
         false
       )
-      LoadingCommittedChangeListPanel.ChangelistData(changeList, file)
+      ChangeListViewerDialog.ChangelistData(changeList, file)
     }
-
-    val dlg = ChangeListViewerDialog(repository.project, panel)
     dlg.title = StringUtil.stripHtml(title, false)
     dlg.isModal = true
     dlg.show()

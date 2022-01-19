@@ -40,13 +40,7 @@ internal class ModuleResolutionFacadeImpl(
     override fun findModuleDescriptor(ideaModuleInfo: IdeaModuleInfo) = projectFacade.findModuleDescriptor(ideaModuleInfo)
 
     override fun analyze(element: KtElement, bodyResolveMode: BodyResolveMode): BindingContext {
-        ResolveInDispatchThreadManager.assertNoResolveInDispatchThread()
-
-        @OptIn(FrontendInternals::class)
-        val resolveElementCache = getFrontendService(element, ResolveElementCache::class.java)
-        return runWithCancellationCheck {
-            resolveElementCache.resolveToElement(element, bodyResolveMode)
-        }
+        return analyze(listOf(element), bodyResolveMode)
     }
 
     override fun analyze(elements: Collection<KtElement>, bodyResolveMode: BodyResolveMode): BindingContext {
@@ -58,14 +52,6 @@ internal class ModuleResolutionFacadeImpl(
         val resolveElementCache = getFrontendService(elements.first(), ResolveElementCache::class.java)
         return runWithCancellationCheck {
             resolveElementCache.resolveToElements(elements, bodyResolveMode)
-        }
-    }
-
-    override fun analyzeWithAllCompilerChecks(element: KtElement, callback: DiagnosticSink.DiagnosticsCallback?): AnalysisResult {
-        ResolveInDispatchThreadManager.assertNoResolveInDispatchThread()
-
-        return runWithCancellationCheck {
-            projectFacade.getAnalysisResultsForElement(element, callback)
         }
     }
 

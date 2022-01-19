@@ -24,7 +24,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.roots.GeneratedSourcesFilter;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.TextRange;
@@ -202,14 +201,6 @@ public abstract class AbstractLayoutCodeProcessor {
    */
   @NotNull
   protected abstract FutureTask<Boolean> prepareTask(@NotNull PsiFile file, boolean processChangedTextOnly) throws IncorrectOperationException;
-
-  protected static @NotNull FutureTask<Boolean> emptyTask() {
-    return new FutureTask<>(EmptyRunnable.INSTANCE, true);
-  }
-
-  protected boolean needsReadActionToPrepareTask() {
-    return true;
-  }
 
   public void run() {
     if (myFile != null) {
@@ -426,10 +417,8 @@ public abstract class AbstractLayoutCodeProcessor {
                        ? AbstractLayoutCodeProcessor.this.toString()
                        : AbstractLayoutCodeProcessor.this.toString() + file.hashCode();
       for (AbstractLayoutCodeProcessor processor : myProcessors) {
-        FutureTask<Boolean> writeTask = processor.needsReadActionToPrepareTask() ?
-                                        ReadAction.nonBlocking(() -> processor.prepareTask(file, myProcessChangedTextOnly))
-                                          .executeSynchronously() :
-                                        processor.prepareTask(file, myProcessChangedTextOnly);
+        final FutureTask<Boolean> writeTask = ReadAction.nonBlocking(() -> processor.prepareTask(file, myProcessChangedTextOnly))
+          .executeSynchronously();
 
         ProgressIndicatorProvider.checkCanceled();
 

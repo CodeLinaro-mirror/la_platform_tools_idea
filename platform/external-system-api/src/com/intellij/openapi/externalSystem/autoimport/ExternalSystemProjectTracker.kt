@@ -39,29 +39,20 @@ interface ExternalSystemProjectTracker {
   fun remove(id: ExternalSystemProjectId)
 
   /**
-   * Marks project settings as dirty.
+   * Marks project settings dirty
+   * It allows to schedule unconditional project refresh
    */
   fun markDirty(id: ExternalSystemProjectId)
 
   /**
-   * Marks all external project settings as dirty
-   * @see markDirty(ExternalSystemProjectId)
-   */
-  fun markDirtyAllProjects()
-
-  /**
-   * Schedules project reload, may be skipped if project is up-to-date, project is being reloaded or VCS is being updated.
-   * Use [markDirtyAllProjects] for force project reload.
+   * Schedules incremental project refresh
    */
   fun scheduleProjectRefresh()
 
   /**
-   * Schedules project reload or notification update.
-   * I.e. marks this place as safe to start auto-reload.
-   *
-   * @see scheduleProjectRefresh
+   * Schedules update of reload notification status
    */
-  fun scheduleChangeProcessing()
+  fun scheduleProjectNotificationUpdate()
 
   companion object {
     @JvmStatic

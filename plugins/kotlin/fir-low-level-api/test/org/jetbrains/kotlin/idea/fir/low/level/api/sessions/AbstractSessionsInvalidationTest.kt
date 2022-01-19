@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.idea.fir.low.level.api.sessions
 
+import com.google.common.collect.Sets
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -59,10 +60,7 @@ abstract class AbstractSessionsInvalidationTest : AbstractMultiModuleTest() {
         modulesToMakeOOBM.forEach { it.incModificationTracker() }
         val sessionsAfterOOBM = storage.getFirSessions(rootModuleSourceInfo)
 
-        val intersection = com.intellij.util.containers.ContainerUtil.intersection(initialSessions, sessionsAfterOOBM)
-        val changedSessions = HashSet(initialSessions)
-        changedSessions.addAll(sessionsAfterOOBM)
-        changedSessions.removeAll(intersection)
+        val changedSessions = Sets.symmetricDifference(initialSessions, sessionsAfterOOBM)
         val changedSessionsModulesNamesSorted = changedSessions.map { (it.moduleInfo as ModuleSourceInfo).module.name }.distinct().sorted()
 
         Assert.assertEquals(testStructure.expectedInvalidatedModules, changedSessionsModulesNamesSorted)

@@ -1,9 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.projectWizard;
 
 import com.intellij.diagnostic.PluginException;
 import com.intellij.framework.addSupport.FrameworkSupportInModuleProvider;
-import com.intellij.ide.JavaUiBundle;
+import com.intellij.ide.*;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.ide.util.frameworkSupport.FrameworkRole;
 import com.intellij.ide.util.frameworkSupport.FrameworkSupportUtil;
@@ -11,9 +11,6 @@ import com.intellij.ide.util.newProjectWizard.*;
 import com.intellij.ide.util.newProjectWizard.impl.FrameworkSupportModelBase;
 import com.intellij.ide.util.projectWizard.*;
 import com.intellij.ide.wizard.CommitStepException;
-import com.intellij.ide.wizard.NewEmptyProjectBuilder;
-import com.intellij.ide.wizard.NewModuleBuilder;
-import com.intellij.ide.wizard.NewProjectBuilder;
 import com.intellij.internal.statistic.eventLog.FeatureUsageData;
 import com.intellij.internal.statistic.service.fus.collectors.FUCounterUsageLogger;
 import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
@@ -47,9 +44,9 @@ import com.intellij.ui.SingleSelectionModel;
 import com.intellij.ui.*;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
-import com.intellij.ui.components.JBPanelWithEmptyText;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.popup.list.GroupedItemsListRenderer;
+import com.intellij.ui.speedSearch.ListWithFilter;
 import com.intellij.uiDesigner.core.GridLayoutManager;
 import com.intellij.util.Function;
 import com.intellij.util.PlatformUtils;
@@ -111,16 +108,6 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
 
   public ProjectTypeStep(WizardContext context, NewProjectWizard wizard, ModulesProvider modulesProvider) {
     myContext = context;
-    myContext.addContextListener(new WizardContext.Listener() {
-      @Override
-      public void switchToRequested(@NotNull String placeId) {
-        TemplatesGroup groupToSelect = ContainerUtil.find(myTemplatesMap.keySet(), group -> group.getId().equals(placeId));
-        if (groupToSelect != null) {
-          myProjectTypeList.setSelectedValue(groupToSelect, true);
-        }
-      }
-    });
-
     myWizard = wizard;
 
     myTemplatesMap = isNewWizard() ? MultiMap.createLinked() : MultiMap.createConcurrent();
@@ -131,30 +118,85 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     myProjectTypeList.setModel(new CollectionListModel<>(groups));
     myProjectTypeList.setSelectionModel(new SingleSelectionModel());
     myProjectTypeList.addListSelectionListener(__ -> updateSelection());
-    myProjectTypeList.setCellRenderer(new ProjectTypeListRenderer(groups));
-
     if (isNewWizard()) {
       GridLayoutManager layout = (GridLayoutManager)myPanel.getLayout();
       layout.setHGap(0);
       myPanel.setLayout(layout);
 
-      String emptyCard = "emptyCard";
-      ProjectTypeListWithSearch<TemplatesGroup> listWithFilter = new ProjectTypeListWithSearch<>(
-        myProjectTypeList, new JBScrollPane(myProjectTypeList), group -> group.getName(), () -> {
-          showCard(emptyCard);
-          wizard.updateButtons(true, false, true);
-      });
-
-      myProjectTypePanel.setMinimumSize(JBUI.size(160, -1));
+      ListWithFilter<TemplatesGroup> listWithFilter = (ListWithFilter<TemplatesGroup>)ListWithFilter.wrap(
+        myProjectTypeList, new JBScrollPane(myProjectTypeList), group -> group.getName());
+      listWithFilter.setSearchAlwaysVisible(true);
+      listWithFilter.setMinimumSize(JBUI.size(40, -1));
       myProjectTypePanel.add(listWithFilter);
 
-      myOptionsPanel.add(new JBPanelWithEmptyText().withEmptyText(JavaUiBundle.message("label.select.project.type.to.configure")), emptyCard);
-
-      listWithFilter.setBorder(JBUI.Borders.customLine(JBColor.border(), 1, 0, 1, 1));
-      mySettingsPanel.setBorder(JBUI.Borders.customLine(JBColor.border(), 1, 0, 1, 0));
-    } else {
-      myProjectTypePanel.add(BorderLayout.CENTER, new JBScrollPane(myProjectTypeList));
+      mySettingsPanel.setBorder(JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0));
     }
+    myProjectTypeList.setCellRenderer(new GroupedItemsListRenderer<>(new ListItemDescriptorAdapter<TemplatesGroup>() {
+      @Nullable
+      @Override
+      public String getTextFor(TemplatesGroup value) {
+        return value.getName();
+      }
+
+      @Nullable
+      @Override
+      public String getTooltipFor(TemplatesGroup value) {
+        return value.getDescription();
+      }
+
+      @Nullable
+      @Override
+      public Icon getIconFor(TemplatesGroup value) {
+        return value.getIcon();
+      }
+
+      @Override
+      public String getCaptionAboveOf(TemplatesGroup value) {
+        return isNewWizard() ? UIBundle.message("list.caption.group.generators") : super.getCaptionAboveOf(value);
+      }
+
+      @Override
+      public boolean hasSeparatorAboveOf(TemplatesGroup value) {
+        int index = groups.indexOf(value);
+        if (index < 1) return false;
+        TemplatesGroup upper = groups.get(index - 1);
+        if (isNewWizard()) {
+          return upper.getModuleBuilder() instanceof NewProjectModuleBuilder;
+        }
+
+        if (upper.getParentGroup() == null && value.getParentGroup() == null) return true;
+        return !Objects.equals(upper.getParentGroup(), value.getParentGroup()) &&
+               !Objects.equals(upper.getName(), value.getParentGroup());
+      }
+    }) {
+      @Override
+      protected JComponent createItemComponent() {
+        JComponent component = super.createItemComponent();
+        myTextLabel.setBorder(!isNewWizard() ? JBUI.Borders.empty(3) : JBUI.Borders.empty(5, 0));
+        return component;
+      }
+
+      @Override
+      protected SeparatorWithText createSeparator() {
+        if (!isNewWizard()) {
+          return super.createSeparator();
+        }
+        SeparatorWithText separator = createSeparatorComponent();
+        separator.setBorder(JBUI.Borders.empty(20, 8, 5, 0));
+        separator.setCaptionCentered(false);
+        separator.setFont(JBUI.Fonts.smallFont());
+        return separator;
+      }
+
+      @NotNull
+      private SeparatorWithText createSeparatorComponent() {
+        return new SeparatorWithText() {
+          @Override
+          protected void paintLinePart(Graphics g, int xMin, int xMax, int hGap, int y) { }
+        };
+      }
+    });
+    myProjectTypePanel.add(BorderLayout.CENTER, new JBScrollPane(myProjectTypeList));
 
     myModulesProvider = modulesProvider;
     Project project = context.getProject();
@@ -229,31 +271,11 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     return ContainerUtil.intersects(Arrays.asList(roles), acceptable);
   }
 
-  private static List<TemplatesGroup> getUserTemplatesMap(@NotNull WizardContext context) {
-    ArrayList<ProjectTemplate> result = new ArrayList<>();
-    ContainerUtil.addAll(result, new ArchivedTemplatesFactory().createTemplates(ProjectTemplatesFactory.CUSTOM_GROUP, context));
-
-    List<TemplatesGroup> templatesGroups = new ArrayList<>();
-    for (ProjectTemplate template : result) {
-      AbstractModuleBuilder builder = template.createModuleBuilder();
-      if (template instanceof ArchivedProjectTemplate && builder instanceof ModuleBuilder) {
-        templatesGroups.add(new TemplatesGroup(template.getName(), template.getDescription(), template.getIcon(), 0, null,
-                                               builder.getBuilderId(), ((ModuleBuilder)builder)));
-      }
-    }
-    return templatesGroups;
-  }
-
   private static MultiMap<TemplatesGroup, ProjectTemplate> getTemplatesMap(WizardContext context) {
     ProjectTemplatesFactory[] factories = ProjectTemplatesFactory.EP_NAME.getExtensions();
     final MultiMap<TemplatesGroup, ProjectTemplate> groups = new MultiMap<>();
     for (ProjectTemplatesFactory factory : factories) {
       for (String group : factory.getGroups()) {
-        //don't add "User-defined" node for new project wizard
-        if (isNewWizard() && factory instanceof ArchivedTemplatesFactory) {
-          continue;
-        }
-
         ProjectTemplate[] templates = factory.createTemplates(group, context);
         List<ProjectTemplate> values = Arrays.asList(templates);
         if (!values.isEmpty()) {
@@ -281,10 +303,8 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     }
 
     //add them later for new wizard, after sorting
-    builders.removeIf(
-      it -> it instanceof NewProjectBuilder ||
-            it instanceof NewEmptyProjectBuilder ||
-            it instanceof NewModuleBuilder);
+    builders.removeIf(it -> it instanceof NewProjectModuleBuilder);
+    builders.removeIf(it -> it instanceof NewWizardEmptyModuleBuilder);
 
     Map<String, TemplatesGroup> groupMap = new HashMap<>();
     for (ModuleBuilder builder : builders) {
@@ -373,14 +393,8 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     }
 
     if (isNewWizard()) {
-      if (context.isCreatingNewProject()) {
-        groups.add(0, new TemplatesGroup(new NewEmptyProjectBuilder()));
-        groups.add(0, new TemplatesGroup(new NewProjectBuilder()));
-        groups.addAll(getUserTemplatesMap(context));
-      }
-      else {
-        groups.add(0, new TemplatesGroup(new NewModuleBuilder()));
-      }
+      groups.add(0, new TemplatesGroup(NewProjectModuleType.Companion.getINSTANCE().createModuleBuilder()));
+      groups.add(0, new TemplatesGroup(NewWizardEmptyModuleType.Companion.getINSTANCE().createModuleBuilder()));
     }
 
     return groups;
@@ -410,12 +424,10 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     mySettingsStep = null;
     myHeaderPanel.removeAll();
     if (groupModuleBuilder != null && groupModuleBuilder.getModuleType() != null) {
-      if (!isNewWizard()) {
-        mySettingsStep = groupModuleBuilder.modifyProjectTypeStep(this);
-      }
+      mySettingsStep = groupModuleBuilder.modifyProjectTypeStep(this);
     }
 
-    if (groupModuleBuilder == null || (!isNewWizard() && groupModuleBuilder.isTemplateBased())) {
+    if (groupModuleBuilder == null || groupModuleBuilder.isTemplateBased()) {
       showTemplates(group);
     }
     else if (!showCustomOptions(groupModuleBuilder)){
@@ -496,10 +508,6 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     ModuleWizardStep customStep;
     if (!myCustomSteps.containsKey(card)) {
       ModuleWizardStep step = builder.getCustomOptionsStep(myContext, this);
-      if (isNewWizard() && builder instanceof TemplateModuleBuilder) {
-        step = new ProjectSettingsStep(myContext);
-        myContext.setProjectBuilder(builder);
-      }
       if (step == null) return false;
       step.updateStep();
       myCustomSteps.put(card, step);
@@ -637,15 +645,14 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
   private @NotNull MultiMap<String, ProjectTemplate> loadLocalTemplates() {
     MultiMap<String, ProjectTemplate> map = MultiMap.createConcurrent();
     TEMPLATE_EP.processWithPluginDescriptor((ep, pluginDescriptor) -> {
-      ClassLoader classLoader = pluginDescriptor.getClassLoader();
-      URL url = classLoader.getResource(StringUtil.trimStart(ep.templatePath, "/"));
+      URL url = pluginDescriptor.getPluginClassLoader().getResource(StringUtil.trimStart(ep.templatePath, "/"));
       if (url == null) {
         LOG.error(new PluginException("Can't find resource for project template: " + ep.templatePath, pluginDescriptor.getPluginId()));
         return;
       }
 
       try {
-        LocalArchivedTemplate template = new LocalArchivedTemplate(url, classLoader);
+        LocalArchivedTemplate template = new LocalArchivedTemplate(url, pluginDescriptor.getPluginClassLoader());
         if (ep.category) {
           TemplateBasedCategory category = new TemplateBasedCategory(template, ep.projectType);
           myTemplatesMap.putValue(new TemplatesGroup(category), template);
@@ -826,92 +833,5 @@ public final class ProjectTypeStep extends ModuleWizardStep implements SettingsS
     }
 
     FUCounterUsageLogger.getInstance().logEvent("new.project.wizard", eventId, data);
-  }
-
-  private static class ProjectTypeListRenderer extends GroupedItemsListRenderer<TemplatesGroup> {
-    ProjectTypeListRenderer(java.util.List<TemplatesGroup> groups) {
-      super(new ListItemDescriptorAdapter<>() {
-        @Nullable
-        @Override
-        public String getTextFor(TemplatesGroup value) {
-          return value.getName();
-        }
-
-        @Nullable
-        @Override
-        public String getTooltipFor(TemplatesGroup value) {
-          return value.getDescription();
-        }
-
-        @Nullable
-        @Override
-        public Icon getIconFor(TemplatesGroup value) {
-          return value.getIcon();
-        }
-
-        @Override
-        public String getCaptionAboveOf(TemplatesGroup value) {
-          return isNewWizard()
-                 ? value.getModuleBuilder() instanceof TemplateModuleBuilder
-                   ? UIBundle.message("list.caption.group.templates")
-                   : UIBundle.message("list.caption.group.generators")
-                 : super.getCaptionAboveOf(value);
-        }
-
-        @Override
-        public boolean hasSeparatorAboveOf(TemplatesGroup value) {
-          int index = groups.indexOf(value);
-          if (index < 1) return false;
-          TemplatesGroup upper = groups.get(index - 1);
-          if (isNewWizard()) {
-            if (value.getModuleBuilder() instanceof TemplateModuleBuilder && !(upper.getModuleBuilder() instanceof TemplateModuleBuilder)) {
-              return true;
-            }
-
-            ModuleBuilder builder = upper.getModuleBuilder();
-            return builder instanceof NewEmptyProjectBuilder || builder instanceof NewModuleBuilder;
-          }
-
-          if (upper.getParentGroup() == null && value.getParentGroup() == null) return true;
-          return !Objects.equals(upper.getParentGroup(), value.getParentGroup()) &&
-                 !Objects.equals(upper.getName(), value.getParentGroup());
-        }
-      });
-    }
-
-    @Override
-    protected JComponent createItemComponent() {
-      JComponent component = super.createItemComponent();
-      myTextLabel.setBorder(!isNewWizard() ? JBUI.Borders.empty(3) : JBUI.Borders.empty(5, 0));
-      return component;
-    }
-
-    @Override
-    protected SeparatorWithText createSeparator() {
-      if (!isNewWizard()) {
-        return super.createSeparator();
-      }
-      SeparatorWithText separator = createSeparatorComponent();
-      separator.setBorder(JBUI.Borders.empty(20, 8, 5, 0));
-      separator.setCaptionCentered(false);
-      separator.setFont(JBUI.Fonts.smallFont());
-      return separator;
-    }
-
-    @NotNull
-    private static SeparatorWithText createSeparatorComponent() {
-      return new SeparatorWithText() {
-        @Override
-        protected void paintLinePart(Graphics g, int xMin, int xMax, int hGap, int y) { }
-      };
-    }
-
-    @Override
-    protected void setComponentIcon(Icon icon, Icon disabledIcon) {
-      super.setComponentIcon(icon, disabledIcon);
-      if (icon == null) {
-        myTextLabel.setIconTextGap(0);
-      }
-    }
   }
 }

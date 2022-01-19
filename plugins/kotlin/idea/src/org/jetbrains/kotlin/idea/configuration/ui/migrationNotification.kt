@@ -6,14 +6,12 @@ import com.intellij.notification.*
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.NlsSafe
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.configuration.KotlinMigrationProjectFUSCollector
 import org.jetbrains.kotlin.idea.configuration.MigrationInfo
 import org.jetbrains.kotlin.idea.migration.CodeMigrationAction
 
 internal fun showMigrationNotification(project: Project, migrationInfo: MigrationInfo) {
-    @NlsSafe
     val detectedChangeMessage = buildString {
         appendBr(KotlinBundle.message("configuration.migration.text.detected.migration"))
         if (migrationInfo.oldStdlibVersion != migrationInfo.newStdlibVersion) {

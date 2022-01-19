@@ -18,6 +18,7 @@ import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.GridBag;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xml.util.XmlStringUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.gradle.execution.target.GradleRuntimeTargetUI;
@@ -59,6 +60,7 @@ public class IdeaGradleSystemSettingsControlBuilder implements GradleSystemSetti
   private JBLabel myServiceDirectoryHint;
   @Nullable
   private TargetPathFieldWithBrowseButton myServiceDirectoryPathField;
+  private boolean dropServiceDirectory;
 
   @Nullable
   private JBTextField myGradleVmOptionsField;
@@ -173,6 +175,16 @@ public class IdeaGradleSystemSettingsControlBuilder implements GradleSystemSetti
     return myInitialSettings;
   }
 
+  /**
+   * @deprecated obsolete unused method
+   */
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  @Deprecated
+  public IdeaGradleSystemSettingsControlBuilder dropServiceDirectory() {
+    dropServiceDirectory = true;
+    return this;
+  }
+
   public IdeaGradleSystemSettingsControlBuilder dropStoreExternallyCheckBox() {
     dropStoreExternallyCheckBox = true;
     return this;
@@ -185,6 +197,8 @@ public class IdeaGradleSystemSettingsControlBuilder implements GradleSystemSetti
 
 
   private void addServiceDirectoryControl(PaintAwarePanel canvas, int indentLevel) {
+    if (dropServiceDirectory) return;
+
     myServiceDirectoryLabel = new JBLabel(GradleBundle.message("gradle.settings.text.user.home"));
     myServiceDirectoryHint = new JBLabel(XmlStringUtil.wrapInHtml(GradleBundle.message("gradle.settings.text.user.home.hint")),
                                          UIUtil.ComponentStyle.SMALL);

@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'p' is never used
 fun foo(a: Int) {
     <caret>when (a) {
         // some comment

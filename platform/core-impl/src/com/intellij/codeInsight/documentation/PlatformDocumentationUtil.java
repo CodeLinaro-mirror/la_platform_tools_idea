@@ -6,7 +6,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.ex.http.HttpFileSystem;
 import com.intellij.util.SmartList;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -50,7 +49,6 @@ public final class PlatformDocumentationUtil {
   /**
    * Updates HTML contents for display in JEditorPane, which treats invalid HTML somewhat differently than popular browsers.
    */
-  @Contract(pure = true)
   public static String fixupText(@NotNull CharSequence docText) {
     return ourLtFixupPattern.matcher(docText).replaceAll(LT_ENTITY);
   }

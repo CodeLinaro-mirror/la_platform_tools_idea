@@ -76,7 +76,6 @@ class TestApplicationManager private constructor() {
   companion object {
     init {
       Java11Shim.INSTANCE = StartupUtil.Java11ShimImpl()
-      System.setProperty("idea.force.use.core.classloader", "true")  // Android Studio
     }
 
     @Volatile

@@ -47,6 +47,12 @@ public class ExternalToolsCheckinHandlerFactory extends CheckinHandlerFactory {
           }
 
           @Override
+          public void refresh() {
+            String id = config.getAfterCommitToolsId();
+            toolComboBox.selectTool(id);
+          }
+
+          @Override
           public void saveState() {
             Tool tool = toolComboBox.getSelectedTool();
             config.setAfterCommitToolId(tool != null ? tool.getActionId(): null);
@@ -54,8 +60,7 @@ public class ExternalToolsCheckinHandlerFactory extends CheckinHandlerFactory {
 
           @Override
           public void restoreState() {
-            String id = config.getAfterCommitToolsId();
-            toolComboBox.selectTool(id);
+            refresh();
           }
         };
       }

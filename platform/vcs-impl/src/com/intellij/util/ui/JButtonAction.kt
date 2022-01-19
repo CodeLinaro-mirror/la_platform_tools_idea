@@ -28,6 +28,7 @@ abstract class JButtonAction(text: @ActionText String?, @ActionDescription descr
       }
     }
 
+    updateButtonFromPresentation(button, presentation)
     return button
   }
 
@@ -40,10 +41,9 @@ abstract class JButtonAction(text: @ActionText String?, @ActionDescription descr
       putClientProperty("ActionToolbar.smallVariant", true)
     }
 
-  override fun updateCustomComponent(component: JComponent, presentation: Presentation) {
-    if (component is JButton) {
-      updateButtonFromPresentation(component, presentation)
-    }
+  protected fun updateButtonFromPresentation(e: AnActionEvent) {
+    val button = UIUtil.findComponentOfType(e.presentation.getClientProperty(CustomComponentAction.COMPONENT_KEY), JButton::class.java)
+    if (button != null) updateButtonFromPresentation(button, e.presentation)
   }
 
   protected open fun updateButtonFromPresentation(button: JButton, presentation: Presentation) {

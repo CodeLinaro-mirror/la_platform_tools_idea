@@ -25,7 +25,5 @@ public interface VcsAnnotationLocalChangesListener {
 
   void unregisterAnnotation(VirtualFile file, FileAnnotation annotation);
 
-  void reloadAnnotations();
-
   void reloadAnnotationsForVcs(VcsKey key);
 }

@@ -2,13 +2,8 @@
 
 package org.jetbrains.kotlin.idea.codeInsight.hints
 
-import com.intellij.codeInsight.hints.ChangeListener
 import com.intellij.codeInsight.hints.ImmediateConfigurable
-import com.intellij.codeInsight.hints.InlayGroup
-import com.intellij.codeInsight.hints.SettingsKey
-import com.intellij.ui.layout.*
 import org.jetbrains.kotlin.idea.KotlinBundle
-import javax.swing.JComponent
 
 @Suppress("UnstableApiUsage")
 class KotlinLambdasHintsProvider : KotlinAbstractHintsProvider<KotlinLambdasHintsProvider.Settings>() {
@@ -18,16 +13,8 @@ class KotlinLambdasHintsProvider : KotlinAbstractHintsProvider<KotlinLambdasHint
         var implicitReceiversAndParams: Boolean = true,
     )
 
-    override val key: SettingsKey<Settings> = SettingsKey("kotlin.lambdas.hints")
     override val name: String = KotlinBundle.message("hints.settings.lambdas")
     override val hintsArePlacedAtTheEndOfLine = true
-
-    override val group: InlayGroup
-        get() = InlayGroup.LAMBDAS_GROUP
-
-    override fun getProperty(key: String): String {
-        return KotlinBundle.getMessage(key)
-    }
 
     override fun isElementSupported(resolved: HintType?, settings: Settings): Boolean {
         return when (resolved) {
@@ -38,30 +25,12 @@ class KotlinLambdasHintsProvider : KotlinAbstractHintsProvider<KotlinLambdasHint
     }
 
     override fun createConfigurable(settings: Settings): ImmediateConfigurable {
-        return object : ImmediateConfigurable {
-            override fun createComponent(listener: ChangeListener): JComponent = panel {}
-
-            override val mainCheckboxText: String = KotlinBundle.message("hints.settings.common.items")
-
-            override val cases: List<ImmediateConfigurable.Case>
-                get() = listOf(
-                    ImmediateConfigurable.Case(
-                        KotlinBundle.message("hints.settings.lambda.return"),
-                        "hints.lambda.return",
-                        settings::returnExpressions
-                    ),
-                    ImmediateConfigurable.Case(
-                        KotlinBundle.message("hints.settings.lambda.receivers.parameters"),
-                        "hints.lambda.receivers.parameters",
-                        settings::implicitReceiversAndParams
-                    )
-                )
-        }
+        return createLambdaHintsImmediateConfigurable(settings)
     }
 
     override fun createSettings(): Settings = Settings()
 
-    override val previewText: String = """
+    override val previewText: String? = """
         val lambda = { i: Int ->
             i + 10
             i + 20

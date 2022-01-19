@@ -101,7 +101,7 @@ public interface PopupComponent {
     }
 
     public DialogPopupWrapper(Component owner, Component content, int x, int y, JBPopup jbPopup) {
-      if (!UIUtil.isShowing(owner)) {
+      if (!owner.isShowing()) {
         throw new IllegalArgumentException("Popup owner must be showing, owner " + owner.getClass());
       }
 

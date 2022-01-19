@@ -54,20 +54,6 @@ fun buildDecompiledText(
         textIndex.addToIndex(descriptor, TextRange(startOffset, endOffset))
     }
 
-    fun CallableMemberDescriptor.isConsideredSynthetic(): Boolean {
-        return when (kind) {
-            CallableMemberDescriptor.Kind.DECLARATION -> false
-
-            CallableMemberDescriptor.Kind.FAKE_OVERRIDE,
-            CallableMemberDescriptor.Kind.DELEGATION -> true
-
-            CallableMemberDescriptor.Kind.SYNTHESIZED -> {
-                // Of all synthesized functions, only `component*` functions are rendered (for historical reasons)
-                !DataClassDescriptorResolver.isComponentLike(name)
-            }
-        }
-    }
-
     fun appendDescriptor(descriptor: DeclarationDescriptor, indent: String, lastEnumEntry: Boolean? = null) {
         val startOffset = builder.length
         if (isEnumEntry(descriptor)) {
@@ -142,7 +128,11 @@ fun buildDecompiledText(
                 if (member == companionObject) {
                     continue
                 }
-                if (member is CallableMemberDescriptor && member.isConsideredSynthetic()) {
+                if (member is CallableMemberDescriptor
+                    && member.kind != CallableMemberDescriptor.Kind.DECLARATION
+                    //TODO: not synthesized and component like
+                    && !DataClassDescriptorResolver.isComponentLike(member.name)
+                ) {
                     continue
                 }
                 newlineExceptFirst()

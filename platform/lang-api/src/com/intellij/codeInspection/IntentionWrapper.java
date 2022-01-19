@@ -1,7 +1,6 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection;
 
-import com.intellij.codeInsight.intention.FileModifier;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.IntentionActionDelegate;
 import com.intellij.openapi.editor.Editor;
@@ -9,10 +8,11 @@ import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -23,22 +23,11 @@ import java.util.List;
 
 public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionClassHolder, IntentionActionDelegate {
   private final IntentionAction myAction;
+  private final VirtualFile myVirtualFile;
 
-  /**
-   * @param action action to wrap
-   * @param file PsiFile to apply the action to (unused)
-   * @deprecated use {@link IntentionWrapper#IntentionWrapper(IntentionAction)}
-   */
-  @Deprecated
   public IntentionWrapper(@NotNull IntentionAction action, @NotNull PsiFile file) {
     myAction = action;
-  }
-
-  /**
-   * @param action action to wrap
-   */
-  public IntentionWrapper(@NotNull IntentionAction action) {
-    myAction = action;
+    myVirtualFile = file.getVirtualFile();
   }
 
   @NotNull
@@ -87,10 +76,9 @@ public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionC
 
   @Override
   public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
-    PsiElement element = descriptor.getPsiElement();
-    PsiFile file = element == null ? null : element.getContainingFile();
+    PsiFile file = PsiManager.getInstance(project).findFile(myVirtualFile);
     if (file != null) {
-      FileEditor editor = FileEditorManager.getInstance(project).getSelectedEditor(file.getVirtualFile());
+      FileEditor editor = FileEditorManager.getInstance(project).getSelectedEditor(myVirtualFile);
       myAction.invoke(project, editor instanceof TextEditor ? ((TextEditor)editor).getEditor() : null, file);
     }
   }
@@ -111,7 +99,7 @@ public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionC
   public static LocalQuickFix wrapToQuickFix(@Nullable IntentionAction action, @NotNull PsiFile file) {
     if (action == null) return null;
     if (action instanceof LocalQuickFix) return (LocalQuickFix)action;
-    return new IntentionWrapper(action);
+    return new IntentionWrapper(action, file);
   }
 
   public static LocalQuickFix @NotNull [] wrapToQuickFixes(IntentionAction @NotNull [] actions, @NotNull PsiFile file) {
@@ -131,10 +119,5 @@ public class IntentionWrapper implements LocalQuickFix, IntentionAction, ActionC
       fixes.add(wrapToQuickFix(action, file));
     }
     return fixes;
-  }
-
-  @Override
-  public boolean invokeForPreview(@NotNull Project project, Editor editor, PsiFile file) {
-    return myAction.invokeForPreview(project, editor, file);
   }
 }

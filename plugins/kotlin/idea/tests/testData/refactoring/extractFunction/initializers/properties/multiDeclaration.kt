@@ -1,4 +1,3 @@
-// SUGGESTED_NAMES: pair, intIntPair, intPair
 // WITH_RUNTIME
 // SIBLING:
 fun foo() {

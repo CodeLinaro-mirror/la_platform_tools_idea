@@ -168,7 +168,7 @@ public final class VirtualEnvSdkFlavor extends CPythonSdkFlavor {
   }
 
   @Override
-  public @NotNull Icon getIcon() {
+  public Icon getIcon() {
     return PythonIcons.Python.Virtualenv;
   }
 }

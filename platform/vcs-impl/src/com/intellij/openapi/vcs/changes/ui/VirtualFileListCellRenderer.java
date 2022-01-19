@@ -12,7 +12,6 @@ import com.intellij.ui.ColoredListCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.util.PlatformIcons;
 import com.intellij.util.ui.UIUtil;
-import com.intellij.vcsUtil.VcsUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
@@ -23,7 +22,6 @@ import java.io.File;
  * @author irengrig
  */
 public class VirtualFileListCellRenderer extends ColoredListCellRenderer {
-  protected final Project myProject;
   private final FileStatusManager myFileStatusManager;
   private final boolean myIgnoreFileStatus;
 
@@ -32,7 +30,6 @@ public class VirtualFileListCellRenderer extends ColoredListCellRenderer {
   }
 
   public VirtualFileListCellRenderer(final Project project, final boolean ignoreFileStatus) {
-    myProject = project;
     myIgnoreFileStatus = ignoreFileStatus;
     myFileStatusManager = FileStatusManager.getInstance(project);
   }
@@ -75,7 +72,7 @@ public class VirtualFileListCellRenderer extends ColoredListCellRenderer {
     if (path.isDirectory()) {
       setIcon(PlatformIcons.FOLDER_ICON);
     } else {
-      setIcon(VcsUtil.getIcon(myProject, path));
+      setIcon(path.getFileType().getIcon());
     }
   }
 

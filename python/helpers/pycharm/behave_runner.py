@@ -13,9 +13,11 @@ import glob
 import re
 import sys
 import traceback
+from behave import __version__ as behave_version
 from behave.formatter.base import Formatter
 from behave.model import Step, ScenarioOutline, Feature, Scenario
 from behave.tag_expression import TagExpression
+from distutils import version
 from _jb_django_behave import run_as_django_behave
 import _bdd_utils
 import tcmessages
@@ -267,8 +269,11 @@ if __name__ == "__main__":
 
     my_config = configuration.Configuration(command_args=command_args)
 
+    loose_version = version.LooseVersion(behave_version)
+    assert loose_version >= version.LooseVersion("1.2.5"), "Version not supported, please upgrade Behave"
+
     # New version supports 1.2.6 only
-    use_old_runner = "PYCHARM_BEHAVE_OLD_RUNNER" in os.environ
+    use_old_runner = "PYCHARM_BEHAVE_OLD_RUNNER" in os.environ or loose_version < version.LooseVersion("1.2.6")
     from behave.formatter import _registry
 
     FORMAT_NAME = "com.jetbrains.pycharm.formatter"

@@ -16,6 +16,7 @@ interface PyNumericContainerPopupCustomizer {
       get() = EP_NAME.extensionList.first()
   }
 
+  @JvmDefault
   fun showFullValuePopup(frameAccessor: PyFrameAccessor, debugValue: PyDebugValue) {
     frameAccessor.showNumericContainer(debugValue)
   }

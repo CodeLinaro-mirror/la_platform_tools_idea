@@ -99,9 +99,11 @@ public final class CheckRegExpForm {
       private Disposable disposable;
 
       @Override
-      protected void onEditorAdded(@NotNull Editor editor) {
-        super.onEditorAdded(editor);
+      public void addNotify() {
+        super.addNotify();
         disposable = PluginManager.getInstance().createDisposable(CheckRegExpForm.class);
+        final Editor editor = getEditor();
+        assert editor != null : "editor should not be null after it has been added to a container";
         editor.getCaretModel().addCaretListener(new CaretListener() {
 
           @Override
@@ -151,9 +153,11 @@ public final class CheckRegExpForm {
       private Disposable disposable;
 
       @Override
-      protected void onEditorAdded(@NotNull Editor editor) {
-        super.onEditorAdded(editor);
+      public void addNotify() {
+        super.addNotify();
         disposable = PluginManager.getInstance().createDisposable(CheckRegExpForm.class);
+        final Editor editor = getEditor();
+        assert editor != null : "editor should not be null after it has been added to a container";
         editor.getCaretModel().addCaretListener(new CaretListener() {
 
           @Override

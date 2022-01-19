@@ -3,7 +3,7 @@ class Main {
 
   void testSimple() {
     class X {
-        private int smth = getSomething();
+        private final int smth = getSomething();
 
         void test() {
         int x = smth;

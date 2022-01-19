@@ -1,5 +1,6 @@
-// API_VERSION: 1.4
+// LANGUAGE_VERSION: 1.4
 // WITH_RUNTIME
+// PROBLEM: none
 
 data class OrderItem(val name: String, val price: Double, val count: Int)
 

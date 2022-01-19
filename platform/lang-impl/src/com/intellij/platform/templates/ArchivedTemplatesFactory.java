@@ -70,11 +70,7 @@ public class ArchivedTemplatesFactory extends ProjectTemplatesFactory {
   }
 
   @Override
-  public ProjectTemplate @NotNull [] createTemplates(@Nullable String group, @NotNull WizardContext context) {
-    return createTemplates(group);
-  }
-
-  public ProjectTemplate @NotNull [] createTemplates(@Nullable String group) {
+  public ProjectTemplate @NotNull [] createTemplates(@Nullable String group, WizardContext context) {
     // myGroups contains only not-null keys
     if (!CUSTOM_GROUP.equals(group)) {
       return ProjectTemplate.EMPTY_ARRAY;

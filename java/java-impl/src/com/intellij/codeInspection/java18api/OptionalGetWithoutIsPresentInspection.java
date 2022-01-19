@@ -5,9 +5,6 @@ import com.intellij.codeInsight.PsiEquivalenceUtil;
 import com.intellij.codeInspection.*;
 import com.intellij.codeInspection.dataFlow.CommonDataflow;
 import com.intellij.codeInspection.dataFlow.DfaNullability;
-import com.intellij.codeInspection.dataFlow.java.anchor.JavaDfaAnchor;
-import com.intellij.codeInspection.dataFlow.java.anchor.JavaExpressionAnchor;
-import com.intellij.codeInspection.dataFlow.java.anchor.JavaMethodReferenceArgumentAnchor;
 import com.intellij.codeInspection.dataFlow.jvm.SpecialField;
 import com.intellij.codeInspection.dataFlow.types.DfReferenceType;
 import com.intellij.codeInspection.dataFlow.types.DfType;
@@ -20,7 +17,6 @@ import com.intellij.psi.codeStyle.VariableKind;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.ObjectUtils;
 import com.siyeh.ig.psiutils.CommentTracker;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.VariableNameGenerator;
@@ -43,28 +39,16 @@ public class OptionalGetWithoutIsPresentInspection extends AbstractBaseJavaLocal
         if (qualifier == null) return;
         PsiClass optionalClass = PsiUtil.resolveClassInClassTypeOnly(qualifier.getType());
         if (optionalClass == null) return;
-        JavaExpressionAnchor anchor = new JavaExpressionAnchor(qualifier);
-        if (isOptionalProblem(qualifier, anchor) && !isPresentCallWithSameQualifierExists(qualifier)) {
+        CommonDataflow.DataflowResult result = CommonDataflow.getDataflowResult(qualifier);
+        if (result == null || !result.expressionWasAnalyzed(qualifier)) return;
+        DfType dfType = SpecialField.OPTIONAL_VALUE.getFromQualifier(result.getDfType(qualifier));
+        if (dfType != DfType.TOP && !(dfType instanceof DfReferenceType)) return;
+        DfaNullability nullability = DfaNullability.fromDfType(dfType);
+        if ((nullability == DfaNullability.UNKNOWN || nullability == DfaNullability.NULLABLE) &&
+            !isPresentCallWithSameQualifierExists(qualifier)) {
           holder.registerProblem(nameElement,
                                  JavaBundle.message("inspection.optional.get.without.is.present.message", optionalClass.getName()),
                                  tryCreateFix(call));
-        }
-      }
-
-      private boolean isOptionalProblem(@NotNull PsiExpression context, @NotNull JavaDfaAnchor anchor) {
-        CommonDataflow.DataflowResult result = CommonDataflow.getDataflowResult(context);
-        if (result == null || !result.anchorWasAnalyzed(anchor)) return false;
-        DfType dfType = SpecialField.OPTIONAL_VALUE.getFromQualifier(result.getDfType(anchor));
-        if (dfType != DfType.TOP && !(dfType instanceof DfReferenceType)) return false;
-        DfaNullability nullability = DfaNullability.fromDfType(dfType);
-        return nullability == DfaNullability.UNKNOWN || nullability == DfaNullability.NULLABLE;
-      }
-
-      @Override
-      public void visitMethodReferenceExpression(PsiMethodReferenceExpression methodRef) {
-        if (!OptionalUtil.OPTIONAL_GET.methodReferenceMatches(methodRef)) return;
-        if (isOptionalProblem(methodRef, new JavaMethodReferenceArgumentAnchor(methodRef))) {
-          holder.registerProblem(methodRef, JavaBundle.message("inspection.optional.get.without.is.present.method.reference.message"));
         }
       }
 

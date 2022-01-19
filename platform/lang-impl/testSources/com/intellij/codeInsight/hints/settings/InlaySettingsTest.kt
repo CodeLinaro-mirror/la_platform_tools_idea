@@ -55,7 +55,6 @@ class InlaySettingsTest : LightPlatformTestCase() {
     val language = Language.ANY
     val key = SettingsKey<Any>("foo")
     assertTrue(settings.hintsEnabled(key, language))
-    assertTrue(settings.hintsShouldBeShown(key, language))
     settings.setHintsEnabledForLanguage(language, false)
     assertTrue(settings.hintsEnabled(key, language))
     assertFalse(settings.hintsShouldBeShown(key, language))

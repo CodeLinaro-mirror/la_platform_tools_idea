@@ -11,7 +11,6 @@ import com.intellij.openapi.options.UnnamedConfigurable;
 import com.intellij.openapi.options.ex.Settings;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.TextComponentAccessor;
-import com.intellij.openapi.ui.TextComponentAccessors;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.NlsSafe;
@@ -130,7 +129,7 @@ public class TerminalSettingsPanel {
       TerminalBundle.message("settings.terminal.shell.executable.path.browseFolder.description"),
       null,
       FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
-      TextComponentAccessors.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT
+      TextComponentAccessor.TEXT_FIELD_WITH_HISTORY_WHOLE_TEXT
     );
     setupTextFieldDefaultValue(myShellPathField.getChildComponent().getTextEditor(), () -> myProjectOptionsProvider.defaultShellPath());
   }

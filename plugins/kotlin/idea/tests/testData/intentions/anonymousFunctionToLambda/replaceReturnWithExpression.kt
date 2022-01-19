@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'args' is never used
 fun foo(f: () -> Int) {
     f()
 }

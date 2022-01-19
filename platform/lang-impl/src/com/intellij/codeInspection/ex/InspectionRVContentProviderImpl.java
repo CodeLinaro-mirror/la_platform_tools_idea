@@ -61,7 +61,7 @@ public class InspectionRVContentProviderImpl extends InspectionRVContentProvider
       }
     }
 
-    return presentation.hasReportedProblems().toBoolean();
+    return presentation.hasReportedProblems();
   }
 
   @Override

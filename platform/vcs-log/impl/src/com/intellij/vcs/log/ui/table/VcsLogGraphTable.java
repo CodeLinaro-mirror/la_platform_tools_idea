@@ -257,16 +257,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     return getColumnModel().getColumnCount();
   }
 
-  public void onColumnDataChanged(@NotNull VcsLogColumn<?> column) {
-    if (getRowCount() == 0) return;
-    TableColumn tableColumn = getTableColumn(column);
-    if (tableColumn != null) {
-      reLayout();
-      getModel().fireTableChanged(new TableModelEvent(getModel(), 0, getRowCount() - 1, tableColumn.getModelIndex()));
-    }
-  }
-
-  private void reLayout() {
+  public void reLayout() {
     if (getTableHeader().getResizingColumn() == null) {
       updateDynamicColumnsWidth();
       super.doLayout();
@@ -288,7 +279,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   }
 
   private void resetColumnWidth(@NotNull VcsLogColumn<?> column) {
-    VcsLogUsageTriggerCollector.triggerColumnReset(myLogData.getProject());
+    VcsLogUsageTriggerCollector.triggerUsage(VcsLogUsageTriggerCollector.VcsLogEvent.COLUMN_RESET, null, myLogData.getProject());
     if (VcsLogColumnUtilKt.getWidth(column, myProperties) != -1) {
       setWidth(column, myProperties, -1);
     }

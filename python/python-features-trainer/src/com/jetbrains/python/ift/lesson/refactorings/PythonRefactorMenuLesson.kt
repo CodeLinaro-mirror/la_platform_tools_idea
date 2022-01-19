@@ -3,7 +3,6 @@ package com.jetbrains.python.ift.lesson.refactorings
 
 import training.dsl.LessonContext
 import training.dsl.parseLessonSample
-import training.dsl.restoreRefactoringOptionsInformer
 import training.dsl.showWarningIfInplaceRefactoringsDisabled
 import training.learn.lesson.general.refactorings.RefactoringMenuLessonBase
 
@@ -21,6 +20,5 @@ class PythonRefactorMenuLesson : RefactoringMenuLessonBase("Refactoring menu") {
     prepareSample(sample)
     showWarningIfInplaceRefactoringsDisabled()
     extractParameterTasks()
-    restoreRefactoringOptionsInformer()
   }
 }

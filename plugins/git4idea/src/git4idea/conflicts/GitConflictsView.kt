@@ -15,7 +15,6 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.JButtonAction
 import com.intellij.util.ui.UIUtil
 import git4idea.i18n.GitBundle
-import org.jetbrains.annotations.Nls
 import java.awt.BorderLayout
 import javax.swing.JComponent
 import javax.swing.JLabel
@@ -50,7 +49,7 @@ class GitConflictsView(
 
     descriptionLabel = JLabel(GitBundle.message("conflicts.loading.status"))
     conflictsPanel.addListener(object : GitConflictsPanel.Listener {
-      override fun onDescriptionChange(description: @Nls String) {
+      override fun onDescriptionChange(description: String) {
         descriptionLabel.text = description
       }
     })
@@ -79,6 +78,7 @@ class GitConflictsView(
 
     override fun update(e: AnActionEvent) {
       e.presentation.isEnabled = conflictsPanel.canShowMergeWindowForSelection()
+      updateButtonFromPresentation(e)
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -92,6 +92,7 @@ class GitConflictsView(
 
     override fun update(e: AnActionEvent) {
       e.presentation.isEnabled = conflictsPanel.canAcceptConflictSideForSelection()
+      updateButtonFromPresentation(e)
     }
 
     override fun actionPerformed(e: AnActionEvent) {

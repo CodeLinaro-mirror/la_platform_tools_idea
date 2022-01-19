@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.idea.KotlinPluginUtil
 import org.jetbrains.kotlin.idea.PlatformVersion
 import org.jetbrains.kotlin.idea.formatter.KotlinFormatterUsageCollector.KotlinFormatterKind.*
 import org.jetbrains.kotlin.idea.search.containsKotlinFile
-import org.jetbrains.kotlin.idea.util.runReadActionInSmartMode
 
 class KotlinFormatterUsageCollector : ProjectUsagesCollector() {
     override fun requiresReadAccess() = true
@@ -23,7 +22,7 @@ class KotlinFormatterUsageCollector : ProjectUsagesCollector() {
     override fun getGroup(): EventLogGroup = GROUP
 
     override fun getMetrics(project: Project): Set<MetricEvent> {
-        if (PlatformVersion.isAndroidStudio() || project.runReadActionInSmartMode { !project.containsKotlinFile() }) {
+        if (PlatformVersion.isAndroidStudio() || !project.containsKotlinFile()) {
             return emptySet()
         }
 

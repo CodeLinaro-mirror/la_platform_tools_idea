@@ -12,7 +12,6 @@ import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtil;
-import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.callMatcher.CallMapper;
 import com.siyeh.ig.callMatcher.CallMatcher;
@@ -67,30 +66,18 @@ public class RedundantCollectionOperationInspection extends AbstractBaseJavaLoca
   private static final CallMatcher ITERABLE_ITERATOR = instanceCall(CommonClassNames.JAVA_LANG_ITERABLE, "iterator").parameterCount(0);
   private static final CallMatcher MAP_KEY_SET = instanceCall(CommonClassNames.JAVA_UTIL_MAP, "keySet").parameterCount(0);
   private static final CallMatcher MAP_VALUES = instanceCall(CommonClassNames.JAVA_UTIL_MAP, "values").parameterCount(0);
-  private static final CallMatcher MAP_PUT_ALL =
-    instanceCall(CommonClassNames.JAVA_UTIL_MAP, "putAll").parameterTypes(CommonClassNames.JAVA_UTIL_MAP);
-  private static final CallMatcher MAP_OF =
-    anyOf(
-      staticCall(CommonClassNames.JAVA_UTIL_MAP, "of").parameterCount(2),
-      staticCall(CommonClassNames.JAVA_UTIL_COLLECTIONS, "singletonMap").parameterCount(2));
-  private static final CallMatcher COLLECTION_ADD_ALL =
-    instanceCall(CommonClassNames.JAVA_UTIL_COLLECTION, "addAll").parameterTypes(CommonClassNames.JAVA_UTIL_COLLECTION);
-  private static final CallMatcher COLLECTIONS_SINGLETON =
-    staticCall(CommonClassNames.JAVA_UTIL_COLLECTIONS, "singleton").parameterCount(1);
 
   private static final CallMapper<RedundantCollectionOperationHandler> HANDLERS =
     new CallMapper<RedundantCollectionOperationHandler>()
       .register(TO_ARRAY, AsListToArrayHandler::handler)
-      .register(CONTAINS_ALL, call -> ReplaceNestedCallHandler.handler(call, SINGLETON, "contains"))
+      .register(CONTAINS_ALL, ContainsAllSingletonHandler::handler)
       .register(CONTAINS, SingletonContainsHandler::handler)
       .register(CONTAINS, MapKeySetContainsHandler::handler)
       .register(anyOf(CONTAINS, CONTAINS_KEY), ContainsBeforeAddRemoveHandler::handler)
       .register(REMOVE_BY_INDEX, RedundantIndexOfHandler::handler)
       .register(AS_LIST, RedundantAsListForIterationHandler::handler)
       .register(AS_LIST, RedundantSortAsListHandler::handler)
-      .register(ITERABLE_ITERATOR, RedundantEmptyIteratorHandler::handler)
-      .register(MAP_PUT_ALL, call -> ReplaceNestedCallHandler.handler(call, MAP_OF, "put"))
-      .register(COLLECTION_ADD_ALL, call -> ReplaceNestedCallHandler.handler(call, COLLECTIONS_SINGLETON, "add"));
+      .register(ITERABLE_ITERATOR, RedundantEmptyIteratorHandler::handler);
 
   @NotNull
   @Override
@@ -377,36 +364,29 @@ public class RedundantCollectionOperationInspection extends AbstractBaseJavaLoca
     }
   }
 
-  private static class ReplaceNestedCallHandler implements RedundantCollectionOperationHandler {
-    private final String myReplacementMethod;
-
-    private ReplaceNestedCallHandler(@NonNls String replacementMethod) {
-      myReplacementMethod = replacementMethod;
-    }
-
+  private static class ContainsAllSingletonHandler implements RedundantCollectionOperationHandler {
     @Override
     public @NotNull @NlsSafe String getReplacement() {
-      return myReplacementMethod + "()";
+      return "contains()";
     }
 
     @Override
     public void performFix(@NotNull Project project, @NotNull PsiMethodCallExpression call) {
       PsiExpression arg = ArrayUtil.getFirstElement(call.getArgumentList().getExpressions());
       if (arg == null) return;
-      PsiMethodCallExpression argCall = tryCast(PsiUtil.skipParenthesizedExprDown(arg), PsiMethodCallExpression.class);
-      if (argCall == null) return;
-      ExpressionUtils.bindCallTo(call, myReplacementMethod);
-      new CommentTracker().replaceAndRestoreComments(call.getArgumentList(), argCall.getArgumentList());
+      PsiMethodCallExpression singleton = tryCast(PsiUtil.skipParenthesizedExprDown(arg), PsiMethodCallExpression.class);
+      if (singleton == null) return;
+      PsiExpression singletonArg = ArrayUtil.getFirstElement(singleton.getArgumentList().getExpressions());
+      if (singletonArg == null) return;
+      ExpressionUtils.bindCallTo(call, "contains");
+      new CommentTracker().replaceAndRestoreComments(arg, singletonArg);
     }
 
-    public static RedundantCollectionOperationHandler handler(PsiMethodCallExpression call,
-                                                              CallMatcher nestedCallMatcher,
-                                                              String replacementMethod) {
-      PsiExpression arg = ArrayUtil.getFirstElement(call.getArgumentList().getExpressions());
-      if (arg == null) return null;
-      PsiMethodCallExpression nestedCall = tryCast(PsiUtil.skipParenthesizedExprDown(arg), PsiMethodCallExpression.class);
-      if (!nestedCallMatcher.test(nestedCall)) return null;
-      return new ReplaceNestedCallHandler(replacementMethod);
+    public static RedundantCollectionOperationHandler handler(PsiMethodCallExpression call) {
+      PsiExpression containsAllArg = call.getArgumentList().getExpressions()[0];
+      PsiMethodCallExpression maybeSingleton = tryCast(PsiUtil.skipParenthesizedExprDown(containsAllArg), PsiMethodCallExpression.class);
+      if (!SINGLETON.test(maybeSingleton)) return null;
+      return new ContainsAllSingletonHandler();
     }
   }
 
@@ -532,7 +512,7 @@ public class RedundantCollectionOperationInspection extends AbstractBaseJavaLoca
         }
         PsiCodeBlock block = PsiTreeUtil.getParentOfType(localVariable, PsiCodeBlock.class);
         List<PsiReferenceExpression> references = VariableAccessUtils.getVariableReferences(localVariable, block);
-        if (!references.isEmpty() && ContainerUtil.and(references, RedundantAsListForIterationHandler::isAllowedContext)) {
+        if (!references.isEmpty() && references.stream().allMatch(RedundantAsListForIterationHandler::isAllowedContext)) {
           return new RedundantAsListForIterationHandler();
         }
       }

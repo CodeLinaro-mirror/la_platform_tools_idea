@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.highlighting
 
 import com.siyeh.ig.junit.AbstractTestClassNamingConvention
@@ -7,7 +7,6 @@ import org.jetbrains.plugins.groovy.codeInspection.assignment.GroovyAssignabilit
 import org.jetbrains.plugins.groovy.codeInspection.bugs.GroovyConstructorNamedArgumentsInspection
 import org.jetbrains.plugins.groovy.codeInspection.naming.NewGroovyClassNamingConventionInspection
 import org.jetbrains.plugins.groovy.codeInspection.untypedUnresolvedAccess.GrUnresolvedAccessInspection
-import org.jetbrains.plugins.groovy.codeInspection.unusedDef.UnusedDefInspection
 import org.jetbrains.plugins.groovy.transformations.TransformationUtilKt
 
 /**
@@ -2137,59 +2136,5 @@ class A {
   }
 }
 """
-  }
-
-  void 'test variable in anonymous class constructor'() {
-    testHighlighting """
-class Foo {
-    int y;
-
-    Foo(int x) { this.y = x }
-
-    static void test() {
-        int x = 5
-        Foo foo = new Foo(x) {}
-        println foo
-    }
-}
-""", UnusedDefInspection
-  }
-
-  void 'test closure with null mapping'() {
-    testHighlighting """
-class A {
-    static def cl = {}
-}
-
-A.cl()""", GroovyAssignabilityCheckInspection
-  }
-
-  void 'test field closure'() {
-    testHighlighting """
-class A {
-  Closure<?> f
-  
-  def foo() {
-    f()
-  }
-}"""
-  }
-
-  void 'test IDEA-280481'() {
-    testHighlighting '''
-def output = \'\'
-for (something5 in something4) {
-  [].eachLine { line ->
-      if (line) {
-          def (line_number) = line
-          output = output + line_number
-      }
-  }
-  output = "${output}" 
-}
-new File('').withWriter('utf-8') {
-    writer -> writer.write(output)
-}
-'''
   }
 }

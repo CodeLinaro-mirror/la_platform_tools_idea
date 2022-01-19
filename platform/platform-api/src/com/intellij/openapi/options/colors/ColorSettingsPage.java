@@ -3,7 +3,6 @@ package com.intellij.openapi.options.colors;
 
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.ColorKey;
-import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileTypes.SyntaxHighlighter;
@@ -70,8 +69,6 @@ public interface ColorSettingsPage extends ColorAndFontDescriptorsProvider {
    * Allows to define additional customizations for the preview editor, which cannot be configured by markup in demo text.
    */
   default @Nullable PreviewCustomizer getPreviewEditorCustomizer() { return null; }
-
-  default @NotNull EditorColorsScheme customizeColorScheme(@NotNull EditorColorsScheme scheme) { return scheme; }
 
   /**
    * Specifies customizations for the preview editor, which cannot be configured by markup in demo text.

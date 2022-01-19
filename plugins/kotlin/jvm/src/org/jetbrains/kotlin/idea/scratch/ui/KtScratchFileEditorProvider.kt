@@ -53,7 +53,7 @@ class KtScratchFileEditorProvider : FileEditorProvider, DumbAware {
 class KtScratchFileEditorWithPreview private constructor(
     val scratchFile: ScratchFile,
     sourceTextEditor: TextEditor,
-    previewTextEditor: TextEditor
+    private val previewTextEditor: TextEditor
 ) : TextEditorWithPreview(sourceTextEditor, previewTextEditor), TextEditor, ScratchEditorLinesTranslator {
 
     private val sourceEditor = sourceTextEditor.editor as EditorEx
@@ -77,7 +77,6 @@ class KtScratchFileEditorWithPreview private constructor(
 
     init {
         sourceTextEditor.parentScratchEditorWithPreview = this
-        previewTextEditor.parentScratchEditorWithPreview = this
 
         scratchFile.compilingScratchExecutor?.addOutputHandler(commonPreviewOutputHandler)
         scratchFile.replScratchExecutor?.addOutputHandler(commonPreviewOutputHandler)
@@ -170,12 +169,12 @@ class KtScratchFileEditorWithPreview private constructor(
      * That's why we set long and descriptive [Presentation.getText], but short [Presentation.getDescription].
      */
     override fun getShowEditorAction(): ToggleAction = super.getShowEditorAction().apply {
-        templatePresentation.text = KotlinJvmBundle.message("scratch.inlay.output.mode.title")
+        templatePresentation.text = KotlinJvmBundle.message("scratch.inlay.output.mode")
         templatePresentation.description = KotlinJvmBundle.message("scratch.inlay.output.mode.description")
     }
 
     override fun getShowEditorAndPreviewAction(): ToggleAction = super.getShowEditorAndPreviewAction().apply {
-        templatePresentation.text = KotlinJvmBundle.message("scratch.side.panel.output.mode.title")
+        templatePresentation.text = KotlinJvmBundle.message("scratch.side.panel.output.mode")
         templatePresentation.description = KotlinJvmBundle.message("scratch.side.panel.output.mode.description")
     }
 

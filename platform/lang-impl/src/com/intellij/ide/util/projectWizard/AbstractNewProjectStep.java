@@ -1,8 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.projectWizard;
 
-import com.intellij.feedback.state.createdProject.NewProjectInfoEntry;
-import com.intellij.feedback.state.createdProject.NewProjectStatisticService;
 import com.intellij.ide.RecentProjectsManager;
 import com.intellij.ide.impl.OpenProjectTask;
 import com.intellij.ide.impl.TrustedProjectSettings;
@@ -15,7 +13,6 @@ import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.actionSystem.Presentation;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPointName;
@@ -26,7 +23,6 @@ import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -54,12 +50,8 @@ import java.util.List;
 
 import static com.intellij.platform.ProjectTemplatesFactory.CUSTOM_GROUP;
 
-/**
- * Defines the new project wizard, which is used in small IDEs where we don't need to work with modules directly
- */
 public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup implements DumbAware, ActionsWithPanelProvider {
-  public static final ExtensionPointName<DirectoryProjectGenerator<?>> EP_NAME =
-    new ExtensionPointName<>("com.intellij.directoryProjectGenerator");
+  static final ExtensionPointName<DirectoryProjectGenerator<?>> EP_NAME = new ExtensionPointName<>("com.intellij.directoryProjectGenerator");
 
   private static final Logger LOG = Logger.getInstance(AbstractNewProjectStep.class);
   private static final Key<Boolean> CREATED_KEY = new Key<>("abstract.new.project.step.created");
@@ -92,7 +84,7 @@ public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup imple
       return;
     }
 
-    ProjectTemplate[] templates = new ArchivedTemplatesFactory().createTemplates(CUSTOM_GROUP);
+    ProjectTemplate[] templates = new ArchivedTemplatesFactory().createTemplates(CUSTOM_GROUP, null);
     List<DirectoryProjectGenerator<?>> projectGenerators;
     if (templates.length == 0) {
       projectGenerators = Collections.emptyList();
@@ -153,10 +145,11 @@ public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup imple
 
       ProjectSettingsStepBase<T> step;
       if (generator instanceof CustomStepProjectGenerator) {
-        //noinspection unchecked
+        //noinspection unchecked,CastConflictsWithInstanceof
         step = (ProjectSettingsStepBase<T>)((CustomStepProjectGenerator<T>)generator).createStep(generator, callback);
       }
       else {
+        //noinspection unchecked
         step = createProjectSpecificSettingsStep(generator, callback);
       }
 
@@ -185,7 +178,7 @@ public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup imple
       Project projectToClose = frame != null ? frame.getProject() : null;
       DirectoryProjectGenerator<T> generator = settings.getProjectGenerator();
       T actualSettings = projectGeneratorPeer.getSettings();
-      doGenerateProject(projectToClose, settings.getProjectLocation(), generator, actualSettings);
+      Project project = doGenerateProject(projectToClose, settings.getProjectLocation(), generator, actualSettings);
     }
   }
 
@@ -204,8 +197,7 @@ public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup imple
       return null;
     }
 
-    VirtualFile baseDir = WriteAction.compute(
-      () -> LocalFileSystem.getInstance().refreshAndFindFileByPath(FileUtil.toSystemIndependentName(location.toString())));
+    VirtualFile baseDir = WriteAction.compute(() -> LocalFileSystem.getInstance().refreshAndFindFileByPath(FileUtil.toSystemIndependentName(location.toString())));
     if (baseDir == null) {
       LOG.error("Couldn't find '" + location + "' in VFS");
       return null;
@@ -245,14 +237,6 @@ public abstract class AbstractNewProjectStep<T> extends DefaultActionGroup imple
       generator.generateProject(project, baseDir, settings, ModuleManager.getInstance(project).getModules()[0]);
     }
     logProjectGeneratedEvent(generator, project);
-
-    if (Registry.is("platform.feedback", false)) {
-      final var newProjectStatisticService = ApplicationManager.getApplication().getService(NewProjectStatisticService.class);
-      if (newProjectStatisticService != null && generator != null) {
-        final var newProjectInfoState = newProjectStatisticService.getState();
-        newProjectInfoState.getCreatedProjectInfo().add(NewProjectInfoEntry.Companion.createNewProjectInfoEntry(generator.getName()));
-      }
-    }
 
     return project;
   }

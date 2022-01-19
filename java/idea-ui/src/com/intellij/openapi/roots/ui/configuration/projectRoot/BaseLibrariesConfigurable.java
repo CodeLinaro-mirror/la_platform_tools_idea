@@ -187,8 +187,7 @@ public abstract class BaseLibrariesConfigurable extends BaseStructureConfigurabl
     if (fromPopup) {
       final BaseLibrariesConfigurable targetGroup = getOppositeGroup();
       actions.add(new ChangeLibraryLevelAction(myProject, myTree, this, targetGroup));
-      actions.add(new AddLibraryToModuleDependenciesAction(this));
-      actions.add(new RefreshRootsLibraryAction(this));
+      actions.add(new AddLibraryToModuleDependenciesAction(myProject, this));
     }
     return actions;
   }

@@ -67,7 +67,7 @@ public class SvnIntegrateChangesTask extends Task.Backgroundable {
     final boolean dryRun,
     String branchName
   ) {
-    super(vcs.getProject(), title, true);
+    super(vcs.getProject(), title, true, VcsConfiguration.getInstance(vcs.getProject()).getUpdateOption());
     myDryRun = dryRun;
 
     myProjectLevelVcsManager = ProjectLevelVcsManagerEx.getInstanceEx(myProject);

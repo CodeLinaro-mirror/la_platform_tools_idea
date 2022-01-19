@@ -12,5 +12,4 @@ import javax.swing.*;
 public interface PanelWithAnchor {
   JComponent getAnchor();
   void setAnchor(@Nullable JComponent anchor);
-  default @Nullable JComponent getOwnAnchor() { return getAnchor(); }
 }

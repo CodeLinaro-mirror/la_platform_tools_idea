@@ -16,4 +16,12 @@ public interface TabsListener {
 
   default void tabsMoved() {
   }
+
+  /**
+   * @deprecated use {@link TabsListener} directly
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  class Adapter implements TabsListener {
+  }
 }

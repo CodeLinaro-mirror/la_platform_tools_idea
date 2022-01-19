@@ -3,6 +3,7 @@ package org.jetbrains.kotlin.idea.refactoring.move.moveMethod
 
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.registry.Registry
@@ -11,10 +12,8 @@ import com.intellij.psi.PsiReference
 import com.intellij.refactoring.move.MoveCallback
 import com.intellij.refactoring.move.MoveHandlerDelegate
 import com.intellij.refactoring.util.CommonRefactoringUtil
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.references.mainReference
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.js.resolve.diagnostics.findPsi
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
@@ -24,12 +23,12 @@ import org.jetbrains.kotlin.psi.psiUtil.isObjectLiteral
 
 private const val optionName = "kotlin.enable.move.method.refactoring"
 private val refactoringIsDisabled: Boolean
-    get() = !Registry.`is`(optionName) && !isUnitTestMode()
+    get() = !Registry.`is`(optionName) && !ApplicationManager.getApplication().isUnitTestMode
 
 class MoveKotlinMethodHandler : MoveHandlerDelegate() {
-    private fun showErrorHint(project: Project, dataContext: DataContext?, @Nls message: String) {
+    private fun showErrorHint(project: Project, dataContext: DataContext?, message: String) {
         val editor = dataContext?.let { CommonDataKeys.EDITOR.getData(it) }
-        CommonRefactoringUtil.showErrorHint(project, editor, message, KotlinBundle.message("title.move.method"), null)
+        CommonRefactoringUtil.showErrorHint(project, editor, message, KotlinBundle.message("text.move.method"), null)
     }
 
     private fun invokeMoveMethodRefactoring(
@@ -132,5 +131,5 @@ class MoveKotlinMethodHandler : MoveHandlerDelegate() {
         return collectDescendantsOfType<KtUserType>().any { userType -> userType.referenceExpression?.mainReference?.resolve() in typeParameters }
     }
 
-    override fun getActionName(elements: Array<out PsiElement>): String = KotlinBundle.message("action.move.method")
+    override fun getActionName(elements: Array<out PsiElement>): String = "${KotlinBundle.message("text.move.method")}.."
 }

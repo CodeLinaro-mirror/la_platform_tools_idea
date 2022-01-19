@@ -127,7 +127,7 @@ public final class SuppressionUtil extends SuppressionUtilCore {
            && commentText.endsWith(prefixSuffixPair.second);
   }
 
-  private static boolean startsWithSuppressionTag(@NotNull String commentText, @NotNull String prefix) {
+  private static boolean startsWithSuppressionTag(String commentText, String prefix) {
     if (!commentText.startsWith(prefix)) {
       return false;
     }

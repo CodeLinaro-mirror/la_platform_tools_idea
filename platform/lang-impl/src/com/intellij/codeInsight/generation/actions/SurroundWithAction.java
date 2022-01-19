@@ -27,11 +27,6 @@ public class SurroundWithAction extends BaseCodeInsightAction{
   }
 
   @Override
-  public boolean isUpdateInBackground() {
-    return false;
-  }
-
-  @Override
   protected boolean isValidForFile(@NotNull Project project, @NotNull Editor editor, @NotNull final PsiFile file) {
     final Language language = file.getLanguage();
     if (!LanguageSurrounders.INSTANCE.allForLanguage(language).isEmpty()) {

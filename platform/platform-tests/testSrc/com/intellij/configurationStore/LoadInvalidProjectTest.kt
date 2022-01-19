@@ -45,7 +45,7 @@ class LoadInvalidProjectTest {
 
   @Before
   fun setUp() {
-    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(disposable.disposable, errors::add)
+    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(errors::add, disposable.disposable)
   }
 
   @Test

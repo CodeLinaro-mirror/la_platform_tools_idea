@@ -1,5 +1,6 @@
 // "Replace with forEach" "true"
 
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 
 public class Main {
@@ -11,6 +12,6 @@ public class Main {
   static boolean isGood(A a) {}
 
   public long test() {
-      Stream.iterate(new A(), a -> isGood(a), a -> a.next()).filter(a -> a.x < 3).forEach(System.out::println);
+      Stream.iterate(new A(), (UnaryOperator<A>) Main::isGood, a -> a.next()).filter(a -> a.x < 3).forEach(System.out::println);
   }
 }

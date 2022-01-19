@@ -11,6 +11,7 @@ public interface TreeExpander {
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2022.2")
+  @SuppressWarnings("unused")
   default boolean isVisible(@NotNull AnActionEvent event) {
     return true;
   }

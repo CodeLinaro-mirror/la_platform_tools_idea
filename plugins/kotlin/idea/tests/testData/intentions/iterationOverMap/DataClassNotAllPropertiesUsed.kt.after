@@ -1,5 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'args' is never used
 
 fun main(args: Array<String>) {
     val list = listOf(MyClass(1, 2, 3, 4))

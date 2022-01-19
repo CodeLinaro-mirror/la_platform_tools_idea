@@ -79,10 +79,6 @@ public class EditorConfigVisitor extends PsiElementVisitor {
     visitHeaderElement(o);
   }
 
-  public void visitRawOptionValue(@NotNull EditorConfigRawOptionValue o) {
-    visitPsiElement(o);
-  }
-
   public void visitRootDeclaration(@NotNull EditorConfigRootDeclaration o) {
     visitNavigatablePsiElement(o);
   }
@@ -99,10 +95,6 @@ public class EditorConfigVisitor extends PsiElementVisitor {
     visitNavigatablePsiElement(o);
   }
 
-  public void visitNavigatablePsiElement(@NotNull NavigatablePsiElement o) {
-    visitElement(o);
-  }
-
   public void visitDescribableElement(@NotNull EditorConfigDescribableElement o) {
     visitPsiElement(o);
   }
@@ -113,6 +105,10 @@ public class EditorConfigVisitor extends PsiElementVisitor {
 
   public void visitIdentifierElement(@NotNull EditorConfigIdentifierElement o) {
     visitPsiElement(o);
+  }
+
+  public void visitNavigatablePsiElement(@NotNull NavigatablePsiElement o) {
+    visitElement(o);
   }
 
   public void visitPsiElement(@NotNull PsiElement o) {

@@ -1,8 +1,6 @@
-// IS_APPLICABLE: true
-// AFTER-WARNING: Parameter 'f' is never used
-// AFTER-WARNING: Parameter 'i' is never used, could be renamed to _
-fun foo(f: (Int, String, Int) -> String) {}
+// IS_APPLICABLE: false
+fun foo(f: (Int, Int) -> String) {}
 
 fun test() {
-    foo <caret>{ _, _, i -> "" }
+    foo <caret>{ i, _ -> "" }
 }

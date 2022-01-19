@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.refactoring.memberInfo
 
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMember
@@ -31,7 +30,6 @@ fun PsiNamedElement.getClassDescriptorIfAny(resolutionFacade: ResolutionFacade? 
 }
 
 // Applies to JetClassOrObject and PsiClass
-@NlsSafe
 fun PsiNamedElement.qualifiedClassNameForRendering(): String {
     val fqName = when (this) {
         is KtClassOrObject -> fqName?.asString()

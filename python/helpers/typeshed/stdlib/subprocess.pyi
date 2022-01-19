@@ -1,7 +1,7 @@
 import sys
-from _typeshed import Self, StrOrBytesPath
+from _typeshed import StrOrBytesPath
 from types import TracebackType
-from typing import IO, Any, AnyStr, Callable, Generic, Iterable, Mapping, Sequence, Type, TypeVar, Union, overload
+from typing import IO, Any, AnyStr, Callable, Generic, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
 from typing_extensions import Literal
 
 if sys.version_info >= (3, 9):
@@ -34,17 +34,18 @@ if sys.platform == "win32":
 else:
     _ENV = Union[Mapping[bytes, StrOrBytesPath], Mapping[str, StrOrBytesPath]]
 
+_S = TypeVar("_S")
 _T = TypeVar("_T")
 
 class CompletedProcess(Generic[_T]):
     # morally: _CMD
     args: Any
     returncode: int
-    # These can both be None, but requiring checks for None would be tedious
+    # These are really both Optional, but requiring checks would be tedious
     # and writing all the overloads would be horrific.
     stdout: _T
     stderr: _T
-    def __init__(self, args: _CMD, returncode: int, stdout: _T | None = ..., stderr: _T | None = ...) -> None: ...
+    def __init__(self, args: _CMD, returncode: int, stdout: Optional[_T] = ..., stderr: Optional[_T] = ...) -> None: ...
     def check_returncode(self) -> None: ...
     if sys.version_info >= (3, 9):
         def __class_getitem__(cls, item: Any) -> GenericAlias: ...
@@ -55,15 +56,15 @@ if sys.version_info >= (3, 7):
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -73,25 +74,25 @@ if sys.version_info >= (3, 7):
         *,
         capture_output: bool = ...,
         check: bool = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        input: str | None = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        input: Optional[str] = ...,
         text: Literal[True],
-        timeout: float | None = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -102,24 +103,24 @@ if sys.version_info >= (3, 7):
         capture_output: bool = ...,
         check: bool = ...,
         encoding: str,
-        errors: str | None = ...,
-        input: str | None = ...,
-        text: bool | None = ...,
-        timeout: float | None = ...,
+        errors: Optional[str] = ...,
+        input: Optional[str] = ...,
+        text: Optional[bool] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -129,25 +130,25 @@ if sys.version_info >= (3, 7):
         *,
         capture_output: bool = ...,
         check: bool = ...,
-        encoding: str | None = ...,
+        encoding: Optional[str] = ...,
         errors: str,
-        input: str | None = ...,
-        text: bool | None = ...,
-        timeout: float | None = ...,
+        input: Optional[str] = ...,
+        text: Optional[bool] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         *,
         universal_newlines: Literal[True],
         startupinfo: Any = ...,
@@ -158,25 +159,25 @@ if sys.version_info >= (3, 7):
         # where the *real* keyword only args start
         capture_output: bool = ...,
         check: bool = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        input: str | None = ...,
-        text: bool | None = ...,
-        timeout: float | None = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        input: Optional[str] = ...,
+        text: Optional[bool] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: Literal[False] = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -188,23 +189,23 @@ if sys.version_info >= (3, 7):
         check: bool = ...,
         encoding: None = ...,
         errors: None = ...,
-        input: bytes | None = ...,
+        input: Optional[bytes] = ...,
         text: Literal[None, False] = ...,
-        timeout: float | None = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[bytes]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -214,11 +215,11 @@ if sys.version_info >= (3, 7):
         *,
         capture_output: bool = ...,
         check: bool = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        input: _TXT | None = ...,
-        text: bool | None = ...,
-        timeout: float | None = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        input: Optional[_TXT] = ...,
+        text: Optional[bool] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[Any]: ...
 
 else:
@@ -227,15 +228,15 @@ else:
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -245,23 +246,23 @@ else:
         *,
         check: bool = ...,
         encoding: str,
-        errors: str | None = ...,
-        input: str | None = ...,
-        timeout: float | None = ...,
+        errors: Optional[str] = ...,
+        input: Optional[str] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -270,24 +271,24 @@ else:
         pass_fds: Any = ...,
         *,
         check: bool = ...,
-        encoding: str | None = ...,
+        encoding: Optional[str] = ...,
         errors: str,
-        input: str | None = ...,
-        timeout: float | None = ...,
+        input: Optional[str] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         *,
         universal_newlines: Literal[True],
         startupinfo: Any = ...,
@@ -297,24 +298,24 @@ else:
         pass_fds: Any = ...,
         # where the *real* keyword only args start
         check: bool = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        input: str | None = ...,
-        timeout: float | None = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        input: Optional[str] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[str]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: Literal[False] = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -325,22 +326,22 @@ else:
         check: bool = ...,
         encoding: None = ...,
         errors: None = ...,
-        input: bytes | None = ...,
-        timeout: float | None = ...,
+        input: Optional[bytes] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[bytes]: ...
     @overload
     def run(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stdout: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -349,25 +350,25 @@ else:
         pass_fds: Any = ...,
         *,
         check: bool = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        input: _TXT | None = ...,
-        timeout: float | None = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        input: Optional[_TXT] = ...,
+        timeout: Optional[float] = ...,
     ) -> CompletedProcess[Any]: ...
 
 # Same args as Popen.__init__
 def call(
     args: _CMD,
     bufsize: int = ...,
-    executable: StrOrBytesPath | None = ...,
+    executable: Optional[StrOrBytesPath] = ...,
     stdin: _FILE = ...,
     stdout: _FILE = ...,
     stderr: _FILE = ...,
-    preexec_fn: Callable[[], Any] | None = ...,
+    preexec_fn: Optional[Callable[[], Any]] = ...,
     close_fds: bool = ...,
     shell: bool = ...,
-    cwd: StrOrBytesPath | None = ...,
-    env: _ENV | None = ...,
+    cwd: Optional[StrOrBytesPath] = ...,
+    env: Optional[_ENV] = ...,
     universal_newlines: bool = ...,
     startupinfo: Any = ...,
     creationflags: int = ...,
@@ -375,7 +376,7 @@ def call(
     start_new_session: bool = ...,
     pass_fds: Any = ...,
     *,
-    timeout: float | None = ...,
+    timeout: Optional[float] = ...,
 ) -> int: ...
 
 # Same args as Popen.__init__
@@ -386,18 +387,18 @@ def check_call(
     stdin: _FILE = ...,
     stdout: _FILE = ...,
     stderr: _FILE = ...,
-    preexec_fn: Callable[[], Any] | None = ...,
+    preexec_fn: Optional[Callable[[], Any]] = ...,
     close_fds: bool = ...,
     shell: bool = ...,
-    cwd: StrOrBytesPath | None = ...,
-    env: _ENV | None = ...,
+    cwd: Optional[StrOrBytesPath] = ...,
+    env: Optional[_ENV] = ...,
     universal_newlines: bool = ...,
     startupinfo: Any = ...,
     creationflags: int = ...,
     restore_signals: bool = ...,
     start_new_session: bool = ...,
     pass_fds: Any = ...,
-    timeout: float | None = ...,
+    timeout: Optional[float] = ...,
 ) -> int: ...
 
 if sys.version_info >= (3, 7):
@@ -406,14 +407,14 @@ if sys.version_info >= (3, 7):
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -421,24 +422,24 @@ if sys.version_info >= (3, 7):
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
         text: Literal[True],
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -446,24 +447,24 @@ if sys.version_info >= (3, 7):
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
         encoding: str,
-        errors: str | None = ...,
-        text: bool | None = ...,
+        errors: Optional[str] = ...,
+        text: Optional[bool] = ...,
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -471,24 +472,24 @@ if sys.version_info >= (3, 7):
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
         errors: str,
-        text: bool | None = ...,
+        text: Optional[bool] = ...,
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         *,
         universal_newlines: Literal[True],
         startupinfo: Any = ...,
@@ -497,24 +498,24 @@ if sys.version_info >= (3, 7):
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         # where the real keyword only ones start
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        text: bool | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        text: Optional[bool] = ...,
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: Literal[False] = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -522,8 +523,8 @@ if sys.version_info >= (3, 7):
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
         encoding: None = ...,
         errors: None = ...,
         text: Literal[None, False] = ...,
@@ -532,14 +533,14 @@ if sys.version_info >= (3, 7):
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -547,11 +548,11 @@ if sys.version_info >= (3, 7):
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
-        text: bool | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
+        text: Optional[bool] = ...,
     ) -> Any: ...  # morally: -> _TXT
 
 else:
@@ -559,14 +560,14 @@ else:
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -574,23 +575,23 @@ else:
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
         encoding: str,
-        errors: str | None = ...,
+        errors: Optional[str] = ...,
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -598,23 +599,23 @@ else:
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
         errors: str,
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
         restore_signals: bool = ...,
@@ -622,23 +623,23 @@ else:
         pass_fds: Any = ...,
         *,
         universal_newlines: Literal[True],
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
     ) -> str: ...
     @overload
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: Literal[False] = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -646,8 +647,8 @@ else:
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
         encoding: None = ...,
         errors: None = ...,
     ) -> bytes: ...
@@ -655,14 +656,14 @@ else:
     def check_output(
         args: _CMD,
         bufsize: int = ...,
-        executable: StrOrBytesPath | None = ...,
+        executable: Optional[StrOrBytesPath] = ...,
         stdin: _FILE = ...,
         stderr: _FILE = ...,
-        preexec_fn: Callable[[], Any] | None = ...,
+        preexec_fn: Optional[Callable[[], Any]] = ...,
         close_fds: bool = ...,
         shell: bool = ...,
-        cwd: StrOrBytesPath | None = ...,
-        env: _ENV | None = ...,
+        cwd: Optional[StrOrBytesPath] = ...,
+        env: Optional[_ENV] = ...,
         universal_newlines: bool = ...,
         startupinfo: Any = ...,
         creationflags: int = ...,
@@ -670,10 +671,10 @@ else:
         start_new_session: bool = ...,
         pass_fds: Any = ...,
         *,
-        timeout: float | None = ...,
-        input: _TXT | None = ...,
-        encoding: str | None = ...,
-        errors: str | None = ...,
+        timeout: Optional[float] = ...,
+        input: Optional[_TXT] = ...,
+        encoding: Optional[str] = ...,
+        errors: Optional[str] = ...,
     ) -> Any: ...  # morally: -> _TXT
 
 PIPE: int
@@ -683,11 +684,11 @@ DEVNULL: int
 class SubprocessError(Exception): ...
 
 class TimeoutExpired(SubprocessError):
-    def __init__(self, cmd: _CMD, timeout: float, output: _TXT | None = ..., stderr: _TXT | None = ...) -> None: ...
+    def __init__(self, cmd: _CMD, timeout: float, output: Optional[_TXT] = ..., stderr: Optional[_TXT] = ...) -> None: ...
     # morally: _CMD
     cmd: Any
     timeout: float
-    # morally: _TXT | None
+    # morally: Optional[_TXT]
     output: Any
     stdout: Any
     stderr: Any
@@ -696,19 +697,19 @@ class CalledProcessError(SubprocessError):
     returncode: int
     # morally: _CMD
     cmd: Any
-    # morally: _TXT | None
+    # morally: Optional[_TXT]
     output: Any
 
-    # morally: _TXT | None
+    # morally: Optional[_TXT]
     stdout: Any
     stderr: Any
-    def __init__(self, returncode: int, cmd: _CMD, output: _TXT | None = ..., stderr: _TXT | None = ...) -> None: ...
+    def __init__(self, returncode: int, cmd: _CMD, output: Optional[_TXT] = ..., stderr: Optional[_TXT] = ...) -> None: ...
 
 class Popen(Generic[AnyStr]):
     args: _CMD
-    stdin: IO[AnyStr] | None
-    stdout: IO[AnyStr] | None
-    stderr: IO[AnyStr] | None
+    stdin: Optional[IO[AnyStr]]
+    stdout: Optional[IO[AnyStr]]
+    stderr: Optional[IO[AnyStr]]
     pid: int
     returncode: int
     universal_newlines: bool
@@ -723,49 +724,49 @@ class Popen(Generic[AnyStr]):
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
-            text: bool | None = ...,
+            text: Optional[bool] = ...,
             encoding: str,
-            errors: str | None = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[str]: ...
         @overload
         def __new__(
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
-            text: bool | None = ...,
-            encoding: str | None = ...,
+            text: Optional[bool] = ...,
+            encoding: Optional[str] = ...,
             errors: str,
         ) -> Popen[str]: ...
         @overload
@@ -773,68 +774,68 @@ class Popen(Generic[AnyStr]):
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             *,
             universal_newlines: Literal[True],
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             # where the *real* keyword only args start
-            text: bool | None = ...,
-            encoding: str | None = ...,
-            errors: str | None = ...,
+            text: Optional[bool] = ...,
+            encoding: Optional[str] = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[str]: ...
         @overload
         def __new__(
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
             text: Literal[True],
-            encoding: str | None = ...,
-            errors: str | None = ...,
+            encoding: Optional[str] = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[str]: ...
         @overload
         def __new__(
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: Literal[False] = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
@@ -849,25 +850,25 @@ class Popen(Generic[AnyStr]):
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
-            text: bool | None = ...,
-            encoding: str | None = ...,
-            errors: str | None = ...,
+            text: Optional[bool] = ...,
+            encoding: Optional[str] = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[Any]: ...
     else:
         @overload
@@ -875,47 +876,47 @@ class Popen(Generic[AnyStr]):
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
             encoding: str,
-            errors: str | None = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[str]: ...
         @overload
         def __new__(
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
-            encoding: str | None = ...,
+            encoding: Optional[str] = ...,
             errors: str,
         ) -> Popen[str]: ...
         @overload
@@ -923,42 +924,42 @@ class Popen(Generic[AnyStr]):
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             *,
             universal_newlines: Literal[True],
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             # where the *real* keyword only args start
-            encoding: str | None = ...,
-            errors: str | None = ...,
+            encoding: Optional[str] = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[str]: ...
         @overload
         def __new__(
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: Literal[False] = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
@@ -972,51 +973,51 @@ class Popen(Generic[AnyStr]):
             cls,
             args: _CMD,
             bufsize: int = ...,
-            executable: StrOrBytesPath | None = ...,
-            stdin: _FILE | None = ...,
-            stdout: _FILE | None = ...,
-            stderr: _FILE | None = ...,
-            preexec_fn: Callable[[], Any] | None = ...,
+            executable: Optional[StrOrBytesPath] = ...,
+            stdin: Optional[_FILE] = ...,
+            stdout: Optional[_FILE] = ...,
+            stderr: Optional[_FILE] = ...,
+            preexec_fn: Optional[Callable[[], Any]] = ...,
             close_fds: bool = ...,
             shell: bool = ...,
-            cwd: StrOrBytesPath | None = ...,
-            env: _ENV | None = ...,
+            cwd: Optional[StrOrBytesPath] = ...,
+            env: Optional[_ENV] = ...,
             universal_newlines: bool = ...,
-            startupinfo: Any | None = ...,
+            startupinfo: Optional[Any] = ...,
             creationflags: int = ...,
             restore_signals: bool = ...,
             start_new_session: bool = ...,
             pass_fds: Any = ...,
             *,
-            encoding: str | None = ...,
-            errors: str | None = ...,
+            encoding: Optional[str] = ...,
+            errors: Optional[str] = ...,
         ) -> Popen[Any]: ...
-    def poll(self) -> int | None: ...
+    def poll(self) -> Optional[int]: ...
     if sys.version_info >= (3, 7):
-        def wait(self, timeout: float | None = ...) -> int: ...
+        def wait(self, timeout: Optional[float] = ...) -> int: ...
     else:
-        def wait(self, timeout: float | None = ..., endtime: float | None = ...) -> int: ...
+        def wait(self, timeout: Optional[float] = ..., endtime: Optional[float] = ...) -> int: ...
     # Return str/bytes
     def communicate(
         self,
-        input: AnyStr | None = ...,
-        timeout: float | None = ...,
+        input: Optional[AnyStr] = ...,
+        timeout: Optional[float] = ...,
         # morally this should be optional
-    ) -> tuple[AnyStr, AnyStr]: ...
+    ) -> Tuple[AnyStr, AnyStr]: ...
     def send_signal(self, sig: int) -> None: ...
     def terminate(self) -> None: ...
     def kill(self) -> None: ...
-    def __enter__(self: Self) -> Self: ...
+    def __enter__(self: _S) -> _S: ...
     def __exit__(
-        self, type: Type[BaseException] | None, value: BaseException | None, traceback: TracebackType | None
+        self, type: Optional[Type[BaseException]], value: Optional[BaseException], traceback: Optional[TracebackType]
     ) -> None: ...
     if sys.version_info >= (3, 9):
         def __class_getitem__(cls, item: Any) -> GenericAlias: ...
 
 # The result really is always a str.
-def getstatusoutput(cmd: _TXT) -> tuple[int, str]: ...
+def getstatusoutput(cmd: _TXT) -> Tuple[int, str]: ...
 def getoutput(cmd: _TXT) -> str: ...
-def list2cmdline(seq: Iterable[str]) -> str: ...  # undocumented
+def list2cmdline(seq: Sequence[str]) -> str: ...  # undocumented
 
 if sys.platform == "win32":
     class STARTUPINFO:
@@ -1025,16 +1026,16 @@ if sys.platform == "win32":
                 self,
                 *,
                 dwFlags: int = ...,
-                hStdInput: Any | None = ...,
-                hStdOutput: Any | None = ...,
-                hStdError: Any | None = ...,
+                hStdInput: Optional[Any] = ...,
+                hStdOutput: Optional[Any] = ...,
+                hStdError: Optional[Any] = ...,
                 wShowWindow: int = ...,
-                lpAttributeList: Mapping[str, Any] | None = ...,
+                lpAttributeList: Optional[Mapping[str, Any]] = ...,
             ) -> None: ...
         dwFlags: int
-        hStdInput: Any | None
-        hStdOutput: Any | None
-        hStdError: Any | None
+        hStdInput: Optional[Any]
+        hStdOutput: Optional[Any]
+        hStdError: Optional[Any]
         wShowWindow: int
         if sys.version_info >= (3, 7):
             lpAttributeList: Mapping[str, Any]

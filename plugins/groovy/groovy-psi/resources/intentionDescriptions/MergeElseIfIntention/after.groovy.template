@@ -1,13 +1,13 @@
-class X {
+public class X {
   int f(int a) {
     if (a == 0) {
-      return 0
+      return 0;
     }
-    <spot>else if (a == 1) </spot>{
-      return 2
+    else if (a == 1) {
+      return 2;
     }
     else {
-      return 18
+      return 18;
     }
   }
 }

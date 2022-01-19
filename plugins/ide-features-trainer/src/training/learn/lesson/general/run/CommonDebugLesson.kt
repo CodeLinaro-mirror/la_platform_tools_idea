@@ -7,6 +7,7 @@ import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.icons.AllIcons
 import com.intellij.ide.impl.DataManagerImpl
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataProvider
@@ -35,12 +36,10 @@ import training.learn.CourseManager
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
 import training.learn.lesson.LessonManager
-import training.statistic.LessonStartingWay
 import training.ui.LearningUiHighlightingManager
 import training.ui.LearningUiManager
 import training.util.KeymapUtil
 import training.util.WeakReferenceDelegator
-import training.util.getActionById
 import training.util.invokeActionForFocusContext
 import java.awt.Rectangle
 import java.awt.event.KeyEvent
@@ -110,14 +109,12 @@ abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message
     evaluateExpressionTasks()
 
     stopTask()
-
-    restoreHotSwapStateInformer()
   }
 
   private fun LessonContext.prepareTask() {
     var needToRun = false
     prepareRuntimeTask {
-      val stopAction = getActionById("Stop")
+      val stopAction = ActionManager.getInstance().getAction("Stop")
       invokeActionForFocusContext(stopAction)
       runWriteAction {
         needToRun = !selectedNeedConfiguration() && !configureDebugConfiguration()
@@ -173,7 +170,7 @@ abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message
                 val activeToolWindow = LearningUiManager.activeToolWindow
                 if (activeToolWindow != null && !mayBeStopped && LessonManager.instance.currentLesson == this@CommonDebugLesson) {
                   val notification = TaskContext.RestoreNotification(LessonsBundle.message("debug.workflow.need.restart.lesson")) {
-                    CourseManager.instance.openLesson(activeToolWindow.project, this@CommonDebugLesson, LessonStartingWay.RESTORE_LINK)
+                    CourseManager.instance.openLesson(activeToolWindow.project, this@CommonDebugLesson)
                   }
                   LessonManager.instance.setRestoreNotification(notification)
                 }
@@ -426,8 +423,6 @@ abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message
 
   protected abstract fun LessonContext.applyProgramChangeTasks()
 
-  protected open fun LessonContext.restoreHotSwapStateInformer() = Unit
-
   private fun LessonContext.highlightLineNumberByOffset(offset: Int) {
     task {
       triggerByPartOfComponent<EditorGutterComponentEx> l@{ ui ->
@@ -467,13 +462,6 @@ abstract class CommonDebugLesson(id: String) : KLesson(id, LessonsBundle.message
 
     checkExpectedStateOfEditor(LessonSample(restoreText, offset), false) ?: checkForBreakpoints()
   }
-
-  override val suitableTips = listOf("BreakpointSpeedmenu", "QuickEvaluateExpression", "EvaluateExpressionInEditor")
-
-  override val helpLinks: Map<String, String> get() = mapOf(
-    Pair(LessonsBundle.message("debug.workflow.help.link"),
-         LessonUtil.getHelpLink("debugging-code.html")),
-  )
 }
 
 
@@ -489,12 +477,11 @@ fun LessonContext.clearBreakpoints() {
   }
 }
 
-fun LessonContext.toggleBreakpointTask(sample: LessonSample?,
+fun LessonContext.toggleBreakpointTask(sample: LessonSample,
                                        logicalPosition: () -> LogicalPosition,
                                        checkLine: Boolean = true,
-                                       breakpointXRange: (width: Int) -> IntRange = LessonUtil.breakpointXRange,
                                        textContent: TaskContext.() -> Unit) {
-  highlightBreakpointGutter(breakpointXRange, logicalPosition)
+  highlightBreakpointGutter(logicalPosition)
 
   task {
     textContent()
@@ -503,7 +490,7 @@ fun LessonContext.toggleBreakpointTask(sample: LessonSample?,
     }
     proposeRestore {
       val breakpoints = lineWithBreakpoints()
-      checkExpectedStateOfEditor(sample ?: previous.sample, checkPosition = checkLine)
+      checkExpectedStateOfEditor(sample, checkPosition = checkLine)
       ?: if (breakpoints.isNotEmpty() && (breakpoints != setOf(logicalPosition().line))) {
         TaskContext.RestoreNotification(incorrectBreakPointsMessage, callback = restorePreviousTaskCallback)
       }

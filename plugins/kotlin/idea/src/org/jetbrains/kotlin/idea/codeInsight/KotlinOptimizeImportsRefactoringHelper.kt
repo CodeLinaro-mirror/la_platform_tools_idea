@@ -11,7 +11,6 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiDocumentManager
-import com.intellij.psi.PsiElement
 import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.refactoring.RefactoringHelper
@@ -93,15 +92,6 @@ class KotlinOptimizeImportsRefactoringHelper : RefactoringHelper<Set<KtFile>> {
 
     override fun prepareOperation(usages: Array<UsageInfo>): Set<KtFile> = usages.mapNotNullTo(LinkedHashSet()) {
         if (!it.isNonCodeUsage) it.file as? KtFile else null
-    }
-
-    override fun prepareOperation(usages: Array<out UsageInfo>, primaryElement: PsiElement): Set<KtFile> {
-        val files = super.prepareOperation(usages, primaryElement)
-        val file = primaryElement.containingFile
-        if (file is KtFile) {
-            (files as LinkedHashSet<KtFile>).add(file)
-        }
-        return files
     }
 
     override fun performOperation(project: Project, operationData: Set<KtFile>) {

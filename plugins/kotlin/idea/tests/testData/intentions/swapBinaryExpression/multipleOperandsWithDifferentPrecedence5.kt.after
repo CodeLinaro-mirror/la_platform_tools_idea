@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'rabbit' is never used
 fun main() {
     val rabbit = 4 + 1 + 2 * 5
 }

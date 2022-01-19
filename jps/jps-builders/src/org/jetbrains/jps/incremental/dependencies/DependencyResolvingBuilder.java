@@ -58,7 +58,6 @@ public class DependencyResolvingBuilder extends ModuleLevelBuilder{
 
   private static final Key<ArtifactRepositoryManager> MANAGER_KEY = Key.create("_artifact_repository_manager_");
   private static final Key<Exception> RESOLVE_ERROR_KEY = Key.create("_artifact_repository_resolve_error_");
-  public static final String RESOLUTION_PARALLELISM_PROPERTY = "org.jetbrains.jps.incremental.dependencies.resolution.parallelism";
 
   public DependencyResolvingBuilder() {
     super(BuilderCategory.INITIAL);
@@ -146,7 +145,8 @@ public class DependencyResolvingBuilder extends ModuleLevelBuilder{
     Collection<JpsTypedLibrary<JpsSimpleElement<JpsMavenRepositoryLibraryDescriptor>>> libs,
     Consumer<JpsTypedLibrary<JpsSimpleElement<JpsMavenRepositoryLibraryDescriptor>>> resolveAction
   ) throws Exception {
-    int parallelism = SystemProperties.getIntProperty(RESOLUTION_PARALLELISM_PROPERTY, 1);
+    String key = "org.jetbrains.jps.incremental.dependencies.resolution.parallelism";
+    int parallelism = SystemProperties.getIntProperty(key, 1);
     if (parallelism < 2 || libs.size() < 2) {
       libs.forEach(resolveAction);
     }

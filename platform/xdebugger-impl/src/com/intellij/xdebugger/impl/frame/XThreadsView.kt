@@ -11,7 +11,6 @@ import com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTreePanel
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueContainerNode
-import javax.swing.JComponent
 import javax.swing.JPanel
 
 class XThreadsView(val project: Project, session: XDebugSessionImpl) : XDebugView() {
@@ -19,8 +18,6 @@ class XThreadsView(val project: Project, session: XDebugSessionImpl) : XDebugVie
 
   private fun getTree() = treePanel.tree
   fun getPanel(): JPanel = treePanel.mainPanel
-
-  override fun getMainComponent() = getPanel()
 
   fun getDefaultFocusedComponent(): XDebuggerTree =  treePanel.tree
 

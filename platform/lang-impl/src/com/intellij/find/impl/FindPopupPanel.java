@@ -40,6 +40,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
@@ -59,7 +60,7 @@ import com.intellij.ui.*;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.*;
 import com.intellij.ui.hover.TableHoverListener;
-import com.intellij.ui.mac.touchbar.Touchbar;
+import com.intellij.ui.mac.TouchbarDataKeys;
 import com.intellij.ui.popup.PopupState;
 import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.scale.JBUIScale;
@@ -79,10 +80,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.concurrency.Promises;
 
-import javax.accessibility.Accessible;
 import javax.accessibility.AccessibleContext;
-import javax.accessibility.AccessibleRole;
-import javax.accessibility.AccessibleStateSet;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
@@ -220,7 +218,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
 
         @Override
         protected void doOKAction() {
-          myOkActionListener.actionPerformed(null);
+          processCtrlEnter();
         }
 
         @Override
@@ -245,7 +243,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
           return SERVICE_KEY;
         }
       };
-      myDialog.setUndecorated(true);
+      myDialog.setUndecorated(!Registry.is("ide.find.as.popup.decorated"));
       ApplicationManager.getApplication().getMessageBus().connect(myDialog.getDisposable()).subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
         @Override
         public void projectClosed(@NotNull Project project) {
@@ -294,9 +292,10 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
       JRootPane root = ((RootPaneContainer)dialogWindow).getRootPane();
 
       IdeGlassPaneImpl glass = (IdeGlassPaneImpl)myDialog.getRootPane().getGlassPane();
+      int i = Registry.intValue("ide.popup.resizable.border.sensitivity", 4);
       WindowResizeListener resizeListener = new WindowResizeListener(
         root,
-        JBUI.insets(4),
+        JBUI.insets(i),
         null) {
         private Cursor myCursor;
 
@@ -388,7 +387,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
         rootPane.getActionMap().put("openInFindWindow", new AbstractAction() {
           @Override
           public void actionPerformed(ActionEvent e) {
-            myOkActionListener.actionPerformed(null);
+            processCtrlEnter();
           }
         });
       }
@@ -591,7 +590,8 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
       }, FindBundle.message("find.replace.command"), null);
     });
     myOKButton.addActionListener(myOkActionListener);
-    boolean enterAsOK = false;
+    TouchbarDataKeys.putDialogButtonDescriptor(myOKButton, 0, true);
+    boolean enterAsOK = Registry.is("ide.find.enter.as.ok", false);
 
     AnAction openInRightSplit = ActionManager.getInstance().getAction(ACTION_OPEN_IN_RIGHT_SPLIT);
     if (openInRightSplit != null) {
@@ -600,8 +600,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     }
 
     new MyEnterAction(enterAsOK).registerCustomShortcutSet(new CustomShortcutSet(ENTER), this);
-    DumbAwareAction.create(
-      __ -> myOkActionListener.actionPerformed(null)).registerCustomShortcutSet(new CustomShortcutSet(ENTER_WITH_MODIFIERS), this);
+    DumbAwareAction.create(__ -> processCtrlEnter()).registerCustomShortcutSet(new CustomShortcutSet(ENTER_WITH_MODIFIERS), this);
     DumbAwareAction.create(__ -> myReplaceAllButton.doClick()).registerCustomShortcutSet(new CustomShortcutSet(REPLACE_ALL), this);
     myReplaceAllButton.setToolTipText(KeymapUtil.getKeystrokeText(REPLACE_ALL));
 
@@ -644,6 +643,8 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     myReplaceComponent.getAccessibleContext().setAccessibleName(FindBundle.message("find.replace.accessible.name"));
     mySearchTextArea = new SearchTextArea(mySearchComponent, true);
     myReplaceTextArea = new SearchTextArea(myReplaceComponent, false);
+     mySearchTextArea.setMultilineEnabled(Registry.is("ide.find.as.popup.allow.multiline"));
+    myReplaceTextArea.setMultilineEnabled(Registry.is("ide.find.as.popup.allow.multiline"));
     myCaseSensitiveAction =
       new MySwitchStateToggleAction("find.popup.case.sensitive", ToggleOptionName.CaseSensitive,
                                     AllIcons.Actions.MatchCase, AllIcons.Actions.MatchCaseHovered, AllIcons.Actions.MatchCaseSelected,
@@ -732,7 +733,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     myUsagePreviewTitle = new SimpleColoredComponent();
     myUsagePreviewTitle.setBorder(JBUI.Borders.empty(3, 8, 4, 8));
     myUsageViewPresentation = new UsageViewPresentation();
-    myUsagePreviewPanel = new UsagePreviewPanel(myProject, myUsageViewPresentation, true) {
+    myUsagePreviewPanel = new UsagePreviewPanel(myProject, myUsageViewPresentation, Registry.is("ide.find.as.popup.editable.code")) {
       @Override
       public Dimension getPreferredSize() {
         return new Dimension(myResultsPreviewTable.getWidth(), Math.max(getHeight(), getLineHeight() * 15));
@@ -853,17 +854,20 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     add(myTitlePanel, "sx 2, growx, growx, growy");
     add(myCbFileFilter);
     add(myFileMaskField, "gapleft 4, gapright 16");
-
-    myIsPinned.set(UISettings.getInstance().getPinFindInPath());
-    JPanel twoButtons = new JPanel(new MigLayout("flowx, ins 0, gap 4, fillx, hidemode 3"));
-    twoButtons.add(myFilterContextButton);
-    JComponent separatorComponent = (JComponent)Box.createRigidArea(new JBDimension(1, 24));
-    separatorComponent.setOpaque(true);
-    separatorComponent.setBackground(JBUI.CurrentTheme.CustomFrameDecorations.separatorForeground());
-    twoButtons.add(separatorComponent);
-    twoButtons.add(pinButton);
-    add(twoButtons, "wrap");
-
+    if (Registry.is("ide.find.as.popup.allow.pin") || ApplicationManager.getApplication().isInternal()) {
+      myIsPinned.set(UISettings.getInstance().getPinFindInPath());
+      JPanel twoButtons = new JPanel(new MigLayout("flowx, ins 0, gap 4, fillx, hidemode 3"));
+      twoButtons.add(myFilterContextButton);
+      JComponent separatorComponent = (JComponent)Box.createRigidArea(new JBDimension(1, 24));
+      separatorComponent.setOpaque(true);
+      separatorComponent.setBackground(JBUI.CurrentTheme.CustomFrameDecorations.separatorForeground());
+      twoButtons.add(separatorComponent);
+      twoButtons.add(pinButton);
+      add(twoButtons, "wrap");
+    }
+    else {
+      add(myFilterContextButton, "wrap");
+    }
     mySearchTextArea.setBorder(
       new CompoundBorder(JBUI.Borders.customLine(JBUI.CurrentTheme.BigPopup.searchFieldBorderColor(), 1, 0, 1, 0),
                          JBUI.Borders.empty(1, 0, 2, 0)));
@@ -887,13 +891,6 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     ContainerUtil.addAll(focusOrder, focusableComponents(bottomPanel));
     setFocusCycleRoot(true);
     setFocusTraversalPolicy(new ListFocusTraversalPolicy(focusOrder));
-
-    if (SystemInfo.isMac) {
-      List<JButton> principalButtons = new ArrayList<>();
-      principalButtons.add(myOKButton);
-
-      Touchbar.setButtonActions(bottomPanel, null, principalButtons, myOKButton, new DefaultActionGroup(myCaseSensitiveAction, myWholeWordsAction, myRegexAction));
-    }
   }
 
   @Contract("_,!null,_->!null")
@@ -959,6 +956,15 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
 
     model.addColumn("Usages");
     return model;
+  }
+
+  private void processCtrlEnter() {
+    if (Registry.is("ide.find.enter.as.ok", false)) {
+      navigateToSelectedUsage(null);
+    }
+    else {
+      myOkActionListener.actionPerformed(null);
+    }
   }
 
   private void onFileMaskChanged() {
@@ -1093,7 +1099,12 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     boolean isReplaceState = myHelper.isReplaceState();
     myTitleLabel.setText(myHelper.getTitle());
     myReplaceTextArea.setVisible(isReplaceState);
-    myOKHintLabel.setText(KeymapUtil.getKeystrokeText(ENTER_WITH_MODIFIERS));
+    if (Registry.is("ide.find.enter.as.ok", false)) {
+      myOKHintLabel.setText(KeymapUtil.getKeystrokeText(ENTER));
+    }
+    else {
+      myOKHintLabel.setText(KeymapUtil.getKeystrokeText(ENTER_WITH_MODIFIERS));
+    }
     myOKButton.setText(FindBundle.message("find.popup.find.button"));
     myReplaceAllButton.setVisible(isReplaceState);
     myReplaceSelectedButton.setVisible(isReplaceState);
@@ -1141,7 +1152,8 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     if (mySearchRescheduleOnCancellationsAlarm == null || mySearchRescheduleOnCancellationsAlarm.isDisposed()) return;
     updateControls();
     mySearchRescheduleOnCancellationsAlarm.cancelAllRequests();
-    mySearchRescheduleOnCancellationsAlarm.addRequest(this::findSettingsChanged, 100);
+    mySearchRescheduleOnCancellationsAlarm.addRequest(this::findSettingsChanged,
+                                                      Registry.intValue("ide.find.in.files.reschedule.delay", 100));
   }
 
   private void finishPreviousPreviewSearch() {
@@ -1160,7 +1172,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     applyTo(myHelper.getModel());
     FindModel findModel = new FindModel();
     findModel.copyFrom(myHelper.getModel());
-    if (findModel.getStringToFind().contains("\n")) {
+    if (findModel.getStringToFind().contains("\n") && Registry.is("ide.find.ignores.leading.whitespace.in.multiline.search")) {
       findModel.setMultiline(true);
     }
 
@@ -1874,7 +1886,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      if (e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT) == null) return;
+      if (e.getData(PlatformDataKeys.CONTEXT_COMPONENT) == null) return;
       if (myPopupState.isRecentlyHidden()) return;
 
       ListPopup listPopup =
@@ -1906,7 +1918,7 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
       @NotNull
       private SimpleTextAttributes getAttributes(@NotNull TextChunk textChunk) {
         SimpleTextAttributes at = textChunk.getSimpleAttributesIgnoreBackground();
-        boolean highlighted = at.getFontStyle() == Font.BOLD;
+        boolean highlighted = textChunk.getType() != null || at.getFontStyle() == Font.BOLD;
         return highlighted
                ? new SimpleTextAttributes(null, at.getFgColor(), at.getWaveColor(),
                                           at.getStyle() & ~SimpleTextAttributes.STYLE_BOLD |
@@ -1964,42 +1976,6 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     }
 
     @Override
-    public AccessibleContext getAccessibleContext() {
-      if (accessibleContext == null) {
-        accessibleContext = new AccessibleJPanel() {
-          @Override
-          public AccessibleRole getAccessibleRole() {
-            return AccessibleRole.UNKNOWN;
-          }
-
-          @Override
-          public AccessibleStateSet getAccessibleStateSet() {
-            AccessibleStateSet stateSet = new AccessibleStateSet();
-            stateSet.addAll(myUsageRenderer.getAccessibleContext().getAccessibleStateSet().toArray());
-            stateSet.addAll(myFileAndLineNumber.getAccessibleContext().getAccessibleStateSet().toArray());
-            return stateSet;
-          }
-
-          @Override
-          public int getAccessibleIndexInParent() {
-            return 0;
-          }
-
-          @Override
-          public int getAccessibleChildrenCount() {
-            return 0;
-          }
-
-          @Override
-          public Accessible getAccessibleChild(int i) {
-            return null;
-          }
-        };
-      }
-      return accessibleContext;
-    }
-
-    @Override
     public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
       myUsageRenderer.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
       myFileAndLineNumber.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
@@ -2050,12 +2026,12 @@ public class FindPopupPanel extends JBPanel<FindPopupPanel> implements FindUI {
     public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabled(
         e.getData(CommonDataKeys.EDITOR) == null ||
-        SwingUtilities.isDescendingFrom(e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT), myFileMaskField));
+        SwingUtilities.isDescendingFrom(e.getData(PlatformDataKeys.CONTEXT_COMPONENT), myFileMaskField));
     }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      if (SwingUtilities.isDescendingFrom(e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT), myFileMaskField) && myFileMaskField.isPopupVisible()) {
+      if (SwingUtilities.isDescendingFrom(e.getData(PlatformDataKeys.CONTEXT_COMPONENT), myFileMaskField) && myFileMaskField.isPopupVisible()) {
         myFileMaskField.hidePopup();
         return;
       }

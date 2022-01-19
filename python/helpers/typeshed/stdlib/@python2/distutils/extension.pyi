@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 class Extension:
     def __init__(
@@ -6,7 +6,7 @@ class Extension:
         name: str,
         sources: List[str],
         include_dirs: List[str] = ...,
-        define_macros: List[Tuple[str, str | None]] = ...,
+        define_macros: List[Tuple[str, Optional[str]]] = ...,
         undef_macros: List[str] = ...,
         library_dirs: List[str] = ...,
         libraries: List[str] = ...,
@@ -15,7 +15,7 @@ class Extension:
         extra_compile_args: List[str] = ...,
         extra_link_args: List[str] = ...,
         export_symbols: List[str] = ...,
-        swig_opts: str | None = ...,  # undocumented
+        swig_opts: Optional[str] = ...,  # undocumented
         depends: List[str] = ...,
         language: str = ...,
     ) -> None: ...

@@ -6,12 +6,11 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.idea.maven.project.MavenWorkspaceSettingsComponent
 import org.jetbrains.idea.maven.utils.MavenUtil
-import java.nio.file.Path
-import kotlin.io.path.Path
+import java.io.File
 
 interface MavenDistribution {
   val name: String
-  val mavenHome: Path
+  val mavenHome: File
   val version: String?
   fun isValid(): Boolean
   fun compatibleWith(mavenDistribution: MavenDistribution): Boolean
@@ -25,13 +24,13 @@ interface MavenDistribution {
   }
 }
 
-internal class LocalMavenDistribution(override val mavenHome: Path, override val name: String) : MavenDistribution {
+internal class LocalMavenDistribution(override val mavenHome: File, override val name: String) : MavenDistribution {
   override val version: String? by lazy {
-    MavenUtil.getMavenVersion(mavenHome.toFile())
+    MavenUtil.getMavenVersion(mavenHome)
   }
 
   override fun compatibleWith(mavenDistribution: MavenDistribution): Boolean {
-    return mavenDistribution == this || FileUtil.pathsEqual(mavenDistribution.mavenHome.toString(), mavenHome.toString())
+    return mavenDistribution == this || FileUtil.filesEqual(mavenDistribution.mavenHome, mavenHome)
   }
 
   override fun isValid() = version != null
@@ -47,7 +46,7 @@ internal class WslMavenDistribution(private val wslDistribution: WSLDistribution
     MavenUtil.getMavenVersion(wslDistribution.getWindowsPath(pathToMaven))
   }
 
-  override val mavenHome = Path(wslDistribution.getWindowsPath(pathToMaven))
+  override val mavenHome = File(wslDistribution.getWindowsPath(pathToMaven)!!)
 
   override fun compatibleWith(mavenDistribution: MavenDistribution): Boolean {
     if (mavenDistribution == this) return true

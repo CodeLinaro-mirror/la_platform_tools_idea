@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'f' is never used
 class A {
     fun b() = B()
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.aether;
 
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
@@ -29,7 +29,6 @@ import org.eclipse.aether.util.artifact.JavaScopes;
 import org.eclipse.aether.util.filter.DependencyFilterUtils;
 import org.eclipse.aether.util.graph.selector.AndDependencySelector;
 import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
-import org.eclipse.aether.util.graph.transformer.ConflictResolver;
 import org.eclipse.aether.util.graph.visitor.FilteringDependencyVisitor;
 import org.eclipse.aether.util.graph.visitor.TreeDependencyVisitor;
 import org.eclipse.aether.util.repository.AuthenticationBuilder;
@@ -160,17 +159,6 @@ public final class ArtifactRepositoryManager {
       return defaultSession;
     }
 
-    /**
-     * Return session which will include dependencies rejected by conflict resolver to the results.
-     * @see ArtifactDependencyNode#isRejected()
-     */
-    RepositorySystemSession createVerboseSession() {
-      DefaultRepositorySystemSession session = new DefaultRepositorySystemSession(defaultSession);
-      session.setConfigProperty(ConflictResolver.CONFIG_PROP_VERBOSE, Boolean.TRUE);
-      session.setReadOnly();
-      return session;
-    }
-
     RepositorySystemSession createSession(@NotNull List<String> excludedDependencies) {
       if (excludedDependencies.isEmpty()) {
         return defaultSession;
@@ -204,8 +192,8 @@ public final class ArtifactRepositoryManager {
    * Returns list of classes corresponding to classpath entries for this this module.
    */
   @SuppressWarnings("UnnecessaryFullyQualifiedName")
-  public static Class<?>[] getClassesFromDependencies() {
-    return new Class<?>[]{
+  public static List<Class<?>> getClassesFromDependencies() {
+    return Arrays.asList(
       org.jetbrains.idea.maven.aether.ArtifactRepositoryManager.class, //this module
       org.apache.maven.repository.internal.VersionsMetadataGeneratorFactory.class, //maven-aether-provider
       org.apache.maven.artifact.Artifact.class, //maven-artifact
@@ -230,7 +218,7 @@ public final class ArtifactRepositoryManager {
       org.apache.commons.logging.LogFactory.class, // commons-logging
       org.slf4j.Marker.class, // slf4j
       org.apache.commons.codec.binary.Base64.class // commons-codec
-    };
+    );
   }
 
   public @NotNull Collection<File> resolveDependency(String groupId,
@@ -256,7 +244,7 @@ public final class ArtifactRepositoryManager {
     Set<VersionConstraint> constraints = Collections.singleton(asVersionConstraint(versionConstraint));
     CollectRequest collectRequest = createCollectRequest(groupId, artifactId, constraints, EnumSet.of(ArtifactKind.ARTIFACT));
     ArtifactDependencyTreeBuilder builder = new ArtifactDependencyTreeBuilder();
-    DependencyNode root = ourSystem.collectDependencies(mySessionFactory.createVerboseSession(), collectRequest).getRoot();
+    DependencyNode root = ourSystem.collectDependencies(mySessionFactory.getDefaultSession(), collectRequest).getRoot();
     if (root.getArtifact() == null && root.getChildren().size() == 1) {
       root = root.getChildren().get(0);
     }
@@ -631,8 +619,7 @@ public final class ArtifactRepositoryManager {
       if (artifact != null) {
         List<ArtifactDependencyNode> last = myCurrentChildren.get(myCurrentChildren.size() - 1);
         myCurrentChildren.remove(myCurrentChildren.size() - 1);
-        boolean rejected = node.getData().get(ConflictResolver.NODE_DATA_WINNER) != null;
-        myCurrentChildren.get(myCurrentChildren.size() - 1).add(new ArtifactDependencyNode(artifact, last, rejected));
+        myCurrentChildren.get(myCurrentChildren.size() - 1).add(new ArtifactDependencyNode(artifact, last));
       }
       return true;
     }

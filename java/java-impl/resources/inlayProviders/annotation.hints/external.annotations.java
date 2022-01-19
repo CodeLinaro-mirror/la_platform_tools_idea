@@ -1,1 +1,0 @@
-@Deprecated public length(double x)

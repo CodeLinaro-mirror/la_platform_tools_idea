@@ -68,7 +68,6 @@ public class HardcodedContractsTest extends DataFlowInspectionTestCase {
                        "public S isNotEmpty() {}" +
                        "public S isEmpty() {}" +
                        "public S isPresent() {}" +
-                       "public S isNotBlank() {}" +
                        "public S map(java.util.function.Function<String, Object> mapper) {}" +
                        "}");
 

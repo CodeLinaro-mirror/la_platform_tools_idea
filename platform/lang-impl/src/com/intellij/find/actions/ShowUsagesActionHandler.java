@@ -2,7 +2,6 @@
 package com.intellij.find.actions;
 
 import com.intellij.find.FindBundle;
-import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.util.NlsContexts.PopupAdvertisement;
@@ -29,10 +28,6 @@ interface ShowUsagesActionHandler {
   @NotNull SearchScope getSelectedScope();
 
   @NotNull SearchScope getMaximalScope();
-
-  @Nullable Language getTargetLanguage();
-
-  @NotNull Class<?> getTargetClass();
 
   static @PopupAdvertisement @Nullable String getSecondInvocationHint(@NotNull ShowUsagesActionHandler actionHandler) {
     KeyboardShortcut shortcut = ShowUsagesAction.getShowUsagesShortcut();

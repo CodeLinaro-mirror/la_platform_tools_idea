@@ -6,6 +6,7 @@ import com.intellij.diagnostic.PluginException;
 import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.DumbService;
@@ -32,7 +33,6 @@ import com.jetbrains.jsonSchema.remote.JsonSchemaCatalogExclusion;
 import com.jetbrains.jsonSchema.remote.JsonSchemaCatalogManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.VisibleForTesting;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -50,7 +50,6 @@ public class JsonSchemaServiceImpl implements JsonSchemaService, ModificationTra
   private final AtomicLong myAnyChangeCount = new AtomicLong(0);
 
   @NotNull private final JsonSchemaCatalogManager myCatalogManager;
-  @NotNull private final JsonSchemaVfsListener.JsonSchemaUpdater mySchemaUpdater;
   private final JsonSchemaProviderFactories myFactories;
 
   public JsonSchemaServiceImpl(@NotNull Project project) {
@@ -76,7 +75,7 @@ public class JsonSchemaServiceImpl implements JsonSchemaService, ModificationTra
       myRefs.clear();
       myAnyChangeCount.incrementAndGet();
     });
-    mySchemaUpdater = JsonSchemaVfsListener.startListening(project, this, connection);
+    JsonSchemaVfsListener.startListening(project, this, connection);
     myCatalogManager.startUpdates();
   }
 
@@ -154,15 +153,6 @@ public class JsonSchemaServiceImpl implements JsonSchemaService, ModificationTra
   @NotNull
   public Collection<VirtualFile> getSchemaFilesForFile(@NotNull final VirtualFile file) {
     return getSchemasForFile(file, false, false);
-  }
-
-  @Nullable
-  public VirtualFile getDynamicSchemaForFile(@NotNull PsiFile psiFile) {
-    return ContentAwareJsonSchemaFileProvider.EP_NAME.extensions()
-      .map(provider -> provider.getSchemaFile(psiFile))
-      .filter(schemaFile -> schemaFile != null)
-      .findFirst()
-      .orElse(null);
   }
 
   @NotNull
@@ -650,9 +640,8 @@ public class JsonSchemaServiceImpl implements JsonSchemaService, ModificationTra
       List<JsonSchemaFileProvider> providers = getProvidersFromFactories(readyFactories);
       myProviders = providers;
       if (!notReadyFactories.isEmpty() && !LightEdit.owns(myProject)) {
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-          if (myProject.isDisposed()) return;
-          DumbService.getInstance(myProject).runReadActionInSmartMode(() -> {
+        DumbService.getInstance(myProject).runWhenSmart(() -> {
+          ApplicationManager.getApplication().executeOnPooledThread(() -> ReadAction.run(() -> {
             if (myProviders == providers) {
               List<JsonSchemaFileProvider> newProviders = getProvidersFromFactories(notReadyFactories);
               if (!newProviders.isEmpty()) {
@@ -661,7 +650,7 @@ public class JsonSchemaServiceImpl implements JsonSchemaService, ModificationTra
                 JsonSchemaServiceImpl.this.resetWithCurrentFactories();
               }
             }
-          });
+          }));
         });
       }
       return providers;

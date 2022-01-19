@@ -5,8 +5,8 @@ package client
 import server.Server as Srv<caret>
 import server.Server
 
-class Client(name: String = Server.NAME) : Srv() {
-    var nextServer: Server? = Server()
+class Client(name: String = Server.NAME): Srv() {
+    var nextServer: Server? = new Server()
     val name = Server.NAME
 
     /**
@@ -17,7 +17,7 @@ class Client(name: String = Server.NAME) : Srv() {
         println("Server: $server")
     }
 
-    fun getNextServer2(): Server? {
+    fun getNextServer(): Server? {
         return nextServer
     }
 
@@ -26,27 +26,27 @@ class Client(name: String = Server.NAME) : Srv() {
         println("Client")
     }
 
-    companion object : Server() {
+    companion object: Server() {
 
     }
 }
 
-object ClientObject : Server() {
+object ClientObject: Server() {
 
 }
 
-abstract class Servers : Iterator<Server> {
+class Servers: Iterator<Server> {
 
 }
 
 fun Iterator<Server>.f(p: Iterator<Server>): Iterator<Server> = this
 
-fun Client.bar(s: Server = Server()) {
+fun Client.bar(s: Server = Server.NAME) {
     foo(s)
 }
 
 fun Client.hasNextServer(): Boolean {
-    return getNextServer2() != null
+    return getNextServer() != null
 }
 
 fun Any.asServer(): Server? {
@@ -55,3 +55,5 @@ fun Any.asServer(): Server? {
     }
     return if (this is Server) this as Server else this as? Server
 }
+
+// DISABLE-ERRORS

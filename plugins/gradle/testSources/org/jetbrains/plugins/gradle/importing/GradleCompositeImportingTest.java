@@ -22,7 +22,7 @@ import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
 import com.intellij.openapi.externalSystem.model.task.TaskData;
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
-import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
+import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProviderImpl;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil;
 import com.intellij.openapi.module.StdModuleTypes;
@@ -40,7 +40,6 @@ import org.junit.Test;
 
 import static com.intellij.openapi.roots.DependencyScope.COMPILE;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.jetbrains.plugins.gradle.frameworkSupport.buildscript.GradleBuildScriptBuilderUtil.isSupportedJavaLibraryPlugin;
 
 /**
  * @author Vladislav.Soroka
@@ -49,7 +48,6 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
   @Test
   @TargetVersions("3.3+")
   public void testBasicCompositeBuild() throws Exception {
-    //enableGradleDebugWithSuspend();
     createSettingsFile("rootProject.name='adhoc'\n" +
                        "\n" +
                        "includeBuild '../my-app'\n" +
@@ -57,31 +55,31 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
 
     createProjectSubFile("../my-app/settings.gradle", "rootProject.name = 'my-app'\n");
     createProjectSubFile("../my-app/build.gradle",
-                         createBuildScriptBuilder()
-                           .addGroup("org.sample")
-                           .addVersion("1.0")
-                           .withJavaPlugin()
-                           .addImplementationDependency("org.sample:number-utils:1.0")
-                           .addImplementationDependency("org.sample:string-utils:1.0")
-                           .generate());
+                         "apply plugin: 'java'\n" +
+                         "group 'org.sample'\n" +
+                         "version '1.0'\n" +
+                         "\n" +
+                         "dependencies {\n" +
+                         "  compile 'org.sample:number-utils:1.0'\n" +
+                         "  compile 'org.sample:string-utils:1.0'\n" +
+                         "}\n");
 
     createProjectSubFile("../my-utils/settings.gradle",
                          "rootProject.name = 'my-utils'\n" +
                          "include 'number-utils', 'string-utils' ");
-    createProjectSubFile("../my-utils/build.gradle",
-                         createBuildScriptBuilder()
-                           .subprojects(it -> {
-                             it.addGroup("org.sample")
-                               .addVersion("1.0")
-                               .withJavaPlugin();
-                           })
-                           .project(":string-utils", it -> {
-                             it
-                               .withMavenCentral()
-                               .withJavaLibraryPlugin()
-                               .addApiDependency("org.apache.commons:commons-lang3:3.4");
-                           })
-                           .generate());
+    createProjectSubFile("../my-utils/build.gradle", injectRepo(
+      "subprojects {\n" +
+      "  apply plugin: 'java'\n" +
+      "\n" +
+      "  group 'org.sample'\n" +
+      "  version '1.0'\n" +
+      "}\n" +
+      "\n" +
+      "project(':string-utils') {\n" +
+      "  dependencies {\n" +
+      "    compile 'org.apache.commons:commons-lang3:3.4'\n" +
+      "  }\n" +
+      "} "));
 
     importProject();
 
@@ -124,10 +122,10 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
                          "apply plugin: 'java'\n" +
                          "group = 'my.group'");
 
-    importProject(createBuildScriptBuilder()
-                    .withJavaPlugin()
-                    .addImplementationDependency("my.group:runtime-mod")
-                    .generate());
+    importProject("apply plugin: 'java'\n" +
+                  "dependencies {\n" +
+                  "  compile 'my.group:runtime-mod'\n" +
+                  "}");
 
     assertModules("app", "app.main", "app.test",
                   "lib",
@@ -159,10 +157,10 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
                          "apply plugin: 'java'\n" +
                          "group = 'my.group'");
 
-    importProjectUsingSingeModulePerGradleProject(createBuildScriptBuilder()
-                                                    .withJavaPlugin()
-                                                    .addImplementationDependency("my.group:runtime-mod")
-                                                    .generate());
+    importProjectUsingSingeModulePerGradleProject("apply plugin: 'java'\n" +
+                                                  "dependencies {\n" +
+                                                  "  compile 'my.group:runtime-mod'\n" +
+                                                  "}");
 
     assertModules("app",
                   "lib",
@@ -198,12 +196,13 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
                          "apply plugin: 'java'\n" +
                          "group = 'my.group.lib_2'");
 
-    importProjectUsingSingeModulePerGradleProject(script(it -> {
-      it.withJavaPlugin()
-        .addImplementationDependency(it.project(":runtime"))
-        .addImplementationDependency("my.group.lib_1:runtime")
-        .addImplementationDependency("my.group.lib_2:runtime");
-    }));
+
+    importProjectUsingSingeModulePerGradleProject("apply plugin: 'java'\n" +
+                                                  "dependencies {\n" +
+                                                  "  compile project(':runtime')\n" +
+                                                  "  compile 'my.group.lib_1:runtime'\n" +
+                                                  "  compile 'my.group.lib_2:runtime'\n" +
+                                                  "}");
 
     assertModules("app", "app.runtime",
                   "lib1", "lib1.runtime",
@@ -242,12 +241,12 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
 
     // check for non-qualified module names
     getCurrentExternalProjectSettings().setUseQualifiedModuleNames(false);
-    importProject(script(it -> {
-      it.withJavaPlugin()
-        .addImplementationDependency(it.project(":runtime"))
-        .addImplementationDependency("my.group.lib_1:runtime")
-        .addImplementationDependency("my.group.lib_2:runtime");
-    }));
+    importProject("apply plugin: 'java'\n" +
+                  "dependencies {\n" +
+                  "  compile project(':runtime')\n" +
+                  "  compile 'my.group.lib_1:runtime'\n" +
+                  "  compile 'my.group.lib_2:runtime'\n" +
+                  "}");
 
     if (isGradleNewerOrSameAs("4.0")) {
       assertModules("app", "app_main", "app_test",
@@ -278,7 +277,7 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
   @Test
   @TargetVersions("3.3+")
   public void testCompositeBuildWithProjectNameDuplicates() throws Exception {
-    IdeModifiableModelsProvider modelsProvider = ProjectDataManager.getInstance().createModifiableModelsProvider(myProject);
+    IdeModifiableModelsProvider modelsProvider = new IdeModifiableModelsProviderImpl(myProject);
     modelsProvider.newModule(getProjectPath() + "/api.iml", StdModuleTypes.JAVA.getId());
     modelsProvider.newModule(getProjectPath() + "/api_main.iml", StdModuleTypes.JAVA.getId());
     modelsProvider.newModule(getProjectPath() + "/my-app-api.iml", StdModuleTypes.JAVA.getId());
@@ -295,35 +294,42 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
     createProjectSubFile("../my-app/settings.gradle", "rootProject.name = 'my-app'\n" +
                                                       "include 'api'\n");
     createProjectSubFile("../my-app/build.gradle",
-                         createBuildScriptBuilder()
-                           .withJavaPlugin()
-                           .addGroup("org.sample")
-                           .addVersion("1.0")
-                           .addImplementationDependency("org.sample:number-utils:1.0")
-                           .addImplementationDependency("org.sample:string-utils:1.0")
-                           .project(":api", it -> {
-                             it
-                               .withJavaPlugin()
-                               .addImplementationDependency("commons-lang:commons-lang:2.6");
-                           })
-                           .generate());
+                         "apply plugin: 'java'\n" +
+                         "group 'org.sample'\n" +
+                         "version '1.0'\n" +
+                         "\n" +
+                         "dependencies {\n" +
+                         "  compile 'org.sample:number-utils:1.0'\n" +
+                         "  compile 'org.sample:string-utils:1.0'\n" +
+                         "}\n" +
+                         "project(':api') {\n" +
+                         "  apply plugin: 'java'\n" +
+                         "  dependencies {\n" +
+                         "    compile 'commons-lang:commons-lang:2.6'\n" +
+                         "  }\n" +
+                         "}\n");
 
     createProjectSubFile("../my-utils/settings.gradle",
                          "rootProject.name = 'my-utils'\n" +
                          "include 'number-utils', 'string-utils', 'api'");
-    createProjectSubFile("../my-utils/build.gradle",
-                         createBuildScriptBuilder()
-                           .subprojects(it -> {
-                             it.addGroup("org.sample")
-                               .addVersion("1.0")
-                               .withJavaLibraryPlugin();
-                           })
-                           .project(":string-utils", it -> {
-                             it.withMavenCentral();
-                             it.addApiDependency("org.apache.commons:commons-lang3:3.4");
-                           })
-                           .project(":api", it -> { it.addApiDependency("junit:junit:4.11"); })
-                           .generate());
+    createProjectSubFile("../my-utils/build.gradle", injectRepo(
+      "subprojects {\n" +
+      "  apply plugin: 'java'\n" +
+      "\n" +
+      "  group 'org.sample'\n" +
+      "  version '1.0'\n" +
+      "}\n" +
+      "\n" +
+      "project(':string-utils') {\n" +
+      "  dependencies {\n" +
+      "    compile 'org.apache.commons:commons-lang3:3.4'\n" +
+      "  }\n" +
+      "}\n" +
+      "project(':api') {\n" +
+      "  dependencies {\n" +
+      "    compile 'junit:junit:4.11'\n" +
+      "  }\n" +
+      "}"));
 
     // check for non-qualified module names
     getCurrentExternalProjectSettings().setUseQualifiedModuleNames(false);
@@ -443,45 +449,47 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
                        "includeBuild 'project-a'");
 
     createProjectSubFile("project-a/settings.gradle", "rootProject.name = \"project-a\"");
-
-    String mainCompileConfiguration = isSupportedJavaLibraryPlugin(getCurrentGradleVersion()) ? "implementation" : "compile";
-    String utilCompileConfiguration = isSupportedJavaLibraryPlugin(getCurrentGradleVersion()) ? "utilImplementation" : "utilCompile";
-    createProjectSubFile("project-a/build.gradle", script(it -> {
-      it.withIdeaPlugin()
-        .withJavaPlugin()
-        .addGroup("myGroup")
-        .addVersion("1.0-SNAPSHOT")
-        .addPrefix(
-          "sourceSets {",
-          "    util {",
-          "        java.srcDir 'src/util/java'",
-          "        resources.srcDir 'src/util/resources'",
-          "    }",
-          "}",
-          "configurations {",
-          "  " + mainCompileConfiguration + " {",
-          "    extendsFrom " + utilCompileConfiguration,
-          "  }",
-          "}",
-          "jar {",
-          "  from sourceSets.util.output",
-          "}",
-          "compileJava {",
-          "    dependsOn(compileUtilJava)",
-          "}")
-        .addImplementationDependency(it.code("sourceSets.util.output"));
-    }));
+    createProjectSubFile("project-a/build.gradle",
+                         createBuildScriptBuilder()
+                           .withIdeaPlugin()
+                           .withJavaPlugin()
+                           .addPostfix(
+                             "group = 'myGroup'",
+                             "version = '1.0-SNAPSHOT'",
+                             "sourceSets {",
+                             "    util {",
+                             "        java.srcDir 'src/util/java'",
+                             "        resources.srcDir 'src/util/resources'",
+                             "    }",
+                             "}",
+                             "configurations {",
+                             "  compile {",
+                             "    extendsFrom utilCompile",
+                             "  }",
+                             "}",
+                             "dependencies {",
+                             "   compile sourceSets.util.output",
+                             "}",
+                             "jar {",
+                             "  from sourceSets.util.output",
+                             "}",
+                             "compileJava {",
+                             "    dependsOn(compileUtilJava)",
+                             "}").generate());
     createProjectSubFile("project-a/src/main/java/my/pack/Clazz.java", "package my.pack; public class Clazz{};");
     createProjectSubFile("project-a/src/main/util/my/pack/Util.java", "package my.pack; public class Util{};");
 
     createProjectSubFile("src/main/java/my/pack/ClazzB.java", "package my.pack; public class CLazzB{};");
-    importProject(script(it -> {
-      it.withIdeaPlugin()
-        .withJavaPlugin()
-        .addGroup("myGroup")
-        .addVersion("1.0-SNAPSHOT")
-        .addImplementationDependency(it.code("group: 'myGroup', name: 'project-a', version: '1.0-SNAPSHOT'"));
-    }));
+    importProject(createBuildScriptBuilder()
+                    .withIdeaPlugin()
+                    .withJavaPlugin()
+                    .addPostfix(
+                      "group = 'myGroup'",
+                      "version = '1.0-SNAPSHOT'",
+                      "dependencies {",
+                      "    compile group: 'myGroup', name: 'project-a', version: '1.0-SNAPSHOT'",
+                      "}")
+                    .generate());
 
     assertModules("project-a",
                   "project-a.main", "project-a.test", "project-a.util",
@@ -495,11 +503,11 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
   public void testProjectWithCompositePluginDependencyImported() throws Exception {
     createSettingsFile("includeBuild('plugin'); includeBuild('consumer')");
     createProjectSubFile("plugin/settings.gradle", "rootProject.name = 'test-plugin'");
-    createProjectSubFile("plugin/build.gradle", script(it -> {
-      it.withJavaPlugin()
-        .addGroup("myGroup")
-        .addVersion("1.0");
-    }));
+    createProjectSubFile("plugin/build.gradle", createBuildScriptBuilder()
+      .withJavaPlugin()
+      .addGroup("myGroup")
+      .addVersion("1.0")
+      .generate());
 
     // consumer need to be complicated to display the issue
     createProjectSubFile("consumer/settings.gradle",
@@ -634,13 +642,14 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
     createProjectSubFile("build1/settings.gradle", "rootProject.name = 'project1'\n" +
                                                    "include 'utils'\n");
     createProjectSubFile("build1/build.gradle",
-                         createBuildScriptBuilder()
-                           .addGroup("org.build1")
-                           .addVersion("1.0")
-                           .withJavaPlugin()
-                           .addImplementationDependency("org.build2:project2:1.0")
-                           .addImplementationDependency("org.build2:utils:1.0")
-                           .generate());
+                         "apply plugin: 'java'\n" +
+                         "group 'org.build1'\n" +
+                         "version '1.0'\n" +
+                         "\n" +
+                         "dependencies {\n" +
+                         "  compile 'org.build2:project2:1.0'\n" +
+                         "  compile 'org.build2:utils:1.0'\n" +
+                         "}\n");
     createProjectSubFile("build1/utils/build.gradle",
                          "apply plugin: 'java'\n" +
                          "group 'org.build1'\n" +
@@ -677,12 +686,12 @@ public class GradleCompositeImportingTest extends GradleImportingTestCase {
       ExternalSystemUtil.refreshProject(path("build2"), createImportSpec());
       ExternalSystemUtil.refreshProject(path("build1"), createImportSpec());
 
-      importProject(createBuildScriptBuilder()
-                      .withJavaPlugin()
-                      .addImplementationDependency("org.build1:project1:1.0")
-                      .addImplementationDependency("org.build1:utils:1.0")
-                      .addImplementationDependency("org.build2:utils:1.0")
-                      .generate());
+      importProject("apply plugin: 'java'\n" +
+                    "dependencies {\n" +
+                    "  compile 'org.build1:project1:1.0'\n" +
+                    "  compile 'org.build1:utils:1.0'\n" +
+                    "  compile 'org.build2:utils:1.0'\n" +
+                    "}\n");
 
       assertModules(
         "rootProject", "rootProject.main", "rootProject.test",

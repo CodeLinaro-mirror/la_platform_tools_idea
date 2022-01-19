@@ -2,7 +2,6 @@
 package org.jetbrains.intellij.build
 
 import com.intellij.openapi.util.MultiValuesMap
-import com.intellij.util.containers.MultiMap
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.intellij.build.impl.DistributionJARsBuilder
@@ -71,7 +70,7 @@ class ProductModulesLayout {
   /**
    * Maps names of JARs to names of the modules; these modules will be packed into these JARs and copied to the product's 'lib' directory.
    */
-  MultiMap<String, String> additionalPlatformJars = MultiMap.createLinkedSet()
+  MultiValuesMap<String, String> additionalPlatformJars = new MultiValuesMap<>(true)
 
   /**
    * Module name to list of Ant-like patterns describing entries which should be excluded from its output.
@@ -119,7 +118,7 @@ class ProductModulesLayout {
    * Allows to filter out default platform modules (both api and implementation) as well as product modules.
    * This API is experimental, use with care
    */
-  final Set<String> excludedModuleNames = new HashSet<>()
+  List<String> excludedModuleNames = []
 
   /**
    * @return list of all modules which output is included into the plugin's JARs
@@ -130,7 +129,7 @@ class ProductModulesLayout {
     result.addAll(enabledPluginModules)
     result.addAll(allNonTrivialPlugins
                     .findAll { enabledPluginModules.contains(it.mainModule) }
-                    .collectMany { it.includedModuleNames })
+                    .collectMany { it.moduleJars.values() })
     return result
   }
 
@@ -139,16 +138,5 @@ class ProductModulesLayout {
    */
   List<String> getIncludedPlatformModules() {
     DistributionJARsBuilder.getIncludedPlatformModules(this)
-  }
-
-  /**
-   * Map name of JAR to names of the modules; these modules will be packed into these JARs and copied to the product's 'lib' directory.
-   */
-  void withAdditionalPlatformJar(String jarName, String... moduleNames) {
-    additionalPlatformJars.putValues(jarName, List.of(moduleNames))
-  }
-
-  void withoutAdditionalPlatformJar(String jarName, String moduleName) {
-    additionalPlatformJars.remove(jarName, moduleName)
   }
 }

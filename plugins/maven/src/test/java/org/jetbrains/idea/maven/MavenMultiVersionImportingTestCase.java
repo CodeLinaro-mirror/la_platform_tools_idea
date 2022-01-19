@@ -3,15 +3,16 @@ package org.jetbrains.idea.maven;
 
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.VersionComparatorUtil;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.idea.maven.compatibility.MavenWrapperTestFixture;
-import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RunWith(Parameterized.class)
 public abstract class MavenMultiVersionImportingTestCase extends MavenImportingTestCase {
@@ -28,7 +29,7 @@ public abstract class MavenMultiVersionImportingTestCase extends MavenImportingT
     return ContainerUtil.map(mavenVersionsToRun, it -> new String[]{it});
   }
 
-  @Nullable
+  @NotNull
   protected MavenWrapperTestFixture myWrapperTestFixture;
 
   @Parameterized.Parameter(0)
@@ -48,17 +49,7 @@ public abstract class MavenMultiVersionImportingTestCase extends MavenImportingT
 
   @Before
   public void before() throws Exception {
-    if ("bundled".equals(myMavenVersion)) {
-      return;
-    }
     myWrapperTestFixture = new MavenWrapperTestFixture(myProject, myMavenVersion);
     myWrapperTestFixture.setUp();
-  }
-
-  @After
-  public void after() throws Exception {
-    if (myWrapperTestFixture != null) {
-      myWrapperTestFixture.tearDown();
-    }
   }
 }

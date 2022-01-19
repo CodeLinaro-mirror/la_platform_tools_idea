@@ -9,9 +9,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.*;
 
-/**
- * Please use {@link CompletableFuture} instead as a more standard and better known equivalent
- */
 public class FutureResult<T> implements Future<T> {
   private final Semaphore mySema = new Semaphore(0);
   private volatile Pair<Object, Boolean> myValue;

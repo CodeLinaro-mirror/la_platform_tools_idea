@@ -1,4 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2017 JetBrains s.r.o.
+// Use of this source code is governed by the Apache 2.0 license that can be
+// found in the LICENSE file.
 package com.intellij.execution.junit;
 
 import com.intellij.codeInsight.TestFrameworks;
@@ -17,7 +19,7 @@ public class JUnitDetectionTest extends LightJavaCodeInsightFixtureTestCase {
     super.setUp();
     myFixture.addClass("package org.junit; public @interface Test {}");
     myFixture.addClass("package org.junit.runners; public class Parameterized { public @interface Parameters {} public @interface Parameter {}}");
-    myFixture.addClass("package org.junit.runner; public @interface RunWith {Class<?> value();}");
+    myFixture.addClass("package org.junit.runner; public @interface RunWith {Class value();}");
   }
 
   public void testInnerClassesForKnownRunners() {
@@ -41,7 +43,7 @@ public class JUnitDetectionTest extends LightJavaCodeInsightFixtureTestCase {
                                                        "}\n");
     PsiClass aClass = ((PsiClassOwner)file).getClasses()[0];
     TestFramework framework = TestFrameworks.detectFramework(aClass);
-    assertNotNull(framework);
+    assertTrue(framework != null);
     assertTrue(framework.isTestClass(aClass));
     PsiClass innerClass = aClass.getInnerClasses()[0];
     assertFalse(framework.isTestClass(innerClass));
@@ -135,29 +137,15 @@ public class JUnitDetectionTest extends LightJavaCodeInsightFixtureTestCase {
     assertTrue(JUnitUtil.isTestMethod(PsiLocation.fromPsiElement(psiMethod), false));
   }
 
-  public void testableMethodTest() {
+  public void testableClassTest() {
         myFixture.addClass("package org.junit.jupiter.api;" +
                        "@org.junit.platform.commons.annotation.Testable public @interface Test {}");
         PsiFile file = myFixture.configureByText("TestableClassTest.java",
                                              "class TestableClassTest {\n" +
                                              "\t@org.junit.jupiter.api.Test\n" +
                                              "\tvoid foo() {}\n" +
-                                             "\tvoid foo1() {}\n" +
                                              "}");
     PsiClass aClass = ((PsiClassOwner)file).getClasses()[0];
     assertTrue(JUnitUtil.isTestClass(aClass));
-    assertTrue(JUnitUtil.isTestMethod(PsiLocation.fromPsiElement(aClass.getMethods()[0])));
-    assertFalse(JUnitUtil.isTestMethod(PsiLocation.fromPsiElement(aClass.getMethods()[1])));
-  }
-  
-  public void testableClassTest() {
-    PsiFile file = myFixture.configureByText("TestableClassTest.java",
-                                             "@org.junit.platform.commons.annotation.Testable " +
-                                             "class TestableClassTest {\n" +
-                                             "\tvoid foo() {}\n" +
-                                             "}");
-    PsiClass aClass = ((PsiClassOwner)file).getClasses()[0];
-    assertTrue(JUnitUtil.isTestClass(aClass));
-    assertTrue(JUnitUtil.isTestMethod(PsiLocation.fromPsiElement(aClass.getMethods()[0])));
   }
 }

@@ -6,6 +6,7 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.testFramework.TestApplicationManager;
+import com.intellij.util.ThreeState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.concurrency.AsyncPromise;
 import org.jetbrains.concurrency.CancellablePromise;
@@ -66,7 +67,7 @@ public class InvokerTest {
 
   @Test
   public void testValidBgThread() {
-    testValidThread(Invoker.forBackgroundThreadWithReadAction(parent));
+    testValidThread(new Invoker.Background(parent));
   }
 
   private void testValidThread(Invoker invoker) {
@@ -86,7 +87,7 @@ public class InvokerTest {
 
   @Test
   public void testInvokeLaterOnBgThread() {
-    testInvokeLater(Invoker.forBackgroundThreadWithReadAction(parent));
+    testInvokeLater(new Invoker.Background(parent));
   }
 
   private void testInvokeLater(Invoker invoker) {
@@ -110,7 +111,7 @@ public class InvokerTest {
 
   @Test
   public void testScheduleOnBgThread() {
-    testSchedule(Invoker.forBackgroundThreadWithReadAction(parent));
+    testSchedule(new Invoker.Background(parent));
   }
 
   private void testSchedule(Invoker invoker) {
@@ -134,7 +135,7 @@ public class InvokerTest {
 
   @Test
   public void testInvokeLaterIfNeededOnBgThread() {
-    testInvokeLaterIfNeeded(Invoker.forBackgroundThreadWithReadAction(parent));
+    testInvokeLaterIfNeeded(new Invoker.Background(parent));
   }
 
   private void testInvokeLaterIfNeeded(Invoker invoker) {
@@ -148,12 +149,17 @@ public class InvokerTest {
 
   @Test
   public void testReadActionYes() {
-    testReadAction(Invoker.forBackgroundThreadWithReadAction(parent), true, true);
+    testReadAction(new Invoker.Background(parent, ThreeState.YES), true, true);
   }
 
   @Test
   public void testReadActionNo() {
-    testReadAction(Invoker.forBackgroundPoolWithoutReadAction(parent), false, false);
+    testReadAction(new Invoker.Background(parent, ThreeState.NO), false, false);
+  }
+
+  @Test
+  public void testReadAction() {
+    testReadAction(new Invoker.Background(parent, ThreeState.UNSURE), false, true);
   }
 
   private static boolean isExpected(CountDownLatch latch, AtomicReference<? super String> error, String message, boolean expected) {
@@ -191,7 +197,7 @@ public class InvokerTest {
 
   @Test
   public void testComputeOnBgThread() {
-    testCompute(Invoker.forBackgroundThreadWithReadAction(parent));
+    testCompute(new Invoker.Background(parent));
   }
 
   private void testCompute(@NotNull Invoker invoker) {
@@ -228,7 +234,7 @@ public class InvokerTest {
 
   @Test
   public void testComputeLaterOnBgThread() {
-    testComputeLater(Invoker.forBackgroundThreadWithReadAction(parent));
+    testComputeLater(new Invoker.Background(parent));
   }
 
   private void testComputeLater(@NotNull Invoker invoker) {
@@ -265,7 +271,7 @@ public class InvokerTest {
 
   @Test
   public void testRestartOnBgThread() {
-    testRestartOnPCE(Invoker.forBackgroundThreadWithReadAction(parent));
+    testRestartOnPCE(new Invoker.Background(parent));
   }
 
   private void testRestartOnPCE(Invoker invoker) {
@@ -289,7 +295,7 @@ public class InvokerTest {
 
   @Test
   public void testQueueOnBgThread() {
-    testQueue(Invoker.forBackgroundThreadWithReadAction(parent), true);
+    testQueue(new Invoker.Background(parent), true);
   }
 
   private void testQueue(Invoker invoker, boolean ordered) {
@@ -314,7 +320,7 @@ public class InvokerTest {
 
   @Test
   public void testThreadChangingOnBgThread() {
-    testThreadChanging(Invoker.forBackgroundThreadWithReadAction(parent));
+    testThreadChanging(new Invoker.Background(parent));
   }
 
   private void testThreadChanging(Invoker invoker) {
@@ -333,7 +339,7 @@ public class InvokerTest {
 
   @Test
   public void testThreadChangingOnEDTfromBgThread() {
-    testThreadChanging(new Invoker.EDT(parent), Invoker.forBackgroundThreadWithReadAction(parent), false);
+    testThreadChanging(new Invoker.EDT(parent), new Invoker.Background(parent), false);
   }
 
   @Test
@@ -348,22 +354,22 @@ public class InvokerTest {
 
   @Test
   public void testThreadChangingOnBgPoolFromBgThread() {
-    testThreadChanging(new Invoker.Background(parent, 10), Invoker.forBackgroundThreadWithReadAction(parent), false);
+    testThreadChanging(new Invoker.Background(parent, 10), new Invoker.Background(parent), false);
   }
 
   @Test
   public void testThreadChangingOnBgThreadFromEDT() {
-    testThreadChanging(Invoker.forBackgroundThreadWithReadAction(parent), new Invoker.EDT(parent), false);
+    testThreadChanging(new Invoker.Background(parent), new Invoker.EDT(parent), false);
   }
 
   @Test
   public void testThreadChangingOnBgThreadFromBgPool() {
-    testThreadChanging(Invoker.forBackgroundThreadWithReadAction(parent), new Invoker.Background(parent, 10), false);
+    testThreadChanging(new Invoker.Background(parent), new Invoker.Background(parent, 10), false);
   }
 
   @Test
   public void testThreadChangingOnBgThreadFromBgThread() {
-    testThreadChanging(Invoker.forBackgroundThreadWithReadAction(parent), Invoker.forBackgroundThreadWithReadAction(parent), false);
+    testThreadChanging(new Invoker.Background(parent), new Invoker.Background(parent), false);
   }
 
   private void testThreadChanging(Invoker foreground, Invoker background, Boolean equal) {
@@ -425,7 +431,7 @@ public class InvokerTest {
   @Test
   public void testDisposeOnBgThread() {
     Disposable parent = Disposer.newDisposable("disposed");
-    testInterrupt(parent, Invoker.forBackgroundThreadWithReadAction(parent), promise -> Disposer.dispose(parent));
+    testInterrupt(parent, new Invoker.Background(parent), promise -> Disposer.dispose(parent));
   }
 
   @Test
@@ -443,7 +449,7 @@ public class InvokerTest {
   @Test
   public void testCancelOnBgThread() {
     Disposable parent = Disposer.newDisposable("cancelled");
-    testInterrupt(parent, Invoker.forBackgroundThreadWithReadAction(parent), promise -> promise.cancel());
+    testInterrupt(parent, new Invoker.Background(parent), promise -> promise.cancel());
   }
 
   @Test

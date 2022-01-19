@@ -418,7 +418,7 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
         return isAvailable
       }
     }
-    new MatchedValue(wrapper, pattern, GotoActionModel.MatchedValueType.ACTION)
+    new MatchedValue(wrapper, pattern)
   }
 
   private static AnAction createAction(String text, String description = null) {
@@ -450,7 +450,7 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
 
 
   private static MatchedValue matchedOption(String text, String pattern) {
-    return new MatchedValue(new OptionDescription(text), pattern, GotoActionModel.MatchedValueType.OPTION)
+    return new MatchedValue(new OptionDescription(text), pattern)
   }
 
   private static MatchedValue matchedBooleanOption(String text, String pattern) {
@@ -464,7 +464,7 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
       void setOptionState(boolean enabled) {
       }
     }
-    return new MatchedValue(option, pattern, GotoActionModel.MatchedValueType.OPTION)
+    return new MatchedValue(option, pattern)
   }
 
   static SearchEverywhereContributor<?> createActionContributor(Project project, Disposable parentDisposable) {

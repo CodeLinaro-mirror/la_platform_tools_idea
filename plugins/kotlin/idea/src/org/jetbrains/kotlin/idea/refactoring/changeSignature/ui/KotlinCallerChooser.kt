@@ -4,7 +4,6 @@ package org.jetbrains.kotlin.idea.refactoring.changeSignature.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts
-import com.intellij.openapi.util.NlsSafe
 import com.intellij.psi.PsiClassOwner
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiMethod
@@ -73,9 +72,7 @@ class KotlinMethodNode(
 
         val renderedFunction = KotlinCallHierarchyNodeDescriptor.renderNamedFunction(descriptor)
         val renderedFunctionWithContainer = containerName?.let {
-            @NlsSafe
-            val name = "${if (it.isSpecial) KotlinBundle.message("text.anonymous") else it.asString()}.$renderedFunction"
-            name
+            "${if (it.isSpecial) KotlinBundle.message("text.anonymous") else it.asString()}.$renderedFunction"
         } ?: renderedFunction
 
         val attributes = if (isEnabled)

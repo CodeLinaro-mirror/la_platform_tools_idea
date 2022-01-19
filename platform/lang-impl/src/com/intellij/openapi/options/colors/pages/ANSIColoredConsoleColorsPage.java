@@ -1,12 +1,9 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.options.colors.pages;
 
-import com.intellij.execution.impl.ConsoleViewUtil;
 import com.intellij.execution.process.ConsoleHighlighter;
 import com.intellij.execution.ui.ConsoleViewContentType;
-import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
-import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.fileTypes.PlainSyntaxHighlighter;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
 import com.intellij.openapi.fileTypes.SyntaxHighlighter;
@@ -17,7 +14,6 @@ import com.intellij.openapi.options.colors.ColorSettingsPage;
 import com.intellij.psi.codeStyle.DisplayPriority;
 import com.intellij.psi.codeStyle.DisplayPrioritySortable;
 import com.intellij.terminal.JBTerminalSystemSettingsProviderBase;
-import com.intellij.ui.EditorCustomization;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -27,7 +23,7 @@ import java.util.Map;
 /**
  * @author oleg, Roman.Chernyatchik
  */
-public class ANSIColoredConsoleColorsPage implements ColorSettingsPage, DisplayPrioritySortable, EditorCustomization {
+public class ANSIColoredConsoleColorsPage implements ColorSettingsPage, DisplayPrioritySortable {
   @SuppressWarnings("SpellCheckingInspection")
   private static final String DEMO_TEXT =
     "<stdsys>C:\\command.com</stdsys>\n" +
@@ -175,15 +171,5 @@ public class ANSIColoredConsoleColorsPage implements ColorSettingsPage, DisplayP
   @Override
   public DisplayPriority getPriority() {
     return DisplayPriority.COMMON_SETTINGS;
-  }
-
-  @Override
-  public @NotNull EditorColorsScheme customizeColorScheme(@NotNull EditorColorsScheme scheme) {
-    return ConsoleViewUtil.updateConsoleColorScheme(scheme);
-  }
-
-  @Override
-  public void customize(@NotNull EditorEx editor) {
-    editor.getSettings().setCaretRowShown(false);
   }
 }

@@ -1,6 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
+import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereManager;
 import com.intellij.ide.actions.searcheverywhere.statistics.SearchEverywhereUsageTriggerCollector;
@@ -38,6 +39,7 @@ public abstract class SearchEverywhereBaseAction extends AnAction {
                                              boolean sendStatistics) {
     Project project = event.getProject();
     SearchEverywhereManager seManager = SearchEverywhereManager.getInstance(project);
+    FeatureUsageTracker.getInstance().triggerFeatureUsed(IdeActions.ACTION_SEARCH_EVERYWHERE);
 
     if (seManager.isShown()) {
       if (tabID.equals(seManager.getSelectedTabID())) {

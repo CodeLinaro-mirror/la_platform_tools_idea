@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.idea.refactoring.introduce.introduceVariable.KotlinI
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtDeclarationWithBody
 import org.jetbrains.kotlin.psi.KtExpression
-import org.jetbrains.kotlin.psi.KtStatementExpression
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.kotlin.types.typeUtil.isNothing
 import org.jetbrains.kotlin.types.typeUtil.isUnit
@@ -28,7 +27,7 @@ class IntroduceVariableIntention : SelfTargetingRangeIntention<PsiElement>(
         val startElement = PsiTreeUtil.skipSiblingsBackward(element, PsiWhiteSpace::class.java) ?: element
         return startElement.parentsWithSelf
             .filterIsInstance<KtExpression>()
-            .takeWhile { it !is KtDeclarationWithBody && it !is KtStatementExpression }
+            .takeWhile { it !is KtDeclarationWithBody }
             .firstOrNull {
                 val parent = it.parent
                 parent is KtBlockExpression || parent is KtDeclarationWithBody && !parent.hasBlockBody() && parent.bodyExpression == it

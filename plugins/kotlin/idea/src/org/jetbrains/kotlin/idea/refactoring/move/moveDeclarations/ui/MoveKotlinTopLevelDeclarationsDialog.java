@@ -8,7 +8,6 @@ import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
-import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.Pass;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiFile;
@@ -228,9 +227,9 @@ public class MoveKotlinTopLevelDeclarationsDialog extends RefactoringDialog {
         ((KotlinDestinationFolderComboBox) destinationFolderCB).setData(
                 myProject,
                 targetDirectory,
-                new Pass<>() {
+                new Pass<String>() {
                     @Override
-                    public void pass(@NlsSafe String s) {
+                    public void pass(String s) {
                         setErrorText(s);
                     }
                 },

@@ -15,10 +15,11 @@
  */
 package com.intellij.ide.projectWizard;
 
-import com.intellij.ide.IdeCoreBundle;
+import com.intellij.ide.IdeBundle;
 import com.intellij.ide.util.newProjectWizard.AbstractProjectWizard;
 import com.intellij.ide.util.newProjectWizard.StepSequence;
 import com.intellij.ide.util.projectWizard.ModuleWizardStep;
+import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ui.configuration.ModulesProvider;
 import com.intellij.openapi.util.Disposer;
@@ -41,12 +42,12 @@ public class NewProjectWizard extends AbstractProjectWizard {
   private final StepSequence mySequence = new StepSequence();
 
   public NewProjectWizard(@Nullable Project project, @NotNull ModulesProvider modulesProvider, @Nullable String defaultPath) {
-    super(IdeCoreBundle.message(project == null ? "title.new.project" : "title.add.module"), project, defaultPath);
+    super(IdeBundle.message(project == null ? "title.new.project" : "title.add.module"), project, defaultPath);
     init(modulesProvider);
   }
 
   public NewProjectWizard(Project project, Component dialogParent, ModulesProvider modulesProvider, String defaultModuleName) {
-    super(IdeCoreBundle.message("title.add.module"), project, dialogParent);
+    super(IdeBundle.message("title.add.module"), project, dialogParent);
     myWizardContext.setDefaultModuleName(defaultModuleName);
     init(modulesProvider);
   }
@@ -72,6 +73,10 @@ public class NewProjectWizard extends AbstractProjectWizard {
       projectTypeStep.loadRemoteTemplates(chooseTemplateStep);
     }
     super.init();
+  }
+
+  private static boolean isNewWizard() {
+    return Experiments.getInstance().isFeatureEnabled("new.project.wizard");
   }
 
   @Override

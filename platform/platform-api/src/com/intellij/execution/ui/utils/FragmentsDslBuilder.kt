@@ -6,8 +6,6 @@ import com.intellij.execution.ui.NestedGroupFragment
 import com.intellij.execution.ui.SettingsEditorFragment
 import com.intellij.execution.ui.TagButton
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.ui.ComponentValidator
 import com.intellij.openapi.ui.ComponentWithBrowseButton
 import com.intellij.openapi.ui.ValidationInfo
@@ -20,6 +18,7 @@ import org.jetbrains.annotations.Nls
 import java.awt.Font
 import javax.swing.JComponent
 import javax.swing.JLabel
+import kotlin.concurrent.thread
 
 @DslMarker
 annotation class FragmentsDsl
@@ -40,10 +39,8 @@ abstract class AbstractFragmentBuilder<Settings : FragmentedSettings> {
 @ApiStatus.Experimental
 @FragmentsDsl
 class Group<Settings : FragmentedSettings>(
-  val parentId: String,
   val id: String,
-  @Nls val name: String,
-  private val extenders: List<FragmentsDslBuilderExtender<Settings>>
+  @Nls val name: String
 ) : AbstractFragmentBuilder<Settings>() {
 
   var applyVisibility: ((Settings, Boolean) -> Unit)? = null
@@ -58,7 +55,7 @@ class Group<Settings : FragmentedSettings>(
   override fun build(): NestedGroupFragment<Settings> {
     return object : NestedGroupFragment<Settings>(id, name, group, visible) {
       override fun createChildren(): MutableList<SettingsEditorFragment<Settings, *>> {
-        return FragmentsBuilder(parentId, this@Group.id, extenders).also(this@Group.children).build()
+        return FragmentsBuilder<Settings>().also(this@Group.children).build()
       }
 
       override fun getChildrenGroupName(): String? = this@Group.childrenGroupName ?: super.getChildrenGroupName()
@@ -168,7 +165,7 @@ class Fragment<Settings : FragmentedSettings, Component : JComponent>(
       override fun applyEditorTo(s: Settings) {
         super.applyEditorTo(s)
 
-        ApplicationManager.getApplication().executeOnPooledThread {
+        thread {
           if (validator != null) {
             val validationInfo = (validation!!)(s, this.component())?.let {
               if (it.component == null) {
@@ -210,13 +207,7 @@ class Fragment<Settings : FragmentedSettings, Component : JComponent>(
 
 @ApiStatus.Experimental
 @FragmentsDsl
-class FragmentsBuilder<Settings : FragmentedSettings>(
-  parentId: String?,
-  id: String,
-  private val extenders: List<FragmentsDslBuilderExtender<Settings>>
-) {
-  val fullId = (if (parentId == null) "" else "$parentId.") + id
-
+class FragmentsBuilder<Settings : FragmentedSettings> {
   private val fragments = arrayListOf<SettingsEditorFragment<Settings, *>>()
 
   fun <Component : JComponent> Component.asFragment(
@@ -246,44 +237,17 @@ class FragmentsBuilder<Settings : FragmentedSettings>(
   }
 
   fun group(id: String, @Nls name: String, setup: Group<Settings>.() -> Unit): NestedGroupFragment<Settings> {
-    return Group(fullId, id, name, extenders).also(setup).let { it.build().apply { fragments += this } }
+    return Group<Settings>(id, name).also(setup).let { it.build().apply { fragments += this } }
   }
 
-  fun build(): MutableList<SettingsEditorFragment<Settings, *>> {
-    extenders.filter { it.isApplicableTo(this) }.forEach { it.extend(this) }
-    return fragments.toMutableList()
-  }
-}
-
-@ApiStatus.Internal
-@ApiStatus.Experimental
-interface FragmentsDslBuilderExtender<Settings : FragmentedSettings> {
-  val id: String
-
-  fun extend(builder: FragmentsBuilder<Settings>)
-
-  fun isApplicableTo(builder: FragmentsBuilder<Settings>) = builder.fullId == id
-
-  companion object {
-    @JvmField
-    val EP_NAME = ExtensionPointName.create<FragmentsDslBuilderExtender<*>>("com.intellij.fragments.dsl.builder.extender")
-
-    inline fun <reified T : FragmentedSettings> getExtenders(startId: String): List<FragmentsDslBuilderExtender<T>> {
-      return EP_NAME.extensionList.map {
-        @Suppress("UNCHECKED_CAST")
-        it as FragmentsDslBuilderExtender<T>
-      }.filter { it.id.startsWith(startId) }
-    }
-  }
+  fun build() = fragments.toMutableList()
 }
 
 @ApiStatus.Experimental
-inline fun <reified Settings : FragmentedSettings> fragments(
+inline fun <Settings : FragmentedSettings> fragments(
   @Nls title: String? = null,
-  id: String,
-  extenders: List<FragmentsDslBuilderExtender<Settings>> = FragmentsDslBuilderExtender.getExtenders(id),
   setup: FragmentsBuilder<Settings>.() -> Unit
-): MutableList<SettingsEditorFragment<Settings, *>> = FragmentsBuilder(null, id, extenders).apply {
+): MutableList<SettingsEditorFragment<Settings, *>> = FragmentsBuilder<Settings>().apply {
   if (title != null) {
     fragment("title", JLabel(title).also { it.font = JBUI.Fonts.label().deriveFont(Font.BOLD) }) {
       isRemovable = false

@@ -54,11 +54,7 @@ public final class PathsList  {
   }
 
   public void add(VirtualFile file) {
-    String path = LOCAL_PATH.fun(file);
-    String trimmed = path != null ? path.trim() : "";
-    if (!trimmed.isEmpty() && myPathSet.add(trimmed)) {
-      myPath.add(trimmed);
-    }
+    add(LOCAL_PATH.fun(file));
   }
 
   public void addFirst(String path) {

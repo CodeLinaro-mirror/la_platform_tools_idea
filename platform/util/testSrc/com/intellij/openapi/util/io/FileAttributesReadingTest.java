@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.io;
 
 import com.intellij.openapi.util.SystemInfo;
@@ -11,6 +11,7 @@ import com.intellij.util.TimeoutUtil;
 import com.intellij.util.system.CpuArch;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -22,7 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.attribute.DosFileAttributeView;
 import java.util.Arrays;
 
-import static com.intellij.openapi.util.io.IoTestUtil.*;
+import static com.intellij.openapi.util.io.IoTestUtil.assertTimestampsEqual;
+import static com.intellij.openapi.util.io.IoTestUtil.assumeUnix;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
 import static org.junit.Assume.assumeFalse;
@@ -163,14 +165,14 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void linkToFile() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
 
     File file = tempDir.newFile("file.txt");
     Files.write(file.toPath(), myTestData);
     assertTrue(file.setLastModified(file.lastModified() - 5000));
     assertTrue(file.setWritable(false, false));
     File link = new File(tempDir.getRoot(), "link");
-    createSymbolicLink(link.toPath(), file.toPath());
+    IoTestUtil.createSymbolicLink(link.toPath(), file.toPath());
 
     FileAttributes attributes = getAttributes(link);
     assertEquals(FileAttributes.Type.FILE, attributes.getType());
@@ -188,16 +190,16 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void doubleLink() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
 
     File file = tempDir.newFile("file.txt");
     Files.write(file.toPath(), myTestData);
     assertTrue(file.setLastModified(file.lastModified() - 5000));
     assertTrue(file.setWritable(false, false));
     File link1 = new File(tempDir.getRoot(), "link1");
-    createSymbolicLink(link1.toPath(), file.toPath());
+    IoTestUtil.createSymbolicLink(link1.toPath(), file.toPath());
     File link2 = new File(tempDir.getRoot(), "link2");
-    createSymbolicLink(link2.toPath(), link1.toPath());
+    IoTestUtil.createSymbolicLink(link2.toPath(), link1.toPath());
 
     FileAttributes attributes = getAttributes(link2);
     assertEquals(FileAttributes.Type.FILE, attributes.getType());
@@ -215,13 +217,13 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void linkToDirectory() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
 
     File dir = tempDir.newDirectory("dir");
     if (SystemInfo.isUnix) assertTrue(dir.setWritable(false, false));
     assertTrue(dir.setLastModified(dir.lastModified() - 5000));
     File link = new File(tempDir.getRoot(), "link");
-    createSymbolicLink(link.toPath(), dir.toPath());
+    IoTestUtil.createSymbolicLink(link.toPath(), dir.toPath());
 
     FileAttributes attributes = getAttributes(link);
     assertEquals(FileAttributes.Type.DIRECTORY, attributes.getType());
@@ -238,13 +240,13 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void missingLink() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
 
     File file = new File(tempDir.getRoot(), "file.txt");
     assertFalse(file.exists());
     File link = new File(tempDir.getRoot(), "link");
     assertFalse(link.exists());
-    createSymbolicLink(link.toPath(), file.toPath());
+    IoTestUtil.createSymbolicLink(link.toPath(), file.toPath());
 
     FileAttributes attributes = getAttributes(link);
     assertNull(attributes.getType());
@@ -259,11 +261,11 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void selfLink() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
 
     File dir = tempDir.newDirectory("dir");
     File link = new File(dir, "link");
-    createSymbolicLink(link.toPath(), dir.toPath());
+    IoTestUtil.createSymbolicLink(link.toPath(), dir.toPath());
 
     FileAttributes attributes = getAttributes(link);
     assertEquals(FileAttributes.Type.DIRECTORY, attributes.getType());
@@ -278,11 +280,11 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void innerSymlinkResolve() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
 
     File file = tempDir.newFile("dir/file.txt");
     File link = new File(tempDir.getRoot(), "link");
-    createSymbolicLink(link.toPath(), file.getParentFile().toPath());
+    IoTestUtil.createSymbolicLink(link.toPath(), file.getParentFile().toPath());
 
     String target = resolveSymLink(new File(link.getPath() + '/' + file.getName()));
     assertEquals(file.getPath(), target);
@@ -290,10 +292,10 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void junction() throws IOException {
-    assumeWindows();
+    assumeTrue("vista-or-newer expected but got: "+SystemInfo.getOsNameAndVersion(), SystemInfo.isWinVistaOrNewer);
 
     File target = tempDir.newDirectory("dir");
-    File junction = createJunction(target.getPath(), tempDir.getRoot() + "/junction.dir");
+    File junction = IoTestUtil.createJunction(target.getPath(), tempDir.getRoot() + "/junction.dir");
 
     try {
       FileAttributes attributes = getAttributes(junction);
@@ -317,17 +319,17 @@ public abstract class FileAttributesReadingTest {
       assertNull(resolved2);
     }
     finally {
-      deleteJunction(junction.getPath());
+      IoTestUtil.deleteJunction(junction.getPath());
     }
   }
 
   @Test
   public void innerJunctionResolve() {
-    assumeWindows();
+    assumeTrue("vista-or-newer expected but got: "+SystemInfo.getOsNameAndVersion(), SystemInfo.isWinVistaOrNewer);
 
     File file = tempDir.newFile("dir/file.txt");
     File junction = new File(tempDir.getRoot(), "junction");
-    createJunction(file.getParent(), junction.getPath());
+    IoTestUtil.createJunction(file.getParent(), junction.getPath());
 
     String target = resolveSymLink(new File(junction.getPath() + '/' + file.getName()));
     assertEquals(file.getPath(), target);
@@ -335,7 +337,7 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void hiddenDir() throws IOException {
-    assumeWindows();
+    IoTestUtil.assumeWindows();
     File dir = tempDir.newDirectory("dir");
     FileAttributes attributes = getAttributes(dir);
     assertFalse(attributes.isHidden());
@@ -346,7 +348,7 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void hiddenFile() throws IOException {
-    assumeWindows();
+    IoTestUtil.assumeWindows();
     File file = tempDir.newFile("file");
     FileAttributes attributes = getAttributes(file);
     assertFalse(attributes.isHidden());
@@ -375,7 +377,7 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void wellHiddenFile() {
-    assumeWindows();
+    IoTestUtil.assumeWindows();
     File file = new File("C:\\Documents and Settings\\desktop.ini");
     assumeTrue(file +" is not there", file.exists());
 
@@ -405,7 +407,9 @@ public abstract class FileAttributesReadingTest {
     if (SystemInfo.isWindows) {
       StringBuilder path = new StringBuilder(tempDir.getRoot().getPath());
       int length = 250 - path.length();
-      path.append("\\x_x_x_x_x".repeat(Math.max(0, length / 10)));
+      for (int i = 0; i < length / 10; i++) {
+        path.append("\\x_x_x_x_x");
+      }
 
       File baseDir = new File(path.toString());
       assertTrue(baseDir.mkdirs());
@@ -429,10 +433,10 @@ public abstract class FileAttributesReadingTest {
 
   @Test
   public void subst() {
-    assumeWindows();
+    IoTestUtil.assumeWindows();
 
     tempDir.newFile("file.txt");  // just to populate a directory
-    File substRoot = createSubst(tempDir.getRoot().getPath());
+    File substRoot = IoTestUtil.createSubst(tempDir.getRoot().getPath());
     try {
       FileAttributes attributes = getAttributes(substRoot);
       assertEquals(substRoot + " " + attributes, FileAttributes.Type.DIRECTORY, attributes.getType());
@@ -447,18 +451,18 @@ public abstract class FileAttributesReadingTest {
       assertEquals(file.getPath(), target);
     }
     finally {
-      deleteSubst(substRoot.getPath());
+      IoTestUtil.deleteSubst(substRoot.getPath());
     }
   }
 
   @Test
   public void hardLink() throws IOException {
-    assumeSymLinkCreationIsSupported();
+    IoTestUtil.assumeSymLinkCreationIsSupported();
     File target = tempDir.newFile("file.txt");
     File link = new File(tempDir.getRoot(), "link");
     Files.createLink(link.toPath(), target.toPath());
 
-    FileAttributes attributes = getAttributes(link, SystemInfo.isUnix || SystemInfo.isWindows);
+    FileAttributes attributes = getAttributes(link, SystemInfo.isUnix || SystemInfo.isWinVistaOrNewer);  // ignore XP
     assertEquals(FileAttributes.Type.FILE, attributes.getType());
     assertEquals(target.length(), attributes.length);
     assertTimestampsEqual(target.lastModified(), attributes.lastModified);
@@ -473,7 +477,7 @@ public abstract class FileAttributesReadingTest {
       assertEquals(myTestData.length, bytes.length);
     }
 
-    attributes = getAttributes(link, SystemInfo.isUnix || SystemInfo.isWindows);
+    attributes = getAttributes(link, SystemInfo.isUnix || SystemInfo.isWinVistaOrNewer);  // ignore XP
     assertEquals(FileAttributes.Type.FILE, attributes.getType());
     assertEquals(target.length(), attributes.length);
     assertTimestampsEqual(target.lastModified(), attributes.lastModified);
@@ -557,7 +561,7 @@ public abstract class FileAttributesReadingTest {
   }
   @Test
   public void unicodeName() throws IOException {
-    String name = getUnicodeName();
+    String name = IoTestUtil.getUnicodeName();
     assumeTrue("Unicode names not supported", name != null);
     File file = tempDir.newFile(name + ".txt");
     Files.write(file.toPath(), myTestData);
@@ -568,7 +572,8 @@ public abstract class FileAttributesReadingTest {
     assertEquals(file.getPath(), target);
   }
 
-  private static @Nullable String resolveSymLink(File file) {
+  @Nullable
+  private static String resolveSymLink(File file) {
     try {
       String realPath = FileSystemUtil.computeMediator().resolveSymLink(file.getAbsolutePath());
       if (realPath != null && (SystemInfo.isWindows && realPath.startsWith("\\\\") || new File(realPath).exists())) {
@@ -581,11 +586,13 @@ public abstract class FileAttributesReadingTest {
     }
   }
 
-  private static @NotNull FileAttributes getAttributes(@NotNull File file) {
+  @NotNull
+  private static FileAttributes getAttributes(@NotNull File file) {
     return getAttributes(file, true);
   }
 
-  private static @NotNull FileAttributes getAttributes(@NotNull File file, boolean checkList) {
+  @NotNull
+  private static FileAttributes getAttributes(@NotNull File file, boolean checkList) {
     String path = file.getPath();
     FileAttributes attributes = getAttributes(path);
     assertNotNull(path + ", exists=" + file.exists(), attributes);
@@ -608,7 +615,8 @@ public abstract class FileAttributesReadingTest {
     return attributes;
   }
 
-  private static @Nullable FileAttributes getAttributes(String path) {
+  @Nullable
+  private static FileAttributes getAttributes(String path) {
     try {
       return FileSystemUtil.computeMediator().getAttributes(path);
     }
@@ -617,7 +625,7 @@ public abstract class FileAttributesReadingTest {
     }
   }
 
-  private static void assertFileAttributes(File file) {
+  private static void assertFileAttributes(@NotNull File file) {
     FileAttributes attributes = getAttributes(file);
     assertEquals(FileAttributes.Type.FILE, attributes.getType());
     assertFalse(attributes.isSymLink());
@@ -628,7 +636,7 @@ public abstract class FileAttributesReadingTest {
     assertTrue(attributes.isWritable());
   }
 
-  private static void assertDirectoriesEqual(File dir) {
+  private static void assertDirectoriesEqual(@NotNull File dir) {
     String[] list1 = dir.list();
     assertNotNull(list1);
     FileInfo[] list2 = IdeaWin32.getInstance().listChildren(dir.getPath());
@@ -638,6 +646,7 @@ public abstract class FileAttributesReadingTest {
     }
   }
 
+  @TestOnly
   private static String getMediatorName() {
     Object mediator = FileSystemUtil.computeMediator();
     return mediator.getClass().getSimpleName().replace("MediatorImpl", "");

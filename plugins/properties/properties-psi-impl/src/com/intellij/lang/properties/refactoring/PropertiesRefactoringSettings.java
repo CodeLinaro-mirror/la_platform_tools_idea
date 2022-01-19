@@ -3,13 +3,12 @@ package com.intellij.lang.properties.refactoring;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 
-@State(name = "PropertiesRefactoringSettings", storages = @Storage("baseRefactoring.xml"), category = SettingsCategory.CODE)
+@State(name = "PropertiesRefactoringSettings", storages = @Storage("baseRefactoring.xml"))
 public class PropertiesRefactoringSettings implements PersistentStateComponent<PropertiesRefactoringSettings> {
   public boolean RENAME_SEARCH_IN_COMMENTS = false;
 

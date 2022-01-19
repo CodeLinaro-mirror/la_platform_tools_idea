@@ -13,7 +13,6 @@ import com.intellij.openapi.vcs.changes.actions.MoveChangesToAnotherListAction
 import com.intellij.openapi.vcs.changes.ui.ChangelistMoveOfferDialog
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.ConfirmationDialog.requestForConfirmation
-import org.jetbrains.annotations.Nls
 
 class ChangeListCommitState(val changeList: LocalChangeList, val changes: List<Change>, val commitMessage: String) {
   internal fun copy(commitMessage: String): ChangeListCommitState =
@@ -24,7 +23,7 @@ open class SingleChangeListCommitter(
   project: Project,
   private val commitState: ChangeListCommitState,
   commitContext: CommitContext,
-  localHistoryActionName: @Nls String,
+  localHistoryActionName: String,
   private val isDefaultChangeListFullyIncluded: Boolean
 ) : LocalChangesCommitter(project, commitState.changes, commitState.commitMessage, commitContext, localHistoryActionName) {
 

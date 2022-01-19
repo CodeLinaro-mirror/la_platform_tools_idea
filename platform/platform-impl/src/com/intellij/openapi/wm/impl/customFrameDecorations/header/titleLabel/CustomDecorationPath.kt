@@ -11,25 +11,20 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ProjectManagerListener
-import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.util.registry.RegistryValue
-import com.intellij.openapi.util.registry.RegistryValueListener
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.impl.customFrameDecorations.header.title.CustomHeaderTitle
 import com.intellij.ui.awt.RelativeRectangle
 import com.intellij.util.ui.JBUI.CurrentTheme.CustomFrameDecorations
 import java.awt.Rectangle
 import java.beans.PropertyChangeListener
+import java.util.*
 import javax.swing.JComponent
 import javax.swing.JFrame
 
-internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFilePath(), CustomHeaderTitle {
-  companion object {
+internal class CustomDecorationPath(val frame: JFrame) : SelectedEditorFilePath(), CustomHeaderTitle {
+  companion object{
     fun createInstance(frame: JFrame): CustomDecorationPath {
       return CustomDecorationPath(frame)
-    }
-
-    fun createMainInstance(frame: JFrame): CustomDecorationPath {
-      return MainCustomDecorationPath(frame)
     }
   }
 
@@ -59,7 +54,7 @@ internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFile
     multipleSameNamed = sameNameInRecent || sameNameInOpen
   }
 
-  private val titleChangeListener = PropertyChangeListener {
+  private val titleChangeListener = PropertyChangeListener{
     updateProjectPath()
   }
 
@@ -87,19 +82,25 @@ internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFile
     }
   }
 
+  var disposable: Disposable? = null
+
   override fun installListeners() {
     super.installListeners()
     frame.addPropertyChangeListener("title", titleChangeListener)
-  }
 
-  override fun addAdditionalListeners(disp: Disposable) {
-    super.addAdditionalListeners(disp)
+    disposable?.let {
+      if(!Disposer.isDisposed(it)) it.dispose()
+    }
 
     project?.let {
-      val busConnection = ApplicationManager.getApplication().messageBus.connect(disp)
+      val ds = Disposer.newDisposable()
+      Disposer.register(it, ds)
+
+      val busConnection = ApplicationManager.getApplication().messageBus.connect(ds)
       busConnection.subscribe(ProjectManager.TOPIC, projectManagerListener)
       busConnection.subscribe(UISettingsListener.TOPIC, UISettingsListener { checkTabPlacement() })
 
+      disposable = ds
       checkTabPlacement()
       checkOpenedProjects()
     }
@@ -111,6 +112,10 @@ internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFile
 
   override fun unInstallListeners() {
     super.unInstallListeners()
+    disposable?.let {
+      if(!Disposer.isDisposed(it)) it.dispose()
+    }
+    disposable = null
     frame.removePropertyChangeListener(titleChangeListener)
   }
 
@@ -120,27 +125,9 @@ internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFile
       RelativeRectangle(view, Rectangle(0, 0, mouseInsets, view.height)),
       RelativeRectangle(view, Rectangle(0, 0, view.width, mouseInsets)),
       RelativeRectangle(view,
-        Rectangle(0, view.height - mouseInsets, view.width, mouseInsets)),
+                        Rectangle(0, view.height - mouseInsets, view.width, mouseInsets)),
       RelativeRectangle(view,
-        Rectangle(view.width - mouseInsets, 0, mouseInsets, view.height))
+                        Rectangle(view.width - mouseInsets, 0, mouseInsets, view.height))
     )
-  }
-}
-
-internal class MainCustomDecorationPath(frame: JFrame) : CustomDecorationPath(frame) {
-  private val classKey = "ide.borderless.tab.caption.in.title"
-
-  private val registryListener = object : RegistryValueListener {
-    override fun afterValueChanged(value: RegistryValue) {
-      updatePaths()
-    }
-  }
-
-  override val captionInTitle: Boolean
-    get() = Registry.get(classKey).asBoolean()
-
-  override fun addAdditionalListeners(disp: Disposable) {
-    super.addAdditionalListeners(disp)
-    Registry.get(classKey).addListener(registryListener, disp)
   }
 }

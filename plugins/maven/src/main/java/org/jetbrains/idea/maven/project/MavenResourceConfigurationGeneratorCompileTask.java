@@ -135,10 +135,8 @@ public class MavenResourceConfigurationGeneratorCompileTask implements CompileTa
       addEarModelMapEntries(mavenProject, resourceConfig.modelMap);
 
       Element pluginConfiguration = mavenProject.getPluginConfiguration("org.apache.maven.plugins", "maven-resources-plugin");
-      resourceConfig.outputDirectory =
-        transformer.apply(getResourcesPluginGoalOutputDirectory(mavenProject, pluginConfiguration, "resources"));
-      resourceConfig.testOutputDirectory =
-        transformer.apply(getResourcesPluginGoalOutputDirectory(mavenProject, pluginConfiguration, "testResources"));
+      resourceConfig.outputDirectory = getResourcesPluginGoalOutputDirectory(mavenProject, pluginConfiguration, "resources");
+      resourceConfig.testOutputDirectory = getResourcesPluginGoalOutputDirectory(mavenProject, pluginConfiguration, "testResources");
 
       addResources(transformer, resourceConfig.resources, mavenProject.getResources());
       addResources(transformer, resourceConfig.testResources, mavenProject.getTestResources());
@@ -172,9 +170,7 @@ public class MavenResourceConfigurationGeneratorCompileTask implements CompileTa
     final Element element = new Element("maven-project-configuration");
     XmlSerializer.serializeInto(projectConfig, element);
     buildManager.runCommand(() -> {
-      if (!project.isDefault()) {
-        buildManager.clearState(project);
-      }
+      buildManager.clearState(project);
       FileUtil.createIfDoesntExist(mavenConfigFile);
       try {
         JdomKt.write(element, mavenConfigFile.toPath());

@@ -3,7 +3,6 @@ import java.util.*;
 
 public class PrimitiveGetters {
   interface Xyz {
-    @Contract(pure = true)
     boolean isFoo();
   }
 

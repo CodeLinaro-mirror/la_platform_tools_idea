@@ -88,7 +88,7 @@ public final class LookupCellRenderer implements ListCellRenderer<LookupElement>
   private int myMaxWidth = -1;
   private volatile int myLookupTextWidth = 50;
   private final Object myWidthLock = ObjectUtils.sentinel("lookup width lock");
-  private final Runnable myLookupWidthUpdater;
+  private final SingleAlarm myLookupWidthUpdateAlarm;
   private final boolean myShrinkLookup;
 
   private final AsyncRendering myAsyncRendering;
@@ -123,20 +123,9 @@ public final class LookupCellRenderer implements ListCellRenderer<LookupElement>
     myBoldMetrics = myLookup.getTopLevelEditor().getComponent().getFontMetrics(myBoldFont);
     myAsyncRendering = new AsyncRendering(myLookup);
 
-    if (ApplicationManager.getApplication().isUnitTestMode()) {
-      // Avoid delay in unit tests
-      myLookupWidthUpdater = () -> ApplicationManager.getApplication().invokeLater(this::updateLookupWidthFromVisibleItems);
-    } else {
-      SingleAlarm alarm = new SingleAlarm(this::updateLookupWidthFromVisibleItems, 50, lookup, Alarm.ThreadToUse.SWING_THREAD,
-                                          ModalityState.stateForComponent(editorComponent));
-      myLookupWidthUpdater = () -> {
-        synchronized (alarm) {
-          if (!alarm.isDisposed()) {
-            alarm.request();
-          }
-        }
-      };
-    }
+    myLookupWidthUpdateAlarm = new SingleAlarm(this::updateLookupWidthFromVisibleItems,
+                                               ApplicationManager.getApplication().isUnitTestMode() ? 0 : 50, lookup, Alarm.ThreadToUse.SWING_THREAD,
+                                               ModalityState.stateForComponent(editorComponent));
 
     myShrinkLookup = Registry.is("ide.lookup.shrink");
   }
@@ -546,7 +535,11 @@ public final class LookupCellRenderer implements ListCellRenderer<LookupElement>
   }
 
   void scheduleUpdateLookupWidthFromVisibleItems(){
-    myLookupWidthUpdater.run();
+    synchronized (myLookupWidthUpdateAlarm) {
+      if (!myLookupWidthUpdateAlarm.isDisposed()) {
+        myLookupWidthUpdateAlarm.request();
+      }
+    }
   }
 
   void itemAdded(@NotNull LookupElement element, @NotNull LookupElementPresentation fastPresentation) {

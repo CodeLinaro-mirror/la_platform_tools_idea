@@ -191,7 +191,6 @@
   <action id="ShowBookmarks">
     <keyboard-shortcut first-keystroke="control BACK_QUOTE"/>
   </action>
-  <action id="ShowTypeBookmarks"/>
   <action id="SwitchHeaderSource">
     <keyboard-shortcut first-keystroke="alt O"/>
   </action>

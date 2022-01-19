@@ -24,10 +24,6 @@ import org.junit.Test
 class MavenSetupProjectTest : ExternalSystemSetupProjectTest, MavenImportingTestCase() {
   override fun getSystemId(): ProjectSystemId = SYSTEM_ID
 
-  override fun assertModules(project: Project, vararg projectInfo: ExternalSystemSetupProjectTestCase.ProjectInfo) {
-    waitForImportCompletion(project)
-    super<ExternalSystemSetupProjectTest>.assertModules(project, *projectInfo)
-  }
 
   @Test
   fun `test settings are not reset`() {
@@ -74,7 +70,6 @@ class MavenSetupProjectTest : ExternalSystemSetupProjectTest, MavenImportingTest
   private fun waitForImportCompletion(project: Project) {
     NonBlockingReadActionImpl.waitForAsyncTaskCompletion()
     val projectManager = MavenProjectsManager.getInstance(project)
-    projectManager.initForTests()
     ApplicationManager.getApplication().invokeAndWait {
       projectManager.waitForResolvingCompletion()
       projectManager.performScheduledImportInTests()

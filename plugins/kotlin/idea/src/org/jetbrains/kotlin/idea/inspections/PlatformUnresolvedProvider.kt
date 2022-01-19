@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.HighlightDisplayKey
 import com.intellij.codeInsight.daemon.QuickFixActionRegistrar
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.quickfix.UnresolvedReferenceQuickFixProvider
+import com.intellij.openapi.util.Condition
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.SmartPsiElementPointer
 import org.jetbrains.kotlin.diagnostics.Diagnostic
@@ -25,7 +26,7 @@ object PlatformUnresolvedProvider : KotlinIntentionActionFactoryWithDelegate<KtN
     override fun createFixes(
         originalElementPointer: SmartPsiElementPointer<KtNameReferenceExpression>,
         diagnostic: Diagnostic,
-        quickFixDataFactory: (KtNameReferenceExpression) -> String?
+        quickFixDataFactory: () -> String?
     ): List<QuickFixWithDelegateFactory> {
         val result = ArrayList<QuickFixWithDelegateFactory>()
 

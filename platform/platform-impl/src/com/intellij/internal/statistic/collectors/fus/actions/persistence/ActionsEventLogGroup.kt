@@ -15,6 +15,9 @@ class ActionsEventLogGroup : CounterUsagesCollector() {
     val GROUP = EventLogGroup("actions", 66)
 
     @JvmField
+    val START_TIME = EventFields.Long("start_time")
+
+    @JvmField
     val ACTION_ID = EventFields.StringValidatedByCustomRule("action_id", "action")
 
     @JvmField
@@ -49,7 +52,7 @@ class ActionsEventLogGroup : CounterUsagesCollector() {
 
     @JvmField
     val ACTION_FINISHED = registerActionEvent(
-      GROUP, ACTION_FINISHED_EVENT_ID, EventFields.StartTime, ADDITIONAL, EventFields.Language, EventFields.DurationMs, DUMB_START, RESULT
+      GROUP, ACTION_FINISHED_EVENT_ID, START_TIME, ADDITIONAL, EventFields.Language, EventFields.DurationMs, DUMB_START, RESULT
     )
 
     @JvmStatic

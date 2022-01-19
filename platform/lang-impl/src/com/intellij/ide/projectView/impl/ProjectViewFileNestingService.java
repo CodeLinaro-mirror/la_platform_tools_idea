@@ -3,7 +3,6 @@ package com.intellij.ide.projectView.impl;
 
 import com.intellij.ide.projectView.ProjectViewNestingRulesProvider;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
@@ -24,8 +23,7 @@ import java.util.List;
  */
 @State(
   name = "ProjectViewFileNesting",
-  storages = @Storage("ui.lnf.xml"),
-  category = SettingsCategory.UI
+  storages = @Storage("ui.lnf.xml")
 )
 public class ProjectViewFileNestingService implements PersistentStateComponent<ProjectViewFileNestingService.MyState>, ModificationTracker {
   private static final Logger LOG = Logger.getInstance(ProjectViewFileNestingService.class);

@@ -2,9 +2,7 @@
 package org.jetbrains.plugins.gradle.frameworkSupport.buildscript
 
 import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptElement.Statement.Expression
-import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptTreeBuilder
 import java.io.File
-import java.util.function.Consumer
 
 @Suppress("unused")
 interface GradleBuildScriptBuilder<BSB : GradleBuildScriptBuilder<BSB>> : GradleBuildScriptBuilderCore<BSB> {
@@ -12,33 +10,17 @@ interface GradleBuildScriptBuilder<BSB : GradleBuildScriptBuilder<BSB>> : Gradle
   fun addGroup(group: String): BSB
   fun addVersion(version: String): BSB
 
-  fun configureTask(name: String, configure: ScriptTreeBuilder.() -> Unit): BSB
-  fun configureTask(name: String, configure: Consumer<ScriptTreeBuilder>): BSB
+  fun addDependency(scope: String, dependency: String, sourceSet: String? = null): BSB
+  fun addDependency(scope: String, dependency: Expression, sourceSet: String? = null): BSB
 
-  fun addDependency(scope: String, dependency: String) = addDependency(scope, dependency, null)
-  fun addDependency(scope: String, dependency: Expression) = addDependency(scope, dependency, null)
-  fun addDependency(scope: String, dependency: String, sourceSet: String?): BSB
-  fun addDependency(scope: String, dependency: Expression, sourceSet: String?): BSB
+  fun addApiDependency(dependency: String, sourceSet: String? = null): BSB
+  fun addApiDependency(dependency: Expression, sourceSet: String? = null): BSB
 
-  fun addApiDependency(dependency: String) = addApiDependency(dependency, null)
-  fun addApiDependency(dependency: Expression) = addApiDependency(dependency, null)
-  fun addApiDependency(dependency: String, sourceSet: String?): BSB
-  fun addApiDependency(dependency: Expression, sourceSet: String?): BSB
+  fun addImplementationDependency(dependency: String, sourceSet: String? = null): BSB
+  fun addImplementationDependency(dependency: Expression, sourceSet: String? = null): BSB
 
-  fun addCompileOnlyDependency(dependency: String) = addCompileOnlyDependency(dependency, null)
-  fun addCompileOnlyDependency(dependency: Expression) = addCompileOnlyDependency(dependency, null)
-  fun addCompileOnlyDependency(dependency: String, sourceSet: String?): BSB
-  fun addCompileOnlyDependency(dependency: Expression, sourceSet: String?): BSB
-
-  fun addImplementationDependency(dependency: String) = addImplementationDependency(dependency, null)
-  fun addImplementationDependency(dependency: Expression) = addImplementationDependency(dependency, null)
-  fun addImplementationDependency(dependency: String, sourceSet: String?): BSB
-  fun addImplementationDependency(dependency: Expression, sourceSet: String?): BSB
-
-  fun addRuntimeOnlyDependency(dependency: String) = addRuntimeOnlyDependency(dependency, null)
-  fun addRuntimeOnlyDependency(dependency: Expression) = addRuntimeOnlyDependency(dependency, null)
-  fun addRuntimeOnlyDependency(dependency: String, sourceSet: String?): BSB
-  fun addRuntimeOnlyDependency(dependency: Expression, sourceSet: String?): BSB
+  fun addRuntimeOnlyDependency(dependency: String, sourceSet: String? = null): BSB
+  fun addRuntimeOnlyDependency(dependency: Expression, sourceSet: String? = null): BSB
 
   fun addTestImplementationDependency(dependency: String): BSB
   fun addTestImplementationDependency(dependency: Expression): BSB

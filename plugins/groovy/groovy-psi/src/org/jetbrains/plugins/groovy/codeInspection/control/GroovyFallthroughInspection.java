@@ -18,7 +18,6 @@ package org.jetbrains.plugins.groovy.codeInspection.control;
 import com.intellij.psi.PsiComment;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.groovy.GroovyBundle;
@@ -26,10 +25,8 @@ import org.jetbrains.plugins.groovy.codeInspection.BaseInspection;
 import org.jetbrains.plugins.groovy.codeInspection.BaseInspectionVisitor;
 import org.jetbrains.plugins.groovy.codeInspection.utils.ControlFlowUtils;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrStatement;
-import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrSwitchElement;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrSwitchStatement;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.clauses.GrCaseSection;
-import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrSwitchExpression;
 
 import java.util.regex.Pattern;
 
@@ -54,24 +51,8 @@ public class GroovyFallthroughInspection extends BaseInspection {
 
     @Override
     public void visitSwitchStatement(@NotNull GrSwitchStatement switchStatement) {
-      visitSwitchElement(switchStatement);
-    }
-
-    @Override
-    public void visitSwitchExpression(@NotNull GrSwitchExpression switchExpression) {
-      visitSwitchElement(switchExpression);
-    }
-
-    public void visitSwitchElement(@NotNull GrSwitchElement switchElement) {
-      if (switchElement instanceof GrSwitchStatement) {
-        super.visitSwitchStatement((GrSwitchStatement)switchElement);
-      } else if (switchElement instanceof GrSwitchExpression) {
-        super.visitSwitchExpression((GrSwitchExpression)switchElement);
-      }
-      final GrCaseSection[] caseSections = switchElement.getCaseSections();
-      if (ContainerUtil.exists(caseSections, section -> section.getArrow() != null)) {
-        return;
-      }
+      super.visitSwitchStatement(switchStatement);
+      final GrCaseSection[] caseSections = switchStatement.getCaseSections();
       for (int i = 1; i < caseSections.length; i++) {
         final GrCaseSection caseSection = caseSections[i];
         if (isCommented(caseSection)) {

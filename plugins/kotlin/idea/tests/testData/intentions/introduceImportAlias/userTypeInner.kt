@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 't' is never used
 class Outer {
     class Middle<T> {}
     class Middle1 {}

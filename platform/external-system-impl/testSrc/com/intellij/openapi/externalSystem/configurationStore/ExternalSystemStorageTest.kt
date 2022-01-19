@@ -2,9 +2,8 @@
 package com.intellij.openapi.externalSystem.configurationStore
 
 import com.intellij.configurationStore.StoreReloadManager
-import com.intellij.facet.Facet
+import com.intellij.facet.*
 import com.intellij.facet.FacetManager
-import com.intellij.facet.FacetManagerBase
 import com.intellij.facet.FacetType
 import com.intellij.facet.impl.FacetUtil
 import com.intellij.facet.mock.MockFacet
@@ -19,11 +18,9 @@ import com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.ProjectData
-import com.intellij.openapi.externalSystem.service.project.ExternalSystemModulePropertyManagerBridge
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProviderImpl
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsDataStorage
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManagerImpl
-import com.intellij.openapi.module.EmptyModuleType
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.module.ModuleTypeId
@@ -50,10 +47,7 @@ import com.intellij.testFramework.*
 import com.intellij.testFramework.UsefulTestCase.assertOneElement
 import com.intellij.util.io.*
 import com.intellij.util.ui.UIUtil
-import com.intellij.workspaceModel.ide.WorkspaceModel.Companion.getInstance
 import com.intellij.workspaceModel.ide.impl.jps.serialization.JpsProjectModelSynchronizer
-import com.intellij.workspaceModel.storage.WorkspaceEntityStorageBuilder.Companion.from
-import com.intellij.workspaceModel.storage.bridgeEntities.ExternalSystemModuleOptionsEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.externalSystemOptions
 import kotlinx.coroutines.runBlocking
@@ -224,23 +218,6 @@ class ExternalSystemStorageTest {
     ModuleRootModificationUtil.addContentRoot(imported, projectDir.resolve("imported").systemIndependentPath)
     ExternalSystemModulePropertyManager.getInstance(imported).setMavenized(true)
     ExternalSystemModulePropertyManager.getInstance(imported).setLinkedProjectPath("${project.basePath}/imported")
-  }
-
-  @Test
-  fun `check mavenized will be applied to the single diff`() {
-    loadProjectAndCheckResults("twoRegularModules") { project ->
-      val moduleManager = ModuleManager.getInstance(project)
-      val initialStorage = getInstance(project).entityStorage.current
-      val storageBuilder = from(initialStorage)
-      for (module in moduleManager.modules) {
-        val modulePropertyManager = ExternalSystemModulePropertyManager.getInstance(module)
-        modulePropertyManager as ExternalSystemModulePropertyManagerBridge
-        modulePropertyManager.setMavenized(true, storageBuilder)
-      }
-      val externalSystemModuleOptionsEntity = initialStorage.entities(ExternalSystemModuleOptionsEntity::class.java).singleOrNull()
-      assertNull(externalSystemModuleOptionsEntity)
-      assertEquals(2, storageBuilder.entities(ExternalSystemModuleOptionsEntity::class.java).count())
-    }
   }
 
   @Test
@@ -439,7 +416,7 @@ class ExternalSystemStorageTest {
 
   @Test
   fun `load artifacts`() = loadProjectAndCheckResults("artifacts") { project ->
-    val artifacts = runReadAction { ArtifactManager.getInstance(project).sortedArtifacts }
+    val artifacts = ArtifactManager.getInstance(project).sortedArtifacts
     assertThat(artifacts).hasSize(2)
     val (imported, regular) = artifacts
     assertThat(imported.name).isEqualTo("imported")
@@ -454,17 +431,10 @@ class ExternalSystemStorageTest {
 
   @Test
   fun `mark module as mavenized`() {
+    //after module is mavenized, we still store iml file with empty root tag inside; it would be better to delete the file in such cases,
+    // but it isn't simple to implement so let's leave it as is for now; and the old project model behaves in the same way.
     loadModifySaveAndCheck("singleRegularModule", "singleModuleAfterMavenization") { project ->
       val module = ModuleManager.getInstance(project).modules.single()
-      ExternalSystemModulePropertyManager.getInstance(module).setMavenized(true)
-    }
-  }
-
-  @Test
-  fun `mark module with regular facet as mavenized`() {
-    loadModifySaveAndCheck("singleRegularModule", "regularFacetInImportedModule") { project ->
-      val module = ModuleManager.getInstance(project).modules.single()
-      addFacet(module, null, "regular")
       ExternalSystemModulePropertyManager.getInstance(module).setMavenized(true)
     }
   }
@@ -711,23 +681,6 @@ class ExternalSystemStorageTest {
     checkFacetAndSubFacet(module, "web", null, MOCK_EXTERNAL_SOURCE)
   }
 
-  @Test(expected = Test.None::class)
-  fun `get modifiable models of renamed module`() = loadProjectAndCheckResults("singleModuleWithImportedSubFacet") { project ->
-    runWriteActionAndWait {
-      val newModule = ModuleManager.getInstance(project).newModule("myModule", EmptyModuleType.EMPTY_MODULE)
-
-      val provider = IdeModifiableModelsProviderImpl(project)
-
-      val anotherModifiableModel = provider.modifiableModuleModel
-      anotherModifiableModel.renameModule(newModule, "newName")
-
-      // Assert no exceptions
-      provider.getModifiableRootModel(newModule)
-
-      anotherModifiableModel.dispose()
-    }
-  }
-
   private fun createFacetAndSubFacet(module: Module, name: String, facetSource: ProjectModelExternalSource?,
                                      subFacetSource: ProjectModelExternalSource?) {
     val facetManager = FacetManager.getInstance(module)
@@ -867,12 +820,18 @@ class ExternalSystemStorageTest {
 
   private fun isFolderWithoutFiles(root: File): Boolean = root.walk().none { it.isFile }
 
-  private fun suppressLogs(action: () -> Unit) {
-    LoggedErrorProcessor.executeWith<RuntimeException>(object : LoggedErrorProcessor() {
-      override fun processError(category: String, message: String?, t: Throwable?, details: Array<out String>): Boolean =
-        message == null || !message.contains("Trying to load multiple modules with the same name.")
-    }) {
+  private inline fun suppressLogs(action: () -> Unit) {
+    val oldInstance = LoggedErrorProcessor.getInstance()
+    try {
+      LoggedErrorProcessor.setNewInstance(object : LoggedErrorProcessor() {
+        override fun processError(category: String, message: String?, t: Throwable?, details: Array<out String>): Boolean =
+          message == null || !message.contains("Trying to load multiple modules with the same name.")
+      })
+
       action()
+    }
+    finally {
+      LoggedErrorProcessor.setNewInstance(oldInstance)
     }
   }
 }

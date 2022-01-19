@@ -3,5 +3,3 @@ fun main() {
 }
 
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'x' is never used, could be renamed to _
-// AFTER-WARNING: Variable 'randomFunction' is never used

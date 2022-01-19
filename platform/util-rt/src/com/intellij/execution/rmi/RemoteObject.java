@@ -24,7 +24,10 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.rmi.server.Unreferenced;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RemoteObject implements Remote, Unreferenced {
@@ -104,10 +107,10 @@ public class RemoteObject implements Remote, Unreferenced {
   }
 
   public final Throwable wrapException(Throwable ex) {
-    return wrapExceptionRec(ex, new HashSet<Throwable>());
+    return wrapException(ex, 0);
   }
 
-  protected Throwable wrapException(Throwable ex, Set<Throwable> recursion) {
+  protected Throwable wrapException(Throwable ex, int exDepth) {
     boolean foreignException = false;
     Throwable each = ex;
     while (each != null) {
@@ -119,16 +122,15 @@ public class RemoteObject implements Remote, Unreferenced {
     }
 
     if (foreignException) {
-      ForeignException wrapper = ForeignException.create(ex.toString(), ex.getClass());
-      wrapper.initCause(wrapExceptionRec(ex.getCause(), recursion));
+      final RuntimeException wrapper = new RuntimeException(ex.toString(), wrapExceptionCause(ex, exDepth));
       wrapper.setStackTrace(ex.getStackTrace());
       ex = wrapper;
     }
     return ex;
   }
 
-  protected final Throwable wrapExceptionRec(Throwable ex, Set<Throwable> recursion) {
-    return ex == null || !recursion.add(ex) || recursion.size() >= ALLOWED_EXCEPTIONS_RECURSION_DEPTH ? null : wrapException(ex, recursion);
+  protected final Throwable wrapExceptionCause(Throwable ex, int exDepth) {
+    return exDepth >= ALLOWED_EXCEPTIONS_RECURSION_DEPTH ? null : wrapException(ex.getCause(), exDepth + 1);
   }
 
   protected boolean isKnownException(Throwable ex) {
@@ -137,34 +139,5 @@ public class RemoteObject implements Remote, Unreferenced {
 
   protected Iterable<RemoteObject> getExportedChildren() {
     return myChildren.keySet();
-  }
-
-  public static class ForeignException extends RuntimeException {
-    private final String myOriginalClassName; //or store hierarchy here
-
-    public static ForeignException create(String message, Class<?> clazz) {
-      String name = clazz.getName();
-      if (message.startsWith(name)) {
-        int o = name.length();
-        if (message.startsWith(":", o)) o += 1;
-        message = message.substring(o).trim();
-      }
-      return new ForeignException(message, name);
-    }
-
-    public ForeignException(String message, String originalClassName) {
-      super(message);
-      myOriginalClassName = originalClassName;
-    }
-
-    public String getOriginalClassName() {
-      return myOriginalClassName;
-    }
-
-    public String toString() {
-      String s = getOriginalClassName();
-      String message = getLocalizedMessage();
-      return (message != null) ? (s + ": " + message) : s;
-    }
   }
 }

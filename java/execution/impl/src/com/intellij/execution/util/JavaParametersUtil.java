@@ -163,8 +163,10 @@ public final class JavaParametersUtil {
       return javaSdk.createJdk(ObjectUtils.notNull(javaSdk.getVersionString(jreHome), ""), jreHome);
     }
 
-    UnknownAlternativeSdkResolver.getInstance(project).notifyUserToResolveJreAndFail(jreHome);
-    throw new IllegalStateException();
+    Sdk resolved = UnknownAlternativeSdkResolver.getInstance(project).tryResolveJre(jreHome);
+    if (resolved != null) return resolved;
+
+    throw new CantRunException(ExecutionBundle.message("jre.path.is.not.valid.jre.home.error.message", jreHome));
   }
 
   public static void checkAlternativeJRE(@NotNull CommonJavaRunConfigurationParameters configuration) throws RuntimeConfigurationWarning {
@@ -213,15 +215,14 @@ public final class JavaParametersUtil {
 
     JarFileSystem jarFS = JarFileSystem.getInstance();
     ProjectFileIndex fileIndex = ProjectFileIndex.getInstance(project);
-    JavaPsiFacade psiFacade = JavaPsiFacade.getInstance(project);
 
     PathsList classPath = javaParameters.getClassPath();
     PathsList modulePath = javaParameters.getModulePath();
 
     forModulePath.stream()
-      .filter(javaModule -> !PsiJavaModule.JAVA_BASE.equals(javaModule.getName()))
-      .flatMap(javaModule -> psiFacade.findModules(javaModule.getName(), GlobalSearchScope.allScope(project)).stream())
-      .map(javaModule -> getClasspathEntry(javaModule, fileIndex, jarFS))
+      .map(javaModule -> PsiJavaModule.JAVA_BASE.equals(javaModule.getName()) 
+                         ? null 
+                         : getClasspathEntry(javaModule, fileIndex, jarFS))
       .filter(Objects::nonNull)
       .forEach(file -> putOnModulePath(modulePath, classPath, file));
 
@@ -310,18 +311,5 @@ public final class JavaParametersUtil {
                                                          : moduleExtension.getCompilerOutputPath();
     }
     return null;
-  }
-
-  public static void applyModifications(JavaParameters parameters, List<ModuleBasedConfigurationOptions.ClasspathModification> modifications) {
-    for (ModuleBasedConfigurationOptions.ClasspathModification modification : modifications) {
-      if (modification.getPath() == null) continue;
-      if (modification.getExclude()) {
-        parameters.getClassPath().remove(modification.getPath());
-        parameters.getModulePath().remove(modification.getPath());
-      }
-      else {
-        parameters.getClassPath().addFirst(modification.getPath());
-      }
-    }
   }
 }

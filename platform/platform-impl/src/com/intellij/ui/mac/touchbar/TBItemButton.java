@@ -12,6 +12,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.Pair;
+import com.intellij.ui.mac.TouchbarDataKeys;
 import com.intellij.ui.mac.foundation.ID;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -104,7 +105,7 @@ class TBItemButton extends TBItem {
   }
 
   // convenience method
-  TBItemButton setIconAndTextFromPresentation(@NotNull Presentation presentation, @Nullable TouchbarActionCustomizations pd) {
+  TBItemButton setIconAndTextFromPresentation(@NotNull Presentation presentation, @Nullable TouchbarDataKeys.ActionDesc pd) {
     if (pd != null) {
       if (pd.isShowImage() && pd.isShowText()) {
         setIconFromPresentation(presentation);

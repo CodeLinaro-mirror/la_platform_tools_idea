@@ -8,11 +8,11 @@ import com.intellij.ide.ui.UISettingsListener;
 import com.intellij.ide.ui.customization.CustomActionsSchema;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.impl.ActionMenu;
 import com.intellij.openapi.actionSystem.impl.MenuItemPresentationFactory;
 import com.intellij.openapi.actionSystem.impl.PopupMenuPreloader;
+import com.intellij.openapi.actionSystem.impl.WeakTimerListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.impl.LaterInvocator;
@@ -26,9 +26,6 @@ import com.intellij.ui.ColorUtil;
 import com.intellij.ui.Gray;
 import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.mac.foundation.NSDefaults;
-import com.intellij.ui.mac.screenmenu.Menu;
-import com.intellij.ui.mac.screenmenu.MenuItem;
-import com.intellij.util.Alarm;
 import com.intellij.util.IJSwingUtilities;
 import com.intellij.util.ui.*;
 import org.jetbrains.annotations.NotNull;
@@ -47,6 +44,8 @@ import java.awt.geom.GeneralPath;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ForkJoinPool;
+import java.util.function.Consumer;
 
 /**
  * @author Anton Katilin
@@ -67,13 +66,13 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
   private List<AnAction> myVisibleActions = new ArrayList<>();
   private final MenuItemPresentationFactory myPresentationFactory = new MenuItemPresentationFactory();
   private final TimerListener myTimerListener = new MyTimerListener();
+  private final WeakTimerListener myWeakTimerListener = new WeakTimerListener(myTimerListener);
   protected final Disposable myDisposable = Disposer.newDisposable();
 
   @Nullable private final ClockPanel myClockPanel;
   @Nullable private final MyExitFullScreenButton myButton;
   @Nullable private final Animator myAnimator;
   @Nullable private final Timer myActivationWatcher;
-  private final Alarm myUpdateAlarm = new Alarm();
   @NotNull private State myState = State.EXPANDED;
   private double myProgress;
   private boolean myActivated;
@@ -84,8 +83,6 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
   }
 
   protected IdeMenuBar() {
-    Menu.isEnabled(); // load native library
-
     if (FrameInfoHelper.isFloatingMenuBarSupported()) {
       myAnimator = new MyAnimator();
       myActivationWatcher = TimerUtil.createNamedTimer("IdeMenuBar", 100, new MyActionListener());
@@ -275,18 +272,31 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
   @Override
   public void addNotify() {
     super.addNotify();
-    ActionManagerEx.doWithLazyActionManager(actionManager -> {
+    doWithLazyActionManager(actionManager -> {
       doUpdateMenuActions(false, actionManager);
       for (AnAction action : myVisibleActions) {
         if (!(action instanceof ActionGroup)) continue;
         PopupMenuPreloader.install(this, ActionPlaces.MAIN_MENU, null, () -> (ActionGroup)action);
       }
-      actionManager.addTimerListener(myTimerListener);
-      Disposer.register(myDisposable, () -> actionManager.removeTimerListener(myTimerListener));
+      actionManager.addTimerListener(-1, myWeakTimerListener);
+      Disposer.register(myDisposable, () -> actionManager.removeTimerListener(myWeakTimerListener));
     });
 
     Disposer.register(ApplicationManager.getApplication(), myDisposable);
     IdeEventQueue.getInstance().addDispatcher(this, myDisposable);
+  }
+
+  private static void doWithLazyActionManager(@NotNull Consumer<? super ActionManager> whatToDo) {
+    ActionManager created = ApplicationManager.getApplication().getServiceIfCreated(ActionManager.class);
+    if (created == null) {
+      ForkJoinPool.commonPool().execute(() -> {
+        ActionManager actionManager = ActionManager.getInstance();
+        ApplicationManager.getApplication().invokeLater(() -> whatToDo.accept(actionManager), ModalityState.any());
+      });
+    }
+    else {
+      whatToDo.accept(created);
+    }
   }
 
   @Override
@@ -302,11 +312,8 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
 
   @Override
   public void uiSettingsChanged(@NotNull UISettings uiSettings) {
-    myUpdateAlarm.cancelAllRequests();
-    myUpdateAlarm.addRequest(() -> {
-      myPresentationFactory.reset();
-      updateMenuActions(true);
-    }, 50);
+    myPresentationFactory.reset();
+    updateMenuActions(true);
   }
 
   @Override
@@ -364,7 +371,7 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
   }
 
   public void updateMenuActionsLazily(boolean forceRebuild) {
-    ActionManagerEx.doWithLazyActionManager(manager -> doUpdateMenuActions(forceRebuild, manager));
+    doWithLazyActionManager(manager -> doUpdateMenuActions(forceRebuild, manager));
   }
 
   private void doUpdateMenuActions(boolean forceRebuild, @NotNull ActionManager manager) {
@@ -391,28 +398,10 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
 
     removeAll();
     boolean isDarkMenu = isDarkMenu();
-    List<MenuItem> newItems = Menu.isEnabled() ? new ArrayList<>() : null;
     for (AnAction action : myVisibleActions) {
-      Menu rootMenuPeer = null;
-      if (newItems != null) {
-        rootMenuPeer = new Menu(myPresentationFactory.getPresentation(action).getText(enableMnemonics));
-        newItems.add(rootMenuPeer);
-      }
-      ActionMenu actionMenu = new ActionMenu(null, ActionPlaces.MAIN_MENU, (ActionGroup)action, myPresentationFactory, enableMnemonics, isDarkMenu, rootMenuPeer);
-
-      if(IdeFrameDecorator.isCustomDecorationActive()) {
-        actionMenu.setOpaque(false);
-        actionMenu.setFocusable(false);
-      }
-
-      add(actionMenu);
+      add(createActionMenu(enableMnemonics, isDarkMenu, (ActionGroup)action));
     }
     myPresentationFactory.resetNeedRebuild();
-
-    if (newItems != null) {
-      // TODO: ensure that newItems will be release (for example if refillMainMenu wasn't invoked because of exception)
-      Menu.refillMainMenu(newItems);
-    }
 
     updateGlobalMenuRoots();
     if (myClockPanel != null) {
@@ -432,6 +421,18 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
 
   protected boolean isDarkMenu() {
     return SystemInfo.isMacSystemMenu && NSDefaults.isDarkMenuBar();
+  }
+
+  @NotNull
+  protected ActionMenu createActionMenu(boolean enableMnemonics, boolean isDarkMenu, ActionGroup action) {
+    ActionMenu actionMenu = new ActionMenu(null, ActionPlaces.MAIN_MENU, action, myPresentationFactory, enableMnemonics, isDarkMenu);
+
+    if(IdeFrameDecorator.isCustomDecorationActive()) {
+      actionMenu.setOpaque(false);
+      actionMenu.setFocusable(false);
+    }
+
+    return actionMenu;
   }
 
   @Override

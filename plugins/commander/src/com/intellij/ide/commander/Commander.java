@@ -346,7 +346,7 @@ public class Commander extends JPanel implements PersistentStateComponent<Elemen
     if (toolWindow != null) {
       AbstractTreeNode<?> node = activePanel.getSelectedNode();
       if (node instanceof ProjectViewNode) {
-        toolWindow.setTitle(ObjectUtils.notNull(((ProjectViewNode<?>)node).getTitle(), ""));
+        toolWindow.setTitle(ObjectUtils.notNull(((ProjectViewNode)node).getTitle(), ""));
       }
     }
   }
@@ -418,7 +418,7 @@ public class Commander extends JPanel implements PersistentStateComponent<Elemen
 
   @Override
   public Object getData(@NotNull final String dataId) {
-    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+    if (PlatformDataKeys.HELP_ID.is(dataId)) {
       return "viewingStructure.commander";
     }
     else if (CommonDataKeys.PROJECT.is(dataId)) {
@@ -539,3 +539,4 @@ public class Commander extends JPanel implements PersistentStateComponent<Elemen
     panel.getBuilder().selectElement(element, PsiUtilCore.getVirtualFile(element));
   }
 }
+

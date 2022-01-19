@@ -18,7 +18,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.util.zip.ZipOutputStream
-import kotlin.io.path.absolutePathString
 
 class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
   private val myEvents: MutableList<Pair<BuildEvent, Throwable>> = ArrayList()
@@ -48,7 +47,7 @@ class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
     importProject()
     val connector = MavenServerManager.getInstance().getConnector(myProject, myProjectRoot.path)
     assertEquals(
-      MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.toFile().canonicalPath, connector.mavenDistribution.mavenHome.toFile().canonicalPath)
+      MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.canonicalPath, connector.mavenDistribution.mavenHome.canonicalPath)
     assertContainsOnce<MessageEvent> { it.kind == MessageEvent.Kind.WARNING && it.message == "Cannot install wrapped maven, set Bundled Maven" }
   }
 
@@ -62,7 +61,7 @@ class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
     importProject()
     val connector = MavenServerManager.getInstance().getConnector(myProject, myProjectRoot.path)
     assertEquals(
-      MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.toFile().canonicalPath, connector.mavenDistribution.mavenHome.toFile().canonicalPath)
+      MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.canonicalPath, connector.mavenDistribution.mavenHome.canonicalPath)
     createProjectPom("<groupId>test</groupId>" +
                      "<artifactId>project</artifactId>" +
                      "<version>2</version>")
@@ -80,7 +79,7 @@ class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
       MavenWorkspaceSettingsComponent.getInstance(myProject).settings.generalSettings.mavenHome = MavenServerManager.WRAPPED_MAVEN
       importProject()
       val connector = MavenServerManager.getInstance().getConnector(myProject, myProjectRoot.path)
-      assertTrue(connector.mavenDistribution.mavenHome.absolutePathString().contains("wrapper"))
+      assertTrue(connector.mavenDistribution.mavenHome.absolutePath.contains("wrapper"))
       assertContainsOnce<MessageEvent> { it.kind == MessageEvent.Kind.WARNING && it.message == "HTTP used to download maven distribution" }
     }
   }
@@ -95,7 +94,7 @@ class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
       MavenWorkspaceSettingsComponent.getInstance(myProject).settings.generalSettings.mavenHome = MavenServerManager.BUNDLED_MAVEN_3
       importProject()
       val connector = MavenServerManager.getInstance().getConnector(myProject, myProjectRoot.path)
-      assertFalse(connector.mavenDistribution.mavenHome.toFile().absolutePath.contains(".wrapper"))
+      assertFalse(connector.mavenDistribution.mavenHome.absolutePath.contains(".wrapper"))
       assertNotContains<BuildEvent> {  it.message == "Running maven wrapper" }
     }
   }
@@ -109,7 +108,7 @@ class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
     importProject()
     val connector = MavenServerManager.getInstance().getConnector(myProject, myProjectRoot.path)
     assertEquals(
-      MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.toFile().canonicalPath, connector.mavenDistribution.mavenHome.toFile().canonicalPath)
+      MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.canonicalPath, connector.mavenDistribution.mavenHome.canonicalPath)
     //assertContainsOnce<MessageEvent> { it.kind == MessageEvent.Kind.WARNING && it.description!= null && it.description!!.contains("is not correct maven home, reverting to embedded") }
   }
 
@@ -123,7 +122,7 @@ class MavenDistributionResolveTest : MavenMultiVersionImportingTestCase() {
         ex.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0)
         ex.responseHeaders.add("Content-Type", "application/zip")
         ZipOutputStream(ex.responseBody).use { zos ->
-          ZipUtil.addDirToZipRecursively(zos, null, MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.parent.toFile(),
+          ZipUtil.addDirToZipRecursively(zos, null, MavenDistributionsCache.resolveEmbeddedMavenHome().mavenHome.parentFile,
                                          "", null, null)
         }
         ex.close()

@@ -51,38 +51,28 @@ public class MethodReturnAlwaysConstantInspection extends BaseGlobalInspection {
       return null;
     }
 
-    if (((PsiMethod)element).getBody() == null && refMethod.getDerivedReferences().isEmpty()) {
+    if (((PsiMethod)element).getBody() == null && refMethod.getDerivedMethods().isEmpty()) {
       return null;
     }
 
-    final Set<RefOverridable> allScopeInheritors = MethodInheritanceUtils.calculateSiblingReferences(refMethod);
-    for (RefOverridable siblingReference : allScopeInheritors) {
-      PsiElement psi = siblingReference.getPsiElement();
-      if (psi instanceof PsiMethod) {
-        final PsiMethod siblingPsiMethod = (PsiMethod)psi;
-        if (siblingPsiMethod.getBody() != null && !alwaysReturnsConstant(siblingPsiMethod.getBody())) {
-          return null;
-        }
-      }
-      else if (psi instanceof PsiLambdaExpression) {
-        PsiLambdaExpression siblingLambda = (PsiLambdaExpression)psi;
-        if (siblingLambda.getBody() != null && !alwaysReturnsConstant(siblingLambda)) {
-          return null;
-        }
-      }
-      else if (psi instanceof PsiMethodReferenceExpression) {
+    final Set<RefMethod> allScopeInheritors = MethodInheritanceUtils.calculateSiblingMethods(refMethod);
+    for (RefMethod siblingMethod : allScopeInheritors) {
+      PsiElement psi = siblingMethod.getPsiElement();
+      if (!(psi instanceof PsiMethod)) continue;
+      final PsiMethod siblingPsiMethod = (PsiMethod)psi;
+      if (siblingPsiMethod.getBody() != null && !alwaysReturnsConstant(siblingPsiMethod)) {
         return null;
       }
     }
-    for (RefOverridable siblingReference : allScopeInheritors) {
-      PsiElement psi = siblingReference.getPsiElement();
+    for (RefMethod siblingRefMethod : allScopeInheritors) {
+      PsiElement psi = siblingRefMethod.getPsiElement();
       if (!(psi instanceof PsiMethod)) continue;
       final PsiMethod siblingMethod = (PsiMethod)psi;
       final PsiIdentifier identifier = siblingMethod.getNameIdentifier();
       if (identifier == null) {
         continue;
       }
-      processor.addProblemElement(siblingReference, manager.createProblemDescriptor(identifier,
+      processor.addProblemElement(siblingRefMethod, manager.createProblemDescriptor(identifier,
                                                                                     InspectionGadgetsBundle.message(
                                                                                       "method.return.always.constant.problem.descriptor"), false, null,
                                                                                     ProblemHighlightType.GENERIC_ERROR_OR_WARNING));
@@ -90,7 +80,8 @@ public class MethodReturnAlwaysConstantInspection extends BaseGlobalInspection {
     return null;
   }
 
-  private static boolean alwaysReturnsConstant(@NotNull PsiCodeBlock body) {
+  private static boolean alwaysReturnsConstant(PsiMethod method) {
+    final PsiCodeBlock body = method.getBody();
     final PsiStatement statement = ControlFlowUtils.getOnlyStatementInBlock(body);
     if (!(statement instanceof PsiReturnStatement)) {
       return false;
@@ -99,18 +90,7 @@ public class MethodReturnAlwaysConstantInspection extends BaseGlobalInspection {
     final PsiExpression value = returnStatement.getReturnValue();
     return value != null && PsiUtil.isConstantExpression(value);
   }
-
-  private static boolean alwaysReturnsConstant(@NotNull PsiLambdaExpression lambdaExpression) {
-    PsiElement body = lambdaExpression.getBody();
-    if (body instanceof PsiCodeBlock) {
-      return alwaysReturnsConstant(((PsiCodeBlock)body));
-    }
-    if (body instanceof PsiExpression) {
-      return PsiUtil.isConstantExpression(((PsiExpression)body));
-    }
-    return false;
-  }
-
+  
   @Override
   protected boolean queryExternalUsagesRequests(@NotNull final RefManager manager, @NotNull final GlobalJavaInspectionContext globalContext,
                                                 @NotNull final ProblemDescriptionsProcessor processor) {

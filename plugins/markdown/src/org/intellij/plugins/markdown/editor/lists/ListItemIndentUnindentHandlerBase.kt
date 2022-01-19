@@ -12,7 +12,6 @@ import com.intellij.refactoring.suggested.endOffset
 import org.intellij.plugins.markdown.editor.lists.ListUtils.getListItemAtLine
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownFile
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownListItemImpl
-import org.intellij.plugins.markdown.settings.MarkdownSettings
 
 /**
  * This is a base class for classes, handling indenting/unindenting of list items.
@@ -24,8 +23,7 @@ internal abstract class ListItemIndentUnindentHandlerBase(private val baseHandle
     baseHandler?.isEnabled(editor, caret, dataContext) == true
 
   override fun executeWriteAction(editor: Editor, caret: Caret?, dataContext: DataContext?) {
-    val enabled = editor.project?.let { MarkdownSettings.getInstance(it) }?.isEnhancedEditingEnabled == true
-    if (caret == null || !enabled || !doExecuteAction(editor, caret)) {
+    if (caret == null || !doExecuteAction(editor, caret)) {
       baseHandler?.execute(editor, caret, dataContext)
     }
   }

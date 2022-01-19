@@ -1,13 +1,15 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.progress;
 
-import com.intellij.diagnostic.PluginException;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.util.DeprecatedMethodException;
 import org.jetbrains.annotations.NotNull;
 
 public abstract class EmptyProgressIndicatorBase implements ProgressIndicator {
+
   @NotNull
   private final ModalityState myModalityState;
+
   @NotNull
   private volatile RunState myRunState = RunState.VIRGIN;
 
@@ -59,7 +61,8 @@ public abstract class EmptyProgressIndicatorBase implements ProgressIndicator {
   }
 
   @Override
-  public void setText(String text) { }
+  public void setText(String text) {
+  }
 
   @Override
   public String getText() {
@@ -67,7 +70,8 @@ public abstract class EmptyProgressIndicatorBase implements ProgressIndicator {
   }
 
   @Override
-  public void setText2(String text) { }
+  public void setText2(String text) {
+  }
 
   @Override
   public String getText2() {
@@ -80,23 +84,24 @@ public abstract class EmptyProgressIndicatorBase implements ProgressIndicator {
   }
 
   @Override
-  public void setFraction(double fraction) { }
+  public void setFraction(double fraction) {
+  }
 
   @Override
-  public void pushState() { }
+  public void pushState() {
+  }
 
   @Override
-  public void popState() { }
+  public void popState() {
+  }
 
   @Override
-  @SuppressWarnings({"deprecation", "NonAtomicOperationOnVolatileField"})
   public void startNonCancelableSection() {
-    PluginException.reportDeprecatedUsage("ProgressIndicator#startNonCancelableSection", "Use `ProgressManager.executeNonCancelableSection()` instead");
+    DeprecatedMethodException.report("Use ProgressManager#executeNonCancelableSection() instead");
     myNonCancelableSectionCount++;
   }
 
   @Override
-  @SuppressWarnings({"deprecation", "NonAtomicOperationOnVolatileField"})
   public void finishNonCancelableSection() {
     myNonCancelableSectionCount--;
   }
@@ -107,7 +112,8 @@ public abstract class EmptyProgressIndicatorBase implements ProgressIndicator {
   }
 
   @Override
-  public @NotNull ModalityState getModalityState() {
+  @NotNull
+  public ModalityState getModalityState() {
     return myModalityState;
   }
 
@@ -124,7 +130,8 @@ public abstract class EmptyProgressIndicatorBase implements ProgressIndicator {
   }
 
   @Override
-  public void setIndeterminate(boolean indeterminate) { }
+  public void setIndeterminate(boolean indeterminate) {
+  }
 
   @Override
   public boolean isPopupWasShown() {

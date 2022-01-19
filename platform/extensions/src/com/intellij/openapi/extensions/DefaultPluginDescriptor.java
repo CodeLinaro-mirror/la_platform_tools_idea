@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.extensions;
 
 import org.jetbrains.annotations.NotNull;
@@ -47,12 +47,12 @@ public final class DefaultPluginDescriptor implements PluginDescriptor {
   }
 
   @Override
-  public @Nullable String getChangeNotes() {
+  public String getChangeNotes() {
     return null;
   }
 
   @Override
-  public @Nullable String getName() {
+  public String getName() {
     return null;
   }
 
@@ -82,52 +82,52 @@ public final class DefaultPluginDescriptor implements PluginDescriptor {
   }
 
   @Override
-  public @Nullable String getVendor() {
+  public String getVendor() {
     return null;
   }
 
   @Override
-  public @Nullable String getOrganization() {
+  public String getOrganization() {
     return null;
   }
 
   @Override
-  public @Nullable String getVersion() {
+  public String getVersion() {
     return null;
   }
 
   @Override
-  public @Nullable String getResourceBundleBaseName() {
+  public String getResourceBundleBaseName() {
     return null;
   }
 
   @Override
-  public @Nullable String getCategory() {
+  public String getCategory() {
     return null;
   }
 
   @Override
-  public @Nullable String getVendorEmail() {
+  public String getVendorEmail() {
     return null;
   }
 
   @Override
-  public @Nullable String getVendorUrl() {
+  public String getVendorUrl() {
     return null;
   }
 
   @Override
-  public @Nullable String getUrl() {
+  public String getUrl() {
     return null;
   }
 
   @Override
-  public @Nullable String getSinceBuild() {
+  public String getSinceBuild() {
     return null;
   }
 
   @Override
-  public @Nullable String getUntilBuild() {
+  public String getUntilBuild() {
     return null;
   }
 

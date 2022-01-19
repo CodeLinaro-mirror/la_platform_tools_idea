@@ -2,7 +2,6 @@
 package com.intellij.packageDependencies;
 
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
@@ -10,7 +9,7 @@ import com.intellij.packageDependencies.ui.PatternDialectProvider;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 
-@State(name = "DependencyUISettings", storages = @Storage("ui.lnf.xml"), category = SettingsCategory.UI)
+@State(name = "DependencyUISettings", storages = @Storage("ui.lnf.xml"))
 public class DependencyUISettings implements PersistentStateComponent<DependencyUISettings> {
   public boolean UI_FLATTEN_PACKAGES = true;
   public boolean UI_SHOW_FILES = true;

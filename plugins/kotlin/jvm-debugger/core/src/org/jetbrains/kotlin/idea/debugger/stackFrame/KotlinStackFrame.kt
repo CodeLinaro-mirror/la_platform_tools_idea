@@ -10,8 +10,7 @@ import com.intellij.debugger.jdi.LocalVariableProxyImpl
 import com.intellij.debugger.jdi.StackFrameProxyImpl
 import com.intellij.debugger.ui.impl.watch.*
 import com.intellij.xdebugger.frame.XValueChildrenList
-import com.sun.jdi.ObjectReference
-import com.sun.jdi.Value
+import com.sun.jdi.*
 import org.jetbrains.kotlin.codegen.AsmUtil
 import org.jetbrains.kotlin.codegen.AsmUtil.THIS
 import org.jetbrains.kotlin.codegen.DESTRUCTURED_LAMBDA_ARGUMENT_VARIABLE_PREFIX
@@ -162,65 +161,62 @@ open class KotlinStackFrame(stackFrameDescriptorImpl: StackFrameDescriptorImpl) 
         variable.remapName(getThisName(thisLabel))
     }
 
-    // The visible variables are queried twice in the common path through [JavaStackFrame.buildVariables],
-    // so we cache them the first time through.
-    protected open val _visibleVariables: List<LocalVariableProxyImpl> by lazy {
-        InlineStackFrameVariableHolder.fromStackFrame(stackFrameProxy).visibleVariables.remapInKotlinView()
-    }
+    override fun getVisibleVariables(): List<LocalVariableProxyImpl> {
+        val allVisibleVariables = super.getStackFrameProxy().safeVisibleVariables()
 
-    final override fun getVisibleVariables(): List<LocalVariableProxyImpl> {
         if (!kotlinVariableViewService.kotlinVariableView) {
-            val allVisibleVariables = stackFrameProxy.safeVisibleVariables()
             return allVisibleVariables.map { variable ->
                 if (isFakeLocalVariableForInline(variable.name())) variable.wrapSyntheticInlineVariable() else variable
             }
         }
 
-        return _visibleVariables
-    }
+        val inlineDepth = getInlineDepth(allVisibleVariables)
 
-    protected fun List<LocalVariableProxyImpl>.remapInKotlinView(): List<LocalVariableProxyImpl> {
-        val (thisVariables, otherVariables) = filter { variable ->
-                val name = variable.name()
-                !isFakeLocalVariableForInline(name) &&
-                    !name.startsWith(DESTRUCTURED_LAMBDA_ARGUMENT_VARIABLE_PREFIX) &&
-                    !name.startsWith(AsmUtil.LOCAL_FUNCTION_VARIABLE_PREFIX) &&
-                    name != CONTINUATION_VARIABLE_NAME &&
-                    name != SUSPEND_FUNCTION_COMPLETION_PARAMETER_NAME
-            }.partition { variable ->
-                val name = variable.name()
-                name == THIS ||
-                    name == AsmUtil.THIS_IN_DEFAULT_IMPLS ||
-                    name.startsWith(AsmUtil.LABELED_THIS_PARAMETER) ||
-                    name == AsmUtil.INLINE_DECLARATION_SITE_THIS
+        val (thisVariables, otherVariables) = allVisibleVariables.asSequence()
+            .filter { !isHidden(it, inlineDepth) }
+            .partition {
+                it.name() == THIS
+                        || it.name() == AsmUtil.THIS_IN_DEFAULT_IMPLS
+                        || it.name().startsWith(AsmUtil.LABELED_THIS_PARAMETER)
+                        || (INLINED_THIS_REGEX.matches(it.name()))
             }
 
-        // The variables are already sorted, so the mainThis is the last one in the list.
-        val mainThis = thisVariables.lastOrNull()
-        val otherThis = thisVariables.dropLast(1)
+        val (mainThis, otherThis) = thisVariables
+            .sortedByDescending { it.variable }
+            .let { it.firstOrNull() to it.drop(1) }
 
-        val remappedMainThis = mainThis?.remapVariableIfNeeded(THIS)
-        val remappedOtherThis = otherThis.map { it.remapVariableIfNeeded() }
-        val remappedOther = otherVariables.map { it.remapVariableIfNeeded() }
-        return (remappedOtherThis + listOfNotNull(remappedMainThis) + remappedOther)
+        val remappedMainThis = mainThis?.remapThisVariableIfNeeded(THIS)
+        val remappedOther = (otherThis + otherVariables).map { it.remapThisVariableIfNeeded() }
+        return (listOfNotNull(remappedMainThis) + remappedOther).sortedBy { it.variable }
     }
 
-    private fun LocalVariableProxyImpl.remapVariableIfNeeded(customName: String? = null): LocalVariableProxyImpl {
+    private fun isHidden(variable: LocalVariableProxyImpl, inlineDepth: Int): Boolean {
+        val name = variable.name()
+        return isFakeLocalVariableForInline(name)
+                || name.startsWith(DESTRUCTURED_LAMBDA_ARGUMENT_VARIABLE_PREFIX)
+                || name.startsWith(AsmUtil.LOCAL_FUNCTION_VARIABLE_PREFIX)
+                || getInlineDepth(variable.name()) != inlineDepth
+                || name == CONTINUATION_VARIABLE_NAME
+                || name == SUSPEND_FUNCTION_COMPLETION_PARAMETER_NAME
+    }
+
+    private fun LocalVariableProxyImpl.remapThisVariableIfNeeded(customName: String? = null): LocalVariableProxyImpl {
         val name = dropInlineSuffix(this.name())
 
+        @Suppress("ConvertToStringTemplate")
         return when {
-            name.startsWith(AsmUtil.LABELED_THIS_PARAMETER) -> {
+            isLabeledThisReference() -> {
                 val label = name.drop(AsmUtil.LABELED_THIS_PARAMETER.length)
                 clone(customName ?: getThisName(label), label)
             }
-            name == AsmUtil.THIS_IN_DEFAULT_IMPLS -> clone(customName ?: ("$THIS (outer)"), null)
-            name == AsmUtil.RECEIVER_PARAMETER_NAME -> clone(customName ?: ("$THIS (receiver)"), null)
-            name == AsmUtil.INLINE_DECLARATION_SITE_THIS -> {
+            name == AsmUtil.THIS_IN_DEFAULT_IMPLS -> clone(customName ?: (THIS + " (outer)"), null)
+            name == AsmUtil.RECEIVER_PARAMETER_NAME -> clone(customName ?: (THIS + " (receiver)"), null)
+            INLINED_THIS_REGEX.matches(name) -> {
                 val label = generateThisLabel(frame.getValue(this)?.type())
                 if (label != null) {
                     clone(customName ?: getThisName(label), label)
                 } else {
-                    this
+                    this@remapThisVariableIfNeeded
                 }
             }
             name != this.name() -> {
@@ -228,7 +224,7 @@ open class KotlinStackFrame(stackFrameDescriptorImpl: StackFrameDescriptorImpl) 
                     override fun name() = name
                 }
             }
-            else -> this
+            else -> this@remapThisVariableIfNeeded
         }
     }
 
@@ -237,6 +233,11 @@ open class KotlinStackFrame(stackFrameDescriptorImpl: StackFrameDescriptorImpl) 
             override fun name() = name
             override val label = label
         }
+    }
+
+    private fun LocalVariableProxyImpl.isLabeledThisReference(): Boolean {
+        @Suppress("ConvertToStringTemplate")
+        return name().startsWith(AsmUtil.LABELED_THIS_PARAMETER)
     }
 
     override fun equals(other: Any?): Boolean {

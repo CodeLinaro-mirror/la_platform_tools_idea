@@ -9,6 +9,7 @@ import com.intellij.diagnostic.runActivity
 import com.intellij.diagnostic.runChild
 import com.intellij.featureStatistics.fusCollectors.LifecycleUsageTriggerCollector
 import com.intellij.ide.*
+import com.intellij.ide.customize.CustomizeIDEWizardStepsProvider
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.ide.lightEdit.LightEditService
 import com.intellij.ide.plugins.PluginManagerCore
@@ -18,10 +19,7 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationGroup
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.application.Application
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ApplicationStarter
-import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.*
 import com.intellij.openapi.application.ex.ApplicationEx
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.diagnostic.Logger
@@ -34,7 +32,6 @@ import com.intellij.openapi.wm.impl.SystemDock
 import com.intellij.openapi.wm.impl.welcomeScreen.WelcomeFrame
 import com.intellij.ui.AppUIUtil
 import com.intellij.ui.mac.touchbar.TouchbarSupport
-import com.intellij.util.io.URLUtil.SCHEME_SEPARATOR
 import com.intellij.util.ui.accessibility.ScreenReader
 import java.awt.EventQueue
 import java.beans.PropertyChangeListener
@@ -47,14 +44,14 @@ import javax.swing.JOptionPane
 open class IdeStarter : ApplicationStarter {
   companion object {
     private var filesToLoad: List<Path> = Collections.emptyList()
-    private var uriToOpen: String? = null
+    private var wizardStepProvider: CustomizeIDEWizardStepsProvider? = null
 
-    @JvmStatic fun openFilesOnLoading(value: List<Path>) {
+    fun openFilesOnLoading(value: List<Path>) {
       filesToLoad = value
     }
 
-    @JvmStatic fun openUriOnLoading(value: String) {
-      uriToOpen = value
+    fun setWizardStepsProvider(provider: CustomizeIDEWizardStepsProvider) {
+      wizardStepProvider = provider
     }
   }
 
@@ -101,9 +98,10 @@ open class IdeStarter : ApplicationStarter {
       lifecyclePublisher.appFrameCreated(args)
     }
 
-    // must be after `AppLifecycleListener#appFrameCreated`, because some listeners can mutate the state of `RecentProjectsManager`
+    // must be after appFrameCreated because some listeners can mutate state of RecentProjectsManager
     if (app.isHeadlessEnvironment) {
       frameInitActivity.end()
+
       LifecycleUsageTriggerCollector.onIdeStart()
       @Suppress("DEPRECATION")
       lifecyclePublisher.appStarting(null)
@@ -114,22 +112,29 @@ open class IdeStarter : ApplicationStarter {
       UiInspectorAction.initGlobalInspector()
     }
 
-    ForkJoinPool.commonPool().execute {
-      LifecycleUsageTriggerCollector.onIdeStart()
-    }
-
-    if (uriToOpen != null || args.isNotEmpty() && args[0].contains(SCHEME_SEPARATOR)) {
+    if (JetBrainsProtocolHandler.appStartedWithCommand()) {
+      val needToOpenProject = showWelcomeFrame(lifecyclePublisher, willOpenProject = false)
       frameInitActivity.end()
+      LifecycleUsageTriggerCollector.onIdeStart()
+
+      val project = when {
+        !needToOpenProject -> null
+        !filesToLoad.isEmpty() -> ProjectUtil.tryOpenFiles(null, filesToLoad, "MacMenu")
+        !args.isEmpty() -> loadProjectFromExternalCommandLine(args)
+        else -> null
+      }
       @Suppress("DEPRECATION")
-      lifecyclePublisher.appStarting(null)
-      processUriParameter(uriToOpen ?: args.first(), lifecyclePublisher)
+      lifecyclePublisher.appStarting(project)
     }
     else {
       val recentProjectManager = RecentProjectsManager.getInstance()
       val willReopenRecentProjectOnStart = recentProjectManager.willReopenProjectOnStart()
       val willOpenProject = willReopenRecentProjectOnStart || !args.isEmpty() || !filesToLoad.isEmpty()
-      val needToOpenProject = willOpenProject || showWelcomeFrame(lifecyclePublisher)
+      val needToOpenProject = showWelcomeFrame(lifecyclePublisher, willOpenProject)
       frameInitActivity.end()
+      ForkJoinPool.commonPool().execute {
+        LifecycleUsageTriggerCollector.onIdeStart()
+      }
 
       if (!needToOpenProject) {
         @Suppress("DEPRECATION")
@@ -149,7 +154,7 @@ open class IdeStarter : ApplicationStarter {
         return recentProjectManager.reopenLastProjectsOnStart()
           .thenAccept { isOpened ->
             if (!isOpened) {
-              WelcomeFrame.showIfNoProjectOpened(lifecyclePublisher)
+              WelcomeFrame.showIfNoProjectOpened()
             }
           }
       }
@@ -157,8 +162,9 @@ open class IdeStarter : ApplicationStarter {
     return CompletableFuture.completedFuture(null)
   }
 
-  private fun showWelcomeFrame(lifecyclePublisher: AppLifecycleListener): Boolean {
-    val doShowWelcomeFrame = WelcomeFrame.prepareToShow()
+  private fun showWelcomeFrame(lifecyclePublisher: AppLifecycleListener, willOpenProject: Boolean): Boolean {
+    val doShowWelcomeFrame = if (willOpenProject) null else WelcomeFrame.prepareToShow()
+
     if (doShowWelcomeFrame == null) return true
 
     ApplicationManager.getApplication().invokeLater {
@@ -166,22 +172,6 @@ open class IdeStarter : ApplicationStarter {
       lifecyclePublisher.welcomeScreenDisplayed()
     }
     return false
-  }
-
-  private fun processUriParameter(uri: String, lifecyclePublisher: AppLifecycleListener) {
-    ApplicationManager.getApplication().invokeLater {
-      CommandLineProcessor.processProtocolCommand(uri)
-        .thenAccept {
-          if (it.exitCode == ProtocolHandler.PLEASE_QUIT) {
-            ApplicationManager.getApplication().invokeLater {
-              ApplicationManagerEx.getApplicationEx().exit(false, true)
-            }
-          }
-          else if (it.exitCode != ProtocolHandler.PLEASE_NO_UI) {
-            WelcomeFrame.showIfNoProjectOpened(lifecyclePublisher)
-          }
-        }
-    }
   }
 
   internal class StandaloneLightEditStarter : IdeStarter() {
@@ -194,7 +184,7 @@ open class IdeStarter : ApplicationStarter {
         else -> null
       }
 
-      if (project != null) {
+      if (project != null || JetBrainsProtocolHandler.appStartedWithCommand()) {
         return CompletableFuture.completedFuture(null)
       }
 

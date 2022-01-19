@@ -16,7 +16,6 @@ import javax.swing.event.HyperlinkEvent;
 import java.awt.*;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.BiConsumer;
 
 
 public class PackagesNotificationPanel {
@@ -26,10 +25,6 @@ public class PackagesNotificationPanel {
   private PackageManagementService.ErrorDescription myErrorDescription;
 
   public PackagesNotificationPanel() {
-    this(PackagesNotificationPanel::showError);
-  }
-
-  public PackagesNotificationPanel(@NotNull BiConsumer<String, PackageManagementService.ErrorDescription> showErrorFunction) {
     myHtmlViewer = SwingHelper.createHtmlViewer(true, null, null, null);
     myHtmlViewer.setVisible(false);
     myHtmlViewer.setOpaque(true);
@@ -41,7 +36,7 @@ public class PackagesNotificationPanel {
           handler.run();
         }
         else if (myErrorTitle != null && myErrorDescription != null) {
-          showErrorFunction.accept(myErrorTitle, myErrorDescription);
+          showError(myErrorTitle, myErrorDescription);
         }
       }
     });

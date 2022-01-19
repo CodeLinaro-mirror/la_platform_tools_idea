@@ -2,10 +2,8 @@
 package com.intellij.codeInspection;
 
 import com.intellij.analysis.AnalysisBundle;
-import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
 
 import static org.jetbrains.annotations.Nls.Capitalization.Sentence;
 
@@ -18,13 +16,11 @@ public final class DeprecationUtil {
 
   public static final @NonNls String FOR_REMOVAL_ID = "removal";
 
-  @Contract(pure = true)
-  public static @Nls(capitalization = Sentence) @NotNull String getDeprecationDisplayName() {
+  public static @Nls(capitalization = Sentence) String getDeprecationDisplayName() {
     return AnalysisBundle.message("inspection.deprecated.display.name");
   }
 
-  @Contract(pure = true)
-  public static @Nls(capitalization = Sentence) @NotNull String getForRemovalDisplayName() {
+  public static @Nls(capitalization = Sentence) String getForRemovalDisplayName() {
     return AnalysisBundle.message("inspection.marked.for.removal.display.name");
   }
 }

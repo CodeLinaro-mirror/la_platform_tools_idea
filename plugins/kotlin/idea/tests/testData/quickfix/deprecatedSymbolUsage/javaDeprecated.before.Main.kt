@@ -1,5 +1,4 @@
 // "class org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageFix" "false"
-// ACTION: Compiler warning 'DEPRECATION' options
 // ACTION: Convert to run
 // ACTION: Convert to with
 // ACTION: Convert to also

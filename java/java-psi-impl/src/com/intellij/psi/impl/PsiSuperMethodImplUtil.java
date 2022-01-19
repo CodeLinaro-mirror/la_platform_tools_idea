@@ -16,6 +16,7 @@ import com.intellij.util.SmartList;
 import com.intellij.util.containers.ConcurrentFactoryMap;
 import com.intellij.util.containers.hash.EqualityPolicy;
 import com.intellij.util.containers.hash.LinkedHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -131,17 +132,17 @@ public final class PsiSuperMethodImplUtil {
           return false;
         }
       });
-    Map<MethodSignature, List<PsiMethod>> sameParameterErasureMethods = MethodSignatureUtil.createErasedMethodSignatureMap();
+    final Map<MethodSignature, List<PsiMethod>> sameParameterErasureMethods = new Object2ObjectOpenCustomHashMap<>(MethodSignatureUtil.METHOD_PARAMETERS_ERASURE_EQUALITY);
 
     Map<MethodSignature, HierarchicalMethodSignatureImpl> map = new LinkedHashMap<>(new EqualityPolicy<MethodSignature>() {
       @Override
       public int getHashCode(MethodSignature signature) {
-        return signature.hashCode();
+        return MethodSignatureUtil.METHOD_PARAMETERS_ERASURE_EQUALITY.hashCode(signature);
       }
 
       @Override
       public boolean isEqual(MethodSignature o1, MethodSignature o2) {
-        if (!MethodSignatureUtil.areSignaturesErasureEqual(o1, o2)) return false;
+        if (!MethodSignatureUtil.METHOD_PARAMETERS_ERASURE_EQUALITY.equals(o1, o2)) return false;
         List<PsiMethod> list = sameParameterErasureMethods.get(o1);
         boolean toCheckReturnType = list != null && list.size() > 1;
         if (!toCheckReturnType) return true;

@@ -39,10 +39,6 @@ public class CopyClassTest extends LightMultiFileTestCase {
     doTest("Foo", "Bar");
   }
 
-  public void testConflictInSameFolder() throws Exception {
-    assertThrows(RuntimeException.class, "already exist", () -> doTest("Foo", "Foo"));
-  }
-
   public void testLibraryClass() throws Exception {  // IDEADEV-28791
     JavaCodeStyleSettings javaSettings = JavaCodeStyleSettings.getInstance(getProject());
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.FULLY_QUALIFY_NAMES_ALWAYS;

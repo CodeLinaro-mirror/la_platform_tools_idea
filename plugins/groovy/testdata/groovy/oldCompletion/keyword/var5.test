@@ -13,4 +13,3 @@ class A <caret> {
 extends
 implements
 k
-permits

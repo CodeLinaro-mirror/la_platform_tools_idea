@@ -1,6 +1,6 @@
 <html>
 <body>
-Reports non-final fields in enumeration types as they are rarely needed and provide a global mutable state.
+Reports non-<code>final</code> fields in enumeration types as they are rarely needed.
 <p><b>Example:</b></p>
 <pre><code>
   enum Enum {
@@ -14,20 +14,6 @@ Reports non-final fields in enumeration types as they are rarely needed and prov
     }
   }
 </code></pre>
-<p>After the quick-fix is applied:</p>
-<pre><code>
-  enum Enum {
-    FIRST("first"),
-    SECOND("second");
-
-    public final String str;
-
-    Enum(String str) {
-        this.str = str;
-    }
-  }
-</code></pre>
 <!-- tooltip end -->
-Configure the `Ignore field if quick-fix is not available` checkbox to only highlight fields that can be made final by the quick-fix.
 </body>
 </html>

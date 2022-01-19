@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.statistic.collectors.fus.actions.persistence;
 
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.actions.ActionsCollector;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.internal.statistic.eventLog.FeatureUsageData;
@@ -81,9 +80,8 @@ public class ActionsCollectorImpl extends ActionsCollector {
     if (customData != null) {
       data.addAll(customData);
     }
-    String actionId = addActionClass(data, action, info);
+    addActionClass(data, action, info);
     eventId.log(project, data);
-    FeatureUsageTracker.getInstance().triggerFeatureUsedByAction(actionId);
   }
 
   public static @NotNull List<@NotNull EventPair<?>> actionEventData(@NotNull AnActionEvent event) {
@@ -182,7 +180,7 @@ public class ActionsCollectorImpl extends ActionsCollector {
 
     List<EventPair<?>> data = new ArrayList<>();
     if (stats != null) {
-      data.add(EventFields.StartTime.with(stats.startMs));
+      data.add(ActionsEventLogGroup.START_TIME.with(stats.startMs));
       if (stats.isDumb != null) {
         data.add(ActionsEventLogGroup.DUMB_START.with(stats.isDumb));
       }

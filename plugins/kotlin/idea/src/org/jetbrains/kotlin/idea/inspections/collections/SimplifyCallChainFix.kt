@@ -17,7 +17,6 @@ import org.jetbrains.kotlin.idea.util.reformatted
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.PsiChildRange
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 class SimplifyCallChainFix(
     private val conversion: AbstractCallChainChecker.Conversion,
@@ -51,8 +50,6 @@ class SimplifyCallChainFix(
 
         val secondCallExpression = qualifiedExpression.selectorExpression as? KtCallExpression ?: return
         val secondCallArgumentList = secondCallExpression.valueArgumentList
-        val secondCallTrailingComma = secondCallArgumentList?.trailingComma
-        secondCallTrailingComma?.delete()
 
         fun KtValueArgumentList.getTextInsideParentheses(): String {
             val range = PsiChildRange(leftParenthesis?.nextSibling ?: firstChild, rightParenthesis?.prevSibling ?: lastChild)
@@ -82,17 +79,13 @@ class SimplifyCallChainFix(
         if (!firstCallHasArguments && !secondCallHasArguments) {
             commentSaver.restore(result)
         }
-        if (lambdaExpression != null || additionalArgument != null) {
+        if (lambdaExpression != null) {
             val callExpression = when (result) {
                 is KtQualifiedExpression -> result.callExpression
                 is KtCallExpression -> result
                 else -> null
             }
             callExpression?.moveFunctionLiteralOutsideParentheses()
-        }
-        if (secondCallTrailingComma != null && !firstCallHasArguments) {
-            val call = result.safeAs<KtQualifiedExpression>()?.callExpression ?: result.safeAs()
-            call?.valueArgumentList?.arguments?.lastOrNull()?.add(factory.createComma())
         }
         if (conversion.addNotNullAssertion) {
             result = result.replaced(factory.createExpressionByPattern("$0!!", result))
@@ -105,7 +98,7 @@ class SimplifyCallChainFix(
         }
 
         result.containingKtFile.commitAndUnblockDocument()
-        if (result.isValid) ShortenReferences.DEFAULT.process(result.reformatted() as KtElement)
+        ShortenReferences.DEFAULT.process(result.reformatted() as KtElement)
         if (runOptimizeImports) {
             OptimizeImportsProcessor(project, file).run()
         }

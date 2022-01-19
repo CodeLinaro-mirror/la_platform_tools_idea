@@ -2,10 +2,7 @@
 
 package org.jetbrains.kotlin.idea.scratch
 
-import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.readAction
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiDocumentManager
@@ -15,7 +12,6 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeWithContent
-import org.jetbrains.kotlin.idea.core.KotlinPluginDisposable
 import org.jetbrains.kotlin.idea.core.util.CodeInsightUtils
 import org.jetbrains.kotlin.idea.util.runReadActionInSmartMode
 import org.jetbrains.kotlin.psi.KtDeclaration
@@ -23,7 +19,6 @@ import org.jetbrains.kotlin.psi.KtImportDirective
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.resolve.AnalyzingUtils
-import java.util.concurrent.Callable
 
 class KtScratchFile(project: Project, file: VirtualFile) : ScratchFile(project, file) {
     override fun getExpressions(psiFile: PsiFile): List<ScratchExpression> {
@@ -73,21 +68,11 @@ class KtScratchFile(project: Project, file: VirtualFile) : ScratchFile(project, 
     @RequiresBackgroundThread
     override fun hasErrors(): Boolean {
         val psiFile = ktScratchFile ?: return false
-
-
-        return ReadAction
-            .nonBlocking(Callable {
-                try {
-                    AnalyzingUtils.checkForSyntacticErrors(psiFile)
-                } catch (e: IllegalArgumentException) {
-                    return@Callable true
-                }
-
-                return@Callable psiFile.analyzeWithContent().diagnostics.any { it.severity == Severity.ERROR }
-            })
-            .inSmartMode(project)
-            .expireWith(KotlinPluginDisposable.getInstance(project))
-            .expireWhen { Disposer.isDisposed(project) }
-            .executeSynchronously()
+        try {
+            AnalyzingUtils.checkForSyntacticErrors(psiFile)
+        } catch (e: IllegalArgumentException) {
+            return true
+        }
+        return project.runReadActionInSmartMode { psiFile.analyzeWithContent().diagnostics.any { it.severity == Severity.ERROR } }
     }
 }

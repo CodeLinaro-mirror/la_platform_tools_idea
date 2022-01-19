@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.idea.core.CollectingNameValidator
 import org.jetbrains.kotlin.idea.core.KotlinNameSuggester
-import org.jetbrains.kotlin.idea.util.application.withPsiAttachment
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getValueParameters
@@ -56,7 +55,7 @@ internal class ParameterNameExpression(
             is KtFunction -> declaration.valueParameterList!!
             is KtClass -> declaration.getPrimaryConstructorParameterList()!!
             else -> throw KotlinExceptionWithAttachments("Unexpected declaration kind: ${declaration::class.java}")
-                .withPsiAttachment("declaration", declaration)
+                .withAttachment("declaration", declaration.text)
         }
 
         // add names based on selected type
@@ -72,8 +71,8 @@ internal class ParameterNameExpression(
         }
 
         // remember other parameter names for later use
-        val parameterNames = parameterList.parameters.mapNotNullTo(HashSet<String>()) { ktParameter ->
-            if (ktParameter == parameter) null else ktParameter.name
+        val parameterNames = parameterList.parameters.mapNotNullTo(HashSet<String>()) { jetParameter ->
+            if (jetParameter == parameter) null else jetParameter.name
         }
 
         // add fallback parameter name

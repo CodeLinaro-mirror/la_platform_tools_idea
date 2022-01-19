@@ -13,7 +13,7 @@ import com.intellij.openapi.project.Project
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 
-class ProjectIndexingHistoryFusReporterListener : ProjectIndexingHistoryListener {
+class ProjectIndexingHistoryFusReporterListener : IndexDiagnosticDumper.ProjectIndexingHistoryListener {
   override fun onStartedIndexing(projectIndexingHistory: ProjectIndexingHistory) {
     ProjectIndexingHistoryFusReporter.reportIndexingStarted(
       projectIndexingHistory.project,

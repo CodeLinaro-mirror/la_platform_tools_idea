@@ -13,12 +13,11 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.psi.PsiElement;
 import com.intellij.slicer.*;
 import com.intellij.util.WalkingState;
-import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FactoryMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.idea.completion.KotlinIdeaCompletionBundle;
 
 import java.util.*;
 
@@ -39,14 +38,7 @@ public abstract class HackedSliceNullnessAnalyzerBase {
     SliceRootNode root = createNewTree(result, oldRoot, map);
 
     SliceUsage rootUsage = oldRoot.getCachedChildren().get(0).getValue();
-    SliceManager.getInstance(root.getProject())
-        .createToolWindow(true, root,
-                  true,
-                  SliceManager.getElementDescription(
-                      null,
-                      rootUsage.getElement(),
-                      KotlinIdeaCompletionBundle.message(
-                          "slice.nullness.tab.title.grouped.by.nullness")));
+    SliceManager.getInstance(root.getProject()).createToolWindow(true, root, true, SliceManager.getElementDescription(null, rootUsage.getElement(), " Grouped by Nullness") );
   }
 
   @NotNull
@@ -80,8 +72,7 @@ public abstract class HackedSliceNullnessAnalyzerBase {
     HackedSliceLeafValueClassNode
             valueRoot = new HackedSliceLeafValueClassNode(root.getProject(), root, nodeName);
 
-    Set<PsiElement> uniqueValues = CollectionFactory.createCustomHashingStrategySet(myLeafEquality);
-      uniqueValues.addAll(groupedByValue);
+    Set<PsiElement> uniqueValues = new ObjectOpenCustomHashSet<>(groupedByValue, myLeafEquality);
     for (final PsiElement expression : uniqueValues) {
       SliceNode newRoot = SliceLeafAnalyzer.filterTree(oldRootStart, oldNode -> {
         if (oldNode.getDuplicate() != null) {
@@ -115,9 +106,9 @@ public abstract class HackedSliceNullnessAnalyzerBase {
     final Ref<NullAnalysisResult> leafExpressions = Ref.create(null);
     final Map<SliceNode, NullAnalysisResult> map = createMap();
 
-      ProgressManager.getInstance().run(new Task.Backgroundable(
-              root.getProject(),
-              KotlinIdeaCompletionBundle.message("slice.nullness.progress.title.expanding.all.nodes.may.very.well.take.whole.day"), true) {
+    String encouragementPiece = " (may very well take the whole day)";
+    ProgressManager.getInstance().run(new Task.Backgroundable(
+            root.getProject(), "Expanding All Nodes..." + encouragementPiece, true) {
       @Override
       public void run(@NotNull final ProgressIndicator indicator) {
         NullAnalysisResult l = calcNullableLeaves(root, treeStructure, map);

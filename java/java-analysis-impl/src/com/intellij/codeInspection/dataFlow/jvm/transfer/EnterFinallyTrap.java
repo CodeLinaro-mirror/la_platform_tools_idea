@@ -16,12 +16,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class EnterFinallyTrap implements DfaControlTransferValue.Trap {
+public abstract class EnterFinallyTrap implements DfaControlTransferValue.Trap {
   private final PsiElement myAnchor;
   private final ControlFlow.@NotNull ControlFlowOffset myJumpOffset;
   private final @NotNull List<@NotNull DfaControlTransferValue> myBackLinks = new ArrayList<>();
 
-  public EnterFinallyTrap(PsiElement anchor, ControlFlow.@NotNull ControlFlowOffset offset) {
+  protected EnterFinallyTrap(PsiElement anchor, ControlFlow.@NotNull ControlFlowOffset offset) {
     myAnchor = anchor;
     myJumpOffset = offset; 
   }

@@ -22,7 +22,6 @@ import com.intellij.usageView.UsageViewUtil
 import com.intellij.util.IncorrectOperationException
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.UIUtil
-import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.core.getPackage
@@ -123,7 +122,6 @@ class CopyKotlinDeclarationDialog(
     val openInEditor: Boolean
         get() = openInEditorCheckBox.isSelected
 
-    @Nls
     private fun checkForErrors(): String? {
         val packageName = packageNameField.text
         val newName = newName
@@ -157,7 +155,8 @@ class CopyKotlinDeclarationDialog(
     override fun doOKAction() {
         val packageName = packageNameField.text
 
-        checkForErrors()?.let { errorString ->
+        val errorString = checkForErrors()
+        if (errorString != null) {
             if (errorString.isNotEmpty()) {
                 Messages.showMessageDialog(project, errorString, RefactoringBundle.message("error.title"), Messages.getErrorIcon())
             }

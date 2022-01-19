@@ -23,14 +23,10 @@ import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.editor.Inlay
 import com.intellij.testFramework.EditorTestUtil
-import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import org.assertj.core.api.Assertions.assertThat
 
 class JavaInlayParameterHintsTest : LightJavaCodeInsightFixtureTestCase() {
-  override fun getProjectDescriptor(): LightProjectDescriptor {
-    return JAVA_8_ANNOTATED
-  }
 
   override fun tearDown() {
     val default = ParameterNameHintsSettings()
@@ -274,7 +270,7 @@ public class CharSymbol {
 public class Test {
   public void main(boolean isActive, boolean requestFocus, int xoo) {
     System.out.println("AAA");
-    main(<hint text="isActive:"/>true,<hint text="requestFocus:"/>false, <hint text="xoo:"/>2);
+    main(<hint text="isActive:"/>true,<hint text="requestFocus:"/>false, /*comment*/<hint text="xoo:"/>2);
   }
 }
 """)
@@ -360,7 +356,7 @@ class QCmp<E> {
 
 public class Test {
   public void main(QCmp<Integer> c, QList<String> l) {
-    c.cmpre(<hint text="oe1:"/>0, <hint text="oq2:"/>3);
+    c.cmpre(<hint text="oe1:"/>0, /** ddd */<hint text="oq2:"/>3);
     l.add(<hint text="query:"/>1, <hint text="obj:"/>"uuu");
   }
 }
@@ -462,7 +458,7 @@ public class VarArgTest {
 class Test {
 
   public void main() {
-    String.format(<hint text="s:"/>"line", <hint text="...objects:"/>"eee", "www");
+    String.format("line", "eee", "www");
   }
 
 }
@@ -911,7 +907,7 @@ class Test {
     myFixture.doHighlighting()
     
     inlays = getHints()
-    assert(inlays.size == 1 && inlays.first() == "qas:") { "Real inlays ${inlays.size}" }
+    assert(inlays.size == 1 && inlays.first() == "qas:", { "Real inlays ${inlays.size}" })
   }
 
 
@@ -1158,31 +1154,6 @@ public class Test {
 }""")
   }
 
-  fun `test parameters have comments`() {
-    check("""
-public class Test {
-    static class A {
-      A(boolean leadingComment, boolean middleWithoutComments, boolean trailingComment){}
-    }
-
-    void foo() {
-      new A(/* comment not necessarily related to name */ true, <hint text="middleWithoutComments:"/>false, true /**/);
-    }
-}""")
-  }
-
-  fun `test optional empty`() {
-    check("""
-import java.util.Optional;
-public class Test {
-    void main() {
-      foo(<hint text="s:"/>Optional.empty());
-    }
-
-    static void foo(Optional<String> s) {}
-}""")
-  }
-
   fun `test undo after typing space`() {
     check("""
 class C {
@@ -1216,7 +1187,7 @@ class C {
   }
 
   
-  private fun assertSingleInlayWithText(expectedText: String) {
+  fun assertSingleInlayWithText(expectedText: String) {
     val inlays = ParameterHintsPresentationManager.getInstance().getParameterHintsInRange(
       editor,
       0,

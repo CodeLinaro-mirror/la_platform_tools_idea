@@ -7,7 +7,10 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiReference;
-import com.intellij.psi.search.*;
+import com.intellij.psi.search.DelegatingGlobalSearchScope;
+import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.RequestResultProcessor;
+import com.intellij.psi.search.UsageSearchContext;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.util.Processor;
 import org.jetbrains.annotations.NotNull;
@@ -38,13 +41,13 @@ public class GradlePropertyReferencesSearcher extends QueryExecutorBase<PsiRefer
         return;
       }
 
-      SearchScope effectiveSearchScope = queryParameters.getEffectiveSearchScope();
-      if (SearchScope.isEmptyScope(effectiveSearchScope)) {
+      GlobalSearchScope effectiveSearchScope = (GlobalSearchScope)queryParameters.getEffectiveSearchScope();
+      if (effectiveSearchScope == GlobalSearchScope.EMPTY_SCOPE) {
         return;
       }
 
       final GlobalSearchScope gradleSearchScope =
-        new FileByExtensionSearchScope((GlobalSearchScope)effectiveSearchScope, GRADLE_DSL_EXTENSION);
+        new FileByExtensionSearchScope(effectiveSearchScope, GRADLE_DSL_EXTENSION);
       final short searchContext = (short)(UsageSearchContext.IN_CODE | UsageSearchContext.IN_STRINGS);
       final MyProcessor processor = new MyProcessor(property);
 

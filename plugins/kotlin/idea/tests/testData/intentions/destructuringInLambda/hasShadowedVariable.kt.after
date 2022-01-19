@@ -1,7 +1,4 @@
 // WITH_RUNTIME
-// AFTER-WARNING: Parameter 'f' is never used
-// AFTER-WARNING: Variable 'x' is never used
-// AFTER-WARNING: Variable 'z' is never used
 data class A(var x: Int)
 
 fun convert(f: (A) -> Unit) {}

@@ -20,9 +20,4 @@ public class PyGroupPatternImpl extends PyElementImpl implements PyGroupPattern 
   public @NotNull PyPattern getPattern() {
     return findNotNullChildByClass(PyPattern.class);
   }
-
-  @Override
-  public boolean isIrrefutable() {
-    return getPattern().isIrrefutable();
-  }
 }

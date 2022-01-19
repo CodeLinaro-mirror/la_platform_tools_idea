@@ -1,4 +1,3 @@
-// AFTER-WARNING: Parameter 'a' is never used
 fun println(a: Any) {}
 
 class InsertThis {

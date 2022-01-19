@@ -28,11 +28,6 @@ public class MavenEmbeddersManagerTest extends MavenTestCase {
   }
 
   @Override
-  protected void tearDownFixtures() throws Exception {
-    super.tearDownFixtures();
-  }
-
-  @Override
   protected void tearDown() throws Exception {
     try {
       myManager.releaseForcefullyInTests();

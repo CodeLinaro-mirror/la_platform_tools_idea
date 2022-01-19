@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.ui.impl;
 
 import com.intellij.ide.DataManager;
@@ -8,7 +8,6 @@ import com.intellij.ide.ui.UISettings;
 import com.intellij.jdkEx.JdkEx;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.impl.LaterInvocator;
@@ -41,7 +40,6 @@ import com.intellij.ui.*;
 import com.intellij.ui.components.JBLayeredPane;
 import com.intellij.ui.mac.touchbar.TouchbarSupport;
 import com.intellij.util.IJSwingUtilities;
-import com.intellij.util.SlowOperations;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.ui.*;
 import org.jetbrains.annotations.NonNls;
@@ -427,13 +425,13 @@ public class DialogWrapperPeerImpl extends DialogWrapperPeer {
     myDialog.getWindow().setAutoRequestFocus((getOwner()!=null && getOwner().isActive()) || !ComponentUtil.isDisableAutoRequestFocus());
 
     if (SystemInfo.isMac) {
-      final Disposable tb = TouchbarSupport.showWindowActions(myDialog.getContentPane());
+      final Disposable tb = TouchbarSupport.showDialogButtons(myDialog.getContentPane());
       if (tb != null) {
         myDisposeActions.add(() -> Disposer.dispose(tb));
       }
     }
 
-    try (AccessToken ignore = SlowOperations.allowSlowOperations(SlowOperations.RESET)) {
+    try {
       myDialog.show();
     }
     finally {
@@ -644,7 +642,7 @@ public class DialogWrapperPeerImpl extends DialogWrapperPeer {
         if (initial == null) initial = new Dimension();
         if (initial.width <= 0 || initial.height <= 0) {
           maximize(initial, getSize()); // cannot be less than packed size
-          if (!SystemInfo.isLinux && Registry.is("ide.dialog.wrapper.resize.by.tables")) {
+          if (!SystemInfo.isLinux) {
             // [kb] temporary workaround for IDEA-253643
             maximize(initial, getSizeForTableContainer(getContentPane()));
           }

@@ -22,10 +22,7 @@ public class DockToolWindowAction extends DumbAwareAction /*implements FusAwareA
     Project project = e.getProject();
     if (project == null || project.isDisposed()) return;
     ToolWindow toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW);
-    if (!(toolWindow instanceof ToolWindowImpl)) {
-      e.getPresentation().setEnabledAndVisible(false);
-      return;
-    }
+    if (!(toolWindow instanceof ToolWindowImpl)) return;
     e.getPresentation().setIcon(ToolWindowMoveAction.Anchor.fromWindowInfo(((ToolWindowImpl)toolWindow).getWindowInfo()).getIcon());
     e.getPresentation()
       .setEnabledAndVisible(toolWindow.getType() == ToolWindowType.FLOATING || toolWindow.getType() == ToolWindowType.WINDOWED);
@@ -39,6 +36,7 @@ public class DockToolWindowAction extends DumbAwareAction /*implements FusAwareA
     if (!(toolWindow instanceof ToolWindowImpl)) return;
     toolWindow.setType(((ToolWindowEx)toolWindow).getInternalType(), null);
     ToolWindowMoveAction.Anchor.fromWindowInfo(((ToolWindowImpl)toolWindow).getWindowInfo()).applyTo(toolWindow);
+
   }
 
   //@Override

@@ -23,14 +23,13 @@ import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.idea.maven.server.MavenServerManager;
 
 import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MavenImportingConfigurable implements SearchableConfigurable {
-  public static final String SETTINGS_ID = "reference.settings.project.maven.importing";
-
   private final MavenImportingSettings myImportingSettings;
   private final MavenImportingSettingsForm mySettingsForm;
   private final List<UnnamedConfigurable> myAdditionalConfigurables;
@@ -110,7 +109,7 @@ public class MavenImportingConfigurable implements SearchableConfigurable {
   @NotNull
   @NonNls
   public String getHelpTopic() {
-    return SETTINGS_ID;
+    return "reference.settings.project.maven.importing";
   }
 
   @Override

@@ -193,9 +193,6 @@ final class DfGenericObjectType extends DfAntiConstantType<Object> implements Df
     }
     DfReferenceType type = (DfReferenceType)other;
     TypeConstraint constraint = getConstraint().join(type.getConstraint());
-    if (constraint == TypeConstraints.BOTTOM) {
-      throw new AssertionError("Join failed: " + this + " | " + other);
-    }
     DfaNullability nullability = getNullability().unite(type.getNullability());
     Mutability mutability = getMutability().unite(type.getMutability());
     boolean locality = isLocal() && type.isLocal();
@@ -369,15 +366,6 @@ final class DfGenericObjectType extends DfAntiConstantType<Object> implements Df
       return new DfEphemeralReferenceType(constraint);
     }
     return null;
-  }
-
-  @Override
-  public @NotNull DfType meetRelation(@NotNull RelationType relationType,
-                                      @NotNull DfType other) {
-    if ((relationType == RelationType.EQ || relationType == RelationType.IS) && isLocal() && myConstraint.isComparedByEquals()) {
-      return dropLocality().meetRelation(relationType, other);
-    }
-    return super.meetRelation(relationType, other);
   }
 
   @Override

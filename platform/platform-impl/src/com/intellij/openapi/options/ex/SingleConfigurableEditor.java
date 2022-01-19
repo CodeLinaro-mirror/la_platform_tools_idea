@@ -171,11 +171,10 @@ public class SingleConfigurableEditor extends DialogWrapper {
   }
 
   protected class ApplyAction extends AbstractAction {
-    private final Alarm myUpdateAlarm = new Alarm(getDisposable());
+    private final Alarm myUpdateAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
 
     public ApplyAction() {
       super(CommonBundle.getApplyButtonText());
-      setEnabled(false); // should be disabled initially. the same as com.intellij.openapi.options.newEditor.ConfigurableEditor.init
       final Runnable updateRequest = new Runnable() {
         @Override
         public void run() {

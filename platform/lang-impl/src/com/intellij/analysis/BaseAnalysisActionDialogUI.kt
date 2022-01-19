@@ -3,8 +3,7 @@ package com.intellij.analysis
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
-import com.intellij.ui.dsl.builder.RightGap
-import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.layout.*
 import org.jetbrains.annotations.Nls
 import javax.swing.JCheckBox
 import javax.swing.JPanel
@@ -20,25 +19,29 @@ internal class BaseAnalysisActionDialogUI {
             disposable: Disposable): JPanel {
 
     return panel {
-      group(scopeTitle) {
+      titledRow(scopeTitle) {
         for (item in viewItems) {
           row {
-            buttons.add(item.button)
-            cell(item.button).apply {
-              if (item.additionalComponents.any()) gap(RightGap.SMALL)
-            }
-            for (component in item.additionalComponents) {
-              if (component is Disposable) {
-                Disposer.register(disposable, component)
+            cell {
+
+              buttons.add(item.button)
+              item.button()
+              for (component in item.additionalComponents) {
+                if (component is Disposable) {
+                  Disposer.register(disposable, component)
+                }
+                component()
               }
-              cell(component)
             }
           }
         }
 
+
         row {
-          cell(inspectTestSource)
-          cell(analyzeInjectedCode)
+          cell {
+            inspectTestSource()
+            analyzeInjectedCode()
+          }
         }
       }
     }

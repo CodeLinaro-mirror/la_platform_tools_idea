@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.incremental.java;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -17,12 +17,8 @@ import com.intellij.util.containers.FileCollectionFactory;
 import com.intellij.util.containers.SmartHashSet;
 import com.intellij.util.execution.ParametersListUtil;
 import com.intellij.util.io.BaseOutputReader;
-import com.intellij.util.io.CorruptedException;
+import com.intellij.util.io.PersistentEnumeratorBase;
 import com.intellij.util.lang.JavaVersion;
-import gnu.trove.TObjectIntHashMap;
-import gnu.trove.TObjectIntIterator;
-import it.unimi.dsi.fastutil.objects.AbstractObject2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -44,7 +40,6 @@ import org.jetbrains.jps.incremental.messages.CompilerMessage;
 import org.jetbrains.jps.incremental.messages.ProgressMessage;
 import org.jetbrains.jps.javac.*;
 import org.jetbrains.jps.javac.ast.api.JavacFileData;
-import org.jetbrains.jps.javac.ast.api.JavacRef;
 import org.jetbrains.jps.model.JpsDummyElement;
 import org.jetbrains.jps.model.JpsProject;
 import org.jetbrains.jps.model.java.JpsJavaExtensionService;
@@ -59,7 +54,8 @@ import org.jetbrains.jps.model.serialization.PathMacroUtil;
 import org.jetbrains.jps.service.JpsServiceManager;
 import org.jetbrains.jps.service.SharedThreadPool;
 
-import javax.tools.*;
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -283,7 +279,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
 
       return compile(context, chunk, dirtyFilesHolder, filesToCompile, outputConsumer, compilingTool, moduleInfoFile);
     }
-    catch (BuildDataCorruptedException | CorruptedException | ProjectBuildException e) {
+    catch (BuildDataCorruptedException | PersistentEnumeratorBase.CorruptedException | ProjectBuildException e) {
       throw e;
     }
     catch (Exception e) {
@@ -1210,7 +1206,8 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     private final AtomicInteger myErrorCount = new AtomicInteger(0);
     private final AtomicInteger myWarningCount = new AtomicInteger(0);
     private final Set<File> myFilesWithErrors = FileCollectionFactory.createCanonicalFileSet();
-    private final @NotNull Collection<? extends JavacFileReferencesRegistrar> myRegistrars;
+    @NotNull
+    private final Collection<? extends JavacFileReferencesRegistrar> myRegistrars;
 
     private DiagnosticSink(CompileContext context, @NotNull Collection<? extends JavacFileReferencesRegistrar> refRegistrars) {
       myContext = context;
@@ -1224,25 +1221,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     @Override
     public void registerJavacFileData(JavacFileData data) {
       for (JavacFileReferencesRegistrar registrar : myRegistrars) {
-        TObjectIntHashMap<JavacRef> refs = data.getRefs();
-        registrar.registerFile(myContext, data.getFilePath(), new Iterable<Object2IntMap.Entry<? extends JavacRef>>() {
-          @Override
-          public @NotNull Iterator<Object2IntMap.Entry<? extends JavacRef>> iterator() {
-            TObjectIntIterator<JavacRef> iterator = refs.iterator();
-            return new Iterator<Object2IntMap.Entry<? extends JavacRef>>() {
-              @Override
-              public boolean hasNext() {
-                return iterator.hasNext();
-              }
-
-              @Override
-              public Object2IntMap.Entry<? extends JavacRef> next() {
-                iterator.advance();
-                return new AbstractObject2IntMap.BasicEntry<>(iterator.key(), iterator.value());
-              }
-            };
-          }
-        }, data.getDefs(), data.getCasts(), data.getImplicitToStringRefs());
+        registrar.registerFile(myContext, data.getFilePath(), data.getRefs(), data.getDefs(), data.getCasts(), data.getImplicitToStringRefs());
       }
     }
 

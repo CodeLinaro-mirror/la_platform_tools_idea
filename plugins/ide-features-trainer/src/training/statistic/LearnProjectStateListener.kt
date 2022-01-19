@@ -10,7 +10,6 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
-import com.intellij.openapi.components.SettingsCategory
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
@@ -63,7 +62,7 @@ private class LearnProjectStateListener : ProjectManagerListener {
   }
 }
 
-@State(name = "LearnProjectState", storages = [Storage(value = trainerPluginConfigName)], category = SettingsCategory.TOOLS)
+@State(name = "LearnProjectState", storages = [Storage(value = trainerPluginConfigName)])
 internal class LearnProjectState : PersistentStateComponent<LearnProjectState> {
   var firstTimeOpenedWay: StatisticBase.LearnProjectOpeningWay? = null
 
@@ -93,13 +92,9 @@ private fun considerNotifyAboutNewLessons(project: Project) {
   }
   showingNotificationIsConsidered = true
   val newLessons = CourseManager.instance.newLessons
-  if (newLessons.isEmpty()) {
+  if (newLessons.isEmpty() || newLessons.any { it.passed }) {
     return
   }
-  if (filterUnseenLessons(newLessons).isEmpty()) {
-    return
-  }
-
   val cooldown = 5
   val startCounter = 2
   val sessionCounter = PropertiesComponent.getInstance().getInt(NOTIFICATION_SESSION_COUNTER, startCounter) + 1
@@ -109,6 +104,7 @@ private fun considerNotifyAboutNewLessons(project: Project) {
   }
   notifyAboutNewLessons(project, newLessons)
 }
+
 
 private fun notifyAboutNewLessons(project: Project, newLessons: List<Lesson>) {
   val newLessonsCount = newLessons.filter { !it.passed }.size

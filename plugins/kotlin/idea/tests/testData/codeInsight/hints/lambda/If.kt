@@ -1,8 +1,8 @@
 // MODE: return
 val x = run {
     if (true) {
-        1<# [^ [temp:///src/KotlinLambdasHintsProvider.kt:28]run] #>
+        1<# [^ run] #>
     } else {
-        0<# [^ [temp:///src/KotlinLambdasHintsProvider.kt:28]run] #>
+        0<# [^ run] #>
     }
 }

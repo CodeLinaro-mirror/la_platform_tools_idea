@@ -44,8 +44,4 @@ public class BuilderInspectionTest extends LombokInspectionTest {
   public void testBuilderObtainVia() {
     doTest();
   }
-
-  public void testBuilderConstructorAnnotations() {
-    doTest();
-  }
 }

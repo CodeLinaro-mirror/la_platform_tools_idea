@@ -1,23 +1,23 @@
 <html>
 <body>
 Reports any <code>package.html</code> files which are used for documenting packages.
-<p>Since JDK 1.5, it is recommended that you use <code>package-info.java</code> files instead, as such
-files can also contain package annotations. This way, package-info.java becomes a
-  sole repository for package level annotations and documentation.</p>
+Since JDK 1.5 it is recommended to use <code>package-info.java</code> files instead, since such
+files can also contain package annotations. In this way, package-info.java becomes the
+sole repository for package level annotations and documentation.
 <p>Example: <code>package.html</code></p>
-<pre><code>
+<pre>
 &lt;html&gt;
   &lt;body&gt;
     Documentation example.
   &lt;/body&gt;
 &lt;/html&gt;
-</code></pre>
-<p>After the quick-fix is applied: <code>package-info.java</code></p>
-<pre><code>
+</pre>
+<p>After the quick-fix is applied, the result looks like this: <code>package-info.java</code></p>
+<pre>
 /**
  * Documentation example.
  */
 package com.sample;
-</code></pre>
+</pre>
 </body>
 </html>

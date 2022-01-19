@@ -108,7 +108,6 @@ public class Highlighted {
 
   fun testPackageLocalEncapsulated4() {
     highlight("""package apiPkg;
-@SuppressWarnings("ProtectedMemberInFinalClass")      
 public final class Highlighted {
   protected PackageLocal myVar;
   protected PackageLocal getVar() {return myVar;}

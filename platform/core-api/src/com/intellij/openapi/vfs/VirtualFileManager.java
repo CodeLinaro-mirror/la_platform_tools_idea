@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs;
 
 import com.intellij.openapi.Disposable;
@@ -8,7 +8,10 @@ import com.intellij.openapi.util.ModificationTracker;
 import com.intellij.openapi.vfs.newvfs.BulkFileListener;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.messages.Topic;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
@@ -45,8 +48,7 @@ public abstract class VirtualFileManager implements ModificationTracker {
    * @return {@link VirtualFileSystem}
    * @see VirtualFileSystem#getProtocol
    */
-  @Contract("null -> null")
-  public abstract VirtualFileSystem getFileSystem(@Nullable String protocol);
+  public abstract VirtualFileSystem getFileSystem(String protocol);
 
   /**
    * <p>Refreshes the cached file systems information from the physical file systems synchronously.<p/>

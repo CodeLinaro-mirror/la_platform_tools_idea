@@ -34,7 +34,7 @@ public class UnusedSymbolLocalInspectionBase extends AbstractBaseJavaLocalInspec
   protected String myMethodVisibility = PsiModifier.PUBLIC;
   protected String myParameterVisibility = PsiModifier.PUBLIC;
   private boolean myIgnoreAccessors = false;
-  protected boolean myCheckParameterExcludingHierarchy = false;
+
 
   @PsiModifier.ModifierConstant
   @Nullable
@@ -60,10 +60,6 @@ public class UnusedSymbolLocalInspectionBase extends AbstractBaseJavaLocalInspec
   public String getParameterVisibility() {
     if (!PARAMETER) return null;
     return myParameterVisibility;
-  }
-
-  public boolean checkParameterExcludingHierarchy() {
-    return myCheckParameterExcludingHierarchy;
   }
 
   @PsiModifier.ModifierConstant
@@ -92,10 +88,6 @@ public class UnusedSymbolLocalInspectionBase extends AbstractBaseJavaLocalInspec
   public void setParameterVisibility(String parameterVisibility) {
     REPORT_PARAMETER_FOR_PUBLIC_METHODS = PsiModifier.PUBLIC.equals(parameterVisibility);
     this.myParameterVisibility = parameterVisibility;
-  }
-
-  public void setCheckParameterExcludingHierarchy(boolean checkParameterExcludingHierarchy) {
-    this.myCheckParameterExcludingHierarchy = checkParameterExcludingHierarchy;
   }
 
   public boolean isIgnoreAccessors() {
@@ -150,7 +142,6 @@ public class UnusedSymbolLocalInspectionBase extends AbstractBaseJavaLocalInspec
     if (!INNER_CLASS) {
       node.setAttribute("INNER_CLASS", Boolean.toString(false));
     }
-    node.setAttribute("checkParameterExcludingHierarchy", Boolean.toString(myCheckParameterExcludingHierarchy));
     super.writeSettings(node);
   }
 
@@ -180,11 +171,9 @@ public class UnusedSymbolLocalInspectionBase extends AbstractBaseJavaLocalInspec
     myMethodVisibility = readVisibility(node, "method");
     myParameterVisibility = readVisibility(node, "parameter", getParameterDefaultVisibility());
     final String ignoreAccessors = node.getAttributeValue("ignoreAccessors");
-    myIgnoreAccessors = Boolean.parseBoolean(ignoreAccessors);
+    myIgnoreAccessors = ignoreAccessors != null && Boolean.parseBoolean(ignoreAccessors);
     final String innerClassEnabled = node.getAttributeValue("INNER_CLASS");
     INNER_CLASS = innerClassEnabled == null || Boolean.parseBoolean(innerClassEnabled);
-    final String checkParameterExcludingHierarchy = node.getAttributeValue("checkParameterExcludingHierarchy");
-    myCheckParameterExcludingHierarchy = Boolean.parseBoolean(checkParameterExcludingHierarchy);
   }
 
   private static String readVisibility(@NotNull Element node, final String type) {

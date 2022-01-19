@@ -5,7 +5,6 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import training.learn.CourseManager
-import training.statistic.LessonStartingWay
 import training.statistic.StatisticBase
 import training.ui.LearnToolWindowFactory
 import training.util.getNextLessonForCurrent
@@ -17,7 +16,7 @@ private class NextLessonAction : AnAction(AllIcons.Actions.Forward) {
     if (LearnToolWindowFactory.learnWindowPerProject[project] == null) return
     val nextLesson = getNextLessonForCurrent() ?: return
     StatisticBase.logLessonStopped(StatisticBase.LessonStopReason.OPEN_NEXT_OR_PREV_LESSON)
-    CourseManager.instance.openLesson(project, nextLesson, LessonStartingWay.NEXT_BUTTON)
+    CourseManager.instance.openLesson(project, nextLesson)
   }
 
   override fun update(e: AnActionEvent) {

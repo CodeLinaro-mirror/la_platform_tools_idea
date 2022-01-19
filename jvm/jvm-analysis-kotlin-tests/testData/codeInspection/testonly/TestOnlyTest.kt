@@ -17,10 +17,6 @@ class TestOnlyTest @TestOnly constructor() {
   fun aStringMethod(): String = "Foo"
 }
 
-/**
- * [TestOnlyTest.aMethod]
- * [testOnly]
- */
 fun main() {
   val foo1 = <warning descr="Test-only class is referenced in production code">TestOnlyTest</warning>()
   val foo2 = test.<warning descr="Test-only class is referenced in production code">TestOnlyTest</warning>()
@@ -29,7 +25,6 @@ fun main() {
   foo1.<warning descr="Test-only method is called in production code">aMethod</warning>(bar)
   TestOnlyTest::<warning descr="Test-only method is called in production code">aMethod</warning>.invoke(foo2, foo3)
   test.TestOnlyTest::<warning descr="Test-only method is called in production code">aMethod</warning>.invoke(foo2, foo3)
-  <warning descr="Test-only method is called in production code">testOnly</warning>()
 }
 
 @TestOnly

@@ -4,6 +4,7 @@ package com.intellij.ide.ui.laf.darcula;
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ui.UITheme;
+import com.intellij.ide.ui.laf.DarculaMetalTheme;
 import com.intellij.ide.ui.laf.IdeaLaf;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
@@ -47,6 +48,7 @@ import java.util.function.Function;
  * @author Konstantin Bulenkov
  */
 public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
+  private static final Object SYSTEM = new Object();
   public static final @NlsSafe String NAME = "Darcula";
   private static final @NlsSafe String DESCRIPTION = "IntelliJ Dark Look and Feel";
   private LookAndFeel base;
@@ -55,7 +57,6 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
   protected Disposable myDisposable;
   private final UserDataHolderBase myUserData = new UserDataHolderBase();
   private static boolean myAltPressed;
-  protected final UIDefaults baseDefaults = new UIDefaults();
 
   public DarculaLaf(@NotNull LookAndFeel base) {
     this.base = base;
@@ -110,7 +111,6 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
     try {
       UIDefaults metalDefaults = new MetalLookAndFeel().getDefaults();
       UIDefaults defaults = base.getDefaults();
-      baseDefaults.putAll(defaults);
 
       if (SystemInfoRt.isLinux && Arrays.asList("CN", "JP", "KR", "TW").contains(Locale.getDefault().getCountry())) {
         defaults.keySet().stream().
@@ -128,6 +128,7 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
       patchComboBox(metalDefaults, defaults);
       defaults.remove("Spinner.arrowButtonBorder");
       defaults.put("Spinner.arrowButtonSize", JBUI.size(16, 5).asUIResource());
+      MetalLookAndFeel.setCurrentTheme(createMetalTheme());
       if (SystemInfoRt.isMac) {
         defaults.put("RootPane.defaultButtonWindowKeyBindings", new Object[]{
           "ENTER", "press",
@@ -147,11 +148,8 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
     return super.getDefaults();
   }
 
-  /** @deprecated metal themes are obsolete, since everything's in JSON now */
-  @Deprecated(forRemoval = true)
-  @ApiStatus.ScheduledForRemoval(inVersion = "2022.1")
   protected DefaultMetalTheme createMetalTheme() {
-    return new DefaultMetalTheme();
+    return new DarculaMetalTheme();
   }
 
   private static void patchComboBox(UIDefaults metalDefaults, UIDefaults defaults) {
@@ -182,7 +180,11 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
 
   @Nullable
   protected String getSystemPrefix() {
-    return null;
+    if (isLoadFromJsonEnabled()) {
+      return null;
+    }
+    String osSuffix = SystemInfoRt.isMac ? "mac" : SystemInfoRt.isWindows ? "windows" : "linux";
+    return getPrefix() + "_" + osSuffix;
   }
 
   @Override
@@ -249,7 +251,16 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
   }
 
   protected void loadDefaults(UIDefaults defaults) {
-    loadDefaultsFromJson(defaults);
+    if (isLoadFromJsonEnabled()) {
+      loadDefaultsFromJson(defaults);
+    }
+    else {
+      loadDefaultsFromProperties(defaults);
+    }
+  }
+
+  private static boolean isLoadFromJsonEnabled() {
+    return Boolean.parseBoolean(System.getProperty("ide.load.laf.as.json", "true"));
   }
 
   protected void loadDefaultsFromJson(UIDefaults defaults) {
@@ -271,15 +282,74 @@ public class DarculaLaf extends BasicLookAndFeel implements UserDataHolder {
     }
   }
 
-  public Color getBaseColor(String key) {
-    return baseDefaults.getColor(key);
+  protected void loadDefaultsFromProperties(UIDefaults defaults) {
+    try {
+      Map<String, String> map = new HashMap<>(300);
+      //noinspection NonSynchronizedMethodOverridesSynchronizedMethod
+      @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
+      Properties properties = new Properties() {
+        @Override
+        public Object put(Object key, Object value) {
+          return map.put((String)key, (String)value);
+        }
+      };
+      try (InputStream stream = getClass().getResourceAsStream(getPrefix() + ".properties")) {
+        properties.load(stream);
+      }
+
+      String systemPrefix = getSystemPrefix();
+      if (systemPrefix != null && !systemPrefix.isEmpty()) {
+        try (InputStream stream = getClass().getResourceAsStream(systemPrefix + ".properties")) {
+          properties.load(stream);
+        }
+      }
+
+      Map<String, Object> darculaGlobalSettings = new HashMap<>(32);
+      String prefix = getPrefix();
+      prefix = prefix.substring(prefix.lastIndexOf("/") + 1) + ".";
+
+      for (String key : map.keySet()) {
+        if (key.startsWith(prefix)) {
+          Object value = parseValue(key, map.get(key));
+          String darculaKey = key.substring(prefix.length());
+          if (value == SYSTEM) {
+            darculaGlobalSettings.remove(darculaKey);
+          }
+          else {
+            darculaGlobalSettings.put(darculaKey, value);
+          }
+        }
+      }
+
+      UIDefaults multiUiDefaults = UIManager.getDefaults();
+      for (Object key : defaults.keySet()) {
+        if (key instanceof String && ((String)key).contains(".")) {
+          String s = (String)key;
+          String darculaKey = s.substring(s.lastIndexOf('.') + 1);
+          if (darculaGlobalSettings.containsKey(darculaKey)) {
+            // MultiUIDefaults misses correct property merging
+            multiUiDefaults.remove(key);
+            defaults.put(key, darculaGlobalSettings.get(darculaKey));
+          }
+        }
+      }
+
+      for (Map.Entry<String, String> entry : map.entrySet()) {
+        // MultiUIDefaults misses correct property merging
+        multiUiDefaults.remove(entry.getKey());
+        defaults.put(entry.getKey(), parseValue(entry.getKey(), entry.getValue()));
+      }
+    }
+    catch (IOException e) {
+      log(e);
+    }
   }
 
-  /**
-   * @deprecated Use {@link UITheme#parseValue(String, String, ClassLoader)}
-   */
-  @Deprecated
   protected Object parseValue(String key, @NotNull String value) {
+    if ("system".equals(value)) {
+      return SYSTEM;
+    }
+
     return UITheme.parseValue(key, value, getClass().getClassLoader());
   }
 

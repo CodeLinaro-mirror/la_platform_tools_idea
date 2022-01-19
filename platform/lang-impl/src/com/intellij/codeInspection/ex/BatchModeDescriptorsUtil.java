@@ -23,7 +23,7 @@ public final class BatchModeDescriptorsUtil {
         element = injectionHost;
       }
 
-      PsiNamedElement problemElement = getContainerElement(element, tool, context);
+      final PsiNamedElement problemElement = getContainerElement(element, tool, context);
 
       RefElement refElement = context.getRefManager().getReference(problemElement);
       if (refElement == null && problemElement != null) {  // no need to lose collected results
@@ -32,18 +32,18 @@ public final class BatchModeDescriptorsUtil {
       return refElement;
     };
 
-  static void addProblemDescriptors(@NotNull Collection<? extends ProblemDescriptor> descriptors,
+  static void addProblemDescriptors(@NotNull List<? extends ProblemDescriptor> descriptors,
                                     boolean filterSuppressed,
                                     @NotNull GlobalInspectionContext context,
                                     @Nullable LocalInspectionTool tool,
-                                    @NotNull InspectionToolResultExporter dpi,
-                                    @NotNull TripleFunction<? super LocalInspectionTool, ? super PsiElement, ? super GlobalInspectionContext, ? extends RefElement> getProblemElementFunction) {
+                                    @NotNull TripleFunction<? super LocalInspectionTool, ? super PsiElement, ? super GlobalInspectionContext, ? extends RefElement> getProblemElementFunction,
+                                    @NotNull InspectionToolResultExporter dpi) {
     if (descriptors.isEmpty()) return;
 
     Map<RefElement, List<ProblemDescriptor>> problems = new HashMap<>();
-    RefManagerImpl refManager = (RefManagerImpl)context.getRefManager();
+    final RefManagerImpl refManager = (RefManagerImpl)context.getRefManager();
     for (ProblemDescriptor descriptor : descriptors) {
-      PsiElement element = descriptor.getPsiElement();
+      final PsiElement element = descriptor.getPsiElement();
       if (element == null) continue;
       if (filterSuppressed) {
         String alternativeId;
@@ -66,19 +66,19 @@ public final class BatchModeDescriptorsUtil {
     }
 
     for (Map.Entry<RefElement, List<ProblemDescriptor>> entry : problems.entrySet()) {
-      List<ProblemDescriptor> problemDescriptors = entry.getValue();
+      final List<ProblemDescriptor> problemDescriptors = entry.getValue();
       RefElement refElement = entry.getKey();
       CommonProblemDescriptor[] descriptions = problemDescriptors.toArray(CommonProblemDescriptor.EMPTY_ARRAY);
       dpi.addProblemElement(refElement, filterSuppressed, descriptions);
     }
   }
 
-  public static void addProblemDescriptors(@NotNull Collection<? extends ProblemDescriptor> descriptors,
+  public static void addProblemDescriptors(@NotNull List<? extends ProblemDescriptor> descriptors,
                                            @NotNull InspectionToolResultExporter dpi,
                                            boolean filterSuppressed,
                                            @NotNull GlobalInspectionContext inspectionContext,
                                            @NotNull LocalInspectionTool tool) {
-    addProblemDescriptors(descriptors, filterSuppressed, inspectionContext, tool, dpi, CONVERT);
+    addProblemDescriptors(descriptors, filterSuppressed, inspectionContext, tool, CONVERT, dpi);
   }
 
   public static PsiNamedElement getContainerElement(@Nullable PsiElement element,

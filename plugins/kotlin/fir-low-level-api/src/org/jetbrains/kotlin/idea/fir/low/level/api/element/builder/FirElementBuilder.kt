@@ -6,7 +6,7 @@
 package org.jetbrains.kotlin.idea.fir.low.level.api.element.builder
 
 import com.intellij.psi.PsiElement
-import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.util.parentsOfType
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.declarations.FirFile
@@ -129,7 +129,7 @@ private fun KtDeclaration.isNonAnonymousClassOrObject() =
 
 
 private fun KtDeclaration.hasFqName(): Boolean =
-    PsiTreeUtil.findFirstParent(this, true) { it is KtDeclaration && !it.isNonAnonymousClassOrObject() } == null
+    parentsOfType<KtDeclaration>(withSelf = false).all { it.isNonAnonymousClassOrObject() }
 
 internal fun PsiElement.getNonLocalContainingInBodyDeclarationWith(): KtNamedDeclaration? =
     getNonLocalContainingOrThisDeclaration { declaration ->

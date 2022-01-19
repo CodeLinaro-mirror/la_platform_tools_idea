@@ -250,10 +250,7 @@ public class MemberInplaceRenamer extends VariableInplaceRenamer {
     }
     finally {
       try {
-        Editor editor = InjectedLanguageEditorUtil.getTopLevelEditor(myEditor);
-        if (editor instanceof EditorImpl) {
-          ((EditorImpl)editor).stopDumbLater();
-        }
+        ((EditorImpl)InjectedLanguageEditorUtil.getTopLevelEditor(myEditor)).stopDumbLater();
       }
       finally {
         FinishMarkAction.finish(myProject, myEditor, markAction);

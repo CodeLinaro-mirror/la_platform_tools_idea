@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Map;
 
 /**
@@ -96,7 +95,7 @@ public class UIThemeBasedLookAndFeelInfo extends UIManager.LookAndFeelInfo {
       }
 
       try (stream) {
-        Files.copy(stream, tmpImage, StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(stream, tmpImage);
       }
 
       Object transparency = backgroundProps.get("transparency");

@@ -47,6 +47,7 @@ public class DefaultLookupItemRenderer extends LookupElementRenderer<LookupItem<
   /**
    * @deprecated use {@link #getRawIcon(LookupElement)}
    */
+  @SuppressWarnings("unused")
   @Nullable
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")

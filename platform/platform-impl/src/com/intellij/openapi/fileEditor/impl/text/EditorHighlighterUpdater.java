@@ -77,8 +77,10 @@ public class EditorHighlighterUpdater {
     connection.subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
       @Override
       public void beforePluginUnload(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
+        if (pluginDescriptor.getPluginId() == null) return;
         IdeaPluginDescriptor loadedPluginDescriptor = PluginManagerCore.getPlugin(pluginDescriptor.getPluginId());
-        ClassLoader pluginClassLoader = loadedPluginDescriptor != null ? loadedPluginDescriptor.getPluginClassLoader() : null;
+        if (loadedPluginDescriptor == null) return;
+        ClassLoader pluginClassLoader = loadedPluginDescriptor.getPluginClassLoader();
         if (myFile != null && pluginClassLoader instanceof PluginAwareClassLoader) {
           FileType fileType = myFile.getFileType();
           if (fileType.getClass().getClassLoader() == pluginClassLoader ||

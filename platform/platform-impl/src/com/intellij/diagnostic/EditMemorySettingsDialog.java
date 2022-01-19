@@ -1,18 +1,15 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diagnostic;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationEx;
-import com.intellij.openapi.options.OptionsBundle;
 import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.system.CpuArch;
-import com.intellij.util.ui.IoErrorText;
 import com.intellij.util.ui.JBFont;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.ApiStatus;
@@ -22,7 +19,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
-import java.io.IOException;
 import java.nio.file.Path;
 
 import static java.awt.GridBagConstraints.*;
@@ -48,7 +44,7 @@ public class EditMemorySettingsDialog extends DialogWrapper {
   }
 
   private EditMemorySettingsDialog(VMOptions.MemoryKind option, boolean memoryLow) {
-    super(true);
+    super(false);
     myOption = option;
     myMemoryLow = memoryLow;
     myLowerBound = Math.max(option == VMOptions.MemoryKind.HEAP ? VMOptions.readOption(VMOptions.MemoryKind.MIN_HEAP, false) : 0, MIN_VALUE);
@@ -76,8 +72,8 @@ public class EditMemorySettingsDialog extends DialogWrapper {
       if (suggested <= 0) suggested = MIN_VALUE;
     }
 
-    Path file = VMOptions.getUserOptionsFile();
-    if (file == null) throw new IllegalStateException();
+    Path file = VMOptions.getWriteFile();
+    assert file != null;
 
     JPanel panel = new JPanel(new GridBagLayout());
 
@@ -167,11 +163,10 @@ public class EditMemorySettingsDialog extends DialogWrapper {
   private boolean save() {
     try {
       int value = Integer.parseInt(myNewValueField.getText());
-      VMOptions.setOption(myOption, value);
+      VMOptions.writeOption(myOption, value);
       return true;
     }
-    catch (IOException e) {
-      Messages.showErrorDialog(myNewValueField, IoErrorText.message(e), OptionsBundle.message("cannot.save.settings.default.dialog.title"));
+    catch (NumberFormatException e) {
       return false;
     }
   }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.i18n;
 
 import com.intellij.codeInspection.BatchQuickFix;
@@ -9,10 +9,7 @@ import com.intellij.codeInspection.i18n.batch.I18nizedPropertyData;
 import com.intellij.lang.Language;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.lang.properties.psi.PropertiesFile;
-import com.intellij.lang.properties.psi.ResourceBundleManager;
 import com.intellij.lang.properties.references.I18nizeQuickFixDialog;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -23,7 +20,6 @@ import com.intellij.psi.util.PartiallyKnownString;
 import com.intellij.usageView.UsageInfo;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ObjectUtils;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.UniqueNameGenerator;
 import org.jetbrains.annotations.NotNull;
@@ -36,7 +32,7 @@ import org.jetbrains.uast.generate.UastElementFactory;
 
 import java.util.*;
 
-public class I18nizeBatchQuickFix extends I18nizeQuickFix implements BatchQuickFix {
+public class I18nizeBatchQuickFix extends I18nizeQuickFix implements BatchQuickFix<CommonProblemDescriptor> {
   private static final Logger LOG = Logger.getInstance(I18nizeBatchQuickFix.class);
 
 
@@ -45,29 +41,10 @@ public class I18nizeBatchQuickFix extends I18nizeQuickFix implements BatchQuickF
                        CommonProblemDescriptor @NotNull [] descriptors,
                        @NotNull List<PsiElement> psiElementsToIgnore,
                        @Nullable Runnable refreshViews) {
-
-    final Map<String, I18nizedPropertyData<HardcodedStringContextData>> keyValuePairs = new LinkedHashMap<>();
-    final Set<PsiFile> contextFiles = new LinkedHashSet<>();
-    ReadAction
-      .nonBlocking(() -> {
-        fillI18nizedPropertyDataMap(project, descriptors, contextFiles, keyValuePairs);
-        if (keyValuePairs.isEmpty()) return null;
-        return I18nizeMultipleStringsDialog.getResourceBundleManager(project, contextFiles);
-      })
-      .finishOnUiThread(ModalityState.NON_MODAL, bundleManager -> {
-        if (keyValuePairs.isEmpty()) return;
-        showI18nizeMultipleStringsDialog(project, keyValuePairs, contextFiles, bundleManager);
-      })
-      .submit(AppExecutorUtil.getAppExecutorService());
-  }
-
-  private static void fillI18nizedPropertyDataMap(@NotNull Project project,
-                                                  CommonProblemDescriptor @NotNull [] descriptors,
-                                                  @NotNull Set<PsiFile> contextFiles,
-                                                  @NotNull Map<String, I18nizedPropertyData<HardcodedStringContextData>> keyValuePairs) {
-    final Set<PsiElement> distinct = new HashSet<>();
-    final UniqueNameGenerator uniqueNameGenerator = new UniqueNameGenerator();
-
+    Set<PsiElement> distinct = new HashSet<>();
+    Map<String, I18nizedPropertyData<HardcodedStringContextData>> keyValuePairs = new LinkedHashMap<>();
+    UniqueNameGenerator uniqueNameGenerator = new UniqueNameGenerator();
+    Set<PsiFile> contextFiles = new LinkedHashSet<>();
     for (CommonProblemDescriptor descriptor : descriptors) {
       PsiElement psiElement = ((ProblemDescriptor)descriptor).getPsiElement();
       UPolyadicExpression polyadicExpression = I18nizeConcatenationQuickFix.getEnclosingLiteralConcatenation(psiElement);
@@ -112,21 +89,14 @@ public class I18nizeBatchQuickFix extends I18nizeQuickFix implements BatchQuickF
         }
       }
     }
-  }
 
-  private void showI18nizeMultipleStringsDialog(@NotNull Project project,
-                         @NotNull Map<String, I18nizedPropertyData<HardcodedStringContextData>> keyValuePairs,
-                         @NotNull Set<PsiFile> contextFiles,
-                         @Nullable ResourceBundleManager bundleManager) {
+    if (keyValuePairs.isEmpty()) return;
+
     ArrayList<I18nizedPropertyData<HardcodedStringContextData>> replacements = new ArrayList<>(keyValuePairs.values());
-    I18nizeMultipleStringsDialog<HardcodedStringContextData> dialog =
-      new I18nizeMultipleStringsDialog<>(project, replacements, contextFiles, bundleManager,
-                                         data -> {
-                                           List<PsiElement> elements = data.getPsiElements();
-                                           return ContainerUtil.map(elements, element -> new UsageInfo(element.getParent()));
-                                         },
-                                         null, true);
-
+    I18nizeMultipleStringsDialog<HardcodedStringContextData> dialog = new I18nizeMultipleStringsDialog<>(project, replacements, contextFiles, data -> {
+      List<PsiElement> elements = data.getPsiElements();
+      return ContainerUtil.map(elements, element -> new UsageInfo(element.getParent()));
+    }, null, true);
     if (dialog.showAndGet()) {
       PropertiesFile propertiesFile = dialog.getPropertiesFile();
       Set<PsiFile> files = new HashSet<>();
@@ -170,11 +140,11 @@ public class I18nizeBatchQuickFix extends I18nizeQuickFix implements BatchQuickF
               try {
                 expression = elementFactory.createExpressionFromText(dialog.getI18NText(data.getKey(), data.getValue(), ""), psiElement);
               }
-              catch (IncorrectOperationException exception) {
+              catch (IncorrectOperationException exception) { 
                 continue;
               }
             }
-
+            
             @Nullable Couple<String> callDescriptor = getCallDescriptor(expression);
             if (callDescriptor == null) {
               LOG.debug("Templates are not supported for " + language.getDisplayName());
@@ -192,8 +162,8 @@ public class I18nizeBatchQuickFix extends I18nizeQuickFix implements BatchQuickF
             arguments.add(pluginElementFactory.createStringLiteralExpression(data.getKey(), psiElement));
             arguments.addAll(data.getContextData().getArgs());
 
-            UExpression receiver = callDescriptor.first != null
-                                   ? pluginElementFactory.createQualifiedReference(callDescriptor.first, uExpression.getSourcePsi())
+            UExpression receiver = callDescriptor.first != null 
+                                   ? pluginElementFactory.createQualifiedReference(callDescriptor.first, uExpression)
                                    : null;
             UCallExpression callExpression = pluginElementFactory
               .createCallExpression(receiver,

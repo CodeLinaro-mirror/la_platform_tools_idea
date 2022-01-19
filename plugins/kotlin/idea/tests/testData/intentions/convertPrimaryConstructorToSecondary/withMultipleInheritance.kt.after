@@ -1,4 +1,3 @@
-// AFTER-WARNING: 'open' has no effect in a final class
 interface A {
     val s: String
 }

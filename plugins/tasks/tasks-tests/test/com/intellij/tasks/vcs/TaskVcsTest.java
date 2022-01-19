@@ -60,12 +60,12 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
     assertEquals(defaultTask, myTaskManager.getActiveTask());
     assertTrue(defaultTask.isDefault());
 
-    assertEquals(1, myChangeListManager.getChangeLists().size());
+    assertEquals(1, myChangeListManager.getChangeListsCopy().size());
     assertEquals(1, defaultTask.getChangeLists().size());
 
-    assertEquals(defaultTask, myTaskManager.getAssociatedTask(myChangeListManager.getChangeLists().get(0)));
-    assertEquals(defaultTask.getChangeLists().get(0).id, myChangeListManager.getChangeLists().get(0).getId());
-    assertEquals(defaultTask.getChangeLists().get(0), new ChangeListInfo(myChangeListManager.getChangeLists().get(0)));
+    assertEquals(defaultTask, myTaskManager.getAssociatedTask(myChangeListManager.getChangeListsCopy().get(0)));
+    assertEquals(defaultTask.getChangeLists().get(0).id, myChangeListManager.getChangeListsCopy().get(0).getId());
+    assertEquals(defaultTask.getChangeLists().get(0), new ChangeListInfo(myChangeListManager.getChangeListsCopy().get(0)));
   }
 
   public void testSwitchingTasks() {
@@ -82,25 +82,24 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     assertEquals(1, localTask.getChangeLists().size());
     assertEquals(1, defaultTask.getChangeLists().size());
-    assertEquals(2, myChangeListManager.getChangeLists().size());
-    assertEquals(localTask, myTaskManager.getAssociatedTask(myChangeListManager.getChangeLists().get(0)));
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
+    assertEquals(localTask, myTaskManager.getAssociatedTask(myChangeListManager.getChangeListsCopy().get(0)));
 
     myTaskManager.activateTask(defaultTask, false);
 
     assertEquals(1, localTask.getChangeLists().size());
     assertEquals(1, defaultTask.getChangeLists().size());
-    assertEquals(2, myChangeListManager.getChangeLists().size());
-    assertEquals(defaultTask, myTaskManager.getAssociatedTask(myChangeListManager.getChangeLists().get(0)));
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
+    assertEquals(defaultTask, myTaskManager.getAssociatedTask(myChangeListManager.getChangeListsCopy().get(0)));
 
     myTaskManager.activateTask(localTask, false);
 
     assertEquals(1, localTask.getChangeLists().size());
     assertEquals(1, defaultTask.getChangeLists().size());
-    assertEquals(2, myChangeListManager.getChangeLists().size());
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
 
     LocalChangeList activeChangeList = myChangeListManager.getDefaultChangeList();
-    LocalChangeList anotherChangeList = myChangeListManager.getChangeLists()
-      .get(1 - myChangeListManager.getChangeLists().indexOf(activeChangeList));
+    LocalChangeList anotherChangeList = myChangeListManager.getChangeListsCopy().get(1 - myChangeListManager.getChangeListsCopy().indexOf(activeChangeList));
 
     assertNotNull(activeChangeList);
     assertEquals(localTask, myTaskManager.getAssociatedTask(activeChangeList));
@@ -114,10 +113,10 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     assertEquals(1, localTask.getChangeLists().size());
     assertEquals(1, defaultTask.getChangeLists().size());
-    assertEquals(2, myChangeListManager.getChangeLists().size());
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
 
     activeChangeList = myChangeListManager.getDefaultChangeList();
-    anotherChangeList = myChangeListManager.getChangeLists().get(1 - myChangeListManager.getChangeLists().indexOf(activeChangeList));
+    anotherChangeList = myChangeListManager.getChangeListsCopy().get(1 - myChangeListManager.getChangeListsCopy().indexOf(activeChangeList));
 
     assertNotNull(activeChangeList);
     assertEquals(defaultTask, myTaskManager.getAssociatedTask(activeChangeList));
@@ -146,7 +145,7 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     assertEquals(1, anotherTask.getChangeLists().size());
     assertEquals(2, defaultTask.getChangeLists().size());
-    assertEquals(3, myChangeListManager.getChangeLists().size());
+    assertEquals(3, myChangeListManager.getChangeListsCopy().size());
 
     LocalChangeList defaultChangeListActive = myChangeListManager.findChangeList("Default (1)");
     assertNotNull(defaultChangeListActive);
@@ -189,7 +188,7 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     assertEquals(1, anotherTask.getChangeLists().size());
     assertEquals(1, defaultTask.getChangeLists().size());
-    assertEquals(1, myChangeListManager.getChangeLists().size());
+    assertEquals(1, myChangeListManager.getChangeListsCopy().size());
 
     assertEquals(defaultTask, myTaskManager.getAssociatedTask(defaultChangeList));
     assertEquals(LocalChangeList.getDefaultName(), defaultChangeList.getName());
@@ -213,7 +212,7 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     assertEquals(1, anotherTask.getChangeLists().size());
     assertEquals(2, defaultTask.getChangeLists().size());
-    assertEquals(3, myChangeListManager.getChangeLists().size());
+    assertEquals(3, myChangeListManager.getChangeListsCopy().size());
 
     LocalChangeList defaultChangeListActive = myChangeListManager.findChangeList(LocalChangeList.getDefaultName());
     assertNotNull(defaultChangeListActive);
@@ -239,7 +238,7 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     addChangeList("New Changelist");
     assertEquals(2, myTaskManager.getLocalTasks().size());
-    assertEquals(2, myChangeListManager.getChangeLists().size());
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
     LocalChangeList newChangeList = myChangeListManager.findChangeList("New Changelist");
     assertNotNull(newChangeList);
     LocalTask newTask = myTaskManager.getAssociatedTask(newChangeList);
@@ -271,12 +270,12 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
 
     Task task = myRepository.findTask("TEST-001");
     assertNotNull(task);
-    assertEquals(1, myChangeListManager.getChangeLists().size());  // default change list should be here
+    assertEquals(1, myChangeListManager.getChangeListsCopy().size());  // default change list should be here
     runOpenTaskDialog(task);
     myChangeListManager.waitUntilRefreshed();
 
     assertEquals(2, myTaskManager.getLocalTasks().size());
-    List<LocalChangeList> copy = myChangeListManager.getChangeLists();
+    List<LocalChangeList> copy = myChangeListManager.getChangeListsCopy();
     assertEquals(copy.toString(), 2, copy.size());
     LocalTask localTask = myTaskManager.getActiveTask();
     List<ChangeListInfo> changelists = localTask.getChangeLists();
@@ -288,7 +287,7 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
     commitChanges(changeList, changes);
 
     assertEquals(2, myTaskManager.getLocalTasks().size()); // no extra task created
-    assertEquals(2, myChangeListManager.getChangeLists().size());
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
 
     assertEquals(localTask, myTaskManager.getAssociatedTask(changeList)); // association should survive
   }
@@ -297,18 +296,18 @@ public class TaskVcsTest extends CodeInsightFixtureTestCase {
     myTaskManager.getState().saveContextOnCommit = true;
 
     assertEquals(1, myTaskManager.getLocalTasks().size());
-    assertEquals(1, myChangeListManager.getChangeLists().size());
+    assertEquals(1, myChangeListManager.getChangeListsCopy().size());
 
     LocalChangeList changeList = addChangeList("New Changelist");
 
     assertEquals(1, myTaskManager.getLocalTasks().size());
-    assertEquals(2, myChangeListManager.getChangeLists().size());
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
 
     List<Change> changes = addChanges(changeList);
     commitChanges(changeList, changes);
 
     assertEquals(2, myTaskManager.getLocalTasks().size()); // extra task created
-    assertEquals(2, myChangeListManager.getChangeLists().size());
+    assertEquals(2, myChangeListManager.getChangeListsCopy().size());
 
     assertTrue(ContainerUtil.exists(myTaskManager.getLocalTasks(), task -> task.getSummary().equals("New Changelist")));
   }

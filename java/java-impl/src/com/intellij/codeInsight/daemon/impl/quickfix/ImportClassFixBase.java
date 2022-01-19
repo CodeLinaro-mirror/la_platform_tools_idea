@@ -90,12 +90,12 @@ public abstract class ImportClassFixBase<T extends PsiElement, R extends PsiRefe
   protected abstract boolean hasTypeParameters(@NotNull R reference);
 
   @NotNull
-  public List<? extends PsiClass> getClassesToImport() {
+  public List<PsiClass> getClassesToImport() {
     return getClassesToImport(false);
   }
 
   @NotNull
-  public List<? extends PsiClass> getClassesToImport(boolean acceptWrongNumberOfTypeParams) {
+  public List<PsiClass> getClassesToImport(boolean acceptWrongNumberOfTypeParams) {
     if (!myElement.isValid() || ContainerUtil.exists(myClassesToImport, c -> !c.isValid())) {
       return Collections.emptyList();
     }
@@ -301,8 +301,9 @@ public abstract class ImportClassFixBase<T extends PsiElement, R extends PsiRefe
   @NotNull
   public Result doFix(@NotNull Editor editor, boolean allowPopup, boolean allowCaretNearRef, boolean mayAddUnambiguousImportsSilently) {
     ApplicationManager.getApplication().assertIsDispatchThread();
+    List<PsiClass> classesToImport = getClassesToImport();
     //do not show popups for already imported classes when library is missing (show them for explicit action)
-    List<? extends PsiClass> result = filterAlreadyImportedButUnresolved(getClassesToImport());
+    List<? extends PsiClass> result = filterAlreadyImportedButUnresolved(classesToImport);
     if (result.isEmpty()) return Result.POPUP_NOT_SHOWN;
 
     try {
@@ -447,7 +448,8 @@ public abstract class ImportClassFixBase<T extends PsiElement, R extends PsiRefe
   public void invoke(@NotNull Project project, Editor editor, PsiFile file) {
     if (!FileModificationService.getInstance().prepareFileForWrite(file)) return;
     ApplicationManager.getApplication().runWriteAction(() -> {
-      PsiClass[] classes = getClassesToImport(true).toArray(PsiClass.EMPTY_ARRAY);
+      List<PsiClass> classesToImport = getClassesToImport(true);
+      PsiClass[] classes = classesToImport.toArray(PsiClass.EMPTY_ARRAY);
       if (classes.length == 0) return;
 
       AddImportAction action = createAddImportAction(classes, project, editor);

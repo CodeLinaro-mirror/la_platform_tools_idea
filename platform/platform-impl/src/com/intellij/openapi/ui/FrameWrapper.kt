@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.ui
 
 import com.intellij.application.options.RegistryManager
@@ -17,6 +17,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ProjectManagerListener
 import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.*
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.*
 import com.intellij.openapi.wm.ex.IdeFocusTraversalPolicy
 import com.intellij.openapi.wm.ex.IdeFrameEx
@@ -32,7 +33,7 @@ import com.intellij.ui.AppUIUtil
 import com.intellij.ui.BalloonLayout
 import com.intellij.ui.ComponentUtil
 import com.intellij.ui.FrameState
-import com.intellij.ui.mac.touchbar.TouchbarSupport
+import com.intellij.util.SystemProperties
 import com.intellij.util.ui.ImageUtil
 import com.intellij.util.ui.UIUtil
 import org.jetbrains.annotations.NonNls
@@ -57,6 +58,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
   private var onCloseHandler: BooleanGetter? = null
   private var frame: Window? = null
   private var project: Project? = null
+  private var focusWatcher: FocusWatcher? = null
   private var isDisposing = false
 
   var isDisposed = false
@@ -170,6 +172,8 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
         doBindAppMenuOfParent(frame, parentFrame)
       }
     }
+    focusWatcher = FocusWatcher()
+    focusWatcher!!.install(component!!)
   }
 
   fun show(restoreBounds: Boolean) {
@@ -182,8 +186,6 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
       loadFrameState(state)
     }
 
-    if (SystemInfo.isMac)
-      TouchbarSupport.showWindowActions(this, frame)
     frame.isVisible = true
   }
 
@@ -210,6 +212,10 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
     this.frame = null
     preferredFocusedComponent = null
     project = null
+    if (component != null && focusWatcher != null) {
+      focusWatcher!!.deinstall(component)
+    }
+    focusWatcher = null
     component = null
     images = emptyList()
     isDisposed = true
@@ -311,7 +317,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
     init {
       FrameState.setFrameStateListener(this)
       glassPane = IdeGlassPaneImpl(getRootPane(), true)
-      if (SystemInfo.isMac && !(SystemInfo.isMacSystemMenu && java.lang.Boolean.getBoolean("mac.system.menu.singleton"))) {
+      if (SystemInfo.isMac && !(SystemInfo.isMacSystemMenu && SystemProperties.`is`("mac.system.menu.singleton"))) {
         jMenuBar = IdeMenuBar.createMenuBar()
       }
       MouseGestureManager.getInstance().add(this)

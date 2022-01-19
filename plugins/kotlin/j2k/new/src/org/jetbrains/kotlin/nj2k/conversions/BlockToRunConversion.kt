@@ -3,7 +3,6 @@
 package org.jetbrains.kotlin.nj2k.conversions
 
 import org.jetbrains.kotlin.nj2k.NewJ2kConverterContext
-import org.jetbrains.kotlin.nj2k.psi
 import org.jetbrains.kotlin.nj2k.tree.*
 
 
@@ -13,7 +12,8 @@ class BlockToRunConversion(context: NewJ2kConverterContext) : RecursiveApplicabl
 
         if (element.parent !is JKBlock) return recurse(element)
 
-        if(element.parents().none { it is JKDeclaration || it is JKLambdaExpression }) return recurse(element)
+        val parentDeclaration = element.parentOfType<JKDeclaration>() ?: return recurse(element)
+        if (parentDeclaration.psi == null) return recurse(element)
 
         element.invalidate()
         val lambda = JKLambdaExpression(

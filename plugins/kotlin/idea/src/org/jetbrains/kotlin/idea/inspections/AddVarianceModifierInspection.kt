@@ -12,7 +12,6 @@ import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeWithContent
-import org.jetbrains.kotlin.idea.util.application.withPsiAttachment
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.addRemoveModifier.addModifier
@@ -91,9 +90,10 @@ class AddVarianceModifierInspection : AbstractKotlinInspection() {
         override fun getFamilyName() = KotlinBundle.message("add.variance.fix.family.name")
 
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
+            if (!FileModificationService.getInstance().preparePsiElementForWrite(descriptor.psiElement)) return
             val typeParameter = descriptor.psiElement as? KtTypeParameter
                 ?: throw KotlinExceptionWithAttachments("Add variance fix is used on ${descriptor.psiElement}")
-                    .withPsiAttachment("element", descriptor.psiElement)
+                    .withAttachment("element", descriptor.psiElement.text)
             addModifier(typeParameter, if (variance == Variance.IN_VARIANCE) KtTokens.IN_KEYWORD else KtTokens.OUT_KEYWORD)
         }
 

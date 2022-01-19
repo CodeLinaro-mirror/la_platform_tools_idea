@@ -85,10 +85,6 @@ public class JUnitConfigurationType implements ConfigurationType {
     return true;
   }
 
-  public @NotNull ConfigurationFactory getFactory() {
-    return myFactory;
-  }
-
   @NotNull
   public static JUnitConfigurationType getInstance() {
     return ConfigurationTypeUtil.findConfigurationType(JUnitConfigurationType.class);

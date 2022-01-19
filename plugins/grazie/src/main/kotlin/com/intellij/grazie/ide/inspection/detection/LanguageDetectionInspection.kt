@@ -2,7 +2,6 @@ package com.intellij.grazie.ide.inspection.detection
 
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.LocalInspectionToolSession
-import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.grazie.GrazieBundle
 import com.intellij.grazie.GrazieConfig
@@ -13,7 +12,6 @@ import com.intellij.grazie.ide.inspection.detection.problem.LanguageDetectionPro
 import com.intellij.grazie.ide.inspection.grammar.GrazieInspection
 import com.intellij.grazie.text.TextExtractor
 import com.intellij.lang.injection.InjectedLanguageManager
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.util.KeyWithDefaultValue
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
@@ -34,8 +32,7 @@ internal class LanguageDetectionInspection : LocalInspectionTool() {
 
     if (languages.isEmpty()) return
 
-    val descriptor = ReadAction.compute<ProblemDescriptor,RuntimeException>{ LanguageDetectionProblemDescriptor.create(holder.manager, holder.isOnTheFly, session.file, languages) }
-    holder.registerProblem(descriptor)
+    holder.registerProblem(LanguageDetectionProblemDescriptor.create(holder.manager, holder.isOnTheFly, session.file, languages))
   }
 
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
@@ -44,12 +41,13 @@ internal class LanguageDetectionInspection : LocalInspectionTool() {
       return PsiElementVisitor.EMPTY_VISITOR
 
     val domains = GrazieInspection.checkedDomains()
-    val areChecksDisabled = GrazieInspection.getDisabledChecker(file)
+    val fileLanguage = file.language
+    val areChecksDisabled = GrazieInspection.getDisabledChecker(fileLanguage)
     return object : PsiElementVisitor() {
       override fun visitElement(element: PsiElement) {
         if (areChecksDisabled(element)) return
-        val context = session.getUserData(key)!!
-        TextExtractor.findUniqueTextsAt(element, domains).forEach { LangDetector.updateContext(it, context) }
+        val text = TextExtractor.findUniqueTextAt(element, domains) ?: return
+        LangDetector.updateContext(text, session.getUserData(key)!!)
       }
     }
   }

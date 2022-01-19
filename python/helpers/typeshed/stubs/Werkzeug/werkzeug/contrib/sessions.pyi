@@ -1,11 +1,11 @@
-from typing import Any, Text, TypeVar
+from typing import Any, Optional, Text, TypeVar
 
 from werkzeug.datastructures import CallbackDict
 
 _K = TypeVar("_K")
 _V = TypeVar("_V")
 
-def generate_key(salt: Any | None = ...): ...
+def generate_key(salt: Optional[Any] = ...): ...
 
 class ModificationTrackingDict(CallbackDict[_K, _V]):
     modified: Any
@@ -22,9 +22,9 @@ class Session(ModificationTrackingDict[_K, _V]):
 
 class SessionStore:
     session_class: Any
-    def __init__(self, session_class: Any | None = ...): ...
+    def __init__(self, session_class: Optional[Any] = ...): ...
     def is_valid_key(self, key): ...
-    def generate_key(self, salt: Any | None = ...): ...
+    def generate_key(self, salt: Optional[Any] = ...): ...
     def new(self): ...
     def save(self, session): ...
     def save_if_modified(self, session): ...
@@ -38,9 +38,9 @@ class FilesystemSessionStore(SessionStore):
     mode: Any
     def __init__(
         self,
-        path: Any | None = ...,
+        path: Optional[Any] = ...,
         filename_template: Text = ...,
-        session_class: Any | None = ...,
+        session_class: Optional[Any] = ...,
         renew_missing: bool = ...,
         mode: int = ...,
     ): ...
@@ -66,11 +66,11 @@ class SessionMiddleware:
         app,
         store,
         cookie_name: str = ...,
-        cookie_age: Any | None = ...,
-        cookie_expires: Any | None = ...,
+        cookie_age: Optional[Any] = ...,
+        cookie_expires: Optional[Any] = ...,
         cookie_path: str = ...,
-        cookie_domain: Any | None = ...,
-        cookie_secure: Any | None = ...,
+        cookie_domain: Optional[Any] = ...,
+        cookie_secure: Optional[Any] = ...,
         cookie_httponly: bool = ...,
         environ_key: str = ...,
     ): ...

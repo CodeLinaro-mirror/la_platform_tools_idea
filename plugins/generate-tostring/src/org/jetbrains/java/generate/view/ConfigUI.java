@@ -22,7 +22,6 @@ import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.LanguageTextField;
 import com.intellij.util.ui.JBUI;
 import org.intellij.lang.regexp.RegExpLanguage;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.java.generate.config.Config;
 import org.jetbrains.java.generate.config.DuplicationPolicy;
@@ -229,8 +228,7 @@ public class ConfigUI extends JPanel {
         fullyQualifiedName.setSelected(config.isUseFullyQualifiedName());
         DuplicationPolicy option = config.getReplaceDialogInitialOption();
         for (JRadioButton anInitialValueForReplaceDialog : initialValueForReplaceDialog) {
-          ConflictResolutionOptionAction action = (ConflictResolutionOptionAction)anInitialValueForReplaceDialog.getAction();
-          if (action.option.equals(option)) {
+            if (anInitialValueForReplaceDialog.getText().equals(option.toString())) {
                 anInitialValueForReplaceDialog.setSelected(true);
             }
         }
@@ -317,7 +315,7 @@ public class ConfigUI extends JPanel {
      * Action for the options for the conflict resolution policy
      */
     private static class ConflictResolutionOptionAction extends AbstractAction {
-        public final @NotNull DuplicationPolicy option;
+        public final DuplicationPolicy option;
 
         ConflictResolutionOptionAction(DuplicationPolicy option) {
             super(option.toString());

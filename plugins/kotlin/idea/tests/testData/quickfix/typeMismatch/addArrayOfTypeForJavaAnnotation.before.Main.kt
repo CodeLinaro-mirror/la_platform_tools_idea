@@ -4,6 +4,5 @@
 // ACTION: Make internal
 // ACTION: Make private
 // ACTION: To raw string literal
-// ACTION: Add names in comment to call arguments
 
 @ArrAnn(<caret>"123") class My

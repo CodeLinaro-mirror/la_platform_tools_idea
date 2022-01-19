@@ -7,14 +7,13 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.AppUIUtil;
 import com.intellij.util.SmartList;
+import com.intellij.util.containers.IntIntHashMap;
 import com.intellij.xdebugger.frame.XFullValueEvaluator;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree;
 import com.intellij.xdebugger.impl.ui.tree.nodes.HeadlessValueEvaluationCallback;
 import com.intellij.xdebugger.impl.ui.tree.nodes.WatchNodeImpl;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
-import it.unimi.dsi.fastutil.ints.Int2IntMap;
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -75,13 +74,12 @@ public abstract class XFetchValueActionBase extends DumbAwareAction {
 
   public class ValueCollector {
     private final List<String> values = new SmartList<>();
-    private final Int2IntMap indents = new Int2IntOpenHashMap();
+    private final IntIntHashMap indents = new IntIntHashMap();
     private final XDebuggerTree myTree;
     private volatile boolean processed;
 
     public ValueCollector(XDebuggerTree tree) {
       myTree = tree;
-      indents.defaultReturnValue(-1);
     }
 
     public void add(@NotNull String value) {

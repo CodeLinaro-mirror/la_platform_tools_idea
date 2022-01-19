@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui.customization;
 
 import com.intellij.icons.AllIcons;
@@ -95,7 +95,6 @@ public class CustomizableActionsPanel {
       .createActionToolbar(ActionPlaces.TOOLBAR, new DefaultActionGroup(addGroup, new RemoveAction(), new EditIconAction(), new MoveUpAction(), new MoveDownAction(), restoreGroup), true);
     toolbar.setForceMinimumSize(true);
     toolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY);
-    toolbar.setTargetComponent(myTopPanel);
     return toolbar;
   }
 
@@ -234,7 +233,7 @@ public class CustomizableActionsPanel {
           actionId = (String)object;
         }
         else if (object instanceof Pair) {
-          actionId = (String)((Pair<?, ?>)object).first;
+          actionId = (String)((Pair)object).first;
         }
         else {
           return "";
@@ -280,11 +279,11 @@ public class CustomizableActionsPanel {
           }
         }
         else if (userObject instanceof Pair) {
-          String actionId = (String)((Pair<?, ?>)userObject).first;
+          String actionId = (String)((Pair)userObject).first;
           AnAction action = ActionManager.getInstance().getAction(actionId);
           String text = action != null ? action.getTemplatePresentation().getText() : null;
           append(StringUtil.isNotEmpty(text) ? text : actionId);
-          icon = (Icon)((Pair<?, ?>)userObject).second;
+          icon = (Icon)((Pair)userObject).second;
         }
         else if (userObject instanceof Separator) {
           append("-------------");
@@ -307,7 +306,7 @@ public class CustomizableActionsPanel {
   @Nullable
   private static String getActionId(DefaultMutableTreeNode node) {
     return (String)(node.getUserObject() instanceof String ? node.getUserObject() :
-                    node.getUserObject() instanceof Pair ? ((Pair<?, ?>)node.getUserObject()).first : null);
+                    node.getUserObject() instanceof Pair ? ((Pair)node.getUserObject()).first : null);
   }
 
   protected boolean doSetIcon(DefaultMutableTreeNode node, @Nullable String path, Component component) {
@@ -355,8 +354,9 @@ public class CustomizableActionsPanel {
     textField.setMinimumSize(new Dimension(200, textField.getPreferredSize().height));
     final FileChooserDescriptor fileChooserDescriptor = new FileChooserDescriptor(true, false, false, false, false, false) {
       @Override
-      public boolean isFileSelectable(@Nullable VirtualFile file) {
-        return file != null && (file.getName().endsWith(".png") || file.getName().endsWith(".svg"));
+      public boolean isFileSelectable(VirtualFile file) {
+        //noinspection HardCodedStringLiteral
+        return file.getName().endsWith(".png") || file.getName().endsWith(".svg");
       }
     };
     textField.addBrowseFolderListener(IdeBundle.message("title.browse.icon"), IdeBundle.message("prompt.browse.icon.for.selected.action"), null,
@@ -407,9 +407,9 @@ public class CustomizableActionsPanel {
         }
         final Object userObject = myNode.getUserObject();
         if (userObject instanceof Pair) {
-          String actionId = (String)((Pair<?, ?>)userObject).first;
+          String actionId = (String)((Pair)userObject).first;
           final AnAction action = ActionManager.getInstance().getAction(actionId);
-          final Icon icon = (Icon)((Pair<?, ?>)userObject).second;
+          final Icon icon = (Icon)((Pair)userObject).second;
           action.getTemplatePresentation().setIcon(icon);
           action.setDefaultIcon(icon == null);
         }
@@ -528,9 +528,9 @@ public class CustomizableActionsPanel {
           final DefaultMutableTreeNode mutableNode = (DefaultMutableTreeNode)node;
           final Object userObject = mutableNode.getUserObject();
           if (userObject instanceof Pair) {
-            String actionId = (String)((Pair<?, ?>)userObject).first;
+            String actionId = (String)((Pair)userObject).first;
             final AnAction action = actionManager.getAction(actionId);
-            Icon icon = (Icon)((Pair<?, ?>)userObject).second;
+            Icon icon = (Icon)((Pair)userObject).second;
             action.getTemplatePresentation().setIcon(icon);
             action.setDefaultIcon(icon == null);
           }

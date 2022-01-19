@@ -3,9 +3,10 @@
 
 (function() {
   /**
-   * Message passing interface for sending/receiving messages between browser and IDE.
+   * Message passing interface for sending/receiving messages
+   * between browser and IDE
    */
-  class JcefMessagePipeImpl {
+  class MessagePipe {
     /**
      * @callback EventCallback
      * @param {string} data
@@ -18,15 +19,57 @@
     listeners = {};
 
     /**
+     * API for IDE for posting and subscribing to events
+     */
+    ideApi = {
+      /**
+       * @private
+       * @type {Object.<string, [EventCallback]>}
+       */
+      listeners: {},
+
+      /**
+       * Post event for browser listeners. Call this in CefBrowser::executeJavaScript.
+       * @param {string} tag
+       * @param {string} data
+       */
+      post: (tag, data) => {
+        if (!this.ideApi.listeners[tag]) {
+          throw new Error(`Could not post event with tag: ${tag}!`);
+        }
+        this.ideApi.listeners[tag].forEach(listener => {
+          try {
+            listener.call(null, data);
+          }
+          catch (error) {
+            console.warn(`Failed to call listener for event with tag: ${tag}!`, error);
+          }
+        });
+      },
+
+      /**
+       * Subscribes to events with {@link tag} posted by browser code
+       * @param {string} tag
+       * @param {EventCallback} callback Result of <pre><code>JBCefJSCallback.inject("data")</code></pre>
+       */
+      subscribe: (tag, callback) => {
+        if (!this.listeners[tag]) {
+          this.listeners[tag] = [];
+        }
+        this.listeners[tag].push(callback);
+      }
+    };
+
+    /**
      * Subscribes to events posted by IDE code
      * @param {string} tag
      * @param {EventCallback} callback
      */
     subscribe(tag, callback) {
-      if (!this.listeners[tag]) {
-        this.listeners[tag] = [];
+      if (!this.ideApi.listeners[tag]) {
+        this.ideApi.listeners[tag] = [];
       }
-      this.listeners[tag].push(callback);
+      this.ideApi.listeners[tag].push(callback);
     }
 
     /**
@@ -35,38 +78,22 @@
      * @param {string} data
      */
     post(tag, data) {
-      try {
-        window['__IntelliJTools']["___jcefMessagePipePostToIdeFunction"](JSON.stringify({type: tag, data}));
-      } catch (error) {
-        console.error(error);
+      if (!this.listeners[tag]) {
+        throw new Error(`Could not call listener for event with tag: ${tag}!`);
       }
-    }
-
-    callBrowserListeners({type, data}) {
-      const listeners = this.listeners[type];
-      if (!listeners) {
-        console.warn(`No listeners for messages with tag: ${type}`);
-        return;
-      }
-      for (const listener of listeners) {
+      this.listeners[tag].forEach(listener => {
         try {
-          listener(data);
-        } catch (error) {
-          console.log(`Error occurred while calling listener for ${type}`);
-          console.error(error);
+          listener.call(null, data);
         }
-      }
+        catch (error) {
+          console.warn(`Failed to call listener for event with tag: ${tag}!`, error);
+        }
+      });
     }
-  }
-
-  if (window.__IntelliJTools === undefined) {
-    window.__IntelliJTools = {};
   }
 
   /**
-   * @type {JcefMessagePipeImpl}
+   * @type {MessagePipe}
    */
-  window.__IntelliJTools.messagePipe = new JcefMessagePipeImpl();
-
-  window.addEventListener("IdeReady", () => window.__IntelliJTools.messagePipe.post("documentReady", ""));
+  window.messagePipe = new MessagePipe();
 })();

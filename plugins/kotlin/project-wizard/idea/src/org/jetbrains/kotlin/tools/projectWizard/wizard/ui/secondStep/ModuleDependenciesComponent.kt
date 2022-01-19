@@ -20,13 +20,14 @@ import org.jetbrains.kotlin.tools.projectWizard.wizard.ui.*
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import java.awt.Dimension
 import javax.swing.Icon
+import javax.swing.JComponent
 import javax.swing.JPanel
+import kotlin.reflect.KFunction0
 
 class ModuleDependenciesComponent(
     context: Context
 ) : TitledComponent(context) {
     override val title: String = KotlinNewProjectWizardUIBundle.message("module.dependencies.module.dependencies")
-    override val tooltipText: String = KotlinNewProjectWizardUIBundle.message("module.dependencies.module.dependencies.tooltip")
     private val dependenciesList = ModuleDependenciesList(::possibleDependencies)
     override val alignment: TitleComponentAlignment
         get() = TitleComponentAlignment.AlignAgainstSpecificComponent(dependenciesList)
@@ -39,7 +40,7 @@ class ModuleDependenciesComponent(
             AddModulesPopUp.create(
                 possibleDependencies(),
                 dependenciesList::addDependency
-            ).show(button.preferredPopupPoint)
+            ).show(button.preferredPopupPoint!!)
         }
         setAddActionName(KotlinNewProjectWizardUIBundle.message("module.dependencies.add.module.dependency"))
         setAddActionUpdater { e ->
@@ -76,7 +77,7 @@ class ModuleDependenciesComponent(
             ModuleDependencyType.isDependencyPossible(module!!, to)
         }
 
-    override fun shouldBeShown(): Boolean = module?.let {
+    override fun shouldBeShow(): Boolean = module?.let {
         it.dependencies.isEmpty() && possibleDependencies().isEmpty()
     } != true
 
@@ -158,9 +159,10 @@ private class ModuleDependenciesList(getDependencies: () -> List<Module>) : Abst
 }
 
 private fun ColoredListCellRenderer<Module>.renderModule(module: Module) {
-    @Suppress("HardCodedStringLiteral")
     append(module.path.asString())
     append(" ")
-    append(module.greyText, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+    module.greyText?.let {
+        append(it, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+    }
     icon = module.icon
 }

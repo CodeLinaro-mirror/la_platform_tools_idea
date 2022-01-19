@@ -2,18 +2,17 @@
 package com.intellij.codeInspection.actions
 
 import com.intellij.find.FindBundle
-import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
+import com.intellij.ui.layout.*
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
 
 internal class FileFilterPanelUi {
   fun panel(useFileMask: JCheckBox, fileMask: JComboBox<in String>) = panel {
-    group(FindBundle.message("find.filter.file.name.group")) {
+    titledRow(FindBundle.message("find.filter.file.name.group")) {
       row {
         useFileMask.text = FindBundle.message("find.filter.file.mask.checkbox")
-        cell(useFileMask)
-        cell(fileMask).horizontalAlign(HorizontalAlign.FILL)
+        useFileMask()
+        fileMask().constraints(pushX, growX)
       }
     }
   }

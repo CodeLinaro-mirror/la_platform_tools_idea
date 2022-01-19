@@ -1,14 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.workspaceModel.ide.impl.legacyBridge.module
 
-import com.intellij.configurationStore.RenameableStateStorageManager
 import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.application.Application
 import com.intellij.openapi.application.WriteAction
-import com.intellij.openapi.components.PathMacroManager
-import com.intellij.openapi.components.impl.ModulePathMacroManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.impl.ModuleImpl
 import com.intellij.openapi.project.Project
@@ -18,9 +15,7 @@ import com.intellij.workspaceModel.ide.WorkspaceModelChangeListener
 import com.intellij.workspaceModel.ide.WorkspaceModelTopics
 import com.intellij.workspaceModel.ide.impl.VirtualFileUrlBridge
 import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl.Companion.findModuleEntity
-import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl.Companion.moduleMap
 import com.intellij.workspaceModel.ide.legacyBridge.ModuleBridge
-import com.intellij.workspaceModel.ide.toPath
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.*
 import com.intellij.workspaceModel.storage.impl.VersionedEntityStorageOnStorage
@@ -42,17 +37,12 @@ internal class ModuleBridgeImpl(
       WorkspaceModelTopics.getInstance(project).subscribeAfterModuleLoading(busConnection, object : WorkspaceModelChangeListener {
         override fun beforeChanged(event: VersionedStorageChange) {
           event.getChanges(ModuleEntity::class.java).filterIsInstance<EntityChange.Removed<ModuleEntity>>().forEach {
-            if (it.entity.persistentId() != moduleEntityId) return@forEach
-
-            if (event.storageBefore.moduleMap.getDataByEntity(it.entity) != this@ModuleBridgeImpl) return@forEach
-
-            val currentStore = entityStorage.current
-            val storage = if (currentStore is WorkspaceEntityStorageBuilder) currentStore.toStorage() else currentStore
-            entityStorage = VersionedEntityStorageOnStorage(storage)
-            assert(entityStorage.current.resolve(moduleEntityId) != null) {
-              // If we ever get this assertion, replace use `event.storeBefore` instead of current
-              // As it made in ArtifactBridge
-              "Cannot resolve module $moduleEntityId. Current store: $currentStore"
+            if (it.entity.persistentId() == moduleEntityId) {
+              val currentStore = entityStorage.current
+              val storage = if (currentStore is WorkspaceEntityStorageBuilder) currentStore.toStorage() else currentStore
+              entityStorage = VersionedEntityStorageOnStorage(storage)
+              assert(entityStorage.current.resolve(
+                moduleEntityId) != null) { "Cannot resolve module $moduleEntityId. Current store: $currentStore" }
             }
           }
         }
@@ -70,20 +60,12 @@ internal class ModuleBridgeImpl(
     super<ModuleImpl>.rename(newName, notifyStorage)
   }
 
-  override fun onImlFileMoved(newModuleFileUrl: VirtualFileUrl) {
-    myImlFilePointer = newModuleFileUrl as VirtualFileUrlBridge
-    val imlPath = newModuleFileUrl.toPath()
-    (store.storageManager as RenameableStateStorageManager).pathRenamed(imlPath, null)
-    store.setPath(imlPath)
-    (PathMacroManager.getInstance(this) as? ModulePathMacroManager)?.onImlFileMoved()
-  }
-
-  override fun registerComponents(modules: Sequence<IdeaPluginDescriptorImpl>,
+  override fun registerComponents(plugins: List<IdeaPluginDescriptorImpl>,
                                   app: Application?,
                                   precomputedExtensionModel: PrecomputedExtensionModel?,
                                   listenerCallbacks: List<Runnable>?) {
-    registerComponents(corePlugin = modules.find { it.pluginId == PluginManagerCore.CORE_ID },
-                       modules = modules,
+    registerComponents(corePlugin = plugins.find { it.pluginId == PluginManagerCore.CORE_ID },
+                       plugins = plugins,
                        precomputedExtensionModel = precomputedExtensionModel,
                        app = app,
                        listenerCallbacks = listenerCallbacks)
@@ -94,17 +76,15 @@ internal class ModuleBridgeImpl(
   }
 
   override fun registerComponents(corePlugin: IdeaPluginDescriptor?,
-                                  modules: Sequence<IdeaPluginDescriptorImpl>,
-                                  precomputedExtensionModel: PrecomputedExtensionModel?,
-                                  app: Application?,
-                                  listenerCallbacks: List<Runnable>?) {
-    super.registerComponents(modules = modules,
+                         plugins: List<IdeaPluginDescriptorImpl>,
+                         precomputedExtensionModel: PrecomputedExtensionModel?,
+                         app: Application?,
+                         listenerCallbacks: List<Runnable>?) {
+    super.registerComponents(plugins = plugins,
                              app = app,
                              precomputedExtensionModel = precomputedExtensionModel,
                              listenerCallbacks = listenerCallbacks)
-    if (corePlugin == null) {
-      return
-    }
+    if (corePlugin == null) return
     unregisterComponent(DeprecatedModuleOptionManager::class.java)
 
     try {

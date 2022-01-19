@@ -34,8 +34,7 @@ internal object LangDownloader {
 
       GrazieDynamic.addDynClassLoader(classLoader)
 
-      // drop caches, restart highlighting
-      GrazieConfig.stateChanged(GrazieConfig.get(), GrazieConfig.get())
+      GrazieConfig.update { state -> state.copy() }
       return true
     }
 

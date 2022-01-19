@@ -4,6 +4,7 @@ package com.jetbrains.python.console;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.util.Consumer;
 import com.jetbrains.python.run.PythonRunConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -20,9 +21,10 @@ public class PydevConsoleWithFileRunnerImpl extends PydevConsoleRunnerImpl {
                                         @Nullable String workingDir,
                                         @NotNull Map<String, String> environmentVariables,
                                         @NotNull PyConsoleOptions.PyConsoleSettings settingsProvider,
+                                        @NotNull Consumer<String> rerunAction,
                                         @NotNull PythonRunConfiguration config,
                                         String... statementsToExecute) {
-    super(project, sdk, consoleType, title, workingDir, environmentVariables, settingsProvider, statementsToExecute);
+    super(project, sdk, consoleType, title, workingDir, environmentVariables, settingsProvider, rerunAction, statementsToExecute);
     myConfig = config;
   }
 

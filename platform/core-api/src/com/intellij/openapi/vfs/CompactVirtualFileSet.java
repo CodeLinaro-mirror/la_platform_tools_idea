@@ -4,7 +4,9 @@ package com.intellij.openapi.vfs;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntIterator;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -18,38 +20,30 @@ import java.util.stream.IntStream;
  * without materialization of all containing files.
  * Remove operations are not supported.
  * NOT thread-safe.
- * @deprecated Use {@link VfsUtilCore#createCompactVirtualFileSet()} instead
  */
-@Deprecated
-@ApiStatus.Internal
-public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implements VirtualFileSet {
+public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> {
   static final int BIT_SET_LIMIT = 1000;
   static final int INT_SET_LIMIT = 10;
 
   // all non-VirtualFileWithId files and first several files are stored here
   private final Set<VirtualFile> weirdFiles = new HashSet<>();
   // when file set become large, they stored as id-set here
-  private StrippedIntOpenHashSet idSet;
+  private IntSet idSet;
   // when file set become very big (e.g. whole project files AnalysisScope) the bit-mask of their ids are stored here
   private BitSet fileIds;
   private boolean frozen;
 
-  @ApiStatus.Internal
   public CompactVirtualFileSet() {
   }
 
-  @ApiStatus.Internal
-  CompactVirtualFileSet(@NotNull Collection<? extends VirtualFile> files) {
+  public CompactVirtualFileSet(@NotNull Collection<? extends VirtualFile> files) {
     addAll(files);
   }
 
   //TODO hide it
   @ApiStatus.Internal
-  public CompactVirtualFileSet(int @NotNull [] fileIds) {
-    idSet = new StrippedIntOpenHashSet();
-    for (int id : fileIds) {
-      idSet.add(id);
-    }
+  public CompactVirtualFileSet(@NotNull IntSet fileIds) {
+    idSet = fileIds;
     if (idSet.size() > BIT_SET_LIMIT) {
       convertToBitSet();
     }
@@ -74,9 +68,9 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
 
   //TODO hide it
   @ApiStatus.Internal
-  public int @NotNull [] onlyInternalFileIds() {
+  public int @NotNull [] onlyFileIds() {
     if (idSet != null) {
-      return idSet.toArray();
+      return idSet.toIntArray();
     }
     if (fileIds != null) {
       return fileIds.stream().toArray();
@@ -96,7 +90,7 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
       if (ids != null) {
         return ids.get(id);
       }
-      StrippedIntOpenHashSet idSet = this.idSet;
+      IntSet idSet = this.idSet;
       if (idSet != null) {
         return idSet.contains(id);
       }
@@ -113,7 +107,7 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
     if (file instanceof VirtualFileWithId) {
       int id = ((VirtualFileWithId)file).getId();
       BitSet ids = fileIds;
-      StrippedIntOpenHashSet idSet = this.idSet;
+      IntSet idSet = this.idSet;
       if (ids != null) {
         added = !ids.get(id);
         ids.set(id);
@@ -138,7 +132,9 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
   }
 
   private void convertToIntSet() {
-    StrippedIntOpenHashSet idSet = new StrippedIntOpenHashSet(weirdFiles.size());
+    IntSet idSet;
+    idSet = new IntOpenHashSet(weirdFiles.size());
+    this.idSet = idSet;
     for (Iterator<VirtualFile> iterator = weirdFiles.iterator(); iterator.hasNext(); ) {
       VirtualFile wf = iterator.next();
       if (wf instanceof VirtualFileWithId) {
@@ -146,12 +142,11 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
         iterator.remove();
       }
     }
-    this.idSet = idSet;
   }
 
   private void convertToBitSet() {
     fileIds = new BitSet();
-    StrippedIntOpenHashSet.SetIterator iterator = idSet.iterator();
+    IntIterator iterator = idSet.iterator();
     while (iterator.hasNext()) {
       fileIds.set(iterator.nextInt());
     }
@@ -172,12 +167,10 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
   /**
    * Make unmodifiable
    */
-  @Override
   public void freeze() {
     frozen = true;
   }
 
-  @Override
   public boolean process(@NotNull Processor<? super VirtualFile> processor) {
     VirtualFileManager virtualFileManager = VirtualFileManager.getInstance();
     BitSet ids = fileIds;
@@ -188,9 +181,9 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
         if (file != null && !processor.process(file)) return false;
       }
     }
-    StrippedIntOpenHashSet idSet = this.idSet;
+    IntSet idSet = this.idSet;
     if (idSet != null) {
-      StrippedIntOpenHashSet.SetIterator iterator = idSet.iterator();
+      IntIterator iterator = idSet.iterator();
       while (iterator.hasNext()) {
         VirtualFile file = virtualFileManager.findFileById(iterator.nextInt());
         if (file != null && !processor.process(file)) {
@@ -209,33 +202,29 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
   @Override
   public int size() {
     BitSet ids = fileIds;
-    StrippedIntOpenHashSet idSet = this.idSet;
+    IntSet idSet = this.idSet;
     return (ids == null ? 0 : ids.cardinality()) + (idSet == null ? 0 : idSet.size()) + weirdFiles.size();
   }
 
   @Override
-  public boolean retainAll(@NotNull Collection<?> c) {
+  public boolean retainAll(Collection<?> c) {
     if (frozen) {
       throw new IllegalStateException();
     }
     if (c instanceof CompactVirtualFileSet) {
       boolean modified = false;
-      StrippedIntOpenHashSet specifiedIdSet = ((CompactVirtualFileSet)c).idSet;
+      IntSet specifiedIdSet = ((CompactVirtualFileSet)c).idSet;
       BitSet specifiedFileIds = ((CompactVirtualFileSet)c).fileIds;
       Set<VirtualFile> specifiedWeirdFiles = ((CompactVirtualFileSet)c).weirdFiles;
 
       if (idSet != null) {
-        IntArrayList toRemove = new IntArrayList();
-        StrippedIntOpenHashSet.SetIterator iterator = idSet.iterator();
+        IntIterator iterator = idSet.intIterator();
         while (iterator.hasNext()) {
           int id = iterator.nextInt();
           if (!contains(id, specifiedIdSet, specifiedFileIds, specifiedWeirdFiles)) {
-            toRemove.add(id);
+            iterator.remove();
             modified = true;
           }
-        }
-        for (int i : toRemove.toArray()) {
-          specifiedIdSet.remove(i);
         }
       }
 
@@ -265,7 +254,7 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
   }
 
   @Override
-  public boolean addAll(@NotNull Collection<? extends VirtualFile> c) {
+  public boolean addAll(Collection<? extends VirtualFile> c) {
     if (frozen) {
       throw new IllegalStateException();
     }
@@ -280,7 +269,7 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
 
       IntStream toAdd;
       if (setToAdd.idSet != null) {
-        toAdd = Arrays.stream(setToAdd.idSet.toArray());
+        toAdd = setToAdd.idSet.intStream();
       }
       else if (setToAdd.fileIds != null) {
         toAdd = setToAdd.fileIds.stream();
@@ -323,7 +312,7 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
   @Override
   public Iterator<VirtualFile> iterator() {
     BitSet ids = fileIds;
-    StrippedIntOpenHashSet idSet = this.idSet;
+    IntSet idSet = this.idSet;
     VirtualFileManager virtualFileManager = VirtualFileManager.getInstance();
     Iterator<VirtualFile> idsIterator;
     if (ids == null) {
@@ -343,9 +332,8 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
       totalIterator = ContainerUtil.concatIterators(idsIterator, weirdFiles.iterator());
     }
     else {
-      StrippedIntOpenHashSet.SetIterator iterator = idSet.iterator();
+      IntIterator iterator = idSet.iterator();
       Iterator<VirtualFile> idSetIterator = new Iterator<VirtualFile>() {
-        int storedId;
         @Override
         public boolean hasNext() {
           return iterator.hasNext();
@@ -354,14 +342,13 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
         @Override
         public VirtualFile next() {
           int id = iterator.nextInt();
-          storedId = id;
           ProgressManager.checkCanceled();
           return virtualFileManager.findFileById(id);
         }
 
         @Override
         public void remove() {
-          idSet.remove(storedId);
+          iterator.remove();
         }
       };
       totalIterator = ContainerUtil.concatIterators(idsIterator, idSetIterator, weirdFiles.iterator());
@@ -383,7 +370,6 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
       private void findNext() {
         hasNext = false;
         while (totalIterator.hasNext()) {
-          ProgressManager.checkCanceled();
           VirtualFile t = totalIterator.next();
           if (t != null) {
             next = t;
@@ -411,7 +397,7 @@ public final class CompactVirtualFileSet extends AbstractSet<VirtualFile> implem
     };
   }
 
-  private static boolean contains(int id, @Nullable StrippedIntOpenHashSet idSet, @Nullable BitSet fileIds, @NotNull Set<? extends VirtualFile> weirdFiles) {
+  private static boolean contains(int id, @Nullable IntSet idSet, @Nullable BitSet fileIds, @NotNull Set<VirtualFile> weirdFiles) {
     if (idSet != null && idSet.contains(id)) return true;
     if (fileIds != null && fileIds.get(id)) return true;
     for (VirtualFile file : weirdFiles) {

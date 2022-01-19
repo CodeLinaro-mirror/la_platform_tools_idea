@@ -27,12 +27,15 @@ public abstract class ToolbarUpdater implements Activatable {
   private final JComponent myComponent;
 
   private final KeymapManagerListener myKeymapManagerListener = new MyKeymapManagerListener();
+  /** @noinspection FieldCanBeLocal*/
   private final TimerListener myTimerListener = new MyTimerListener();
+  private final WeakTimerListener myWeakTimerListener;
 
   private boolean myListenersArmed;
 
   public ToolbarUpdater(@NotNull JComponent component) {
     myComponent = component;
+    myWeakTimerListener = new WeakTimerListener(myTimerListener);
     new UiNotifyConnector(component, this);
   }
 
@@ -44,7 +47,7 @@ public abstract class ToolbarUpdater implements Activatable {
 
     myListenersArmed = true;
     ActionManagerEx actionManager = ActionManagerEx.getInstanceEx();
-    actionManager.addTimerListener(myTimerListener);
+    actionManager.addTimerListener(-1, myWeakTimerListener);
     KeymapManagerEx.getInstanceEx().addWeakListener(myKeymapManagerListener);
     updateActionTooltips();
   }
@@ -57,7 +60,7 @@ public abstract class ToolbarUpdater implements Activatable {
 
     myListenersArmed = false;
     ActionManagerEx actionManager = ActionManagerEx.getInstanceEx();
-    actionManager.removeTimerListener(myTimerListener);
+    actionManager.removeTimerListener(myWeakTimerListener);
     KeymapManagerEx.getInstanceEx().removeWeakListener(myKeymapManagerListener);
   }
 

@@ -14,18 +14,8 @@ import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtDeclaration
-import org.jetbrains.kotlin.renderer.ClassifierNamePolicy
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
-import org.jetbrains.kotlin.renderer.ParameterNameRenderingPolicy
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
-
-private val FUNCTION_RENDERER = DescriptorRenderer.withOptions {
-    withDefinedIn = false
-    modifiers = emptySet()
-    classifierNamePolicy = ClassifierNamePolicy.SHORT
-    withoutTypeParameters = true
-    parameterNameRenderingPolicy = ParameterNameRenderingPolicy.NONE
-}
 
 fun wrapOrSkip(s: String, inCode: Boolean) = if (inCode) "<code>$s</code>" else s
 
@@ -67,7 +57,7 @@ fun formatFunction(functionDescriptor: DeclarationDescriptor, inCode: Boolean): 
     }
 }
 
-private fun formatFunctionDescriptor(functionDescriptor: DeclarationDescriptor): String = FUNCTION_RENDERER.render(functionDescriptor)
+private fun formatFunctionDescriptor(functionDescriptor: DeclarationDescriptor) = DescriptorRenderer.COMPACT.render(functionDescriptor)
 
 fun formatPsiMethod(
     psiMethod: PsiMethod,

@@ -20,13 +20,13 @@ import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.QualifiedName
-import com.jetbrains.extensions.QNameResolveContext
 import com.jetbrains.extensions.getQName
+import com.jetbrains.extensions.QNameResolveContext
 import com.jetbrains.extensions.getRelativeNameTo
 import com.jetbrains.extensions.resolveToElement
-import com.jetbrains.python.PyNames
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.PyQualifiedNameOwner
+import java.util.*
 
 /**
  * Utilities to find which part of [com.intellij.psi.util.QualifiedName] resolves to file and which one to the element
@@ -45,7 +45,7 @@ data class QualifiedNameParts(val fileName: QualifiedName, val elementName: Qual
     var relativeFileName: QualifiedName? = null
     if (folderToGetFileRelativePathTo != null) {
       val folderQName = folderToGetFileRelativePathTo.getQName()
-      relativeFileName = folderQName?.let { fileName.getRelativeNameTo(folderQName) } ?: fileName
+      relativeFileName = if (folderQName != null) fileName.getRelativeNameTo(folderQName) else fileName // TODO: DOC
     }
 
     if (relativeFileName == null) {
@@ -100,9 +100,7 @@ private fun PyQualifiedNameOwner.getEmulatedQNameParts(): QualifiedNameParts? {
 
 /**
  * Splits qname to [QualifiedNameParts]: filesystem part and element(symbol) part.
- * Resolve parts sequentially until meets file. May be slow.
- *
- * Functions goes from right (symbol) to the left (file name)
+ * Resolves parts sequentially until meets file. May be slow.
  *
  * @see [com.jetbrains.python.psi.PyQualifiedNameOwner] extensions
  * @return null if no file part found
@@ -114,17 +112,11 @@ internal fun QualifiedName.tryResolveAndSplit(context: QNameResolveContext): Qua
   var i = this.componentCount
   while (i > 0) {
     val possibleFileName = this.subQualifiedName(0, i)
-    var possibleFile = possibleFileName.resolveToElement(context)
-
-    if (possibleFile is PsiDirectory) {
-      // test class may be declared directly in init.py, so "module.Class" is not module.py but module/__init__.py
-      possibleFile = possibleFile.files.firstOrNull { it.name == PyNames.INIT_DOT_PY }
-    }
-
+    val possibleFile = possibleFileName.resolveToElement(context)
     if (possibleFile is PyFile) {
       return QualifiedNameParts(possibleFileName,
-        this.subQualifiedName(possibleFileName.componentCount, this.componentCount),
-        possibleFile)
+                                this.subQualifiedName(possibleFileName.componentCount, this.componentCount),
+                                possibleFile)
     }
     i--
   }

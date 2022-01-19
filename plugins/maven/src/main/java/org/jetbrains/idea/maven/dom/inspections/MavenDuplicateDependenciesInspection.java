@@ -2,7 +2,6 @@
 package org.jetbrains.idea.maven.dom.inspections;
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
-import com.intellij.ide.nls.NlsMessages;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -83,19 +82,20 @@ public class MavenDuplicateDependenciesInspection extends DomElementsInspection<
   private static void addProblem(@NotNull MavenDomDependency dependency,
                                  @NotNull Collection<MavenDomDependency> dependencies,
                                  @NotNull DomElementAnnotationHolder holder) {
+    StringBuilder sb = new StringBuilder();
     Set<MavenDomProjectModel> processed = new HashSet<>();
-    List<String> links = new ArrayList<>();
     for (MavenDomDependency domDependency : dependencies) {
       if (dependency.equals(domDependency)) continue;
       MavenDomProjectModel model = domDependency.getParentOfType(MavenDomProjectModel.class, false);
       if (model != null && !processed.contains(model)) {
-        links.add(createLinkText(model, domDependency));
+        if (processed.size() > 0) sb.append(", ");
+        sb.append(createLinkText(model, domDependency));
+
         processed.add(model);
       }
     }
-    links.sort(null);
     holder.createProblem(dependency, HighlightSeverity.WARNING,
-                         MavenDomBundle.message("MavenDuplicateDependenciesInspection.has.duplicates", NlsMessages.formatAndList(links)));
+                         MavenDomBundle.message("MavenDuplicateDependenciesInspection.has.duplicates", sb.toString()));
   }
 
   private static String createLinkText(@NotNull MavenDomProjectModel model, @NotNull MavenDomDependency dependency) {

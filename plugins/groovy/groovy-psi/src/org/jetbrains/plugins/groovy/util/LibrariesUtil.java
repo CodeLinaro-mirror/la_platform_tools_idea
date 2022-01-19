@@ -214,7 +214,9 @@ public final class LibrariesUtil {
       }
     }
     if (insertionPoint >= 0) {
-      System.arraycopy(order, insertionPoint, order, insertionPoint + 1, order.length - 1 - insertionPoint);
+      for (int i = order.length - 1; i > insertionPoint; i--) {
+        order[i] = order[i - 1];
+      }
       order[insertionPoint] = addedEntry;
       model.rearrangeOrderEntries(order);
     }

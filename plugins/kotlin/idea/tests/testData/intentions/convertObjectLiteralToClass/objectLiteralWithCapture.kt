@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'x' is never used
 open class K
 
 fun foo(n: Int) {

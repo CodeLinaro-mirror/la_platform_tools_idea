@@ -144,7 +144,10 @@ class GitCommitOptionsUi(
         if (e.isParentChanged && panel == e.changed && panel.parent != null) beforeShow()
       }
     }
+    refresh()
+  }
 
+  override fun refresh() {
     refresh(null)
     commitAuthorChanged()
     commitAuthorDateChanged()

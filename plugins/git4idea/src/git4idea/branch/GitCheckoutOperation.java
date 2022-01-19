@@ -275,7 +275,7 @@ class GitCheckoutOperation extends GitBranchOperation {
 
   @NotNull
   @Override
-  protected String getSuccessMessage() {
+  public String getSuccessMessage() {
     if (myNewBranch == null) {
       return GitBundle.message("checkout.operation.checked.out",
                                bold(code(myStartPointReference)));

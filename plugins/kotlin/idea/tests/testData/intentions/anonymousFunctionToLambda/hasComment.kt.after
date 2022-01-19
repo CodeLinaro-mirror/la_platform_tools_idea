@@ -1,4 +1,3 @@
-// AFTER-WARNING: Variable 'p' is never used
 fun foo(f: () -> Unit) {
     f()
 }

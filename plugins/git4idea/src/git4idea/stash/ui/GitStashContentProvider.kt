@@ -13,8 +13,6 @@ import com.intellij.openapi.util.registry.RegistryValueListener
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManagerListener
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentProvider
-import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.content.Content
 import com.intellij.vcs.log.runInEdt
 import git4idea.i18n.GitBundle
@@ -32,21 +30,14 @@ internal class GitStashContentProvider(private val project: Project) : ChangesVi
     project.service<GitStashTracker>().scheduleRefresh()
 
     disposable = Disposer.newDisposable("Git Stash Content Provider")
-    val gitStashUi = GitStashUi(project, isVertical(), isEditorDiffPreview(), disposable!!)
+    val gitStashUi = GitStashUi(project, ChangesViewContentManager.isCommitToolWindowShown(project), disposable!!)
     project.messageBus.connect(disposable!!).subscribe(ChangesViewContentManagerListener.TOPIC, object : ChangesViewContentManagerListener {
       override fun toolWindowMappingChanged() {
-        gitStashUi.updateLayout(isVertical(), isEditorDiffPreview())
+        gitStashUi.setDiffPreviewInEditor(ChangesViewContentManager.isCommitToolWindowShown(project))
       }
-    })
-    project.messageBus.connect(disposable!!).subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
-      override fun stateChanged(toolWindowManager: ToolWindowManager) = gitStashUi.updateLayout(isVertical(), isEditorDiffPreview())
     })
     return gitStashUi
   }
-
-  private fun isVertical() = ChangesViewContentManager.getToolWindowFor(project, TAB_NAME)?.anchor?.isHorizontal == false
-
-  private fun isEditorDiffPreview() = ChangesViewContentManager.isCommitToolWindowShown(project)
 
   override fun disposeContent() {
     disposable?.let { Disposer.dispose(it) }
@@ -85,9 +76,8 @@ internal class GitStashStartupActivity : StartupActivity.DumbAware {
   override fun runActivity(project: Project) {
     runInEdt(project) {
       val gitStashTracker = project.service<GitStashTracker>()
-      val stashTrackerIsNotEmpty = gitStashTracker.isNotEmpty()
       gitStashTracker.addListener(object : GitStashTrackerListener {
-        private var hasStashes = stashTrackerIsNotEmpty
+        private var hasStashes = gitStashTracker.isNotEmpty()
         override fun stashesUpdated() {
           if (hasStashes != gitStashTracker.isNotEmpty()) {
             hasStashes = gitStashTracker.isNotEmpty()
@@ -101,9 +91,6 @@ internal class GitStashStartupActivity : StartupActivity.DumbAware {
           project.messageBus.syncPublisher(ChangesViewContentManagerListener.TOPIC).toolWindowMappingChanged()
         }
       }, gitStashTracker)
-      if (stashTrackerIsNotEmpty) {
-        project.messageBus.syncPublisher(ChangesViewContentManagerListener.TOPIC).toolWindowMappingChanged()
-      }
     }
   }
 }

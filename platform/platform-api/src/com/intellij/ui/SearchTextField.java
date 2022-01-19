@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
 import com.intellij.ide.util.PropertiesComponent;
@@ -44,6 +44,7 @@ public class SearchTextField extends JPanel {
   private JBPopup myPopup;
   private String myHistoryPropertyName;
   private final boolean historyPopupEnabled;
+  private boolean init = true;
 
   public SearchTextField() {
     this(true);
@@ -152,6 +153,7 @@ public class SearchTextField extends JPanel {
     DumbAwareAction.create(event -> {
       showPopup();
     }).registerCustomShortcutSet(KeymapUtil.getActiveKeymapShortcuts("ShowSearchHistory"), myTextField);
+    init = false;
   }
 
   @Override
@@ -227,6 +229,7 @@ public class SearchTextField extends JPanel {
   public void addCurrentTextToHistory() {
     if (myModel.addElement(getText()) && myHistoryPropertyName != null) {
       PropertiesComponent.getInstance().setValue(myHistoryPropertyName, StringUtil.join(getHistory(), "\n"));
+      reInitPopup();
     }
   }
 
@@ -341,7 +344,7 @@ public class SearchTextField extends JPanel {
 
     public void fireContentsChanged() {
       fireContentsChanged(this, -1, -1);
-      updatePopup();
+      reInitPopup();
     }
 
     public void setItems(List<String> aList) {
@@ -362,35 +365,31 @@ public class SearchTextField extends JPanel {
       final String value = (String)list.getSelectedValue();
       getTextEditor().setText(value != null ? value : "");
       addCurrentTextToHistory();
+      reInitPopup();
     };
   }
 
   protected void showPopup() {
     addCurrentTextToHistory();
-    if (myPopup != null && myPopup.isVisible()) return;
-    if (historyPopupEnabled) {
-      doShowPopup();
+    if ((myPopup == null || !myPopup.isVisible()) && historyPopupEnabled) {
+      reInitPopup();
+      if (isShowing()) {
+        myPopup.showUnderneathOf(getPopupLocationComponent());
+      }
     }
   }
 
-  private void updatePopup() {
-    if (myPopup != null && myPopup.isVisible()) {
+  private void reInitPopup() {
+    if(!init) {
       hidePopup();
-      doShowPopup();
-    }
-  }
-
-  private void doShowPopup() {
-    if (ApplicationManager.getApplication() != null &&
-        JBPopupFactory.getInstance() != null &&
-        isShowing()) {
       final JList<String> list = new JBList<>(myModel);
       final Runnable chooseRunnable = createItemChosenCallback(list);
-      myPopup = JBPopupFactory.getInstance().createListPopupBuilder(list)
-        .setMovable(false)
-        .setRequestFocus(true)
-        .setItemChoosenCallback(chooseRunnable).createPopup();
-      myPopup.showUnderneathOf(getPopupLocationComponent());
+      if (ApplicationManager.getApplication() != null && JBPopupFactory.getInstance() != null) {
+        myPopup = JBPopupFactory.getInstance().createListPopupBuilder(list)
+          .setMovable(false)
+          .setRequestFocus(true)
+          .setItemChoosenCallback(chooseRunnable).createPopup();
+      }
     }
   }
 
@@ -430,9 +429,11 @@ public class SearchTextField extends JPanel {
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
+  @SuppressWarnings("unused")
   public void setSearchIcon(final Icon icon) {
   }
 
+  @SuppressWarnings("ComponentNotRegistered")
   public static final class FindAction extends DumbAwareAction {
     @Override
     public void actionPerformed(@NotNull AnActionEvent event) {

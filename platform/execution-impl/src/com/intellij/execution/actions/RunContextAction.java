@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.actions;
 
 import com.intellij.CommonBundle;
@@ -13,16 +13,13 @@ import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.util.ThreeState;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,54 +33,30 @@ public class RunContextAction extends BaseRunConfigurationAction {
   private final Executor myExecutor;
 
   public RunContextAction(@NotNull Executor executor) {
-    super(ExecutionBundle.messagePointer("perform.action.with.context.configuration.action.name", executor.getStartActionText()),
-          Presentation.NULL_STRING, IconLoader.createLazy(() -> executor.getIcon()));
+    super(ExecutionBundle.messagePointer("perform.action.with.context.configuration.action.name", executor.getStartActionText()), Presentation.NULL_STRING, IconLoader.createLazy(() -> executor.getIcon()));
     myExecutor = executor;
   }
 
   @Override
   protected void perform(ConfigurationContext context) {
-    final RunManagerEx runManager = (RunManagerEx)context.getRunManager();
-    DataContext dataContext = context.getDefaultDataContext();
-    ReadAction
-      .nonBlocking(() -> findExisting(context))
-      .finishOnUiThread(ModalityState.NON_MODAL, existingConfiguration -> perform(runManager, existingConfiguration, dataContext))
-      .submit(AppExecutorUtil.getAppExecutorService());
+    perform(findExisting(context), context);
   }
 
   @Override
-  protected void perform(final RunnerAndConfigurationSettings configuration, ConfigurationContext context) {
+  protected void perform(RunnerAndConfigurationSettings configuration, ConfigurationContext context) {
     final RunManagerEx runManager = (RunManagerEx)context.getRunManager();
     if (configuration == null) {
-      RunnerAndConfigurationSettings contextConfiguration = context.getConfiguration();
-      if (contextConfiguration == null) {
+      configuration = context.getConfiguration();
+      if (configuration == null) {
         return;
       }
-      runManager.setTemporaryConfiguration(contextConfiguration);
-      perform(runManager, contextConfiguration, context.getDataContext());
+      runManager.setTemporaryConfiguration(configuration);
     }
-    else {
-      DataContext dataContext = context.getDefaultDataContext();
-      ReadAction
-        .nonBlocking(() -> findExisting(context))
-        .finishOnUiThread(ModalityState.NON_MODAL, existingConfiguration -> {
-          if (configuration != existingConfiguration) {
-            RunConfigurationOptionUsagesCollector.logAddNew(context.getProject(), configuration.getType().getId(), context.getPlace());
-            runManager.setTemporaryConfiguration(configuration);
-            perform(runManager, configuration, dataContext);
-          }
-          else {
-            perform(runManager, configuration, dataContext);
-          }
-        })
-        .submit(AppExecutorUtil.getAppExecutorService());
+    else if (configuration != findExisting(context)) {
+      RunConfigurationOptionUsagesCollector.logAddNew(context.getProject(), configuration.getType().getId(), context.getPlace());
+      runManager.setTemporaryConfiguration(configuration);
     }
-  }
-
-  private void perform(RunManagerEx runManager,
-                       RunnerAndConfigurationSettings configuration, 
-                       DataContext dataContext) {
-    if (runManager.shouldSetRunConfigurationFromContext()) {
+    if (Registry.is("select.run.configuration.from.context")) {
       runManager.setSelectedConfiguration(configuration);
     }
 
@@ -94,7 +67,7 @@ public class RunContextAction extends BaseRunConfigurationAction {
     if (ApplicationManager.getApplication().isUnitTestMode()) {
       return;
     }
-    ExecutionUtil.doRunConfiguration(configuration, myExecutor, null, null, dataContext);
+    ExecutionUtil.doRunConfiguration(configuration, myExecutor, null, null, context.getDataContext());
   }
 
   @Override
@@ -154,8 +127,7 @@ public class RunContextAction extends BaseRunConfigurationAction {
   }
 
   @NotNull
-  private AnAction runAllConfigurationsAction(@NotNull ConfigurationContext context,
-                                              @NotNull List<? extends ConfigurationFromContext> configurationsFromContext) {
+  private AnAction runAllConfigurationsAction(@NotNull ConfigurationContext context, @NotNull List<? extends ConfigurationFromContext> configurationsFromContext) {
     return new AnAction(
       CommonBundle.message("action.text.run.all"),
       ExecutionBundle.message("run.all.configurations.available.in.this.context"),

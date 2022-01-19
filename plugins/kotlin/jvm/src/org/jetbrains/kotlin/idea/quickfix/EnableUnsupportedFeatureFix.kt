@@ -2,6 +2,7 @@
 
 package org.jetbrains.kotlin.idea.quickfix
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleUtilCore
@@ -25,8 +26,6 @@ import org.jetbrains.kotlin.idea.core.isInTestSourceContentKotlinAware
 import org.jetbrains.kotlin.idea.facet.KotlinFacet
 import org.jetbrains.kotlin.idea.facet.getRuntimeLibraryVersion
 import org.jetbrains.kotlin.idea.roots.invalidateProjectRoots
-import org.jetbrains.kotlin.idea.util.application.isApplicationInternalMode
-import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.projectStructure.allModules
 import org.jetbrains.kotlin.idea.versions.findKotlinRuntimeLibrary
 import org.jetbrains.kotlin.idea.versions.updateLibraries
@@ -103,7 +102,7 @@ sealed class EnableUnsupportedFeatureFix(
             val apiVersionOnly = sinceVersion <= languageFeatureSettings.languageVersion &&
                     feature.sinceApiVersion > languageFeatureSettings.apiVersion
 
-            if (!sinceVersion.isStableOrReadyForPreview() && !isApplicationInternalMode()) {
+            if (!sinceVersion.isStableOrReadyForPreview() && !ApplicationManager.getApplication().isInternal) {
                 return null
             }
 
@@ -137,7 +136,7 @@ fun checkUpdateRuntime(project: Project, requiredVersion: ApiVersion): Boolean {
 }
 
 fun askUpdateRuntime(project: Project, requiredVersion: ApiVersion, librariesToUpdate: List<Library>): Boolean {
-    if (!isUnitTestMode()) {
+    if (!ApplicationManager.getApplication().isUnitTestMode) {
         val rc = Messages.showOkCancelDialog(
             project,
             KotlinJvmBundle.message(

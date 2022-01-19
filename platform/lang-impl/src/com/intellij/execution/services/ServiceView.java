@@ -7,7 +7,6 @@ import com.intellij.ide.DeleteProvider;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataProvider;
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.actionSystem.PlatformDataKeys;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.RecursionManager;
@@ -130,10 +129,10 @@ abstract class ServiceView extends JPanel implements Disposable {
       }
     };
     serviceView.putClientProperty(DataManager.CLIENT_PROPERTY_DATA_PROVIDER, (DataProvider)dataId -> {
-      if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
+      if (PlatformDataKeys.HELP_ID.is(dataId)) {
         return ServiceViewManagerImpl.getToolWindowContextHelpId();
       }
-      if (PlatformCoreDataKeys.SELECTED_ITEMS.is(dataId)) {
+      if (PlatformDataKeys.SELECTED_ITEMS.is(dataId)) {
         return ContainerUtil.map2Array(serviceView.getSelectedItems(), ServiceViewItem::getValue);
       }
       if (PlatformDataKeys.DELETE_ELEMENT_PROVIDER.is(dataId)) {
@@ -158,7 +157,7 @@ abstract class ServiceView extends JPanel implements Disposable {
         return viewOptions;
       }
       List<ServiceViewItem> selectedItems = serviceView.getSelectedItems();
-      if (PlatformCoreDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
+      if (PlatformDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
         return new SmartList<DataProvider>(slowDataId -> {
           if (CommonDataKeys.NAVIGATABLE_ARRAY.is(slowDataId)) {
             List<Navigatable> navigatables = ContainerUtil.mapNotNull(selectedItems, item -> item.getViewDescriptor().getNavigatable());

@@ -36,6 +36,9 @@ open class BooleanCommitOption(
   private val isInSettings get() = checkinPanel is CommitOptionsConfigurable.CheckinPanel
   private val isInNonModalOptionsPopup get() = checkinPanel.isNonModalCommit
 
+  override fun refresh() {
+  }
+
   override fun saveState() {
     setter.accept(checkBox.isSelected)
   }

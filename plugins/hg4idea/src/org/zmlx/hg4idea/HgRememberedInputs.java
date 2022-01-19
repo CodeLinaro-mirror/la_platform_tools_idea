@@ -4,7 +4,6 @@ package org.zmlx.hg4idea;
 import com.intellij.dvcs.DvcsRememberedInputs;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 
@@ -13,8 +12,7 @@ import com.intellij.openapi.components.Storage;
  */
 @State(
   name = "HgRememberedInputs",
-  storages = @Storage("vcs.xml"),
-  category = SettingsCategory.TOOLS
+  storages = @Storage("vcs.xml")
 )
 public class HgRememberedInputs extends DvcsRememberedInputs implements PersistentStateComponent<DvcsRememberedInputs.State> {
   public static DvcsRememberedInputs getInstance() {

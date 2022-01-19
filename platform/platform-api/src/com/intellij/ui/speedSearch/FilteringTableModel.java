@@ -15,6 +15,7 @@
  */
 package com.intellij.ui.speedSearch;
 
+import com.google.common.collect.Lists;
 import com.intellij.openapi.util.Condition;
 
 import javax.swing.event.TableModelListener;
@@ -72,7 +73,7 @@ public class FilteringTableModel<T> extends AbstractTableModel {
         include = true;
       }
       if (include) {
-        List<T> elements = new ArrayList<>(myOriginalModel.getColumnCount());
+        List<T> elements = Lists.newArrayListWithCapacity(myOriginalModel.getColumnCount());
         for (int col = 0; col < myOriginalModel.getColumnCount(); col++) {
           //noinspection unchecked
           elements.add((T)myOriginalModel.getValueAt(i, col));

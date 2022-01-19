@@ -11,7 +11,6 @@ import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiPackage;
 import com.intellij.rt.coverage.data.ClassData;
 import com.intellij.rt.coverage.data.LineData;
 import com.intellij.rt.coverage.data.ProjectData;
@@ -56,7 +55,7 @@ public class CoverageAnnotatorIntegrationTest extends JavaModuleTestCase {
   }
 
   public void testExcludeEverythingFromCoverage() {
-    PsiPackage psiPackage = JavaPsiFacade.getInstance(getProject()).findPackage("p");
+    PackageAnnotator annotator = new PackageAnnotator(JavaPsiFacade.getInstance(getProject()).findPackage("p"));
     JavaCoverageEngine engine = new JavaCoverageEngine() {
       @Override
       public boolean acceptedByFilters(@NotNull PsiFile psiFile, @NotNull CoverageSuitesBundle suite) {
@@ -75,12 +74,12 @@ public class CoverageAnnotatorIntegrationTest extends JavaModuleTestCase {
         };
       }
     };
-    new JavaCoverageClassesAnnotator(suite, myProject, new PackageAnnotator.Annotator() {
+    annotator.annotate(suite, new PackageAnnotator.Annotator() {
       @Override
       public void annotateClass(String classQualifiedName, PackageAnnotator.ClassCoverageInfo classCoverageInfo) {
         Assert.fail("No classes are accepted by filter");
       }
-    }).visitRootPackage(psiPackage);
+    });
   }
 
   public void testMultipleSourceRoots() {
@@ -103,16 +102,16 @@ public class CoverageAnnotatorIntegrationTest extends JavaModuleTestCase {
         };
       }
     };
-    PsiPackage psiPackage = JavaPsiFacade.getInstance(getProject()).findPackage("p");
+    PackageAnnotator annotator = new PackageAnnotator(JavaPsiFacade.getInstance(getProject()).findPackage("p"));
     Map<VirtualFile, PackageAnnotator.PackageCoverageInfo> dirs = new HashMap<>();
-    new JavaCoverageClassesAnnotator(suite, myProject, new PackageAnnotator.Annotator() {
+    annotator.annotate(suite, new PackageAnnotator.Annotator() {
       @Override
       public void annotateSourceDirectory(VirtualFile virtualFile,
                                           PackageAnnotator.PackageCoverageInfo packageCoverageInfo,
                                           Module module) {
         dirs.put(virtualFile, packageCoverageInfo);
       }
-    }).visitRootPackage(psiPackage);
+    });
 
     assertEquals(2, dirs.size());
     for (PackageAnnotator.PackageCoverageInfo coverageInfo : dirs.values()) {

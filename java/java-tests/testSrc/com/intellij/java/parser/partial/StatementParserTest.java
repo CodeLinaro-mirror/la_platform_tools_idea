@@ -37,7 +37,6 @@ public class StatementParserTest extends JavaParsingTestCase {
   public void testYieldCallNonQualified() { doParserTest("yield();"); }
   public void testYieldCallNonQualifiedWithLambda() { doParserTest("yield(() -> {});"); }
   public void testYieldLambda() { doParserTest("yield () -> {};"); }
-  public void testYieldAssignment() { doParserTest("yield = 10;"); }
   public void testYieldCompatibility() { setLanguageLevel(LanguageLevel.JDK_12); doParserTest("yield(2);"); }
 
   public void testContinueNormal0() { doParserTest("continue;"); }
@@ -137,8 +136,6 @@ public class StatementParserTest extends JavaParsingTestCase {
   public void testSwitchRules12() { doParserTest("case 1, -> { }"); }
   public void testSwitchRules13() { doParserTest("case null, default -> { }"); }
   public void testSwitchRules14() { doParserTest("case default -> { }"); }
-  public void testSwitchRules15() { doParserTest("case A a && x.foo(() -> true) -> {}"); }
-  public void testSwitchRules16() { doParserTest("case A a && b -> {}"); }
 
   public void testSwitchRulesWithPattern0() { doParserTest("case Integer i -> { }"); }
   public void testSwitchRulesWithPattern1() { doParserTest("case int[] ia -> { }"); }

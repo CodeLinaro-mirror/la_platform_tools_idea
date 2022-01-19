@@ -1,4 +1,3 @@
-// AFTER-WARNING: The expression is unused
 fun foo() {
     val x = true
     val y = false

@@ -16,12 +16,8 @@ import org.jetbrains.annotations.Nullable;
 import org.testng.annotations.DataProvider;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-
-import static com.theoryinpractice.testng.util.TestNGUtil.TEST_ANNOTATION_FQN;
 
 /**
  * @author Dmitry Batkovich
@@ -45,7 +41,7 @@ public class DataProviderReturnTypeInspection extends AbstractBaseJavaLocalInspe
     final PsiAnnotation annotation = AnnotationUtil.findAnnotation(method, dataProviderFqn);
     if (annotation != null) {
       final PsiType returnType = method.getReturnType();
-      if (returnType != null && !isSuitableReturnType(method, returnType, annotation)) {
+      if (returnType != null && !isSuitableReturnType(method, returnType)) {
         final PsiTypeElement returnTypeElement = method.getReturnTypeElement();
         LOG.assertTrue(returnTypeElement != null);
         boolean supportOneDimensional = supportOneDimensional(method);
@@ -62,32 +58,6 @@ public class DataProviderReturnTypeInspection extends AbstractBaseJavaLocalInspe
     return null;
   }
 
-  private static boolean isAppropriateType(PsiType returnType, @NotNull PsiAnnotation annotation) {
-    PsiAnnotationMemberValue nameValue = annotation.findAttributeValue("name");
-    ArrayList<PsiReference> references = new ArrayList<>();
-    if (nameValue != null) {
-      PsiReference[] refs = nameValue.getReferences();
-      if (refs.length != 0) {
-        references.addAll(Arrays.asList(refs));
-      }
-    }
-    PsiMethod resolvedMethod = null;
-    if (references.size() > 0) {
-      for (PsiReference ref : references) {
-        PsiElement resolve = ref.resolve();
-        if (resolve instanceof PsiMethod && AnnotationUtil.findAnnotation((PsiMethod)resolve, TEST_ANNOTATION_FQN) != null) {
-          resolvedMethod = (PsiMethod)resolve;
-        }
-      }
-    }
-    if (resolvedMethod == null) return false;
-    PsiParameter[] parameters;
-    parameters = resolvedMethod.getParameterList().getParameters();
-    ArrayList<PsiType> appropriateTypes = Arrays.stream(parameters).map(PsiParameter::getType).map(PsiType::getDeepComponentType)
-      .collect(Collectors.toCollection(ArrayList::new));
-    return appropriateTypes.contains(returnType.getDeepComponentType());
-  }
-
   private static LocalQuickFix[] createFixes(boolean supportOneDimensional, final @NotNull PsiMethod method) {
     final PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(method.getProject());
     List<LocalQuickFix> fixes = new ArrayList<>();
@@ -100,9 +70,9 @@ public class DataProviderReturnTypeInspection extends AbstractBaseJavaLocalInspe
     return fixes.toArray(LocalQuickFix.EMPTY_ARRAY);
   }
 
-  private static boolean isSuitableReturnType(PsiMethod method, final @NotNull PsiType type, @NotNull PsiAnnotation annotation) {
+  private static boolean isSuitableReturnType(PsiMethod method, final @NotNull PsiType type) {
     if (type instanceof PsiArrayType) {
-      return isAppropriateTypeArray(method, ((PsiArrayType)type).getComponentType(), annotation);
+      return isObjectArray(method, ((PsiArrayType)type).getComponentType());
     }
     else if (type instanceof PsiClassType) {
       final PsiClassType.ClassResolveResult resolveResult = ((PsiClassType)type).resolveGenerics();
@@ -118,7 +88,7 @@ public class DataProviderReturnTypeInspection extends AbstractBaseJavaLocalInspe
       if (genericType == null) {
         return false;
       }
-      return isAppropriateTypeArray(method, genericType, annotation);
+      return isObjectArray(method, genericType);
     }
     return false;
   }
@@ -128,11 +98,11 @@ public class DataProviderReturnTypeInspection extends AbstractBaseJavaLocalInspe
     return version != null && version.isOrGreaterThan(6, 11);
   }
 
-  private static boolean isAppropriateTypeArray(PsiMethod method, final @NotNull PsiType type, @NotNull PsiAnnotation annotation) {
+  private static boolean isObjectArray(PsiMethod method, final @NotNull PsiType type) {
     if (!(type instanceof PsiArrayType)) {
-      return supportOneDimensional(method) && (type.equalsToText(CommonClassNames.JAVA_LANG_OBJECT) || isAppropriateType(type, annotation));
+      return supportOneDimensional(method) && type.equalsToText(CommonClassNames.JAVA_LANG_OBJECT);
     }
-    final PsiType componentType = type.getDeepComponentType();
+    final PsiType componentType = ((PsiArrayType)type).getComponentType();
     if (!(componentType instanceof PsiClassType)) {
       return false;
     }
@@ -140,6 +110,6 @@ public class DataProviderReturnTypeInspection extends AbstractBaseJavaLocalInspe
     if (resolvedClass == null) {
       return false;
     }
-    return CommonClassNames.JAVA_LANG_OBJECT.equals(resolvedClass.getQualifiedName()) || isAppropriateType(type, annotation);
+    return CommonClassNames.JAVA_LANG_OBJECT.equals(resolvedClass.getQualifiedName());
   }
 }

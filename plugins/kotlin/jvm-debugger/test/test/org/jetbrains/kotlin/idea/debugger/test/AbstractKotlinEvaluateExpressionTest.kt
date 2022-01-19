@@ -34,6 +34,7 @@ import org.jetbrains.kotlin.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.test.InTextDirectivesUtils.findLinesWithPrefixesRemoved
 import org.jetbrains.kotlin.test.InTextDirectivesUtils.findStringWithPrefixes
 import org.jetbrains.kotlin.test.KotlinBaseTest
+import org.jetbrains.kotlin.test.TargetBackend
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.tree.TreeNode
@@ -136,11 +137,9 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDescriptorTestCaseWi
             return
         }
 
-        processStackFramesOnPooledThread {
-            for (stackFrame in this) {
-                val result = FramePrinter(suspendContext).print(stackFrame)
-                print(result, ProcessOutputTypes.SYSTEM)
-            }
+        processStackFrameOnPooledThread {
+            val result = FramePrinter(suspendContext).print(this)
+            print(result, ProcessOutputTypes.SYSTEM)
             suspendContext.invokeInManagerThread(completion)
         }
     }

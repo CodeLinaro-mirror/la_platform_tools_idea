@@ -1,20 +1,16 @@
 package com.intellij.psi.html;
 
-import com.intellij.html.embedding.HtmlEmbeddedContentSupport;
 import com.intellij.ide.highlighter.HtmlFileType;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.impl.DebugUtil;
-import com.intellij.testFramework.ExtensionTestUtil;
 import com.intellij.testFramework.LightIdeaTestCase;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -174,7 +170,7 @@ public class HtmlParseTest extends LightIdeaTestCase {
     s = "<html>&nbsp;</html>";
     result = getTreeTextByText(s);
     assertResult("CharEntityRef.txt",result);
-
+    
     s = "<html>&#xA0;&#XA0;</html>";
     result = getTreeTextByText(s);
     assertResult("CharRef.txt",result);
@@ -383,7 +379,7 @@ public class HtmlParseTest extends LightIdeaTestCase {
 
     result = getTreeTextByText("<?xml version='1.0'?>\n  ");
     assertResult("JustPI.txt",result);
-
+    
     result = getTreeTextByText("\n<p>");
     assertResult("JustP.txt",result);
 
@@ -493,10 +489,6 @@ public class HtmlParseTest extends LightIdeaTestCase {
   }
 
   public void testParsePerformance() throws Exception {
-    ExtensionTestUtil.maskExtensions(HtmlEmbeddedContentSupport.EP_NAME,
-                                     ContainerUtil.emptyList(), getTestRootDisposable());
-    ExtensionTestUtil.maskExtensions(ExtensionPointName.create("com.intellij.html.scriptContentProvider"),
-                                     ContainerUtil.emptyList(), getTestRootDisposable());
     final Ref<String> result = Ref.create();
     PlatformTestUtil.startPerformanceTest("Parsing", 500, () -> result.set(getTreeTextByFile("index-all.html"))).assertTiming();
     assertResult("Performance.txt", result.get());
@@ -511,7 +503,7 @@ public class HtmlParseTest extends LightIdeaTestCase {
     assertEquals("trees should be equals",text,fileFromText.getText());
     return DebugUtil.psiTreeToString(fileFromText, true).trim();
   }
-
+  
   private static void assertResult(@NonNls String targetDataName, final String text) throws Exception {
     try{
       String expectedText = loadFile(targetDataName);

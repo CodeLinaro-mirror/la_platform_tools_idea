@@ -8,7 +8,6 @@ import com.intellij.codeInspection.IntentionWrapper
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.psi.PsiFile
-import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactoryWithPsiElement
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
@@ -59,7 +58,7 @@ abstract class AbstractDiagnosticBasedMigrationInspection<T : KtElement>(
                             element,
                             text,
                             false,
-                            arrayOf(IntentionWrapper(intentionAction)),
+                            arrayOf(IntentionWrapper(intentionAction, file)),
                             ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
                         ),
                     )
@@ -70,6 +69,5 @@ abstract class AbstractDiagnosticBasedMigrationInspection<T : KtElement>(
         return problemDescriptors.toTypedArray()
     }
 
-    @Nls
     protected open fun descriptionMessage(): String? = null
 }

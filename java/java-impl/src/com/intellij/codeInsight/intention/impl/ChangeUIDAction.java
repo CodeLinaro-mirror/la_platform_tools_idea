@@ -7,7 +7,6 @@ import com.intellij.java.JavaBundle;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.search.LocalSearchScope;
@@ -15,8 +14,6 @@ import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.siyeh.ig.psiutils.CommentTracker;
-import com.siyeh.ig.psiutils.ExpressionUtils;
-import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
@@ -63,10 +60,8 @@ public class ChangeUIDAction extends PsiElementBaseIntentionAction {
     if (field.hasModifierProperty(PsiModifier.FINAL)) {
       PsiClass aClass = field.getContainingClass();
       if (aClass == null) return false;
-      boolean initializersHasReferencesToField = StreamEx.of(aClass.getInitializers())
-        .flatMap(initializer -> StreamEx.ofTree((PsiElement)initializer, el -> StreamEx.of(el.getChildren())))
-        .select(PsiReferenceExpression.class)
-        .anyMatch(el -> ExpressionUtils.isReferenceTo(el, field));
+      boolean initializersHasReferencesToField = Arrays.stream(aClass.getInitializers())
+                        .anyMatch(initializer -> ReferencesSearch.search(field, new LocalSearchScope(initializer)).findFirst() != null);
       if (initializersHasReferencesToField) {
         return false;
       }

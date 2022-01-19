@@ -37,16 +37,6 @@ import java.util.stream.Stream;
 import static com.intellij.ide.impl.DataManagerImpl.getDataProviderEx;
 import static com.intellij.ide.impl.DataManagerImpl.validateEditor;
 
-/**
- * This is an internal API. Do not use it.
- * <ul>
- *   <li>Do not create directly, use {@link DataManager#getDataContext(Component)} instead.</li>
- *   <li>Do not cast to {@link UserDataHolder}, use
- *     {@link DataManager#saveInDataContext(DataContext, Key, Object)} and
- *     {@link DataManager#loadFromDataContext(DataContext, Key)} instead.</li>
- *   <li>Do not override.</li>
- * </ul>
- */
 @ApiStatus.Internal
 public class EdtDataContext implements DataContext, UserDataHolder, AnActionEvent.InjectedDataContextSupplier {
   private static final Logger LOG = Logger.getInstance(EdtDataContext.class);
@@ -120,13 +110,13 @@ public class EdtDataContext implements DataContext, UserDataHolder, AnActionEven
 
   private @Nullable Object doGetData(@NotNull String dataId) {
     Component component = SoftReference.dereference(myRef);
-    if (PlatformCoreDataKeys.IS_MODAL_CONTEXT.is(dataId)) {
+    if (PlatformDataKeys.IS_MODAL_CONTEXT.is(dataId)) {
       if (component == null) {
         return null;
       }
       return IdeKeyEventDispatcher.isModalContext(component);
     }
-    if (PlatformCoreDataKeys.CONTEXT_COMPONENT.is(dataId)) {
+    if (PlatformDataKeys.CONTEXT_COMPONENT.is(dataId)) {
       return component;
     }
     if (PlatformDataKeys.MODALITY_STATE.is(dataId)) {
@@ -178,8 +168,8 @@ public class EdtDataContext implements DataContext, UserDataHolder, AnActionEven
   private static final Set<String> ourSafeKeys = ContainerUtil.set(
     CommonDataKeys.PROJECT.getName(),
     CommonDataKeys.EDITOR.getName(),
-    PlatformCoreDataKeys.IS_MODAL_CONTEXT.getName(),
-    PlatformCoreDataKeys.CONTEXT_COMPONENT.getName(),
+    PlatformDataKeys.IS_MODAL_CONTEXT.getName(),
+    PlatformDataKeys.CONTEXT_COMPONENT.getName(),
     PlatformDataKeys.MODALITY_STATE.getName()
   );
 

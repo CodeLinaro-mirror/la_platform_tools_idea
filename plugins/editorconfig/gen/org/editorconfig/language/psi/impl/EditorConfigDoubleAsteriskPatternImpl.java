@@ -21,7 +21,6 @@ public class EditorConfigDoubleAsteriskPatternImpl extends EditorConfigHeaderEle
     visitor.visitDoubleAsteriskPattern(this);
   }
 
-  @Override
   public void accept(@NotNull PsiElementVisitor visitor) {
     if (visitor instanceof EditorConfigVisitor) accept((EditorConfigVisitor)visitor);
     else super.accept(visitor);

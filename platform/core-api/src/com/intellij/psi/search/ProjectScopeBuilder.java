@@ -16,7 +16,7 @@ public abstract class ProjectScopeBuilder {
   public abstract GlobalSearchScope buildLibrariesScope();
 
   /**
-   * @return Scope for all things inside the project: files in the project content plus files in libraries/library source
+   * @return Scope for all things inside the project: files in the project content plus files in libraries/libraries sources
    */
   @NotNull
   public abstract GlobalSearchScope buildAllScope();

@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.env.debug;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.intellij.execution.RunManager;
 import com.intellij.execution.configurations.ConfigurationFactory;
@@ -17,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Set;
 
 public class PyDebuggerTask extends PyCustomConfigDebuggerTask {
@@ -55,12 +53,7 @@ public class PyDebuggerTask extends PyCustomConfigDebuggerTask {
     runConfiguration.setScriptName(getScriptName());
     runConfiguration.setWorkingDirectory(myFixture.getTempDirPath());
     runConfiguration.setScriptParameters(getScriptParameters());
-    runConfiguration.setEnvs(getEnvs());
     return runConfiguration;
-  }
-
-  protected @NotNull Map<String, String> getEnvs() {
-    return ImmutableMap.of();
   }
 
   @Override

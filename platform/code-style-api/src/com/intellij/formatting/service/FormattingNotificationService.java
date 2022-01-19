@@ -4,8 +4,10 @@ package com.intellij.formatting.service;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsContexts;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+@ApiStatus.Experimental
 public interface FormattingNotificationService {
   @NotNull
   static FormattingNotificationService getInstance(@NotNull Project project) {

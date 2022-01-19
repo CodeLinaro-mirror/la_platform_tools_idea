@@ -2,12 +2,15 @@
 package com.intellij.workspaceModel.storage
 
 import com.intellij.workspaceModel.storage.entities.*
+import com.intellij.workspaceModel.storage.entities.ModifiableSampleEntity
+import com.intellij.workspaceModel.storage.entities.ModifiableSecondSampleEntity
+import com.intellij.workspaceModel.storage.entities.SampleEntity
+import com.intellij.workspaceModel.storage.entities.SecondSampleEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-@Suppress("UNCHECKED_CAST")
 class CollectChangesInBuilderTest {
   private lateinit var initialStorage: WorkspaceEntityStorage
   private lateinit var builder: WorkspaceEntityStorageBuilder
@@ -31,6 +34,7 @@ class CollectChangesInBuilderTest {
     }
     builder.removeEntity(initialStorage.singleSampleEntity())
     builder.removeEntity(initialStorage.entities(SecondSampleEntity::class.java).single())
+    @Suppress("UNCHECKED_CAST")
     val changes = builder.collectChanges(initialStorage).getValue(SampleEntity::class.java) as List<EntityChange<SampleEntity>>
     assertEquals(2, changes.size)
     val (change1, change2) = changes
@@ -46,6 +50,7 @@ class CollectChangesInBuilderTest {
     builder.modifyEntity(ModifiableSecondSampleEntity::class.java, initialStorage.entities(SecondSampleEntity::class.java).single()) {
       intProperty = 2
     }
+    @Suppress("UNCHECKED_CAST")
     val change = builder.collectChanges(initialStorage).getValue(SampleEntity::class.java).single() as EntityChange.Replaced<SampleEntity>
     assertEquals("changed", change.newEntity.stringProperty)
     assertEquals("initial", change.oldEntity.stringProperty)
@@ -99,31 +104,7 @@ class CollectChangesInBuilderTest {
     assertTrue(collectSampleEntityChanges().isEmpty())
   }
 
-  @Test
-  fun `add parent with child`() {
-    val parent = builder.addParentEntity("added")
-    builder.addChildEntity(parent, "added")
-    val changes = builder.collectChanges(initialStorage)
-    val childChange = changes.getValue(ChildEntity::class.java).single() as EntityChange.Added<ChildEntity>
-    val parentChange = changes.getValue(ParentEntity::class.java).single() as EntityChange.Added<ParentEntity>
-    assertEquals("added", childChange.entity.childProperty)
-    assertEquals("added", parentChange.entity.parentProperty)
-  }
-
-  @Test
-  fun `remove parent with child`() {
-    val parent = builder.addParentEntity("to remove")
-    builder.addChildEntity(parent, "to remove")
-    val storage = builder.toStorage()
-    val newBuilder = createBuilderFrom(storage)
-    newBuilder.removeEntity(parent)
-    val changes = newBuilder.collectChanges(storage)
-    val childChange = changes.getValue(ChildEntity::class.java).single() as EntityChange.Removed<ChildEntity>
-    val parentChange = changes.getValue(ParentEntity::class.java).single() as EntityChange.Removed<ParentEntity>
-    assertEquals("to remove", childChange.entity.childProperty)
-    assertEquals("to remove", parentChange.entity.parentProperty)
-  }
-
+  @Suppress("UNCHECKED_CAST")
   private fun collectSampleEntityChanges(): List<EntityChange<SampleEntity>> {
     val changes = builder.collectChanges(initialStorage)
     if (changes.isEmpty()) return emptyList()

@@ -10,9 +10,6 @@
       list:[
       ],
       children:[
-      ],
-      singletonSet:[
-        a
       ]
     },
     {
@@ -21,13 +18,7 @@
       list:[
       ],
       children:[
-      ],
-      singletonSet:[
-        a
       ]
     }
-  ],
-  singletonSet:[
-    a
   ]
 }

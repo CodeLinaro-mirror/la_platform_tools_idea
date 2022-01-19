@@ -2,12 +2,16 @@
 package com.intellij.openapi.editor;
 
 import com.intellij.codeInsight.hint.HintManager;
+import com.intellij.codeStyle.CodeStyleFacade;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.textarea.TextComponentEditor;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.ide.CopyPasteManager;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.text.LineTokenizer;
+import com.intellij.psi.PsiDocumentManager;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.Producer;
 import org.jetbrains.annotations.NotNull;
@@ -18,9 +22,10 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Objects;
+import java.util.function.Supplier;
 
 public final class EditorModificationUtil extends EditorModificationUtilEx {
   private static final Key<ReadOnlyHint> READ_ONLY_VIEW_HINT_KEY = Key.create("READ_ONLY_VIEW_HINT_KEY");
@@ -28,13 +33,38 @@ public final class EditorModificationUtil extends EditorModificationUtilEx {
   private EditorModificationUtil() { }
 
 
-  public static void deleteSelectedTextForAllCarets(@NotNull Editor editor) {
+  public static void deleteSelectedTextForAllCarets(@NotNull final Editor editor) {
     editor.getCaretModel().runForEachCaret(__ -> deleteSelectedText(editor));
   }
 
-  public static void zeroWidthBlockSelectionAtCaretColumn(@NotNull Editor editor, int startLine, int endLine) {
+  public static void zeroWidthBlockSelectionAtCaretColumn(final Editor editor, final int startLine, final int endLine) {
     int caretColumn = editor.getCaretModel().getLogicalPosition().column;
     editor.getSelectionModel().setBlockSelection(new LogicalPosition(startLine, caretColumn), new LogicalPosition(endLine, caretColumn));
+  }
+
+
+  public static void pasteTransferableAsBlock(Editor editor, @Nullable Supplier<? extends Transferable> producer) {
+    Transferable content = getTransferable(producer);
+    if (content == null) return;
+    String text = getStringContent(content);
+    if (text == null) return;
+
+    int caretLine = editor.getCaretModel().getLogicalPosition().line;
+
+    LogicalPosition caretToRestore = editor.getCaretModel().getLogicalPosition();
+
+    String[] lines = LineTokenizer.tokenize(text.toCharArray(), false);
+    int longestLineLength = 0;
+    for (int i = 0; i < lines.length; i++) {
+      String line = lines[i];
+      longestLineLength = Math.max(longestLineLength, line.length());
+      editor.getCaretModel().moveToLogicalPosition(new LogicalPosition(caretLine + i, caretToRestore.column));
+      insertStringAtCaret(editor, line, false, true);
+    }
+    caretToRestore = new LogicalPosition(caretLine, caretToRestore.column + longestLineLength);
+
+    editor.getCaretModel().moveToLogicalPosition(caretToRestore);
+    zeroWidthBlockSelectionAtCaretColumn(editor, caretLine, caretLine);
   }
 
   @Nullable
@@ -61,32 +91,47 @@ public final class EditorModificationUtil extends EditorModificationUtilEx {
     return null;
   }
 
-  public static void typeInStringAtCaretHonorMultipleCarets(@NotNull Editor editor, @NotNull String str) {
+  private static Transferable getTransferable(Supplier<? extends Transferable> producer) {
+    Transferable content = null;
+    if (producer != null) {
+      content = producer.get();
+    }
+    else {
+      CopyPasteManager manager = CopyPasteManager.getInstance();
+      if (manager.areDataFlavorsAvailable(DataFlavor.stringFlavor)) {
+        content = manager.getContents();
+      }
+    }
+    return content;
+  }
+
+  public static void typeInStringAtCaretHonorMultipleCarets(final Editor editor, @NotNull final String str) {
     typeInStringAtCaretHonorMultipleCarets(editor, str, true, str.length());
   }
 
-  public static void typeInStringAtCaretHonorMultipleCarets(@NotNull Editor editor, @NotNull String str, int caretShift) {
+  public static void typeInStringAtCaretHonorMultipleCarets(final Editor editor, @NotNull final String str, final int caretShift) {
     typeInStringAtCaretHonorMultipleCarets(editor, str, true, caretShift);
   }
 
-  public static void typeInStringAtCaretHonorMultipleCarets(@NotNull Editor editor, @NotNull String str, boolean toProcessOverwriteMode) {
+  public static void typeInStringAtCaretHonorMultipleCarets(final Editor editor, @NotNull final String str, final boolean toProcessOverwriteMode) {
     typeInStringAtCaretHonorMultipleCarets(editor, str, toProcessOverwriteMode, str.length());
   }
 
   /**
    * Inserts given string at each caret's position. Effective caret shift will be equal to {@code caretShift} for each caret.
    */
-  public static void typeInStringAtCaretHonorMultipleCarets(@NotNull Editor editor, @NotNull String str, boolean toProcessOverwriteMode, int caretShift)
-    throws ReadOnlyFragmentModificationException {
+  public static void typeInStringAtCaretHonorMultipleCarets(final Editor editor, @NotNull final String str, final boolean toProcessOverwriteMode, final int caretShift)
+    throws ReadOnlyFragmentModificationException
+  {
     editor.getCaretModel().runForEachCaret(__ -> insertStringAtCaretNoScrolling(editor, str, toProcessOverwriteMode, true, caretShift));
     editor.getScrollingModel().scrollToCaret(ScrollType.RELATIVE);
   }
 
-  public static void moveAllCaretsRelatively(@NotNull Editor editor, int caretShift) {
+  public static void moveAllCaretsRelatively(@NotNull Editor editor, final int caretShift) {
     editor.getCaretModel().runForEachCaret(caret -> caret.moveToOffset(caret.getOffset() + caretShift));
   }
 
-  public static void moveCaretRelatively(@NotNull Editor editor, int caretShift) {
+  public static void moveCaretRelatively(@NotNull Editor editor, final int caretShift) {
     CaretModel caretModel = editor.getCaretModel();
     caretModel.moveToOffset(caretModel.getOffset() + caretShift);
   }
@@ -108,7 +153,9 @@ public final class EditorModificationUtil extends EditorModificationUtilEx {
       int lineWidth = lineEndPosition.column;
       if (startColumn > lineWidth && endColumn > lineWidth && !editor.isColumnMode()) {
         LogicalPosition caretPos = new LogicalPosition(line, Math.min(startColumn, endColumn));
-        caretStates.add(new CaretState(caretPos, lineEndPosition, lineEndPosition));
+        caretStates.add(new CaretState(caretPos,
+                                       lineEndPosition,
+                                       lineEndPosition));
       }
       else {
         LogicalPosition startPos = new LogicalPosition(line, editor.isColumnMode() ? startColumn : Math.min(startColumn, lineWidth));
@@ -119,9 +166,15 @@ public final class EditorModificationUtil extends EditorModificationUtilEx {
         hasSelection |= startOffset != endOffset;
       }
     }
-    if (hasSelection && !editor.isColumnMode()) {
-      // filtering out lines without selection
-      caretStates.removeIf(state -> Objects.equals(state.getSelectionStart(), state.getSelectionEnd()));
+    if (hasSelection && !editor.isColumnMode()) { // filtering out lines without selection
+      Iterator<CaretState> caretStateIterator = caretStates.iterator();
+      while(caretStateIterator.hasNext()) {
+        CaretState state = caretStateIterator.next();
+        //noinspection ConstantConditions
+        if (state.getSelectionStart().equals(state.getSelectionEnd())) {
+          caretStateIterator.remove();
+        }
+      }
     }
     return caretStates;
   }
@@ -140,7 +193,7 @@ public final class EditorModificationUtil extends EditorModificationUtilEx {
    * @return true when not viewer
    *         false otherwise, additionally information hint with warning would be shown
    */
-  public static boolean checkModificationAllowed(@NotNull Editor editor) {
+  public static boolean checkModificationAllowed(Editor editor) {
     if (!editor.isViewer()) return true;
     if (ApplicationManager.getApplication().isHeadlessEnvironment() || editor instanceof TextComponentEditor) return false;
 
@@ -167,6 +220,7 @@ public final class EditorModificationUtil extends EditorModificationUtilEx {
   }
 
   private static final class ReadOnlyHint {
+
     @NotNull public final @NlsContexts.HintText String message;
     @Nullable public final HyperlinkListener linkListener;
 

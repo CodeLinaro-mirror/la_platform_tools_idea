@@ -2,11 +2,14 @@
 package com.jetbrains.changeReminder.plugin
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.components.*
+import com.intellij.openapi.components.BaseState
+import com.intellij.openapi.components.SimplePersistentStateComponent
+import com.intellij.openapi.components.State
+import com.intellij.openapi.components.Storage
 import com.intellij.util.EventDispatcher
 import java.util.*
 
-@State(name = "ChangeReminder", storages = [Storage("changeReminder.xml")], category = SettingsCategory.TOOLS)
+@State(name = "ChangeReminder", storages = [Storage("changeReminder.xml")])
 internal class UserSettings : SimplePersistentStateComponent<UserSettingsState>(UserSettingsState()) {
   private val eventDispatcher = EventDispatcher.create(PluginStatusListener::class.java)
 

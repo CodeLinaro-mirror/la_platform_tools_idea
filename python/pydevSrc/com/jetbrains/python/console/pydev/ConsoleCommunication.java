@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.console.pydev;
 
-import com.intellij.openapi.util.NlsContexts;
 import com.intellij.util.Function;
 import org.jetbrains.annotations.NotNull;
 
@@ -31,20 +30,16 @@ public interface ConsoleCommunication {
   void notifyInputReceived();
 
   class ConsoleCodeFragment {
-    private @NlsContexts.Label String myText;
+    private final String myText;
     private final boolean myIsSingleLine;
 
-    public ConsoleCodeFragment(@NlsContexts.Label String text, boolean isSingleLine) {
+    public ConsoleCodeFragment(String text, boolean isSingleLine) {
       myText = text;
       myIsSingleLine = isSingleLine;
     }
 
-    public @NlsContexts.Label String getText() {
+    public String getText() {
       return myText;
-    }
-
-    public void setText(@NlsContexts.Label String text) {
-      myText = text;
     }
 
     public boolean isSingleLine() {

@@ -10,7 +10,6 @@ import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.quickfix.KotlinSingleIntentionActionFactory
 import org.jetbrains.kotlin.idea.util.hasJvmFieldAnnotation
-import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtPsiFactory
@@ -25,13 +24,10 @@ class ConvertPropertyInitializerToGetterIntention : SelfTargetingRangeIntention<
     override fun applicabilityRange(element: KtProperty): TextRange? {
         val initializer = element.initializer ?: return null
         val nameIdentifier = element.nameIdentifier ?: return null
-        if (element.getter != null ||
-            element.isExtensionDeclaration() ||
-            element.isLocal ||
-            element.hasJvmFieldAnnotation() ||
-            element.hasModifier(KtTokens.CONST_KEYWORD)
-        ) return null
-        return TextRange(nameIdentifier.startOffset, initializer.endOffset)
+        return if (element.getter == null && !element.isExtensionDeclaration() && !element.isLocal && !element.hasJvmFieldAnnotation())
+            TextRange(nameIdentifier.startOffset, initializer.endOffset)
+        else
+            null
     }
 
     override fun allowCaretInsideElement(element: PsiElement): Boolean {

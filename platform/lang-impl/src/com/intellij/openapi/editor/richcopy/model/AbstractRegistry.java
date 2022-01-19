@@ -1,9 +1,22 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+/*
+ * Copyright 2000-2014 JetBrains s.r.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.intellij.openapi.editor.richcopy.model;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import gnu.trove.TIntObjectHashMap;
+import gnu.trove.TObjectIntHashMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
@@ -12,10 +25,10 @@ import java.util.Arrays;
  * @author Denis Zhdanov
  */
 public abstract class AbstractRegistry<T> {
-  @SuppressWarnings("SSBasedInspection")
-  @NotNull private final Int2ObjectOpenHashMap<T> myDataById = new Int2ObjectOpenHashMap<>();
 
-  private transient Object2IntMap<T> myIdsByData = new Object2IntOpenHashMap<>();
+  @NotNull private final TIntObjectHashMap<T> myDataById = new TIntObjectHashMap<>();
+
+  private transient TObjectIntHashMap<T> myIdsByData = new TObjectIntHashMap<>();
 
   @NotNull
   public T dataById(int id) throws IllegalArgumentException {
@@ -32,7 +45,7 @@ public abstract class AbstractRegistry<T> {
         "Can't register data '%s'. Reason: the %s registry is already sealed", data, getClass().getName()
       ));
     }
-    int id = myIdsByData.getInt(data);
+    int id = myIdsByData.get(data);
     if (id <= 0) {
       id = myIdsByData.size() + 1;
       myDataById.put(id, data);
@@ -42,7 +55,7 @@ public abstract class AbstractRegistry<T> {
   }
 
   public int[] getAllIds() {
-    int[] result = myDataById.keySet().toIntArray();
+    int[] result = myDataById.keys();
     Arrays.sort(result);
     return result;
   }
@@ -53,6 +66,6 @@ public abstract class AbstractRegistry<T> {
 
   public void seal() {
     myIdsByData = null;
-    myDataById.trim();
+    myDataById.compact();
   }
 }

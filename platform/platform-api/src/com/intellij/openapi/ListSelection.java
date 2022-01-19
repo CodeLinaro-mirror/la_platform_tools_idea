@@ -47,11 +47,6 @@ public final class ListSelection<T> {
     return createAt(Collections.singletonList(element), 0);
   }
 
-  @NotNull
-  public static <V> ListSelection<V> empty() {
-    return new ListSelection<>(Collections.emptyList(), -1);
-  }
-
 
   @NotNull
   public List<T> getList() {
@@ -66,10 +61,6 @@ public final class ListSelection<T> {
     return myList.isEmpty();
   }
 
-  /**
-   * Map all elements in the list and remove elements for which converter returned null.
-   * If selected element was removed, select remaining element before it.
-   */
   @NotNull
   public <V> ListSelection<V> map(@NotNull NullableFunction<? super T, ? extends V> convertor) {
     int newSelectionIndex = -1;

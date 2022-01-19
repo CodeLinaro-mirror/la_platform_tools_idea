@@ -8,17 +8,17 @@ instead of calling <code>equals()</code>.
   created objects returned from simple methods.
 </p>
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   void test(Object obj) {
     if (new Object() == obj) {...}
   }
-</code></pre>
+</pre>
 <p>After the quick-fix is applied:</p>
-<pre><code>
+<pre>
   void test(Object obj) {
     if (new Object().equals(obj)) {...}
   }
-</code></pre>
+</pre>
 <!-- tooltip end -->
 <p>
   <small>New in 2018.3</small>

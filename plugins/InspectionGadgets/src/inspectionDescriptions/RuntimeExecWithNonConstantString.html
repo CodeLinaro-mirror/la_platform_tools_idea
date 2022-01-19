@@ -6,18 +6,18 @@ Reports calls to <code>java.lang.Runtime.exec()</code> which take a dynamically-
   By default, this inspection ignores compile-time constants.
 </p>
 <p><b>Example:</b></p>
-<pre><code>
+<pre>
   String i = getUserInput();
   Runtime runtime = Runtime.getRuntime();
   runtime.exec("foo" + i); // reports warning
-</code></pre>
+</pre>
 <!-- tooltip end -->
 <p>
 Use the inspection settings to consider any <code>static</code> <code>final</code> fields as constant.
 Be careful, because strings like the following will be ignored when the option is enabled:
-<pre><code>
+<pre>
   static final String COMMAND = "ping " + getDomainFromUserInput() + "'";
-</code></pre>
+</pre>
 <p>
 </body>
 </html>

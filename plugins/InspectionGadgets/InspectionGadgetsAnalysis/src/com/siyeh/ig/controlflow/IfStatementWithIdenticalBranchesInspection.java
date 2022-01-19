@@ -41,7 +41,7 @@ import static com.intellij.util.ObjectUtils.tryCast;
 
 // Not really with identical branches, but also common parts
 public class IfStatementWithIdenticalBranchesInspection extends AbstractBaseJavaLocalInspectionTool {
-  public boolean myHighlightWhenLastStatementIsCall = false;
+  public boolean myHighlightWhenLastStatementIsCall = true;
 
   private static final List<IfStatementInspector> ourInspectors = new ArrayList<>(Arrays.asList(
     ImplicitElse::inspect,

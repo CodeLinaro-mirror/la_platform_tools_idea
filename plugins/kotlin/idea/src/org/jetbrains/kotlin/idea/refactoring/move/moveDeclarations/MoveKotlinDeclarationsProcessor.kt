@@ -2,7 +2,6 @@
 
 package org.jetbrains.kotlin.idea.refactoring.move.moveDeclarations
 
-import com.intellij.ide.IdeDeprecatedMessagesBundle
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.ide.util.EditorHelper
 import com.intellij.openapi.project.Project
@@ -12,7 +11,6 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.BaseRefactoringProcessor
 import com.intellij.refactoring.move.MoveCallback
@@ -23,12 +21,13 @@ import com.intellij.refactoring.util.NonCodeUsageInfo
 import com.intellij.refactoring.util.RefactoringUIUtil
 import com.intellij.refactoring.util.TextOccurrencesUtil
 import com.intellij.usageView.UsageInfo
+import com.intellij.usageView.UsageViewBundle
 import com.intellij.usageView.UsageViewDescriptor
 import com.intellij.usageView.UsageViewUtil
 import com.intellij.util.IncorrectOperationException
-import com.intellij.util.containers.CollectionFactory
-import com.intellij.util.containers.HashingStrategy
 import com.intellij.util.containers.MultiMap
+import it.unimi.dsi.fastutil.Hash
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap
 import org.jetbrains.kotlin.asJava.classes.KtLightClassForFacade
 import org.jetbrains.kotlin.asJava.elements.KtLightDeclaration
 import org.jetbrains.kotlin.asJava.findFacadeClass
@@ -39,7 +38,6 @@ import org.jetbrains.kotlin.idea.codeInsight.shorten.addToBeShortenedDescendants
 import org.jetbrains.kotlin.idea.codeInsight.shorten.performDelayedRefactoringRequests
 import org.jetbrains.kotlin.idea.core.deleteSingle
 import org.jetbrains.kotlin.idea.core.quoteIfNeeded
-import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesHandlerFactory
 import org.jetbrains.kotlin.idea.refactoring.broadcastRefactoringExit
 import org.jetbrains.kotlin.idea.refactoring.fqName.getKotlinFqName
 import org.jetbrains.kotlin.idea.refactoring.move.*
@@ -53,6 +51,7 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
 import org.jetbrains.kotlin.psi.psiUtil.isAncestor
+import org.jetbrains.kotlin.utils.KotlinExceptionWithAttachments
 import org.jetbrains.kotlin.utils.ifEmpty
 import org.jetbrains.kotlin.utils.keysToMap
 import kotlin.math.max
@@ -73,9 +72,7 @@ interface Mover : (KtNamedDeclaration, KtElement) -> KtNamedDeclaration {
                 val container = originalElement.containingClassOrObject
                 if (container is KtObjectDeclaration &&
                     container.isCompanion() &&
-                    container.declarations.singleOrNull() == originalElement &&
-                    KotlinFindUsagesHandlerFactory(container.project).createFindUsagesHandler(container, false)
-                        .findReferencesToHighlight(container, LocalSearchScope(container.containingFile)).isEmpty()
+                    container.declarations.singleOrNull() == originalElement
                 ) {
                     container.deleteSingle()
                 } else {
@@ -118,14 +115,14 @@ class MoveDeclarationsDescriptor @JvmOverloads constructor(
 
 class ConflictUsageInfo(element: PsiElement, val messages: Collection<String>) : UsageInfo(element)
 
-private object ElementHashingStrategy : HashingStrategy<PsiElement> {
+private object ElementHashingStrategy : Hash.Strategy<PsiElement> {
     override fun equals(e1: PsiElement?, e2: PsiElement?): Boolean {
         if (e1 === e2) return true
         // Name should be enough to distinguish different light elements based on the same original declaration
         if (e1 is KtLightDeclaration<*, *> && e2 is KtLightDeclaration<*, *>) {
             return e1.kotlinOrigin == e2.kotlinOrigin && e1.name == e2.name
         }
-        return false
+        return e1 == e2
     }
 
     override fun hashCode(e: PsiElement?): Int {
@@ -163,8 +160,8 @@ class MoveKotlinDeclarationsProcessor(
 
     override fun createUsageViewDescriptor(usages: Array<out UsageInfo>): UsageViewDescriptor {
         val targetContainerFqName = descriptor.moveTarget.targetContainerFqName?.let {
-            if (it.isRoot) IdeDeprecatedMessagesBundle.message("default.package.presentable.name") else it.asString()
-        } ?: IdeDeprecatedMessagesBundle.message("default.package.presentable.name")
+            if (it.isRoot) UsageViewBundle.message("default.package.presentable.name") else it.asString()
+        } ?: UsageViewBundle.message("default.package.presentable.name")
         return MoveMultipleElementsViewDescriptor(elementsToMove.toTypedArray(), targetContainerFqName)
     }
 
@@ -324,6 +321,8 @@ class MoveKotlinDeclarationsProcessor(
     internal fun doPerformRefactoring(usages: List<UsageInfo>) {
         fun moveDeclaration(declaration: KtNamedDeclaration, moveTarget: KotlinMoveTarget): KtNamedDeclaration {
             val targetContainer = moveTarget.getOrCreateTargetPsi(declaration)
+                ?: throw KotlinExceptionWithAttachments("Couldn't create Kotlin file for ${declaration::class.java}")
+                    .withAttachment("declaration.kt", declaration.text)
             descriptor.delegate.preprocessDeclaration(descriptor, declaration)
             if (moveEntireFile) return declaration
             return mover(declaration, targetContainer).apply {
@@ -341,7 +340,7 @@ class MoveKotlinDeclarationsProcessor(
         try {
             descriptor.delegate.preprocessUsages(descriptor, usages)
 
-            val oldToNewElementsMapping = CollectionFactory.createCustomHashingStrategyMap<PsiElement, PsiElement>(ElementHashingStrategy)
+            val oldToNewElementsMapping = Object2ObjectOpenCustomHashMap<PsiElement, PsiElement>(ElementHashingStrategy)
 
             val newDeclarations = ArrayList<KtNamedDeclaration>()
 
@@ -405,5 +404,5 @@ class MoveKotlinDeclarationsProcessor(
         }
     }
 
-    override fun getCommandName(): String = KotlinBundle.message("command.move.declarations")
+    override fun getCommandName(): String = KotlinBundle.message("text.move.declarations")
 }
