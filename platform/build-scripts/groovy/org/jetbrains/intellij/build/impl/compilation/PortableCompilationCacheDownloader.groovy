@@ -1,6 +1,5 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl.compilation
-
 
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
@@ -30,11 +29,11 @@ import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 
 @CompileStatic
-class PortableCompilationCacheDownloader implements AutoCloseable {
+final class PortableCompilationCacheDownloader implements AutoCloseable {
   private static final int COMMITS_COUNT = 1_000
 
   private final GetClient getClient = new GetClient(context.messages)
-  private final Git git = new Git(context.paths.projectHome.trim())
+  private final Git git
 
   private final CompilationContext context
   private final String remoteCacheUrl
@@ -68,9 +67,11 @@ class PortableCompilationCacheDownloader implements AutoCloseable {
     new CommitsHistory(json).commitsForRemote(gitUrl)
   }()
 
-  PortableCompilationCacheDownloader(CompilationContext context, String remoteCacheUrl, String gitUrl,
+  PortableCompilationCacheDownloader(CompilationContext context, Git git,
+                                     String remoteCacheUrl, String gitUrl,
                                      boolean availableForHeadCommit, boolean downloadCompilationOutputsOnly) {
     this.context = context
+    this.git = git
     this.remoteCacheUrl = StringUtil.trimEnd(remoteCacheUrl, '/')
     this.gitUrl = gitUrl
     this.availableForHeadCommitForced = availableForHeadCommit
@@ -162,6 +163,9 @@ class PortableCompilationCacheDownloader implements AutoCloseable {
       outputArchive = downloadOutput(compilationOutput)
 
       new Decompressor.Zip(outputArchive).overwrite(true).extract(new File(compilationOutput.path))
+    }
+    catch (Exception e) {
+      throw new Exception("Unable to decompress $remoteCacheUrl/${compilationOutput.remotePath} to $compilationOutput.path", e)
     }
     finally {
       outputArchive?.delete()

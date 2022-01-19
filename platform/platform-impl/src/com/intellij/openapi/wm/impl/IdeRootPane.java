@@ -1,6 +1,7 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl;
 
+import com.intellij.accessibility.AccessibilityUtils;
 import com.intellij.ide.actions.CustomizeUIAction;
 import com.intellij.ide.actions.ViewToolbarAction;
 import com.intellij.ide.ui.UISettings;
@@ -14,11 +15,13 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.registry.ExperimentalUI;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.IdeRootPaneNorthExtension;
+import com.intellij.openapi.wm.impl.customFrameDecorations.header.AbstractMenuFrameHeader;
 import com.intellij.openapi.wm.impl.customFrameDecorations.header.MenuFrameHeader;
 import com.intellij.openapi.wm.impl.customFrameDecorations.header.titleLabel.CustomDecorationPath;
+import com.intellij.openapi.wm.impl.customFrameDecorations.header.toolbar.ToolbarFrameHeader;
+import com.intellij.openapi.wm.impl.headertoolbar.MainToolbar;
 import com.intellij.openapi.wm.impl.status.IdeStatusBarImpl;
 import com.intellij.ui.*;
 import com.intellij.ui.components.JBBox;
@@ -61,13 +64,16 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
 
   private boolean myFullScreen;
 
-  private MenuFrameHeader myCustomFrameTitlePane;
+  private AbstractMenuFrameHeader myCustomFrameTitlePane;
   private CustomDecorationPath mySelectedEditorFilePath;
   private final boolean myDecoratedMenu;
   private ToolwindowToolbar myLeftToolwindowToolbar;
   private ToolwindowToolbar myRightToolwindowToolbar;
 
+  private final Disposable myParentDisposable;
+
   protected IdeRootPane(@NotNull JFrame frame, @NotNull IdeFrame frameHelper, @NotNull Disposable parentDisposable) {
+    myParentDisposable = parentDisposable;
     if (SystemInfo.isWindows && (StartupUiUtil.isUnderDarcula() || UIUtil.isUnderIntelliJLaF())) {
       try {
         setWindowDecorationStyle(FRAME);
@@ -93,8 +99,11 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
       if (isDecoratedMenu()) {
         JdkEx.setHasCustomDecoration(frame);
 
-        mySelectedEditorFilePath = CustomDecorationPath.Companion.createInstance(frame);
-        myCustomFrameTitlePane = new MenuFrameHeader(frame, mySelectedEditorFilePath, IdeMenuBar.createMenuBar());
+        mySelectedEditorFilePath = CustomDecorationPath.Companion.createMainInstance(frame);
+        IdeMenuBar ideMenu = IdeMenuBar.createMenuBar();
+        myCustomFrameTitlePane = ExperimentalUI.isNewToolbar()
+                                 ? new ToolbarFrameHeader(frame, ideMenu)
+                                 : new MenuFrameHeader(frame, mySelectedEditorFilePath, ideMenu);
         getLayeredPane().add(myCustomFrameTitlePane, JLayeredPane.DEFAULT_LAYER - 2);
       }
 
@@ -220,7 +229,7 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
 
   void updateToolbar() {
     removeToolbar();
-    myToolbar = createToolbar();
+    myToolbar = ExperimentalUI.isNewToolbar() ? createExperimentalToolbar(myParentDisposable) : createToolbar();
     myNorthPanel.add(myToolbar, 0);
     updateToolbarVisibility();
     myContentPane.revalidate();
@@ -228,9 +237,17 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
 
   public void removeToolbar() {
     if (myToolbar != null) {
+      disposeIfNeeded(myToolbar);
       myNorthPanel.remove(myToolbar);
       myToolbar = null;
     }
+  }
+
+  private static void disposeIfNeeded(JComponent comp) {
+    if (!(comp instanceof Disposable)) return;
+
+    Disposable d = (Disposable)comp;
+    if (!Disposer.isDisposed(d)) Disposer.dispose(d);
   }
 
   protected void updateNorthComponents() {
@@ -241,13 +258,22 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
   }
 
   void updateMainMenuActions() {
-    ((IdeMenuBar)menuBar).updateMenuActions(true);
+    ((IdeMenuBar)menuBar).updateMenuActions(false);
     menuBar.repaint();
 
     if (myCustomFrameTitlePane != null) {
-      myCustomFrameTitlePane.updateMenuActions(true);
+      myCustomFrameTitlePane.updateMenuActions(false);
       myCustomFrameTitlePane.repaint();
     }
+  }
+
+  private @NotNull JComponent createExperimentalToolbar(Disposable parent) {
+    Window window = SwingUtilities.getWindowAncestor(this);
+    Project pr = (window instanceof IdeFrame) ? ((IdeFrame)window).getProject() : null;
+
+    MainToolbar toolbar = new MainToolbar(pr);
+    Disposer.register(parent, toolbar);
+    return toolbar;
   }
 
   private static @NotNull JComponent createToolbar() {
@@ -274,7 +300,9 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
   }
 
   protected @NotNull IdeStatusBarImpl createStatusBar(@NotNull IdeFrame frame) {
-    return new IdeStatusBarImpl(frame, !ExperimentalUI.isNewToolWindowsStripes());
+    boolean addToolWindowsWidget = !ExperimentalUI.isNewToolWindowsStripes()
+                                   && !AccessibilityUtils.isScreenReaderDetected();
+    return new IdeStatusBarImpl(frame, addToolWindowsWidget);
   }
 
   final @Nullable IdeStatusBarImpl getStatusBar() {
@@ -319,6 +347,8 @@ public class IdeRootPane extends JRootPane implements UISettingsListener {
   }
 
   protected void installNorthComponents(@NotNull Project project) {
+    if (ExperimentalUI.isNewToolbar()) return;
+
     myNorthComponents.addAll(IdeRootPaneNorthExtension.EP_NAME.getExtensionList(project));
     if (myNorthComponents.isEmpty()) {
       return;

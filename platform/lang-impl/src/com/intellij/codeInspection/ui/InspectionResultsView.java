@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.ui;
 
@@ -55,6 +55,7 @@ import com.intellij.ui.OnePixelSplitter;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.SideBorder;
 import com.intellij.util.Alarm;
+import com.intellij.util.ThreeState;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
 import com.intellij.util.ui.EdtInvocationManager;
 import com.intellij.util.ui.JBUI;
@@ -117,6 +118,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     myGlobalInspectionContext = globalInspectionContext;
     myProvider = provider;
     myTree = new InspectionTree(this);
+    myTree.getInspectionTreeModel().getRoot().setSingleInspectionRun(isSingleInspectionRun());
 
     mySplitter = new OnePixelSplitter(false, AnalysisUIOptions.getInstance(globalInspectionContext.getProject()).SPLITTER_PROPORTION);
     mySplitter.setFirstComponent(ScrollPaneFactory.createScrollPane(myTree, SideBorder.LEFT));
@@ -264,9 +266,9 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     return myTree.getOccurenceNavigator().getPreviousOccurenceActionName();
   }
 
-  private static JComponent createToolbar(final DefaultActionGroup specialGroup) {
+  private JComponent createToolbar(final DefaultActionGroup specialGroup) {
     final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.CODE_INSPECTION, specialGroup, false);
-    //toolbar.setTargetComponent(this);
+    toolbar.setTargetComponent(this);
     return toolbar.getComponent();
   }
 
@@ -346,6 +348,9 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
               myLoadingProgressPreview = panel;
               mySplitter.setSecondComponent(panel);
             }
+            else if (node instanceof InspectionRootNode) {
+              mySplitter.setSecondComponent(InspectionResultsViewUtil.getNothingToShowTextLabel());
+            }
             else {
               LOG.error("Unexpected node: " + node.getClass());
             }
@@ -405,6 +410,11 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
     }
     editorPanel.add(previewPanel, BorderLayout.CENTER);
     if (problemCount > 0) {
+      var paths = myTree.getSelectionPaths();
+      if (paths != null) for (TreePath path: paths) {
+        var node = (InspectionTreeNode)path.getLastPathComponent();
+        if (node instanceof SuppressableInspectionTreeNode) ((SuppressableInspectionTreeNode)node).updateAvailableSuppressActions();
+      }
       final JComponent fixToolbar = QuickFixPreviewPanelFactory.create(this);
       if (fixToolbar != null) {
         if (fixToolbar instanceof InspectionTreeLoadingProgressAware) {
@@ -452,10 +462,9 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
         myPreviewEditor.getMarkupModel().removeAllHighlighters();
       }
       else {
-        myPreviewEditor = (EditorEx)EditorFactory.getInstance().createEditor(document, getProject(), file.getVirtualFile(), true);
+        myPreviewEditor = (EditorEx)EditorFactory.getInstance().createEditor(document, getProject(), file.getVirtualFile(), false, EditorKind.PREVIEW);
         DiffUtil.setFoldingModelSupport(myPreviewEditor);
         final EditorSettings settings = myPreviewEditor.getSettings();
-        settings.setLineNumbersShown(false);
         settings.setFoldingOutlineShown(true);
         settings.setLineMarkerAreaShown(true);
         settings.setGutterIconsShown(false);
@@ -624,7 +633,7 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
 
   @Override
   public Object getData(@NotNull String dataId) {
-    if (PlatformDataKeys.HELP_ID.is(dataId)) return HELP_ID;
+    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) return HELP_ID;
     if (DATA_KEY.is(dataId)) return this;
     if (ExclusionHandler.EXCLUSION_HANDLER.is(dataId)) return myExclusionHandler;
     if (!ApplicationManager.getApplication().isDispatchThread()) return null;
@@ -774,17 +783,13 @@ public class InspectionResultsView extends JPanel implements Disposable, DataPro
                                     @NotNull GlobalInspectionContextImpl context,
                                     @NotNull InspectionRVContentProvider contentProvider) {
     for (Tools currentTools : tools) {
-      boolean hasProblems = ReadAction.compute(() -> {
-        for (ScopeToolState state : contentProvider.getTools(currentTools)) {
-          InspectionToolWrapper toolWrapper = state.getTool();
-          if (context.getPresentation(toolWrapper).hasReportedProblems() || contentProvider.checkReportedProblems(context, toolWrapper)) {
-            return true;
-          }
+      for (ScopeToolState state : contentProvider.getTools(currentTools)) {
+        InspectionToolWrapper toolWrapper = state.getTool();
+        ThreeState hasReportedProblems = context.getPresentation(toolWrapper).hasReportedProblems();
+        if (hasReportedProblems == ThreeState.NO) continue;
+        if (hasReportedProblems == ThreeState.YES || ReadAction.compute(() -> contentProvider.checkReportedProblems(context, toolWrapper))) {
+          return true;
         }
-        return false;
-      });
-      if (hasProblems) {
-        return true;
       }
     }
     return false;

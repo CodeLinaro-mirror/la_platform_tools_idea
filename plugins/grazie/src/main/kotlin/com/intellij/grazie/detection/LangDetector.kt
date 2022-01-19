@@ -7,9 +7,13 @@ import com.intellij.grazie.detector.DefaultLanguageDetectors
 import com.intellij.grazie.detector.model.Language
 import com.intellij.grazie.detector.utils.resources.JVMResourceLoader
 import com.intellij.grazie.detector.utils.words
+import com.intellij.grazie.jlanguage.Lang
+import com.intellij.openapi.util.Ref
+import com.intellij.util.containers.ContainerUtil
 
 object LangDetector {
   private val detector by lazy { DefaultLanguageDetectors.standard(JVMResourceLoader) }
+  private val cache = ContainerUtil.createConcurrentWeakMap<String, Ref<Language>>()
 
   /**
    * Get natural language of text.
@@ -20,20 +24,20 @@ object LangDetector {
    */
   @Suppress("MemberVisibilityCanBePrivate")
   fun getLanguage(text: String): Language? {
-    val detected = detector.detect(text.take(1_000), isReliable = false)
-
-    if (detected.preferred == Language.UNKNOWN) return null
-
-    return detected.preferred
+    val ref = cache.computeIfAbsent(text) {
+      val detected = detector.detect(text.take(1_000), isReliable = false).preferred
+      Ref.create(if (detected == Language.UNKNOWN) null else detected)
+    }
+    return ref.get()
   }
 
   /**
-   * Get natural language of text, if it is enabled in Grazie
+   * Get natural language of text if it is enabled in Grazie
    *
    * @return Lang that is detected and enabled in grazie
    */
-  fun getLang(text: String) = getLanguage(text)?.let {
-    GrazieConfig.get().availableLanguages.find { lang -> lang.equalsTo(it) }
+  fun getLang(text: String): Lang? = getLanguage(text)?.let { language ->
+    GrazieConfig.get().availableLanguages.find { lang -> lang.equalsTo(language) }
   }
 
   /**

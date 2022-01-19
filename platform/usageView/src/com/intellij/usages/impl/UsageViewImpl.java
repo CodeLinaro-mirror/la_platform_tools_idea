@@ -6,8 +6,6 @@ import com.intellij.find.FindManager;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.*;
 import com.intellij.ide.actions.exclusion.ExclusionHandler;
-import com.intellij.ide.plugins.DynamicPluginListener;
-import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.lang.Language;
 import com.intellij.navigation.NavigationItem;
 import com.intellij.openapi.Disposable;
@@ -44,7 +42,7 @@ import com.intellij.usageView.UsageInfo;
 import com.intellij.usageView.UsageViewBundle;
 import com.intellij.usageView.UsageViewContentManager;
 import com.intellij.usages.*;
-import com.intellij.usages.impl.actions.RuleAction;
+import com.intellij.usages.impl.actions.MergeSameLineUsagesAction;
 import com.intellij.usages.rules.*;
 import com.intellij.util.*;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -53,7 +51,6 @@ import com.intellij.util.concurrency.EdtExecutorService;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.MultiMap;
-import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.DialogUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -74,13 +71,19 @@ import javax.swing.plaf.TreeUI;
 import javax.swing.plaf.basic.BasicTreeUI;
 import javax.swing.tree.*;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.intellij.usages.impl.UsageFilteringRuleActions.usageFilteringRuleActions;
+import static com.intellij.usages.impl.rules.UsageFilteringRules.usageFilteringRules;
 
 public class UsageViewImpl implements UsageViewEx {
   private static final GroupNode.NodeComparator COMPARATOR = new GroupNode.NodeComparator();
@@ -96,7 +99,7 @@ public class UsageViewImpl implements UsageViewEx {
   private final UsageViewPresentation myPresentation;
   private final UsageTarget[] myTargets;
   protected UsageGroupingRule[] myGroupingRules;
-  protected UsageFilteringRule[] myFilteringRules;
+  private final UsageFilteringRuleState myFilteringRulesState = UsageFilteringRuleStateService.createFilteringRuleState();
   private final Factory<? extends UsageSearcher> myUsageSearcherFactory;
   private final Project myProject;
 
@@ -108,7 +111,7 @@ public class UsageViewImpl implements UsageViewEx {
     }
     PsiDocumentManagerBase documentManager = (PsiDocumentManagerBase)PsiDocumentManager.getInstance(getProject());
     documentManager.cancelAndRunWhenAllCommitted("UpdateUsageView", this::updateImmediately);
-  }, 300);
+  }, 300, this);
 
   private final ExclusionHandlerEx<DefaultMutableTreeNode> myExclusionHandler;
   private final Map<Usage, UsageNode> myUsageNodes = new ConcurrentHashMap<>();
@@ -163,7 +166,6 @@ public class UsageViewImpl implements UsageViewEx {
   // to speed up the expanding (see getExpandedDescendants() here and UsageViewTreeCellRenderer.customizeCellRenderer())
   private boolean myExpandingCollapsing;
   private final UsageViewTreeCellRenderer myUsageViewTreeCellRenderer;
-  private Usage myOriginUsage;
   @Nullable private Action myRerunAction;
   private final ExecutorService updateRequests = AppExecutorUtil
     .createBoundedApplicationPoolExecutor("Usage View Update Requests", AppExecutorUtil.getAppExecutorService(),
@@ -171,6 +173,19 @@ public class UsageViewImpl implements UsageViewEx {
   private final List<ExcludeListener> myExcludeListeners = ContainerUtil.createConcurrentList();
   private final Set<Pair<Class<? extends PsiReference>, Language>> myReportedReferenceClasses =
     ContainerUtil.newConcurrentSet();
+
+  private Runnable fusRunnable = () -> {
+    if (myTree == null) return;
+    DataContext dc = DataManager.getInstance().getDataContext(myTree);
+    Navigatable[] navigatables = CommonDataKeys.NAVIGATABLE_ARRAY.getData(dc);
+    if (navigatables != null) {
+      ContainerUtil.filter(navigatables, n -> n.canNavigateToSource() && n instanceof PsiElementUsage).
+        forEach(n -> {
+          PsiElement psiElement = ((PsiElementUsage)n).getElement();
+          if (psiElement != null) UsageViewStatisticsCollector.logItemChosen(getProject(), CodeNavigateSource.FindToolWindow, psiElement.getLanguage());
+      });
+    }
+  };
 
   public UsageViewImpl(@NotNull Project project,
                        @NotNull UsageViewPresentation presentation,
@@ -192,23 +207,8 @@ public class UsageViewImpl implements UsageViewEx {
     myRoot = (GroupNode)myModel.getRoot();
 
     myGroupingRules = getActiveGroupingRules(project, getUsageViewSettings(), getPresentation());
-    myFilteringRules = getActiveFilteringRules(project);
-
-    myBuilder = new UsageNodeTreeBuilder(myTargets, myGroupingRules, myFilteringRules, myRoot, myProject);
-
-    MessageBusConnection messageBusConnection = myProject.getMessageBus().connect(this);
-    messageBusConnection.subscribe(UsageFilteringRuleProvider.RULES_CHANGED, this::rulesChanged);
-    messageBusConnection.subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
-      @Override
-      public void pluginLoaded(@NotNull IdeaPluginDescriptor pluginDescriptor) {
-        rulesChanged();
-      }
-
-      @Override
-      public void pluginUnloaded(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
-        rulesChanged();
-      }
-    });
+    myBuilder = new UsageNodeTreeBuilder(myTargets, myGroupingRules, getActiveFilteringRules(myProject), myRoot, myProject);
+    myProject.getMessageBus().connect(this).subscribe(UsageFilteringRuleProvider.RULES_CHANGED, this::rulesChanged);
 
     myUsageViewTreeCellRenderer = new UsageViewTreeCellRenderer(this);
     if (!myPresentation.isDetachedMode()) {
@@ -475,28 +475,7 @@ public class UsageViewImpl implements UsageViewEx {
     public int hashCode() {
       return Objects.hash(nodeChangeType, parentNode, childNode);
     }
-
-    private boolean isValid() {
-      boolean parentValid = !parentNode.isStructuralChangeDetected();
-
-      boolean childValid = true;
-      if (childNode != null) {
-        childValid = !childNode.isStructuralChangeDetected();
-      }
-
-      return parentValid && childValid;
-    }
   }
-
-  /**
-   * Executes a new appendUsage request with the updateRequests executor
-   */
-  private final Consumer<Usage> invalidatedUsagesConsumer = (@NotNull Usage usage) -> {
-    if (!getPresentation().isDetachedMode() && !isDisposed) {
-      myUsageNodes.remove(usage);
-      addUpdateRequest(() -> ReadAction.run(() -> doAppendUsage(usage)));
-    }
-  };
 
 
   /**
@@ -603,9 +582,6 @@ public class UsageViewImpl implements UsageViewEx {
 
         if (!addedToThisNode.isEmpty()) {
           for (NodeChange change : addedToThisNode) {
-            if (!change.isValid()) {
-              continue;
-            }
             Node childNode = change.childNode;
             if (childNode == null) {
               continue;
@@ -753,6 +729,7 @@ public class UsageViewImpl implements UsageViewEx {
           UsageContextPanel.Provider selectedProvider = myUsageContextPanelProviders.get(currentIndex);
           if (selectedProvider != myCurrentUsageContextProvider) {
             tabSelected(selectedProvider);
+            UsageViewStatisticsCollector.logTabSwitched(myProject);
           }
         });
         panel.add(tabbedPane, BorderLayout.CENTER);
@@ -803,18 +780,21 @@ public class UsageViewImpl implements UsageViewEx {
   protected UsageFilteringRule @NotNull [] getActiveFilteringRules(Project project) {
     List<UsageFilteringRuleProvider> providers = UsageFilteringRuleProvider.EP_NAME.getExtensionList();
     List<UsageFilteringRule> list = new ArrayList<>(providers.size());
+    for (UsageFilteringRule rule : usageFilteringRules(project)) {
+      if (myFilteringRulesState.isActive(rule.getRuleId())) {
+        list.add(rule);
+      }
+    }
     for (UsageFilteringRuleProvider provider : providers) {
+      //noinspection deprecation
       ContainerUtil.addAll(list, provider.getActiveRules(project));
     }
     return list.toArray(UsageFilteringRule.EMPTY_ARRAY);
   }
 
-
-  protected static UsageGroupingRule @NotNull [] getActiveGroupingRules(
-    @NotNull Project project,
-    @NotNull UsageViewSettings usageViewSettings,
-    @Nullable UsageViewPresentation presentation
-  ) {
+  protected static UsageGroupingRule @NotNull [] getActiveGroupingRules(@NotNull Project project,
+                                                                        @NotNull UsageViewSettings usageViewSettings,
+                                                                        @Nullable UsageViewPresentation presentation) {
     List<UsageGroupingRuleProvider> providers = UsageGroupingRuleProvider.EP_NAME.getExtensionList();
     List<UsageGroupingRule> list = new ArrayList<>(providers.size());
     for (UsageGroupingRuleProvider provider : providers) {
@@ -830,8 +810,8 @@ public class UsageViewImpl implements UsageViewEx {
     myTree.setShowsRootHandles(true);
     SmartExpander.installOn(myTree);
     TreeUtil.installActions(myTree);
-    EditSourceOnDoubleClickHandler.install(myTree);
-    EditSourceOnEnterKeyHandler.install(myTree);
+    EditSourceOnDoubleClickHandler.install(myTree, fusRunnable);
+    EditSourceOnEnterKeyHandler.install(myTree, fusRunnable);
 
     TreeUtil.promiseSelectFirst(myTree);
     PopupHandler.installPopupMenu(myTree, IdeActions.GROUP_USAGE_VIEW_POPUP, ActionPlaces.USAGE_VIEW_POPUP);
@@ -922,7 +902,7 @@ public class UsageViewImpl implements UsageViewEx {
 
   protected void addFilteringActions(@NotNull DefaultActionGroup group, boolean includeExtensionPoints) {
     if (getPresentation().isMergeDupLinesAvailable()) {
-      MergeDupLines mergeDupLines = new MergeDupLines();
+      MergeSameLineUsagesAction mergeDupLines = new MergeSameLineUsagesAction();
       JComponent component = myRootPanel;
       if (component != null) {
         mergeDupLines.registerCustomShortcutSet(mergeDupLines.getShortcutSet(), component, this);
@@ -938,9 +918,18 @@ public class UsageViewImpl implements UsageViewEx {
    * Creates filtering actions for the toolbar
    */
   protected void addFilteringFromExtensionPoints(@NotNull DefaultActionGroup group) {
-    for (UsageFilteringRuleProvider provider : UsageFilteringRuleProvider.EP_NAME.getExtensionList()) {
-      AnAction[] actions = provider.createFilteringActions(this);
+    if (getPresentation().isCodeUsages()) {
+      JComponent component = getComponent();
+      List<AnAction> actions = usageFilteringRuleActions(myProject, myFilteringRulesState);
       for (AnAction action : actions) {
+        action.registerCustomShortcutSet(component, this);
+        group.add(action);
+      }
+    }
+    for (UsageFilteringRuleProvider provider : UsageFilteringRuleProvider.EP_NAME.getExtensionList()) {
+      //noinspection deprecation
+      AnAction[] providerActions = provider.createFilteringActions(this);
+      for (AnAction action : providerActions) {
         group.add(action);
       }
     }
@@ -1105,10 +1094,9 @@ public class UsageViewImpl implements UsageViewEx {
     Set<Usage> excludedUsages = getExcludedUsages();
     reset();
     myGroupingRules = getActiveGroupingRules(myProject, getUsageViewSettings(), getPresentation());
-    myFilteringRules = getActiveFilteringRules(myProject);
 
     myBuilder.setGroupingRules(myGroupingRules);
-    myBuilder.setFilteringRules(myFilteringRules);
+    myBuilder.setFilteringRules(getActiveFilteringRules(myProject));
 
     for (int i = allUsages.size() - 1; i >= 0; i--) {
       Usage usage = allUsages.get(i);
@@ -1241,23 +1229,6 @@ public class UsageViewImpl implements UsageViewEx {
   @Override
   public void associateProgress(@NotNull ProgressIndicator indicator) {
     associatedProgress = indicator;
-  }
-
-  private static final class MergeDupLines extends RuleAction {
-    private MergeDupLines() {
-      super(UsageViewBundle.message("action.merge.same.line"), AllIcons.Toolbar.Filterdups);
-      setShortcutSet(new CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK)));
-    }
-
-    @Override
-    protected boolean getOptionValue(@NotNull AnActionEvent e) {
-      return getUsageViewSettings(e).isFilterDuplicatedLine();
-    }
-
-    @Override
-    protected void setOptionValue(@NotNull AnActionEvent e, boolean value) {
-      getUsageViewSettings(e).setFilterDuplicatedLine(value);
-    }
   }
 
   private final class ShowSettings extends AnAction implements UpdateInBackground {
@@ -1394,7 +1365,7 @@ public class UsageViewImpl implements UsageViewEx {
     }
     reportToFUS(usage);
 
-    UsageNode child = myBuilder.appendOrGet(usage, isFilterDuplicateLines(), edtModelToSwingNodeChangesQueue, invalidatedUsagesConsumer);
+    UsageNode child = myBuilder.appendOrGet(usage, isFilterDuplicateLines(), edtModelToSwingNodeChangesQueue);
     myUsageNodes.put(usage, child == null ? NULL_NODE : child);
 
     if (child != null && getPresentation().isExcludeAvailable()) {
@@ -1413,15 +1384,12 @@ public class UsageViewImpl implements UsageViewEx {
   }
 
   private void reportToFUS(@NotNull Usage usage) {
-    if (usage instanceof PsiElementUsage) {
-      PsiElementUsage elementUsage = (PsiElementUsage)usage;
-      Class<? extends PsiReference> referenceClass = elementUsage.getReferenceClass();
-      PsiElement element = elementUsage.getElement();
-      if (referenceClass != null || element != null) {
-        Pair<Class<? extends PsiReference>, Language> pair = Pair.create(referenceClass, element != null ? element.getLanguage() : null);
-        if (myReportedReferenceClasses.add(pair)) {
-          UsageViewStatisticsCollector.logUsageShown(myProject, pair.first, pair.second);
-        }
+    Class<? extends PsiReference> referenceClass = UsageReferenceClassProvider.Companion.getReferenceClass(usage);
+    PsiElement element = usage instanceof PsiElementUsage ? ((PsiElementUsage)usage).getElement() : null;
+    if (element != null || referenceClass != null) {
+      Pair<Class<? extends PsiReference>, Language> pair = Pair.create(referenceClass, element != null ? element.getLanguage() : null);
+      if (myReportedReferenceClasses.add(pair)) {
+        UsageViewStatisticsCollector.logUsageShown(myProject, pair.first, pair.second);
       }
     }
   }
@@ -1634,6 +1602,7 @@ public class UsageViewImpl implements UsageViewEx {
     disposeUsageContextPanels();
     isDisposed = true;
     myUpdateAlarm.cancelAllRequests();
+    fusRunnable = null; // Release reference to this
 
     cancelCurrentSearch();
     myRerunAction = null;
@@ -1870,6 +1839,16 @@ public class UsageViewImpl implements UsageViewEx {
     return selectionPaths == null ? Collections.emptyList() : ContainerUtil.mapNotNull(selectionPaths, p-> ObjectUtils.tryCast(p.getLastPathComponent(), TreeNode.class));
   }
 
+  private boolean hasSelectedNodes() {
+    ApplicationManager.getApplication().assertIsDispatchThread();
+    TreePath[] selectionPaths = myTree.getSelectionPaths();
+    return selectionPaths != null && ContainerUtil.or(selectionPaths, p -> p.getLastPathComponent() instanceof TreeNode);
+  }
+
+  private @NotNull List<@NotNull TreeNode> allSelectedNodes() {
+    return TreeUtil.treeNodeTraverser(null).withRoots(selectedNodes()).traverse().toList();
+  }
+
   @Override
   @NotNull
   public Set<Usage> getSelectedUsages() {
@@ -2015,7 +1994,7 @@ public class UsageViewImpl implements UsageViewEx {
       else if (USAGE_VIEW_KEY.is(dataId)) {
         return UsageViewImpl.this;
       }
-      else if (PlatformDataKeys.HELP_ID.is(dataId)) {
+      else if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
         return HELP_ID;
       }
       else if (PlatformDataKeys.COPY_PROVIDER.is(dataId)) {
@@ -2030,36 +2009,26 @@ public class UsageViewImpl implements UsageViewEx {
       else if (CommonDataKeys.NAVIGATABLE_ARRAY.is(dataId)) {
         return ContainerUtil.mapNotNull(selectedNodes(), n-> ObjectUtils.tryCast(TreeUtil.getUserObject(n), Navigatable.class)).toArray(Navigatable.EMPTY_NAVIGATABLE_ARRAY);
       }
-      else if (USAGES_KEY.is(dataId)) {
-        return getSelectedUsages().toArray(Usage.EMPTY_ARRAY);
+      else if (USAGES_KEY.is(dataId) && !hasSelectedNodes()) {
+        return Usage.EMPTY_ARRAY;
+      }
+      else if (LangDataKeys.PSI_ELEMENT_ARRAY.is(dataId) && !hasSelectedNodes()) {
+        return PsiElement.EMPTY_ARRAY;
       }
       else if (USAGE_TARGETS_KEY.is(dataId)) {
         return ContainerUtil.mapNotNull(selectedNodes(), o -> o instanceof UsageTargetNode ? ((UsageTargetNode)o).getTarget() : null).toArray(UsageTarget.EMPTY_ARRAY);
       }
-      else if (CommonDataKeys.VIRTUAL_FILE_ARRAY.is(dataId)) {
-        return TreeUtil.treeNodeTraverser(null).withRoots(selectedNodes())
-          .traverse()
-          .filterMap(o -> o instanceof UsageNode ? ((UsageNode)o).getUsage() :
-                          o instanceof UsageTargetNode ? ((UsageTargetNode)o).getTarget() : null)
-          .flatMap(o -> o instanceof UsageInFile ? ContainerUtil.createMaybeSingletonList(((UsageInFile)o).getFile()) :
-                        o instanceof UsageInFiles ? Arrays.asList(((UsageInFiles)o).getFiles()) :
-                        o instanceof UsageTarget ? Arrays.asList(ObjectUtils.notNull(((UsageTarget)o).getFiles(), VirtualFile.EMPTY_ARRAY)) :
-                        Collections.emptyList())
-          .filter(VirtualFile::isValid)
-          .unique()
-          .toArray(VirtualFile.EMPTY_ARRAY);
+      else if (CommonDataKeys.VIRTUAL_FILE_ARRAY.is(dataId) && !hasSelectedNodes()) {
+        return VirtualFile.EMPTY_ARRAY;
       }
       else {
         DataProvider selectedProvider = ObjectUtils.tryCast(TreeUtil.getUserObject(getSelectedNode()), DataProvider.class);
-        if (PlatformDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
-          Set<Usage> selectedUsages = getSelectedUsages();
-          Iterable<DataProvider> slowProviders = selectedProvider == null ? null : PlatformDataKeys.SLOW_DATA_PROVIDERS.getData(selectedProvider);
+        if (PlatformCoreDataKeys.SLOW_DATA_PROVIDERS.is(dataId)) {
+          List<TreeNode> selectedNodes = allSelectedNodes();
+          Iterable<DataProvider> slowProviders = selectedProvider == null ? null : PlatformCoreDataKeys.SLOW_DATA_PROVIDERS.getData(selectedProvider);
           slowProviders = ObjectUtils.notNull(slowProviders, Collections.emptyList());
-          slowProviders = ContainerUtil.concat(Collections.singletonList(id -> getSlowData(id, selectedUsages)), slowProviders);
+          slowProviders = ContainerUtil.concat(Collections.singletonList(id -> getSlowData(id, selectedNodes)), slowProviders);
           return slowProviders;
-        }
-        if (LangDataKeys.PSI_ELEMENT_ARRAY.is(dataId) && selectedNodes().isEmpty()) {
-          return PsiElement.EMPTY_ARRAY;
         }
         if (selectedProvider != null) {
           return selectedProvider.getData(dataId);
@@ -2069,12 +2038,38 @@ public class UsageViewImpl implements UsageViewEx {
     }
   }
 
-  private static Object getSlowData(@NotNull String dataId, @NotNull Collection<? extends Usage> selectedUsages) {
+  private static @Nullable Object getSlowData(@NotNull String dataId, @NotNull List<@NotNull TreeNode> selectedNodes) {
+    if (USAGES_KEY.is(dataId)) {
+      return selectedUsages(selectedNodes)
+        .toArray(n -> n == 0 ? Usage.EMPTY_ARRAY : new Usage[n]);
+    }
     if (LangDataKeys.PSI_ELEMENT_ARRAY.is(dataId)) {
-      return ContainerUtil.mapNotNull(selectedUsages, u -> u instanceof PsiElementUsage ? ((PsiElementUsage)u).getElement() : null)
-        .toArray(PsiElement.EMPTY_ARRAY);
+      return selectedUsages(selectedNodes)
+        .filter(usage -> usage instanceof PsiElementUsage)
+        .map(usage -> ((PsiElementUsage)usage).getElement())
+        .filter(element -> element != null)
+        .toArray(PsiElement.ARRAY_FACTORY::create);
+    }
+    if (CommonDataKeys.VIRTUAL_FILE_ARRAY.is(dataId)) {
+      return JBIterable.from(selectedNodes)
+        .filterMap(o -> o instanceof UsageNode ? ((UsageNode)o).getUsage() :
+                        o instanceof UsageTargetNode ? ((UsageTargetNode)o).getTarget() : null)
+        .flatMap(o -> o instanceof UsageInFile ? ContainerUtil.createMaybeSingletonList(((UsageInFile)o).getFile()) :
+                      o instanceof UsageInFiles ? Arrays.asList(((UsageInFiles)o).getFiles()) :
+                      o instanceof UsageTarget ? Arrays.asList(ObjectUtils.notNull(((UsageTarget)o).getFiles(), VirtualFile.EMPTY_ARRAY)) :
+                      Collections.emptyList())
+        .filter(VirtualFile::isValid)
+        .unique()
+        .toArray(VirtualFile.EMPTY_ARRAY);
     }
     return null;
+  }
+
+  private static @NotNull Stream<@NotNull Usage> selectedUsages(@NotNull List<@NotNull TreeNode> selectedNodes) {
+    return selectedNodes.stream()
+      .filter(node -> node instanceof UsageNode)
+      .map(node -> ((UsageNode)node).getUsage())
+      .distinct();
   }
 
   private final class ButtonPanel extends JPanel {
@@ -2256,16 +2251,27 @@ public class UsageViewImpl implements UsageViewEx {
   }
 
   /**
+   * @deprecated store origin usage elsewhere
+   */
+  @Deprecated private Usage myOriginUsage;
+
+  /**
    * The element the "find usages" action was invoked on.
    * E.g. if the "find usages" was invoked on the reference "getName(2)" pointing to the method "getName()" then the origin usage is this reference.
+   *
+   * @deprecated store origin usage elsewhere
    */
+  @Deprecated
   public void setOriginUsage(@NotNull Usage usage) {
     myOriginUsage = usage;
   }
 
   /**
    * true if the {@param usage} points to the element the "find usages" action was invoked on
+   *
+   * @deprecated store origin usage elsewhere
    */
+  @Deprecated
   public boolean isOriginUsage(@NotNull Usage usage) {
     return
       myOriginUsage instanceof UsageInfo2UsageAdapter &&

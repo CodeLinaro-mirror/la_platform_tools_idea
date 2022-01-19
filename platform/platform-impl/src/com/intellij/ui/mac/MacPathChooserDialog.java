@@ -84,10 +84,9 @@ public class MacPathChooserDialog implements PathChooserDialog, FileChooserDialo
     }
 
 
-    myFileDialog.setFilenameFilter((dir, name) -> {
-      File file = new File(dir, name);
-      return myFileChooserDescriptor.isFileSelectable(myHelper.fileToVirtualFile(file));
-    });
+    myFileDialog.setFilenameFilter(FileChooser.safeInvokeFilter((dir, name) -> {
+      return myFileChooserDescriptor.isFileSelectable(PathChooserDialogHelper.fileToCoreLocalVirtualFile(dir, name));
+    }, false));
 
     myFileDialog.setMultipleMode(myFileChooserDescriptor.isChooseMultiple());
 

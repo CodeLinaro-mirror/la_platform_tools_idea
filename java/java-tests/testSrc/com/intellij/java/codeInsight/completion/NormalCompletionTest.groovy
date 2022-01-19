@@ -1619,7 +1619,7 @@ class XInternalError {}
   @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants provides dialog option in smart mode only")
   void testImplementViaOverrideCompletion() {
     configure()
-    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods...', 'public void run'
+    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods…', 'public void run'
     lookup.currentItem = lookup.items[2]
     myFixture.type('\n')
     checkResult()
@@ -1628,7 +1628,7 @@ class XInternalError {}
   @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants provides dialog option in smart mode only")
   void testSuggestToOverrideMethodsWhenTypingOverrideAnnotation() {
     configure()
-    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods...'
+    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods…'
     lookup.currentItem = lookup.items[1]
     myFixture.type('\n')
     checkResult()
@@ -1637,7 +1637,7 @@ class XInternalError {}
   @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants provides dialog option in smart mode only")
   void testSuggestToOverrideMethodsWhenTypingOverrideAnnotationBeforeMethod() {
     configure()
-    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods...'
+    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods…'
     lookup.currentItem = lookup.items[1]
     myFixture.type('\n')
     checkResult()
@@ -1646,7 +1646,7 @@ class XInternalError {}
   @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants provides dialog option in smart mode only")
   void testSuggestToOverrideMethodsInMulticaretMode() {
     configure()
-    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods...'
+    myFixture.assertPreferredCompletionItems 0, 'Override', 'Override/Implement methods…'
     lookup.currentItem = lookup.items[1]
     myFixture.type('\n')
     checkResult()
@@ -2531,6 +2531,75 @@ class Abc {
     def element = elements[0]
     assert element.lookupString == "out"
     LookupElementPresentation presentation = renderElement(element)
-    assert renderElement(element).tailText == null
+    assert presentation.tailText == null
+  }
+
+  @NeedsIndex.ForStandardLibrary(reason = "Control flow analysis needs standard library and necessary to provide variable initializer")
+  void testLocalFromTryBlock() {
+    myFixture.configureByText("Test.java", "class Test {\n" +
+                                           "  void test() {\n" +
+                                           "    try {\n" +
+                                           "      int myvar = foo();\n" +
+                                           "    }\n" +
+                                           "    catch (RuntimeException ex) {\n" +
+                                           "    }\n" +
+                                           "    my<caret>\n" +
+                                           "  }\n" +
+                                           "\n" +
+                                           "  native int foo();\n" +
+                                           "}")
+    myFixture.completeBasic()
+    myFixture.checkResult("class Test {\n" +
+                          "  void test() {\n" +
+                          "      int myvar = 0;\n" +
+                          "      try {\n" +
+                          "          myvar = foo();\n" +
+                          "      } catch (RuntimeException ex) {\n" +
+                          "      }\n" +
+                          "      myvar\n" +
+                          "  }\n" +
+                          "\n" +
+                          "  native int foo();\n" +
+                          "}")
+  }
+
+  void testLocalFromAnotherIfBranch() {
+    myFixture.configureByText("Test.java", "class Test {\n" +
+                                           "  void test(int x) {\n" +
+                                           "    if (x > 0) {\n" +
+                                           "      String result = \"positive\";\n" +
+                                           "    } else if (x < 0) {\n" +
+                                           "      re<caret>\n" +
+                                           "    }\n" +
+                                           "  }\n" +
+                                           "}")
+    myFixture.completeBasic()
+    assert myFixture.lookupElements[0].lookupString == "return"
+    def element = myFixture.lookupElements[1]
+    assert element.lookupString == "result"
+    LookupElementPresentation presentation = renderElement(element)
+    assert presentation.tailText == " (from if-then block)"
+    selectItem(element)
+    myFixture.checkResult("class Test {\n" +
+                          "  void test(int x) {\n" +
+                          "      String result = null;\n" +
+                          "      if (x > 0) {\n" +
+                          "          result = \"positive\";\n" +
+                          "      } else if (x < 0) {\n" +
+                          "          result\n" +
+                          "      }\n" +
+                          "  }\n" +
+                          "}")
+  }
+
+  void testLookupUpDownActions() {
+    myFixture.configureByText("Test.java", "class Test {<caret>}")
+    myFixture.completeBasic() // 'abstract' selected
+    myFixture.assertPreferredCompletionItems(0, "abstract", "boolean", "byte", "char", "class")
+    myFixture.performEditorAction("EditorLookupSelectionDown") // 'boolean' selected
+    myFixture.performEditorAction("EditorLookupSelectionDown") // 'byte' selected
+    myFixture.performEditorAction("EditorLookupSelectionUp") // 'boolean' selected
+    myFixture.type('\n')
+    myFixture.checkResult("class Test {boolean}")
   }
 }

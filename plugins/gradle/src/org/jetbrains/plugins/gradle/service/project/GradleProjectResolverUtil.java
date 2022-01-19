@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.service.project;
 
 import com.intellij.build.events.MessageEvent;
@@ -18,7 +18,6 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.LazyInitializer;
 import com.intellij.util.PathUtilRt;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
@@ -36,13 +35,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.gradle.DefaultExternalDependencyId;
 import org.jetbrains.plugins.gradle.ExternalDependencyId;
-import org.jetbrains.plugins.gradle.execution.build.CachedModuleDataFinder;
 import org.jetbrains.plugins.gradle.issue.UnresolvedDependencySyncIssue;
 import org.jetbrains.plugins.gradle.model.*;
 import org.jetbrains.plugins.gradle.model.data.GradleSourceSetData;
 import org.jetbrains.plugins.gradle.settings.GradleExecutionWorkspace;
 import org.jetbrains.plugins.gradle.util.GradleConstants;
-import org.jetbrains.plugins.gradle.util.GradleModuleData;
 import org.jetbrains.plugins.gradle.util.GradleModuleDataKt;
 import org.jetbrains.plugins.gradle.util.GradleUtil;
 
@@ -54,8 +51,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static com.intellij.openapi.util.text.StringUtil.trimEnd;
 
 /**
  * @author Vladislav.Soroka
@@ -793,7 +788,8 @@ public final class GradleProjectResolverUtil {
         final String failureMessage = ((UnresolvedExternalDependency)mergedDependency).getFailureMessage();
 
         boolean isOfflineWork = resolverCtx.getSettings() != null && resolverCtx.getSettings().isOfflineWork();
-        BuildIssue buildIssue = new UnresolvedDependencySyncIssue(libraryName, failureMessage, resolverCtx.getProjectPath(), isOfflineWork);
+        BuildIssue buildIssue = new UnresolvedDependencySyncIssue(
+          libraryName, failureMessage, resolverCtx.getProjectPath(), isOfflineWork, ownerModule.getId());
         resolverCtx.report(MessageEvent.Kind.ERROR, buildIssue);
 
         LibraryLevel level = linkProjectLibrary(resolverCtx, ideProject, library) ? LibraryLevel.PROJECT : LibraryLevel.MODULE;
@@ -821,15 +817,6 @@ public final class GradleProjectResolverUtil {
 
   private static boolean doesNotContainDependencyOn(Collection<ProjectDependencyInfo> infos, GradleSourceSetData data) {
     return infos.stream().noneMatch((info) -> info.myModuleData.equals(data));
-  }
-
-  /**
-   * @deprecated use {@link GradleProjectResolverUtil#linkProjectLibrary(ProjectResolverContext, DataNode, LibraryData)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public static boolean linkProjectLibrary(@Nullable DataNode<ProjectData> ideProject, @NotNull final LibraryData library) {
-    return linkProjectLibrary(null, ideProject, library);
   }
 
   public static boolean linkProjectLibrary(/*@NotNull*/ ProjectResolverContext context,

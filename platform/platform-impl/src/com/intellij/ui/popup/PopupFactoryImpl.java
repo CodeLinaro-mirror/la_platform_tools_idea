@@ -38,7 +38,6 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.tree.TreeUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -82,13 +81,13 @@ public class PopupFactoryImpl extends JBPopupFactory {
 
   @NotNull
   @Override
-  public ListPopup createConfirmation(@PopupTitle String title, final Runnable onYes, int defaultOptionIndex) {
+  public ListPopup createConfirmation(@PopupTitle @Nullable String title, final Runnable onYes, int defaultOptionIndex) {
     return createConfirmation(title, CommonBundle.getYesButtonText(), CommonBundle.getNoButtonText(), onYes, defaultOptionIndex);
   }
 
   @NotNull
   @Override
-  public ListPopup createConfirmation(@PopupTitle String title, final String yesText, String noText, final Runnable onYes, int defaultOptionIndex) {
+  public ListPopup createConfirmation(@PopupTitle @Nullable String title, final String yesText, String noText, final Runnable onYes, int defaultOptionIndex) {
     return createConfirmation(title, yesText, noText, onYes, EmptyRunnable.getInstance(), defaultOptionIndex);
   }
 
@@ -132,7 +131,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
 
   @NotNull
   @Override
-  public ListPopup createConfirmation(@PopupTitle String title,
+  public ListPopup createConfirmation(@PopupTitle @Nullable String title,
                                       @NlsContexts.Label String yesText,
                                       @NlsContexts.Label String noText,
                                       final Runnable onYes,
@@ -168,7 +167,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
     private final Runnable myDisposeCallback;
     private final Component myComponent;
 
-    public ActionGroupPopup(@PopupTitle String title,
+    public ActionGroupPopup(@PopupTitle @Nullable String title,
                             @NotNull ActionGroup actionGroup,
                             @NotNull DataContext dataContext,
                             boolean showNumbers,
@@ -183,7 +182,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
            maxRowCount, preselectActionCondition, actionPlace, null, false);
     }
 
-    public ActionGroupPopup(@PopupTitle String title,
+    public ActionGroupPopup(@PopupTitle @Nullable String title,
                             @NotNull ActionGroup actionGroup,
                             @NotNull DataContext dataContext,
                             boolean showNumbers,
@@ -199,7 +198,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
            maxRowCount, preselectActionCondition, actionPlace, null, autoSelection);
     }
 
-    public ActionGroupPopup(@PopupTitle String title,
+    public ActionGroupPopup(@PopupTitle @Nullable String title,
                             @NotNull ActionGroup actionGroup,
                             @NotNull DataContext dataContext,
                             boolean showNumbers,
@@ -217,21 +216,6 @@ public class PopupFactoryImpl extends JBPopupFactory {
       UiInspectorUtil.registerProvider(getList(), () -> UiInspectorUtil.collectActionGroupInfo("Menu", actionGroup, actionPlace));
     }
 
-    /**
-     * @deprecated Use {@link ActionGroupPopup#ActionGroupPopup(WizardPopup, ListPopupStep, Runnable, DataContext, int)} instead
-     * @noinspection unused
-     */
-    @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-    @Deprecated
-    protected ActionGroupPopup(@Nullable WizardPopup aParent,
-                               @NotNull ListPopupStep step,
-                               @Nullable Runnable disposeCallback,
-                               @NotNull DataContext dataContext,
-                               @Nullable String actionPlace,
-                               int maxRowCount) {
-      this(aParent, step, disposeCallback, dataContext, maxRowCount);
-    }
-
     protected ActionGroupPopup(@Nullable WizardPopup aParent,
                                @NotNull ListPopupStep step,
                                @Nullable Runnable disposeCallback,
@@ -240,7 +224,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
       super(CommonDataKeys.PROJECT.getData(dataContext), aParent, step, null);
       setMaxRowCount(maxRowCount);
       myDisposeCallback = disposeCallback;
-      myComponent = PlatformDataKeys.CONTEXT_COMPONENT.getData(dataContext);
+      myComponent = PlatformCoreDataKeys.CONTEXT_COMPONENT.getData(dataContext);
 
       registerAction("handleActionToggle1", KeyEvent.VK_SPACE, 0, new AbstractAction() {
         @Override
@@ -257,7 +241,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
       });
     }
 
-    protected static ListPopupStep<ActionItem> createStep(@PopupTitle String title,
+    protected static ListPopupStep<ActionItem> createStep(@PopupTitle @Nullable String title,
                                                         @NotNull ActionGroup actionGroup,
                                                         @NotNull DataContext dataContext,
                                                         boolean showNumbers,
@@ -268,7 +252,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
                                                         @Nullable String actionPlace,
                                                         @Nullable PresentationFactory presentationFactory,
                                                         boolean autoSelection) {
-      final Component component = PlatformDataKeys.CONTEXT_COMPONENT.getData(dataContext);
+      final Component component = PlatformCoreDataKeys.CONTEXT_COMPONENT.getData(dataContext);
       LOG.assertTrue(component != null, "dataContext has no component for new ListPopupStep");
 
       List<ActionItem> items = ActionPopupStep.createActionItems(
@@ -337,7 +321,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
 
   @Override
   @NotNull
-  public ListPopup createActionGroupPopup(@PopupTitle String title,
+  public ListPopup createActionGroupPopup(@PopupTitle @Nullable String title,
                                           @NotNull ActionGroup actionGroup,
                                           @NotNull DataContext dataContext,
                                           ActionSelectionAid aid,
@@ -361,7 +345,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
 
   @NotNull
   @Override
-  public ListPopup createActionGroupPopup(@PopupTitle String title,
+  public ListPopup createActionGroupPopup(@PopupTitle @Nullable String title,
                                           @NotNull final ActionGroup actionGroup,
                                           @NotNull DataContext dataContext,
                                           boolean showNumbers,
@@ -381,7 +365,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
                                                      @Nullable String actionPlace,
                                                      boolean showNumbers,
                                                      boolean showDisabledActions,
-                                                     @PopupTitle String title,
+                                                     @PopupTitle @Nullable String title,
                                                      Component component,
                                                      boolean honorActionMnemonics,
                                                      int defaultOptionIndex,
@@ -449,7 +433,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
   @NotNull
   @Override
   public RelativePoint guessBestPopupLocation(@NotNull DataContext dataContext) {
-    Component component = PlatformDataKeys.CONTEXT_COMPONENT.getData(dataContext);
+    Component component = PlatformCoreDataKeys.CONTEXT_COMPONENT.getData(dataContext);
     JComponent focusOwner = component instanceof JComponent ? (JComponent)component : null;
 
     if (focusOwner == null) {
@@ -599,7 +583,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
 
   @NotNull
   @Override
-  public BalloonBuilder createDialogBalloonBuilder(@NotNull JComponent content, @PopupTitle String title) {
+  public BalloonBuilder createDialogBalloonBuilder(@NotNull JComponent content, @PopupTitle @Nullable String title) {
     final BalloonPopupBuilderImpl builder = new BalloonPopupBuilderImpl(myStorage, content);
     final Color bg = UIManager.getColor("Panel.background");
     final Color borderOriginal = Color.darkGray;
@@ -679,6 +663,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
     private final boolean myPrependWithSeparator;
     private final @NlsContexts.Separator String mySeparatorText;
     private final @NlsContexts.DetailedDescription String myDescription;
+    private final @NlsContexts.DetailedDescription String myTooltip;
     private final @NlsContexts.ListItem String myValue;
 
     ActionItem(@NotNull AnAction action,
@@ -686,6 +671,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
                @Nullable Character mnemonicChar,
                boolean mnemonicsEnabled,
                @Nullable @NlsContexts.DetailedDescription String description,
+               @Nullable @NlsContexts.DetailedDescription String tooltip,
                boolean enabled,
                @Nullable Icon icon,
                @Nullable Icon selectedIcon,
@@ -702,6 +688,7 @@ public class PopupFactoryImpl extends JBPopupFactory {
       myPrependWithSeparator = prependWithSeparator;
       mySeparatorText = separatorText;
       myDescription = description;
+      myTooltip = tooltip;
       myValue = value;
       myAction.getTemplatePresentation().addPropertyChangeListener(evt -> {
         if (evt.getPropertyName() == Presentation.PROP_TEXT) {
@@ -748,7 +735,11 @@ public class PopupFactoryImpl extends JBPopupFactory {
     public boolean isEnabled() { return myIsEnabled; }
 
     public @NlsContexts.DetailedDescription String getDescription() {
-      return myDescription;
+      return myDescription == null ? myTooltip : myDescription;
+    }
+
+    public @NlsContexts.DetailedDescription String getTooltip() {
+      return myTooltip;
     }
 
     @Nullable

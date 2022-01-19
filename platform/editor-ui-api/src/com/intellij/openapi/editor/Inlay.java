@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor;
 
 import com.intellij.openapi.Disposable;
@@ -75,7 +75,7 @@ public interface Inlay<T extends EditorCustomElementRenderer> extends Disposable
   int getWidthInPixels();
 
   /**
-   * Returns current inlay's width. Width is defined at inlay's creation using information returned by inlay's renderer.
+   * Returns current inlay's height. Height is defined at inlay's creation using information returned by inlay's renderer.
    * To change height (supported for 'block' elements only), {@link #update()} method should be called.
    */
   int getHeightInPixels();
@@ -113,6 +113,17 @@ public interface Inlay<T extends EditorCustomElementRenderer> extends Disposable
    * Causes repaint of inlay in editor.
    */
   void repaint();
+
+  /**
+   * Returns properties specified at inlay creation.
+   *
+   * @see InlayModel#addInlineElement(int, InlayProperties, EditorCustomElementRenderer)
+   * @see InlayModel#addBlockElement(int, InlayProperties, EditorCustomElementRenderer)
+   * @see InlayModel#addAfterLineEndElement(int, InlayProperties, EditorCustomElementRenderer)
+   */
+  default @NotNull InlayProperties getProperties() {
+    return new InlayProperties();
+  }
 
   /**
    * @see #getPlacement()

@@ -47,6 +47,7 @@ import com.sun.jdi.event.MethodExitEvent;
 import com.sun.jdi.request.*;
 import one.util.streamex.StreamEx;
 import org.jdom.Element;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.java.debugger.breakpoints.properties.JavaMethodBreakpointProperties;
@@ -72,6 +73,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
+import static org.jetbrains.kotlin.idea.util.application.ApplicationUtilsKt.isDispatchThread;
+import static org.jetbrains.kotlin.idea.util.application.ApplicationUtilsKt.isUnitTestMode;
+
 // This class is copied from com.intellij.debugger.ui.breakpoints.MethodBreakpoint.
 // Changed parts are marked with '// MODIFICATION: ' comments.
 // This should be deleted when IDEA opens the method breakpoint API (presumably in 193).
@@ -96,7 +100,7 @@ public class KotlinFunctionBreakpoint extends BreakpointWithHighlighter<JavaMeth
 
     @Override
     public boolean isValid() {
-        return super.isValid() && getMethodName() != null;
+         return super.isValid() && getMethodName() != null;
     }
 
     // MODIFICATION: Start Kotlin implementation
@@ -108,8 +112,7 @@ public class KotlinFunctionBreakpoint extends BreakpointWithHighlighter<JavaMeth
         mySignature = null;
 
         Project project = myProject;
-
-        Task.Backgroundable task = new Task.Backgroundable(myProject, KotlinDebuggerCoreBundle.message("function.breakpoint.initialize")) {
+        Task.Backgroundable task = new Task.Backgroundable(project, KotlinDebuggerCoreBundle.message("function.breakpoint.initialize")) {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 SourcePosition sourcePosition = KotlinFunctionBreakpoint.this.getSourcePosition();
@@ -128,23 +131,21 @@ public class KotlinFunctionBreakpoint extends BreakpointWithHighlighter<JavaMeth
 
                 ProgressIndicatorProvider.checkCanceled();
 
-                ApplicationManager.getApplication().invokeLater(() -> {
-                    KotlinFunctionBreakpoint.this.setMethodName(methodName);
-                    KotlinFunctionBreakpoint.this.mySignature = methodSignature;
-                    KotlinFunctionBreakpoint.this.myIsStatic = methodIsStatic;
+                KotlinFunctionBreakpoint.this.setMethodName(methodName);
+                KotlinFunctionBreakpoint.this.mySignature = methodSignature;
+                KotlinFunctionBreakpoint.this.myIsStatic = methodIsStatic;
 
-                    if (psiClass != null) {
-                        KotlinFunctionBreakpoint.this.getProperties().myClassPattern = psiClass.getQualifiedName();
-                    }
-                    if (methodIsStatic) {
-                        KotlinFunctionBreakpoint.this.setInstanceFiltersEnabled(false);
-                    }
-                }, ModalityState.defaultModalityState());
+                if (psiClass != null) {
+                    KotlinFunctionBreakpoint.this.getProperties().myClassPattern = psiClass.getQualifiedName();
+                }
+                if (methodIsStatic) {
+                    KotlinFunctionBreakpoint.this.setInstanceFiltersEnabled(false);
+                }
             }
         };
 
         ProgressManager progressManager = ProgressManager.getInstance();
-        if (ApplicationManager.getApplication().isDispatchThread() && !ApplicationManager.getApplication().isUnitTestMode()) {
+        if (isDispatchThread() && !isUnitTestMode()) {
             progressManager.runProcessWithProgressAsynchronously(task, new BackgroundableProcessIndicator(task));
         } else {
             EmptyProgressIndicator progressIndicator = new EmptyProgressIndicator();
@@ -429,6 +430,7 @@ public class KotlinFunctionBreakpoint extends BreakpointWithHighlighter<JavaMeth
         return getEventMessage(event, getFileName());
     }
 
+    @Nls
     private static String getEventMessage(@NotNull LocatableEvent event, @NotNull String defaultFileName) {
         Location location = event.location();
         if (event instanceof MethodEntryEvent) {
@@ -444,6 +446,7 @@ public class KotlinFunctionBreakpoint extends BreakpointWithHighlighter<JavaMeth
         return "";
     }
 
+    @Nls
     private static String getEventMessage(boolean entry, Method method, Location location, String defaultFileName) {
         String locationQName = DebuggerUtilsEx.getLocationMethodQName(location);
         String locationFileName = DebuggerUtilsEx.getSourceName(location, e -> defaultFileName);
@@ -499,7 +502,9 @@ public class KotlinFunctionBreakpoint extends BreakpointWithHighlighter<JavaMeth
         } else {
             buffer.append(JavaDebuggerBundle.message("status.breakpoint.invalid"));
         }
-        return buffer.toString();
+        @SuppressWarnings("HardCodedStringLiteral")
+        String s = buffer.toString();
+        return s;
     }
 
     @Override

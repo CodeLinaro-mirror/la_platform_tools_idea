@@ -1,10 +1,13 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.hints;
 
 import com.intellij.codeHighlighting.EditorBoundHighlightingPass;
 import com.intellij.codeInsight.daemon.impl.ParameterHintsPresentationManager;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingLevelManager;
 import com.intellij.lang.Language;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.impl.NonBlockingReadActionImpl;
 import com.intellij.openapi.diff.impl.DiffUtil;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.Inlay;
@@ -14,8 +17,11 @@ import com.intellij.openapi.progress.util.ProgressIndicatorBase;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
-import gnu.trove.TIntObjectHashMap;
+import com.intellij.util.concurrency.AppExecutorUtil;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.concurrency.CancellablePromise;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,9 +31,9 @@ import static com.intellij.codeInsight.hints.ParameterHintsPassFactory.forceHint
 import static com.intellij.codeInsight.hints.ParameterHintsPassFactory.putCurrentPsiModificationStamp;
 
 // TODO This pass should be rewritten with new API
-public class ParameterHintsPass extends EditorBoundHighlightingPass {
-  private final TIntObjectHashMap<List<HintData>> myHints = new TIntObjectHashMap<>();
-  private final TIntObjectHashMap<String> myShowOnlyIfExistedBeforeHints = new TIntObjectHashMap<>();
+public final class ParameterHintsPass extends EditorBoundHighlightingPass {
+  private final Int2ObjectMap<List<HintData>> myHints = new Int2ObjectOpenHashMap<>();
+  private final Int2ObjectMap<String> myShowOnlyIfExistedBeforeHints = new Int2ObjectOpenHashMap<>();
   private final PsiElement myRootElement;
   private final HintInfoFilter myHintInfoFilter;
   private final boolean myForceImmediateUpdate;
@@ -42,8 +48,12 @@ public class ParameterHintsPass extends EditorBoundHighlightingPass {
     myForceImmediateUpdate = forceImmediateUpdate;
   }
 
+  /**
+   * @deprecated May block UI thread, use {@link ParameterHintsPass#asyncUpdate(PsiElement, Editor)} instead.
+   */
+  @Deprecated
   public static void syncUpdate(@NotNull PsiElement element, @NotNull Editor editor) {
-    MethodInfoBlacklistFilter filter = MethodInfoBlacklistFilter.forLanguage(element.getLanguage());
+    MethodInfoExcludeListFilter filter = MethodInfoExcludeListFilter.forLanguage(element.getLanguage());
     ParameterHintsPass pass = new ParameterHintsPass(element, editor, filter, true);
     try {
       pass.doCollectInformation(new ProgressIndicatorBase());
@@ -52,6 +62,29 @@ public class ParameterHintsPass extends EditorBoundHighlightingPass {
       return; // cannot update synchronously, hints will be updated after indexing ends by the complete pass
     }
     pass.applyInformationToEditor();
+  }
+
+  /**
+   * Updates inlays recursively for a given element.
+   * Use {@link NonBlockingReadActionImpl#waitForAsyncTaskCompletion() } in tests to wait for the results.
+   */
+  public static @NotNull CancellablePromise<?> asyncUpdate(@NotNull PsiElement element, @NotNull Editor editor) {
+    MethodInfoExcludeListFilter filter = MethodInfoExcludeListFilter.forLanguage(element.getLanguage());
+    return ReadAction.nonBlocking(() -> {
+        try {
+          ParameterHintsPass pass = new ParameterHintsPass(element, editor, filter, true);
+          pass.doCollectInformation(new ProgressIndicatorBase());
+          return pass;
+        }
+        catch (IndexNotReadyException e) {
+          return null; // cannot update now, hints will be updated after indexing ends by the complete pass
+        }
+      }).finishOnUiThread(ModalityState.defaultModalityState(), pass -> {
+        if (pass != null) {
+          pass.applyInformationToEditor();
+        }
+      })
+      .submit(AppExecutorUtil.getAppExecutorService());
   }
 
   @Override
@@ -79,12 +112,13 @@ public class ParameterHintsPass extends EditorBoundHighlightingPass {
 
     Stream<InlayInfo> inlays = hints.stream();
     if (!showHints) {
-      inlays = inlays.filter(inlayInfo -> !inlayInfo.isFilterByBlacklist());
+      inlays = inlays.filter(inlayInfo -> !inlayInfo.isFilterByExcludeList());
     }
 
     inlays.forEach(hint -> {
       int offset = hint.getOffset();
       if (!canShowHintsAtOffset(offset)) return;
+      if (ParameterNameHintsSuppressor.All.isSuppressedFor(myFile, hint)) return;
 
       String presentation = provider.getInlayPresentation(hint.getText());
       if (hint.isShowOnlyIfExistedBefore()) {
@@ -119,7 +153,7 @@ public class ParameterHintsPass extends EditorBoundHighlightingPass {
   public void doApplyInformationToEditor() {
     EditorScrollingPositionKeeper.perform(myEditor, false, () -> {
       ParameterHintsPresentationManager manager = ParameterHintsPresentationManager.getInstance();
-      List<Inlay> hints = hintsInRootElementArea(manager);
+      List<Inlay<?>> hints = hintsInRootElementArea(manager);
       ParameterHintsUpdater updater = new ParameterHintsUpdater(myEditor, hints, myHints, myShowOnlyIfExistedBeforeHints, myForceImmediateUpdate);
       updater.update();
     });
@@ -133,7 +167,7 @@ public class ParameterHintsPass extends EditorBoundHighlightingPass {
   }
 
   @NotNull
-  private List<Inlay> hintsInRootElementArea(ParameterHintsPresentationManager manager) {
+  private List<Inlay<?>> hintsInRootElementArea(ParameterHintsPresentationManager manager) {
     TextRange range = myRootElement.getTextRange();
     int elementStart = range.getStartOffset();
     int elementEnd = range.getEndOffset();

@@ -130,7 +130,6 @@ public class SimpleColoredComponent extends JComponent implements Accessible, Co
     return iterator;
   }
 
-  @SuppressWarnings("unused")
   public boolean isIconOnTheRight() {
     return myIconOnTheRight;
   }
@@ -1043,15 +1042,6 @@ public class SimpleColoredComponent extends JComponent implements Accessible, Co
       return excessiveWidth;
     }
     return 0;
-  }
-
-  /**
-   * @deprecated and won't be used anymore
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  protected boolean shouldDrawMacShadow() {
-    return false;
   }
 
   protected boolean shouldDrawDimmed() {

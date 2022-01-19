@@ -2,9 +2,7 @@
 
 package org.jetbrains.kotlin.idea.actions
 
-import com.intellij.ide.actions.CreateFileFromTemplateAction
-import com.intellij.ide.actions.CreateFileFromTemplateDialog
-import com.intellij.ide.actions.CreateFromTemplateAction
+import com.intellij.ide.actions.*
 import com.intellij.ide.fileTemplates.FileTemplate
 import com.intellij.ide.fileTemplates.FileTemplateManager
 import com.intellij.ide.fileTemplates.actions.AttributesDefaults
@@ -26,6 +24,7 @@ import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiFile
 import com.intellij.util.IncorrectOperationException
 import org.jetbrains.annotations.TestOnly
+import org.jetbrains.jps.model.java.JavaModuleSourceRootTypes
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.KotlinFileType
@@ -38,6 +37,7 @@ import org.jetbrains.kotlin.parsing.KotlinParserDefinition.Companion.STD_SCRIPT_
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import java.util.*
 
 class NewKotlinFileAction : CreateFileFromTemplateAction(
@@ -59,18 +59,26 @@ class NewKotlinFileAction : CreateFileFromTemplateAction(
 
             val ktClass = createdElement.declarations.singleOrNull() as? KtNamedDeclaration
             if (ktClass != null) {
+                if (ktClass is KtClass && ktClass.isData()) {
+                    val primaryConstructor = ktClass.primaryConstructor
+                    if (primaryConstructor != null) {
+                        createdElement.editor()?.caretModel?.moveToOffset(primaryConstructor.startOffset + 1)
+                        return
+                    }
+                }
                 CreateFromTemplateAction.moveCaretAfterNameIdentifier(ktClass)
             } else {
-                val editor = FileEditorManager.getInstance(createdElement.project).selectedTextEditor ?: return
-                if (editor.document == createdElement.viewProvider.document) {
-                    val lineCount = editor.document.lineCount
-                    if (lineCount > 0) {
-                        editor.caretModel.moveToLogicalPosition(LogicalPosition(lineCount - 1, 0))
-                    }
+                val editor = createdElement.editor() ?: return
+                val lineCount = editor.document.lineCount
+                if (lineCount > 0) {
+                    editor.caretModel.moveToLogicalPosition(LogicalPosition(lineCount - 1, 0))
                 }
             }
         }
     }
+
+    private fun KtFile.editor() =
+        FileEditorManager.getInstance(this.project).selectedTextEditor?.takeIf { it.document == this.viewProvider.document }
 
     override fun buildDialog(project: Project, directory: PsiDirectory, builder: CreateFileFromTemplateDialog.Builder) {
         builder.setTitle(KotlinBundle.message("action.new.file.dialog.title"))
@@ -135,7 +143,10 @@ class NewKotlinFileAction : CreateFileFromTemplateAction(
             val ideView = LangDataKeys.IDE_VIEW.getData(dataContext)!!
             val project = PlatformDataKeys.PROJECT.getData(dataContext)!!
             val projectFileIndex = ProjectRootManager.getInstance(project).fileIndex
-            return ideView.directories.any { projectFileIndex.isInSourceContent(it.virtualFile) }
+            return ideView.directories.any {
+                projectFileIndex.isInSourceContent(it.virtualFile) ||
+                CreateTemplateInPackageAction.isInContentRoot(it.virtualFile, projectFileIndex)
+            }
         }
 
         return false
@@ -243,7 +254,8 @@ class NewKotlinFileAction : CreateFileFromTemplateAction(
             val service = DumbService.getInstance(dir.project)
             service.isAlternativeResolveEnabled = true
             try {
-                val psiFile = createFromTemplate(targetDir, className, template)
+                val adjustedDir = CreateTemplateInPackageAction.adjustDirectory(targetDir, JavaModuleSourceRootTypes.SOURCES)
+                val psiFile = createFromTemplate(adjustedDir, className, template)
                 if (psiFile is KtFile) {
                     val singleClass = psiFile.declarations.singleOrNull() as? KtClass
                     if (singleClass != null && !singleClass.isEnum() && !singleClass.isInterface() && name.contains("Abstract")) {
@@ -252,6 +264,7 @@ class NewKotlinFileAction : CreateFileFromTemplateAction(
                         }
                     }
                 }
+                JavaCreateTemplateInPackageAction.setupJdk(adjustedDir, psiFile)
                 return psiFile
             } finally {
                 service.isAlternativeResolveEnabled = false

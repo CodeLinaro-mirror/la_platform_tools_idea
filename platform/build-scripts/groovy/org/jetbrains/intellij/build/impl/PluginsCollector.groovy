@@ -65,26 +65,26 @@ final class PluginsCollector {
     def pluginDescriptors = new HashMap<String, PluginDescriptor>()
     def productLayout = myBuildContext.productProperties.productLayout
     def nonTrivialPlugins = productLayout.allNonTrivialPlugins.groupBy { it.mainModule }
-    def allBundledPlugins = productLayout.bundledPluginModules as Set<String>
+    Set<String> allBundledPlugins = new HashSet<>(productLayout.bundledPluginModules)
     for (JpsModule  jpsModule : myBuildContext.project.modules) {
       if (skipBundledPlugins && allBundledPlugins.contains(jpsModule.name) ||
           honorCompatiblePluginsToIgnore && productLayout.compatiblePluginsToIgnore.contains(jpsModule.name)) {
         continue
       }
 
-      // Not a plugin
+      // not a plugin
       if (jpsModule.name == "intellij.idea.ultimate.resources" || jpsModule.name == "intellij.lightEdit" || jpsModule.name == "intellij.webstorm") {
         continue
-      }
-
-      PluginLayout pluginLayout = nonTrivialPlugins[jpsModule.name]?.first()
-      if (pluginLayout == null) {
-        pluginLayout = PluginLayout.plugin(jpsModule.name)
       }
 
       Path pluginXml = myBuildContext.findFileInModuleSources(jpsModule.name, "META-INF/plugin.xml")
       if (pluginXml == null) {
         continue
+      }
+
+      PluginLayout pluginLayout = nonTrivialPlugins.get(jpsModule.name)?.first()
+      if (pluginLayout == null) {
+        pluginLayout = PluginLayout.plugin(jpsModule.name)
       }
 
       Element xml = JDOMUtil.load(pluginXml)
@@ -94,7 +94,7 @@ final class PluginsCollector {
         continue
       }
 
-      if (xml.getAttributeValue('implementation-detail') == 'true' && skipImplementationDetailPlugins) {
+      if (skipImplementationDetailPlugins && xml.getAttributeValue("implementation-detail") == "true") {
         myBuildContext.messages.debug("PluginsCollector: skipping module '$jpsModule.name' since 'implementation-detail' == 'true' in '$pluginXml'")
         continue
       }
@@ -168,7 +168,8 @@ final class PluginsCollector {
         incompatiblePlugins += pluginId.getTextTrim()
       }
 
-      def pluginDescriptor = new PluginDescriptor(id, declaredModules, requiredDependencies, incompatiblePlugins, optionalDependencies, pluginLayout)
+      String description = xml.getChildTextTrim("description")
+      def pluginDescriptor = new PluginDescriptor(id, description, declaredModules, requiredDependencies, incompatiblePlugins, optionalDependencies, pluginLayout)
       pluginDescriptors[id] = pluginDescriptor
       for (module in declaredModules) {
         pluginDescriptors[module] = pluginDescriptor
@@ -179,16 +180,22 @@ final class PluginsCollector {
 
   static final class PluginDescriptor {
     final String id
+    final String description
     final Set<String> declaredModules
     final Set<String> requiredDependencies
     final Set<String> incompatiblePlugins
     final List<Pair<String, String>> optionalDependencies
     final PluginLayout pluginLayout
 
-    PluginDescriptor(String id, Set<String> declaredModules,
-                     Set<String> requiredDependencies, Set<String> incompatiblePlugins,
-                     List<Pair<String, String>> optionalDependencies, PluginLayout pluginLayout) {
+    PluginDescriptor(String id,
+                     String description,
+                     Set<String> declaredModules,
+                     Set<String> requiredDependencies,
+                     Set<String> incompatiblePlugins,
+                     List<Pair<String, String>> optionalDependencies,
+                     PluginLayout pluginLayout) {
       this.id = id
+      this.description = description
       this.declaredModules = declaredModules
       this.requiredDependencies = requiredDependencies
       this.incompatiblePlugins = incompatiblePlugins
@@ -209,7 +216,7 @@ final class PluginsCollector {
     @Override
     URL resolvePath(@NotNull String relativePath, @Nullable URL url) throws MalformedURLException {
       URL result = null
-      for (moduleName in myPluginLayout.moduleJars.values()) {
+      for (moduleName in myPluginLayout.includedModuleNames) {
         def path = myBuildContext.findFileInModuleSources(moduleName, relativePath)
         if (path != null) {
           result = path.toUri().toURL()

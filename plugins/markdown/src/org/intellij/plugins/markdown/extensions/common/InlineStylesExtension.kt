@@ -2,11 +2,11 @@
 package org.intellij.plugins.markdown.extensions.common
 
 import org.intellij.plugins.markdown.extensions.MarkdownBrowserPreviewExtension
-import org.intellij.plugins.markdown.extensions.jcef.MarkdownJCEFPreviewExtension
-import org.intellij.plugins.markdown.settings.MarkdownApplicationSettings
+import org.intellij.plugins.markdown.extensions.MarkdownExtension
+import org.intellij.plugins.markdown.ui.preview.MarkdownHtmlPanel
 import org.intellij.plugins.markdown.ui.preview.ResourceProvider
 
-internal class InlineStylesExtension : MarkdownJCEFPreviewExtension, ResourceProvider {
+internal class InlineStylesExtension : MarkdownBrowserPreviewExtension, ResourceProvider {
   override val priority: MarkdownBrowserPreviewExtension.Priority
     get() = MarkdownBrowserPreviewExtension.Priority.AFTER_ALL
 
@@ -16,12 +16,18 @@ internal class InlineStylesExtension : MarkdownJCEFPreviewExtension, ResourcePro
 
   override fun canProvide(resourceName: String): Boolean = resourceName in styles
 
-  override fun loadResource(resourceName: String): ResourceProvider.Resource? {
-    with(MarkdownApplicationSettings.getInstance().markdownCssSettings) {
-      return if (isTextEnabled) {
-        ResourceProvider.Resource(customStylesheetText.toByteArray())
-      }
-      else ResourceProvider.Resource(emptyStylesheet)
+  override fun loadResource(resourceName: String): ResourceProvider.Resource {
+    return when (val text = MarkdownExtension.currentProjectSettings.customStylesheetText) {
+      null -> ResourceProvider.Resource(emptyStylesheet)
+      else -> ResourceProvider.Resource(text.toByteArray())
+    }
+  }
+
+  override fun dispose() = Unit
+
+  class Provider: MarkdownBrowserPreviewExtension.Provider {
+    override fun createBrowserExtension(panel: MarkdownHtmlPanel): MarkdownBrowserPreviewExtension? {
+      return InlineStylesExtension()
     }
   }
 

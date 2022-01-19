@@ -188,4 +188,7 @@ public class DataFlowInspectionTrackerTest extends LightJavaCodeInsightFixtureTe
   public void testMaxParameter() { doTest(); }
   public void testReturnThis() { doTest(); }
   public void testComplexDisjunction() { doTest(); }
+  public void testSubStringEqualsIgnoreCase() { doTest(); }
+  public void testSubStringEqualsIgnoreCase2() { doTest(); }
+  public void testArrayBlockingQueueContract() { doTest(); }
 }

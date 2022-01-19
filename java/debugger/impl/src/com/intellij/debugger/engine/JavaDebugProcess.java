@@ -1,8 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.engine;
 
 import com.intellij.debugger.JavaDebuggerBundle;
-import com.intellij.debugger.actions.DebuggerActions;
 import com.intellij.debugger.actions.JvmSmartStepIntoActionHandler;
 import com.intellij.debugger.engine.dfaassist.DfaAssist;
 import com.intellij.debugger.engine.evaluation.EvaluationContext;
@@ -51,6 +50,7 @@ import com.intellij.xdebugger.frame.XSuspendContext;
 import com.intellij.xdebugger.frame.XValueMarkerProvider;
 import com.intellij.xdebugger.impl.XDebugSessionImpl;
 import com.intellij.xdebugger.impl.XDebuggerUtilImpl;
+import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xdebugger.memory.component.InstancesTracker;
 import com.intellij.xdebugger.memory.component.MemoryViewManager;
 import com.intellij.xdebugger.stepping.XSmartStepIntoHandler;
@@ -309,11 +309,7 @@ public class JavaDebugProcess extends XDebugProcess {
       @Override
       public void registerAdditionalContent(@NotNull RunnerLayoutUi ui) {
         registerThreadsPanel(ui);
-        /**
-         * b/38437408 disable memory view for Android Studio.
-         * It slows down debugger due to triggering GC on retrieving instance information.
-          */
-        //registerMemoryViewPanel(ui);
+        registerMemoryViewPanel(ui);
         registerOverheadMonitor(ui);
       }
 
@@ -415,10 +411,12 @@ public class JavaDebugProcess extends XDebugProcess {
   public void registerAdditionalActions(@NotNull DefaultActionGroup leftToolbar,
                                         @NotNull DefaultActionGroup topToolbar,
                                         @NotNull DefaultActionGroup settings) {
-    Constraints beforeRunner = new Constraints(Anchor.BEFORE, "Runner.Layout");
-    leftToolbar.add(Separator.getInstance(), beforeRunner);
-    leftToolbar.add(ActionManager.getInstance().getAction(DebuggerActions.DUMP_THREADS), beforeRunner);
-    leftToolbar.add(Separator.getInstance(), beforeRunner);
+    if (!Registry.is("debugger.new.tool.window.layout")) {
+      Constraints beforeRunner = new Constraints(Anchor.BEFORE, "Runner.Layout");
+      leftToolbar.add(Separator.getInstance(), beforeRunner);
+      leftToolbar.add(ActionManager.getInstance().getAction("DumpThreads"), beforeRunner);
+      leftToolbar.add(Separator.getInstance(), beforeRunner);
+    }
 
     Constraints beforeSort = new Constraints(Anchor.BEFORE, "XDebugger.ToggleSortValues");
     settings.addAction(new WatchLastMethodReturnValueAction(), beforeSort);
@@ -460,7 +458,7 @@ public class JavaDebugProcess extends XDebugProcess {
     public void update(@NotNull final AnActionEvent e) {
       super.update(e);
       final Presentation presentation = e.getPresentation();
-      DebugProcessImpl process = getCurrentDebugProcess(e.getProject());
+      DebugProcessImpl process = getCurrentDebugProcess(e);
       if (process == null || process.canGetMethodReturnValue()) {
         presentation.setEnabled(true);
         presentation.setText(myText);
@@ -479,7 +477,7 @@ public class JavaDebugProcess extends XDebugProcess {
     @Override
     public void setSelected(@NotNull AnActionEvent e, boolean watch) {
       DebuggerSettings.getInstance().WATCH_RETURN_VALUES = watch;
-      DebugProcessImpl process = getCurrentDebugProcess(e.getProject());
+      DebugProcessImpl process = getCurrentDebugProcess(e);
       if (process != null) {
         process.setWatchMethodReturnValuesEnabled(watch);
       }
@@ -487,6 +485,22 @@ public class JavaDebugProcess extends XDebugProcess {
   }
 
   @Nullable
+  public static DebugProcessImpl getCurrentDebugProcess(@NotNull AnActionEvent e) {
+    XDebugSession session = DebuggerUIUtil.getSession(e);
+    if (session != null) {
+      XDebugProcess process = session.getDebugProcess();
+      if (process instanceof JavaDebugProcess) {
+        return ((JavaDebugProcess)process).getDebuggerSession().getProcess();
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @deprecated use {@link #getCurrentDebugProcess(AnActionEvent)}
+   */
+  @Nullable
+  @Deprecated
   public static DebugProcessImpl getCurrentDebugProcess(@Nullable Project project) {
     if (project != null) {
       XDebugSession session = XDebuggerManager.getInstance(project).getCurrentSession();

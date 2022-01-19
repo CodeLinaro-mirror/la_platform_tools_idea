@@ -7,10 +7,13 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
+import com.intellij.openapi.editor.colors.ColorKey;
 import com.intellij.openapi.options.OptionsBundle;
 import com.intellij.openapi.ui.popup.IconButton;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.ui.Gray;
 import com.intellij.ui.InplaceButton;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBLayeredPane;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.ui.JBUI;
@@ -26,11 +29,14 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class TagButton extends JBLayeredPane implements Disposable {
+  private static final ColorKey TAG_BACKGROUND = ColorKey.createColorKey("Tag.background",
+                                                                           JBUI.CurrentTheme.ActionButton.hoverBackground());
   protected final JButton myButton;
-  private final InplaceButton myCloseButton;
+  protected static final int ourInset = JBUI.scale(3);
   private final @Nls String myText;
 
   public static final Function<JComponent, JComponent> COMPONENT_VALIDATOR_TAG_PROVIDER = e -> ((TagButton)e).myButton;
+  protected final InplaceButton myCloseButton;
 
   public TagButton(@Nls String text, Consumer<AnActionEvent> action) {
     myText = text;
@@ -75,8 +81,10 @@ public class TagButton extends JBLayeredPane implements Disposable {
     myCloseButton = new InplaceButton(new IconButton(null, AllIcons.Actions.Close, AllIcons.Actions.CloseDarkGrey),
                                       a -> remove(action, null));
     myCloseButton.setOpaque(false);
-    new HelpTooltip().setTitle(OptionsBundle.message("tag.button.tooltip")).
-      setShortcut(new KeyboardShortcut(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), null)).installOn(myCloseButton);
+    new HelpTooltip()
+      .setTitle(OptionsBundle.message("tag.button.tooltip"))
+      .setShortcut(new KeyboardShortcut(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), null))
+      .installOn(myCloseButton);
     add(myCloseButton, JLayeredPane.POPUP_LAYER);
 
     layoutButtons();
@@ -120,20 +128,18 @@ public class TagButton extends JBLayeredPane implements Disposable {
     myButton.setMargin(JBUI.emptyInsets());
     Dimension size = myButton.getPreferredSize();
     Dimension iconSize = myCloseButton.getPreferredSize();
-    int inset = JBUI.scale(3);
-    Dimension tagSize = new Dimension(size.width + iconSize.width - inset * 2, size.height);
+    Dimension tagSize = new Dimension(size.width + iconSize.width - ourInset * 2, size.height);
     setPreferredSize(tagSize);
     myButton.setBounds(new Rectangle(tagSize));
     myButton.setMargin(JBUI.insetsRight(iconSize.width));
-    Point p = new Point(tagSize.width - iconSize.width - inset * 3,
+    Point p = new Point(tagSize.width - iconSize.width - ourInset * 3,
                         (tagSize.height - iconSize.height) / 2 + JBUI.scale(1));
     myCloseButton.setBounds(new Rectangle(p, iconSize));
   }
 
-  protected void updateButton(@NlsContexts.Button String text, Icon icon, boolean isEnabled) {
+  protected void updateButton(@NlsContexts.Button String text, Icon icon) {
     myButton.setText(text);
     myButton.setIcon(icon);
-    myButton.setEnabled(isEnabled);
     layoutButtons();
   }
 
@@ -143,7 +149,7 @@ public class TagButton extends JBLayeredPane implements Disposable {
   }
 
   private static Color getBackgroundColor() {
-    return JBUI.CurrentTheme.ActionButton.hoverBackground();
+    return JBColor.namedColor("Tag.background", Gray.xDF);
   }
 
   @Override

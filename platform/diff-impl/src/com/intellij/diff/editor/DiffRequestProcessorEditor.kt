@@ -2,10 +2,17 @@
 package com.intellij.diff.editor
 
 import com.intellij.diff.impl.DiffRequestProcessor
+import com.intellij.diff.impl.DiffRequestProcessorListener
+import com.intellij.diff.util.DiffUserDataKeysEx
+import com.intellij.diff.util.DiffUtil
 import com.intellij.diff.util.FileEditorBase
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diff.DiffBundle
+import com.intellij.openapi.fileEditor.FileEditor
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.fileEditor.impl.EditorWindow
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import java.awt.BorderLayout
 import java.awt.event.ContainerAdapter
@@ -28,6 +35,13 @@ open class DiffRequestProcessorEditor(
 
   init {
     putUserData(EditorWindow.HIDE_TABS, true)
+
+    Disposer.register(processor, Disposable {
+      firePropertyChange(FileEditor.PROP_VALID, true, false)
+    })
+
+    processor.addListener(MyProcessorListener(), this)
+
     DiffRequestProcessorEditorCustomizer.customize(file, this, processor)
   }
 
@@ -36,7 +50,12 @@ open class DiffRequestProcessorEditor(
 
   override fun dispose() {
     disposed = true
+    if (!DiffUtil.isUserDataFlagSet(DiffUserDataKeysEx.DIFF_IN_EDITOR_WITH_EXPLICIT_DISPOSABLE, processor.context)) {
+      Disposer.dispose(processor)
+    }
+    super.dispose()
   }
+
   override fun isValid(): Boolean = !disposed && !processor.isDisposed
   override fun getFile(): VirtualFile = file
   override fun getName(): String = DiffBundle.message("diff.file.editor.name")
@@ -55,6 +74,13 @@ open class DiffRequestProcessorEditor(
           LOG.error("DiffRequestProcessor cannot be shown twice, see com.intellij.ide.actions.SplitAction.FORBID_TAB_SPLIT, file: $file")
         }
       })
+    }
+  }
+
+  private inner class MyProcessorListener : DiffRequestProcessorListener {
+    override fun onViewerChanged() {
+      val project = processor.project ?: return
+      FileEditorManagerEx.getInstanceEx(project).updateFilePresentation(file)
     }
   }
 }

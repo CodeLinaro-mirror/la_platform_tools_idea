@@ -23,25 +23,11 @@ public abstract class ApplicationInfoEx extends ApplicationInfo {
   public abstract String getAboutImageUrl();
 
   /**
-   * @deprecated use {@link #getApplicationSvgIconUrl()} instead
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public abstract String getIconUrl();
-
-  /**
    * @deprecated use {@link #getSmallApplicationSvgIconUrl()} instead
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
   public abstract @NotNull String getSmallIconUrl();
-
-  /**
-   * @deprecated use {@link #getApplicationSvgIconUrl()} instead
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public abstract @Nullable String getBigIconUrl();
 
   /**
    * Return path to an SVG file containing icon of the current version of the product. The path is a relative path inside the product's JAR
@@ -57,13 +43,6 @@ public abstract class ApplicationInfoEx extends ApplicationInfo {
   public abstract String getToolWindowIconUrl();
 
   public abstract @Nullable String getWelcomeScreenLogoUrl();
-
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  /**
-   * Always returns null.
-   */
-  public abstract @Nullable String getPackageCode();
 
   public abstract boolean showLicenseeInfo();
 

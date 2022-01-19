@@ -273,6 +273,20 @@ public final class GitHistoryUtils {
   }
 
   @Nullable
+  public static String getNumberOfCommitsBetween(@NotNull GitRepository repository, @NotNull String from, @NotNull String to) {
+    GitLineHandler handler = new GitLineHandler(repository.getProject(), repository.getRoot(), GitCommand.REV_LIST);
+    handler.addParameters("--count", from + ".." + to);
+    handler.setSilent(true);
+    try {
+      return Git.getInstance().runCommand(handler).getOutputOrThrow().trim();
+    }
+    catch (VcsException e) {
+      LOG.debug(e.getMessage());
+      return null;
+    }
+  }
+
+  @Nullable
   public static GitRevisionNumber getMergeBase(@NotNull Project project, @NotNull VirtualFile root, @NotNull String first,
                                                @NotNull String second) throws VcsException {
     GitLineHandler h = new GitLineHandler(project, root, GitCommand.MERGE_BASE);
@@ -299,7 +313,7 @@ public final class GitHistoryUtils {
   }
 
   /**
-   * @deprecated use {@link GitHistoryUtils#collectTimedCommits(Project, VirtualFile, String...)}
+   * @deprecated use {@link GitHistoryUtils#collectTimedCommits(Project, VirtualFile, String...)} or methods from {@link GitFileHistory}
    */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
@@ -312,7 +326,7 @@ public final class GitHistoryUtils {
   }
 
   /**
-   * @deprecated use {@link GitHistoryUtils#collectTimedCommits(Project, VirtualFile, String...)}
+   * @deprecated use {@link GitHistoryUtils#collectTimedCommits(Project, VirtualFile, String...)} or methods from {@link GitFileHistory}
    */
   @Deprecated
   @NotNull

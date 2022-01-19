@@ -42,7 +42,7 @@ import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstance
 abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase() {
     companion object {
         //language=RegExp
-        val mavenDependencyRegex = """maven\(([a-zA-Z0-9_\-.]+):([a-zA-Z0-9_\-.]+):([a-zA-Z0-9_\-.]+)\)"""
+        const val MAVEN_DEPENDENCY_REGEX = """maven\(([a-zA-Z0-9_\-.]+):([a-zA-Z0-9_\-.]+):([a-zA-Z0-9_\-.]+)\)"""
     }
 
     private val dp: DebugProcessImpl
@@ -68,21 +68,20 @@ abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase()
         myCommandProvider = JvmSteppingCommandProvider.EP_NAME.extensions.firstIsInstance<KotlinSteppingCommandProvider>()
     }
 
-    private fun SuspendContextImpl.getKotlinStackFrame(): KotlinStackFrame? {
-        val proxy = frameProxy ?: return null
+    protected fun SuspendContextImpl.getKotlinStackFrames(): List<KotlinStackFrame> {
+        val proxy = frameProxy ?: return emptyList()
         if (myInProgress) {
             val positionManager = KotlinPositionManager(debugProcess)
-            val stackFrame = positionManager.createStackFrame(
+            return positionManager.createStackFrames(
                 proxy, debugProcess, proxy.location()
-            )
-            return stackFrame as? KotlinStackFrame
+            ).filterIsInstance<KotlinStackFrame>()
         }
-        return null
+        return emptyList()
     }
 
     override fun createEvaluationContext(suspendContext: SuspendContextImpl): EvaluationContextImpl? {
         return try {
-            val proxy = suspendContext.getKotlinStackFrame()?.stackFrameProxy ?: suspendContext.frameProxy
+            val proxy = suspendContext.getKotlinStackFrames().firstOrNull()?.stackFrameProxy ?: suspendContext.frameProxy
             assertNotNull(proxy)
             EvaluationContextImpl(suspendContext, proxy, proxy?.thisObject())
         } catch (e: EvaluateException) {
@@ -119,7 +118,7 @@ abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase()
 
     private fun SuspendContextImpl.doStepInto(ignoreFilters: Boolean, smartStepFilter: MethodFilter?) {
         val stepIntoCommand =
-            runReadAction { commandProvider.getStepIntoCommand(this, ignoreFilters, smartStepFilter, StepRequest.STEP_LINE) }
+            runReadAction { commandProvider.getStepIntoCommand(this, ignoreFilters, smartStepFilter) }
                 ?: dp.createStepIntoCommand(this, ignoreFilters, smartStepFilter)
 
         dp.managerThread.schedule(stepIntoCommand)
@@ -183,11 +182,11 @@ abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase()
         val filters = createSmartStepIntoFilters()
         if (chooseFromList == 0) {
             filters.forEach {
-                dp.managerThread.schedule(dp.createStepIntoCommand(this, ignoreFilters, it))
+                doStepInto(ignoreFilters, it)
             }
         } else {
             try {
-                dp.managerThread.schedule(dp.createStepIntoCommand(this, ignoreFilters, filters[chooseFromList - 1]))
+                doStepInto(ignoreFilters, filters[chooseFromList - 1])
             } catch (e: IndexOutOfBoundsException) {
                 val elementText = runReadAction { debuggerContext.sourcePosition.elementAt.getElementTextWithContext() }
                 throw AssertionError("Couldn't find smart step into command at: \n$elementText", e)
@@ -201,8 +200,7 @@ abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase()
         val stepTargets = KotlinSmartStepIntoHandler().findSmartStepTargets(position)
         stepTargets.mapNotNull { stepTarget ->
             when (stepTarget) {
-                is KotlinLambdaSmartStepTarget -> KotlinLambdaMethodFilter(stepTarget)
-                is KotlinMethodSmartStepTarget -> KotlinOrdinaryMethodFilter(stepTarget)
+                is KotlinSmartStepTarget -> stepTarget.createMethodFilter()
                 is MethodSmartStepTarget -> BasicStepMethodFilter(stepTarget.method, stepTarget.getCallingExpressionLines())
                 else -> null
             }
@@ -224,15 +222,18 @@ abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase()
         }
     }
 
-    protected fun processStackFrameOnPooledThread(callback: XStackFrame.() -> Unit) {
+    protected fun processStackFramesOnPooledThread(callback: List<XStackFrame>.() -> Unit) {
         val frameProxy = debuggerContext.frameProxy ?: error("Frame proxy is absent")
         val debugProcess = debuggerContext.debugProcess ?: error("Debug process is absent")
         val nodeManager = debugProcess.xdebugProcess!!.nodeManager
         val descriptor = nodeManager.getStackFrameDescriptor(null, frameProxy)
-        val stackFrame = debugProcess.positionManager.createStackFrame(descriptor) ?: error("Can't create stack frame for $descriptor")
+        val stackFrames = debugProcess.positionManager.createStackFrames(descriptor)
+        if (stackFrames.isEmpty()) {
+            error("Can't create stack frame for $descriptor")
+        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            stackFrame.callback()
+            stackFrames.callback()
         }
     }
 
@@ -248,7 +249,7 @@ abstract class KotlinDescriptorTestCaseWithStepping : KotlinDescriptorTestCase()
     }
 
     override fun addMavenDependency(compilerFacility: DebuggerTestCompilerFacility, library: String) {
-        val regex = Regex(mavenDependencyRegex)
+        val regex = Regex(MAVEN_DEPENDENCY_REGEX)
         val result = regex.matchEntire(library) ?: return
         val (_, groupId: String, artifactId: String, version: String) = result.groupValues
         addMavenDependency(compilerFacility, groupId, artifactId, version)

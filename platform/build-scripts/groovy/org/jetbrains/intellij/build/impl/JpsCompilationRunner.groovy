@@ -16,16 +16,19 @@ import org.jetbrains.annotations.Nullable
 import org.jetbrains.groovy.compiler.rt.GroovyRtConstants
 import org.jetbrains.intellij.build.BuildMessages
 import org.jetbrains.intellij.build.CompilationContext
+import org.jetbrains.intellij.build.impl.retry.Retry
 import org.jetbrains.jps.api.CmdlineRemoteProto
 import org.jetbrains.jps.api.GlobalOptions
 import org.jetbrains.jps.build.Standalone
 import org.jetbrains.jps.builders.BuildTarget
 import org.jetbrains.jps.builders.java.JavaModuleBuildTargetType
 import org.jetbrains.jps.cmdline.JpsModelLoader
+import org.jetbrains.jps.gant.Log4jFileLoggerFactory
 import org.jetbrains.jps.incremental.MessageHandler
 import org.jetbrains.jps.incremental.artifacts.ArtifactBuildTargetType
 import org.jetbrains.jps.incremental.artifacts.impl.ArtifactSorter
 import org.jetbrains.jps.incremental.artifacts.impl.JpsArtifactUtil
+import org.jetbrains.jps.incremental.dependencies.DependencyResolvingBuilder
 import org.jetbrains.jps.incremental.groovy.JpsGroovycRunner
 import org.jetbrains.jps.incremental.messages.*
 import org.jetbrains.jps.model.artifact.JpsArtifact
@@ -41,6 +44,22 @@ import java.util.concurrent.TimeUnit
 
 @CompileStatic
 class JpsCompilationRunner {
+  private static setSystemPropertyIfUndefined(String name, String value) {
+    if (System.getProperty(name) == null) {
+      System.setProperty(name, value)
+    }
+  }
+
+  static {
+    setSystemPropertyIfUndefined(GlobalOptions.COMPILE_PARALLEL_OPTION, "true")
+    def availableProcessors = Runtime.getRuntime().availableProcessors().toString()
+    setSystemPropertyIfUndefined(GlobalOptions.COMPILE_PARALLEL_MAX_THREADS_OPTION, availableProcessors)
+    setSystemPropertyIfUndefined(DependencyResolvingBuilder.RESOLUTION_PARALLELISM_PROPERTY, availableProcessors)
+    setSystemPropertyIfUndefined(GlobalOptions.USE_DEFAULT_FILE_LOGGING_OPTION, "false")
+    setSystemPropertyIfUndefined(JpsGroovycRunner.GROOVYC_IN_PROCESS, "true")
+    setSystemPropertyIfUndefined(GroovyRtConstants.GROOVYC_ASM_RESOLVING_ONLY, "false")
+  }
+
   private static boolean ourToolsJarAdded
   private final CompilationContext context
   private final JpsCompilationData compilationData
@@ -68,7 +87,15 @@ class JpsCompilationRunner {
   }
 
   void resolveProjectDependencies() {
-    runBuild([] as Set, false, [], false, true)
+    new Retry(context.messages, context.options.resolveDependenciesMaxAttempts, context.options.resolveDependenciesDelayMs).call {
+      try {
+        runBuild([] as Set, false, [], false, true)
+      }
+      catch (BuildException e) {
+        compilationData.projectDependenciesResolved = false
+        throw e
+      }
+    }
   }
 
   void buildModuleTests(JpsModule module) {
@@ -123,17 +150,30 @@ class JpsCompilationRunner {
     return ArtifactSorter.addIncludedArtifacts(artifacts)
   }
 
+  private void setupAdditionalBuildLogging(JpsCompilationData compilationData) {
+    def categoriesWithDebugLevel = compilationData.categoriesWithDebugLevel
+    def buildLogFile = compilationData.buildLogFile
+
+    try {
+      Logger.Factory factory = new Log4jFileLoggerFactory(buildLogFile, categoriesWithDebugLevel)
+      AntLoggerFactory.ourFileLoggerFactory = factory
+      context.messages.info("Build log (${!categoriesWithDebugLevel.isEmpty() ? "debug level for $categoriesWithDebugLevel" : "info"}) will be written to ${buildLogFile.absolutePath}")
+    }
+    catch (Throwable t) {
+      context.messages.warning("Cannot setup additional logging to $buildLogFile.absolutePath: $t.message")
+    }
+  }
+
   private void runBuild(final Set<String> modulesSet, final boolean allModules, Collection<String> artifactNames, boolean includeTests,
                         boolean resolveProjectDependencies) {
     if (JavaVersion.current().feature < 9 && (!modulesSet.isEmpty() || allModules)) {
       addToolsJarToSystemClasspath(context.paths.jdkHome, context.messages)
     }
-    System.setProperty(GlobalOptions.USE_DEFAULT_FILE_LOGGING_OPTION, "false")
-    System.setProperty(JpsGroovycRunner.GROOVYC_IN_PROCESS, "true")
-    System.setProperty(GroovyRtConstants.GROOVYC_ASM_RESOLVING_ONLY, "false")
     final AntMessageHandler messageHandler = new AntMessageHandler()
     AntLoggerFactory.ourMessageHandler = messageHandler
-    AntLoggerFactory.ourFileLoggerFactory = compilationData.fileLoggerFactory
+    if (context.options.compilationLogEnabled) {
+      setupAdditionalBuildLogging(compilationData)
+    }
     Logger.setFactory(AntLoggerFactory.class)
     boolean forceBuild = !context.options.incrementalCompilation
 

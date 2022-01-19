@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.tools.simple;
 
 import com.intellij.diff.DiffContext;
@@ -163,6 +163,21 @@ public class SimpleDiffViewer extends TwosideTextDiffViewer {
   @NotNull
   public FoldingModelSupport.Settings getFoldingModelSettings() {
     return TextDiffViewerUtil.getFoldingModelSettings(myContext);
+  }
+
+  @NotNull
+  public FoldingModelSupport getFoldingModel() {
+    return myFoldingModel;
+  }
+
+  boolean needAlignChanges() {
+    return Boolean.TRUE.equals(myRequest.getUserData(DiffUserDataKeys.ALIGNED_TWO_SIDED_DIFF))
+           || getTextSettings().isEnableAligningChangesMode();
+  }
+
+  @NotNull
+  public TwosideTextDiffProvider getTextDiffProvider() {
+    return myTextDiffProvider;
   }
 
   @Override
@@ -678,7 +693,12 @@ public class SimpleDiffViewer extends TwosideTextDiffViewer {
   private class MySyncScrollable extends BaseSyncScrollable {
     @Override
     public boolean isSyncScrollEnabled() {
-      return getTextSettings().isEnableSyncScroll();
+      return getTextSettings().isEnableSyncScroll() || getTextSettings().isEnableAligningChangesMode();
+    }
+
+    @Override
+    public boolean forceSyncVerticalScroll() {
+      return needAlignChanges();
     }
 
     @NotNull
@@ -699,7 +719,7 @@ public class SimpleDiffViewer extends TwosideTextDiffViewer {
     }
   }
 
-  private class MyDividerPainter implements DiffSplitter.Painter, DiffDividerDrawUtil.DividerPaintable {
+  private class MyDividerPainter implements DiffSplitter.Painter {
     @DirtyUI
     @Override
     public void paint(@NotNull Graphics g, @NotNull JComponent divider) {
@@ -708,23 +728,12 @@ public class SimpleDiffViewer extends TwosideTextDiffViewer {
       gg.setColor(DiffDrawUtil.getDividerColor(getEditor1()));
       gg.fill(gg.getClipBounds());
 
-      DiffDividerDrawUtil.paintPolygons(gg, divider.getWidth(), getEditor1(), getEditor2(), this);
-
+      myModel.paintPolygons(gg, divider);
       myFoldingModel.paintOnDivider(gg, divider);
 
       gg.dispose();
     }
 
-    @Override
-    public void process(@NotNull Handler handler) {
-      for (SimpleDiffChange diffChange : getDiffChanges()) {
-        if (!handler.processExcludable(diffChange.getStartLine(Side.LEFT), diffChange.getEndLine(Side.LEFT),
-                                       diffChange.getStartLine(Side.RIGHT), diffChange.getEndLine(Side.RIGHT),
-                                       diffChange.getDiffType(), diffChange.isExcluded(), diffChange.isSkipped())) {
-          return;
-        }
-      }
-    }
   }
 
   private class MyStatusPanel extends StatusPanel {

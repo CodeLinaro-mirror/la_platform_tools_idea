@@ -25,6 +25,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
+/**
+ * Use {@link TempCopyArchiveHandler} if you'd like to extract archive to a temporary file
+ * and use it to read attributes and content.
+ */
 public abstract class ArchiveHandler {
   public static final long DEFAULT_LENGTH = 0L;
   public static final long DEFAULT_TIMESTAMP = -1L;
@@ -149,11 +153,8 @@ public abstract class ArchiveHandler {
     return result;
   }
 
-  public void dispose() {
-    clearCaches();
-  }
-
-  protected void clearCaches() {
+  @ApiStatus.OverrideOnly
+  public void clearCaches() {
     synchronized (myLock) {
       myEntries.clear();
       myChildrenEntries.clear();
@@ -220,7 +221,7 @@ public abstract class ArchiveHandler {
                                     @Nullable Logger logger,
                                     @NotNull String entryName,
                                     @SuppressWarnings("BoundedWildcard") @Nullable BiFunction<@NotNull EntryInfo, @NotNull String, @NotNull ? extends EntryInfo> entryFun) {
-    String normalizedName = StringUtil.trimTrailing(StringUtil.trimLeading(FileUtil.normalize(entryName), '/'), '/');
+    String normalizedName = normalizeName(entryName);
     if (normalizedName.isEmpty() || normalizedName.contains("..") && ArrayUtil.contains("..", normalizedName.split("/"))) {
       if (logger != null) logger.trace("invalid entry: " + getFile() + "!/" + entryName);
       return;
@@ -240,6 +241,11 @@ public abstract class ArchiveHandler {
     Pair<String, String> path = split(normalizedName);
     EntryInfo parent = directoryEntry(map, logger, path.first);
     map.put(normalizedName, entryFun.apply(parent, path.second));
+  }
+
+  @NotNull
+  protected String normalizeName(@NotNull String entryName) {
+    return StringUtil.trimTrailing(StringUtil.trimLeading(FileUtil.normalize(entryName), '/'), '/');
   }
 
   private EntryInfo directoryEntry(Map<String, EntryInfo> map, @Nullable Logger logger, String normalizedName) {

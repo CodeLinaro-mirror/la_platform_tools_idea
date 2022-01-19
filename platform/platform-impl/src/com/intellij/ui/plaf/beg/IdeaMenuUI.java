@@ -2,13 +2,15 @@
 package com.intellij.ui.plaf.beg;
 
 import com.intellij.ide.ui.UISettings;
+import com.intellij.ide.ui.laf.intellij.IdeaPopupMenuUI;
+import com.intellij.openapi.ui.GraphicsConfig;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.impl.IdeFrameDecorator;
+import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.paint.LinePainter2D;
 import com.intellij.ui.scale.JBUIScale;
-import com.intellij.util.ui.JBInsets;
-import com.intellij.util.ui.StartupUiUtil;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.*;
 import org.jetbrains.annotations.Nls;
 
 import javax.swing.*;
@@ -25,6 +27,7 @@ public class IdeaMenuUI extends BasicMenuUI{
   private static final Rectangle ourTextRect = new Rectangle();
   private static final Rectangle ourArrowIconRect = new Rectangle();
   private int myMaxGutterIconWidth;
+  private int myMaxGutterIconWidth2;
   private int a;
   private static Rectangle ourPreferredSizeRect = new Rectangle();
   private int k;
@@ -48,10 +51,14 @@ public class IdeaMenuUI extends BasicMenuUI{
     super.installDefaults();
     Integer integer = UIUtil.getPropertyMaxGutterIconWidth(getPropertyPrefix());
     if (integer != null){
-      myMaxGutterIconWidth = integer.intValue();
+      myMaxGutterIconWidth2 = myMaxGutterIconWidth = integer.intValue();
     }
 
     selectionBackground = UIUtil.getListSelectionBackground(true);
+  }
+
+  private void checkEmptyIcon(JComponent comp) {
+    myMaxGutterIconWidth = getAllowedIcon() == null && IdeaPopupMenuUI.hideEmptyIcon(comp) ? 0 : myMaxGutterIconWidth2;
   }
 
   @Override
@@ -62,6 +69,7 @@ public class IdeaMenuUI extends BasicMenuUI{
     int mnemonicIndex = jMenu.getDisplayedMnemonicIndex();
     Icon icon = getIcon();
     Icon allowedIcon = getAllowedIcon();
+    checkEmptyIcon(comp);
     Insets insets = comp.getInsets();
     resetRects();
 
@@ -191,6 +199,12 @@ public class IdeaMenuUI extends BasicMenuUI{
     if (allowedIcon != null && !(UIUtil.isUnderIntelliJLaF() || StartupUiUtil.isUnderDarcula())) {
       g.fillRect(k, 0, jMenu.getWidth() - k, jMenu.getHeight());
     }
+    else if (IdeaPopupMenuUI.isPartOfPopupMenu(comp) && (Registry.is("popup.menu.roundSelection.enabled", false) || ExperimentalUI.isNewUI())) {
+      GraphicsConfig config = GraphicsUtil.setupAAPainting(g);
+      int radius = JBUI.getInt("MenuItem.Selection.arc", 8);
+      g.fillRoundRect(4, 1, jMenu.getWidth() - 8, jMenu.getHeight() - 2, radius, radius);
+      config.restore();
+    }
     else {
       g.fillRect(0, 0, jMenu.getWidth(), jMenu.getHeight());
     }
@@ -318,6 +332,7 @@ public class IdeaMenuUI extends BasicMenuUI{
     JMenu jMenu = (JMenu)comp;
     Icon icon1 = getIcon();
     Icon icon2 = getAllowedIcon();
+    checkEmptyIcon(comp);
     String text = jMenu.getText();
     Font font = jMenu.getFont();
     FontMetrics fontmetrics = jMenu.getToolkit().getFontMetrics(font);

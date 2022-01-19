@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight.completion
 
 import com.intellij.testFramework.LightProjectDescriptor
@@ -11,7 +11,7 @@ class Normal14CompletionTest extends NormalCompletionTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_15
+    return JAVA_16
   }
 
   void testRecordImplements() {
@@ -30,6 +30,25 @@ class Normal14CompletionTest extends NormalCompletionTestCase {
     myFixture.configureByText("a.java", "record FooBar(FooBar fo<caret>)")
     myFixture.completeBasic()
     myFixture.checkResult("record FooBar(FooBar fooBar)")
+  }
+
+  @NeedsIndex.ForStandardLibrary
+  void testInstanceOfSpecificType() {
+    myFixture.configureByText("a.java", "interface I<T> { }\n\n" +
+                                        "class J<T> implements I<T> {\n  " +
+                                        "void test(I<String> i) {\n" +
+                                        "    if (i instanceof <caret>)\n" +
+                                        "  }\n}")
+    myFixture.completeBasic()
+    assert !myFixture.lookupElementStrings.contains("T")
+    myFixture.type('\n')
+    myFixture.checkResult("interface I<T> { }\n" +
+                          "\n" +
+                          "class J<T> implements I<T> {\n" +
+                          "  void test(I<String> i) {\n" +
+                          "    if (i instanceof J<String><caret>)\n" +
+                          "  }\n" +
+                          "}")
   }
 
   @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants works in smart mode only (for getters generation)")
@@ -54,4 +73,7 @@ class Normal14CompletionTest extends NormalCompletionTestCase {
 
   @NeedsIndex.Full(reason = "AllClassesGetter.processJavaClasses uses indices, see 0a72bf3a7baa7dc1550e8e4308431d78eb753eb6 commit")
   void testSecondPermitsReference() { doTest() }
+
+  @NeedsIndex.Full(reason = "AllClassesGetter.processJavaClasses uses indices, see 0a72bf3a7baa7dc1550e8e4308431d78eb753eb6 commit")
+  void testSealedPermitsInner() { doTest('\n') }
 }

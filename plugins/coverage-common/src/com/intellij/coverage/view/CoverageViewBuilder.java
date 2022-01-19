@@ -6,6 +6,8 @@ import com.intellij.ide.commander.AbstractListBuilder;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.ide.util.treeView.AbstractTreeStructure;
 import com.intellij.ide.util.treeView.AlphaComparator;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -14,8 +16,11 @@ import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.vcs.FileStatusListener;
 import com.intellij.openapi.vcs.FileStatusManager;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.PsiElement;
 import com.intellij.ui.TableUtil;
 import com.intellij.ui.table.JBTable;
+import com.intellij.util.concurrency.AppExecutorUtil;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -31,7 +36,7 @@ public class CoverageViewBuilder extends AbstractListBuilder {
                       final JList list,
                       final Model model,
                       final AbstractTreeStructure treeStructure, final JBTable table) {
-    super(project, list, model, treeStructure, AlphaComparator.INSTANCE, false);
+    super(project, list, model, treeStructure, AlphaComparator.INSTANCE, true);
     myTable = table;
     ProgressManager.getInstance().run(new Task.Backgroundable(project, CoverageBundle.message("coverage.report.building")) {
       @Override
@@ -93,18 +98,13 @@ public class CoverageViewBuilder extends AbstractListBuilder {
   protected void updateParentTitle() {
     if (myParentTitle == null) return;
 
-    final Object rootElement = myTreeStructure.getRootElement();
-    AbstractTreeNode node = getParentNode();
-    if (node == null) {
-      node = (AbstractTreeNode)rootElement;
-    }
-
-    if (node instanceof CoverageListRootNode) {
-      myParentTitle.setText(myCoverageViewExtension.getSummaryForRootNode(node));
-    }
-    else {
-      myParentTitle.setText(myCoverageViewExtension.getSummaryForNode(node));
-    }
+    final AbstractTreeNode parentNode = getParentNode();
+    final AbstractTreeNode node = parentNode == null ? (AbstractTreeNode)myTreeStructure.getRootElement() : parentNode;
+    ReadAction.nonBlocking(() -> node instanceof CoverageListRootNode
+                                 ? myCoverageViewExtension.getSummaryForRootNode(node)
+                                 : myCoverageViewExtension.getSummaryForNode(node))
+      .finishOnUiThread(ModalityState.NON_MODAL, (@Nls String text) -> myParentTitle.setText(text))
+      .submit(AppExecutorUtil.getAppExecutorService());
   }
 
   @Override
@@ -130,6 +130,10 @@ public class CoverageViewBuilder extends AbstractListBuilder {
   }
 
   public void select(Object object) {
-    selectElement(myCoverageViewExtension.getElementToSelect(object), myCoverageViewExtension.getVirtualFile(object));
+    ReadAction.nonBlocking(() -> {
+      final PsiElement element = myCoverageViewExtension.getElementToSelect(object);
+      final VirtualFile file = myCoverageViewExtension.getVirtualFile(object);
+      selectElement(element, file);
+    }).submit(AppExecutorUtil.getAppExecutorService());
   }
 }

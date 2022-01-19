@@ -28,13 +28,13 @@
       "pressedBorderColor": "#cfcfcf"
     },
 
-    "AssignedMnemonic": {
+    "BookmarkMnemonicAssigned": {
       "background": "#F7C777",
       "borderColor": "#F7C777",
       "foreground": "#000000"
     },
 
-    "AvailableMnemonic": {
+    "BookmarkMnemonicAvailable": {
       "background": "#FFFFFF",
       "borderColor": "#C4C4C4",
       "foreground": "#000000"
@@ -90,7 +90,7 @@
       "warningFocusColor": "#e2a53a"
     },
 
-    "CurrentMnemonic": {
+    "BookmarkMnemonicCurrent": {
       "background": "#389FD6",
       "borderColor": "#389FD6",
       "foreground": "#FFFFFF"
@@ -171,12 +171,12 @@
 
     "MenuItem": {
       "acceleratorDelimiter": "-",
-      "acceleratorForeground": "#505050",
+      "acceleratorForeground": "#808080",
       "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaMenuItemBorder",
       "maxGutterIconWidth": 18
     },
 
-    "MnemonicIcon": {
+    "BookmarkMnemonicIcon": {
       "background": "#FEF7EC",
       "borderColor": "#F4AF3D",
       "foreground": "#000000"
@@ -220,10 +220,22 @@
 
     "PopupMenu": {
       "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaPopupMenuBorder",
-      "translucentBackground": "#f2f2f2"
+      "borderInsets": "6,1,6,1",
+      "borderCornerRadiusX": 16,
+      "borderCornerRadiusY": 16,
+      "leftBorderWith": 10,
+      "rightBorderWith": 0,
+      "translucentBackground": "#f2f2f2",
+      "UI": "com.intellij.ide.ui.laf.intellij.IdeaPopupMenuUI"
     },
 
-    "PopupMenuSeparatorUI": "com.intellij.ide.ui.laf.darcula.ui.DarculaMenuSeparatorUI",
+    "PopupMenuSeparator": {
+      "height": 9,
+      "stripeWidth": 1,
+      "stripeIndent": 4,
+      "withToEdge": 10,
+      "UI": "com.intellij.ide.ui.laf.darcula.ui.DarculaMenuSeparatorUI"
+    },
 
     "ProgressBar": {
       "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaProgressBarBorder",
@@ -381,6 +393,13 @@
       "selectionBorderColor": "#1a7dc4",
       "textBackground": "#ffffff",
       "UI": "com.intellij.ui.tree.ui.DefaultTreeUI"
+    },
+
+    "ToolbarComboWidget": {
+      "background": "#f2f2f2",
+      "hoverBackground": "#dfdfdf",
+      "borderInsets": "3,5,3,5",
+      "UI": "com.intellij.ide.ui.laf.darcula.ui.ToolbarComboWidgetUI"
     },
 
     "control": "#f2f2f2",

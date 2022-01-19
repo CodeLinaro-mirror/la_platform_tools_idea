@@ -195,7 +195,8 @@
   <action id="ActivateProjectToolWindow">
     <keyboard-shortcut first-keystroke="meta 1"/>
   </action>
-  <action id="ActivateFavoritesToolWindow">
+  <action id="ActivateFavoritesToolWindow"/>
+  <action id="ActivateBookmarksToolWindow">
     <keyboard-shortcut first-keystroke="meta 2"/>
   </action>
   <action id="ActivateFindToolWindow">
@@ -455,6 +456,9 @@
   </action>
   <action id="ShowBookmarks">
     <keyboard-shortcut first-keystroke="meta F3"/>
+  </action>
+  <action id="ShowTypeBookmarks">
+    <keyboard-shortcut first-keystroke="meta alt F3"/>
   </action>
 
   <action id="ImplementMethods">
@@ -725,6 +729,15 @@
   </action>
   <action id="UsageGrouping.DirectoryStructure">
     <keyboard-shortcut first-keystroke="control D"/>
+  </action>
+  <action id="UsageFiltering.ReadAccess">
+    <keyboard-shortcut first-keystroke="control R"/>
+  </action>
+  <action id="UsageFiltering.WriteAccess">
+    <keyboard-shortcut first-keystroke="control W"/>
+  </action>
+  <action id="UsageFiltering.Imports">
+    <keyboard-shortcut first-keystroke="control I"/>
   </action>
 
   <action id="List-selectFirstRow">

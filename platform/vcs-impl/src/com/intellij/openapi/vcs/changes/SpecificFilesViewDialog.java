@@ -90,7 +90,7 @@ abstract class SpecificFilesViewDialog extends DialogWrapper {
 
     DefaultTreeModel model = TreeModelBuilder.buildFromFilePaths(myProject, myView.getGrouping(), files);
     myView.setModel(model);
-    myView.expandPath(new TreePath(((ChangesBrowserNode)model.getRoot()).getPath()));
+    myView.expandPath(new TreePath(((ChangesBrowserNode<?>)model.getRoot()).getPath()));
 
     state.applyTo(myView);
   }
@@ -161,11 +161,11 @@ abstract class SpecificFilesViewDialog extends DialogWrapper {
   }
 
   protected void refreshView() {
-    ModalityUiUtil.invokeLaterIfNeeded(() -> {
+    ModalityUiUtil.invokeLaterIfNeeded(ModalityState.stateForComponent(myView), () -> {
       if (isVisible()) {
         initData(getFiles());
       }
-    }, ModalityState.stateForComponent(myView));
+    });
   }
 
   @NotNull

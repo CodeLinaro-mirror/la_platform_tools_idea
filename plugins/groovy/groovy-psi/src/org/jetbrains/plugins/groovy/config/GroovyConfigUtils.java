@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.config;
 
 import com.intellij.openapi.module.Module;
@@ -40,10 +40,25 @@ public final class GroovyConfigUtils extends AbstractConfigUtils {
   @NlsSafe public static final String GROOVY2_4 = "2.4";
   @NlsSafe public static final String GROOVY2_5 = "2.5";
   @NlsSafe public static final String GROOVY3_0 = "3.0";
+  @NlsSafe public static final String GROOVY4_0 = "4.0";
+
+  /**
+   * @deprecated At the time of writing, the latest version of Groovy 4 is beta-1,
+   * and we need to restrict features of beta-2 from their instant usage.
+   * We should remove dependency on unstable version when groovy 4 gets fully released
+   */
+  @Deprecated(since = "2022.1", forRemoval = true)
+  @NlsSafe public static final String GROOVY4_0_BETA_2 = "4.0.0-beta-2";
 
   private static final GroovyConfigUtils ourGroovyConfigUtils = new GroovyConfigUtils();
   @NonNls private static final String LIB = "/lib";
   @NonNls private static final String EMBEDDABLE = "/embeddable";
+
+  @NlsSafe private static final String ALPHA = "alpha";
+  @NlsSafe private static final String BETA = "beta";
+  @NlsSafe private static final String RC = "rc";
+  @NlsSafe private static final String SNAPSHOT = "SNAPSHOT";
+
 
   private GroovyConfigUtils() {}
 
@@ -61,6 +76,10 @@ public final class GroovyConfigUtils extends AbstractConfigUtils {
 
   public static boolean isAtLeastGroovy25(@NotNull PsiElement element) {
     return getInstance().isVersionAtLeast(element, GROOVY2_5);
+  }
+
+  public static boolean isAtLeastGroovy40(@NotNull PsiElement element) {
+    return getInstance().isVersionAtLeast(element, GROOVY4_0);
   }
 
   @Override
@@ -106,7 +125,7 @@ public final class GroovyConfigUtils extends AbstractConfigUtils {
     return compareSdkVersions(sdkVersion, version) >= 0;
   }
 
-  private static int compareSdkVersions(@NotNull String leftVersion, @NotNull String rightVersion) {
+  public static int compareSdkVersions(@NotNull String leftVersion, @NotNull String rightVersion) {
     String[] leftVersionParts = leftVersion.split("[.-]");
     String[] rightVersionParts = rightVersion.split("[.-]");
     int sizes = Math.max(leftVersionParts.length, rightVersionParts.length);
@@ -122,21 +141,25 @@ public final class GroovyConfigUtils extends AbstractConfigUtils {
     return 0;
   }
 
+  public static boolean isUnstable(@NotNull String version) {
+    return version.contains(ALPHA) || version.contains(BETA) || version.contains(RC);
+  }
+
   private static int getVersionPart(String[] parts, int index) {
-    String part = index < parts.length ? parts[index] : "0";
-    int partNumber;
-    if (part.equals("alpha")) {
-      partNumber = -3;
-    } else if (part.equals("beta")) {
-      partNumber = -2;
-    } else if (part.equals("rc")) {
-      partNumber = -1;
+    String part = index < parts.length ? parts[index] : "-4";
+    if (part.equals(SNAPSHOT)) {
+      return 999;
+    } else if (part.equals(ALPHA)) {
+      return -3;
+    } else if (part.equals(BETA)) {
+      return -2;
+    } else if (part.equals(RC)) {
+      return -1;
     } else try {
-      partNumber = Integer.parseInt(part);
+      return Integer.parseInt(part);
     } catch (NumberFormatException __) {
-      partNumber = -4;
+      return -4;
     }
-    return partNumber;
   }
 
   @NotNull

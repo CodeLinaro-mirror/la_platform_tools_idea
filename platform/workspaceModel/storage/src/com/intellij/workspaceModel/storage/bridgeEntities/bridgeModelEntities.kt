@@ -5,6 +5,7 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.impl.*
 import com.intellij.workspaceModel.storage.impl.indices.VirtualFileUrlListProperty
+import com.intellij.workspaceModel.storage.impl.indices.WorkspaceMutableIndex
 import com.intellij.workspaceModel.storage.impl.references.*
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl
 import java.io.Serializable
@@ -31,6 +32,35 @@ class ModuleEntityData : WorkspaceEntityData.WithCalculablePersistentId<ModuleEn
         is ModuleDependencyItem.Exportable.LibraryDependency -> dependency.library
         else -> null
       }
+    }
+  }
+
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    for (dependency in dependencies) {
+      when (dependency) {
+        is ModuleDependencyItem.Exportable.ModuleDependency -> index.index(this, dependency.module)
+        is ModuleDependencyItem.Exportable.LibraryDependency -> index.index(this, dependency.library)
+        else -> Unit
+      }
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    val mutablePreviousSet = HashSet(prev)
+
+    for (dependency in dependencies) {
+      val dep = when (dependency) {
+        is ModuleDependencyItem.Exportable.ModuleDependency -> dependency.module
+        is ModuleDependencyItem.Exportable.LibraryDependency -> dependency.library
+        else -> continue
+      }
+      val removed = mutablePreviousSet.remove(dep)
+      if (!removed) {
+        index.index(this, dep)
+      }
+    }
+    for (removed in mutablePreviousSet) {
+      index.remove(this, removed)
     }
   }
 
@@ -165,7 +195,7 @@ class JavaModuleSettingsEntity(
   val module: ModuleEntity by moduleDelegate
 
   companion object {
-    val moduleDelegate = ManyToOne.NotNull<ModuleEntity, JavaModuleSettingsEntity>(ModuleEntity::class.java)
+    val moduleDelegate = OneToOneChild.NotNull<JavaModuleSettingsEntity, ModuleEntity>(ModuleEntity::class.java)
   }
 }
 
@@ -186,7 +216,7 @@ class ModuleCustomImlDataEntity(
   val module: ModuleEntity by moduleDelegate
 
   companion object {
-    val moduleDelegate = OneToOneChild.NotNull< ModuleCustomImlDataEntity, ModuleEntity>(ModuleEntity::class.java, true)
+    val moduleDelegate = OneToOneChild.NotNull< ModuleCustomImlDataEntity, ModuleEntity>(ModuleEntity::class.java)
   }
 }
 
@@ -210,8 +240,6 @@ class ModuleGroupPathEntity(
 }
 
 data class ModuleId(val name: String) : PersistentEntityId<ModuleEntity>() {
-  override val parentId: PersistentEntityId<*>?
-    get() = null
   override val presentableName: String
     get() = name
 
@@ -270,7 +298,7 @@ class SourceRootEntityData : WorkspaceEntityData<SourceRootEntity>() {
   }
 }
 
-open class SourceRootEntity(
+class SourceRootEntity(
   val url: VirtualFileUrl,
   val rootType: String
 ) : WorkspaceEntityBase() {
@@ -456,12 +484,12 @@ class ContentRootEntityData : WorkspaceEntityData<ContentRootEntity>(), WithAsse
   }
 }
 
-open class ContentRootEntity(
+class ContentRootEntity(
   val url: VirtualFileUrl,
   val excludedUrls: List<VirtualFileUrl>,
   val excludedPatterns: List<String>
 ) : WorkspaceEntityBase() {
-  open val module: ModuleEntity by moduleDelegate
+  val module: ModuleEntity by moduleDelegate
   val sourceRoots: Sequence<SourceRootEntity> by sourceRootDelegate
 
   companion object {
@@ -502,15 +530,15 @@ class SourceRootOrderEntity(
   val contentRootEntity: ContentRootEntity by contentRootDelegate
 
   companion object {
-    val contentRootDelegate = OneToOneChild.NotNull<SourceRootOrderEntity, ContentRootEntity>(ContentRootEntity::class.java, true)
+    val contentRootDelegate = OneToOneChild.NotNull<SourceRootOrderEntity, ContentRootEntity>(ContentRootEntity::class.java)
   }
 }
 
 class ModifiableSourceRootOrderEntity : ModifiableWorkspaceEntityBase<SourceRootOrderEntity>() {
   var orderOfSourceRoots: List<VirtualFileUrl> by VirtualFileUrlListProperty()
 
-  var contentRootEntity: ContentRootEntity by MutableOneToOneChild.NotNull(SourceRootOrderEntity::class.java, ContentRootEntity::class.java,
-                                                                           true)
+  var contentRootEntity: ContentRootEntity by MutableOneToOneChild.NotNull(SourceRootOrderEntity::class.java, ContentRootEntity::class.java
+  )
 }
 
 fun ContentRootEntity.getSourceRootOrder() = referrers(SourceRootOrderEntity::contentRootEntity).firstOrNull()
@@ -551,6 +579,29 @@ class LibraryEntityData : WorkspaceEntityData.WithCalculablePersistentId<Library
     return if (id is LibraryTableId.ModuleLibraryTableId) setOf(id.moduleId) else emptySet()
   }
 
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    val id = tableId
+    if (id is LibraryTableId.ModuleLibraryTableId) {
+      index.index(this, id.moduleId)
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    val id = tableId
+    val previous = prev.singleOrNull()
+    if (id is LibraryTableId.ModuleLibraryTableId) {
+      if (previous != null) {
+        if (id.moduleId != previous) {
+          index.remove(this, previous)
+          index.index(this, id.moduleId)
+        }
+      }
+      else {
+        index.index(this, id.moduleId)
+      }
+    }
+  }
+
   override fun updateLink(oldLink: PersistentEntityId<*>,
                           newLink: PersistentEntityId<*>): Boolean {
     val id = tableId
@@ -583,8 +634,6 @@ class LibraryEntity(
 }
 
 data class LibraryId(val name: String, val tableId: LibraryTableId) : PersistentEntityId<LibraryEntity>() {
-  override val parentId: PersistentEntityId<*>?
-    get() = null
   override val presentableName: String
     get() = name
 
@@ -658,7 +707,7 @@ class LibraryPropertiesEntity(
   val library: LibraryEntity by libraryDelegate
 
   companion object {
-    val libraryDelegate = OneToOneChild.NotNull<LibraryPropertiesEntity, LibraryEntity>(LibraryEntity::class.java, true)
+    val libraryDelegate = OneToOneChild.NotNull<LibraryPropertiesEntity, LibraryEntity>(LibraryEntity::class.java)
   }
 }
 
@@ -677,7 +726,7 @@ class SdkEntity(
   val library: LibraryEntity by libraryDelegate
 
   companion object {
-    val libraryDelegate = OneToOneChild.NotNull<SdkEntity, LibraryEntity>(LibraryEntity::class.java, true)
+    val libraryDelegate = OneToOneChild.NotNull<SdkEntity, LibraryEntity>(LibraryEntity::class.java)
   }
 }
 
@@ -715,7 +764,7 @@ class ExternalSystemModuleOptionsEntity(
   val module: ModuleEntity by moduleDelegate
 
   companion object {
-    val moduleDelegate = OneToOneChild.NotNull<ExternalSystemModuleOptionsEntity, ModuleEntity>(ModuleEntity::class.java, true)
+    val moduleDelegate = OneToOneChild.NotNull<ExternalSystemModuleOptionsEntity, ModuleEntity>(ModuleEntity::class.java)
   }
 }
 
@@ -735,6 +784,23 @@ class FacetEntityData : WorkspaceEntityData.WithCalculablePersistentId<FacetEnti
   }
 
   override fun getLinks(): Set<PersistentEntityId<*>> = setOf(moduleId)
+
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    index.index(this, moduleId)
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    val previous = prev.singleOrNull()
+    if (previous != null) {
+      if (previous != moduleId) {
+        index.remove(this, previous)
+        index.index(this, moduleId)
+      }
+    }
+    else {
+      index.index(this, moduleId)
+    }
+  }
 
   override fun updateLink(oldLink: PersistentEntityId<*>,
                           newLink: PersistentEntityId<*>): Boolean {
@@ -765,7 +831,7 @@ class FacetEntity(
   override fun persistentId(): FacetId = FacetId(name, facetType, moduleId)
 }
 
-data class FacetId(val name: String, val type: String, override val parentId: ModuleId) : PersistentEntityId<FacetEntity>() {
+data class FacetId(val name: String, val type: String, val parentId: ModuleId) : PersistentEntityId<FacetEntity>() {
   override val presentableName: String
     get() = name
 }
@@ -778,8 +844,6 @@ val ModuleEntity.facets: Sequence<FacetEntity>
 
 
 data class ArtifactId(val name: String) : PersistentEntityId<ArtifactEntity>() {
-  override val parentId: PersistentEntityId<*>?
-    get() = null
   override val presentableName: String
     get() = name
 }
@@ -806,7 +870,7 @@ class ArtifactEntity(
 ) : WorkspaceEntityWithPersistentId, WorkspaceEntityBase() {
   override fun persistentId(): ArtifactId = ArtifactId(name)
 
-  val rootElement: CompositePackagingElementEntity by rootElementDelegate
+  val rootElement: CompositePackagingElementEntity? by rootElementDelegate
 
   val customProperties: Sequence<ArtifactPropertiesEntity> by customPropertiesDelegate
 
@@ -883,6 +947,27 @@ class ArtifactOutputPackagingElementEntityData : WorkspaceEntityData<ArtifactOut
 
   override fun getLinks(): Set<PersistentEntityId<*>> = artifact?.let { setOf(it) } ?: emptySet()
 
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    artifact?.let {
+      index.index(this, it)
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    artifact?.let {
+      val previous = prev.singleOrNull()
+      if (previous != null) {
+        if (previous != it) {
+          index.remove(this, previous)
+          index.index(this, it)
+        }
+      }
+      else {
+        index.index(this, it)
+      }
+    }
+  }
+
   override fun updateLink(oldLink: PersistentEntityId<*>, newLink: PersistentEntityId<*>): Boolean {
     if (oldLink != artifact) return false
     this.artifact = newLink as ArtifactId
@@ -902,6 +987,27 @@ class ModuleOutputPackagingElementEntityData : WorkspaceEntityData<ModuleOutputP
 
   override fun getLinks(): Set<PersistentEntityId<*>> = module?.let { setOf(it) } ?: emptySet()
 
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    module?.let {
+      index.index(this, it)
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    module?.let {
+      val previous = prev.singleOrNull()
+      if (previous != null) {
+        if (previous != it) {
+          index.remove(this, previous)
+          index.index(this, it)
+        }
+      }
+      else {
+        index.index(this, it)
+      }
+    }
+  }
+
   override fun updateLink(oldLink: PersistentEntityId<*>, newLink: PersistentEntityId<*>): Boolean {
     if (module != oldLink) return false
     this.module = newLink as ModuleId
@@ -920,6 +1026,27 @@ class LibraryFilesPackagingElementEntityData : WorkspaceEntityData<LibraryFilesP
   var library: LibraryId? = null
 
   override fun getLinks(): Set<PersistentEntityId<*>> = library?.let { setOf(it) } ?: emptySet()
+
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    library?.let {
+      index.index(this, it)
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    library?.let {
+      val previous = prev.singleOrNull()
+      if (previous != null) {
+        if (previous != it) {
+          index.remove(this, previous)
+          index.index(this, it)
+        }
+      }
+      else {
+        index.index(this, it)
+      }
+    }
+  }
 
   override fun updateLink(oldLink: PersistentEntityId<*>, newLink: PersistentEntityId<*>): Boolean {
     if (oldLink == library) {
@@ -943,6 +1070,27 @@ class ModuleSourcePackagingElementEntityData : WorkspaceEntityData<ModuleSourceP
 
   override fun getLinks(): Set<PersistentEntityId<*>> = module?.let { setOf(it) } ?: emptySet()
 
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    module?.let {
+      index.index(this, it)
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    module?.let {
+      val previous = prev.singleOrNull()
+      if (previous != null) {
+        if (previous != it) {
+          index.remove(this, previous)
+          index.index(this, it)
+        }
+      }
+      else {
+        index.index(this, it)
+      }
+    }
+  }
+
   override fun updateLink(oldLink: PersistentEntityId<*>, newLink: PersistentEntityId<*>): Boolean {
     if (module != oldLink) return false
     this.module = newLink as ModuleId
@@ -961,6 +1109,27 @@ class ModuleTestOutputPackagingElementEntityData : WorkspaceEntityData<ModuleTes
   var module: ModuleId? = null
 
   override fun getLinks(): Set<PersistentEntityId<*>> = module?.let { setOf(it) } ?: emptySet()
+
+  override fun index(index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    module?.let {
+      index.index(this, it)
+    }
+  }
+
+  override fun updateLinksIndex(prev: Set<PersistentEntityId<*>>, index: WorkspaceMutableIndex<PersistentEntityId<*>>) {
+    module?.let {
+      val previous = prev.singleOrNull()
+      if (previous != null) {
+        if (previous != it) {
+          index.remove(this, previous)
+          index.index(this, it)
+        }
+      }
+      else {
+        index.index(this, it)
+      }
+    }
+  }
 
   override fun updateLink(oldLink: PersistentEntityId<*>, newLink: PersistentEntityId<*>): Boolean {
     if (module != oldLink) return false

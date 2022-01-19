@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * A type of item with a distinct highlighting in an editor or in other views.
  * Use one of {@link #createTextAttributesKey(String)} {@link #createTextAttributesKey(String, TextAttributesKey)}
- * to create a new key, fallbacks will help finding colors in all colors schemes.
+ * to create a new key, fallbacks will help to find colors in all colors schemes.
  * Specifying different attributes for different color schemes is possible using additionalTextAttributes extension point.
  */
 public final class TextAttributesKey implements Comparable<TextAttributesKey> {
@@ -55,9 +55,15 @@ public final class TextAttributesKey implements Comparable<TextAttributesKey> {
     myFallbackAttributeKey = fallbackAttributeKey;
 
     if (fallbackAttributeKey != null) {
-      JBIterable<TextAttributesKey> it = JBIterable.generate(myFallbackAttributeKey, o -> o == this ? null : o.myFallbackAttributeKey);
-      if (equals(it.find(o -> equals(o)))) {
-        throw new IllegalArgumentException("Can't use this fallback key: "+fallbackAttributeKey+": Cycle detected: " + StringUtil.join(it, "->"));
+      checkForCycle(fallbackAttributeKey);
+    }
+  }
+
+  private void checkForCycle(@NotNull TextAttributesKey fallbackAttributeKey) {
+    for (TextAttributesKey key = fallbackAttributeKey; key != null; key = key.myFallbackAttributeKey) {
+      if (equals(key)) {
+        throw new IllegalArgumentException("Can't use this fallback key: " + fallbackAttributeKey + ":" +
+          " Cycle detected: " + StringUtil.join(JBIterable.generate(myFallbackAttributeKey, o -> o == this ? null : o.myFallbackAttributeKey), "->"));
       }
     }
   }

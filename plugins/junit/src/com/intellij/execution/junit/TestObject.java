@@ -15,6 +15,7 @@ import com.intellij.execution.util.ProgramParametersUtil;
 import com.intellij.ide.JavaUiBundle;
 import com.intellij.jarRepository.JarRepositoryManager;
 import com.intellij.junit4.JUnit4IdeaTestRunner;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -34,6 +35,7 @@ import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.libraries.ui.OrderRoot;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NlsSafe;
+import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.JarFileSystem;
@@ -58,6 +60,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.PathUtil;
 import com.intellij.util.PathsList;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.indexing.DumbModeAccessType;
 import com.intellij.util.text.VersionComparatorUtil;
 import com.siyeh.ig.junit.JUnitCommonClassNames;
 import org.jetbrains.annotations.NonNls;
@@ -78,6 +81,10 @@ import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitConfiguration> implements PossiblyDumbAware {
+  private static final String LAUNCHER_MODULE_NAME = "org.junit.platform.launcher";
+  private static final String JUPITER_ENGINE_NAME  = "org.junit.jupiter.engine";
+  private static final String VINTAGE_ENGINE_NAME  = "org.junit.vintage.engine";
+
   protected static final Logger LOG = Logger.getInstance(TestObject.class);
 
   private static final @NonNls String DEBUG_RT_PATH = "idea.junit_rt.path";
@@ -307,7 +314,7 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
 
     JavaPsiFacade psiFacade = JavaPsiFacade.getInstance(project);
     DumbService dumbService = DumbService.getInstance(project);
-    PsiClass classFromCommon = dumbService.computeWithAlternativeResolveEnabled(() -> ReadAction.compute(() -> psiFacade.findClass("org.junit.platform.commons.JUnitException", globalSearchScope)));
+    PsiClass classFromCommon = dumbService.computeWithAlternativeResolveEnabled(() -> ReadAction.nonBlocking(() -> psiFacade.findClass("org.junit.platform.commons.JUnitException", globalSearchScope)).executeSynchronously());
 
     String launcherVersion = getVersion(classFromCommon);
     if (launcherVersion == null) {
@@ -317,16 +324,17 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
 
     boolean isModularized = ensureOnModulePath &&
                             JavaSdkUtil.isJdkAtLeast(javaParameters.getJdk(), JavaSdkVersion.JDK_1_9) &&
-                            ReadAction.compute(() -> FilenameIndex.getFilesByName(project, PsiJavaModule.MODULE_INFO_FILE, globalSearchScope).length > 0) &&
+                            ReadAction.nonBlocking(() -> FilenameIndex.getFilesByName(project, PsiJavaModule.MODULE_INFO_FILE, globalSearchScope).length > 0).executeSynchronously() &&
                             VersionComparatorUtil.compare(launcherVersion, "1.5.0") >= 0;
 
     if (isModularized) { //for modularized junit ensure launcher is included in the module graph
       ParamsGroup group = getOrCreateJigsawOptions(javaParameters);
       ParametersList vmParametersList = group.getParametersList();
-      String launcherModuleName = "org.junit.platform.launcher";
-      if (!vmParametersList.hasParameter(launcherModuleName)) {
+      if (!vmParametersList.hasParameter(LAUNCHER_MODULE_NAME)) {
         vmParametersList.add("--add-modules");
-        vmParametersList.add(launcherModuleName);
+        vmParametersList.add(LAUNCHER_MODULE_NAME);
+
+        ensureSpecifiedModuleOnModulePath(javaParameters, globalSearchScope, psiFacade, LAUNCHER_MODULE_NAME);
       }
     }
 
@@ -338,25 +346,35 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
 
     //add standard engines only if no engine api is present
     if (!hasJUnit5EnginesAPI(globalSearchScope, psiFacade) || !isCustomJUnit5(globalSearchScope)) {
-      PsiClass testAnnotation = dumbService.computeWithAlternativeResolveEnabled(() -> ReadAction.compute(() -> psiFacade.findClass(JUnitUtil.TEST5_ANNOTATION, globalSearchScope)));
+      PsiClass testAnnotation = dumbService.computeWithAlternativeResolveEnabled(() -> ReadAction.nonBlocking(() -> psiFacade.findClass(JUnitUtil.TEST5_ANNOTATION, globalSearchScope)).executeSynchronously());
       String jupiterVersion = ObjectUtils.notNull(getVersion(testAnnotation), "5.0.0");
-      if (hasPackageWithDirectories(psiFacade, JUnitUtil.TEST5_PACKAGE_FQN, globalSearchScope) &&
-          !hasPackageWithDirectories(psiFacade, "org.junit.jupiter.engine", globalSearchScope)) {
-        downloadDependenciesWhenRequired(project, additionalDependencies,
-                                         new RepositoryLibraryProperties("org.junit.jupiter", "junit-jupiter-engine", jupiterVersion));
+      if (hasPackageWithDirectories(psiFacade, JUnitUtil.TEST5_PACKAGE_FQN, globalSearchScope)) {
+        if (!hasPackageWithDirectories(psiFacade, JUPITER_ENGINE_NAME, globalSearchScope)) {
+          downloadDependenciesWhenRequired(project, additionalDependencies,
+                                           new RepositoryLibraryProperties("org.junit.jupiter", "junit-jupiter-engine", jupiterVersion));
+        }
+        else if (isModularized) {
+          ensureSpecifiedModuleOnModulePath(javaParameters, globalSearchScope, psiFacade, JUPITER_ENGINE_NAME);
+        }
       }
 
-      if (!hasPackageWithDirectories(psiFacade, "org.junit.vintage", globalSearchScope) &&
-          hasPackageWithDirectories(psiFacade, "junit.framework", globalSearchScope)) {
-        PsiClass junit4RunnerClass = dumbService.computeWithAlternativeResolveEnabled(() -> ReadAction.compute(() -> psiFacade.findClass("junit.runner.Version", globalSearchScope)));
-        if (junit4RunnerClass != null && isAcceptableVintageVersion()) {
-          String version = VersionComparatorUtil.compare(launcherVersion, "1.1.0") >= 0
-                           ? jupiterVersion
-                           : "4.12." + StringUtil.getShortName(launcherVersion);
-          downloadDependenciesWhenRequired(project, additionalDependencies,
-                                           //don't include potentially incompatible hamcrest/junit dependency
-                                           new RepositoryLibraryProperties("org.junit.vintage", "junit-vintage-engine", version, false, ContainerUtil.emptyList()));
+      if (!hasPackageWithDirectories(psiFacade, VINTAGE_ENGINE_NAME, globalSearchScope)) {
+        if (hasPackageWithDirectories(psiFacade, "junit.framework", globalSearchScope)) {
+          PsiClass junit4RunnerClass = dumbService.computeWithAlternativeResolveEnabled(
+            () -> ReadAction.nonBlocking(() -> psiFacade.findClass("junit.runner.Version", globalSearchScope)).executeSynchronously());
+          if (junit4RunnerClass != null && isAcceptableVintageVersion()) {
+            String version = VersionComparatorUtil.compare(launcherVersion, "1.1.0") >= 0
+                             ? jupiterVersion
+                             : "4.12." + StringUtil.getShortName(launcherVersion);
+            downloadDependenciesWhenRequired(project, additionalDependencies,
+                                             //don't include potentially incompatible hamcrest/junit dependency
+                                             new RepositoryLibraryProperties("org.junit.vintage", "junit-vintage-engine", version, false,
+                                                                             ContainerUtil.emptyList()));
+          }
         }
+      }
+      else if (isModularized) {
+        ensureSpecifiedModuleOnModulePath(javaParameters, globalSearchScope, psiFacade, VINTAGE_ENGINE_NAME);
       }
     }
 
@@ -365,6 +383,18 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
     for (int i = additionalDependencies.size() - 1; i >= 0; i--) {
       targetList.addFirst(additionalDependencies.get(i));
     }
+  }
+
+  private static void ensureSpecifiedModuleOnModulePath(JavaParameters javaParameters,
+                                                        GlobalSearchScope globalSearchScope,
+                                                        JavaPsiFacade psiFacade,
+                                                        String moduleName) {
+    ReadAction.run(() -> DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(() -> {
+      PsiJavaModule launcherModule = psiFacade.findModule(moduleName, globalSearchScope);
+      if (launcherModule != null) {
+        JavaParametersUtil.putDependenciesOnModulePath(javaParameters, launcherModule, true);
+      }
+    }));
   }
 
   /**
@@ -418,20 +448,17 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
                                                 @NotNull RepositoryLibraryProperties properties) throws CantRunException {
     Collection<OrderRoot> roots;
     try {
-      if (ApplicationManager.getApplication().isDispatchThread()) {
-        roots = JarRepositoryManager.loadDependenciesModal(project, properties, false, false, null, null);
+      Application application = ApplicationManager.getApplication();
+      application.assertReadAccessNotAllowed();
+      application.assertIsNonDispatchThread();
+      TargetProgressIndicator targetProgressIndicator = getTargetProgressIndicator();
+      if (targetProgressIndicator != null) {
+        String title = JavaUiBundle.message("jar.repository.manager.dialog.resolving.dependencies.title", 1);
+        targetProgressIndicator.addSystemLine(title);
       }
-      else {
-        ApplicationManager.getApplication().assertReadAccessNotAllowed();
-        TargetProgressIndicator targetProgressIndicator = getTargetProgressIndicator();
-        if (targetProgressIndicator != null) {
-          String title = JavaUiBundle.message("jar.repository.manager.dialog.resolving.dependencies.title", 1);
-          targetProgressIndicator.addSystemLine(title);
-        }
-        roots = JarRepositoryManager.loadDependenciesSync(project, properties, false, false, null, null,
-                                                          targetProgressIndicator != null ? new ProgressIndicatorWrapper(targetProgressIndicator) 
-                                                                                          : ObjectUtils.notNull(ProgressManager.getInstance().getProgressIndicator(), new DumbProgressIndicator()));
-      }
+      roots = JarRepositoryManager.loadDependenciesSync(project, properties, false, false, null, null,
+                                                        targetProgressIndicator != null ? new ProgressIndicatorWrapper(targetProgressIndicator)
+                                                                                        : ObjectUtils.notNull(ProgressManager.getInstance().getProgressIndicator(), new DumbProgressIndicator()));
     }
     catch (ProcessCanceledException e) {
       roots = Collections.emptyList();
@@ -513,23 +540,35 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
       JUnitConfiguration configuration = getConfiguration();
       final Project project = configuration.getProject();
       Module module = configuration.getConfigurationModule().getModule();
-      appendJUnit5LauncherClasses(javaParameters, project,
-                                  getScopeForJUnit(module, project), 
-                                  useModulePath() && module != null && ReadAction.compute(() -> findJavaModule(module, true)) != null);
-      if (forkPerModule()) {
-        for (Module packageModule : collectPackageModules(configuration.getPackage())) {
-          JavaParameters parameters = new JavaParameters();
-          ParamsGroup group = getJigsawOptions(javaParameters);
-          if (group != null) {
-            parameters.getVMParametersList().addParamsGroup(group.clone());
+      ThrowableComputable<Void, ExecutionException> downloader = () -> {
+        appendJUnit5LauncherClasses(javaParameters, project,
+                                    getScopeForJUnit(module, project),
+                                    useModulePath() && module != null && ReadAction.compute(() -> findJavaModule(module, true)) != null);
+        if (forkPerModule()) {
+          for (Module packageModule : collectPackageModules(configuration.getPackage())) {
+            JavaParameters parameters = new JavaParameters();
+            ParamsGroup group = getJigsawOptions(javaParameters);
+            if (group != null) {
+              parameters.getVMParametersList().addParamsGroup(group.clone());
+            }
+            parameters.setJdk(javaParameters.getJdk());
+            appendJUnit5LauncherClasses(parameters,
+                                        project,
+                                        getScopeForJUnit(packageModule, project),
+                                        useModulePath() &&
+                                        packageModule != null &&
+                                        ReadAction.compute(() -> findJavaModule(packageModule, true)) != null);
+            myAdditionalJarsForModuleFork.put(packageModule, parameters);
           }
-          parameters.setJdk(javaParameters.getJdk());
-          appendJUnit5LauncherClasses(parameters, 
-                                      project, 
-                                      getScopeForJUnit(packageModule, project), 
-                                      useModulePath() && packageModule != null && ReadAction.compute(() -> findJavaModule(packageModule, true)) != null);
-          myAdditionalJarsForModuleFork.put(packageModule, parameters);
         }
+        return null;
+      };
+      if (ApplicationManager.getApplication().isDispatchThread()) {
+        ProgressManager.getInstance()
+          .runProcessWithProgressSynchronously(downloader, JUnitBundle.message("progress.title.download.additional.dependencies"), true, getConfiguration().getProject());
+      }
+      else {
+        downloader.compute();
       }
     }
   }
@@ -578,9 +617,7 @@ public abstract class TestObject extends JavaTestFrameworkRunnableState<JUnitCon
       String qName = (String)element;
       int idx = qName.indexOf(',');
       String className = idx > 0 ? qName.substring(0, idx) : qName;
-      return JavaPsiFacade.getInstance(project).findClass(className, scope != null
-                                                                     ? scope.getGlobalSearchScope()
-                                                                     : GlobalSearchScope.projectScope(project));
+      return DumbService.getInstance(project).computeWithAlternativeResolveEnabled(() -> JavaPsiFacade.getInstance(project).findClass(className, scope != null ? scope.getGlobalSearchScope() : GlobalSearchScope.projectScope(project)));
 
     }
     if (element instanceof Location) {

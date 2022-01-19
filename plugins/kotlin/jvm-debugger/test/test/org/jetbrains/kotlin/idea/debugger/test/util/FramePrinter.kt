@@ -2,6 +2,8 @@
 package org.jetbrains.kotlin.idea.debugger.test.util
 
 import com.intellij.debugger.SourcePosition
+import com.intellij.debugger.engine.DebuggerUtils
+import com.intellij.debugger.engine.JavaStackFrame
 import com.intellij.debugger.engine.SourcePositionProvider
 import com.intellij.debugger.engine.SuspendContextImpl
 import com.intellij.debugger.engine.evaluation.EvaluationContextImpl
@@ -20,6 +22,7 @@ import com.intellij.xdebugger.impl.ui.XDebuggerUIConstants
 import org.jetbrains.kotlin.idea.debugger.GetterDescriptor
 import org.jetbrains.kotlin.idea.debugger.coroutine.data.ContinuationVariableValueDescriptorImpl
 import org.jetbrains.kotlin.idea.debugger.invokeInManagerThread
+import org.jetbrains.kotlin.idea.debugger.stackFrame.KotlinStackFrame
 import org.jetbrains.kotlin.idea.debugger.test.KOTLIN_LIBRARY_NAME
 import org.jetbrains.kotlin.psi.KtFile
 import java.util.concurrent.TimeUnit
@@ -70,8 +73,7 @@ class FramePrinter(private val suspendContext: SuspendContextImpl) {
     )
 
     private fun computeInfo(container: XValueContainer): ValueInfo {
-        val name = if (container is XNamedValue) container.name.takeIf { it.isNotEmpty() } else null
-
+        val name = container.getName()
         when (container) {
             is XValue -> {
                 val node = XTestValueNode()
@@ -95,10 +97,21 @@ class FramePrinter(private val suspendContext: SuspendContextImpl) {
         }
     }
 
+    private fun XValueContainer.getName() =
+        when (this) {
+            is XNamedValue -> name.takeIf { it.isNotEmpty() }
+            is JavaStackFrame -> descriptor.name
+            else -> null
+        }
+
     private fun computeValue(descriptor: NodeDescriptorImpl?): String? {
         val valueDescriptor = descriptor as? ValueDescriptorImpl ?: return null
         if (valueDescriptor is GetterDescriptor) {
             return null
+        }
+
+        if (valueDescriptor.isMapEntryDescriptor) {
+            return MAP_ENTRY_TEST_LABEL
         }
 
         val semaphore = Semaphore()
@@ -193,3 +206,23 @@ private fun patchHashCode(value: String): String {
     val match = HASH_CODE_REGEX.matchEntire(value) ?: return value
     return match.groupValues[1] + "hashCode"
 }
+
+/**
+ * We have a platform renderer for `Map.Entry` class which renders its label as "key -> value".
+ *
+ * It works fine in the real IDEA instance; however, it needs other renderers to correctly render key and value,
+ * and it fetches them asynchronously. Because of that it is unable to correctly create a label
+ * for `Map.Entry` object from the first try; it creates some dummy label (usually " -> "),
+ * and then (when the renderers are fetched) it updates the label.
+ *
+ * It makes the tests flaky, because we can observe the either dummy value, the final one, or something in between.
+ *
+ * To avoid that, we do not render `Map.Entry` objects at all, and use this placeholder to get stable results.
+ *
+ * (See com.intellij.debugger.settings.NodeRendererSettings.MapEntryLabelRenderer.calcLabel method for
+ * the implementation of labels calculation)
+ */
+private const val MAP_ENTRY_TEST_LABEL = "map_entry_tests_label"
+
+private val ValueDescriptorImpl.isMapEntryDescriptor
+    get() = DebuggerUtils.instanceOf(type, "java.util.Map.Entry")

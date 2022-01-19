@@ -1,17 +1,17 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.ui.filter;
 
 import com.intellij.vcs.log.VcsLogFilter;
 import com.intellij.vcs.log.VcsLogFilterCollection;
 import com.intellij.vcs.log.impl.MainVcsLogUiProperties;
 import com.intellij.vcs.log.statistics.VcsLogUsageTriggerCollector;
-import org.apache.commons.lang.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 
 public abstract class FilterModel<Filter> {
@@ -54,8 +54,7 @@ public abstract class FilterModel<Filter> {
   }
 
   protected static void triggerFilterSet(@NotNull String name) {
-    VcsLogUsageTriggerCollector.triggerUsage(VcsLogUsageTriggerCollector.VcsLogEvent.FILTER_SET, false,
-                                             data -> data.addData("filter_name", name));
+    VcsLogUsageTriggerCollector.triggerFilterSet(name);
   }
 
   protected static <FilterObject, F> void triggerFilterSet(@Nullable FilterObject filter,
@@ -72,7 +71,7 @@ public abstract class FilterModel<Filter> {
                                                            @Nullable FilterObject currentFilter) {
     F oldFilter = currentFilter == null ? null : getter.apply(currentFilter);
     F newFilter = filter == null ? null : getter.apply(filter);
-    return !ObjectUtils.equals(oldFilter, newFilter);
+    return !Objects.equals(oldFilter, newFilter);
   }
 
   public static abstract class SingleFilterModel<Filter extends VcsLogFilter> extends FilterModel<Filter> {
@@ -91,7 +90,7 @@ public abstract class FilterModel<Filter> {
 
     @Override
     public void setFilter(@Nullable Filter filter) {
-      if (ObjectUtils.equals(myFilter, filter)) return;
+      if (Objects.equals(myFilter, filter)) return;
 
       if (filter != null) {
         triggerFilterSet(myFilterKey.getName());

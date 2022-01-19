@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:ApiStatus.Experimental
 
 package com.intellij.openapi.progress
@@ -7,6 +7,8 @@ import com.intellij.openapi.util.Computable
 import com.intellij.util.ConcurrencyUtil
 import kotlinx.coroutines.*
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.ApiStatus.Internal
+import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -25,15 +27,16 @@ suspend fun checkCanceled() {
 }
 
 /**
- * The method has same semantics as [runBlocking],
- * and additionally [action] is canceled when current progress indicator is canceled.
+ * The method has same semantics as [runBlocking], and additionally [action] gets canceled
+ * when [the current progress indicator][ProgressManager.getGlobalProgressIndicator] is cancelled,
+ * or [the current job][Cancellation.currentJob] is cancelled.
  *
  * This is a bridge for invoking suspending code from blocking code.
  *
  * Example:
  * ```
  * ProgressManager.getInstance().runProcess({
- *   runSuspendingAction {
+ *   runBlockingCancellable {
  *     someSuspendingFunctionWhichDoesntKnowAboutIndicator()
  *   }
  * }, progress);
@@ -41,22 +44,27 @@ suspend fun checkCanceled() {
  * @see runUnderIndicator
  * @see runBlocking
  */
-fun <T> runSuspendingAction(action: suspend CoroutineScope.() -> T): T {
+fun <T> runBlockingCancellable(action: suspend CoroutineScope.() -> T): T {
   val indicator = ProgressManager.getGlobalProgressIndicator()
-  return runSuspendingAction(indicator, action)
+  if (indicator != null) {
+    return runBlockingCancellable(indicator, action)
+  }
+  val currentJob = Cancellation.currentJob()
+  if (currentJob != null) {
+    // make runBlocking Job a child of the current one to propagate cancellation
+    return runBlocking(context = currentJob, block = action)
+  }
+  // we are not under indicator => just run the action, since nobody will cancel it anyway
+  return runBlocking(block = action)
 }
 
-fun <T> runSuspendingAction(indicator: ProgressIndicator?, action: suspend CoroutineScope.() -> T): T {
-  if (indicator == null) {
-    // we are not under indicator => just run the action, since nobody will cancel it anyway
-    return runBlocking(block = action)
-  }
+fun <T> runBlockingCancellable(indicator: ProgressIndicator, action: suspend CoroutineScope.() -> T): T {
   // we are under indicator => the Job must be canceled when indicator is canceled
   return runBlocking(progressSinkElement(ProgressIndicatorSink(indicator)) + CoroutineName("indicator run blocking")) {
-    val indicatorWatchJob = launch(Dispatchers.Default + CoroutineName("indicator watcher")) {
+    val indicatorWatchJob = launch(Dispatchers.IO + CoroutineName("indicator watcher")) {
       while (true) {
         if (indicator.isCanceled) {
-          // will throw PCE which will cancel the runBlocking Job and thrown further in the caller of runSuspendingAction
+          // will throw PCE which will cancel the runBlocking Job and thrown further in the caller of runBlockingCancellable
           indicator.checkCanceled()
         }
         delay(ConcurrencyUtil.DEFAULT_TIMEOUT_MS)
@@ -81,15 +89,17 @@ fun <T> runSuspendingAction(indicator: ProgressIndicator?, action: suspend Corou
  *   }
  * }
  * ```
- * @see runSuspendingAction
+ * @see runBlockingCancellable
  * @see ProgressManager.runProcess
  */
-fun <T> CoroutineScope.runUnderIndicator(action: () -> T): T {
-  return runUnderIndicator(coroutineContext.job, coroutineContext.progressSink, action)
+suspend fun <T> runUnderIndicator(action: () -> T): T {
+  val ctx = coroutineContext
+  return runUnderIndicator(ctx.job, ctx.progressSink, action)
 }
 
+@Internal
 @Suppress("EXPERIMENTAL_API_USAGE_ERROR")
-internal fun <T> runUnderIndicator(job: Job, progressSink: ProgressSink?, action: () -> T): T {
+fun <T> runUnderIndicator(job: Job, progressSink: ProgressSink?, action: () -> T): T {
   job.ensureActive()
   val indicator = if (progressSink == null) EmptyProgressIndicator() else ProgressSinkIndicator(progressSink)
   try {
@@ -123,4 +133,18 @@ internal fun <T> runUnderIndicator(job: Job, progressSink: ProgressSink?, action
     check(job.isCancelled)
     throw job.getCancellationException()
   }
+}
+
+fun CoroutineScope.progress(): Progress = JobProgress(coroutineContext.job)
+
+@ScheduledForRemoval(inVersion = "2022.3")
+@Deprecated(message = "Method was renamed", replaceWith = ReplaceWith("runBlockingCancellable(action)"))
+fun <T> runSuspendingAction(action: suspend CoroutineScope.() -> T): T {
+  return runBlockingCancellable(action)
+}
+
+@ScheduledForRemoval(inVersion = "2022.3")
+@Deprecated(message = "Method was renamed", replaceWith = ReplaceWith("runBlockingCancellable(indicator, action)"))
+fun <T> runSuspendingAction(indicator: ProgressIndicator, action: suspend CoroutineScope.() -> T): T {
+  return runBlockingCancellable(indicator, action)
 }

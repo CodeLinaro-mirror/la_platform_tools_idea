@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl
 
 import com.intellij.BundleBase
@@ -17,9 +17,7 @@ import com.intellij.internal.statistic.collectors.fus.actions.persistence.ToolWi
 import com.intellij.notification.impl.NotificationsManagerImpl
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.MnemonicHelper
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.KeyboardShortcut
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.AnActionListener
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.application.Application
@@ -49,7 +47,6 @@ import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.*
-import com.intellij.openapi.util.registry.ExperimentalUI
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.*
@@ -59,6 +56,7 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.openapi.wm.ex.WindowManagerEx
 import com.intellij.ui.BalloonImpl
 import com.intellij.ui.ComponentUtil
+import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.*
 import com.intellij.util.concurrency.AppExecutorUtil
@@ -269,6 +267,21 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
               manager.resetHoldState()
             }
           }
+
+          if (Registry.`is`("ide.experimental.ui")) {
+            if (event.place == ActionPlaces.TOOLWINDOW_TITLE) {
+              val toolWindowManager = getInstance(event.project!!) as ToolWindowManagerImpl
+              val toolWindowId = event.dataContext.getData(PlatformDataKeys.TOOL_WINDOW)?.id ?: return
+              toolWindowManager.activateToolWindow(toolWindowId, null, true)
+            }
+
+            if (event.place == ActionPlaces.TOOLWINDOW_POPUP) {
+              val toolWindowManager = getInstance(event.project!!) as ToolWindowManagerImpl
+              val toolWindowId = toolWindowManager.lastActiveToolWindowId ?: return
+              val activeEntry = toolWindowManager.idToEntry[toolWindowId] ?: return
+              activeEntry.toolWindow.decorator.headerToolbar.component.isVisible = true
+            }
+          }
         }
       })
 
@@ -289,6 +302,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       for (entry in idToEntry.values) {
         if (entry.readOnlyWindowInfo.isVisible) {
           entry.toolWindow.decoratorComponent?.repaint()
+          entry.toolWindow.decorator.updateActiveAndHoverState()
         }
       }
     })
@@ -404,7 +418,9 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     tasks: List<RegisterToolWindowTask>,
     app: Application,
   ) = Runnable {
-    frame!!.rootPane!!.updateToolbar()
+    val rootPane = frame!!.rootPane!!
+    rootPane.updateToolbar()
+    rootPane.updateNorthComponents()
 
     runPendingLayoutTask()
 
@@ -683,6 +699,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       activateToolWindow(toolWindow.id, null, autoFocusContents = true)
     }
     activeStack.push(idToEntry[toolWindow.id] ?: return)
+    toolWindow.decorator.headerToolbar.component.isVisible = true
   }
 
   // mutate operation must use info from layout and not from decorator
@@ -1375,6 +1392,14 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
     }
   }
 
+  fun updateSquareButtons() {
+    val leftToolbar = toolWindowPane!!.getSquareStripeFor(ToolWindowAnchor.LEFT)
+    val rightToolbar = toolWindowPane!!.getSquareStripeFor(ToolWindowAnchor.RIGHT)
+    if (leftToolbar != null) { ToolwindowToolbar.updateButtons(leftToolbar) }
+    if (rightToolbar != null) { ToolwindowToolbar.updateButtons(rightToolbar) }
+
+  }
+
   fun notifySquareButtonByBalloon(options: ToolWindowBalloonShowOptions) {
     val entry = idToEntry[options.toolWindowId]!!
     val existing = entry.balloon
@@ -1924,7 +1949,7 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
 
     val id = entry.id
     val decorator = entry.toolWindow.getOrCreateDecoratorComponent()
-    val windowedDecorator = FrameWrapper(project, title = "$id - ${project.name}", component = decorator)
+    val windowedDecorator = FrameWrapper(project, title = "${entry.toolWindow.stripeTitle} - ${project.name}", component = decorator)
     val window = windowedDecorator.getFrame()
 
     MnemonicHelper.init((window as RootPaneContainer).contentPane)
@@ -1985,16 +2010,16 @@ open class ToolWindowManagerImpl(val project: Project) : ToolWindowManagerEx(), 
       val toolWindowManager = toolWindow.toolWindowManager
       toolWindowManager.focusManager
         .doWhenFocusSettlesDown(ExpirableRunnable.forProject(toolWindowManager.project) {
-          ModalityUiUtil.invokeLaterIfNeeded(Runnable {
-            val entry = toolWindowManager.idToEntry[id] ?: return@Runnable
+          ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), toolWindowManager.project.disposed) {
+            val entry = toolWindowManager.idToEntry[id] ?: return@invokeLaterIfNeeded
             val windowInfo = entry.readOnlyWindowInfo
             if (!windowInfo.isVisible) {
-              return@Runnable
+              return@invokeLaterIfNeeded
             }
 
             toolWindowManager.activateToolWindow(entry, toolWindowManager.getRegisteredMutableInfoOrLogError(entry.id),
                                                  autoFocusContents = false)
-          }, ModalityState.defaultModalityState(), toolWindowManager.project.disposed)
+          }
         })
     }
   }
@@ -2261,7 +2286,13 @@ private fun isInActiveToolWindow(component: Any?, activeToolWindow: ToolWindowIm
 
 fun findIconFromBean(bean: ToolWindowEP, factory: ToolWindowFactory, pluginDescriptor: PluginDescriptor): Icon? {
   try {
-    return IconLoader.findIcon(bean.icon ?: return null, factory.javaClass, pluginDescriptor.pluginClassLoader, null, true)
+    return IconLoader.findIcon(
+      bean.icon ?: return null,
+      factory.javaClass,
+      pluginDescriptor.classLoader,
+      null,
+      true,
+    )
   }
   catch (e: Exception) {
     LOG.error(e)
@@ -2270,7 +2301,7 @@ fun findIconFromBean(bean: ToolWindowEP, factory: ToolWindowFactory, pluginDescr
 }
 
 fun getStripeTitleSupplier(id: String, pluginDescriptor: PluginDescriptor): Supplier<String>? {
-  val classLoader = pluginDescriptor.pluginClassLoader
+  val classLoader = pluginDescriptor.classLoader
   val bundleName = when (pluginDescriptor.pluginId) {
     PluginManagerCore.CORE_ID -> IdeBundle.BUNDLE
     else -> pluginDescriptor.resourceBundleBaseName ?: return null

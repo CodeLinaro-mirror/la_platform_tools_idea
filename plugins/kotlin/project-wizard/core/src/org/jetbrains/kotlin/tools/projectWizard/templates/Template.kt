@@ -12,8 +12,6 @@ import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.gradle.multiplatf
 import org.jetbrains.kotlin.tools.projectWizard.phases.GenerationPhase
 import org.jetbrains.kotlin.tools.projectWizard.plugins.RunConfigurationsPlugin
 import org.jetbrains.kotlin.tools.projectWizard.plugins.StructurePlugin
-import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModuleType
-import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModulesToIrConversionData
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ProjectKind
 import org.jetbrains.kotlin.tools.projectWizard.settings.DisplayableSettingItem
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Module
@@ -72,15 +70,20 @@ abstract class Template : SettingsOwner, EntitiesOwnerDescriptor, DisplayableSet
     abstract val title: String
     abstract val description: String
 
-    abstract fun isSupportedByModuleType(module: Module, projectKind: ProjectKind): Boolean
+    open val filesToOpenInEditor: List<String>? = null
+
+    fun isSupportedByModuleType(module: Module, projectKind: ProjectKind, reader: Reader): Boolean {
+         return isPermittedForModule(module) && isApplicableTo(module, projectKind, reader)
+    }
+
+    fun isPermittedForModule(module: Module): Boolean {
+        return module.permittedTemplateIds?.contains(id) ?: true // not specified? - no restrictions, let template decide
+    }
+
+    abstract fun isApplicableTo(module: Module, projectKind: ProjectKind, reader: Reader): Boolean
+
 
     override val text: String get() = title
-
-    open fun isApplicableTo(
-        reader: Reader,
-        module: Module
-    ): Boolean = true
-
     open val settings: List<TemplateSetting<*, *>> = emptyList()
     open val interceptionPoints: List<InterceptionPoint<Any>> = emptyList()
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.codeStyle;
 
 import com.intellij.application.options.CodeStyleAbstractConfigurable;
@@ -6,6 +6,7 @@ import com.intellij.application.options.CodeStyleAbstractPanel;
 import com.intellij.application.options.IndentOptionsEditor;
 import com.intellij.application.options.SmartIndentOptionsEditor;
 import com.intellij.application.options.codeStyle.properties.CodeStyleFieldAccessor;
+import com.intellij.application.options.codeStyle.properties.CodeStylePropertyAccessor;
 import com.intellij.application.options.codeStyle.properties.IntegerAccessor;
 import com.intellij.lang.Language;
 import com.intellij.openapi.application.ApplicationBundle;
@@ -25,6 +26,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Supplier;
 
 import static com.intellij.openapi.util.io.StreamUtil.readText;
@@ -295,6 +298,8 @@ public class GroovyLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSe
       consumer.showCustomOption(GroovyCodeStyleSettings.class, "SPACE_AFTER_ASSERT_SEPARATOR",
                                 GroovyBundle.message("code.style.option.after.assert.separator"),
                                 getInstance().SPACES_OTHER);
+      consumer.showCustomOption(GroovyCodeStyleSettings.class, "SPACE_BEFORE_RECORD_PARENTHESES",
+                                GroovyBundle.message("code.style.option.before.record.parameter.list"), getInstance().SPACES_BEFORE_PARENTHESES);
       return;
     }
     if (settingsType == BLANK_LINES_SETTINGS) {
@@ -470,5 +475,34 @@ public class GroovyLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSe
       }
     }
     return super.getAccessor(codeStyleObject, field);
+  }
+
+  @Override
+  public List<CodeStylePropertyAccessor> getAdditionalAccessors(@NotNull Object codeStyleObject) {
+    if (codeStyleObject instanceof GroovyCodeStyleSettings) {
+      try {
+        Field onDemandPackagesField = codeStyleObject.getClass().getField("PACKAGES_TO_USE_IMPORT_ON_DEMAND");
+        return Collections.singletonList(new JavaPackageEntryTableAccessor(codeStyleObject, onDemandPackagesField) {
+          @Override
+          public boolean set(@NotNull List<String> extVal) {
+            PackageEntryTable entryTable = fromExternal(extVal);
+            if (entryTable != null) {
+              ((GroovyCodeStyleSettings)codeStyleObject).getPackagesToUseImportOnDemand().copyFrom(entryTable);
+              return true;
+            }
+            return false;
+          }
+        });
+      }
+      catch (NoSuchFieldException e) {
+        // Ignore
+      }
+    }
+    return super.getAdditionalAccessors(codeStyleObject);
+  }
+
+  @Override
+  public boolean usesCommonKeepLineBreaks() {
+    return true;
   }
 }

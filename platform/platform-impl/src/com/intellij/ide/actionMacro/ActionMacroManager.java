@@ -1,9 +1,11 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actionMacro;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
+import com.intellij.ide.ui.customization.ActionUrl;
+import com.intellij.ide.ui.customization.CustomActionsSchema;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
@@ -11,6 +13,7 @@ import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.actionSystem.impl.ActionConfigurationCustomizer;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
@@ -49,11 +52,10 @@ import java.awt.*;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
+import java.util.List;
 
-@State(name = "ActionMacroManager", storages = @Storage("macros.xml"))
+@State(name = "ActionMacroManager", storages = @Storage("macros.xml"), category = SettingsCategory.UI)
 public final class ActionMacroManager implements PersistentStateComponent<Element>, Disposable {
   private static final Logger LOG = Logger.getInstance(ActionMacroManager.class);
 
@@ -99,7 +101,7 @@ public final class ActionMacroManager implements PersistentStateComponent<Elemen
       }
     });
 
-    myKeyProcessor = new MyKeyPostpocessor();
+    myKeyProcessor = new KeyPostProcessor();
     IdeEventQueue.getInstance().addPostprocessor(myKeyProcessor, null);
   }
 
@@ -424,8 +426,21 @@ public final class ActionMacroManager implements PersistentStateComponent<Elemen
   }
 
   public void registerActions(@NotNull ActionManager actionManager) {
+    registerActions(actionManager, Collections.emptyMap());
+  }
+
+  public void registerActions(@NotNull ActionManager actionManager, @NotNull Map<String, String> renamingMap) {
     // unregister Tool actions
+    Map<String, Icon> icons = new HashMap<>();
     for (String oldId : actionManager.getActionIdList(ActionMacro.MACRO_ACTION_PREFIX)) {
+      final AnAction action = actionManager.getAction(oldId);
+      if (action != null) {
+        final Icon icon = action.getTemplatePresentation().getIcon();
+        if (icon != null) {
+          final String newId = renamingMap.get(oldId);
+          icons.put((newId == null) ? oldId : newId, icon);
+        }
+      }
       actionManager.unregisterAction(oldId);
     }
 
@@ -436,9 +451,35 @@ public final class ActionMacroManager implements PersistentStateComponent<Elemen
       String actionId = macro.getActionId();
       if (!registeredIds.contains(actionId)) {
         registeredIds.add(actionId);
-        actionManager.registerAction(actionId, new InvokeMacroAction(macro));
+        final InvokeMacroAction action = new InvokeMacroAction(macro);
+        final Icon icon = icons.get(actionId);
+        if (icon != null) {
+          action.getTemplatePresentation().setIcon(icon);
+        }
+        actionManager.registerAction(actionId, action);
       }
     }
+
+    // fix references to and icons of renamed macros in the custom actions schema
+    final CustomActionsSchema customActionsSchema = CustomActionsSchema.getInstance();
+    final List<ActionUrl> actions = customActionsSchema.getActions();
+    for (final ActionUrl actionUrl : actions) {
+      final String newId = renamingMap.get(actionUrl.getComponent());
+      if (newId != null) {
+        actionUrl.setComponent(newId);
+      }
+    }
+    customActionsSchema.setActions(actions);
+    for (Map.Entry<String, String> entry : renamingMap.entrySet()) {
+      final String oldId = entry.getKey();
+      final String path = customActionsSchema.getIconPath(oldId);
+      if (!path.isEmpty()) {
+        final String newId = entry.getValue();
+        customActionsSchema.removeIconCustomization(oldId);
+        customActionsSchema.addIconCustomization(newId, path);
+      }
+    }
+    CustomActionsSchema.setCustomizationSchemaForCurrentProjects();
   }
 
   public boolean checkCanCreateMacro(String name) {
@@ -496,7 +537,7 @@ public final class ActionMacroManager implements PersistentStateComponent<Elemen
     }
   }
 
-  private final class MyKeyPostpocessor implements IdeEventQueue.EventDispatcher {
+  private final class KeyPostProcessor implements IdeEventQueue.EventDispatcher {
     @Override
     public boolean dispatch(@NotNull AWTEvent e) {
       if (isRecording() && e instanceof KeyEvent) {
@@ -524,7 +565,7 @@ public final class ActionMacroManager implements PersistentStateComponent<Elemen
       final boolean isEnter = e.getKeyCode() == KeyEvent.VK_ENTER;
 
       if (plainType && ready && !isEnter) {
-        myRecordingMacro.appendKeytyped(e.getKeyChar(), e.getKeyCode(), e.getModifiers());
+        myRecordingMacro.appendKeyPressed(e.getKeyChar(), e.getKeyCode(), e.getModifiers());
         notifyUser(Character.valueOf(e.getKeyChar()).toString(), true);
       }
       else if ((!plainType && ready) || isEnter) {

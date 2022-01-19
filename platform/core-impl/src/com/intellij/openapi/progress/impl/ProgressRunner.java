@@ -59,8 +59,10 @@ public final class ProgressRunner<R> {
     FJ
   }
 
+  private static final Logger LOG = Logger.getInstance(ProgressRunner.class);
+
   @NotNull
-  private final Function<@NotNull ? super ProgressIndicator, ? extends R> myComputation;
+  private final Function<? super @NotNull ProgressIndicator, ? extends R> myComputation;
 
   private final boolean isSync;
 
@@ -109,11 +111,11 @@ public final class ProgressRunner<R> {
    *
    * @param computation runnable to be executed under progress
    */
-  public ProgressRunner(@NotNull Function<@NotNull ? super ProgressIndicator, ? extends R> computation) {
+  public ProgressRunner(@NotNull Function<? super @NotNull ProgressIndicator, ? extends R> computation) {
     this(computation, false, false, ThreadToUse.POOLED, CompletableFuture.completedFuture(new EmptyProgressIndicator()));
   }
 
-  private ProgressRunner(@NotNull Function<@NotNull ? super ProgressIndicator, ? extends R> computation,
+  private ProgressRunner(@NotNull Function<? super @NotNull ProgressIndicator, ? extends R> computation,
                          boolean sync,
                          boolean modal,
                          @NotNull ThreadToUse use,
@@ -235,7 +237,6 @@ public final class ProgressRunner<R> {
       catch (Throwable e) {
         throw new RuntimeException("Can't get progress", e);
       }
-      //noinspection ConstantConditions
       if (progressIndicator == null) {
         throw new IllegalStateException("Expected not-null progress indicator but got null from "+myProgressIndicatorFuture);
       }
@@ -263,6 +264,15 @@ public final class ProgressRunner<R> {
 
     return resultFuture.handle((result, e) -> {
       Throwable throwable = unwrap(e);
+      if (LOG.isDebugEnabled()) {
+        if (throwable != null) {
+          LOG.debug("ProgressRunner: task completed with throwable", throwable);
+        }
+
+        if (isCanceled(progressFuture)) {
+          LOG.debug("ProgressRunner: task cancelled");
+        }
+      }
       return new ProgressResult<>(result, throwable instanceof ProcessCanceledException || isCanceled(progressFuture), throwable);
     });
   }

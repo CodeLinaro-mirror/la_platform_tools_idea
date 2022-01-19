@@ -19,7 +19,7 @@ import java.util.function.Supplier;
  * to add children actions and separators between them. In most of the
  * cases you will be using this implementation but note that there are
  * cases (for example "Recent files" dialog) where children are determined
- * on rules different than just positional constraints, that's when you need
+ * on rules different from just positional constraints, that's when you need
  * to implement your own {@code ActionGroup}.
  *
  * @see Constraints
@@ -35,7 +35,6 @@ public class DefaultActionGroup extends ActionGroup {
   private static final Logger LOG = Logger.getInstance(DefaultActionGroup.class);
 
   private static final String CANT_ADD_ITSELF = "Cannot add a group to itself: ";
-  private static final String CANT_ADD_ACTION_TWICE = "Cannot add an action twice: ";
 
   private final List<AnAction> mySortedChildren = new ArrayList<>();
   private final List<Pair<AnAction, Constraints>> myPairs = new ArrayList<>();
@@ -101,18 +100,24 @@ public class DefaultActionGroup extends ActionGroup {
   }
 
   private synchronized void addActions(@NotNull List<? extends AnAction> actions) {
-    Set<Object> actionSet = new HashSet<>();
+    Set<AnAction> actionSet = new HashSet<>(actions.size());
     List<AnAction> uniqueActions = new ArrayList<>(actions.size());
     for (AnAction action : actions) {
       if (action == this) throw new IllegalArgumentException(CANT_ADD_ITSELF + action);
-      if (!(action instanceof Separator) && !actionSet.add(action)) {
-        LOG.error(CANT_ADD_ACTION_TWICE + action);
-        continue;
+      if (action instanceof Separator || actionSet.add(action)) {
+        uniqueActions.add(action);
       }
-      uniqueActions.add(action);
+      else {
+        errorDuplicateActionAdded(action);
+      }
     }
     mySortedChildren.addAll(uniqueActions);
     incrementModificationStamp();
+  }
+
+  private static void errorDuplicateActionAdded(@NotNull AnAction action) {
+    LOG.error("Cannot add an action twice: " + action + " (" +
+              (action instanceof ActionStub ? ((ActionStub)action).getClassName() : action.getClass().getName()) + ")");
   }
 
   /**
@@ -169,7 +174,7 @@ public class DefaultActionGroup extends ActionGroup {
 
     // check that action isn't already registered
     if (!(action instanceof Separator) && containsAction(action)) {
-      LOG.error(CANT_ADD_ACTION_TWICE + action);
+      errorDuplicateActionAdded(action);
       remove(action, actionManager.getId(action));
     }
 
@@ -277,7 +282,7 @@ public class DefaultActionGroup extends ActionGroup {
   }
 
   /**
-   * Replaces specified action with the a one.
+   * Replaces the specified action with another.
    */
   public synchronized boolean replaceAction(@NotNull AnAction oldAction, @NotNull AnAction newAction) {
     int index = mySortedChildren.indexOf(oldAction);
@@ -451,8 +456,9 @@ public class DefaultActionGroup extends ActionGroup {
   }
 
   /**
-   * Creates an action group with specified template text. It is necessary to redefine template text if group contains
-   * user specific data such as Project name, file name, etc
+   * Creates an action group with specified template text.
+   * It is necessary to redefine template text if the group contains
+   * user-specific data such as Project name, file name, etc.
    * @param templateText template text which will be used in statistics
    * @return action group
    */

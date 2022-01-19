@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.tree.ui;
 
 import com.intellij.ide.ui.UISettings;
@@ -16,6 +16,7 @@ import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.tree.AsyncTreeModel;
 import com.intellij.ui.tree.TreePathBackgroundSupplier;
 import com.intellij.util.ReflectionUtil;
+import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.MouseEventAdapter;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
@@ -43,12 +44,15 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.lang.reflect.Method;
 import java.util.Collection;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.intellij.openapi.application.ApplicationManager.getApplication;
 import static com.intellij.openapi.util.SystemInfo.isMac;
 import static com.intellij.openapi.util.registry.Registry.intValue;
 import static com.intellij.openapi.util.registry.Registry.is;
+import static com.intellij.ui.ColorUtil.isDark;
 import static com.intellij.ui.paint.RectanglePainter.DRAW;
+import static com.intellij.ui.paint.RectanglePainter.FILL;
 import static com.intellij.util.EditSourceOnDoubleClickHandler.isExpandPreferable;
 import static com.intellij.util.ReflectionUtil.getMethod;
 import static com.intellij.util.containers.ContainerUtil.createWeakSet;
@@ -158,6 +162,7 @@ public final class DefaultTreeUI extends BasicTreeUI {
   // non static
 
   private final Control control = new DefaultControl();
+  private final AtomicBoolean painting = new AtomicBoolean();
   private final DispatchThreadValidator validator = new DispatchThreadValidator();
 
   @Nullable
@@ -200,6 +205,11 @@ public final class DefaultTreeUI extends BasicTreeUI {
     if (bounds != null) tree.repaint(0, bounds.y, tree.getWidth(), bounds.height);
   }
 
+  private void removeCachedRenderers() {
+    CellRendererPane pane = painting.get() ? null : rendererPane;
+    if (pane != null) pane.removeAll();
+  }
+
   // ComponentUI
 
   @Override
@@ -210,11 +220,13 @@ public final class DefaultTreeUI extends BasicTreeUI {
     if (!isValid(tree)) return;
     g = g.create();
     try {
+      painting.set(true);
       Rectangle paintBounds = g.getClipBounds();
       Insets insets = tree.getInsets();
       TreePath path = cache.getPathClosestTo(0, paintBounds.y - insets.top);
       int row = cache.getRowForPath(path);
       if (row >= 0) {
+        boolean dark = isDark(JBUI.CurrentTheme.Tree.BACKGROUND);
         Control.Painter painter = getPainter(tree);
         Rectangle buffer = new Rectangle();
         RenderingHelper helper = new RenderingHelper(tree);
@@ -230,14 +242,16 @@ public final class DefaultTreeUI extends BasicTreeUI {
           boolean selected = tree.isRowSelected(row);
           boolean focused = RenderingUtil.isFocused(tree);
           boolean lead = focused && row == getLeadSelectionRow();
+          boolean selectedControl = selected && focused;
 
           Color background = getBackground(tree, path, row, selected);
           if (background != null) {
             g.setColor(background);
             g.fillRect(helper.getX(), bounds.y, helper.getWidth(), bounds.height);
+            if (selectedControl && !dark && !isDark(background)) selectedControl = false;
           }
           int offset = painter.getRendererOffset(control, depth, leaf);
-          painter.paint(tree, g, insets.left, bounds.y, offset, bounds.height, control, depth, leaf, expanded, selected && focused);
+          painter.paint(tree, g, insets.left, bounds.y, offset, bounds.height, control, depth, leaf, expanded, selectedControl);
           // TODO: editingComponent, editingRow ???
           if (editingComponent == null || editingRow != row) {
             int width = helper.getX() + helper.getWidth() - insets.left - offset;
@@ -265,17 +279,24 @@ public final class DefaultTreeUI extends BasicTreeUI {
                 DRAW.paint((Graphics2D)g, helper.getX() + 1, bounds.y + 1, helper.getWidth() - 2, bounds.height - 2, 0);
               }
             }
+            JTree.DropLocation dropLocation = tree.getDropLocation();
+            if (dropLocation != null && g instanceof Graphics2D && path.equals(dropLocation.getPath())) {
+              // paint a dragged tree path in accordance to Highlighters.RectangleHighlighter
+              g.setColor(JBUI.CurrentTheme.DragAndDrop.ROW_BACKGROUND);
+              FILL.paint((Graphics2D)g, helper.getX(), bounds.y, helper.getWidth(), bounds.height, 0);
+              g.setColor(JBUI.CurrentTheme.DragAndDrop.BORDER_COLOR);
+              DRAW.paint((Graphics2D)g, helper.getX(), bounds.y, helper.getWidth(), bounds.height, 0);
+            }
           }
           if ((bounds.y + bounds.height) >= maxPaintY) break;
           path = cache.getPathForRow(++row);
         }
       }
-      paintDropLine(g);
     }
     finally {
       g.dispose();
-      // remove all renderers
-      rendererPane.removeAll();
+      painting.set(false);
+      removeCachedRenderers();
     }
   }
 
@@ -459,6 +480,7 @@ public final class DefaultTreeUI extends BasicTreeUI {
           if (component != null) {
             component.validate();
             size = component.getPreferredSize();
+            removeCachedRenderers();
           }
         }
         if (size == null) return null;

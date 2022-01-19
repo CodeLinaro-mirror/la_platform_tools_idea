@@ -172,7 +172,15 @@ public abstract class AbstractRecordsTable implements Disposable, Forceable {
 
   protected int getOffset(int record, int section) {
     assert record > 0;
-    return getHeaderSize() + (record - 1) * getRecordSize() + section;
+    int offset = getHeaderSize() + (record - 1) * getRecordSize() + section;
+    if (offset < 0) {
+      throw new IllegalArgumentException("offset is negative (" + offset + "): " +
+                                         "record = " + record + ", " +
+                                         "section " + section + ", " +
+                                         "header size " + getHeaderSize() + ", " +
+                                         "record size = " + getRecordSize());
+    }
+    return offset;
   }
 
   public void deleteRecord(final int record) throws IOException {
@@ -204,15 +212,6 @@ public abstract class AbstractRecordsTable implements Disposable, Forceable {
   public void force() {
     markClean();
     myStorage.force();
-  }
-
-  public boolean flushSome(int maxPages) {
-    myStorage.flushSomePages(maxPages);
-    if (!myStorage.isDirty()) {
-      force();
-      return true;
-    }
-    return false;
   }
 
   @Override

@@ -69,8 +69,6 @@ import org.jetbrains.concurrency.AsyncPromise;
 import javax.xml.stream.XMLStreamException;
 import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -94,7 +92,7 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
   public boolean myRunWithEditorSettings;
   public boolean myRunGlobalToolsOnly;
   public boolean myAnalyzeChanges;
-  boolean myPathProfiling;
+  public boolean myPathProfiling;
   private int myVerboseLevel;
   private final Map<String, List<Range>> diffMap = new ConcurrentHashMap<>();
   private final MultiMap<Pair<String, Integer>, String> originalWarnings = MultiMap.createConcurrent();
@@ -120,6 +118,7 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
 
     ApplicationManagerEx.getApplicationEx().setSaveAllowed(false);
     try {
+      header();
       execute();
     }
     catch (Throwable e) {
@@ -138,6 +137,8 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
   public void enablePathProfiling() {
     myPathProfiling = true;
   }
+
+  public void header(){}
 
   public Map<Path, Long> getPathProfile() {
     return myCompleteProfile;
@@ -360,7 +361,10 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
                          });
   }
 
-  private static void updateProjectStructure(AtomicInteger counter, InspectionsReportConverter reportConverter, Project project, Path rootLogDir) {
+  private static void updateProjectStructure(AtomicInteger counter,
+                                             InspectionsReportConverter reportConverter,
+                                             Project project,
+                                             Path rootLogDir) {
     int i = counter.incrementAndGet();
     reportConverter.projectData(project, rootLogDir.resolve("state" + i));
     LOG.info("Project structure update written. Change number " + i);
@@ -444,6 +448,12 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
   }
 
   public void configureProject(@NotNull Path projectPath, @NotNull Project project, @NotNull AnalysisScope scope) {
+
+    for (CommandLineInspectionProjectConfigurator configurator : CommandLineInspectionProjectConfigurator.EP_NAME.getIterable()) {
+      CommandLineInspectionProjectConfigurator.ConfiguratorContext context = configuratorContext(projectPath, scope);
+      configurator.preConfigureProject(project,context);
+    }
+
     for (CommandLineInspectionProjectConfigurator configurator : CommandLineInspectionProjectConfigurator.EP_NAME.getIterable()) {
       CommandLineInspectionProjectConfigurator.ConfiguratorContext context = configuratorContext(projectPath, scope);
       if (configurator.isApplicable(context)) {
@@ -819,7 +829,7 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
   public @Nullable InspectionProfileImpl loadProfileByPath(@NotNull String profilePath) throws IOException, JDOMException {
     InspectionProfileImpl inspectionProfile = ApplicationInspectionProfileManagerBase.getInstanceBase().loadProfile(profilePath);
     if (inspectionProfile != null) {
-      reportMessage(1, "Loaded profile '" + inspectionProfile.getName() + "' from file '" + profilePath + "'");
+      reportMessage(1, "Loaded the '" + inspectionProfile.getName() + "' profile from the file '" + profilePath + "'");
     }
     return inspectionProfile;
   }
@@ -829,14 +839,14 @@ public class InspectionApplicationBase implements CommandLineInspectionProgressR
     InspectionProjectProfileManager profileManager = InspectionProjectProfileManager.getInstance(project);
     InspectionProfileImpl inspectionProfile = profileManager.getProfile(profileName, false);
     if (inspectionProfile != null) {
-      reportMessage(1, "Loaded shared project profile '" + profileName + "'");
+      reportMessage(1, "Loaded the '" + profileName +"' shared project profile");
     }
     else {
       //check if ide profile is used for project
       for (InspectionProfileImpl profile : profileManager.getProfiles()) {
         if (Comparing.strEqual(profile.getName(), profileName)) {
           inspectionProfile = profile;
-          reportMessage(1, "Loaded local profile '" + profileName + "'");
+          reportMessage(1, "Loaded the '" + profileName + "' local profile");
           break;
         }
       }

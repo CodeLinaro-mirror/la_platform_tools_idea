@@ -1,9 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.util;
 
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
@@ -91,6 +92,7 @@ import java.util.*;
 
 import static com.intellij.psi.CommonClassNames.*;
 import static com.intellij.psi.GenericsUtil.isTypeArgumentsApplicable;
+import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.*;
 
@@ -1465,5 +1467,63 @@ public final class PsiUtil {
       return false;
     }
     return candidate.getArgumentMapping() instanceof NullArgumentMapping<?>;
+  }
+
+  public static @Nullable Pair<@NotNull PsiType,@NotNull Integer> getComponentForSpreadWithDot(@NotNull PsiType type) {
+    PsiType componentType;
+    if (InheritanceUtil.isInheritor(type, JAVA_UTIL_COLLECTION)) {
+      componentType = com.intellij.psi.util.PsiUtil.substituteTypeParameter(type, JAVA_UTIL_COLLECTION, 0, false);
+    } else if (type instanceof PsiArrayType) {
+      componentType = ((PsiArrayType)type).getComponentType();
+    }
+    else {
+      componentType = null;
+    }
+    if (componentType == null) {
+      return null;
+    }
+    var nested = getComponentForSpreadWithDot(componentType);
+    return nested == null ? Pair.create(componentType, 1) : Pair.create(nested.first, nested.second + 1);
+  }
+
+  /**
+   * A helper function for getting all expressions in the arms of switch-expression's case section.
+   * Handles {@code case A: case B, C: ...}
+   */
+  public static @NotNull List<@Nullable GrExpression> getAllPatternsForCaseSection(@NotNull GrCaseSection section) {
+    PsiElement parent = section.getParent();
+    if (!(parent instanceof GrSwitchElement)) {
+      return emptyList();
+    }
+    if (section.getArrow() != null) {
+      return Arrays.asList(section.getExpressions());
+    }
+    GrCaseSection[] allSections = ((GrSwitchElement)parent).getCaseSections();
+    int indexOfCaseSection = ArrayUtil.indexOf(allSections, section);
+    SmartList<GrExpression> patterns = new SmartList<>(section.getExpressions());
+    if (indexOfCaseSection < 0) {
+      return patterns;
+    }
+    indexOfCaseSection -= 1;
+    while (indexOfCaseSection >= 0 && allSections[indexOfCaseSection].getStatements().length == 0) {
+      // does not support fall-through currently todo
+      patterns.addAll(Arrays.asList(allSections[indexOfCaseSection].getExpressions()));
+      --indexOfCaseSection;
+    }
+    return patterns;
+  }
+
+  public static boolean isPlainSwitchStatement(@NotNull GrSwitchElement switchElement) {
+    if (!(switchElement instanceof GrSwitchStatement)) return false;
+    GrCaseSection[] sections = switchElement.getCaseSections();
+    return ContainerUtil.and(sections, elem -> elem.getColon() != null);
+  }
+
+  public static @NotNull List<@NotNull PsiClass> getAllPermittedClassesJvmAware(@NotNull PsiClass clazz) {
+    if (clazz instanceof GrTypeDefinition) {
+      return SealedUtil.getAllPermittedClasses((GrTypeDefinition)clazz);
+    } else {
+      return ContainerUtil.map(clazz.getPermitsListTypes(), PsiClassType::resolve);
+    }
   }
 }

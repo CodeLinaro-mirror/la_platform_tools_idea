@@ -7,7 +7,7 @@ import com.intellij.navigation.ItemPresentationProvider
 import com.intellij.psi.util.parentOfType
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.idea.KotlinBundle
-import org.jetbrains.kotlin.idea.KotlinIconsIndependent
+import org.jetbrains.kotlin.idea.KotlinIcons
 import org.jetbrains.kotlin.psi.*
 import javax.swing.Icon
 
@@ -43,13 +43,5 @@ class KtJvmNameAnnotatedFilePresentation(private val annotationEntry: KtAnnotati
         return KotlinBundle.message("presentation.text.in.container", containingFile.name, containingFile.packageFqName)
     }
 
-    override fun getIcon(unused: Boolean): Icon = KotlinIconsIndependent.FILE
-}
-
-// TODO: it has to be dropped as soon as JvmFileClassUtil.getLiteralStringFromAnnotation becomes public in compiler
-private fun JvmFileClassUtil.getLiteralStringFromAnnotation(annotation: KtAnnotationEntry): String? {
-    val argumentExpression = annotation.valueArguments.firstOrNull()?.getArgumentExpression() ?: return null
-    val stringTemplate = argumentExpression as? KtStringTemplateExpression ?: return null
-    val singleEntry = stringTemplate.entries.singleOrNull() as? KtLiteralStringTemplateEntry ?: return null
-    return singleEntry.text
+    override fun getIcon(unused: Boolean): Icon = KotlinIcons.FILE
 }

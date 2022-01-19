@@ -2,6 +2,10 @@
 package com.intellij.codeInsight.daemon;
 
 import com.intellij.ide.IdeBundle;
+import com.intellij.openapi.actionSystem.ActionGroup;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.DefaultActionGroup;
+import com.intellij.openapi.actionSystem.Separator;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
@@ -156,6 +160,9 @@ public abstract class MergeableLineMarkerInfo<T extends PsiElement> extends Line
   }
 
   private static final class MyLineMarkerInfo extends LineMarkerInfo<PsiElement> {
+
+    private DefaultActionGroup myCommonActionGroup;
+
     private MyLineMarkerInfo(@NotNull List<? extends MergeableLineMarkerInfo<?>> markers) {
       this(markers, markers.get(0));
     }
@@ -165,6 +172,29 @@ public abstract class MergeableLineMarkerInfo<T extends PsiElement> extends Line
       super(template.getElement(), getCommonTextRange(markers), template.getCommonIcon(markers),
             getCommonAccessibleNameProvider(markers), template.getCommonTooltip(markers),
             getCommonNavigationHandler(markers), template.getCommonIconAlignment(markers));
+      myCommonActionGroup = getCommonActionGroup(markers);
+    }
+
+    private static DefaultActionGroup getCommonActionGroup(@NotNull List<? extends MergeableLineMarkerInfo<?>> markers) {
+      DefaultActionGroup commonActionGroup = null;
+      boolean first = true;
+      for (MergeableLineMarkerInfo<?> marker : markers) {
+        GutterIconRenderer renderer = marker.createGutterRenderer();
+        if (renderer != null) {
+          ActionGroup actions = renderer.getPopupMenuActions();
+          if (actions != null) {
+            if (commonActionGroup == null) {
+              commonActionGroup = new DefaultActionGroup();
+            }
+            if (!first) {
+              commonActionGroup.add(Separator.getInstance());
+            }
+            first = false;
+            commonActionGroup.addAll(actions);
+          }
+        }
+      }
+      return commonActionGroup;
     }
 
     @NotNull
@@ -181,6 +211,28 @@ public abstract class MergeableLineMarkerInfo<T extends PsiElement> extends Line
     @NotNull
     private static GutterIconNavigationHandler<PsiElement> getCommonNavigationHandler(@NotNull final List<? extends MergeableLineMarkerInfo<?>> markers) {
       return new MergedGutterIconNavigationHandler(markers);
+    }
+
+    @Override
+    public GutterIconRenderer createGutterRenderer() {
+      if (myCommonActionGroup == null) return super.createGutterRenderer();
+
+      return new LineMarkerGutterIconRenderer<>(this) {
+        @Override
+        public AnAction getClickAction() {
+          return null;
+        }
+
+        @Override
+        public boolean isNavigateAction() {
+          return true;
+        }
+
+        @Override
+        public ActionGroup getPopupMenuActions() {
+          return myCommonActionGroup;
+        }
+      };
     }
   }
 

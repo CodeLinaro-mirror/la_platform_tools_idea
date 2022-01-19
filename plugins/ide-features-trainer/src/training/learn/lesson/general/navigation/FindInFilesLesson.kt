@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package training.learn.lesson.general.navigation
 
 import com.intellij.find.FindBundle
@@ -10,16 +10,18 @@ import com.intellij.find.impl.FindPopupPanel
 import com.intellij.find.replaceInProject.ReplaceInProjectManager
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.impl.ActionButton
+import com.intellij.openapi.project.Project
 import com.intellij.usages.UsagePresentation
 import com.intellij.util.ui.UIUtil
-import org.fest.swing.core.MouseClickInfo
-import org.fest.swing.data.TableCell
-import org.fest.swing.fixture.JTableFixture
-import org.fest.swing.fixture.JTextComponentFixture
+import org.assertj.swing.core.MouseClickInfo
+import org.assertj.swing.data.TableCell
+import org.assertj.swing.fixture.JTableFixture
+import org.assertj.swing.fixture.JTextComponentFixture
 import training.dsl.*
 import training.learn.LessonsBundle
 import training.learn.course.KLesson
 import training.ui.LearningUiUtil.findComponentWithTimeout
+import training.util.isToStringContains
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.JButton
@@ -31,13 +33,15 @@ class FindInFilesLesson(override val existedFile: String)
   : KLesson("Find in files", LessonsBundle.message("find.in.files.lesson.name")) {
 
   override val lessonContent: LessonContext.() -> Unit = {
-    resetFindSettings()
+    prepareRuntimeTask {
+      resetFindSettings(project)
+    }
 
     lateinit var showPopupTaskId: TaskContext.TaskId
     task("FindInPath") {
       showPopupTaskId = taskId
       text(LessonsBundle.message("find.in.files.show.find.popup",
-                                 action(it), LessonUtil.actionName(it)))
+        action(it), LessonUtil.actionName(it)))
       triggerByUiComponentAndHighlight(false, false) { popup: FindPopupPanel ->
         !popup.helper.isReplaceState
       }
@@ -111,7 +115,7 @@ class FindInFilesLesson(override val existedFile: String)
       text(LessonsBundle.message("find.in.files.type.to.replace",
                                  code("apple"), code(it)))
       triggerByUiComponentAndHighlight(highlightInside = false) { ui: SearchTextArea ->
-        it.startsWith(ui.textArea.text)
+        it.startsWith(ui.textArea.text) && UIUtil.getParentOfType(FindPopupPanel::class.java, ui) != null
       }
       stateCheck {
         getFindPopup()?.helper?.model?.let { model ->
@@ -146,7 +150,7 @@ class FindInFilesLesson(override val existedFile: String)
       val replaceAllButtonText = FindBundle.message("find.popup.replace.all.button").dropMnemonic()
       text(LessonsBundle.message("find.in.files.press.replace.all", strong(replaceAllButtonText)))
       triggerByUiComponentAndHighlight { button: JButton ->
-        button.text?.contains(replaceAllButtonText) == true
+        button.text.isToStringContains(replaceAllButtonText)
       }
       stateCheck {
         insideConfirmation()
@@ -199,26 +203,8 @@ class FindInFilesLesson(override val existedFile: String)
 
   private fun TaskContext.showWarningIfPopupClosed(isReplacePopup: Boolean) {
     val actionId = if (isReplacePopup) "ReplaceInPath" else "FindInPath"
-    showWarning(LessonsBundle.message("find.in.files.popup.closed.warning.message", action(actionId), LessonUtil.actionName(actionId)),
-                restoreTaskWhenResolved = true) {
+    showWarning(LessonsBundle.message("find.in.files.popup.closed.warning.message", action(actionId), LessonUtil.actionName(actionId))) {
       getFindPopup()?.helper?.isReplaceState != isReplacePopup
-    }
-  }
-
-  private fun LessonContext.resetFindSettings() {
-    prepareRuntimeTask {
-      FindManager.getInstance(project).findInProjectModel.apply {
-        isWholeWordsOnly = false
-        stringToFind = ""
-        stringToReplace = ""
-        directoryName = null
-      }
-      val settings = FindInProjectSettings.getInstance(project) as? FindInProjectSettingsBase
-      settings?.apply {
-        findStrings.clear()
-        replaceStrings.clear()
-        recentDirectories.clear()
-      }
     }
   }
 
@@ -227,4 +213,22 @@ class FindInFilesLesson(override val existedFile: String)
   }
 
   override val testScriptProperties = TaskTestContext.TestScriptProperties(10)
+
+  override val suitableTips = listOf("FindReplaceToggle", "FindInPath")
+
+  override val helpLinks: Map<String, String> get() = mapOf(
+    Pair(LessonsBundle.message("find.in.files.help.link"),
+         LessonUtil.getHelpLink("finding-and-replacing-text-in-project.html")),
+  )
+}
+
+private fun resetFindSettings(project: Project) {
+  FindManager.getInstance(project).findInProjectModel.apply {
+    isWholeWordsOnly = false
+    stringToFind = ""
+    stringToReplace = ""
+    directoryName = null
+  }
+  (FindInProjectSettings.getInstance(project) as? FindInProjectSettingsBase)
+    ?.loadState(FindInProjectSettingsBase())
 }

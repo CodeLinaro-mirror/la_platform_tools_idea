@@ -13,6 +13,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.layout.*
 import com.intellij.util.Alarm
+import com.intellij.util.application
 import com.intellij.util.ui.JBUI
 import git4idea.config.GitExecutableListener
 import git4idea.config.GitExecutableManager
@@ -27,8 +28,7 @@ import javax.swing.JLabel
 
 class GpgSignConfigurableRow(val project: Project, val disposable: Disposable) {
   companion object {
-    fun LayoutBuilder.createGpgSignRow(project: Project, disposable: Disposable) {
-      if (project.isDefault) return
+    fun RowBuilder.createGpgSignRow(project: Project, disposable: Disposable) {
       val panel = GpgSignConfigurableRow(project, disposable)
       with(panel) {
         createRow()
@@ -55,23 +55,21 @@ class GpgSignConfigurableRow(val project: Project, val disposable: Disposable) {
     updatePresentation()
 
     val connection = project.messageBus.connect(disposable)
-    connection.subscribe(VcsRepositoryManager.VCS_REPOSITORY_MAPPING_UPDATED,
-                         VcsRepositoryMappingListener { scheduleUpdate() })
-    connection.subscribe(GitExecutableManager.TOPIC,
-                         GitExecutableListener { scheduleUpdate() })
-    connection.subscribe(GitConfigListener.TOPIC,
-                         object : GitConfigListener {
-                           override fun notifyConfigChanged(repository: GitRepository) {
-                             scheduleUpdate()
-                           }
-                         })
+    connection.subscribe(VcsRepositoryManager.VCS_REPOSITORY_MAPPING_UPDATED, VcsRepositoryMappingListener { scheduleUpdate() })
+    connection.subscribe(GitConfigListener.TOPIC, object : GitConfigListener {
+      override fun notifyConfigChanged(repository: GitRepository) {
+        scheduleUpdate()
+      }
+    })
+
+    application.messageBus.connect(disposable).subscribe(GitExecutableManager.TOPIC, GitExecutableListener { scheduleUpdate() })
 
     updateRepoList()
     reloadConfigs()
     reloadSecretKeys()
   }
 
-  private fun LayoutBuilder.createRow() {
+  private fun RowBuilder.createRow() {
     row {
       cell(isFullWidth = true) {
         button(message("settings.sign.gpg.configure.link.text")) {
@@ -96,6 +94,7 @@ class GpgSignConfigurableRow(val project: Project, val disposable: Disposable) {
   }
 
   private fun scheduleUpdate() {
+    if (alarm.isDisposed) return
     alarm.cancelAllRequests()
     alarm.addRequest(Runnable {
       updateRepoList()

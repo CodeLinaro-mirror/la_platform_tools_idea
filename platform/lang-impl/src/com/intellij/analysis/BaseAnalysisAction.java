@@ -19,7 +19,7 @@ import javax.swing.*;
 import java.util.List;
 import java.util.function.Supplier;
 
-public abstract class BaseAnalysisAction extends AnAction {
+public abstract class BaseAnalysisAction extends AnAction implements UpdateInBackground {
   private static final String DIMENSION_KEY_PREFIX = "ANALYSIS_DLG_";
 
   private final Supplier<@DialogTitle String> myTitle;
@@ -124,6 +124,6 @@ public abstract class BaseAnalysisAction extends AnAction {
         return scope.getModule();
       }
     }
-    return dataContext.getData(LangDataKeys.MODULE);
+    return dataContext.getData(PlatformCoreDataKeys.MODULE);
   }
 }

@@ -40,7 +40,6 @@ import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener;
 import com.intellij.problems.ProblemListener;
-import com.intellij.ui.ExpandableItemsHandler;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.ui.content.Content;
@@ -449,7 +448,7 @@ public class ChangesViewManager implements ChangesViewEx,
       if (myDisposed) return;
 
       boolean isEditorPreview = isEditorPreview(myProject);
-      boolean hasSplitterPreview = !isCommitToolWindowShown(myProject) && !isOpenEditorDiffPreviewWithSingleClick.asBoolean();
+      boolean hasSplitterPreview = !isCommitToolWindowShown(myProject);
 
       if (myEditorChangeProcessor != null) Disposer.dispose(myEditorChangeProcessor);
       if (mySplitterChangeProcessor != null) Disposer.dispose(mySplitterChangeProcessor);
@@ -457,7 +456,7 @@ public class ChangesViewManager implements ChangesViewEx,
       if (isEditorPreview) {
         myEditorChangeProcessor = new ChangesViewDiffPreviewProcessor(myView, true);
         Disposer.register(this, myEditorChangeProcessor);
-        myEditorDiffPreview = installEditorPreview(myEditorChangeProcessor);
+        myEditorDiffPreview = installEditorPreview(myEditorChangeProcessor, hasSplitterPreview);
       }
       else {
         myEditorDiffPreview = null;
@@ -476,8 +475,15 @@ public class ChangesViewManager implements ChangesViewEx,
     }
 
     @NotNull
-    private EditorTabPreview installEditorPreview(@NotNull ChangesViewDiffPreviewProcessor changeProcessor) {
-      EditorTabPreview editorPreview = new EditorTabPreview(changeProcessor) {
+    private EditorTabPreview installEditorPreview(@NotNull ChangesViewDiffPreviewProcessor changeProcessor, boolean hasSplitterPreview) {
+      return new SimpleTreeEditorDiffPreview(changeProcessor, myView, myContentPanel,
+                                             isOpenEditorDiffPreviewWithSingleClick.asBoolean() && !hasSplitterPreview) {
+        @Override
+        public void returnFocusToTree() {
+          ToolWindow toolWindow = getToolWindowFor(myProject, LOCAL_CHANGES);
+          if (toolWindow != null) toolWindow.activate(null);
+        }
+
         @Override
         public void updateAvailability(@NotNull AnActionEvent e) {
           ShowDiffFromLocalChangesActionProvider.updateAvailability(e);
@@ -489,11 +495,6 @@ public class ChangesViewManager implements ChangesViewEx,
           return changeName != null
                  ? VcsBundle.message("commit.editor.diff.preview.title", changeName)
                  : VcsBundle.message("commit.editor.diff.preview.empty.title");
-        }
-
-        @Override
-        protected boolean hasContent() {
-          return changeProcessor.getCurrentChangeName() != null;
         }
 
         @Override
@@ -517,19 +518,6 @@ public class ChangesViewManager implements ChangesViewEx,
                  VcsApplicationSettings.getInstance().SHOW_DIFF_ON_DOUBLE_CLICK;
         }
       };
-      editorPreview.setEscapeHandler(() -> {
-        editorPreview.closePreview();
-
-        ToolWindow toolWindow = getToolWindowFor(myProject, LOCAL_CHANGES);
-        if (toolWindow != null) toolWindow.activate(null);
-      });
-
-      editorPreview.installListeners(myView, isOpenEditorDiffPreviewWithSingleClick.asBoolean());
-      editorPreview.installNextDiffActionOn(myContentPanel);
-
-      UIUtil.putClientProperty(myView, ExpandableItemsHandler.IGNORE_ITEM_SELECTION, true);
-
-      return editorPreview;
     }
 
     @NotNull
@@ -748,7 +736,7 @@ public class ChangesViewManager implements ChangesViewEx,
         if (myDisposed || !myProject.isInitialized() || ApplicationManager.getApplication().isUnitTestMode()) return;
 
         ChangeListManagerImpl changeListManager = ChangeListManagerImpl.getInstanceImpl(myProject);
-        List<LocalChangeList> changeLists = changeListManager.getChangeListsCopy();
+        List<LocalChangeList> changeLists = changeListManager.getChangeLists();
         List<FilePath> unversionedFiles = changeListManager.getUnversionedFilesPaths();
 
         boolean skipSingleDefaultChangeList = Registry.is("vcs.skip.single.default.changelist") ||
@@ -838,7 +826,7 @@ public class ChangesViewManager implements ChangesViewEx,
     }
 
     private void invokeLaterIfNeeded(Runnable runnable) {
-      ModalityUiUtil.invokeLaterIfNeeded(runnable, ModalityState.NON_MODAL, myProject.getDisposed());
+      ModalityUiUtil.invokeLaterIfNeeded(ModalityState.NON_MODAL, myProject.getDisposed(), runnable);
     }
 
     private class MyChangeListListener extends ChangeListAdapter {

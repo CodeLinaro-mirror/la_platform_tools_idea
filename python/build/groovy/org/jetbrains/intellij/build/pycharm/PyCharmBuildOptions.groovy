@@ -9,9 +9,8 @@ import groovy.transform.CompileStatic
  */
 @CompileStatic
 final class PyCharmBuildOptions {
-  /**
-   * Pass 'false' to skip bundling <a href="http://google.comhttps://plugins.jetbrains.com/plugin/12174-datalore">Datalore plugin</a>
-   * to PyCharm Professional
-   */
-  static final boolean bundleDatalorePlugin = SystemProperties.getBooleanProperty("intellij.build.pycharm.bundle.datalore.plugin", true)
+  /** Build pydevd package step name */
+  static final String PYDEVD_PACKAGE = "pydevd_package"
+
+  static final boolean buildSharedIndexes = SystemProperties.getBooleanProperty("intellij.build.pycharm.shared.indexes", true)
 }

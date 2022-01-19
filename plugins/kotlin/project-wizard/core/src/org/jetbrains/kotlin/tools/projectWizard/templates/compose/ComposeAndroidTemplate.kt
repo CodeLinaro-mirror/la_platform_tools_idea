@@ -20,12 +20,13 @@ import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ProjectKind
 import org.jetbrains.kotlin.tools.projectWizard.plugins.pomIR
 import org.jetbrains.kotlin.tools.projectWizard.plugins.templates.TemplatesPlugin
 import org.jetbrains.kotlin.tools.projectWizard.settings.JavaPackage
-import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.*
+import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.DefaultRepository
+import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Module
+import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.ModuleKind
+import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Repositories
 import org.jetbrains.kotlin.tools.projectWizard.settings.javaPackage
 import org.jetbrains.kotlin.tools.projectWizard.templates.FileTemplateDescriptor
 import org.jetbrains.kotlin.tools.projectWizard.templates.Template
-import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
-
 
 class ComposeAndroidTemplate : Template() {
     @NonNls
@@ -35,11 +36,11 @@ class ComposeAndroidTemplate : Template() {
     override val description: String = KotlinNewProjectWizardBundle.message("module.template.compose.desktop.description")
 
 
-    override fun isSupportedByModuleType(module: Module, projectKind: ProjectKind): Boolean =
-        module.configurator.moduleType == ModuleType.android && projectKind == ProjectKind.COMPOSE
+    override fun isApplicableTo(module: Module, projectKind: ProjectKind, reader: Reader): Boolean =
+        module.configurator.moduleType == ModuleType.android
+                && projectKind == ProjectKind.COMPOSE
+                && module.kind == ModuleKind.singlePlatformAndroid
 
-    override fun isApplicableTo(reader: Reader, module: Module): Boolean =
-        module.kind == ModuleKind.singleplatformAndroid
 
     override fun Writer.getIrsToAddToBuildFile(
         module: ModuleIR
@@ -51,8 +52,8 @@ class ComposeAndroidTemplate : Template() {
     }
 
     override fun Reader.updateBuildFileIRs(irs: List<BuildSystemIR>): List<BuildSystemIR> {
-        val androidIR = irs.firstIsInstanceOrNull<AndroidConfigIR>()
-        if (androidIR != null) {
+        val androidIR = irs.firstNotNullOfOrNull { ir-> ir.takeIf { ir is AndroidConfigIR } }
+        if (androidIR != null && androidIR is AndroidConfigIR) {
             androidIR.androidSdkVersion = "30"
         }
         return irs.filterNot {
@@ -126,15 +127,14 @@ class ComposeCommonAndroidTemplate : Template() {
     override val description: String = KotlinNewProjectWizardBundle.message("module.template.compose.desktop.description")
 
 
-    override fun isSupportedByModuleType(module: Module, projectKind: ProjectKind): Boolean =
-        module.configurator.moduleType == ModuleType.common && projectKind == ProjectKind.COMPOSE
-
-    override fun isApplicableTo(reader: Reader, module: Module): Boolean =
-        module.kind == ModuleKind.singleplatformAndroid
+    override fun isApplicableTo(module: Module, projectKind: ProjectKind, reader: Reader): Boolean =
+        module.configurator.moduleType == ModuleType.common
+                && projectKind == ProjectKind.COMPOSE
+                && module.kind == ModuleKind.singlePlatformAndroid
 
     override fun Reader.updateBuildFileIRs(irs: List<BuildSystemIR>): List<BuildSystemIR> {
-        val androidIR = irs.firstIsInstanceOrNull<AndroidConfigIR>()
-        if (androidIR != null) {
+        val androidIR = irs.firstNotNullOfOrNull { ir-> ir.takeIf { ir is AndroidConfigIR } }
+        if (androidIR != null && androidIR is AndroidConfigIR) {
             androidIR.androidSdkVersion = "30"
         }
         return irs.filterNot {

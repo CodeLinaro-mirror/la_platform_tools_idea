@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.updater;
 
 import com.intellij.openapi.util.io.FileUtil;
@@ -364,6 +364,24 @@ public abstract class PatchApplyingRevertingTest extends PatchTestCase {
                            "lib/boot.jar",
                            toFile,
                            ValidationResult.Action.VALIDATE,
+                           ValidationResult.MODIFIED_MESSAGE,
+                           ValidationResult.Option.NONE));
+  }
+
+  @Test
+  public void testApplyWhenCommonFileChangesStrictFile() throws Exception {
+    myPatchSpec.setStrictFiles(Collections.singletonList("lib/annotations.jar"));
+    createPatch();
+
+    File toFile = new File(myOlderDir, "lib/annotations.jar");
+    FileUtil.copy(new File(myOlderDir, "lib/bootstrap.jar"), toFile);
+
+    PatchFileCreator.PreparationResult preparationResult = PatchFileCreator.prepareAndValidate(myFile, myOlderDir, TEST_UI);
+    assertThat(preparationResult.validationResults).containsExactly(
+      new ValidationResult(ValidationResult.Kind.ERROR,
+                           "lib/annotations.jar",
+                           toFile,
+                           ValidationResult.Action.UPDATE,
                            ValidationResult.MODIFIED_MESSAGE,
                            ValidationResult.Option.NONE));
   }
@@ -753,11 +771,6 @@ public abstract class PatchApplyingRevertingTest extends PatchTestCase {
   private static class MyFailOnApplyPatchAction extends PatchAction {
     MyFailOnApplyPatchAction(Patch patch) {
       super(patch, "_dummy_file_", Digester.INVALID);
-    }
-
-    @Override
-    protected boolean isModified(File toFile) {
-      return false;
     }
 
     @Override

@@ -116,20 +116,22 @@ public abstract class PsiReferenceBase<T extends PsiElement> implements PsiRefer
     return getElement().getManager().areElementsEquivalent(resolve(), element);
   }
 
-  public static <T extends PsiElement> PsiReferenceBase<T> createSelfReference(T element, final PsiElement resolveTo) {
+  public static <T extends PsiElement> @NotNull PsiReferenceBase<T> createSelfReference(T element, final PsiElement resolveTo) {
     return new Immediate<>(element, true, resolveTo);
   }
 
-  public static <T extends PsiElement> PsiReferenceBase<T> createSelfReference(T element,
-                                                                               TextRange rangeInElement,
-                                                                               final PsiElement resolveTo) {
+  public static <T extends PsiElement> @NotNull PsiReferenceBase<T> createSelfReference(T element,
+                                                                                        TextRange rangeInElement,
+                                                                                        final PsiElement resolveTo) {
     return new Immediate<>(element, rangeInElement, resolveTo);
   }
 
+  @NotNull
   private ElementManipulator<T> getManipulator() {
     ElementManipulator<T> manipulator = ElementManipulators.getManipulator(myElement);
     if (manipulator == null) {
-      LOG.error(PluginException.createByClass("Cannot find manipulator for " + myElement + " in " + this + " class " + getClass(), null, myElement.getClass()));
+      throw PluginException.createByClass("Cannot find manipulator for " + myElement +
+                                          " in " + this + " class " + getClass(), null, myElement.getClass());
     }
     return manipulator;
   }

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.options.ex;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -9,6 +9,7 @@ import com.intellij.openapi.extensions.ExtensionsArea;
 import com.intellij.openapi.options.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.ArrayUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -16,7 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.*;
 
-public class ConfigurableWrapper implements SearchableConfigurable, Weighted {
+public class ConfigurableWrapper implements SearchableConfigurable, Weighted, HierarchableConfigurable {
   static final Logger LOG = Logger.getInstance(ConfigurableWrapper.class);
 
   @Nullable
@@ -77,7 +78,7 @@ public class ConfigurableWrapper implements SearchableConfigurable, Weighted {
   }
 
   @Nullable
-  public static <T> T cast(@NotNull Class<T> type, UnnamedConfigurable configurable) {
+  public static <T> T cast(@NotNull Class<T> type, @Nullable UnnamedConfigurable configurable) {
     if (configurable instanceof ConfigurableWrapper) {
       ConfigurableWrapper wrapper = (ConfigurableWrapper)configurable;
       if (wrapper.myConfigurable == null) {
@@ -97,6 +98,8 @@ public class ConfigurableWrapper implements SearchableConfigurable, Weighted {
 
   private final ConfigurableEP<?> myEp;
   int myWeight; // see ConfigurableExtensionPointUtil.getConfigurableToReplace
+
+  private @Nullable String overriddenId = null;
 
   private ConfigurableWrapper(@NotNull ConfigurableEP<?> ep) {
     myEp = ep;
@@ -204,6 +207,10 @@ public class ConfigurableWrapper implements SearchableConfigurable, Weighted {
   @NotNull
   @Override
   public String getId() {
+    if (overriddenId != null) {
+      return overriddenId;
+    }
+
     if (myEp.id != null) {
       return myEp.id;
     }
@@ -224,15 +231,22 @@ public class ConfigurableWrapper implements SearchableConfigurable, Weighted {
              : myEp.implementationClass;
   }
 
+  @ApiStatus.Experimental
+  public void overrideId(String overridenId) {
+    this.overriddenId = overridenId;
+  }
+
   @NotNull
   public ConfigurableEP<?> getExtensionPoint() {
     return myEp;
   }
 
+  @Override
   public String getParentId() {
     return myEp.parentId;
   }
 
+  @Override
   public ConfigurableWrapper addChild(Configurable configurable) {
     return new CompositeWrapper(myEp, configurable);
   }

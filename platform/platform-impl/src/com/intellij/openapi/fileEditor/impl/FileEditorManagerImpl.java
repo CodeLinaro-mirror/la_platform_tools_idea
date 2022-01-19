@@ -7,6 +7,7 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.actions.MaximizeEditorInSplitAction;
 import com.intellij.ide.actions.SplitAction;
+import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.ui.UISettingsListener;
 import com.intellij.injected.editor.VirtualFileWindow;
@@ -67,6 +68,7 @@ import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.pom.Navigatable;
 import com.intellij.reference.SoftReference;
 import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.docking.DockContainer;
 import com.intellij.ui.docking.DockManager;
 import com.intellij.ui.docking.impl.DockManagerImpl;
@@ -389,7 +391,11 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       synchronized (myInitLock) {
         result = mySplitters;
         if (result == null) {
-          result = new EditorsSplitters(this, true, this);
+          result = new EditorsSplitters(this);
+          DockableEditorTabbedContainer dockable = new DockableEditorTabbedContainer(myProject, result, false);
+          DockManager.getInstance(myProject).register(dockable, this);
+          Disposer.register(this, dockable);
+
           mySplitters = result;
         }
       }
@@ -417,7 +423,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
    *         file's status
    */
   @NotNull
-  Color getFileColor(@NotNull VirtualFile file) {
+  public Color getFileColor(@NotNull VirtualFile file) {
     FileStatusManager fileStatusManager = FileStatusManager.getInstance(myProject);
     Color statusColor = fileStatusManager != null ? fileStatusManager.getStatus(file).getColor() : UIUtil.getLabelForeground();
     if (statusColor == null) statusColor = UIUtil.getLabelForeground();
@@ -459,6 +465,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   }
 
   private void updateFileBackgroundColor(@NotNull VirtualFile file) {
+    if (ExperimentalUI.isNewEditorTabs()) return;
     Set<EditorsSplitters> all = getAllSplitters();
     for (EditorsSplitters each : all) {
       each.updateFileBackgroundColor(file);
@@ -1962,6 +1969,7 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     }
 
     private void changeHappened() {
+      if (LightEdit.owns(myProject)) return;
       AppUIExecutor
         .onUiThread(ModalityState.any())
         .expireWith(myProject)

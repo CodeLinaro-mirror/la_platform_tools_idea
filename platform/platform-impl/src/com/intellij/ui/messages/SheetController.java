@@ -7,11 +7,13 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.help.HelpManager;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.DoNotAskOption;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.SystemInfo;
 import com.intellij.ui.Gray;
 import com.intellij.ui.JBColor;
-import com.intellij.ui.mac.TouchbarDataKeys;
+import com.intellij.ui.mac.touchbar.Touchbar;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ui.ImageUtil;
 import com.intellij.util.ui.StartupUiUtil;
@@ -33,6 +35,9 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import static com.intellij.openapi.wm.IdeFocusManager.getGlobalInstance;
 
@@ -41,7 +46,7 @@ public final class SheetController implements Disposable {
 
   private static final Logger LOG = Logger.getInstance(SheetController.class);
   private static final int SHEET_MINIMUM_HEIGHT = 143;
-  private final DialogWrapper.DoNotAskOption myDoNotAskOption;
+  private final DoNotAskOption myDoNotAskOption;
   private final @Nullable JButton myHelpButton;
   private boolean myDoNotAskResult;
 
@@ -94,7 +99,7 @@ public final class SheetController implements Disposable {
                   final Icon icon,
                   final String[] buttonTitles,
                   final String defaultButtonTitle,
-                  final DialogWrapper.DoNotAskOption doNotAskOption,
+                  final DoNotAskOption doNotAskOption,
                   final String focusedButtonTitle,
                   @Nullable String helpId) {
     if (icon != null) {
@@ -121,10 +126,8 @@ public final class SheetController implements Disposable {
       buttons[i].setOpaque(false);
       handleMnemonics(i, buttonTitle);
 
-      final TouchbarDataKeys.DlgButtonDesc bdesc = TouchbarDataKeys.putDialogButtonDescriptor(buttons[i], buttons.length - i).setMainGroup(true);
       if (buttonTitle.equals(defaultButtonTitle)) {
         defaultButtonIndex = i;
-        bdesc.setDefault(true);
       }
 
       if (buttonTitle.equals(focusedButtonTitle) && !focusedButtonTitle.equals("Cancel")) {
@@ -149,6 +152,11 @@ public final class SheetController implements Disposable {
     }
 
     mySheetPanel = createSheetPanel(title, message, buttons);
+    if (SystemInfo.isMac) {
+      List<JButton> touchbarButtons = Arrays.asList(buttons);
+      Collections.reverse(touchbarButtons);
+      Touchbar.setButtonActions(mySheetPanel, null, touchbarButtons, myDefaultButton);
+    }
   }
 
   private void initShadowImage() {

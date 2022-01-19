@@ -5,7 +5,6 @@ import com.intellij.configurationStore.StoreUtil;
 import com.intellij.diagnostic.ActivityCategory;
 import com.intellij.ide.plugins.ContainerDescriptor;
 import com.intellij.ide.plugins.IdeaPluginDescriptorImpl;
-import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.components.BaseComponent;
@@ -27,7 +26,6 @@ import com.intellij.util.messages.MessageBus;
 import org.jetbrains.annotations.*;
 import org.picocontainer.PicoContainer;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -199,7 +197,6 @@ final class DefaultProject extends UserDataHolderBase implements Project {
     return true;
   }
 
-  @SuppressWarnings("deprecation")
   @Override
   @Deprecated
   public BaseComponent getComponent(@NotNull String name) {
@@ -312,9 +309,7 @@ final class DefaultProjectImpl extends ComponentManagerImpl implements Project {
   public void init() {
     // do not leak internal delegate, use DefaultProject everywhere instead
     registerServiceInstance(Project.class, actualContainerInstance, ComponentManagerImpl.fakeCorePluginDescriptor);
-
-    //noinspection unchecked
-    registerComponents((List<IdeaPluginDescriptorImpl>)PluginManagerCore.getLoadedPlugins(), ApplicationManager.getApplication(), null, null);
+    registerComponents();
     createComponents(null);
     Disposer.register(actualContainerInstance, this);
   }

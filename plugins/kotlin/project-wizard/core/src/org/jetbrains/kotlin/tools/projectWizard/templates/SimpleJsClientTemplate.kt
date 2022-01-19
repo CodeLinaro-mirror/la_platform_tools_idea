@@ -20,12 +20,15 @@ import org.jetbrains.kotlin.tools.projectWizard.phases.GenerationPhase
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Repositories
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.SourcesetType
 
-class SimpleJsClientTemplate : JsClientTemplate() {
+object SimpleJsClientTemplate : JsClientTemplate() {
     override val title: String = KotlinNewProjectWizardBundle.message("module.template.js.simple.title")
     override val description: String = KotlinNewProjectWizardBundle.message("module.template.js.simple.description")
 
     @NonNls
     override val id: String = "simpleJsClient"
+
+    private const val clientFileToCreate = "Client.kt"
+    override val filesToOpenInEditor = listOf(clientFileToCreate)
 
     val useKotlinxHtml by booleanSetting(
         KotlinNewProjectWizardBundle.message("module.template.simple.use.kotlinx.html"),
@@ -57,7 +60,7 @@ class SimpleJsClientTemplate : JsClientTemplate() {
                     +(FileTemplateDescriptor("jsClient/index.html.vm") asResourceOf SourcesetType.main)
                 }
                 if (useKotlinxHtml.reference.settingValue()) {
-                    +(FileTemplateDescriptor("$id/client.kt.vm", "Client.kt".asPath()) asSrcOf SourcesetType.main)
+                    +(FileTemplateDescriptor("$id/client.kt.vm", clientFileToCreate.asPath()) asSrcOf SourcesetType.main)
                     +(FileTemplateDescriptor("$id/TestClient.kt.vm", "TestClient.kt".asPath()) asSrcOf SourcesetType.test)
                 } else {
                     +(FileTemplateDescriptor("$id/simple.kt.vm", "Simple.kt".asPath()) asSrcOf SourcesetType.main)

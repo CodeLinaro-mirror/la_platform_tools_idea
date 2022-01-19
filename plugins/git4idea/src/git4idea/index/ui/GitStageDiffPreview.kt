@@ -4,6 +4,7 @@ package git4idea.index.ui
 import com.intellij.diff.FrameDiffTool
 import com.intellij.diff.chains.DiffRequestProducer
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.ListSelection
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -11,8 +12,8 @@ import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeViewDiffRequestProcessor
-import com.intellij.openapi.vcs.changes.actions.diff.SelectionAwareGoToChangePopupActionProvider
-import com.intellij.openapi.vcs.changes.ui.PresentableChange
+import com.intellij.openapi.vcs.changes.actions.diff.PresentableGoToChangePopupAction
+import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.ui.IdeBorderFactory
 import com.intellij.ui.SideBorder
@@ -20,7 +21,9 @@ import com.intellij.util.ui.tree.TreeUtil
 import com.intellij.vcs.log.runInEdtAsync
 import git4idea.index.GitStageTracker
 import git4idea.index.GitStageTrackerListener
+import git4idea.index.KindTag
 import git4idea.index.createTwoSidesDiffRequestProducer
+import java.util.*
 import java.util.stream.Stream
 
 class GitStageDiffPreview(project: Project,
@@ -56,28 +59,21 @@ class GitStageDiffPreview(project: Project,
     TreeUtil.selectPath(tree, TreeUtil.getPathFromRoot(node), false)
   }
 
-  override fun getSelectedChanges(): Stream<Wrapper> =
-    if (tree.isSelectionEmpty) allChanges else wrap(VcsTreeModelData.selected(tree))
+  override fun getSelectedChanges(): Stream<Wrapper> = wrap(VcsTreeModelData.selected(tree))
 
   override fun getAllChanges(): Stream<Wrapper> = wrap(VcsTreeModelData.all(tree))
 
   override fun createGoToChangeAction(): AnAction {
-    return MyGoToChangePopupProvider().createGoToChangeAction()
+    return MyGoToChangePopupAction()
   }
 
-  private inner class MyGoToChangePopupProvider : SelectionAwareGoToChangePopupActionProvider() {
-    override fun getChanges(): List<PresentableChange> {
-      return tree.statusNodesListSelection(true)
-        .map { createTwoSidesDiffRequestProducer(project, it) }.list
+  private inner class MyGoToChangePopupAction : PresentableGoToChangePopupAction.Default<Wrapper>() {
+    override fun getChanges(): ListSelection<Wrapper> {
+      return tree.statusNodesListSelection(false)
+        .map(::GitFileStatusNodeWrapper)
     }
 
-    override fun select(change: PresentableChange) {
-      this@GitStageDiffPreview.selectFilePath(change.filePath)
-    }
-
-    override fun getSelectedChange(): PresentableChange? {
-      return currentChange
-    }
+    override fun onSelected(change: Wrapper) = selectChange(change)
   }
 
   private fun wrap(modelData: VcsTreeModelData): Stream<Wrapper> =
@@ -93,9 +89,34 @@ class GitStageDiffPreview(project: Project,
 
     override fun getFilePath(): FilePath = node.filePath
     override fun getFileStatus(): FileStatus = node.fileStatus
+    override fun getTag(): ChangesBrowserNode.Tag =
+      KindTag.getTag(when (node.kind) {
+                       NodeKind.UNTRACKED -> NodeKind.UNSTAGED
+                       else -> node.kind
+                     })
 
     override fun createProducer(project: Project?): DiffRequestProducer? {
       return createTwoSidesDiffRequestProducer(project!!, node)
+    }
+
+    override fun equals(other: Any?): Boolean {
+      if (this === other) return true
+      if (javaClass != other?.javaClass) return false
+
+      other as GitFileStatusNodeWrapper
+
+      if (node.kind != other.node.kind) return false
+      if (node.filePath != other.node.filePath) return false
+
+      return true
+    }
+
+    override fun hashCode(): Int {
+      return Objects.hash(node.kind, node.filePath)
+    }
+
+    override fun toString(): String {
+      return "GitFileStatusNodeWrapper(node=$node)"
     }
   }
 }

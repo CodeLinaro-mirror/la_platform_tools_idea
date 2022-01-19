@@ -8,6 +8,8 @@ import com.intellij.execution.util.ExecUtil;
 import com.intellij.jna.JnaLoader;
 import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.projectRoots.impl.ProjectJdkImpl;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.NullableLazyValue;
@@ -15,7 +17,7 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.WindowsRegistryUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.ThreeState;
+import com.intellij.openapi.vfs.impl.wsl.WslConstants;
 import com.intellij.util.containers.ContainerUtil;
 import com.sun.jna.platform.win32.Advapi32Util;
 import com.sun.jna.platform.win32.WinReg;
@@ -43,6 +45,7 @@ import java.util.regex.Pattern;
  */
 public final class WSLUtil {
   public static final Logger LOG = Logger.getInstance("#com.intellij.execution.wsl");
+  private final static String WSL_PATH_TO_REMOVE = "wsl://";
 
   /**
    * @deprecated use {@link WslDistributionManager#getInstalledDistributions} instead.
@@ -104,24 +107,6 @@ public final class WSLUtil {
   }
 
   /**
-   * @deprecated use {@link WslDistributionManager#getOrCreateDistributionByMsId(String)} instead
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  @Nullable
-  public static WSLDistribution getDistributionById(@Nullable String id) {
-    if (id == null) {
-      return null;
-    }
-    for (WSLDistribution distribution : getAvailableDistributions()) {
-      if (id.equals(distribution.getId())) {
-        return distribution;
-      }
-    }
-    return null;
-  }
-
-  /**
    * @return instance of WSL distribution or null if it's unavailable
    * @deprecated Use {@link WslDistributionManager#getOrCreateDistributionByMsId(String)}
    */
@@ -149,7 +134,6 @@ public final class WSLUtil {
    *               See https://docs.microsoft.com/ru-ru/windows/wsl/wsl-config#configuration-options
    * @return Windows-dependent path to the file, pointed by {@code wslPath} in WSL or null if the path is unmappable.
    * For example, {@code getWindowsPath("/mnt/c/Users/file.txt", "/mnt/") returns "C:\Users\file.txt"}
-   * consider using WSLDistribution#getWindowsPath(java.lang.String) instead
    */
   @Nullable
   public static String getWindowsPath(@NotNull String wslPath, @NotNull String mntRoot) {
@@ -167,16 +151,11 @@ public final class WSLUtil {
     return FileUtil.toSystemDependentName(Character.toUpperCase(wslPath.charAt(driveLetterIndex)) + ":" + wslPath.substring(slashIndex));
   }
 
-  public static @NotNull ThreeState isWsl1(@NotNull WSLDistribution distribution) {
-    int version = getWslVersion(distribution);
-    return version < 0 ? ThreeState.UNSURE : ThreeState.fromBoolean(version == 1);
-  }
-
   /**
    * @param distribution
    * @return version if it can be determined or -1 instead
    */
-  public static int getWslVersion(@NotNull WSLDistribution distribution) {
+  static int getWslVersion(@NotNull WSLDistribution distribution) {
     int version = getVersionFromWslCli(distribution);
     if (version < 0) {
       version = getVersionByUname(distribution);
@@ -244,7 +223,7 @@ public final class WSLUtil {
     return WindowsRegistryUtil.readRegistryValue("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ReleaseId");
   }
 
-  public static class WSLToolFlags {
+  static class WSLToolFlags {
     public final boolean isQuietFlagAvailable;
     public final boolean isVerboseFlagAvailable;
 
@@ -283,6 +262,22 @@ public final class WSLUtil {
     catch (Exception e) {
       LOG.warn(e);
       return null;
+    }
+  }
+
+  /**
+   * Change old (wsl://) prefix to the new one (\\wsl$\)
+   *
+   * @deprecated remove after everyone migrates to the new prefix
+   */
+  @ApiStatus.ScheduledForRemoval(inVersion = "2022.1")
+  @Deprecated
+  public static void fixWslPrefix(@NotNull Sdk sdk) {
+    if (sdk instanceof ProjectJdkImpl) {
+      var path = sdk.getHomePath();
+      if (path != null && path.startsWith(WSL_PATH_TO_REMOVE)) {
+        ((ProjectJdkImpl)sdk).setHomePath(WslConstants.UNC_PREFIX + path.substring(WSL_PATH_TO_REMOVE.length()));
+      }
     }
   }
 }
