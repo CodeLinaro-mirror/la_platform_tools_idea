@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.configurations;
 
 import com.intellij.diagnostic.LoadingState;
@@ -8,10 +8,7 @@ import com.intellij.execution.IllegalEnvVarException;
 import com.intellij.execution.Platform;
 import com.intellij.execution.process.ProcessNotCreatedException;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.Key;
-import com.intellij.openapi.util.NlsSafe;
-import com.intellij.openapi.util.SystemInfoRt;
-import com.intellij.openapi.util.UserDataHolder;
+import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.encoding.EncodingManager;
@@ -436,6 +433,13 @@ public class GeneralCommandLine implements UserDataHolder {
           exePath = exeFile.getPath();
         }
       }
+    }
+
+    if (SystemInfo.isMacOSCatalina &&
+        ("/usr/bin/python".equals(exePath) ||
+         exePath.startsWith("/usr/bin/python2") ||
+         exePath.startsWith("/System/Library/Frameworks/Python.framework/Versions/2."))) {
+      LOG.error(new IllegalArgumentException("Don't use '" + exePath + "' on macOS (see IDEA-271050). Args: " + myProgramParams.getList()));
     }
 
     return prepareCommandLine(exePath, myProgramParams.getList(), Platform.current());
