@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions.searcheverywhere;
 
 import com.intellij.ide.actions.SearchEverywherePsiRenderer;
@@ -26,14 +26,22 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.function.Function;
 
-public class PSIPresentationBgRendererWrapper implements WeightedSearchEverywhereContributor<Object>, ScopeSupporting{
+public class PSIPresentationBgRendererWrapper implements WeightedSearchEverywhereContributor<Object>, ScopeSupporting, AutoCompletionContributor{
   private final AbstractGotoSEContributor myDelegate;
 
   public PSIPresentationBgRendererWrapper(AbstractGotoSEContributor delegate) { myDelegate = delegate; }
+
+  @Override
+  public List<AutoCompletionCommand> getAutocompleteItems(String pattern, int caretPosition) {
+    return myDelegate instanceof AutoCompletionContributor
+           ? ((AutoCompletionContributor)myDelegate).getAutocompleteItems(pattern, caretPosition)
+           : Collections.emptyList();
+  }
 
   public static SearchEverywhereContributor<Object> wrapIfNecessary(AbstractGotoSEContributor delegate) {
     if (Registry.is("psi.element.list.cell.renderer.background")) {

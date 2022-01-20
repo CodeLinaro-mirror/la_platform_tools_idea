@@ -25,6 +25,7 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.java.LanguageLevel;
 import org.jetbrains.idea.maven.MavenMultiVersionImportingTestCase;
+import org.jetbrains.idea.maven.project.MavenGeneralSettings;
 import org.jetbrains.idea.maven.project.MavenProject;
 import org.junit.Test;
 
@@ -1008,7 +1009,7 @@ public class StructureImportingTest extends MavenMultiVersionImportingTestCase {
     assertModules("project");
     Module module = getModule("project");
     String targetLevel = CompilerConfiguration.getInstance(myProject).getBytecodeTargetLevel(module);
-    assertEquals("1.9", targetLevel);
+    assertEquals(LanguageLevel.JDK_1_9, LanguageLevel.parse(targetLevel));
   }
 
   @Test
@@ -1081,24 +1082,6 @@ public class StructureImportingTest extends MavenMultiVersionImportingTestCase {
                   "  </extensions>" +
                   "</build>");
     assertModules("project");
-  }
-
-  @Test
-  public void testProjectWithInvalidBuildExtension() {
-    importProject("<groupId>test</groupId>" +
-                  "<artifactId>project</artifactId>" +
-                  "<version>1</version>" +
-
-                  "<build>" +
-                  " <extensions>" +
-                  "   <extension>" +
-                  "     <groupId>xxx</groupId>" +
-                  "     <artifactId>yyy</artifactId>" +
-                  "     <version>1</version>" +
-                  "    </extension>" +
-                  "  </extensions>" +
-                  "</build>");
-    assertModules("project"); // shouldn't throw any exception
   }
 
   @Test
@@ -1340,6 +1323,34 @@ public class StructureImportingTest extends MavenMultiVersionImportingTestCase {
                           "</dependencies>");
 
     doImportProjects(Collections.singletonList(myProjectPom), false, "profile-test");
+  }
+
+  @Test
+  public void testProjectWithMavenConfigCustomUserSettingsXml() throws IOException {
+    createProjectSubFile(".mvn/maven.config", "-s .mvn/custom-settings.xml");
+    createProjectSubFile(".mvn/custom-settings.xml",
+                         "<settings>\n" +
+                         "    <profiles>\n" +
+                         "        <profile>\n" +
+                         "            <id>custom1</id>\n" +
+                         "            <properties>\n" +
+                         "                <projectName>customName</prop>\n" +
+                         "            </properties>\n" +
+                         "        </profile>\n" +
+                         "    </profiles>\n" +
+                         "    <activeProfiles>\n" +
+                         "        <activeProfile>custom1</activeProfile>\n" +
+                         "    </activeProfiles>" +
+                         "</settings>");
+    createProjectPom("<groupId>test</groupId>" +
+                     "<artifactId>${projectName}</artifactId>" +
+                     "<version>1</version>");
+
+    MavenGeneralSettings settings = getMavenGeneralSettings();
+    settings.setUserSettingsFile("");
+    settings.setUseMavenConfig(true);
+    importProject();
+    assertModules("customName");
   }
 
   @Test

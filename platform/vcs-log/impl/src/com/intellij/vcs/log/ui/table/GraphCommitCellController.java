@@ -31,7 +31,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.util.Collection;
-import java.util.Collections;
 
 public abstract class GraphCommitCellController implements VcsLogCellController {
   @NotNull private final VcsLogData myLogData;
@@ -143,7 +142,7 @@ public abstract class GraphCommitCellController implements VcsLogCellController 
       details = myTable.getModel().getCommitMetadata(row); // preload rows around the commit
     }
     else {
-      details = myLogData.getMiniDetailsGetter().getCommitData(commit, Collections.singleton(commit)); // preload just the commit
+      details = myLogData.getMiniDetailsGetter().getCommitData(commit); // preload just the commit
     }
 
     if (details instanceof LoadingDetails) {

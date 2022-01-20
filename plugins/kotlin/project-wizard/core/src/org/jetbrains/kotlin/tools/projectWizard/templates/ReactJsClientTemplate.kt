@@ -23,12 +23,15 @@ import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Repositorie
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.SourcesetType
 import org.jetbrains.kotlin.tools.projectWizard.settings.version.Version
 
-class ReactJsClientTemplate : JsClientTemplate() {
+object ReactJsClientTemplate : JsClientTemplate() {
     override val title: String = KotlinNewProjectWizardBundle.message("module.template.js.react.title")
     override val description: String = KotlinNewProjectWizardBundle.message("module.template.js.react.description")
 
     @NonNls
     override val id: String = "reactJsClient"
+
+    private const val clientSourceFile = "Client.kt"
+    override val filesToOpenInEditor = listOf(clientSourceFile)
 
     val useStyledComponents by booleanSetting(
         KotlinNewProjectWizardBundle.message("module.template.react.use.styled.components"),
@@ -86,7 +89,7 @@ class ReactJsClientTemplate : JsClientTemplate() {
                 if (!hasKtorServNeighbourTarget) {
                     +(FileTemplateDescriptor("jsClient/index.html.vm") asResourceOf SourcesetType.main)
                 }
-                +(FileTemplateDescriptor("$id/reactClient.kt.vm", "Client.kt".asPath()) asSrcOf SourcesetType.main)
+                +(FileTemplateDescriptor("$id/reactClient.kt.vm", clientSourceFile.asPath()) asSrcOf SourcesetType.main)
                 +(FileTemplateDescriptor("$id/reactComponent.kt.vm", "Welcome.kt".asPath()) asSrcOf SourcesetType.main)
 
                 if (useStyledComponents.reference.settingValue) {

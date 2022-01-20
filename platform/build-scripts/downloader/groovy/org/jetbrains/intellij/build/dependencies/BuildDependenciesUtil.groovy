@@ -1,22 +1,22 @@
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.dependencies
 
 import groovy.transform.CompileStatic
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
+import org.apache.commons.compress.archivers.zip.ZipFile
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 
 import javax.xml.parsers.DocumentBuilder
 import javax.xml.parsers.DocumentBuilderFactory
-import java.nio.charset.StandardCharsets
-import java.nio.file.FileVisitResult
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
+import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
+import java.nio.file.attribute.PosixFilePermissions
 
 @CompileStatic
-class BuildDependenciesUtil {
+final class BuildDependenciesUtil {
+  static boolean isPosix = FileSystems.getDefault().supportedFileAttributeViews().contains("posix")
+
   static DocumentBuilder createDocumentBuilder() {
     // from https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html#jaxp-documentbuilderfactory-saxparserfactory-and-dom4j
 
@@ -117,8 +117,8 @@ class BuildDependenciesUtil {
   }
 
   static void extractZip(Path archiveFile, Path target) {
-    new ZipFile(archiveFile.toFile(), StandardCharsets.UTF_8).withCloseable { zipFile ->
-      zipFile.entries().each { ZipEntry entry ->
+    new ZipFile(archiveFile.toFile(), "UTF-8").withCloseable { zipFile ->
+      zipFile.entries.each { ZipArchiveEntry entry ->
         def entryPath = entryFile(target, entry.name)
         if (entry.isDirectory()) {
           Files.createDirectories(entryPath)
@@ -126,6 +126,10 @@ class BuildDependenciesUtil {
         else {
           zipFile.getInputStream(entry).withCloseable { entryInputStream ->
             Files.copy(entryInputStream, entryPath)
+          }
+
+          if (isPosix && (entry.unixMode & 0111) != 0) {
+            Files.setPosixFilePermissions(entryPath, PosixFilePermissions.fromString("rwxr-xr-x"))
           }
         }
       }
@@ -149,14 +153,6 @@ class BuildDependenciesUtil {
     int index = 0
     while (s.charAt(index) == charToTrim) index++
     return s.substring(index)
-  }
-
-  static void copyStream(InputStream source, OutputStream target) throws IOException {
-    byte[] buf = new byte[65536]
-    int length
-    while ((length = source.read(buf)) > 0) {
-      target.write(buf, 0, length)
-    }
   }
 
   static void cleanDirectory(Path directory) {

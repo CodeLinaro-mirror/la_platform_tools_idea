@@ -64,7 +64,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
 
     @JvmStatic
     fun suggestPackageName(group: String, artifact: String): String {
-      val groupPrefix = group.toLowerCase().split(".")
+      val groupPrefix = group.lowercase().split(".")
         .joinToString(".") { sanitizePackage(it) }
 
       return "$groupPrefix.${sanitizePackage(artifact)}"
@@ -76,7 +76,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
       return fileName
         .replace("-", "")
         .replace(INVALID_PACKAGE_NAME_SYMBOL_PATTERN, "_")
-        .toLowerCase()
+        .lowercase()
     }
 
     @JvmStatic
@@ -120,11 +120,17 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
     }
 
     @TestOnly
-    fun StarterModuleBuilder.setupTestModule(module: Module, consumer: StarterContext.() -> Unit) {
+    fun StarterModuleBuilder.setupTestModule(module: Module, starterId: String? = null, consumer: StarterContext.() -> Unit) {
       this.apply {
         starterContext.starterPack = getStarterPack()
         moduleJdk = ModuleRootManager.getInstance(module).sdk
-        starterContext.starter = starterContext.starterPack.starters.first()
+
+        starterContext.starter = if (starterId == null) {
+          starterContext.starterPack.starters.first()
+        }
+        else {
+          starterContext.starterPack.starters.find { it.id == starterId }
+        }
         starterContext.starterDependencyConfig = loadTestDependencyConfig(starterContext.starter!!)
       }
 
@@ -142,7 +148,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
 
     private fun loadTestDependencyConfig(starter: Starter): DependencyConfig {
       val starterDependencyDom = starter.versionConfigUrl.openStream().use { JDOMUtil.load(it) }
-      return StarterUtils.parseDependencyConfig(starterDependencyDom, starter.versionConfigUrl.path, false)
+      return StarterUtils.parseDependencyConfig(starterDependencyDom, starter.versionConfigUrl.path, true)
     }
   }
 
@@ -312,7 +318,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
         true, module.project)
 
       StartupManager.getInstance(module.project).runAfterOpened {  // IDEA-244863
-        ModalityUiUtil.invokeLaterIfNeeded(Runnable {
+        ModalityUiUtil.invokeLaterIfNeeded(ModalityState.NON_MODAL, module.disposed, Runnable {
           if (module.isDisposed) return@Runnable
 
           ReformatCodeProcessor(module.project, module, false).run()
@@ -320,7 +326,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
           openSampleFiles(module, getFilePathsToOpen())
 
           importModule(module)
-        }, ModalityState.NON_MODAL, module.disposed)
+        })
       }
     }
     else {

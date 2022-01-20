@@ -41,6 +41,8 @@ import com.jetbrains.python.actions.PyExecuteInConsole;
 import com.jetbrains.python.actions.PyRunFileInConsoleAction;
 import com.jetbrains.python.console.PyConsoleOptions;
 import com.jetbrains.python.console.PydevConsoleRunner;
+import com.jetbrains.python.run.target.HelpersAwareTargetEnvironmentRequest;
+import com.jetbrains.python.run.target.PySdkTargetPaths;
 import com.jetbrains.python.sdk.PythonEnvUtil;
 import com.jetbrains.python.sdk.PythonSdkUtil;
 import org.jetbrains.annotations.NotNull;
@@ -218,7 +220,8 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
   }
 
   @Override
-  protected @NotNull PythonExecution buildPythonExecution(@NotNull TargetEnvironmentRequest targetEnvironmentRequest) {
+  protected @NotNull PythonExecution buildPythonExecution(@NotNull HelpersAwareTargetEnvironmentRequest helpersAwareRequest) {
+    TargetEnvironmentRequest targetEnvironmentRequest = helpersAwareRequest.getTargetEnvironmentRequest();
     PythonExecution pythonExecution;
     if (myConfig.isModuleMode()) {
       PythonModuleExecution moduleExecution = new PythonModuleExecution();
@@ -232,8 +235,7 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
       PythonScriptExecution pythonScriptExecution = new PythonScriptExecution();
       String scriptPath = myConfig.getScriptName();
       if (!StringUtil.isEmptyOrSpaces(scriptPath)) {
-        pythonScriptExecution.setPythonScriptPath(TargetEnvironmentFunctions.getTargetEnvironmentValueForLocalPath(targetEnvironmentRequest,
-                                                                                                                   scriptPath));
+        pythonScriptExecution.setPythonScriptPath(getTargetPath(targetEnvironmentRequest, scriptPath));
       }
       pythonExecution = pythonScriptExecution;
     }
@@ -275,6 +277,13 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
     if (myConfig.isRedirectInput() && !StringUtil.isEmptyOrSpaces(inputFile)) {
       commandLine.withInput(new File(inputFile));
     }
+  }
+
+  @Override
+  protected @NotNull Function<TargetEnvironment, String> getTargetPath(@NotNull TargetEnvironmentRequest targetEnvironmentRequest,
+                                                                       @NotNull String scriptPath) {
+    return PySdkTargetPaths.getTargetPathForPythonConsoleExecution(targetEnvironmentRequest, myConfig.getProject(), myConfig.getSdk(),
+                                                                   createRemotePathMapper(), scriptPath);
   }
 
   private static @NotNull List<String> getExpandedScriptParameters(PythonRunConfiguration config) {

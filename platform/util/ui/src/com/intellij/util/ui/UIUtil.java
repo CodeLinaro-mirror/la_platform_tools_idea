@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.ui;
 
 import com.intellij.BundleBase;
@@ -906,6 +906,10 @@ public final class UIUtil {
     return JBColor.namedColor("Label.disabledForeground", JBColor.GRAY);
   }
 
+  public static @NotNull Color getLabelInfoForeground() {
+    return JBColor.namedColor("Label.infoForeground", new JBColor(Gray._120, Gray._135));
+  }
+
   public static @NotNull Color getContextHelpForeground() {
     return JBUI.CurrentTheme.ContextHelp.FOREGROUND;
   }
@@ -1166,13 +1170,6 @@ public final class UIUtil {
   public static @NotNull Icon getTreeSelectedExpandedIcon() {
     Icon icon = UIManager.getIcon("Tree.expandedSelectedIcon");
     return icon != null ? icon : getTreeExpandedIcon();
-  }
-
-  @SuppressWarnings("MissingDeprecatedAnnotation")
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public static Border getTableHeaderCellBorder() {
-    return UIManager.getBorder("TableHeader.cellBorder");
   }
 
   public static Color getWindowColor() {
@@ -2592,16 +2589,37 @@ public final class UIUtil {
     return false;
   }
 
+  public static void runWhenVisibilityChanged(@NotNull Component component, Runnable runnable) {
+    component.addComponentListener(new ComponentAdapter() {
+      @Override
+      public void componentShown(ComponentEvent e) {
+        runnable.run();
+      }
+
+      @Override
+      public void componentHidden(ComponentEvent e) {
+        runnable.run();
+      }
+    });
+  }
+
   public static @Nullable JComponent mergeComponentsWithAnchor(PanelWithAnchor @NotNull ... panels) {
     return mergeComponentsWithAnchor(Arrays.asList(panels));
   }
 
   public static @Nullable JComponent mergeComponentsWithAnchor(@NotNull Collection<? extends PanelWithAnchor> panels) {
+    return mergeComponentsWithAnchor(panels, false);
+  }
+
+  public static @Nullable JComponent mergeComponentsWithAnchor(@NotNull Collection<? extends PanelWithAnchor> panels, boolean visibleOnly) {
     JComponent maxWidthAnchor = null;
     int maxWidth = 0;
     for (PanelWithAnchor panel : panels) {
-      JComponent anchor = panel != null ? panel.getAnchor() : null;
+      if (visibleOnly && (panel instanceof JComponent) && !((JComponent)panel).isVisible())
+        continue;
+      JComponent anchor = panel != null ? panel.getOwnAnchor() : null;
       if (anchor != null) {
+        panel.setAnchor(null); // to get own preferred size
         int anchorWidth = anchor.getPreferredSize().width;
         if (maxWidth < anchorWidth) {
           maxWidth = anchorWidth;
@@ -2612,6 +2630,10 @@ public final class UIUtil {
     for (PanelWithAnchor panel : panels) {
       if (panel != null) {
         panel.setAnchor(maxWidthAnchor);
+        if (panel instanceof JComponent) {
+          ((JComponent)panel).revalidate();
+          ((JComponent)panel).repaint();
+        }
       }
     }
     return maxWidthAnchor;
@@ -2629,6 +2651,12 @@ public final class UIUtil {
       if (c instanceof JComponent) {
         ((JComponent)c).setOpaque(opaque);
       }
+    });
+  }
+
+  public static void setEnabledRecursively(@NotNull Component component, boolean enabled) {
+    forEachComponentInHierarchy(component, c -> {
+      c.setEnabled(enabled);
     });
   }
 
@@ -3350,20 +3378,20 @@ public final class UIUtil {
     return getTableSelectionForeground(true);
   }
 
-  /**
-   * @deprecated use {@link JreHiDpiUtil#isJreHiDPIEnabled()}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public static boolean isJreHiDPIEnabled() {
-    return JreHiDpiUtil.isJreHiDPIEnabled();
-  }
-
   public static void doNotScrollToCaret(@NotNull JTextComponent textComponent) {
     textComponent.setCaret(new DefaultCaret() {
       @Override
-      protected void adjustVisibility(Rectangle nloc) {}
+      protected void adjustVisibility(Rectangle nloc) { }
     });
+  }
+
+  public static void convertToLabel(@NotNull JEditorPane editorPane) {
+    editorPane.setEditable(false);
+    editorPane.setFocusable(false);
+    editorPane.setOpaque(false);
+    editorPane.setBorder(null);
+    editorPane.setContentType("text/html");
+    editorPane.setEditorKit(getHTMLEditorKit());
   }
 
   /**
@@ -3574,5 +3602,17 @@ public final class UIUtil {
     });
     ObjectUtils.consumeIfCast(focusOwner.getParent(), JTable.class, table -> TableUtil.stopEditing(table));
     ObjectUtils.consumeIfCast(focusOwner.getParent(), JTree.class, tree -> tree.stopEditing());
+  }
+
+  public static String colorToHex(final Color color) {
+    return to2DigitsHex(color.getRed())
+           + to2DigitsHex(color.getGreen())
+           + to2DigitsHex(color.getBlue());
+  }
+
+  private static String to2DigitsHex(int i) {
+    String s = Integer.toHexString(i);
+    if (s.length() < 2) s = "0" + s;
+    return s;
   }
 }

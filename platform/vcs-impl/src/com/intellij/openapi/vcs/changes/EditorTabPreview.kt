@@ -7,7 +7,6 @@ import com.intellij.diff.editor.DiffEditorTabFilesManager
 import com.intellij.diff.editor.DiffVirtualFile
 import com.intellij.diff.impl.DiffRequestProcessor
 import com.intellij.diff.util.DiffUserDataKeysEx
-import com.intellij.ide.actions.SplitAction
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.ListSelection
 import com.intellij.openapi.actionSystem.ActionManager
@@ -15,13 +14,11 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Disposer.isDisposed
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
@@ -38,7 +35,7 @@ import kotlin.streams.toList
 
 abstract class EditorTabPreview(protected val diffProcessor: DiffRequestProcessor) : DiffPreview {
   protected val project get() = diffProcessor.project!!
-  private val previewFile = EditorTabDiffPreviewVirtualFile(this)
+  protected val previewFile: PreviewDiffVirtualFile = EditorTabDiffPreviewVirtualFile(this)
   private val updatePreviewQueue =
     MergingUpdateQueue("updatePreviewQueue", 100, true, null, diffProcessor).apply {
       setRestartTimerOnAdd(true)
@@ -47,12 +44,6 @@ abstract class EditorTabPreview(protected val diffProcessor: DiffRequestProcesso
 
   var escapeHandler: Runnable? = null
 
-  fun openWithDoubleClick(tree: ChangesTree) {
-    installDoubleClickHandler(tree)
-    installEnterKeyHandler(tree)
-    installSelectionChangedHandler(tree) { updatePreview(false) }
-  }
-
   fun installListeners(tree: ChangesTree, isOpenEditorDiffPreviewWithSingleClick: Boolean) {
     installDoubleClickHandler(tree)
     installEnterKeyHandler(tree)
@@ -60,11 +51,11 @@ abstract class EditorTabPreview(protected val diffProcessor: DiffRequestProcesso
       //do not open file aggressively on start up, do it later
       DumbService.getInstance(project).smartInvokeLater {
         if (isDisposed(updatePreviewQueue)) return@smartInvokeLater
-        installSelectionHandler(tree, isOpenEditorDiffPreviewWithSingleClick)
+        installSelectionHandler(tree, true)
       }
     }
     else {
-      installSelectionHandler(tree, isOpenEditorDiffPreviewWithSingleClick)
+      installSelectionHandler(tree, false)
     }
   }
 
@@ -130,7 +121,6 @@ abstract class EditorTabPreview(protected val diffProcessor: DiffRequestProcesso
   override fun updatePreview(fromModelRefresh: Boolean) {
     if (isPreviewOpen()) {
       updatePreviewProcessor?.refresh(false)
-      FileEditorManagerEx.getInstanceEx(project).updateFilePresentation(previewFile)
     }
     else {
       updatePreviewProcessor?.clear()
@@ -164,7 +154,6 @@ abstract class EditorTabPreview(protected val diffProcessor: DiffRequestProcesso
     init {
       // EditorTabDiffPreviewProvider does not create new processor, so general assumptions of DiffVirtualFile are violated
       preview.diffProcessor.putContextUserData(DiffUserDataKeysEx.DIFF_IN_EDITOR_WITH_EXPLICIT_DISPOSABLE, true)
-      putUserData(SplitAction.FORBID_TAB_SPLIT, true)
     }
   }
 
@@ -194,7 +183,7 @@ private class EditorTabDiffPreviewProvider(
 
   override fun getOwner(): Any = this
 
-  override fun getEditorTabName(): @Nls String = tabNameProvider().orEmpty()
+  override fun getEditorTabName(processor: DiffRequestProcessor?): @Nls String = tabNameProvider().orEmpty()
 
   override fun createDiffRequestChain(): DiffRequestChain? {
     if (diffProcessor is ChangeViewDiffRequestProcessor) {

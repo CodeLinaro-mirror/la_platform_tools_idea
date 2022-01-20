@@ -136,7 +136,7 @@ public class AnalysisScope {
     myModule = null;
     myModules = null;
     myScope = null;
-    CompactVirtualFileSet files = new CompactVirtualFileSet(virtualFiles);
+    VirtualFileSet files = VfsUtilCore.createCompactVirtualFileSet(virtualFiles);
     files.freeze();
     myVFiles = files;
     myType = VIRTUAL_FILES;
@@ -217,7 +217,7 @@ public class AnalysisScope {
 
   @NotNull
   protected Set<VirtualFile> createFilesSet() {
-    CompactVirtualFileSet fileSet = new CompactVirtualFileSet();
+    VirtualFileSet fileSet = VfsUtilCore.createCompactVirtualFileSet();
     switch (myType) {
       case FILE:
         fileSet.add(((PsiFileSystemItem)myElement).getVirtualFile());
@@ -569,7 +569,8 @@ public class AnalysisScope {
 
   public void invalidate() {
     if (myType == VIRTUAL_FILES) {
-      CompactVirtualFileSet files = new CompactVirtualFileSet(ContainerUtil.filter(myVFiles, virtualFile -> virtualFile != null && virtualFile.isValid()));
+      List<? extends VirtualFile> valid = ContainerUtil.filter(myVFiles, virtualFile -> virtualFile != null && virtualFile.isValid());
+      VirtualFileSet files = VfsUtilCore.createCompactVirtualFileSet(valid);
       files.freeze();
       myVFiles = files;
     }
@@ -682,7 +683,7 @@ public class AnalysisScope {
       case FILE:
         return GlobalSearchScope.fileScope((PsiFile)myElement);
       case INVALID:
-        return GlobalSearchScope.EMPTY_SCOPE;
+        return LocalSearchScope.EMPTY;
       case MODULE:
         GlobalSearchScope moduleScope = GlobalSearchScope.moduleScope(myModule);
         return myIncludeTestSource ? moduleScope : GlobalSearchScope.notScope(GlobalSearchScopesCore.projectTestScope(myModule.getProject())).intersectWith(moduleScope);
@@ -709,7 +710,7 @@ public class AnalysisScope {
         };
       default:
         LOG.error("invalid type " + myType);
-        return GlobalSearchScope.EMPTY_SCOPE;
+        return LocalSearchScope.EMPTY;
     }
   }
 

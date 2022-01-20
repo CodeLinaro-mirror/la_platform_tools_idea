@@ -9,6 +9,7 @@ import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.LinkMap
 import org.intellij.markdown.parser.MarkdownParser
 import org.intellij.plugins.markdown.lang.parser.MarkdownParserManager
+import org.intellij.plugins.markdown.ui.preview.html.links.IntelliJImageGeneratingProvider
 import org.jetbrains.annotations.NonNls
 import java.io.File
 import java.math.BigInteger
@@ -32,10 +33,11 @@ object MarkdownUtil {
 
     val linkMap = LinkMap.buildLinkMap(parsedTree, text)
     val map = MarkdownParserManager.FLAVOUR.createHtmlGeneratingProviders(linkMap, baseUri).toMutableMap()
-    map.putAll(MarkdownParserManager.CODE_FENCE_PLUGIN_FLAVOUR.createHtmlGeneratingProviders(cacheCollector))
+    map.putAll(MarkdownParserManager.CODE_FENCE_PLUGIN_FLAVOUR.createHtmlGeneratingProviders(cacheCollector, project, file))
     if (project != null) {
       map[MarkdownElementTypes.IMAGE] = IntelliJImageGeneratingProvider(linkMap, baseUri)
       map[MarkdownElementTypes.PARAGRAPH] = ParagraphGeneratingProvider()
+      map[MarkdownElementTypes.CODE_SPAN] = CodeSpanRunnerGeneratingProvider(map[MarkdownElementTypes.CODE_SPAN]!!, project, file)
     }
 
     val html = HtmlGenerator(text, parsedTree, map, true).generateHtml()

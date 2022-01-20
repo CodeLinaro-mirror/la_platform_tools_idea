@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.impl
 
 import com.intellij.ProjectTopics
 import com.intellij.configurationStore.*
 import com.intellij.execution.*
 import com.intellij.execution.configurations.*
+import com.intellij.execution.runToolbar.RunToolbarSlotManager
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.execution.runners.ExecutionUtil
 import com.intellij.execution.runners.ProgramRunner
@@ -138,7 +139,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   // When readExternal not all configuration may be loaded, so we need to remember the selected configuration
   // so that when it is eventually loaded, we can mark is as a selected.
   // See also notYetAppliedInitialSelectedConfigurationId, which helps when the initially selected RC is stored in some arbitrary *.run.xml file in project
-  private var selectedConfigurationId: String? = null
+  protected open var selectedConfigurationId: String? = null
   // RCs stored in arbitrary *.run.xml files are loaded a bit later than RCs from workspace and from .idea/runConfigurations.
   // This var helps if initially selected RC is a one from such file.
   // Empty string means that there's no information about initially selected RC in workspace.xml => IDE should select any.
@@ -225,6 +226,14 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     })
 
     BeforeRunTaskProvider.EP_NAME.getPoint(project).addChangeListener(stringIdToBeforeRunProvider::drop, project)
+  }
+
+  override fun shouldSetRunConfigurationFromContext(): Boolean {
+    return Registry.`is`("select.run.configuration.from.context") && !isRunWidgetActive()
+  }
+
+  override fun isRunWidgetActive(): Boolean {
+    return RunToolbarSlotManager.getInstance(project).active
   }
 
   private fun clearSelectedConfigurationIcon() {
@@ -357,7 +366,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     removeConfigurations(deletedRunConfigs, deleteFileIfStoredInArbitraryFile = false)
 
     for (filePath in updatedFilePaths) {
-      val deletedAndAddedRunConfigs = lock.write { rcInArbitraryFileManager.loadChangedRunConfigsFromFile(this, filePath) }
+      val deletedAndAddedRunConfigs = lock.read { rcInArbitraryFileManager.loadChangedRunConfigsFromFile(this, filePath) }
 
       for (runConfig in deletedAndAddedRunConfigs.addedRunConfigs) {
         addConfiguration(runConfig)
@@ -372,14 +381,14 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
             // Project is being loaded. Finally we can set the right RC as 'selected' in the RC combo box.
             // Need to set selectedConfiguration in EDT to avoid deadlock with ExecutionTargetManagerImpl or similar implementations of runConfigurationSelected()
             StartupManager.getInstance(project).runAfterOpened {
-              ModalityUiUtil.invokeLaterIfNeeded(Runnable {
+              ModalityUiUtil.invokeLaterIfNeeded(ModalityState.NON_MODAL, project.disposed, Runnable {
                 // Empty string means that there's no information about initially selected RC in workspace.xml
                 // => IDE should select any if still none selected (CLion could have set the selected RC itself).
                 if (selectedConfiguration == null || notYetAppliedInitialSelectedConfigurationId != "") {
                   selectedConfiguration = runConfig
                 }
                 notYetAppliedInitialSelectedConfigurationId = null
-              }, ModalityState.NON_MODAL, project.disposed)
+              })
             }
           }
         }
@@ -573,6 +582,11 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
       eventPublisher.runConfigurationSelected(value)
     }
+
+  internal fun isFileContainsRunConfiguration(file: VirtualFile): Boolean {
+    val runConfigs = lock.read { rcInArbitraryFileManager.getRunConfigsFromFiles(listOf(file.path)) }
+    return runConfigs.isNotEmpty()
+  }
 
   internal fun selectConfigurationStoredInFile(file: VirtualFile) {
     val runConfigs = lock.read { rcInArbitraryFileManager.getRunConfigsFromFiles(listOf(file.path)) }
@@ -848,8 +862,12 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     if (selectedConfiguration == null) {
       // Empty string means that there's no information about initially selected RC in workspace.xml => IDE should select any.
       notYetAppliedInitialSelectedConfigurationId = selectedConfigurationId ?: ""
-      selectedConfiguration = allSettings.firstOrNull { it.type.isManaged }
+      selectAnyConfiguration()
     }
+  }
+
+  private fun selectAnyConfiguration() {
+    selectedConfiguration = allSettings.firstOrNull { it.type.isManaged }
   }
 
   fun readContext(parentNode: Element) {
@@ -1019,7 +1037,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
     tempConfiguration.isTemporary = true
     addConfiguration(tempConfiguration)
-    if (Registry.`is`("select.run.configuration.from.context")) {
+    if (shouldSetRunConfigurationFromContext()) {
       selectedConfiguration = tempConfiguration
     }
   }
@@ -1251,7 +1269,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
     }
 
     if (selectedConfigurationWasRemoved) {
-      selectedConfiguration = null
+      selectAnyConfiguration()
     }
 
     removed.forEach { eventPublisher.runConfigurationRemoved(it) }

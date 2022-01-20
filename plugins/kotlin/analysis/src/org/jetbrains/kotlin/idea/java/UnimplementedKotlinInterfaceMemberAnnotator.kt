@@ -4,14 +4,13 @@ package org.jetbrains.kotlin.idea.java
 
 import com.intellij.codeInsight.ClassUtil.getAnyMethodToImplement
 import com.intellij.codeInsight.daemon.JavaErrorBundle
-import com.intellij.codeInsight.daemon.JavaErrorMessages
-import com.intellij.codeInsight.daemon.impl.analysis.HighlightNamesUtil.getClassDeclarationTextRange
+import com.intellij.codeInsight.daemon.impl.analysis.HighlightNamesUtil
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightUtil
 import com.intellij.codeInsight.daemon.impl.analysis.JavaHighlightUtil
 import com.intellij.codeInsight.intention.QuickFixFactory
-import com.intellij.lang.annotation.Annotation
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
+import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.psi.*
 import org.jetbrains.kotlin.asJava.KtLightClassMarker
 import org.jetbrains.kotlin.asJava.classes.KtLightClassForSourceDeclaration
@@ -31,11 +30,6 @@ class UnimplementedKotlinInterfaceMemberAnnotator : Annotator {
 
         if (element.isInterface || element.hasModifierProperty(PsiModifier.ABSTRACT)) return
 
-        val jvmDefaultMode = element.languageVersionSettings.getFlag(JvmAnalysisFlags.jvmDefaultMode)
-        if (jvmDefaultMode == JvmDefaultMode.ALL_COMPATIBILITY || jvmDefaultMode == JvmDefaultMode.ALL_INCOMPATIBLE) {
-            return
-        }
-
         if (getAnyMethodToImplement(element) != null) return // reported by java default annotator
 
         findUnimplementedMethod(element)?.let {
@@ -54,14 +48,33 @@ class UnimplementedKotlinInterfaceMemberAnnotator : Annotator {
         val kotlinSuperClass = generateSequence(psiClass) { it.superClass }.firstOrNull { it is KtLightClassForSourceDeclaration }
 
         val signaturesVisibleThroughKotlinSuperClass = kotlinSuperClass?.visibleSignatures ?: emptyList()
-        return signaturesFromKotlinInterfaces.firstOrNull {
-            it !in signaturesVisibleThroughKotlinSuperClass &&
-                    !it.method.isBinaryOrigin &&
-                    it.method.modifierList.annotations.none { annotation ->
-                        val qualifiedName = annotation.qualifiedName
-                        qualifiedName == JVM_DEFAULT_FQ_NAME.asString() || qualifiedName == JVM_STATIC_ANNOTATION_FQ_NAME.asString()
-                    }
-        }?.method as? KtLightMethod
+        return signaturesFromKotlinInterfaces
+            .firstOrNull { shouldBeImplemented(it, signaturesVisibleThroughKotlinSuperClass) }
+            ?.method as? KtLightMethod
+    }
+
+    private fun shouldBeImplemented(
+        method: HierarchicalMethodSignature,
+        signaturesVisibleThroughKotlinSuperClass: Collection<HierarchicalMethodSignature>
+    ): Boolean {
+        if (method in signaturesVisibleThroughKotlinSuperClass) return false
+
+        val psiMethod = method.method
+        if (psiMethod.isBinaryOrigin) return false
+
+        val hasJvmDefaultOrJvmStatic = psiMethod.modifierList.annotations.any { annotation ->
+            val qualifiedName = annotation.qualifiedName
+            qualifiedName == JVM_DEFAULT_FQ_NAME.asString() || qualifiedName == JVM_STATIC_ANNOTATION_FQ_NAME.asString()
+        }
+
+        if (hasJvmDefaultOrJvmStatic) return false
+
+        val jvmDefaultMode = psiMethod.languageVersionSettings.getFlag(JvmAnalysisFlags.jvmDefaultMode)
+        if (jvmDefaultMode == JvmDefaultMode.ALL_COMPATIBILITY || jvmDefaultMode == JvmDefaultMode.ALL_INCOMPATIBLE) {
+            return false
+        }
+
+        return true
     }
 
     private val PsiMethod.isBinaryOrigin get() = (containingClass as? KtLightClassMarker)?.originKind == LightClassOriginKind.BINARY
@@ -72,17 +85,15 @@ class UnimplementedKotlinInterfaceMemberAnnotator : Annotator {
             key, HighlightUtil.formatClass(psiClass, false), JavaHighlightUtil.formatMethod(method),
             HighlightUtil.formatClass(method.containingClass, false)
         )
-        val errorAnnotation = holder.createErrorAnnotation(getClassDeclarationTextRange(psiClass), message)
-        registerFixes(errorAnnotation, psiClass)
-    }
-
-    private fun registerFixes(errorAnnotation: Annotation, psiClass: PsiClass) {
         val quickFixFactory = QuickFixFactory.getInstance()
+        var error = holder.newAnnotation(HighlightSeverity.ERROR, message)
+            .range(HighlightNamesUtil.getClassDeclarationTextRange(psiClass))
+            .withFix(quickFixFactory.createImplementMethodsFix(psiClass))
         // this code is untested
         // see com.intellij.codeInsight.daemon.impl.analysis.HighlightClassUtil.checkClassWithAbstractMethods
-        errorAnnotation.registerFix(quickFixFactory.createImplementMethodsFix(psiClass))
         if (psiClass !is PsiAnonymousClass && psiClass.modifierList?.hasExplicitModifier(PsiModifier.FINAL) != true) {
-            errorAnnotation.registerFix(quickFixFactory.createModifierListFix(psiClass, PsiModifier.ABSTRACT, true, false))
+            error = error.withFix(quickFixFactory.createModifierListFix(psiClass, PsiModifier.ABSTRACT, true, false))
         }
+        error.create()
     }
 }

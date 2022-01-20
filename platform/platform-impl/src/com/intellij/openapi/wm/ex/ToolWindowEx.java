@@ -7,7 +7,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowType;
 import com.intellij.openapi.wm.impl.InternalDecorator;
-import org.jetbrains.annotations.ApiStatus;
+import com.intellij.util.ui.StatusText;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,6 +29,10 @@ public interface ToolWindowEx extends ToolWindow {
 
   void stretchHeight(int value);
 
+  default boolean canCloseContents() {
+    return false;
+  }
+
   @NotNull InternalDecorator getDecorator();
 
   void setAdditionalGearActions(@Nullable ActionGroup additionalGearActions);
@@ -47,14 +51,6 @@ public interface ToolWindowEx extends ToolWindow {
 
   @Nullable
   default ToolWindowDecoration getDecoration() { return null; }
-
-  /**
-   * @deprecated Not used.
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  default void setUseLastFocusedOnActivation(@SuppressWarnings("unused") boolean focus) {
-  }
 
   final class Border extends EmptyBorder {
     public Border() {
@@ -84,4 +80,8 @@ public interface ToolWindowEx extends ToolWindow {
     }
   }
 
+  @Nullable
+  default StatusText getEmptyText() {
+    return null;
+  }
 }

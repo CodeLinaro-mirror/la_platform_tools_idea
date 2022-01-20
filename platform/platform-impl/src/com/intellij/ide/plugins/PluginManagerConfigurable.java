@@ -1,6 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins;
 
+import com.intellij.application.options.RegistryManager;
 import com.intellij.execution.process.ProcessIOExecutorService;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.icons.AllIcons;
@@ -8,8 +9,10 @@ import com.intellij.ide.CopyProvider;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.plugins.certificates.PluginCertificateManager;
+import com.intellij.ide.plugins.enums.PluginsGroupType;
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests;
 import com.intellij.ide.plugins.newui.*;
+import com.intellij.ide.plugins.org.PluginManagerFilters;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationInfo;
@@ -61,12 +64,13 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author Alexander Lobas
@@ -126,6 +130,7 @@ public final class PluginManagerConfigurable
   private boolean myInstalledSearchSetState = true;
 
   private String myLaterSearchQuery;
+  private boolean myShowMarketplaceTab;
 
   public PluginManagerConfigurable(@Nullable Project project) {
     myPluginModel = new MyPluginModel(project);
@@ -343,8 +348,8 @@ public final class PluginManagerConfigurable
         MultiSelectionEventHandler eventHandler = new MultiSelectionEventHandler();
         myMarketplacePanel = new PluginsGroupComponentWithProgress(eventHandler) {
           @Override
-          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor) {
-            return new ListPluginComponent(myPluginModel, descriptor, mySearchListener, true);
+          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor, @NotNull PluginsGroup group) {
+            return new ListPluginComponent(myPluginModel, descriptor, group, mySearchListener, true);
           }
         };
 
@@ -361,13 +366,34 @@ public final class PluginManagerConfigurable
             Map<String, List<PluginNode>> customRepositoriesMap = CustomPluginRepositoryService.getInstance()
               .getCustomRepositoryPluginMap();
             try {
-              addGroupViaLightDescriptor(groups, IdeBundle.message("plugins.configurable.featured"), "is_featured_search=true",
-                                         "/sortBy:featured");
-              addGroupViaLightDescriptor(groups, IdeBundle.message("plugins.configurable.new.and.updated"), "orderBy=update+date",
-                                         "/sortBy:updated");
-              addGroupViaLightDescriptor(groups, IdeBundle.message("plugins.configurable.top.downloads"), "orderBy=downloads",
-                                         "/sortBy:downloads");
-              addGroupViaLightDescriptor(groups, IdeBundle.message("plugins.configurable.top.rated"), "orderBy=rating", "/sortBy:rating");
+              addGroupViaLightDescriptor(
+                groups,
+                IdeBundle.message("plugins.configurable.featured"),
+                PluginsGroupType.FEATURED,
+                "is_featured_search=true",
+                "/sortBy:featured"
+              );
+              addGroupViaLightDescriptor(
+                groups,
+                IdeBundle.message("plugins.configurable.new.and.updated"),
+                PluginsGroupType.NEW_AND_UPDATED,
+                "orderBy=update+date",
+                "/sortBy:updated"
+              );
+              addGroupViaLightDescriptor(
+                groups,
+                IdeBundle.message("plugins.configurable.top.downloads"),
+                PluginsGroupType.TOP_DOWNLOADS,
+                "orderBy=downloads",
+                "/sortBy:downloads"
+              );
+              addGroupViaLightDescriptor(
+                groups,
+                IdeBundle.message("plugins.configurable.top.rated"),
+                PluginsGroupType.TOP_RATED,
+                "orderBy=rating",
+                "/sortBy:rating"
+              );
             }
             catch (IOException e) {
               LOG.info("Main plugin repository is not available ('" + e.getMessage() + "'). Please check your network settings.");
@@ -378,6 +404,7 @@ public final class PluginManagerConfigurable
               if (allDescriptors != null) {
                 addGroup(groups,
                          IdeBundle.message("plugins.configurable.repository.0", host),
+                         PluginsGroupType.CUSTOM_REPOSITORY,
                          "/repository:\"" + host + "\"",
                          allDescriptors,
                          group -> {
@@ -630,8 +657,8 @@ public final class PluginManagerConfigurable
 
         PluginsGroupComponentWithProgress panel = new PluginsGroupComponentWithProgress(eventHandler) {
           @Override
-          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor) {
-            return new ListPluginComponent(myPluginModel, descriptor, mySearchListener, true);
+          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor, @NotNull PluginsGroup group) {
+            return new ListPluginComponent(myPluginModel, descriptor, group, mySearchListener, true);
           }
         };
 
@@ -639,7 +666,7 @@ public final class PluginManagerConfigurable
         registerCopyProvider(panel);
 
         myMarketplaceSearchPanel =
-          new SearchResultPanel(marketplaceController, panel, 0, 0) {
+          new SearchResultPanel(marketplaceController, panel, true, 0, 0) {
             @Override
             protected void handleQuery(@NotNull String query, @NotNull PluginsGroup result) {
               try {
@@ -756,8 +783,8 @@ public final class PluginManagerConfigurable
         MultiSelectionEventHandler eventHandler = new MultiSelectionEventHandler();
         myInstalledPanel = new PluginsGroupComponent(eventHandler) {
           @Override
-          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor) {
-            return new ListPluginComponent(myPluginModel, descriptor, mySearchListener, false);
+          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor, @NotNull PluginsGroup group) {
+            return new ListPluginComponent(myPluginModel, descriptor, group, mySearchListener, false);
           }
         };
 
@@ -770,7 +797,7 @@ public final class PluginManagerConfigurable
         try {
           PluginLogo.startBatchMode();
 
-          PluginsGroup installing = new PluginsGroup(IdeBundle.message("plugins.configurable.installing"));
+          PluginsGroup installing = new PluginsGroup(IdeBundle.message("plugins.configurable.installing"), PluginsGroupType.INSTALLING);
           installing.descriptors.addAll(MyPluginModel.getInstallingPlugins());
           if (!installing.descriptors.isEmpty()) {
             installing.sortByName();
@@ -778,42 +805,20 @@ public final class PluginManagerConfigurable
             myInstalledPanel.addGroup(installing);
           }
 
-          PluginsGroup downloaded = new PluginsGroup(IdeBundle.message("plugins.configurable.downloaded"));
+          PluginsGroup downloaded = new PluginsGroup(IdeBundle.message("plugins.configurable.downloaded"), PluginsGroupType.INSTALLED);
           downloaded.descriptors.addAll(InstalledPluginsState.getInstance().getInstalledPlugins());
 
-          Map<@NlsSafe String, List<IdeaPluginDescriptor>> bundledGroups = new HashMap<>();
-          ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
-          int downloadedEnabled = 0;
-          boolean hideImplDetails = PluginManager.getInstance().hideImplementationDetails();
-          String otherCategoryTitle = IdeBundle.message("plugins.configurable.other.bundled");
+          Map<Boolean, List<IdeaPluginDescriptorImpl>> visiblePlugins = getVisiblePlugins()
+            .collect(Collectors.partitioningBy(IdeaPluginDescriptorImpl::isBundled));
 
-          for (IdeaPluginDescriptor descriptor : PluginManagerCore.getPlugins()) {
-            if (!appInfo.isEssentialPlugin(descriptor.getPluginId())) {
-              if (descriptor.isBundled()) {
-                if (hideImplDetails && descriptor.isImplementationDetail()) {
-                  continue;
-                }
-                String category = StringUtil.defaultIfEmpty(descriptor.getCategory(), otherCategoryTitle);
-                List<IdeaPluginDescriptor> groupDescriptors = bundledGroups.get(category);
-                if (groupDescriptors == null) {
-                  bundledGroups.put(category, groupDescriptors = new ArrayList<>());
-                }
-                groupDescriptors.add(descriptor);
-              }
-              else {
-                downloaded.descriptors.add(descriptor);
-                if (descriptor.isEnabled()) {
-                  downloadedEnabled++;
-                }
-              }
-            }
-          }
+          List<IdeaPluginDescriptorImpl> nonBundledPlugins = visiblePlugins.get(Boolean.FALSE);
+          downloaded.descriptors.addAll(nonBundledPlugins);
 
           if (!downloaded.descriptors.isEmpty()) {
             myUpdateAll.setListener(new LinkListener<>() {
               @Override
               public void linkSelected(LinkLabel<Object> aSource, Object aLinkData) {
-                myUpdateAll.setEnabled(false);
+                aSource.setEnabled(false);
 
                 for (UIPluginGroup group : getInstalledGroups()) {
                   for (ListPluginComponent plugin : group.plugins) {
@@ -823,51 +828,32 @@ public final class PluginManagerConfigurable
               }
             }, null);
             downloaded.addRightAction(myUpdateAll);
-
             downloaded.addRightAction(myUpdateCounter);
-
             downloaded.sortByName();
-            downloaded.titleWithCount(downloadedEnabled);
+
+            long enabledNonBundledCount = nonBundledPlugins.stream()
+              .map(IdeaPluginDescriptorImpl::getPluginId)
+              .filter(descriptor -> !PluginManagerCore.isDisabled(descriptor))
+              .count();
+            downloaded.titleWithCount(Math.toIntExact(enabledNonBundledCount));
             myInstalledPanel.addGroup(downloaded);
             myPluginModel.addEnabledGroup(downloaded);
           }
 
           myPluginModel.setDownloadedGroup(myInstalledPanel, downloaded, installing);
 
-          List<PluginsGroup> groups = new ArrayList<>();
-
-          for (Entry<@NlsSafe String, List<IdeaPluginDescriptor>> entry : bundledGroups.entrySet()) {
-            PluginsGroup group = new PluginsGroup(entry.getKey()) {
-              @Override
-              public void titleWithCount(int enabled) {
-                rightAction.setText(enabled == 0 ? IdeBundle.message("plugins.configurable.enable.all")
-                                                 : IdeBundle.message("plugins.configurable.disable.all"));
-              }
-            };
-            group.descriptors.addAll(entry.getValue());
-            group.sortByName();
-            group.rightAction = new LinkLabel<>(
-              "",
-              null,
-              (__, ___) -> myPluginModel.setEnabledState(group.descriptors,
-                                                         PluginEnableDisableAction
-                                                           .globally(group.rightAction.getText().startsWith("Enable")))
-            );
-            group.titleWithEnabled(myPluginModel);
-            groups.add(group);
-          }
-
-          ContainerUtil.sort(groups, (o1, o2) -> StringUtil.compare(o1.title, o2.title, true));
-          PluginsGroup otherGroup = ContainerUtil.find(groups, group -> group.title.equals(otherCategoryTitle));
-          if (otherGroup != null) {
-            groups.remove(otherGroup);
-            groups.add(otherGroup);
-          }
-
-          for (PluginsGroup group : groups) {
-            myInstalledPanel.addGroup(group);
-            myPluginModel.addEnabledGroup(group);
-          }
+          String defaultCategory = IdeBundle.message("plugins.configurable.other.bundled");
+          visiblePlugins.get(Boolean.TRUE)
+            .stream()
+            .collect(Collectors.groupingBy(descriptor -> StringUtil.notNullize(descriptor.getCategory())))
+            .entrySet()
+            .stream()
+            .map(entry -> new ComparablePluginsGroup(entry.getKey(), defaultCategory, entry.getValue()))
+            .sorted()
+            .forEachOrdered(group -> {
+              myInstalledPanel.addGroup(group);
+              myPluginModel.addEnabledGroup(group);
+            });
 
           myPluginUpdatesService.calculateUpdates(updates -> {
             if (ContainerUtil.isEmpty(updates)) {
@@ -945,8 +931,8 @@ public final class PluginManagerConfigurable
 
         PluginsGroupComponent panel = new PluginsGroupComponent(eventHandler) {
           @Override
-          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor) {
-            return new ListPluginComponent(myPluginModel, descriptor, mySearchListener, false);
+          protected @NotNull ListPluginComponent createListComponent(@NotNull IdeaPluginDescriptor descriptor, @NotNull PluginsGroup group) {
+            return new ListPluginComponent(myPluginModel, descriptor, group, mySearchListener, false);
           }
         };
 
@@ -999,7 +985,7 @@ public final class PluginManagerConfigurable
           }
         };
 
-        myInstalledSearchPanel = new SearchResultPanel(installedController, panel, 0, 0) {
+        myInstalledSearchPanel = new SearchResultPanel(installedController, panel, false, 0, 0) {
           @Override
           protected void setEmptyText(@NotNull String query) {
             myPanel.getEmptyText().setText(IdeBundle.message("plugins.configurable.nothing.found"));
@@ -1146,6 +1132,53 @@ public final class PluginManagerConfigurable
     });
   }
 
+  private final class ComparablePluginsGroup extends PluginsGroup
+    implements Comparable<ComparablePluginsGroup> {
+
+    private final @NotNull @Nls String myDefaultCategory;
+    private boolean myIsEnable = false;
+
+    private ComparablePluginsGroup(@NotNull @NlsSafe String category,
+                                   @NotNull @Nls String defaultCategory,
+                                   @NotNull List<? extends IdeaPluginDescriptor> descriptors) {
+      super(StringUtil.defaultIfEmpty(category, defaultCategory),
+            PluginsGroupType.INSTALLED);
+
+      myDefaultCategory = defaultCategory;
+      this.descriptors.addAll(descriptors);
+      sortByName();
+
+      rightAction = new LinkLabel<>("",
+                                    null,
+                                    (__, ___) -> setEnabledState());
+
+      titleWithEnabled(myPluginModel);
+    }
+
+    @Override
+    public int compareTo(@NotNull ComparablePluginsGroup other) {
+      return myDefaultCategory.equals(title) ? 1 :
+             myDefaultCategory.equals(other.title) ? -1 :
+             StringUtil.compare(title, other.title, true);
+    }
+
+    @Override
+    public void titleWithCount(int enabled) {
+      myIsEnable = enabled == 0;
+      String key = myIsEnable ? "plugins.configurable.enable.all" : "plugins.configurable.disable.all";
+      rightAction.setText(IdeBundle.message(key));
+    }
+
+    private void setEnabledState() {
+      if (myIsEnable) {
+        myPluginModel.enable(descriptors);
+      }
+      else {
+        myPluginModel.disable(descriptors);
+      }
+    }
+  }
+
   private static boolean containsQuery(IdeaPluginDescriptor descriptor, String searchQuery) {
     if (StringUtil.containsIgnoreCase(descriptor.getName(), searchQuery)) return true;
 
@@ -1219,15 +1252,6 @@ public final class PluginManagerConfigurable
         else if (!tags.contains(Tags.Paid.name())) {
           tags = new ArrayList<>(tags);
           tags.add(Tags.Paid.name());
-        }
-      }
-      else {
-        if (!LicensePanel.isEA2Product(plugin.getPluginId().getIdString()) &&
-            tags != null && tags.contains(Tags.Paid.name())) {
-          return List.of(Tags.Paid.name());
-        }
-        else {
-          tags = null;
         }
       }
     }
@@ -1316,6 +1340,18 @@ public final class PluginManagerConfigurable
     return IdeBundle.message("ide.restart.required.message",
                              action,
                              ApplicationNamesInfo.getInstance().getFullProductName());
+  }
+
+  @ApiStatus.Internal
+  public static @NotNull Stream<IdeaPluginDescriptorImpl> getVisiblePlugins() {
+    ApplicationInfoEx applicationInfo = ApplicationInfoEx.getInstanceEx();
+    boolean showImplementationDetails = RegistryManager.getInstance().is("plugins.show.implementation.details");
+
+    return PluginManagerCore.getPluginSet()
+      .allPlugins
+      .stream()
+      .filter(descriptor -> !applicationInfo.isEssentialPlugin(descriptor.getPluginId()))
+      .filter(descriptor -> showImplementationDetails || !descriptor.isImplementationDetail());
   }
 
   /**
@@ -1526,8 +1562,12 @@ public final class PluginManagerConfigurable
       }
 
       if (!descriptors.isEmpty()) {
-        myPluginModel.setEnabledState(descriptors,
-                                      PluginEnableDisableAction.globally(myEnable));
+        if (myEnable) {
+          myPluginModel.enable(descriptors);
+        }
+        else {
+          myPluginModel.disable(descriptors);
+        }
       }
     }
   }
@@ -1545,10 +1585,11 @@ public final class PluginManagerConfigurable
 
   private void addGroup(@NotNull List<? super PluginsGroup> groups,
                         @NotNull @Nls String name,
+                        @NotNull PluginsGroupType type,
                         @NotNull String showAllQuery,
                         @NotNull List<PluginNode> customPlugins,
                         @NotNull Predicate<? super PluginsGroup> predicate) {
-    PluginsGroup group = new PluginsGroup(name);
+    PluginsGroup group = new PluginsGroup(name, type);
 
     int i = 0;
     for (Iterator<? extends IdeaPluginDescriptor> iterator = customPlugins.iterator();
@@ -1572,11 +1613,13 @@ public final class PluginManagerConfigurable
 
   private void addGroupViaLightDescriptor(@NotNull List<? super PluginsGroup> groups,
                                           @NotNull @Nls String name,
+                                          @NotNull PluginsGroupType type,
                                           @NotNull @NonNls String query,
                                           @NotNull @NonNls String showAllQuery) throws IOException {
     List<PluginNode> pluginNodes = MarketplaceRequests.getInstance().searchPlugins(query, ITEMS_PER_GROUP * 2);
     addGroup(groups,
              name,
+             type,
              showAllQuery,
              pluginNodes,
              __ -> pluginNodes.size() >= ITEMS_PER_GROUP);
@@ -1678,7 +1721,11 @@ public final class PluginManagerConfigurable
     }
 
     return () -> {
-      boolean marketplace = option != null && option.startsWith(SearchWords.TAG.getValue());
+      boolean marketplace = (option != null && option.startsWith(SearchWords.TAG.getValue()));
+      if (myShowMarketplaceTab) {
+        marketplace = true;
+        myShowMarketplaceTab = false;
+      }
       updateSelectionTab(marketplace ? MARKETPLACE_TAB : INSTALLED_TAB);
 
       PluginsTab tab = marketplace ? myMarketplaceTab : myInstalledTab;
@@ -1690,11 +1737,23 @@ public final class PluginManagerConfigurable
     };
   }
 
+  public void openMarketplaceTab(@NotNull String option) {
+    myLaterSearchQuery = option;
+    myShowMarketplaceTab = true;
+  }
+
   private final class InstallFromDiskAction extends DumbAwareAction {
-    private InstallFromDiskAction() {super(IdeBundle.messagePointer("action.InstallFromDiskAction.text"));}
+    private InstallFromDiskAction() {
+      super(IdeBundle.messagePointer("action.InstallFromDiskAction.text"));
+    }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
+      if (!PluginManagerFilters.getInstance().allowInstallFromDisk()) {
+        Messages.showErrorDialog(e.getProject(), IdeBundle.message("action.InstallFromDiskAction.not.allowed.description"), IdeBundle.message("action.InstallFromDiskAction.text"));
+        return;
+      }
+
       PluginInstaller.chooseAndInstall(e.getProject(), myCardPanel, (file, parent) ->
         PluginInstaller.installFromDisk(myPluginModel, myPluginModel, file, parent, callbackData -> {
           myPluginModel.pluginInstalledFromDisk(callbackData);

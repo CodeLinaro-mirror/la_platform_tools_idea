@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven;
 
 import com.intellij.application.options.CodeStyle;
@@ -26,17 +26,18 @@ import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.psi.codeStyle.CodeStyleSchemes;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
-import com.intellij.testFramework.CodeStyleSettingsTracker;
-import com.intellij.testFramework.IdeaTestUtil;
-import com.intellij.testFramework.RunAll;
+import com.intellij.testFramework.*;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.ui.UIUtil;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.AsyncPromise;
+import org.jetbrains.concurrency.Promise;
 import org.jetbrains.idea.maven.execution.MavenRunner;
 import org.jetbrains.idea.maven.execution.MavenRunnerParameters;
 import org.jetbrains.idea.maven.execution.MavenRunnerSettings;
+import org.jetbrains.idea.maven.importing.MavenImporter;
 import org.jetbrains.idea.maven.model.MavenArtifact;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
 import org.jetbrains.idea.maven.project.*;
@@ -51,6 +52,8 @@ import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.intellij.testFramework.PlatformTestUtil.waitForPromise;
 
 public abstract class MavenImportingTestCase extends MavenTestCase {
   protected MavenProjectsTree myProjectsTree;
@@ -161,7 +164,7 @@ public abstract class MavenImportingTestCase extends MavenTestCase {
 
   protected void assertExcludes(String moduleName, String... expectedExcludes) {
     ContentEntry contentRoot = getContentRoot(moduleName);
-    doAssertContentFolders(contentRoot, Arrays.asList(contentRoot.getExcludeFolders()), expectedExcludes);
+    doAssertContentFolders(contentRoot, Arrays.asList(contentRoot.getExcludeFolders()), false, expectedExcludes);
   }
 
   protected void assertContentRootExcludes(String moduleName, String contentRoot, String... expectedExcudes) {
@@ -175,6 +178,13 @@ public abstract class MavenImportingTestCase extends MavenTestCase {
   }
 
   private static void doAssertContentFolders(ContentEntry e, final List<? extends ContentFolder> folders, String... expected) {
+    doAssertContentFolders(e, folders, true, expected);
+  }
+
+  private static void doAssertContentFolders(ContentEntry e,
+                                             final List<? extends ContentFolder> folders,
+                                             boolean checkOrder,
+                                             String... expected) {
     List<String> actual = new ArrayList<>();
     for (ContentFolder f : folders) {
       String rootUrl = e.getUrl();
@@ -188,7 +198,11 @@ public abstract class MavenImportingTestCase extends MavenTestCase {
       actual.add(folderUrl);
     }
 
-    assertOrderedElementsAreEqual(actual, Arrays.asList(expected));
+    if (checkOrder) {
+      assertOrderedElementsAreEqual(actual, Arrays.asList(expected));
+    } else {
+      assertUnorderedElementsAreEqual(actual, Arrays.asList(expected));
+    }
   }
 
   protected void assertModuleOutput(String moduleName, String output, String testOutput) {
@@ -412,15 +426,20 @@ public abstract class MavenImportingTestCase extends MavenTestCase {
 
   protected void doImportProjects(final List<VirtualFile> files, boolean failOnReadingError,
                                   List<String> disabledProfiles, String... profiles) {
+    assertFalse(ApplicationManager.getApplication().isWriteAccessAllowed());
     initProjectsManager(false);
 
     readProjects(files, disabledProfiles, profiles);
 
     ApplicationManager.getApplication().invokeAndWait(() -> {
-      myProjectsManager.waitForResolvingCompletion();
       myProjectsManager.scheduleImportInTests(files);
       myProjectsManager.importProjects();
     });
+
+    Promise<?> promise = myProjectsManager.waitForImportCompletion();
+    PlatformTestUtil.waitForPromise(promise);
+
+    
 
     if (failOnReadingError) {
       for (MavenProject each : myProjectsTree.getProjects()) {
@@ -429,13 +448,17 @@ public abstract class MavenImportingTestCase extends MavenTestCase {
     }
   }
 
+  protected void waitForImportCompletion() {
+    edt(() -> waitForPromise(myProjectsManager.waitForImportCompletion()));
+  }
+
   protected void readProjects(List<VirtualFile> files, String... profiles) {
     readProjects(files, Collections.emptyList(), profiles);
   }
 
   protected void readProjects(List<VirtualFile> files, List<String> disabledProfiles, String... profiles) {
     myProjectsManager.resetManagedFilesAndProfilesInTests(files, new MavenExplicitProfiles(Arrays.asList(profiles), disabledProfiles));
-    waitForReadingCompletion();
+    waitForImportCompletion();
   }
 
   protected void updateProjectsAndImport(VirtualFile... files) {

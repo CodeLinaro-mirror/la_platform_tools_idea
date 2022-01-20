@@ -6,8 +6,6 @@ import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.wm.ToolWindowAnchor
 import com.intellij.openapi.wm.ToolWindowAnchor.*
 import com.intellij.openapi.wm.ToolWindowType
-import com.intellij.ui.ComponentUtil
-import com.intellij.ui.JBColor
 import com.intellij.ui.MouseDragHelper
 import com.intellij.ui.ScreenUtil
 import com.intellij.ui.awt.RelativePoint
@@ -68,7 +66,7 @@ internal class ToolWindowDragHelper(parent: @NotNull Disposable,
 
     fun createHighlighterComponent() = object: NonOpaquePanel() {
       override fun paint(g: Graphics) {
-        g.color = JBColor.namedColor("DragAndDrop.areaBackground", 0x3d7dcc, 0x404a57)
+        g.color = JBUI.CurrentTheme.DragAndDrop.Area.BACKGROUND
         g.fillRect(0, 0, width, height)
       }
     }
@@ -91,22 +89,17 @@ internal class ToolWindowDragHelper(parent: @NotNull Disposable,
   }
 
   fun getToolWindow(startScreenPoint: RelativePoint): ToolWindowImpl? {
-    val decorators = ArrayList(ComponentUtil.findComponentsOfType(pane, InternalDecoratorImpl::class.java))
-    for (decorator in decorators) {
-      val bounds = decorator.headerScreenBounds
-      if (bounds != null && bounds.contains(startScreenPoint.screenPoint)) {
-        val point = startScreenPoint.getPoint(decorator)
-        val child = SwingUtilities.getDeepestComponentAt(decorator, point.x, point.y)
-        if (isComponentDraggable(child) && ComponentUtil.findParentByCondition(child) { t -> t is ToolWindowHeader } != null) {
-          if (decorator.toolWindow.anchor != BOTTOM || decorator.locationOnScreen.y <= startScreenPoint.screenPoint.y - ToolWindowsPane.getHeaderResizeArea())
-            return decorator.toolWindow
-        }
-      }
+    val p = startScreenPoint.getPoint(pane)
+    val clickedComponent = SwingUtilities.getDeepestComponentAt(pane, p.x, p.y)
+    if (clickedComponent != null && isComponentDraggable(clickedComponent)) {
+      val decorator = InternalDecoratorImpl.findNearestDecorator(clickedComponent)
+      if (decorator != null &&
+          (decorator.toolWindow.anchor != BOTTOM ||
+           decorator.locationOnScreen.y <= startScreenPoint.screenPoint.y - ToolWindowsPane.getHeaderResizeArea()))
+        return decorator.toolWindow
     }
-    val point = startScreenPoint.getPoint(pane)
-    val component = SwingUtilities.getDeepestComponentAt(pane, point.x, point.y)
-    if (component is StripeButton) {
-      return component.toolWindow
+    if (clickedComponent is StripeButton) {
+      return clickedComponent.toolWindow
     }
     return null
   }
@@ -141,16 +134,19 @@ internal class ToolWindowDragHelper(parent: @NotNull Disposable,
   }
 
   override fun mouseReleased(e: MouseEvent?) {
+    if (getToolWindow() == null) return
     super.mouseReleased(e)
     stopDrag()
   }
 
   override fun processDragOut(event: MouseEvent, dragToScreenPoint: Point, startScreenPoint: Point, justStarted: Boolean) {
+    if (getToolWindow() == null) return
     relocate(event)
     event.consume()
   }
 
   override fun processDragFinish(event: MouseEvent, willDragOutStart: Boolean) {
+    if (getToolWindow() == null) return
     if (willDragOutStart) {
       setDragOut(true)
       return
@@ -175,7 +171,7 @@ internal class ToolWindowDragHelper(parent: @NotNull Disposable,
         if (w is JDialog) {
           val locationOnScreen = event.locationOnScreen
           if (mySourceIsHeader) {
-            val decorator = ComponentUtil.getParentOfType(InternalDecoratorImpl::class.java, window.component)
+            val decorator = InternalDecoratorImpl.findTopLevelDecorator(window.component)
             if (decorator != null) {
               val shift = SwingUtilities.convertPoint(decorator, decorator.location, w)
               locationOnScreen.translate(-shift.x, -shift.y)
@@ -236,7 +232,7 @@ internal class ToolWindowDragHelper(parent: @NotNull Disposable,
   }
 
   override fun processDrag(event: MouseEvent, dragToScreenPoint: Point, startScreenPoint: Point) {
-    if (!checkModifiers(event)) return;
+    if (!checkModifiers(event)) return
     if (isDragJustStarted) {
       startDrag(event)
     }

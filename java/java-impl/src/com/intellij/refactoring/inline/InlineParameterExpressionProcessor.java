@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.inline;
 
 import com.intellij.codeInsight.ExceptionUtil;
@@ -353,7 +353,8 @@ public class InlineParameterExpressionProcessor extends BaseRefactoringProcessor
         } else if (!PsiUtil.isAccessible((PsiMember)element, myMethod, null)) {
           myConflicts.putValue(expression, JavaRefactoringBundle.message("inline.parameter.depends.on.unavailable.value"));
         }
-      } else if (element instanceof PsiParameter) {
+      } else if (element instanceof PsiParameter && 
+                 PsiTreeUtil.isAncestor(((PsiParameter)element).getDeclarationScope(), myInitializer, true)) {
         boolean bound = false;
         for (PsiParameter parameter : myMethod.getParameterList().getParameters()) {
           if (parameter.getType().equals(((PsiParameter)element).getType()) && parameter.getName().equals(((PsiParameter)element).getName())) {

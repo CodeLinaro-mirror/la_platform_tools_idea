@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.builders.java.dependencyView;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -6,10 +6,16 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FileCollectionFactory;
 import com.intellij.util.io.EnumeratorIntegerDescriptor;
-import gnu.trove.*;
+import gnu.trove.TIntHashSet;
+import gnu.trove.TIntIterator;
+import gnu.trove.TIntObjectProcedure;
+import gnu.trove.TIntProcedure;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.builders.storage.BuildDataCorruptedException;
@@ -30,7 +36,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public final class Mappings {
+public class Mappings {
   private final static Logger LOG = Logger.getInstance(Mappings.class);
   public static final String PROCESS_CONSTANTS_NON_INCREMENTAL_PROPERTY = "compiler.process.constants.non.incremental";
   private boolean myProcessConstantsIncrementally = !Boolean.valueOf(System.getProperty(PROCESS_CONSTANTS_NON_INCREMENTAL_PROPERTY, "false"));
@@ -49,7 +55,7 @@ public final class Mappings {
   private boolean myIsDifferentiated = false;
   private boolean myIsRebuild = false;
 
-  private final TIntHashSet myChangedClasses;
+  private final IntSet myChangedClasses;
   private final Set<File> myChangedFiles;
   private final Set<Pair<ClassFileRepr, File>> myDeletedClasses;
   private final Set<ClassRepr> myAddedClasses;
@@ -91,7 +97,7 @@ public final class Mappings {
   private Mappings(final Mappings base) throws IOException {
     myLock = base.myLock;
     myIsDelta = true;
-    myChangedClasses = new TIntHashSet(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR);
+    myChangedClasses = new IntOpenHashSet(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR);
     myChangedFiles = FileCollectionFactory.createCanonicalFileSet();
     myDeletedClasses = new HashSet<>(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR);
     myAddedClasses = new HashSet<>(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR);
@@ -130,17 +136,14 @@ public final class Mappings {
       myRemovedSuperClasses = myIsDelta ? new IntIntTransientMultiMaplet() : null;
       myAddedSuperClasses = myIsDelta ? new IntIntTransientMultiMaplet() : null;
 
-      final BuilderCollectionFactory<String> fileCollectionFactory = new BuilderCollectionFactory<String>() {
-        @Override
-        public Collection<String> create() {
-          return new THashSet<>(FileUtil.PATH_HASHING_STRATEGY); // todo: do we really need set and not a list here?
-        }
-      };
+      final Supplier<Collection<String>> fileCollectionFactory = CollectionFactory::createFilePathSet; // todo: do we really need set and not a list here?
       if (myIsDelta) {
         myClassToSubclasses = new IntIntTransientMultiMaplet();
         myClassToClassDependency = new IntIntTransientMultiMaplet();
         myShortClassNameIndex = null;
-        myRelativeSourceFilePathToClasses = new ObjectObjectTransientMultiMaplet<>(FileUtil.PATH_HASHING_STRATEGY, () -> new THashSet<>(5, DEFAULT_SET_LOAD_FACTOR));
+        myRelativeSourceFilePathToClasses = new ObjectObjectTransientMultiMaplet<>(
+          FileCollectionFactory.FILE_PATH_HASH_STRATEGY, () -> new HashSet<>(5, DEFAULT_SET_LOAD_FACTOR)
+        );
         myClassToRelativeSourceFilePath = new IntObjectTransientMultiMaplet<>(fileCollectionFactory);
       }
       else {
@@ -162,7 +165,7 @@ public final class Mappings {
         );
         myRelativeSourceFilePathToClasses = new ObjectObjectPersistentMultiMaplet<String, ClassFileRepr>(
           DependencyContext.getTableFile(myRootDir, SOURCE_TO_CLASS), PathStringDescriptor.INSTANCE, new ClassFileReprExternalizer(myContext),
-          () -> new THashSet<>(5, DEFAULT_SET_LOAD_FACTOR)
+          () -> new HashSet<>(5, DEFAULT_SET_LOAD_FACTOR)
         ) {
           @NotNull
           @Override
@@ -1465,7 +1468,7 @@ public final class Mappings {
         if (it.isAnnotation()) {
           if (d.defaultRemoved()) {
             debug("Class is annotation, default value is removed => adding annotation query");
-            final TIntHashSet l = new TIntHashSet(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR);
+            IntSet l = new IntOpenHashSet(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR);
             l.add(m.name);
             final UsageRepr.AnnotationUsage annotationUsage = (UsageRepr.AnnotationUsage)UsageRepr
               .createAnnotationUsage(myContext, TypeRepr.createClassType(myContext, it.name), l, null);
@@ -2342,9 +2345,7 @@ public final class Mappings {
           processDisappearedClasses();
 
           final List<FileClasses> newClasses = new ArrayList<>();
-          myDelta.myRelativeSourceFilePathToClasses.forEachEntry(new TObjectObjectProcedure<String, Collection<ClassFileRepr>>() {
-            @Override
-            public boolean execute(String relativeFilePath, Collection<ClassFileRepr> content) {
+          myDelta.myRelativeSourceFilePathToClasses.forEachEntry((relativeFilePath, content) -> {
               File file = toFull(relativeFilePath);
               if (myFilesToCompile == null || myFilesToCompile.contains(file)) {
                 // Consider only files actually compiled in this round.
@@ -2352,8 +2353,7 @@ public final class Mappings {
                 newClasses.add(new FileClasses(file, content));
               }
               return true;
-            }
-          });
+            });
 
           for (final FileClasses compiledFile : newClasses) {
             final File fileName = compiledFile.myFileName;
@@ -2733,8 +2733,6 @@ public final class Mappings {
             myClassToRelativeSourceFilePath.replace(className, sourceFiles);
 
             cleanupBackDependency(className, null, dependenciesTrashBin);
-
-            return true;
           });
 
           delta.getChangedFiles().forEach(fileName -> {
@@ -2747,12 +2745,9 @@ public final class Mappings {
           // In case some of these sources was not compiled, but the class was changed, we need to update
           // sourceToClasses mapping for such sources to include the updated ClassRepr version of the changed class
           Set<File> unchangedSources = FileCollectionFactory.createCanonicalFileSet();
-          delta.myRelativeSourceFilePathToClasses.forEachEntry(new TObjectObjectProcedure<String, Collection<ClassFileRepr>>() {
-            @Override
-            public boolean execute(String source, Collection<ClassFileRepr> b) {
-              unchangedSources.add(toFull(source));
-              return true;
-            }
+          delta.myRelativeSourceFilePathToClasses.forEachEntry((source, b) -> {
+            unchangedSources.add(toFull(source));
+            return true;
           });
           unchangedSources.removeAll(delta.getChangedFiles());
           if (!unchangedSources.isEmpty()) {
@@ -2787,9 +2782,8 @@ public final class Mappings {
           myClassToSubclasses.putAll(delta.myClassToSubclasses);
           myClassToRelativeSourceFilePath.replaceAll(delta.myClassToRelativeSourceFilePath);
           myRelativeSourceFilePathToClasses.replaceAll(delta.myRelativeSourceFilePathToClasses);
-          delta.myRelativeSourceFilePathToClasses.forEachEntry(new TObjectObjectProcedure<String, Collection<ClassFileRepr>>() {
-            @Override
-            public boolean execute(String src, Collection<ClassFileRepr> classes) {
+          delta.myRelativeSourceFilePathToClasses.forEachEntry(
+            (src, classes) -> {
               for (ClassFileRepr repr : classes) {
                 if (repr instanceof ClassRepr) {
                   final ClassRepr clsRepr = (ClassRepr)repr;
@@ -2799,8 +2793,7 @@ public final class Mappings {
                 }
               }
               return true;
-            }
-          });
+            });
         }
 
         // updating classToClass dependencies
@@ -2958,8 +2951,7 @@ public final class Mappings {
     }
   }
 
-  @Nullable
-  public Collection<File> getClassSources(int className) {
+  public @NotNull Collection<File> getClassSources(int className) {
     synchronized (myLock) {
       final Iterable<File> files = classToSourceFileGet(className);
       return files == null? Collections.emptyList() : ContainerUtil.collect(files.iterator());
@@ -3098,7 +3090,7 @@ public final class Mappings {
     return myAddedClasses == null ? Collections.emptySet() : Collections.unmodifiableSet(myAddedClasses);
   }
 
-  private TIntHashSet getChangedClasses() {
+  private IntSet getChangedClasses() {
     return myChangedClasses;
   }
 

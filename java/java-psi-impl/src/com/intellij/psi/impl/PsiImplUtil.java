@@ -31,6 +31,7 @@ import com.intellij.psi.search.PackageScope;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
+import com.intellij.psi.util.JavaPsiPatternUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.PsiUtilCore;
@@ -133,10 +134,10 @@ public final class PsiImplUtil {
                      " parameterList' parent: " + parameterList.getParent() + ";" +
                      " parameter.isValid()=" + parameter.isValid() + ";" +
                      " parameterList.isValid()= " + parameterList.isValid() + ";" +
-                     " parameterList stub: " + (parameterList instanceof StubBasedPsiElement ? ((StubBasedPsiElement)parameterList).getStub() : "---") + "; " +
-                     " parameter stub: "+(parameter instanceof StubBasedPsiElement ? ((StubBasedPsiElement)parameter).getStub() : "---") + ";" +
-                     " suspect: " + suspect +" (index="+i+"); " + (suspect==null?null:suspect.getClass()) +
-                     " suspect stub: "+(suspect instanceof StubBasedPsiElement ? ((StubBasedPsiElement)suspect).getStub() : suspect == null ? "-null-" : "---"+suspect.getClass()) + ";" +
+                     " parameterList stub: " + (parameterList instanceof StubBasedPsiElement ? ((StubBasedPsiElement<?>)parameterList).getStub() : "---") + "; " +
+                     " parameter stub: " + (parameter instanceof StubBasedPsiElement ? ((StubBasedPsiElement<?>)parameter).getStub() : "---") + ";" +
+                     " suspect: " + suspect + " (index=" + i + "); " + (suspect==null?null:suspect.getClass()) +
+                     " suspect stub: " + (suspect instanceof StubBasedPsiElement ? ((StubBasedPsiElement<?>)suspect).getStub() : suspect == null ? "-null-" : "---" + suspect.getClass()) + ";" +
                      " parameter.equals(suspect) = " + parameter.equals(suspect) + "; " +
                      " parameter.getNode() == suspect.getNode():  " + (parameter.getNode() == (suspect==null ? null : suspect.getNode())) + "; " +
                      "."
@@ -685,14 +686,16 @@ public final class PsiImplUtil {
   }
 
   /**
-   * Returns enclosing label statement for given label expression
+   * Returns enclosing label statement for given case label element
    *
-   * @param expression switch label expression
-   * @return enclosing label statement or null if given expression is not a label statement expression
+   * @param labelElement case label element
+   * @return enclosing label statement or null if {@param labelElement} is an expression but not a label statement expression
    */
   @Nullable
-  public static PsiSwitchLabelStatementBase getSwitchLabel(@NotNull PsiExpression expression) {
-    PsiElement parent = PsiUtil.skipParenthesizedExprUp(expression.getParent());
+  public static PsiSwitchLabelStatementBase getSwitchLabel(@NotNull PsiCaseLabelElement labelElement) {
+    PsiElement parent = labelElement instanceof PsiParenthesizedPattern
+                        ? JavaPsiPatternUtil.skipParenthesizedPatternUp(labelElement.getParent())
+                        : PsiUtil.skipParenthesizedExprUp(labelElement.getParent());
     if (parent instanceof PsiCaseLabelElementList) {
       PsiElement grand = parent.getParent();
       if (grand instanceof PsiSwitchLabelStatementBase) {

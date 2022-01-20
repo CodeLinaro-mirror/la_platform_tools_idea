@@ -10,6 +10,7 @@ import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.keymap.impl.IdeMouseEventDispatcher;
+import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.NlsContexts;
@@ -46,14 +47,14 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
   private JBDimension myMinimumButtonSize;
   private PropertyChangeListener myPresentationListener;
   private Icon myDisabledIcon;
-  private Icon myIcon;
+  protected Icon myIcon;
   protected final Presentation myPresentation;
   protected final AnAction myAction;
   protected final String myPlace;
   protected final PopupState<JPopupMenu> myPopupState = PopupState.forPopupMenu();
   private ActionButtonLook myLook = ActionButtonLook.SYSTEM_LOOK;
   private boolean myMouseDown;
-  private boolean myRollover;
+  protected boolean myRollover;
   private static boolean ourGlobalMouseDown;
 
   private boolean myNoIconsInPopup;
@@ -173,6 +174,10 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
   }
 
   protected void showActionGroupPopup(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent event) {
+    createAndShowActionGroupPopup(actionGroup, event);
+  }
+
+  protected @NotNull JBPopup createAndShowActionGroupPopup(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent event) {
     PopupFactoryImpl.ActionGroupPopup popup = new PopupFactoryImpl.ActionGroupPopup(
       null, actionGroup, event.getDataContext(), false,
       false, true, false,
@@ -181,6 +186,7 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
       createPresentationFactory(), false);
     popup.setShowSubmenuOnHover(true);
     popup.showUnderneathOf(event.getInputEvent().getComponent());
+    return popup;
   }
 
   @NotNull
@@ -226,7 +232,7 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
       myPresentation.addPropertyChangeListener(myPresentationListener = this::presentationPropertyChanged);
     }
     if (!(getParent() instanceof ActionToolbar)) {
-      update();
+      ActionManagerEx.doWithLazyActionManager(__ -> update());
     }
     else {
       updateToolTipText();
@@ -445,12 +451,10 @@ public class ActionButton extends JComponent implements ActionButtonComponent, A
     }
   }
 
-  @SuppressWarnings("unused")  // used in Rider
   protected void onMouseReleased(@NotNull MouseEvent e) {
     // Extension point
   }
 
-  @SuppressWarnings("unused")  // used in Rider
   protected void onMousePressed(@NotNull MouseEvent e) {
     // Extension point
   }

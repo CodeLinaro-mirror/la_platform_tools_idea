@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.ui;
 
@@ -14,13 +14,19 @@ import com.intellij.codeInspection.reference.RefElement;
 import com.intellij.codeInspection.reference.RefEntity;
 import com.intellij.codeInspection.ui.util.SynchronizedBidiMultiMap;
 import com.intellij.ide.DataManager;
+import com.intellij.ide.IdeTooltipManager;
 import com.intellij.ide.OccurenceNavigator;
 import com.intellij.ide.util.PsiNavigationSupport;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.NlsContext;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
 import com.intellij.profile.codeInspection.ui.inspectionsTree.InspectionsConfigTreeComparator;
@@ -30,11 +36,13 @@ import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.ui.PopupHandler;
 import com.intellij.ui.SmartExpander;
 import com.intellij.ui.TreeSpeedSearch;
+import com.intellij.ui.UIBundle;
 import com.intellij.ui.tree.AsyncTreeModel;
 import com.intellij.ui.tree.TreeCollector.TreePathRoots;
 import com.intellij.ui.tree.TreePathUtil;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.*;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.containers.Stack;
@@ -45,11 +53,19 @@ import com.intellij.util.ui.tree.TreeUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.concurrency.CancellablePromise;
+import org.jetbrains.concurrency.Promise;
 
 import javax.swing.event.TreeModelEvent;
 import javax.swing.tree.TreePath;
+import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.util.*;
+import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 import static com.intellij.codeInspection.CommonProblemDescriptor.DESCRIPTOR_COMPARATOR;
@@ -62,15 +78,24 @@ public class InspectionTree extends Tree {
   private boolean myQueueUpdate;
   private final OccurenceNavigator myOccurenceNavigator = new MyOccurrenceNavigator();
   private final InspectionResultsView myView;
+  private final ConcurrentHashMap<ProblemDescriptionNode, CancellablePromise<String>> scheduledTooltipTasks = new ConcurrentHashMap<>();
 
   public InspectionTree(@NotNull InspectionResultsView view) {
     myView = view;
+    Disposer.register(myView, new Disposable() {
+      @Override
+      public void dispose() {
+        scheduledTooltipTasks.forEach((node, promise) -> promise.cancel());
+        scheduledTooltipTasks.clear();
+      }
+    });
+
     myModel = new InspectionTreeModel();
     Disposer.register(view, myModel);
     setModel(new AsyncTreeModel(myModel, false, view));
 
     setCellRenderer(new InspectionTreeCellRenderer(view));
-    setRootVisible(false);
+    setRootVisible(true);
     if (!ApplicationManager.getApplication().isUnitTestMode()) {
       getSelectionModel().addTreeSelectionListener(e -> {
         if (isUnderQueueUpdate()) return;
@@ -195,7 +220,38 @@ public class InspectionTree extends Tree {
     if (path == null) return null;
     Object lastComponent = path.getLastPathComponent();
     if (!(lastComponent instanceof ProblemDescriptionNode)) return null;
-    return ((ProblemDescriptionNode)lastComponent).getToolTipText();
+    final ProblemDescriptionNode node = (ProblemDescriptionNode) lastComponent;
+
+    if (!node.needCalculateTooltip()) return node.getToolTipText();
+
+    Promise<@NlsContexts.Tooltip String> tooltipLazy = scheduledTooltipTasks.computeIfAbsent(node, key -> {
+      final var tooltipManager = IdeTooltipManager.getInstance();
+      final Component component = e.getComponent();
+
+      return ReadAction.nonBlocking(() -> node.getToolTipText())
+        .finishOnUiThread(ModalityState.any(), tooltipText -> {
+          tooltipManager.updateShownTooltip(component);
+        })
+        .submit(AppExecutorUtil.getAppExecutorService())
+        .onError(throwable -> {
+          if (!(throwable instanceof CancellationException)) {
+            LOG.error("Exception in ProblemDescriptionNode#getToolTipText", throwable);
+          }
+          scheduledTooltipTasks.remove(node);
+        })
+        .onSuccess(tooltipText -> scheduledTooltipTasks.remove(node));
+    });
+
+    if (tooltipLazy.isSucceeded()) {
+      try {
+        final String text = tooltipLazy.blockingGet(0);
+        return text;
+      }
+      catch (TimeoutException | ExecutionException error) {
+        LOG.error(error);
+      }
+    }
+    return UIBundle.message("crumbs.calculating.tooltip");
   }
 
   @Nullable
@@ -228,8 +284,8 @@ public class InspectionTree extends Tree {
   }
 
   public void selectNode(InspectionTreeNode node) {
-    TreePath path = getPathFor(node);
-    TreeUtil.selectPath(this, path);
+    TreePath path = TreePathUtil.pathToTreeNode(node);
+    if (path != null) TreeUtil.promiseSelect(this, path);
   }
 
   private static void addElementsInNode(InspectionTreeNode node, Set<? super RefEntity> out) {
@@ -616,21 +672,5 @@ public class InspectionTree extends Tree {
       }
       return false;
     }
-  }
-
-  private TreePath getPathFor(InspectionTreeNode node) {
-    TreePath result = TreePathUtil.pathToTreeNode(node);
-
-    Stack<TreePath> s = new Stack<>();
-    TreePath current = result;
-    while (current != null) {
-      s.add(current);
-      current = current.getParentPath();
-    }
-    while (!s.isEmpty()) {
-      TreePath p = s.pop();
-      expandPath(p);
-    }
-    return result;
   }
 }

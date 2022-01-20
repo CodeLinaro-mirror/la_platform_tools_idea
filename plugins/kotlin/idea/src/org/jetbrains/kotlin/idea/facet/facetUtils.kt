@@ -23,12 +23,15 @@ import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCompilerSettings
 import org.jetbrains.kotlin.idea.compiler.configuration.coerceAtMostVersion
 import org.jetbrains.kotlin.idea.configuration.externalCompilerVersion
 import org.jetbrains.kotlin.idea.core.isAndroidModule
+import org.jetbrains.kotlin.idea.defaultSubstitutors
 import org.jetbrains.kotlin.idea.framework.KotlinSdkType
 import org.jetbrains.kotlin.idea.platform.tooling
-import org.jetbrains.kotlin.idea.defaultSubstitutors
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.idea.util.getProjectJdkTableSafe
-import org.jetbrains.kotlin.platform.*
+import org.jetbrains.kotlin.platform.DefaultIdeTargetPlatformKindProvider
+import org.jetbrains.kotlin.platform.IdePlatformKind
+import org.jetbrains.kotlin.platform.TargetPlatform
+import org.jetbrains.kotlin.platform.idePlatformKind
 import org.jetbrains.kotlin.platform.impl.JvmIdePlatformKind
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.NotNullableUserDataProperty
@@ -148,29 +151,42 @@ fun Module.removeKotlinFacet(
 }
 
 //method used for non-mpp modules
+@JvmOverloads
 fun KotlinFacet.configureFacet(
     compilerVersion: String?,
     platform: TargetPlatform?,
-    modelsProvider: IdeModifiableModelsProvider
+    modelsProvider: IdeModifiableModelsProvider,
+    additionalVisibleModuleNames: Set<String> = emptySet()
 ) {
-    configureFacet(compilerVersion, platform, modelsProvider, false, emptyList(), emptyList())
+    configureFacet(
+        compilerVersion = compilerVersion,
+        platform = platform,
+        modelsProvider = modelsProvider,
+        hmppEnabled = false,
+        pureKotlinSourceFolders = emptyList(),
+        dependsOnList = emptyList(),
+        additionalVisibleModuleNames = additionalVisibleModuleNames
+    )
 }
 
+@JvmOverloads
 fun KotlinFacet.configureFacet(
     compilerVersion: String?,
     platform: TargetPlatform?, // if null, detect by module dependencies
     modelsProvider: IdeModifiableModelsProvider,
     hmppEnabled: Boolean,
     pureKotlinSourceFolders: List<String>,
-    dependsOnList: List<String>
+    dependsOnList: List<String>,
+    additionalVisibleModuleNames: Set<String> = emptySet()
 ) {
     val module = module
     with(configuration.settings) {
-        compilerArguments = null
-        targetPlatform = null
-        compilerSettings = null
-        isHmppEnabled = hmppEnabled
-        dependsOnModuleNames = dependsOnList
+        this.compilerArguments = null
+        this.targetPlatform = null
+        this.compilerSettings = null
+        this.isHmppEnabled = hmppEnabled
+        this.dependsOnModuleNames = dependsOnList
+        this.additionalVisibleModuleNames = additionalVisibleModuleNames
         initializeIfNeeded(
             module,
             modelsProvider.getModifiableRootModel(module),
@@ -295,7 +311,7 @@ private fun Module.configureSdkIfPossible(compilerArguments: CommonCompilerArgum
 private fun Module.hasNonOverriddenExternalSdkConfiguration(compilerArguments: CommonCompilerArguments): Boolean =
     hasExternalSdkConfiguration && (compilerArguments !is K2JVMCompilerArguments || compilerArguments.jdkHome == null)
 
-private fun substituteDefaults(args: List<String>, compilerArguments: CommonCompilerArguments): List<String> =
+fun substituteDefaults(args: List<String>, compilerArguments: CommonCompilerArguments): List<String> =
     args + defaultSubstitutors[compilerArguments::class]?.filter { it.isSubstitutable(args) }?.flatMap { it.oldSubstitution }.orEmpty()
 
 fun parseCompilerArgumentsToFacet(

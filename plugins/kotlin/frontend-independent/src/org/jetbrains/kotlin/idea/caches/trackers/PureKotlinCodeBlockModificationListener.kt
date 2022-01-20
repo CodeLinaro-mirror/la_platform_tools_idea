@@ -20,14 +20,16 @@ import com.intellij.pom.tree.events.impl.ChangeInfoImpl
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiWhiteSpace
+import com.intellij.psi.impl.source.tree.SharedImplUtil
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.util.findTopmostParentInFile
+import com.intellij.psi.util.findTopmostParentOfType
 import com.intellij.util.containers.ContainerUtil
 import org.jetbrains.kotlin.idea.util.application.getServiceSafe
 import org.jetbrains.kotlin.kdoc.psi.api.KDoc
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
-import org.jetbrains.kotlin.psi.psiUtil.getTopmostParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.isAncestor
 
 interface PureKotlinOutOfCodeBlockModificationListener {
@@ -48,6 +50,8 @@ class PureKotlinCodeBlockModificationListener(project: Project) : Disposable {
         }
 
         private fun inBlockModifications(elements: Array<ASTNode>): List<KtElement> {
+            if (elements.any { !it.psi.isValid }) return emptyList()
+
             // When a code fragment is reparsed, Intellij doesn't do an AST diff and considers the entire
             // contents to be replaced, which is represented in a POM event as an empty list of changed elements
 
@@ -74,7 +78,9 @@ class PureKotlinCodeBlockModificationListener(project: Project) : Disposable {
 
         private inline fun isFormattingChange(changeSet: TreeChangeEvent): Boolean = isSpecificChange(changeSet) { it is PsiWhiteSpace }
 
-        private inline fun isStringLiteralChange(changeSet: TreeChangeEvent): Boolean = isSpecificChange(changeSet) { it?.elementType == KtTokens.REGULAR_STRING_PART }
+        private inline fun isStringLiteralChange(changeSet: TreeChangeEvent): Boolean = isSpecificChange(changeSet) {
+            it?.elementType == KtTokens.REGULAR_STRING_PART && it?.psi?.findTopmostParentOfType<KtAnnotationEntry>() == null
+        }
 
         /**
          * Has to be aligned with [getInsideCodeBlockModificationScope] :
@@ -91,14 +97,14 @@ class PureKotlinCodeBlockModificationListener(project: Project) : Disposable {
         }
 
         fun getInsideCodeBlockModificationScope(element: PsiElement): BlockModificationScopeElement? {
-            val lambda = element.getTopmostParentOfType<KtLambdaExpression>()
+            val lambda = element.findTopmostParentOfType<KtLambdaExpression>()
             if (lambda is KtLambdaExpression) {
-                lambda.getTopmostParentOfType<KtSuperTypeCallEntry>()?.getTopmostParentOfType<KtClassOrObject>()?.let {
+                lambda.findTopmostParentOfType<KtSuperTypeCallEntry>()?.findTopmostParentOfType<KtClassOrObject>()?.let {
                     return BlockModificationScopeElement(it, it)
                 }
             }
 
-            val blockDeclaration = KtPsiUtil.getTopmostParentOfTypes(element, *BLOCK_DECLARATION_TYPES) as? KtDeclaration ?: return null
+            val blockDeclaration = element.findTopmostParentInFile { isBlockDeclaration(it) } as? KtDeclaration ?: return null
             //                KtPsiUtil.getTopmostParentOfType<KtClassOrObject>(element) as? KtDeclaration ?: return null
 
             // should not be local declaration
@@ -146,7 +152,7 @@ class PureKotlinCodeBlockModificationListener(project: Project) : Disposable {
 
                             if (properExpression != null) {
                                 val declaration =
-                                    KtPsiUtil.getTopmostParentOfTypes(blockDeclaration, KtClassOrObject::class.java) as? KtElement
+                                    blockDeclaration.findTopmostParentOfType<KtClassOrObject>() as? KtElement
 
                                 if (declaration != null) {
                                     return BlockModificationScopeElement(declaration, properExpression)
@@ -202,17 +208,14 @@ class PureKotlinCodeBlockModificationListener(project: Project) : Disposable {
 
         data class BlockModificationScopeElement(val blockDeclaration: KtElement, val element: KtElement)
 
-        fun isBlockDeclaration(declaration: KtDeclaration): Boolean {
-            return BLOCK_DECLARATION_TYPES.any { it.isInstance(declaration) }
-        }
+        fun isBlockDeclaration(declaration: PsiElement): Boolean {
+            return declaration is KtProperty ||
+                    declaration is KtNamedFunction ||
+                    declaration is KtClassInitializer ||
+                    declaration is KtSecondaryConstructor ||
+                    declaration is KtScriptInitializer
 
-        private val BLOCK_DECLARATION_TYPES = arrayOf<Class<out KtDeclaration>>(
-            KtProperty::class.java,
-            KtNamedFunction::class.java,
-            KtClassInitializer::class.java,
-            KtSecondaryConstructor::class.java,
-            KtScriptInitializer::class.java
-        )
+        }
     }
 
     private val listeners: MutableList<PureKotlinOutOfCodeBlockModificationListener> = ContainerUtil.createLockFreeCopyOnWriteList()

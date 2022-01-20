@@ -1,5 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -475,7 +476,7 @@ void (JNICALL jniExitHook)(jint code) {
 
 bool LoadVMOptions() {
   char bin_vmoptions[_MAX_PATH], buffer1[_MAX_PATH], buffer2[_MAX_PATH], *vmOptionsFile = NULL;
-  std::vector<std::string> lines;
+  std::vector<std::string> lines, user_lines;
 
   GetModuleFileNameA(NULL, bin_vmoptions, _MAX_PATH);
   strcat_s(bin_vmoptions, ".vmoptions");
@@ -485,53 +486,50 @@ bool LoadVMOptions() {
   if (GetEnvironmentVariableA(buffer1, buffer2, _MAX_PATH) != 0 && LoadVMOptionsFile(buffer2, lines)) {
     vmOptionsFile = buffer2;
   }
-
-  // 2. <IDE_HOME>.vmoptions (Toolbox) [+ <IDE_HOME>\bin\<exe_name>.vmoptions]
-  if (vmOptionsFile == NULL) {
+  else {
+    // 2. <IDE_HOME>\bin\<exe_name>.vmoptions ...
+    if (LoadVMOptionsFile(bin_vmoptions, lines)) {
+      vmOptionsFile = bin_vmoptions;
+    }
+    // ... [+ <IDE_HOME>.vmoptions (Toolbox) || <config_directory>\<exe_name>.vmoptions]
     strcpy_s(buffer1, _MAX_PATH, bin_vmoptions);
     char *ideHomeEnd = strrchr(buffer1, '\\') - 4;  // "bin\"
     strcpy_s(ideHomeEnd, _MAX_PATH - (ideHomeEnd - buffer1), ".vmoptions");
-    if (LoadVMOptionsFile(buffer1, lines)) {
+    if (LoadVMOptionsFile(buffer1, user_lines)) {
       vmOptionsFile = buffer1;
-      if (std::find(lines.begin(), lines.end(), std::string("-ea")) == lines.end()) {
-        std::vector<std::string> lines2;
-        if (LoadVMOptionsFile(bin_vmoptions, lines2)) {
-          lines.insert(lines.begin(), lines2.begin(), lines2.end());
-        }
+    }
+    else {
+      LoadStringA(hInst, IDS_VM_OPTIONS_PATH, buffer1, _MAX_PATH);
+      ExpandEnvironmentStringsA(buffer1, buffer2, _MAX_PATH);
+      char *exeParentEnd = strrchr(bin_vmoptions, '\\');
+      strcat_s(buffer2, exeParentEnd);
+      if (LoadVMOptionsFile(buffer2, user_lines)) {
+        vmOptionsFile = buffer2;
       }
     }
   }
 
-  // 3. <config_directory>\<exe_name>.vmoptions
-  if (vmOptionsFile == NULL) {
-    LoadStringA(hInst, IDS_VM_OPTIONS_PATH, buffer1, _MAX_PATH);
-    ExpandEnvironmentStringsA(buffer1, buffer2, _MAX_PATH);
-    char *exeParentEnd = strrchr(bin_vmoptions, '\\');
-    strcat_s(buffer2, exeParentEnd);
-    if (LoadVMOptionsFile(buffer2, lines)) {
-      vmOptionsFile = buffer2;
+  if (!user_lines.empty()) {
+    if (!lines.empty()) {
+      bool (*GC_lookup)(std::string &) = [](std::string &s){
+        return strncmp(s.c_str(), "-XX:+Use", 8) == 0 && strcmp(s.c_str() + s.length() - 2, "GC") == 0;
+      };
+      if (std::find_if(user_lines.begin(), user_lines.end(), GC_lookup) != user_lines.end()) {
+        lines.erase(std::remove_if(lines.begin(), lines.end(), GC_lookup), lines.end());
+      }
     }
-  }
-
-  // 4. <IDE_HOME>\bin\<exe_name>.vmoptions [+ <config_directory>\user.vmoptions]
-  if (vmOptionsFile == NULL) {
-    if (LoadVMOptionsFile(bin_vmoptions, lines)) {
-      vmOptionsFile = bin_vmoptions;
-    }
-    char *p = strrchr(buffer2, '\\');
-    strcpy_s(p, _MAX_PATH - (p - buffer2), "\\user.vmoptions");
-    if (LoadVMOptionsFile(buffer2, lines)) {
-      vmOptionsFile = buffer2;
-    }
+    lines.insert(lines.end(), user_lines.begin(), user_lines.end());
   }
 
   if (vmOptionsFile != NULL) {
     lines.push_back(std::string("-Djb.vmOptionsFile=") + vmOptionsFile);
   }
   else {
-    wchar_t *title = NULL;
-    if (LoadStringW(hInst, IDS_ERROR_LAUNCHING_APP, (LPWSTR)(&title), 0) != 0) {
-      MessageBoxW(NULL, L"Cannot find VM options file", title, MB_OK);
+    wchar_t *titleBuf = NULL;
+    int len = LoadStringW(hInst, IDS_ERROR_LAUNCHING_APP, (LPWSTR)(&titleBuf), 0);
+    if (len != 0) {
+      std::wstring title(titleBuf, len);
+      MessageBoxW(NULL, L"Cannot find VM options file", title.c_str(), MB_OK);
     }
   }
 
@@ -910,14 +908,38 @@ int CheckSingleInstance()
     // Creating mapping for exitCode transmission
     HANDLE hResultFileMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, FILE_MAPPING_SIZE, resultFileName.c_str());
 
-    SendCommandLineToFirstInstance(response_id);
-    CloseHandle(hFileMapping);
-    CloseHandle(hEvent);
-
-    // Lock wait for the response
     std::string responseEventName = std::string("IntelliJLauncherEvent.") + std::to_string(static_cast<long long>(response_id));
     HANDLE hResponseEvent = CreateEventA(NULL, FALSE, FALSE, responseEventName.c_str());
-    WaitForSingleObject(hResponseEvent, INFINITE);
+
+    SendCommandLineToFirstInstance(response_id);
+    CloseHandle(hFileMapping);
+
+    // It is theoretically possible for this code to spin forever in a loop.
+    //
+    // There's a race condition when the process we talked to in SendCommandLineToFirstInstance was terminated, another
+    // one started, took over the file mapping, but has no idea about our command (because we only send it once).
+    //
+    // For now, this problem is unresolved, though it should very rarely happen in practice.
+    const DWORD waitTimeoutMs = 1000;
+    while (WaitForSingleObject(hResponseEvent, waitTimeoutMs) == WAIT_TIMEOUT)
+    {
+      // Check if the file mapping still exists outside the current process:
+      hFileMapping = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, mappingName.c_str());
+      if (!hFileMapping)
+      {
+        // Means the mapping was abandoned by the initial process we observed. So, we should take over.
+        hFileMapping = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, FILE_MAPPING_SIZE,
+          mappingName.c_str());
+        CloseHandle(hResultFileMapping);
+        CloseHandle(hResponseEvent);
+        return -1;
+      }
+
+      // Ok, the mapping still exists, so the process is still alive. Proceed to spin.
+      CloseHandle(hFileMapping);
+    }
+
+    CloseHandle(hEvent);
     CloseHandle(hResponseEvent);
 
     // Read the exitCode

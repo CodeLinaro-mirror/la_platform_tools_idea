@@ -1,6 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.util;
 
+import com.intellij.openapi.diagnostic.Attachment;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Condition;
@@ -20,8 +22,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 public final class PsiTypesUtil {
+  private static final Logger LOG = Logger.getInstance(PsiTypesUtil.class);
   @NonNls private static final Map<String, String> ourUnboxedTypes = new HashMap<>();
   @NonNls private static final Map<String, String> ourBoxedTypes = new HashMap<>();
 
@@ -199,6 +203,9 @@ public final class PsiTypesUtil {
         if (parent != null) {
           qualifierType = JavaPsiFacade.getElementFactory(project).createType((PsiClass)parent);
         }
+      }
+      if (PsiType.NULL.equals(qualifierType)) {
+        LOG.error("Unexpected null qualifier", new Attachment("expression.txt", call.getText()));
       }
       return createJavaLangClassType(methodExpression, qualifierType, true);
     }
@@ -522,8 +529,12 @@ public final class PsiTypesUtil {
    * Checks if {@code type} mentions type parameters from the passed {@code Set}
    * Implicit type arguments of types based on inner classes of generic outer classes are explicitly checked
    */
-  public static boolean mentionsTypeParameters(@Nullable PsiType type, Set<PsiTypeParameter> typeParameters) {
-    return mentionsTypeParametersOrUnboundedWildcard(type, typeParameters);
+  public static boolean mentionsTypeParameters(@Nullable PsiType type, @NotNull Set<PsiTypeParameter> typeParameters) {
+    return mentionsTypeParametersOrUnboundedWildcard(type, typeParameters::contains);
+  }
+
+  public static boolean mentionsTypeParameters(@Nullable PsiType type, @NotNull Predicate<PsiTypeParameter> wantedTypeParameter) {
+    return mentionsTypeParametersOrUnboundedWildcard(type, wantedTypeParameter);
   }
 
   /**
@@ -552,7 +563,7 @@ public final class PsiTypesUtil {
   }
 
   private static boolean mentionsTypeParametersOrUnboundedWildcard(@Nullable PsiType type,
-                                                                   Set<PsiTypeParameter> typeParameters) {
+                                                                   final Predicate<PsiTypeParameter> wantedTypeParameter) {
     if (type == null) return false;
     return type.accept(new PsiTypeVisitor<Boolean>() {
       @Override
@@ -578,7 +589,7 @@ public final class PsiTypesUtil {
             if (type != null && type.accept(this)) return true;
           }
         }
-        return psiClass instanceof PsiTypeParameter && typeParameters.contains(psiClass);
+        return psiClass instanceof PsiTypeParameter && wantedTypeParameter.test((PsiTypeParameter)psiClass);
       }
 
       @Override

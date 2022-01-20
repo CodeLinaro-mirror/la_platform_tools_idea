@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.util;
 
 import com.intellij.build.*;
@@ -36,6 +36,7 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.ex.ApplicationEx;
+import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.externalSystem.ExternalSystemManager;
 import com.intellij.openapi.externalSystem.execution.ExternalSystemExecutionConsoleManager;
@@ -195,45 +196,6 @@ public final class ExternalSystemUtil {
   @Nullable
   public static ToolWindow ensureToolWindowContentInitialized(@NotNull Project project, @NotNull ProjectSystemId externalSystemId) {
     return ToolWindowManager.getInstance(project).getToolWindow(externalSystemId.getReadableName());
-  }
-
-  /**
-   * Asks to refresh all external projects of the target external system linked to the given ide project.
-   * <p/>
-   * 'Refresh' here means 'obtain the most up-to-date version and apply it to the ide'.
-   *
-   * @param project          target ide project
-   * @param externalSystemId target external system which projects should be refreshed
-   * @param force            flag which defines if external project refresh should be performed if it's config is up-to-date
-   * @deprecated use {@link  ExternalSystemUtil#refreshProjects(ImportSpecBuilder)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public static void refreshProjects(@NotNull final Project project, @NotNull final ProjectSystemId externalSystemId, boolean force) {
-    refreshProjects(project, externalSystemId, force, ProgressExecutionMode.IN_BACKGROUND_ASYNC);
-  }
-
-  /**
-   * Asks to refresh all external projects of the target external system linked to the given ide project.
-   * <p/>
-   * 'Refresh' here means 'obtain the most up-to-date version and apply it to the ide'.
-   *
-   * @param project          target ide project
-   * @param externalSystemId target external system which projects should be refreshed
-   * @param force            flag which defines if external project refresh should be performed if it's config is up-to-date
-   * @deprecated use {@link  ExternalSystemUtil#refreshProjects(ImportSpecBuilder)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public static void refreshProjects(@NotNull final Project project,
-                                     @NotNull final ProjectSystemId externalSystemId,
-                                     boolean force,
-                                     @NotNull final ProgressExecutionMode progressExecutionMode) {
-    refreshProjects(
-      new ImportSpecBuilder(project, externalSystemId)
-        .forceWhenUptodate(force)
-        .use(progressExecutionMode)
-    );
   }
 
   /**
@@ -462,7 +424,6 @@ public final class ExternalSystemUtil {
             @Override
             public void onStart(@NotNull ExternalSystemTaskId id, String workingDir) {
               long eventTime = System.currentTimeMillis();
-            /* Android Studio: keep "Refresh Gradle project" out of build view; see b/76099171
               AnAction rerunImportAction = new DumbAwareAction() {
                 @Override
                 public void update(@NotNull AnActionEvent e) {
@@ -489,14 +450,11 @@ public final class ExternalSystemUtil {
               rerunImportAction.getTemplatePresentation()
                 .setDescription(ExternalSystemBundle.messagePointer("action.refresh.project.description", systemId));
               rerunImportAction.getTemplatePresentation().setIcon(AllIcons.Actions.Refresh);
-            */
 
               if (isPreviewMode) return;
               DefaultBuildDescriptor buildDescriptor = new DefaultBuildDescriptor(id, projectName, externalProjectPath, eventTime)
                 .withProcessHandler(processHandler, null)
-                /* Android Studio: keep "Refresh Gradle project" out of build view; see b/76099171
                 .withRestartAction(rerunImportAction)
-                */
                 .withContentDescriptor(() -> {
                   if (consoleView == null) return null;
                   boolean activateToolWindow = isNewProject(project);
@@ -641,11 +599,11 @@ public final class ExternalSystemUtil {
             exception = e;
           }
         }
-        String message = "Sync finish event has not been received";
-        LOG.warn(message, exception);
+        if (!(exception instanceof ControlFlowException)) {
+          LOG.warn("Sync finish event has not been received", exception);
+        }
         return new FinishBuildEventImpl(resolveProjectTask.getId(), null, System.currentTimeMillis(),
-                                        BuildBundle.message("build.status.failed"),
-                                        new FailureResultImpl(new Exception(message, exception)));
+                                        BuildBundle.message("build.status.cancelled"), new FailureResultImpl());
       }
 
       private void cancelImport() {
@@ -662,6 +620,11 @@ public final class ExternalSystemUtil {
         title = ExternalSystemBundle.message("progress.import.text", projectName, externalSystemId.getReadableName());
         new Task.Modal(project, title, true) {
           @Override
+          public @NotNull Object getId() {
+            return resolveProjectTask.getId();
+          }
+
+          @Override
           public void run(@NotNull ProgressIndicator indicator) {
             refreshProjectStructureTask.execute(indicator);
           }
@@ -671,6 +634,11 @@ public final class ExternalSystemUtil {
         title = ExternalSystemBundle.message("progress.refresh.text", projectName, externalSystemId.getReadableName());
         new Task.Backgroundable(project, title) {
           @Override
+          public @NotNull Object getId() {
+            return resolveProjectTask.getId();
+          }
+
+          @Override
           public void run(@NotNull ProgressIndicator indicator) {
             refreshProjectStructureTask.execute(indicator);
           }
@@ -679,6 +647,11 @@ public final class ExternalSystemUtil {
       case START_IN_FOREGROUND_ASYNC:
         title = ExternalSystemBundle.message("progress.refresh.text", projectName, externalSystemId.getReadableName());
         new Task.Backgroundable(project, title, true, PerformInBackgroundOption.DEAF) {
+          @Override
+          public @NotNull Object getId() {
+            return resolveProjectTask.getId();
+          }
+
           @Override
           public void run(@NotNull ProgressIndicator indicator) {
             refreshProjectStructureTask.execute(indicator);
@@ -864,7 +837,7 @@ public final class ExternalSystemUtil {
     }
     else if (progressEvent instanceof ExternalSystemFinishEvent) {
       final EventResult eventResult;
-      final OperationResult operationResult = ((ExternalSystemFinishEvent)progressEvent).getOperationResult();
+      final OperationResult operationResult = ((ExternalSystemFinishEvent<?>)progressEvent).getOperationResult();
       if (operationResult instanceof FailureResult) {
         List<com.intellij.build.events.Failure> failures = new SmartList<>();
         for (Failure failure : ((FailureResult)operationResult).getFailures()) {

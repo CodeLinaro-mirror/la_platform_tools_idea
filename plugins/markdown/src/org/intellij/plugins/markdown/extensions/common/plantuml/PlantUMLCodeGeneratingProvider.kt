@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.extensions.common.plantuml
 
 import com.intellij.openapi.diagnostic.Logger
@@ -10,14 +10,17 @@ import org.intellij.plugins.markdown.extensions.MarkdownCodeFenceCacheableProvid
 import org.intellij.plugins.markdown.extensions.MarkdownCodeFencePluginGeneratingProvider
 import org.intellij.plugins.markdown.extensions.MarkdownExtensionWithExternalFiles
 import org.intellij.plugins.markdown.ui.preview.html.MarkdownCodeFencePluginCacheCollector
+import org.intellij.plugins.markdown.ui.preview.html.links.IntelliJImageGeneratingProvider
 import java.io.File
 import java.io.IOException
 import java.net.URLClassLoader
 
-internal class PlantUMLCodeGeneratingProvider(collector: MarkdownCodeFencePluginCacheCollector? = null)
-  : MarkdownCodeFenceCacheableProvider(collector), MarkdownExtensionWithExternalFiles {
-  override val downloadLink: String =
-    Registry.stringValue("markdown.plantuml.download.link")
+internal class PlantUMLCodeGeneratingProvider(collector: MarkdownCodeFencePluginCacheCollector? = null):
+  MarkdownCodeFenceCacheableProvider(collector),
+  MarkdownExtensionWithExternalFiles
+{
+  override val downloadLink: String
+    get() = Registry.stringValue("markdown.plantuml.download.link")
 
   override val downloadFilename: String = "plantuml.jar"
 
@@ -31,16 +34,16 @@ internal class PlantUMLCodeGeneratingProvider(collector: MarkdownCodeFencePlugin
     cacheDiagram(key, raw)
     collector?.addAliveCachedFile(this, key)
 
-    return "<img src=\"${key.toURI()}\"/>"
+    return "<img ${IntelliJImageGeneratingProvider.ignorePathProcessingAttributeName}=\"true\" src=\"${key.toURI()}\"/>"
   }
 
   override fun onLAFChanged() {}
 
-  override val displayName: String =
-    MarkdownBundle.message("markdown.extensions.plantuml.display.name")
+  override val displayName: String
+    get() = MarkdownBundle.message("markdown.extensions.plantuml.display.name")
 
-  override val description: String =
-    MarkdownBundle.message("markdown.extensions.plantuml.description")
+  override val description: String
+    get() = MarkdownBundle.message("markdown.extensions.plantuml.description")
 
   override val id: String = "PlantUMLLanguageExtension"
 

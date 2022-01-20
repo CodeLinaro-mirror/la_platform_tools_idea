@@ -52,7 +52,10 @@ public abstract class AppIcon {
   @NotNull
   public static AppIcon getInstance() {
     if (ourIcon == null) {
-      if (SystemInfoRt.isMac) {
+      if (GraphicsEnvironment.isHeadless() || GraphicsEnvironment.getLocalGraphicsEnvironment().getClass().getSimpleName().equals("PGraphicsEnvironment")) {
+        // PGraphicsEnvironment indicates a Projector-replaces-AWT environment, in which case any OS-specific AppIcons are not applicable
+        ourIcon = new EmptyIcon();
+      } else if (SystemInfoRt.isMac) {
         ourIcon = new MacAppIcon();
       }
       else if (SystemInfoRt.isXWindow) {
@@ -94,10 +97,6 @@ public abstract class AppIcon {
   }
 
   protected void requestFocus(@Nullable Window window) {
-    requestFocus();
-    if (window != null) {
-      window.toFront();
-    }
   }
 
   public void requestFocus() {
@@ -237,6 +236,14 @@ public abstract class AppIcon {
       catch (Exception e) {
         LOG.error(e);
       }
+    }
+
+    @Override
+    protected void requestFocus(@Nullable Window window) {
+      if (window != null) {
+        window.toFront();
+      }
+      requestFocus();
     }
 
     @Override
@@ -660,14 +667,17 @@ public abstract class AppIcon {
     }
 
     @Override
-    public void requestFocus() {
-      try {
-        // This is required for the focus stealing mechanism to work reliably,
-        // see WinFocusStealer.setFocusStealingEnabled javadoc for details
-        Thread.sleep(Registry.intValue("win.request.focus.delay.ms"));
-      }
-      catch (InterruptedException e) {
-        LOG.error(e);
+    protected void requestFocus(@Nullable Window window) {
+      if (window != null) {
+        try {
+          // This is required for the focus stealing mechanism to work reliably,
+          // see WinFocusStealer.setFocusStealingEnabled javadoc for details
+          Thread.sleep(Registry.intValue("win.request.focus.delay.ms"));
+        }
+        catch (InterruptedException e) {
+          LOG.error(e);
+        }
+        window.toFront();
       }
     }
 

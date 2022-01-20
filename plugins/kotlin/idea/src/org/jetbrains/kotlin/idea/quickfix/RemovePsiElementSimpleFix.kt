@@ -5,6 +5,7 @@ package org.jetbrains.kotlin.idea.quickfix
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
+import org.jetbrains.annotations.Nls
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.intentions.RemoveExplicitTypeIntention
@@ -13,7 +14,7 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 
-open class RemovePsiElementSimpleFix(element: PsiElement, private val text: String) : KotlinQuickFixAction<PsiElement>(element) {
+open class RemovePsiElementSimpleFix(element: PsiElement, @Nls private val text: String) : KotlinQuickFixAction<PsiElement>(element) {
     override fun getFamilyName() = KotlinBundle.message("remove.element")
 
     override fun getText() = text
@@ -58,17 +59,21 @@ open class RemovePsiElementSimpleFix(element: PsiElement, private val text: Stri
             if (element is KtDestructuringDeclarationEntry) return null
             val expression = element.getNonStrictParentOfType<KtProperty>() ?: return null
             if (!RemoveExplicitTypeIntention.redundantTypeSpecification(expression.typeReference, expression.initializer)) return null
-            return object : RemovePsiElementSimpleFix(expression, KotlinBundle.message("remove.variable.0", expression.name.toString())) {
-                override fun invoke(project: Project, editor: Editor?, file: KtFile) {
-                    val initializer = expression.initializer
-                    if (initializer != null && initializer !is KtConstantExpression) {
-                        val commentSaver = CommentSaver(expression)
-                        val replaced = expression.replace(initializer)
-                        commentSaver.restore(replaced)
-                    } else {
-                        expression.delete()
-                    }
-                }
+            return RemoveVariableFix(expression)
+        }
+    }
+
+    private class RemoveVariableFix(expression: KtProperty) :
+        RemovePsiElementSimpleFix(expression, KotlinBundle.message("remove.variable.0", expression.name.toString())) {
+        override fun invoke(project: Project, editor: Editor?, file: KtFile) {
+            val expr = element as? KtProperty ?: return
+            val initializer = expr.initializer
+            if (initializer != null && initializer !is KtConstantExpression) {
+                val commentSaver = CommentSaver(expr)
+                val replaced = expr.replace(initializer)
+                commentSaver.restore(replaced)
+            } else {
+                expr.delete()
             }
         }
     }

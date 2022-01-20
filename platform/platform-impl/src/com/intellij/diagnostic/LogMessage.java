@@ -74,7 +74,7 @@ public class LogMessage extends AbstractMessage {
    * @param attachments      attachments that will be suggested to include to the report
    */
   public static IdeaLoggingEvent createEvent(@NotNull Throwable throwable, @Nullable String userMessage, Attachment @NotNull ... attachments) {
-    @SuppressWarnings("deprecation") AbstractMessage message = new LogMessageEx(throwable, userMessage, Arrays.asList(attachments), null);
+    AbstractMessage message = new LogMessage(throwable, userMessage, Arrays.asList(attachments));
     return new IdeaLoggingEvent(userMessage, throwable, message);
   }
 }

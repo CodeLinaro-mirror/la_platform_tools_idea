@@ -18,6 +18,7 @@ import com.intellij.refactoring.introduceField.ElementToWorkOn
 import com.intellij.refactoring.introduceParameter.AbstractJavaInplaceIntroducer
 import com.intellij.refactoring.introduceParameter.IntroduceParameterProcessor
 import com.intellij.refactoring.introduceParameter.Util
+import com.intellij.refactoring.introduceVariable.IntroduceVariableBase
 import com.intellij.refactoring.util.CommonRefactoringUtil
 import com.intellij.refactoring.util.DocCommentPolicy
 import com.intellij.refactoring.util.occurrences.ExpressionOccurrenceManager
@@ -36,6 +37,8 @@ import org.jetbrains.kotlin.idea.refactoring.introduce.extractClass.ExtractSuper
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractFunction.EXTRACT_FUNCTION
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractFunction.ExtractKotlinFunctionHandler
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.*
+import org.jetbrains.kotlin.idea.refactoring.introduce.introduceConstant.INTRODUCE_CONSTANT
+import org.jetbrains.kotlin.idea.refactoring.introduce.introduceConstant.KotlinIntroduceConstantHandler
 import org.jetbrains.kotlin.idea.refactoring.introduce.introduceParameter.*
 import org.jetbrains.kotlin.idea.refactoring.introduce.introduceProperty.INTRODUCE_PROPERTY
 import org.jetbrains.kotlin.idea.refactoring.introduce.introduceProperty.KotlinIntroducePropertyHandler
@@ -190,8 +193,9 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
                 localVar,
                 true,
                 suggestedNames.first(),
-                true,
+                IntroduceVariableBase.JavaReplaceChoice.ALL, 
                 IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_NONE,
+                false,
                 false,
                 false,
                 null,
@@ -279,6 +283,39 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
         }
     }
 
+    protected fun doIntroduceConstantTest(unused: String) {
+        doTest { file ->
+            file as KtFile
+
+            val extractionTarget = propertyTargets.single {
+                it.targetName == InTextDirectivesUtils.findStringWithPrefixes(file.getText(), "// EXTRACTION_TARGET: ")
+            }
+
+            val helper = object : ExtractionEngineHelper(INTRODUCE_CONSTANT) {
+                override fun configureAndRun(
+                    project: Project,
+                    editor: Editor,
+                    descriptorWithConflicts: ExtractableCodeDescriptorWithConflicts,
+                    onFinish: (ExtractionResult) -> Unit
+                ) {
+                    doRefactor(
+                        ExtractionGeneratorConfiguration(
+                            descriptorWithConflicts.descriptor,
+                            ExtractionGeneratorOptions(target = extractionTarget, delayInitialOccurrenceReplacement = true, isConst = true)
+                        ),
+                        onFinish
+                    )
+                }
+            }
+
+            val handler = KotlinIntroduceConstantHandler(helper)
+            val editor = fixture.editor
+            handler.selectElements(editor, file) { elements, target ->
+                handler.doInvoke(project, editor, file, elements, target)
+            }
+        }
+    }
+
     protected fun doExtractSuperTest(unused: String, isInterface: Boolean) {
         doTest(true) { file ->
             file as KtFile
@@ -287,7 +324,7 @@ abstract class AbstractExtractionTest : KotlinLightCodeInsightFixtureTestCase() 
 
             val targetParent = file.findElementByCommentPrefix("// SIBLING:")?.parent ?: file.parent!!
             val fileText = file.text
-            val className = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// NAME:")!!
+            val className = InTextDirectivesUtils.stringWithDirective(fileText, "NAME")
             val targetFileName = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// TARGET_FILE_NAME:")
                 ?: "$className.${KotlinFileType.EXTENSION}"
             val editor = fixture.editor

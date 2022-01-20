@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.colors.impl;
 
 import com.intellij.configurationStore.BundledSchemeEP;
@@ -19,6 +19,7 @@ import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.SettingsCategory;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
@@ -62,7 +63,8 @@ import java.util.function.Function;
 @State(
   name = "EditorColorsManagerImpl",
   storages = @Storage("colors.scheme.xml"),
-  additionalExportDirectory = EditorColorsManagerImpl.FILE_SPEC
+  additionalExportDirectory = EditorColorsManagerImpl.FILE_SPEC,
+  category = SettingsCategory.UI
 )
 @ApiStatus.Internal
 public final class EditorColorsManagerImpl extends EditorColorsManager implements PersistentStateComponent<EditorColorsManagerImpl.State> {
@@ -412,7 +414,8 @@ public final class EditorColorsManagerImpl extends EditorColorsManager implement
   private static void loadAdditionalTextAttributesForScheme(@NotNull AbstractColorsScheme scheme,
                                                             @NotNull Collection<AdditionalTextAttributesEP> attributeEps) {
     for (AdditionalTextAttributesEP attributesEP : attributeEps) {
-      InputStream resourceStream = attributesEP.pluginDescriptor.getPluginClassLoader()
+      InputStream resourceStream = attributesEP.pluginDescriptor
+        .getClassLoader()
         .getResourceAsStream(StringUtil.trimStart(attributesEP.file, "/"));
       if (resourceStream == null) {
         LOG.warn("resource not found: " + attributesEP.file);

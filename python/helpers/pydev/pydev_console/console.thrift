@@ -202,7 +202,7 @@ exception KeyboardInterruptException {
 }
 
 service PythonConsoleFrontendService {
-  void notifyFinished(1: bool needsMoreInput),
+  void notifyFinished(1: bool needsMoreInput, 2: bool exceptionOccurred),
 
   string requestInput(1: string path) throws (1: KeyboardInterruptException interrupted),
 
@@ -216,4 +216,6 @@ service PythonConsoleFrontendService {
   void returnFullValue(1: LoadFullValueRequestSeq requestSeq, 2: list<DebugValue> response),
 
   bool IPythonEditor(1: string path, 2: string line),
+
+  void sendRichOutput(1: map<string, string> data),
 }

@@ -2,6 +2,7 @@
 package com.intellij.ui.speedSearch;
 
 import com.intellij.openapi.actionSystem.DataProvider;
+import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.util.PopupUtil;
 import com.intellij.openapi.util.text.StringUtil;
@@ -20,6 +21,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.event.ActionEvent;
 import java.awt.event.FocusEvent;
 
 public final class ListWithFilter<T> extends JPanel implements DataProvider {
@@ -29,7 +32,6 @@ public final class ListWithFilter<T> extends JPanel implements DataProvider {
   private final JScrollPane myScrollPane;
   private final MySpeedSearch mySpeedSearch;
   private boolean myAutoPackHeight = true;
-  private boolean mySearchAlwaysVisible = false;
 
   @Override
   public Object getData(@NotNull @NonNls String dataId) {
@@ -64,7 +66,7 @@ public final class ListWithFilter<T> extends JPanel implements DataProvider {
     myScrollPane = scrollPane;
 
     mySearchField.getTextEditor().setFocusable(false);
-    mySearchField.setVisible(mySearchAlwaysVisible);
+    mySearchField.setVisible(false);
 
     add(mySearchField, BorderLayout.NORTH);
     add(myScrollPane, BorderLayout.CENTER);
@@ -82,6 +84,13 @@ public final class ListWithFilter<T> extends JPanel implements DataProvider {
     if (myModel.getSize() == modelSize) {
       myList.setSelectedIndex(selectedIndex);
     }
+    myList.getActionMap().put(TransferHandler.getPasteAction().getValue(Action.NAME), new AbstractAction() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        mySpeedSearch.type(CopyPasteManager.getInstance().getContents(DataFlavor.stringFlavor));
+        mySpeedSearch.update();
+      }
+    });
 
     setBackground(list.getBackground());
     //setFocusable(true);
@@ -101,15 +110,6 @@ public final class ListWithFilter<T> extends JPanel implements DataProvider {
       mySpeedSearch.reset();
     }
     return hadPattern;
-  }
-
-  public boolean isSearchAlwaysVisible() {
-    return mySearchAlwaysVisible;
-  }
-
-  public void setSearchAlwaysVisible(boolean searchAlwaysVisible) {
-    mySearchField.setVisible(searchAlwaysVisible);
-    mySearchAlwaysVisible = searchAlwaysVisible;
   }
 
   public SpeedSearch getSpeedSearch() {
@@ -146,7 +146,7 @@ public final class ListWithFilter<T> extends JPanel implements DataProvider {
         searchFieldShown = true;
       }
       else if (!isHoldingFilter() && searchFieldShown) {
-        mySearchField.setVisible(mySearchAlwaysVisible);
+        mySearchField.setVisible(false);
         searchFieldShown = false;
       }
 

@@ -1,17 +1,13 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.reference;
 
-import com.intellij.openapi.module.ModuleUtilCore;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import org.jetbrains.uast.UFile;
 import org.jetbrains.uast.UastContextKt;
 
-import java.util.Objects;
-
 public class RefJavaFileImpl extends RefFileImpl {
-  private volatile RefModule myRefModule;
-
   RefJavaFileImpl(PsiFile elem, RefManager manager) {
     super(elem, manager);
   }
@@ -55,20 +51,17 @@ public class RefJavaFileImpl extends RefFileImpl {
   protected void initialize() {
     PsiFile psiFile = getPsiElement();
     if (psiFile == null) return;
-    myRefModule = getRefManager().getRefModule(ModuleUtilCore.findModuleForFile(psiFile));
-    UFile file = Objects.requireNonNull(UastContextKt.toUElement(psiFile, UFile.class));
-    String packageName = file.getPackageName();
-    if (!packageName.isEmpty()) {
+    UFile file = UastContextKt.toUElement(psiFile, UFile.class);
+    String packageName = file != null ? file.getPackageName() : null;
+    if (!StringUtil.isEmpty(packageName)) {
       ((RefPackageImpl)getRefManager().getExtension(RefJavaManager.MANAGER).getPackage(packageName)).add(this);
-    } else if (myRefModule != null) {
-      ((WritableRefEntity)myRefModule).add(this);
     } else {
-      ((RefProjectImpl)getRefManager().getRefProject()).add(this);
+      final RefModule module = getModule();
+      if (module != null) {
+        ((WritableRefEntity)module).add(this);
+      } else {
+        ((RefProjectImpl)getRefManager().getRefProject()).add(this);
+      }
     }
-  }
-
-  @Override
-  public RefModule getModule() {
-    return myRefModule;
   }
 }

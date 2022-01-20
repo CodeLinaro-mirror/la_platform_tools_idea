@@ -18,7 +18,6 @@ import com.intellij.util.IconUtil;
 import com.intellij.util.PathUtil;
 import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.accessibility.AccessibleContextUtil;
 import org.jetbrains.annotations.NotNull;
@@ -143,7 +142,6 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
       private void initConstraints () {
         nameCell = new GridBagConstraints();
         pathCell = new GridBagConstraints();
-        GridBagConstraints rightButtonCell = new GridBagConstraints();
 
         nameCell.gridx = 0;
         nameCell.gridy = 0;
@@ -152,22 +150,11 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
         nameCell.anchor = GridBagConstraints.FIRST_LINE_START;
         nameCell.insets = JBUI.insets(6, 5, 1, 5);
 
-
-
         pathCell.gridx = 0;
         pathCell.gridy = 1;
 
         pathCell.insets = JBUI.insets(1, 5, 6, 5);
         pathCell.anchor = GridBagConstraints.LAST_LINE_START;
-
-
-        rightButtonCell.gridx = 1;
-        rightButtonCell.gridy = 0;
-        rightButtonCell.anchor = GridBagConstraints.FIRST_LINE_END;
-        rightButtonCell.insets = JBUI.insets(7, 7, 7, 7);
-        rightButtonCell.gridheight = 2;
-
-        //rightButtonCell.anchor = GridBagConstraints.WEST;
       }
 
       @Override
@@ -253,7 +240,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
 
               String projectPath = ((ReopenProjectAction)value).getProjectPath();
               RecentProjectsManagerBase recentProjectsManage = RecentProjectsManagerBase.getInstanceEx();
-              Icon icon = recentProjectsManage.getProjectIcon(projectPath, StartupUiUtil.isUnderDarcula(), true);
+              Icon icon = recentProjectsManage.getProjectIcon(projectPath, true);
               final JLabel projectIcon = new JLabel("", icon, SwingConstants.LEFT) {
                 @Override
                 protected void paintComponent(Graphics g) {

@@ -8,6 +8,10 @@
     <textExtractor language="HTML" implementationClass="com.intellij.grazie.ide.language.xml.XmlTextExtractor$Html"/>
 
     <problemFilter language="XML" implementationClass="com.intellij.grazie.ide.language.xml.XmlProblemFilter"/>
-    <disableChecking language="XML"/>
+  </extensions>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <registryKey key="grazie.html.concatenate.inline.tag.contents" defaultValue="false"
+                 description="Whether to use inline tag contents together to check grammar; this can lead to more false positives"/>
   </extensions>
 </idea-plugin>

@@ -23,7 +23,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.table.AbstractTableModel;
 import java.util.AbstractList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
@@ -158,7 +157,7 @@ public final class GraphTableModel extends AbstractTableModel {
   @NotNull
   public VcsFullCommitDetails getFullDetails(int row) {
     Integer id = getIdAtRow(row);
-    return myLogData.getCommitDetailsGetter().getCommitData(id, Collections.singleton(id));
+    return myLogData.getCommitDetailsGetter().getCommitData(id);
   }
 
   @NotNull

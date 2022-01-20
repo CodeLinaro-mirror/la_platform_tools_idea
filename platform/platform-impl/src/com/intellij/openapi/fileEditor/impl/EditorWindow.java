@@ -31,11 +31,12 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeGlassPaneUtil;
-import com.intellij.ui.JBColor;
+import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.scale.JBUIScale;
+import com.intellij.ui.tabs.TabsUtil;
 import com.intellij.ui.tabs.impl.JBTabsImpl;
 import com.intellij.ui.tabs.impl.tabsLayout.TabsLayoutInfo;
 import com.intellij.util.IconUtil;
@@ -47,6 +48,7 @@ import com.intellij.util.containers.Stack;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.GraphicsUtil;
 import com.intellij.util.ui.JBRectangle;
+import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -376,7 +378,7 @@ public final class EditorWindow {
   void updateFileBackgroundColor(@NotNull VirtualFile file) {
     int index = findFileEditorIndex(file);
     if (index != -1) {
-      Color color = EditorTabPresentationUtil.getEditorTabBackgroundColor(getManager().getProject(), file, this);
+      Color color = ExperimentalUI.isNewEditorTabs() ? null : EditorTabPresentationUtil.getEditorTabBackgroundColor(getManager().getProject(), file);
       setBackgroundColorAt(index, color);
     }
   }
@@ -604,7 +606,7 @@ public final class EditorWindow {
 
       Splitter splitter = new OnePixelSplitter(orientation == JSplitPane.VERTICAL_SPLIT, 0.5f, 0.1f, 0.9f);
       splitter.putClientProperty(EditorsSplitters.SPLITTER_KEY, Boolean.TRUE);
-      EditorWindow res = new EditorWindow(myOwner, myOwner.parentDisposable);
+      EditorWindow res = new EditorWindow(myOwner, myOwner);
       EditorWithProviderComposite selectedEditor = getSelectedEditor();
       panel.remove(myTabbedPane.getComponent());
       panel.add(splitter, BorderLayout.CENTER);
@@ -815,7 +817,7 @@ public final class EditorWindow {
         return;
       }
       GraphicsUtil.setupAAPainting(g);
-      g.setColor(JBColor.namedColor("DragAndDrop.areaBackground", 0x3d7dcc, 0x404a57));
+      g.setColor(JBUI.CurrentTheme.DragAndDrop.Area.BACKGROUND);
       g.fill(myRectangle);
 
       if (myPosition == RelativePosition.CENTER && myShowInfoPanel) {
@@ -887,26 +889,7 @@ public final class EditorWindow {
       setNeedsRepaint(true);
 
       Rectangle r = getTabbedPane().getTabs().getDropArea();
-      switch (myPosition) {
-        case CENTER:
-          break;
-        case UP:
-          r.height /= 2;
-          break;
-        case LEFT:
-          r.width /= 2;
-          break;
-        case DOWN:
-          int h = r.height / 2;
-          r.height -= h;
-          r.y += h;
-          break;
-        case RIGHT:
-          int w = r.width / 2;
-          r.width -= w;
-          r.x += w;
-          break;
-      }
+      TabsUtil.updateBoundsWithDropSide(r, myPosition.mySwingConstant);
       myRectangle = new Rectangle2D.Double(r.x, r.y, r.width, r.height);
     }
   }
@@ -1048,7 +1031,7 @@ public final class EditorWindow {
     int index = findFileEditorIndex(file);
     if (index != -1) {
       setTitleAt(index, SlowOperations.allowSlowOperations(
-        () -> EditorTabPresentationUtil.getEditorTabTitle(getManager().getProject(), file, this)
+        () -> EditorTabPresentationUtil.getEditorTabTitle(getManager().getProject(), file)
       ));
       setToolTipTextAt(index, UISettings.getInstance().getShowTabsTooltips()
                               ? getManager().getFileTooltipText(file)
@@ -1347,9 +1330,8 @@ public final class EditorWindow {
     if (composite == null) return false;
     //Don't check focus in unit test mode
     if (!ApplicationManager.getApplication().isUnitTestMode()) {
-      JComponent selectedEditorComponent = composite.getSelectedEditor().getComponent();
-      Component owner = IdeFocusManager.getInstance(myOwner.getManager().getProject()).getFocusTargetFor(selectedEditorComponent);
-      if (owner == null || !SwingUtilities.isDescendingFrom(owner, selectedEditorComponent)) return false;
+      Component owner = IdeFocusManager.getInstance(myOwner.getManager().getProject()).getFocusOwner();
+      if (owner == null || !SwingUtilities.isDescendingFrom(owner, composite.getSelectedEditor().getComponent())) return false;
     }
     return !myOwner.getManager().isChanged(composite);
   }

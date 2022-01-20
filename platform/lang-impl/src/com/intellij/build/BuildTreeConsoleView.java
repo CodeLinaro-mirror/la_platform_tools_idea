@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.build;
 
 import com.intellij.build.events.*;
@@ -36,11 +36,12 @@ import com.intellij.openapi.editor.actions.ToggleUseSoftWrapsToolbarAction;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapAppliancePlaces;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
-import com.intellij.openapi.progress.util.ProgressWindow;
+import com.intellij.openapi.progress.util.ProgressIndicatorWithDelayedPresentation;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -142,6 +143,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     AsyncTreeModel asyncTreeModel = new AsyncTreeModel(myTreeModel, this);
     asyncTreeModel.addTreeModelListener(new ExecutionNodeAutoExpandingListener());
     myTree = initTree(asyncTreeModel);
+    myTree.getAccessibleContext().setAccessibleName(IdeBundle.message("buildToolWindow.tree.accessibleName"));
 
     JPanel myContentPanel = new JPanel();
     myContentPanel.setLayout(new CardLayout());
@@ -228,7 +230,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
 
   @Override
   public void clear() {
-    myTreeModel.getInvoker().runOrInvokeLater(() -> {
+    myTreeModel.getInvoker().invoke(() -> {
       getRootElement().removeChildren();
       nodesMap.clear();
       myConsoleViewHandler.clear();
@@ -268,7 +270,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
 
   private void updateFilter() {
     ExecutionNode rootElement = getRootElement();
-    myTreeModel.getInvoker().runOrInvokeLater(() -> {
+    myTreeModel.getInvoker().invoke(() -> {
       rootElement.setFilter(getFilter());
       scheduleUpdate(rootElement, true);
     });
@@ -286,20 +288,19 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
   public void print(@NotNull String text, @NotNull ConsoleViewContentType contentType) {
   }
 
-  private @Nullable ExecutionNode getOrMaybeCreateParentNode(@NotNull BuildEvent event) {
+  private @Nullable ExecutionNode getOrMaybeCreateParentNode(@NotNull BuildEvent event,
+                                                             @NotNull Set<ExecutionNode> structureChanged) {
     ExecutionNode parentNode = event.getParentId() == null ? null : nodesMap.get(event.getParentId());
     if (event instanceof MessageEvent) {
       parentNode = createMessageParentNodes((MessageEvent)event, parentNode);
-      if (parentNode != null) {
-        scheduleUpdate(parentNode, true); // To update its parent.
-      }
+      addIfNotNull(structureChanged, parentNode);
     }
     return parentNode;
   }
 
   private void onEventInternal(@NotNull Object buildId, @NotNull BuildEvent event) {
-    SmartHashSet<ExecutionNode> structureChanged = new SmartHashSet<>();
-    final ExecutionNode parentNode = getOrMaybeCreateParentNode(event);
+    Set<ExecutionNode> structureChanged = new SmartHashSet<>();
+    final ExecutionNode parentNode = getOrMaybeCreateParentNode(event, structureChanged);
     final Object eventId = event.getId();
     ExecutionNode currentNode = nodesMap.get(eventId);
     ExecutionNode buildProgressRootNode = getBuildProgressRootNode();
@@ -331,7 +332,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
             currentNode.setAlwaysLeaf(event instanceof FileMessageEvent);
             MessageEvent messageEvent = (MessageEvent)event;
             currentNode.setStartTime(messageEvent.getEventTime());
-            addIfNotNull(structureChanged, currentNode.setEndTime(messageEvent.getEventTime()));
+            currentNode.setEndTime(messageEvent.getEventTime(), false);
             Navigatable messageEventNavigatable = messageEvent.getNavigatable(myProject);
             currentNode.setNavigatable(messageEventNavigatable);
             MessageEventResult messageEventResult = messageEvent.getResult();
@@ -353,7 +354,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
                 myConsoleViewHandler.addOutput(parentNode, buildId, event);
                 myConsoleViewHandler.addOutput(parentNode, "\n", true);
               }
-              reportMessageKind(messageEvent.getKind(), parentNode);
+              reportMessageKind(messageEvent.getKind(), parentNode, structureChanged);
             }
             myConsoleViewHandler.addOutput(currentNode, buildId, event);
           }
@@ -415,7 +416,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
       if (result instanceof DerivedResult) {
         result = calculateDerivedResult((DerivedResult)result, currentNode);
       }
-      addIfNotNull(structureChanged, currentNode.setResult(result));
+      currentNode.setResult(result, false);
       addIfNotNull(structureChanged, currentNode.setEndTime(event.getEventTime()));
       SkippedResult skippedResult = new SkippedResultImpl();
       finishChildren(structureChanged, currentNode, skippedResult);
@@ -466,7 +467,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
 
   @NotNull
   private ExecutionNode addAsPresentableEventNode(@NotNull PresentableBuildEvent event,
-                                                  @NotNull SmartHashSet<ExecutionNode> structureChanged,
+                                                  @NotNull Set<ExecutionNode> structureChanged,
                                                   @Nullable ExecutionNode parentNode,
                                                   @NotNull Object eventId,
                                                   @NotNull ExecutionNode buildProgressRootNode) {
@@ -503,13 +504,15 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     return result.createDefaultResult();
   }
 
-  private void reportMessageKind(@NotNull MessageEvent.Kind eventKind, @NotNull ExecutionNode parentNode) {
+  private void reportMessageKind(@NotNull MessageEvent.Kind eventKind,
+                                 @NotNull ExecutionNode parentNode,
+                                 @NotNull Set<? super ExecutionNode> structureChanged) {
     if (eventKind == MessageEvent.Kind.ERROR || eventKind == MessageEvent.Kind.WARNING || eventKind == MessageEvent.Kind.INFO) {
       ExecutionNode executionNode = parentNode;
       do {
         ExecutionNode updatedRoot = executionNode.reportChildMessageKind(eventKind);
         if (updatedRoot != null) {
-          scheduleUpdate(updatedRoot, true);
+          structureChanged.add(updatedRoot);
         }
         else {
           scheduleUpdate(executionNode, false);
@@ -602,7 +605,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
         failureNode.setHint(hint);
       }
       parentNode.add(failureNode);
-      reportMessageKind(MessageEvent.Kind.ERROR, parentNode);
+      reportMessageKind(MessageEvent.Kind.ERROR, parentNode, structureChanged);
     }
     if (failureNavigatable != null && failureNavigatable != NonNavigatable.INSTANCE) {
       failureNode.setNavigatable(failureNavigatable);
@@ -801,7 +804,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
 
   @Override
   public @Nullable Object getData(@NotNull String dataId) {
-    if (PlatformDataKeys.HELP_ID.is(dataId)) return "reference.build.tool.window";
+    if (PlatformCoreDataKeys.HELP_ID.is(dataId)) return "reference.build.tool.window";
     if (CommonDataKeys.PROJECT.is(dataId)) return myProject;
     if (CommonDataKeys.NAVIGATABLE_ARRAY.is(dataId)) return extractSelectedNodesNavigatables();
     if (CommonDataKeys.NAVIGATABLE.is(dataId)) return extractSelectedNodeNavigatable();
@@ -854,7 +857,9 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
     EditSourceOnEnterKeyHandler.install(tree);
     new TreeSpeedSearch(tree).setComparator(new SpeedSearchComparator(false));
     TreeUtil.installActions(tree);
-    tree.setCellRenderer(new MyNodeRenderer());
+    if (Registry.is("build.toolwindow.show.inline.statistics")) {
+      tree.setCellRenderer(new MyNodeRenderer());
+    }
     tree.putClientProperty(SHRINK_LONG_RENDERER, true);
     return tree;
   }
@@ -917,7 +922,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
                        @NotNull BuildViewSettingsProvider buildViewSettingsProvider) {
       myProject = project;
       myPanel = new NonOpaquePanel(new BorderLayout());
-      myPanelWithProgress = new BuildProgressStripe(myPanel, parentDisposable, ProgressWindow.DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS);
+      myPanelWithProgress = new BuildProgressStripe(myPanel, parentDisposable, ProgressIndicatorWithDelayedPresentation.DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS);
       myViewSettingsProvider = buildViewSettingsProvider;
       myExecutionConsoleFilters = executionConsoleFilters;
       Disposer.register(parentDisposable, this);
@@ -945,6 +950,7 @@ public class BuildTreeConsoleView implements ConsoleView, DataProvider, BuildCon
       myToolbar.setTargetComponent(myView);
       myPanel.add(myToolbar.getComponent(), BorderLayout.EAST);
       tree.addTreeSelectionListener(e -> {
+        if (Disposer.isDisposed(myView)) return;
         TreePath path = e.getPath();
         if (path == null || !e.isAddedPath()) {
           return;

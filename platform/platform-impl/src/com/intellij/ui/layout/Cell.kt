@@ -3,18 +3,21 @@ package com.intellij.ui.layout
 
 import com.intellij.BundleBase
 import com.intellij.icons.AllIcons
+import com.intellij.ide.ui.UINumericRange
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.observable.properties.GraphProperty
+import com.intellij.openapi.observable.properties.ObservableClearableProperty
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.ui.panel.ComponentPanelBuilder
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsContexts.*
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -22,7 +25,9 @@ import com.intellij.ui.*
 import com.intellij.ui.components.*
 import com.intellij.ui.components.fields.ExpandableTextField
 import com.intellij.util.Function
+import com.intellij.util.MathUtil
 import com.intellij.util.execution.ParametersListUtil
+import com.intellij.util.lockOrSkip
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.StatusText
 import com.intellij.util.ui.UIUtil
@@ -31,10 +36,7 @@ import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
 import java.awt.Component
 import java.awt.Dimension
-import java.awt.event.ActionEvent
-import java.awt.event.ActionListener
-import java.awt.event.ItemEvent
-import java.awt.event.MouseEvent
+import java.awt.event.*
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.*
@@ -102,7 +104,8 @@ class ValidationInfoBuilder(val component: JComponent) {
 interface CellBuilder<out T : JComponent> {
   val component: T
 
-  fun comment(@DetailedDescription text: String, maxLineLength: Int = 70, forComponent: Boolean = false): CellBuilder<T>
+  fun comment(@DetailedDescription text: String, maxLineLength: Int = ComponentPanelBuilder.MAX_COMMENT_WIDTH,
+              forComponent: Boolean = false): CellBuilder<T>
   fun commentComponent(component: JComponent, forComponent: Boolean = false): CellBuilder<T>
   fun focused(): CellBuilder<T>
   fun withValidationOnApply(callback: ValidationInfoBuilder.(T) -> ValidationInfo?): CellBuilder<T>
@@ -123,6 +126,20 @@ interface CellBuilder<out T : JComponent> {
    * If this method is called, the value of the component will be stored to the backing property only if the component is enabled.
    */
   fun applyIfEnabled(): CellBuilder<T>
+
+  @ApiStatus.Experimental
+  fun accessibleName(@Nls name: String): CellBuilder<T> {
+    component.accessibleContext.accessibleName = name
+
+    return this
+  }
+
+  @ApiStatus.Experimental
+  fun accessibleDescription(@Nls description: String): CellBuilder<T> {
+    component.accessibleContext.accessibleDescription = description
+
+    return this
+  }
 
   fun <V> withBinding(
     componentGet: (T) -> V,
@@ -403,15 +420,24 @@ abstract class Cell : BaseBuilder {
       .applyToComponent { bind(property) }
   }
 
-  fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
-    return intTextField(prop.toBinding(), columns, range)
+  @JvmOverloads
+  fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null, step: Int? = null): CellBuilder<JBTextField> {
+    return intTextField(prop.toBinding(), columns, range, step)
   }
 
-  fun intTextField(getter: () -> Int, setter: (Int) -> Unit, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
-    return intTextField(PropertyBinding(getter, setter), columns, range)
+  @JvmOverloads
+  fun intTextField(getter: () -> Int, setter: (Int) -> Unit, columns: Int? = null, range: IntRange? = null, step: Int? = null): CellBuilder<JBTextField> {
+    return intTextField(PropertyBinding(getter, setter), columns, range, step)
   }
 
-  fun intTextField(binding: PropertyBinding<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
+  /**
+   * @param step allows changing value by up/down keys on keyboard
+   */
+  @JvmOverloads
+  fun intTextField(binding: PropertyBinding<Int>,
+                   columns: Int? = null,
+                   range: IntRange? = null,
+                   step: Int? = null): CellBuilder<JBTextField> {
     return textField(
       { binding.get().toString() },
       { value -> value.toIntOrNull()?.let { intValue -> binding.set(range?.let { intValue.coerceIn(it.first, it.last) } ?: intValue) } },
@@ -422,6 +448,29 @@ abstract class Cell : BaseBuilder {
         value == null -> error(UIBundle.message("please.enter.a.number"))
         range != null && value !in range -> error(UIBundle.message("please.enter.a.number.from.0.to.1", range.first, range.last))
         else -> null
+      }
+    }.apply {
+      step?.let {
+        component.addKeyListener(object : KeyAdapter() {
+          override fun keyPressed(e: KeyEvent?) {
+            val increment: Int
+            when (e?.keyCode) {
+              KeyEvent.VK_UP -> increment = step
+              KeyEvent.VK_DOWN -> increment = -step
+              else -> return
+            }
+
+            var value = component.text.toIntOrNull()
+            if (value != null) {
+              value += increment
+              if (range != null) {
+                value = MathUtil.clamp(value, range.first, range.last)
+              }
+              component.text = value.toString()
+              e.consume()
+            }
+          }
+        })
       }
     }
   }
@@ -511,6 +560,7 @@ abstract class Cell : BaseBuilder {
   ): CellBuilder<TextFieldWithBrowseButton> {
     return textFieldWithBrowseButton(property, browseDialogTitle, project, fileChooserDescriptor, fileChosen)
       .applyToComponent { emptyText.bind(emptyTextProperty) }
+      .applyToComponent { emptyText.text = emptyTextProperty.get() }
   }
 
   fun textFieldWithBrowseButton(
@@ -539,7 +589,7 @@ abstract class Cell : BaseBuilder {
         JBPopupFactory.getInstance()
           .createActionGroupPopup(null, DefaultActionGroup(*actions), DataContext { dataId ->
             when (dataId) {
-              PlatformDataKeys.CONTEXT_COMPONENT.name -> label
+              PlatformCoreDataKeys.CONTEXT_COMPONENT.name -> label
               else -> null
             }
           }, true, null, 10)
@@ -623,20 +673,6 @@ abstract class Cell : BaseBuilder {
   }
 }
 
-private fun JBCheckBox.bind(property: GraphProperty<Boolean>) {
-  val mutex = AtomicBoolean()
-  property.afterChange {
-    mutex.lockOrSkip {
-      isSelected = property.get()
-    }
-  }
-  addItemListener {
-    mutex.lockOrSkip {
-      property.set(isSelected)
-    }
-  }
-}
-
 class InnerCell(val cell: Cell) : Cell() {
   override fun <T : JComponent> component(component: T): CellBuilder<T> {
     return cell.component(component)
@@ -661,7 +697,7 @@ fun <T> listCellRenderer(renderer: SimpleListCellRenderer<T?>.(value: T, index: 
   }
 }
 
-fun <T> ComboBox<T>.bind(property: GraphProperty<T>) {
+fun <T, C : ComboBox<T>> C.bind(property: ObservableClearableProperty<T>): C = apply {
   val mutex = AtomicBoolean()
   property.afterChange {
     mutex.lockOrSkip {
@@ -678,11 +714,24 @@ fun <T> ComboBox<T>.bind(property: GraphProperty<T>) {
   }
 }
 
+fun <T, C : JList<T>> C.bind(property: ObservableClearableProperty<T>): C = apply {
+  val mutex = AtomicBoolean()
+  property.afterChange {
+    mutex.lockOrSkip {
+      setSelectedValue(it, true)
+    }
+  }
+  addListSelectionListener {
+    mutex.lockOrSkip {
+      property.set(selectedValue)
+    }
+  }
+}
+
 private val TextFieldWithBrowseButton.emptyText
   get() = (textField as JBTextField).emptyText
 
-fun StatusText.bind(property: GraphProperty<String>) {
-  text = property.get()
+fun <C : StatusText> C.bind(property: ObservableClearableProperty<@NlsContexts.StatusText String>): C = apply {
   property.afterChange {
     text = it
   }
@@ -691,11 +740,34 @@ fun StatusText.bind(property: GraphProperty<String>) {
   }
 }
 
-fun TextFieldWithBrowseButton.bind(property: GraphProperty<String>) {
+fun <C : JLabel> C.bind(property: ObservableClearableProperty<@Label String>): C = apply {
+  property.afterChange {
+    text = it
+  }
+  property.afterReset {
+    text = property.get()
+  }
+}
+
+fun <C : JCheckBox> C.bind(property: ObservableClearableProperty<Boolean>): C = apply {
+  val mutex = AtomicBoolean()
+  property.afterChange {
+    mutex.lockOrSkip {
+      isSelected = it
+    }
+  }
+  addItemListener {
+    mutex.lockOrSkip {
+      property.set(isSelected)
+    }
+  }
+}
+
+fun <C : TextFieldWithBrowseButton> C.bind(property: ObservableClearableProperty<String>): C = apply {
   textField.bind(property)
 }
 
-fun JTextComponent.bind(property: GraphProperty<String>) {
+fun <C : JTextComponent> C.bind(property: ObservableClearableProperty<String>): C = apply {
   val mutex = AtomicBoolean()
   property.afterChange {
     mutex.lockOrSkip {
@@ -712,15 +784,22 @@ fun JTextComponent.bind(property: GraphProperty<String>) {
     }
   )
 }
-
-private fun AtomicBoolean.lockOrSkip(action: () -> Unit) {
-  if (!compareAndSet(false, true)) return
-  try {
-    action()
+fun JTextComponent.bindIntProperty(property: ObservableClearableProperty<Int>) {
+  val mutex = AtomicBoolean()
+  property.afterChange {
+    mutex.lockOrSkip {
+      text = it.toString()
+    }
   }
-  finally {
-    set(false)
-  }
+  document.addDocumentListener(
+    object : DocumentAdapter() {
+      override fun textChanged(e: DocumentEvent) {
+        mutex.lockOrSkip {
+          property.set(text.toInt())
+        }
+      }
+    }
+  )
 }
 
 fun Cell.slider(min: Int, max: Int, minorTick: Int, majorTick: Int): CellBuilder<JSlider> {
@@ -744,3 +823,5 @@ fun <T : JSlider> CellBuilder<T>.labelTable(table: Hashtable<Int, JComponent>.()
 fun <T : JSlider> CellBuilder<T>.withValueBinding(modelBinding: PropertyBinding<Int>): CellBuilder<T> {
   return withBinding(JSlider::getValue, JSlider::setValue, modelBinding)
 }
+
+fun UINumericRange.asRange(): IntRange = min..max

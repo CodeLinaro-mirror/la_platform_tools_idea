@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.memberPullUp;
 
 import com.intellij.codeInsight.AnnotationUtil;
@@ -406,7 +406,8 @@ public class JavaPullUpHelper implements PullUpHelper<MemberInfo> {
       if (i2.movedFieldsUsed.contains(field1)) return -1;
       if (i1.usedParameters.stream().anyMatch(p -> p.isVarArgs())) return 1;
       if (i2.usedParameters.stream().anyMatch(p -> p.isVarArgs())) return -1;
-      return 0;
+
+      return i1.movedFieldsUsed.size() - i2.movedFieldsUsed.size();
     });
 
     for (final PsiField initializedField : initializedFields) {
@@ -765,8 +766,6 @@ public class JavaPullUpHelper implements PullUpHelper<MemberInfo> {
   }
 
   private class ExplicitSuperDeleter extends JavaRecursiveElementWalkingVisitor {
-    private final PsiExpression myThisExpression = JavaPsiFacade.getElementFactory(myProject).createExpressionFromText("this", null);
-
     @Override
     public void visitReferenceExpression(PsiReferenceExpression expression) {
       super.visitReferenceExpression(expression);
@@ -778,10 +777,6 @@ public class JavaPullUpHelper implements PullUpHelper<MemberInfo> {
       }
     }
 
-    @Override
-    public void visitSuperExpression(PsiSuperExpression expression) {
-      expression.replace(myThisExpression);
-    }
 
     @Override
     public void visitClass(PsiClass aClass) {

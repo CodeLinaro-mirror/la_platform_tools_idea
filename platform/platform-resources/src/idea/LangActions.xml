@@ -155,107 +155,144 @@
     </group>
 
     <group id="Bookmarks" popup="true">
-      <action id="EditBookmark" class="com.intellij.ide.bookmarks.actions.EditBookmarkAction"/>
-      <action id="ToggleBookmark" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkAction"/>
-      <action id="ToggleBookmarkWithMnemonic" class="com.intellij.ide.bookmarks.actions.ChooseBookmarkTypeAction"/>
-      <action id="DeleteMnemonicFromBookmark" class="com.intellij.ide.bookmarks.actions.DeleteBookmarkTypeAction"/>
-      <action id="ShowBookmarks" class="com.intellij.ide.bookmarks.actions.BookmarksAction"/>
-      <action id="GotoNextBookmark" class="com.intellij.ide.bookmarks.actions.NextBookmarkAction"/>
-      <action id="GotoPreviousBookmark" class="com.intellij.ide.bookmarks.actions.PreviousBookmarkAction"/>
+      <action id="AddAnotherBookmark" class="com.intellij.ide.bookmark.actions.AddAnotherBookmarkAction"/>
+      <action id="EditBookmark" icon="AllIcons.Actions.Edit"
+              class="com.intellij.ide.bookmark.actions.EditBookmarkAction"/>
+      <action id="ToggleBookmark" class="com.intellij.ide.bookmark.actions.ToggleBookmarkAction"/>
+      <action id="ToggleBookmarkWithMnemonic" class="com.intellij.ide.bookmark.actions.ChooseBookmarkTypeAction"/>
+      <action id="DeleteMnemonicFromBookmark" class="com.intellij.ide.bookmark.actions.DeleteBookmarkTypeAction"/>
+      <action id="ShowBookmarks" class="com.intellij.ide.bookmark.actions.ShowLineBookmarksAction"/>
+      <action id="ShowTypeBookmarks" class="com.intellij.ide.bookmark.actions.ShowTypeBookmarksAction"/>
+      <action id="GotoNextBookmark" class="com.intellij.ide.bookmark.actions.NextBookmarkAction"/>
+      <action id="GotoPreviousBookmark" class="com.intellij.ide.bookmark.actions.PreviousBookmarkAction"/>
 
       <group id="Bookmarks.Goto" popup="true">
-        <action id="GotoBookmark0" class="com.intellij.ide.bookmarks.actions.GotoBookmark0Action"/>
-        <action id="GotoBookmark1" class="com.intellij.ide.bookmarks.actions.GotoBookmark1Action"/>
-        <action id="GotoBookmark2" class="com.intellij.ide.bookmarks.actions.GotoBookmark2Action"/>
-        <action id="GotoBookmark3" class="com.intellij.ide.bookmarks.actions.GotoBookmark3Action"/>
-        <action id="GotoBookmark4" class="com.intellij.ide.bookmarks.actions.GotoBookmark4Action"/>
-        <action id="GotoBookmark5" class="com.intellij.ide.bookmarks.actions.GotoBookmark5Action"/>
-        <action id="GotoBookmark6" class="com.intellij.ide.bookmarks.actions.GotoBookmark6Action"/>
-        <action id="GotoBookmark7" class="com.intellij.ide.bookmarks.actions.GotoBookmark7Action"/>
-        <action id="GotoBookmark8" class="com.intellij.ide.bookmarks.actions.GotoBookmark8Action"/>
-        <action id="GotoBookmark9" class="com.intellij.ide.bookmarks.actions.GotoBookmark9Action"/>
-        <action id="GotoBookmarkA" class="com.intellij.ide.bookmarks.actions.GotoBookmarkAAction"/>
-        <action id="GotoBookmarkB" class="com.intellij.ide.bookmarks.actions.GotoBookmarkBAction"/>
-        <action id="GotoBookmarkC" class="com.intellij.ide.bookmarks.actions.GotoBookmarkCAction"/>
-        <action id="GotoBookmarkD" class="com.intellij.ide.bookmarks.actions.GotoBookmarkDAction"/>
-        <action id="GotoBookmarkE" class="com.intellij.ide.bookmarks.actions.GotoBookmarkEAction"/>
-        <action id="GotoBookmarkF" class="com.intellij.ide.bookmarks.actions.GotoBookmarkFAction"/>
-        <action id="GotoBookmarkG" class="com.intellij.ide.bookmarks.actions.GotoBookmarkGAction"/>
-        <action id="GotoBookmarkH" class="com.intellij.ide.bookmarks.actions.GotoBookmarkHAction"/>
-        <action id="GotoBookmarkI" class="com.intellij.ide.bookmarks.actions.GotoBookmarkIAction"/>
-        <action id="GotoBookmarkJ" class="com.intellij.ide.bookmarks.actions.GotoBookmarkJAction"/>
-        <action id="GotoBookmarkK" class="com.intellij.ide.bookmarks.actions.GotoBookmarkKAction"/>
-        <action id="GotoBookmarkL" class="com.intellij.ide.bookmarks.actions.GotoBookmarkLAction"/>
-        <action id="GotoBookmarkM" class="com.intellij.ide.bookmarks.actions.GotoBookmarkMAction"/>
-        <action id="GotoBookmarkN" class="com.intellij.ide.bookmarks.actions.GotoBookmarkNAction"/>
-        <action id="GotoBookmarkO" class="com.intellij.ide.bookmarks.actions.GotoBookmarkOAction"/>
-        <action id="GotoBookmarkP" class="com.intellij.ide.bookmarks.actions.GotoBookmarkPAction"/>
-        <action id="GotoBookmarkQ" class="com.intellij.ide.bookmarks.actions.GotoBookmarkQAction"/>
-        <action id="GotoBookmarkR" class="com.intellij.ide.bookmarks.actions.GotoBookmarkRAction"/>
-        <action id="GotoBookmarkS" class="com.intellij.ide.bookmarks.actions.GotoBookmarkSAction"/>
-        <action id="GotoBookmarkT" class="com.intellij.ide.bookmarks.actions.GotoBookmarkTAction"/>
-        <action id="GotoBookmarkU" class="com.intellij.ide.bookmarks.actions.GotoBookmarkUAction"/>
-        <action id="GotoBookmarkV" class="com.intellij.ide.bookmarks.actions.GotoBookmarkVAction"/>
-        <action id="GotoBookmarkW" class="com.intellij.ide.bookmarks.actions.GotoBookmarkWAction"/>
-        <action id="GotoBookmarkX" class="com.intellij.ide.bookmarks.actions.GotoBookmarkXAction"/>
-        <action id="GotoBookmarkY" class="com.intellij.ide.bookmarks.actions.GotoBookmarkYAction"/>
-        <action id="GotoBookmarkZ" class="com.intellij.ide.bookmarks.actions.GotoBookmarkZAction"/>
+        <action id="GotoBookmark0" class="com.intellij.ide.bookmark.actions.GotoBookmark0Action"/>
+        <action id="GotoBookmark1" class="com.intellij.ide.bookmark.actions.GotoBookmark1Action"/>
+        <action id="GotoBookmark2" class="com.intellij.ide.bookmark.actions.GotoBookmark2Action"/>
+        <action id="GotoBookmark3" class="com.intellij.ide.bookmark.actions.GotoBookmark3Action"/>
+        <action id="GotoBookmark4" class="com.intellij.ide.bookmark.actions.GotoBookmark4Action"/>
+        <action id="GotoBookmark5" class="com.intellij.ide.bookmark.actions.GotoBookmark5Action"/>
+        <action id="GotoBookmark6" class="com.intellij.ide.bookmark.actions.GotoBookmark6Action"/>
+        <action id="GotoBookmark7" class="com.intellij.ide.bookmark.actions.GotoBookmark7Action"/>
+        <action id="GotoBookmark8" class="com.intellij.ide.bookmark.actions.GotoBookmark8Action"/>
+        <action id="GotoBookmark9" class="com.intellij.ide.bookmark.actions.GotoBookmark9Action"/>
+        <action id="GotoBookmarkA" class="com.intellij.ide.bookmark.actions.GotoBookmarkAAction"/>
+        <action id="GotoBookmarkB" class="com.intellij.ide.bookmark.actions.GotoBookmarkBAction"/>
+        <action id="GotoBookmarkC" class="com.intellij.ide.bookmark.actions.GotoBookmarkCAction"/>
+        <action id="GotoBookmarkD" class="com.intellij.ide.bookmark.actions.GotoBookmarkDAction"/>
+        <action id="GotoBookmarkE" class="com.intellij.ide.bookmark.actions.GotoBookmarkEAction"/>
+        <action id="GotoBookmarkF" class="com.intellij.ide.bookmark.actions.GotoBookmarkFAction"/>
+        <action id="GotoBookmarkG" class="com.intellij.ide.bookmark.actions.GotoBookmarkGAction"/>
+        <action id="GotoBookmarkH" class="com.intellij.ide.bookmark.actions.GotoBookmarkHAction"/>
+        <action id="GotoBookmarkI" class="com.intellij.ide.bookmark.actions.GotoBookmarkIAction"/>
+        <action id="GotoBookmarkJ" class="com.intellij.ide.bookmark.actions.GotoBookmarkJAction"/>
+        <action id="GotoBookmarkK" class="com.intellij.ide.bookmark.actions.GotoBookmarkKAction"/>
+        <action id="GotoBookmarkL" class="com.intellij.ide.bookmark.actions.GotoBookmarkLAction"/>
+        <action id="GotoBookmarkM" class="com.intellij.ide.bookmark.actions.GotoBookmarkMAction"/>
+        <action id="GotoBookmarkN" class="com.intellij.ide.bookmark.actions.GotoBookmarkNAction"/>
+        <action id="GotoBookmarkO" class="com.intellij.ide.bookmark.actions.GotoBookmarkOAction"/>
+        <action id="GotoBookmarkP" class="com.intellij.ide.bookmark.actions.GotoBookmarkPAction"/>
+        <action id="GotoBookmarkQ" class="com.intellij.ide.bookmark.actions.GotoBookmarkQAction"/>
+        <action id="GotoBookmarkR" class="com.intellij.ide.bookmark.actions.GotoBookmarkRAction"/>
+        <action id="GotoBookmarkS" class="com.intellij.ide.bookmark.actions.GotoBookmarkSAction"/>
+        <action id="GotoBookmarkT" class="com.intellij.ide.bookmark.actions.GotoBookmarkTAction"/>
+        <action id="GotoBookmarkU" class="com.intellij.ide.bookmark.actions.GotoBookmarkUAction"/>
+        <action id="GotoBookmarkV" class="com.intellij.ide.bookmark.actions.GotoBookmarkVAction"/>
+        <action id="GotoBookmarkW" class="com.intellij.ide.bookmark.actions.GotoBookmarkWAction"/>
+        <action id="GotoBookmarkX" class="com.intellij.ide.bookmark.actions.GotoBookmarkXAction"/>
+        <action id="GotoBookmarkY" class="com.intellij.ide.bookmark.actions.GotoBookmarkYAction"/>
+        <action id="GotoBookmarkZ" class="com.intellij.ide.bookmark.actions.GotoBookmarkZAction"/>
       </group>
       <group id="Bookmarks.Toggle" popup="true">
-        <action id="ToggleBookmark0" class="com.intellij.ide.bookmarks.actions.ToggleBookmark0Action"/>
-        <action id="ToggleBookmark1" class="com.intellij.ide.bookmarks.actions.ToggleBookmark1Action"/>
-        <action id="ToggleBookmark2" class="com.intellij.ide.bookmarks.actions.ToggleBookmark2Action"/>
-        <action id="ToggleBookmark3" class="com.intellij.ide.bookmarks.actions.ToggleBookmark3Action"/>
-        <action id="ToggleBookmark4" class="com.intellij.ide.bookmarks.actions.ToggleBookmark4Action"/>
-        <action id="ToggleBookmark5" class="com.intellij.ide.bookmarks.actions.ToggleBookmark5Action"/>
-        <action id="ToggleBookmark6" class="com.intellij.ide.bookmarks.actions.ToggleBookmark6Action"/>
-        <action id="ToggleBookmark7" class="com.intellij.ide.bookmarks.actions.ToggleBookmark7Action"/>
-        <action id="ToggleBookmark8" class="com.intellij.ide.bookmarks.actions.ToggleBookmark8Action"/>
-        <action id="ToggleBookmark9" class="com.intellij.ide.bookmarks.actions.ToggleBookmark9Action"/>
-        <action id="ToggleBookmarkA" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkAAction"/>
-        <action id="ToggleBookmarkB" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkBAction"/>
-        <action id="ToggleBookmarkC" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkCAction"/>
-        <action id="ToggleBookmarkD" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkDAction"/>
-        <action id="ToggleBookmarkE" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkEAction"/>
-        <action id="ToggleBookmarkF" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkFAction"/>
-        <action id="ToggleBookmarkG" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkGAction"/>
-        <action id="ToggleBookmarkH" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkHAction"/>
-        <action id="ToggleBookmarkI" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkIAction"/>
-        <action id="ToggleBookmarkJ" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkJAction"/>
-        <action id="ToggleBookmarkK" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkKAction"/>
-        <action id="ToggleBookmarkL" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkLAction"/>
-        <action id="ToggleBookmarkM" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkMAction"/>
-        <action id="ToggleBookmarkN" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkNAction"/>
-        <action id="ToggleBookmarkO" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkOAction"/>
-        <action id="ToggleBookmarkP" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkPAction"/>
-        <action id="ToggleBookmarkQ" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkQAction"/>
-        <action id="ToggleBookmarkR" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkRAction"/>
-        <action id="ToggleBookmarkS" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkSAction"/>
-        <action id="ToggleBookmarkT" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkTAction"/>
-        <action id="ToggleBookmarkU" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkUAction"/>
-        <action id="ToggleBookmarkV" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkVAction"/>
-        <action id="ToggleBookmarkW" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkWAction"/>
-        <action id="ToggleBookmarkX" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkXAction"/>
-        <action id="ToggleBookmarkY" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkYAction"/>
-        <action id="ToggleBookmarkZ" class="com.intellij.ide.bookmarks.actions.ToggleBookmarkZAction"/>
+        <action id="ToggleBookmark0" class="com.intellij.ide.bookmark.actions.ToggleBookmark0Action"/>
+        <action id="ToggleBookmark1" class="com.intellij.ide.bookmark.actions.ToggleBookmark1Action"/>
+        <action id="ToggleBookmark2" class="com.intellij.ide.bookmark.actions.ToggleBookmark2Action"/>
+        <action id="ToggleBookmark3" class="com.intellij.ide.bookmark.actions.ToggleBookmark3Action"/>
+        <action id="ToggleBookmark4" class="com.intellij.ide.bookmark.actions.ToggleBookmark4Action"/>
+        <action id="ToggleBookmark5" class="com.intellij.ide.bookmark.actions.ToggleBookmark5Action"/>
+        <action id="ToggleBookmark6" class="com.intellij.ide.bookmark.actions.ToggleBookmark6Action"/>
+        <action id="ToggleBookmark7" class="com.intellij.ide.bookmark.actions.ToggleBookmark7Action"/>
+        <action id="ToggleBookmark8" class="com.intellij.ide.bookmark.actions.ToggleBookmark8Action"/>
+        <action id="ToggleBookmark9" class="com.intellij.ide.bookmark.actions.ToggleBookmark9Action"/>
+        <action id="ToggleBookmarkA" class="com.intellij.ide.bookmark.actions.ToggleBookmarkAAction"/>
+        <action id="ToggleBookmarkB" class="com.intellij.ide.bookmark.actions.ToggleBookmarkBAction"/>
+        <action id="ToggleBookmarkC" class="com.intellij.ide.bookmark.actions.ToggleBookmarkCAction"/>
+        <action id="ToggleBookmarkD" class="com.intellij.ide.bookmark.actions.ToggleBookmarkDAction"/>
+        <action id="ToggleBookmarkE" class="com.intellij.ide.bookmark.actions.ToggleBookmarkEAction"/>
+        <action id="ToggleBookmarkF" class="com.intellij.ide.bookmark.actions.ToggleBookmarkFAction"/>
+        <action id="ToggleBookmarkG" class="com.intellij.ide.bookmark.actions.ToggleBookmarkGAction"/>
+        <action id="ToggleBookmarkH" class="com.intellij.ide.bookmark.actions.ToggleBookmarkHAction"/>
+        <action id="ToggleBookmarkI" class="com.intellij.ide.bookmark.actions.ToggleBookmarkIAction"/>
+        <action id="ToggleBookmarkJ" class="com.intellij.ide.bookmark.actions.ToggleBookmarkJAction"/>
+        <action id="ToggleBookmarkK" class="com.intellij.ide.bookmark.actions.ToggleBookmarkKAction"/>
+        <action id="ToggleBookmarkL" class="com.intellij.ide.bookmark.actions.ToggleBookmarkLAction"/>
+        <action id="ToggleBookmarkM" class="com.intellij.ide.bookmark.actions.ToggleBookmarkMAction"/>
+        <action id="ToggleBookmarkN" class="com.intellij.ide.bookmark.actions.ToggleBookmarkNAction"/>
+        <action id="ToggleBookmarkO" class="com.intellij.ide.bookmark.actions.ToggleBookmarkOAction"/>
+        <action id="ToggleBookmarkP" class="com.intellij.ide.bookmark.actions.ToggleBookmarkPAction"/>
+        <action id="ToggleBookmarkQ" class="com.intellij.ide.bookmark.actions.ToggleBookmarkQAction"/>
+        <action id="ToggleBookmarkR" class="com.intellij.ide.bookmark.actions.ToggleBookmarkRAction"/>
+        <action id="ToggleBookmarkS" class="com.intellij.ide.bookmark.actions.ToggleBookmarkSAction"/>
+        <action id="ToggleBookmarkT" class="com.intellij.ide.bookmark.actions.ToggleBookmarkTAction"/>
+        <action id="ToggleBookmarkU" class="com.intellij.ide.bookmark.actions.ToggleBookmarkUAction"/>
+        <action id="ToggleBookmarkV" class="com.intellij.ide.bookmark.actions.ToggleBookmarkVAction"/>
+        <action id="ToggleBookmarkW" class="com.intellij.ide.bookmark.actions.ToggleBookmarkWAction"/>
+        <action id="ToggleBookmarkX" class="com.intellij.ide.bookmark.actions.ToggleBookmarkXAction"/>
+        <action id="ToggleBookmarkY" class="com.intellij.ide.bookmark.actions.ToggleBookmarkYAction"/>
+        <action id="ToggleBookmarkZ" class="com.intellij.ide.bookmark.actions.ToggleBookmarkZAction"/>
+      </group>
+
+      <group id="Bookmarks.ToolWindow.PopupMenu">
+        <action id="BookmarksView.DefaultGroup"
+                class="com.intellij.ide.bookmark.actions.ToggleDefaultGroupAction"/>
+        <action id="BookmarksView.Rename" icon="AllIcons.Actions.Edit" use-shortcut-of="Tree-startEditing"
+                class="com.intellij.ide.bookmark.actions.NodeEditAction"/>
+        <action id="BookmarksView.Delete" use-shortcut-of="$Delete"
+                class="com.intellij.ide.bookmark.actions.NodeDeleteAction"/>
+        <action id="BookmarksView.DeleteType"
+                class="com.intellij.ide.bookmark.actions.NodeDeleteTypeAction"/>
+        <action id="BookmarksView.ChooseType" use-shortcut-of="ToggleBookmarkWithMnemonic"
+                class="com.intellij.ide.bookmark.actions.NodeChooseTypeAction"/>
+        <action id="BookmarksView.MoveUp" icon="AllIcons.Actions.MoveUp" use-shortcut-of="PreviousOccurence"
+                class="com.intellij.ide.bookmark.actions.NodeMoveUpAction"/>
+        <action id="BookmarksView.MoveDown" icon="AllIcons.Actions.MoveDown" use-shortcut-of="NextOccurence"
+                class="com.intellij.ide.bookmark.actions.NodeMoveDownAction"/>
+        <action id="BookmarksView.SortGroupBookmarks"
+                class="com.intellij.ide.bookmark.actions.SortGroupBookmarksAction"/>
+      </group>
+
+      <group id="Bookmarks.ToolWindow.TitleActions">
+        <action id="BookmarksView.Create" icon="AllIcons.Actions.AddList" use-shortcut-of="NewElement"
+                class="com.intellij.ide.bookmark.actions.GroupCreateAction"/>
+        <reference ref="BookmarksView.Rename"/>
+        <separator/>
+        <reference ref="ExpandAll"/>
+        <reference ref="CollapseAll"/>
+        <action id="BookmarksView.ShowPreview" icon="AllIcons.Actions.PreviewDetails"
+                class="com.intellij.ide.bookmark.actions.ShowPreviewToggleAction"/>
+      </group>
+
+      <group id="Bookmarks.ToolWindow.GearActions">
+        <action id="BookmarksView.GroupLineBookmarks" icon="AllIcons.Actions.GroupByFile"
+                class="com.intellij.ide.bookmark.actions.GroupLineBookmarksToggleAction"/>
+        <action id="BookmarksView.RewriteBookmarkType"
+                class="com.intellij.ide.bookmark.actions.RewriteBookmarkTypeToggleAction"/>
+        <separator/>
+        <action id="BookmarksView.OpenInPreviewTab"
+                class="com.intellij.ide.bookmark.actions.OpenInPreviewTabToggleAction"/>
+        <action id="BookmarksView.AutoscrollToSource" icon="AllIcons.General.AutoscrollToSource"
+                class="com.intellij.ide.bookmark.actions.AutoscrollToSourceToggleAction"/>
+        <action id="BookmarksView.AutoscrollFromSource" icon="AllIcons.General.AutoscrollFromSource"
+                class="com.intellij.ide.bookmark.actions.AutoscrollFromSourceToggleAction"/>
+        <separator/>
       </group>
 
       <add-to-group group-id="Other.KeymapGroup"/>
     </group>
 
-    <group id="EditBookmarksGroup" popup="true">
-      <reference ref="ToggleBookmark"/>
-      <reference ref="DeleteMnemonicFromBookmark"/>
-      <reference ref="ToggleBookmarkWithMnemonic"/>
-      <reference ref="ShowBookmarks"/>
-      <reference ref="GotoNextBookmark"/>
-      <reference ref="GotoPreviousBookmark"/>
-      <separator/>
-
-      <add-to-group group-id="GoToMenu" anchor="last"/>
-    </group>
-
     <group id="popup@BookmarkContextMenu">
+      <reference ref="AddAnotherBookmark"/>
       <reference ref="EditBookmark"/>
       <reference ref="ToggleBookmark"/>
       <reference ref="DeleteMnemonicFromBookmark"/>
@@ -263,6 +300,19 @@
       <separator/>
 
       <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="EditorGutterVcsPopupMenu"/>
+    </group>
+
+    <group id="popup@ExpandableBookmarkContextMenu" popup="true">
+      <reference ref="popup@BookmarkContextMenu"/>
+    </group>
+
+    <group id="EditBookmarksGroup" popup="true">
+      <reference ref="popup@BookmarkContextMenu"/>
+      <reference ref="ShowBookmarks"/>
+      <reference ref="ShowTypeBookmarks"/>
+      <separator/>
+
+      <add-to-group group-id="EditMenu" anchor="after" relative-to-action="Macros"/>
     </group>
 
     <action id="GotoDeclarationOnly" class="com.intellij.codeInsight.navigation.actions.GotoDeclarationOnlyAction"/>
@@ -277,6 +327,35 @@
 
       <add-to-group group-id="ViewMenu" anchor="after" relative-to-action="ViewAppearanceGroup"/>
     </group>
+
+    <group id="Documentation.Navigation">
+      <action id="Documentation.Back" icon="AllIcons.Actions.Back" use-shortcut-of="Back"
+              class="com.intellij.lang.documentation.ide.actions.DocumentationBackAction"/>
+      <action id="Documentation.Forward" icon="AllIcons.Actions.Forward" use-shortcut-of="Forward"
+              class="com.intellij.lang.documentation.ide.actions.DocumentationForwardAction"/>
+      <action id="Documentation.EditSource" icon="AllIcons.Actions.EditSource" use-shortcut-of="EditSource"
+              class="com.intellij.lang.documentation.ide.actions.DocumentationEditSourceAction"/>
+    </group>
+    <action id="Documentation.ViewExternal" icon="AllIcons.General.Web" use-shortcut-of="ExternalJavaDoc"
+            class="com.intellij.lang.documentation.ide.actions.DocumentationViewExternalAction"/>
+    <group id="Documentation.PrimaryGroup">
+      <!--
+      These actions are added to the context menu, to the popup menu, and to the toolbar.
+      This group should be used to register additional documentation actions.
+      -->
+      <reference ref="Documentation.Navigation"/>
+      <reference ref="Documentation.ViewExternal"/>
+    </group>
+    <action id="Documentation.ToggleShowInPopup"
+            class="com.intellij.lang.documentation.ide.actions.ToggleShowDocsInPopupAction"/>
+    <action id="Documentation.ToggleAutoShow"
+            class="com.intellij.lang.documentation.ide.actions.ToggleAutoShowAction"/>
+    <action id="Documentation.ToggleAutoUpdate"
+            class="com.intellij.lang.documentation.ide.actions.ToggleAutoUpdateAction"/>
+    <action id="Documentation.KeepTab"
+            class="com.intellij.lang.documentation.ide.actions.KeepTabAction">
+      <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
+    </action>
 
     <group id="CodeEditorBaseGroup">
       <group id="CodeEditorViewGroup">
@@ -322,6 +401,7 @@
       <action id="GotoClass" class="com.intellij.ide.actions.GotoClassAction"/>
       <action id="GotoFile" class="com.intellij.ide.actions.GotoFileAction">
         <override-text place="MainMenu"/>
+        <add-to-group group-id="EditorTabsEntryPoint" anchor="after" relative-to-action="RecentLocations"/>
       </action>
       <action id="GotoSymbol" class="com.intellij.ide.actions.GotoSymbolAction">
         <override-text place="MainMenu"/>
@@ -627,39 +707,39 @@
       <reference ref="SettingsEntryPoint"/>
     </group>
 
+    <action id="SmallSpacer" class="com.intellij.ide.navigationToolbar.experimental.SmallSpacerAction"/>
+    <action id="BigSpacer" class="com.intellij.ide.navigationToolbar.experimental.BigSpacerAction"/>
+    <action id="TinySpacer" class="com.intellij.ide.navigationToolbar.experimental.TinySpacerAction"/>
 
     <group id="NewToolbarActions">
       <group id="LeftToolbarSideGroup" class="com.intellij.ide.navigationToolbar.experimental.LeftToolbarGroup">
         <reference id="Back"/>
         <reference id="Forward"/>
-        <separator/>
+        <reference id="BigSpacer"/>
         <action id="SegmentedVcsControlAction" class="com.intellij.execution.segmentedVcsWidget.SegmentedVcsControlAction"/>
-        <action id="SegmentedSearchEverywhereAction" class="com.intellij.ide.navigationToolbar.experimental.SegmentedSearchEverywhereAction"/>
+        <reference id="SmallSpacer"/>
+        <action id="SearchEverywhereNewToolbarAction" class="com.intellij.ide.navigationToolbar.experimental.SearchEverywhereNewToolbarAction"/>
       </group>
       <group id="CenterToolbarSideGroup" class="com.intellij.ide.navigationToolbar.experimental.CenterToolbarGroup">
+        <group id="CustomActions"/>
       </group>
       <group id="RightToolbarSideGroup" class="com.intellij.ide.navigationToolbar.experimental.RightToolbarGroup">
-        <action id="StateWidgetAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetAction"/>
+        <reference id="TinySpacer"/>
+        <reference id="BigSpacer"/>
+        <reference id="RunToolbarWidgetAction"/>
+        <reference id="SmallSpacer"/>
         <reference id="SettingsEntryPoint"/>
       </group>
     </group>
 
-    <group id="SegmentedSearchEverywhereGroup">
-      <action id="SearchEverywhereNewToolbarAction" class="com.intellij.ide.navigationToolbar.experimental.SearchEverywhereNewToolbarAction"/>
-    </group>
-
-    <group id="StateWidgetPillActionGroup">
-      <action id="StateWidgetActiveProcessesPillAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetActiveProcessesPillAction"/>
-      <action id="StateWidgetPillBarAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetPillBarAction"/>
-    </group>
-
-    <group id="StateWidgetBarGroup" popup="false">
-      <action id="StateWidgetRunConfigurationsAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetRunConfigurationsAction"/>
-      <action id="StateWidgetRerunAction" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetRerunAction"/>
-      <group id="StateWidgetAdditionalActions"/>
-      <group id="StateWidgetProcessesActionGroup"/>
-      <action id="StateWidgetStop" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetStopAction" icon="AllIcons.Actions.Suspend"/>
-      <group id="StateWidgetMoreActionGroup" icon="AllIcons.Actions.More" popup="true" class="com.intellij.execution.segmentedRunDebugWidget.StateWidgetMoreActionGroup"/>
+    <group id="NewToolbarActionsWithoutRight">
+      <reference ref="LeftToolbarSideGroup"/>
+      <reference ref="CenterToolbarSideGroup"/>
+      <group id="RightToolbarSideGroupNoRunWidget">
+        <reference id="ToolbarRunGroup"/>
+        <reference id="SmallSpacer"/>
+        <reference id="SettingsEntryPoint"/>
+      </group>
     </group>
 
     <group id="ProjectViewPopupMenuRefactoringGroup" compact="true">
@@ -674,6 +754,7 @@
       <reference ref="Scratch.ChangeLanguage"/>
       <group id="MarkFileAs">
         <action id="OverrideFileTypeAction" class="com.intellij.openapi.file.exclude.OverrideFileTypeAction"/>
+        <action id="ReverteOverrideFileTypeAction" class="com.intellij.openapi.file.exclude.ReverteOverrideFileTypeAction"/>
       </group>
     </group>
 
@@ -700,7 +781,7 @@
       <separator/>
       <reference ref="ProjectViewPopupMenuRefactoringGroup"/>
       <separator/>
-      <reference ref="AddToFavorites"/>
+      <reference ref="popup@ExpandableBookmarkContextMenu"/>
       <separator/>
       <reference ref="ProjectViewPopupMenuModifyGroup"/>
       <separator/>
@@ -802,34 +883,44 @@
     </group>
 
     <group id="ProjectView.ToolWindow.SecondaryActions">
-      <action id="ProjectView.ShowModules"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowModules"
-              icon="AllIcons.Actions.GroupByModule"/>
-      <action id="ProjectView.ShowMembers"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowMembers"
-              icon="AllIcons.ObjectBrowser.ShowMembers"/>
-      <action id="ProjectView.ShowExcludedFiles"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowExcludedFiles"/>
-      <action id="ProjectView.ShowVisibilityIcons"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowVisibilityIcons"/>
-      <action id="ProjectView.ShowLibraryContents"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowLibraryContents"
-              icon="AllIcons.ObjectBrowser.ShowLibraryContents"/>
-      <separator/>
-      <action id="ProjectView.FlattenModules"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$FlattenModules"
-              icon="AllIcons.ObjectBrowser.FlattenModules"/>
-      <action id="ProjectView.FlattenPackages"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$FlattenPackages"
-              icon="AllIcons.ObjectBrowser.FlattenPackages"/>
-      <action id="ProjectView.HideEmptyMiddlePackages"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$HideEmptyMiddlePackages"/>
-      <action id="ProjectView.AbbreviatePackageNames"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$AbbreviatePackageNames"
-              icon="AllIcons.ObjectBrowser.AbbreviatePackageNames"/>
-      <action id="ProjectView.CompactDirectories"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$CompactDirectories"/>
-      <separator/>
+      <group id="ProjectView.ToolWindow.Appearance.Actions" popup="true">
+        <action id="ProjectView.ShowModules"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowModules"
+                icon="AllIcons.Actions.GroupByModule"/>
+        <action id="ProjectView.ShowMembers"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowMembers"
+                icon="AllIcons.ObjectBrowser.ShowMembers"/>
+        <action id="ProjectView.ShowExcludedFiles"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowExcludedFiles"/>
+        <action id="ProjectView.ShowVisibilityIcons"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowVisibilityIcons"/>
+        <action id="ProjectView.ShowLibraryContents"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ShowLibraryContents"
+                icon="AllIcons.ObjectBrowser.ShowLibraryContents"/>
+        <separator/>
+        <action id="ProjectView.FlattenModules"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$FlattenModules"
+                icon="AllIcons.ObjectBrowser.FlattenModules"/>
+        <action id="ProjectView.FlattenPackages"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$FlattenPackages"
+                icon="AllIcons.ObjectBrowser.FlattenPackages"/>
+        <action id="ProjectView.HideEmptyMiddlePackages"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$HideEmptyMiddlePackages"/>
+        <action id="ProjectView.AbbreviatePackageNames"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$AbbreviatePackageNames"
+                icon="AllIcons.ObjectBrowser.AbbreviatePackageNames"/>
+        <action id="ProjectView.CompactDirectories"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$CompactDirectories"/>
+        <separator/>
+        <action id="ProjectView.ManualOrder"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ManualOrder"
+                icon="AllIcons.ObjectBrowser.Sorted"/>
+        <action id="ProjectView.SortByType"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$SortByType"
+                icon="AllIcons.ObjectBrowser.SortByType"/>
+        <action id="ProjectView.FoldersAlwaysOnTop"
+                class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$FoldersAlwaysOnTop"/>
+      </group>
       <action id="ProjectView.OpenInPreviewTab"
               class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$OpenInPreviewTab"/>
       <action id="ProjectView.AutoscrollToSource"
@@ -839,14 +930,6 @@
               class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$AutoscrollFromSource"
               icon="AllIcons.General.AutoscrollFromSource"/>
       <separator/>
-      <action id="ProjectView.ManualOrder"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$ManualOrder"
-              icon="AllIcons.ObjectBrowser.Sorted"/>
-      <action id="ProjectView.SortByType"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$SortByType"
-              icon="AllIcons.ObjectBrowser.SortByType"/>
-      <action id="ProjectView.FoldersAlwaysOnTop"
-              class="com.intellij.ide.projectView.impl.ProjectViewImpl$Action$FoldersAlwaysOnTop"/>
       <action id="ScopeView.EditScopes"
               class="com.intellij.ide.scopeView.EditScopesAction"
               icon="AllIcons.Ide.LocalScope"/>
@@ -907,6 +990,7 @@
     <group id="EditorTabPopupMenuEx" searchable="false">
       <separator/>
       <reference ref="AssociateWithFileType"/>
+      <reference ref="MarkFileAs"/>
       <reference ref="AddToFavorites"/>
       <reference ref="AddAllToFavorites"/>
       <separator/>
@@ -1051,8 +1135,7 @@
       <action id="XDebugger.Inspect" class="com.intellij.xdebugger.impl.ui.tree.actions.XInspectAction"/>
       <action id="XDebugger.JumpToSource" class="com.intellij.xdebugger.impl.ui.tree.actions.XJumpToSourceAction"
               use-shortcut-of="EditSource"/>
-      <action id="XDebugger.JumpToTypeSource" class="com.intellij.xdebugger.impl.ui.tree.actions.XJumpToTypeSourceAction"
-              use-shortcut-of="Debugger.EditTypeSource"/>
+      <action id="XDebugger.JumpToTypeSource" class="com.intellij.xdebugger.impl.ui.tree.actions.XJumpToTypeSourceAction"/>
 
       <action id="Debugger.Tree.EvaluateInConsole" class="com.intellij.xdebugger.impl.ui.tree.actions.EvaluateInConsoleFromTreeAction"/>
 
@@ -1065,6 +1148,7 @@
       <action id="XDebugger.MoveWatchDown" class="com.intellij.xdebugger.impl.frame.actions.XMoveWatchDown" use-shortcut-of="MoveLineDown"/>
       <action id="XDebugger.SwitchWatchesInVariables" class="com.intellij.xdebugger.impl.frame.actions.XSwitchWatchesInVariables"
               icon="AllIcons.Debugger.Watch"/>
+      <action id="XDebugger.ToggleEvaluateExpressionField" class="com.intellij.xdebugger.impl.frame.actions.XToggleEvaluateExpressionFieldAction"/>
       <action id="XDebugger.RemoveAllWatches" class="com.intellij.xdebugger.impl.frame.actions.XRemoveAllWatchesAction"/>
       <action id="XDebugger.MuteBreakpoints" class="com.intellij.xdebugger.impl.actions.MuteBreakpointAction"
               icon="AllIcons.Debugger.MuteBreakpoints"/>
@@ -1106,24 +1190,25 @@
       <reference ref="Stop"/>
       <separator/>
       <reference ref="Resume"/>
+      <reference ref="Pause"/>
       <reference ref="StepOver"/>
       <reference ref="StepInto"/>
       <reference ref="StepOut"/>
       <separator/>
       <reference ref="ViewBreakpoints"/>
       <reference ref="XDebugger.MuteBreakpoints"/>
-      <group id="XDebugger.ToolWindow.TopToolbar3.Extra" class="com.intellij.xdebugger.impl.ui.MorePopupGroup">
-        <reference ref="ForceStepOver"/>
-        <reference ref="ForceStepInto"/>
-        <reference ref="SmartStepInto"/>
-        <separator/>
-        <reference ref="RunToCursor"/>
-        <reference ref="ForceRunToCursor"/>
-        <separator/>
-        <reference ref="Pause"/>
-        <reference ref="ShowExecutionPoint"/>
-        <separator/>
-      </group>
+    </group>
+
+    <group id="XDebugger.ToolWindow.TopToolbar3.Extra" class="com.intellij.openapi.actionSystem.impl.MoreActionGroup">
+      <reference ref="ForceStepOver"/>
+      <reference ref="ForceStepInto"/>
+      <reference ref="SmartStepInto"/>
+      <separator/>
+      <reference ref="RunToCursor"/>
+      <reference ref="ForceRunToCursor"/>
+      <separator/>
+      <reference ref="ShowExecutionPoint"/>
+      <separator/>
     </group>
 
     <group id="XDebugger.ToolWindow.LeftToolbar">
@@ -1188,7 +1273,10 @@
       <reference ref="XDebugger.MoveWatchUp"/>
       <reference ref="XDebugger.MoveWatchDown"/>
       <reference ref="XDebugger.CopyWatch"/>
-      <reference ref="XDebugger.SwitchWatchesInVariables"/>
+      <group id="XDebugger.Watches.Presentation" icon="AllIcons.General.InspectionsEye" popup="true">
+        <reference ref="XDebugger.ToggleEvaluateExpressionField"/>
+        <reference ref="XDebugger.SwitchWatchesInVariables"/>
+      </group>
     </group>
 
     <group id="XDebugger.Watches.Inline.Popup" popup="true">
@@ -1206,6 +1294,8 @@
     </group>
 
     <group id="XDebugger.Settings" icon="AllIcons.General.GearPlain" popup="true">
+      <reference ref="CreateRunConfiguration"/>
+      <separator/>
       <action id="XDebugger.PreviewTab" class="com.intellij.xdebugger.impl.actions.OpenFilesInPreviewTabAction"/>
       <action id="XDebugger.Inline" class="com.intellij.xdebugger.impl.actions.UseInlineDebuggerAction"/>
       <separator/>
@@ -1555,7 +1645,6 @@
       </group>
     </group>
 
-    <action id="ProjectViewChangeView" class="com.intellij.ide.projectView.actions.ChangeProjectViewAction"/>
     <action id="FileChooser.LightEditGotoOpenedFile"
             class="com.intellij.ide.lightEdit.actions.LightEditGotoOpenedFileAction"
             icon="AllIcons.General.Locate">
@@ -1573,10 +1662,12 @@
     <action class="com.intellij.internal.DumpRunDebugActionStateAction" internal="true" text="Dump State of Run/Debug Combobox"/>
 
     <action id="SwitchFileBasedIndexStorageAction"
-            class="com.intellij.util.indexing.impl.storage.SwitchFileBasedIndexStorageAction"
-            text="Switch File-Based Index Storage"/>
+            class="com.intellij.util.indexing.impl.storage.SwitchFileBasedIndexStorageAction"/>
 
     <action id="ClickLink" class="com.intellij.codeInsight.navigation.actions.ClickLinkAction"
             use-shortcut-of="GotoDeclaration" />
+
+    <action id="ForceIndexRescanning" internal="true" class="com.intellij.util.indexing.ForceIndexRescanningAction" icon="AllIcons.Actions.Refresh"/>
+    <action id="ForceIndexRebuild" internal="true" class="com.intellij.util.indexing.ForceIndexRebuildAction" icon="AllIcons.Actions.Refresh"/>
   </actions>
 </idea-plugin>

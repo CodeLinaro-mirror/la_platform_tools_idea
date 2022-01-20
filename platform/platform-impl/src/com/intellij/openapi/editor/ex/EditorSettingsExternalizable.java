@@ -1,14 +1,12 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.ex;
 
+import com.intellij.accessibility.AccessibilityUtils;
 import com.intellij.ide.ui.UINumericRange;
 import com.intellij.lang.Language;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.RoamingType;
-import com.intellij.openapi.components.State;
-import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.components.*;
 import com.intellij.openapi.editor.actions.CaretStopOptions;
 import com.intellij.openapi.editor.impl.softwrap.SoftWrapAppliancePlaces;
 import com.intellij.openapi.util.Disposer;
@@ -29,7 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-@State(name = "EditorSettings", storages = @Storage("editor.xml"))
+@State(name = "EditorSettings", storages = @Storage("editor.xml"), category = SettingsCategory.CODE)
 public class EditorSettingsExternalizable implements PersistentStateComponent<EditorSettingsExternalizable.OptionSet> {
   @NonNls
   public static final String PROP_VIRTUAL_SPACE = "VirtualSpace";
@@ -50,7 +48,7 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
     public String LINE_SEPARATOR;
     public String USE_SOFT_WRAPS;
     public String SOFT_WRAP_FILE_MASKS;
-    public boolean USE_CUSTOM_SOFT_WRAP_INDENT = false;
+    public boolean USE_CUSTOM_SOFT_WRAP_INDENT = true;
     public int CUSTOM_SOFT_WRAP_INDENT = 0;
     public boolean IS_VIRTUAL_SPACE = false;
     public boolean IS_CARET_INSIDE_TABS;
@@ -70,6 +68,7 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
     public boolean SHOW_BREADCRUMBS_ABOVE = false;
     public boolean SHOW_BREADCRUMBS = true;
     public boolean ENABLE_RENDERED_DOC = false;
+    public boolean SHOW_INTENTION_PREVIEW = false;
 
     public boolean SMART_HOME = true;
 
@@ -89,6 +88,7 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
     public boolean IS_DND_ENABLED = true;
     @SuppressWarnings("SpellCheckingInspection")
     public boolean IS_WHEEL_FONTCHANGE_ENABLED = false;
+    public boolean IS_WHEEL_FONTCHANGE_PERSISTENT = false;
     public boolean IS_MOUSE_CLICK_SELECTION_HONORS_CAMEL_WORDS = true;
 
     public boolean RENAME_VARIABLES_INPLACE = true;
@@ -120,7 +120,10 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
     }
   }
 
-  @State(name = "OsSpecificEditorSettings", storages = @Storage(value = "editor.os-specific.xml", roamingType = RoamingType.PER_OS))
+  @State(
+    name = "OsSpecificEditorSettings",
+    storages = @Storage(value = "editor.os-specific.xml", roamingType = RoamingType.PER_OS),
+    category = SettingsCategory.CODE)
   public static final class OsSpecificState implements PersistentStateComponent<OsSpecificState> {
     public CaretStopOptions CARET_STOP_OPTIONS = new CaretStopOptions();
 
@@ -477,7 +480,7 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
   }
 
   public boolean isShowQuickDocOnMouseOverElement() {
-    return myOptions.SHOW_QUICK_DOC_ON_MOUSE_OVER_ELEMENT;
+    return myOptions.SHOW_QUICK_DOC_ON_MOUSE_OVER_ELEMENT && !AccessibilityUtils.isScreenReaderDetected();
   }
 
   public void setShowQuickDocOnMouseOverElement(boolean show) {
@@ -629,6 +632,14 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
     myOptions.IS_WHEEL_FONTCHANGE_ENABLED = val;
   }
 
+  public boolean isWheelFontChangePersistent() {
+    return myOptions.IS_WHEEL_FONTCHANGE_PERSISTENT;
+  }
+
+  public void setWheelFontChangePersistent(boolean val) {
+    myOptions.IS_WHEEL_FONTCHANGE_PERSISTENT = val;
+  }
+
   public boolean isMouseClickSelectionHonorsCamelWords() {
     return myOptions.IS_MOUSE_CLICK_SELECTION_HONORS_CAMEL_WORDS;
   }
@@ -675,6 +686,14 @@ public class EditorSettingsExternalizable implements PersistentStateComponent<Ed
 
   public void setBidiTextDirection(BidiTextDirection direction) {
     myOptions.BIDI_TEXT_DIRECTION = direction;
+  }
+
+  public boolean isShowIntentionPreview() {
+    return myOptions.SHOW_INTENTION_PREVIEW;
+  }
+
+  public void setShowIntentionPreview(boolean show) {
+    myOptions.SHOW_INTENTION_PREVIEW = show;
   }
 
   /**

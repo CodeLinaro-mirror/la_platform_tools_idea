@@ -71,7 +71,9 @@ internal class LessonExecutor(val lesson: KLesson,
   data class TaskData(var shouldRestore: (() -> (() -> Unit)?)? = null,
                       var transparentRestore: Boolean? = null,
                       var highlightPreviousUi: Boolean? = null,
-                      var delayMillis: Int = 0)
+                      var propagateHighlighting: Boolean? = null,
+                      var checkRestoreByTimer: Int? = null,
+                      var delayBeforeRestore: Int = 0)
 
   private val taskActions: MutableList<TaskInfo> = ArrayList()
 
@@ -89,7 +91,7 @@ internal class LessonExecutor(val lesson: KLesson,
 
   internal val visualIndexNumber: Int get() = taskActions[currentTaskIndex].taskVisualIndex ?: 0
 
-  private var continuePreviousHighlighting: Ref<Boolean> = Ref(true)
+  private var continueHighlighting: Ref<Boolean> = Ref(true)
 
   // Is used from ui detection pooled thread
   @Volatile
@@ -143,7 +145,7 @@ internal class LessonExecutor(val lesson: KLesson,
   override fun dispose() {
     if (!hasBeenStopped) {
       ApplicationManager.getApplication().assertIsDispatchThread()
-      continuePreviousHighlighting.set(false)
+      continueHighlighting.set(false)
       clearRestore()
       disposeRecorders()
       hasBeenStopped = true
@@ -206,8 +208,8 @@ internal class LessonExecutor(val lesson: KLesson,
     // Good example: track of rename refactoring
     taskInvokeLater(ModalityState.any()) {
       disposeRecorders()
-      continuePreviousHighlighting.set(false)
-      continuePreviousHighlighting = Ref(true)
+      continueHighlighting.set(false)
+      continueHighlighting = Ref(true)
       currentTaskIndex = taskIndex
       processNextTask2()
     }
@@ -257,7 +259,8 @@ internal class LessonExecutor(val lesson: KLesson,
     val taskContext = TaskContextImpl(this, recorder, currentTaskIndex, taskCallbackData)
     taskContext.apply(taskContent)
     if (taskCallbackData.highlightPreviousUi == true) {
-      rehighlightPreviousComponent()
+      val taskInfo = taskActions[currentTaskIndex]
+      rehighlightFoundComponent(taskInfo.userVisibleInfo?.ui, taskInfo.rehighlightComponent)
     }
 
     if (taskContext.steps.isEmpty()) {
@@ -270,15 +273,18 @@ internal class LessonExecutor(val lesson: KLesson,
     processTestActions(taskContext)
   }
 
-  private fun rehighlightPreviousComponent() {
-    val taskInfo = taskActions[currentTaskIndex]
-    val function = taskInfo.rehighlightComponent ?: return
-    val condition = continuePreviousHighlighting
+  /**
+   * Will update the highlighting implemented in [highlightingFunction] if provided [component] is null or not showing
+   * Rehighlighting will be stopped at the start of the next task (or after lesson end)
+   */
+  internal fun rehighlightFoundComponent(component: Component?, highlightingFunction: (() -> Component?)?) {
+    if (highlightingFunction == null) return
+    val condition = continueHighlighting
     ApplicationManager.getApplication().executeOnPooledThread {
-      var ui = taskInfo.userVisibleInfo?.ui
+      var ui = component
       while (ActionUpdateEdtExecutor.computeOnEdt { condition.get() } == true) {
-        if (ui == null || !ui.isValid || !ui.isShowing) {
-          ui = function()
+        if (ui == null || !ui.isShowing) {
+          ui = highlightingFunction()
         }
         Thread.sleep(300)
       }
@@ -305,7 +311,11 @@ internal class LessonExecutor(val lesson: KLesson,
       info.removeAfterDoneMessages.clear()
     }
     val restoreInfo = taskActions[restoreIndex]
-    restoreInfo.rehighlightComponent?.let { it() }
+    restoreInfo.rehighlightComponent?.let {
+      ApplicationManager.getApplication().executeOnPooledThread {
+        it()
+      }
+    }
     LessonManager.instance.resetMessagesNumber(restoreInfo.messagesNumberBeforeStart)
 
     StatisticBase.logRestorePerformed(lesson, currentTaskIndex)
@@ -337,14 +347,18 @@ internal class LessonExecutor(val lesson: KLesson,
           }
         }
       }
-      if (taskData.delayMillis == 0) {
+      if (taskData.delayBeforeRestore == 0) {
         restoreIfNeeded()
       }
       else {
-        Alarm().addRequest(restoreIfNeeded, taskData.delayMillis)
+        Alarm().addRequest(restoreIfNeeded, taskData.delayBeforeRestore)
       }
     }
     currentRestoreFuture = restoreRecorder.futureCheck { checkFunction(); false }
+    taskData.checkRestoreByTimer?.let {
+      restoreRecorder.timerCheck(it) { checkFunction(); false }
+    }
+    ?: checkFunction() // In case of regular restore check we need to check that restore should be performed just after another restore
   }
 
   private fun clearRestore() {
@@ -386,8 +400,10 @@ internal class LessonExecutor(val lesson: KLesson,
 
     clearRestore()
     LessonManager.instance.passExercise()
-    if (foundComponent == null) foundComponent = taskInfo.userVisibleInfo?.ui
-    if (rehighlightComponent == null) rehighlightComponent = taskInfo.rehighlightComponent
+    if (taskContext.propagateHighlighting != false) {
+      if (foundComponent == null) foundComponent = taskInfo.userVisibleInfo?.ui
+      if (rehighlightComponent == null) rehighlightComponent = taskInfo.rehighlightComponent
+    }
     for (index in taskInfo.removeAfterDoneMessages) {
       LessonManager.instance.removeMessage(index)
     }
@@ -429,7 +445,8 @@ internal class LessonExecutor(val lesson: KLesson,
     // A little bit hacky here: visual index should be shown only for the first paragraph.
     // But it is passed here for all paragraphs.
     // But... LessonMessagePane will draw number only for the first active paragraph :)
-    LessonManager.instance.addMessage(text, !hasDetection, taskInfo.taskVisualIndex, useInternalParagraphStyle = removeAfterDone, textProperties = textProperties)
+    LessonManager.instance.addMessage(text, !hasDetection, taskInfo.taskVisualIndex, useInternalParagraphStyle = removeAfterDone,
+                                      textProperties = textProperties)
   }
 
   private fun addAllInactiveMessages() {

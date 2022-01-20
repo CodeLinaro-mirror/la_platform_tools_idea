@@ -191,26 +191,8 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
     this(false, parentDisposable);
   }
 
-  /**
-   * @deprecated Use {@link #ThreeComponentsSplitter(Disposable)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public ThreeComponentsSplitter() {
-    this(false, false, null, true);
-  }
-
   public ThreeComponentsSplitter(boolean vertical, @NotNull Disposable parentDisposable) {
     this(vertical, false, parentDisposable);
-  }
-
-  /**
-   * @deprecated Use {@link #ThreeComponentsSplitter(Disposable)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public ThreeComponentsSplitter(boolean vertical) {
-    this(vertical, false, null, true);
   }
 
   public ThreeComponentsSplitter(boolean vertical, boolean onePixelDividers, @NotNull Disposable parentDisposable) {
@@ -226,7 +208,7 @@ public class ThreeComponentsSplitter extends JPanel implements Disposable {
     this(vertical, onePixelDividers, null, true);
   }
 
-  private ThreeComponentsSplitter(boolean vertical, boolean onePixelDividers, @Nullable Disposable parentDisposable, @SuppressWarnings("unused") boolean __) {
+  private ThreeComponentsSplitter(boolean vertical, boolean onePixelDividers, @Nullable Disposable parentDisposable, boolean __) {
     myVerticalSplit = vertical;
     myShowDividerControls = false;
     myFirstDivider = new Divider(true, onePixelDividers, parentDisposable == null ? this : parentDisposable);

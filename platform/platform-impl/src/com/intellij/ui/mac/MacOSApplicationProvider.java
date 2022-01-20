@@ -3,7 +3,6 @@ package com.intellij.ui.mac;
 
 import com.intellij.diagnostic.LoadingState;
 import com.intellij.ide.CommandLineProcessor;
-import com.intellij.ide.CommandLineProcessorResult;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.actions.AboutAction;
 import com.intellij.ide.actions.ShowSettingsAction;
@@ -20,15 +19,14 @@ import com.intellij.openapi.keymap.impl.IdeKeyEventDispatcher;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.BuildNumber;
-import com.intellij.openapi.util.SystemInfoRt;
-import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.mac.foundation.Foundation;
 import com.intellij.ui.mac.foundation.ID;
-import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.io.URLUtil;
 import com.sun.jna.Callback;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -38,26 +36,22 @@ import java.awt.desktop.OpenURIHandler;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@ApiStatus.Internal
 public final class MacOSApplicationProvider {
   private static final Logger LOG = Logger.getInstance(MacOSApplicationProvider.class);
 
   private MacOSApplicationProvider() { }
 
   public static void initApplication() {
-    if (SystemInfoRt.isMac) {
-      try {
-        Worker.initMacApplication();
-      }
-      catch (Throwable t) {
-        LOG.warn(t);
-      }
+    try {
+      Worker.initMacApplication();
+    }
+    catch (Throwable t) {
+      LOG.warn(t);
     }
   }
 
@@ -93,9 +87,7 @@ public final class MacOSApplicationProvider {
 
       desktop.setOpenFileHandler(event -> {
         List<File> files = event.getFiles();
-        if (files.isEmpty()) {
-          return;
-        }
+        if (files.isEmpty()) return;
 
         List<Path> list = ContainerUtil.map(files, file -> file.toPath());
         if (LoadingState.COMPONENTS_LOADED.isOccurred()) {
@@ -103,7 +95,7 @@ public final class MacOSApplicationProvider {
           submit("OpenFile", () -> ProjectUtil.tryOpenFiles(project, list, "MacMenu"));
         }
         else {
-          IdeStarter.Companion.openFilesOnLoading(list);
+          IdeStarter.openFilesOnLoading(list);
         }
       });
 
@@ -204,35 +196,18 @@ public final class MacOSApplicationProvider {
       Desktop.getDesktop().setOpenURIHandler(new OpenURIHandler() {
         @Override
         public void openURI(OpenURIEvent event) {
-          Map<String, List<String>> parameters = new QueryStringDecoder(event.getURI()).parameters();
-          String file = ContainerUtil.getFirstItem(parameters.get("file"));
-          if (file == null) {
-            return;
+          String uri = event.getURI().toString();
+          QueryStringDecoder decoder = new QueryStringDecoder(event.getURI());
+          if ("open".equals(decoder.path()) && decoder.parameters().get("file") != null) {
+            uri = CommandLineProcessor.SCHEME_INTERNAL + URLUtil.SCHEME_SEPARATOR + decoder.rawQuery();
           }
 
-          if (!LoadingState.COMPONENTS_LOADED.isOccurred()) {
-            // handle paths like /file/foo\qwe
-            IdeStarter.Companion.openFilesOnLoading(Collections.singletonList(Paths.get(FileUtilRt.toSystemDependentName(file)).normalize()));
-            return;
+          if (LoadingState.APP_STARTED.isOccurred()) {
+            CommandLineProcessor.processProtocolCommand(uri);
           }
-
-          String line = ContainerUtil.getFirstItem(parameters.get("line"));
-          String column = ContainerUtil.getFirstItem(parameters.get("column"));
-          List<String> args = new SmartList<>();
-          if (line != null) {
-            args.add("--line");
-            args.add(line);
+          else {
+            IdeStarter.openUriOnLoading(uri);
           }
-          if (column != null) {
-            args.add("--column");
-            args.add(column);
-          }
-          args.add(file);
-
-          ApplicationManager.getApplication().invokeLater(() -> {
-            CommandLineProcessorResult result = CommandLineProcessor.processExternalCommandLine(args, null);
-            result.showErrorIfFailed();
-          }, ModalityState.NON_MODAL);
         }
       });
     }

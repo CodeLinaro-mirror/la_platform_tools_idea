@@ -99,31 +99,28 @@ public class DefaultHighlightInfoProcessor extends HighlightInfoProcessor {
 
   @Override
   public void allHighlightsForRangeAreProduced(@NotNull HighlightingSession session,
-                                               @NotNull TextRange elementRange,
+                                               long elementRange,
                                                @Nullable List<? extends HighlightInfo> infos) {
     killAbandonedHighlightsUnder(session.getProject(), session.getDocument(), elementRange, infos, session);
   }
 
   private static void killAbandonedHighlightsUnder(@NotNull Project project,
                                                    @NotNull Document document,
-                                                   @NotNull final TextRange range,
+                                                   long range,
                                                    @Nullable final List<? extends HighlightInfo> infos,
                                                    @NotNull final HighlightingSession highlightingSession) {
-    DaemonCodeAnalyzerEx.processHighlights(document, project, null, range.getStartOffset(), range.getEndOffset(), existing -> {
-        if (existing.isBijective() &&
-            existing.getGroup() == Pass.UPDATE_ALL &&
-            range.equalsToRange(existing.getActualStartOffset(), existing.getActualEndOffset())) {
-          if (infos != null) {
-            for (HighlightInfo created : infos) {
-              if (existing.equalsByActualOffset(created)) return true;
-            }
+    DaemonCodeAnalyzerEx.processHighlights(document, project, null, Divider.startOffset(range), Divider.endOffset(range), existing -> {
+      if (existing.getGroup() == Pass.UPDATE_ALL && range == existing.getVisitingTextRange()) {
+        if (infos != null) {
+          for (HighlightInfo created : infos) {
+            if (existing.equalsByActualOffset(created)) return true;
           }
-          // seems that highlight info "existing" is going to disappear
-          // remove it earlier
-          ((HighlightingSessionImpl)highlightingSession).queueDisposeHighlighterFor(existing);
         }
-        return true;
-      });
+        // seems that highlight info 'existing' is going to disappear; remove it earlier
+        ((HighlightingSessionImpl)highlightingSession).queueDisposeHighlighterFor(existing);
+      }
+      return true;
+    });
   }
 
   @Override
@@ -143,7 +140,7 @@ public class DefaultHighlightInfoProcessor extends HighlightInfoProcessor {
     repaintTrafficIcon(file, editor, progress);
   }
 
-  private final Alarm repaintIconAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
+  private final Alarm repaintIconAlarm = new Alarm();
   private void repaintTrafficIcon(@NotNull final PsiFile file, @Nullable Editor editor, double progress) {
     if (ApplicationManager.getApplication().isCommandLine()) return;
 

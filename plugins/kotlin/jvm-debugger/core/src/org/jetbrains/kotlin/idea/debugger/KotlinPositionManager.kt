@@ -7,8 +7,8 @@ import com.intellij.debugger.NoDataException
 import com.intellij.debugger.SourcePosition
 import com.intellij.debugger.engine.DebugProcess
 import com.intellij.debugger.engine.DebugProcessImpl
-import com.intellij.debugger.engine.DebuggerUtils.*
-import com.intellij.debugger.engine.PositionManagerEx
+import com.intellij.debugger.engine.DebuggerUtils.isSynthetic
+import com.intellij.debugger.engine.PositionManagerWithMultipleStackFrames
 import com.intellij.debugger.engine.evaluation.EvaluationContext
 import com.intellij.debugger.impl.DebuggerUtilsAsync
 import com.intellij.debugger.impl.DebuggerUtilsEx
@@ -18,8 +18,11 @@ import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.Computable
+import com.intellij.openapi.util.Pair
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.compiled.ClsFileImpl
@@ -28,6 +31,7 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.parentOfType
 import com.intellij.util.ThreeState
 import com.intellij.xdebugger.frame.XStackFrame
+import com.jetbrains.jdi.LocalVariableImpl
 import com.sun.jdi.*
 import com.sun.jdi.request.ClassPrepareRequest
 import org.jetbrains.kotlin.codegen.inline.KOTLIN_STRATA_NAME
@@ -36,8 +40,12 @@ import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.core.KotlinFileTypeFactoryUtils
 import org.jetbrains.kotlin.idea.core.util.CodeInsightUtils
 import org.jetbrains.kotlin.idea.core.util.getLineStartOffset
+import org.jetbrains.kotlin.idea.debugger.DebuggerUtils.isGeneratedLambdaName
+import org.jetbrains.kotlin.idea.debugger.breakpoints.getElementsAtLineIfAny
 import org.jetbrains.kotlin.idea.debugger.breakpoints.getLambdasAtLineIfAny
+import org.jetbrains.kotlin.idea.debugger.stackFrame.InlineStackTraceCalculator
 import org.jetbrains.kotlin.idea.debugger.stackFrame.KotlinStackFrame
+import org.jetbrains.kotlin.idea.debugger.stepping.smartStepInto.isSamLambda
 import org.jetbrains.kotlin.idea.decompiler.classFile.KtClsFile
 import org.jetbrains.kotlin.idea.stubindex.KotlinSourceFilterScope
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
@@ -50,8 +58,9 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.inline.InlineUtil
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
+import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
-class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiRequestPositionManager, PositionManagerEx() {
+class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiRequestPositionManager, PositionManagerWithMultipleStackFrames {
     private val stackFrameInterceptor: StackFrameInterceptor = myDebugProcess.project.getServiceSafe()
 
     private val allKotlinFilesScope = object : DelegatingGlobalSearchScope(
@@ -82,11 +91,26 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         return ThreeState.UNSURE
     }
 
-    override fun createStackFrame(frame: StackFrameProxyImpl, debugProcess: DebugProcessImpl, location: Location): XStackFrame? =
-        if (location.isInKotlinSources()) {
-            stackFrameInterceptor.createStackFrame(frame, debugProcess, location) ?: KotlinStackFrame(frame)
-        } else
-            null
+    override fun createStackFrames(frameProxy: StackFrameProxyImpl, debugProcess: DebugProcessImpl, location: Location): List<XStackFrame> {
+        if (!location.isInKotlinSources()) {
+            return emptyList()
+        }
+
+        // Don't provide inline stack trace for coroutine frames yet
+        val coroutineFrame = stackFrameInterceptor.createStackFrame(frameProxy, debugProcess, location)
+        if (coroutineFrame != null) {
+            return listOf(coroutineFrame)
+        }
+
+        if (Registry.get("debugger.kotlin.inline.stack.trace.enabled").asBoolean()) {
+            val inlineStackTrace = InlineStackTraceCalculator.calculateInlineStackTrace(frameProxy)
+            if (inlineStackTrace.isNotEmpty()) {
+                return inlineStackTrace
+            }
+        }
+
+        return listOf(KotlinStackFrame(frameProxy))
+    }
 
     override fun getSourcePosition(location: Location?): SourcePosition? {
         if (location == null) throw NoDataException.INSTANCE
@@ -135,6 +159,15 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         val lambdaOrFunIfInside = getLambdaOrFunIfInside(location, psiFile, sourceLineNumber)
         if (lambdaOrFunIfInside != null) {
             return SourcePosition.createFromElement(lambdaOrFunIfInside.bodyExpression!!)
+        }
+
+        val callableReferenceIfInside = getCallableReferenceIfInside(location, psiFile, sourceLineNumber)
+        if (callableReferenceIfInside != null) {
+            val sourcePosition = SourcePosition.createFromElement(callableReferenceIfInside)
+            if (sourcePosition != null) {
+                // Never stop on invocation of method reference
+                return KotlinReentrantSourcePosition(sourcePosition)
+            }
         }
 
         val elementInDeclaration = getElementForDeclarationLine(location, psiFile, sourceLineNumber)
@@ -199,33 +232,10 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
     private fun Pair<Location, Location>.contains(location: Location) = location in first..second
 
     private fun Method.getInlineFunctionBorders(sourceFileName: String): List<Pair<Location, Location>> {
-        val localVariables = safeVariables() ?: return emptyList()
-        return localVariables
-            .asSequence()
-            .filter { it.isInlineFunctionLocalVariable(name()) }
+        return getInlineFunctionLocalVariables()
             .mapNotNull { it.getBorders() }
             .filter { it.first.safeSourceName() == sourceFileName }
             .toList()
-    }
-
-    private fun LocalVariable.isInlineFunctionLocalVariable(methodName: String) =
-        name().startsWith(LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION) &&
-        name().substringAfter(LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION) != methodName
-
-    private fun LocalVariable.getBorders(): Pair<Location, Location>? {
-        val scopeStart = getFieldValue<Location>("scopeStart") ?: return null
-        val scopeEnd = getFieldValue<Location>("scopeEnd") ?: return null
-        return Pair(scopeStart, scopeEnd)
-    }
-
-    private inline fun <reified T> Any.getFieldValue(fieldName: String): T? {
-        try {
-            val field = javaClass.declaredFields.firstOrNull { it.name == fieldName } ?: return null
-            field.isAccessible = true
-            return field.get(this) as? T
-        } catch (ex: Exception) {
-            return null
-        }
     }
 
     class KotlinReentrantSourcePosition(delegate: SourcePosition) : DelegateSourcePosition(delegate)
@@ -257,8 +267,17 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         }
     }
 
+    private fun getCallableReferenceIfInside(location: Location, file: KtFile, lineNumber: Int): KtCallableReferenceExpression? {
+        val currentLocationClassName = location.getClassName() ?: return null
+        val allReferenceExpressions = getElementsAtLineIfAny<KtCallableReferenceExpression>(file, lineNumber)
+
+        return allReferenceExpressions.firstOrNull {
+            it.calculatedClassNameMatches(currentLocationClassName)
+        }
+    }
+
     private fun getLambdaOrFunIfInside(location: Location, file: KtFile, lineNumber: Int): KtFunction? {
-        val currentLocationFqName = location.declaringType().name() ?: return null
+        val currentLocationClassName = location.getClassName() ?: return null
 
         val start = CodeInsightUtils.getStartLineOffset(file, lineNumber)
         val end = CodeInsightUtils.getEndLineOffset(file, lineNumber)
@@ -267,10 +286,15 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
         val literalsOrFunctions = getLambdasAtLineIfAny(file, lineNumber)
         if (literalsOrFunctions.isEmpty()) return null
 
-        val currentLocationClassName =
-            JvmClassName.byFqNameWithoutInnerClasses(FqName(currentLocationFqName)).internalName.replace('/', '.')
+        return literalsOrFunctions.getAppropriateLiteralBasedOnDeclaringClassName(location, currentLocationClassName) ?:
+               literalsOrFunctions.getAppropriateLiteralBasedOnLambdaName(location, lineNumber)
+    }
 
-        for (literal in literalsOrFunctions) {
+    private fun List<KtFunction>.getAppropriateLiteralBasedOnDeclaringClassName(
+        location: Location,
+        currentLocationClassName: String
+    ): KtFunction? {
+        for (literal in this) {
             if (InlineUtil.isInlinedArgument(literal, literal.analyze(BodyResolveMode.PARTIAL), true)) {
                 if (isInsideInlineArgument(literal, location, myDebugProcess as DebugProcessImpl)) {
                     return literal
@@ -278,17 +302,49 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
                 continue
             }
 
-            val internalClassNames = DebuggerClassNameProvider(
-                myDebugProcess.project,
-                myDebugProcess.searchScope,
-                alwaysReturnLambdaParentClass = false
-            ).getOuterClassNamesForElement(literal.firstChild, emptySet()).classNames
-
-            if (internalClassNames.any { it == currentLocationClassName }) {
+            if (literal.firstChild.calculatedClassNameMatches(currentLocationClassName)) {
                 return literal
             }
         }
 
+        return null
+    }
+
+    private fun PsiElement.calculatedClassNameMatches(currentLocationClassName: String): Boolean {
+        val internalClassNames = DebuggerClassNameProvider(
+            myDebugProcess.project,
+            myDebugProcess.searchScope,
+            alwaysReturnLambdaParentClass = false
+        ).getOuterClassNamesForElement(this, emptySet()).classNames
+
+        return internalClassNames.any { it == currentLocationClassName }
+    }
+
+    private fun List<KtFunction>.getAppropriateLiteralBasedOnLambdaName(location: Location, lineNumber: Int): KtFunction? {
+        val method = location.safeMethod() ?: return null
+        if (!method.name().isGeneratedLambdaName()) {
+            return null
+        }
+
+        val lambdas = location.declaringType().methods()
+            .filter {
+                it.name().isGeneratedLambdaName() &&
+                DebuggerUtilsEx.locationsOfLine(it, lineNumber + 1).isNotEmpty()
+            }
+
+        return getSamLambdaWithIndex(lambdas.indexOf(method))
+    }
+
+    private fun List<KtFunction>.getSamLambdaWithIndex(index: Int): KtFunction? {
+        var samLambdaCounter = 0
+        for (literal in this) {
+            if (literal.isSamLambda()) {
+                if (samLambdaCounter == index) {
+                    return literal
+                }
+                samLambdaCounter++
+            }
+        }
         return null
     }
 
@@ -403,6 +459,36 @@ class KotlinPositionManager(private val myDebugProcess: DebugProcess) : MultiReq
             }
         })
     }
+}
+
+internal fun Method.getInlineFunctionNamesAndBorders(): Map<LocalVariable, ClosedRange<Location>> {
+    return getInlineFunctionLocalVariables()
+        .mapNotNull {
+            val borders = it.getBorders()
+            if (borders === null) null else it to borders.first..borders.second
+        }
+        .toMap()
+}
+
+private fun Method.getInlineFunctionLocalVariables(): Sequence<LocalVariable> {
+    val localVariables = safeVariables() ?: return emptySequence()
+    return localVariables
+        .asSequence()
+        .filter { it.isInlineFunctionLocalVariable(name()) }
+}
+
+private fun LocalVariable.isInlineFunctionLocalVariable(methodName: String) =
+    name().startsWith(LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION) &&
+    name().substringAfter(LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION) != methodName
+
+fun Location.getClassName(): String? {
+    val currentLocationFqName = declaringType().name() ?: return null
+    return JvmClassName.byFqNameWithoutInnerClasses(FqName(currentLocationFqName)).internalName.replace('/', '.')
+}
+
+private fun LocalVariable.getBorders(): Pair<Location, Location>? {
+    val variable = this.safeAs<LocalVariableImpl>() ?: return null
+    return Pair(variable.scopeStart, variable.scopeEnd)
 }
 
 inline fun <U, V> U.readAction(crossinline f: (U) -> V): V {

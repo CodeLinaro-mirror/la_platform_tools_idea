@@ -1081,11 +1081,13 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
               break;
             }
           }
-          Color color = highlighter.getErrorStripeMarkColor(myEditor.getColorsScheme());
+          EditorColorsScheme colorsScheme = myEditor.getColorsScheme();
+          Color color = highlighter.getErrorStripeMarkColor(colorsScheme);
           if (color == null) {
             if (reportErrorStripeInconsistency) {
               reportErrorStripeInconsistency = false;
-              LOG.error("Error stripe marker has no color. highlighter: " + highlighter);
+              LOG.error("Error stripe marker has no color. highlighter: " + highlighter +
+                        ", color scheme: " + colorsScheme + " (" + colorsScheme.getClass() + ")");
             }
             return true;
           }
@@ -1817,9 +1819,6 @@ public final class EditorMarkupModelImpl extends MarkupModelImpl
   private class EditorToolbarButtonLook extends ActionButtonLook {
     @Override
     public void paintBorder(Graphics g, JComponent component, int state) {}
-
-    @Override
-    public void paintLookBorder(@NotNull Graphics g, @NotNull Rectangle rect, @NotNull Color color) {}
 
     @Override
     public void paintBorder(Graphics g, JComponent component, Color color) {}

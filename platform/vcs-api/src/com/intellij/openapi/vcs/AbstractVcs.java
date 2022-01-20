@@ -136,6 +136,7 @@ public abstract class AbstractVcs extends StartedActivated {
     return null;
   }
 
+  @Nullable
   public Configurable getConfigurable() {
     return null;
   }
@@ -271,6 +272,21 @@ public abstract class AbstractVcs extends StartedActivated {
     ProjectLevelVcsManager vcsManager = ProjectLevelVcsManager.getInstance(myProject);
     if (vcsManager != null) {
       vcsManager.setDirectoryMappings(Collections.singletonList(VcsDirectoryMapping.createDefault(getName())));
+    }
+  }
+
+  /**
+   * This method is called when a user invokes "Enable VCS Integration" and selects a particular VCS.
+   * By default, it sets up a single mapping {@code <targetDirectory> -> selected VCS}.
+   * Some VCSes might try to automatically detect VCS roots or create a new one.
+   *
+   * @param targetDirectory overridden location of project files to check
+   */
+  @RequiresEdt
+  public void enableIntegration(@NotNull VirtualFile targetDirectory) {
+    ProjectLevelVcsManager vcsManager = ProjectLevelVcsManager.getInstance(myProject);
+    if (vcsManager != null) {
+      vcsManager.setDirectoryMappings(Collections.singletonList(new VcsDirectoryMapping(targetDirectory.getPath(), getName())));
     }
   }
 

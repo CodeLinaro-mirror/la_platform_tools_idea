@@ -14,11 +14,17 @@
 package org.intellij.plugins.markdown.ui.preview;
 
 import com.intellij.openapi.extensions.ExtensionPointName;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.xmlb.annotations.Attribute;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
-import java.util.Arrays;
+import java.util.List;
 
 public abstract class MarkdownHtmlPanelProvider {
 
@@ -27,6 +33,12 @@ public abstract class MarkdownHtmlPanelProvider {
 
   @NotNull
   public abstract MarkdownHtmlPanel createHtmlPanel();
+
+  @ApiStatus.Experimental
+  @NotNull
+  public MarkdownHtmlPanel createHtmlPanel(@NotNull Project project, @NotNull VirtualFile virtualFile) {
+    return createHtmlPanel();
+  }
 
   @NotNull
   public abstract AvailabilityInfo isAvailable();
@@ -49,7 +61,11 @@ public abstract class MarkdownHtmlPanelProvider {
   }
 
   public static boolean hasAvailableProviders() {
-    return Arrays.stream(getProviders()).anyMatch(provider -> provider.isAvailable() == AvailabilityInfo.AVAILABLE);
+    return ContainerUtil.exists(getProviders(), provider -> provider.isAvailable() == AvailabilityInfo.AVAILABLE);
+  }
+
+  public static @NotNull List<MarkdownHtmlPanelProvider> getAvailableProviders() {
+    return ContainerUtil.filter(getProviders(), provider -> provider.isAvailable() == AvailabilityInfo.AVAILABLE);
   }
 
   public static class ProviderInfo {

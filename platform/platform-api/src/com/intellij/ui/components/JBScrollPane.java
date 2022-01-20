@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.components;
 
 import com.intellij.ide.ui.UISettings;
@@ -429,7 +429,7 @@ public class JBScrollPane extends JScrollPane {
    * ScrollPaneLayout implementation that supports
    * ScrollBar flipping and non-opaque ScrollBars.
    */
-  protected static class Layout extends ScrollPaneLayout {
+  public static class Layout extends ScrollPaneLayout {
     private static final Insets EMPTY_INSETS = emptyInsets();
 
     protected Component statusComponent;
@@ -819,8 +819,9 @@ public class JBScrollPane extends JScrollPane {
           }
         }
       }
-      if (vsb != null && vsbPolicy == VERTICAL_SCROLLBAR_ALWAYS) result.width += vsb.getPreferredSize().width;
-      if (hsb != null && hsbPolicy == HORIZONTAL_SCROLLBAR_ALWAYS) result.height += hsb.getPreferredSize().height;
+      // disabled scroll bars should be minimized (see #adjustForVSB and #adjustForHSB)
+      if (vsb != null && vsbPolicy == VERTICAL_SCROLLBAR_ALWAYS && vsb.isEnabled()) result.width += vsb.getPreferredSize().width;
+      if (hsb != null && hsbPolicy == HORIZONTAL_SCROLLBAR_ALWAYS && hsb.isEnabled()) result.height += hsb.getPreferredSize().height;
 
       if (rowHead != null && rowHead.isVisible()) result.width += rowHead.getPreferredSize().width;
       if (colHead != null && colHead.isVisible()) result.height += colHead.getPreferredSize().height;

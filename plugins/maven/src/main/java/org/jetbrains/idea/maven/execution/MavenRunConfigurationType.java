@@ -216,11 +216,10 @@ public final class MavenRunConfigurationType implements ConfigurationType {
       runConfiguration.setBeforeRunTasks(Collections.emptyList());
     }
     MavenGeneralSettings generalSettingsToRun =
-      generalSettings != null ? generalSettings : MavenWorkspaceSettingsComponent.getInstance(project).getSettings().generalSettings;
+      generalSettings != null ? generalSettings : MavenWorkspaceSettingsComponent.getInstance(project).getSettings().getGeneralSettings();
+    MavenRunnerSettings runnerSettingsToRun = runnerSettings != null ? runnerSettings : MavenRunner.getInstance(project).getState();
     runConfiguration.setRunnerParameters(params);
     runConfiguration.setGeneralSettings(generalSettingsToRun);
-    MavenRunnerSettings runnerSettingsToRun =
-      runnerSettings != null ? runnerSettings : MavenRunner.getInstance(project).getState();
     runConfiguration.setRunnerSettings(runnerSettingsToRun);
     return settings;
   }

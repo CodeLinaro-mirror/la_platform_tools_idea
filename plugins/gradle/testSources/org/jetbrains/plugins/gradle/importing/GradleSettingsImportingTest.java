@@ -11,12 +11,13 @@ import com.intellij.execution.application.JavaApplicationRunConfigurationImporte
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.jar.JarApplicationRunConfigurationImporter;
 import com.intellij.ide.impl.ProjectUtil;
+import com.intellij.idea.Bombed;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings;
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemBeforeRunTask;
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
-import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProviderImpl;
+import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManagerImpl;
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalSystemTaskActivator;
 import com.intellij.openapi.externalSystem.service.project.manage.SourceFolderManager;
@@ -34,8 +35,10 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManager;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManagerImpl;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
+import com.intellij.project.ProjectStoreOwner;
 import com.intellij.testFramework.ExtensionTestUtil;
 import com.intellij.testFramework.PlatformTestUtil;
+import com.intellij.util.PathUtil;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.gradle.settings.GradleProjectSettings;
@@ -43,12 +46,13 @@ import org.jetbrains.plugins.gradle.settings.GradleSettings;
 import org.jetbrains.plugins.gradle.settings.TestRunner;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.jetbrains.plugins.gradle.importing.GradleBuildScriptBuilder.extPluginVersionIsAtLeast;
+import static org.jetbrains.plugins.gradle.importing.TestGradleBuildScriptBuilder.extPluginVersionIsAtLeast;
 
 /**
  * Created by Nikita.Skvortsov
@@ -141,9 +145,9 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
     Map<String, Object> gradleSettings = configs.get("gr1");
 
     assertEquals(myProjectRoot.getPath(), ((String)gradleSettings.get("projectPath")).replace('\\', '/'));
-    assertTrue(((List)gradleSettings.get("taskNames")).contains(":cleanTest"));
+    assertTrue(((List<?>)gradleSettings.get("taskNames")).contains(":cleanTest"));
     assertEquals("-DvmKey=vmVal", gradleSettings.get("jvmArgs"));
-    assertTrue(((Map)gradleSettings.get("envs")).containsKey("env_key"));
+    assertTrue(((Map<?, ?>)gradleSettings.get("envs")).containsKey("env_key"));
   }
 
   private void maskRunImporter(@NotNull RunConfigurationImporter testExtension) {
@@ -411,6 +415,51 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
   }
 
   @Test
+  @Bombed(year = 2021, month = Calendar.DECEMBER, day=1, user = "Nikita.Skvortsov", description = "Waiting for next version of IDEA Ext plugin")
+  public void testIdeaPostProcessingHook() throws Exception {
+    File layoutFile = new File(getProjectPath(), "layout.json");
+    assertThat(layoutFile).doesNotExist();
+
+    importProject(
+      createBuildScriptBuilder()
+        .withGradleIdeaExtPlugin()
+        .addPostfix("import org.jetbrains.gradle.ext.*\n" +
+                    "idea {\n" +
+                    "  project.settings {\n" +
+                    "    withIDEADir { File dir ->\n" +
+                    "      println(\"Callback executed with: \" + dir.absolutePath)\n" +
+                    "    }  \n" +
+                    "  }\n" +
+                    "}")
+        .generate()
+    );
+
+    final List<ExternalProjectsManagerImpl.ExternalProjectsStateProvider.TasksActivation> activations =
+      ExternalProjectsManagerImpl.getInstance(myProject).getStateProvider().getAllTasksActivation();
+
+    assertThat(activations)
+      .extracting("projectPath")
+      .containsExactly(GradleSettings.getInstance(myProject).getLinkedProjectsSettings().iterator().next().getExternalProjectPath());
+
+    final List<String> afterSyncTasks = activations.get(0).state.getTasks(ExternalSystemTaskActivator.Phase.AFTER_SYNC);
+
+    assertThat(afterSyncTasks).containsExactly("processIdeaSettings");
+
+    String ideaDir = PathUtil.toSystemIndependentName(((ProjectStoreOwner)myProject).getComponentStore()
+      .getProjectFilePath().getParent().toAbsolutePath().toString());
+
+    String moduleFile = getModule("project").getModuleFilePath();
+    assertThat(layoutFile)
+      .exists()
+      .hasContent("{\n"+
+      "  \"ideaDirPath\": \""+ ideaDir + "\",\n" +
+      "  \"modulesMap\": {\n"+
+      "    \"project\": \"" + moduleFile + "\"\n"+
+      "  }\n"+
+      "}");
+  }
+
+  @Test
   public void testImportEncodingSettings() throws IOException {
     {
       importProject(
@@ -567,7 +616,7 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
     createProjectSubFile("src/main/java/Main.java", "");
     importProject(buildScript);
     Application application = ApplicationManager.getApplication();
-    IdeModifiableModelsProvider modelsProvider = new IdeModifiableModelsProviderImpl(myProject);
+    IdeModifiableModelsProvider modelsProvider = ProjectDataManager.getInstance().createModifiableModelsProvider(myProject);
     try {
       Module module = modelsProvider.findIdeModule("project.main");
       ModifiableRootModel modifiableRootModel = modelsProvider.getModifiableRootModel(module);

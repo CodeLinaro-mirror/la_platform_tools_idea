@@ -9,6 +9,7 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElementVisitor
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeWithContent
 import org.jetbrains.kotlin.idea.highlighter.hasSuspendCalls
@@ -21,6 +22,7 @@ import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.namedFunctionVisitor
 import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
+import org.jetbrains.kotlin.psi.psiUtil.isAncestor
 import org.jetbrains.kotlin.resolve.BindingContext
 
 class RedundantSuspendModifierInspection : AbstractKotlinInspection() {
@@ -38,16 +40,21 @@ class RedundantSuspendModifierInspection : AbstractKotlinInspection() {
 
             if (function.hasSuspendCalls(context)) return
 
+            if (function.hasAnyUnresolvedCalls(context)) return
+
             holder.registerProblem(
                 suspendModifier,
                 KotlinBundle.message("redundant.suspend.modifier"),
                 ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                IntentionWrapper(
-                    RemoveModifierFix(function, KtTokens.SUSPEND_KEYWORD, isRedundant = true),
-                    function.containingFile
-                )
+                IntentionWrapper(RemoveModifierFix(function, KtTokens.SUSPEND_KEYWORD, isRedundant = true))
             )
         })
+    }
+
+    private fun KtNamedFunction.hasAnyUnresolvedCalls(context: BindingContext): Boolean {
+        return context.diagnostics.any {
+            it.factory == Errors.UNRESOLVED_REFERENCE && this.isAncestor(it.psiElement)
+        }
     }
 
     private fun KtNamedFunction.hasSuspendCalls(context: BindingContext): Boolean {

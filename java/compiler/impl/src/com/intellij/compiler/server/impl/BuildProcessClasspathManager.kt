@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.compiler.server.impl
 
 import com.intellij.compiler.server.BuildProcessParametersProvider
@@ -8,7 +8,7 @@ import com.intellij.ide.plugins.IdeaPluginDescriptor
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.PluginPathManager
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.io.FileUtilRt
@@ -23,7 +23,6 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.*
 import java.util.jar.Attributes
 import java.util.jar.JarFile
 
@@ -40,9 +39,16 @@ class BuildProcessClasspathManager(parentDisposable: Disposable) {
   }
 
   fun getBuildProcessClasspath(project: Project): List<String> {
-    val rawClasspath = computeRawBuildProcessClasspath(project)
+    val appClassPath = ClasspathBootstrap.getBuildProcessApplicationClasspath()
+    val pluginClassPath = getBuildProcessPluginsClasspath(project)
+    val rawClasspath = appClassPath + pluginClassPath
     synchronized(lastClasspathLock) {
       if (rawClasspath != lastRawClasspath) {
+        if (LOG.isDebugEnabled) {
+          LOG.debug("buildProcessAppClassPath: $appClassPath")
+          LOG.debug("buildProcessPluginClassPath: $appClassPath")
+        }
+
         lastRawClasspath = rawClasspath
         lastFilteredClasspath = filterOutOlderVersions(rawClasspath)
         if (LOG.isDebugEnabled && lastRawClasspath != lastFilteredClasspath) {
@@ -53,10 +59,6 @@ class BuildProcessClasspathManager(parentDisposable: Disposable) {
       }
       return lastFilteredClasspath!!
     }
-  }
-
-  private fun computeRawBuildProcessClasspath(project: Project): List<String> {
-    return ClasspathBootstrap.getBuildProcessApplicationClasspath() + getBuildProcessPluginsClasspath(project)
   }
 
   /**
@@ -84,7 +86,7 @@ class BuildProcessClasspathManager(parentDisposable: Disposable) {
     }
 
   companion object {
-    private val LOG = Logger.getInstance(BuildProcessClasspathManager::class.java)
+    private val LOG = logger<BuildProcessClasspathManager>()
 
     private fun findClassesRoot(relativePath: String, plugin: IdeaPluginDescriptor, baseFile: Path): String? {
       val jarFile = baseFile.resolve("lib/$relativePath")
@@ -138,7 +140,7 @@ class BuildProcessClasspathManager(parentDisposable: Disposable) {
 
     private fun computeCompileServerPluginsClasspath(): List<String> {
       val classpath = ArrayList<String>()
-      for (serverPlugin in CompileServerPlugin.EP_NAME.extensions) {
+      for (serverPlugin in CompileServerPlugin.EP_NAME.extensionList) {
         val pluginId = serverPlugin.pluginDescriptor.pluginId
         val plugin = PluginManagerCore.getPlugin(pluginId)
         LOG.assertTrue(plugin != null, pluginId)
@@ -173,9 +175,12 @@ class BuildProcessClasspathManager(parentDisposable: Disposable) {
       data class JarInfo(val path: String, val title: String, val version: String)
 
       fun readTitleAndVersion(path: String): JarInfo? {
-        val file = File(path)
-        if (!file.isFile || !FileUtil.extensionEquals(file.name, "jar")) return null
-        JarFile(file).use {
+        val file = Path.of(path)
+        if (!Files.isRegularFile(file) || !FileUtil.extensionEquals(file.fileName.toString(), "jar")) {
+          return null
+        }
+
+        JarFile(file.toFile()).use {
           val attributes = it.manifest?.mainAttributes ?: return null
           val title = attributes.getValue(Attributes.Name.IMPLEMENTATION_TITLE) ?: return null
           val version = attributes.getValue(Attributes.Name.IMPLEMENTATION_VERSION) ?: return null
@@ -203,18 +208,11 @@ class BuildProcessClasspathManager(parentDisposable: Disposable) {
     }
 
     //todo[nik] this is a temporary compatibility fix; we should update plugin layout so JAR names correspond to module names instead.
-    private val OLD_TO_NEW_MODULE_NAME = mapOf(
+    @Suppress("SpellCheckingInspection")
+    private val OLD_TO_NEW_MODULE_NAME = hashMapOf(
       "kotlin-jps-plugin" to "kotlin.jps-plugin",
       "kotlin-jps-common" to "kotlin.jps-common",
       "kotlin-common" to "kotlin.common",
-      "android-jps-plugin" to "intellij.android.jpsBuildPlugin.jps",
-      "android-jps-model" to "intellij.android.jps.model",
-      "build-common" to "intellij.android.buildCommon",
-      "sdk-common" to "android.sdktools.sdk-common",
-      "sdklib" to "android.sdktools.sdklib",
-      "layoutlib-api" to "android.sdktools.layoutlib-api",
-      "repository" to "android.sdktools.repository",
-      "manifest-merger" to "android.sdktools.manifest-merger",
     )
   }
 }

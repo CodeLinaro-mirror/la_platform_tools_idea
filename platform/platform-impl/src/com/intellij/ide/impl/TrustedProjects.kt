@@ -1,30 +1,29 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:JvmName("TrustedProjects")
 @file:ApiStatus.Experimental
 
 package com.intellij.ide.impl
 
 import com.intellij.ide.IdeBundle
-import com.intellij.ide.impl.TrustedCheckResult.NotTrusted
-import com.intellij.ide.impl.TrustedCheckResult.Trusted
 import com.intellij.ide.nls.NlsMessages
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.components.*
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.DoNotAskOption
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.io.FileUtil.getLocationRelativeToUserHome
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.util.SystemProperties
 import com.intellij.util.ThreeState
 import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.annotations.Attribute
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
 import java.nio.file.Paths
+import kotlin.io.path.isDirectory
 
 fun confirmOpeningUntrustedProject(
   virtualFile: VirtualFile,
@@ -32,7 +31,7 @@ fun confirmOpeningUntrustedProject(
 ): OpenUntrustedProjectChoice {
   val systemsPresentation: String = NlsMessages.formatAndList(projectTypeNames)
   return confirmOpeningUntrustedProject(
-    virtualFile,
+    virtualFile.toNioPath(),
     IdeBundle.message("untrusted.project.open.dialog.title", systemsPresentation, projectTypeNames.size),
     IdeBundle.message("untrusted.project.open.dialog.text", systemsPresentation, projectTypeNames.size),
     IdeBundle.message("untrusted.project.dialog.trust.button"),
@@ -42,24 +41,23 @@ fun confirmOpeningUntrustedProject(
 }
 
 fun confirmOpeningUntrustedProject(
-  virtualFile: VirtualFile,
+  projectFileOrDir: Path,
   @NlsContexts.DialogTitle title: String,
   @NlsContexts.DialogMessage message: String,
   @NlsContexts.Button trustButtonText: String,
   @NlsContexts.Button distrustButtonText: String,
   @NlsContexts.Button cancelButtonText: String
-): OpenUntrustedProjectChoice {
-  val projectDir = if (virtualFile.isDirectory) virtualFile else virtualFile.parent
-  val trustedCheckResult = getImplicitTrustedCheckResult(projectDir.toNioPath())
-  if (trustedCheckResult is Trusted) {
-    return OpenUntrustedProjectChoice.IMPORT
+): OpenUntrustedProjectChoice = invokeAndWaitIfNeeded {
+  val projectDir = if (projectFileOrDir.isDirectory()) projectFileOrDir else projectFileOrDir.parent
+  if (isProjectImplicitlyTrusted(projectDir)) {
+    return@invokeAndWaitIfNeeded OpenUntrustedProjectChoice.IMPORT
   }
 
   val choice = MessageDialogBuilder.Message(title, message)
     .buttons(trustButtonText, distrustButtonText, cancelButtonText)
     .defaultButton(trustButtonText)
     .focusedButton(distrustButtonText)
-    .doNotAsk(createDoNotAskOptionForLocation(projectDir.parent.path))
+    .doNotAsk(createDoNotAskOptionForLocation(projectDir.parent))
     .asWarning()
     .help(TRUSTED_PROJECTS_HELP_TOPIC)
     .show()
@@ -70,11 +68,11 @@ fun confirmOpeningUntrustedProject(
     cancelButtonText, null -> OpenUntrustedProjectChoice.CANCEL
     else -> {
       LOG.error("Illegal choice $choice")
-      return OpenUntrustedProjectChoice.CANCEL
+      return@invokeAndWaitIfNeeded OpenUntrustedProjectChoice.CANCEL
     }
   }
   TrustedProjectsStatistics.NEW_PROJECT_OPEN_OR_IMPORT_CHOICE.log(openChoice)
-  return openChoice
+  return@invokeAndWaitIfNeeded openChoice
 }
 
 fun confirmLoadingUntrustedProject(
@@ -83,11 +81,10 @@ fun confirmLoadingUntrustedProject(
   @NlsContexts.DialogMessage message: String,
   @NlsContexts.Button trustButtonText: String,
   @NlsContexts.Button distrustButtonText: String
-) : Boolean {
-  val trustedCheckResult = getImplicitTrustedCheckResult(project)
-  if (trustedCheckResult is Trusted) {
+): Boolean = invokeAndWaitIfNeeded {
+  if (isProjectImplicitlyTrusted(project)) {
     project.setTrusted(true)
-    return true
+    return@invokeAndWaitIfNeeded true
   }
 
   val answer = MessageDialogBuilder.yesNo(title, message)
@@ -98,7 +95,7 @@ fun confirmLoadingUntrustedProject(
     .ask(project)
   project.setTrusted(answer)
   TrustedProjectsStatistics.LOAD_UNTRUSTED_PROJECT_CONFIRMATION_CHOICE.log(project, answer)
-  return answer
+  return@invokeAndWaitIfNeeded answer
 }
 
 @ApiStatus.Experimental
@@ -113,7 +110,7 @@ fun Project.isTrusted() = getTrustedState() == ThreeState.YES
 fun Project.getTrustedState(): ThreeState {
   val explicit = this.service<TrustedProjectSettings>().trustedState
   if (explicit != ThreeState.UNSURE) return explicit
-  return if (getImplicitTrustedCheckResult(this) is Trusted) ThreeState.YES else ThreeState.UNSURE
+  return if (isProjectImplicitlyTrusted(this)) ThreeState.YES else ThreeState.UNSURE
 }
 
 fun Project.setTrusted(value: Boolean) {
@@ -125,8 +122,9 @@ fun Project.setTrusted(value: Boolean) {
   }
 }
 
-fun createDoNotAskOptionForLocation(projectLocationPath: String): DialogWrapper.DoNotAskOption {
-  return object : DialogWrapper.DoNotAskOption.Adapter() {
+private fun createDoNotAskOptionForLocation(projectLocation: Path): DoNotAskOption {
+  val projectLocationPath = projectLocation.toString()
+  return object : DoNotAskOption.Adapter() {
     override fun rememberChoice(isSelected: Boolean, exitCode: Int) {
       if (isSelected && exitCode == Messages.YES) {
         TrustedProjectsStatistics.TRUST_LOCATION_CHECKBOX_SELECTED.log()
@@ -141,31 +139,25 @@ fun createDoNotAskOptionForLocation(projectLocationPath: String): DialogWrapper.
   }
 }
 
-fun isProjectImplicitlyTrusted(projectDir: Path?): Boolean {
-  return getImplicitTrustedCheckResult(projectDir) is Trusted
-}
-
 private fun isTrustedCheckDisabled() = ApplicationManager.getApplication().isUnitTestMode ||
                                        ApplicationManager.getApplication().isHeadlessEnvironment ||
-                                       SystemProperties.`is`("idea.is.integration.test")
+                                       java.lang.Boolean.getBoolean("idea.is.integration.test") ||
+                                       java.lang.Boolean.getBoolean("idea.trust.all.projects")
+                                       
 
-private sealed class TrustedCheckResult {
-  object Trusted : TrustedCheckResult()
-  class NotTrusted(val url: String?) : TrustedCheckResult()
-}
+private fun isProjectImplicitlyTrusted(project: Project): Boolean =
+  isProjectImplicitlyTrusted(project.basePath?.let { Paths.get(it) }, project)
 
-private fun getImplicitTrustedCheckResult(project: Project): TrustedCheckResult =
-  getImplicitTrustedCheckResult(project.basePath?.let { Paths.get(it) }, project)
-
-private fun getImplicitTrustedCheckResult(projectDir: Path?, project: Project? = null): TrustedCheckResult {
+@JvmOverloads
+fun isProjectImplicitlyTrusted(projectDir: Path?, project : Project? = null): Boolean {
   if (isTrustedCheckDisabled()) {
-    return Trusted
+    return true
   }
   if (projectDir != null && service<TrustedPathsSettings>().isPathTrusted(projectDir)) {
     TrustedProjectsStatistics.PROJECT_IMPLICITLY_TRUSTED_BY_PATH.log(project)
-    return Trusted
+    return true
   }
-  return NotTrusted(null)
+  return false
 }
 
 @State(name = "Trusted.Project.Settings", storages = [Storage(StoragePathMacros.PRODUCT_WORKSPACE_FILE)])

@@ -9,7 +9,10 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xmlb.annotations.Tag;
 import com.intellij.util.xmlb.annotations.Transient;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
@@ -102,27 +105,6 @@ public class ExternalSystemTaskExecutionSettings implements Cloneable {
     myScriptParameters = scriptParameters;
   }
 
-  @Transient
-  @ApiStatus.Experimental
-  public void setTasksAndArguments(@NotNull String tasksAndArguments) {
-    setTaskNames(new ArrayList<>());
-    setScriptParameters(tasksAndArguments);
-  }
-
-  @Transient
-  @ApiStatus.Experimental
-  public @NotNull String getTasksAndArguments() {
-    StringJoiner tasksAndArguments = new StringJoiner(" ");
-    for (String taskName : getTaskNames()) {
-      tasksAndArguments.add(taskName);
-    }
-    String scriptParameters = getScriptParameters();
-    if (StringUtil.isNotEmpty(scriptParameters)) {
-      tasksAndArguments.add(scriptParameters);
-    }
-    return tasksAndArguments.toString();
-  }
-
   @NotNull
   public List<@NlsSafe String> getTaskNames() {
     return myTaskNames;
@@ -206,8 +188,14 @@ public class ExternalSystemTaskExecutionSettings implements Cloneable {
 
   @Override
   public String toString() {
-    return StringUtil.join(myTaskNames, " ") +
-           (StringUtil.isEmpty(myScriptParameters) ? "" : " " + myScriptParameters) +
-           (StringUtil.isEmpty(myVmOptions) ? "" : " " + myVmOptions);
+    StringJoiner joiner = new StringJoiner(" ");
+    myTaskNames.forEach(it -> joiner.add(it));
+    if (StringUtil.isNotEmpty(myScriptParameters)) {
+      joiner.add(myScriptParameters);
+    }
+    if (StringUtil.isNotEmpty(myVmOptions)) {
+      joiner.add(myVmOptions);
+    }
+    return joiner.toString();
   }
 }

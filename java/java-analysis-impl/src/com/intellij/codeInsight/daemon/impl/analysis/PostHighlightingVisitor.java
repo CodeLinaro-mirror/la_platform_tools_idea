@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.codeInsight.daemon.HighlightDisplayKey;
@@ -205,9 +205,18 @@ class PostHighlightingVisitor {
       return processField(myProject, (PsiField)parent, identifier, progress, helper);
     }
     if (parent instanceof PsiParameter) {
-      final PsiElement declarationScope = ((PsiParameter)parent).getDeclarationScope();
-      if (declarationScope instanceof PsiMethod ? compareVisibilities((PsiModifierListOwner)declarationScope, myUnusedSymbolInspection.getParameterVisibility())
-                                                : myUnusedSymbolInspection.LOCAL_VARIABLE) {
+      PsiElement declarationScope = ((PsiParameter)parent).getDeclarationScope();
+      final boolean needToProcessParameter;
+      if (declarationScope instanceof PsiMethod || declarationScope instanceof PsiLambdaExpression) {
+        if (declarationScope instanceof PsiLambdaExpression) {
+          declarationScope = PsiTreeUtil.getParentOfType(declarationScope, PsiModifierListOwner.class);
+        }
+        needToProcessParameter = compareVisibilities((PsiModifierListOwner)declarationScope, myUnusedSymbolInspection.getParameterVisibility());
+      }
+      else {
+        needToProcessParameter = myUnusedSymbolInspection.LOCAL_VARIABLE;
+      }
+      if (needToProcessParameter) {
         if (SuppressionUtil.isSuppressed(identifier, UnusedSymbolLocalInspectionBase.UNUSED_PARAMETERS_SHORT_NAME)) return null;
         return processParameter(myProject, (PsiParameter)parent, identifier);
       }
@@ -252,7 +261,7 @@ class PostHighlightingVisitor {
     IntentionAction fix = null;
     if (!myRefCountHolder.isReferenced(variable)) {
       message = JavaErrorBundle.message("local.variable.is.never.used", identifier.getText());
-      fix = variable instanceof PsiResourceVariable ? QuickFixFactory.getInstance().createRenameToIgnoredFix(variable) 
+      fix = variable instanceof PsiResourceVariable ? QuickFixFactory.getInstance().createRenameToIgnoredFix(variable, false)
                                                     : QuickFixFactory.getInstance().createRemoveUnusedVariableFix(variable);
     }
 
@@ -379,7 +388,9 @@ class PostHighlightingVisitor {
   private HighlightInfo processParameter(@NotNull Project project,
                                          @NotNull PsiParameter parameter,
                                          @NotNull PsiIdentifier identifier) {
+    if (PsiUtil.isIgnoredName(parameter.getName())) return null;
     PsiElement declarationScope = parameter.getDeclarationScope();
+    QuickFixFactory quickFixFactory = QuickFixFactory.getInstance();
     if (declarationScope instanceof PsiMethod) {
       PsiMethod method = (PsiMethod)declarationScope;
       if (PsiUtilCore.hasErrorElementChild(method)) return null;
@@ -387,34 +398,43 @@ class PostHighlightingVisitor {
            method.hasModifierProperty(PsiModifier.PRIVATE) ||
            method.hasModifierProperty(PsiModifier.STATIC) ||
            !method.hasModifierProperty(PsiModifier.ABSTRACT) &&
-           !isOverriddenOrOverrides(method)) &&
+           (!isOverriddenOrOverrides(method) || myUnusedSymbolInspection.checkParameterExcludingHierarchy())) &&
           !method.hasModifierProperty(PsiModifier.NATIVE) &&
           !JavaHighlightUtil.isSerializationRelatedMethod(method, method.getContainingClass()) &&
           !PsiClassImplUtil.isMainOrPremainMethod(method)) {
         if (UnusedSymbolUtil.isInjected(project, method)) return null;
         HighlightInfo highlightInfo = checkUnusedParameter(parameter, identifier, method);
         if (highlightInfo != null) {
-          QuickFixFactory.getInstance().registerFixesForUnusedParameter(parameter, highlightInfo);
+          QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createRenameToIgnoredFix(parameter, true), myDeadCodeKey);
+          QuickFixAction.registerQuickFixAction(highlightInfo, PriorityIntentionActionWrapper.highPriority(quickFixFactory.createSafeDeleteUnusedParameterInHierarchyFix(parameter, myUnusedSymbolInspection.checkParameterExcludingHierarchy() && isOverriddenOrOverrides(method))), myDeadCodeKey);
           return highlightInfo;
         }
       }
     }
-    else if (declarationScope instanceof PsiForeachStatement && !PsiUtil.isIgnoredName(parameter.getName())) {
+    else if (declarationScope instanceof PsiForeachStatement) {
       HighlightInfo highlightInfo = checkUnusedParameter(parameter, identifier, null);
       if (highlightInfo != null) {
-        QuickFixAction.registerQuickFixAction(highlightInfo, QuickFixFactory.getInstance().createRenameToIgnoredFix(parameter), myDeadCodeKey);
+        QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createRenameToIgnoredFix(parameter, false), myDeadCodeKey);
         return highlightInfo;
       }
     }
-    else if (parameter instanceof PsiPatternVariable && !PsiUtil.isIgnoredName(parameter.getName())) {
+    else if (parameter instanceof PsiPatternVariable) {
       HighlightInfo highlightInfo = checkUnusedParameter(parameter, identifier, null);
       if (highlightInfo != null) {
-        if (parameter.getDeclarationScope().getParent() instanceof PsiSwitchBlock) {
-          QuickFixAction.registerQuickFixAction(highlightInfo, QuickFixFactory.getInstance().createRenameToIgnoredFix(parameter));
+        if (declarationScope.getParent() instanceof PsiSwitchBlock) {
+          QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createRenameToIgnoredFix(parameter, false));
         }
         else {
-          QuickFixAction.registerQuickFixAction(highlightInfo, QuickFixFactory.getInstance().createDeleteFix(parameter));
+          QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createDeleteFix(parameter));
         }
+        return highlightInfo;
+      }
+    }
+    else if (myUnusedSymbolInspection.checkParameterExcludingHierarchy() && declarationScope instanceof PsiLambdaExpression) {
+      HighlightInfo highlightInfo = checkUnusedParameter(parameter, identifier, null);
+      if (highlightInfo != null) {
+        QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createRenameToIgnoredFix(parameter, true), myDeadCodeKey);
+        QuickFixAction.registerQuickFixAction(highlightInfo, PriorityIntentionActionWrapper.lowPriority(quickFixFactory.createSafeDeleteUnusedParameterInHierarchyFix(parameter, true)), myDeadCodeKey);
         return highlightInfo;
       }
     }

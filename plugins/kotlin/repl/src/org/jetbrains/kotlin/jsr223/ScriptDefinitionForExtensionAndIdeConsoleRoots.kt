@@ -51,11 +51,11 @@ private object ScriptCompilationConfigurationForExtensionAndIdeConsoleRoots : Sc
             // required for the scripts after the kotlin stdlib/script-runtime, and set wholeClasspath to false
             dependenciesFromClassContext(
                 ScriptCompilationConfigurationForExtensionAndIdeConsoleRoots::class,
-                "kotlin-stdlib",
+                "kotlin-stdlib-jdk8",
                 wholeClasspath = true
             )
             PluginManagerCore.getPlugins().forEach {
-                dependenciesFromClassloader(classLoader = it.pluginClassLoader, wholeClasspath = true)
+                dependenciesFromClassloader(classLoader = it.classLoader, wholeClasspath = true)
             }
         }
         ide {

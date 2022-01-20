@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.documentation.mdn
 
 import com.fasterxml.jackson.core.JsonParser
@@ -14,6 +14,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
 import com.intellij.lang.documentation.DocumentationMarkup
+import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.text.StringUtil.capitalize
 import com.intellij.openapi.util.text.StringUtil.toLowerCase
 import com.intellij.psi.PsiElement
@@ -37,7 +38,7 @@ fun getJsMdnDocumentation(namespace: MdnApiNamespace, qualifiedName: String): Md
       it.endsWith("Constructor") -> "$it.$it"
       else -> it
     }
-  }.toLowerCase(Locale.US).let { webApiIndex[it] ?: it }
+  }.lowercase(Locale.US).let { webApiIndex[it] ?: it }
   val jsNamespace = qualifiedName.takeWhile { it != '.' }
   if (jsNamespace.endsWith("EventMap")) {
     getDomEventDocumentation(qualifiedName.substring(jsNamespace.length + 1))?.let { return it }
@@ -72,7 +73,7 @@ fun getHtmlMdnDocumentation(element: PsiElement, context: XmlTag?): MdnSymbolDoc
       PsiTreeUtil.getParentOfType(element, XmlAttribute::class.java, false)?.let { attr ->
         symbolName = attr.localName
         getAttributeDocumentation(getHtmlApiNamespace(attr.namespace, attr, toLowerCase(symbolName)),
-                                  attr.parent.localName, toLowerCase(symbolName))
+          attr.parent.localName, toLowerCase(symbolName))
       }
     }
     else -> {
@@ -174,14 +175,15 @@ interface MdnSymbolDocumentation {
   val name: String
   val url: String
   val isDeprecated: Boolean
+  val isExperimental: Boolean
   val description: String
   val sections: Map<String, String>
   val footnote: String?
 
-  fun getDocumentation(withDefinition: Boolean): String
+  fun getDocumentation(withDefinition: Boolean): @NlsSafe String
 
   fun getDocumentation(withDefinition: Boolean,
-                       additionalSectionsContent: Consumer<java.lang.StringBuilder>?): String
+                       additionalSectionsContent: Consumer<java.lang.StringBuilder>?): @NlsSafe String
 
 }
 
@@ -195,6 +197,9 @@ class MdnSymbolDocumentationAdapter(override val name: String,
 
   override val isDeprecated: Boolean
     get() = doc.status?.contains(MdnApiStatus.Deprecated) == true
+
+  override val isExperimental: Boolean
+    get() = doc.status?.contains(MdnApiStatus.Experimental) == true
 
   override val description: String
     get() = capitalize(doc.doc ?: "").fixUrls()
@@ -391,8 +396,8 @@ enum class MdnCssSymbolKind {
     override fun getDocumentationMap(documentation: MdnCssDocumentation): Map<String, MdnRawSymbolDocumentation> = documentation.properties
     override fun getSymbolDoc(documentation: MdnCssDocumentation, name: String): MdnSymbolDocumentation? {
       if (name.startsWith("@")) {
-        val atRule = name.takeWhile { it != '.' }.substring(1).toLowerCase(Locale.US)
-        val propertyName = name.takeLastWhile { it != '.' }.toLowerCase(Locale.US)
+        val atRule = name.takeWhile { it != '.' }.substring(1).lowercase(Locale.US)
+        val propertyName = name.takeLastWhile { it != '.' }.lowercase(Locale.US)
         documentation.atRules[atRule]?.properties?.get(propertyName)?.let {
           return MdnSymbolDocumentationAdapter(name, documentation, it)
         }
@@ -426,7 +431,7 @@ enum class MdnCssSymbolKind {
   protected abstract fun decorateName(name: String): String
 
   open fun getSymbolDoc(documentation: MdnCssDocumentation, name: String): MdnSymbolDocumentation? =
-    getDocumentationMap(documentation)[name.toLowerCase(Locale.US)]?.let {
+    getDocumentationMap(documentation)[name.lowercase(Locale.US)]?.let {
       MdnSymbolDocumentationAdapter(decorateName(name), documentation, it)
     }
 }
@@ -458,7 +463,7 @@ private class CompatibilityMapDeserializer : JsonDeserializer<CompatibilityMap>(
 }
 
 private fun getWebApiFragment(name: String): Char =
-  webApiFragmentStarts.findLast { it <= name[0].toLowerCase() }!!
+  webApiFragmentStarts.findLast { it <= name[0].lowercaseChar() }!!
 
 private const val MDN_DOCS_URL_PREFIX = "\$MDN_URL\$"
 
@@ -482,9 +487,9 @@ fun getHtmlApiNamespace(namespace: String?, element: PsiElement?, symbolName: St
     namespace == HtmlUtil.SVG_NAMESPACE -> MdnApiNamespace.Svg
     namespace == HtmlUtil.MATH_ML_NAMESPACE -> MdnApiNamespace.MathML
     else -> PsiTreeUtil.findFirstParent(element, false) { parent ->
-      parent is XmlTag && parent.localName.toLowerCase(Locale.US).let { it == "svg" || it == "math" }
+      parent is XmlTag && parent.localName.lowercase(Locale.US).let { it == "svg" || it == "math" }
     }?.castSafelyTo<XmlTag>()?.let {
-      when (it.name.toLowerCase(Locale.US)) {
+      when (it.name.lowercase(Locale.US)) {
         "svg" -> MdnApiNamespace.Svg
         "math" -> MdnApiNamespace.MathML
         else -> null
@@ -507,7 +512,7 @@ private fun <T : MdnDocumentation> loadDocumentation(namespace: MdnApiNamespace,
 
 private fun buildDoc(doc: MdnSymbolDocumentation,
                      withDefinition: Boolean,
-                     additionalSectionsContent: Consumer<java.lang.StringBuilder>?): String {
+                     additionalSectionsContent: Consumer<java.lang.StringBuilder>?): @NlsSafe String {
   val buf = StringBuilder()
   if (withDefinition)
     buf.append(DocumentationMarkup.DEFINITION_START)
@@ -569,5 +574,5 @@ private fun getUnprefixedName(name: String): String? {
 private val UPPER_CASE = Regex("(?=\\p{Upper})")
 
 private fun String.toKebabCase() =
-  this.split(UPPER_CASE).joinToString("-") { it.toLowerCase(Locale.US) }
+  this.split(UPPER_CASE).joinToString("-") { it.lowercase(Locale.US) }
 

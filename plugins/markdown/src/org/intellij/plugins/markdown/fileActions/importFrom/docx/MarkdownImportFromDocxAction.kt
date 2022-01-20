@@ -8,6 +8,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.fileChooser.PathChooserDialog
 import com.intellij.openapi.vfs.VirtualFile
+import org.intellij.plugins.markdown.MarkdownBundle
 import org.intellij.plugins.markdown.fileActions.export.MarkdownDocxExportProvider
 import org.intellij.plugins.markdown.fileActions.utils.MarkdownImportExportUtils
 
@@ -20,15 +21,18 @@ internal class MarkdownImportFromDocxAction : AnAction() {
       for (vFileToImport in files) {
         if (descriptor.isFileSelectable(vFileToImport)) {
           val suggestedFilePath = MarkdownImportExportUtils.suggestFileNameToCreate(project, vFileToImport, event.dataContext)
-          MarkdownImportDocxDialog(vFileToImport, project, suggestedFilePath).show()
+          val importTaskTitle = MarkdownBundle.message("markdown.import.docx.convert.task.title")
+          val importDialogTitle = MarkdownBundle.message("markdown.import.from.docx.dialog.title")
+
+          MarkdownImportDocxDialog(vFileToImport, importTaskTitle, importDialogTitle, project, suggestedFilePath).show()
         }
       }
     }
   }
 
   private class DocxFileChooserDescriptor : FileChooserDescriptor(FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor()) {
-    override fun isFileSelectable(file: VirtualFile): Boolean {
-      return file.extension == MarkdownDocxExportProvider.format.extension
+    override fun isFileSelectable(file: VirtualFile?): Boolean {
+      return file != null && file.extension == MarkdownDocxExportProvider.format.extension
     }
   }
 }

@@ -11,31 +11,26 @@ import java.util.BitSet;
 public class Page {
   public static final int PAGE_SIZE = SystemProperties.getIntProperty("idea.io.page.size", 8 * 1024);
 
-  private static final LimitedPool<ByteBuffer> ourBufferPool = new LimitedPool<>(10, () -> ByteBuffer.allocate(PAGE_SIZE));
+  private static final LimitedPool<ByteBuffer> ourBufferPool = new LimitedPool.Sync<>(10, () -> ByteBuffer.allocate(PAGE_SIZE));
 
-  private final long offset;
-  private final RandomAccessDataFile owner;
   private final PoolPageKey myKey;
 
   private ByteBuffer buf;
-  private boolean read = false;
-  private boolean dirty = false;
+  private boolean read;
+  private boolean dirty;
   private int myFinalizationId;
   private BitSet myWriteMask;
 
   private static class PageLock {}
   private final PageLock lock = new PageLock();
 
-  public Page(RandomAccessDataFile owner, long offset) {
-    this.owner = owner;
-    this.offset = offset;
-
-    myKey = new PoolPageKey(owner, offset);
+  public Page(PoolPageKey key) {
+    myKey = key;
     read = false;
     dirty = false;
     myWriteMask = null;
 
-    assert offset >= 0 : "offset = " + offset;
+    assert key.getOffset() >= 0 : "offset = " + key.getOffset();
   }
 
   private void ensureRead() {
@@ -46,14 +41,14 @@ public class Page {
         b.position(0);
         b.get(content, 0, PAGE_SIZE);
 
-        owner.loadPage(this);
+        getOwner().loadPage(this);
         for(int i=myWriteMask.nextSetBit(0); i>=0; i=myWriteMask.nextSetBit(i+1)) {
           b.put(i, content[i]);
         }
         myWriteMask = null;
       }
       else {
-        owner.loadPage(this);
+        getOwner().loadPage(this);
       }
 
       read = true;
@@ -120,7 +115,7 @@ public class Page {
         }
 
         if (end - start > 0) {
-          owner.flushPage(this, start, end);
+          getOwner().flushPage(this, start, end);
         }
 
         dirty = false;
@@ -131,29 +126,26 @@ public class Page {
   public ByteBuffer getBuf() {
     synchronized (lock) {
       if (buf == null) {
-        synchronized (ourBufferPool) {
-          buf = ourBufferPool.alloc();
-        }
+        buf = ourBufferPool.alloc();
       }
       return buf;
     }
   }
 
   private void recycle() {
+    ByteBuffer buf = this.buf;
     if (buf != null) {
-      synchronized (ourBufferPool) {
-        ourBufferPool.recycle(buf);
-      }
+      ourBufferPool.recycle(buf);
     }
 
-    buf = null;
+    this.buf = null;
     read = false;
     dirty = false;
     myWriteMask = null;
   }
 
   public long getOffset() {
-    return offset;
+    return myKey.getOffset();
   }
 
   public int put(long index, byte[] bytes, int off, int length) {
@@ -161,7 +153,8 @@ public class Page {
       myFinalizationId = 0;
       ensureReadOrWriteMaskExists();
 
-      final int start = (int)(index - offset);
+      final int start = (int)(index - getOffset());
+      ensureIndexInRange(index);
       final ByteBuffer b = getBuf();
       b.position(start);
 
@@ -175,13 +168,20 @@ public class Page {
     }
   }
 
+  private void ensureIndexInRange(long index) {
+    if (index < getOffset()) {
+      throw new IllegalArgumentException("index < offset: index = " + index + ", offset = " + getOffset());
+    }
+  }
+
   public int get(long index, byte[] bytes, int off, int length) {
     synchronized (lock) {
       myFinalizationId = 0;
       ensureRead();
 
-      final int start = (int)(index - offset);
-      final ByteBuffer b = getBuf();
+      ensureIndexInRange(index);
+      int start = (int)(index - getOffset());
+      ByteBuffer b = getBuf();
       b.position(start);
 
       int count = Math.min(length, PAGE_SIZE - start);
@@ -206,7 +206,7 @@ public class Page {
   }
 
   public RandomAccessDataFile getOwner() {
-    return owner;
+    return getKey().getOwner();
   }
 
   public PoolPageKey getKey() {
@@ -237,7 +237,7 @@ public class Page {
   @Override
   public String toString() {
     synchronized (lock) {
-      return "Page[" + owner + ", dirty: " + dirty + ", offset=" + offset + "]";
+      return "Page[" + getOwner() + ", dirty: " + dirty + ", offset=" + getOffset() + "]";
     }
   }
 }

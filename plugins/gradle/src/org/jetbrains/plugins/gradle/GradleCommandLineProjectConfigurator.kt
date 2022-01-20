@@ -1,6 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle
 
+import com.intellij.ide.CommandLineInspectionProgressReporter
 import com.intellij.ide.CommandLineInspectionProjectConfigurator
 import com.intellij.ide.CommandLineInspectionProjectConfigurator.ConfiguratorContext
 import com.intellij.openapi.application.PathManager
@@ -8,7 +9,9 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.autoimport.AutoImportProjectTracker
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListenerAdapter
+import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskType
 import com.intellij.openapi.externalSystem.service.notification.ExternalSystemProgressNotificationManager
+import com.intellij.openapi.externalSystem.service.project.manage.ProjectDataImportListener
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
@@ -32,6 +35,8 @@ private val gradleLogWriter = BufferedWriter(FileWriter(PathManager.getLogPath()
 private val GRADLE_OUTPUT_LOG = Logger.getInstance("GradleOutput")
 
 private const val DISABLE_GRADLE_AUTO_IMPORT = "external.system.auto.import.disabled"
+private const val DISABLE_ANDROID_GRADLE_PROJECT_STARTUP_ACTIVITY = "android.gradle.project.startup.activity.disabled"
+private const val DISABLE_UPDATE_ANDROID_SDK_LOCAL_PROPERTIES = "android.sdk.local.properties.update.disabled"
 
 class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigurator {
   override fun getName() = "gradle"
@@ -40,8 +45,10 @@ class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigu
 
   override fun configureEnvironment(context: ConfiguratorContext) = context.run {
     Registry.get(DISABLE_GRADLE_AUTO_IMPORT).setValue(true)
+    Registry.get(DISABLE_ANDROID_GRADLE_PROJECT_STARTUP_ACTIVITY).setValue(true)
+    Registry.get(DISABLE_UPDATE_ANDROID_SDK_LOCAL_PROPERTIES).setValue(true)
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
-    progressManager.addNotificationListener(LoggingNotificationListener())
+    progressManager.addNotificationListener(LoggingNotificationListener(context.logger))
     Unit
   }
 
@@ -54,12 +61,13 @@ class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigu
       linkProjects(basePath, project)
     }
     val progressManager = ExternalSystemProgressNotificationManager.getInstance()
-    val notificationListener = StateNotificationListener()
+    val notificationListener = StateNotificationListener(project)
     try {
       progressManager.addNotificationListener(notificationListener)
       importProjects(project)
       notificationListener.waitForImportEnd()
-    } finally {
+    }
+    finally {
       progressManager.removeNotificationListener(notificationListener)
     }
   }
@@ -114,49 +122,61 @@ class GradleCommandLineProjectConfigurator : CommandLineInspectionProjectConfigu
   }
 
 
-  class StateNotificationListener : ExternalSystemTaskNotificationListenerAdapter() {
+  class StateNotificationListener(private val project: Project) : ExternalSystemTaskNotificationListenerAdapter() {
     private val externalSystemState = ConcurrentHashMap<ExternalSystemTaskId, CompletableFuture<ExternalSystemTaskId>>()
 
     override fun onSuccess(id: ExternalSystemTaskId) {
-      LOG.info("Gradle import success: ${id.ideProjectId}")
-      val future = externalSystemState[id] ?: return
-      future.complete(id)
+      if (!id.isGradleProjectResolveTask()) return
+      LOG.info("Gradle resolve success: ${id.ideProjectId}")
+      val connection = project.messageBus.simpleConnect()
+      connection.subscribe(ProjectDataImportListener.TOPIC, object : ProjectDataImportListener {
+        override fun onImportFinished(projectPath: String?) {
+          LOG.info("Gradle import success: ${id.ideProjectId}")
+          val future = externalSystemState[id] ?: return
+          future.complete(id)
+        }
+
+        override fun onImportFailed(projectPath: String?) {
+          LOG.info("Gradle import failure: ${id.ideProjectId}")
+          val future = externalSystemState[id] ?: return
+          future.completeExceptionally(IllegalStateException("Gradle project ${id.ideProjectId} import failed."))
+        }
+      })
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
-      LOG.error("Gradle import failure ${id.ideProjectId}", e)
+      if (!id.isGradleProjectResolveTask()) return
+      LOG.error("Gradle resolve failure ${id.ideProjectId}", e)
       val future = externalSystemState[id] ?: return
-      future.completeExceptionally(IllegalStateException("Gradle project ${id.ideProjectId} import failed.", e))
+      future.completeExceptionally(IllegalStateException("Gradle project ${id.ideProjectId} resolve failed.", e))
     }
 
     override fun onCancel(id: ExternalSystemTaskId) {
-      LOG.error("Gradle import canceled ${id.ideProjectId}")
+      if (!id.isGradleProjectResolveTask()) return
+      LOG.error("Gradle resolve canceled ${id.ideProjectId}")
       val future = externalSystemState[id] ?: return
-      future.completeExceptionally(IllegalStateException("Import of ${id.ideProjectId} was canceled"))
+      future.completeExceptionally(IllegalStateException("Resolve of ${id.ideProjectId} was canceled"))
     }
 
     override fun onStart(id: ExternalSystemTaskId) {
+      if (!id.isGradleProjectResolveTask()) return
       externalSystemState[id] = CompletableFuture()
-      LOG.info("Gradle import started ${id.ideProjectId}")
+      LOG.info("Gradle project resolve started ${id.ideProjectId}")
     }
 
     fun waitForImportEnd() {
       externalSystemState.values.forEach { it.get() }
     }
 
-    override fun onEnd(id: ExternalSystemTaskId) {
-      val future = externalSystemState[id] ?: return
-      if (future.isDone) return
-      LOG.error("Gradle import finished ${id.ideProjectId} without success event")
-      future.completeExceptionally(IllegalStateException("Import of ${id.ideProjectId} was finished without success event"))
-    }
+    private fun ExternalSystemTaskId.isGradleProjectResolveTask() = this.projectSystemId == GradleConstants.SYSTEM_ID &&
+                                                                    this.type == ExternalSystemTaskType.RESOLVE_PROJECT
   }
 
-  class LoggingNotificationListener : ExternalSystemTaskNotificationListenerAdapter() {
+  class LoggingNotificationListener(val logger: CommandLineInspectionProgressReporter) : ExternalSystemTaskNotificationListenerAdapter() {
     override fun onTaskOutput(id: ExternalSystemTaskId, text: String, stdOut: Boolean) {
       val gradleText = (if (stdOut) "" else "STDERR: ") + text
       gradleLogWriter.write(gradleText)
-      GRADLE_OUTPUT_LOG.debug(gradleText)
+      logger.reportMessage(1, gradleText)
     }
 
     override fun onEnd(id: ExternalSystemTaskId) {

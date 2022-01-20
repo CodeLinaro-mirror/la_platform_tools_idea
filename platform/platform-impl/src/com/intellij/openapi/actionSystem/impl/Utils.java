@@ -1,9 +1,11 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem.impl;
 
 import com.intellij.CommonBundle;
+import com.intellij.concurrency.SensitiveProgressWrapper;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ProhibitAWTEvents;
+import com.intellij.ide.impl.DataContextUtils;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.ApplicationManager;
@@ -13,10 +15,9 @@ import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
 import com.intellij.openapi.keymap.impl.ActionProcessor;
-import com.intellij.openapi.progress.EmptyProgressIndicator;
-import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.*;
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Ref;
@@ -26,6 +27,8 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.impl.IdeMenuBar;
 import com.intellij.ui.AnimatedIcon;
 import com.intellij.ui.awt.RelativePoint;
+import com.intellij.ui.mac.screenmenu.Menu;
+import com.intellij.ui.mac.screenmenu.MenuItem;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.ThrowableRunnable;
@@ -55,7 +58,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public final class Utils {
+public final class Utils extends DataContextUtils {
   private static final Logger LOG = Logger.getInstance(Utils.class);
 
   public static final AnAction EMPTY_MENU_FILLER = new EmptyAction();
@@ -64,17 +67,22 @@ public final class Utils {
   }
 
   public static @NotNull DataContext wrapToAsyncDataContext(@NotNull DataContext dataContext) {
-    Component component = dataContext.getData(PlatformDataKeys.CONTEXT_COMPONENT);
+    Component component = dataContext.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT);
     if (dataContext instanceof EdtDataContext) {
-      return new PreCachedDataContext(component);
+      return newPreCachedDataContext(component);
     }
     else if (dataContext instanceof SimpleDataContext && component != null) {
-      PreCachedDataContext wrapped = new PreCachedDataContext(component);
+      DataContext wrapped = newPreCachedDataContext(component);
       LOG.assertTrue(wrapped.getData(CommonDataKeys.PROJECT) == dataContext.getData(CommonDataKeys.PROJECT));
       LOG.warn(new Throwable("Use DataManager.getDataContext(component) instead of SimpleDataContext for wrapping."));
       return wrapped;
     }
     return dataContext;
+  }
+
+  private static @NotNull DataContext newPreCachedDataContext(@Nullable Component component) {
+    if (Registry.is("actionSystem.update.actions.async.data-context2")) return new PreCachedDataContext2(component);
+    return new PreCachedDataContext(component);
   }
 
   public static @NotNull DataContext wrapDataContext(@NotNull DataContext dataContext) {
@@ -84,7 +92,9 @@ public final class Utils {
 
   @ApiStatus.Internal
   public static @NotNull DataContext freezeDataContext(@NotNull DataContext dataContext, @Nullable Consumer<? super String> missedKeys) {
-    return dataContext instanceof PreCachedDataContext ? ((PreCachedDataContext)dataContext).frozenCopy(missedKeys) : dataContext;
+    return dataContext instanceof PreCachedDataContext2 ? ((PreCachedDataContext2)dataContext).frozenCopy(missedKeys) :
+           dataContext instanceof PreCachedDataContext ? ((PreCachedDataContext)dataContext).frozenCopy(missedKeys) :
+           dataContext;
   }
 
   public static boolean isAsyncDataContext(@NotNull DataContext dataContext) {
@@ -93,8 +103,16 @@ public final class Utils {
 
   @ApiStatus.Internal
   public static @Nullable Object getRawDataIfCached(@NotNull DataContext dataContext, @NotNull String dataId) {
-    return dataContext instanceof PreCachedDataContext ? ((PreCachedDataContext)dataContext).getRawDataIfCached(dataId) :
+    return dataContext instanceof PreCachedDataContext2 ? ((PreCachedDataContext2)dataContext).getRawDataIfCached(dataId) :
+           dataContext instanceof PreCachedDataContext ? ((PreCachedDataContext)dataContext).getRawDataIfCached(dataId) :
            dataContext instanceof EdtDataContext ? ((EdtDataContext)dataContext).getRawDataIfCached(dataId) : null;
+  }
+
+  static void clearAllCachesAndUpdates() {
+    ActionUpdater.cancelAllUpdates("clear-all-caches-and-updates requested");
+    ActionUpdater.waitForAllUpdatesToFinish();
+    PreCachedDataContext2.clearAllCaches();
+    PreCachedDataContext.clearAllCaches();
   }
 
   @ApiStatus.Internal
@@ -143,16 +161,21 @@ public final class Utils {
     BlockingQueue<Runnable> queue0 = async && !asyncUI ? new LinkedBlockingQueue<>() : null;
     ActionUpdater updater = new ActionUpdater(
       isInModalContext, presentationFactory, context, place, isContextMenu, false, null, queue0 != null ? queue0::offer : null);
+    ActionGroupExpander expander = ActionGroupExpander.getInstance();
+    Project project = CommonDataKeys.PROJECT.getData(context);
     List<AnAction> list;
     if (async) {
-      Set<String> missedKeys = new HashSet<>();
-      list = expandActionGroupFastTrack(updater, group, group instanceof CompactActionGroup, missedKeys::add);
-      if (list != null && missedKeys.isEmpty()) {
-        if (onProcessed != null) onProcessed.run();
-        return list;
+      if (expander.allowsFastUpdate(project, place)) {
+        Set<String> missedKeys = new HashSet<>();
+        list = expandActionGroupFastTrack(updater, group, group instanceof CompactActionGroup, missedKeys::add);
+        if (list != null && missedKeys.isEmpty()) {
+          if (onProcessed != null) onProcessed.run();
+          return list;
+        }
       }
       IdeEventQueue queue = IdeEventQueue.getInstance();
-      CancellablePromise<List<AnAction>> promise = updater.expandActionGroupAsync(group, group instanceof CompactActionGroup);
+      CancellablePromise<List<AnAction>> promise = expander.expandActionGroupAsync(
+        project, place, group, group instanceof CompactActionGroup, updater::expandActionGroupAsync);
       if (onProcessed != null) promise.onProcessed(__ -> onProcessed.run());
       try (AccessToken ignore = cancelOnUserActivityInside(promise, PlatformDataKeys.CONTEXT_COMPONENT.getData(context), menuItem)) {
         list = runLoopAndWaitForFuture(promise, Collections.emptyList(), true, () -> {
@@ -291,6 +314,13 @@ public final class Utils {
                                     boolean isWindowMenu,
                                     boolean useDarkIcons) {
     component.removeAll();
+    List<MenuItem> newItems = null;
+    if (component instanceof ActionMenu) {
+      if (((ActionMenu)component).getScreenMenuPeer() != null) {
+        newItems = new ArrayList<>();
+      }
+    }
+
     final ArrayList<Component> children = new ArrayList<>();
 
     for (int i = 0, size = list.size(); i < size; i++) {
@@ -311,19 +341,34 @@ public final class Utils {
           JPopupMenu.Separator separator = createSeparator(text);
           component.add(separator);
           children.add(separator);
+          if (newItems != null) {
+            newItems.add(null); // separator
+          }
         }
       }
       else if (action instanceof ActionGroup &&
                !Boolean.TRUE.equals(presentation.getClientProperty("actionGroup.perform.only"))) {
-        ActionMenu menu = new ActionMenu(context, place, (ActionGroup)action, presentationFactory, enableMnemonics, useDarkIcons);
+        Menu submenu = null;
+        if (newItems != null) {
+          newItems.add(submenu = new Menu(presentation.getText(enableMnemonics)));
+        }
+        ActionMenu menu = new ActionMenu(context, place, (ActionGroup)action, presentationFactory, enableMnemonics, useDarkIcons, submenu);
         component.add(menu);
         children.add(menu);
       }
       else {
-        ActionMenuItem each = new ActionMenuItem(action, presentation, place, context, enableMnemonics, true, checked, useDarkIcons);
+        MenuItem menuItem = null;
+        if (newItems != null) {
+          newItems.add(menuItem = new MenuItem());
+        }
+        ActionMenuItem each = new ActionMenuItem(action, presentation, place, context, enableMnemonics, true, checked, useDarkIcons, menuItem);
         component.add(each);
         children.add(each);
       }
+    }
+
+    if (newItems != null) {
+      ((ActionMenu)component).getScreenMenuPeer().refill(newItems);
     }
 
     if (list.isEmpty()) {
@@ -442,6 +487,11 @@ public final class Utils {
                                                               @NotNull PresentationFactory factory,
                                                               @Nullable Consumer<? super AnActionEvent> eventTracker,
                                                               @NotNull Function<? super UpdateSession, ? extends T> function) {
+    ApplicationEx applicationEx = ApplicationManagerEx.getApplicationEx();
+    if (ProgressIndicatorUtils.isWriteActionRunningOrPending(applicationEx)) {
+      LOG.error("Actions cannot be updated when write-action is running or pending");
+      return null;
+    }
     long start = System.currentTimeMillis();
     boolean async = isAsyncDataContext(dataContext);
     // we will manually process "invokeLater" calls using a queue for performance reasons:
@@ -461,6 +511,7 @@ public final class Utils {
     if (async) {
       ActionUpdater.cancelAllUpdates("'" + place + "' invoked");
       AsyncPromise<T> promise = ActionUpdater.newPromise(place);
+      ProgressIndicator parentIndicator = ProgressIndicatorProvider.getGlobalProgressIndicator();
       ActionUpdater.ourBeforePerformedExecutor.execute(() -> {
         try {
           Ref<T> ref = Ref.create();
@@ -481,8 +532,7 @@ public final class Utils {
             }
           };
           boolean inReadAction = Registry.is("actionSystem.update.actions.call.beforeActionPerformedUpdate.once");
-          ApplicationEx applicationEx = ApplicationManagerEx.getApplicationEx();
-          EmptyProgressIndicator indicator = new EmptyProgressIndicator();
+          ProgressIndicator indicator = parentIndicator == null ? new EmptyProgressIndicator() : new SensitiveProgressWrapper(parentIndicator);
           promise.onError(__ -> indicator.cancel());
           ProgressManager.getInstance().computePrioritized(() -> {
             ProgressManager.getInstance().executeProcessUnderProgress(!inReadAction ? runnable : () ->
@@ -502,6 +552,7 @@ public final class Utils {
       result = runLoopAndWaitForFuture(promise, null, false, () -> {
         Runnable runnable = queue.poll(1, TimeUnit.MILLISECONDS);
         if (runnable != null) runnable.run();
+        if (parentIndicator != null) parentIndicator.checkCanceled();
       });
     }
     else {
@@ -522,6 +573,8 @@ public final class Utils {
     while (!promise.isDone()) {
       try {
         pumpRunnable.run();
+      }
+      catch (ProcessCanceledException ignore) {
       }
       catch (Throwable e) {
         LOG.error(e);
@@ -550,10 +603,6 @@ public final class Utils {
       result[0] = supplier.getAsBoolean();
     });
     return result[0];
-  }
-
-  public static boolean isFrozenDataContext(DataContext context) {
-    return context instanceof PreCachedDataContext && ((PreCachedDataContext)context).isFrozenDataContext();
   }
 
   static void performWithRetries(@NotNull Runnable runnable, @NotNull BooleanSupplier expire) {

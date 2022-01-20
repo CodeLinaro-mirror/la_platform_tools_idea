@@ -1,7 +1,8 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.siyeh.ig.migration;
 
 import com.intellij.codeInsight.Nullability;
+import com.intellij.codeInsight.daemon.impl.analysis.HighlightControlFlowUtil;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingFeature;
 import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.EnhancedSwitchMigrationInspection;
@@ -9,10 +10,12 @@ import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.dataFlow.NullabilityUtil;
 import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
+import com.intellij.codeInspection.util.IntentionFamilyName;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
+import com.intellij.psi.codeStyle.VariableKind;
 import com.intellij.psi.impl.source.tree.java.PsiEmptyStatementImpl;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.JavaPsiPatternUtil;
@@ -108,6 +111,11 @@ public class IfCanBeSwitchInspection extends BaseInspection {
     this.onlySuggestNullSafe = onlySuggestNullSafe;
   }
 
+  @IntentionFamilyName
+  public static @NotNull String getReplaceWithSwitchFixName(){
+    return CommonQuickFixBundle.message("fix.replace.x.with.y", PsiKeyword.IF, PsiKeyword.SWITCH);
+  }
+
   private static class IfCanBeSwitchFix extends InspectionGadgetsFix {
 
     IfCanBeSwitchFix() {}
@@ -115,7 +123,7 @@ public class IfCanBeSwitchInspection extends BaseInspection {
     @Override
     @NotNull
     public String getFamilyName() {
-      return CommonQuickFixBundle.message("fix.replace.x.with.y", PsiKeyword.IF, PsiKeyword.SWITCH);
+      return getReplaceWithSwitchFixName();
     }
 
     @Override
@@ -125,8 +133,82 @@ public class IfCanBeSwitchInspection extends BaseInspection {
         return;
       }
       final PsiIfStatement ifStatement = (PsiIfStatement)element;
+      if (HighlightingFeature.PATTERNS_IN_SWITCH.isAvailable(ifStatement)) {
+        for (PsiIfStatement ifStatementInChain : getAllConditionalBranches(ifStatement)) {
+          replaceCastsWithPatternVariable(ifStatementInChain);
+        }
+      }
       replaceIfWithSwitch(ifStatement);
     }
+  }
+
+  private static List<PsiIfStatement> getAllConditionalBranches(PsiIfStatement ifStatement){
+    List<PsiIfStatement> ifStatements = new ArrayList<>();
+    while (ifStatement != null) {
+      ifStatements.add(ifStatement);
+      PsiStatement elseBranch = ifStatement.getElseBranch();
+      if (elseBranch instanceof PsiIfStatement) {
+        ifStatement = (PsiIfStatement) elseBranch;
+      } else {
+        ifStatement = null;
+      }
+    }
+    return ifStatements;
+  }
+
+  private static void replaceCastsWithPatternVariable(PsiIfStatement ifStatement){
+    PsiInstanceOfExpression targetInstanceOf =
+      PsiTreeUtil.findChildOfType(ifStatement.getCondition(), PsiInstanceOfExpression.class, false);
+    if (targetInstanceOf == null) return;
+    if (targetInstanceOf.getPattern() != null) return;
+    PsiTypeElement type = targetInstanceOf.getCheckType();
+    if (type == null) return;
+
+    List<PsiTypeCastExpression> relatedCastExpressions =
+      SyntaxTraverser.psiTraverser(ifStatement.getThenBranch())
+        .filter(PsiTypeCastExpression.class)
+        .filter(cast -> InstanceOfUtils.findPatternCandidate(cast) == targetInstanceOf)
+        .toList();
+
+    PsiLocalVariable castedVariable = null;
+    for (PsiTypeCastExpression castExpression : relatedCastExpressions) {
+      castedVariable = findCastedLocalVariable(castExpression);
+      if (castedVariable != null) break;
+    }
+
+    String name = castedVariable != null
+                  ? castedVariable.getName()
+                  : new VariableNameGenerator(targetInstanceOf, VariableKind.LOCAL_VARIABLE).byType(type.getType()).generate(true);
+
+    CommentTracker ct = new CommentTracker();
+    for (PsiTypeCastExpression castExpression : relatedCastExpressions) {
+      ct.replace(skipParenthesizedExprUp(castExpression), name);
+    }
+    if (castedVariable != null) {
+      ct.delete(castedVariable);
+    }
+    ct.replaceExpressionAndRestoreComments(
+      targetInstanceOf,
+      ct.text(targetInstanceOf.getOperand()) + " instanceof " + ct.text(type) + " " + name
+    );
+  }
+
+  private static @Nullable PsiLocalVariable findCastedLocalVariable(PsiTypeCastExpression castExpression) {
+    PsiLocalVariable variable = PsiTreeUtil.getParentOfType(castExpression, PsiLocalVariable.class);
+    if (variable == null) return null;
+    PsiExpression initializer = PsiUtil.skipParenthesizedExprDown(variable.getInitializer());
+    if (initializer != castExpression) return null;
+    PsiElement scope = PsiUtil.getVariableCodeBlock(variable, null);
+    if (scope == null) return null;
+    if (!HighlightControlFlowUtil.isEffectivelyFinal(variable, scope, null)) return null;
+    return variable;
+  }
+
+  private static PsiElement skipParenthesizedExprUp(@NotNull PsiElement expression) {
+    while (expression.getParent() instanceof PsiParenthesizedExpression) {
+      expression = expression.getParent();
+    }
+    return expression;
   }
 
   public static void replaceIfWithSwitch(PsiIfStatement ifStatement) {
@@ -411,7 +493,14 @@ public class IfCanBeSwitchInspection extends BaseInspection {
     else if (element instanceof PsiBreakStatement) {
       final PsiIdentifier labelIdentifier = ((PsiBreakStatement)element).getLabelIdentifier();
       if (labelIdentifier == null) {
-        switchStatementText.append("break ").append(breakLabelString).append(';');
+        PsiElement child = element.getFirstChild();
+        switchStatementText.append(child.getText()).append(" ").append(breakLabelString);
+        child = child.getNextSibling();
+        while (child != null) {
+          switchStatementText.append(child.getText());
+          child = child.getNextSibling();
+        }
+        return;
       }
       else {
         switchStatementText.append(text);

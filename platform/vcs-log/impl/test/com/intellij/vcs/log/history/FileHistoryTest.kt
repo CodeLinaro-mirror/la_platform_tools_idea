@@ -4,6 +4,7 @@ package com.intellij.vcs.log.history
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.LocalFilePath
+import com.intellij.util.containers.CollectionFactory
 import com.intellij.util.containers.MultiMap
 import com.intellij.vcs.log.data.index.VcsLogPathsIndex
 import com.intellij.vcs.log.data.index.VcsLogPathsIndex.ChangeKind.*
@@ -16,7 +17,6 @@ import com.intellij.vcs.log.graph.impl.facade.BaseController
 import com.intellij.vcs.log.graph.impl.facade.FilteredController
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap
 import org.junit.Assert
 import org.junit.Assume.assumeFalse
 import org.junit.Test
@@ -27,7 +27,7 @@ class FileHistoryTest {
     val baseController = BaseController(permanentGraphInfo)
     val filteredController = object : FilteredController(baseController, permanentGraphInfo, fileNamesData.getCommits()) {}
 
-    val historyBuilder = FileHistoryBuilder(startCommit, startPath, fileNamesData, EMPTY_HISTORY)
+    val historyBuilder = FileHistoryBuilder(startCommit, startPath, fileNamesData, FileHistory.EMPTY)
     historyBuilder.accept(filteredController, permanentGraphInfo)
 
     val expectedResultGraph = graph(result)
@@ -474,7 +474,7 @@ class FileHistoryTest {
 
 private class FileNamesDataBuilder(private val path: FilePath) {
   private val commitsMap: MutableMap<FilePath, Int2ObjectMap<Int2ObjectMap<VcsLogPathsIndex.ChangeKind>>> =
-    Object2ObjectOpenCustomHashMap(FILE_PATH_HASHING_STRATEGY)
+    CollectionFactory.createCustomHashingStrategyMap(FILE_PATH_HASHING_STRATEGY)
   private val renamesMap: MultiMap<EdgeData<Int>, EdgeData<FilePath>> = MultiMap()
 
   fun addRename(parent: Int, child: Int, beforePath: FilePath, afterPath: FilePath): FileNamesDataBuilder {

@@ -114,15 +114,6 @@ public final class TipUIUtil {
     return tip;
   }
 
-  /**
-   * @deprecated use {@link #openTipInBrowser(TipAndTrickBean, Browser)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  public static void openTipInBrowser(@Nullable TipAndTrickBean tip, JEditorPane browser) {
-    browser.setText(getTipText(tip, browser));
-  }
-
   private static @NlsSafe String getTipText(@Nullable TipAndTrickBean tip, Component component) {
     if (tip == null) return IdeBundle.message("no.tip.of.the.day");
     final String cssFile = StartupUiUtil.isUnderDarcula()
@@ -382,16 +373,6 @@ public final class TipUIUtil {
     return null;
   }
 
-  /**
-   * @deprecated use {@link #createBrowser()}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021.3")
-  @NotNull
-  public static JEditorPane createTipBrowser() {
-    return new SwingBrowser();
-  }
-
   public static Browser createBrowser() {
     return new SwingBrowser();
   }
@@ -614,7 +595,6 @@ public final class TipUIUtil {
       return this;
     }
   }
-
 
   static class TodImage {
 

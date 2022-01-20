@@ -66,7 +66,7 @@ public interface ApplicationEx extends Application {
 
   void setSaveAllowed(boolean value);
 
-  default void exit(@SuppressWarnings("unused") int flags) {
+  default void exit(int flags) {
     exit();
   }
 
@@ -139,7 +139,7 @@ public interface ApplicationEx extends Application {
   void assertTimeConsuming();
 
   /**
-   * Tries to acquire the read lock and run the {@code action}
+   * Tries to acquire the read lock and run the {@code action}.
    *
    * @return true if action was run while holding the lock, false if was unable to get the lock and action was not run
    */
@@ -152,7 +152,7 @@ public interface ApplicationEx extends Application {
   }
 
   @ApiStatus.Experimental
-  default boolean runWriteActionWithCancellableProgressInDispatchThread(@NotNull String title,
+  default boolean runWriteActionWithCancellableProgressInDispatchThread(@NotNull @NlsContexts.ProgressTitle String title,
                                                                         @Nullable Project project,
                                                                         @Nullable JComponent parentComponent,
                                                                         @NotNull Consumer<? super ProgressIndicator> action) {
@@ -160,7 +160,7 @@ public interface ApplicationEx extends Application {
   }
 
   @ApiStatus.Experimental
-  default boolean runWriteActionWithNonCancellableProgressInDispatchThread(@NotNull String title,
+  default boolean runWriteActionWithNonCancellableProgressInDispatchThread(@NotNull @NlsContexts.ProgressTitle String title,
                                                                            @Nullable Project project,
                                                                            @Nullable JComponent parentComponent,
                                                                            @NotNull Consumer<? super ProgressIndicator> action) {

@@ -4,7 +4,7 @@ package com.intellij.execution.ui;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.PlatformDataKeys;
+import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SettingsEditor;
@@ -17,7 +17,11 @@ import com.intellij.openapi.ui.panel.ComponentPanelBuilder;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.RawCommandLineEditor;
+import com.intellij.util.ObjectUtils;
+import com.intellij.util.ThrowableConsumer;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -25,6 +29,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -40,7 +45,7 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   protected C myComponent;
   private final BiConsumer<? super Settings, ? super C> myReset;
   private final BiConsumer<? super Settings, ? super C> myApply;
-  private @Nullable Function<Settings, List<ValidationInfo>> myValidation;
+  private List<Function<Settings, List<ValidationInfo>>> myValidation = new ArrayList<>();
   private final @NotNull SettingsEditorFragmentType myType;
   private final int myPriority;
   private final Predicate<? super Settings> myInitialSelection;
@@ -51,7 +56,9 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   private @Nullable String myConfigId; // for FUS
   private @Nullable Function<? super C, ? extends JComponent> myEditorGetter;
   private boolean myRemovable = true;
-  private boolean myCanBeHidden;
+  private boolean myCanBeHidden = false;
+
+  private boolean isSelected;
 
   public SettingsEditorFragment(String id,
                                 @Nls(capitalization = Nls.Capitalization.Sentence) String name,
@@ -205,7 +212,7 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   }
 
   public boolean isSelected() {
-    return myComponent.isVisible();
+    return isSelected;
   }
 
   public boolean isInitiallyVisible(Settings settings) {
@@ -221,13 +228,35 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   }
 
   public void setValidation(@Nullable Function<Settings, List<ValidationInfo>> validation) {
-    myValidation = validation;
+    myValidation.clear();
+    if (validation != null) {
+      myValidation.add(validation);
+    }
+  }
+
+  private @NotNull SettingsEditorFragment<Settings, C> addValidation(@NotNull Function<Settings, ValidationInfo> validation) {
+    myValidation.add(it -> Collections.singletonList(validation.apply(it)));
+    return this;
+  }
+
+  public @NotNull SettingsEditorFragment<Settings, C> addValidation(
+    @NotNull ThrowableConsumer<? super Settings, ? extends ConfigurationException> validation
+  ) {
+    return addValidation(settings -> {
+      try {
+        validation.consume(settings);
+        return new ValidationInfo("", getEditorComponent());
+      }
+      catch (ConfigurationException exception) {
+        return new ValidationInfo(exception.getMessage(), getEditorComponent());
+      }
+    });
   }
 
   protected void validate(Settings s) {
-    if (myValidation == null) return;
+    if (myValidation.isEmpty()) return;
     ApplicationManager.getApplication().executeOnPooledThread(() -> {
-      List<ValidationInfo> infos = myValidation.apply(s);
+      List<ValidationInfo> infos = ContainerUtil.flatMap(myValidation, it -> it.apply(s));
       if (infos.isEmpty()) return;
       UIUtil.invokeLaterIfNeeded(() -> {
         if (Disposer.isDisposed(this)) return;
@@ -261,6 +290,7 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   }
 
   public void setSelected(boolean selected) {
+    isSelected = selected;
     myComponent.setVisible(selected);
     if (myHintComponent != null) {
       myHintComponent.setVisible(selected);
@@ -293,7 +323,7 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   }
 
   private Project getProject() {
-    return DataManager.getInstance().getDataContext(myComponent).getData(PlatformDataKeys.PROJECT_CONTEXT);
+    return DataManager.getInstance().getDataContext(myComponent).getData(PlatformCoreDataKeys.PROJECT_CONTEXT);
   }
 
   public void setEditorGetter(@Nullable Function<? super C, ? extends JComponent> editorGetter) {
@@ -373,7 +403,8 @@ public class SettingsEditorFragment<Settings, C extends JComponent> extends Sett
   }
 
   public void setActionHint(@Nullable @Nls String hint) {
-    myActionHint = hint;
+    //noinspection HardCodedStringLiteral
+    myActionHint = ObjectUtils.doIfNotNull(hint, it -> StringUtil.removeHtmlTags(it, true));
   }
 
   public @Nullable String getHint(@Nullable JComponent component) {

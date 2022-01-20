@@ -22,6 +22,7 @@ import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.SystemInfoRt;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.wm.*;
 import com.intellij.openapi.wm.ex.IdeFocusTraversalPolicy;
@@ -170,7 +171,9 @@ public class ProjectFrameHelper implements IdeFrameEx, AccessibleContextAccessor
       }
     }, myFrameDecorator);
 
-    myBalloonLayout = new BalloonLayoutImpl(myRootPane, JBUI.insets(8));
+    myBalloonLayout = Registry.is("ide.notification.action.center", false)
+                      ? new ActionCenterBalloonLayout(myRootPane, JBUI.insets(8))
+                      : new BalloonLayoutImpl(myRootPane, JBUI.insets(8));
     frame.setBackground(UIUtil.getPanelBackground());
   }
 
@@ -394,7 +397,7 @@ public class ProjectFrameHelper implements IdeFrameEx, AccessibleContextAccessor
   }
 
   protected void installDefaultProjectStatusBarWidgets(@NotNull Project project) {
-    project.getService(StatusBarWidgetsManager.class).updateAllWidgets();
+    project.getService(StatusBarWidgetsManager.class).installPendingWidgets();
     IdeStatusBarImpl statusBar = Objects.requireNonNull(getStatusBar());
     PopupHandler.installPopupMenu(statusBar, StatusBarWidgetsActionGroup.GROUP_ID, ActionPlaces.STATUS_BAR_PLACE);
   }

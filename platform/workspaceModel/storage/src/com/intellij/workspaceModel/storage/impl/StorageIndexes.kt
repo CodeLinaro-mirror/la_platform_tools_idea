@@ -2,13 +2,10 @@
 package com.intellij.workspaceModel.storage.impl
 
 import com.google.common.collect.HashBiMap
-import com.intellij.workspaceModel.storage.EntitySource
-import com.intellij.workspaceModel.storage.PersistentEntityId
-import com.intellij.workspaceModel.storage.WorkspaceEntity
+import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.ModifiableModuleEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleDependencyItem
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntityData
-import com.intellij.workspaceModel.storage.impl.containers.getDiff
 import com.intellij.workspaceModel.storage.impl.external.ExternalEntityMappingImpl
 import com.intellij.workspaceModel.storage.impl.external.MutableExternalEntityMappingImpl
 import com.intellij.workspaceModel.storage.impl.indices.EntityStorageInternalIndex
@@ -58,7 +55,7 @@ internal open class StorageIndexes(
 
     // Assert external mappings
     for ((_, mappings) in externalMappings) {
-      for ((id, obj) in mappings.index) {
+      for ((id, _) in mappings.index) {
         assert(storage.entityDataById(id) != null) { "Missing entity by id: $id" }
       }
     }
@@ -71,7 +68,7 @@ internal open class StorageIndexes(
     storage.entitiesByType.entityFamilies.forEachIndexed { i, family ->
       if (family == null) return@forEachIndexed
       if (family.entities.firstOrNull { it != null } !is SoftLinkable) return@forEachIndexed
-      var mutableId = EntityId(0, i)
+      var mutableId = createEntityId(0, i)
       family.entities.forEach { data ->
         if (data == null) return@forEach
         mutableId = mutableId.copy(arrayId = data.id)
@@ -112,13 +109,13 @@ internal open class StorageIndexes(
     var expectedSize = 0
     storage.entitiesByType.entityFamilies.forEachIndexed { i, family ->
       if (family == null) return@forEachIndexed
-      if (family.entities.firstOrNull { it != null }?.persistentId(storage) == null) return@forEachIndexed
-      var mutableId = EntityId(0, i)
+      if (family.entities.firstOrNull { it != null }?.persistentId() == null) return@forEachIndexed
+      var mutableId = createEntityId(0, i)
       family.entities.forEach { data ->
         if (data == null) return@forEach
         mutableId = mutableId.copy(arrayId = data.id)
         val expectedPersistentId = persistentIdIndex.getEntryById(mutableId)
-        assert(expectedPersistentId == data.persistentId(storage)) { "Entity $data isn't found in persistent id index. PersistentId: ${data.persistentId(storage)}, Id: $mutableId. Expected entity source: $expectedPersistentId" }
+        assert(expectedPersistentId == data.persistentId()) { "Entity $data isn't found in persistent id index. PersistentId: ${data.persistentId()}, Id: $mutableId. Expected entity source: $expectedPersistentId" }
         expectedSize++
       }
     }
@@ -132,7 +129,7 @@ internal open class StorageIndexes(
     storage.entitiesByType.entityFamilies.forEachIndexed { i, family ->
       if (family == null) return@forEachIndexed
       // Optimization to skip useless conversion of classes
-      var mutableId = EntityId(0, i)
+      var mutableId = createEntityId(0, i)
       family.entities.forEach { data ->
         if (data == null) return@forEach
         mutableId = mutableId.copy(arrayId = data.id)
@@ -154,32 +151,33 @@ internal class MutableStorageIndexes(
   override val externalMappings: MutableMap<String, MutableExternalEntityMappingImpl<*>>
 ) : StorageIndexes(softLinks, virtualFileIndex, entitySourceIndex, persistentIdIndex, externalMappings) {
 
-  fun <T : WorkspaceEntity> entityAdded(entityData: WorkspaceEntityData<T>, builder: WorkspaceEntityStorageBuilderImpl) {
+  fun <T : WorkspaceEntity> entityAdded(entityData: WorkspaceEntityData<T>) {
     val pid = entityData.createEntityId()
 
     // Update soft links index
     if (entityData is SoftLinkable) {
-      for (link in entityData.getLinks()) {
-        softLinks.index(pid, link)
-      }
+      entityData.index(softLinks)
     }
 
     val entitySource = entityData.entitySource
     entitySourceIndex.index(pid, entitySource)
 
-    entityData.persistentId(builder)?.let { persistentId ->
+    entityData.persistentId()?.let { persistentId ->
       persistentIdIndex.index(pid, persistentId)
     }
 
     entitySource.virtualFileUrl?.let { virtualFileIndex.index(pid, VIRTUAL_FILE_INDEX_ENTITY_SOURCE_PROPERTY, it) }
   }
 
-  fun updateSoftLinksIndex(softLinkable: SoftLinkable) {
-    val pid = (softLinkable as WorkspaceEntityData<*>).createEntityId()
+  fun entityRemoved(entityId: EntityId) {
+    entitySourceIndex.index(entityId)
+    persistentIdIndex.index(entityId)
+    virtualFileIndex.removeRecordsByEntityId(entityId)
+    externalMappings.values.forEach { it.remove(entityId) }
+  }
 
-    for (link in softLinkable.getLinks()) {
-      softLinks.index(pid, link)
-    }
+  fun updateSoftLinksIndex(softLinkable: SoftLinkable) {
+    softLinkable.index(softLinks)
   }
 
   fun removeFromSoftLinksIndex(softLinkable: SoftLinkable) {
@@ -197,22 +195,12 @@ internal class MutableStorageIndexes(
     builder.indexes.persistentIdIndex.getEntryById(oldEntityId)?.also { persistentIdIndex.index(newEntityId, it) }
   }
 
-  fun removeFromIndices(entityId: EntityId) {
-    entitySourceIndex.index(entityId)
-    persistentIdIndex.index(entityId)
-    virtualFileIndex.removeRecordsByEntityId(entityId)
-    externalMappings.values.forEach { it.remove(entityId) }
-  }
-
   fun <T : WorkspaceEntity> simpleUpdateSoftReferences(copiedData: WorkspaceEntityData<T>, modifiableEntity: ModifiableWorkspaceEntityBase<*>?) {
     val pid = copiedData.createEntityId()
     if (copiedData is SoftLinkable) {
       if (modifiableEntity is ModifiableModuleEntity && !modifiableEntity.dependencyChanged) return
-      val beforeSoftLinksCopy = HashSet(this.softLinks.getEntriesById(pid))
-      val afterSoftLinks = copiedData.getLinks()
-      val (removed, added) = getDiff(beforeSoftLinksCopy, afterSoftLinks)
-      removed.forEach { this.softLinks.remove(pid, it) }
-      added.forEach { this.softLinks.index(pid, it) }
+
+      copiedData.updateLinksIndex(this.softLinks.getEntriesById(pid), this.softLinks)
     }
   }
 
@@ -234,6 +222,7 @@ internal class MutableStorageIndexes(
     }
   }
 
+  @Suppress("UNCHECKED_CAST")
   fun updateExternalMappingForEntityId(oldId: EntityId, newId: EntityId = oldId, originStorageIndexes: StorageIndexes) {
     originStorageIndexes.externalMappings.forEach { (id, mapping) ->
       val data = mapping.index[oldId] ?: return@forEach
@@ -247,6 +236,44 @@ internal class MutableStorageIndexes(
         externalMapping.add(newId, data)
       }
     }
+  }
+
+  fun <T : WorkspaceEntity> updatePersistentIdIndexes(builder: WorkspaceEntityStorageBuilderImpl,
+                                                               updatedEntity: WorkspaceEntity,
+                                                               beforePersistentId: PersistentEntityId<*>?,
+                                                               copiedData: WorkspaceEntityData<T>,
+                                                               modifiableEntity: ModifiableWorkspaceEntityBase<*>? = null) {
+    val entityId = (updatedEntity as WorkspaceEntityBase).id
+    if (updatedEntity is WorkspaceEntityWithPersistentId) {
+      val newPersistentId = updatedEntity.persistentId()
+      if (beforePersistentId != null && beforePersistentId != newPersistentId) {
+        persistentIdIndex.index(entityId, newPersistentId)
+        updateComposedIds(builder, beforePersistentId, newPersistentId)
+      }
+    }
+    simpleUpdateSoftReferences(copiedData, modifiableEntity)
+  }
+
+  private fun updateComposedIds(builder: WorkspaceEntityStorageBuilderImpl,
+                                beforePersistentId: PersistentEntityId<*>,
+                                newPersistentId: PersistentEntityId<*>) {
+    val idsWithSoftRef = HashSet(this.softLinks.getIdsByEntry(beforePersistentId))
+    for (entityId in idsWithSoftRef) {
+      val originalEntityData = builder.getOriginalEntityData(entityId) as WorkspaceEntityData<WorkspaceEntity>
+      val originalParentsData = builder.getOriginalParents(entityId.asChild())
+      val entity = builder.entitiesByType.getEntityDataForModification(entityId) as WorkspaceEntityData<WorkspaceEntity>
+      val editingBeforePersistentId = entity.persistentId()
+      (entity as SoftLinkable).updateLink(beforePersistentId, newPersistentId)
+
+      // Add an entry to changelog
+      builder.changeLog.addReplaceEvent(entityId, entity, originalEntityData, originalParentsData, emptyList(), emptySet(), emptyMap())
+      // TODO :: Avoid updating of all soft links for the dependent entity
+      builder.indexes.updatePersistentIdIndexes(builder, entity.createEntity(builder), editingBeforePersistentId, entity)
+    }
+  }
+
+  fun removeExternalMapping(identifier: String) {
+    externalMappings[identifier]?.clearMapping()
   }
 
   fun toImmutable(): StorageIndexes {

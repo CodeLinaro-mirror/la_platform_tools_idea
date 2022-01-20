@@ -37,11 +37,13 @@ public class SimpleDuplicatesFinder {
   private final ArrayList<PsiElement> myPattern;
   private final Set<String> myParameters;
   private final Collection<String> myOutputVariables;
+  protected final Map<String, String> myOriginalToDuplicateLocalVariable;
 
   public SimpleDuplicatesFinder(@NotNull final PsiElement statement1,
                                 @NotNull final PsiElement statement2,
                                 Collection<String> variables,
                                 AbstractVariableData[] variableData) {
+    myOriginalToDuplicateLocalVariable = new HashMap<>();
     myOutputVariables = variables;
     myParameters = new HashSet<>();
     for (AbstractVariableData data : variableData) {
@@ -129,6 +131,7 @@ public class SimpleDuplicatesFinder {
     if (myPattern.size() != candidates.size()) return null;
     if (candidates.size() <= 0) return null;
     final SimpleMatch match = new SimpleMatch(candidates.get(0), candidates.get(candidates.size() - 1));
+    myOriginalToDuplicateLocalVariable.clear();
     for (int i = 0; i < myPattern.size(); i++) {
       if (!matchPattern(myPattern.get(i), candidates.get(i), match)) return null;
     }
@@ -147,7 +150,9 @@ public class SimpleDuplicatesFinder {
     if (patternParent == null || candidateParent == null) return false;
     if (pattern.getUserData(PARAMETER) != null && patternParent.getClass() == candidateParent.getClass()) {
       if (myOutputVariables.contains(pattern.getText())) {
-        match.changeOutput(candidate.getText());
+        if(match.getChangedOutput() == null) {
+          match.changeOutput(candidate.getText());
+        }
       }
       return changeParameter(pattern.getText(), candidate.getText(), match);
     }
@@ -170,6 +175,13 @@ public class SimpleDuplicatesFinder {
         match.changeOutput(candidate.getText());
         return true;
       }
+      if (isVariable(pattern) && isVariable(candidate)) {
+        if (!myOriginalToDuplicateLocalVariable.containsKey(pattern.getText())) {
+          myOriginalToDuplicateLocalVariable.put(pattern.getText(), candidate.getText());
+          return true;
+        }
+        return myOriginalToDuplicateLocalVariable.get(pattern.getText()).equals(candidate.getText());
+      }
       if (!pattern.textMatches(candidate)) {
         return false;
       }
@@ -178,8 +190,12 @@ public class SimpleDuplicatesFinder {
     return true;
   }
 
+  protected boolean isVariable(PsiElement element) {
+    return false;
+  }
+
   private static boolean changeParameter(@NotNull String from, @NotNull String to, @NotNull SimpleMatch match) {
-    if (match.getChangedParameters().containsKey(from) && !match.getChangedParameters().get(from).equals(to)) {
+    if (match.getChangedParameters().containsKey(from) && !match.getChangedParameters().get(from).equals(to) && !from.equals(to)) {
       return false;
     }
     match.changeParameter(from, to);
