@@ -31,6 +31,7 @@ import java.nio.file.NoSuchFileException;
 import java.text.ParseException;
 import java.util.Collections;
 
+import static com.intellij.ide.impl.TrustedProjects.isTrusted;
 import static git4idea.config.GitExecutableProblemHandlersKt.showUnsupportedVersionError;
 
 /**
@@ -47,6 +48,7 @@ public class GitExecutableManager {
   @NotNull private final GitExecutableDetector myExecutableDetector = new GitExecutableDetector();
   @NotNull private final CachingFileTester<GitVersion> myVersionCache;
 
+  @Topic.AppLevel
   public static final Topic<GitExecutableListener> TOPIC = new Topic<>(GitExecutableListener.class, Topic.BroadcastDirection.NONE);
 
   public GitExecutableManager() {
@@ -101,7 +103,10 @@ public class GitExecutableManager {
 
   @Nullable
   private String getPathToGit(@Nullable Project project, boolean detectIfNeeded) {
-    String path = project != null ? GitVcsSettings.getInstance(project).getPathToGit() : null;
+    String path = null;
+    if (project != null && (project.isDefault() || isTrusted(project))) {
+      path = GitVcsSettings.getInstance(project).getPathToGit();
+    }
     if (path == null) path = GitVcsApplicationSettings.getInstance().getSavedPathToGit();
     if (path == null) path = getDetectedExecutable(project, detectIfNeeded);
     return path;
@@ -136,14 +141,8 @@ public class GitExecutableManager {
     return WslPath.getDistributionByWindowsUncPath(basePath);
   }
 
-  @NotNull
-  public String getDetectedExecutable(@Nullable Project project) {
-    String executable = getDetectedExecutable(project, true);
-    return executable != null ? executable : GitExecutableDetector.getDefaultExecutable();
-  }
-
   @Nullable
-  private String getDetectedExecutable(@Nullable Project project, boolean detectIfNeeded) {
+  public String getDetectedExecutable(@Nullable Project project, boolean detectIfNeeded) {
     WSLDistribution distribution = getProjectWslDistribution(project);
     if (detectIfNeeded) {
       return myExecutableDetector.detect(distribution);
@@ -155,7 +154,6 @@ public class GitExecutableManager {
 
   public void dropExecutableCache() {
     myExecutableDetector.clear();
-    ApplicationManager.getApplication().getMessageBus().syncPublisher(TOPIC).executableChanged();
   }
 
   /**
@@ -217,6 +215,22 @@ public class GitExecutableManager {
     return runUnderProgressIfNeeded(project, GitBundle.message("git.executable.version.progress.title"), () -> {
       try {
         GitExecutable executable = getExecutable(project);
+        return identifyVersion(executable);
+      }
+      catch (ProcessCanceledException e) {
+        return null;
+      }
+      catch (GitVersionIdentificationException e) {
+        return null;
+      }
+    });
+  }
+
+  @CalledInAny
+  @Nullable
+  public GitVersion tryGetVersion(@Nullable Project project, @NotNull GitExecutable executable) {
+    return runUnderProgressIfNeeded(project, GitBundle.message("git.executable.version.progress.title"), () -> {
+      try {
         return identifyVersion(executable);
       }
       catch (ProcessCanceledException e) {

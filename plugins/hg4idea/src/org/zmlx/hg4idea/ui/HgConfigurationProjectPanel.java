@@ -85,7 +85,7 @@ public class HgConfigurationProjectPanel implements ConfigurableUi<HgProjectConf
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
         try {
-          version = HgVersion.identifyVersion(executable);
+          version = HgVersion.identifyVersion(myProject, executable);
         }
         catch (Exception e) {
           throw new RuntimeException(e);
@@ -109,10 +109,10 @@ public class HgConfigurationProjectPanel implements ConfigurableUi<HgProjectConf
   public void reset(@NotNull HgProjectConfigurable.HgSettingsHolder settings) {
     HgProjectSettings projectSettings = settings.getProjectSettings();
 
+    myExecutablePathSelector.setAutoDetectedPath(HgExecutableManager.getInstance().getDefaultExecutable());
     myExecutablePathSelector.reset(settings.getGlobalSettings().getHgExecutable(),
                                    projectSettings.isHgExecutableOverridden(),
-                                   projectSettings.getHgExecutable(),
-                                   HgExecutableManager.getInstance().getDefaultExecutable());
+                                   projectSettings.getHgExecutable());
     myCheckIncomingOutgoingCbx.setSelected(projectSettings.isCheckIncomingOutgoing());
     myIgnoredWhitespacesInAnnotationsCbx.setSelected(projectSettings.isWhitespacesIgnoredInAnnotations());
     mySyncControl.setSelected(projectSettings.getSyncSetting() == DvcsSyncSettings.Value.SYNC);

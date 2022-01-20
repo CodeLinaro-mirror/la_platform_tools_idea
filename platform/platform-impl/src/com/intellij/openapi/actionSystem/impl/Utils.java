@@ -26,6 +26,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.impl.IdeMenuBar;
 import com.intellij.ui.AnimatedIcon;
 import com.intellij.ui.awt.RelativePoint;
+import com.intellij.ui.mac.screenmenu.Menu;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.ThrowableRunnable;
@@ -291,6 +292,8 @@ public final class Utils {
                                     boolean isWindowMenu,
                                     boolean useDarkIcons) {
     component.removeAll();
+    final @Nullable Menu nativePeer = component instanceof ActionMenu ? ((ActionMenu)component).getScreenMenuPeer() : null;
+    if (nativePeer != null) nativePeer.beginFill();
     final ArrayList<Component> children = new ArrayList<>();
 
     for (int i = 0, size = list.size(); i < size; i++) {
@@ -311,6 +314,7 @@ public final class Utils {
           JPopupMenu.Separator separator = createSeparator(text);
           component.add(separator);
           children.add(separator);
+          if (nativePeer != null) nativePeer.add(null);
         }
       }
       else if (action instanceof ActionGroup &&
@@ -318,11 +322,13 @@ public final class Utils {
         ActionMenu menu = new ActionMenu(context, place, (ActionGroup)action, presentationFactory, enableMnemonics, useDarkIcons);
         component.add(menu);
         children.add(menu);
+        if (nativePeer != null) nativePeer.add(menu.getScreenMenuPeer());
       }
       else {
         ActionMenuItem each = new ActionMenuItem(action, presentation, place, context, enableMnemonics, true, checked, useDarkIcons);
         component.add(each);
         children.add(each);
+        if (nativePeer != null) nativePeer.add(each.getScreenMenuItemPeer());
       }
     }
 
