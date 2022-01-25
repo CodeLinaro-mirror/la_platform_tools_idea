@@ -32,8 +32,7 @@ class GrazieInspection : LocalInspectionTool() {
 
     val checkers = TextChecker.allCheckers()
     val checkedDomains = checkedDomains()
-    val fileLanguage = file.language
-    val areChecksDisabled = getDisabledChecker(fileLanguage)
+    val areChecksDisabled = getDisabledChecker(file)
 
     return object : PsiElementVisitor() {
       override fun visitElement(element: PsiElement) {
@@ -43,16 +42,19 @@ class GrazieInspection : LocalInspectionTool() {
         if (extracted.length > 50_000) return // too large text
 
         val runner = CheckerRunner(extracted)
-        val warnings = runner.toProblemDescriptors(runner.run(checkers), isOnTheFly)
-        warnings.forEach(holder::registerProblem)
+        runner.run(checkers) { problem ->
+          runner.toProblemDescriptors(problem, isOnTheFly).forEach(holder::registerProblem)
+        }
       }
     }
   }
 
   companion object {
+    @JvmStatic
     fun ignoreGrammarChecking(file: PsiFile): Boolean =
       SpellCheckingEditorCustomization.isSpellCheckingDisabled(file) // they probably don't want grammar checks as well
 
+    @JvmStatic
     fun checkedDomains(): Set<TextContent.TextDomain> {
       val result = EnumSet.of(TextContent.TextDomain.PLAIN_TEXT)
       if (GrazieConfig.get().checkingContext.isCheckInStringLiteralsEnabled) {
@@ -67,7 +69,9 @@ class GrazieInspection : LocalInspectionTool() {
       return result
     }
 
-    internal fun getDisabledChecker(fileLanguage: Language): (PsiElement) -> Boolean {
+    @JvmStatic
+    fun getDisabledChecker(file: PsiFile): (PsiElement) -> Boolean {
+      val fileLanguage = file.language
       val supportedLanguages = TextExtractor.getSupportedLanguages()
       val disabledLanguages = GrazieConfig.get().checkingContext.getEffectivelyDisabledLanguageIds()
       return { element ->

@@ -26,6 +26,8 @@ import com.intellij.ui.ColorUtil;
 import com.intellij.ui.Gray;
 import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.mac.foundation.NSDefaults;
+import com.intellij.ui.mac.screenmenu.Menu;
+import com.intellij.ui.mac.screenmenu.MenuBar;
 import com.intellij.util.IJSwingUtilities;
 import com.intellij.util.ui.*;
 import org.jetbrains.annotations.NotNull;
@@ -35,10 +37,7 @@ import javax.swing.Timer;
 import javax.swing.*;
 import javax.swing.border.Border;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import java.awt.event.*;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.RoundRectangle2D;
@@ -77,9 +76,16 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
   private double myProgress;
   private boolean myActivated;
 
+  private final MenuBar myScreenMenuPeer = Menu.isJbScreenMenuEnabled() ? new MenuBar("MainMenu") : null;
+
   @NotNull
   public static IdeMenuBar createMenuBar() {
     return SystemInfoRt.isLinux ? new LinuxIdeMenuBar() : new IdeMenuBar();
+  }
+
+  public IdeMenuBar setFrame(@NotNull JFrame frame) {
+    if (myScreenMenuPeer != null) myScreenMenuPeer.setFrame(frame);
+    return this;
   }
 
   protected IdeMenuBar() {
@@ -397,11 +403,25 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
     myVisibleActions = myNewVisibleActions;
 
     removeAll();
+    if (myScreenMenuPeer != null) myScreenMenuPeer.beginFill();
+
     boolean isDarkMenu = isDarkMenu();
     for (AnAction action : myVisibleActions) {
-      add(createActionMenu(enableMnemonics, isDarkMenu, (ActionGroup)action));
+      ActionMenu actionMenu =
+        new ActionMenu(null, ActionPlaces.MAIN_MENU, (ActionGroup)action, myPresentationFactory, enableMnemonics, isDarkMenu);
+
+      if (IdeFrameDecorator.isCustomDecorationActive()) {
+        actionMenu.setOpaque(false);
+        actionMenu.setFocusable(false);
+      }
+
+      if (myScreenMenuPeer != null) myScreenMenuPeer.add(actionMenu.getScreenMenuPeer());
+      else add(actionMenu);
     }
+
     myPresentationFactory.resetNeedRebuild();
+
+    if (myScreenMenuPeer != null) myScreenMenuPeer.endFill();
 
     updateGlobalMenuRoots();
     if (myClockPanel != null) {
@@ -421,18 +441,6 @@ public class IdeMenuBar extends JMenuBar implements IdeEventQueue.EventDispatche
 
   protected boolean isDarkMenu() {
     return SystemInfo.isMacSystemMenu && NSDefaults.isDarkMenuBar();
-  }
-
-  @NotNull
-  protected ActionMenu createActionMenu(boolean enableMnemonics, boolean isDarkMenu, ActionGroup action) {
-    ActionMenu actionMenu = new ActionMenu(null, ActionPlaces.MAIN_MENU, action, myPresentationFactory, enableMnemonics, isDarkMenu);
-
-    if(IdeFrameDecorator.isCustomDecorationActive()) {
-      actionMenu.setOpaque(false);
-      actionMenu.setFocusable(false);
-    }
-
-    return actionMenu;
   }
 
   @Override

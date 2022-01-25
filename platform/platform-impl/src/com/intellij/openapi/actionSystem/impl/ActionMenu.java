@@ -21,6 +21,7 @@ import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBMenu;
 import com.intellij.ui.mac.foundation.NSDefaults;
+import com.intellij.ui.mac.screenmenu.Menu;
 import com.intellij.ui.plaf.beg.IdeaMenuUI;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.SingleAlarm;
@@ -53,6 +54,7 @@ public final class ActionMenu extends JBMenu {
   private StubItem myStubItem;  // A PATCH!!! Do not remove this code, otherwise you will lose all keyboard navigation in JMenuBar.
   private final boolean myUseDarkIcons;
   private Disposable myDisposable;
+  private final @Nullable Menu myScreenMenuPeer;
 
   public ActionMenu(@Nullable DataContext context,
                     @NotNull String place,
@@ -67,6 +69,14 @@ public final class ActionMenu extends JBMenu {
     myPresentation = myPresentationFactory.getPresentation(group);
     myMnemonicEnabled = enableMnemonics;
     myUseDarkIcons = useDarkIcons;
+
+    if (Menu.isJbScreenMenuEnabled() && ActionPlaces.MAIN_MENU.equals(myPlace)) {
+      myScreenMenuPeer = new Menu(myPresentation.getText(enableMnemonics));
+      myScreenMenuPeer.setOnOpen(() -> fillMenu(), this);
+      myScreenMenuPeer.setOnClose(() -> setSelected(false), this);
+      myScreenMenuPeer.listenPresentationChanges(myPresentation);
+    } else
+      myScreenMenuPeer = null;
 
     updateUI();
 
@@ -115,6 +125,8 @@ public final class ActionMenu extends JBMenu {
       popupMenu.updateUI();
     }
   }
+
+  public @Nullable Menu getScreenMenuPeer() { return myScreenMenuPeer; }
 
   private void init() {
     boolean macSystemMenu = SystemInfo.isMacSystemMenu && myPlace.equals(ActionPlaces.MAIN_MENU);
@@ -177,6 +189,7 @@ public final class ActionMenu extends JBMenu {
         else {
           setDisabledIcon(icon == null ? null : IconLoader.getDisabledIcon(icon));
         }
+        if (myScreenMenuPeer != null) myScreenMenuPeer.setIcon(icon);
       }
     }
   }

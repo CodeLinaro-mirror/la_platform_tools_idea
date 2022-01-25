@@ -2,7 +2,8 @@
 package org.jetbrains.idea.maven.server;
 
 import com.intellij.ide.AppLifecycleListener;
-import com.intellij.ide.impl.TrustChangeNotifier;
+import com.intellij.ide.impl.TrustStateListener;
+import com.intellij.ide.impl.TrustedProjects;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.openapi.Disposable;
@@ -106,12 +107,20 @@ public final class MavenServerManager implements Disposable {
       }
     });
 
-    connection.subscribe(TrustChangeNotifier.TOPIC, new TrustChangeNotifier() {
+    connection.subscribe(TrustStateListener.TOPIC, new TrustStateListener() {
       @Override
-      public void projectTrusted(@NotNull Project project) {
+      public void onProjectTrusted(@NotNull Project project) {
         MavenProjectsManager manager = MavenProjectsManager.getInstance(project);
         if (manager.isMavenizedProject()) {
           MavenUtil.restartMavenConnectors(project);
+        }
+      }
+
+      @Override
+      public void onProjectTrustedFromNotification(@NotNull Project project) {
+        MavenProjectsManager manager = MavenProjectsManager.getInstance(project);
+        if (manager.isMavenizedProject()) {
+          manager.forceUpdateAllProjectsOrFindAllAvailablePomFiles();
         }
       }
     });
@@ -180,7 +189,7 @@ public final class MavenServerManager implements Disposable {
     String vmOptions = MavenDistributionsCache.getInstance(project).getVmOptions(multimoduleDirectory);
     Integer debugPort = getDebugPort(project);
     MavenServerConnector connector;
-    if (MavenUtil.isProjectTrustedEnoughToImport(project, false)) {
+    if (TrustedProjects.isTrusted(project) || project.isDefault()) {
       MavenLog.LOG.info("Creating new maven connector for " + project + " in " + multimoduleDirectory);
       connector =
         new MavenServerConnectorImpl(project, this, jdk, vmOptions, debugPort, distribution, multimoduleDirectory);

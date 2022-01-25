@@ -830,6 +830,7 @@ Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered
     <editorNotificationProvider implementation="com.intellij.ide.FileChangedNotificationProvider"/>
     <editorNotificationProvider implementation="com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.PluginAdvertiserEditorNotificationProvider"/>
     <editorNotificationProvider implementation="com.intellij.ide.CommandLineWaitingManager$MyNotification"/>
+    <editorNotificationProvider implementation="com.intellij.ide.impl.UntrustedProjectNotificationProvider"/>
 
     <getDataRule key="copyProvider" implementationClass="com.intellij.ide.impl.dataRules.CopyProviderRule"/>
     <getDataRule key="cutProvider" implementationClass="com.intellij.ide.impl.dataRules.CutProviderRule"/>
@@ -1123,7 +1124,7 @@ Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered
     <postStartupActivity implementation="com.intellij.ide.cds.CDSStartupActivity" order="last"/>
     <statistics.counterUsagesCollector groupId="intellij.cds" version="2"/>
 
-    <statistics.counterUsagesCollector groupId="startup" version="1"/>
+    <statistics.counterUsagesCollector implementationClass="com.intellij.diagnostic.startUpPerformanceReporter.StartupPerformanceCollector"/>
     <backgroundPostStartupActivity implementation="com.intellij.diagnostic.startUpPerformanceReporter.StartupMetricCollector"/>
 
     <postStartupActivity implementation="com.intellij.ide.startup.CheckFsSanityAndProjectRootPostStartUpActivity" order="last"/>
@@ -1294,5 +1295,7 @@ Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered
     <listener class="com.intellij.ide.plugins.CreateAllServicesAndExtensionsActivity" topic="com.intellij.ide.AppLifecycleListener"
               activeInHeadlessMode="false" activeInTestMode="false"/>
     <listener class="com.intellij.ide.actionsOnSave.impl.ActionsOnSaveFileDocumentManagerListener" topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    <listener class="com.intellij.ide.impl.UntrustedProjectNotificationProvider$TrustedListener" topic="com.intellij.ide.impl.TrustStateListener"
+              activeInHeadlessMode="false" activeInTestMode="false"/>
   </applicationListeners>
 </idea-plugin>

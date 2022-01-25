@@ -24,7 +24,7 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
 
     companion object {
 
-        private const val VERSION = 5
+        private const val VERSION = 7
         private val GROUP = EventLogGroup(FUSGroupIds.GROUP_ID, VERSION)
 
         // FIELDS
@@ -79,7 +79,7 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
             eventField3 = repositoryUsesCustomUrlField
         )
         private val preferencesChangedEvent = GROUP.registerVarargEvent(FUSGroupIds.PREFERENCES_CHANGED)
-        private val preferencesResetEvent = GROUP.registerEvent(FUSGroupIds.PREFERENCES_RESET)
+        private val preferencesRestoreDefaultsEvent = GROUP.registerEvent(FUSGroupIds.PREFERENCES_RESTORE_DEFAULTS)
         private val packageSelectedEvent = GROUP.registerEvent(eventId = FUSGroupIds.PACKAGE_SELECTED, packageIsInstalledField)
         private val targetModulesSelectedEvent = GROUP.registerEvent(
             eventId = FUSGroupIds.TARGET_MODULES_SELECTED,
@@ -166,8 +166,8 @@ internal class PackageSearchEventsLogger : CounterUsagesCollector() {
             preferencesChangedEvent.log(*preferences)
         }
 
-        fun logPreferencesReset() = ifLoggingEnabled {
-            preferencesResetEvent.log()
+        fun logPreferencesRestoreDefaults() = ifLoggingEnabled {
+            preferencesRestoreDefaultsEvent.log()
         }
 
         fun logTargetModuleSelected(targetModules: TargetModules) = ifLoggingEnabled {

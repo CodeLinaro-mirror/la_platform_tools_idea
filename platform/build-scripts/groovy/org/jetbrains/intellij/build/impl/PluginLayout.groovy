@@ -159,11 +159,6 @@ final class PluginLayout extends BaseLayout {
       layout.resourcePaths << new ModuleResourceData(layout.mainModule, resourcePath, relativeOutputFile, true)
     }
 
-    /* Android Studio: added by Change Id269d9e0 (commit c35a403) */
-    void withResourceArchiveFromModule(String moduleName, String resourcePath, String relativeOutputFile) {
-      layout.resourcePaths << new ModuleResourceData(moduleName, resourcePath, relativeOutputFile, true)
-    }
-
     /**
      * Copy output produced by {@code generator} to the directory specified by {@code relativeOutputPath} under the plugin directory.
      */

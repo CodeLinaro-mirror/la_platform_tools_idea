@@ -30,14 +30,17 @@ internal object FUSGroupIds {
 
     // ENUMS
     enum class TargetModulesType {
-        None, One, All;
+
+        None, One, Some, All;
 
         companion object {
+
             fun from(targetModules: TargetModules) =
-                when(targetModules) {
+                when (targetModules) {
                     is TargetModules.All -> All
                     TargetModules.None -> None
                     is TargetModules.One -> One
+                    // is TargetModules.Some -> Some TODO add support for "some" target modules when it's implemented
                 }
         }
     }
@@ -69,6 +72,10 @@ internal object FUSGroupIds {
                 "https://maven.pkg.jetbrains.space/public/p/ktor/eap/",
                 "https://maven.pkg.jetbrains.space/public/p/space/maven/"
             )
+        ),
+        CLOJARS(
+            ids = setOf("clojars"),
+            urls = setOf("https://repo.clojars.org/")
         );
 
         companion object {
@@ -95,7 +102,7 @@ internal object FUSGroupIds {
     const val REPOSITORY_ADDED = "repository_added"
     const val REPOSITORY_REMOVED = "repository_removed"
     const val PREFERENCES_CHANGED = "preferences_changed"
-    const val PREFERENCES_RESET = "preferences_reset"
+    const val PREFERENCES_RESTORE_DEFAULTS = "preferences_restore_defaults"
     const val PACKAGE_SELECTED = "package_selected"
     const val TARGET_MODULES_SELECTED = "target_modules_selected"
     const val DETAILS_LINK_CLICK = "details_link_click"
