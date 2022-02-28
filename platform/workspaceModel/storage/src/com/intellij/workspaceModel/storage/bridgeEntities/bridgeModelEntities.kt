@@ -110,7 +110,7 @@ class ModuleEntityData : WorkspaceEntityData.WithCalculablePersistentId<ModuleEn
 
   companion object {
     @Transient
-    private val classId: Int = ClassToIntConverter.getInt(ModuleEntity::class.java)
+    private val classId: Int = ClassToIntConverter.INSTANCE.getInt(ModuleEntity::class.java)
   }
 }
 
@@ -569,7 +569,7 @@ class LibraryEntityData : WorkspaceEntityData.WithCalculablePersistentId<Library
 
   companion object {
     @Transient
-    private val classId: Int = ClassToIntConverter.getInt(LibraryEntity::class.java)
+    private val classId: Int = ClassToIntConverter.INSTANCE.getInt(LibraryEntity::class.java)
   }
 }
 

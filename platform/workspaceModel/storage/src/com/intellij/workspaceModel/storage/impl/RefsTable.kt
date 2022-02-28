@@ -68,9 +68,9 @@ internal class ConnectionId private constructor(
   }
 
   override fun toString(): String {
-    return "Connection(parent=${ClassToIntConverter.getClassOrDie(
+    return "Connection(parent=${ClassToIntConverter.INSTANCE.getClassOrDie(
       parentClass).simpleName} " +
-           "child=${ClassToIntConverter.getClassOrDie(
+           "child=${ClassToIntConverter.INSTANCE.getClassOrDie(
              childClass).simpleName} $connectionType)"
   }
 

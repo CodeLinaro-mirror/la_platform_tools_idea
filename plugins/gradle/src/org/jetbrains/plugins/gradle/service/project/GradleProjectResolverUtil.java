@@ -832,18 +832,31 @@ public final class GradleProjectResolverUtil {
     return linkProjectLibrary(null, ideProject, library);
   }
 
+  private static final Key<Map<String, DataNode<LibraryData>>> LIBRARIES_BY_NAME_CACHE =
+    Key.create("GradleProjectResolverUtil.FOUND_LIBRARIES");
+
   public static boolean linkProjectLibrary(/*@NotNull*/ ProjectResolverContext context,
                                                         @Nullable DataNode<ProjectData> ideProject,
                                                         @NotNull final LibraryData library) {
     if (ideProject == null) return false;
 
-    String libraryName = library.getExternalName();
-    DataNode<LibraryData> libraryData = ExternalSystemApiUtil.find(ideProject, ProjectKeys.LIBRARY,
-                                                                   node -> libraryName.equals(node.getData().getExternalName()));
-    if (libraryData == null) {
-      ideProject.createChild(ProjectKeys.LIBRARY, library);
-      return true;
+    Map<String, DataNode<LibraryData>> cache = ideProject.getUserData(LIBRARIES_BY_NAME_CACHE);
+    if (cache == null) {
+      cache = new HashMap<>();
+      ideProject.putUserData(LIBRARIES_BY_NAME_CACHE, cache);
     }
+
+    String libraryName = library.getExternalName();
+
+    DataNode<LibraryData> libraryData = cache.computeIfAbsent(libraryName, (String name) -> {
+      DataNode<LibraryData> newValueToCache =
+        ExternalSystemApiUtil.find(ideProject, ProjectKeys.LIBRARY, node -> libraryName.equals(node.getData().getExternalName()));
+      if (newValueToCache == null) {
+        newValueToCache = ideProject.createChild(ProjectKeys.LIBRARY, library);
+      }
+      return newValueToCache;
+    });
+
     return libraryData.getData().equals(library);
   }
 
