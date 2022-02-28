@@ -18,6 +18,7 @@ package org.jetbrains.plugins.gradle.tooling.util
 import groovy.transform.CompileStatic
 import org.gradle.api.Project
 import org.gradle.api.initialization.IncludedBuild
+import org.gradle.api.internal.GradleInternal
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
@@ -38,6 +39,9 @@ import static org.jetbrains.plugins.gradle.tooling.util.resolve.DependencyResolv
  */
 @CompileStatic
 class SourceSetCachedFinder {
+  private static final GradleVersion gradleBaseVersion = GradleVersion.current().baseVersion
+  private static final boolean is51OrBetter = gradleBaseVersion >= GradleVersion.version("5.1")
+
   private static final DataProvider<ArtifactsMap> ARTIFACTS_PROVIDER = new DataProvider<ArtifactsMap>() {
     @NotNull
     @Override
@@ -143,12 +147,39 @@ class SourceSetCachedFinder {
 
   private static List<Project> exposeIncludedBuilds(Gradle gradle, List<Project> projects) {
     for (IncludedBuild includedBuild : gradle.includedBuilds) {
-      if (includedBuild instanceof DefaultIncludedBuild) {
-        def build = includedBuild as DefaultIncludedBuild
-        projects += build.configuredBuild.rootProject.allprojects
+      def unwrapped = maybeUnwrapIncludedBuildInternal(includedBuild)
+      if (unwrapped instanceof DefaultIncludedBuild) {
+        def build = unwrapped as DefaultIncludedBuild
+        if (is51OrBetter) {
+          projects += build.withState { it.rootProject.allprojects  }
+        } else {
+          projects += getProjectsWithReflection(build)
+        }
       }
     }
     return projects
+  }
+
+  private static Set<Project> getProjectsWithReflection(DefaultIncludedBuild build) {
+    def method = build.class.getMethod("getConfiguredBuild")
+    GradleInternal gradleInternal = (GradleInternal)method.invoke(build)
+    return gradleInternal.rootProject.allprojects
+  }
+
+  private static Object maybeUnwrapIncludedBuildInternal(IncludedBuild includedBuild) {
+    def wrapee = includedBuild
+    Class includedBuildInternalClass = null
+    try {
+      includedBuildInternalClass = Class.forName("org.gradle.internal.composite.IncludedBuildInternal");
+    }
+    catch (ClassNotFoundException ignored) {
+    }
+    if (includedBuildInternalClass != null &&
+        includedBuildInternalClass.isAssignableFrom(includedBuild.class)) {
+      def method = includedBuild.class.getMethod("getTarget")
+      wrapee = method.invoke(includedBuild)
+    }
+    wrapee
   }
 
   private static class ArtifactsMap {
