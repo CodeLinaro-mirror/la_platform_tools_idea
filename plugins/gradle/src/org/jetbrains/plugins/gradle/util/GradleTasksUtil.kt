@@ -28,7 +28,22 @@ fun getGradleTasks(project: Project): Map<String, MultiMap<String, GradleTaskDat
   }
 }
 
-// Android Studio: workaround for IDEA-288709
+/**
+ * @return `external module path (path to the directory) -> {gradle module path -> {[tasks of this module]}}`
+ */
+private fun getGradleTasksMap(project: Project): Map<String, MultiMap<String, GradleTaskData>> {
+  return getGradleTaskNodesMap(project).mapValues { (_, moduleTasks) ->
+    val transformed = MultiMap.create<String, GradleTaskData>()
+    for ((gradleModulePath, moduleTaskNodes) in moduleTasks.entrySet()) {
+      transformed.putValues(gradleModulePath, moduleTaskNodes.map {
+        GradleTaskData(it, gradleModulePath)
+      })
+    }
+    transformed
+  }
+}
+
+// Android Studio: workaround for IDEA-289683
 fun getAllGradleTestDataTasks(project: Project): Set<String> {
   return CachedValuesManager.getManager(project).getCachedValue(project) {
     CachedValueProvider.Result.create(findGradleTestDataTasks(project), ExternalProjectsDataStorage.getInstance(project))
@@ -47,21 +62,6 @@ private fun findGradleTestDataTasks(project: Project): Set<String> {
     projectTestDataTasks.addAll(modulesTaskData)
   }
   return projectTestDataTasks
-}
-
-/**
- * @return `external module path (path to the directory) -> {gradle module path -> {[tasks of this module]}}`
- */
-private fun getGradleTasksMap(project: Project): Map<String, MultiMap<String, GradleTaskData>> {
-  return getGradleTaskNodesMap(project).mapValues { (_, moduleTasks) ->
-    val transformed = MultiMap.create<String, GradleTaskData>()
-    for ((gradleModulePath, moduleTaskNodes) in moduleTasks.entrySet()) {
-      transformed.putValues(gradleModulePath, moduleTaskNodes.map {
-        GradleTaskData(it, gradleModulePath)
-      })
-    }
-    transformed
-  }
 }
 
 /**
@@ -91,7 +91,7 @@ private fun getGradleTaskNodesMap(project: Project): Map<String, MultiMap<String
 private data class ProjectTaskData(val externalProjectPath: String, val modulesTaskData: List<ModuleTaskData>)
 private data class ModuleTaskData(val externalModulePath: String, val gradlePath: String, val tasks: List<DataNode<TaskData>>)
 
-// Android Studio: workaround for IDEA-288709
+// Android Studio: workaround for IDEA-289683
 private fun getModuleDataWithinProject(project: Project): MultiMap<String, DataNode<ModuleData>> {
   val projectDataManager = ProjectDataManager.getInstance()
   val projects = MultiMap.createOrderedSet<String, DataNode<ModuleData>>()
@@ -110,7 +110,7 @@ private fun getModuleDataWithinProject(project: Project): MultiMap<String, DataN
   return projects
 }
 
-// Android Studio: workaround for IDEA-288709
+// Android Studio: workaround for IDEA-289683
 private fun findGradleTasks(project: Project): List<ProjectTaskData> {
   val projects = getModuleDataWithinProject(project)
   val projectTasksData = ArrayList<ProjectTaskData>()
