@@ -49,9 +49,10 @@ class JetGradlePlugin implements Plugin<Gradle> {
     if (jetModelBuilder != null) return jetModelBuilder
 
     Gradle rootGradle = gradle
-    while (rootGradle.parent != null) {
-      rootGradle = rootGradle.parent
-    }
+    // Android Studio: https://youtrack.jetbrains.com/issue/KTIJ-21050 (b/202448739).
+    //while (rootGradle.parent != null) {
+    //  rootGradle = rootGradle.parent
+    //}
     ToolingModelBuilderRegistry rootRegistry = (rootGradle as GradleInternal).services.get(ToolingModelBuilderRegistry)
     jetModelBuilder = findJetModelBuilder(rootRegistry)
     if(jetModelBuilder == null) {
