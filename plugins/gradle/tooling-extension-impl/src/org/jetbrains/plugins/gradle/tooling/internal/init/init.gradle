@@ -49,9 +49,10 @@ class JetGradlePlugin implements Plugin<Gradle> {
     if (jetModelBuilder != null) return jetModelBuilder
 
     Gradle rootGradle = gradle
-    while (rootGradle.parent != null) {
-      rootGradle = rootGradle.parent
-    }
+    // Android Studio: https://youtrack.jetbrains.com/issue/KTIJ-21050 (b/202448739).
+    //while (rootGradle.parent != null) {
+    //  rootGradle = rootGradle.parent
+    //}
     ToolingModelBuilderRegistry rootRegistry = (rootGradle as GradleInternal).services.get(ToolingModelBuilderRegistry)
     jetModelBuilder = findJetModelBuilder(rootRegistry)
     if(jetModelBuilder == null) {
@@ -95,9 +96,10 @@ class RegistryProcessor implements ProjectEvaluationListener {
 
   void process(ToolingModelBuilderRegistry registry) {
     ToolingModelBuilderRegistry rootRegistry = registry
-    while (rootRegistry.hasProperty('parent') && rootRegistry.parent != null) {
-      rootRegistry = rootRegistry.parent
-    }
+    // Android Studio: https://youtrack.jetbrains.com/issue/KTIJ-21050 (b/202448739).
+    //while (rootRegistry.hasProperty('parent') && rootRegistry.parent != null) {
+    //  rootRegistry = rootRegistry.parent
+    //}
 
     boolean alreadySeen = !processedRegistries.addIfAbsent(rootRegistry)
     if (alreadySeen || extraModelBuilderIsRegistered(rootRegistry)) {
