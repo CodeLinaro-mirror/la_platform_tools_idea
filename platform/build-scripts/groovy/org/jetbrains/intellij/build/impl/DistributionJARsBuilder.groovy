@@ -271,6 +271,7 @@ final class DistributionJARsBuilder {
             tasks.add(task)
           }
 
+/* Android Studio: do not patch ApplicationNamesInfo yet
           ForkJoinTask.invokeAll(Arrays.asList(
             StatisticsRecorderBundledMetadataProvider.createTask(moduleOutputPatcher, context),
             buildHelper.createTask(spanBuilder("write patched app info")) {
@@ -282,6 +283,7 @@ final class DistributionJARsBuilder {
               return null
             },
             ).findAll { it != null })
+Android Studio: do not patch ApplicationNamesInfo yet */
 
           List<DistributionFileEntry> result = buildLib(moduleOutputPatcher, platform, context)
           if (!isUpdateFromSources && context.productProperties.scrambleMainJar) {
@@ -510,9 +512,14 @@ final class DistributionJARsBuilder {
                                       systemProperties,
                                       List.of(),
                                       TimeUnit.MINUTES.toMillis(10L), classpathCustomizer)
+
+    if (!Files.isDirectory(targetDirectory)) {
+      messages.error("Failed to build searchable options index: $targetDirectory does not exist. See log above for error output from traverseUI run.")
+    }
+
     List<Path> modules = Files.newDirectoryStream(targetDirectory).withCloseable { it.asList() }
     if (modules.isEmpty()) {
-      messages.error("Failed to build searchable options index: $targetDirectory is empty")
+      messages.error("Failed to build searchable options index: $targetDirectory is empty. See log above for error output from traverseUI run.")
     }
     else {
       span.setAttribute(AttributeKey.longKey("moduleCountWithSearchableOptions"), (long)modules.size())
