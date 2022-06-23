@@ -18,9 +18,11 @@ import training.learn.course.KLesson
 
 class JavaInheritanceHierarchyLesson
   : KLesson("java.inheritance.hierarchy.lesson", JavaLessonsBundle.message("java.inheritance.hierarchy.lesson.name")) {
-  override val existedFile: String = "src/InheritanceHierarchySample.java"
+  override val sampleFilePath: String = "src/InheritanceHierarchySample.java"
 
   override val lessonContent: LessonContext.() -> Unit = {
+    sdkConfigurationTasks()
+
     caret("foo(demo)")
 
     actionTask("GotoImplementation") {

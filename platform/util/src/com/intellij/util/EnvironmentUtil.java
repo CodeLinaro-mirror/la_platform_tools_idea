@@ -15,7 +15,6 @@ import org.jetbrains.annotations.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -109,13 +108,18 @@ public final class EnvironmentUtil {
     ourEnvGetter.set(envFuture);
     Boolean result = Boolean.TRUE;
     try {
-      Map<String, String> env = getShellEnv();
+      Map<String, String> env = getShellEnv(Long.getLong("ij.load.shell.env.timeout", DEFAULT_SHELL_ENV_READING_TIMEOUT_MILLIS));
       setCharsetVar(env);
       envFuture.complete(Collections.unmodifiableMap(env));
     }
     catch (Throwable t) {
       result = Boolean.FALSE;
       LOG.warn("can't get shell environment", t);
+      if (t instanceof ExceptionWithAttachments) {
+        for (Attachment attachment : ((ExceptionWithAttachments)t).getAttachments()) {
+          LOG.warn(attachment.getPath() + ":\n" + attachment.getDisplayText());
+        }
+      }
     }
     finally {
       activity.end();
@@ -215,8 +219,8 @@ public final class EnvironmentUtil {
   public static final String DISABLE_OMZ_AUTO_UPDATE = "DISABLE_AUTO_UPDATE";
   private static final String INTELLIJ_ENVIRONMENT_READER = "INTELLIJ_ENVIRONMENT_READER";
 
-  private static @NotNull Map<String, String> getShellEnv() throws IOException {
-    return new ShellEnvReader().readShellEnv(null, null);
+  private static @NotNull Map<String, String> getShellEnv(long timeoutMillis) throws IOException {
+    return new ShellEnvReader(timeoutMillis).readShellEnv(null, null);
   }
 
   public static class ShellEnvReader {
@@ -240,7 +244,7 @@ public final class EnvironmentUtil {
     }
 
     public final @NotNull Map<String, String> readShellEnv(@Nullable Path file, @Nullable Map<String, String> additionalEnvironment) throws IOException {
-     String reader;
+      String reader;
 
       if (SystemInfoRt.isMac) {
         reader = PathManager.findBinFileWithException(MacOS_LOADER_BINARY).toAbsolutePath().toString();
@@ -248,6 +252,9 @@ public final class EnvironmentUtil {
       else {
         reader = SHELL_ENV_COMMAND + "' '" + ENV_ZERO_ARGUMENT;
       }
+
+      Path envDataFileDir = Files.createTempDirectory("ij-env-tmp-dir");
+      Path envDataFile = envDataFileDir.resolve("ij-shell-env-data.tmp");
 
       StringBuilder readerCmd = new StringBuilder();
       if (file != null) {
@@ -257,7 +264,7 @@ public final class EnvironmentUtil {
         readerCmd.append(SHELL_SOURCE_COMMAND).append(" \"").append(file).append("\" && ");
       }
 
-      readerCmd.append("'").append(reader).append("'");
+      readerCmd.append("'").append(reader).append("' > '").append(envDataFile.toAbsolutePath()).append("'");
 
       List<String> command = getShellProcessCommand();
       int idx = command.indexOf(SHELL_COMMAND_ARGUMENT);
@@ -271,19 +278,26 @@ public final class EnvironmentUtil {
       }
 
       LOG.info("loading shell env: " + String.join(" ", command));
-      return runProcessAndReadOutputAndEnvs(command, null, additionalEnvironment).getValue();
+      try {
+        return runProcessAndReadOutputAndEnvs(command, null, additionalEnvironment, envDataFile).getValue();
+      }
+      finally {
+        deleteTempFile(envDataFile);
+        deleteTempFile(envDataFileDir);
+      }
     }
 
     /**
      * @throws IOException if the process fails to start, exits with a non-zero
      *   code, produces no output or the file used to store the output can't be
      *   read.
-     * @see #runProcessAndReadOutputAndEnvs(List, Path, Map)
-     * @see #runProcessAndReadOutputAndEnvs(List, Path, Consumer)
+     * @see #runProcessAndReadOutputAndEnvs(List, Path, Map, Path)
+     * @see #runProcessAndReadOutputAndEnvs(List, Path, Consumer, Path)
      */
     protected final @NotNull Map.Entry<String, Map<String, String>> runProcessAndReadOutputAndEnvs(@NotNull List<String> command,
-                                                                                              @Nullable Path workingDir) throws IOException {
-      return runProcessAndReadOutputAndEnvs(command, workingDir, emptyMap());
+                                                                                                   @Nullable Path workingDir,
+                                                                                                   @NotNull Path envDataFile) throws IOException {
+      return runProcessAndReadOutputAndEnvs(command, workingDir, emptyMap(), envDataFile);
     }
 
     /**
@@ -293,19 +307,20 @@ public final class EnvironmentUtil {
      * @throws IOException if the process fails to start, exits with a non-zero
      *   code, produces no output or the file used to store the output can't be
      *   read.
-     * @see #runProcessAndReadOutputAndEnvs(List, Path)
-     * @see #runProcessAndReadOutputAndEnvs(List, Path, Consumer)
+     * @see #runProcessAndReadOutputAndEnvs(List, Path, Path)
+     * @see #runProcessAndReadOutputAndEnvs(List, Path, Consumer, Path)
      */
     protected final @NotNull Map.Entry<String, Map<String, String>> runProcessAndReadOutputAndEnvs(@NotNull List<String> command,
                                                                                                    @Nullable Path workingDir,
-                                                                                                   @Nullable Map<String, String> scriptEnvironment)
+                                                                                                   @Nullable Map<String, String> scriptEnvironment,
+                                                                                                   @NotNull Path envDataFile)
       throws IOException {
       return runProcessAndReadOutputAndEnvs(command, workingDir, (it) -> {
         if (scriptEnvironment != null) {
           // we might need the default environment for a process to launch correctly
           it.putAll(scriptEnvironment);
         }
-      });
+      }, envDataFile);
     }
 
     /**
@@ -315,13 +330,14 @@ public final class EnvironmentUtil {
      * @return Debugging output of the script, and the map of environment variables.
      * @throws IOException if the process fails to start, exits with a non-zero
      *   code or produces no output
-     * @see #runProcessAndReadOutputAndEnvs(List, Path)
-     * @see #runProcessAndReadOutputAndEnvs(List, Path, Map)
+     * @see #runProcessAndReadOutputAndEnvs(List, Path, Path)
+     * @see #runProcessAndReadOutputAndEnvs(List, Path, Map, Path)
      */
     protected final @NotNull Map.Entry<String, Map<String, String>> runProcessAndReadOutputAndEnvs(@NotNull List<String> command,
-                                                                                              @Nullable Path workingDir,
-                                                                                              @NotNull Consumer<@NotNull Map<String, String>> scriptEnvironmentProcessor) throws IOException {
-      final ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(false);
+                                                                                                   @Nullable Path workingDir,
+                                                                                                   @NotNull Consumer<@NotNull Map<String, String>> scriptEnvironmentProcessor,
+                                                                                                   @NotNull Path envDataFile) throws IOException {
+      final ProcessBuilder builder = new ProcessBuilder(command);
 
       /*
        * Add, remove or change the environment variables.
@@ -334,31 +350,24 @@ public final class EnvironmentUtil {
       builder.environment().put(DISABLE_OMZ_AUTO_UPDATE, "true");
       builder.environment().put(INTELLIJ_ENVIRONMENT_READER, "true");
 
-      Path stdoutFile = null, stderrFile = null;
+      Path logFile = null;
       try {
-        stdoutFile = Files.createTempFile("ij-shell-env-out.stdout.", ".tmp");
-        stderrFile = Files.createTempFile("ij-shell-env-out.stderr.", ".tmp");
+        logFile = Files.createTempFile("ij-shell-env-log.", ".tmp");
         final Process process = builder
-          .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
-          .redirectError(ProcessBuilder.Redirect.to(stderrFile.toFile()))
+          .redirectErrorStream(true)
+          .redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
           .start();
         final int exitCode = waitAndTerminateAfter(process, myTimeoutMillis);
 
-        final String output = new String(Files.readAllBytes(stdoutFile), Charset.defaultCharset());
-        final String stderr = new String(Files.readAllBytes(stderrFile), Charset.defaultCharset());
-        if (exitCode != 0 || output.isEmpty()) {
-          EnvironmentReaderException ex = new EnvironmentReaderException("command " + command +
-                                                                         "\n\texit code: " + exitCode +
-                                                                         "\n\tOS: " + SystemInfoRt.OS_NAME,
-                                                                         output, stderr);
-          LOG.error(ex);
-          throw ex;
+        final String envData = new String(Files.readAllBytes(envDataFile), Charset.defaultCharset());
+        final String log = new String(Files.readAllBytes(logFile), Charset.defaultCharset());
+        if (exitCode != 0 || envData.isEmpty()) {
+          throw new EnvironmentReaderException("command " + command + ", exit code: " + exitCode, envData, log);
         }
-        return new AbstractMap.SimpleImmutableEntry<>(stderr, parseEnv(output));
+        return new AbstractMap.SimpleImmutableEntry<>(log, parseEnv(envData));
       }
       finally {
-        deleteTempFile(stdoutFile);
-        deleteTempFile(stderrFile);
+        deleteTempFile(logFile);
       }
     }
 
@@ -563,7 +572,7 @@ public final class EnvironmentUtil {
 
   @TestOnly
   static Map<String, String> testLoader() throws IOException {
-    return getShellEnv();
+    return getShellEnv(DEFAULT_SHELL_ENV_READING_TIMEOUT_MILLIS);
   }
 
   @TestOnly
@@ -579,9 +588,9 @@ public final class EnvironmentUtil {
   private static class EnvironmentReaderException extends IOException implements ExceptionWithAttachments {
     private final Attachment[] myAttachments;
 
-    private EnvironmentReaderException(String message, String stdout, String stderr) {
+    private EnvironmentReaderException(String message, String data, String log) {
       super(message);
-      myAttachments = new Attachment[]{new Attachment("EnvReaderStdout.txt", stdout), new Attachment("EnvReaderStderr.txt", stderr)};
+      myAttachments = new Attachment[]{new Attachment("EnvReaderData.txt", data), new Attachment("EnvReaderLog.txt", log)};
     }
 
     @Override

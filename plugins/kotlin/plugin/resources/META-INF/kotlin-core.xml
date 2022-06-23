@@ -53,6 +53,7 @@
     <applicationService
             serviceInterface="org.jetbrains.kotlin.idea.references.ReadWriteAccessChecker"
             serviceImplementation="org.jetbrains.kotlin.idea.references.ReadWriteAccessCheckerDescriptorsImpl"/>
+    <applicationService serviceImplementation="org.jetbrains.kotlin.idea.macros.ApplicationWideKotlinBundledPathMacroCleaner" preload="true"/>
 
     <projectService serviceImplementation="org.jetbrains.kotlin.idea.PluginStartupService"/>
     <projectService serviceImplementation="org.jetbrains.kotlin.idea.core.KotlinPluginDisposable"/>
@@ -96,7 +97,7 @@
 
     <pathMacroExpandableProtocol protocol="kotlin-js-meta"/>
 
-    <pathMacroContributor implementation="org.jetbrains.kotlin.idea.KotlinPluginMacros"/>
+    <projectPathMacroContributor implementation="org.jetbrains.kotlin.idea.macros.KotlinBundledPathMacroContributor"/>
 
     <postStartupActivity implementation="org.jetbrains.kotlin.idea.PluginStartupActivity"/>
     <postStartupActivity implementation="org.jetbrains.kotlin.idea.versions.KotlinUpdatePluginStartupActivity"/>
@@ -393,6 +394,11 @@
             displayType="STICKY_BALLOON"
             key="configuration.kotlin.code.style.group.name"
     />
+    <notificationGroup
+            id="Kotlin Maven project import"
+            displayType="STICKY_BALLOON"
+            key="configuration.maven.group.name"
+    />
   </extensions>
 
   <!-- Navigation -->
@@ -486,12 +492,13 @@
   <extensions defaultExtensionNs="com.intellij">
     <codeInsight.parameterNameHints language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinInlayParameterHintsProvider"/>
 
-    <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinCodeAuthorInlayHintsProvider"/>
     <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.codevision.KotlinCodeVisionProvider"/>
     <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinReferencesTypeHintsProvider"/>
     <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinLambdasHintsProvider"/>
     <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinCallChainHintsProvider"/>
     <codeInsight.inlayProvider language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinRangesHintsProvider"/>
+
+    <vcs.codeVisionLanguageContext language="kotlin" implementationClass="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinVcsCodeVisionContext" />
 
     <search.projectOptionsTopHitProvider implementation="org.jetbrains.kotlin.idea.codeInsight.hints.KotlinInlayHintsTopHitProvider"/>
   </extensions>
@@ -673,9 +680,6 @@
         <action
                 id="StoredExceptionsThrowToggleAction"
                 class="org.jetbrains.kotlin.idea.actions.internal.StoredExceptionsThrowToggleAction"/>
-        <action
-                id="MultiplatformCompositeAnalysisToggleAction"
-                class="org.jetbrains.kotlin.idea.actions.internal.MultiplatformCompositeAnalysisToggleAction"/>
         <action
                 id="LibraryToSourceDependencySupportToggleAction"
                 class="org.jetbrains.kotlin.idea.actions.internal.LibraryToSourceDependencySupportToggleAction"/>

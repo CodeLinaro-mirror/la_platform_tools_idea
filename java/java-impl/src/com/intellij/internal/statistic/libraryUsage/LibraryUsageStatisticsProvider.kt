@@ -17,7 +17,8 @@ import org.jetbrains.annotations.TestOnly
 
 internal class LibraryUsageStatisticsProvider(
   private val project: Project,
-  private val storageService: LibraryUsageStatisticsStorageService,
+  private val processedFilesService: ProcessedFilesStorageService,
+  private val libraryUsageService: LibraryUsageStatisticsStorageService,
   private val libraryDescriptorFinder: LibraryDescriptorFinder,
 ) : FileEditorManagerListener {
   override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
@@ -25,13 +26,13 @@ internal class LibraryUsageStatisticsProvider(
 
     ReadAction.nonBlocking { processFile(file) }
       .inSmartMode(source.project)
-      .expireWith(storageService)
-      .coalesceBy(file, storageService)
+      .expireWith(processedFilesService)
+      .coalesceBy(file, processedFilesService)
       .submit(AppExecutorUtil.getAppExecutorService())
   }
 
   private fun processFile(vFile: VirtualFile) {
-    if (storageService.isVisited(vFile)) return
+    if (processedFilesService.isVisited(vFile)) return
     val fileIndex = ProjectFileIndex.getInstance(project)
     if (!fileIndex.isInSource(vFile) || fileIndex.isInLibrary(vFile)) return
 
@@ -39,7 +40,7 @@ internal class LibraryUsageStatisticsProvider(
 
     val fileType = psiFile.fileType
     val importProcessor = LibraryUsageImportProcessor.EP_NAME.findFirstSafe { it.isApplicable(fileType) } ?: return
-    val libraryNames = mutableSetOf<String>()
+    val processedLibraryNames = mutableSetOf<String>()
     val usages = mutableListOf<LibraryUsage>()
 
     // we should process simple element imports first, because they can be unambiguously resolved
@@ -48,12 +49,12 @@ internal class LibraryUsageStatisticsProvider(
       ProgressManager.checkCanceled()
 
       val qualifier = importProcessor.importQualifier(import) ?: continue
-      val libraryName = libraryDescriptorFinder.findSuitableLibrary(qualifier)?.takeUnless { it in libraryNames } ?: continue
+      val libraryName = libraryDescriptorFinder.findSuitableLibrary(qualifier)?.takeUnless { it in processedLibraryNames } ?: continue
 
       val libraryElement = importProcessor.resolve(import) ?: continue
       val libraryVersion = findJarVersion(libraryElement) ?: continue
 
-      libraryNames += libraryName
+      processedLibraryNames += libraryName
       usages += LibraryUsage(
         name = libraryName,
         version = libraryVersion,
@@ -61,7 +62,9 @@ internal class LibraryUsageStatisticsProvider(
       )
     }
 
-    storageService.increaseUsages(vFile, usages)
+    if (processedFilesService.visit(vFile)) {
+      libraryUsageService.increaseUsages(usages)
+    }
   }
 
   companion object {

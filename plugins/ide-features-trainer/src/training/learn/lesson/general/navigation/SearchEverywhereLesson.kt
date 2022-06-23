@@ -25,7 +25,7 @@ import java.awt.event.KeyEvent
 import javax.swing.JList
 
 abstract class SearchEverywhereLesson : KLesson("Search everywhere", LessonsBundle.message("search.everywhere.lesson.name")) {
-  abstract override val existedFile: String?
+  abstract override val sampleFilePath: String?
 
   abstract val resultFileName: String
 
@@ -36,6 +36,8 @@ abstract class SearchEverywhereLesson : KLesson("Search everywhere", LessonsBund
   private var backupPopupLocation: Point? = null
 
   override val lessonContent: LessonContext.() -> Unit = {
+    sdkConfigurationTasks()
+
     task("SearchEverywhere") {
       triggerAndBorderHighlight().component { ui: ExtendableTextField ->
         UIUtil.getParentOfType(SearchEverywhereUI::class.java, ui) != null

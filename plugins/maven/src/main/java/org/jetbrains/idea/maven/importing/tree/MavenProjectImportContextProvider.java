@@ -26,17 +26,15 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.intellij.util.containers.ContainerUtil.concat;
-import static org.jetbrains.idea.maven.importing.MavenModelUtil.isCompilerTestSupport;
+import static org.jetbrains.idea.maven.importing.MavenModelUtil.*;
 
 public class MavenProjectImportContextProvider {
-  public static final String TEST_SUFIX = ".test";
-  public static final String MAIN_SUFIX = ".main";
   @NotNull
   private final Project myProject;
   @NotNull
   private final MavenProjectsTree myProjectsTree;
   @NotNull
-  private final Map<MavenProject, MavenProjectChanges> myProjectsToImportWithChanges;
+  private final Map<MavenId, MavenProjectChanges> myProjectsToImportWithChanges;
   @NotNull
   private final ModuleModelProxy myModuleModel;
   @NotNull
@@ -49,7 +47,8 @@ public class MavenProjectImportContextProvider {
                                            @NotNull MavenImportingSettings importingSettings) {
     myProject = project;
     myProjectsTree = projectsTree;
-    myProjectsToImportWithChanges = changes;
+    myProjectsToImportWithChanges = changes.entrySet().stream()
+      .collect(Collectors.toMap(e -> e.getKey().getMavenId(), e -> e.getValue(), (v1, v2) -> v1));
     myModuleModel = moduleModel;
     myImportingSettings = importingSettings;
   }
@@ -90,7 +89,7 @@ public class MavenProjectImportContextProvider {
         continue;
       }
 
-      MavenProjectChanges changes = myProjectsToImportWithChanges.get(project);
+      MavenProjectChanges changes = myProjectsToImportWithChanges.get(project.getMavenId());
       MavenProjectImportData mavenProjectImportData = getModuleImportData(project, moduleName, moduleByName, changes);
 
       if (changes != null && changes.hasChanges()) {
@@ -199,10 +198,10 @@ public class MavenProjectImportContextProvider {
     if (type != MavenModuleType.AGGREGATOR_MAIN_TEST) {
       return new MavenProjectImportData(project, moduleData, changes, null);
     }
-    String moduleMainName = moduleName + MAIN_SUFIX;
+    String moduleMainName = moduleName + MAIN_SUFFIX;
     ModuleData mainData = getModuleData(project, moduleMainName, MavenModuleType.MAIN, javaVersions, moduleByName);
 
-    String moduleTestName = moduleName + TEST_SUFIX;
+    String moduleTestName = moduleName + TEST_SUFFIX;
     ModuleData testData = getModuleData(project, moduleTestName, MavenModuleType.TEST, javaVersions, moduleByName);
 
     SplittedMainAndTestModules mainAndTestModules = new SplittedMainAndTestModules(mainData, testData);

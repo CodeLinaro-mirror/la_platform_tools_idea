@@ -168,8 +168,12 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
   override val key: SettingsKey<Settings>
     get() = ourKey
 
-  override fun getProperty(key: String): String {
-    return JavaBundle.message(key)
+  override fun getCaseDescription(case: ImmediateConfigurable.Case): String? {
+    when (case.id) {
+      "inferred.annotations" -> return JavaBundle.message("inlay.annotation.hints.inferred.annotations")
+      "external.annotations" -> return JavaBundle.message("inlay.annotation.hints.external.annotations")
+    }
+    return null
   }
 
   override val previewText: String? = null
@@ -180,11 +184,9 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
     val psiMethod = (file as PsiJavaFile).classes[0].methods[0]
     val factory = PsiElementFactory.getInstance(file.project)
     if (psiMethod.parameterList.isEmpty) {
-      if (settings.showExternal) {
-        PREVIEW_ANNOTATION_KEY.set(psiMethod, factory.createAnnotationFromText("@Deprecated", psiMethod))
-      }
+      PREVIEW_ANNOTATION_KEY.set(psiMethod, factory.createAnnotationFromText("@Deprecated", psiMethod))
     }
-    else if (settings.showInferred)
+    else
       PREVIEW_ANNOTATION_KEY.set(psiMethod.parameterList.getParameter(0), factory.createAnnotationFromText("@NotNull", psiMethod))
   }
 

@@ -37,6 +37,7 @@ import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
+import org.jetbrains.idea.maven.buildtool.MavenImportSpec;
 import org.jetbrains.idea.maven.importing.MavenModuleNameMapper;
 import org.jetbrains.idea.maven.importing.MavenProjectImporter;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
@@ -157,7 +158,8 @@ public final class MavenProjectBuilder extends ProjectImportBuilder<MavenProject
       MavenImportingManager.getInstance(project).openProjectAndImport(
         new RootPath(rootPath),
         getImportingSettings(),
-        getGeneralSettings()
+        getGeneralSettings(),
+        MavenImportSpec.EXPLICIT_IMPORT
       );
       return Collections.singletonList(dummyModule);
     }
@@ -251,7 +253,7 @@ public final class MavenProjectBuilder extends ProjectImportBuilder<MavenProject
         modifiableModel.addContentEntry(contentRoot);
         modifiableModel.commit();
         renameModuleToProjectName(project, module, root);
-        if (MavenProjectImporter.isImportToWorkspaceModelEnabled() || MavenProjectImporter.isImportToTreeStructureEnabled()) {
+        if (MavenProjectImporter.isImportToWorkspaceModelEnabled() || MavenProjectImporter.isImportToTreeStructureEnabled(project)) {
           //this is needed to ensure that dummy module created here will be correctly replaced by real ModuleEntity when import finishes
           ExternalSystemModulePropertyManager.getInstance(module).setMavenized(true);
         }

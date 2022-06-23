@@ -92,6 +92,9 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "intellij.platform.tracing.ide",
     "intellij.toml",
     KotlinPluginBuilder.MAIN_KOTLIN_PLUGIN_MODULE,
+    "intellij.keymap.eclipse",
+    "intellij.keymap.visualStudio",
+    "intellij.keymap.netbeans",
   )
 
   private static final Map<String, String> BASE_CLASS_VERSIONS = [
@@ -101,6 +104,7 @@ abstract class BaseIdeaProperties extends JetBrainsProductProperties {
     "lib/annotations.jar"                                   : "1.6",
     // JAR contains class files for Java 1.8 and 11 (several modules packed into it)
     "lib/util.jar!/com/intellij/serialization/"             : "1.8",
+    "lib/util_rt.jar"                                       : "1.6",
     "lib/external-system-rt.jar"                            : "1.6",
     "plugins/coverage/lib/coverage_rt.jar"                  : "1.6",
     "plugins/javaFX/lib/rt/sceneBuilderBridge.jar"          : "11",

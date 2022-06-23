@@ -17,19 +17,7 @@ import java.util.*
 
 internal class LanguageToolRule(
   private val lang: Lang, private val ltRule: org.languagetool.rules.Rule
-) : Rule(LangTool.globalIdPrefix(lang) + ltRule.id, ltRule.description,
-         if (isStyleRule(ltRule)) categoryName(Categories.STYLE, lang, "Style") else ltRule.category.name
-) {
-
-  override fun getSubCategory(): String? {
-    if (isStyleRule(ltRule)) {
-      if (ltRule.category.id == Categories.STYLE.id || ltRule.category.id == Categories.MISC.id) {
-        return categoryName(Categories.MISC, lang, "Other")
-      }
-      return ltRule.category.name
-    }
-    return null
-  }
+) : Rule(LangTool.globalIdPrefix(lang) + ltRule.id, ltRule.description, categories(ltRule, lang)) {
 
   override fun isEnabledByDefault(): Boolean = LangTool.isRuleEnabledByDefault(lang, ltRule.id)
 
@@ -74,7 +62,7 @@ internal class LanguageToolRule(
 
   override fun getSearchableDescription(): String = "LanguageTool"
 
-  private companion object {
+  companion object {
     private fun categoryName(kind: Categories, lang: Lang, orElse: String): String {
       try {
         return kind.getCategory(JLanguageTool.getMessageBundle(lang.jLanguage!!)).name
@@ -84,7 +72,20 @@ internal class LanguageToolRule(
       }
     }
 
-    private fun isStyleRule(ltRule: org.languagetool.rules.Rule) =
+    private fun categories(ltRule: org.languagetool.rules.Rule, lang: Lang): List<String> {
+      val ltCat = ltRule.category
+      if (isStyleLike(ltRule)) {
+        val subCat = when (ltCat.id) {
+          Categories.STYLE.id, Categories.MISC.id -> categoryName(Categories.MISC, lang, "Other")
+          else -> ltCat.name
+        }
+        return listOf(categoryName(Categories.STYLE, lang, "Style"), subCat)
+      }
+      return listOf(ltCat.name)
+    }
+
+    @JvmStatic
+    fun isStyleLike(ltRule: org.languagetool.rules.Rule): Boolean =
       ltRule.locQualityIssueType == ITSIssueType.Style ||
       ltRule.category.id == Categories.STYLE.id ||
       ltRule.category.id == Categories.TYPOGRAPHY.id

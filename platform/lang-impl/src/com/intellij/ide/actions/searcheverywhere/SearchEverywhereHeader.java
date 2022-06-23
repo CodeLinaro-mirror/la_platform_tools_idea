@@ -265,8 +265,8 @@ public class SearchEverywhereHeader {
       res.add(allTab);
     }
 
-    contributors.stream()
-      .filter(SearchEverywhereContributor::isShownInSeparateTab)
+    TabsCustomizationStrategy.getInstance()
+      .getSeparateTabContributors(contributors)
       .forEach(contributor -> {
         SETab tab = createTab(contributor, () -> {
           myToolbar.updateActionsImmediately();

@@ -5,6 +5,7 @@ import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.util.text.TextWithMnemonic;
 import org.jetbrains.annotations.Nls;
 
@@ -17,7 +18,7 @@ import java.beans.PropertyChangeListener;
 
 abstract class MnemonicWrapper<T extends JComponent> implements Runnable, PropertyChangeListener {
   public static MnemonicWrapper<?> getWrapper(Component component) {
-    if (component == null || component.getClass().getName().equals("com.intellij.openapi.wm.impl.StripeButton")) {
+    if (component == null || component.getClass().getName().equals("com.intellij.toolWindow.StripeButton")) {
       return null;
     }
     for (PropertyChangeListener listener : component.getPropertyChangeListeners()) {
@@ -46,7 +47,7 @@ abstract class MnemonicWrapper<T extends JComponent> implements Runnable, Proper
   private TextWithMnemonic myTextWithMnemonic;
   private boolean myFocusable;
   private boolean myEvent;
-  private boolean myTextChanged;
+  private boolean myMnemonicChanged;
   private Runnable myRunnable;
 
   private MnemonicWrapper(T component, String text, String code, String index) {
@@ -64,10 +65,22 @@ abstract class MnemonicWrapper<T extends JComponent> implements Runnable, Proper
     boolean disabled = UISettings.getShadowInstance().getDisableMnemonicsInControls();
     try {
       myEvent = true;
-      if (myTextChanged || myTextWithMnemonic == null) myTextWithMnemonic = createTextWithMnemonic();
+      if (myTextWithMnemonic == null) {
+        myTextWithMnemonic = createTextWithMnemonic();
+      }
+      else if (myMnemonicChanged) {
+        try {
+          myTextWithMnemonic = myTextWithMnemonic.withMnemonicIndex(getMnemonicIndex());
+        }
+        catch (IndexOutOfBoundsException cause) {
+          myTextWithMnemonic = myTextWithMnemonic.withMnemonicIndex(-1);
+          String message = "cannot change mnemonic index " + myComponent;
+          Logger.getInstance(MnemonicWrapper.class).warn(message, cause);
+        }
+      }
       // update component text only if changed
       String text = myTextWithMnemonic.getText(!disabled);
-      if (!text.equals(getText())) setText(text);
+      if (!text.equals(Strings.notNullize(getText()))) setText(text);
       // update mnemonic code only if changed
       int code = disabled ? KeyEvent.VK_UNDEFINED : myTextWithMnemonic.getMnemonicCode();
       if (code != getMnemonicCode()) setMnemonicCode(code);
@@ -85,7 +98,7 @@ abstract class MnemonicWrapper<T extends JComponent> implements Runnable, Proper
         catch (IllegalArgumentException cause) {
           // EA-94674 - IAE: AbstractButton.setDisplayedMnemonicIndex
           StringBuilder sb = new StringBuilder("cannot set mnemonic index ");
-          if (myTextChanged) sb.append("if text changed ");
+          if (myMnemonicChanged) sb.append("if mnemonic changed ");
           String message = sb.append(myComponent).toString();
           Logger.getInstance(MnemonicWrapper.class).warn(message, cause);
         }
@@ -97,7 +110,7 @@ abstract class MnemonicWrapper<T extends JComponent> implements Runnable, Proper
     }
     finally {
       myEvent = false;
-      myTextChanged = false;
+      myMnemonicChanged = false;
       myRunnable = null;
     }
   }
@@ -109,26 +122,16 @@ abstract class MnemonicWrapper<T extends JComponent> implements Runnable, Proper
       if (myTextProperty.equals(property)) {
         // it is needed to update text later because
         // this listener is notified before Swing updates mnemonics
-        myTextChanged = true;
+        myTextWithMnemonic = null;
         updateRequest();
       }
       else if (myCodeProperty.equals(property)) {
-        int code = getMnemonicCode();
-        if (code != myTextWithMnemonic.getMnemonicCode()) {
-          myTextWithMnemonic = TextWithMnemonic.fromPlainText(myTextWithMnemonic.getText(false), (char)code);
-          updateRequest();
-        }
+        myMnemonicChanged = true;
+        updateRequest();
       }
       else if (myIndexProperty.equals(property)) {
-        int index = getMnemonicIndex();
-        if (index != myTextWithMnemonic.getMnemonicIndex()) {
-          try {
-            myTextWithMnemonic = myTextWithMnemonic.withMnemonicIndex(index);
-            updateRequest();
-          }
-          catch (IndexOutOfBoundsException ignored) {
-          }
-        }
+        myMnemonicChanged = true;
+        updateRequest();
       }
       else if ("focusable".equals(property) || "labelFor".equals(property)) {
         myFocusable = isFocusable();
@@ -139,7 +142,7 @@ abstract class MnemonicWrapper<T extends JComponent> implements Runnable, Proper
 
   private TextWithMnemonic createTextWithMnemonic() {
     String text = getText();
-    if (text == null || text.isEmpty()) return TextWithMnemonic.EMPTY;
+    if (Strings.isEmpty(text)) return TextWithMnemonic.EMPTY;
     TextWithMnemonic mnemonic = TextWithMnemonic.fromMnemonicText(text);
     if (mnemonic != null) return mnemonic;
     // assume that it is already set

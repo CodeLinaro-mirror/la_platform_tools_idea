@@ -24,11 +24,10 @@ import java.io.Closeable
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 import kotlin.concurrent.thread
-import kotlin.io.path.absolutePathString
-import kotlin.io.path.createDirectories
-import kotlin.io.path.div
-import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.*
+import kotlin.streams.toList
 import kotlin.time.Duration
 import kotlin.time.measureTime
 
@@ -93,6 +92,7 @@ data class IDERunContext(
 
   // TODO: refactor this
   private fun prepareToRunIDE(): IDEStartResult {
+    deleteSavedAppStateOnMac()
     val paths = testContext.paths
     val logsDir = paths.logsDir.createDirectories()
     val jvmCrashLogDirectory = logsDir.resolve("jvm-crash").createDirectories()
@@ -272,6 +272,10 @@ data class IDERunContext(
       ErrorReporter.reportErrorsAsFailedTests(logsDir / "script-errors", contextName)
       val (artifactPath, artifactName) = if (successfulRun) contextName to "logs" else "run/$contextName" to "crash"
       testContext.publishArtifact(logsDir, artifactPath, artifactName)
+      val snapshotFiles = Files.list(testContext.paths.snapshotsDir).use { it.filter { it.isRegularFile() }.toList() }
+      if (snapshotFiles.isNotEmpty()) {
+        testContext.publishArtifact(testContext.paths.snapshotsDir, contextName, "snapshots")
+      }
       if (codeBuilder != null) {
         host.tearDown(testContext)
       }
@@ -295,5 +299,20 @@ data class IDERunContext(
   fun runIDE(): IDEStartResult {
     return installProfiler()
       .prepareToRunIDE()
+  }
+
+  private fun deleteSavedAppStateOnMac() {
+    if (SystemInfo.isMac) {
+      val filesToBeDeleted = listOf(
+        "com.jetbrains.${testContext.testCase.ideInfo.installerProductName}-EAP.savedState",
+        "com.jetbrains.${testContext.testCase.ideInfo.installerProductName}.savedState"
+      )
+      val home = System.getProperty("user.home")
+      val savedAppStateDir = Paths.get(home).resolve("Library").resolve("Saved Application State")
+      savedAppStateDir.toFile()
+        .walkTopDown().maxDepth(1)
+        .filter { file -> filesToBeDeleted.any { fileToBeDeleted -> file.name == fileToBeDeleted } }
+        .forEach { it.deleteRecursively() }
+    }
   }
 }

@@ -16,7 +16,11 @@ import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.TextWithMnemonic
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.ui.ComponentUtil
+import com.intellij.ui.ExperimentalUI
+import com.intellij.ui.IconManager
 import com.intellij.ui.tabs.impl.MorePopupAware
+import com.intellij.ui.tabs.impl.TabLabel
 import com.intellij.util.BitUtil
 import com.intellij.util.ObjectUtils
 import java.awt.event.InputEvent
@@ -37,8 +41,8 @@ class CloseTab(c: JComponent,
 
   override fun update(e: AnActionEvent) {
     val pinned = isPinned()
-    e.presentation.icon = if (!pinned) AllIcons.Actions.Close else AllIcons.Actions.PinTab
-    e.presentation.hoveredIcon = if (!pinned) AllIcons.Actions.CloseHovered else AllIcons.Actions.PinTab
+    e.presentation.icon = if (!pinned) CLOSE_ICON else AllIcons.Actions.PinTab
+    e.presentation.hoveredIcon = if (!pinned) CLOSE_HOVERED_ICON else AllIcons.Actions.PinTab
     e.presentation.isVisible = UISettings.getInstance().showCloseButton || pinned
     if (pinned && !Registry.get("ide.editor.tabs.interactive.pin.button").asBoolean()) {
       e.presentation.text = ""
@@ -62,6 +66,7 @@ class CloseTab(c: JComponent,
     if (isPinned() && e.place == ActionPlaces.EDITOR_TAB) {
       if (Registry.get("ide.editor.tabs.interactive.pin.button").asBoolean()) {
         editorWindow.setFilePinned(file, false)
+        ComponentUtil.getParentOfType(TabLabel::class.java, e.inputEvent?.component)?.updateTabActions()
       }
       return
     }
@@ -90,5 +95,13 @@ class CloseTab(c: JComponent,
       }
       popup?.cancel()
     }
+  }
+
+  companion object {
+    private val CLOSE_ICON = if (ExperimentalUI.isNewUI())
+      IconManager.getInstance().getIcon("expui/general/closeSmall.svg", AllIcons::class.java) else AllIcons.Actions.Close
+
+    private val CLOSE_HOVERED_ICON = if (ExperimentalUI.isNewUI())
+      IconManager.getInstance().getIcon("expui/general/closeSmallHovered.svg", AllIcons::class.java) else AllIcons.Actions.CloseHovered
   }
 }

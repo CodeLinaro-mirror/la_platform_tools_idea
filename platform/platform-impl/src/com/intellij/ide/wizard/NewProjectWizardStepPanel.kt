@@ -2,7 +2,6 @@
 package com.intellij.ide.wizard
 
 import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.builder.validateAfterPropagation
 import com.intellij.util.ui.JBUI
 
 class NewProjectWizardStepPanel(val step: NewProjectWizardStep) {
@@ -19,12 +18,11 @@ class NewProjectWizardStepPanel(val step: NewProjectWizardStep) {
 
   val component by lazy {
     panel {
-      validateAfterPropagation(step.propertyGraph)
       step.setupUI(this)
-    }.apply {
-      registerValidators(step.context.disposable)
-      withBorder(JBUI.Borders.empty(14, 20))
-      setMinimumWidthForAllRowLabels(JBUI.scale(90))
-    }
+    }.withVisualPadding(topField = true)
+      .apply {
+        registerValidators(step.context.disposable)
+        setMinimumWidthForAllRowLabels(JBUI.scale(90))
+      }
   }
 }

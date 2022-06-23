@@ -1,11 +1,14 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl;
 
+import com.intellij.concurrency.SensitiveProgressWrapper;
 import com.intellij.model.ModelBranchImpl;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationEx;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.progress.util.ProgressWrapper;
@@ -48,13 +51,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @ApiStatus.Internal
 public final class FilesScanExecutor {
+  private static final Logger LOG = Logger.getInstance(FilesScanExecutor.class);
   private static final int THREAD_COUNT = Math.max(UnindexedFilesUpdater.getNumberOfScanningThreads() - 1, 1);
   private static final ExecutorService ourExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("Scanning", THREAD_COUNT);
 
   private static class StopWorker extends ProcessCanceledException { }
 
   public static void runOnAllThreads(@NotNull Runnable runnable) {
-    ProgressIndicator progress = ProgressManager.getInstance().getProgressIndicator();
+    ProgressIndicator progress = ProgressIndicatorProvider.getGlobalProgressIndicator();
     List<Future<?>> results = new ArrayList<>();
     for (int i = 0; i < THREAD_COUNT; i++) {
       results.add(ourExecutor.submit(() -> {
@@ -71,24 +75,37 @@ public final class FilesScanExecutor {
     }
   }
 
-  public static boolean processDequeueOnAllThreadsInReadAction(@NotNull ConcurrentLinkedDeque<Object> deque,
-                                                               @NotNull Processor<Object> consumer) {
+  public static <T> boolean processOnAllThreadsInReadActionWithRetries(@NotNull ConcurrentLinkedDeque<T> deque,
+                                                                       @NotNull Processor<? super T> consumer) {
+    return doProcessOnAllThreadsInReadAction(deque, consumer, true);
+  }
+
+  public static <T> boolean processOnAllThreadsInReadActionNoRetries(@NotNull ConcurrentLinkedDeque<T> deque,
+                                                                     @NotNull Processor<? super T> consumer) {
+    return doProcessOnAllThreadsInReadAction(deque, consumer, false);
+  }
+
+  private static <T> boolean doProcessOnAllThreadsInReadAction(@NotNull ConcurrentLinkedDeque<T> deque,
+                                                               @NotNull Processor<? super T> consumer,
+                                                               boolean retryCanceled) {
     ApplicationEx application = (ApplicationEx)ApplicationManager.getApplication();
-    return processDequeOnAllThreads(deque, o -> {
+    return processOnAllThreads(deque, o -> {
       if (application.isReadAccessAllowed()) {
         return consumer.process(o);
       }
       Ref<Boolean> result = Ref.create(true);
-      if (!application.tryRunReadAction(
-        () -> result.set(consumer.process(o)))) {
-        throw new StopWorker();
+      ProgressIndicator indicator = ProgressIndicatorProvider.getGlobalProgressIndicator();
+      if (!ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(
+        () -> result.set(consumer.process(o)),
+        indicator == null ? null : new SensitiveProgressWrapper(indicator))) {
+        throw retryCanceled ? new ProcessCanceledException() : new StopWorker();
       }
       return result.get();
     });
   }
 
-  public static <T> boolean processDequeOnAllThreads(@NotNull ConcurrentLinkedDeque<T> deque,
-                                                     @NotNull Processor<? super T> processor) {
+  public static <T> boolean processOnAllThreads(@NotNull ConcurrentLinkedDeque<T> deque,
+                                                @NotNull Processor<? super T> processor) {
     ProgressManager.checkCanceled();
     if (deque.isEmpty()) return true;
     AtomicInteger runnersCount = new AtomicInteger();
@@ -173,7 +190,19 @@ public final class FilesScanExecutor {
     else {
       deque.addAll(((FileBasedIndexEx)FileBasedIndex.getInstance()).getIndexableFilesProviders(project));
     }
+    AtomicInteger skippedCount = new AtomicInteger();
+    AtomicInteger processedCount = new AtomicInteger();
     ConcurrentBitSet visitedFiles = ConcurrentBitSet.create();
+    VirtualFileFilter fileFilter = file -> {
+      int fileId = FileBasedIndex.getFileId(file);
+      if (visitedFiles.set(fileId)) return false;
+      boolean result = (idFilter == null || idFilter.containsFileId(fileId)) &&
+                       !fileIndex.isExcluded(file) &&
+                       scope.contains(file) &&
+                       (includingBinary || file.isDirectory() || !file.getFileType().isBinary());
+      if (!result) skippedCount.incrementAndGet();
+      return result;
+    };
     Processor<Object> consumer = obj -> {
       ProgressManager.checkCanceled();
       if (obj instanceof IndexableFilesIterator) {
@@ -183,23 +212,12 @@ public final class FilesScanExecutor {
           if (file.isDirectory()) return true;
           deque.add(file);
           return true;
-        }, VirtualFileFilter.ALL);
+        }, fileFilter);
       }
       else if (obj instanceof VirtualFile) {
         VirtualFile file = (VirtualFile)obj;
-        int fileId = FileBasedIndex.getFileId(file);
-        if (visitedFiles.set(fileId)) {
-          return true;
-        }
-        if (idFilter != null && !idFilter.containsFileId(fileId) ||
-            !file.isValid() ||
-            fileIndex.isExcluded(file) ||
-            ((VirtualFile)obj).isDirectory() ||
-            !scope.contains(file) ||
-            !includingBinary && file.getFileType().isBinary()) {
-          return true;
-        }
-
+        processedCount.incrementAndGet();
+        if (!file.isValid()) return true;
         return processor.process(file);
       }
       else {
@@ -207,6 +225,12 @@ public final class FilesScanExecutor {
       }
       return true;
     };
-    return processDequeueOnAllThreadsInReadAction(deque, consumer);
+    long start = System.nanoTime();
+    boolean result = processOnAllThreadsInReadActionNoRetries(deque, consumer);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(processedCount.get() + " files processed (" + skippedCount.get() + " skipped)" +
+               " in " + TimeoutUtil.getDurationMillis(start) + " ms");
+    }
+    return result;
   }
 }

@@ -7,6 +7,7 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.actions.MaximizeEditorInSplitAction;
 import com.intellij.ide.actions.SplitAction;
+import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.ui.UISettingsListener;
@@ -974,6 +975,12 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
     ((TransactionGuardImpl)TransactionGuard.getInstance()).assertWriteActionAllowed();
     LOG.assertTrue(file.isValid(), "Invalid file: " + file);
 
+    Project activeProject = ProjectUtil.getActiveProject();
+    if (activeProject != null && !activeProject.equals(myProject)) {
+      // allow focus switching only within a project
+      options = options.clone().withRequestFocus(false);
+    }
+
     EditorComposite composite = window.getComposite(file);
     boolean newEditor = composite == null;
     if (newEditor) {
@@ -1072,14 +1079,14 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
   protected @Nullable EditorComposite createComposite(@NotNull VirtualFile file,
                                                       FileEditorProvider @NotNull [] providers,
                                                       AsyncFileEditorProvider.Builder @NotNull [] builders) {
-    List<FileEditorWithProvider> editorWithProviders = new ArrayList<>(providers.length);
+    List<FileEditorWithProvider> editorsWithProviders = new ArrayList<>(providers.length);
     for (int i = 0; i < providers.length; i++) {
       try {
         FileEditorProvider provider = providers[i];
         if (provider == null) continue;
         FileEditor editor = builders[i] == null ? provider.createEditor(myProject, file) : builders[i].build();
         LOG.assertTrue(editor.isValid(), "Invalid editor created by provider " + provider.getClass().getName());
-        editorWithProviders.add(new FileEditorWithProvider(editor, provider));
+        editorsWithProviders.add(new FileEditorWithProvider(editor, provider));
       }
       catch (ProcessCanceledException e) {
         throw e;
@@ -1089,25 +1096,25 @@ public class FileEditorManagerImpl extends FileEditorManagerEx implements Persis
       }
     }
 
-    return createComposite(file, editorWithProviders);
+    return createComposite(file, editorsWithProviders);
   }
 
   protected @Nullable EditorComposite createComposite(@NotNull VirtualFile file,
-                                                      @NotNull List<FileEditorWithProvider> editorWithProviders) {
-    for (FileEditorWithProvider editorWithProvider : editorWithProviders) {
+                                                      @NotNull List<FileEditorWithProvider> editorsWithProviders) {
+    for (FileEditorWithProvider editorWithProvider : editorsWithProviders) {
       FileEditor editor = editorWithProvider.getFileEditor();
       editor.addPropertyChangeListener(myEditorPropertyChangeListener);
       editor.putUserData(DUMB_AWARE, DumbService.isDumbAware(editorWithProvider.getProvider()));
     }
-    return createCompositeInstance(file, editorWithProviders);
+    return createCompositeInstance(file, editorsWithProviders);
   }
 
   @Contract("_, _ -> new")
   protected @Nullable EditorComposite createCompositeInstance(@NotNull VirtualFile file,
-                                                              @NotNull List<FileEditorWithProvider> editorWithProviders) {
+                                                              @NotNull List<FileEditorWithProvider> editorsWithProviders) {
     // the only place this class in created, won't be needed when we get rid of EditorWithProviderComposite usages
     //noinspection deprecation
-    return new EditorWithProviderComposite(file, editorWithProviders, this);
+    return new EditorWithProviderComposite(file, editorsWithProviders, this);
   }
 
   private void restoreEditorState(@NotNull VirtualFile file,

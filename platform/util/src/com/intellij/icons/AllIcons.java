@@ -219,10 +219,10 @@ public class AllIcons {
     @Deprecated
     public static final @NotNull Icon ShowHiddens = ToggleVisibility;
 
-    /** @deprecated to be removed in IDEA 2021.1 (use expandable text field instead, see https://jetbrains.design/intellij/controls/built_in_button/) */
+    /** @deprecated to be removed (use expandable text field instead, see https://jetbrains.design/intellij/controls/built_in_button/) */
     @SuppressWarnings("unused")
     @Deprecated
-    @ScheduledForRemoval(inVersion = "2021.1")
+    @ScheduledForRemoval
     public static final @NotNull Icon ShowViewer = load("actions/showViewer.png", 0, 0);
   }
 
@@ -1086,6 +1086,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon AddRemoteDatasource = load("toolbarDecorator/addRemoteDatasource.svg", 175893248, 2);
     /** 16x16 */ public static final @NotNull Icon AddYouTrack = load("toolbarDecorator/addYouTrack.svg", -178809474, 2);
     /** 16x16 */ public static final @NotNull Icon Export = load("toolbarDecorator/export.svg", -1997817006, 2);
+    /** 16x16 */ public static final @NotNull Icon ExportSmall = load("toolbarDecorator/exportSmall.svg", 1616570485, 2);
     /** 16x16 */ public static final @NotNull Icon Import = load("toolbarDecorator/import.svg", 1687651157, 2);
   }
 
@@ -1157,6 +1158,7 @@ public class AllIcons {
     /** 16x16 */ public static final @NotNull Icon Shelve = load("vcs/Shelve.svg", 634465552, 2);
     /** 16x16 */ public static final @NotNull Icon ShelveSilent = load("vcs/shelveSilent.svg", 1105000973, 2);
     /** 16x16 */ public static final @NotNull Icon ShowUnversionedFiles = load("vcs/ShowUnversionedFiles.svg", -385504903, 2);
+    /** 16x16 */ public static final @NotNull Icon Stash = load("vcs/Stash.svg", 645718691, 2);
     /** 16x16 */ public static final @NotNull Icon Unshelve = load("vcs/Unshelve.svg", -1985830986, 2);
     /** 16x16 */ public static final @NotNull Icon UnshelveSilent = load("vcs/unshelveSilent.svg", -1912718864, 2);
 
@@ -1186,10 +1188,10 @@ public class AllIcons {
       /** 10x10 */ public static final @NotNull Icon RemoveDisabled = load("welcome/project/removeDisabled.svg", -1565572817, 2);
     }
 
-    /** @deprecated to be removed in IDEA 2021.1 */
+    /** @deprecated to be removed */
     @SuppressWarnings("unused")
     @Deprecated
-    @ScheduledForRemoval(inVersion = "2021.1")
+    @ScheduledForRemoval
     public static final @NotNull Icon CreateNewProject = load("welcome/createNewProject.svg", 0, 0);
   }
 

@@ -16,7 +16,9 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.newvfs.persistent.PersistentFSImpl;
+import com.intellij.psi.search.FilenameIndex;
 import com.intellij.util.ThrowableRunnable;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.impl.storage.DefaultIndexStorageLayout;
 import com.intellij.util.indexing.impl.storage.FileBasedIndexLayoutSettings;
 import com.intellij.util.io.DataOutputStream;
@@ -158,6 +160,7 @@ final class FileBasedIndexDataInitialization extends IndexDataInitializer<IndexC
     }
     finally {
       //CorruptionMarker.markIndexesAsDirty();
+      FileBasedIndexImpl.setupWritingIndexValuesSeparatedFromCounting();
       myFileBasedIndex.addStaleIds(myStaleIds);
       myFileBasedIndex.setUpFlusher();
       myFileBasedIndex.setUpHealthCheck();
@@ -217,14 +220,18 @@ final class FileBasedIndexDataInitialization extends IndexDataInitializer<IndexC
       }
     }
 
+    boolean dropFilenameIndex = Registry.is("indexing.filename.over.vfs") && indicesToDrop.contains(FilenameIndex.NAME.getName());
     if (!exceptionThrown) {
       for (ID<?, ?> key : ids) {
+        if (dropFilenameIndex && key == FilenameIndex.NAME) continue;
         indicesToDrop.remove(key.getName());
       }
     }
 
     if (!indicesToDrop.isEmpty()) {
-      LOG.info("Dropping indices:" + String.join(",", indicesToDrop));
+      Collection<String> filtered = !dropFilenameIndex ? indicesToDrop :
+                                    ContainerUtil.filter(indicesToDrop, o -> !FilenameIndex.NAME.getName().equals(o));
+      if (!filtered.isEmpty()) LOG.info("Dropping indices:" + String.join(",", filtered));
       for (String s : indicesToDrop) {
         try {
           FileUtil.deleteWithRenaming(IndexInfrastructure.getFileBasedIndexRootDir(s).toFile());

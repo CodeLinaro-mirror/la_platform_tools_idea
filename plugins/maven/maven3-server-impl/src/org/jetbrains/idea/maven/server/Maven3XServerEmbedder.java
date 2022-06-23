@@ -39,6 +39,7 @@ import org.apache.maven.model.path.DefaultUrlNormalizer;
 import org.apache.maven.model.path.PathTranslator;
 import org.apache.maven.model.path.UrlNormalizer;
 import org.apache.maven.model.profile.DefaultProfileInjector;
+import org.apache.maven.model.validation.DefaultModelValidator;
 import org.apache.maven.model.validation.ModelValidator;
 import org.apache.maven.plugin.LegacySupport;
 import org.apache.maven.plugin.PluginDescriptorCache;
@@ -475,6 +476,19 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
     try {
 
       CustomMaven3ModelInterpolator2 interpolator = new CustomMaven3ModelInterpolator2();
+      if (VersionComparatorUtil.compare(System.getProperty(MAVEN_EMBEDDER_VERSION), "3.8.5") >= 0) {
+        try {
+          Class<?> clazz = Class.forName("org.apache.maven.model.interpolation.DefaultModelVersionProcessor");
+          Constructor<?> constructor = clazz.getConstructor();
+          Object component = constructor.newInstance();
+          Method processor = interpolator.getClass()
+            .getMethod("setVersionPropertiesProcessor", Class.forName("org.apache.maven.model.interpolation.ModelVersionProcessor"));
+          processor.invoke(interpolator, component);
+        }
+        catch (Exception e) {
+          Maven3ServerGlobals.getLogger().error(e);
+        }
+      }
       //interpolator.initialize();
 
       Properties userProperties = new Properties();
@@ -664,8 +678,14 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
     myContainer.addComponent(getComponent(PluginDescriptorCache.class, "ide"), PluginDescriptorCache.class.getName());
     ModelInterpolator modelInterpolator = createAndPutInterpolator(myContainer);
 
-    ModelValidator modelValidator = getComponent(ModelValidator.class, "ide");
-    myContainer.addComponent(modelValidator, ModelValidator.class.getName());
+    ModelValidator modelValidator;
+    if (VersionComparatorUtil.compare(getMavenVersion(), "3.8.5") >= 0) {
+      modelValidator = new CustomModelValidator385((CustomMaven3ModelInterpolator2)modelInterpolator,
+                                                   (DefaultModelValidator)getComponent(ModelValidator.class));
+    } else {
+      modelValidator = getComponent(ModelValidator.class, "ide");
+      myContainer.addComponent(modelValidator, ModelValidator.class.getName());
+    }
 
     DefaultModelBuilder defaultModelBuilder = (DefaultModelBuilder)getComponent(ModelBuilder.class);
     defaultModelBuilder.setModelValidator(modelValidator);
@@ -676,8 +696,8 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
     if (VersionComparatorUtil.compare(getMavenVersion(), "3.6.2") >= 0) {
       org.apache.maven.model.path.DefaultPathTranslator pathTranslator = new org.apache.maven.model.path.DefaultPathTranslator();
       UrlNormalizer urlNormalizer = new DefaultUrlNormalizer();
-      container.addComponent(pathTranslator, org.apache.maven.model.path.PathTranslator.class.getName());
-      container.addComponent(pathTranslator, org.apache.maven.model.path.PathTranslator.class, "ide");
+      container.addComponent(pathTranslator, PathTranslator.class.getName());
+      container.addComponent(pathTranslator, PathTranslator.class, "ide");
 
       container.addComponent(urlNormalizer, UrlNormalizer.class.getName());
       container.addComponent(urlNormalizer, UrlNormalizer.class, "ide");
@@ -685,6 +705,28 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
       StringSearchModelInterpolator interpolator = new CustomMaven3ModelInterpolator2();
       interpolator.setPathTranslator(pathTranslator);
       interpolator.setUrlNormalizer(urlNormalizer);
+
+      if (VersionComparatorUtil.compare(getMavenVersion(), "3.8.5") >= 0) {
+        try {
+          Class<?> clazz = Class.forName("org.apache.maven.model.interpolation.ModelVersionProcessor");
+          Object component = getComponent(clazz);
+
+          container.addComponent(component, clazz.getName());
+          container.addComponent(component, clazz, "ide");
+
+          Method methodSetModelVersionProcessor = interpolator.getClass().getMethod("setVersionPropertiesProcessor", clazz);
+          methodSetModelVersionProcessor.invoke(interpolator, component);
+        }
+        catch (Exception e) {
+          try {
+            Maven3ServerGlobals.getLogger().error(e);
+          }
+          catch (RemoteException ex) {
+            throw new RuntimeException(ex);
+          }
+        }
+      }
+
       return interpolator;
     }
     else {
@@ -1304,6 +1346,7 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
     return doResolve(info, remoteRepositories);
   }
 
+  @Deprecated
   @NotNull
   @Override
   public List<MavenArtifact> resolveTransitively(@NotNull final List<MavenArtifactInfo> artifacts,
@@ -1330,6 +1373,46 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
   }
 
   @NotNull
+  @Override
+  public MavenArtifactResolveResult resolveArtifactTransitively(
+    @NotNull final List<MavenArtifactInfo> artifacts,
+    @NotNull final List<MavenRemoteRepository> remoteRepositories,
+    MavenToken token) throws RemoteException {
+    MavenServerUtil.checkToken(token);
+
+    try {
+      final MavenExecutionRequest request = createRequest(null, null, null, null);
+
+      final List<MavenArtifact>[] mavenArtifacts = new List[]{null};
+      executeWithMavenSession(request, new Runnable() {
+        @Override
+        public void run() {
+          try {
+            mavenArtifacts[0] = Maven3XServerEmbedder.this.doResolveTransitivelyWithError(artifacts, remoteRepositories);
+          }
+          catch (Exception e) {
+            throw new RuntimeException(e);
+          }
+        }
+      });
+      return new MavenArtifactResolveResult(mavenArtifacts[0], null);
+    }
+    catch (Exception e) {
+      Maven3ServerGlobals.getLogger().warn(e);
+      Artifact transferArtifact = getProblemTransferArtifact(e);
+      String message = getRootMessage(e);
+      MavenProjectProblem problem;
+      if (transferArtifact != null) {
+        MavenArtifact mavenArtifact = MavenModelConverter.convertArtifact(transferArtifact, getLocalRepositoryFile());
+        problem = MavenProjectProblem.createArtifactTransferProblem("", message, true, mavenArtifact);
+      } else {
+        problem = MavenProjectProblem.createStructureProblem("", message);
+      }
+      return new MavenArtifactResolveResult(Collections.<MavenArtifact>emptyList(), problem);
+    }
+  }
+
+  @NotNull
   private List<MavenArtifact> doResolveTransitively(@NotNull List<MavenArtifactInfo> artifacts,
                                                     @NotNull List<MavenRemoteRepository> remoteRepositories) throws RemoteException {
 
@@ -1351,6 +1434,24 @@ public abstract class Maven3XServerEmbedder extends Maven3ServerEmbedder {
       Maven3ServerGlobals.getLogger().info(e);
       throw rethrowException(e);
     }
+  }
+
+  @NotNull
+  private List<MavenArtifact> doResolveTransitivelyWithError(@NotNull List<MavenArtifactInfo> artifacts,
+                                                             @NotNull List<MavenRemoteRepository> remoteRepositories)
+    throws RemoteException, ArtifactResolutionException, ArtifactNotFoundException {
+    Set<Artifact> toResolve = new LinkedHashSet<Artifact>();
+    for (MavenArtifactInfo each : artifacts) {
+      toResolve.add(createArtifact(each));
+    }
+
+    Artifact project = getComponent(ArtifactFactory.class).createBuildArtifact("temp", "temp", "666", "pom");
+
+    Set<Artifact> res = getComponent(ArtifactResolver.class)
+      .resolveTransitively(toResolve, project, Collections.EMPTY_MAP, myLocalRepository, convertRepositories(remoteRepositories),
+                           getComponent(ArtifactMetadataSource.class)).getArtifacts();
+
+    return MavenModelConverter.convertArtifacts(res, new HashMap<Artifact, MavenArtifact>(), getLocalRepositoryFile());
   }
 
   @Override

@@ -446,7 +446,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     getComponent(); // Make sure component exists
     component.setOpaque(false);
     component.setVisible(true);
-    myJLayeredPane.add(component, 0);
+    myJLayeredPane.add(component, null, 0);
   }
 
   @NotNull
@@ -1141,7 +1141,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     }
   }
 
-  private void type(@NotNull Editor editor, @NotNull String text) {
+  void type(@NotNull Editor editor, @NotNull String text) {
     ApplicationManager.getApplication().assertIsDispatchThread();
     flushDeferredText();
     SelectionModel selectionModel = editor.getSelectionModel();
@@ -1422,7 +1422,7 @@ public class ConsoleViewImpl extends JPanel implements ConsoleView, ObservableCo
     int newEndOffset = document.getTextLength() - oldDocLength + offset; // take care of trim document
 
     if (ConsoleTokenUtil.findTokenMarker(getEditor(), getProject(), newEndOffset) == null) {
-      ConsoleTokenUtil.createTokenRangeHighlighter(getEditor(), getProject(), ConsoleViewContentType.USER_INPUT, newStartOffset, newEndOffset);
+      ConsoleTokenUtil.createTokenRangeHighlighter(getEditor(), getProject(), ConsoleViewContentType.USER_INPUT, newStartOffset, newEndOffset, true);
     }
 
     moveScrollRemoveSelection(editor, newEndOffset);

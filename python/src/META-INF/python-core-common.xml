@@ -125,6 +125,7 @@
     <applicationService serviceInterface="com.jetbrains.python.run.PyRunConfigurationFactory"
                         serviceImplementation="com.jetbrains.python.run.PyRunConfigurationFactoryImpl"/>
     <applicationService serviceImplementation="com.jetbrains.python.run.PythonRunConfigurationExtensionsManager"/>
+    <applicationService serviceImplementation="com.jetbrains.python.debugger.variablesview.usertyperenderers.PyUserTypeRenderersSettings"/>
     <projectService serviceImplementation="com.jetbrains.python.debugger.PyDebugValueExecutionService"/>
     <configurationType implementation="com.jetbrains.python.run.PythonConfigurationType"/>
     <programRunner implementation="com.jetbrains.python.run.PythonRunner" order="first"/>
@@ -269,6 +270,8 @@
 
     <applicationConfigurable groupId="tools" instance="com.jetbrains.python.documentation.PythonDocumentationConfigurable"
                              id="com.jetbrains.python.documentation.PythonDocumentationConfigurable"/>
+    <applicationConfigurable parentId="project.propDebugger" instance="com.jetbrains.python.debugger.variablesview.usertyperenderers.PyUserTypeRenderersConfigurable"
+                             id="debugger.dataViews.python.type.renderers"/>
     <projectConfigurable groupId="tools" instance="com.jetbrains.python.configuration.PyIntegratedToolsModulesConfigurable"
                          id="com.jetbrains.python.configuration.PyIntegratedToolsModulesConfigurable"
                          bundle="messages.PyBundle"
@@ -310,7 +313,9 @@
     <additionalTextAttributes scheme="Default" file="colorSchemes/PythonDefault.xml"/>
     <additionalTextAttributes scheme="Darcula" file="colorSchemes/PythonDarcula.xml"/>
 
+    <postStartupActivity implementation="com.jetbrains.python.sdk.PythonHeadlessSdkUpdater"/>
     <backgroundPostStartupActivity implementation="com.jetbrains.python.sdk.PythonSdkUpdater"/>
+
     <backgroundPostStartupActivity implementation="com.jetbrains.python.packaging.PyPackagesUpdater"/>
     <directoryProjectConfigurator implementation="com.jetbrains.python.configuration.PyDefaultProjectAwareServiceConfigurator" id="integratedTools" order="after sdk"/>
 
@@ -405,7 +410,7 @@
     <postStartupActivity implementation="com.jetbrains.python.sdk.poetry.PoetryConfigLoader" order="last"/>
 
     <!-- Targets API -->
-    <registryKey key="python.use.targets.api" defaultValue="true" description="Switches Python support to Targets API." />
+    <registryKey key="python.use.targets.api" defaultValue="false" description="Switches Python support to Targets API." />
     <notificationGroup id="Python Debugger" displayType="TOOL_WINDOW" toolWindowId="Debug" bundle="messages.PyBundle" key="debug.notification.group"/>
     <notificationGroup id="Python SDK Updater" displayType="BALLOON" bundle="messages.PyBundle" key="python.sdk.updater.notifications.group.title"/>
     <notificationGroup id="Sync Python requirements" displayType="BALLOON" bundle="messages.PyBundle" key="python.requirements.balloon"/>
@@ -658,6 +663,10 @@
 
     <action id="PyDebugger.ViewArray" class="com.jetbrains.python.debugger.containerview.PyViewNumericContainerAction">
       <add-to-group group-id="XDebugger.ValueGroup" anchor="after" relative-to-action="Debugger.AddToWatch"/>
+    </action>
+
+    <action id="PyDebugger.CustomizeDataView" class="com.jetbrains.python.debugger.variablesview.usertyperenderers.ConfigureTypeRenderersAction">
+      <add-to-group group-id="XDebugger.ValueGroup" anchor="first"/>
     </action>
 
     <action id="PyDebugger.ViewAsGroup" class="com.jetbrains.python.debugger.actions.ViewAsGroup">

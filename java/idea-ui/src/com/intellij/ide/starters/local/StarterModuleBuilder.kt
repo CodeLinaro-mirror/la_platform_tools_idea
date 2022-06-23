@@ -61,8 +61,8 @@ import javax.swing.Icon
 abstract class StarterModuleBuilder : ModuleBuilder() {
 
   companion object {
-    @JvmStatic
-    private val INVALID_PACKAGE_NAME_SYMBOL_PATTERN: Regex = Regex("[^a-zA-Z0-9_.]")
+    @JvmField
+    val INVALID_PACKAGE_NAME_SYMBOL_PATTERN: Regex = Regex("[^a-zA-Z\\d_.]")
 
     @JvmStatic
     private val IMPORTER_EP_NAME: ExtensionPointName<StarterModuleImporter> =
@@ -173,7 +173,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
   protected abstract fun getProjectTypes(): List<StarterProjectType>
   protected abstract fun getLanguages(): List<StarterLanguage>
   protected abstract fun getStarterPack(): StarterPack
-  protected abstract fun getTestFrameworks(): List<StarterTestRunner>
+  protected open fun getTestFrameworks(): List<StarterTestRunner> = emptyList()
   protected abstract fun getAssets(starter: Starter): List<GeneratorAsset>
   protected open fun isExampleCodeProvided(): Boolean = false
   protected open fun getMinJavaVersion(): JavaVersion? = LanguageLevel.JDK_1_8.toJavaVersion()
@@ -360,7 +360,7 @@ abstract class StarterModuleBuilder : ModuleBuilder() {
 
           if (starterContext.gitIntegration) {
             runBackgroundableTask(IdeBundle.message("progress.title.creating.git.repository"), module.project) {
-              GitRepositoryInitializer.getInstance()?.initRepository(module.project, moduleContentRoot)
+              GitRepositoryInitializer.getInstance()?.initRepository(module.project, moduleContentRoot, true)
             }
           }
 

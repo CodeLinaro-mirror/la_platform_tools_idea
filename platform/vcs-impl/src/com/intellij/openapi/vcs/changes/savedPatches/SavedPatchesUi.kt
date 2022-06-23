@@ -39,6 +39,8 @@ open class SavedPatchesUi(project: Project, private val providers: List<SavedPat
     PopupHandler.installPopupMenu(tree, "Vcs.SavedPatches.ContextMenu", SAVED_PATCHES_UI_PLACE)
 
     changesBrowser = SavedPatchesChangesBrowser(project, focusMainUi, this)
+    CombinedSpeedSearch(changesBrowser.viewer, tree.speedSearch)
+
     val bottomToolbar = buildBottomToolbar()
 
     tree.addSelectionListener {
@@ -147,5 +149,6 @@ open class SavedPatchesUi(project: Project, private val providers: List<SavedPat
   companion object {
     const val SAVED_PATCHES_UI_PLACE = "SavedPatchesUiPlace"
     val SAVED_PATCHES_UI = DataKey.create<SavedPatchesUi>("SavedPatchesUi")
+    val SAVED_PATCH_SELECTED_CHANGES = DataKey.create<List<SavedPatchesProvider.ChangeObject>>("SavedPatchSelectedChanges")
   }
 }

@@ -34,6 +34,10 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
   public void testUnboxingBoxingInLambdaReturn() { doTest(); }
   public void testUnboxingInMethodReferences() { doTest(); }
   public void testMethodReferenceOnNullable() { doTest(); }
+  public void testObjectsNonNullWithUnknownNullable() {
+    setupTypeUseAnnotations("typeUse", myFixture);
+    doTestWith(insp -> insp.TREAT_UNKNOWN_MEMBERS_AS_NULLABLE = true);
+  }
   public void testNullableVoidLambda() { doTest(); }
   public void testNullableForeachVariable() { doTestWithCustomAnnotations(); }
   public void testGenericParameterNullity() { doTestWithCustomAnnotations(); }
@@ -206,6 +210,7 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
     setupTypeUseAnnotations("foo", myFixture);
     doTest();
   }
+  public void testStreamFindFirstExpectNotNull() { doTest(); }
   public void testStreamAnyMatchIsNull() { doTest(); }
   public void testStreamCustomSumMethod() { doTest(); }
   public void testStreamReduceLogicalAnd() { doTest(); }
@@ -359,4 +364,5 @@ public class DataFlowInspection8Test extends DataFlowInspectionTestCase {
     DataFlowInspectionTest.addJavaxDefaultNullabilityAnnotations(myFixture);
     doTest();
   }
+  public void testConstructorMethodReferenceNullability() { doTest(); }
 }

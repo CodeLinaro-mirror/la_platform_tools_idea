@@ -3,6 +3,7 @@ package com.intellij.toolWindow
 
 import com.intellij.ide.IdeBundle
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.ui.Queryable
@@ -30,8 +31,8 @@ import com.intellij.ui.content.impl.ContentImpl
 import com.intellij.ui.content.impl.ContentManagerImpl
 import com.intellij.ui.hover.HoverStateListener
 import com.intellij.ui.paint.LinePainter2D
+import com.intellij.ui.plaf.beg.BegResources.m
 import com.intellij.util.MathUtil
-import com.intellij.util.ObjectUtils
 import com.intellij.util.animation.AlphaAnimated
 import com.intellij.util.ui.JBInsets
 import com.intellij.util.ui.JBUI
@@ -172,7 +173,7 @@ class InternalDecoratorImpl internal constructor(
     if (SystemInfoRt.isMac) {
       background = JBColor(Gray._200, Gray._90)
     }
-    if (ExperimentalUI.isNewUI()) {
+    if (toolWindow.toolWindowManager.isNewUi) {
       background = JBUI.CurrentTheme.ToolWindow.background()
     }
     contentManager.addContentManagerListener(object : ContentManagerListener {
@@ -198,7 +199,7 @@ class InternalDecoratorImpl internal constructor(
         layout = BorderLayout()
         add(dividerAndHeader, BorderLayout.NORTH)
         add(myDecoratorChild, BorderLayout.CENTER)
-        ApplicationManager.getApplication().invokeLater({ border = InnerPanelBorder(toolWindow) }, toolWindow.project.disposed)
+        border = InnerPanelBorder(toolWindow)
         firstDecorator?.let {
           Disposer.dispose(it.contentManager)
         }
@@ -308,7 +309,7 @@ class InternalDecoratorImpl internal constructor(
 
   fun unsplit(toSelect: Content?) {
     if (!mode!!.isSplit) {
-      ObjectUtils.consumeIfNotNull(findNearestDecorator(this)) { decorator: InternalDecoratorImpl -> decorator.unsplit(toSelect) }
+      findNearestDecorator(this)?.unsplit(toSelect)
       return
     }
     if (isSplitUnsplitInProgress()) {
@@ -316,28 +317,32 @@ class InternalDecoratorImpl internal constructor(
     }
     setSplitUnsplitInProgress(true)
     try {
-      if (firstDecorator == null || secondDecorator == null) return
-      if (firstDecorator!!.mode!!.isSplit) {
-        raise(true)
-        return
+      when {
+        firstDecorator == null || secondDecorator == null -> {
+          return
+        }
+        firstDecorator!!.mode!!.isSplit -> {
+          raise(true)
+          return
+        }
+        secondDecorator!!.mode!!.isSplit -> {
+          raise(false)
+          return
+        }
+        else -> {
+          for (c in firstDecorator!!.contentManager.contents) {
+            moveContent(c, firstDecorator!!, this)
+          }
+          for (c in secondDecorator!!.contentManager.contents) {
+            moveContent(c, secondDecorator!!, this)
+          }
+          updateMode(if (findNearestDecorator(this) != null) Mode.CELL else Mode.SINGLE)
+          toSelect?.manager?.setSelectedContent(toSelect)
+          firstDecorator = null
+          secondDecorator = null
+          splitter = null
+        }
       }
-      if (secondDecorator!!.mode!!.isSplit) {
-        raise(false)
-        return
-      }
-      for (c in firstDecorator!!.contentManager.contents) {
-        moveContent(c, firstDecorator!!, this)
-      }
-      for (c in secondDecorator!!.contentManager.contents) {
-        moveContent(c, secondDecorator!!, this)
-      }
-      updateMode(if (findNearestDecorator(this) != null) Mode.CELL else Mode.SINGLE)
-      if (toSelect != null) {
-        ObjectUtils.consumeIfNotNull(toSelect.manager) { m: ContentManager -> m.setSelectedContent(toSelect) }
-      }
-      firstDecorator = null
-      secondDecorator = null
-      splitter = null
     }
     finally {
       setSplitUnsplitInProgress(false)
@@ -379,6 +384,17 @@ class InternalDecoratorImpl internal constructor(
     return divider!!
   }
 
+  override fun doLayout() {
+    super.doLayout()
+    initDivider().bounds = when (toolWindow.anchor) {
+      ToolWindowAnchor.TOP -> Rectangle(0, height - 1, width, 0)
+      ToolWindowAnchor.LEFT -> Rectangle(width - 1, 0, 0, height)
+      ToolWindowAnchor.BOTTOM -> Rectangle(0, 0, width, 0)
+      ToolWindowAnchor.RIGHT -> Rectangle(0, 0, 0, height)
+      else -> Rectangle(0, 0, 0, 0)
+    }
+  }
+
   fun applyWindowInfo(info: WindowInfo) {
     if (info.type == ToolWindowType.SLIDING) {
       val anchor = info.anchor
@@ -394,7 +410,7 @@ class InternalDecoratorImpl internal constructor(
     }
     else if (divider != null) {
       // docked and floating windows don't have divider
-      divider!!.parent.remove(divider)
+      divider!!.parent?.remove(divider)
       divider = null
     }
 
@@ -513,7 +529,7 @@ class InternalDecoratorImpl internal constructor(
     val toolbar = headerToolbar
     if (toolbar is AlphaAnimated) {
       val alpha = toolbar as AlphaAnimated
-      alpha.alphaAnimator.setVisible(!ExperimentalUI.isNewUI() || isWindowHovered || header.isPopupShowing || toolWindow.isActive)
+      alpha.alphaAnimator.setVisible(!toolWindow.toolWindowManager.isNewUi || isWindowHovered || header.isPopupShowing || toolWindow.isActive)
     }
   }
 
@@ -580,6 +596,7 @@ class InternalDecoratorImpl internal constructor(
   }
 
   override fun reshape(x: Int, y: Int, w: Int, h: Int) {
+    val rectangle = bounds
     super.reshape(x, y, w, h)
     val topLevelDecorator = findTopLevelDecorator(this)
     if (topLevelDecorator == null || !topLevelDecorator.isShowing) {
@@ -599,7 +616,9 @@ class InternalDecoratorImpl internal constructor(
       putClientProperty(HIDE_COMMON_TOOLWINDOW_BUTTONS, hideButtons)
       putClientProperty(INACTIVE_LOOK, hideActivity)
     }
-    contentUi.update()
+    if (!rectangle.equals(bounds)) {
+      contentUi.update()
+    }
   }
 
   fun setDropInfoIndex(index: Int, width: Int) {
@@ -634,14 +653,30 @@ class InternalDecoratorImpl internal constructor(
                                                           private val decorator: InternalDecoratorImpl) : MouseAdapter() {
     private var isDragging = false
     private fun isInDragZone(e: MouseEvent): Boolean {
-      val point = Point(e.point)
-      SwingUtilities.convertPointToScreen(point, e.component)
-      if ((if (decorator.toolWindow.windowInfo.anchor.isHorizontal) point.y else point.x) == 0) {
-        return false
+      if (!divider.isShowing
+          || (divider.width == 0 && divider.height == 0)
+          || e.id == MouseEvent.MOUSE_DRAGGED) return false
+
+      val point = SwingUtilities.convertPoint(e.component, e.point, divider)
+      val isTopBottom = decorator.toolWindow.windowInfo.anchor.isHorizontal
+      val activeArea = Rectangle(divider.size)
+
+      var resizeArea = ToolWindowPane.headerResizeArea
+      val target = SwingUtilities.getDeepestComponentAt(e.component, e.point.x, e.point.y)
+      if (target is JScrollBar || target is ActionButton) {
+        resizeArea /= 3
       }
-      SwingUtilities.convertPointFromScreen(point, divider)
-      return Math.abs(
-        if (decorator.toolWindow.windowInfo.anchor.isHorizontal) point.y else point.x) <= ToolWindowPane.headerResizeArea
+
+      if (isTopBottom) {
+        activeArea.y -= resizeArea
+        activeArea.height += 2 * resizeArea
+      }
+      else {
+        activeArea.x -= resizeArea
+        activeArea.width += 2 * resizeArea
+      }
+
+      return activeArea.contains(point)
     }
 
     private fun updateCursor(event: MouseEvent, isInDragZone: Boolean) {

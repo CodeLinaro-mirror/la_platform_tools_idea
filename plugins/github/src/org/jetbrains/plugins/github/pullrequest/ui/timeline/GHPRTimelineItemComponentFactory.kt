@@ -43,6 +43,7 @@ import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRDetailsDataPro
 import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRReviewDataProvider
 import org.jetbrains.plugins.github.pullrequest.ui.GHEditableHtmlPaneHandle
 import org.jetbrains.plugins.github.pullrequest.ui.GHTextActions
+import org.jetbrains.plugins.github.pullrequest.ui.changes.GHPRSuggestedChangeHelper
 import org.jetbrains.plugins.github.ui.avatars.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.ui.util.GHUIUtil
 import org.jetbrains.plugins.github.ui.util.HtmlEditorPane
@@ -61,6 +62,7 @@ class GHPRTimelineItemComponentFactory(private val project: Project,
                                        private val reviewDiffComponentFactory: GHPRReviewThreadDiffComponentFactory,
                                        private val eventComponentFactory: GHPRTimelineEventComponentFactory<GHPRTimelineEvent>,
                                        private val selectInToolWindowHelper: GHPRSelectInToolWindowHelper,
+                                       private val suggestedChangeHelper: GHPRSuggestedChangeHelper,
                                        private val currentUser: GHUser) : TimelineItemComponentFactory<GHPRTimelineItem> {
 
   override fun createComponent(item: GHPRTimelineItem): Item {
@@ -100,15 +102,10 @@ class GHPRTimelineItemComponentFactory(private val project: Project,
     val actionsPanel: JPanel?
     if (details is GHPullRequest) {
       val textPane = HtmlEditorPane(details.body.convertToHtml(project))
-      val panelHandle = GHEditableHtmlPaneHandle(project,
-                                                 textPane,
-                                                 { detailsDataProvider.getDescriptionMarkdownBody(EmptyProgressIndicator()) },
-                                                 { newText ->
-                                                   detailsDataProvider.updateDetails(EmptyProgressIndicator(),
-                                                                                     description = newText).successOnEdt {
-                                                     textPane.setBody(it.body)
-                                                   }
-                                                 })
+      val panelHandle = GHEditableHtmlPaneHandle(project, textPane, details::body) { newText ->
+        detailsDataProvider.updateDetails(EmptyProgressIndicator(), description = newText)
+          .successOnEdt { textPane.setBody(it.body.convertToHtml(project)) }
+      }
       contentPanel = panelHandle.panel
       actionsPanel = if (details.viewerCanUpdate) NonOpaquePanel(HorizontalLayout(JBUIScale.scale(8))).apply {
         add(GHTextActions.createEditButton(panelHandle))
@@ -129,13 +126,10 @@ class GHPRTimelineItemComponentFactory(private val project: Project,
 
   private fun createComponent(comment: GHIssueComment): Item {
     val textPane = HtmlEditorPane(comment.body.convertToHtml(project))
-    val panelHandle = GHEditableHtmlPaneHandle(project,
-                                               textPane,
-                                               { commentsDataProvider.getCommentMarkdownBody(EmptyProgressIndicator(), comment.id) },
-                                               { newText ->
-                                                 commentsDataProvider.updateComment(EmptyProgressIndicator(), comment.id,
-                                                                                    newText).successOnEdt { textPane.setBody(it) }
-                                               })
+    val panelHandle = GHEditableHtmlPaneHandle(project, textPane, comment::body) { newText ->
+      commentsDataProvider.updateComment(EmptyProgressIndicator(), comment.id, newText)
+        .successOnEdt { textPane.setBody(it.convertToHtml(project)) }
+    }
     val actionsPanel = NonOpaquePanel(HorizontalLayout(JBUIScale.scale(8))).apply {
       if (comment.viewerCanUpdate) add(GHTextActions.createEditButton(panelHandle))
       if (comment.viewerCanDelete) add(GHTextActions.createDeleteButton {
@@ -154,16 +148,12 @@ class GHPRTimelineItemComponentFactory(private val project: Project,
     val reviewThreadsModel = reviewsThreadsModelsProvider.getReviewThreadsModel(review.id)
     val panelHandle: GHEditableHtmlPaneHandle?
     if (review.body.isNotEmpty()) {
-      val editorPane = HtmlEditorPane(review.body)
+      val textPane = HtmlEditorPane(review.body.convertToHtml(project))
       panelHandle =
-        GHEditableHtmlPaneHandle(project,
-                                 editorPane,
-                                 { reviewDataProvider.getReviewMarkdownBody(EmptyProgressIndicator(), review.id) },
-                                 { newText ->
-                                   reviewDataProvider.updateReviewBody(EmptyProgressIndicator(), review.id, newText).successOnEdt {
-                                     editorPane.setBody(it)
-                                   }
-                                 })
+        GHEditableHtmlPaneHandle(project, textPane, review::body, { newText ->
+          reviewDataProvider.updateReviewBody(EmptyProgressIndicator(), review.id, newText)
+            .successOnEdt { textPane.setBody(it.convertToHtml(project)) }
+        })
     }
     else {
       panelHandle = null
@@ -177,8 +167,11 @@ class GHPRTimelineItemComponentFactory(private val project: Project,
       border = JBUI.Borders.emptyTop(4)
       if (panelHandle != null) add(panelHandle.panel)
       add(GHPRReviewThreadsPanel.create(reviewThreadsModel) {
-        GHPRReviewThreadComponent.createWithDiff(project, it, reviewDataProvider, selectInToolWindowHelper, reviewDiffComponentFactory,
-                                                 avatarIconsProvider, currentUser)
+        GHPRReviewThreadComponent.createWithDiff(project, it,
+                                                 reviewDataProvider, avatarIconsProvider,
+                                                 reviewDiffComponentFactory,
+                                                 selectInToolWindowHelper, suggestedChangeHelper,
+                                                 currentUser)
       })
     }
     val actionText = when (review.state) {

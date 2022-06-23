@@ -6,32 +6,49 @@ import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.util.xmlb.XmlSerializer
 
 class LibraryUsageStatisticStorageTest : LightJavaCodeInsightFixtureTestCase() {
-  fun test() {
+  fun testFiles() {
+    val txtFile = myFixture.addFileToProject("Text.txt", "").virtualFile
+    val javaFile = myFixture.addFileToProject("JavaFile.java", "").virtualFile
+    val filesStorageService = ProcessedFilesStorageService.getInstance(project)
+    val state = filesStorageService.state
+    val timestamps = state.timestamps
+
+    assertFalse(filesStorageService.isVisited(txtFile))
+    assertTrue(filesStorageService.visit(txtFile))
+    assertTrue(filesStorageService.isVisited(txtFile))
+    assertFalse(filesStorageService.visit(txtFile))
+
+    assertTrue(filesStorageService.isVisited(txtFile))
+    filesStorageService.visit(txtFile)
+    assertTrue(filesStorageService.isVisited(txtFile))
+
+    assertFalse(filesStorageService.isVisited(javaFile))
+    assertTrue(filesStorageService.visit(javaFile))
+    assertTrue(filesStorageService.isVisited(javaFile))
+
+    assertTrue(timestamps.isNotEmpty())
+
+    val serializedState = XmlSerializer.serialize(state)
+    val deserializedState = XmlSerializer.deserialize(
+      serializedState,
+      ProcessedFilesStorageService.MyState::class.java,
+    )
+
+    assertEquals(timestamps, deserializedState.timestamps)
+    filesStorageService.loadState(deserializedState)
+    assertEquals(timestamps, filesStorageService.state.timestamps)
+  }
+
+  fun testLibraries() {
     val txtFile = myFixture.addFileToProject("Text.txt", "").virtualFile
     val javaFile = myFixture.addFileToProject("JavaFile.java", "").virtualFile
     val storageService = LibraryUsageStatisticsStorageService.getInstance(project)
 
-    assertFalse(storageService.isVisited(txtFile))
-    assertTrue(storageService.visit(txtFile))
-    assertTrue(storageService.isVisited(txtFile))
-    assertFalse(storageService.visit(txtFile))
-
-    assertFalse(storageService.isVisited(javaFile))
-    assertTrue(storageService.visit(javaFile))
-
-    assertTrue(storageService.state.statistics.isEmpty())
-    assertTrue(storageService.isVisited(txtFile))
-    assertTrue(storageService.isVisited(javaFile))
-
-    assertTrue(storageService.getStatisticsAndResetState().isEmpty())
-    assertFalse(storageService.isVisited(txtFile))
-    assertFalse(storageService.isVisited(javaFile))
-
     val txtLib = createLib(txtFile)
-    storageService.increaseUsage(txtFile, txtLib)
-    storageService.increaseUsage(txtFile, txtLib)
-    storageService.increaseUsage(javaFile, createLib(javaFile))
-    storageService.increaseUsages(txtFile, listOf(txtLib, createLib(txtFile, version = "1.0.0"), createLib(txtFile, name = "otherName")))
+    storageService.increaseUsage(txtLib)
+    storageService.increaseUsage(txtLib)
+    storageService.increaseUsage(createLib(javaFile))
+    storageService.increaseUsages(listOf(txtLib, createLib(txtFile, version = "1.0.0"), createLib(txtFile, name = "otherName")))
 
     val copyOfState = storageService.state
     assertTrue(copyOfState.statistics.isNotEmpty())
@@ -54,8 +71,6 @@ class LibraryUsageStatisticStorageTest : LightJavaCodeInsightFixtureTestCase() {
     val statistics = storageService.getStatisticsAndResetState()
     assertEquals(expectedSet, statistics)
     assertTrue(storageService.state.statistics.isEmpty())
-    assertFalse(storageService.isVisited(txtFile))
-    assertFalse(storageService.isVisited(javaFile))
 
     val serializedState = XmlSerializer.serialize(state)
     val deserializedState = XmlSerializer.deserialize(
@@ -67,6 +82,10 @@ class LibraryUsageStatisticStorageTest : LightJavaCodeInsightFixtureTestCase() {
     storageService.loadState(deserializedState)
     assertEquals(expectedSet, storageService.state.statistics)
   }
+}
+
+private fun LibraryUsageStatisticsStorageService.increaseUsage(lib: LibraryUsage) {
+  increaseUsages(listOf(lib))
 }
 
 private fun createLib(

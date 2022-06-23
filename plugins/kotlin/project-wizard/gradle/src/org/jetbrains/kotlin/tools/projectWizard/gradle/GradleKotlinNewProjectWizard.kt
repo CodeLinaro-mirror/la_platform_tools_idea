@@ -9,6 +9,13 @@ import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logP
 import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logSdkChanged
 import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logSdkFinished
 import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logVersionChanged
+import com.intellij.ide.projectWizard.generators.AssetsNewProjectWizardStep
+import com.intellij.ide.starters.local.StandardAssetsProvider
+import com.intellij.ide.wizard.GitNewProjectWizardData.Companion.gitData
+import com.intellij.ide.wizard.NewProjectWizardBaseData.Companion.name
+import com.intellij.ide.wizard.NewProjectWizardBaseData.Companion.path
+import com.intellij.ide.wizard.NewProjectWizardStep
+import com.intellij.ide.wizard.chain
 import com.intellij.openapi.project.Project
 import com.intellij.ui.UIBundle
 import com.intellij.ui.dsl.builder.Panel
@@ -17,15 +24,19 @@ import com.intellij.ui.dsl.builder.bindSelected
 import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizard
 import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizardData
 import org.jetbrains.kotlin.tools.projectWizard.KotlinNewProjectWizard
+import org.jetbrains.kotlin.tools.projectWizard.kmpWizardLink
 import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.BuildSystemType.GradleGroovyDsl
 import org.jetbrains.kotlin.tools.projectWizard.plugins.buildSystem.BuildSystemType.GradleKotlinDsl
 import org.jetbrains.plugins.gradle.service.project.wizard.GradleNewProjectWizardStep
+import java.io.File
 
 internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard {
 
     override val name = "Gradle"
 
-    override fun createStep(parent: KotlinNewProjectWizard.Step) = Step(parent)
+    override val ordinal: Int = 300
+
+    override fun createStep(parent: KotlinNewProjectWizard.Step) = Step(parent).chain(::AssetsStep)
 
     class Step(parent: KotlinNewProjectWizard.Step) :
         GradleNewProjectWizardStep<KotlinNewProjectWizard.Step>(parent),
@@ -38,13 +49,15 @@ internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard 
             useKotlinDsl = true
         }
 
-        override fun setupUI(builder: Panel) {
-            super.setupUI(builder)
+        override fun setupSettingsUI(builder: Panel) {
+            super.setupSettingsUI(builder)
             with(builder) {
                 row {
                     checkBox(UIBundle.message("label.project.wizard.new.project.add.sample.code"))
                         .bindSelected(addSampleCodeProperty)
                 }.topGap(TopGap.SMALL)
+
+                kmpWizardLink(context)
             }
         }
 
@@ -72,6 +85,25 @@ internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard 
             groupIdProperty.afterChange { logGroupIdChanged() }
             artifactIdProperty.afterChange { logArtifactIdChanged() }
             versionProperty.afterChange { logVersionChanged() }
+        }
+    }
+
+    private class AssetsStep(parent: NewProjectWizardStep) : AssetsNewProjectWizardStep(parent) {
+        override fun setupAssets(project: Project) {
+            outputDirectory = "$path/$name"
+            addAssets(StandardAssetsProvider().getGradlewAssets())
+            if (gitData?.git == true) {
+                addAssets(StandardAssetsProvider().getGradleIgnoreAssets())
+            }
+        }
+
+        override fun setupProject(project: Project) {
+            super.setupProject(project)
+
+            val gradlewFile = File(outputDirectory, "gradlew")
+            if (gradlewFile.exists()) {
+                gradlewFile.setExecutable(true, false)
+            }
         }
     }
 }
