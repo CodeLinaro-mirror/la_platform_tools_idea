@@ -10,7 +10,10 @@ import com.intellij.internal.statistic.utils.StatisticsUtil
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
+import com.intellij.util.indexing.diagnostic.dto.toMillis
+import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.collections.HashMap
 import kotlin.math.roundToLong
 
 class ProjectIndexingHistoryFusReporterListener : ProjectIndexingHistoryListener {
@@ -47,8 +50,9 @@ class ProjectIndexingHistoryFusReporterListener : ProjectIndexingHistoryListener
     ProjectIndexingHistoryFusReporter.reportIndexingFinished(
       projectIndexingHistory.project,
       projectIndexingHistory.indexingSessionId,
-      projectIndexingHistory.times.wasFullIndexing,
-      TimeUnit.NANOSECONDS.toMillis(projectIndexingHistory.times.totalUpdatingTime),
+      projectIndexingHistory.times.scanningType,
+      projectIndexingHistory.times.totalUpdatingTime.toMillis(),
+      projectIndexingHistory.times.indexingDuration.toMillis(),
       scanningTime,
       numberOfFileProviders,
       numberOfScannedFiles,
@@ -76,13 +80,15 @@ class ProjectIndexingHistoryFusReporterListener : ProjectIndexingHistoryListener
 }
 
 object ProjectIndexingHistoryFusReporter : CounterUsagesCollector() {
-  private val GROUP = EventLogGroup("indexing.statistics", 4)
+  private val GROUP = EventLogGroup("indexing.statistics", 6)
 
   override fun getGroup() = GROUP
 
   private val indexingSessionId = EventFields.Long("indexing_session_id")
 
   private val isFullIndexing = EventFields.Boolean("is_full")
+  private val scanningType = EventFields.Enum<ScanningType>("type") { type -> type.name.lowercase(Locale.ENGLISH) }
+  private val totalTime = EventFields.Long("total_time")
   private val indexingTime = EventFields.Long("indexing_time")
   private val scanningTime = EventFields.Long("scanning_time")
   private val numberOfFileProviders = EventFields.Int("number_of_file_providers")
@@ -109,6 +115,8 @@ object ProjectIndexingHistoryFusReporter : CounterUsagesCollector() {
     "finished",
     indexingSessionId,
     isFullIndexing,
+    scanningType,
+    totalTime,
     indexingTime,
     scanningTime,
     numberOfFileProviders,
@@ -130,7 +138,8 @@ object ProjectIndexingHistoryFusReporter : CounterUsagesCollector() {
   fun reportIndexingFinished(
     project: Project,
     indexingSessionId: Long,
-    wasFullIndexing: Boolean,
+    scanningType: ScanningType,
+    totalTime: Long,
     indexingTime: Long,
     scanningTime: Long,
     numberOfFileProviders: Int,
@@ -145,7 +154,9 @@ object ProjectIndexingHistoryFusReporter : CounterUsagesCollector() {
     indexingFinished.log(
       project,
       this.indexingSessionId.with(indexingSessionId),
-      this.isFullIndexing.with(wasFullIndexing),
+      this.isFullIndexing.with(scanningType.isFull),
+      this.scanningType.with(scanningType),
+      this.totalTime.with(totalTime),
       this.indexingTime.with(indexingTime),
       this.scanningTime.with(scanningTime),
       this.numberOfFileProviders.with(numberOfFileProviders),

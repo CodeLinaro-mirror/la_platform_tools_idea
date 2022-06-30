@@ -8,6 +8,7 @@ import com.intellij.internal.statistic.StructuredIdeActivity
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -493,7 +494,7 @@ object CodeWithMeClientDownloader {
         if (SystemInfo.isMac) {
           val app = guestRoot.toFile().listFiles { file -> file.name.endsWith(".app") && file.isDirectory }!!.singleOrNull()
           if (app != null) {
-            return app.toPath() to listOf("open", "-n", "-a", app.toString(), "--args")
+            return app.toPath() to listOf("open", "-n", "-W", "-a", app.toString(), "--args")
           }
         }
 
@@ -515,7 +516,7 @@ object CodeWithMeClientDownloader {
     val (executable, fullLauncherCmd) = findLauncherUnderCwmGuestRoot(guestRoot)
     val guestHome = findCwmGuestHome(guestRoot)
 
-    val linkTarget = if (SystemInfo.isMac) jdkRoot / "jbr" else detectTrueJdkRoot(jdkRoot)
+    val linkTarget = if (SystemInfo.isMac) detectMacOsJbrDirectory(jdkRoot) else detectTrueJdkRoot(jdkRoot)
     createSymlink(guestHome / "jbr", linkTarget)
 
     // Update mtime on JRE & CWM Guest roots. The cleanup process will use it later.
@@ -590,16 +591,22 @@ object CodeWithMeClientDownloader {
             super.processTerminated(event)
             LOG.info("Guest process terminated, exit code " + event.exitCode)
 
-            // if process exited abnormally but took longer than 10 seconds, it's likely to be an issue with connection instead of Mac-specific bug
-            if (event.exitCode != 0 && (System.currentTimeMillis() - lastProcessStartTime) < 10_000) {
-              if (attemptCount > 0) {
-                LOG.info("Previous attempt to start guest process failed, will try again in one second")
-                EdtScheduledExecutorService.getInstance().schedule({ doRunProcess() }, ModalityState.any(), 1, TimeUnit.SECONDS)
+            if (event.exitCode == 0) {
+              application.invokeLater {
+                processLifetimeDef.terminate()
               }
-              else {
-                LOG.warn("Running client process failed after specified number of attempts")
-                application.invokeLater {
-                  processLifetimeDef.terminate()
+            } else {
+              // if process exited abnormally but took longer than 10 seconds, it's likely to be an issue with connection instead of Mac-specific bug
+              if ((System.currentTimeMillis() - lastProcessStartTime) < 10_000 ) {
+                if (attemptCount > 0) {
+                  LOG.info("Previous attempt to start guest process failed, will try again in one second")
+                  EdtScheduledExecutorService.getInstance().schedule({ doRunProcess() }, ModalityState.any(), 1, TimeUnit.SECONDS)
+                }
+                else {
+                  LOG.warn("Running client process failed after specified number of attempts")
+                  application.invokeLater {
+                    processLifetimeDef.terminate()
+                  }
                 }
               }
             }
@@ -624,8 +631,15 @@ object CodeWithMeClientDownloader {
     return processLifetimeDef.lifetime
   }
 
+  private fun detectMacOsJbrDirectory(root: Path): Path {
+    val jbrDirectory = root.listDirectoryEntries().find { it.nameWithoutExtension.startsWith("jbr") }
+
+    LOG.debug { "JBR directory: $jbrDirectory" }
+    return jbrDirectory ?: error("Unable to find target content directory starts with 'jbr' inside MacOS package: '$root'")
+  }
+
   fun createSymlinkToJdkFromGuest(guestRoot: Path, jdkRoot: Path) {
-    val linkTarget = if (SystemInfo.isMac) jdkRoot / "jbr" else detectTrueJdkRoot(jdkRoot)
+    val linkTarget = if (SystemInfo.isMac) detectMacOsJbrDirectory(jdkRoot) else detectTrueJdkRoot(jdkRoot)
     val guestHome = findCwmGuestHome(guestRoot)
     createSymlink(guestHome / "jbr", linkTarget)
   }
