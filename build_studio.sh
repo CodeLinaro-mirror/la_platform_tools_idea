@@ -11,19 +11,11 @@ function die() {
   exit 1
 }
 
-function get_absolute_path() {
-  ( unset CDPATH; cd "$1" && pwd ) 2> /dev/null
-}
-
-OUT="${OUT_DIR:-out/studio}"
+OUT="${OUT_DIR:-${PROG_DIR}/out/studio}"
 DIST="${DIST_DIR:-"${OUT}/dist"}"
 
-cd "$PROG_DIR"
 mkdir -p "$OUT"
 mkdir -p "$DIST"
-# ensure OUT and DIST are absolute paths
-OUT="$(get_absolute_path "$OUT")"
-DIST="$(get_absolute_path "$DIST")"
 
 INCREMENTAL=false
 while [[ $# -gt 0 ]]; do
@@ -35,7 +27,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-readonly AS_BUILD_NUMBER="$(sed "s/SNAPSHOT/__BUILD_NUMBER__/" build.txt)"
+readonly AS_BUILD_NUMBER="$(sed "s/SNAPSHOT/__BUILD_NUMBER__/" "${PROG_DIR}/build.txt")"
 
 declare -ar BUILD_PROPERTIES=(
   "-Dintellij.build.output.root=${OUT}"
@@ -48,8 +40,6 @@ declare -ar BUILD_PROPERTIES=(
 
 "${PROG_DIR}/platform/jps-bootstrap/jps-bootstrap.sh" "${BUILD_PROPERTIES[@]}" "${PROG_DIR}" intellij.idea.community.build AndroidStudioBuildTarget
 
-"${PROG_DIR}/platform/jps-bootstrap/jps-bootstrap.sh" "-Dintellij.build.output.root=${OUT}/updater" "${PROG_DIR}" intellij.idea.community.build FullUpdaterBuildTarget
-
 mkdir -p "$DIST"
 cp -Rfv "$OUT"/artifacts/android-studio* "$DIST"
-cp -Rfv "$OUT"/updater/artifacts/updater-full.jar "$DIST"/updater-full.jar
+cp -Rfv "$OUT"/artifacts/updater-full.jar "$DIST"
