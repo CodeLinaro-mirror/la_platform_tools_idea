@@ -284,6 +284,8 @@
                 class="com.intellij.ide.bookmark.actions.GroupLineBookmarksToggleAction"/>
         <action id="BookmarksView.RewriteBookmarkType"
                 class="com.intellij.ide.bookmark.actions.RewriteBookmarkTypeToggleAction"/>
+        <action id="BookmarksView.AskBeforeDeletingLists"
+                class="com.intellij.ide.bookmark.actions.AskBeforeDeletingListsToggleAction"/>
         <separator/>
         <action id="BookmarksView.OpenInPreviewTab"
                 class="com.intellij.ide.bookmark.actions.OpenInPreviewTabToggleAction"/>
@@ -345,6 +347,8 @@
               class="com.intellij.lang.documentation.ide.actions.DocumentationForwardAction"/>
       <action id="Documentation.EditSource" icon="AllIcons.Actions.EditSource" use-shortcut-of="EditSource"
               class="com.intellij.lang.documentation.ide.actions.DocumentationEditSourceAction"/>
+      
+      <add-to-group group-id="Other.KeymapGroup"/>
     </group>
     <action id="Documentation.ViewExternal" icon="AllIcons.General.Web" use-shortcut-of="ExternalJavaDoc"
             class="com.intellij.lang.documentation.ide.actions.DocumentationViewExternalAction"/>
@@ -739,9 +743,14 @@
       </group>
     </group>
 
-    <group id="NewToolbarActionsWithoutRight">
-      <reference ref="LeftToolbarSideGroup"/>
-      <group id="RightToolbarSideGroupNoRunWidget">
+    <group id="NewToolbarActionsXamarin">
+      <group id="LeftToolbarSideGroupXamarin">
+        <reference id="Back"/>
+        <reference id="Forward"/>
+        <reference id="SegmentedVcsControlAction"/>
+        <reference id="SearchEverywhereNewToolbarAction"/>
+      </group>
+      <group id="RightToolbarSideGroupXamarin">
         <reference id="ToolbarRunGroup"/>
         <!-- 6px -->
         <reference id="SettingsEntryPoint"/>
@@ -1707,5 +1716,6 @@
       <separator/>
       <add-to-group group-id="Internal" anchor="last"/>
     </group>
+    <action internal="true" id="ShowUsageFeatures" class ="com.intellij.usages.similarity.internal.ShowUsageFeaturesInternalAction"/>
   </actions>
 </idea-plugin>

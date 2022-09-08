@@ -20,7 +20,7 @@ import java.util.function.Consumer;
 final class ComponentsNavBarPanel extends Breadcrumbs {
   private boolean isAccessibleEnabled = false;
 
-  ComponentsNavBarPanel(@NotNull Component selectedComponent, @NotNull Consumer<Component> selectionHandler) {
+  ComponentsNavBarPanel(@NotNull Component selectedComponent, @NotNull Consumer<? super Component> selectionHandler) {
     rebuild(selectedComponent);
     onSelect((crumb, event) -> {
       if (crumb != null) {
@@ -61,6 +61,12 @@ final class ComponentsNavBarPanel extends Breadcrumbs {
   protected Color getBackground(Crumb crumb) {
     return isHovered(crumb) ? JBUI.CurrentTheme.StatusBar.Breadcrumbs.HOVER_BACKGROUND
                             : getBackground();
+  }
+
+  @Override
+  public Font getFont() {
+    Font font = super.getFont();
+    return font != null ? font.deriveFont(13f) : null;
   }
 
   private class ComponentItem implements Crumb {

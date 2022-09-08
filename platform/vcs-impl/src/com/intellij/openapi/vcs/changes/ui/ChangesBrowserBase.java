@@ -344,6 +344,11 @@ public abstract class ChangesBrowserBase extends JPanel implements DataProvider 
   public static class ShowStandaloneDiff implements AnActionExtensionProvider {
 
     @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
+
+    @Override
     public boolean isActive(@NotNull AnActionEvent e) {
       Project project = e.getProject();
       ChangesBrowserBase changesBrowser = e.getData(DATA_KEY);
@@ -367,9 +372,14 @@ public abstract class ChangesBrowserBase extends JPanel implements DataProvider 
     chain.putUserData(DiffUserDataKeys.CONTEXT_ACTIONS, createDiffActions());
   }
 
-  private class MyShowDiffAction extends DumbAwareAction implements UpdateInBackground {
+  private class MyShowDiffAction extends DumbAwareAction {
     MyShowDiffAction() {
       ActionUtil.copyFrom(this, IdeActions.ACTION_SHOW_DIFF_COMMON);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
     }
 
     @Override

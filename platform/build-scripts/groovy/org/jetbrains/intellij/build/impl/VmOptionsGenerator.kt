@@ -4,41 +4,69 @@
 package org.jetbrains.intellij.build.impl
 
 import org.jetbrains.intellij.build.ProductProperties
+import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.function.BiConsumer
+import kotlin.jvm.Throws
 
+@Suppress("IdentifierGrammar")
 object VmOptionsGenerator {
-  @JvmField
-  val COMMON_VM_OPTIONS: List<String> = java.util.List.of("-XX:+IgnoreUnrecognizedVMOptions", "--jbr-illegal-access", "-Dsun.java2d.metal=true",
-                                                          "-XX:+UseG1GC",
-                                                          "-XX:SoftRefLRUPolicyMSPerMB=50", "-XX:CICompilerCount=2", "-XX:+HeapDumpOnOutOfMemoryError",
-                                                          "-XX:-OmitStackTraceInFastThrow",
-                                                          "-Djna.nosys=true",  // Android Studio: added by Change Ie7351d92
-                                                          "-Djna.boot.library.path=",  // Android Studio: added by Change Ie7351d92
-                                                          "-Didea.vendor.name=Google",  // Android Studio: added by Change Ie6d690b5
-                                                          "-ea", "-Dsun.io.useCanonCaches=false", "-Djdk.http.auth.tunneling.disabledSchemes=\"\"",
-                                                          "-Djdk.attach.allowAttachSelf=true",
-                                                          "-Djdk.module.illegalAccess.silent=true", "-Dkotlinx.coroutines.debug=off")
-  private val MEMORY_OPTIONS: Map<String, String> = java.util.Map.of("-Xms", "256m", "-Xmx", "1280m", "-XX:ReservedCodeCacheSize=", "512m")  // Android Studio: modified by Change Ie7351d92
+  private val COMMON_VM_OPTIONS: List<String> = listOf(
+    "-XX:+UseG1GC",
+    "-XX:SoftRefLRUPolicyMSPerMB=50",
+    "-XX:CICompilerCount=2",
+    "-XX:+HeapDumpOnOutOfMemoryError",
+    "-XX:-OmitStackTraceInFastThrow",
+    "-XX:+IgnoreUnrecognizedVMOptions",  // allowing the JVM to start even with outdated options stuck in user configs
+    "-ea",
+    "-Dsun.io.useCanonCaches=false",
+    "-Dsun.java2d.metal=true",
+    "-Djdk.http.auth.tunneling.disabledSchemes=\"\"",
+    "-Djdk.attach.allowAttachSelf=true",
+    "-Djdk.module.illegalAccess.silent=true",
+    "-Djna.nosys=true",  // Android Studio: added by Change Ie7351d92
+    "-Djna.boot.library.path=",  // Android Studio: added by Change Ie7351d92
+    "-Didea.vendor.name=Google",  // Android Studio: added by Change Ie6d690b5
+    "-Dkotlinx.coroutines.debug=off")
+
+  private val MEMORY_OPTIONS: Map<String, String> = linkedMapOf(
+    "-Xms" to "256m",  // Android Studio: modified by Change Ie7351d92
+    "-Xmx" to "1280m",  // Android Studio: modified by Change Ie7351d92
+    "-XX:ReservedCodeCacheSize=" to "512m")
 
   @JvmStatic
-  fun computeVmOptions(isEAP: Boolean, productProperties: ProductProperties): List<String> {
+  fun computeVmOptions(isEAP: Boolean, productProperties: ProductProperties): List<String> =
+    computeVmOptions(isEAP, productProperties.customJvmMemoryOptions)
+
+  @JvmStatic
+  fun computeVmOptions(isEAP: Boolean, customJvmMemoryOptions: Map<String, String>?): List<String> {
     val result = ArrayList<String>()
-    val memory = LinkedHashMap<String, String>()
-    memory.putAll(MEMORY_OPTIONS)
-    memory.putAll(productProperties.customJvmMemoryOptions)
-    memory.forEach(BiConsumer { k, v -> result.add(k + v) })
+
+    if (customJvmMemoryOptions != null) {
+      val memory = LinkedHashMap<String, String>()
+      memory.putAll(MEMORY_OPTIONS)
+      memory.putAll(customJvmMemoryOptions)
+      memory.forEach(BiConsumer { k, v -> result.add(k + v) })
+    }
+
     result.addAll(COMMON_VM_OPTIONS)
+
     if (isEAP) {
       var place = result.indexOf("-ea")
-      if (place < 0) {
-        place = result.indexOfFirst { it.startsWith("-D") }
-        if (place < 0) {
-          place = result.size
-        }
-      }
+      if (place < 0) place = result.indexOfFirst { it.startsWith("-D") }
+      if (place < 0) place = result.size
       // must be consistent with `ConfigImportHelper#updateVMOptions`
       result.add(place, "-XX:MaxJavaStackTraceDepth=10000")
     }
+
     return result
+  }
+
+  @JvmStatic
+  @Throws(IOException::class)
+  fun writeVmOptions(file: Path, vmOptions: List<String>, separator: String) {
+    Files.writeString(file, vmOptions.joinToString(separator = separator, postfix = separator), StandardCharsets.US_ASCII)
   }
 }

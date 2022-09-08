@@ -43,11 +43,6 @@ interface BuildContext: CompilationContext {
   var bootClassPathJarNames: List<String>
 
   /**
-   * Allows to customize classpath for buildSearchableOptions and builtinModules
-   */
-  var classpathCustomizer: (MutableSet<String>) -> Unit
-
-  /**
    * Add file to be copied into application.
    */
   fun addDistFile(file: Map.Entry<Path, String>)
@@ -62,7 +57,7 @@ interface BuildContext: CompilationContext {
    * Unlike VM options produced by {@link org.jetbrains.intellij.build.impl.VmOptionsGenerator},
    * these are hard-coded into launchers and aren't supposed to be changed by a user.
    */
-  fun getAdditionalJvmArguments(): List<String>
+  fun getAdditionalJvmArguments(os: OsFamily): List<String>
 
   fun notifyArtifactBuilt(artifactPath: Path)
 
@@ -81,13 +76,6 @@ interface BuildContext: CompilationContext {
   fun shouldBuildDistributions(): Boolean
 
   fun shouldBuildDistributionForOS(os: String): Boolean
-
-  /**
-   * Creates copy of this context which can be used to start a parallel task.
-   * @param taskName short name of the task. It will be prepended to the messages from that task to distinguish them from messages from
-   * other tasks running in parallel
-   */
-  fun forkForParallelTask(taskName: String): BuildContext
 
   fun createCopyForProduct(productProperties: ProductProperties, projectHomeForCustomizers: Path): BuildContext
 

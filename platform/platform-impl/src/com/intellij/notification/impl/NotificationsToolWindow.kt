@@ -68,6 +68,7 @@ import kotlin.streams.toList
 internal class NotificationsToolWindowFactory : ToolWindowFactory, DumbAware {
   companion object {
     const val ID = "Notifications"
+    internal const val CLEAR_ACTION_ID = "ClearAllNotifications"
 
     internal val myModel = ApplicationNotificationModel()
 
@@ -83,6 +84,10 @@ internal class NotificationsToolWindowFactory : ToolWindowFactory, DumbAware {
 
     fun expireAll() {
       myModel.expireAll()
+    }
+
+    fun clearAll(project: Project?) {
+      myModel.clearAll(project)
     }
 
     fun getStateNotifications(project: Project) = myModel.getStateNotifications(project)
@@ -124,6 +129,8 @@ internal class NotificationContent(val project: Project,
     searchController = SearchController(this, suggestions, timeline)
 
     myMainPanel.add(createSearchComponent(toolWindow), BorderLayout.NORTH)
+
+    createGearActions()
 
     val splitter = MySplitter()
     splitter.firstComponent = suggestions
@@ -193,16 +200,18 @@ internal class NotificationContent(val project: Project,
       }
     })
 
+    return searchField
+  }
+
+  private fun createGearActions() {
     val gearAction = object : DumbAwareAction() {
       override fun actionPerformed(e: AnActionEvent) {
-        searchField.isVisible = true
-        searchField.selectText()
-        searchField.requestFocus()
         searchController.startSearch()
       }
     }
 
-    val findAction = ActionManager.getInstance().getAction(IdeActions.ACTION_FIND)
+    val actionManager = ActionManager.getInstance()
+    val findAction = actionManager.getAction(IdeActions.ACTION_FIND)
     if (findAction == null) {
       gearAction.templatePresentation.text = ActionsBundle.actionText(IdeActions.ACTION_FIND)
     }
@@ -211,9 +220,21 @@ internal class NotificationContent(val project: Project,
       gearAction.registerCustomShortcutSet(findAction.shortcutSet, myMainPanel)
     }
 
-    (toolWindow as ToolWindowEx).setAdditionalGearActions(DefaultActionGroup(gearAction))
+    val group = DefaultActionGroup()
+    group.add(gearAction)
+    group.addSeparator()
 
-    return searchField
+    val clearAction = actionManager.getAction(NotificationsToolWindowFactory.CLEAR_ACTION_ID)
+    if (clearAction != null) {
+      group.add(clearAction)
+    }
+
+    val markAction = actionManager.getAction("MarkNotificationsAsRead")
+    if (markAction != null) {
+      group.add(markAction)
+    }
+
+    (toolWindow as ToolWindowEx).setAdditionalGearActions(group)
   }
 
   fun setEmptyState() {
@@ -259,6 +280,8 @@ internal class NotificationContent(val project: Project,
 
   fun getNotifications() = ArrayList(myNotifications)
 
+  fun isEmpty() = suggestions.isEmpty() && timeline.isEmpty()
+
   fun expire(notification: Notification?) {
     if (notification == null) {
       val notifications = ArrayList(myNotifications)
@@ -302,14 +325,27 @@ internal class NotificationContent(val project: Project,
     updateIcon()
   }
 
+  fun clearAll() {
+    project.closeAllBalloons()
+
+    myNotifications.clear()
+    myIconNotifications.clear()
+
+    suggestions.clear()
+    timeline.clear()
+
+    searchController.update()
+
+    setStatusMessage(null)
+    updateIcon()
+  }
+
   override fun stateChanged(toolWindowManager: ToolWindowManager) {
     val visible = toolWindow.isVisible
     if (myVisible != visible) {
       myVisible = visible
       if (visible) {
-        val ideFrame = WindowManager.getInstance().getIdeFrame(project)
-        val balloonLayout = ideFrame!!.balloonLayout as BalloonLayoutImpl
-        balloonLayout.closeAll()
+        project.closeAllBalloons()
 
         suggestions.updateComponents()
         timeline.updateComponents()
@@ -389,6 +425,10 @@ private class SearchController(private val mainContent: NotificationContent,
   lateinit var background: Color
 
   fun startSearch() {
+    searchField.isVisible = true
+    searchField.selectText()
+    searchField.requestFocus()
+
     mainContent.clearEmptyState()
 
     if (searchField.text.isNotEmpty()) {
@@ -569,6 +609,16 @@ private class NotificationGroupComponent(private val myMainContent: Notification
     }
   }
 
+  fun isEmpty(): Boolean {
+    val count = myList.componentCount
+    for (i in 0 until count) {
+      if (myList.getComponent(i) is NotificationComponent) {
+        return false
+      }
+    }
+    return true
+  }
+
   fun setRemoveCallback(callback: Consumer<Notification>) {
     myRemoveCallback = callback
   }
@@ -596,9 +646,7 @@ private class NotificationGroupComponent(private val myMainContent: Notification
   }
 
   private fun clearAll() {
-    val ideFrame = WindowManager.getInstance().getIdeFrame(myProject)
-    val balloonLayout = ideFrame!!.balloonLayout as BalloonLayoutImpl
-    balloonLayout.closeAll()
+    myProject.closeAllBalloons()
 
     val notifications = ArrayList<Notification>()
     iterateComponents {
@@ -1466,6 +1514,11 @@ internal class ApplicationNotificationModel {
     }
   }
 
+  fun isEmptyContent(project: Project): Boolean {
+    val model = myProjectToModel[project]
+    return model == null || model.isEmptyContent()
+  }
+
   fun expire(notification: Notification) {
     val runnables = ArrayList<Runnable>()
 
@@ -1499,6 +1552,15 @@ internal class ApplicationNotificationModel {
 
     for (notification in notifications) {
       notification.expire()
+    }
+  }
+
+  fun clearAll(project: Project?) {
+    synchronized(myLock) {
+      myNotifications.clear()
+      if (project != null) {
+        myProjectToModel[project]?.clearAll(project)
+      }
     }
   }
 }
@@ -1544,6 +1606,10 @@ private class ProjectNotificationModel {
     return myContent!!.getStateNotifications()
   }
 
+  fun isEmptyContent(): Boolean {
+    return myContent == null || myContent!!.isEmpty()
+  }
+
   fun getNotifications(appNotifications: List<Notification>): List<Notification> {
     if (myContent == null) {
       val notifications = ArrayList(appNotifications)
@@ -1566,5 +1632,41 @@ private class ProjectNotificationModel {
     if (myContent != null) {
       runnables.add(Runnable { UIUtil.invokeLaterIfNeeded { myContent!!.expire(null) } })
     }
+  }
+
+  fun clearAll(project: Project) {
+    myNotifications.clear()
+    if (myContent == null) {
+      UIUtil.invokeLaterIfNeeded {
+        EventLog.getLogModel(project).setStatusMessage(null)
+        project.closeAllBalloons()
+
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(NotificationsToolWindowFactory.ID)
+        toolWindow?.setIcon(IdeNotificationArea.getActionCenterNotificationIcon(emptyList()))
+      }
+    }
+    else {
+      UIUtil.invokeLaterIfNeeded { myContent!!.clearAll() }
+    }
+  }
+}
+
+fun Project.closeAllBalloons() {
+  val ideFrame = WindowManager.getInstance().getIdeFrame(this)
+  val balloonLayout = ideFrame!!.balloonLayout as BalloonLayoutImpl
+  balloonLayout.closeAll()
+}
+
+class ClearAllNotificationsAction : DumbAwareAction(IdeBundle.message("clear.all.notifications"), null, AllIcons.Actions.GC) {
+  override fun update(e: AnActionEvent) {
+    val project = e.project
+    e.presentation.isEnabled = NotificationsToolWindowFactory.getNotifications(project).isNotEmpty() ||
+                               (project != null && !NotificationsToolWindowFactory.myModel.isEmptyContent(project))
+  }
+
+  override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+  override fun actionPerformed(e: AnActionEvent) {
+    NotificationsToolWindowFactory.clearAll(e.project)
   }
 }

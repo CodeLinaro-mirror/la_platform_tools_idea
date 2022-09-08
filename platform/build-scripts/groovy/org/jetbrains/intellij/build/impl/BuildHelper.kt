@@ -7,12 +7,16 @@ import com.intellij.diagnostic.telemetry.createTask
 import com.intellij.diagnostic.telemetry.useWithScope
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.util.lang.CompoundRuntimeException
+import com.intellij.util.JavaModuleOptions
+import com.intellij.util.system.OS
 import com.intellij.util.xml.dom.readXmlAsModel
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanBuilder
 import io.opentelemetry.api.trace.StatusCode
 import org.jetbrains.intellij.build.BuildContext
+import org.jetbrains.intellij.build.BuildScriptsLoggedError
 import org.jetbrains.intellij.build.CompilationContext
+import org.jetbrains.intellij.build.OsFamily
 import org.jetbrains.intellij.build.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.io.copyDir
 import org.jetbrains.intellij.build.io.runJava
@@ -138,8 +142,7 @@ fun runApplicationStarter(context: BuildContext,
                           arguments: List<String>,
                           systemProperties: Map<String, Any> = emptyMap(),
                           vmOptions: List<String> = emptyList(),
-                          timeoutMillis: Long = DEFAULT_TIMEOUT,
-                          classpathCustomizer: ((MutableSet<String>) -> Unit)? = null) {
+                          timeoutMillis: Long = DEFAULT_TIMEOUT) {
   Files.createDirectories(tempDir)
   val jvmArgs = ArrayList<String>()
   val systemDir = tempDir.resolve("system")
@@ -171,14 +174,18 @@ fun runApplicationStarter(context: BuildContext,
       }
     }
   }
-  classpathCustomizer?.invoke(effectiveIdeClasspath)
   disableCompatibleIgnoredPlugins(context, tempDir.resolve("config"), additionalPluginIds)
   runJava(context, "com.intellij.idea.Main", arguments, jvmArgs, effectiveIdeClasspath, timeoutMillis) {
     val logFile = systemDir.resolve("log").resolve("idea.log")
     val logFileToPublish = File.createTempFile("idea-", ".log")
     logFile.copyTo(logFileToPublish.toPath(), true)
     context.notifyArtifactBuilt(logFileToPublish.toPath())
-    context.messages.error("Log file: ${logFileToPublish.canonicalPath} attached to build artifacts")
+    try {
+      context.messages.error("Log file: ${logFileToPublish.canonicalPath} attached to build artifacts")
+    }
+    catch (_: BuildScriptsLoggedError) {
+      // skip exception thrown by logger.error
+    }
   }
 }
 
@@ -226,8 +233,15 @@ private fun disableCompatibleIgnoredPlugins(context: BuildContext,
 }
 
 /**
- * @return List of JVM args for opened packages (JBR17+) in a format `--add-opens=PACKAGE=ALL-UNNAMED`
+ * @return a list of JVM args for opened packages (JBR17+) in a format `--add-opens=PACKAGE=ALL-UNNAMED` for a specified or current OS
  */
-fun getCommandLineArgumentsForOpenPackages(context: CompilationContext): List<String> {
-  return Files.readAllLines(context.paths.communityHomeDir.resolve("plugins/devkit/devkit-core/src/run/OpenedPackages.txt"))
+fun getCommandLineArgumentsForOpenPackages(context: CompilationContext, target: OsFamily? = null): List<String> {
+  val file = context.paths.communityHomeDir.resolve("plugins/devkit/devkit-core/src/run/OpenedPackages.txt")
+  val os = when (target) {
+    OsFamily.WINDOWS -> OS.Windows
+    OsFamily.MACOS -> OS.macOS
+    OsFamily.LINUX -> OS.Linux
+    null -> OS.CURRENT
+  }
+  return JavaModuleOptions.readOptions(file, os)
 }

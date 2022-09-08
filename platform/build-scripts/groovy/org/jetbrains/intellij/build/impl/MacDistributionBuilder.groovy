@@ -18,7 +18,6 @@ import org.jetbrains.intellij.build.impl.productInfo.ProductInfoValidatorKt
 import org.jetbrains.intellij.build.io.FileKt
 import org.jetbrains.intellij.build.tasks.MacKt
 
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -27,6 +26,7 @@ import java.util.function.BiConsumer
 import java.util.zip.Deflater
 
 import static org.jetbrains.intellij.build.TraceManager.spanBuilder
+import static org.jetbrains.intellij.build.impl.BuildTasksImplKt.updateExecutablePermissions
 
 @CompileStatic
 final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
@@ -163,6 +163,9 @@ final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
     Path macZip = ((publishArchive || customizer.publishArchive) ? context.paths.artifactDir : context.paths.tempDir)
       .resolve(baseName + ".mac.${arch.name()}.zip")
     String zipRoot = getZipRoot(context, customizer)
+    def executableFilePatterns = getExecutableFilePatterns(customizer)
+    updateExecutablePermissions(context.paths.distAllDir, executableFilePatterns)
+    updateExecutablePermissions(osAndArchSpecificDistPath, executableFilePatterns)
     MacKt.buildMacZip(
       macZip,
       zipRoot,
@@ -170,9 +173,9 @@ final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
       context.paths.distAllDir,
       osAndArchSpecificDistPath,
       context.getDistFiles(),
-      getExecutableFilePatterns(customizer),
-      publishArchive ? Deflater.DEFAULT_COMPRESSION : Deflater.BEST_SPEED,
-      { context.messages.warning(it) })
+      executableFilePatterns,
+      publishArchive ? Deflater.DEFAULT_COMPRESSION : Deflater.BEST_SPEED
+    )
     ProductInfoValidatorKt.checkInArchive(context, macZip, "$zipRoot/Resources")
 
     if (publishArchive) {
@@ -222,7 +225,7 @@ final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
           Unit invoke() {
             Path jreArchive = jreManager.findArchive(BundledRuntimeImpl.getProductPrefix(context), OsFamily.MACOS, arch)
             MacDmgBuilder.signAndBuildDmg(builtinModule, context, customizer, context.proprietaryBuildTools.macHostProperties, macZip,
-                                          jreArchive, suffix, notarize)
+                                          jreArchive, suffix, arch, notarize)
             return null
           }
         }))
@@ -237,7 +240,7 @@ final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
         @Override
         Unit invoke() {
           MacDmgBuilder.signAndBuildDmg(builtinModule, context, customizer, context.proprietaryBuildTools.macHostProperties, macZip,
-                                        null, "-no-jdk$suffix", notarize)
+                                        null, "-no-jdk$suffix", arch, notarize)
           return null
         }
       }))
@@ -289,7 +292,7 @@ final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
     String classPath = String.join(":", context.bootClassPathJarNames.collect { "\$APP_PACKAGE/Contents/lib/$it" })
 
     List<String> fileVmOptions = VmOptionsGenerator.computeVmOptions(context.applicationInfo.isEAP(), context.productProperties)
-    List<String> additionalJvmArgs = context.additionalJvmArguments
+    List<String> additionalJvmArgs = context.getAdditionalJvmArguments(OsFamily.MACOS)
     if (!bootClassPath.isEmpty()) {
       additionalJvmArgs = new ArrayList<>(additionalJvmArgs)
       //noinspection SpellCheckingInspection
@@ -300,7 +303,7 @@ final class MacDistributionBuilder implements OsSpecificDistributionBuilder {
 
     fileVmOptions.add("-XX:ErrorFile=\$USER_HOME/java_error_in_${executable}_%p.log".toString())
     fileVmOptions.add("-XX:HeapDumpPath=\$USER_HOME/java_error_in_${executable}.hprof".toString())
-    Files.writeString(macDistDir.resolve("bin/${executable}.vmoptions"), String.join('\n', fileVmOptions) + '\n', StandardCharsets.US_ASCII)
+    VmOptionsGenerator.writeVmOptions(macDistDir.resolve("bin/${executable}.vmoptions"), fileVmOptions, "\n")
 
     String vmOptionsXml = optionsToXml(launcherVmOptions)
     String vmPropertiesXml = propertiesToXml(launcherProperties, ['idea.executable': context.productProperties.baseFileName])

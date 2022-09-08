@@ -26,6 +26,7 @@ import com.intellij.refactoring.listeners.RefactoringElementAdapter;
 import com.intellij.refactoring.listeners.RefactoringElementListener;
 import com.intellij.refactoring.listeners.RefactoringElementListenerProvider;
 import com.intellij.util.concurrency.NonUrgentExecutor;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.UIUtil;
@@ -180,13 +181,16 @@ public final class EditorNotificationsImpl extends EditorNotifications {
           }
 
           Class<? extends EditorNotificationProvider> providerClass = provider.getClass();
-          PluginException pluginException = PluginException.createByClass(rejected, providerClass);
+          PluginException pluginException = rejected instanceof PluginException ?
+                                            (PluginException)rejected :
+                                            PluginException.createByClass(rejected, providerClass);
           Logger.getInstance(providerClass).error(pluginException);
           throw pluginException;
         });
     }
   }
 
+  @RequiresEdt
   private void updateNotification(@NotNull FileEditor editor,
                                   @NotNull EditorNotificationProvider provider,
                                   @Nullable JComponent component) {
@@ -272,8 +276,13 @@ public final class EditorNotificationsImpl extends EditorNotifications {
       return panels;
     }
 
-    throw new IllegalStateException("User data is not supported; editorClass='" + editor.getClass().getName() +
-                                    "'; key='" + EDITOR_NOTIFICATION_PROVIDER + "'");
+    Class<? extends FileEditor> editorClass = editor.getClass();
+    PluginException pluginException = PluginException.createByClass("User data is not supported; editorClass='" + editorClass.getName() +
+                                                                    "'; key='" + EDITOR_NOTIFICATION_PROVIDER + "'",
+                                                                    null,
+                                                                    editorClass);
+    Logger.getInstance(editorClass).error(pluginException);
+    throw pluginException;
   }
 
   @TestOnly

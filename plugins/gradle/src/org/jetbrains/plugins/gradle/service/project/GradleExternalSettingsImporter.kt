@@ -152,7 +152,7 @@ class IDEAProjectFilesPostProcessor: ConfigurationHandler {
     val sourceSetNodes = moduleNodes.flatMap { ExternalSystemApiUtil.getChildren(it, GradleSourceSetData.KEY) }
 
     val sourceSetsToImls = (moduleNodes + sourceSetNodes)
-      .groupBy({ it.data.externalName }, { modelsProvider.findIdeModule(it.data)?.moduleFilePath })
+      .groupBy({ it.data.id }, { modelsProvider.findIdeModule(it.data)?.moduleFilePath })
       .filterValues { it.isNotEmpty() }
       .mapValues { it.value.first() ?: "" }
 
@@ -162,4 +162,14 @@ class IDEAProjectFilesPostProcessor: ConfigurationHandler {
   }
 
   class ProjectLayout(val ideaDirPath: String, val modulesMap: Map<String, String>)
+}
+
+class GenerateImlFilesSettings: ConfigurationHandler {
+  override fun onSuccessImport(project: Project,
+                               projectData: ProjectData?,
+                               modelsProvider: IdeModelsProvider,
+                               configuration: ConfigurationData) {
+    val generateImlFilesValue = configuration.find("generateImlFiles") as? Boolean ?: return
+    ExternalProjectsManagerImpl.getInstance(project).setStoreExternally(!generateImlFilesValue)
+  }
 }

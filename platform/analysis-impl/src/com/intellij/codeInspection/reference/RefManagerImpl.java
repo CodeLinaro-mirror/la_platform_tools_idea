@@ -428,7 +428,7 @@ public class RefManagerImpl extends RefManager {
 
   public void buildReferences(RefElement element) {
     executeTask(() -> {
-      element.waitForInitialized();
+      element.initializeIfNeeded();
       element.buildReferences();
     });
   }
@@ -719,7 +719,7 @@ public class RefManagerImpl extends RefManager {
         }
         return null;
       }),
-      element -> ReadAction.run(() -> element.waitForInitialized()));
+      element -> ReadAction.run(() -> element.initializeIfNeeded()));
   }
 
   private RefManagerExtension<?> getExtension(final Language language) {
@@ -756,9 +756,9 @@ public class RefManagerImpl extends RefManager {
     return getFromRefTableOrCache(element, factory, null);
   }
 
-  private @Nullable <T extends RefElement> T getFromRefTableOrCache(@NotNull PsiElement element,
-                                                                    @NotNull NullableFactory<? extends T> factory,
-                                                                    @Nullable Consumer<? super T> whenCached) {
+  public @Nullable <T extends RefElement> T getFromRefTableOrCache(@NotNull PsiElement element,
+                                                                   @NotNull NullableFactory<? extends T> factory,
+                                                                   @Nullable Consumer<? super T> whenCached) {
     PsiAnchor psiAnchor = createAnchor(element);
     //noinspection unchecked
     T result = (T)myRefTable.get(psiAnchor);

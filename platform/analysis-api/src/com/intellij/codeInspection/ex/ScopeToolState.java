@@ -19,10 +19,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 public final class ScopeToolState {
   private static final Logger LOG = Logger.getInstance(ScopeToolState.class);
@@ -32,7 +29,7 @@ public final class ScopeToolState {
   private InspectionToolWrapper<?, ?> myToolWrapper;
   private boolean myEnabled;
   private HighlightDisplayLevel myLevel;
-  private String myTextAttributesKey;
+  private String myEditorAttributesKey;
   private ConfigPanelState myAdditionalConfigPanelState;
 
   public ScopeToolState(@NotNull NamedScope scope,
@@ -51,7 +48,6 @@ public final class ScopeToolState {
     myToolWrapper = toolWrapper;
     myEnabled = enabled;
     myLevel = level;
-    myTextAttributesKey = toolWrapper.getEditorAttributesKeyExternalName();
   }
 
   @NotNull
@@ -94,19 +90,20 @@ public final class ScopeToolState {
     myLevel = level;
   }
 
-  public @Nullable TextAttributesKey getTextAttributesKey() {
-    if (myTextAttributesKey == null) {
-      return null;
+  public @Nullable TextAttributesKey getEditorAttributesKey() {
+    if (myEditorAttributesKey != null) {
+      return TextAttributesKey.find(myEditorAttributesKey);
     }
-    return TextAttributesKey.find(myTextAttributesKey);
-  }
-  
-  public @Nullable String getTextAttributesKeyExternalName() {
-    return myTextAttributesKey;
+    final String externalName = myToolWrapper.getDefaultEditorAttributes();
+    return externalName == null ? null : TextAttributesKey.find(externalName);
   }
 
-  public void setTextAttributesKey(String textAttributesKey) {
-    myTextAttributesKey = textAttributesKey;
+  public @Nullable String getEditorAttributesExternalName() {
+    return myEditorAttributesKey;
+  }
+
+  public void setEditorAttributesExternalName(@Nullable String textAttributesKey) {
+    myEditorAttributesKey = textAttributesKey;
   }
 
   @Nullable
@@ -128,6 +125,7 @@ public final class ScopeToolState {
   public boolean equalTo(@NotNull ScopeToolState state2) {
     if (isEnabled() != state2.isEnabled()) return false;
     if (getLevel() != state2.getLevel()) return false;
+    if (!Objects.equals(getEditorAttributesExternalName(), state2.getEditorAttributesExternalName())) return false;
     InspectionToolWrapper<?, ?> toolWrapper = getTool();
     InspectionToolWrapper<?, ?> toolWrapper2 = state2.getTool();
     if (!toolWrapper.isInitialized() && !toolWrapper2.isInitialized()) return true;

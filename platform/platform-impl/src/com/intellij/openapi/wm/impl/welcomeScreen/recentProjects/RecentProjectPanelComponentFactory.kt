@@ -10,6 +10,7 @@ import com.intellij.openapi.wm.ex.ProgressIndicatorEx
 import com.intellij.openapi.wm.impl.welcomeScreen.ProjectDetector
 import com.intellij.openapi.wm.impl.welcomeScreen.cloneableProjects.CloneableProjectsService
 import com.intellij.openapi.wm.impl.welcomeScreen.cloneableProjects.CloneableProjectsService.CloneProjectListener
+import com.intellij.openapi.wm.impl.welcomeScreen.cloneableProjects.WelcomeScreenCloneCollector
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.Alarm
 import com.intellij.util.ui.update.MergingUpdateQueue
@@ -19,21 +20,41 @@ internal object RecentProjectPanelComponentFactory {
   private const val UPDATE_INTERVAL = 50 // 50ms -- 20 frames per second
 
   @JvmStatic
-  fun createComponent(parentDisposable: Disposable): RecentProjectFilteringTree {
+  fun createComponent(parentDisposable: Disposable, collectors: List<() -> List<RecentProjectTreeItem>>): RecentProjectFilteringTree {
     ProjectDetector.runDetectors {} // Run detectors that will add projects to the RecentProjectsManagerBase
 
     val tree = Tree()
-    val filteringTree = RecentProjectFilteringTree(tree, parentDisposable).apply {
+    val filteringTree = RecentProjectFilteringTree(tree, parentDisposable, collectors).apply {
       installSearchField()
+      expandGroups()
     }
 
     ApplicationManager.getApplication().messageBus.connect(parentDisposable).apply {
       subscribe(RecentProjectsManager.RECENT_PROJECTS_CHANGE_TOPIC, RecentProjectsChange { filteringTree.updateTree() })
       subscribe(CloneableProjectsService.TOPIC, object : CloneProjectListener {
-        override fun onCloneAdded(progressIndicator: ProgressIndicatorEx, taskInfo: TaskInfo) = filteringTree.updateTree()
-        override fun onCloneRemoved() = filteringTree.updateTree()
-        override fun onCloneFailed() = filteringTree.updateTree()
-        override fun onCloneCanceled() = filteringTree.updateTree()
+        override fun onCloneAdded(progressIndicator: ProgressIndicatorEx, taskInfo: TaskInfo) {
+          filteringTree.updateTree()
+          WelcomeScreenCloneCollector.cloneAdded(CloneableProjectsService.getInstance().cloneCount())
+        }
+
+        override fun onCloneRemoved() {
+          filteringTree.updateTree()
+        }
+
+        override fun onCloneSuccess() {
+          filteringTree.updateTree()
+          WelcomeScreenCloneCollector.cloneSuccess()
+        }
+
+        override fun onCloneFailed() {
+          filteringTree.updateTree()
+          WelcomeScreenCloneCollector.cloneFailed()
+        }
+
+        override fun onCloneCanceled() {
+          filteringTree.updateTree()
+          WelcomeScreenCloneCollector.cloneCanceled()
+        }
       })
     }
 

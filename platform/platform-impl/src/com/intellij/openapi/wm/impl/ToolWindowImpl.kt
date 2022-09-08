@@ -181,6 +181,11 @@ internal class ToolWindowImpl(val toolWindowManager: ToolWindowManagerImpl,
     })
 
     toolWindowFocusWatcher = ToolWindowFocusWatcher(toolWindow = this, component = decorator)
+    contentManager.addContentManagerListener(object : ContentManagerListener {
+      override fun selectionChanged(event: ContentManagerEvent) {
+        this@ToolWindowImpl.decorator?.headerToolbar?.updateActionsImmediately()
+      }
+    })
 
     // after init, as it was before contentManager creation was changed to be lazy
     pendingContentManagerListeners?.let { list ->

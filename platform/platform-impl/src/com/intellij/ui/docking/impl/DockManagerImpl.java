@@ -148,7 +148,7 @@ public final class DockManagerImpl extends DockManager implements PersistentStat
 
   @Contract("null, _ -> null")
   @Override
-  public @Nullable DockContainer getContainerFor(@Nullable Component c, @NotNull Predicate<DockContainer> filter) {
+  public @Nullable DockContainer getContainerFor(@Nullable Component c, @NotNull Predicate<? super DockContainer> filter) {
     if (c == null) {
       return null;
     }
@@ -424,7 +424,7 @@ public final class DockManagerImpl extends DockManager implements PersistentStat
     DockContainer container = getFactory(DockableEditorContainerFactory.TYPE).createContainer(null);
 
     DockWindow window = createWindowFor(getWindowDimensionKey(file), null, container, REOPEN_WINDOW.get(file, true));
-    if (!ApplicationManager.getApplication().isHeadlessEnvironment()) {
+    if (!ApplicationManager.getApplication().isHeadlessEnvironment() && !ApplicationManager.getApplication().isUnitTestMode()) {
       window.show(true);
     }
 
@@ -578,8 +578,10 @@ public final class DockManagerImpl extends DockManager implements PersistentStat
           continue;
         }
         IdeRootPaneNorthExtension toInstall = each.copy();
-        myNorthExtensions.put(toInstall.getKey(), toInstall);
-        myNorthPanel.add(toInstall.getComponent());
+        if(toInstall != null) {
+          myNorthExtensions.put(toInstall.getKey(), toInstall);
+          myNorthPanel.add(toInstall.getComponent());
+        }
       }
 
       Iterator<String> existing = myNorthExtensions.keySet().iterator();

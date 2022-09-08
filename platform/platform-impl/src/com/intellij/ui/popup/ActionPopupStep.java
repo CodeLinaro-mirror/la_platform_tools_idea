@@ -10,9 +10,9 @@ import com.intellij.openapi.ui.popup.*;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsContexts.PopupTitle;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.StatusText;
 import com.intellij.util.ui.UIUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -203,12 +203,12 @@ public class ActionPopupStep implements ListPopupStepEx<PopupFactoryImpl.ActionI
   }
 
   @Override
-  public PopupStep<?> onChosen(final PopupFactoryImpl.ActionItem actionChoice, final boolean finalChoice) {
-    return onChosen(actionChoice, finalChoice, 0);
+  public PopupStep<?> onChosen(PopupFactoryImpl.ActionItem actionChoice, boolean finalChoice) {
+    return onChosen(actionChoice, finalChoice, null);
   }
 
   @Override
-  public PopupStep<?> onChosen(@NotNull PopupFactoryImpl.ActionItem item, boolean finalChoice, int eventModifiers) {
+  public @Nullable PopupStep<?> onChosen(PopupFactoryImpl.ActionItem item, boolean finalChoice, @Nullable InputEvent inputEvent) {
     if (!item.isEnabled()) return FINAL_CHOICE;
     AnAction action = item.getAction();
     if (action instanceof ActionGroup && (!finalChoice || !item.isPerformGroup())) {
@@ -217,7 +217,7 @@ public class ActionPopupStep implements ListPopupStepEx<PopupFactoryImpl.ActionI
         false, false, myContext, myActionPlace, myPreselectActionCondition, -1, myPresentationFactory);
     }
     else {
-      myFinalRunnable = () -> performAction(action, eventModifiers);
+      myFinalRunnable = () -> performAction(action, inputEvent);
       return FINAL_CHOICE;
     }
   }
@@ -228,55 +228,24 @@ public class ActionPopupStep implements ListPopupStepEx<PopupFactoryImpl.ActionI
     return !(item.getAction() instanceof ActionGroup) || item.isPerformGroup();
   }
 
-  @ApiStatus.Internal
-  public static void performAction(@NotNull Supplier<? extends DataContext> contextSupplier, @NotNull String actionPlace,
-                                   @NotNull AnAction action, int modifiers, @Nullable InputEvent inputEvent) {
-    DataContext dataContext = contextSupplier.get();
-    AnActionEvent event = new AnActionEvent(
-      inputEvent, dataContext, actionPlace, action.getTemplatePresentation().clone(),
-      ActionManager.getInstance(), modifiers);
-    event.setInjectedContext(action.isInInjectedContext());
-    if (ActionUtil.lastUpdateAndCheckDumb(action, event, false)) {
-      ActionUtil.performActionDumbAwareWithCallbacks(action, event);
-    }
+  public void performAction(@NotNull AnAction action, @Nullable InputEvent inputEvent) {
+    ActionUtil.invokeAction(action, myContext.get(), myActionPlace, inputEvent, null);
   }
 
-  public void performAction(@NotNull AnAction action, int modifiers) {
-    performAction(action, modifiers, null);
-  }
-
-  public void performAction(@NotNull AnAction action, int modifiers, InputEvent inputEvent) {
-    performAction(myContext, myActionPlace, action, modifiers, inputEvent);
-  }
-
-  public void updateStepItems(@Nullable Runnable afterUpdate) {
-    DefaultActionGroup actionGroup = new DefaultActionGroup();
-    for (PopupFactoryImpl.ActionItem actionItem : getValues()) {
-      actionGroup.add(actionItem.getAction());
-    }
-
-    DataContext dataContext = myContext.get();
+  public void updateStepItems(@NotNull JComponent component) {
+    DataContext dataContext = Utils.wrapDataContext(myContext.get());
     PresentationFactory presentationFactory = myPresentationFactory != null ? myPresentationFactory : new PresentationFactory();
-
-    Runnable updatePresentationRunnable = () -> {
-      for (PopupFactoryImpl.ActionItem actionItem : getValues()) {
-        Presentation presentation = presentationFactory.getPresentation(actionItem.getAction());
-        actionItem.updateFromPresentation(presentation, myActionPlace);
+    List<PopupFactoryImpl.ActionItem> values = getValues();
+    Utils.updateComponentActions(
+      component, ContainerUtil.map(values, PopupFactoryImpl.ActionItem::getAction),
+      dataContext, myActionPlace, presentationFactory,
+      () -> {
+        for (PopupFactoryImpl.ActionItem actionItem : values) {
+          Presentation presentation = presentationFactory.getPresentation(actionItem.getAction());
+          actionItem.updateFromPresentation(presentation, myActionPlace);
+        }
       }
-      if (afterUpdate != null) {
-        afterUpdate.run();
-      }
-    };
-
-    if (Utils.isAsyncDataContext(dataContext)) {
-      Utils.expandActionGroupAsync(actionGroup, presentationFactory, dataContext, myActionPlace).onSuccess(actions -> {
-        updatePresentationRunnable.run();
-      });
-    }
-    else {
-      Utils.expandActionGroup(actionGroup, presentationFactory, dataContext, myActionPlace);
-      updatePresentationRunnable.run();
-    }
+    );
   }
 
   @Override

@@ -22,10 +22,7 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public final class ToolsImpl implements Tools {
   @NonNls static final String ENABLED_BY_DEFAULT_ATTRIBUTE = "enabled_by_default";
@@ -131,7 +128,7 @@ public final class ToolsImpl implements Tools {
         scopeElement.setAttribute("name", state.getScopeName());
         scopeElement.setAttribute(LEVEL_ATTRIBUTE, state.getLevel().getName());
         scopeElement.setAttribute(ENABLED_ATTRIBUTE, Boolean.toString(state.isEnabled()));
-        String keyExternalName = state.getTextAttributesKeyExternalName();
+        String keyExternalName = state.getEditorAttributesExternalName();
         if (keyExternalName != null) {
           scopeElement.setAttribute("editorAttributes", keyExternalName);
         }
@@ -145,7 +142,7 @@ public final class ToolsImpl implements Tools {
     inspectionElement.setAttribute(ENABLED_ATTRIBUTE, Boolean.toString(isEnabled()));
     inspectionElement.setAttribute(LEVEL_ATTRIBUTE, getLevel().getName());
     inspectionElement.setAttribute(ENABLED_BY_DEFAULT_ATTRIBUTE, Boolean.toString(myDefaultState.isEnabled()));
-    @Nullable String attributesKey = myDefaultState.getTextAttributesKeyExternalName();
+    @Nullable String attributesKey = myDefaultState.getEditorAttributesExternalName();
     if (attributesKey != null) {
       inspectionElement.setAttribute("editorAttributes", attributesKey);
     }
@@ -168,7 +165,7 @@ public final class ToolsImpl implements Tools {
     InspectionToolWrapper<?,?> toolWrapper = myDefaultState.getTool();
     String editorAttributes = toolElement.getAttributeValue("editorAttributes");
     if (editorAttributes != null) {
-      myDefaultState.setTextAttributesKey(editorAttributes);
+      myDefaultState.setEditorAttributesExternalName(editorAttributes);
     }
     String enabled = toolElement.getAttributeValue(ENABLED_ATTRIBUTE);
     boolean isEnabled = Boolean.parseBoolean(enabled);
@@ -211,7 +208,7 @@ public final class ToolsImpl implements Tools {
 
         editorAttributes = scopeElement.getAttributeValue("editorAttributes");
         if (editorAttributes != null) {
-          state.setTextAttributesKey(editorAttributes);
+          state.setEditorAttributesExternalName(editorAttributes);
         }
         scopeNames.add(scopeName);
       }
@@ -355,17 +352,17 @@ public final class ToolsImpl implements Tools {
   
   @Nullable
   public TextAttributesKey getAttributesKey(PsiElement element) {
-    if (myTools == null || element == null) return myDefaultState.getTextAttributesKey();
+    if (myTools == null || element == null) return myDefaultState.getEditorAttributesKey();
     Project project = element.getProject();
     DependencyValidationManager manager = DependencyValidationManager.getInstance(project);
     for (ScopeToolState state : myTools) {
       NamedScope scope = state.getScope(project);
       PackageSet set = scope != null ? scope.getValue() : null;
       if (set != null && set.contains(element.getContainingFile(), manager)) {
-        return state.getTextAttributesKey();
+        return state.getEditorAttributesKey();
       }
     }
-    return myDefaultState.getTextAttributesKey();
+    return myDefaultState.getEditorAttributesKey();
   }
 
   @NotNull
@@ -419,7 +416,7 @@ public final class ToolsImpl implements Tools {
 
   private static boolean isAvailableInBatch(ScopeToolState state) {
     HighlightDisplayLevel level = state.getLevel();
-    return !(HighlightDisplayLevel.DO_NOT_SHOW.equals(level) || HighlightDisplayLevel.TEXT_ATTRIBUTES.equals(level));
+    return !(HighlightDisplayLevel.DO_NOT_SHOW.equals(level) || HighlightDisplayLevel.CONSIDERATION_ATTRIBUTES.equals(level));
   }
 
   @Nullable
@@ -501,6 +498,31 @@ public final class ToolsImpl implements Tools {
     return myDefaultState.getLevel();
   }
 
+  @NotNull
+  public HighlightDisplayLevel getLevel(String scope, Project project) {
+    if (myTools != null && scope != null){
+      for (ScopeToolState state : myTools) {
+        final NamedScope stateScope = state.getScope(project);
+        if (stateScope != null && scope.equals(stateScope.getScopeId())) {
+          return state.getLevel();
+        }
+      }
+    }
+    return myDefaultState.getLevel();
+  }
+
+  @Nullable
+  public TextAttributesKey getEditorAttributesKey(NamedScope scope, Project project) {
+    if (myTools != null && scope != null) {
+      for (ScopeToolState state : myTools) {
+        if (Objects.equals(state.getScope(project), scope)) {
+          return state.getEditorAttributesKey();
+        }
+      }
+    }
+    return myDefaultState.getEditorAttributesKey();
+  }
+
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof ToolsImpl)) return false;
@@ -517,16 +539,16 @@ public final class ToolsImpl implements Tools {
     return true;
   }
 
-  
-  public void setTextAttributesKey(@NotNull String externalName, @Nullable String scopeName) {
+
+  public void setEditorAttributesKey(@Nullable String externalName, @Nullable String scopeName) {
     if (scopeName == null) {
-      myDefaultState.setTextAttributesKey(externalName);
+      myDefaultState.setEditorAttributesExternalName(externalName);
     }
     else {
       if (myTools == null) return;
       for (ScopeToolState tool : myTools) {
         if (scopeName.equals(tool.getScopeName())) {
-          tool.setTextAttributesKey(externalName);
+          tool.setEditorAttributesExternalName(externalName);
           break;
         }
       }
@@ -570,6 +592,11 @@ public final class ToolsImpl implements Tools {
     myDefaultState.setTool(toolWrapper);
     myDefaultState.setLevel(level);
     myDefaultState.setEnabled(enabled);
+  }
+
+  public void setDefaultState(@NotNull InspectionToolWrapper<?,?> toolWrapper, boolean enabled, @NotNull HighlightDisplayLevel level, @Nullable String attributesKey) {
+    setDefaultState(toolWrapper, enabled, level);
+    myDefaultState.setEditorAttributesExternalName(attributesKey);
   }
 
   public void setLevel(@NotNull HighlightDisplayLevel level) {

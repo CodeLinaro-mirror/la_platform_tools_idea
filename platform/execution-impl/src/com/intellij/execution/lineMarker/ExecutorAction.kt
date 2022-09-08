@@ -4,10 +4,6 @@ package com.intellij.execution.lineMarker
 import com.intellij.execution.Executor
 import com.intellij.execution.actions.RunContextAction
 import com.intellij.openapi.actionSystem.*
-import com.intellij.openapi.util.Key
-import com.intellij.openapi.util.UserDataHolder
-import com.intellij.openapi.util.UserDataHolderBase
-import org.jetbrains.annotations.NonNls
 
 
 /**
@@ -16,12 +12,16 @@ import org.jetbrains.annotations.NonNls
 class ExecutorAction private constructor(val origin: AnAction,
                                          val executor: Executor,
                                          val order: Int) :
-  ActionGroup(), ActionWithDelegate<AnAction>, UpdateInBackground {
+  ActionGroup(), ActionWithDelegate<AnAction> {
   init {
     copyFrom(origin)
+    if (origin !is ActionGroup) {
+      templatePresentation.isPerformGroup = true
+      templatePresentation.isPopupGroup = true
+    }
   }
 
-  override fun isUpdateInBackground() = UpdateInBackground.isUpdateInBackground(origin)
+  override fun getActionUpdateThread() = origin.actionUpdateThread
 
   companion object {
     @JvmStatic
@@ -44,7 +44,7 @@ class ExecutorAction private constructor(val origin: AnAction,
           }
         }
       if (createAction != null) {
-        result.add(object : EmptyAction.MyDelegatingActionGroup(createAction as ActionGroup) {
+        result.add(object : ActionGroupWrapper(createAction as ActionGroup) {
           override fun update(e: AnActionEvent) {
             super.update(wrapEvent(e, order))
           }
@@ -82,9 +82,6 @@ class ExecutorAction private constructor(val origin: AnAction,
 
   override fun update(e: AnActionEvent) {
     origin.update(wrapEvent(e, order))
-    if (origin !is ActionGroup) {
-      e.presentation.isPerformGroup = true
-    }
   }
 
   override fun actionPerformed(e: AnActionEvent) {
@@ -123,29 +120,12 @@ class ExecutorAction private constructor(val origin: AnAction,
     return result
   }
   
-  private class MyDataContext(private val myDelegate: DataContext, val order: Int) : UserDataHolderBase(), DataContext {
-    @Synchronized
-    override fun getData(dataId: @NonNls String): Any? {
+  private class MyDataContext(delegate: DataContext, val order: Int) : DataContextWrapper(delegate) {
+    override fun getRawCustomData(dataId: String): Any? {
       if (orderKey.`is`(dataId)) {
         return order
       }
-      return myDelegate.getData(dataId)
-    }
-
-    override fun <T : Any?> getUserData(key: Key<T>): T? {
-      if (myDelegate is UserDataHolder) {
-        return myDelegate.getUserData(key)
-      }
-      return super.getUserData(key)
-    }
-
-    override fun <T : Any?> putUserData(key: Key<T>, value: T?) {
-      if (myDelegate is UserDataHolder) {
-        myDelegate.putUserData(key, value)
-      }
-      else{
-        super.putUserData(key, value)
-      }
+      return null
     }
   }
 }

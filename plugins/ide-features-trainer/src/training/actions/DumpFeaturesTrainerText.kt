@@ -4,6 +4,7 @@
 package training.actions
 
 import com.intellij.ide.CopyPasteManagerEx
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -57,6 +58,14 @@ private class DumpFeaturesTrainerText : DumbAwareAction() {
       }
     }
     CopyPasteManagerEx.getInstance().setContents(StringSelection(buffer.toString()))
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.BGT
+  }
+
+  override fun update(e: AnActionEvent) {
+    e.presentation.isEnabledAndVisible = e.project != null
   }
 }
 

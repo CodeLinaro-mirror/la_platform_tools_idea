@@ -10,13 +10,12 @@ import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.impl.BuildUtils.assertUnixLineEndings
 import org.jetbrains.intellij.build.impl.BundledRuntimeImpl.Companion.getProductPrefix
-import org.jetbrains.intellij.build.impl.VmOptionsGenerator.computeVmOptions
 import org.jetbrains.intellij.build.impl.productInfo.*
 import org.jetbrains.intellij.build.impl.support.RepairUtilityBuilder
 import org.jetbrains.intellij.build.io.*
-import java.nio.charset.StandardCharsets
 import java.nio.file.*
 import java.nio.file.attribute.PosixFilePermissions
+import java.util.concurrent.TimeUnit
 
 class LinuxDistributionBuilder(private val context: BuildContext,
                                private val customizer: LinuxDistributionCustomizer,
@@ -34,7 +33,14 @@ class LinuxDistributionBuilder(private val context: BuildContext,
   override fun copyFilesForOsDistribution(targetPath: Path, arch: JvmArchitecture) {
     spanBuilder("copy files for os distribution").setAttribute("os", targetOs.osName).setAttribute("arch", arch.name).useWithScope {
       val distBinDir = targetPath.resolve("bin")
-      copyDir(context.paths.communityHomeDir.resolve("bin/linux"), distBinDir)
+      val sourceBinDir = context.paths.communityHomeDir.resolve("bin/linux")
+      copyFileToDir(sourceBinDir.resolve("restart.py"), distBinDir)
+      if (arch == JvmArchitecture.x64 || arch == JvmArchitecture.aarch64) {
+        @Suppress("SpellCheckingInspection")
+        listOf("fsnotifier", "libdbm.so").forEach {
+          copyFileToDir(sourceBinDir.resolve("${arch.dirName}/${it}"), distBinDir)
+        }
+      }
       unpackPty4jNative(context, targetPath, "linux")
       generateBuildTxt(context, targetPath)
       copyDistFiles(context, targetPath)
@@ -57,10 +63,12 @@ class LinuxDistributionBuilder(private val context: BuildContext,
 
   override fun buildArtifacts(osAndArchSpecificDistPath: Path, arch: JvmArchitecture) {
     copyFilesForOsDistribution(osAndArchSpecificDistPath, arch)
+    val suffix = if (arch == JvmArchitecture.x64) "" else "-${arch.fileSuffix}"
     context.executeStep(spanBuilder("build linux .tar.gz").setAttribute("arch", arch.name), BuildOptions.LINUX_ARTIFACTS_STEP) {
       if (customizer.buildTarGzWithoutBundledRuntime) {
-        context.executeStep("Build Linux .tar.gz without bundled JRE", BuildOptions.LINUX_TAR_GZ_WITHOUT_BUNDLED_JRE_STEP) {
-          buildTarGz(jreDirectoryPath = null, unixDistPath = osAndArchSpecificDistPath, suffix = NO_JBR_SUFFIX)
+        context.executeStep(spanBuilder("Build Linux .tar.gz without bundled JRE").setAttribute("arch", arch.name),
+                            BuildOptions.LINUX_TAR_GZ_WITHOUT_BUNDLED_JRE_STEP) {
+          buildTarGz(jreDirectoryPath = null, unixDistPath = osAndArchSpecificDistPath, suffix = NO_JBR_SUFFIX + suffix)
         }
       }
       if (customizer.buildOnlyBareTarGz) {
@@ -68,19 +76,26 @@ class LinuxDistributionBuilder(private val context: BuildContext,
       }
 
       val jreDirectoryPath = context.bundledRuntime.extract(getProductPrefix(context), OsFamily.LINUX, arch)
-      val tarGzPath = buildTarGz(jreDirectoryPath.toString(), osAndArchSpecificDistPath, "")
+      val tarGzPath = buildTarGz(jreDirectoryPath.toString(), osAndArchSpecificDistPath, suffix)
       context.bundledRuntime.checkExecutablePermissions(tarGzPath, rootDirectoryName, OsFamily.LINUX)
 
-      buildSnapPackage(jreDirectoryPath.toString(), osAndArchSpecificDistPath)
-
-      val tempTar = Files.createTempDirectory(context.paths.tempDir, "tar-")
-      try {
-        ArchiveUtils.unTar(tarGzPath, tempTar)
-        val tarRoot = customizer.getRootDirectoryName(context.applicationInfo, context.buildNumber)
-        RepairUtilityBuilder.generateManifest(context, tempTar.resolve(tarRoot), tarGzPath.fileName.toString())
+      if (arch == JvmArchitecture.x64) {
+        buildSnapPackage(jreDirectoryPath.toString(), osAndArchSpecificDistPath)
       }
-      finally {
-        NioFiles.deleteRecursively(tempTar)
+      else {
+        // TODO: Add snap for aarch64
+        context.messages.info("Skipping building Snap packages for non-x64 arch")
+      }
+
+      if (!context.options.buildStepsToSkip.contains(BuildOptions.REPAIR_UTILITY_BUNDLE_STEP)) {
+        val tempTar = Files.createTempDirectory(context.paths.tempDir, "tar-")
+        try {
+          ArchiveUtils.unTar(tarGzPath, tempTar)
+          RepairUtilityBuilder.generateManifest(context, tempTar.resolve(rootDirectoryName), OsFamily.LINUX, arch)
+        }
+        finally {
+          NioFiles.deleteRecursively(tempTar)
+        }
       }
     }
   }
@@ -88,8 +103,9 @@ class LinuxDistributionBuilder(private val context: BuildContext,
   private fun generateVMOptions(distBinDir: Path) {
     val fileName = "${context.productProperties.baseFileName}64.vmoptions"
     @Suppress("SpellCheckingInspection")
-    val vmOptions = computeVmOptions(context.applicationInfo.isEAP, context.productProperties) + listOf("-Dsun.tools.attach.tmp.only=true")
-    Files.writeString(distBinDir.resolve(fileName), vmOptions.joinToString(separator = "\n") + "\n", StandardCharsets.US_ASCII)
+    val vmOptions = VmOptionsGenerator.computeVmOptions(context.applicationInfo.isEAP, context.productProperties) +
+                    listOf("-Dsun.tools.attach.tmp.only=true")
+    VmOptionsGenerator.writeVmOptions(distBinDir.resolve(fileName), vmOptions, "\n")
   }
 
   private fun generateReadme(unixDistPath: Path) {
@@ -150,10 +166,14 @@ class LinuxDistributionBuilder(private val context: BuildContext,
     spanBuilder("build Linux tar.gz")
       .setAttribute("jreDirectoryPath", jreDirectoryPath ?: "")
       .useWithScope {
-        for (dir in paths) {
-          updateExecutablePermissions(dir, executableFilesPatterns)
+        synchronized(context.paths.distAllDir) {
+          // Sync to prevent concurrent context.paths.distAllDir modification and reading from two Linux builders,
+          // otherwise tar building may fail due to FS change (changed attributes) while reading a file
+          for (dir in paths) {
+            updateExecutablePermissions(dir, executableFilesPatterns)
+          }
+          ArchiveUtils.tar(tarPath, tarRoot, paths.map(Path::toString), context.options.buildDateInSeconds)
         }
-        ArchiveUtils.tar(tarPath, tarRoot, paths.map(Path::toString), context.options.buildDateInSeconds)
         checkInArchive(context, tarPath, tarRoot)
         context.notifyArtifactBuilt(tarPath)
       }
@@ -187,14 +207,14 @@ class LinuxDistributionBuilder(private val context: BuildContext,
             Pair("NAME", productName),
             Pair("ICON", "\${SNAP}/bin/${context.productProperties.baseFileName}.png"),
             Pair("SCRIPT", snapName),
-            Pair("COMMENT", appInfo.motto),
+            Pair("COMMENT", appInfo.motto!!),
             Pair("WM_CLASS", getLinuxFrameClass(context))
           )
         )
         moveFile(iconPngPath, snapDir.resolve("$snapName.png"))
         val snapcraftTemplate = context.paths.communityHomeDir.resolve(
           "platform/build-scripts/resources/linux/snap/snapcraft-template.yaml")
-        val versionSuffix = appInfo.versionSuffix.replace(' ', '-')
+        val versionSuffix = appInfo.versionSuffix?.replace(' ', '-') ?: ""
         val version = "${appInfo.majorVersion}.${appInfo.minorVersion}${if (versionSuffix.isEmpty()) "" else "-${versionSuffix}"}"
         substituteTemplatePlaceholders(
           inputFile = snapcraftTemplate,
@@ -251,7 +271,8 @@ class LinuxDistributionBuilder(private val context: BuildContext,
             "snap", "-o", "result/$snapArtifact"
           ),
           workingDir = snapDir,
-          logger = context.messages
+          logger = context.messages,
+          timeoutMillis = TimeUnit.MINUTES.toMillis(context.options.snapDockerBuildTimeoutMin)
         )
         moveFileToDir(resultDir.resolve(snapArtifact), context.paths.artifactDir)
         context.notifyArtifactWasBuilt(context.paths.artifactDir.resolve(snapArtifact))

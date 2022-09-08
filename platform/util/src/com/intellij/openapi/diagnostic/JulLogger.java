@@ -31,7 +31,6 @@ public class JulLogger extends Logger {
   @Override
   public void debug(String message) {
     myLogger.log(java.util.logging.Level.FINE, message);
-
   }
 
   @Override
@@ -115,13 +114,11 @@ public class JulLogger extends Logger {
   }
 
   public static void clearHandlers() {
-    java.util.logging.Logger rootLogger = java.util.logging.Logger.getLogger("");
-    clearHandlers(rootLogger);
+    clearHandlers(java.util.logging.Logger.getLogger(""));
   }
 
   public static void clearHandlers(java.util.logging.Logger logger) {
-    Handler[] handlers = logger.getHandlers();
-    for (Handler handler : handlers) {
+    for (Handler handler : logger.getHandlers()) {
       logger.removeHandler(handler);
     }
   }
@@ -153,14 +150,17 @@ public class JulLogger extends Logger {
       }
     }
 
+    boolean logConsole = SystemProperties.getBooleanProperty("idea.log.console", true);
+
+    java.util.logging.Logger rootLogger = java.util.logging.Logger.getLogger("");
+
     RollingFileHandler fileHandler = new RollingFileHandler(logFilePath, limit, count, appendToFile, onRotate);
     fileHandler.setLevel(java.util.logging.Level.FINEST);
     IdeaLogRecordFormatter layout = new IdeaLogRecordFormatter();
     fileHandler.setFormatter(layout);
-    java.util.logging.Logger rootLogger = java.util.logging.Logger.getLogger("");
     rootLogger.addHandler(fileHandler);
 
-    if (enableConsoleLogger) {
+    if (enableConsoleLogger && logConsole) {
       ConsoleHandler consoleHandler = new ConsoleHandler();
       consoleHandler.setFormatter(new IdeaLogRecordFormatter(layout, showDateInConsole));
       consoleHandler.setLevel(java.util.logging.Level.WARNING);

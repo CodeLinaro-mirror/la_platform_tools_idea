@@ -17,12 +17,12 @@
 
     <group id="JavaNewProjectOrModuleGroup">
       <action id="NewProject" class="com.intellij.ide.actions.NewProjectAction">
-        <override-text place="MainToolbar"/>
+        <override-text place="ProjectWidgetPopup"/>
         <add-to-group group-id="ProjectWidget.Actions" anchor="first"/>
       </action>
       <action id="ImportProject" class="com.intellij.ide.actions.ImportProjectAction"/>
       <action id="ProjectFromVersionControl" class="com.intellij.openapi.wm.impl.welcomeScreen.ProjectFromVersionControlAction">
-        <override-text place="MainToolbar"/>
+        <override-text place="ProjectWidgetPopup"/>
         <add-to-group group-id="ProjectWidget.Actions"/>
       </action>>
       <separator/>
@@ -431,7 +431,7 @@
     </group>
 
     <group id="JavaDebuggerActions">
-      <action id="Debugger.ShowCollectionModificationHistory" class="com.intellij.debugger.actions.ShowCollectionHistoryAction">
+      <action id="Debugger.ShowCollectionHistory" class="com.intellij.debugger.actions.ShowCollectionHistoryAction">
         <add-to-group group-id="XDebugger.ValueGroup" anchor="last"/>
       </action>
       <action id="Debugger.CustomizeContextView" class="com.intellij.debugger.actions.CustomizeContextViewAction">

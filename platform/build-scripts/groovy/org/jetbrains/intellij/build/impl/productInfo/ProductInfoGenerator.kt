@@ -53,7 +53,7 @@ internal fun generateMultiPlatformProductJson(relativePathToBin: String,
 data class ProductInfoData(
   val name: String,
   val version: String,
-  val versionSuffix: String,
+  val versionSuffix: String?,
   val buildNumber: String,
   val productCode: String,
   val dataDirectoryName: String,

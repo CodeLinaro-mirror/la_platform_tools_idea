@@ -55,7 +55,10 @@ import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.net.HttpConfigurable;
 import com.intellij.util.ui.*;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -129,6 +132,7 @@ public final class PluginManagerConfigurable
   private boolean myInstalledSearchSetState = true;
 
   private String myLaterSearchQuery;
+  private boolean myForceShowInstalledTabForTag = false;
   private boolean myShowMarketplaceTab;
 
   public PluginManagerConfigurable(@Nullable Project project) {
@@ -239,11 +243,12 @@ public final class PluginManagerConfigurable
     myCardPanel.select(selectionTab, true);
 
     if (myLaterSearchQuery != null) {
-      Runnable search = enableSearch(myLaterSearchQuery);
+      Runnable search = enableSearch(myLaterSearchQuery, myForceShowInstalledTabForTag);
       if (search != null) {
         ApplicationManager.getApplication().invokeLater(search, ModalityState.any());
       }
       myLaterSearchQuery = null;
+      myForceShowInstalledTabForTag = false;
     }
 
     return myCardPanel;
@@ -1323,6 +1328,11 @@ public final class PluginManagerConfigurable
       }
 
       @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
+      }
+
+      @Override
       public boolean isCopyEnabled(@NotNull DataContext dataContext) {
         return !component.getSelection().isEmpty();
       }
@@ -1809,6 +1819,11 @@ public final class PluginManagerConfigurable
   @Nullable
   @Override
   public Runnable enableSearch(String option) {
+    return enableSearch(option, false);
+  }
+
+  @Nullable
+  public Runnable enableSearch(String option, boolean ignoreTagMarketplaceTab) {
     if (myTabHeaderComponent == null) {
       myLaterSearchQuery = option;
       return () -> {};
@@ -1818,7 +1833,7 @@ public final class PluginManagerConfigurable
     }
 
     return () -> {
-      boolean marketplace = (option != null && option.startsWith(SearchWords.TAG.getValue()));
+      boolean marketplace = (!ignoreTagMarketplaceTab && option != null && option.startsWith(SearchWords.TAG.getValue()));
       if (myShowMarketplaceTab) {
         marketplace = true;
         myShowMarketplaceTab = false;
@@ -1843,6 +1858,15 @@ public final class PluginManagerConfigurable
     if (myMarketplaceTab != null) {
       myMarketplaceTab.clearSearchPanel(option);
       myMarketplaceTab.showSearchPanel(option);
+    }
+  }
+
+  public void openInstalledTab(@NotNull String option) {
+    myLaterSearchQuery = option;
+    myShowMarketplaceTab = false;
+    myForceShowInstalledTabForTag = true;
+    if (myTabHeaderComponent != null) {
+      updateSelectionTab(INSTALLED_TAB);
     }
   }
 

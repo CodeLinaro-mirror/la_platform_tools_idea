@@ -1,29 +1,59 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.importing;
 
-import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.compiler.impl.javaCompiler.javac.JavacConfiguration;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
+import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProviderImpl;
+import com.intellij.openapi.externalSystem.service.project.IdeUIModifiableModelsProvider;
+import com.intellij.openapi.externalSystem.service.project.ProjectDataManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ex.ProjectRootManagerEx;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.idea.maven.model.MavenArtifact;
 import org.jetbrains.idea.maven.project.*;
+import org.jetbrains.idea.maven.statistics.MavenImportCollector;
 import org.jetbrains.idea.maven.utils.MavenArtifactUtilKt;
 import org.jetbrains.idea.maven.utils.MavenProgressIndicator;
 import org.jetbrains.idea.maven.utils.MavenUtil;
+import org.jetbrains.jps.model.java.compiler.JpsJavaCompilerOptions;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 public abstract class MavenProjectImporterBase implements MavenProjectImporter {
-  private static final Logger LOG = Logger.getInstance(MavenProjectImporterBase.class);
+  protected final Project myProject;
+
   protected final MavenProjectsTree myProjectsTree;
   protected final MavenImportingSettings myImportingSettings;
   protected volatile Map<MavenProject, MavenProjectChanges> myProjectsToImportWithChanges;
 
-  public MavenProjectImporterBase(MavenProjectsTree projectsTree, MavenImportingSettings importingSettings,
-                                  Map<MavenProject, MavenProjectChanges> projectsToImportWithChanges) {
+  protected final IdeModifiableModelsProvider myIdeModifiableModelsProvider;
+  protected final ModifiableModelsProviderProxy myModelsProvider;
+
+  public MavenProjectImporterBase(Project project,
+                                  MavenProjectsTree projectsTree,
+                                  MavenImportingSettings importingSettings,
+                                  Map<MavenProject, MavenProjectChanges> projectsToImportWithChanges,
+                                  @NotNull IdeModifiableModelsProvider modelsProvider) {
+    myProject = project;
+
     myProjectsTree = projectsTree;
     myImportingSettings = importingSettings;
     myProjectsToImportWithChanges = projectsToImportWithChanges;
+
+    myIdeModifiableModelsProvider = modelsProvider;
+
+    if (MavenUtil.newModelEnabled(myProject) && modelsProvider instanceof IdeModifiableModelsProviderImpl) {
+      myModelsProvider =
+        new ModifiableModelsProviderProxyImpl(myProject, ((IdeModifiableModelsProviderImpl)modelsProvider).getActualStorageBuilder());
+    }
+    else {
+      myModelsProvider = new ModifiableModelsProviderProxyWrapper(myIdeModifiableModelsProvider);
+    }
   }
 
   protected Set<MavenProject> selectProjectsToImport(Collection<MavenProject> originalProjects) {
@@ -38,6 +68,41 @@ public abstract class MavenProjectImporterBase implements MavenProjectImporter {
   protected boolean shouldCreateModuleFor(MavenProject project) {
     if (myProjectsTree.isIgnored(project)) return false;
     return !project.isAggregator() || myImportingSettings.isCreateModulesForAggregators();
+  }
+
+  protected void configFacets(List<MavenModuleImporter> importers, List<MavenProjectsProcessorTask> postTasks) {
+    if (!importers.isEmpty()) {
+      IdeModifiableModelsProvider provider;
+      if (myIdeModifiableModelsProvider instanceof IdeUIModifiableModelsProvider) {
+        provider = myIdeModifiableModelsProvider; // commit does nothing for this provider, so it should be reused
+      }
+      else {
+        provider = ProjectDataManager.getInstance().createModifiableModelsProvider(myProject);
+      }
+
+      try {
+        List<MavenModuleImporter> toRun = ContainerUtil.filter(importers, it -> !it.isModuleDisposed() && !it.isAggregatorMainTestModule());
+
+        Map<Class<? extends MavenImporter>, MavenModuleImporter.CountAndTime> counters = new HashMap<>();
+
+        toRun.forEach(importer -> importer.setModifiableModelsProvider(provider));
+        toRun.forEach(importer -> importer.preConfigFacets(counters));
+        toRun.forEach(importer -> importer.configFacets(postTasks, counters));
+        toRun.forEach(importer -> importer.postConfigFacets(counters));
+
+        for (Map.Entry<Class<? extends MavenImporter>, MavenModuleImporter.CountAndTime> each : counters.entrySet()) {
+          MavenImportCollector.IMPORTER_RUN.log(myProject, each.getKey(), each.getValue().count,
+                                                TimeUnit.NANOSECONDS.toMillis(each.getValue().timeNano));
+        }
+      }
+      finally {
+        MavenUtil.invokeAndWaitWriteAction(myProject, () -> {
+          ProjectRootManagerEx.getInstanceEx(myProject).mergeRootsChangesDuring(() -> {
+            provider.commit();
+          });
+        });
+      }
+    }
   }
 
   protected void scheduleRefreshResolvedArtifacts(List<MavenProjectsProcessorTask> postTasks) {
@@ -65,6 +130,15 @@ public abstract class MavenProjectImporterBase implements MavenProjectImporter {
     else {
       postTasks.add(new RefreshingFilesTask(files));
     }
+  }
+
+  protected void removeOutdatedCompilerConfigSettings() {
+    ApplicationManager.getApplication().assertWriteAccessAllowed();
+
+    final JpsJavaCompilerOptions javacOptions = JavacConfiguration.getOptions(myProject, JavacConfiguration.class);
+    String options = javacOptions.ADDITIONAL_OPTIONS_STRING;
+    options = options.replaceFirst("(-target (\\S+))", ""); // Old IDEAs saved
+    javacOptions.ADDITIONAL_OPTIONS_STRING = options;
   }
 
   protected boolean projectsToImportHaveChanges() {

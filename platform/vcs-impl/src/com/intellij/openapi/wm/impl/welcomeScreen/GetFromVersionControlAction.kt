@@ -4,6 +4,7 @@ package com.intellij.openapi.wm.impl.welcomeScreen
 import com.intellij.icons.AllIcons
 import com.intellij.idea.ActionsBundle
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
@@ -35,9 +36,13 @@ open class GetFromVersionControlAction : DumbAwareAction() {
     }
     else {
       presentation.icon =
-        if (ExperimentalUI.isNewUI() && (ActionPlaces.MAIN_TOOLBAR == e.place)) IconManager.getInstance().getIcon("expui/vcs/vcs.svg", AllIcons::class.java)
+        if (ExperimentalUI.isNewUI() && (ActionPlaces.PROJECT_WIDGET_POPUP == e.place)) IconManager.getInstance().getIcon("expui/vcs/vcs.svg", AllIcons::class.java)
         else null
     }
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.BGT
   }
 
   override fun actionPerformed(e: AnActionEvent) {

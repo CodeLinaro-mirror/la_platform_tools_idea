@@ -6,9 +6,8 @@ import com.intellij.ide.RecentProjectMetaInfo
 import com.intellij.ide.RecentProjectsManager
 import com.intellij.ide.RecentProjectsManagerBase
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.*
 import com.intellij.openapi.components.Service.Level
-import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
@@ -21,14 +20,15 @@ import com.intellij.openapi.wm.impl.welcomeScreen.recentProjects.CloneableProjec
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.messages.Topic
 import org.jetbrains.annotations.Nls
-import java.util.Collections.synchronizedList
+import org.jetbrains.annotations.SystemIndependent
+import java.util.*
 
 @Service(Level.APP)
 class CloneableProjectsService {
-  private val cloneableProjects: MutableList<CloneableProject> = synchronizedList(mutableListOf())
+  private val cloneableProjects: MutableSet<CloneableProject> = Collections.synchronizedSet(mutableSetOf())
 
   @RequiresEdt
-  fun runCloneTask(projectPath: String, cloneTask: CloneTask) {
+  fun runCloneTask(projectPath: @SystemIndependent String, cloneTask: CloneTask) {
     val taskInfo = cloneTask.taskInfo()
     val progressIndicator = CloneableProjectProgressIndicator(taskInfo)
     val cloneableProject = CloneableProject(projectPath, taskInfo, progressIndicator, CloneStatus.PROGRESS)
@@ -36,6 +36,7 @@ class CloneableProjectsService {
 
     ApplicationManager.getApplication().executeOnPooledThread {
       ProgressManager.getInstance().runProcess(Runnable {
+        val activity = VcsCloneCollector.cloneStarted()
         val cloneStatus: CloneStatus = try {
           cloneTask.run(progressIndicator)
         }
@@ -46,6 +47,7 @@ class CloneableProjectsService {
           logger<CloneableProjectsService>().error(exception)
           CloneStatus.FAILURE
         }
+        VcsCloneCollector.cloneFinished(activity, cloneStatus)
 
         when (cloneStatus) {
           CloneStatus.SUCCESS -> onSuccess(cloneableProject)
@@ -69,32 +71,43 @@ class CloneableProjectsService {
     }
   }
 
+  fun cloneCount(): Int {
+    return cloneableProjects.size
+  }
+
+  fun isCloneActive(): Boolean {
+    return !cloneableProjects.isEmpty()
+  }
+
   fun cancelClone(cloneableProject: CloneableProject) {
     cloneableProject.progressIndicator.cancel()
   }
 
-  fun removeCloneProject(cloneableProject: CloneableProject) {
+  fun removeCloneableProject(cloneableProject: CloneableProject) {
     if (cloneableProject.cloneStatus == CloneStatus.PROGRESS) {
       cloneableProject.progressIndicator.cancel()
     }
 
-    cloneableProjects.remove(cloneableProject)
+    cloneableProjects.removeIf { it.projectPath == cloneableProject.projectPath }
     fireCloneRemovedEvent()
-  }
-
-  private fun addCloneableProject(cloneableProject: CloneableProject) {
-    cloneableProjects.add(cloneableProject)
-    fireCloneAddedEvent(cloneableProject)
   }
 
   private fun upgradeCloneProjectToRecent(cloneableProject: CloneableProject) {
     val recentProjectsManager = RecentProjectsManager.getInstance() as RecentProjectsManagerBase
     recentProjectsManager.addRecentPath(cloneableProject.projectPath, RecentProjectMetaInfo())
-    removeCloneProject(cloneableProject)
+    removeCloneableProject(cloneableProject)
+  }
+
+  private fun addCloneableProject(cloneableProject: CloneableProject) {
+    cloneableProjects.removeIf { it.projectPath == cloneableProject.projectPath }
+    cloneableProjects.add(cloneableProject)
+    fireCloneAddedEvent(cloneableProject)
   }
 
   private fun onSuccess(cloneableProject: CloneableProject) {
+    cloneableProject.cloneStatus = CloneStatus.SUCCESS
     upgradeCloneProjectToRecent(cloneableProject)
+    fireCloneSuccessEvent()
   }
 
   private fun onFailure(cloneableProject: CloneableProject) {
@@ -117,6 +130,12 @@ class CloneableProjectsService {
     ApplicationManager.getApplication().messageBus
       .syncPublisher(TOPIC)
       .onCloneRemoved()
+  }
+
+  private fun fireCloneSuccessEvent() {
+    ApplicationManager.getApplication().messageBus
+      .syncPublisher(TOPIC)
+      .onCloneSuccess()
   }
 
   private fun fireCloneFailedEvent() {
@@ -155,7 +174,7 @@ class CloneableProjectsService {
   }
 
   data class CloneableProject(
-    val projectPath: String,
+    val projectPath: @SystemIndependent String,
     val cloneTaskInfo: CloneTaskInfo,
     val progressIndicator: ProgressIndicatorEx,
     var cloneStatus: CloneStatus
@@ -175,16 +194,24 @@ class CloneableProjectsService {
 
   interface CloneProjectListener {
     @JvmDefault
-    fun onCloneAdded(progressIndicator: ProgressIndicatorEx, taskInfo: TaskInfo) {}
+    fun onCloneAdded(progressIndicator: ProgressIndicatorEx, taskInfo: TaskInfo) {
+    }
 
     @JvmDefault
-    fun onCloneRemoved() {}
+    fun onCloneRemoved() {
+    }
 
     @JvmDefault
-    fun onCloneFailed() {}
+    fun onCloneSuccess() {
+    }
 
     @JvmDefault
-    fun onCloneCanceled() {}
+    fun onCloneFailed() {
+    }
+
+    @JvmDefault
+    fun onCloneCanceled() {
+    }
   }
 
   companion object {

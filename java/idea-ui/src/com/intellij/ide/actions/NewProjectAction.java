@@ -8,6 +8,7 @@ import com.intellij.ide.projectWizard.NewProjectWizard;
 import com.intellij.lang.IdeLanguageCustomization;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.actionSystem.ActionPlaces;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.DumbAware;
@@ -30,11 +31,16 @@ public class NewProjectAction extends AnAction implements DumbAware, NewProjectO
     updateActionText(this, e);
   }
 
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
+  }
+
   private static void updateActionIcon(@NotNull AnActionEvent e) {
     if (NewWelcomeScreen.isNewWelcomeScreen(e)) {
       NewWelcomeScreen.updateNewProjectIconIfWelcomeScreen(e);
     }
-    else if (ExperimentalUI.isNewUI() && ActionPlaces.MAIN_TOOLBAR.equals(e.getPlace())) {
+    else if (ExperimentalUI.isNewUI() && ActionPlaces.PROJECT_WIDGET_POPUP.equals(e.getPlace())) {
       e.getPresentation().setIcon(IconManager.getInstance().getIcon("expui/general/add.svg", AllIcons.class));
     }
   }
@@ -56,6 +62,7 @@ public class NewProjectAction extends AnAction implements DumbAware, NewProjectO
       actionText = action.getActionText(fromNewSubMenu, inJavaIde);
     }
     e.getPresentation().setText(actionText);
+    action.applyTextOverride(e);
   }
 
   private static boolean isInvokedFromNewSubMenu(@NotNull AnAction action, @NotNull AnActionEvent e) {

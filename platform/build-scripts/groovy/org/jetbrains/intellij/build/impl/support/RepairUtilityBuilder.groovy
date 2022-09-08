@@ -2,23 +2,19 @@
 package org.jetbrains.intellij.build.impl.support
 
 import com.intellij.openapi.util.SystemInfoRt
-import com.intellij.util.system.CpuArch
 import groovy.transform.CompileStatic
 import io.opentelemetry.api.trace.Span
 import kotlin.Unit
 import kotlin.jvm.functions.Function0
 import org.jetbrains.annotations.Nullable
-import org.jetbrains.intellij.build.BuildContext
-import org.jetbrains.intellij.build.BuildContextKt
-import org.jetbrains.intellij.build.BuildOptions
-import org.jetbrains.intellij.build.JvmArchitecture
-import org.jetbrains.intellij.build.OsFamily
+import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.dependencies.TeamCityHelper
 import org.jetbrains.intellij.build.io.ProcessKt
 
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
 
 import static java.nio.file.attribute.PosixFilePermission.*
@@ -43,23 +39,41 @@ final class RepairUtilityBuilder {
   private static volatile Map<Binary, Path> BINARIES_CACHE
 
   private static final Collection<Binary> BINARIES = List.of(
-    new Binary(OsFamily.LINUX, JvmArchitecture.x64, 'bin/repair-linux-amd64', 'bin/repair'),
-    new Binary(OsFamily.WINDOWS, JvmArchitecture.x64, 'bin/repair.exe', 'bin/repair.exe'),
-    new Binary(OsFamily.MACOS, JvmArchitecture.x64, 'bin/repair-darwin-amd64', 'bin/repair'),
-    new Binary(OsFamily.MACOS, JvmArchitecture.aarch64, 'bin/repair-darwin-arm64', 'bin/repair')
+    new Binary(OsFamily.LINUX, JvmArchitecture.x64, 'bin/repair-linux-amd64', 'bin/repair', "linux_amd64"),
+    new Binary(OsFamily.LINUX, JvmArchitecture.aarch64, 'bin/repair-linux-arm64', 'bin/repair', "linux_arm64"),
+    new Binary(OsFamily.WINDOWS, JvmArchitecture.x64, 'bin/repair.exe', 'bin/repair.exe', "windows_amd64"),
+    new Binary(OsFamily.MACOS, JvmArchitecture.x64, 'bin/repair-darwin-amd64', 'bin/repair', "darwin_amd64"),
+    new Binary(OsFamily.MACOS, JvmArchitecture.aarch64, 'bin/repair-darwin-arm64', 'bin/repair',  "darwin_arm64")
   )
 
   static final class Binary {
     final OsFamily os
     final JvmArchitecture arch
     final String relativeTargetPath
+    final String distributionUrlVariable
+    final String distributionSuffix
     private final String relativeSourcePath
 
-    private Binary(OsFamily os, JvmArchitecture arch, String relativeSourcePath, String relativeTargetPath) {
+    private Binary(OsFamily os, JvmArchitecture arch, String relativeSourcePath, String relativeTargetPath,  String distributionUrlVariable) {
       this.os = os
       this.arch = arch
       this.relativeSourcePath = relativeSourcePath
       this.relativeTargetPath = relativeTargetPath
+      this.distributionUrlVariable = distributionUrlVariable
+      String distributionSuffix = ""
+      if (arch == JvmArchitecture.aarch64) {
+        distributionSuffix = "-" + arch.fileSuffix
+      }
+      if (os == OsFamily.LINUX) {
+        distributionSuffix += ".tar.gz"
+      }
+      else if (os == OsFamily.MACOS) {
+        distributionSuffix += ".dmg"
+      }
+      else if (os == OsFamily.WINDOWS) {
+        distributionSuffix += ".exe"
+      }
+      this.distributionSuffix = distributionSuffix
     }
   }
 
@@ -75,7 +89,7 @@ final class RepairUtilityBuilder {
         }
 
         if (cache.isEmpty()) {
-          return
+          return Unit.INSTANCE
         }
 
         Binary binary = findBinary(context, os, arch)
@@ -93,7 +107,7 @@ final class RepairUtilityBuilder {
     })
   }
 
-  static synchronized void generateManifest(BuildContext context, Path unpackedDistribution, String manifestFileNamePrefix) {
+  static synchronized void generateManifest(BuildContext context, Path unpackedDistribution, OsFamily os, JvmArchitecture arch) {
     BuildContextKt.executeStep(context, spanBuilder("generate installation integrity manifest")
                                .setAttribute("dir", unpackedDistribution.toString()), BuildOptions.REPAIR_UTILITY_BUNDLE_STEP, new Function0<Unit>() {
       @Override
@@ -106,13 +120,11 @@ final class RepairUtilityBuilder {
           BINARIES_CACHE = buildBinaries(context)
         }
         if (BINARIES_CACHE.isEmpty()) {
-          return
+          return Unit.INSTANCE
         }
-        OsFamily currentOs = SystemInfoRt.isWindows ? OsFamily.WINDOWS :
-                             SystemInfoRt.isMac ? OsFamily.MACOS :
-                             SystemInfoRt.isLinux ? OsFamily.LINUX : null
-        Binary binary = findBinary(context, currentOs, CpuArch.isArm64() ? JvmArchitecture.aarch64 : JvmArchitecture.x64)
-        def binaryPath = repairUtilityProjectHome(context).resolve(binary.relativeSourcePath)
+        Binary manifesrGenerator = findBinary(context, OsFamily.currentOs, JvmArchitecture.currentJvmArch)
+        Binary distributionBinary = findBinary(context, os, arch)
+        def binaryPath = repairUtilityProjectHome(context).resolve(manifesrGenerator.relativeSourcePath)
         def tmpDir = context.paths.tempDir.resolve(BuildOptions.REPAIR_UTILITY_BUNDLE_STEP + UUID.randomUUID().toString())
         Files.createDirectories(tmpDir)
         try {
@@ -132,7 +144,8 @@ final class RepairUtilityBuilder {
           context.messages.error("Unable to generate installation integrity manifest: ${Files.readString(repairLog)}")
         }
 
-        Path artifact = context.paths.artifactDir.resolve("${manifestFileNamePrefix}.manifest")
+        String baseName = context.productProperties.getBaseArtifactName(context.applicationInfo, context.buildNumber)
+        Path artifact = context.paths.artifactDir.resolve("${baseName}${distributionBinary.distributionSuffix}.manifest")
         Files.move(manifest, artifact, StandardCopyOption.REPLACE_EXISTING)
         return Unit.INSTANCE
       }
@@ -184,10 +197,20 @@ final class RepairUtilityBuilder {
         return Collections.<Binary, Path>emptyMap()
       }
       else {
-        try {
-          ProcessKt.runProcess(['docker', '--version'], null, buildContext.messages)
-          ProcessKt.runProcess(['bash', 'build.sh'], projectHome, buildContext.messages)
-        }
+       try {
+         ProcessKt.runProcess(['docker', '--version'], null, buildContext.messages)
+         def baseUrl = buildContext.applicationInfo.patchesUrl
+         def baseName = buildContext.productProperties.getBaseArtifactName(buildContext.applicationInfo, buildContext.buildNumber)
+         Map<String, String> distributionUrls = BINARIES.collectEntries {
+           def envVar = it.distributionUrlVariable
+           def url = baseUrl + baseName + it.distributionSuffix
+           buildContext.messages.info("$envVar=$url")
+           [(envVar): url]
+         }
+         ProcessKt.runProcess(['bash', 'build.sh'], projectHome, buildContext.messages,
+                              TimeUnit.MINUTES.toMillis(10L),
+                              distributionUrls)
+       }
         catch (Throwable e) {
           if (TeamCityHelper.isUnderTeamCity) {
             throw e
@@ -198,7 +221,7 @@ final class RepairUtilityBuilder {
         Map<Binary, Path> binaries = BINARIES.collectEntries {
           [(it): projectHome.resolve(it.relativeSourcePath)]
         }
-        def executablePermissions = Set.of(
+        def executablePermissions = EnumSet.of(
           OWNER_READ, OWNER_WRITE, OWNER_EXECUTE, GROUP_READ, GROUP_EXECUTE, OTHERS_READ, OTHERS_EXECUTE
         )
         for (Path file in binaries.values()) {

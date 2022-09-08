@@ -70,6 +70,12 @@ class PyTargetAwareAdditionalData private constructor(private val b: RemoteSdkPr
     b.load(element)
     // the state that contains information of the target, as for now the target configuration is embedded into the additional data
     val (loadedState, loadedConfiguration) = loadTargetBasedSdkAdditionalData(element)
+    // add Python language runtime for the loaded configuration
+    if (loadedConfiguration != null) {
+      val pythonLanguageRuntimeConfiguration = PythonLanguageRuntimeConfiguration()
+      pythonLanguageRuntimeConfiguration.pythonInterpreterPath = interpreterPath
+      loadedConfiguration.addLanguageRuntime(pythonLanguageRuntimeConfiguration)
+    }
     targetState = loadedState
     _targetEnvironmentConfiguration = loadedConfiguration
   }
@@ -92,10 +98,11 @@ class PyTargetAwareAdditionalData private constructor(private val b: RemoteSdkPr
     private val LOG = logger<PyTargetAwareAdditionalData>()
 
     /**
+     * Loads target data if it exists in xml. Returns `null` otherwise.
      * @see com.jetbrains.python.remote.PyRemoteSdkAdditionalData.loadRemote
      */
     @JvmStatic
-    fun loadTargetAwareData(sdk: Sdk, element: Element): PyTargetAwareAdditionalData {
+    fun loadTargetAwareData(sdk: Sdk, element: Element): PyTargetAwareAdditionalData? {
       val homePath = sdk.homePath ?: throw IllegalStateException("Home path must not be null")
       // TODO Python flavor identifier must be stored in `element` and taken from it here
       val data = PyTargetAwareAdditionalData(flavor = UnixPythonSdkFlavor.getInstance())
@@ -103,7 +110,7 @@ class PyTargetAwareAdditionalData private constructor(private val b: RemoteSdkPr
       data.load(element)
       // TODO [targets] Load `SKELETONS_PATH` for Target-based Python SDK from `Element`
       // TODO [targets] Load `VERSION` for Target-based Python SDK from `Element`
-      return data
+      return if (data.targetEnvironmentConfiguration != null) data else null
     }
   }
 }

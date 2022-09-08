@@ -343,7 +343,7 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
     ourTraceMask = mask;
   }
 
-  private int getTraceMask() {
+  protected int getTraceMask() {
     int mask = ourTraceMask;
     DebugEnvironment environment = mySession.getDebugEnvironment();
     if (environment instanceof DefaultDebugEnvironment) {
@@ -477,6 +477,13 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
       }
     }
     return false;
+  }
+
+  public static boolean isClassFiltered(@Nullable String name) {
+    if (name == null) {
+      return false;
+    }
+    return DebuggerUtilsEx.isFiltered(name, getActiveFilters());
   }
 
   @NotNull
@@ -714,7 +721,7 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
       .orElseThrow(() -> new CantRunException(JavaDebuggerBundle.message("error.debug.connector.not.found", connectorName)));
   }
 
-  private void checkVirtualMachineVersion(VirtualMachine vm) {
+  protected void checkVirtualMachineVersion(VirtualMachine vm) {
     final String versionString = vm.version();
     if ("1.4.0".equals(versionString)) {
       DebuggerInvocationUtil.swingInvokeLater(myProject, () -> Messages.showMessageDialog(

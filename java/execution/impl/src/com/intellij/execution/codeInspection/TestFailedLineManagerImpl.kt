@@ -2,10 +2,9 @@
 package com.intellij.execution.codeInspection
 
 import com.intellij.codeInsight.TestFrameworks
-import com.intellij.codeInsight.intention.FileModifier.SafeFieldForPreview
+import com.intellij.codeInsight.intention.FileModifier
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
-import com.intellij.codeInspection.test.TestFailedLineManager
 import com.intellij.debugger.DebuggerManagerEx
 import com.intellij.execution.ExecutorRegistry
 import com.intellij.execution.ProgramRunnerUtil
@@ -28,6 +27,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.SmartPsiElementPointer
 import com.intellij.psi.util.ClassUtil
+import com.intellij.testIntegration.TestFailedLineManager
 import com.intellij.util.containers.FactoryMap
 import com.intellij.util.ui.UIUtil
 import org.jetbrains.annotations.Nls
@@ -47,7 +47,8 @@ class TestFailedLineManagerImpl(project: Project) : TestFailedLineManager, FileE
     cache.remove(file)?.forEach { (s: String, info: TestInfoCache) -> testStorage.writeState(s, info.record) }
   }
 
-  override fun getTestInfo(call: UCallExpression): TestFailedLineManager.TestInfo? {
+  override fun getTestInfo(element: PsiElement): TestFailedLineManager.TestInfo? {
+    val call = element.toUElementOfType<UCallExpression>() ?: return null
     val containingMethod = call.getContainingUMethod() ?: return null
     val callSourcePsi = call.sourcePsi ?: return null
     val file = call.getContainingUFile()?.sourcePsi ?: return null
@@ -69,10 +70,10 @@ class TestFailedLineManagerImpl(project: Project) : TestFailedLineManager, FileE
   private class TestInfoCache(
     var record: TestStateStorage.Record,
     var pointer: SmartPsiElementPointer<PsiElement>? = null
-  ): TestFailedLineManager.TestInfo {
-    override val errorMessage: String = record.errorMessage
+  ) : TestFailedLineManager.TestInfo {
+    override fun getErrorMessage(): String = record.errorMessage
 
-    override val topStacktraceLine: String = record.topStacktraceLine
+    override fun getTopStackTraceLine(): String = record.topStacktraceLine
   }
 
   private fun getTestInfo(method: UMethod): TestInfoCache? {
@@ -92,19 +93,22 @@ class TestFailedLineManagerImpl(project: Project) : TestFailedLineManager, FileE
     return info
   }
 
-  override fun ruConfigurationQuickFix(element: PsiElement): LocalQuickFix = RunActionFix(element)
+  override fun getRunQuickFix(element: PsiElement): LocalQuickFix? {
+    val configuration = ConfigurationContext(element).configuration ?: return null
+    return RunActionFix(DefaultRunExecutor.EXECUTOR_ID, configuration)
+  }
 
-  override fun debugConfigurationQuickFix(element: PsiElement, topStacktraceLine: String): LocalQuickFix =
-    DebugActionFix(element, topStacktraceLine)
+  override fun getDebugQuickFix(element: PsiElement, topStacktraceLine: String): LocalQuickFix? {
+    val configuration = ConfigurationContext(element).configuration ?: return null
+    return DebugActionFix(topStacktraceLine, DefaultDebugExecutor.EXECUTOR_ID, configuration)
+  }
 
-  private open class RunActionFix(element: PsiElement, executorId: String = DefaultRunExecutor.EXECUTOR_ID) : LocalQuickFix, Iconable {
-    @SafeFieldForPreview
+  private open class RunActionFix(
+    executorId: String, @FileModifier.SafeFieldForPreview private val configuration: RunnerAndConfigurationSettings
+  ) : LocalQuickFix, Iconable {
+    @FileModifier.SafeFieldForPreview
     private val executor = ExecutorRegistry.getInstance().getExecutorById(executorId) ?: throw IllegalStateException(
-      "Could not create action because executor $executorId was not found.")
-
-    @SafeFieldForPreview
-    private val configuration: RunnerAndConfigurationSettings = ConfigurationContext(element).configuration ?: throw IllegalStateException(
-      "Could not create action because configuration context was not found for element $element."
+      "Could not create action because executor $executorId was not found"
     )
 
     override fun getFamilyName(): @Nls(capitalization = Nls.Capitalization.Sentence) String =
@@ -118,9 +122,8 @@ class TestFailedLineManagerImpl(project: Project) : TestFailedLineManager, FileE
   }
 
   private class DebugActionFix(
-    element: PsiElement,
-    private val topStacktraceLine: String
-  ) : RunActionFix(element, DefaultDebugExecutor.EXECUTOR_ID) {
+    private val topStacktraceLine: String, executorId: String, settings: RunnerAndConfigurationSettings
+  ) : RunActionFix(executorId, settings) {
     override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
       val line = StackTraceLine(project, topStacktraceLine)
       line.getMethodLocation(project)?.let { location ->

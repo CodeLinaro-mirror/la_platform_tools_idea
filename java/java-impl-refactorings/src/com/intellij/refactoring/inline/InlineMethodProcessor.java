@@ -14,6 +14,7 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.RangeMarker;
+import com.intellij.openapi.module.UnloadedModuleDescription;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
@@ -210,6 +211,14 @@ public class InlineMethodProcessor extends BaseRefactoringProcessor {
   }
 
   @Override
+  protected Set<UnloadedModuleDescription> computeUnloadedModulesFromUseScope(UsageViewDescriptor descriptor) {
+    if (myInlineThisOnly) {
+      return Collections.emptySet();
+    }
+    return super.computeUnloadedModulesFromUseScope(descriptor);
+  }
+
+  @Override
   protected void refreshElements(PsiElement @NotNull [] elements) {
     boolean condition = elements.length == 1 && elements[0] instanceof PsiMethod;
     LOG.assertTrue(condition);
@@ -246,14 +255,7 @@ public class InlineMethodProcessor extends BaseRefactoringProcessor {
               conflicts.putValue(element, JavaRefactoringBundle.message("inline.method.used.in.reflection"));
             }
             if (element instanceof PsiMethodReferenceExpression) {
-              final PsiExpression qualifierExpression = ((PsiMethodReferenceExpression)element).getQualifierExpression();
-              if (qualifierExpression != null) {
-                final List<PsiElement> sideEffects = new ArrayList<>();
-                SideEffectChecker.checkSideEffects(qualifierExpression, sideEffects);
-                if (!sideEffects.isEmpty()) {
-                  conflicts.putValue(element, JavaRefactoringBundle.message("inline.method.qualifier.usage.side.effect"));
-                }
-              }
+              processSideEffectsInMethodReferenceQualifier(conflicts, (PsiMethodReferenceExpression)element);
             }
             if (element instanceof PsiReferenceExpression && myTransformerChooser.apply((PsiReference)element).isFallBackTransformer()) {
               conflicts.putValue(element, JavaRefactoringBundle.message("inlined.method.will.be.transformed.to.single.return.form"));
@@ -268,6 +270,9 @@ public class InlineMethodProcessor extends BaseRefactoringProcessor {
         else if (myReference != null && myTransformerChooser.apply(myReference).isFallBackTransformer()) {
           conflicts.putValue(myReference.getElement(),
                              JavaRefactoringBundle.message("inlined.method.will.be.transformed.to.single.return.form"));
+        }
+        else if (myReference instanceof PsiMethodReferenceExpression) {
+          processSideEffectsInMethodReferenceQualifier(conflicts, (PsiMethodReferenceExpression)myReference);
         }
         addInaccessibleMemberConflicts(myMethod, usagesIn, new ReferencedElementsCollector(), conflicts);
         addInaccessibleSuperCallsConflicts(usagesIn, conflicts);
@@ -286,6 +291,17 @@ public class InlineMethodProcessor extends BaseRefactoringProcessor {
     return showConflicts(conflicts, usagesIn);
   }
 
+  private static void processSideEffectsInMethodReferenceQualifier(@NotNull MultiMap<PsiElement, String> conflicts,
+                                                                   @NotNull PsiMethodReferenceExpression methodReferenceExpression) {
+    final PsiExpression qualifierExpression = methodReferenceExpression.getQualifierExpression();
+    if (qualifierExpression != null) {
+      final List<PsiElement> sideEffects = new ArrayList<>();
+      SideEffectChecker.checkSideEffects(qualifierExpression, sideEffects);
+      if (!sideEffects.isEmpty()) {
+        conflicts.putValue(methodReferenceExpression, JavaRefactoringBundle.message("inline.method.qualifier.usage.side.effect"));
+      }
+    }
+  }
 
   private boolean checkReadOnly() {
     return myMethod.isWritable() || myMethod instanceof PsiCompiledElement;
@@ -557,10 +573,6 @@ public class InlineMethodProcessor extends BaseRefactoringProcessor {
       LOG.error("Unexpected expr: " + callExpression.getText());
     }
     LambdaRefactoringUtil.simplifyToExpressionLambda(lambdaExpression);
-
-    if (myInlineThisOnly) {
-      LambdaRefactoringUtil.removeSideEffectsFromLambdaBody(myEditor, lambdaExpression);
-    }
   }
 
   public static void inlineConstructorCall(PsiCall constructorCall) {

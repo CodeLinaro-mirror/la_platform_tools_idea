@@ -21,7 +21,6 @@ import org.jetbrains.intellij.build.io.runProcess
 import org.jetbrains.intellij.build.io.substituteTemplatePlaceholders
 import org.jetbrains.intellij.build.io.transformFile
 import org.jetbrains.jps.model.library.JpsOrderRootType
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -152,7 +151,9 @@ internal class WindowsDistributionBuilder(
       NioFiles.deleteRecursively(tempExe.resolve("\$PLUGINSDIR"))
 
       runProcess(listOf("diff", "-q", "-r", tempZip.toString(), tempExe.toString()), null, context.messages)
-      RepairUtilityBuilder.generateManifest(context, tempExe, exePath!!.fileName.toString())
+      if (!context.options.buildStepsToSkip.contains(BuildOptions.REPAIR_UTILITY_BUNDLE_STEP)) {
+        RepairUtilityBuilder.generateManifest(context, tempExe, OsFamily.WINDOWS, arch)
+      }
     }
     finally {
       NioFiles.deleteRecursively(tempZip)
@@ -172,7 +173,7 @@ internal class WindowsDistributionBuilder(
       classPath += "\nSET \"CLASS_PATH=%CLASS_PATH%;%IDE_HOME%\\lib\\${classPathJars.get(i)}\""
     }
 
-    var additionalJvmArguments = context.getAdditionalJvmArguments()
+    var additionalJvmArguments = context.getAdditionalJvmArguments(OsFamily.WINDOWS)
     if (!context.xBootClassPathJarNames.isEmpty()) {
       additionalJvmArguments = additionalJvmArguments.toMutableList()
       val bootCp = context.xBootClassPathJarNames.joinToString(separator = ";") { "%IDE_HOME%\\lib\\${it}" }
@@ -241,9 +242,8 @@ internal class WindowsDistributionBuilder(
   private fun generateVMOptions(distBinDir: Path) {
     val productProperties = context.productProperties
     val fileName = "${productProperties.baseFileName}64.exe.vmoptions"
-    val isEAP = context.applicationInfo.isEAP
-    val vmOptions = VmOptionsGenerator.computeVmOptions(isEAP, productProperties)
-    Files.writeString(distBinDir.resolve(fileName), vmOptions.joinToString { "\r\n" } + "\r\n", StandardCharsets.US_ASCII)
+    val vmOptions = VmOptionsGenerator.computeVmOptions(context.applicationInfo.isEAP, productProperties)
+    VmOptionsGenerator.writeVmOptions(distBinDir.resolve(fileName), vmOptions, "\r\n")
   }
 
   private fun buildWinLauncher(winDistPath: Path) {
@@ -252,7 +252,7 @@ internal class WindowsDistributionBuilder(
       val launcherPropertiesPath = context.paths.tempDir.resolve("launcher.properties")
       val upperCaseProductName = context.applicationInfo.upperCaseProductName
       @Suppress("SpellCheckingInspection")
-      val vmOptions = context.getAdditionalJvmArguments() + listOf("-Dide.native.launcher=true")
+      val vmOptions = context.getAdditionalJvmArguments(OsFamily.WINDOWS) + listOf("-Dide.native.launcher=true")
       val productName = context.applicationInfo.shortProductName
       val classPath = context.bootClassPathJarNames.joinToString(separator = ";")
       val bootClassPath = context.xBootClassPathJarNames.joinToString(separator = ";")
@@ -261,7 +261,7 @@ internal class WindowsDistributionBuilder(
       val appInfoForLauncher = generateApplicationInfoForLauncher(patchedApplicationInfo, icoFilesDirectory)
       @Suppress("SpellCheckingInspection")
       Files.writeString(launcherPropertiesPath, """
-        IDS_JDK_ONLY=$context.productProperties.toolsJarRequired
+        IDS_JDK_ONLY=${context.productProperties.toolsJarRequired}
         IDS_JDK_ENV_VAR=${envVarBaseName}_JDK
         IDS_APP_TITLE=$productName Launcher
         IDS_VM_OPTIONS_PATH=%APPDATA%\\\\${context.applicationInfo.shortCompanyName}\\\\${context.systemSelector}

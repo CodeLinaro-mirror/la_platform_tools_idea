@@ -206,7 +206,7 @@ class PyDBDaemonThread(threading.Thread):
         created_pydb_daemon[self] = 1
         try:
             try:
-                if IS_JYTHON and not isinstance(threading.currentThread(), threading._MainThread):
+                if IS_JYTHON and not isinstance(threading.current_thread(), threading._MainThread):
                     # we shouldn't update sys.modules for the main thread, cause it leads to the second importing 'threading'
                     # module, and the new instance of main thread is created
                     import org.python.core as PyCore #@UnresolvedImport
@@ -267,7 +267,7 @@ class ReaderThread(PyDBDaemonThread):
     def __init__(self, sock):
         PyDBDaemonThread.__init__(self)
         self.sock = sock
-        self.setName("pydevd.Reader")
+        self.name = "pydevd.Reader"
         from _pydevd_bundle.pydevd_process_net_command import process_net_command
         self.process_net_command = process_net_command
         self.global_debugger_holder = GlobalDebuggerHolder
@@ -345,7 +345,7 @@ class WriterThread(PyDBDaemonThread):
     def __init__(self, sock):
         PyDBDaemonThread.__init__(self)
         self.sock = sock
-        self.setName("pydevd.Writer")
+        self.name = "pydevd.Writer"
         self.cmdQueue = _queue.Queue()
         if pydevd_vm_type.get_vm_type() == 'python':
             self.timeout = 0
@@ -440,6 +440,10 @@ def start_client(host, port):
     pydevd_log(1, "Connecting to ", host, ":", str(port))
 
     s = socket(AF_INET, SOCK_STREAM)
+    # Set inheritable for Python >= 3.4. See https://docs.python.org/3/library/os.html#fd-inheritance.
+    # It fixes issues: PY-37960 and PY-14980, also https://github.com/tornadoweb/tornado/issues/2243
+    if hasattr(s, 'set_inheritable'):
+        s.set_inheritable(True)
 
     #  Set TCP keepalive on an open socket.
     #  It activates after 1 second (TCP_KEEPIDLE,) of idleness,
@@ -571,7 +575,7 @@ class NetCommandFactory:
 
     def _thread_to_xml(self, thread):
         """ thread information as XML """
-        name = pydevd_xml.make_valid_xml_value(thread.getName())
+        name = pydevd_xml.make_valid_xml_value(thread.name)
         cmdText = '<thread name="%s" id="%s" />' % (quote(name), get_thread_id(thread))
         return cmdText
 

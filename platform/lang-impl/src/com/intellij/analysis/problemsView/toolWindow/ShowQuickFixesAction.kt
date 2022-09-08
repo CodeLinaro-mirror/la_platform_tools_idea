@@ -1,15 +1,15 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.analysis.problemsView.toolWindow
 
 import com.intellij.codeInsight.daemon.impl.ShowIntentionsPass
 import com.intellij.codeInsight.intention.impl.CachedIntentions
 import com.intellij.codeInsight.intention.impl.IntentionActionWithTextCaching
 import com.intellij.codeInsight.intention.impl.IntentionListStep
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys.PSI_FILE
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys.SELECTED_ITEM
-import com.intellij.openapi.actionSystem.UpdateInBackground
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.application.ApplicationManager.getApplication
 import com.intellij.openapi.application.ModalityState
@@ -26,7 +26,9 @@ import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.ui.UIUtil.isAncestor
 import java.awt.event.MouseEvent
 
-internal class ShowQuickFixesAction : AnAction(), UpdateInBackground {
+internal class ShowQuickFixesAction : AnAction() {
+
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
   override fun update(event: AnActionEvent) {
     val node = event.getData(SELECTED_ITEM) as? ProblemNode
@@ -92,9 +94,9 @@ internal class ShowQuickFixesAction : AnAction(), UpdateInBackground {
           val modality = editor?.contentComponent?.let { ModalityState.stateForComponent(it) } ?: ModalityState.current()
           getApplication().invokeLater(
             {
-              IdeFocusManager.getInstance(project).doWhenFocusSettlesDown {
+              IdeFocusManager.getInstance(project).doWhenFocusSettlesDown({
                 super.chooseActionAndInvoke(cachedAction, file, project, editor)
-              }
+              }, modality)
             }, modality, project.disposed)
         }
       }

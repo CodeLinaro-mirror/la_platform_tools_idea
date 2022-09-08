@@ -2,17 +2,20 @@
 package com.intellij.ide.actions
 
 import com.intellij.ide.TreeExpander
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.IdeActions.ACTION_EXPAND_ALL
 import com.intellij.openapi.actionSystem.PlatformDataKeys.TREE_EXPANDER
 import com.intellij.openapi.actionSystem.ex.ActionUtil.copyFrom
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.ui.ExperimentalUI
 
 class ExpandAllAction : DumbAwareAction {
   private val getTreeExpander: (AnActionEvent) -> TreeExpander?
 
   constructor() : super() {
-    getTreeExpander = { TREE_EXPANDER.getData(it.dataContext) ?: CollapseAllAction.findTreeExpander(it) }
+    getTreeExpander = { TREE_EXPANDER.getData(it.dataContext) }
   }
 
   constructor(getExpander: (AnActionEvent) -> TreeExpander?) : super() {
@@ -29,5 +32,12 @@ class ExpandAllAction : DumbAwareAction {
     val expander = getTreeExpander(event)
     event.presentation.isVisible = expander == null || expander.isExpandAllVisible && expander.isVisible(event)
     event.presentation.isEnabled = expander != null && expander.canExpand()
+    if (ExperimentalUI.isNewUI() && ActionPlaces.isPopupPlace(event.place)) {
+      event.presentation.icon = null
+    }
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.EDT
   }
 }

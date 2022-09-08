@@ -42,6 +42,7 @@ import com.intellij.ui.content.*
 import com.intellij.ui.content.Content.CLOSE_LISTENER_KEY
 import com.intellij.ui.content.impl.ContentManagerImpl
 import com.intellij.ui.docking.DockManager
+import com.intellij.ui.viewModel.extraction.ToolWindowContentExtractor
 import com.intellij.util.ObjectUtils
 import com.intellij.util.SmartList
 import com.intellij.util.ui.EmptyIcon

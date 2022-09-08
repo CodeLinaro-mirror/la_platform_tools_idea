@@ -128,7 +128,7 @@ public class MethodCandidateInfo extends CandidateInfo{
    * 15.12.2.2 Identify Matching Arity Methods Applicable by Strict Invocation
    */
   @ApplicabilityLevelConstant
-  private int getPertinentApplicabilityLevelInner(Supplier<PsiSubstitutor> substitutorSupplier) {
+  private int getPertinentApplicabilityLevelInner(Supplier<? extends PsiSubstitutor> substitutorSupplier) {
     if (myArgumentList == null || !myLanguageLevel.isAtLeast(LanguageLevel.JDK_1_8)) {
       return getApplicabilityLevel();
     }
@@ -164,8 +164,11 @@ public class MethodCandidateInfo extends CandidateInfo{
       }
       return level1;
     }, substitutor);
-    @ApplicabilityLevelConstant int level =
-      Objects.requireNonNull(ourOverloadGuard.doPreventingRecursion(myArgumentList, false, computable));
+    Integer applicabilityLevel = ourOverloadGuard.doPreventingRecursion(myArgumentList, false, computable);
+    if (applicabilityLevel == null) {
+      return ApplicabilityLevel.NOT_APPLICABLE;
+    }
+    @ApplicabilityLevelConstant int level = applicabilityLevel;
     if (level > ApplicabilityLevel.NOT_APPLICABLE && !isTypeArgumentsApplicable(() -> substitutor)) {
       level = ApplicabilityLevel.NOT_APPLICABLE;
     }

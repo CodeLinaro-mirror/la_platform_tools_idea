@@ -18,25 +18,39 @@ open class RecentProjectListActionProvider {
     fun getInstance() = service<RecentProjectListActionProvider>()
   }
 
+  fun collectProjectsWithoutCurrent(currentProject: Project): List<RecentProjectTreeItem> {
+    return collectProjects(currentProject)
+  }
+
   fun collectProjects(): List<RecentProjectTreeItem> {
+    return collectProjects(null)
+  }
+
+  private fun collectProjects(projectToFilterOut: Project?): List<RecentProjectTreeItem> {
     val recentProjectManager = RecentProjectsManager.getInstance() as RecentProjectsManagerBase
-    val allRecentProjectPaths = LinkedHashSet(recentProjectManager.getRecentPaths())
     val openedPaths = ProjectUtil.getOpenProjects().mapNotNull { openProject ->
       recentProjectManager.getProjectPath(openProject)
     }.toSet()
-
-    val recentProjects = mutableListOf<RecentProjectTreeItem>()
-    val duplicates = getDuplicateProjectNames(openedPaths, allRecentProjectPaths)
-    val groups = recentProjectManager.groups.sortedWith(ProjectGroupComparator(allRecentProjectPaths))
-    groups.forEach { projectGroup ->
-      val children = projectGroup.projects.map { recentProject -> createRecentProject(recentProject, duplicates) }
-      allRecentProjectPaths.removeAll(projectGroup.projects.toSet())
-      recentProjects.add(ProjectsGroupItem(projectGroup, children))
+    val allRecentProjectPaths = LinkedHashSet(recentProjectManager.getRecentPaths())
+    if (projectToFilterOut != null) {
+      allRecentProjectPaths.remove(recentProjectManager.getProjectPath(projectToFilterOut))
     }
 
-    allRecentProjectPaths.forEach { recentProject -> recentProjects.add(createRecentProject(recentProject, duplicates)) }
+    val duplicates = getDuplicateProjectNames(openedPaths, allRecentProjectPaths)
+    val groups = recentProjectManager.groups.sortedWith(ProjectGroupComparator(allRecentProjectPaths))
+    val projectGroups = groups.map { projectGroup ->
+      val children = projectGroup.projects.map { recentProject ->
+        createRecentProject(recentProject, duplicates, projectGroup)
+      }
+      allRecentProjectPaths.removeAll(projectGroup.projects.toSet())
+      return@map ProjectsGroupItem(projectGroup, children)
+    }
 
-    return recentProjects
+    val projectsWithoutGroups = allRecentProjectPaths.map { recentProject ->
+      createRecentProject(recentProject, duplicates, null)
+    }
+
+    return ContainerUtil.concat(projectGroups, projectsWithoutGroups)
   }
 
   @JvmOverloads
@@ -82,9 +96,7 @@ open class RecentProjectListActionProvider {
       val children = mutableListOf<AnAction>()
       for (path in group.projects) {
         val action = createOpenAction(path!!, duplicates)
-        if (action is ReopenProjectAction) {
-          action.setProjectGroup(group)
-        }
+        action.setProjectGroup(group)
         children.add(action)
         if (addClearListItem && children.size >= RecentProjectsManagerBase.MAX_PROJECTS_IN_MAIN_MENU) {
           break
@@ -98,7 +110,7 @@ open class RecentProjectListActionProvider {
   }
 
   // for Rider
-  protected open fun createOpenAction(path: String, duplicates: Set<String>): AnAction {
+  protected open fun createOpenAction(path: String, duplicates: Set<String>): ReopenProjectAction {
     val recentProjectManager = RecentProjectsManager.getInstance() as RecentProjectsManagerBase
     var displayName = recentProjectManager.getDisplayName(path)
     val projectName = recentProjectManager.getProjectName(path)
@@ -113,9 +125,14 @@ open class RecentProjectListActionProvider {
     return ReopenProjectAction(path, projectName, displayName)
   }
 
-  private fun createRecentProject(path: String, duplicates: Set<String>): RecentProjectItem {
-    val reopenProjectAction = createOpenAction(path, duplicates) as ReopenProjectAction
-    return RecentProjectItem(reopenProjectAction.projectPath, reopenProjectAction.projectName, reopenProjectAction.projectNameToDisplay ?: "")
+  private fun createRecentProject(path: String, duplicates: Set<String>, projectGroup: ProjectGroup?): RecentProjectItem {
+    val reopenProjectAction = createOpenAction(path, duplicates)
+    return RecentProjectItem(
+      reopenProjectAction.projectPath,
+      reopenProjectAction.projectName,
+      reopenProjectAction.projectNameToDisplay ?: "",
+      projectGroup
+    )
   }
 
   /**

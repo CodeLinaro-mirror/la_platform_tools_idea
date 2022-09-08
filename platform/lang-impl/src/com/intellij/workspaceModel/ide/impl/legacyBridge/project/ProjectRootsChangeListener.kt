@@ -11,7 +11,7 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.workspaceModel.storage.EntityChange
 import com.intellij.workspaceModel.storage.VersionedStorageChange
 import com.intellij.workspaceModel.storage.WorkspaceEntity
-import com.intellij.workspaceModel.storage.bridgeEntities.*
+import com.intellij.workspaceModel.storage.bridgeEntities.api.*
 
 internal class ProjectRootsChangeListener(private val project: Project) {
   fun beforeChanged(event: VersionedStorageChange) {
@@ -20,7 +20,7 @@ internal class ProjectRootsChangeListener(private val project: Project) {
     val projectRootManager = ProjectRootManager.getInstance(project)
     if (projectRootManager !is ProjectRootManagerBridge) return
     val performUpdate = shouldFireRootsChanged(event, project)
-    if (performUpdate && !projectRootManager.isFiringEvent()) projectRootManager.rootsChanged.beforeRootsChanged()
+    if (performUpdate) projectRootManager.rootsChanged.beforeRootsChanged()
   }
 
   fun changed(event: VersionedStorageChange) {
@@ -29,7 +29,7 @@ internal class ProjectRootsChangeListener(private val project: Project) {
     val projectRootManager = ProjectRootManager.getInstance(project)
     if (projectRootManager !is ProjectRootManagerBridge) return
     val performUpdate = shouldFireRootsChanged(event, project)
-    if (performUpdate && !projectRootManager.isFiringEvent()) {
+    if (performUpdate) {
       val rootsChangeInfo = WorkspaceEventRescanningInfo(event.getAllChanges().toList(), true)
       projectRootManager.rootsChanged.rootsChanged(rootsChangeInfo)
     }

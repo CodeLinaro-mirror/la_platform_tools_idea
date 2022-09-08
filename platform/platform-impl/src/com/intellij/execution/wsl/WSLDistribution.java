@@ -23,10 +23,7 @@ import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.impl.wsl.WslConstants;
-import com.intellij.util.Consumer;
-import com.intellij.util.Functions;
-import com.intellij.util.ObjectUtils;
-import com.intellij.util.SystemProperties;
+import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
@@ -64,6 +61,8 @@ public class WSLDistribution implements AbstractWslDistribution {
 
   private static final Key<ProcessListener> SUDO_LISTENER_KEY = Key.create("WSL sudo listener");
   private static final String RSYNC = "rsync";
+  private static final String RSYNC_CHECKSUM_OPTION = "--checksum";
+  private static final String RSYNC_RECURSIVE_OPTION = "--recursive";
 
   private final @NotNull WslDistributionDescriptor myDescriptor;
   private final @Nullable Path myExecutablePath;
@@ -171,24 +170,17 @@ public class WSLDistribution implements AbstractWslDistribution {
    * @param windowsPath       target windows path, e.g. C:/tmp; Directory going to be created
    * @param additionalOptions may be used for --delete (not recommended), --include and so on
    * @param handlerConsumer   consumes process handler just before execution. Can be used for fast cancellation
-   * @return process output
+   * @deprecated copying using rsync is very slow on WSL2, instead consider using
+   * {@link com.intellij.execution.wsl.sync.WslSync.Companion#syncWslFolders(String, Path, AbstractWslDistribution, boolean, String[])}.
    */
-
-  public void copyFromWsl(@NotNull String wslPath,
-                          @NotNull String windowsPath,
-                          @Nullable List<String> additionalOptions,
-                          @Nullable Consumer<? super ProcessHandler> handlerConsumer
-  )
-    throws ExecutionException {
-
-
+  @Deprecated(forRemoval = true)
+  public void copyFromWsl(final @NotNull String wslPath,
+                          final @NotNull String windowsPath,
+                          final @Nullable List<String> additionalOptions,
+                          final @Nullable Consumer<? super ProcessHandler> handlerConsumer) throws ExecutionException {
     //noinspection ResultOfMethodCallIgnored
     new File(windowsPath).mkdirs();
-    List<String> command = new ArrayList<>(Arrays.asList(RSYNC, "-cr"));
-
-    if (additionalOptions != null) {
-      command.addAll(additionalOptions);
-    }
+    List<String> command = getRsyncBaseCommand(additionalOptions);
 
     command.add(wslPath + "/");
     String targetWslPath = getWslPath(windowsPath);
@@ -196,16 +188,38 @@ public class WSLDistribution implements AbstractWslDistribution {
       throw new ExecutionException(IdeBundle.message("wsl.rsync.unable.to.copy.files.dialog.message", windowsPath));
     }
     command.add(targetWslPath + "/");
-    var process = executeOnWsl(command, new WSLCommandLineOptions(), -1, handlerConsumer);
-    if (process.getExitCode() != 0) {
-      // Most common problem is rsync not onstalled
-      if (executeOnWsl(10_000, "type", RSYNC).getExitCode() != 0) {
-        throw new ExecutionException(IdeBundle.message("wsl.no.rsync", this.myDescriptor.getMsId()));
-      }
-      else {
-        throw new ExecutionException(process.getStderr());
-      }
-    }
+
+    executeRsyncOnWsl(command, handlerConsumer);
+  }
+
+  /**
+   * Recursively copies {@code sourceWslPath} to {@code targetWinDirPath} using rsync.
+   * <p>
+   * Examples:
+   * <ul>
+   *   <li>Copying {@code /dir1} to {@code C:\dir2}, will result in {@code C:\dir2\dir1}</li>
+   *   <li>Copying {@code /file1} to {@code C:\dir2}, will result in {@code C:\dir2\file1}</li>
+   * </ul>
+   * </p>
+   *
+   * @param sourceWslPath     path to the source file or directory inside WSL e.g. /usr/bin/ or /usr/bin/bundle.
+   * @param targetWinDirPath  target windows directory path, e.g. C:\tmp\.
+   *                          This directory will be created along with all parents, if necessary.
+   * @param additionalOptions may be used for --delete (not recommended), --include and so on.
+   * @param handlerConsumer   consumes process handler just before execution.
+   *                          Can be used for fast cancellation.
+   * @deprecated copying using rsync is very slow on WSL2, instead consider using
+   * {@link com.intellij.execution.wsl.sync.WslSync.Companion#syncWslFolders(String, Path, AbstractWslDistribution, boolean, String[])}.
+   */
+  @Deprecated
+  public void copyFromWslToWinDir(final @NotNull String sourceWslPath,
+                                  final @NotNull String targetWinDirPath,
+                                  final @Nullable List<String> additionalOptions,
+                                  final @Nullable Consumer<? super ProcessHandler> handlerConsumer) throws ExecutionException {
+    var command = getRsyncBaseCommand(additionalOptions);
+    command.add(getSourceWslPath(sourceWslPath));
+    command.add(getTargetWslPath(targetWinDirPath));
+    executeRsyncOnWsl(command, handlerConsumer);
   }
 
   /**
@@ -513,8 +527,7 @@ public class WSLDistribution implements AbstractWslDistribution {
       return FileUtil.toSystemIndependentName(windowsPath.substring(index));
     }
 
-    //noinspection deprecation
-    if (FileUtil.isWindowsAbsolutePath(windowsPath)) { // absolute windows path => /mnt/disk_letter/path
+    if (OSAgnosticPathUtil.isAbsoluteDosPath(windowsPath)) { // absolute windows path => /mnt/disk_letter/path
       return getMntRoot() + convertWindowsPath(windowsPath);
     }
     return null;
@@ -624,8 +637,15 @@ public class WSLDistribution implements AbstractWslDistribution {
     }
     if (Registry.is("wsl.obtain.windows.host.ip.alternatively", true)) {
       InetAddress wslAddr = getWslIpAddress();
+      // Connect to any port on WSL IP. The destination endpoint is not needed to be reachable as no real connection is established.
+      // This transfers the socket into "connected" state including setting the local endpoint according to the system's routing table.
+      // Works on Windows and Linux.
       try (DatagramSocket datagramSocket = new DatagramSocket()) {
-        datagramSocket.connect(wslAddr, 0);
+        // Any port in range [1, 0xFFFF] can be used. Port=0 is forbidden: https://datatracker.ietf.org/doc/html/rfc8085
+        // "A UDP receiver SHOULD NOT bind to port zero".
+        // Java asserts "port != 0" since v15 (https://bugs.java.com/bugdatabase/view_bug.do?bug_id=8240533).
+        int anyPort = 1;
+        datagramSocket.connect(wslAddr, anyPort);
         return datagramSocket.getLocalAddress().getHostAddress();
       }
       catch (Exception e) {
@@ -699,5 +719,51 @@ public class WSLDistribution implements AbstractWslDistribution {
     WSLCommandLineOptions options = new WSLCommandLineOptions().setExecuteCommandInDefaultShell(true);
     return WslExecution.executeInShellAndGetCommandOnlyStdout(this, new GeneralCommandLine("printenv", "SHELL"), options, DEFAULT_TIMEOUT,
                                                               true);
+  }
+
+  private static @NotNull List<String> getRsyncBaseCommand(final @Nullable List<String> additionalOptions) {
+    var command = ContainerUtil.newArrayList(RSYNC, RSYNC_CHECKSUM_OPTION, RSYNC_RECURSIVE_OPTION);
+    if (additionalOptions != null) {
+      command.addAll(additionalOptions);
+    }
+    return command;
+  }
+
+  /**
+   * @return {@code wslPath} without trailing slashes.
+   */
+  private static @NotNull String getSourceWslPath(final @NotNull String wslPath) {
+    return UriUtil.trimTrailingSlashes(wslPath);
+  }
+
+  /**
+   * @return {@code windowsDirPath} converted to WSL path (e.g. /mnt/c/...) with a trailing slash at the end.
+   * Also, ensures that the necessary directory structure is created.
+   * @throws ExecutionException in case of errors.
+   */
+  private @NotNull String getTargetWslPath(final @NotNull String windowsDirPath) throws ExecutionException {
+    if (!FileUtil.createDirectory(new File(windowsDirPath))) {
+      throw new ExecutionException(IdeBundle.message("wsl.rsync.unable.to.create.target.dir.message", windowsDirPath));
+    }
+
+    var targetWslPath = getWslPath(windowsDirPath);
+    if (targetWslPath == null) {
+      throw new ExecutionException(IdeBundle.message("wsl.rsync.unable.to.copy.files.dialog.message", windowsDirPath));
+    }
+    return targetWslPath.endsWith("/") ? targetWslPath : targetWslPath + "/";
+  }
+
+  private void executeRsyncOnWsl(final @NotNull List<String> command,
+                                 final @Nullable Consumer<? super ProcessHandler> handlerConsumer) throws ExecutionException {
+    var process = executeOnWsl(command, new WSLCommandLineOptions(), -1, handlerConsumer);
+    if (process.getExitCode() != 0) {
+      // Most common problem is rsync not installed
+      if (executeOnWsl(10_000, "type", RSYNC).getExitCode() != 0) {
+        throw new ExecutionException(IdeBundle.message("wsl.no.rsync", this.myDescriptor.getMsId()));
+      }
+      else {
+        throw new ExecutionException(process.getStderr());
+      }
+    }
   }
 }

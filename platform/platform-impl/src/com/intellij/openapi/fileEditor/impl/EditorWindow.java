@@ -475,7 +475,11 @@ public final class EditorWindow {
   }
 
   private void checkConsistency() {
-    LOG.assertTrue(myOwner.containsWindow(this), "EditorWindow not in collection");
+    LOG.assertTrue(isValid(), "EditorWindow not in collection");
+  }
+
+  public boolean isValid() {
+    return myOwner.containsWindow(this);
   }
 
   /**
@@ -1466,6 +1470,13 @@ public final class EditorWindow {
   }
 
   private boolean fileCanBeClosed(@NotNull VirtualFile file, @Nullable VirtualFile fileToIgnore) {
+    if (file instanceof BackedVirtualFile) {
+      BackedVirtualFile backedVirtualFile = (BackedVirtualFile)file;
+      VirtualFile originalFile = backedVirtualFile.getOriginFile();
+      if (originalFile.equals(fileToIgnore)) {
+        return false;
+      }
+    }
     return isFileOpen(file) && !file.equals(fileToIgnore) && !isFilePinned(file);
   }
 

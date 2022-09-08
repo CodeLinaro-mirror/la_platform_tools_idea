@@ -11,6 +11,7 @@ import com.intellij.debugger.mockJDI.values.MockObjectReference
 import com.intellij.debugger.mockJDI.values.MockValue
 import com.intellij.testFramework.LightProjectDescriptor
 import org.jetbrains.kotlin.idea.test.ProjectDescriptorWithStdlibSources
+import java.lang.annotation.ElementType
 import java.util.function.BiConsumer
 
 class KotlinDfaAssistTest : DfaAssistTest() {
@@ -41,6 +42,7 @@ class KotlinDfaAssistTest : DfaAssistTest() {
                if (y || x/*TRUE*/) {}
                var z: Boolean
                z = x/*TRUE*/
+               var b = true
             }""") { vm, frame -> frame.addVariable("x", MockBooleanValue(vm, true)) }
     }
 
@@ -179,6 +181,20 @@ class KotlinDfaAssistTest : DfaAssistTest() {
         """.trimIndent()) { vm, frame ->
             frame.addVariable("x", MockValue.createValue("xyz", vm))
             frame.addVariable(MockLocalVariable(vm, "y", vm.createReferenceType(String::class.java), null))
+        }
+    }
+
+    fun testEnum() {
+        val text = """import java.lang.annotation.ElementType
+                
+                class Test {
+                  fun test(t : ElementType) {
+                    <caret>if (t == ElementType.PARAMETER/*FALSE*/) {}
+                    if (t == ElementType.METHOD/*TRUE*/) {}
+                  }
+                }"""
+        doTest(text) { vm, frame ->
+            frame.addVariable("t", MockValue.createValue(ElementType.METHOD, ElementType::class.java, vm))
         }
     }
 

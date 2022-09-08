@@ -8,9 +8,9 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.util.EventDispatcher;
+import com.intellij.util.ThrowableConsumer;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.DigestUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
@@ -32,6 +32,8 @@ import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -47,8 +49,8 @@ public final class ConfirmingTrustManager extends ClientOnlyTrustManager {
   private static final Logger LOG = Logger.getInstance(ConfirmingTrustManager.class);
   private static final X509Certificate[] NO_CERTIFICATES = new X509Certificate[0];
 
-  public final ThreadLocal<UntrustedCertificateStrategy> myUntrustedCertificateStrategy =
-    ThreadLocal.withInitial(() -> UntrustedCertificateStrategy.ASK_USER);
+  public final ThreadLocal<@Nullable UntrustedCertificateStrategy> myUntrustedCertificateStrategy =
+    ThreadLocal.withInitial(() -> null);
 
   public static ConfirmingTrustManager createForStorage(@NotNull String path, @NotNull String password) {
     return new ConfirmingTrustManager(getSystemTrustManagers(), new MutableTrustManager(path, password));
@@ -175,17 +177,34 @@ public final class ConfirmingTrustManager extends ClientOnlyTrustManager {
 
   @Override
   public void checkServerTrusted(final X509Certificate[] chain, String authType) throws CertificateException {
-    boolean askUser = myUntrustedCertificateStrategy.get() == UntrustedCertificateStrategy.ASK_USER;
-    checkServerTrusted(chain, authType, true, askUser);
+    withCalculatedCertificateStrategy(strategyWithReason -> {
+      boolean askUser = strategyWithReason.getStrategy() == UntrustedCertificateStrategy.ASK_USER;
+      String askUserReason = strategyWithReason.getReason();
+      checkServerTrusted(chain, authType, new CertificateConfirmationParameters(askUser, true, null, null, askUserReason));
+    });
   }
 
+  private void withCalculatedCertificateStrategy(ThrowableConsumer<UntrustedCertificateStrategyWithReason, CertificateException> block) throws CertificateException {
+    UntrustedCertificateStrategy initialStrategy = myUntrustedCertificateStrategy.get();
+    if (initialStrategy != null) {
+      block.consume(new UntrustedCertificateStrategyWithReason(initialStrategy, null));
+    }
+    else {
+      UntrustedCertificateStrategyWithReason strategy = ApplicationManager.getApplication().getService(InitialUntrustedCertificateStrategyProvider.class).getStrategy();
+      block.consume(strategy);
+    }
+  }
+
+  /**
+   * @deprecated use an overload with {@link CertificateConfirmationParameters}.
+   */
+  @Deprecated
   public void checkServerTrusted(final X509Certificate[] chain, String authType, boolean addToKeyStore, boolean askUser)
     throws CertificateException {
-    checkServerTrusted(chain, authType, addToKeyStore, askUser, null, null);
+    checkServerTrusted(chain, authType, new CertificateConfirmationParameters(askUser, addToKeyStore, null, null, null));
   }
 
-  @ApiStatus.Internal
-  public void checkServerTrusted(final X509Certificate[] chain, String authType, boolean addToKeyStore, boolean askUser, @Nullable @NlsContexts.DialogMessage String details, @Nullable Runnable onUserAccepted)
+  public void checkServerTrusted(final X509Certificate[] chain, String authType, @NotNull CertificateConfirmationParameters parameters)
     throws CertificateException {
 
     CertificateException lastCertificateException = null;
@@ -206,14 +225,14 @@ public final class ConfirmingTrustManager extends ClientOnlyTrustManager {
         myCustomManager.checkServerTrusted(chain, authType);
       }
       catch (CertificateException e) {
-        if (myCustomManager.isBroken() || !confirmAndUpdate(chain, addToKeyStore, askUser, details, onUserAccepted)) {
+        if (myCustomManager.isBroken() || !confirmAndUpdate(chain, parameters)) {
           throw lastCertificateException != null ? lastCertificateException : e;
         }
       }
     }
   }
 
-  private boolean confirmAndUpdate(final X509Certificate[] chain, boolean addToKeyStore, boolean askUser, @Nullable @NlsContexts.DialogMessage String details, @Nullable Runnable onUserAccepted) {
+  private boolean confirmAndUpdate(final X509Certificate[] chain, @NotNull CertificateConfirmationParameters parameters) {
     Application app = ApplicationManager.getApplication();
     final X509Certificate endPoint = chain[0];
     // IDEA-123467 and IDEA-123335 workaround
@@ -224,25 +243,41 @@ public final class ConfirmingTrustManager extends ClientOnlyTrustManager {
     }
     if (app.isUnitTestMode() || app.isHeadlessEnvironment() || CertificateManager.getInstance().getState().ACCEPT_AUTOMATICALLY) {
       LOG.debug("Certificate will be accepted automatically");
-      if (addToKeyStore) {
+      if (parameters.myAddToKeyStore) {
         myCustomManager.addCertificate(endPoint);
       }
       return true;
     }
 
-    LOG.info("Going to ask user about certificate for: " + endPoint.getSubjectDN().toString() +
-             ", issuer: " + endPoint.getIssuerDN().toString());
-    boolean accepted = askUser && CertificateManager.showAcceptDialog(() -> {
-      // TODO may be another kind of warning, if default trust store is missing
-      return CertificateWarningDialog.createUntrustedCertificateWarning(endPoint, details);
-    });
+    boolean accepted = false;
+    if (parameters.myAskUser) {
+
+      String acceptLogMessage = "Going to ask user about certificate for: " + endPoint.getSubjectDN().toString() +
+                       ", issuer: " + endPoint.getIssuerDN().toString();
+      if (parameters.myAskOrRejectReason != null) {
+        acceptLogMessage += ". Reason: " + parameters.myAskOrRejectReason;
+      }
+      LOG.info(acceptLogMessage);
+      accepted = CertificateManager.showAcceptDialog(() -> {
+        // TODO may be another kind of warning, if default trust store is missing
+        return CertificateWarningDialog.createUntrustedCertificateWarning(endPoint, parameters.myCertificateDetails);
+      });
+    }
+    else {
+      String rejectLogMessage = "Didn't show certificate dialog for: " + endPoint.getSubjectDN().toString() +
+                       ", issuer: " + endPoint.getIssuerDN().toString();
+      if (parameters.myAskOrRejectReason != null) {
+        rejectLogMessage += ". Reason: " + parameters.myAskOrRejectReason;
+      }
+      LOG.warn(rejectLogMessage);
+    }
     if (accepted) {
       LOG.info("Certificate was accepted by user");
-      if (addToKeyStore) {
+      if (parameters.myAddToKeyStore) {
         myCustomManager.addCertificate(endPoint);
       }
-      if (onUserAccepted != null) {
-        onUserAccepted.run();
+      if (parameters.myOnUserAcceptCallback != null) {
+        parameters.myOnUserAcceptCallback.run();
       }
     }
     return accepted;
@@ -358,6 +393,7 @@ public final class ConfirmingTrustManager extends ClientOnlyTrustManager {
         }
         myKeyStore.setCertificateEntry(createAlias(certificate), certificate);
         flushKeyStore();
+        LOG.info("Added certificate for '" + certificate.getSubjectDN().toString() + "' to " + myPath);
         // trust manager should be updated each time its key store was modified
         myTrustManager = initFactoryAndGetManager();
         myDispatcher.getMulticaster().certificateAdded(certificate);
@@ -581,4 +617,66 @@ public final class ConfirmingTrustManager extends ClientOnlyTrustManager {
       }
     }
   }
+
+  public static final class CertificateConfirmationParameters {
+    private final boolean myAskUser;
+    private final @Nullable String myAskOrRejectReason;
+    private final boolean myAddToKeyStore;
+    private final @Nullable @NlsContexts.DialogMessage String myCertificateDetails;
+    private final @Nullable Runnable myOnUserAcceptCallback;
+
+    /**
+     * Ask for confirmation from the user.
+     *
+     * @param addToKeyStore if true, then add the certificate to the key store. Otherwise, the user will be able to accept it for this
+     *                     request only.
+     * @param certificateDetails additional details to be presented in the certificate acceptance dialog.
+     * @param onUserAcceptCallback a custom callback that will be called after the user has accepted the certificate.
+     */
+    @SuppressWarnings("unused") // part of the public API
+    public static @NotNull CertificateConfirmationParameters askConfirmation(boolean addToKeyStore,
+                                                                             @Nullable @NlsContexts.DialogMessage String certificateDetails,
+                                                                             @Nullable Runnable onUserAcceptCallback) {
+      return new CertificateConfirmationParameters(true, addToKeyStore, certificateDetails, onUserAcceptCallback, null);
+    }
+
+    /**
+     * Forbids to ask the confirmation from the user.
+     * <p>
+     * Such a certificate may only be accepted in the unit test mode or if {@link CertificateManager.Config#ACCEPT_AUTOMATICALLY} is set to
+     * true.
+     */
+    public static @NotNull CertificateConfirmationParameters doNotAskConfirmation() {
+      return new CertificateConfirmationParameters(false, false, null, null, null);
+    }
+
+    private CertificateConfirmationParameters(boolean askUser,
+                                              boolean addToKeyStore,
+                                              @Nullable @NlsContexts.DialogMessage String certificateDetails,
+                                              @Nullable Runnable onUserAcceptCallback,
+                                              @Nullable String askOrRejectReason) {
+      myAskUser = askUser;
+      myAddToKeyStore = addToKeyStore;
+      myCertificateDetails = certificateDetails;
+      myOnUserAcceptCallback = onUserAcceptCallback;
+      myAskOrRejectReason = askOrRejectReason;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      CertificateConfirmationParameters that = (CertificateConfirmationParameters)o;
+      return myAskUser == that.myAskUser &&
+             myAddToKeyStore == that.myAddToKeyStore &&
+             Objects.equals(myCertificateDetails, that.myCertificateDetails) &&
+             Objects.equals(myOnUserAcceptCallback, that.myOnUserAcceptCallback);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(myAskUser, myAddToKeyStore, myCertificateDetails, myOnUserAcceptCallback);
+    }
+  }
+
 }

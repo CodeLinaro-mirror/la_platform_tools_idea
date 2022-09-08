@@ -69,12 +69,10 @@ fun consumeDataByPrefix(file: Path, prefixWithEndingSlash: String, consumer: BiC
   }
 }
 
-typealias EntryCustomizer = (entry: ZipArchiveEntry, file: Path, relativeFile: Path) -> Unit
-
 fun ZipArchiveOutputStream.dir(startDir: Path,
-                                        prefix: String,
-                                        fileFilter: ((sourceFile: Path, relativeFile: Path) -> Boolean)? = null,
-                                        entryCustomizer: EntryCustomizer) {
+                               prefix: String,
+                               fileFilter: ((sourceFile: Path, relativePath: String) -> Boolean)? = null,
+                               entryCustomizer: ((entry: ZipArchiveEntry, sourceFile: Path, relativePath: String) -> Unit)? = null) {
   val dirCandidates = ArrayDeque<Path>()
   dirCandidates.add(startDir)
   val tempList = ArrayList<Path>()
@@ -104,7 +102,8 @@ fun ZipArchiveOutputStream.dir(startDir: Path,
         entry.method = ZipEntry.STORED
         entry.lastModifiedTime = zeroTime
         entry.unixMode = Files.readAttributes(file, "unix:mode", LinkOption.NOFOLLOW_LINKS).get("mode") as Int
-        val data = (prefix + startDir.relativize(Files.readSymbolicLink(file))).toByteArray()
+        val path = Files.readSymbolicLink(file).let { if (it.isAbsolute) prefix + startDir.relativize(it) else it.toString() }
+        val data = path.toByteArray()
         entry.size = data.size.toLong()
         putArchiveEntry(entry)
         write(data)
@@ -113,14 +112,14 @@ fun ZipArchiveOutputStream.dir(startDir: Path,
       else {
         assert(attributes.isRegularFile)
 
-        val relativeFile = startDir.relativize(file)
-        if (fileFilter != null && !fileFilter(file, relativeFile)) {
+        val relativePath = startDir.relativize(file).toString().replace('\\', '/')
+        if (fileFilter != null && !fileFilter(file, relativePath)) {
           continue
         }
 
-        val entry = ZipArchiveEntry(prefix + relativeFile)
+        val entry = ZipArchiveEntry(prefix + relativePath)
         entry.size = attributes.size()
-        entryCustomizer(entry, file, relativeFile)
+        entryCustomizer?.invoke(entry, file, relativePath)
         writeFileEntry(file, entry, this)
       }
     }

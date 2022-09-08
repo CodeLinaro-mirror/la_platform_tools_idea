@@ -11,13 +11,13 @@ import com.intellij.openapi.util.io.NioFiles
 import com.intellij.openapi.util.text.Formats
 import com.intellij.util.io.Decompressor
 import com.intellij.util.lang.CompoundRuntimeException
-import com.intellij.util.system.CpuArch
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.context.Context
 import org.apache.commons.compress.archivers.zip.Zip64Mode
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.jetbrains.idea.maven.aether.ArtifactKind
 import org.jetbrains.idea.maven.aether.ArtifactRepositoryManager
 import org.jetbrains.idea.maven.aether.ProgressConsumer
@@ -138,19 +138,15 @@ class BuildTasksImpl(private val context: BuildContext) : BuildTasks {
     CompilationTasks.create(context).compileModules(moduleNames)
   }
 
-  override fun buildUpdaterJar() {
-    doBuildUpdaterJar("updater.jar", context)
-  }
-
   override fun buildFullUpdaterJar() {
-    doBuildUpdaterJar("updater-full.jar", context)
+    doBuildUpdaterJar(context)
   }
 
   override fun runTestBuild() {
     checkProductProperties(context)
     val projectStructureMapping = DistributionJARsBuilder(compileModulesForDistribution(context)).buildJARs(context)
     layoutShared(context)
-    checkClassVersion(context.paths.distAllDir, context)
+    checkClassFiles(context.paths.distAllDir, context)
     if (context.productProperties.buildSourcesArchive) {
       buildSourcesArchive(projectStructureMapping, context)
     }
@@ -165,7 +161,7 @@ class BuildTasksImpl(private val context: BuildContext) : BuildTasks {
     BundledMavenDownloader.downloadMavenCommonLibs(context.paths.buildDependenciesCommunityRoot)
     BundledMavenDownloader.downloadMavenDistribution(context.paths.buildDependenciesCommunityRoot)
     DistributionJARsBuilder(compileModulesForDistribution(context)).buildJARs(context, true)
-    val arch = if (CpuArch.isArm64()) JvmArchitecture.aarch64 else JvmArchitecture.x64
+    val arch = JvmArchitecture.currentJvmArch
     layoutShared(context)
     if (includeBinAndRuntime) {
       val propertiesFile = patchIdeaPropertiesFile(context)
@@ -193,6 +189,7 @@ val SUPPORTED_DISTRIBUTIONS: List<SupportedDistribution> = listOf(
   SupportedDistribution(os = OsFamily.MACOS, arch = JvmArchitecture.aarch64),
   SupportedDistribution(os = OsFamily.WINDOWS, arch = JvmArchitecture.x64),
   SupportedDistribution(os = OsFamily.LINUX, arch = JvmArchitecture.x64),
+  SupportedDistribution(os = OsFamily.LINUX, arch = JvmArchitecture.aarch64),
 )
 
 private fun isSourceFile(path: String): Boolean {
@@ -220,8 +217,7 @@ private fun buildProvidedModuleList(targetFile: Path, state: DistributionBuilder
     runApplicationStarter(context = context,
                           tempDir = context.paths.tempDir.resolve("builtinModules"),
                           ideClasspath = ideClasspath,
-                          arguments = listOf("listBundledPlugins", targetFile.toString()),
-                          classpathCustomizer = context.classpathCustomizer)
+                          arguments = listOf("listBundledPlugins", targetFile.toString()))
     if (Files.notExists(targetFile)) {
       context.messages.error("Failed to build provided modules list: $targetFile doesn\'t exist")
     }
@@ -451,11 +447,12 @@ private fun runInParallel(tasks: List<BuildTaskRunnable>, context: BuildContext)
   return futures.map { it.rawResult }
 }
 
-private fun copyDependenciesFile(context: BuildContext) {
+private fun copyDependenciesFile(context: BuildContext): Path {
   val outputFile = context.paths.artifactDir.resolve("dependencies.txt")
   Files.createDirectories(outputFile.parent)
-  Files.copy(context.dependenciesProperties.file, outputFile, StandardCopyOption.REPLACE_EXISTING)
+  context.dependenciesProperties.copy(outputFile)
   context.notifyArtifactWasBuilt(outputFile)
+  return outputFile
 }
 
 private fun checkProjectLibraries(names: Collection<String>, fieldName: String, context: BuildContext) {
@@ -688,7 +685,7 @@ private fun doBuildDistributions(context: BuildContext) {
     else {
       Span.current().addEvent("skip building product distributions because " +
                               "\"intellij.build.target.os\" property is set to \"${BuildOptions.OS_NONE}\"")
-      distributionJARsBuilder.buildSearchableOptions(context, context.classpathCustomizer)
+      distributionJARsBuilder.buildSearchableOptions(context)
       distributionJARsBuilder.createBuildNonBundledPluginsTask(pluginsToPublish, true, null, context)!!.fork().join()
     }
   }
@@ -939,7 +936,7 @@ internal fun logFreeDiskSpace(buildMessages: BuildMessages, dir: Path, phase: St
     "Free disk space $phase: ${Formats.formatFileSize(Files.getFileStore(dir).usableSpace)} (on disk containing $dir)")
 }
 
-private fun doBuildUpdaterJar(artifactName: String, context: BuildContext) {
+private fun doBuildUpdaterJar(context: BuildContext) {
   val updaterModule = context.findRequiredModule("intellij.platform.updater")
   val updaterModuleSource = DirSource(context.getModuleOutputDir(updaterModule))
   val librarySources = JpsJavaExtensionService.dependencies(updaterModule)
@@ -950,7 +947,7 @@ private fun doBuildUpdaterJar(artifactName: String, context: BuildContext) {
     .flatMap { it.getRootUrls(JpsOrderRootType.COMPILED) }
     .filter { !JpsPathUtil.isJrtUrl(it) }
     .map { ZipSource(Path.of(JpsPathUtil.urlToPath(it)), listOf(Regex("^META-INF/.*"))) }
-  val updaterJar = context.paths.artifactDir.resolve(artifactName)
+  val updaterJar = context.paths.artifactDir.resolve("updater-full.jar")
   buildJar(targetFile = updaterJar, sources = (sequenceOf(updaterModuleSource) + librarySources).toList(), compress = true)
   context.notifyArtifactBuilt(updaterJar)
 }
@@ -979,10 +976,10 @@ private fun buildCrossPlatformZip(distDirs: List<DistributionForOsTaskResult>, c
 
   val zipFileName = context.productProperties.getCrossPlatformZipFileName(context.applicationInfo, context.buildNumber)
   val targetFile = context.paths.artifactDir.resolve(zipFileName)
-
+  val dependenciesFile = copyDependenciesFile(context)
   crossPlatformZip(
     macX64DistDir = distDirs.first { it.os == OsFamily.MACOS && it.arch == JvmArchitecture.x64 }.outDir,
-    macAarch64DistDir = distDirs.first { it.os == OsFamily.MACOS && it.arch == JvmArchitecture.aarch64 }.outDir,
+    macArm64DistDir = distDirs.first { it.os == OsFamily.MACOS && it.arch == JvmArchitecture.aarch64 }.outDir,
     linuxX64DistDir = distDirs.first { it.os == OsFamily.LINUX && it.arch == JvmArchitecture.x64 }.outDir,
     winX64DistDir = distDirs.first { it.os == OsFamily.WINDOWS && it.arch == JvmArchitecture.x64 }.outDir,
     targetFile = targetFile,
@@ -991,21 +988,31 @@ private fun buildCrossPlatformZip(distDirs: List<DistributionForOsTaskResult>, c
     macExtraExecutables = context.macDistributionCustomizer!!.extraExecutables,
     linuxExtraExecutables = context.linuxDistributionCustomizer!!.extraExecutables,
     distFiles = context.getDistFiles(),
-    extraFiles = mapOf("dependencies.txt" to context.dependenciesProperties.file),
+    extraFiles = mapOf("dependencies.txt" to dependenciesFile),
     distAllDir = context.paths.distAllDir,
   )
 
   checkInArchive(context, targetFile, "")
   context.notifyArtifactBuilt(targetFile)
 
-  checkClassVersion(targetFile, context)
+  checkClassFiles(targetFile, context)
   return targetFile
 }
 
-private fun checkClassVersion( targetFile: Path, context: BuildContext) {
-  val checkerConfig = context.productProperties.versionCheckerConfig ?: return
-  if (!context.options.buildStepsToSkip.contains(BuildOptions.VERIFY_CLASS_FILE_VERSIONS)) {
-    ClassVersionChecker.checkVersions(checkerConfig, context.messages, targetFile)
+private fun checkClassFiles(targetFile: Path, context: BuildContext) {
+  val versionCheckerConfig =
+    if (context.options.buildStepsToSkip.contains(BuildOptions.VERIFY_CLASS_FILE_VERSIONS)) emptyMap()
+    else context.productProperties.versionCheckerConfig ?: emptyMap()
+
+  val forbiddenSubPaths =
+    if (context.options.validateClassFileSubpaths) context.productProperties.forbiddenClassFileSubPaths
+    else emptyList()
+
+  val classFileCheckRequired =
+    (versionCheckerConfig.isNotEmpty() || forbiddenSubPaths.isNotEmpty())
+
+  if (classFileCheckRequired) {
+    ClassFileChecker.checkClassFiles(versionCheckerConfig, forbiddenSubPaths, context.messages, targetFile)
   }
 }
 
@@ -1036,17 +1043,17 @@ internal fun getLinuxFrameClass(context: BuildContext): String {
 }
 
 private fun crossPlatformZip(macX64DistDir: Path,
-                     macAarch64DistDir: Path,
-                     linuxX64DistDir: Path,
-                     winX64DistDir: Path,
-                     targetFile: Path,
-                     executableName: String,
-                     productJson: ByteArray,
-                     macExtraExecutables: List<String>,
-                     linuxExtraExecutables: List<String>,
-                     distFiles: Collection<Map.Entry<Path, String>>,
-                     extraFiles: Map<String, Path>,
-                     distAllDir: Path) {
+                             macArm64DistDir: Path,
+                             linuxX64DistDir: Path,
+                             winX64DistDir: Path,
+                             targetFile: Path,
+                             executableName: String,
+                             productJson: ByteArray,
+                             macExtraExecutables: List<String>,
+                             linuxExtraExecutables: List<String>,
+                             distFiles: Collection<Map.Entry<Path, String>>,
+                             extraFiles: Map<String, Path>,
+                             distAllDir: Path) {
   writeNewFile(targetFile) { outFileChannel ->
     NoDuplicateZipArchiveOutputStream(outFileChannel).use { out ->
       out.setUseZip64(Zip64Mode.Never)
@@ -1081,21 +1088,21 @@ private fun crossPlatformZip(macX64DistDir: Path,
 
       Files.newDirectoryStream(linuxX64DistDir.resolve("bin")).use {
         for (file in it) {
-          val path = file.toString()
-          if (path.endsWith(".vmoptions")) {
+          val name = file.fileName.toString()
+          if (name.endsWith(".vmoptions")) {
             out.entryToDir(file, "bin/linux")
           }
-          else if (path.endsWith(".sh") || path.endsWith(".py")) {
+          else if (name.endsWith(".sh") || name.endsWith(".py")) {
             out.entry("bin/${file.fileName}", file, unixMode = executableFileUnixMode)
           }
-          else {
-            val fileName = file.fileName.toString()
-            if (fileName.startsWith("fsnotifier")) {
-              out.entry("bin/linux/$fileName", file, unixMode = executableFileUnixMode)
-            }
+          else if (name == "fsnotifier") {
+            out.entry("bin/linux/${name}", file, unixMode = executableFileUnixMode)
           }
         }
       }
+
+      // At the moment, there is no ARM64 hardware suitable for painless IDEA plugin development,
+      // so corresponding artifacts are not packed in.
 
       Files.newDirectoryStream(macX64DistDir.resolve("bin")).use {
         for (file in it) {
@@ -1115,67 +1122,47 @@ private fun crossPlatformZip(macX64DistDir: Path,
       }
 
       val extraExecutablesSet = java.util.Set.copyOf(macExtraExecutables + linuxExtraExecutables)
-      val entryCustomizer: EntryCustomizer = { entry, _, relativeFile ->
-        if (extraExecutablesSet.contains(relativeFile.toString())) {
+      val entryCustomizer: (ZipArchiveEntry, Path, String) -> Unit = { entry, _, relativePath ->
+        if (extraExecutablesSet.contains(relativePath)) {
           entry.unixMode = executableFileUnixMode
         }
       }
 
-      out.dir(startDir = distAllDir, prefix = "", fileFilter = { _, relativeFile ->
-        relativeFile.toString() != "bin/idea.properties"
+      val commonFilter: (String) -> Boolean = { relPath: String ->
+        !relPath.startsWith("bin/fsnotifier") &&
+        !relPath.startsWith("bin/repair") &&
+        !relPath.startsWith("bin/restart") &&
+        !relPath.startsWith("bin/printenv") &&
+        !(relPath.startsWith("bin/") && (relPath.endsWith(".sh") || relPath.endsWith(".vmoptions")) && relPath.count { it == '/' } == 1) &&
+        relPath != "bin/idea.properties" &&
+        !relPath.startsWith("help/")
+      }
+
+      val zipFiles = LinkedHashMap<String, Path>()
+
+      out.dir(distAllDir, "", fileFilter = { _, relPath -> relPath != "bin/idea.properties" }, entryCustomizer = entryCustomizer)
+
+      out.dir(macX64DistDir, "", fileFilter = { _, relPath ->
+        commonFilter.invoke(relPath) &&
+        filterFileIfAlreadyInZip(relPath, macX64DistDir.resolve(relPath), zipFiles)
       }, entryCustomizer = entryCustomizer)
 
-      val zipFiles = mutableMapOf<String, Path>()
-      out.dir(startDir = macX64DistDir, prefix = "", fileFilter = { _, relativeFile ->
-        val p = relativeFile.toString().replace('\\', '/')
-        !p.startsWith("bin/fsnotifier") &&
-        !p.startsWith("bin/repair") &&
-        !p.startsWith("bin/restarter") &&
-        !p.startsWith("bin/printenv") &&
-        p != "bin/idea.properties" &&
-        !(p.startsWith("bin/") && (p.endsWith(".sh") || p.endsWith(".vmoptions"))) &&
-        // do not copy common files, error if they are different
-        filterFileIfAlreadyInZip(p, macX64DistDir.resolve(p), zipFiles)
+      out.dir(macArm64DistDir, "", fileFilter = { _, relPath ->
+        commonFilter.invoke(relPath) &&
+        filterFileIfAlreadyInZip(relPath, macArm64DistDir.resolve(relPath), zipFiles)
       }, entryCustomizer = entryCustomizer)
 
-      out.dir(startDir = macAarch64DistDir, prefix = "", fileFilter = { _, relativeFile ->
-        val p = relativeFile.toString().replace('\\', '/')
-        !p.startsWith("bin/fsnotifier") &&
-        !p.startsWith("bin/repair") &&
-        !p.startsWith("bin/restarter") &&
-        !p.startsWith("bin/printenv") &&
-        p != "bin/idea.properties" &&
-        !(p.startsWith("bin/") && (p.endsWith(".sh") || p.endsWith(".vmoptions"))) &&
-        // do not copy common files, error if they are different
-        filterFileIfAlreadyInZip(p, macAarch64DistDir.resolve(p), zipFiles)
-      }, entryCustomizer = entryCustomizer)
-
-      out.dir(startDir = linuxX64DistDir, prefix = "", fileFilter = { _, relativeFile ->
-        val p = relativeFile.toString().replace('\\', '/')
-        !p.startsWith("bin/fsnotifier") &&
-        !p.startsWith("bin/repair") &&
-        !p.startsWith("bin/printenv") &&
-        !p.startsWith("help/") &&
-        p != "bin/idea.properties" &&
-        !(p.startsWith("bin/") && (p.endsWith(".sh") || p.endsWith(".vmoptions") || p.endsWith(".py"))) &&
-        // do not copy common files, error if they are different
-        filterFileIfAlreadyInZip(p, linuxX64DistDir.resolve(p), zipFiles)
+      out.dir(linuxX64DistDir, "", fileFilter = { _, relPath ->
+        commonFilter.invoke(relPath) &&
+        filterFileIfAlreadyInZip(relPath, linuxX64DistDir.resolve(relPath), zipFiles)
       }, entryCustomizer = entryCustomizer)
 
       val winExcludes = distFiles.mapTo(HashSet(distFiles.size)) { "${it.value}/${it.key.fileName}" }
-      out.dir(startDir = winX64DistDir, prefix = "", fileFilter = { _, relativeFile ->
-        val p = relativeFile.toString().replace('\\', '/')
-        !p.startsWith("bin/fsnotifier") &&
-        !p.startsWith("bin/repair") &&
-        !p.startsWith("bin/printenv") &&
-        !p.startsWith("help/") &&
-        p != "bin/idea.properties" &&
-        p != "build.txt" &&
-        !(p.startsWith("bin/") && p.endsWith(".exe.vmoptions")) &&
-        !(p.startsWith("bin/$executableName") && p.endsWith(".exe")) &&
-        !winExcludes.contains(p) &&
-        // do not copy common files, error if they are different
-        filterFileIfAlreadyInZip(p, winX64DistDir.resolve(p), zipFiles)
+      out.dir(winX64DistDir, "", fileFilter = { _, relPath ->
+        commonFilter.invoke(relPath) &&
+        !(relPath.startsWith("bin/${executableName}") && relPath.endsWith(".exe")) &&
+        !winExcludes.contains(relPath) &&
+        filterFileIfAlreadyInZip(relPath, winX64DistDir.resolve(relPath), zipFiles)
       }, entryCustomizer = entryCustomizer)
     }
   }

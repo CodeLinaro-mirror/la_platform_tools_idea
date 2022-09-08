@@ -1,6 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.indexing.diagnostic
 
+import com.intellij.concurrency.ConcurrentCollectionFactory
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -27,7 +28,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.io.path.bufferedReader
 import kotlin.io.path.extension
 import kotlin.io.path.nameWithoutExtension
+import kotlin.math.min
 import kotlin.streams.asSequence
+
+private const val DIAGNOSTIC_LIMIT_OF_FILES_PROPERTY = "intellij.indexes.diagnostics.limit.of.files"
 
 class IndexDiagnosticDumper : Disposable {
   companion object {
@@ -37,7 +41,8 @@ class IndexDiagnosticDumper : Disposable {
     private const val fileNamePrefix = "diagnostic-"
 
     @JvmStatic
-    val projectIndexingHistoryListenerEpName = ExtensionPointName.create<ProjectIndexingHistoryListener>("com.intellij.projectIndexingHistoryListener")
+    val projectIndexingHistoryListenerEpName =
+      ExtensionPointName.create<ProjectIndexingHistoryListener>("com.intellij.projectIndexingHistoryListener")
 
     @JvmStatic
     private val shouldDumpDiagnosticsForInterruptedUpdaters: Boolean
@@ -46,8 +51,34 @@ class IndexDiagnosticDumper : Disposable {
 
     @JvmStatic
     private val indexingDiagnosticsLimitOfFiles: Int
-      get() =
-        SystemProperties.getIntProperty("intellij.indexes.diagnostics.limit.of.files", 300)
+      get() = SystemProperties.getIntProperty(DIAGNOSTIC_LIMIT_OF_FILES_PROPERTY, 300)
+
+    private fun hasProvidedDiagnosticsLimitOfFilesValue(): Boolean {
+      val providedLimitOfFilesValue = System.getProperty(DIAGNOSTIC_LIMIT_OF_FILES_PROPERTY)
+      if (providedLimitOfFilesValue == null) return false
+      try {
+        providedLimitOfFilesValue.toInt()
+      }
+      catch (ignored: NumberFormatException) {
+        return false
+      }
+      return true
+    }
+
+    @JvmStatic
+    private val indexingDiagnosticsSizeLimitOfFilesInMBPerProject: Int
+      get() {
+        val providedValue = System.getProperty("intellij.indexes.diagnostics.size.limit.of.files.MB.per.project")
+        if (providedValue != null) {
+          try {
+            return providedValue.toInt()
+          }
+          catch (ignored: NumberFormatException) {
+          }
+        }
+
+        return if (hasProvidedDiagnosticsLimitOfFilesValue()) 0 else 10
+      }
 
     @JvmStatic
     val shouldDumpPathsOfIndexedFiles: Boolean
@@ -76,6 +107,9 @@ class IndexDiagnosticDumper : Disposable {
     @TestOnly
     var shouldDumpInUnitTestMode: Boolean = false
 
+    private val isIntegrationTest: Boolean
+      get() = SystemProperties.getBooleanProperty("idea.is.integration.test", false)
+
     private val LOG = Logger.getInstance(IndexDiagnosticDumper::class.java)
 
     fun readJsonIndexDiagnostic(file: Path): JsonIndexDiagnostic =
@@ -98,6 +132,8 @@ class IndexDiagnosticDumper : Disposable {
 
   private var isDisposed = false
 
+  private val unsavedIndexingHistories = ConcurrentCollectionFactory.createConcurrentIdentitySet<ProjectIndexingHistoryImpl>()
+
   fun onIndexingStarted(projectIndexingHistory: ProjectIndexingHistoryImpl) {
     runAllListenersSafely { onStartedIndexing(projectIndexingHistory) }
   }
@@ -111,6 +147,7 @@ class IndexDiagnosticDumper : Disposable {
         return
       }
       projectIndexingHistory.indexingFinished()
+      unsavedIndexingHistories.add(projectIndexingHistory)
       NonUrgentExecutor.getInstance().execute { dumpProjectIndexingHistoryToLogSubdirectory(projectIndexingHistory) }
     }
     finally {
@@ -138,6 +175,9 @@ class IndexDiagnosticDumper : Disposable {
 
   @Synchronized
   private fun dumpProjectIndexingHistoryToLogSubdirectory(projectIndexingHistory: ProjectIndexingHistoryImpl) {
+    if (!unsavedIndexingHistories.remove(projectIndexingHistory)) {
+      return
+    }
     try {
       check(!isDisposed)
 
@@ -212,8 +252,28 @@ class IndexDiagnosticDumper : Disposable {
   private fun deleteOutdatedDiagnostics(existingDiagnostics: List<ExistingDiagnostic>): List<ExistingDiagnostic> {
     val sortedDiagnostics = existingDiagnostics.sortedByDescending { it.indexingTimes.updatingStart.instant }
 
-    val survivedDiagnostics = sortedDiagnostics.take(indexingDiagnosticsLimitOfFiles)
-    val outdatedDiagnostics = sortedDiagnostics.drop(indexingDiagnosticsLimitOfFiles)
+    var sizeLimit = indexingDiagnosticsSizeLimitOfFilesInMBPerProject * 1000000.toLong()
+    val numberLimit: Int
+    if (isIntegrationTest) {
+      numberLimit = existingDiagnostics.size
+    } else if (sizeLimit > 0) {
+      var number = 0
+      for (diagnostic in existingDiagnostics) {
+        sizeLimit -= diagnostic.jsonFile.toFile().length()
+        sizeLimit -= diagnostic.htmlFile.toFile().length()
+        if (sizeLimit <= 0) {
+          break
+        }
+        number++
+      }
+      numberLimit = min(indexingDiagnosticsLimitOfFiles, number)
+    }
+    else {
+      numberLimit = indexingDiagnosticsLimitOfFiles
+    }
+
+    val survivedDiagnostics = sortedDiagnostics.take(numberLimit)
+    val outdatedDiagnostics = sortedDiagnostics.drop(numberLimit)
 
     for (diagnostic in outdatedDiagnostics) {
       diagnostic.jsonFile.delete()
@@ -254,8 +314,11 @@ class IndexDiagnosticDumper : Disposable {
 
   @Synchronized
   override fun dispose() {
+    // it's important to save diagnostic, no matter how
+    for (unsavedIndexingHistory in unsavedIndexingHistories) {
+      dumpProjectIndexingHistoryToLogSubdirectory(unsavedIndexingHistory)
+    }
     // The synchronized block allows to wait for unfinished background dumpers.
     isDisposed = true
   }
-
 }

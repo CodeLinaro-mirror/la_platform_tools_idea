@@ -12,12 +12,12 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.uast.*;
 
 public class RefFieldImpl extends RefJavaElementImpl implements RefField {
-  private static final int USED_FOR_READING_MASK = 0b1_00000000_00000000; // 17th bit
-  private static final int USED_FOR_WRITING_MASK = 0b10_00000000_00000000; // 18th bit
+  private static final int USED_FOR_READING_MASK             = 0b1_00000000_00000000; // 17th bit
+  private static final int USED_FOR_WRITING_MASK             = 0b10_00000000_00000000; // 18th bit
   private static final int ASSIGNED_ONLY_IN_INITIALIZER_MASK = 0b100_00000000_00000000; // 19th bit
-  private static final int IMPLICITLY_READ_MASK = 0b1000_00000000_00000000; // 20th bit
-  private static final int IMPLICITLY_WRITTEN_MASK = 0b10000_00000000_00000000; // 21st bit
-  private static final int IS_ENUM_CONSTANT = 0b100000_00000000_00000000; // 22nd bit
+  private static final int IMPLICITLY_READ_MASK              = 0b1000_00000000_00000000; // 20th bit
+  private static final int IMPLICITLY_WRITTEN_MASK           = 0b10000_00000000_00000000; // 21st bit
+  private static final int IS_ENUM_CONSTANT                  = 0b100000_00000000_00000000; // 22nd bit
 
   RefFieldImpl(UField field, PsiElement psi, RefManager manager) {
     super(field, psi, manager);
@@ -76,8 +76,13 @@ public class RefFieldImpl extends RefJavaElementImpl implements RefField {
   }
 
   @Override
-  public boolean isUsedForReading() {
-    return checkFlag(USED_FOR_READING_MASK);
+  public synchronized boolean isUsedForReading() {
+    if (checkFlag(USED_FOR_READING_MASK)) {
+      return true;
+    }
+    RefClass ownerClass = getOwnerClass();
+    // record fields are always implicitly read in hashCode() & equals()
+    return ownerClass != null && ownerClass.isRecord();
   }
 
   private void setUsedForReading(boolean usedForReading) {
@@ -85,11 +90,16 @@ public class RefFieldImpl extends RefJavaElementImpl implements RefField {
   }
 
   @Override
-  public boolean isUsedForWriting() {
-    return checkFlag(USED_FOR_WRITING_MASK);
+  public synchronized boolean isUsedForWriting() {
+    if (checkFlag(USED_FOR_WRITING_MASK)) {
+      return true;
+    }
+    RefClass ownerClass = getOwnerClass();
+    // record fields are always implicitly written in the constructor
+    return ownerClass != null && ownerClass.isRecord();
   }
 
-  private void setUsedForWriting(boolean usedForWriting) {
+  private synchronized void setUsedForWriting(boolean usedForWriting) {
     setFlag(false, ASSIGNED_ONLY_IN_INITIALIZER_MASK);
     setFlag(usedForWriting, USED_FOR_WRITING_MASK);
   }

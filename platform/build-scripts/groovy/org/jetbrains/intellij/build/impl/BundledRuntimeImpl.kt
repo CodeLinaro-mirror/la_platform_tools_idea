@@ -39,9 +39,6 @@ class BundledRuntimeImpl(private val context: CompilationContext) : BundledRunti
     var prefix = "jbr_jcef-"
     val os = OsFamily.currentOs
     val arch = JvmArchitecture.currentJvmArch
-    if (os == OsFamily.LINUX && arch == JvmArchitecture.aarch64) {
-      prefix = "jbr-"
-    }
     if (System.getProperty("intellij.build.jbr.setupSdk", "false").toBoolean()) {
       // required as a runtime for debugger tests
       prefix = "jbrsdk-"
@@ -210,13 +207,16 @@ class BundledRuntimeImpl(private val context: CompilationContext) : BundledRunti
   override fun executableFilesPatterns(os: OsFamily): List<String> {
     val pathPrefix = if (os == OsFamily.MACOS) "jbr/Contents/Home/" else "jbr/"
     @Suppress("SpellCheckingInspection")
-    return listOf(
+    val executableFilesPatterns = mutableListOf(
       pathPrefix + "bin/*",
       pathPrefix + "lib/jexec",
-      pathPrefix + "lib/jcef_helper",
       pathPrefix + "lib/jspawnhelper",
       pathPrefix + "lib/chrome-sandbox"
     )
+    if (os == OsFamily.LINUX) {
+      executableFilesPatterns += "jbr/lib/jcef_helper"
+    }
+    return executableFilesPatterns
   }
 }
 

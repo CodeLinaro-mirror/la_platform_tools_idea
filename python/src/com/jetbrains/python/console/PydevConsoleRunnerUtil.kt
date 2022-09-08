@@ -4,12 +4,18 @@
 package com.jetbrains.python.console
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import com.intellij.execution.target.TargetEnvironment
+import com.intellij.execution.target.value.TargetEnvironmentFunction
+import com.intellij.execution.target.value.TraceableTargetEnvironmentFunction
+import com.intellij.execution.target.value.constant
+import com.intellij.execution.target.value.joinToStringFunction
 import com.intellij.lang.ASTNode
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.Pair
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.encoding.EncodingProjectManager
 import com.intellij.psi.PsiElement
 import com.jetbrains.python.console.PyConsoleOptions.PyConsoleSettings
@@ -21,9 +27,11 @@ import com.jetbrains.python.remote.PyRemoteSdkAdditionalDataBase
 import com.jetbrains.python.remote.PythonRemoteInterpreterManager
 import com.jetbrains.python.run.PythonCommandLineState
 import com.jetbrains.python.run.target.getPathMapper
+import com.jetbrains.python.run.toStringLiteral
 import com.jetbrains.python.sdk.PythonEnvUtil
 import com.jetbrains.python.sdk.PythonSdkUtil
 import com.jetbrains.python.target.PyTargetAwareAdditionalData
+import java.util.function.Function
 
 fun getPathMapper(project: Project,
                   sdk: Sdk?,
@@ -108,11 +116,28 @@ fun constructPyPathAndWorkingDirCommand(pythonPath: MutableCollection<String>,
   if (workingDir != null) {
     pythonPath.add(workingDir)
   }
-  val path = pythonPath.joinToString(separator = ", ") { "'${it.escapeAsPythonLiteral()}'" }
+  val path = pythonPath.joinToString(separator = ", ", transform = String::toStringLiteral)
   return command.replace(PydevConsoleRunnerImpl.WORKING_DIR_AND_PYTHON_PATHS, path)
 }
 
-private fun String.escapeAsPythonLiteral(): String = replace("\\", "\\\\").replace("'", "\\'")
+fun constructPyPathAndWorkingDirCommand(pythonPath: MutableCollection<Function<TargetEnvironment, String>>,
+                                        workingDir: String?,
+                                        command: String): TargetEnvironmentFunction<String> {
+  if (workingDir != null) {
+    pythonPath.add(constant(workingDir))
+  }
+  val path = pythonPath.joinToStringFunction(separator = ", ", transform = String::toStringLiteral)
+  return ReplaceSubstringFunction(command, PydevConsoleRunnerImpl.WORKING_DIR_AND_PYTHON_PATHS, path)
+}
+
+private class ReplaceSubstringFunction(private val s: String,
+                                       private val oldValue: String,
+                                       private val newValue: TargetEnvironmentFunction<String>)
+  : TraceableTargetEnvironmentFunction<String>() {
+  override fun applyInner(t: TargetEnvironment): String = s.replace(oldValue, newValue.apply(t))
+
+  override fun toString(): String = "ReplaceSubstringFunction(s='$s', oldValue='$oldValue', newValue=$newValue)"
+}
 
 fun addDefaultEnvironments(sdk: Sdk,
                            envs: Map<String, String>,
@@ -156,6 +181,10 @@ private fun hasConsoleKey(element: PsiElement): Boolean {
   if (psiFile.virtualFile == null) return false
   val inConsole = element.containingFile.virtualFile.getUserData(PythonConsoleView.CONSOLE_KEY)
   return inConsole != null && inConsole
+}
+
+fun isConsoleView(file: VirtualFile): Boolean {
+  return file.getUserData(PythonConsoleView.CONSOLE_KEY) == true
 }
 
 fun getPythonConsoleData(element: ASTNode?): PythonConsoleData? {

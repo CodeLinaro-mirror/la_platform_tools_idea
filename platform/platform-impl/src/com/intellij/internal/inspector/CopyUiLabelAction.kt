@@ -3,11 +3,13 @@ package com.intellij.internal.inspector
 
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.ide.HelpTooltip
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.IdeFocusManager
+import com.intellij.openapi.wm.impl.status.TextPanel
 import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.breadcrumbs.Breadcrumbs
@@ -29,7 +31,10 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.TreeCellRenderer
 
-class CopyUiLabelAction : UiMouseAction("CopyUiLabel") {
+internal class CopyUiLabelAction : UiMouseAction("CopyUiLabel") {
+
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
   override fun actionPerformed(e: AnActionEvent) {
     val showFullDescription = e.inputEvent?.isShiftDown ?: false
     val component = getComponentFor(e) ?: return
@@ -112,6 +117,7 @@ class CopyUiLabelAction : UiMouseAction("CopyUiLabel") {
       is AbstractButton -> c.text
       is SimpleColoredComponent -> c.toString()
       is JTextComponent -> c.text
+      is TextPanel -> c.text
       is JComboBox<*> -> {
         when (val item = c.selectedItem) {
           null, is String -> item?.toString()

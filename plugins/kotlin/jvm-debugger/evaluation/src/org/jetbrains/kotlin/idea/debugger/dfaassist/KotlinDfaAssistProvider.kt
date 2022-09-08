@@ -1,6 +1,8 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.debugger.dfaassist
 
+import com.intellij.codeInspection.dataFlow.TypeConstraint
+import com.intellij.codeInspection.dataFlow.TypeConstraints
 import com.intellij.codeInspection.dataFlow.lang.DfaAnchor
 import com.intellij.codeInspection.dataFlow.lang.UnsatisfiedConditionProblem
 import com.intellij.codeInspection.dataFlow.memory.DfaMemoryState
@@ -22,10 +24,7 @@ import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.safeAnalyzeNonSourceRootCode
 import org.jetbrains.kotlin.idea.debugger.ClassNameCalculator
 import org.jetbrains.kotlin.idea.debugger.evaluate.variables.EvaluatorValueConverter
-import org.jetbrains.kotlin.idea.inspections.dfa.KotlinAnchor
-import org.jetbrains.kotlin.idea.inspections.dfa.KotlinProblem
-import org.jetbrains.kotlin.idea.inspections.dfa.KtThisDescriptor
-import org.jetbrains.kotlin.idea.inspections.dfa.KtVariableDescriptor
+import org.jetbrains.kotlin.idea.inspections.dfa.*
 import org.jetbrains.kotlin.idea.util.toJvmFqName
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
@@ -48,7 +47,7 @@ class KotlinDfaAssistProvider : DfaAssistProvider {
     override fun getAnchor(element: PsiElement): KtExpression? {
         var cur = element
         while (cur is PsiWhiteSpace || cur is PsiComment) {
-            cur = element.nextSibling
+            cur = cur.nextSibling
         }
         while (true) {
             val parent = cur.parent
@@ -124,16 +123,18 @@ class KotlinDfaAssistProvider : DfaAssistProvider {
             val hints = hashMapOf<PsiElement, DfaHint>()
 
             override fun beforePush(args: Array<out DfaValue>, value: DfaValue, anchor: DfaAnchor, state: DfaMemoryState) {
+                val dfType = state.getDfType(value)
                 var psi = when (anchor) {
                     is KotlinAnchor.KotlinExpressionAnchor -> {
-                        if (shouldTrackExpressionValue(anchor.expression)) anchor.expression
+                        if (shouldTrackExpressionValue(anchor.expression) &&
+                            !KotlinConstantConditionsInspection.shouldSuppress(dfType, anchor.expression)
+                        ) anchor.expression
                         else return
                     }
                     is KotlinAnchor.KotlinWhenConditionAnchor -> anchor.condition
                     else -> return
                 }
                 var hint = DfaHint.ANY_VALUE
-                val dfType = state.getDfType(value)
                 if (dfType === DfTypes.TRUE) {
                     hint = DfaHint.TRUE
                 } else if (dfType === DfTypes.FALSE) {
@@ -193,5 +194,10 @@ class KotlinDfaAssistProvider : DfaAssistProvider {
                 return hints
             }
        }
+    }
+
+    override fun constraintFromJvmClassName(anchor: PsiElement, jvmClassName: String): TypeConstraint {
+        val classDef = KtClassDef.fromJvmClassName(anchor as KtElement, jvmClassName) ?: return TypeConstraints.TOP
+        return TypeConstraints.exactClass(classDef)
     }
 }

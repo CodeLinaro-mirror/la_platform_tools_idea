@@ -980,11 +980,7 @@ public class UsageViewImpl implements UsageViewEx {
     group.getTemplatePresentation().setIcon(AllIcons.Actions.GroupBy);
     group.getTemplatePresentation().setText(UsageViewBundle.messagePointer("action.group.by.title"));
     group.getTemplatePresentation().setDescription(UsageViewBundle.messagePointer("action.group.by.title"));
-    group.getTemplatePresentation().setMultipleChoice(true);
     AnAction[] groupingActions = createGroupingActions();
-    for (AnAction a : groupingActions) {
-      a.getTemplatePresentation().setMultipleChoice(true);
-    }
     if (groupingActions.length > 0) {
       group.add(new Separator(UsageViewBundle.message("action.group.by.title")));
       group.addAll(groupingActions);
@@ -1227,14 +1223,19 @@ public class UsageViewImpl implements UsageViewEx {
     associatedProgress = indicator;
   }
 
-  private final class ShowSettings extends AnAction implements UpdateInBackground {
-    private ShowSettings() {
+  private final class ShowSettings extends AnAction {
+    ShowSettings() {
       super(UsageViewBundle.message("action.text.usage.view.settings"), null, AllIcons.General.GearPlain);
       ConfigurableUsageTarget target = getConfigurableTarget(myTargets);
       KeyboardShortcut shortcut = target == null ? UsageViewUtil.getShowUsagesWithSettingsShortcut() : target.getShortcut();
       if (shortcut != null) {
         registerCustomShortcutSet(new CustomShortcutSet(shortcut), getComponent());
       }
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
     }
 
     @Override
@@ -1543,7 +1544,7 @@ public class UsageViewImpl implements UsageViewEx {
     ApplicationManager.getApplication().assertIsDispatchThread();
     if (myCurrentUsageContextPanel != null) {
       try {
-        myCurrentUsageContextPanel.updateLayout(getSelectedUsageInfos());
+        myCurrentUsageContextPanel.updateLayout(ContainerUtil.notNullize(getSelectedUsageInfos()), this);
       }
       catch (IndexNotReadyException ignore) {
       }
@@ -1929,6 +1930,11 @@ public class UsageViewImpl implements UsageViewEx {
         }
       };
       myCopyProvider = new TextCopyProvider() {
+        @Override
+        public @NotNull ActionUpdateThread getActionUpdateThread() {
+          return ActionUpdateThread.EDT;
+        }
+
         @Nullable
         @Override
         public Collection<String> getTextLinesToCopy() {
@@ -2228,6 +2234,11 @@ public class UsageViewImpl implements UsageViewEx {
   private List<UsageInfo> getSelectedUsageInfos() {
     ApplicationManager.getApplication().assertIsDispatchThread();
     return USAGE_INFO_LIST_KEY.getData(DataManager.getInstance().getDataContext(myRootPanel));
+  }
+
+  public @NotNull Set<@NotNull GroupNode> selectedGroupNodes() {
+    return selectedNodes().stream().filter(node -> node instanceof GroupNode).map(node -> (GroupNode)node)
+      .collect(Collectors.toCollection(HashSet::new));
   }
 
   @NotNull

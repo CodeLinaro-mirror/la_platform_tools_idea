@@ -5,12 +5,10 @@ import com.intellij.diagnostic.LoadingState;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.RemoteDesktopService;
-import com.intellij.ide.impl.TypeSafeDataProviderAdapter;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataProvider;
-import com.intellij.openapi.actionSystem.TypeSafeDataProvider;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -310,6 +308,11 @@ public final class GlassPaneDialogWrapperPeer extends DialogWrapperPeer {
     return DialogWrapperPeerImpl.isHeadlessEnv();
   }
 
+  @Override
+  public void setOnDeactivationAction(@NotNull Disposable disposable, @NotNull Runnable onDialogDeactivated) {
+    throw new UnsupportedOperationException("Not implemented in " + getClass().getCanonicalName());
+  }
+
   //[kirillk] for now it only deals with the TaskWindow under Mac OS X: modal dialogs are shown behind JBPopup
   //hopefully this whole code will go away
   private void hidePopupsIfNeeded() {
@@ -563,12 +566,9 @@ public final class GlassPaneDialogWrapperPeer extends DialogWrapperPeer {
 
     @Override
     public Object getData(@NotNull @NonNls final String dataId) {
-      final DialogWrapper wrapper = myDialogWrapper.get();
+      DialogWrapper wrapper = myDialogWrapper.get();
       if (wrapper instanceof DataProvider) {
-        return ((DataProvider) wrapper).getData(dataId);
-      } else if (wrapper instanceof TypeSafeDataProvider) {
-        TypeSafeDataProviderAdapter adapter = new TypeSafeDataProviderAdapter((TypeSafeDataProvider) wrapper);
-        return adapter.getData(dataId);
+        return ((DataProvider)wrapper).getData(dataId);
       }
       return null;
     }
