@@ -59,6 +59,8 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
   private final WelcomeScreen myScreen;
   private final BalloonLayout myBalloonLayout;
 
+  private final Disposable listenerDisposable = Disposer.newDisposable();
+
   public WelcomeFrame() {
     SplashManager.hideBeforeShow(this);
 
@@ -72,11 +74,9 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
     setTitle(ApplicationNamesInfo.getInstance().getFullProductName());
     AppUIUtil.updateWindowIcon(this);
 
-    Disposable listenerDisposable = Disposer.newDisposable();
     ApplicationManager.getApplication().getMessageBus().connect(listenerDisposable).subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectOpened(@NotNull Project project) {
-        Disposer.dispose(listenerDisposable);
         dispose();
       }
     });
@@ -102,6 +102,7 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
     super.dispose();
 
     Disposer.dispose(myScreen);
+    Disposer.dispose(listenerDisposable);
 
     resetInstance();
   }
