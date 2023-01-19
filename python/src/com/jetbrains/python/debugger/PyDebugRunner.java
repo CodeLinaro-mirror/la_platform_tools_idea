@@ -31,18 +31,20 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.OrderRootType;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.registry.RegistryManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.util.net.NetUtils;
 import com.intellij.ui.ExperimentalUI;
+import com.intellij.util.net.NetUtils;
 import com.intellij.xdebugger.XDebugProcess;
 import com.intellij.xdebugger.XDebugProcessStarter;
 import com.intellij.xdebugger.XDebugSession;
 import com.intellij.xdebugger.XDebuggerManager;
-import com.jetbrains.python.PyBundle;
 import com.intellij.xdebugger.impl.ui.XDebuggerUIConstants;
+import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.PythonHelper;
 import com.jetbrains.python.console.PydevConsoleRunnerFactory;
 import com.jetbrains.python.console.PythonConsoleView;
@@ -72,6 +74,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.jetbrains.python.debugger.PyDebugSupportUtils.ASYNCIO_ENV;
 import static com.jetbrains.python.inspections.PyInterpreterInspection.InterpreterSettingsQuickFix.showPythonInterpreterSettings;
 
 
@@ -488,7 +491,7 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
         @SuppressWarnings("ConstantConditions") @NotNull
         ParamsGroup exeParams = parametersList.getParamsGroup(PythonCommandLineState.GROUP_EXE_OPTIONS);
 
-        final PythonSdkFlavor flavor = pyState.getSdkFlavor();
+        final PythonSdkFlavor<?> flavor = pyState.getSdkFlavor();
         if (flavor != null) {
           assert exeParams != null;
           for (String option : flavor.getExtraDebugOptions()) {
@@ -619,6 +622,10 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
       environmentController.appendTargetPathToPathsValue(PYTHONPATH_ENV_NAME, CYTHON_EXTENSIONS_DIR);
     }
 
+    if (RegistryManager.getInstance().is("python.debug.asyncio.repl")) {
+      environmentController.putFixedValue(ASYNCIO_ENV, "True");
+    }
+
     final AbstractPythonRunConfiguration runConfiguration = runProfile instanceof AbstractPythonRunConfiguration ?
                                                             (AbstractPythonRunConfiguration)runProfile : null;
     final Module module = runConfiguration != null ? runConfiguration.getModule() : null;
@@ -699,7 +706,7 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
    */
   public static void configureCommonDebugParameters(@NotNull Project project,
                                                     @NotNull ParamsGroup debugParams) {
-    if (ApplicationManager.getApplication().isUnitTestMode()) {
+    if (ApplicationManager.getApplication().isUnitTestMode() && !isForceDisableDebuggerTracing()) {
       debugParams.addParameter("--DEBUG");
     }
 
@@ -715,7 +722,7 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
 
   public static void configureCommonDebugParameters(@NotNull Project project,
                                                     @NotNull PythonExecution debuggerScript) {
-    if (ApplicationManager.getApplication().isUnitTestMode()) {
+    if (ApplicationManager.getApplication().isUnitTestMode() && !isForceDisableDebuggerTracing()) {
       debuggerScript.addParameter("--DEBUG");
     }
 
@@ -727,6 +734,15 @@ public class PyDebugRunner implements ProgramRunner<RunnerSettings> {
       String pyQtBackend = StringUtil.toLowerCase(PyDebuggerOptionsProvider.getInstance(project).getPyQtBackend());
       debuggerScript.addParameter(String.format("--qt-support=%s", pyQtBackend));
     }
+  }
+
+  /**
+   * A hack for disabling the debugging tracing in the unit-test mode.
+   */
+  public static final Key<Boolean> FORCE_DISABLE_DEBUGGER_TRACING = Key.create("FORCE_DISABLE_DEBUGGER_TRACING");
+
+  private static boolean isForceDisableDebuggerTracing() {
+    return Boolean.TRUE.equals(ApplicationManager.getApplication().getUserData(FORCE_DISABLE_DEBUGGER_TRACING));
   }
 
   /**

@@ -67,6 +67,9 @@ data class VMOptions(
     return addLine(line = "-D$key=$value", filterPrefix = "-D$key=")
   }
 
+  fun removeSystemProperty(key: String): VMOptions =
+    copy(data = data.filterNot { it.trim().startsWith("-D${key}") })
+
   fun addLine(line: String, filterPrefix: String? = null): VMOptions {
     if (data.contains(line)) return this
     val copy = if (filterPrefix == null) data else data.filterNot { it.trim().startsWith(filterPrefix) }
@@ -118,6 +121,10 @@ data class VMOptions(
       .addLine("-agentpath:${vmTraceFile.toAbsolutePath()}=${filePath.toAbsolutePath()}")
   }
 
+  fun enableExitMetrics(filePath: Path): VMOptions {
+    return this.addSystemProperty("idea.log.exit.metrics.file", filePath)
+  }
+
   fun configureLoggers(
     debugLoggers: List<String> = emptyList(),
     traceLoggers: List<String> = emptyList()
@@ -150,8 +157,11 @@ data class VMOptions(
     .addSystemProperty("jb.consents.confirmation.enabled", false)
     .addSystemProperty("jb.privacy.policy.text", "<!--999.999-->")
 
-  fun takeScreenshotIfFailure(logsDir: Path) = this
-    .addSystemProperty("ide.performance.screenshot.before.kill", logsDir.resolve("screenshot_beforeKill.jpg").toString())
+  fun takeScreenshotsPeriodically(logsDir: Path) = this
+    .addSystemProperty("ide.performance.screenshot", logsDir.resolve("screenshot.png").toString())
+
+  fun takeScreenshotOnFailure(logsDir: Path) = this
+    .addSystemProperty("ide.performance.screenshot.on.failure", logsDir.resolve("screenshot_onFailure.jpg").toString())
 
   fun installTestScript(testName: String,
                         paths: IDEDataPaths,

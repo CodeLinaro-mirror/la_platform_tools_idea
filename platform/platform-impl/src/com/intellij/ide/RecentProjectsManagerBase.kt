@@ -13,10 +13,7 @@ import com.intellij.ide.lightEdit.LightEdit
 import com.intellij.ide.ui.UISettings
 import com.intellij.idea.AppMode
 import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.PathManager
-import com.intellij.openapi.application.appSystemDir
+import com.intellij.openapi.application.*
 import com.intellij.openapi.application.ex.ApplicationInfoEx
 import com.intellij.openapi.application.ex.ApplicationManagerEx
 import com.intellij.openapi.components.*
@@ -82,7 +79,7 @@ private val LOG = logger<RecentProjectsManager>()
 @State(name = "RecentProjectsManager", storages = [Storage(value = "recentProjects.xml", roamingType = RoamingType.DISABLED)])
 open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateComponent<RecentProjectManagerState>, ModificationTracker {
   companion object {
-    const val MAX_PROJECTS_IN_MAIN_MENU = 6
+    const val MAX_PROJECTS_IN_MAIN_MENU: Int = 6
 
     @JvmStatic
     fun getInstanceEx(): RecentProjectsManagerBase = RecentProjectsManager.getInstance() as RecentProjectsManagerBase
@@ -222,9 +219,9 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
 
   protected open fun getProjectDisplayName(project: Project): String? = null
 
-  fun getProjectIcon(path: String): Icon = projectIconHelper.getProjectIcon(path = path, generateFromName = false)
-
-  fun getProjectIcon(path: String, generateFromName: Boolean): Icon = projectIconHelper.getProjectIcon(path, generateFromName)
+  fun getProjectIcon(path: String, isProjectValid: Boolean): Icon {
+    return projectIconHelper.getProjectIcon(path, isProjectValid)
+  }
 
   @Suppress("OVERRIDE_DEPRECATION")
   override fun getRecentProjectsActions(addClearListItem: Boolean): Array<AnAction> {
@@ -375,7 +372,10 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
       val manager = getInstanceEx()
       val path = manager.getProjectPath(project) ?: return
       if (!app.isHeadlessEnvironment) {
-        manager.updateProjectInfo(project, WindowManager.getInstance() as WindowManagerImpl, writLastProjectInfo = false, false)
+        manager.updateProjectInfo(project = project,
+                                  windowManager = WindowManager.getInstance() as WindowManagerImpl,
+                                  writeLastProjectInfo = false,
+                                  appClosing = false)
       }
       manager.nameCache.put(path, project.name)
     }
@@ -384,6 +384,11 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
       if (ApplicationManagerEx.getApplicationEx().isExitInProgress) {
         // appClosing updates project info (even more - on project closed full screen state maybe not correct)
         return
+      }
+
+      val manager = getInstanceEx()
+      synchronized(manager.stateLock) {
+        manager.state.additionalInfo.get(manager.getProjectPath(project))?.opened = false
       }
       updateSystemDockMenu()
     }
@@ -502,11 +507,12 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
           info.frameTitle?.let {
             ideFrame.title = it
           }
-          val frameHelper = ProjectFrameHelper(ideFrame, null)
-          val frameManager = MyProjectUiFrameManager(ideFrame, frameHelper)
+          val frameHelper = ProjectFrameHelper(frame = ideFrame, selfie = null)
+          val frameManager = MyProjectUiFrameManager(frame = ideFrame, frameHelper = frameHelper)
 
           frameHelper.init()
 
+          ideFrame.isVisible = true
           if (frameInfo.fullScreen && FrameInfoHelper.isFullScreenSupportedInCurrentOs()) {
             fullScreenPromise = frameHelper.toggleFullScreen(true)
           }
@@ -515,7 +521,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
             forceOpenInNewFrame = true
             showWelcomeScreen = false
             projectWorkspaceId = info.projectWorkspaceId
-            implOptions = OpenProjectImplOptions(frameManager = frameManager)
+            implOptions = OpenProjectImplOptions(frameManager = frameManager, isVisibleManaged = true)
           })
           if (isActive) {
             activeTask = task
@@ -542,7 +548,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
         projectManager.openProjectAsync(entry.first, entry.second)
       }
       catch (e: Exception) {
-        withContext(NonCancellable) {
+        withContext(NonCancellable + Dispatchers.EDT + ModalityState.any().asContextElement()) {
           @Suppress("SSBasedInspection")
           (entry.second.frameManager as MyProjectUiFrameManager?)?.dispose()
           while (iterator.hasNext()) {
@@ -612,7 +618,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
     }
   }
 
-  private fun updateProjectInfo(project: Project, windowManager: WindowManagerImpl, writLastProjectInfo: Boolean, appClosing: Boolean) {
+  private fun updateProjectInfo(project: Project, windowManager: WindowManagerImpl, writeLastProjectInfo: Boolean, appClosing: Boolean) {
     val frameHelper = windowManager.getFrameHelper(project)
     if (frameHelper == null) {
       LOG.warn("Cannot update frame info (project=${project.name}, reason=frame helper is not found)")
@@ -649,11 +655,11 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
     }
 
     LOG.runAndLogException {
-      if (writLastProjectInfo) {
+      if (writeLastProjectInfo) {
         writeInfoFile(frameInfo, frame)
       }
 
-      if (workspaceId != null && Registry.`is`("ide.project.loading.show.last.state")) {
+      if (workspaceId != null && Registry.`is`("ide.project.loading.show.last.state", false)) {
         takeASelfie(frameHelper, workspaceId)
       }
     }
@@ -789,7 +795,10 @@ int32 "extendedState"
         val manager = getInstanceEx()
         val windowManager = WindowManager.getInstance() as WindowManagerImpl
         for ((index, project) in openProjects.withIndex()) {
-          manager.updateProjectInfo(project, windowManager, writLastProjectInfo = index == 0, true)
+          manager.updateProjectInfo(project = project,
+                                    windowManager = windowManager,
+                                    writeLastProjectInfo = index == 0,
+                                    appClosing = true)
         }
       }
     }

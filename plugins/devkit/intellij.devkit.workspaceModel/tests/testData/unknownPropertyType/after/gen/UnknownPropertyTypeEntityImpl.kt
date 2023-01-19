@@ -5,7 +5,6 @@ import com.intellij.workspaceModel.storage.EntitySource
 import com.intellij.workspaceModel.storage.EntityStorage
 import com.intellij.workspaceModel.storage.GeneratedCodeApiVersion
 import com.intellij.workspaceModel.storage.GeneratedCodeImplVersion
-import com.intellij.workspaceModel.storage.ModifiableWorkspaceEntity
 import com.intellij.workspaceModel.storage.MutableEntityStorage
 import com.intellij.workspaceModel.storage.WorkspaceEntity
 import com.intellij.workspaceModel.storage.impl.ConnectionId
@@ -30,11 +29,15 @@ open class UnknownPropertyTypeEntityImpl(val dataSource: UnknownPropertyTypeEnti
   override val date: Date
     get() = dataSource.date
 
+  override val entitySource: EntitySource
+    get() = dataSource.entitySource
+
   override fun connectionIdList(): List<ConnectionId> {
     return connections
   }
 
-  class Builder(val result: UnknownPropertyTypeEntityData?) : ModifiableWorkspaceEntityBase<UnknownPropertyTypeEntity>(), UnknownPropertyTypeEntity.Builder {
+  class Builder(result: UnknownPropertyTypeEntityData?) : ModifiableWorkspaceEntityBase<UnknownPropertyTypeEntity, UnknownPropertyTypeEntityData>(
+    result), UnknownPropertyTypeEntity.Builder {
     constructor() : this(UnknownPropertyTypeEntityData())
 
     override fun applyToBuilder(builder: MutableEntityStorage) {
@@ -52,6 +55,9 @@ open class UnknownPropertyTypeEntityImpl(val dataSource: UnknownPropertyTypeEnti
       this.snapshot = builder
       addToBuilder()
       this.id = getEntityData().createEntityId()
+      // After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
+      // Builder may switch to snapshot at any moment and lock entity data to modification
+      this.currentEntityData = null
 
       // Process linked entities that are connected without a builder
       processLinkedEntities(builder)
@@ -75,8 +81,8 @@ open class UnknownPropertyTypeEntityImpl(val dataSource: UnknownPropertyTypeEnti
     // Relabeling code, move information from dataSource to this builder
     override fun relabel(dataSource: WorkspaceEntity, parents: Set<WorkspaceEntity>?) {
       dataSource as UnknownPropertyTypeEntity
-      this.entitySource = dataSource.entitySource
-      this.date = dataSource.date
+      if (this.entitySource != dataSource.entitySource) this.entitySource = dataSource.entitySource
+      if (this.date != dataSource.date) this.date = dataSource.date
       if (parents != null) {
       }
     }
@@ -86,7 +92,7 @@ open class UnknownPropertyTypeEntityImpl(val dataSource: UnknownPropertyTypeEnti
       get() = getEntityData().entitySource
       set(value) {
         checkModificationAllowed()
-        getEntityData().entitySource = value
+        getEntityData(true).entitySource = value
         changedProperty.add("entitySource")
 
       }
@@ -95,12 +101,11 @@ open class UnknownPropertyTypeEntityImpl(val dataSource: UnknownPropertyTypeEnti
       get() = getEntityData().date
       set(value) {
         checkModificationAllowed()
-        getEntityData().date = value
+        getEntityData(true).date = value
         changedProperty.add("date")
 
       }
 
-    override fun getEntityData(): UnknownPropertyTypeEntityData = result ?: super.getEntityData() as UnknownPropertyTypeEntityData
     override fun getEntityClass(): Class<UnknownPropertyTypeEntity> = UnknownPropertyTypeEntity::class.java
   }
 }
@@ -110,22 +115,17 @@ class UnknownPropertyTypeEntityData : WorkspaceEntityData<UnknownPropertyTypeEnt
 
   fun isDateInitialized(): Boolean = ::date.isInitialized
 
-  override fun wrapAsModifiable(diff: MutableEntityStorage): ModifiableWorkspaceEntity<UnknownPropertyTypeEntity> {
+  override fun wrapAsModifiable(diff: MutableEntityStorage): WorkspaceEntity.Builder<UnknownPropertyTypeEntity> {
     val modifiable = UnknownPropertyTypeEntityImpl.Builder(null)
-    modifiable.allowModifications {
-      modifiable.diff = diff
-      modifiable.snapshot = diff
-      modifiable.id = createEntityId()
-      modifiable.entitySource = this.entitySource
-    }
-    modifiable.changedProperty.clear()
+    modifiable.diff = diff
+    modifiable.snapshot = diff
+    modifiable.id = createEntityId()
     return modifiable
   }
 
   override fun createEntity(snapshot: EntityStorage): UnknownPropertyTypeEntity {
     return getCached(snapshot) {
       val entity = UnknownPropertyTypeEntityImpl(this)
-      entity.entitySource = entitySource
       entity.snapshot = snapshot
       entity.id = createEntityId()
       entity
@@ -154,7 +154,7 @@ class UnknownPropertyTypeEntityData : WorkspaceEntityData<UnknownPropertyTypeEnt
 
   override fun equals(other: Any?): Boolean {
     if (other == null) return false
-    if (this::class != other::class) return false
+    if (this.javaClass != other.javaClass) return false
 
     other as UnknownPropertyTypeEntityData
 
@@ -165,7 +165,7 @@ class UnknownPropertyTypeEntityData : WorkspaceEntityData<UnknownPropertyTypeEnt
 
   override fun equalsIgnoringEntitySource(other: Any?): Boolean {
     if (other == null) return false
-    if (this::class != other::class) return false
+    if (this.javaClass != other.javaClass) return false
 
     other as UnknownPropertyTypeEntityData
 

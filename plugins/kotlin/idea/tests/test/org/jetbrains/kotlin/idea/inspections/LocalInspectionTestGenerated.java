@@ -1728,6 +1728,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
                 runTest("testData/inspectionsLocal/collections/simplifiableCall/primitiveArrayFlatMap.kt");
             }
 
+            @TestMetadata("sequenceListFlatMap.kt")
+            public void testSequenceListFlatMap() throws Exception {
+                runTest("testData/inspectionsLocal/collections/simplifiableCall/sequenceListFlatMap.kt");
+            }
+
             @TestMetadata("set.kt")
             public void testSet() throws Exception {
                 runTest("testData/inspectionsLocal/collections/simplifiableCall/set.kt");
@@ -2868,6 +2873,16 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/complexRedundantLet/letUseItWithBinaryExpression2.kt");
         }
 
+        @TestMetadata("letUseItWithBinaryExpression3.kt")
+        public void testLetUseItWithBinaryExpression3() throws Exception {
+            runTest("testData/inspectionsLocal/complexRedundantLet/letUseItWithBinaryExpression3.kt");
+        }
+
+        @TestMetadata("letUseItWithBinaryExpression4.kt")
+        public void testLetUseItWithBinaryExpression4() throws Exception {
+            runTest("testData/inspectionsLocal/complexRedundantLet/letUseItWithBinaryExpression4.kt");
+        }
+
         @TestMetadata("letUseItWithMultipleMethodCall1.kt")
         public void testLetUseItWithMultipleMethodCall1() throws Exception {
             runTest("testData/inspectionsLocal/complexRedundantLet/letUseItWithMultipleMethodCall1.kt");
@@ -3812,6 +3827,16 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/convertObjectToDataObject/compatibleEquals.kt");
         }
 
+        @TestMetadata("compatibleInheritedEqualsIsConsideredAsIncompatible.kt")
+        public void testCompatibleInheritedEqualsIsConsideredAsIncompatible() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/compatibleInheritedEqualsIsConsideredAsIncompatible.kt");
+        }
+
+        @TestMetadata("compatibleInheritedReadResolveIsConsideredAsIncompatible.kt")
+        public void testCompatibleInheritedReadResolveIsConsideredAsIncompatible() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/compatibleInheritedReadResolveIsConsideredAsIncompatible.kt");
+        }
+
         @TestMetadata("compatibleReadResolve.kt")
         public void testCompatibleReadResolve() throws Exception {
             runTest("testData/inspectionsLocal/convertObjectToDataObject/compatibleReadResolve.kt");
@@ -3820,6 +3845,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("constHashCode.kt")
         public void testConstHashCode() throws Exception {
             runTest("testData/inspectionsLocal/convertObjectToDataObject/constHashCode.kt");
+        }
+
+        @TestMetadata("customSerializable.kt")
+        public void testCustomSerializable() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/customSerializable.kt");
         }
 
         @TestMetadata("doubleBangReflectToString.kt")
@@ -3837,6 +3867,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/convertObjectToDataObject/expressionBodyToString.kt");
         }
 
+        @TestMetadata("inheritanceThatDoesntAffectDataObject.kt")
+        public void testInheritanceThatDoesntAffectDataObject() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/inheritanceThatDoesntAffectDataObject.kt");
+        }
+
         @TestMetadata("javaReflectToString.kt")
         public void testJavaReflectToString() throws Exception {
             runTest("testData/inspectionsLocal/convertObjectToDataObject/javaReflectToString.kt");
@@ -3850,6 +3885,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("notCompatibleEquals.kt")
         public void testNotCompatibleEquals() throws Exception {
             runTest("testData/inspectionsLocal/convertObjectToDataObject/notCompatibleEquals.kt");
+        }
+
+        @TestMetadata("notCompatibleInheritedEquals.kt")
+        public void testNotCompatibleInheritedEquals() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/notCompatibleInheritedEquals.kt");
         }
 
         @TestMetadata("notCompatibleToString.kt")
@@ -3872,9 +3912,24 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/convertObjectToDataObject/plainObject.kt");
         }
 
-        @TestMetadata("preserveNotRelatedMembers.kt")
-        public void testPreserveNotRelatedMembers() throws Exception {
-            runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveNotRelatedMembers.kt");
+        @TestMetadata("preserveUnrelatedConstructorMember.kt")
+        public void testPreserveUnrelatedConstructorMember() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveUnrelatedConstructorMember.kt");
+        }
+
+        @TestMetadata("preserveUnrelatedFunctionMember.kt")
+        public void testPreserveUnrelatedFunctionMember() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveUnrelatedFunctionMember.kt");
+        }
+
+        @TestMetadata("preserveUnrelatedObjectMember.kt")
+        public void testPreserveUnrelatedObjectMember() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveUnrelatedObjectMember.kt");
+        }
+
+        @TestMetadata("preserveUnrelatedPropertyMember.kt")
+        public void testPreserveUnrelatedPropertyMember() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveUnrelatedPropertyMember.kt");
         }
 
         @TestMetadata("preserveUnrelatedReadResolve.kt")
@@ -3887,9 +3942,19 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveUnrelatedReadResolve2.kt");
         }
 
+        @TestMetadata("preserveUnrelatedReadResolve3.kt")
+        public void testPreserveUnrelatedReadResolve3() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/preserveUnrelatedReadResolve3.kt");
+        }
+
         @TestMetadata("publicReadResolve.kt")
         public void testPublicReadResolve() throws Exception {
             runTest("testData/inspectionsLocal/convertObjectToDataObject/publicReadResolve.kt");
+        }
+
+        @TestMetadata("sealedNotStatelessSubObject.kt")
+        public void testSealedNotStatelessSubObject() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/sealedNotStatelessSubObject.kt");
         }
 
         @TestMetadata("sealedSubObject.kt")
@@ -3920,6 +3985,21 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("serializableTransitive.kt")
         public void testSerializableTransitive() throws Exception {
             runTest("testData/inspectionsLocal/convertObjectToDataObject/serializableTransitive.kt");
+        }
+
+        @TestMetadata("thisJavaClassSimpleNameReflectToString.kt")
+        public void testThisJavaClassSimpleNameReflectToString() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/thisJavaClassSimpleNameReflectToString.kt");
+        }
+
+        @TestMetadata("thisReflectToString.kt")
+        public void testThisReflectToString() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/thisReflectToString.kt");
+        }
+
+        @TestMetadata("tripleQuotesToString.kt")
+        public void testTripleQuotesToString() throws Exception {
+            runTest("testData/inspectionsLocal/convertObjectToDataObject/tripleQuotesToString.kt");
         }
     }
 
@@ -3986,16 +4066,6 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("convertSubClassWithoutParentheses.kt")
         public void testConvertSubClassWithoutParentheses() throws Exception {
             runTest("testData/inspectionsLocal/convertSealedSubClassToObject/convertSubClassWithoutParentheses.kt");
-        }
-
-        @TestMetadata("dataClass17Lv.kt")
-        public void testDataClass17Lv() throws Exception {
-            runTest("testData/inspectionsLocal/convertSealedSubClassToObject/dataClass17Lv.kt");
-        }
-
-        @TestMetadata("dataClass18Lv.kt")
-        public void testDataClass18Lv() throws Exception {
-            runTest("testData/inspectionsLocal/convertSealedSubClassToObject/dataClass18Lv.kt");
         }
 
         @TestMetadata("dataObject.kt")
@@ -8831,6 +8901,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/redundantLambdaArrow/explicitType.kt");
         }
 
+        @TestMetadata("for.kt")
+        public void testFor() throws Exception {
+            runTest("testData/inspectionsLocal/redundantLambdaArrow/for.kt");
+        }
+
         @TestMetadata("forEach.kt")
         public void testForEach() throws Exception {
             runTest("testData/inspectionsLocal/redundantLambdaArrow/forEach.kt");
@@ -8994,6 +9069,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("underscore.kt")
         public void testUnderscore() throws Exception {
             runTest("testData/inspectionsLocal/redundantLambdaArrow/underscore.kt");
+        }
+
+        @TestMetadata("while.kt")
+        public void testWhile() throws Exception {
+            runTest("testData/inspectionsLocal/redundantLambdaArrow/while.kt");
         }
     }
 
@@ -9338,6 +9418,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("abstractClassAndInterface.kt")
         public void testAbstractClassAndInterface() throws Exception {
             runTest("testData/inspectionsLocal/redundantOverride/abstractClassAndInterface.kt");
+        }
+
+        @TestMetadata("abstractHiddenByFakeOverride.kt")
+        public void testAbstractHiddenByFakeOverride() throws Exception {
+            runTest("testData/inspectionsLocal/redundantOverride/abstractHiddenByFakeOverride.kt");
         }
 
         @TestMetadata("annotated.kt")
@@ -10184,6 +10269,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             runTest("testData/inspectionsLocal/removeExplicitTypeArguments/functionType.kt");
         }
 
+        @TestMetadata("inferredIntoUpperBounds.kt")
+        public void testInferredIntoUpperBounds() throws Exception {
+            runTest("testData/inspectionsLocal/removeExplicitTypeArguments/inferredIntoUpperBounds.kt");
+        }
+
         @TestMetadata("ktij-10623.kt")
         public void testKtij_10623() throws Exception {
             runTest("testData/inspectionsLocal/removeExplicitTypeArguments/ktij-10623.kt");
@@ -10822,6 +10912,26 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         public void testCaretInSelector() throws Exception {
             runTest("testData/inspectionsLocal/removeToStringInStringTemplate/caretInSelector.kt");
         }
+
+        @TestMetadata("extensionToString.kt")
+        public void testExtensionToString() throws Exception {
+            runTest("testData/inspectionsLocal/removeToStringInStringTemplate/extensionToString.kt");
+        }
+
+        @TestMetadata("extensionToStringWithParameter.kt")
+        public void testExtensionToStringWithParameter() throws Exception {
+            runTest("testData/inspectionsLocal/removeToStringInStringTemplate/extensionToStringWithParameter.kt");
+        }
+
+        @TestMetadata("nameReference.kt")
+        public void testNameReference() throws Exception {
+            runTest("testData/inspectionsLocal/removeToStringInStringTemplate/nameReference.kt");
+        }
+
+        @TestMetadata("super.kt")
+        public void testSuper() throws Exception {
+            runTest("testData/inspectionsLocal/removeToStringInStringTemplate/super.kt");
+        }
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
@@ -11217,6 +11327,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
             KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
         }
 
+        @TestMetadata("countInBlock.kt")
+        public void testCountInBlock() throws Exception {
+            runTest("testData/inspectionsLocal/replaceCollectionCountWithSize/countInBlock.kt");
+        }
+
         @TestMetadata("countOfArray.kt")
         public void testCountOfArray() throws Exception {
             runTest("testData/inspectionsLocal/replaceCollectionCountWithSize/countOfArray.kt");
@@ -11255,6 +11370,16 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("countOfMap.kt")
         public void testCountOfMap() throws Exception {
             runTest("testData/inspectionsLocal/replaceCollectionCountWithSize/countOfMap.kt");
+        }
+
+        @TestMetadata("countOfPrimitiveArray.kt")
+        public void testCountOfPrimitiveArray() throws Exception {
+            runTest("testData/inspectionsLocal/replaceCollectionCountWithSize/countOfPrimitiveArray.kt");
+        }
+
+        @TestMetadata("differentCount.kt")
+        public void testDifferentCount() throws Exception {
+            runTest("testData/inspectionsLocal/replaceCollectionCountWithSize/differentCount.kt");
         }
     }
 
@@ -12242,6 +12367,26 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("simpleFor.kt")
         public void testSimpleFor() throws Exception {
             runTest("testData/inspectionsLocal/replaceManualRangeWithIndicesCalls/simpleFor.kt");
+        }
+
+        @TestMetadata("thisReceiver.kt")
+        public void testThisReceiver() throws Exception {
+            runTest("testData/inspectionsLocal/replaceManualRangeWithIndicesCalls/thisReceiver.kt");
+        }
+
+        @TestMetadata("thisReceiverFor.kt")
+        public void testThisReceiverFor() throws Exception {
+            runTest("testData/inspectionsLocal/replaceManualRangeWithIndicesCalls/thisReceiverFor.kt");
+        }
+
+        @TestMetadata("thisReceiverRangeUntil.kt")
+        public void testThisReceiverRangeUntil() throws Exception {
+            runTest("testData/inspectionsLocal/replaceManualRangeWithIndicesCalls/thisReceiverRangeUntil.kt");
+        }
+
+        @TestMetadata("thisReceiverUntil.kt")
+        public void testThisReceiverUntil() throws Exception {
+            runTest("testData/inspectionsLocal/replaceManualRangeWithIndicesCalls/thisReceiverUntil.kt");
         }
 
         @TestMetadata("usedForOtherArray.kt")
@@ -13292,6 +13437,16 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("hasReceiver.kt")
         public void testHasReceiver() throws Exception {
             runTest("testData/inspectionsLocal/replaceWithStringBuilderAppendRange/hasReceiver.kt");
+        }
+
+        @TestMetadata("nullableCharArray.kt")
+        public void testNullableCharArray() throws Exception {
+            runTest("testData/inspectionsLocal/replaceWithStringBuilderAppendRange/nullableCharArray.kt");
+        }
+
+        @TestMetadata("nullableCharArray2.kt")
+        public void testNullableCharArray2() throws Exception {
+            runTest("testData/inspectionsLocal/replaceWithStringBuilderAppendRange/nullableCharArray2.kt");
         }
 
         @TestMetadata("precedence.kt")
@@ -15488,6 +15643,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         public void testReifiedWithClassLiteral3() throws Exception {
             runTest("testData/inspectionsLocal/unusedReceiverParameter/reifiedWithClassLiteral3.kt");
         }
+
+        @TestMetadata("sameSignatureDifferentScope.kt")
+        public void testSameSignatureDifferentScope() throws Exception {
+            runTest("testData/inspectionsLocal/unusedReceiverParameter/sameSignatureDifferentScope.kt");
+        }
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
@@ -15710,6 +15870,11 @@ public abstract class LocalInspectionTestGenerated extends AbstractLocalInspecti
         @TestMetadata("usedEnumFunctionWithNestedEnum.kt")
         public void testUsedEnumFunctionWithNestedEnum() throws Exception {
             runTest("testData/inspectionsLocal/unusedSymbol/usedEnumFunctionWithNestedEnum.kt");
+        }
+
+        @TestMetadata("valueClassGenericParameter.kt")
+        public void testValueClassGenericParameter() throws Exception {
+            runTest("testData/inspectionsLocal/unusedSymbol/valueClassGenericParameter.kt");
         }
 
         @TestMetadata("valueClassParameter.kt")

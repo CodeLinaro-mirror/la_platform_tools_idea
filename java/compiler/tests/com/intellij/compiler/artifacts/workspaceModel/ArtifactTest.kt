@@ -28,6 +28,7 @@ import com.intellij.packaging.impl.artifacts.workspacemodel.forThisAndFullTree
 import com.intellij.packaging.impl.artifacts.workspacemodel.toElement
 import com.intellij.packaging.impl.elements.*
 import com.intellij.testFramework.JUnit38AssumeSupportRunner
+import com.intellij.testFramework.workspaceModel.updateProjectModel
 import com.intellij.util.ConcurrencyUtil
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.workspaceModel.ide.WorkspaceModel
@@ -36,13 +37,12 @@ import com.intellij.workspaceModel.storage.EntitySource
 import com.intellij.workspaceModel.storage.bridgeEntities.addArtifactEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.addArtifactRootElementEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.addCustomPackagingElementEntity
-import com.intellij.workspaceModel.storage.bridgeEntities.api.*
-import com.intellij.workspaceModel.storage.bridgeEntities.api.ArtifactEntity
-import com.intellij.workspaceModel.storage.bridgeEntities.api.ArtifactPropertiesEntity
-import com.intellij.workspaceModel.storage.bridgeEntities.api.ArtifactRootElementEntity
+import com.intellij.workspaceModel.storage.bridgeEntities.*
+import com.intellij.workspaceModel.storage.bridgeEntities.ArtifactEntity
+import com.intellij.workspaceModel.storage.bridgeEntities.ArtifactPropertiesEntity
+import com.intellij.workspaceModel.storage.bridgeEntities.ArtifactRootElementEntity
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
 import junit.framework.TestCase
-import org.junit.Assume.assumeTrue
 import org.junit.runner.RunWith
 import java.util.concurrent.Callable
 
@@ -704,7 +704,7 @@ class ArtifactTest : ArtifactsTestCase() {
     val artifactBridge = ArtifactManager.getInstance(project).artifacts[0]
 
     WorkspaceModel.getInstance(project).updateProjectModel {
-      it.removeEntity(artifactEntity)
+      it.removeEntity(artifactEntity.createReference<ArtifactEntity>().resolve(it)!!)
     }
 
     artifactBridge.rootElement.children

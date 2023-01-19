@@ -1,10 +1,17 @@
 {
   "expui": {
     "actions": {
+      "filterdups.svg": "toolbar/filterdups.svg",
+      "generated.svg": "actions/generatedFolder.svg",
+      "groupByMethod.svg": "action/groupByMethod.svg",
       "playFirst.svg": "actions/play_first.svg",
       "playBack.svg": "actions/play_back.svg",
       "playForward.svg": "actions/play_forward.svg",
-      "playLast.svg": "actions/play_last.svg"
+      "playLast.svg": "actions/play_last.svg",
+      "showWriteAccess.svg": "actions/showWriteAccess.svg",
+      "showReadAccess.svg": "actions/showReadAccess.svg",
+      "showImportStatements.svg": "actions/showImportStatements.svg"
+
     },
     "bookmarks": {
       "addBookmarksList.svg": "actions/addList.svg",
@@ -212,6 +219,7 @@
       ],
       "editorOnly.svg": "general/layoutEditorOnly.svg",
       "editorPreview.svg": "general/layoutEditorPreview.svg",
+      "errorDialog.svg": "general/errorDialog.svg",
       "exit.svg": "actions/exit.svg",
       "expandAll.svg": "actions/expandall.svg",
       "export.svg": "toolbarDecorator/export.svg",
@@ -222,6 +230,7 @@
       "ideUpdate.svg": "ide/notification/ideUpdate.svg",
       "pluginUpdate.svg": "ide/notification/pluginUpdate.svg",
       "import.svg": "toolbarDecorator/import.svg",
+      "informationDialog.svg":"general/informationDialog.svg",
       "layout.svg": "debugger/restoreLayout.svg",
       "left.svg": "actions/back.svg",
       "listFiles.svg": "actions/listFiles.svg",
@@ -273,6 +282,7 @@
         "actions/groupBy.svg",
         "actions/show.svg"
       ],
+      "showAsTree.svg": "actions/showAsTree.svg",
       "splitHorizontally.svg": "actions/splitHorizontally.svg",
       "splitVertically.svg": "actions/splitVertically.svg",
       "unlocked.svg": "ide/readwrite.svg",
@@ -286,11 +296,15 @@
       "projectWideAnalysisOn.svg": "actions/projectWideAnalysisOn.svg",
       "softWrap.svg": "actions/toggleSoftWrap.svg",
       "scrollDown.svg": "runConfigurations/scroll_down.svg",
-      "projectStructure.svg": "general/projectStructure.svg"
+      "projectStructure.svg": "general/projectStructure.svg",
+      "successDialog.svg": "general/successDialog.svg",
+      "questionDialog.svg": "general/questionDialog.svg",
+      "warningDialog.svg": "general/warningDialog.svg"
     },
     "gutter": {
       "bookmark.svg": "gutter/bookmark.svg",
       "colors.svg": "gutter/colors.svg",
+      "dataSchema.svg" : "gutter/dataSchema.svg",
       "extAnnotation.svg": "gutter/extAnnotation.svg",
       "javadocEdit.svg": "gutter/javadocEdit.svg",
       "javadocRead.svg":  "gutter/javadocRead.svg",
@@ -538,6 +552,9 @@
       "warning.svg": "general/balloonWarning.svg",
       "warningOutline.svg": "general/showWarning.svg"
     },
+    "toolbar": {
+      "unknown.svg": "toolbar/unknown.svg"
+    },
     "toolwindow": {
       "ant.svg": [
         "toolwindows/toolWindowAnt.svg",
@@ -565,9 +582,9 @@
       ],
       "profiler.svg": "toolwindows/toolWindowProfiler.svg",
       "project.svg": "toolwindows/toolWindowProject.svg",
-      "pullRequests.svg": "org/jetbrains/plugins/github/pullRequestsToolWindow.svg",
       "run.svg": "toolwindows/toolWindowRun.svg",
       "services.svg": "toolwindows/toolWindowServices.svg",
+      "settingSync.svg":"toolwindows/settingSync.svg",
       "structure.svg": "toolwindows/toolWindowStructure.svg",
       "todo.svg": "toolwindows/toolWindowTodo.svg",
       "vcs.svg": [

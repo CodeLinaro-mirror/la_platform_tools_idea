@@ -9,13 +9,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.ui.ClientProperty
 import com.intellij.ui.components.panels.Wrapper
 import com.intellij.ui.content.Content
+import com.intellij.util.childScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jetbrains.plugins.github.i18n.GithubBundle
-import org.jetbrains.plugins.github.pullrequest.ui.GHApiLoadingErrorHandler
-import org.jetbrains.plugins.github.pullrequest.ui.GHLoadingPanelFactory
 import java.awt.BorderLayout
-import javax.swing.JComponent
 import javax.swing.JPanel
 
 internal class GHPRToolWindowTabControllerImpl(scope: CoroutineScope,
@@ -24,22 +23,17 @@ internal class GHPRToolWindowTabControllerImpl(scope: CoroutineScope,
                                                private val content: Content) :
   GHPRToolWindowTabController {
 
+  private val cs = scope.childScope(Dispatchers.Main.immediate)
+
   override var initialView = GHPRToolWindowViewType.LIST
   override val componentController: GHPRToolWindowTabComponentController?
     get() = ClientProperty.findInHierarchy(content.component, GHPRToolWindowTabComponentController.KEY)
 
   init {
-    scope.launch {
+    cs.launch {
       tabVm.viewState.collectScoped { scope, vm ->
         content.displayName = GithubBundle.message("toolwindow.stripe.Pull_Requests")
-
-        val nestedComponent = if (vm != null) {
-          createNestedComponent(scope, vm)
-        }
-        else {
-          JPanel(null)
-        }
-        setComponentPreservingFocus(content, nestedComponent)
+        CollaborationToolsUIUtil.setComponentPreservingFocus(content, createNestedComponent(scope, vm))
       }
     }
   }
@@ -52,34 +46,21 @@ internal class GHPRToolWindowTabControllerImpl(scope: CoroutineScope,
       }
     }
     is GHPRTabContentViewModel.PullRequests -> {
-      GHLoadingPanelFactory(vm.loadingModel, null, GithubBundle.message("cannot.load.data.from.github"),
-                            GHApiLoadingErrorHandler(project, vm.account) {
-                              vm.reloadContext()
-                            }).create { parent, ctx ->
-        val wrapper = Wrapper()
-        GHPRToolWindowTabComponentControllerImpl(project,
-                                                 project.service(),
-                                                 project.service(),
-                                                 ctx, wrapper, scope.nestedDisposable(),
-                                                 initialView) {
-          content.displayName = it
-        }.also {
-          ClientProperty.put(parent, GHPRToolWindowTabComponentController.KEY, it)
-        }
-        wrapper
+      val wrapper = Wrapper()
+      GHPRToolWindowTabComponentControllerImpl(project,
+                                               project.service(),
+                                               project.service(),
+                                               vm.connection.dataContext, wrapper, scope.nestedDisposable(),
+                                               initialView) {
+        content.displayName = it
+      }.also {
+        ClientProperty.put(wrapper, GHPRToolWindowTabComponentController.KEY, it)
       }
+      wrapper
     }
   }
 
   override fun canResetRemoteOrAccount(): Boolean = tabVm.canSelectDifferentRepoOrAccount()
 
   override fun resetRemoteAndAccount() = tabVm.selectDifferentRepoOrAccount()
-}
-
-private fun setComponentPreservingFocus(content: Content, component: JComponent) {
-  val focused = CollaborationToolsUIUtil.isFocusParent(content.component)
-  content.component = component
-  if (focused) {
-    CollaborationToolsUIUtil.focusPanel(content.component)
-  }
 }

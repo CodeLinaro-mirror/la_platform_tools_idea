@@ -45,8 +45,10 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
   private static final Color NON_EDITABLE_BACKGROUND = JBColor.namedColor("ComboBox.nonEditableBackground",
                                                                           JBColor.namedColor("ComboBox.darcula.nonEditableBackground", new JBColor(0xfcfcfc, 0x3c3f41)));
 
+  protected static final int DEFAULT_BORDER_COMPENSATION = 1;
+
   private float myArc = COMPONENT_ARC.getFloat();
-  private Insets myBorderCompensation = JBUI.insets(1);
+  private Insets myBorderCompensation = JBUI.insets(DEFAULT_BORDER_COMPENSATION);
   private boolean myPaintArrowButton = true;
 
   public DarculaComboBoxUI() {}
@@ -239,6 +241,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
 
   @Override
   public void paint(Graphics g, JComponent c) {
+    checkFocus();
     Container parent = c.getParent();
     if (parent != null && c.isOpaque()) {
       g.setColor(DarculaUIUtil.isTableCellEditor(c) && editor != null ? editor.getBackground() : parent.getBackground());
@@ -461,12 +464,11 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
           paintOutlineBorder(g2, r.width, r.height, myArc, true, hasFocus, Outline.valueOf(op.toString()));
         }
         else {
-          if (!isBorderless(c)) {
-            if (hasFocus) {
-              paintOutlineBorder(g2, r.width, r.height, myArc, true, true, Outline.focus);
-            }
-            paintBorder(c, g2, bw, r, lw, myArc);
+          if (hasFocus && !isBorderless(c)) {
+            paintOutlineBorder(g2, r.width, r.height, myArc, true, true, Outline.focus);
           }
+
+          paintBorder(c, g2, isBorderless(c) ? lw : bw, r, lw, myArc);
         }
       }
       else {
@@ -485,7 +487,11 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
     arc = arc > lw ? arc - lw : 0.0f;
     border.append(getInnerShape(r, bw, lw, arc), false);
 
-    g2.setColor(getOutlineColor(c.isEnabled(), hasFocus));
+    if (hasFocus && isBorderless(c)) {
+      Outline.focus.setGraphicsColor(g2, true);
+    } else {
+      g2.setColor(getOutlineColor(c.isEnabled(), hasFocus));
+    }
     g2.fill(border);
   }
 
@@ -741,9 +747,12 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
           if (isRoundBorder) {
             Window window = ComponentUtil.getWindow(popup);
             if (window != null) {
-              WindowRoundedCornersManager.setRoundedCorners(window);
-              if (SystemInfoRt.isMac) {
+              if (SystemInfoRt.isMac && UIUtil.isUnderDarcula()) {
+                WindowRoundedCornersManager.setRoundedCorners(window, JBUI.CurrentTheme.Popup.borderColor(true));
                 popup.setBorder(null);
+              }
+              else {
+                WindowRoundedCornersManager.setRoundedCorners(window);
               }
             }
           }

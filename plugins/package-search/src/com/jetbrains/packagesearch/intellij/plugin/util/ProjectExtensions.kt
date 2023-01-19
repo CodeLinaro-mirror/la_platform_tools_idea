@@ -9,9 +9,6 @@ import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
-import com.intellij.openapi.extensions.ExtensionPointListener
-import com.intellij.openapi.extensions.ExtensionPointName
-import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.DumbService
@@ -34,12 +31,11 @@ import com.jetbrains.packagesearch.intellij.plugin.lifecycle.PackageSearchLifecy
 import com.jetbrains.packagesearch.intellij.plugin.ui.PkgsUiCommandsService
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.UiStateModifier
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.UiStateSource
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.PackageSearchCachesService
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.PackageSearchProjectCachesService
+import com.jetbrains.packagesearch.intellij.plugin.data.PackageSearchCachesService
+import com.jetbrains.packagesearch.intellij.plugin.data.PackageSearchProjectCachesService
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.PackageVersionNormalizer
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -157,22 +153,6 @@ internal val Project.moduleTransformers: List<CoroutineModuleTransformer>
 internal val Project.lookAndFeelFlow: Flow<LafManager>
     get() = messageBusFlow(LafManagerListener.TOPIC, { LafManager.getInstance()!! }) {
         LafManagerListener { trySend(it) }
-    }
-
-val <T : Any> ExtensionPointName<T>.extensionsFlow: Flow<List<T>>
-    get() = callbackFlow {
-        val listener = object : ExtensionPointListener<T> {
-            override fun extensionAdded(extension: T, pluginDescriptor: PluginDescriptor) {
-                trySendBlocking(extensions.toList())
-            }
-
-            override fun extensionRemoved(extension: T, pluginDescriptor: PluginDescriptor) {
-                trySendBlocking(extensions.toList())
-            }
-        }
-        send(extensions.toList())
-        addExtensionPointListener(listener)
-        awaitClose { removeExtensionPointListener(listener) }
     }
 
 fun Project.hasKotlinModules(): Boolean = ModuleManager.getInstance(this).modules.any { it.hasKotlinFacet() }

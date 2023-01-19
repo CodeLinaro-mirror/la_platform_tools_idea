@@ -1,18 +1,18 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.github.pullrequest.ui.toolwindow
 
-import com.intellij.collaboration.async.nestedDisposable
 import com.intellij.collaboration.ui.CollaborationToolsUIUtil.isDefault
+import com.intellij.collaboration.ui.util.bindDisabled
 import com.intellij.collaboration.ui.util.bindVisibility
-import com.intellij.collaboration.util.ProgressIndicatorsProvider
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.ui.components.ActionLink
 import git4idea.remote.hosting.ui.RepositoryAndAccountSelectorComponentFactory
 import kotlinx.coroutines.CoroutineScope
-import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager
-import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager
-import org.jetbrains.plugins.github.authentication.ui.GHAccountsDetailsLoader
+import org.jetbrains.plugins.github.api.GithubServerPath
+import org.jetbrains.plugins.github.authentication.AuthorizationType
+import org.jetbrains.plugins.github.authentication.GHAccountsUtil
+import org.jetbrains.plugins.github.authentication.accounts.GHAccountManager
+import org.jetbrains.plugins.github.authentication.ui.GHAccountsDetailsProvider
 import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.ui.util.GHUIUtil
 import org.jetbrains.plugins.github.util.GHGitRepositoryMapping
@@ -23,15 +23,10 @@ import javax.swing.JComponent
 
 class GHRepositoryAndAccountSelectorComponentFactory internal constructor(private val project: Project,
                                                                           private val vm: GHRepositoryAndAccountSelectorViewModel,
-                                                                          private val authManager: GithubAuthenticationManager) {
+                                                                          private val accountManager: GHAccountManager) {
 
   fun create(scope: CoroutineScope): JComponent {
-    val indicatorsProvider = ProgressIndicatorsProvider().also {
-      Disposer.register(scope.nestedDisposable(), it)
-    }
-    val accountDetailsLoader = GHAccountsDetailsLoader(indicatorsProvider) {
-      GithubApiRequestExecutorManager.getInstance().getExecutor(it)
-    }
+    val accountDetailsProvider = GHAccountsDetailsProvider(scope, accountManager)
 
     return RepositoryAndAccountSelectorComponentFactory(vm)
       .create(scope = scope,
@@ -39,7 +34,7 @@ class GHRepositoryAndAccountSelectorComponentFactory internal constructor(privat
                 val allRepositories = vm.repositoriesState.value.map { it.repository }
                 GHUIUtil.getRepositoryDisplayName(allRepositories, mapping.repository, true)
               },
-              detailsLoader = accountDetailsLoader,
+              detailsProvider = accountDetailsProvider,
               accountsPopupActionsSupplier = { createPopupLoginActions(it) },
               credsMissingText = GithubBundle.message("account.token.missing"),
               submitActionText = GithubBundle.message("pull.request.view.list"),
@@ -53,20 +48,24 @@ class GHRepositoryAndAccountSelectorComponentFactory internal constructor(privat
         isOpaque = false
 
         addActionListener {
-          if (loginToGithub(true)) {
+          if (loginToGithub(false, AuthorizationType.OAUTH)) {
             vm.submitSelection()
           }
         }
 
         bindVisibility(scope, vm.githubLoginAvailableState)
+        bindDisabled(scope, vm.busyState)
       },
 
       ActionLink(GithubBundle.message("action.Github.Accounts.AddGHAccountWithToken.text")) {
-        if (loginToGithub(false)) {
+        if (loginToGithub(false, AuthorizationType.TOKEN)) {
           vm.submitSelection()
         }
       }.apply {
+
         bindVisibility(scope, vm.githubLoginAvailableState)
+        autoHideOnDisable = false
+        bindDisabled(scope, vm.busyState)
       },
       JButton(GithubBundle.message("action.Github.Accounts.AddGHEAccount.text")).apply {
         isDefault = true
@@ -80,6 +79,7 @@ class GHRepositoryAndAccountSelectorComponentFactory internal constructor(privat
         }
 
         bindVisibility(scope, vm.gheLoginAvailableState)
+        bindDisabled(scope, vm.busyState)
       }
     )
   }
@@ -89,11 +89,11 @@ class GHRepositoryAndAccountSelectorComponentFactory internal constructor(privat
     return if (isDotComServer)
       listOf(object : AbstractAction(GithubBundle.message("action.Github.Accounts.AddGHAccount.text")) {
         override fun actionPerformed(e: ActionEvent?) {
-          loginToGithub(true)
+          loginToGithub(true, AuthorizationType.OAUTH)
         }
       }, object : AbstractAction(GithubBundle.message("action.Github.Accounts.AddGHAccountWithToken.text")) {
         override fun actionPerformed(e: ActionEvent?) {
-          loginToGithub(true, false)
+          loginToGithub(true, AuthorizationType.TOKEN)
         }
       })
     else listOf(
@@ -104,15 +104,19 @@ class GHRepositoryAndAccountSelectorComponentFactory internal constructor(privat
       })
   }
 
-  private fun loginToGithub(forceNew: Boolean, withOAuth: Boolean = true): Boolean {
+  private fun loginToGithub(forceNew: Boolean, authType: AuthorizationType): Boolean {
     val account = vm.accountSelectionState.value
     if (account == null || forceNew) {
-      return authManager.requestNewAccountForDefaultServer(project, !withOAuth)?.also {
+      return GHAccountsUtil.requestNewAccount(GithubServerPath.DEFAULT_SERVER,
+                                              null,
+                                              project,
+                                              authType = authType
+      )?.account?.also {
         vm.accountSelectionState.value = it
       } != null
     }
-    else if (vm.missingCredentialsState.value) {
-      return authManager.requestReLogin(account, project)
+    else if (vm.missingCredentialsState.value == true) {
+      return GHAccountsUtil.requestReLogin(account, project, authType = authType) != null
     }
     return false
   }
@@ -121,12 +125,12 @@ class GHRepositoryAndAccountSelectorComponentFactory internal constructor(privat
     val server = repo.repository.serverPath
     val account = vm.accountSelectionState.value
     if (account == null || forceNew) {
-      return authManager.requestNewAccountForServer(server, project)?.also {
-        vm.accountSelectionState.value = it
+      return GHAccountsUtil.requestNewAccount(server, login = null, project = project)?.also {
+        vm.accountSelectionState.value = it.account
       } != null
     }
-    else if (vm.missingCredentialsState.value) {
-      return authManager.requestReLogin(account, project)
+    else if (vm.missingCredentialsState.value == true) {
+      return GHAccountsUtil.requestReLogin(account, project, authType = AuthorizationType.TOKEN) != null
     }
     return false
   }

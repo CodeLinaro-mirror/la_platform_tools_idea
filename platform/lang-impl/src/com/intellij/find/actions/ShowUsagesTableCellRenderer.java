@@ -5,22 +5,15 @@ import com.intellij.find.FindBundle;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.vfs.newvfs.VfsPresentationUtil;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.ui.*;
 import com.intellij.ui.popup.list.SelectablePanel;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.speedSearch.SpeedSearchUtil;
-import com.intellij.usages.TextChunk;
-import com.intellij.usages.Usage;
-import com.intellij.usages.UsageGroup;
-import com.intellij.usages.UsagePresentation;
+import com.intellij.usages.*;
 import com.intellij.usages.impl.GroupNode;
 import com.intellij.usages.impl.UsageNode;
 import com.intellij.usages.impl.UsageViewManagerImpl;
-import com.intellij.usages.rules.UsageInFile;
 import com.intellij.util.ui.*;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.ApiStatus;
@@ -40,18 +33,15 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
 
   static final int MARGIN = 2;
 
-  private final @NotNull Project myProject;
   private final @NotNull Predicate<? super Usage> myOriginUsageCheck;
   private final @NotNull AtomicInteger myOutOfScopeUsages;
   private final @NotNull SearchScope mySearchScope;
 
   ShowUsagesTableCellRenderer(
-    @NotNull Project project,
     @NotNull Predicate<? super Usage> originUsageCheck,
     @NotNull AtomicInteger outOfScopeUsages,
     @NotNull SearchScope searchScope
   ) {
-    myProject = project;
     myOriginUsageCheck = originUsageCheck;
     myOutOfScopeUsages = outOfScopeUsages;
     mySearchScope = searchScope;
@@ -79,10 +69,8 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
     UsageNode usageNode = (UsageNode)value;
     Usage usage = usageNode == null ? null : usageNode.getUsage();
 
-    Color fileBgColor = getBackgroundColor(false, usage);
     Color selectionBg = UIUtil.getListSelectionBackground(true);
-    Color selectionFg = UIUtil.getListSelectionForeground(true);
-    Color rowBackground =  fileBgColor == null ? list.getBackground() : fileBgColor;
+    Color selectionFg = NamedColorUtil.getListSelectionForeground(true);
     Color rowSelectionBackground = isSelected ? selectionBg : null;
     Color rowForeground = isSelected ? selectionFg : list.getForeground();
 
@@ -94,14 +82,14 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
       else {
         textChunks.append(((ShowUsagesAction.StringNode)value).getString(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
       }
-      return textComponentSpanningWholeRow(textChunks, rowBackground, rowSelectionBackground, rowForeground, column, list);
+      return textComponentSpanningWholeRow(textChunks, list.getBackground(), rowSelectionBackground, rowForeground, column, list);
     }
     if (usage == ((ShowUsagesTable)list).MORE_USAGES_SEPARATOR) {
       SimpleColoredComponent textChunks = new SimpleColoredComponent();
       textChunks.append("...<");
       textChunks.append(FindBundle.message("show.usages.more.usages.label"), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
       textChunks.append(">...");
-      return textComponentSpanningWholeRow(textChunks, rowBackground, rowSelectionBackground, rowForeground, column, list);
+      return textComponentSpanningWholeRow(textChunks, list.getBackground(), rowSelectionBackground, rowForeground, column, list);
     }
     if (usage == ((ShowUsagesTable)list).USAGES_OUTSIDE_SCOPE_SEPARATOR) {
       String message = UsageViewManagerImpl.outOfScopeMessage(myOutOfScopeUsages.get(), mySearchScope);
@@ -109,13 +97,13 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
       textChunks.append("...<");
       textChunks.append(message, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
       textChunks.append(">...");
-      return textComponentSpanningWholeRow(textChunks, rowBackground, rowSelectionBackground, rowForeground, column, list);
+      return textComponentSpanningWholeRow(textChunks, list.getBackground(), rowSelectionBackground, rowForeground, column, list);
     }
     if (usage == ((ShowUsagesTable)list).USAGES_FILTERED_OUT_SEPARATOR) {
       ShowUsagesAction.FilteredOutUsagesNode filtered = (ShowUsagesAction.FilteredOutUsagesNode)usageNode;
       SimpleColoredComponent textChunks = new SimpleColoredComponent();
       textChunks.append(filtered.getString(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-      JComponent component = textComponentSpanningWholeRow(textChunks, rowBackground, rowSelectionBackground, rowForeground, column, list);
+      JComponent component = textComponentSpanningWholeRow(textChunks, list.getBackground(), rowSelectionBackground, rowForeground, column, list);
       component.setToolTipText(filtered.getTooltip());
       return component;
     }
@@ -137,6 +125,11 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
     panel.setLayout(layout);
     panel.setFont(null);
 
+    UsagePresentation presentation = usage.getPresentation();
+    UsageNodePresentation cachedPresentation = presentation.getCachedPresentation();
+    Color fileBgColor = cachedPresentation == null ? presentation.getBackgroundColor() : cachedPresentation.getBackgroundColor();
+    Color rowBackground =  fileBgColor == null ? list.getBackground() : fileBgColor;
+
     // greying the current usage the "find usages" was originated from
     boolean isOriginUsage = myOriginUsageCheck.test(usage);
     if (isOriginUsage && !ExperimentalUI.isNewUI()) {
@@ -148,11 +141,10 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
     panel.setForeground(rowForeground);
     applyBackground(panel, column, rowBackground, rowSelectionBackground);
 
-    UsagePresentation presentation = usage.getPresentation();
-    TextChunk[] text = presentation.getText();
+    TextChunk[] text = cachedPresentation == null ? presentation.getText() : cachedPresentation.getText();
 
     switch (column) {
-      case CURRENT_ASTERISK_COL:
+      case CURRENT_ASTERISK_COL -> {
         if (!ExperimentalUI.isNewUI()) {
           if (isOriginUsage) {
             panel.add(new JLabel(isSelected ? AllIcons.General.ModifiedSelected : AllIcons.General.Modified));
@@ -163,11 +155,9 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
             panel.getAccessibleContext().setAccessibleName(IdeBundle.message("ShowUsagesTableCellRenderer.accessible.OTHER_ASTERISK_COL"));
           }
         }
-        break;
-      case FILE_GROUP_COL:
-        appendGroupText(list, (GroupNode)usageNode.getParent(), panel, fileBgColor, isSelected);
-        break;
-      case LINE_NUMBER_COL: {
+      }
+      case FILE_GROUP_COL -> appendGroupText(list, (GroupNode)usageNode.getParent(), panel, fileBgColor, isSelected);
+      case LINE_NUMBER_COL -> {
         SimpleColoredComponent textChunks = new SimpleColoredComponent();
         textChunks.setOpaque(false);
         if (text.length != 0) {
@@ -177,15 +167,14 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
         SpeedSearchUtil.applySpeedSearchHighlighting(list, textChunks, false, isSelected);
 
         panel.add(textChunks);
-        panel.getAccessibleContext().setAccessibleName(IdeBundle.message("ShowUsagesTableCellRenderer.accessible.LINE_NUMBER_COL", textChunks.getAccessibleContext().getAccessibleName()));
-        break;
+        panel.getAccessibleContext().setAccessibleName(IdeBundle.message("ShowUsagesTableCellRenderer.accessible.LINE_NUMBER_COL",
+                                                                         textChunks.getAccessibleContext().getAccessibleName()));
       }
-
-      case USAGE_TEXT_COL: {
+      case USAGE_TEXT_COL -> {
         SimpleColoredComponent textChunks = new SimpleColoredComponent();
         textChunks.setOpaque(false);
 
-        Icon icon = presentation.getIcon();
+        Icon icon = cachedPresentation == null ? presentation.getIcon() : cachedPresentation.getIcon();
         textChunks.setIcon(icon == null ? EmptyIcon.ICON_16 : icon);
         textChunks.append("").appendTextPadding(JBUIScale.scale(16 + 5));
         for (int i = 1; i < text.length; i++) {
@@ -195,7 +184,8 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
         SpeedSearchUtil.applySpeedSearchHighlighting(list, textChunks, false, isSelected);
 
         panel.add(textChunks);
-        panel.getAccessibleContext().setAccessibleName(IdeBundle.message("ShowUsagesTableCellRenderer.accessible.USAGE_TEXT_COL", textChunks.getAccessibleContext().getAccessibleName()));
+        panel.getAccessibleContext().setAccessibleName(IdeBundle.message("ShowUsagesTableCellRenderer.accessible.USAGE_TEXT_COL",
+                                                                         textChunks.getAccessibleContext().getAccessibleName()));
 
         if (isOriginUsage) {
           SimpleColoredComponent origin;
@@ -218,13 +208,11 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
             origin.appendTextPadding(JBUIScale.scale(45));
           }
           panel.add(origin, BorderLayout.EAST);
-          panel.getAccessibleContext().setAccessibleName(panel.getAccessibleContext().getAccessibleName() + ", " + origin.getAccessibleContext().getAccessibleName());
+          panel.getAccessibleContext()
+            .setAccessibleName(panel.getAccessibleContext().getAccessibleName() + ", " + origin.getAccessibleContext().getAccessibleName());
         }
-        break;
       }
-
-      default:
-        throw new IllegalStateException("unknown column: " + column);
+      default -> throw new IllegalStateException("unknown column: " + column);
     }
 
     return panel;
@@ -318,21 +306,6 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
     return attributes;
   }
 
-  private Color getBackgroundColor(boolean isSelected, Usage usage) {
-    Color fileBgColor = null;
-    if (isSelected) {
-      fileBgColor = UIUtil.getListSelectionBackground(true);
-    }
-    else {
-      VirtualFile virtualFile = usage instanceof UsageInFile ? ((UsageInFile)usage).getFile() : null;
-      if (virtualFile != null) {
-        Color color = VfsPresentationUtil.getFileBackgroundColor(myProject, virtualFile);
-        if (color != null) fileBgColor = color;
-      }
-    }
-    return fileBgColor;
-  }
-
   private static void appendGroupText(
     @NotNull JTable table,
     final GroupNode node,
@@ -354,42 +327,41 @@ final class ShowUsagesTableCellRenderer implements TableCellRenderer {
     panel.getAccessibleContext().setAccessibleName(IdeBundle.message("ShowUsagesTableCellRenderer.accessible.FILE_GROUP_COL", renderer.getAccessibleContext().getAccessibleName()));
   }
 
+  /**
+   * @param rowBackground background of unselected row
+   * @param rowSelectionBackground background of selection if the row is selected or null otherwise
+   */
   private static void applyBackground(SelectablePanel panel, int column, Color rowBackground, Color rowSelectionBackground) {
     if (ExperimentalUI.isNewUI()) {
       int leftRightInset = JBUI.CurrentTheme.Popup.Selection.LEFT_RIGHT_INSET.get();
       Insets innerInsets = JBUI.CurrentTheme.Popup.Selection.innerInsets();
       switch (column) {
-        case CURRENT_ASTERISK_COL: {
+        case CURRENT_ASTERISK_COL -> {
           panel.setSelectionArc(JBUI.CurrentTheme.Popup.Selection.ARC.get());
           panel.setSelectionArcCorners(SelectablePanel.SelectionArcCorners.LEFT);
           //noinspection UseDPIAwareInsets
           panel.setSelectionInsets(new Insets(0, leftRightInset, 0, 0));
           //noinspection UseDPIAwareBorders
           panel.setBorder(new EmptyBorder(innerInsets.top, leftRightInset + innerInsets.left, innerInsets.bottom, 0));
-          break;
         }
-
-        case USAGE_TEXT_COL: {
+        case USAGE_TEXT_COL -> {
           panel.setSelectionArc(JBUI.CurrentTheme.Popup.Selection.ARC.get());
           panel.setSelectionArcCorners(SelectablePanel.SelectionArcCorners.RIGHT);
           //noinspection UseDPIAwareInsets
           panel.setSelectionInsets(new Insets(0, 0, 0, leftRightInset));
           //noinspection UseDPIAwareBorders
           panel.setBorder(new EmptyBorder(innerInsets.top, 0, innerInsets.bottom, innerInsets.right + leftRightInset));
-          break;
         }
-
-        default: {
+        default ->
           //noinspection UseDPIAwareBorders
           panel.setBorder(new EmptyBorder(innerInsets.top, 0, innerInsets.bottom, 0));
-        }
       }
       panel.setBackground(rowBackground);
       panel.setSelectionColor(rowSelectionBackground);
     }
     else {
       panel.setBorder(JBUI.Borders.empty(MARGIN, MARGIN, MARGIN, 0));
-      panel.setBackground(rowSelectionBackground);
+      panel.setBackground(rowSelectionBackground == null ? rowBackground : rowSelectionBackground);
     }
   }
 

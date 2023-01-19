@@ -61,6 +61,7 @@ import org.jetbrains.kotlin.resolve.calls.model.ExpressionValueArgument
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.VarargValueArgument
 import org.jetbrains.kotlin.resolve.constants.IntegerLiteralTypeConstructor
+import org.jetbrains.kotlin.resolve.constants.TypedCompileTimeConstant
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.types.KotlinType
@@ -141,12 +142,14 @@ class KtControlFlowBuilder(val factory: DfaValueFactory, val context: KtExpressi
     private fun processConstant(expr: KtExpression?): Boolean {
         expr ?: return false
         val context = expr.analyze(BodyResolveMode.PARTIAL)
-        val constant = ConstantExpressionEvaluator.getConstant(expr, context) ?: return false
-        val kotlinType = expr.getKotlinType() ?: return false
-        val value = constant.getValue(kotlinType) ?: return false
+        val constant = ConstantExpressionEvaluator.getConstant(expr, context) as? TypedCompileTimeConstant<*> ?: return false
+        val declaredType = expr.getKotlinType() ?: return false
+        val value = constant.getValue(declaredType) ?: return false
         if (value !is Int && value !is Long && value !is Float && value !is Double && value !is String) return false
-        val dfConstantType = DfTypes.constant(value, kotlinType.toDfType())
+        val actualType = constant.type 
+        val dfConstantType = DfTypes.constant(value, actualType.toDfType())
         addInstruction(PushValueInstruction(dfConstantType, KotlinExpressionAnchor(expr)))
+        addImplicitConversion(expr, actualType, declaredType)
         return true
     }
 
@@ -347,11 +350,11 @@ class KtControlFlowBuilder(val factory: DfaValueFactory, val context: KtExpressi
             }
             if (indexType == null || !indexType.fqNameEquals("kotlin.Int")) {
                 if (lastIndex && storedValue != null) {
-                    processExpression(storedValue)
-                    addInstruction(PopInstruction())
+                    processUnknownArrayStore(storedValue)
+                } else {
+                    addInstruction(EvalUnknownInstruction(anchor, 2, expectedType))
+                    addInstruction(FlushFieldsInstruction())
                 }
-                addInstruction(EvalUnknownInstruction(anchor, 2, expectedType))
-                addInstruction(FlushFieldsInstruction())
                 continue
             }
             if (curType != null && KotlinBuiltIns.isArrayOrPrimitiveArray(curType)) {
@@ -370,40 +373,55 @@ class KtControlFlowBuilder(val factory: DfaValueFactory, val context: KtExpressi
                 }
                 curType = elementType
             } else {
-                if (KotlinBuiltIns.isString(kotlinType)) {
-                    if (indexType.canBeNull()) {
-                        addInstruction(UnwrapDerivedVariableInstruction(SpecialField.UNBOX))
+                when {
+                    KotlinBuiltIns.isString(kotlinType) -> {
+                        if (indexType.canBeNull()) {
+                            addInstruction(UnwrapDerivedVariableInstruction(SpecialField.UNBOX))
+                        }
+                        val transfer = trapTracker.maybeTransferValue("kotlin.IndexOutOfBoundsException")
+                        addInstruction(EnsureIndexInBoundsInstruction(KotlinArrayIndexProblem(SpecialField.STRING_LENGTH, idx), transfer))
+                        if (lastIndex && storedValue != null) {
+                            processExpression(storedValue)
+                            addInstruction(PopInstruction())
+                        }
+                        addInstruction(PushValueInstruction(DfTypes.typedObject(PsiType.CHAR, Nullability.UNKNOWN), anchor))
                     }
-                    val transfer = trapTracker.maybeTransferValue("kotlin.IndexOutOfBoundsException")
-                    addInstruction(EnsureIndexInBoundsInstruction(KotlinArrayIndexProblem(SpecialField.STRING_LENGTH, idx), transfer))
-                    if (lastIndex && storedValue != null) {
-                        processExpression(storedValue)
-                        addInstruction(PopInstruction())
+                    isList(kotlinType) -> {
+                        if (indexType.canBeNull()) {
+                            addInstruction(UnwrapDerivedVariableInstruction(SpecialField.UNBOX))
+                        }
+                        val transfer = trapTracker.maybeTransferValue("kotlin.IndexOutOfBoundsException")
+                        addInstruction(EnsureIndexInBoundsInstruction(KotlinArrayIndexProblem(SpecialField.COLLECTION_SIZE, idx), transfer))
+                        if (lastIndex && storedValue != null) {
+                            processExpression(storedValue)
+                            addInstruction(PopInstruction())
+                        }
+                        pushUnknown()
                     }
-                    addInstruction(PushValueInstruction(DfTypes.typedObject(PsiType.CHAR, Nullability.UNKNOWN), anchor))
-                } else if (kotlinType != null && (KotlinBuiltIns.isListOrNullableList(kotlinType) ||
-                    kotlinType.supertypes().any { type -> KotlinBuiltIns.isListOrNullableList(type) })) {
-                    if (indexType.canBeNull()) {
-                        addInstruction(UnwrapDerivedVariableInstruction(SpecialField.UNBOX))
+                    else -> {
+                        if (lastIndex && storedValue != null) {
+                            processUnknownArrayStore(storedValue)
+                        } else {
+                            addCall(expr, 2)
+                        }
                     }
-                    val transfer = trapTracker.maybeTransferValue("kotlin.IndexOutOfBoundsException")
-                    addInstruction(EnsureIndexInBoundsInstruction(KotlinArrayIndexProblem(SpecialField.COLLECTION_SIZE, idx), transfer))
-                    if (lastIndex && storedValue != null) {
-                        processExpression(storedValue)
-                        addInstruction(PopInstruction())
-                    }
-                    pushUnknown()
-                } else {
-                    if (lastIndex && storedValue != null) {
-                        processExpression(storedValue)
-                        addInstruction(PopInstruction())
-                    }
-                    addInstruction(EvalUnknownInstruction(anchor, 2, expectedType))
-                    addInstruction(FlushFieldsInstruction())
                 }
             }
         }
     }
+
+    private fun processUnknownArrayStore(storedValue: KtExpression) {
+        // stack before: <array_expression> <index_expression>
+        processExpression(storedValue)
+        val parent = storedValue.parent
+        assert(parent is KtExpression) { "parent must be assignment expression, got ${parent::class}" }
+        // process a[b] = c like a call with arguments a, b, c.
+        addCall(parent as KtExpression, 3)
+    }
+
+    private fun isList(kotlinType: KotlinType?) =
+        kotlinType != null && (KotlinBuiltIns.isListOrNullableList(kotlinType) ||
+                kotlinType.supertypes().any { type -> KotlinBuiltIns.isListOrNullableList(type) })
 
     private fun processIsExpression(expr: KtIsExpression) {
         processExpression(expr.leftHandSide)
@@ -1001,18 +1019,20 @@ class KtControlFlowBuilder(val factory: DfaValueFactory, val context: KtExpressi
         processExpression(range)
         if (range != null) {
             val kotlinType = range.getKotlinType()
-            val lengthField = findSpecialField(kotlinType)
-            if (lengthField != null && lengthField != SpecialField.ENUM_ORDINAL) {
-                val collectionVar = flow.createTempVariable(kotlinType.toDfType())
-                addInstruction(JvmAssignmentInstruction(null, collectionVar))
-                addInstruction(PopInstruction())
-                return {
-                    addInstruction(JvmPushInstruction(lengthField.createValue(factory, collectionVar), null))
-                    addInstruction(PushValueInstruction(DfTypes.intValue(0)))
-                    addInstruction(BooleanBinaryInstruction(RelationType.GT, false, null))
-                    pushUnknown()
-                    addInstruction(BooleanAndOrInstruction(false, KotlinForVisitedAnchor(expr)))
+            when (val lengthField = findSpecialField(kotlinType)) {
+                SpecialField.ARRAY_LENGTH, SpecialField.STRING_LENGTH, SpecialField.COLLECTION_SIZE -> {
+                    val collectionVar = flow.createTempVariable(kotlinType.toDfType())
+                    addInstruction(JvmAssignmentInstruction(null, collectionVar))
+                    addInstruction(PopInstruction())
+                    return {
+                        addInstruction(JvmPushInstruction(lengthField.createValue(factory, collectionVar), null))
+                        addInstruction(PushValueInstruction(DfTypes.intValue(0)))
+                        addInstruction(BooleanBinaryInstruction(RelationType.GT, false, null))
+                        pushUnknown()
+                        addInstruction(BooleanAndOrInstruction(false, KotlinForVisitedAnchor(expr)))
+                    }
                 }
+                SpecialField.UNBOX, SpecialField.OPTIONAL_VALUE, SpecialField.ENUM_ORDINAL, SpecialField.CONSUMED_STREAM, null -> {}
             }
         }
         addInstruction(PopInstruction())
@@ -1144,8 +1164,9 @@ class KtControlFlowBuilder(val factory: DfaValueFactory, val context: KtExpressi
             addInstruction(ControlTransferInstruction(trapTracker.transferValue(DfaControlTransferValue.RETURN_TRANSFER)))
         } else {
             val body = if (expr is KtBreakExpression) targetLoop else targetLoop.body!!
-            val transfer = factory.controlTransfer(createTransfer(body, body, factory.unknown), trapTracker.getTrapsInsideElement(body))
-            addInstruction(ControlTransferInstruction(transfer))
+            val transfer = createTransfer(body, body, factory.unknown, expr is KtBreakExpression)
+            val transferValue = factory.controlTransfer(transfer, trapTracker.getTrapsInsideElement(body))
+            addInstruction(ControlTransferInstruction(transferValue))
         }
     }
 

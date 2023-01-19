@@ -54,9 +54,7 @@ import com.intellij.psi.stubs.StubTextInconsistencyException;
 import com.intellij.psi.util.PsiUtilBase;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.indexing.DumbModeAccessType;
-import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Scope;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -67,6 +65,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Future;
+
+import static com.intellij.diagnostic.telemetry.TraceKt.runWithSpan;
 
 @SuppressWarnings("deprecation")
 public class CodeCompletionHandlerBase {
@@ -213,19 +213,17 @@ public class CodeCompletionHandlerBase {
     }
   }
 
-  private void invokeCompletionWithTracing(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret) {
-    Span invokeCompletionSpan = completionTracer.spanBuilder("invokeCompletion")
-      .setAttribute("project", project.getName())
-      .setAttribute("caretOffset", caret.hasSelection() ? caret.getSelectionStart() : caret.getOffset())
-      .startSpan();
-    try (Scope ignored = invokeCompletionSpan.makeCurrent()) {
+  private void invokeCompletionWithTracing(@NotNull Project project,
+                                           @NotNull Editor editor,
+                                           int time,
+                                           boolean hasModifiers,
+                                           @NotNull Caret caret) {
+    runWithSpan(completionTracer, "invokeCompletion", (span) -> {
+      span.setAttribute("project", project.getName());
+      span.setAttribute("caretOffset", caret.hasSelection() ? caret.getSelectionStart() : caret.getOffset());
+
       invokeCompletion(project, editor, time, hasModifiers, caret);
-    } catch (IndexNotReadyException e) {
-      invokeCompletionSpan.recordException(e);
-    }
-    finally {
-      invokeCompletionSpan.end();
-    }
+    });
   }
 
   private static void checkNoWriteAccess() {
@@ -500,10 +498,6 @@ public class CodeCompletionHandlerBase {
 
   protected void lookupItemSelected(final CompletionProgressIndicator indicator, @NotNull final LookupElement item, final char completionChar,
                                          final List<LookupElement> items) {
-    if (indicator.isAutopopupCompletion()) {
-      FeatureUsageTracker.getInstance().triggerFeatureUsed(CodeCompletionFeatures.EDITING_COMPLETION_BASIC);
-    }
-
     WatchingInsertionContext context = null;
     try {
       StatisticsUpdate update = StatisticsUpdate.collectStatisticChanges(item);

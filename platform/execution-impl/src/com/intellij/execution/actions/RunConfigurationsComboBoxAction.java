@@ -20,6 +20,8 @@ import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.SizedIcon;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.scale.JBUIScale;
@@ -114,17 +116,25 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
                                          String actionPlace) {
     presentation.putClientProperty(BUTTON_MODE, null);
     if (project != null && target != null && settings != null) {
-      String name = Executor.shortenNameIfNeeded(settings.getName());
-      if (target != DefaultExecutionTarget.INSTANCE && !target.isExternallyManaged()) {
-        name += " | " + target.getDisplayName();
-      } else {
-        if (!ExecutionTargetManager.canRun(settings.getConfiguration(), target)) {
-          name += " | " + ExecutionBundle.message("run.configurations.combo.action.nothing.to.run.on");
+      String name;
+      if (!ExperimentalUI.isNewUI()) { // there's a separate combo-box for execution targets in new UI
+        name = Executor.shortenNameIfNeeded(settings.getName());
+        if (target != DefaultExecutionTarget.INSTANCE && !target.isExternallyManaged()) {
+          name += " | " + target.getDisplayName();
         }
+        else {
+          if (!ExecutionTargetManager.canRun(settings.getConfiguration(), target)) {
+            name += " | " + ExecutionBundle.message("run.configurations.combo.action.nothing.to.run.on");
+          }
+        }
+      }
+      else {
+        name = StringUtil.shortenTextWithEllipsis(settings.getName(), 25, 8, true);
       }
       presentation.setText(name, false);
       if (!ApplicationManager.getApplication().isUnitTestMode()) {
-        setConfigurationIcon(presentation, settings, project);
+        boolean withLiveIndicator = !(ExperimentalUI.isNewUI() && actionPlace.equals(ActionPlaces.MAIN_TOOLBAR));
+        setConfigurationIcon(presentation, settings, project, withLiveIndicator);
       }
     }
     else {
@@ -145,10 +155,17 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
   }
 
   protected static void setConfigurationIcon(final Presentation presentation,
+                                             final RunnerAndConfigurationSettings settings,
+                                             final Project project) {
+    setConfigurationIcon(presentation, settings, project, true);
+  }
+
+  private static void setConfigurationIcon(final Presentation presentation,
                                            final RunnerAndConfigurationSettings settings,
-                                           final Project project) {
+                                           final Project project,
+                                           final boolean withLiveIndicator) {
     try {
-      presentation.setIcon(RunManagerEx.getInstanceEx(project).getConfigurationIcon(settings, true));
+      presentation.setIcon(RunManagerEx.getInstanceEx(project).getConfigurationIcon(settings, withLiveIndicator));
     }
     catch (IndexNotReadyException ignored) {
     }
@@ -200,7 +217,7 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
 
   @Override
   @NotNull
-  protected DefaultActionGroup createPopupActionGroup(final JComponent button) {
+  protected DefaultActionGroup createPopupActionGroup(@NotNull JComponent button, @NotNull DataContext context) {
     final DefaultActionGroup allActionsGroup = new DefaultActionGroup();
     final Project project = CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext(button));
     if (project == null) {
@@ -214,7 +231,11 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
     allActionsGroup.add(new SaveTemporaryAction());
     allActionsGroup.addSeparator();
 
-    addTargetGroup(project, allActionsGroup);
+
+    if (!ExperimentalUI.isNewUI()) {
+      // no need for targets list in `All configurations` in new UI, since there is a separate combobox for them
+      addTargetGroup(project, allActionsGroup);
+    }
 
     allActionsGroup.add(new RunCurrentFileAction(executor -> true));
     allActionsGroup.addSeparator(ExecutionBundle.message("run.configurations.popup.existing.configurations.separator.text"));
@@ -222,6 +243,7 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
     addRunConfigurations(allActionsGroup, project,
                          settings -> createFinalAction(settings, project),
                          folderName -> DefaultActionGroup.createPopupGroup(() -> folderName));
+    allActionsGroup.addSeparator();
     return allActionsGroup;
   }
 
@@ -245,7 +267,6 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
       }
 
       allActionsGroup.add(actionGroup);
-      allActionsGroup.addSeparator();
     }
   }
 
@@ -478,13 +499,16 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
       setPopup(true);
       getTemplatePresentation().setPerformGroup(true);
 
-      String name = Executor.shortenNameIfNeeded(configuration.getName());
+      String fullName = configuration.getName();
+      String name = Executor.shortenNameIfNeeded(fullName);
       if (name.isEmpty()) {
         name = " ";
       }
+      String toolTip = name.equals(fullName) ? null : fullName;
       final Presentation presentation = getTemplatePresentation();
       presentation.setText(name, false);
       presentation.setDescription(ExecutionBundle.message("select.0.1", configuration.getType().getConfigurationTypeDescription(), name));
+      presentation.putClientProperty(JComponent.TOOL_TIP_TEXT_KEY, toolTip);
       updateIcon(presentation);
 
       // Secondary menu for the existing run configurations is not directly related to the 'Run Current File' feature.

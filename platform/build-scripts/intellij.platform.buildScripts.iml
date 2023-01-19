@@ -4,7 +4,7 @@
     <facet type="kotlin-language" name="Kotlin">
       <configuration version="5" platform="JVM 17" allPlatforms="JVM [17]" useProjectSettings="false">
         <compilerSettings>
-          <option name="additionalArguments" value="-Xjvm-default=enable -opt-in=kotlin.RequiresOptIn -opt-in=kotlinx.serialization.ExperimentalSerializationApi -opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi" />
+          <option name="additionalArguments" value="-Xjvm-default=all -opt-in=kotlin.RequiresOptIn -opt-in=kotlinx.serialization.ExperimentalSerializationApi -opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi" />
         </compilerSettings>
         <compilerArguments>
           <stringArguments>
@@ -39,7 +39,6 @@
     <orderEntry type="library" name="opentelemetry" level="project" />
     <orderEntry type="library" name="kotlin-stdlib-jdk8" level="project" />
     <orderEntry type="module" module-name="intellij.java.aetherDependencyResolver" />
-    <orderEntry type="library" name="org.codehaus.groovy:groovy" level="project" />
     <orderEntry type="library" name="jackson" level="project" />
     <orderEntry type="module" module-name="intellij.platform.jps.model.impl" />
     <orderEntry type="module" module-name="intellij.platform.util.xmlDom" />
@@ -78,5 +77,8 @@
     <orderEntry type="library" name="jsch-agent-proxy" level="project" />
     <orderEntry type="library" name="jsch-agent-proxy-sshj" level="project" />
     <orderEntry type="library" name="commons-io" level="project" />
+    <orderEntry type="library" name="ktor-client-auth" level="project" />
+    <orderEntry type="library" name="ktor-client-cio" level="project" />
+    <orderEntry type="library" name="ktor-client-encoding" level="project" />
   </component>
 </module>

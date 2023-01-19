@@ -7,7 +7,6 @@ import com.intellij.workspaceModel.storage.EntitySource
 import com.intellij.workspaceModel.storage.EntityStorage
 import com.intellij.workspaceModel.storage.GeneratedCodeApiVersion
 import com.intellij.workspaceModel.storage.GeneratedCodeImplVersion
-import com.intellij.workspaceModel.storage.ModifiableWorkspaceEntity
 import com.intellij.workspaceModel.storage.MutableEntityStorage
 import com.intellij.workspaceModel.storage.WorkspaceEntity
 import com.intellij.workspaceModel.storage.impl.ConnectionId
@@ -43,11 +42,15 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
   override val contentRoot: ContentRootTestEntity
     get() = snapshot.extractOneToManyParent(CONTENTROOT_CONNECTION_ID, this)!!
 
+  override val entitySource: EntitySource
+    get() = dataSource.entitySource
+
   override fun connectionIdList(): List<ConnectionId> {
     return connections
   }
 
-  class Builder(val result: SourceRootTestEntityData?) : ModifiableWorkspaceEntityBase<SourceRootTestEntity>(), SourceRootTestEntity.Builder {
+  class Builder(result: SourceRootTestEntityData?) : ModifiableWorkspaceEntityBase<SourceRootTestEntity, SourceRootTestEntityData>(
+    result), SourceRootTestEntity.Builder {
     constructor() : this(SourceRootTestEntityData())
 
     override fun applyToBuilder(builder: MutableEntityStorage) {
@@ -65,6 +68,9 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
       this.snapshot = builder
       addToBuilder()
       this.id = getEntityData().createEntityId()
+      // After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
+      // Builder may switch to snapshot at any moment and lock entity data to modification
+      this.currentEntityData = null
 
       // Process linked entities that are connected without a builder
       processLinkedEntities(builder)
@@ -98,10 +104,13 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
     // Relabeling code, move information from dataSource to this builder
     override fun relabel(dataSource: WorkspaceEntity, parents: Set<WorkspaceEntity>?) {
       dataSource as SourceRootTestEntity
-      this.entitySource = dataSource.entitySource
-      this.data = dataSource.data
+      if (this.entitySource != dataSource.entitySource) this.entitySource = dataSource.entitySource
+      if (this.data != dataSource.data) this.data = dataSource.data
       if (parents != null) {
-        this.contentRoot = parents.filterIsInstance<ContentRootTestEntity>().single()
+        val contentRootNew = parents.filterIsInstance<ContentRootTestEntity>().single()
+        if ((this.contentRoot as WorkspaceEntityBase).id != (contentRootNew as WorkspaceEntityBase).id) {
+          this.contentRoot = contentRootNew
+        }
       }
     }
 
@@ -110,7 +119,7 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
       get() = getEntityData().entitySource
       set(value) {
         checkModificationAllowed()
-        getEntityData().entitySource = value
+        getEntityData(true).entitySource = value
         changedProperty.add("entitySource")
 
       }
@@ -119,7 +128,7 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
       get() = getEntityData().data
       set(value) {
         checkModificationAllowed()
-        getEntityData().data = value
+        getEntityData(true).data = value
         changedProperty.add("data")
       }
 
@@ -137,21 +146,21 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
       set(value) {
         checkModificationAllowed()
         val _diff = diff
-        if (_diff != null && value is ModifiableWorkspaceEntityBase<*> && value.diff == null) {
+        if (_diff != null && value is ModifiableWorkspaceEntityBase<*, *> && value.diff == null) {
           // Setting backref of the list
-          if (value is ModifiableWorkspaceEntityBase<*>) {
+          if (value is ModifiableWorkspaceEntityBase<*, *>) {
             val data = (value.entityLinks[EntityLink(true, CONTENTROOT_CONNECTION_ID)] as? List<Any> ?: emptyList()) + this
             value.entityLinks[EntityLink(true, CONTENTROOT_CONNECTION_ID)] = data
           }
           // else you're attaching a new entity to an existing entity that is not modifiable
           _diff.addEntity(value)
         }
-        if (_diff != null && (value !is ModifiableWorkspaceEntityBase<*> || value.diff != null)) {
+        if (_diff != null && (value !is ModifiableWorkspaceEntityBase<*, *> || value.diff != null)) {
           _diff.updateOneToManyParentOfChild(CONTENTROOT_CONNECTION_ID, this, value)
         }
         else {
           // Setting backref of the list
-          if (value is ModifiableWorkspaceEntityBase<*>) {
+          if (value is ModifiableWorkspaceEntityBase<*, *>) {
             val data = (value.entityLinks[EntityLink(true, CONTENTROOT_CONNECTION_ID)] as? List<Any> ?: emptyList()) + this
             value.entityLinks[EntityLink(true, CONTENTROOT_CONNECTION_ID)] = data
           }
@@ -162,7 +171,6 @@ open class SourceRootTestEntityImpl(val dataSource: SourceRootTestEntityData) : 
         changedProperty.add("contentRoot")
       }
 
-    override fun getEntityData(): SourceRootTestEntityData = result ?: super.getEntityData() as SourceRootTestEntityData
     override fun getEntityClass(): Class<SourceRootTestEntity> = SourceRootTestEntity::class.java
   }
 }
@@ -172,22 +180,17 @@ class SourceRootTestEntityData : WorkspaceEntityData<SourceRootTestEntity>() {
 
   fun isDataInitialized(): Boolean = ::data.isInitialized
 
-  override fun wrapAsModifiable(diff: MutableEntityStorage): ModifiableWorkspaceEntity<SourceRootTestEntity> {
+  override fun wrapAsModifiable(diff: MutableEntityStorage): WorkspaceEntity.Builder<SourceRootTestEntity> {
     val modifiable = SourceRootTestEntityImpl.Builder(null)
-    modifiable.allowModifications {
-      modifiable.diff = diff
-      modifiable.snapshot = diff
-      modifiable.id = createEntityId()
-      modifiable.entitySource = this.entitySource
-    }
-    modifiable.changedProperty.clear()
+    modifiable.diff = diff
+    modifiable.snapshot = diff
+    modifiable.id = createEntityId()
     return modifiable
   }
 
   override fun createEntity(snapshot: EntityStorage): SourceRootTestEntity {
     return getCached(snapshot) {
       val entity = SourceRootTestEntityImpl(this)
-      entity.entitySource = entitySource
       entity.snapshot = snapshot
       entity.id = createEntityId()
       entity
@@ -218,7 +221,7 @@ class SourceRootTestEntityData : WorkspaceEntityData<SourceRootTestEntity>() {
 
   override fun equals(other: Any?): Boolean {
     if (other == null) return false
-    if (this::class != other::class) return false
+    if (this.javaClass != other.javaClass) return false
 
     other as SourceRootTestEntityData
 
@@ -229,7 +232,7 @@ class SourceRootTestEntityData : WorkspaceEntityData<SourceRootTestEntity>() {
 
   override fun equalsIgnoringEntitySource(other: Any?): Boolean {
     if (other == null) return false
-    if (this::class != other::class) return false
+    if (this.javaClass != other.javaClass) return false
 
     other as SourceRootTestEntityData
 

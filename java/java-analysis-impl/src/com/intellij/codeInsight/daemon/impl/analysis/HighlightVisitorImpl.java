@@ -15,7 +15,6 @@ import com.intellij.lang.jvm.JvmModifier;
 import com.intellij.lang.jvm.JvmModifiersOwner;
 import com.intellij.lang.jvm.actions.JvmElementActionFactories;
 import com.intellij.lang.jvm.actions.MemberRequestsKt;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -90,10 +89,6 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   private final Map<PsiMethod, PsiType> myExpectedReturnTypes = new HashMap<>();
   private final Function<? super PsiElement, ? extends PsiClass> myInsideConstructorOfClass = this::findInsideConstructorClass;
   private final Map<PsiElement, PsiClass> myInsideConstructorOfClassCache = new HashMap<>(); // null value means "cached but no corresponding ctr found"
-
-  private static class Holder {
-    private static final boolean CHECK_ELEMENT_LEVEL = ApplicationManager.getApplication().isUnitTestMode() || ApplicationManager.getApplication().isInternal();
-  }
 
   @NotNull
   protected PsiResolveHelper getResolveHelper(@NotNull Project project) {
@@ -180,14 +175,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
 
   @Override
   public void visit(@NotNull PsiElement element) {
-    if (Holder.CHECK_ELEMENT_LEVEL) {
-      ((CheckLevelHighlightInfoHolder)myHolder).enterLevel(element);
-      element.accept(this);
-      ((CheckLevelHighlightInfoHolder)myHolder).enterLevel(null);
-    }
-    else {
-      element.accept(this);
-    }
+    element.accept(this);
   }
 
   private void registerReferencesFromInjectedFragments(@NotNull PsiElement element) {
@@ -198,7 +186,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   @Override
   public boolean analyze(@NotNull PsiFile file, boolean updateWholeFile, @NotNull HighlightInfoHolder holder, @NotNull Runnable highlight) {
     try {
-      prepare(Holder.CHECK_ELEMENT_LEVEL ? new CheckLevelHighlightInfoHolder(file, holder) : holder, file);
+      prepare(holder, file);
       if (updateWholeFile) {
         ProgressIndicator progress = ProgressManager.getInstance().getProgressIndicator();
         if (progress == null) throw new IllegalStateException("Must be run under progress");
@@ -830,7 +818,10 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     super.visitInstanceOfExpression(expression);
     if (!myHolder.hasErrorResults()) HighlightUtil.checkInstanceOfApplicable(expression, myHolder);
     if (!myHolder.hasErrorResults()) myHolder.add(GenericsHighlightUtil.checkInstanceOfGenericType(myLanguageLevel, expression));
-    if (!myHolder.hasErrorResults() && myLanguageLevel.isAtLeast(LanguageLevel.JDK_16)) {
+    if (!myHolder.hasErrorResults() &&
+        myLanguageLevel.isAtLeast(LanguageLevel.JDK_16) &&
+        // 5.20.2 Removed restriction on pattern instanceof for total patterns (JEP 427)
+        myLanguageLevel.isLessThan(LanguageLevel.JDK_19_PREVIEW)) {
       myHolder.add(HighlightUtil.checkInstanceOfPatternSupertype(expression));
     }
   }
@@ -1216,7 +1207,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
         if (owner instanceof PsiClass) {
           PsiClass outerClass = (PsiClass)owner;
           if (!InheritanceUtil.hasEnclosingInstanceInScope(outerClass, ref, false, false)) {
-            myHolder.add(HighlightClassUtil.checkIllegalEnclosingUsage(ref, null, (PsiClass)owner, ref));
+            myHolder.add(HighlightClassUtil.checkIllegalEnclosingUsage(ref, null, outerClass, ref));
           }
         }
         else if (owner instanceof PsiMethod) {
@@ -1296,7 +1287,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
       }
       if (!myHolder.hasErrorResults()) {
         try {
-          myHolder.add(HighlightControlFlowUtil.checkVariableInitializedBeforeUsage(expression, (PsiVariable)resolved, myUninitializedVarProblems,myFile));
+          myHolder.add(HighlightControlFlowUtil.checkVariableInitializedBeforeUsage(expression, variable, myUninitializedVarProblems, myFile));
         }
         catch (IndexNotReadyException ignored) { }
       }
@@ -1910,13 +1901,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   @Override
   public void visitParenthesizedPattern(@NotNull PsiParenthesizedPattern pattern) {
     super.visitParenthesizedPattern(pattern);
-    if (HighlightingFeature.PATTERN_GUARDS_AND_RECORD_PATTERNS.isAvailable(pattern)) {
-      String message = JavaErrorBundle.message("guarded.patterns.unavailable");
-      myHolder.add(HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(pattern.getNode()).descriptionAndTooltip(message).create());
-    }
-    if (!myHolder.hasErrorResults()) {
-      myHolder.add(checkFeature(pattern, HighlightingFeature.GUARDED_AND_PARENTHESIZED_PATTERNS));
-    }
+    myHolder.add(checkFeature(pattern, HighlightingFeature.GUARDED_AND_PARENTHESIZED_PATTERNS));
   }
 
   @Override
@@ -1931,14 +1916,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     }
     if (myHolder.hasErrorResults()) return;
     PsiExpression guardingExpr = pattern.getGuardingExpression();
-    if (guardingExpr == null) return;
-    // 14.30.1 Kinds of Patterns GuardedPattern: PrimaryPattern && ConditionalAndExpression
-    // 15.23. ConditionalAndExpression: Each operand of the conditional-and operator must be of type boolean or Boolean, or a compile-time error occurs.
-    if (!TypeConversionUtil.isBooleanType(guardingExpr.getType())) {
-      String message = JavaErrorBundle.message("incompatible.types", JavaHighlightUtil.formatType(PsiType.BOOLEAN),
-                                               JavaHighlightUtil.formatType(guardingExpr.getType()));
-      myHolder.add(HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(guardingExpr).descriptionAndTooltip(message).create());
-    }
+    myHolder.add(checkGuardingExpressionHasBooleanType(guardingExpr));
   }
 
   @Override
@@ -1947,11 +1925,23 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
     myHolder.add(checkFeature(guard, HighlightingFeature.PATTERN_GUARDS_AND_RECORD_PATTERNS));
     if (myHolder.hasErrorResults()) return;
     PsiExpression guardingExpr = guard.getGuardingExpression();
+    myHolder.add(checkGuardingExpressionHasBooleanType(guardingExpr));
+    if (myHolder.hasErrorResults()) return;
     Object constVal = ExpressionUtils.computeConstantExpression(guardingExpr);
     if (Boolean.FALSE.equals(constVal)) {
       String message = JavaErrorBundle.message("when.expression.is.false");
       myHolder.add(HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(guardingExpr).descriptionAndTooltip(message).create());
     }
+  }
+
+  @Nullable
+  private static HighlightInfo checkGuardingExpressionHasBooleanType(@Nullable PsiExpression guardingExpression) {
+    if (guardingExpression != null && !TypeConversionUtil.isBooleanType(guardingExpression.getType())) {
+      String message = JavaErrorBundle.message("incompatible.types", JavaHighlightUtil.formatType(PsiType.BOOLEAN),
+                                               JavaHighlightUtil.formatType(guardingExpression.getType()));
+      return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(guardingExpression).descriptionAndTooltip(message).create();
+    }
+    return null;
   }
 
   @Override

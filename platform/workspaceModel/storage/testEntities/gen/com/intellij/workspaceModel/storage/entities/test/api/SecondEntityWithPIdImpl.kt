@@ -6,9 +6,8 @@ import com.intellij.workspaceModel.storage.EntitySource
 import com.intellij.workspaceModel.storage.EntityStorage
 import com.intellij.workspaceModel.storage.GeneratedCodeApiVersion
 import com.intellij.workspaceModel.storage.GeneratedCodeImplVersion
-import com.intellij.workspaceModel.storage.ModifiableWorkspaceEntity
 import com.intellij.workspaceModel.storage.MutableEntityStorage
-import com.intellij.workspaceModel.storage.PersistentEntityId
+import com.intellij.workspaceModel.storage.SymbolicEntityId
 import com.intellij.workspaceModel.storage.WorkspaceEntity
 import com.intellij.workspaceModel.storage.impl.ConnectionId
 import com.intellij.workspaceModel.storage.impl.ModifiableWorkspaceEntityBase
@@ -33,11 +32,15 @@ open class SecondEntityWithPIdImpl(val dataSource: SecondEntityWithPIdData) : Se
   override val data: String
     get() = dataSource.data
 
+  override val entitySource: EntitySource
+    get() = dataSource.entitySource
+
   override fun connectionIdList(): List<ConnectionId> {
     return connections
   }
 
-  class Builder(val result: SecondEntityWithPIdData?) : ModifiableWorkspaceEntityBase<SecondEntityWithPId>(), SecondEntityWithPId.Builder {
+  class Builder(result: SecondEntityWithPIdData?) : ModifiableWorkspaceEntityBase<SecondEntityWithPId, SecondEntityWithPIdData>(
+    result), SecondEntityWithPId.Builder {
     constructor() : this(SecondEntityWithPIdData())
 
     override fun applyToBuilder(builder: MutableEntityStorage) {
@@ -55,6 +58,9 @@ open class SecondEntityWithPIdImpl(val dataSource: SecondEntityWithPIdData) : Se
       this.snapshot = builder
       addToBuilder()
       this.id = getEntityData().createEntityId()
+      // After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
+      // Builder may switch to snapshot at any moment and lock entity data to modification
+      this.currentEntityData = null
 
       // Process linked entities that are connected without a builder
       processLinkedEntities(builder)
@@ -78,8 +84,8 @@ open class SecondEntityWithPIdImpl(val dataSource: SecondEntityWithPIdData) : Se
     // Relabeling code, move information from dataSource to this builder
     override fun relabel(dataSource: WorkspaceEntity, parents: Set<WorkspaceEntity>?) {
       dataSource as SecondEntityWithPId
-      this.entitySource = dataSource.entitySource
-      this.data = dataSource.data
+      if (this.entitySource != dataSource.entitySource) this.entitySource = dataSource.entitySource
+      if (this.data != dataSource.data) this.data = dataSource.data
       if (parents != null) {
       }
     }
@@ -89,7 +95,7 @@ open class SecondEntityWithPIdImpl(val dataSource: SecondEntityWithPIdData) : Se
       get() = getEntityData().entitySource
       set(value) {
         checkModificationAllowed()
-        getEntityData().entitySource = value
+        getEntityData(true).entitySource = value
         changedProperty.add("entitySource")
 
       }
@@ -98,43 +104,37 @@ open class SecondEntityWithPIdImpl(val dataSource: SecondEntityWithPIdData) : Se
       get() = getEntityData().data
       set(value) {
         checkModificationAllowed()
-        getEntityData().data = value
+        getEntityData(true).data = value
         changedProperty.add("data")
       }
 
-    override fun getEntityData(): SecondEntityWithPIdData = result ?: super.getEntityData() as SecondEntityWithPIdData
     override fun getEntityClass(): Class<SecondEntityWithPId> = SecondEntityWithPId::class.java
   }
 }
 
-class SecondEntityWithPIdData : WorkspaceEntityData.WithCalculablePersistentId<SecondEntityWithPId>() {
+class SecondEntityWithPIdData : WorkspaceEntityData.WithCalculableSymbolicId<SecondEntityWithPId>() {
   lateinit var data: String
 
   fun isDataInitialized(): Boolean = ::data.isInitialized
 
-  override fun wrapAsModifiable(diff: MutableEntityStorage): ModifiableWorkspaceEntity<SecondEntityWithPId> {
+  override fun wrapAsModifiable(diff: MutableEntityStorage): WorkspaceEntity.Builder<SecondEntityWithPId> {
     val modifiable = SecondEntityWithPIdImpl.Builder(null)
-    modifiable.allowModifications {
-      modifiable.diff = diff
-      modifiable.snapshot = diff
-      modifiable.id = createEntityId()
-      modifiable.entitySource = this.entitySource
-    }
-    modifiable.changedProperty.clear()
+    modifiable.diff = diff
+    modifiable.snapshot = diff
+    modifiable.id = createEntityId()
     return modifiable
   }
 
   override fun createEntity(snapshot: EntityStorage): SecondEntityWithPId {
     return getCached(snapshot) {
       val entity = SecondEntityWithPIdImpl(this)
-      entity.entitySource = entitySource
       entity.snapshot = snapshot
       entity.id = createEntityId()
       entity
     }
   }
 
-  override fun persistentId(): PersistentEntityId<*> {
+  override fun symbolicId(): SymbolicEntityId<*> {
     return SecondPId(data)
   }
 
@@ -160,7 +160,7 @@ class SecondEntityWithPIdData : WorkspaceEntityData.WithCalculablePersistentId<S
 
   override fun equals(other: Any?): Boolean {
     if (other == null) return false
-    if (this::class != other::class) return false
+    if (this.javaClass != other.javaClass) return false
 
     other as SecondEntityWithPIdData
 
@@ -171,7 +171,7 @@ class SecondEntityWithPIdData : WorkspaceEntityData.WithCalculablePersistentId<S
 
   override fun equalsIgnoringEntitySource(other: Any?): Boolean {
     if (other == null) return false
-    if (this::class != other::class) return false
+    if (this.javaClass != other.javaClass) return false
 
     other as SecondEntityWithPIdData
 

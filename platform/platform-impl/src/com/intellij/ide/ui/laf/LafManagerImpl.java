@@ -2,7 +2,6 @@
 package com.intellij.ide.ui.laf;
 
 import com.intellij.CommonBundle;
-import com.intellij.openapi.util.registry.RegistryManager;
 import com.intellij.diagnostic.Activity;
 import com.intellij.diagnostic.ActivityCategory;
 import com.intellij.diagnostic.LoadingState;
@@ -45,6 +44,7 @@ import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.ui.popup.util.PopupUtil;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.registry.RegistryManager;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.wm.impl.IdeGlassPaneImpl;
 import com.intellij.ui.*;
@@ -286,29 +286,9 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
       }
 
       @Override
-      public void pluginUnloaded(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
-        if (isNewUIPlugin(pluginDescriptor)) {
-          ExperimentalUI.getInstance().onExpUIDisabled();
-        }
-      }
-
-      @Override
       public void pluginLoaded(@NotNull IdeaPluginDescriptor pluginDescriptor) {
         isUpdatingPlugin = false;
         themeIdBeforePluginUpdate = null;
-        if (isNewUIPlugin(pluginDescriptor)) {
-          enableExpUI();
-        }
-      }
-
-      private boolean isNewUIPlugin(@NotNull IdeaPluginDescriptor pluginDescriptor) {
-        return pluginDescriptor.getPluginId().getIdString().equals("com.intellij.plugins.expui");
-      }
-
-      private void enableExpUI() {
-        if (!Registry.is("ide.experimental.ui")) {
-          ExperimentalUI.getInstance().onExpUIEnabled();
-        }
       }
     });
   }
@@ -374,6 +354,8 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
 
   @Override
   public void loadState(@NotNull Element element) {
+    UIManager.LookAndFeelInfo oldLaF = myCurrentLaf;
+
     myCurrentLaf = loadLafState(element, ELEMENT_LAF);
     if (myCurrentLaf == null) {
       myCurrentLaf = loadDefaultLaf();
@@ -385,6 +367,10 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
 
     if (autodetect) {
       getOrCreateLafDetector();
+    }
+
+    if (!isFirstSetup && !myCurrentLaf.equals(oldLaF)) {
+      QuickChangeLookAndFeel.switchLafAndUpdateUI(this, myCurrentLaf, true, true);
     }
   }
 
@@ -1063,7 +1049,8 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
       storeOriginalFontDefaults(uiDefaults);
       float fontSize = uiSettings.getFontSize2D();
       StartupUiUtil.initFontDefaults(uiDefaults, StartupUiUtil.getFontWithFallback(uiSettings.getFontFace(), Font.PLAIN, fontSize));
-      JBUIScale.setUserScaleFactor(JBUIScale.getFontScale(fontSize));
+      float userScaleFactor = useInterFont() ? fontSize / INTER_SIZE : JBUIScale.getFontScale(fontSize);
+      JBUIScale.setUserScaleFactor(userScaleFactor);
     }
     else if (useInterFont()) {
       storeOriginalFontDefaults(uiDefaults);
@@ -1248,7 +1235,12 @@ public final class LafManagerImpl extends LafManager implements PersistentStateC
           }
         });
         if (IdeaPopupMenuUI.isUnderPopup(contents) && WindowRoundedCornersManager.isAvailable()) {
-          WindowRoundedCornersManager.setRoundedCorners(window);
+          if (SystemInfoRt.isMac && UIUtil.isUnderDarcula()) {
+            WindowRoundedCornersManager.setRoundedCorners(window, JBUI.CurrentTheme.Popup.borderColor(true));
+          }
+          else {
+            WindowRoundedCornersManager.setRoundedCorners(window);
+          }
           if (SystemInfoRt.isMac) {
             JComponent contentPane = (JComponent)((RootPaneContainer)window).getContentPane();
             contentPane.setOpaque(true);

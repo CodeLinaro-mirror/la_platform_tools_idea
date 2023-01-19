@@ -10,6 +10,7 @@ import com.intellij.util.lang.PathClassLoader
 import com.intellij.util.lang.UrlClassLoader
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.trace.Span
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.*
 import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.TraceManager.spanBuilder
@@ -37,6 +38,7 @@ data class BuildRequest(
   @JvmField val homePath: Path,
   @JvmField val productionClassOutput: Path = Path.of(System.getenv("CLASSES_DIR")
                                                       ?: homePath.resolve("out/classes/production").toString()).toAbsolutePath(),
+  @JvmField val keepHttpClient: Boolean = true,
 )
 
 private suspend fun computeLibClassPath(targetFile: Path, homePath: Path, context: BuildContext) {
@@ -83,8 +85,7 @@ internal suspend fun buildProduct(productConfiguration: ProductConfiguration, re
 
   val context = createBuildContext(productConfiguration = productConfiguration,
                                    request = request,
-                                   runDir = runDir,
-                                   isServerMode = isServerMode)
+                                   runDir = runDir)
 
   val bundledMainModuleNames = getBundledMainModuleNames(context.productProperties, request.additionalModules)
 
@@ -93,19 +94,19 @@ internal suspend fun buildProduct(productConfiguration: ProductConfiguration, re
 
   val moduleNameToPluginBuildDescriptor = HashMap<String, PluginBuildDescriptor>()
   val pluginBuildDescriptors = mutableListOf<PluginBuildDescriptor>()
-  for (plugin in context.productProperties.productLayout.pluginLayouts) {
+  for (plugin in getPluginLayoutsByJpsModuleNames(bundledMainModuleNames, context.productProperties.productLayout)) {
     if (!isPluginApplicable(bundledMainModuleNames = bundledMainModuleNames, plugin = plugin, context = context)) {
       continue
     }
 
     // remove all modules without content root
     val modules = plugin.includedModuleNames
-      .filter { it != plugin.mainModule && context.findRequiredModule(it).contentRootsList.urls.isEmpty() }
+      .filter { it == plugin.mainModule || !context.findRequiredModule(it).contentRootsList.urls.isEmpty() }
       .toList()
     val pluginBuildDescriptor = PluginBuildDescriptor(dir = pluginRootDir.resolve(plugin.directoryName),
                                                       layout = plugin,
                                                       moduleNames = modules)
-    for (name in pluginBuildDescriptor.moduleNames) {
+    for (name in modules) {
       moduleNameToPluginBuildDescriptor.put(name, pluginBuildDescriptor)
     }
     pluginBuildDescriptors.add(pluginBuildDescriptor)
@@ -125,8 +126,8 @@ internal suspend fun buildProduct(productConfiguration: ProductConfiguration, re
     withContext(Dispatchers.IO) {
       Files.createDirectories(pluginRootDir)
     }
-    spanBuilder("build plugins").setAttribute(AttributeKey.longKey("count"), pluginBuildDescriptors.size.toLong()).useWithScope2 {
-      initialBuild(pluginBuildDescriptors = pluginBuildDescriptors, pluginBuilder = pluginBuilder)
+    launch {
+      buildPlugins(pluginBuildDescriptors = pluginBuildDescriptors, pluginBuilder = pluginBuilder)
     }
     launch {
       computeLibClassPath(targetFile = runDir.resolve(if (isServerMode) "libClassPath.txt" else "core-classpath.txt"),
@@ -137,10 +138,7 @@ internal suspend fun buildProduct(productConfiguration: ProductConfiguration, re
   return IdeBuilder(pluginBuilder = pluginBuilder, outDir = request.productionClassOutput, moduleNameToPlugin = moduleNameToPluginBuildDescriptor)
 }
 
-private suspend fun createBuildContext(productConfiguration: ProductConfiguration,
-                                       request: BuildRequest,
-                                       runDir: Path,
-                                       isServerMode: Boolean): BuildContext {
+private suspend fun createBuildContext(productConfiguration: ProductConfiguration, request: BuildRequest, runDir: Path): BuildContext {
   return coroutineScope {
     // ~1 second
     val productProperties = async {
@@ -156,7 +154,8 @@ private suspend fun createBuildContext(productConfiguration: ProductConfiguratio
           communityHome = getCommunityHomePath(request.homePath),
           projectHome = request.homePath,
           buildOutputRootEvaluator = { _ -> runDir },
-          options = createBuildOptions(runDir).also { it.setupTracer = isServerMode }
+          setupTracer = false,
+          options = createBuildOptions(runDir),
         )
       }
     }
@@ -180,10 +179,12 @@ private fun isPluginApplicable(bundledMainModuleNames: Set<String>, plugin: Plug
   return satisfiesBundlingRequirements(plugin = plugin,
                                        osFamily = OsFamily.currentOs,
                                        arch = JvmArchitecture.currentJvmArch,
+                                       withEphemeral = false,
                                        context = context) ||
          satisfiesBundlingRequirements(plugin = plugin,
                                        osFamily = null,
                                        arch = JvmArchitecture.currentJvmArch,
+                                       withEphemeral = false,
                                        context = context)
 }
 
@@ -192,8 +193,6 @@ private suspend fun createProductProperties(productConfiguration: ProductConfigu
 
   val classLoader = spanBuilder("create product properties classloader").useWithScope2 {
     PathClassLoader(UrlClassLoader.build().files(classPathFiles).parent(IdeBuilder::class.java.classLoader))
-
-    //URLClassLoader.newInstance(classPathFiles.map { it.toUri().toURL() }.toTypedArray())
   }
 
   val productProperties = spanBuilder("create product properties").useWithScope2 {
@@ -218,6 +217,7 @@ private fun checkBuildModulesModificationAndMark(productConfiguration: ProductCo
   // intellij.platform.devBuildServer
   var isApplicable = true
   for (module in getBuildModules(productConfiguration) + sequenceOf("intellij.platform.devBuildServer",
+                                                                    "intellij.platform.buildScripts",
                                                                     "intellij.platform.buildScripts.downloader",
                                                                     "intellij.idea.community.build.tasks")) {
     val markFile = outDir.resolve(module).resolve(UNMODIFIED_MARK_FILE_NAME)
@@ -231,6 +231,10 @@ private fun checkBuildModulesModificationAndMark(productConfiguration: ProductCo
     }
 
     createMarkFile(markFile)
+  }
+
+  if (isApplicable) {
+    Span.current().addEvent("plugin cache will be reused (build modules were not changed)")
   }
   return isApplicable
 }
@@ -363,7 +367,7 @@ private fun createBuildOptions(runDir: Path): BuildOptions {
   val options = BuildOptions()
   options.printFreeSpace = false
   options.useCompiledClassesFromProjectOutput = true
-  options.targetOs = BuildOptions.OS_NONE
+  options.targetOs = persistentListOf()
   options.cleanOutputFolder = false
   options.skipDependencySetup = true
   options.outputRootPath = runDir

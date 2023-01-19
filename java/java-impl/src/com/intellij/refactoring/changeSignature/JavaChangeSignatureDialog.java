@@ -390,13 +390,13 @@ public class JavaChangeSignatureDialog extends ChangeSignatureDialogBase<Paramet
             return new JBTableRow() {
               @Override
               public Object getValueAt(int column) {
-                switch (column) {
-                  case 0: return item.typeCodeFragment;
-                  case 1: return myNameEditor.getText().trim();
-                  case 2: return item.defaultValueCodeFragment;
-                  case 3: return myAnyVar != null && myAnyVar.isSelected();
-                }
-                return null;
+                return switch (column) {
+                  case 0 -> item.typeCodeFragment;
+                  case 1 -> myNameEditor.getText().trim();
+                  case 2 -> item.defaultValueCodeFragment;
+                  case 3 -> myAnyVar != null && myAnyVar.isSelected();
+                  default -> null;
+                };
               }
             };
           }
@@ -752,7 +752,8 @@ public class JavaChangeSignatureDialog extends ChangeSignatureDialogBase<Paramet
 
   static String getModifiersText(PsiModifierList list, String newVisibility) {
     final String oldVisibility = VisibilityUtil.getVisibilityModifier(list);
-    List<String> modifierKeywords = ContainerUtil.map(PsiTreeUtil.findChildrenOfType(list, PsiKeyword.class), PsiElement::getText);
+    List<String> modifierKeywords =
+      new ArrayList<>(ContainerUtil.map(PsiTreeUtil.findChildrenOfType(list, PsiKeyword.class), PsiElement::getText));
     if (!oldVisibility.equals(newVisibility)) {
       if (oldVisibility.equals(PsiModifier.PACKAGE_LOCAL)) {
         modifierKeywords.add(0, PsiModifier.PACKAGE_LOCAL);

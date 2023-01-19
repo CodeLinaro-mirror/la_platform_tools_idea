@@ -72,10 +72,14 @@ import static com.intellij.testFramework.common.TestEnvironmentKt.initializeTest
 import static org.junit.Assume.assumeTrue;
 
 /**
- * This class is compatible with both JUnit 3 and JUnit 4. To use JUnit 4, just annotate your test subclass
- * with {@code @RunWith(JUnit4.class)} or any other (like {@code Parametrized.class}), and you are all set.
+ * This class is compatible with both JUnit 3 and JUnit 4,
+ * but not JUnit 5 (see the module intellij.platform.testFramework.junit5 instead).
  * <p>
- * Don't annotate the JUnit 3 {@linkplain #setUp()}/{@linkplain #tearDown()} methods as {@code @Before}/{@code @After}, and don't call them from other {@code @Before}/{@code @After} methods.
+ * To use JUnit 4, annotate your test subclass with {@code @RunWith(JUnit4.class)} or any other (like {@code Parametrized.class}),
+ * and you are all set.
+ * <p>
+ * Don't annotate the JUnit 3 {@linkplain #setUp()}/{@linkplain #tearDown()} methods as {@code @Before}/{@code @After},
+ * and don't call them from other {@code @Before}/{@code @After} methods.
  * <p>
  * Don't define {@code @Rule}s calling {@linkplain #runBare()}, just subclassing this class (directly or indirectly) is enough.
  * <p>
@@ -168,7 +172,7 @@ public abstract class UsefulTestCase extends TestCase {
    *     try {
    *       doTearDowns();
    *     }
-   *     catch(Exception e) {
+   *     catch (Exception e) {
    *       addSuppressedException(e);
    *     }
    *     finally {
@@ -185,6 +189,7 @@ public abstract class UsefulTestCase extends TestCase {
     }
     list.add(e);
   }
+
   private List<Throwable> mySuppressedExceptions;
 
   public UsefulTestCase() { }
@@ -335,7 +340,8 @@ public abstract class UsefulTestCase extends TestCase {
     return false;
   }
 
-  static void doCheckForSettingsDamage(@NotNull CodeStyleSettings oldCodeStyleSettings, @NotNull CodeStyleSettings currentCodeStyleSettings) {
+  static void doCheckForSettingsDamage(@NotNull CodeStyleSettings oldCodeStyleSettings,
+                                       @NotNull CodeStyleSettings currentCodeStyleSettings) {
     CodeInsightSettings settings = CodeInsightSettings.getInstance();
     // don't use method references here to make stack trace reading easier
     //noinspection Convert2MethodRef
@@ -446,9 +452,9 @@ public abstract class UsefulTestCase extends TestCase {
   private void logPerClassCost(int cost, @NotNull ObjectIntMap<String> costMap, @NotNull ObjectIntMap<String> countMap) {
     String name = getClass().getSuperclass().getName();
     int storedCost = costMap.get(name);
-    costMap.put(name, (storedCost == -1 ? 0 : storedCost)+cost);
+    costMap.put(name, (storedCost == -1 ? 0 : storedCost) + cost);
     int storedCount = countMap.get(name);
-    countMap.put(name, storedCount == -1 ? 1 : storedCount+1);
+    countMap.put(name, storedCount == -1 ? 1 : storedCount + 1);
   }
 
   @SuppressWarnings("UseOfSystemOutOrSystemErr")
@@ -647,7 +653,9 @@ public abstract class UsefulTestCase extends TestCase {
   /**
    * Checks {@code actual} contains same elements (in {@link #equals(Object)} meaning) as {@code expected} irrespective of their order
    */
-  public static <T> void assertSameElements(@NotNull String message, @NotNull Collection<? extends T> actual, @NotNull Collection<? extends T> expected) {
+  public static <T> void assertSameElements(@NotNull String message,
+                                            @NotNull Collection<? extends T> actual,
+                                            @NotNull Collection<? extends T> expected) {
     if (actual.size() != expected.size() || !new LinkedHashSet<>(expected).equals(new LinkedHashSet<T>(actual))) {
       Assert.assertEquals(message, new LinkedHashSet<>(expected), new LinkedHashSet<T>(actual));
     }
@@ -876,11 +884,11 @@ public abstract class UsefulTestCase extends TestCase {
     Assert.assertEquals(message, expectedText, actualText);
   }
 
-  public static void assertExists(@NotNull File file){
+  public static void assertExists(@NotNull File file) {
     assertTrue("File should exist " + file, file.exists());
   }
 
-  public static void assertDoesntExist(@NotNull File file){
+  public static void assertDoesntExist(@NotNull File file) {
     assertFalse("File should not exist " + file, file.exists());
   }
 
@@ -900,7 +908,9 @@ public abstract class UsefulTestCase extends TestCase {
     assertSameLinesWithFile(filePath, actualText, true);
   }
 
-  public static void assertSameLinesWithFile(@NotNull String filePath, @NotNull String actualText, @NotNull Supplier<String> messageProducer) {
+  public static void assertSameLinesWithFile(@NotNull String filePath,
+                                             @NotNull String actualText,
+                                             @NotNull Supplier<String> messageProducer) {
     assertSameLinesWithFile(filePath, actualText, true, messageProducer);
   }
 
@@ -1060,12 +1070,13 @@ public abstract class UsefulTestCase extends TestCase {
     }
     finally {
       if (!wasThrown) {
-        fail("'"+exceptionClass.getName()+"' must have been thrown, but the computation completed successfully instead");
+        fail("'" + exceptionClass.getName() + "' must have been thrown, but the computation completed successfully instead");
       }
     }
   }
 
-  protected static <T extends Throwable> void assertNoException(@NotNull Class<? extends Throwable> exceptionClass, @NotNull ThrowableRunnable<T> runnable) throws T {
+  protected static <T extends Throwable> void assertNoException(@NotNull Class<? extends Throwable> exceptionClass,
+                                                                @NotNull ThrowableRunnable<T> runnable) throws T {
     try {
       runnable.run();
     }

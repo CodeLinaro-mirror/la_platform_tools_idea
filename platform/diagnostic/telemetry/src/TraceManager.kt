@@ -7,17 +7,21 @@ import com.intellij.openapi.util.ShutDownTracker
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.metrics.Meter
-import io.opentelemetry.api.trace.Tracer
-import io.opentelemetry.exporter.jaeger.JaegerGrpcSpanExporter
-import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.sdk.OpenTelemetrySdk
+import io.opentelemetry.sdk.metrics.SdkMeterProvider
+import io.opentelemetry.sdk.metrics.export.MetricExporter
+import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.sdk.trace.SdkTracerProvider
-import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
-import io.opentelemetry.sdk.trace.export.SpanExporter
 import io.opentelemetry.semconv.resource.attributes.ResourceAttributes
+import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.annotations.ApiStatus
 import java.nio.file.Path
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 /**
@@ -25,16 +29,16 @@ import java.util.concurrent.TimeUnit
  * [Manual Instrumentation](https://opentelemetry.io/docs/instrumentation/java/manual/#create-spans-with-events).
  */
 @ApiStatus.Experimental
+@ApiStatus.Internal
 object TraceManager {
   private var sdk: OpenTelemetry = OpenTelemetry.noop()
-  private var verboseSdk: OpenTelemetry = OpenTelemetry.noop()
+  private var verboseMode: Boolean = false
 
-  fun init() {
+  fun init(mainScope: CoroutineScope) {
     val traceFile = System.getProperty("idea.diagnostic.opentelemetry.file")
     val endpoint = System.getProperty("idea.diagnostic.opentelemetry.otlp")
-    val jaegerEndpoint = System.getProperty("idea.diagnostic.opentelemetry.jaeger")
 
-    if (traceFile == null && endpoint == null && jaegerEndpoint == null) {
+    if (traceFile == null && endpoint == null) {
       // noop
       return
     }
@@ -44,53 +48,91 @@ object TraceManager {
     val serviceVersion = appInfo.build.asStringWithoutProductCode()
     val serviceNamespace = appInfo.build.productCode
 
-    val spanExporters = mutableListOf<SpanExporter>()
+    val spanExporters = mutableListOf<AsyncSpanExporter>()
+    val metricExporters = mutableListOf<MetricExporter>()
     if (traceFile != null) {
-      val jsonSpanExporter = JaegerJsonSpanExporter()
-      JaegerJsonSpanExporter.setOutput(file = Path.of(traceFile),
-                                       serviceName = serviceName,
-                                       serviceVersion = serviceVersion,
-                                       serviceNamespace = serviceNamespace)
-      spanExporters.add(jsonSpanExporter)
-    }
-
-    if (jaegerEndpoint != null) {
-      spanExporters.add(JaegerGrpcSpanExporter.builder().setEndpoint(jaegerEndpoint).build())
+      spanExporters.add(JaegerJsonSpanExporter(file = Path.of(traceFile),
+                                               serviceName = serviceName,
+                                               serviceVersion = serviceVersion,
+                                               serviceNamespace = serviceNamespace))
+      metricExporters.add(CsvMetricsExporter(deriveMetricsFile(traceFile)))
     }
 
     if (endpoint != null) {
-      spanExporters.add(OtlpGrpcSpanExporter.builder().setEndpoint(endpoint).build())
+      spanExporters.add(OtlpSpanExporter(endpoint))
     }
+
+    val resource = Resource.create(Attributes.of(
+      ResourceAttributes.SERVICE_NAME, serviceName,
+      ResourceAttributes.SERVICE_VERSION, serviceVersion,
+      ResourceAttributes.SERVICE_NAMESPACE, serviceNamespace,
+      ResourceAttributes.SERVICE_INSTANCE_ID, DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+    ))
+
+    val otelSdkBuilder = OpenTelemetrySdk.builder()
 
     if (spanExporters.isNotEmpty()) {
       val tracerProvider = SdkTracerProvider.builder()
-        .addSpanProcessor(BatchSpanProcessor.builder(SpanExporter.composite(spanExporters)).build())
-        .setResource(Resource.create(Attributes.of(
-          ResourceAttributes.SERVICE_NAME, serviceName,
-          ResourceAttributes.SERVICE_VERSION, serviceVersion,
-          ResourceAttributes.SERVICE_NAMESPACE, serviceNamespace
-        )))
+        .addSpanProcessor(BatchSpanProcessor(mainScope = mainScope, spanExporters = spanExporters))
+        .setResource(resource)
         .build()
-      sdk = OpenTelemetrySdk.builder()
-        .setTracerProvider(tracerProvider)
-        .buildAndRegisterGlobal()
 
-      val useVerboseSdk = System.getProperty("idea.diagnostic.opentelemetry.verbose")
-      if (useVerboseSdk?.toBooleanStrictOrNull() == true) {
-        verboseSdk = sdk
+      otelSdkBuilder.setTracerProvider(tracerProvider)
+
+      ShutDownTracker.getInstance().registerShutdownTask {
+        tracerProvider.shutdown().join(10, TimeUnit.SECONDS)
       }
-
-      ShutDownTracker.getInstance().registerShutdownTask(Runnable {
-        tracerProvider?.forceFlush()?.join(10, TimeUnit.SECONDS)
-        JaegerJsonSpanExporter.finish()
-      })
     }
+
+    if (metricExporters.isNotEmpty()) {
+      // no SpanExporter.composite() analog available
+      assert(metricExporters.size == 1) {
+        "Only single MetricsExporter supported so far, but got: $metricExporters"
+      }
+      val metricsReader = PeriodicMetricReader.builder(metricExporters.first())
+        .setInterval(Duration.ofMinutes(1)) // == default value, but to be explicit
+        .build()
+
+      val meterProvider = SdkMeterProvider.builder()
+        .registerMetricReader(metricsReader)
+        .setResource(resource)
+        .build()
+
+      otelSdkBuilder.setMeterProvider(meterProvider)
+
+      ShutDownTracker.getInstance().registerShutdownTask(meterProvider::shutdown)
+    }
+
+    sdk = otelSdkBuilder.buildAndRegisterGlobal()
+
+    val useVerboseSdk = System.getProperty("idea.diagnostic.opentelemetry.verbose")
+    verboseMode = useVerboseSdk?.toBooleanStrictOrNull() == true
+  }
+
+
+  private fun deriveMetricsFile(traceFile: String): String {
+    val sessionLocalDateTime = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault())
+    val dateTime = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss.SSS").format(sessionLocalDateTime)
+    return (if (traceFile.endsWith(".json")) traceFile.replace(Regex(".json$"), "") else traceFile) + ".metrics.$dateTime.csv"
   }
 
   /**
-   * We do not provide default tracer - we enforce using of separate scopes for subsystems.
+   * Method creates a tracer with the scope name.
+   * Separate tracers define different scopes, and as result separate main nodes in the result data.
+   * It is expected that for different subsystems different tracers would be used, to isolate the results.
+   *
+   * @param verbose provides a way to disable by default some tracers.
+   *    Such tracers will be created only if additional system property "verbose" is set to true.
+   *
    */
   @JvmOverloads
-  fun getTracer(scopeName: String, verbose: Boolean = false): Tracer = (if (verbose) verboseSdk else sdk).getTracer(scopeName)
+  fun getTracer(scopeName: String, verbose: Boolean = false): IJTracer {
+    return wrapTracer(scopeName, sdk.getTracer(scopeName), verbose, verboseMode)
+  }
+
+  fun noopTracer(): IJTracer {
+    return IJNoopTracer
+  }
+
   fun getMeter(scopeName: String): Meter = sdk.getMeter(scopeName)
 }

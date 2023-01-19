@@ -1,29 +1,34 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.wm.impl.headertoolbar
 
+import com.intellij.icons.AllIcons
 import com.intellij.ide.*
 import com.intellij.ide.impl.ProjectUtilCore
 import com.intellij.ide.plugins.newui.ListPluginComponent
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.*
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.ui.popup.ListPopup
+import com.intellij.openapi.ui.popup.ListPopupStep
+import com.intellij.openapi.ui.popup.ListSeparator
 import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.wm.impl.ToolbarComboWidget
 import com.intellij.ui.GroupHeaderSeparator
 import com.intellij.ui.components.panels.NonOpaquePanel
+import com.intellij.ui.dsl.builder.AlignY
 import com.intellij.ui.dsl.builder.EmptySpacingConfiguration
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.gridLayout.JBGaps
-import com.intellij.ui.dsl.gridLayout.VerticalAlign
 import com.intellij.ui.popup.PopupFactoryImpl
-import com.intellij.ui.popup.PopupState
 import com.intellij.ui.popup.list.ListPopupModel
 import com.intellij.ui.popup.list.SelectablePanel
+import com.intellij.ui.popup.util.PopupImplUtil
 import com.intellij.util.PathUtil
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.NamedColorUtil
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.accessibility.AccessibleContextUtil
 import java.awt.BorderLayout
@@ -38,22 +43,20 @@ internal val projectKey = Key.create<Project>("project-widget-project")
 
 internal class ProjectWidget(private val presentation: Presentation) : ToolbarComboWidget() {
 
-  private val popupState = PopupState.forPopup()
   private val project: Project?
     get() = presentation.getClientProperty(projectKey)
 
   init {
     presentation.addPropertyChangeListener { updateWidget() }
+    rightIcons = listOf(AllIcons.General.ChevronDown)
   }
 
-  private fun updateWidget() {
+  override fun updateWidget() {
     text = presentation.text
     toolTipText = presentation.description
   }
 
-  override fun doExpand(e: InputEvent) {
-    if (popupState.isShowing || popupState.isRecentlyHidden) return
-
+  override fun doExpand(e: InputEvent?) {
     val dataContext = DataManager.getInstance().getDataContext(this)
     val anActionEvent = AnActionEvent.createFromInputEvent(e, ActionPlaces.PROJECT_WIDGET_POPUP, null, dataContext)
     val step = createStep(createActionGroup(anActionEvent))
@@ -72,13 +75,13 @@ internal class ProjectWidget(private val presentation: Presentation) : ToolbarCo
       }
     }
 
-    project?.let { createPopup(it, step, renderer) }?.showAligned()
+    project?.let { createPopup(it, step, renderer) }?.showUnderneathOf(this)
   }
 
   private fun createPopup(it: Project, step: ListPopupStep<Any>, renderer: Function<ListCellRenderer<Any>, ListCellRenderer<out Any>>): ListPopup {
     val res = JBPopupFactory.getInstance().createListPopup(it, step, renderer)
+    PopupImplUtil.setPopupToggleButton(res, this)
     res.setRequestFocus(false)
-    popupState.prepareToShow(res)
     return res
   }
 
@@ -141,7 +144,7 @@ internal class ProjectWidget(private val presentation: Presentation) : ToolbarCo
         customizeSpacingConfiguration(EmptySpacingConfiguration()) {
           row {
             icon(RecentProjectsManagerBase.getInstanceEx().getProjectIcon(projectPath, true))
-              .verticalAlign(VerticalAlign.TOP)
+              .align(AlignY.TOP)
               .customize(JBGaps(right = 8))
 
             panel {
@@ -149,7 +152,7 @@ internal class ProjectWidget(private val presentation: Presentation) : ToolbarCo
                 nameLbl = label(action.projectNameToDisplay ?: "")
                   .customize(JBGaps(bottom = 4))
                   .applyToComponent {
-                    foreground = if (isSelected) UIUtil.getListSelectionForeground(true) else UIUtil.getListForeground()
+                    foreground = if (isSelected) NamedColorUtil.getListSelectionForeground(true) else UIUtil.getListForeground()
                   }.component
               }
               row {
@@ -168,7 +171,7 @@ internal class ProjectWidget(private val presentation: Presentation) : ToolbarCo
       }
 
       val result = SelectablePanel.wrap(content, JBUI.CurrentTheme.Popup.BACKGROUND)
-      PopupUtil.configSelectablePanel(result)
+      PopupUtil.configListRendererFlexibleHeight(result)
       if (isSelected) {
         result.selectionColor = ListPluginComponent.SELECTION_COLOR
       }

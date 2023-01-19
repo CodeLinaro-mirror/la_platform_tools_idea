@@ -6,6 +6,7 @@ import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.model.ModelBranch;
 import com.intellij.model.ModelBranchImpl;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.project.Project;
@@ -51,7 +52,7 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager implement
     myManager = PsiManager.getInstance(project);
     myAdditionalIndexableFileSet = new AdditionalIndexableFileSet(project);
 
-    myDefaultResolveScopesCache = ConcurrentFactoryMap.create(this::createScopeByFile, ContainerUtil::createConcurrentWeakKeySoftValueMap);
+    myDefaultResolveScopesCache = ConcurrentFactoryMap.create(key -> ReadAction.compute(() -> createScopeByFile(key)), ContainerUtil::createConcurrentWeakKeySoftValueMap);
 
     myProject.getMessageBus().connect(this).subscribe(ANY_PSI_CHANGE_TOPIC, new AnyPsiChangeListener() {
       @Override
@@ -247,7 +248,8 @@ public final class ResolveScopeManagerImpl extends ResolveScopeManager implement
                                                                            @NotNull CustomEntityProjectModelInfoProvider<T> provider,
                                                                            @NotNull EntityStorage snapshot) {
     Sequence<T> entities = snapshot.entities(provider.getEntityClass());
-    for (CustomEntityProjectModelInfoProvider.LibraryRoots<T> libraryRoots : SequencesKt.asIterable(provider.getLibraryRoots(entities))) {
+    for (CustomEntityProjectModelInfoProvider.LibraryRoots<T> libraryRoots :
+      SequencesKt.asIterable(provider.getLibraryRoots(entities, snapshot))) {
       if (VfsUtilCore.isUnder(file, new HashSet<>(libraryRoots.sources)) &&
           !VfsUtilCore.isUnder(file, new HashSet<>(libraryRoots.excluded))) {
         return true;

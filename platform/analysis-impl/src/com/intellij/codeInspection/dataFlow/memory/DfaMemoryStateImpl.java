@@ -177,6 +177,11 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
   }
 
   @Override
+  public int getStackSize() {
+    return myStack.size();
+  }
+
+  @Override
   public void push(@NotNull DfaValue value) {
     assert value.getFactory() == myFactory : value;
     myCachedHash = null;
@@ -791,20 +796,20 @@ public class DfaMemoryStateImpl implements DfaMemoryState {
     DfType leftConstraint = binOp.getDfType();
     DfType rightConstraint = binOp.getDfType();
     switch (binOp.getOperation()) {
-      case PLUS:
+      case PLUS -> {
         leftConstraint = appliedRange.eval(rightDfType, LongRangeBinOp.MINUS);
         rightConstraint = appliedRange.eval(leftDfType, LongRangeBinOp.MINUS);
-        break;
-      case MINUS:
+      }
+      case MINUS -> {
         leftConstraint = rightDfType.eval(appliedRange, LongRangeBinOp.PLUS);
         rightConstraint = leftDfType.eval(appliedRange, LongRangeBinOp.MINUS);
-        break;
-      case MOD:
+      }
+      case MOD -> {
         Long value = rightDfType.getRange().getConstantValue();
         if (value != null) {
           leftConstraint = leftDfType.meetRange(LongRangeSet.fromRemainder(value, extractRange(targetRange)));
         }
-        break;
+      }
     }
     return meetDfType(left, leftDfType.meet(leftConstraint)) && meetDfType(right, rightDfType.meet(rightConstraint));
   }

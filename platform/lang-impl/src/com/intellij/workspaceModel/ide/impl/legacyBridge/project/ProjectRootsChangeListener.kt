@@ -7,13 +7,15 @@ import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.util.indexing.EntityIndexingServiceEx
+import com.intellij.util.indexing.IndexableFilesIndex
 import com.intellij.util.indexing.roots.IndexableEntityProvider
-import com.intellij.util.indexing.roots.IndexableFilesIndex
+import com.intellij.util.indexing.roots.IndexableFilesIndexImpl
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleDependencyIndexImpl
 import com.intellij.workspaceModel.ide.legacyBridge.ModuleDependencyIndex
 import com.intellij.workspaceModel.storage.EntityChange
 import com.intellij.workspaceModel.storage.VersionedStorageChange
 import com.intellij.workspaceModel.storage.WorkspaceEntity
-import com.intellij.workspaceModel.storage.bridgeEntities.api.*
+import com.intellij.workspaceModel.storage.bridgeEntities.*
 
 internal class ProjectRootsChangeListener(private val project: Project) {
   fun beforeChanged(event: VersionedStorageChange) {
@@ -28,8 +30,9 @@ internal class ProjectRootsChangeListener(private val project: Project) {
   fun changed(event: VersionedStorageChange) {
     ApplicationManager.getApplication().assertWriteAccessAllowed()
     if (project.isDisposed) return
+    (ModuleDependencyIndex.getInstance(project) as ModuleDependencyIndexImpl).workspaceModelChanged(event);
     if (IndexableFilesIndex.shouldBeUsed()) {
-      IndexableFilesIndex.getInstance(project).workspaceModelChanged(event)
+      IndexableFilesIndexImpl.getInstanceImpl(project).workspaceModelChanged(event)
     }
     val projectRootManager = ProjectRootManager.getInstance(project)
     if (projectRootManager !is ProjectRootManagerBridge) return
@@ -91,6 +94,20 @@ internal class ProjectRootsChangeListener(private val project: Project) {
         is LibraryEntity -> hasDependencyOn(entity, project)
         is LibraryPropertiesEntity -> hasDependencyOn(entity.library, project)
         is ModuleGroupPathEntity, is CustomSourceRootPropertiesEntity -> true
+        is ExcludeUrlEntity -> {
+          val library = entity.library
+          val contentRoot = entity.contentRoot
+          if (library != null) {
+            hasDependencyOn(library, project)
+          }
+          else if (contentRoot != null) {
+            val entityClass = contentRoot::class.java
+            customEntitiesToFireRootsChanged.find { it.isAssignableFrom(entityClass) } != null
+          }
+          else {
+            false
+          }
+        }
         else -> {
           val entityClass = entity::class.java
           customEntitiesToFireRootsChanged.find { it.isAssignableFrom(entityClass) } != null
@@ -99,7 +116,7 @@ internal class ProjectRootsChangeListener(private val project: Project) {
     }
 
     private fun hasDependencyOn(library: LibraryEntity, project: Project): Boolean {
-      return ModuleDependencyIndex.getInstance(project).hasDependencyOn(library.persistentId)
+      return ModuleDependencyIndex.getInstance(project).hasDependencyOn(library.symbolicId)
     }
   }
 }

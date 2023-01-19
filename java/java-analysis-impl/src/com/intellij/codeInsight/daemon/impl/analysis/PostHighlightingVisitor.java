@@ -24,6 +24,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileEditor;
+import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -40,6 +41,7 @@ import com.intellij.psi.impl.PsiClassImplUtil;
 import com.intellij.psi.search.searches.OverridingMethodsSearch;
 import com.intellij.psi.search.searches.SuperMethodsSearch;
 import com.intellij.psi.util.*;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.VisibilityUtil;
 import com.intellij.util.containers.ConcurrentFactoryMap;
 import org.jetbrains.annotations.NotNull;
@@ -75,6 +77,9 @@ class PostHighlightingVisitor {
 
   private void scheduleOptimizeOnDaemonFinished() {
     Disposable daemonDisposable = Disposer.newDisposable();
+    VirtualFile virtualFile = myFile.getVirtualFile();
+    boolean isInContent = virtualFile != null && ModuleUtilCore.projectContainsFile(myProject, virtualFile, false);
+
     // schedule optimise action after all applyInformation() calls
     myProject.getMessageBus().connect(daemonDisposable)
       .subscribe(DaemonCodeAnalyzer.DAEMON_EVENT_TOPIC, new DaemonCodeAnalyzer.DaemonListener() {
@@ -85,7 +90,7 @@ class PostHighlightingVisitor {
             // later because should invoke when highlighting is finished (OptimizeImportsFix relies on that)
             AppUIExecutor.onUiThread().later().withDocumentsCommitted(myProject).execute(() -> {
               if (!myFile.isValid() || !myFile.isWritable()) return;
-              IntentionAction optimizeImportsFix = QuickFixFactory.getInstance().createOptimizeImportsFix(true);
+              IntentionAction optimizeImportsFix = QuickFixFactory.getInstance().createOptimizeImportsFix(true, isInContent);
               if (optimizeImportsFix.isAvailable(myProject, null, myFile)) {
                 optimizeImportsFix.invoke(myProject, null, myFile);
               }
@@ -124,7 +129,8 @@ class PostHighlightingVisitor {
     myDeadCodeInfoType = myDeadCodeKey == null
                          ? HighlightInfoType.UNUSED_SYMBOL
                          : new HighlightInfoType.HighlightInfoTypeImpl(profile.getErrorLevel(myDeadCodeKey, myFile).getSeverity(),
-                                                                       HighlightInfoType.UNUSED_SYMBOL.getAttributesKey());
+                                                                       ObjectUtils.notNull(profile.getEditorAttributes(myDeadCodeKey.toString(), myFile), 
+                                                                                           HighlightInfoType.UNUSED_SYMBOL.getAttributesKey()));
   }
 
   void collectHighlights(@NotNull HighlightInfoHolder result, @NotNull ProgressIndicator progress) {
@@ -142,8 +148,7 @@ class PostHighlightingVisitor {
         List<PsiElement> elements = CollectHighlightsUtil.getElementsInRange(psiRoot, 0, myFile.getTextLength());
         for (PsiElement element : elements) {
           ProgressManager.checkCanceled();
-          if (element instanceof PsiIdentifier) {
-            PsiIdentifier identifier = (PsiIdentifier)element;
+          if (element instanceof PsiIdentifier identifier) {
             HighlightInfo info = processIdentifier(identifier, progress, globalUsageHelper);
             if (info != null) {
               errorFound |= info.getSeverity() == HighlightSeverity.ERROR;
@@ -193,12 +198,17 @@ class PostHighlightingVisitor {
     if (!(myFile instanceof PsiJavaFile)) {
       return false;
     }
-    Function<? super InspectionProfile, ? extends InspectionProfileWrapper> custom = InspectionProfileWrapper.getCustomInspectionProfileWrapper(myFile);
-    InspectionProfileImpl currentProfile = InspectionProjectProfileManager.getInstance(myProject).getCurrentProfile();
-    InspectionProfile profile = custom != null ? custom.apply(currentProfile).getInspectionProfile() : currentProfile;
+    InspectionProfile profile = getCurrentProfile();
     return profile.isToolEnabled(displayKey, myFile) &&
            HighlightingLevelManager.getInstance(myProject).shouldInspect(myFile) &&
            !HighlightingLevelManager.getInstance(myProject).runEssentialHighlightingOnly(myFile);
+  }
+
+  @NotNull
+  private InspectionProfile getCurrentProfile() {
+    Function<? super InspectionProfile, ? extends InspectionProfileWrapper> custom = InspectionProfileWrapper.getCustomInspectionProfileWrapper(myFile);
+    InspectionProfileImpl currentProfile = InspectionProjectProfileManager.getInstance(myProject).getCurrentProfile();
+    return custom != null ? custom.apply(currentProfile).getInspectionProfile() : currentProfile;
   }
 
   @Nullable
@@ -401,8 +411,7 @@ class PostHighlightingVisitor {
     if (PsiUtil.isIgnoredName(parameter.getName())) return null;
     PsiElement declarationScope = parameter.getDeclarationScope();
     QuickFixFactory quickFixFactory = QuickFixFactory.getInstance();
-    if (declarationScope instanceof PsiMethod) {
-      PsiMethod method = (PsiMethod)declarationScope;
+    if (declarationScope instanceof PsiMethod method) {
       if (PsiUtilCore.hasErrorElementChild(method)) return null;
       if ((method.isConstructor() ||
            method.hasModifierProperty(PsiModifier.PRIVATE) ||
@@ -432,7 +441,12 @@ class PostHighlightingVisitor {
       HighlightInfo highlightInfo = checkUnusedParameter(parameter, identifier, null);
       if (highlightInfo != null) {
         if (declarationScope.getParent() instanceof PsiSwitchBlock) {
-          QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createRenameToIgnoredFix(parameter, false));
+          if (variable.getParent() instanceof PsiDeconstructionPattern) {
+            QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createDeleteFix(parameter));
+          }
+          else {
+            QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createRenameToIgnoredFix(parameter, false));
+          }
         }
         else if (!(variable.getPattern() instanceof PsiTypeTestPattern pattern && pattern.getParent() instanceof PsiDeconstructionList)) {
           QuickFixAction.registerQuickFixAction(highlightInfo, quickFixFactory.createDeleteFix(parameter));
@@ -593,18 +607,26 @@ class PostHighlightingVisitor {
   }
 
   private HighlightInfo registerRedundantImport(@NotNull PsiImportStatementBase importStatement, @NotNull HighlightDisplayKey unusedImportKey) {
-    VirtualFile file = PsiUtilCore.getVirtualFile(myFile);
-    Set<String> imports = file != null ? file.getCopyableUserData(ImportsHighlightUtil.IMPORTS_FROM_TEMPLATE) : null;
+    VirtualFile virtualFile = PsiUtilCore.getVirtualFile(myFile);
+    Set<String> imports = virtualFile != null ? virtualFile.getCopyableUserData(ImportsHighlightUtil.IMPORTS_FROM_TEMPLATE) : null;
     boolean predefinedImport = imports != null && imports.contains(importStatement.getText());
     String description = !predefinedImport ? JavaAnalysisBundle.message("unused.import.statement") :
                          JavaAnalysisBundle.message("text.unused.import.in.template");
-    HighlightInfo info = HighlightInfo.newHighlightInfo(JavaHighlightInfoTypes.UNUSED_IMPORT)
+    InspectionProfile profile = getCurrentProfile();
+    HighlightInfoType.HighlightInfoTypeImpl configHighlightType =
+      new HighlightInfoType.HighlightInfoTypeImpl(profile.getErrorLevel(unusedImportKey, myFile).getSeverity(),
+                                                  ObjectUtils.notNull(profile.getEditorAttributes(unusedImportKey.toString(), myFile),
+                                                                      JavaHighlightInfoTypes.UNUSED_IMPORT.getAttributesKey()));
+
+    HighlightInfo info = HighlightInfo.newHighlightInfo(configHighlightType)
         .range(importStatement)
         .descriptionAndTooltip(description)
         .group(GeneralHighlightingPass.POST_UPDATE_ALL)
         .create();
 
-    QuickFixAction.registerQuickFixAction(info, QuickFixFactory.getInstance().createOptimizeImportsFix(false), unusedImportKey);
+    boolean isInContent = virtualFile != null && ModuleUtilCore.projectContainsFile(myProject, virtualFile, false);
+    QuickFixAction.registerQuickFixAction(info, QuickFixFactory.getInstance().createOptimizeImportsFix(false, isInContent), unusedImportKey);
+
     QuickFixAction.registerQuickFixAction(info, QuickFixFactory.getInstance().createEnableOptimizeImportsOnTheFlyFix(), unusedImportKey);
     if (!predefinedImport) myHasRedundantImports = true;
     return info;

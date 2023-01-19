@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.dsl.builder
 
 import com.intellij.openapi.ui.DialogPanel
@@ -16,9 +16,11 @@ import javax.swing.JLabel
 /**
  * Empty label parameter for [Panel.row] method in case label is omitted.
  */
-val EMPTY_LABEL = String()
+@Deprecated("Use \"\" instead of this constant")
+val EMPTY_LABEL = ""
 
 @ApiStatus.NonExtendable
+@JvmDefaultWithCompatibility
 interface Panel : CellBase<Panel> {
 
   override fun visible(isVisible: Boolean): Panel
@@ -32,6 +34,8 @@ interface Panel : CellBase<Panel> {
   override fun horizontalAlign(horizontalAlign: HorizontalAlign): Panel
 
   override fun verticalAlign(verticalAlign: VerticalAlign): Panel
+
+  override fun align(align: Align): Panel
 
   override fun resizableColumn(): Panel
 
@@ -47,14 +51,16 @@ interface Panel : CellBase<Panel> {
   fun indent(init: Panel.() -> Unit): RowsRange
 
   /**
-   * Adds row with [RowLayout.LABEL_ALIGNED] layout and [label]. Use [EMPTY_LABEL] for empty label.
-   * Do not use row(""), because it creates unnecessary label component in layout
+   * Adds row with [RowLayout.LABEL_ALIGNED] layout and [label]. The label can contain mnemonic and is assigned
+   * to the first component in the row via [JLabel.labelFor] property.
+   * Use row("") if label is empty
    */
   fun row(@Nls label: String, init: Row.() -> Unit): Row
 
   /**
-   * Adds row with [RowLayout.LABEL_ALIGNED] layout and [label]. If label is null then
-   * [RowLayout.INDEPENDENT] layout is used
+   * Adds row with [RowLayout.LABEL_ALIGNED] layout and [label]. The label is assigned
+   * to the first component in the row via [JLabel.labelFor] property.
+   * If label is null then [RowLayout.INDEPENDENT] layout is used
    */
   fun row(label: JLabel? = null, init: Row.() -> Unit): Row
 

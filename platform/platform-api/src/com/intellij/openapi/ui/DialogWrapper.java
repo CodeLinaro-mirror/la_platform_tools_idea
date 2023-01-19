@@ -16,6 +16,7 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.client.ClientDisposableProvider;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.help.HelpManager;
 import com.intellij.openapi.project.DumbAwareAction;
@@ -64,8 +65,8 @@ import static javax.swing.JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT;
 import static javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW;
 
 /**
- * The standard base class for modal dialog boxes. The dialog wrapper could be used only on event dispatch thread.
- * In case when the dialog must be created from other threads use
+ * The standard base class for modal dialog boxes. The dialog wrapper should be used from the event dispatch thread only.
+ * In case the dialog must be created from another thread use
  * {@link EventQueue#invokeLater(Runnable)} or {@link EventQueue#invokeAndWait(Runnable)}.
  *
  * @see <a href="http://www.jetbrains.org/intellij/sdk/docs/user_interface_components/dialog_wrapper.html">DialogWrapper on SDK DevGuide</a>
@@ -81,15 +82,11 @@ public abstract class DialogWrapper {
     MODELESS;
 
     public @NotNull Dialog.ModalityType toAwtModality() {
-      switch (this) {
-        case IDE:
-          return Dialog.ModalityType.APPLICATION_MODAL;
-        case PROJECT:
-          return Dialog.ModalityType.DOCUMENT_MODAL;
-        case MODELESS:
-          return Dialog.ModalityType.MODELESS;
-      }
-      throw new IllegalStateException(toString());
+      return switch (this) {
+        case IDE -> Dialog.ModalityType.APPLICATION_MODAL;
+        case PROJECT -> Dialog.ModalityType.DOCUMENT_MODAL;
+        case MODELESS -> Dialog.ModalityType.MODELESS;
+      };
     }
   }
 
@@ -134,7 +131,7 @@ public abstract class DialogWrapper {
    * @deprecated use {@link UIUtil#getErrorForeground()}
    */
   @Deprecated
-  public static final Color ERROR_FOREGROUND_COLOR = UIUtil.getErrorForeground();
+  public static final Color ERROR_FOREGROUND_COLOR = NamedColorUtil.getErrorForeground();
 
   /**
    * The shared instance of default border for dialog's content pane.
@@ -353,7 +350,7 @@ public abstract class DialogWrapper {
   }
 
   /**
-   * Allow disabling continuous validation.
+   * Allows disabling continuous validation.
    * When disabled {@link #initValidation()} needs to be invoked after every change of the dialog to validate.
    *
    * @return {@code false} to disable continuous validation
@@ -557,7 +554,7 @@ public abstract class DialogWrapper {
     }
 
     JComponent result = createSouthPanel(leftSideButtons, rightSideButtons, addHelpToLeftSide);
-    if (ApplicationManager.getApplication() != null) {
+    if (ApplicationManager.getApplication() != null && LoadingState.COMPONENTS_REGISTERED.isOccurred()) {
       Touchbar.setButtonActions(result, leftSideButtons, rightSideButtons, null);
     }
     return result;
@@ -1248,7 +1245,21 @@ public abstract class DialogWrapper {
       private int myHeight;
 
       @Override
-      public void componentResized(ComponentEvent event) {
+      public void componentResized(ComponentEvent e) {
+        resize(e);
+      }
+
+      @Override
+      public void componentShown(ComponentEvent e) {
+        resize(e);
+      }
+
+      @Override
+      public void componentHidden(ComponentEvent e) {
+        resize(e);
+      }
+
+      private void resize(ComponentEvent event) {
         int height = !myErrorText.isVisible() ? 0 : event.getComponent().getHeight();
         if (height != myHeight) {
           myHeight = height;
@@ -1266,7 +1277,7 @@ public abstract class DialogWrapper {
         }
       }
     };
-    myErrorText.myLabel.addComponentListener(resizeListener);
+    myErrorText.addComponentListener(resizeListener);
     Disposer.register(myDisposable, () -> myErrorText.myLabel.removeComponentListener(resizeListener));
 
     myRoot.setLayout(createRootLayout());
@@ -1403,7 +1414,7 @@ public abstract class DialogWrapper {
       // null if headless
       JRootPane rootPane = getRootPane();
       myValidationAlarm.addRequest(validateRequest, myValidationDelay,
-                                   ApplicationManager.getApplication() == null ? null :
+                                   (ApplicationManager.getApplication() == null || !LoadingState.COMPONENTS_REGISTERED.isOccurred()) ? null :
                                    rootPane != null ? ModalityState.stateForComponent(rootPane) :
                                    ModalityState.current());
     }
@@ -1657,7 +1668,7 @@ public abstract class DialogWrapper {
     ensureEventDispatchThread();
     registerKeyboardShortcuts();
 
-    Disposable uiParent = ApplicationManager.getApplication();
+    Disposable uiParent = ClientDisposableProvider.getCurrentDisposable();
     if (uiParent != null) { // may be null if no app yet (license agreement)
       Disposer.register(uiParent, myDisposable); // ensure everything is disposed on app quit
     }
@@ -1852,7 +1863,7 @@ public abstract class DialogWrapper {
   }
 
   private void recordAction(String name, AWTEvent event) {
-    if (event instanceof KeyEvent && ApplicationManager.getApplication() != null) {
+    if (event instanceof KeyEvent && ApplicationManager.getApplication() != null && LoadingState.COMPONENTS_REGISTERED.isOccurred()) {
       //noinspection deprecation
       ActionsCollector.getInstance().record(name, (KeyEvent)event, getClass());
     }
@@ -1983,7 +1994,7 @@ public abstract class DialogWrapper {
         continue;
       }
 
-      Color color = info.warning ? MessageType.WARNING.getTitleForeground() : UIUtil.getErrorForeground();
+      Color color = info.warning ? MessageType.WARNING.getTitleForeground() : NamedColorUtil.getErrorForeground();
       htmlBuilder
         .append(
           HtmlChunk.raw(info.message)

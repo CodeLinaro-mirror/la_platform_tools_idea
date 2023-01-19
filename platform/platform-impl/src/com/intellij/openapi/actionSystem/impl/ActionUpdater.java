@@ -37,6 +37,7 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.concurrency.BoundedTaskExecutor;
 import com.intellij.util.containers.*;
 import com.intellij.util.ui.EDT;
+import io.opentelemetry.context.Context;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.AsyncPromise;
@@ -51,6 +52,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import static com.intellij.diagnostic.telemetry.TraceKt.computeWithSpan;
+import static com.intellij.diagnostic.telemetry.TraceKt.runWithSpan;
 
 final class ActionUpdater {
   private static final Logger LOG = Logger.getInstance(ActionUpdater.class);
@@ -116,7 +120,6 @@ final class ActionUpdater {
     myEventTransform = eventTransform;
     myLaterInvocator = laterInvocator;
     myPreCacheSlowDataKeys = Utils.isAsyncDataContext(dataContext) && !Registry.is("actionSystem.update.actions.suppress.dataRules.on.edt");
-    myForcedUpdateThread = Registry.is("actionSystem.update.actions.async.unsafe") ? ActionUpdateThread.BGT : null;
     myRealUpdateStrategy = new UpdateStrategy(
       action -> updateActionReal(action),
       group -> callAction(group, Op.getChildren, () -> doGetChildren(group, createActionEvent(orDefault(group, myUpdatedPresentations.get(group))))));
@@ -176,16 +179,20 @@ final class ActionUpdater {
       ProgressManager.checkCanceled();
     }
     if (isEDT || !shallEDT) {
-      long start = System.nanoTime();
-      try (AccessToken ignored = ProhibitAWTEvents.start(operationName)) {
-        return call.get();
-      }
-      finally {
-        long elapsed = TimeoutUtil.getDurationMillis(start);
-        if (elapsed > 1000) {
-          LOG.warn(elapsedReport(elapsed, isEDT, operationName));
+      return computeWithSpan(Utils.getTracer(true), isEDT ? "edt-op" : "bgt-op", span -> {
+        span.setAttribute(Utils.OT_OP_KEY, operationName);
+        long start = System.nanoTime();
+        try (AccessToken ignored = ProhibitAWTEvents.start(operationName)) {
+          return call.get();
         }
-      }
+        finally {
+          long elapsed = TimeoutUtil.getDurationMillis(start);
+          span.end();
+          if (elapsed > 1000) {
+            LOG.warn(elapsedReport(elapsed, isEDT, operationName));
+          }
+        }
+      });
     }
     if (PopupMenuPreloader.isToSkipComputeOnEDT(myPlace)) {
       throw new ComputeOnEDTSkipped();
@@ -215,40 +222,45 @@ final class ActionUpdater {
       long start = System.nanoTime();
       FList<String> prevStack = ourInEDTActionOperationStack;
       ourInEDTActionOperationStack = prevStack.prepend(operationName);
-      try {
-        return ProgressManager.getInstance().runProcess(() -> {
-          boolean prevNoRules = ourNoRulesInEDTSection;
-          try (AccessToken ignored = ProhibitAWTEvents.start(operationName)) {
-            ourNoRulesInEDTSection = noRulesInEDT;
-            return call.get();
-          }
-          finally {
-            ourNoRulesInEDTSection = prevNoRules;
-          }
-        }, ProgressWrapper.wrap(progress));
-      }
-      finally {
-        ourInEDTActionOperationStack = prevStack;
-        myCurEDTPerformMillis = TimeoutUtil.getDurationMillis(start);
-        edtTracesRef.set(ActionUpdateEdtExecutor.ourEDTExecTraces.get());
-      }
+      return computeWithSpan(Utils.getTracer(true), "edt-op", span -> {
+        span.setAttribute(Utils.OT_OP_KEY, operationName);
+
+        try {
+          return ProgressManager.getInstance().runProcess(() -> {
+            boolean prevNoRules = ourNoRulesInEDTSection;
+            try (AccessToken ignored = ProhibitAWTEvents.start(operationName)) {
+              ourNoRulesInEDTSection = noRulesInEDT;
+              return call.get();
+            }
+            finally {
+              ourNoRulesInEDTSection = prevNoRules;
+            }
+          }, ProgressWrapper.wrap(progress));
+        }
+        finally {
+          ourInEDTActionOperationStack = prevStack;
+          myCurEDTPerformMillis = TimeoutUtil.getDurationMillis(start);
+          edtTracesRef.set(ActionUpdateEdtExecutor.ourEDTExecTraces.get());
+        }
+      });
     };
     try {
-      return computeOnEdt(supplier);
+      return computeOnEdt(Context.current().wrapSupplier(supplier));
     }
     finally {
-      if (myCurEDTWaitMillis > 200) {
+      if (myCurEDTWaitMillis > 300) {
         LOG.warn(myCurEDTWaitMillis + " ms to grab EDT for " + operationName);
       }
-      if (myCurEDTPerformMillis > 200) {
-        Throwable throwable = new Throwable(elapsedReport(myCurEDTPerformMillis, true, operationName) + OLD_EDT_MSG_SUFFIX);
+      if (myCurEDTPerformMillis > 300) {
+        Throwable throwable = PluginException.createByClass(
+          elapsedReport(myCurEDTPerformMillis, true, operationName) + OLD_EDT_MSG_SUFFIX, null, action.getClass());
         FList<Throwable> edtTraces = edtTracesRef.get();
         // do not report pauses without EDT traces (e.g. due to debugging)
         if (edtTraces != null && edtTraces.size() > 0) {
           for (Throwable trace : edtTraces) {
             throwable.addSuppressed(trace);
           }
-          LOG.error(PluginException.createByClass(throwable, action.getClass()));
+          LOG.error(throwable);
         }
         else {
           LOG.warn(throwable);
@@ -377,7 +389,7 @@ final class ActionUpdater {
     ourPromises.add(promise);
     boolean isFastTrack = myLaterInvocator != null && SlowOperations.isInsideActivity(SlowOperations.FAST_TRACK);
     Executor executor = isFastTrack ? ourFastTrackExecutor : ourCommonExecutor;
-    executor.execute(() -> {
+    executor.execute(Context.current().wrap(() -> {
       Ref<Computable<Void>> applyRunnableRef = Ref.create();
       try (AccessToken ignored = ClientId.withClientId(clientId)) {
         BackgroundTaskUtil.runUnderDisposeAwareIndicator(disposableParent, () -> {
@@ -402,7 +414,7 @@ final class ActionUpdater {
           LOG.error(new Throwable("'" + myPlace + "' update exited incorrectly (" + !applyRunnableRef.isNull() + ")"));
         }
       }
-    });
+    }));
     return promise;
   }
 
@@ -448,21 +460,33 @@ final class ActionUpdater {
   private void ensureSlowDataKeysPreCached(@NotNull Object action, @NotNull String targetOperationName) {
     if (!myPreCacheSlowDataKeys) return;
     String operationName = "precache-slow-data@" + targetOperationName;
+
     long start = System.nanoTime();
-    for (DataKey<?> key : DataKey.allKeys()) {
-      try {
-        myDataContext.getData(key);
-      }
-      catch (ProcessCanceledException ex) {
-        throw ex;
-      }
-      catch (Throwable ex) {
-        LOG.error(ex);
-      }
+    try {
+      runWithSpan(Utils.getTracer(true), "precache-slow-data", span -> {
+        span.setAttribute(Utils.OT_OP_KEY, operationName);
+
+        for (DataKey<?> key : DataKey.allKeys()) {
+          try {
+            myDataContext.getData(key);
+          }
+          catch (ProcessCanceledException ex) {
+            throw ex;
+          }
+          catch (Throwable ex) {
+            LOG.error(ex);
+          }
+        }
+        myPreCacheSlowDataKeys = false;
+      });
     }
-    myPreCacheSlowDataKeys = false;
-    long elapsed = TimeoutUtil.getDurationMillis(start);
-    if (elapsed > 200 && ActionPlaces.isShortcutPlace(myPlace)) {
+    finally {
+      logTimeProblemForPreCached(action, operationName, TimeoutUtil.getDurationMillis(start));
+    }
+  }
+
+  private void logTimeProblemForPreCached(@NotNull Object action, String operationName, long elapsed) {
+    if (elapsed > 300 && ActionPlaces.isShortcutPlace(myPlace)) {
       LOG.error(PluginException.createByClass(elapsedReport(elapsed, false, operationName) + OLD_EDT_MSG_SUFFIX, null, action.getClass()));
     }
     else if (elapsed > 3000) {
@@ -702,6 +726,7 @@ final class ActionUpdater {
   }
 
   private static AnAction @NotNull [] doGetChildren(@NotNull ActionGroup group, @Nullable AnActionEvent e) {
+    if (ApplicationManager.getApplication().isDisposed()) return AnAction.EMPTY_ARRAY;
     try {
       return group.getChildren(e);
     }

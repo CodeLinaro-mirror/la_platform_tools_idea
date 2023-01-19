@@ -177,6 +177,10 @@ data class IDETestContext(
     addSystemProperty("idea.skip.indices.initialization", value)
   }
 
+  fun enableAsyncProfiler() = addVMOptionsPatch {
+    addSystemProperty("integrationTests.profiler", "async")
+  }
+
   fun doRefreshAfterJpsLibraryDownloaded(value: Boolean = true) = addVMOptionsPatch {
     addSystemProperty("idea.do.refresh.after.jps.library.downloaded", value)
   }
@@ -270,6 +274,9 @@ data class IDETestContext(
 
   fun internalMode(value: Boolean = true) = addVMOptionsPatch { addSystemProperty("idea.is.internal", value) }
 
+  /**
+   * Cleans .idea and removes all the .iml files for project
+   */
   fun prepareProjectCleanImport(): IDETestContext {
     return removeIdeaProjectDirectory().removeAllImlFilesInProject()
   }

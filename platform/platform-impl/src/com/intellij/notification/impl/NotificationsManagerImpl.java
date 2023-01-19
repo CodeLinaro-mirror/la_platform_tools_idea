@@ -188,13 +188,10 @@ public final class NotificationsManagerImpl extends NotificationsManager {
     }
 
     switch (type) {
-      case NONE:
+      case NONE -> {
         if (LOG.isDebugEnabled()) LOG.debug("not shown (type=NONE): " + notification);
-        return;
-
-      case STICKY_BALLOON:
-      case BALLOON:
-      default:
+      }
+      case STICKY_BALLOON, BALLOON -> {
         Balloon balloon = notifyByBalloon(notification, type, project);
         if (balloon == null && LOG.isDebugEnabled()) LOG.debug("not shown (no balloon): " + notification);
         if (project != null && !project.isDefault() && (!settings.isShouldLog() || type == NotificationDisplayType.STICKY_BALLOON)) {
@@ -212,9 +209,8 @@ public final class NotificationsManagerImpl extends NotificationsManager {
             });
           }
         }
-        break;
-
-      case TOOL_WINDOW:
+      }
+      case TOOL_WINDOW -> {
         MessageType messageType = notification.getType() == NotificationType.ERROR ? MessageType.ERROR :
                                   notification.getType() == NotificationType.WARNING ? MessageType.WARNING :
                                   MessageType.INFO;
@@ -263,6 +259,9 @@ public final class NotificationsManagerImpl extends NotificationsManager {
                 if (action != null) {
                   Object source = e.getSource();
                   DataContext context = source instanceof Component ? DataManager.getInstance().getDataContext((Component)source) : null;
+                  if (source instanceof JComponent component) {
+                    Notification.setDataProvider(notification, component);
+                  }
                   Notification.fire(notification, action, context);
                   NotificationCollector.getInstance()
                     .logNotificationActionInvoked(project, notification, action, NotificationCollector.NotificationPlace.TOOL_WINDOW);
@@ -282,6 +281,7 @@ public final class NotificationsManagerImpl extends NotificationsManager {
           .notifyByBalloon(toolWindowId, messageType, messageBody, notification.getIcon(), listener);
 
         NotificationCollector.getInstance().logToolWindowNotificationShown(project, notification);
+      }
     }
   }
 
@@ -773,6 +773,7 @@ public final class NotificationsManagerImpl extends NotificationsManager {
             .logNotificationActionInvoked(null, notification, action, NotificationCollector.NotificationPlace.BALLOON);
           Notification.fire(notification, action, DataManager.getInstance().getDataContext(button));
         });
+        Notification.setDataProvider(notification, button);
 
         actionPanel.checkActionWidth = actionsSize > 1;
 
@@ -840,6 +841,9 @@ public final class NotificationsManagerImpl extends NotificationsManager {
         .logNotificationActionInvoked(null, notification, _action, NotificationCollector.NotificationPlace.BALLOON);
       Notification.fire(notification, _action, DataManager.getInstance().getDataContext(link));
     }, action) {
+      {
+        Notification.setDataProvider(notification, this);
+      }
       @Override
       protected Color getTextColor() {
         return NotificationsUtil.getLinkButtonForeground();

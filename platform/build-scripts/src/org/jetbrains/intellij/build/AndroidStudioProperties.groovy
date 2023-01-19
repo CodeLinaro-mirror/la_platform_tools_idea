@@ -37,7 +37,7 @@ import static org.jetbrains.intellij.build.impl.PluginLayout.plugin
 @CompileStatic
 class AndroidStudioProperties extends BaseIdeaProperties {
 
-  private static final List<String> INHERITED_PLUGINS = ProductModulesLayout.DEFAULT_BUNDLED_PLUGINS + BaseIdeaPropertiesKt.BUNDLED_PLUGIN_MODULES
+  private static final List<String> INHERITED_PLUGINS = BaseIdeaPropertiesKt.IDEA_BUNDLED_PLUGINS + "intellij.javaFX.community"
 
   private static final List<String> EXTRA_PLUGINS = List.of(
     // Android Studio: package CIDR plugins. This list is based on what we have been shipping in Android Studio
@@ -69,7 +69,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     "intellij.platform.tracing.ide",
     "intellij.searchEverywhereMl",
     "intellij.statsCollector",
-    "intellij.vcs.git.featuresTrainer",
     "intellij.xpath",
     "intellij.xslt.debugger",
     KotlinPluginBuilder.MAIN_KOTLIN_PLUGIN_MODULE,
@@ -95,7 +94,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     includeIntoSourcesArchiveFilter = { JpsModule module, BuildContext buildContext -> true }
     additionalIdeJvmArguments = ["-XX:FlightRecorderOptions=stackdepth=256"]
 
-    productLayout.productApiModules = BaseIdeaPropertiesKt.JAVA_IDE_API_MODULES
+    productLayout.productApiModules = BaseIdeaPropertiesKt.JAVA_IDE_API_MODULES + ["intellij.cidr.common.testFramework.core"]
     productLayout.productImplementationModules = BaseIdeaPropertiesKt.JAVA_IDE_IMPLEMENTATION_MODULES +
                                                   ["intellij.platform.duplicates.analysis", "intellij.platform.structuralSearch", "intellij.platform.main"] -
                                                   ["intellij.platform.jps.model.impl", "intellij.platform.jps.model.serialization"]
@@ -111,7 +110,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = false
 
-    List<PluginLayout> inheritedPluginLayouts = new ArrayList<>(CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS)
+    List<PluginLayout> inheritedPluginLayouts = new ArrayList<>(CommunityRepositoryModules.INSTANCE.COMMUNITY_REPOSITORY_PLUGINS)
     // Remove plugin layouts that reference modules that do not exist in our fork.
     inheritedPluginLayouts.removeAll {
       it.mainModule in EXCLUDED_PLUGINS || it.mainModule == "intellij.python.community.plugin"
@@ -124,7 +123,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         it.withModule("intellij.cidr.debugger.backend", it.mainJarName)
         it.withModule("intellij.cidr.debugger.commandInterpreterLang", it.mainJarName)
         it.withModule("intellij.cidr.core", it.mainJarName)
-        it.withModule("intellij.cidr.util", it.mainJarName)
         it.withModule("intellij.cidr.util.execution", it.mainJarName)
         it.withModule("intellij.cidr.util.serializer", it.mainJarName)
         it.withModule("intellij.cidr.util.ui", it.mainJarName)
@@ -136,6 +134,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         it.withModule("intellij.cidr.workspaceModel", it.mainJarName)
         it.withModule("intellij.cidr.lang.base", it.mainJarName)
         it.withModule("intellij.cidr.execution", it.mainJarName)
+        it.withModule("intellij.cidr.util", it.mainJarName)
         // Note the following are in CLionProperties.groovy but we don't include them since
         // they were never shipped with Android Studio before.
         //   * intellij.cidr.toolchains
@@ -149,9 +148,6 @@ class AndroidStudioProperties extends BaseIdeaProperties {
         it.withModule("intellij.cidr.common", it.mainJarName)
         it.withModule("intellij.cidr.runner", it.mainJarName)
         it.withModule("intellij.cmake.psi", it.mainJarName)
-        // The cidr test framework is included in the IDE base in Clion. But we
-        // include it here to support writing tests in plugins.
-        it.withModule("intellij.cidr.common.testFramework.core", it.mainJarName)
       },
       plugin("intellij.c.plugin") {
         it.withModule("intellij.c", it.mainJarName)
@@ -169,28 +165,28 @@ class AndroidStudioProperties extends BaseIdeaProperties {
   @CompileDynamic
   Object copyAdditionalFiles(BuildContext buildContext, String targetDirectory, Continuation continuation) {
 
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot)
+    new FileSet(buildContext.paths.communityHomeDir)
       .include("LICENSE.txt")
       .include("NOTICE.txt")
       .copyToDir(Path.of(targetDirectory))
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot.resolve("build/conf/ideaCE/common/bin"))
+    new FileSet(buildContext.paths.communityHomeDir.resolve("build/conf/ideaCE/common/bin"))
       .includeAll()
       .copyToDir(Path.of(targetDirectory, "bin"))
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/lldb/helpers"))
+    new FileSet(buildContext.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/lldb/helpers"))
       .includeAll()
       .copyToDir(Path.of(targetDirectory, "bin/lldb/helpers"))
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/helpers"))
+    new FileSet(buildContext.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/helpers"))
       .includeAll()
       .copyToDir(Path.of(targetDirectory, "bin/helpers"))
 
     // Android Studio: copy CIDR license to CIRR plugins
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot)
+    new FileSet(buildContext.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
       .copyToDir(Path.of(targetDirectory, "plugins/c-clangd/lib/LICENSE.txt"))
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot)
+    new FileSet(buildContext.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
       .copyToDir(Path.of(targetDirectory, "plugins/c-plugin/lib/LICENSE.txt"))
-    new FileSet(buildContext.paths.communityHomeDir.communityRoot)
+    new FileSet(buildContext.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
       .copyToDir(Path.of(targetDirectory, "plugins/cidr-base-plugin/lib/LICENSE.txt"))
 
@@ -226,7 +222,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       @Override
       @CompileDynamic
       void copyAdditionalFilesBlocking(BuildContext buildContext, String targetDirectory) {
-        new FileSet(buildContext.paths.communityHomeDir.communityRoot.resolve("../../prebuilts/tools/clion/bin/clang/win"))
+        new FileSet(buildContext.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/win"))
           .includeAll()
           .copyToDir(Path.of(targetDirectory, "plugins/c-clangd/bin/clang/win"))
       }
@@ -249,7 +245,7 @@ class AndroidStudioProperties extends BaseIdeaProperties {
       @Override
       @CompileDynamic
       void copyAdditionalFiles(BuildContext buildContext, Path targetDirectory, JvmArchitecture arch) {
-        new FileSet(buildContext.paths.communityHomeDir.communityRoot.resolve("../../prebuilts/tools/clion/bin/clang/linux"))
+        new FileSet(buildContext.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/linux"))
           .includeAll()
           .copyToDir(targetDirectory.resolve("plugins/c-clangd/bin/clang/linux"))
       }
@@ -277,10 +273,9 @@ class AndroidStudioProperties extends BaseIdeaProperties {
     @Override
     @CompileDynamic
     void copyAdditionalFilesBlocking(BuildContext buildContext, String targetDirectory) {
-      new FileSet(buildContext.paths.communityHomeDir.communityRoot.resolve("../../prebuilts/tools/clion/bin/clang/mac"))
+      new FileSet(buildContext.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/mac"))
         .includeAll()
         .copyToDir(Path.of(targetDirectory, "plugins/c-clangd/bin/clang/mac"))
-      extraExecutables = ExtensionsKt.persistentListOf("plugins/c-clangd/bin/clang/mac/clangd", "plugins/c-clangd/bin/clang/mac/clang-tidy")
     }
   }
 

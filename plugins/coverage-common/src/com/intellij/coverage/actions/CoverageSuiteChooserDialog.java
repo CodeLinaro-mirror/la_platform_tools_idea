@@ -90,7 +90,9 @@ public class CoverageSuiteChooserDialog extends DialogWrapper {
     group.add(new AddExternalSuiteAction());
     group.add(new DeleteSuiteAction());
     group.add(new SwitchEngineAction());
-    return ActionManager.getInstance().createActionToolbar("CoverageSuiteChooser", group, true).getComponent();
+    final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar("CoverageSuiteChooser", group, true);
+    toolbar.setTargetComponent(mySuitesTree);
+    return toolbar.getComponent();
   }
 
   @Override
@@ -385,7 +387,7 @@ public class CoverageSuiteChooserDialog extends DialogWrapper {
   private class SwitchEngineAction extends ComboBoxAction {
     @NotNull
     @Override
-    protected DefaultActionGroup createPopupActionGroup(JComponent button) {
+    protected DefaultActionGroup createPopupActionGroup(@NotNull JComponent button, @NotNull DataContext context) {
       final DefaultActionGroup engChooser = new DefaultActionGroup();
       for (final CoverageEngine engine : collectEngines()) {
         engChooser.add(new AnAction(engine.getPresentableText()) {

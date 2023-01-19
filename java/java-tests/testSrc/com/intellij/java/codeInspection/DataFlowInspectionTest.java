@@ -18,9 +18,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * @author peter
- */
 public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   @NotNull
   @Override
@@ -645,7 +642,6 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testCompoundAssignment() { doTest(); }
   public void testNumericCast() { doTest(); }
   public void testEnumValues() { doTest(); }
-  public void testEmptyCollection() { doTest(); }
   public void testAssertNullEphemeral() { doTest(); }
   public void testNotNullAnonymousConstructor() { doTest(); }
   public void testCaughtNPE() { doTest(); }
@@ -724,4 +720,6 @@ public class DataFlowInspectionTest extends DataFlowInspectionTestCase {
   public void testNestedVersusSuper() { doTest(); }
   public void testChangeFieldUsedInPureMethod() { doTest(); }
   public void testSuppression() { doTest(); }
+  public void testRewiringSubclassMethod() { doTest(); }
+  public void testTryWithResourcesCloseThrows() { doTest(); }
 }

@@ -13,12 +13,14 @@ import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.ScalableIcon;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.ui.icons.CopyableIcon;
+import com.intellij.ui.icons.ReplaceableIcon;
 import com.intellij.ui.icons.RowIcon;
 import com.intellij.ui.scale.ScaleType;
 import com.intellij.util.Function;
 import com.intellij.util.IconUtil;
-import com.intellij.util.SlowOperations;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.concurrency.EdtScheduledExecutorService;
+import com.intellij.util.ui.EDT;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.JBScalableIcon;
 import com.intellij.util.ui.tree.TreeUtil;
@@ -31,6 +33,8 @@ import java.awt.*;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 public final class DeferredIconImpl<T> extends JBScalableIcon implements DeferredIcon, RetrievableIcon, IconWithToolTip, CopyableIcon {
@@ -53,19 +57,17 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
   private long myLastCalcTime;
   private long myLastTimeSpent;
 
+  private AtomicLong myModificationCount = new AtomicLong(0);
+
   private static final ExecutorService ourIconCalculatingExecutor =
     AppExecutorUtil.createBoundedApplicationPoolExecutor("IconCalculating Pool", 1);
 
   private final @Nullable BiConsumer<? super DeferredIcon, ? super Icon> myEvalListener;
 
   private DeferredIconImpl(@NotNull DeferredIconImpl<T> icon) {
-    this(icon, icon.myDelegateIcon);
-  }
-
-  private DeferredIconImpl(@NotNull DeferredIconImpl<T> icon, @NotNull Icon delegateIcon) {
     super(icon);
-    myDelegateIcon = delegateIcon;
-    myScaledDelegateIcon = delegateIcon;
+    myDelegateIcon = icon.myDelegateIcon;
+    myScaledDelegateIcon = icon.myDelegateIcon;
     myScaledIconCache = null;
     myEvaluator = icon.myEvaluator;
     myIsScheduled = icon.myIsScheduled;
@@ -76,6 +78,7 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
     myLastCalcTime = icon.myLastCalcTime;
     myLastTimeSpent = icon.myLastTimeSpent;
     myEvalListener = icon.myEvalListener;
+    myModificationCount = icon.myModificationCount;
   }
 
   DeferredIconImpl(Icon baseIcon,
@@ -99,12 +102,15 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
     this(baseIcon, param, needReadAction, false, t -> evaluator.fun(t), null);
   }
 
+  @Override
+  public long getModificationCount() {
+    return myModificationCount.get();
+  }
+
   @NotNull
   @Override
-  public DeferredIconImpl<T> replaceBy(@NotNull IconReplacer replacer) {
-    DeferredIconImpl<T> result = new DeferredIconImpl<>(this, replacer.replaceIcon(myDelegateIcon));
-    result.myScaledDelegateIcon = replacer.replaceIcon(myScaledDelegateIcon);
-    return result;
+  public Icon replaceBy(@NotNull IconReplacer replacer) {
+    return new DeferredIconAfterReplace<>(this, replacer);
   }
 
   @Override
@@ -165,10 +171,16 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
       scaledDelegateIcon.paintIcon(c, g, x, y);
     }
 
-    if (isDone() || myIsScheduled || PowerSaveMode.isEnabled()) {
-      return;
+    if (needScheduleEvaluation()) {
+      scheduleEvaluation(c, x, y);
     }
-    scheduleEvaluation(c, x, y);
+  }
+
+  private boolean needScheduleEvaluation() {
+    if (isDone() || myIsScheduled || PowerSaveMode.isEnabled()) {
+      return false;
+    }
+    return true;
   }
 
   @VisibleForTesting
@@ -181,18 +193,15 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
       final Icon[] evaluated = new Icon[1];
 
       final long startTime = System.currentTimeMillis();
+      boolean success = true;
       if (myNeedReadAction) {
-        boolean result = ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(() -> {
+        success = ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(() -> {
           IconDeferrerImpl.evaluateDeferred(() -> evaluated[0] = evaluate());
           if (myAutoUpdatable) {
             myLastCalcTime = System.currentTimeMillis();
             myLastTimeSpent = myLastCalcTime - startTime;
           }
         });
-        if (!result) {
-          myIsScheduled = false;
-          return;
-        }
       }
       else {
         IconDeferrerImpl.evaluateDeferred(() -> evaluated[0] = evaluate());
@@ -202,7 +211,18 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
         }
       }
       final Icon result = evaluated[0];
+      if (!success || result == null) {
+        myIsScheduled = false;
+        EdtScheduledExecutorService.getInstance().schedule(() -> {
+          if (needScheduleEvaluation()) {
+            scheduleEvaluation(c, x, y);
+          }
+        }, MIN_AUTO_UPDATE_MILLIS, TimeUnit.MILLISECONDS);
+        return;
+      }
+
       myScaledDelegateIcon = result;
+      myModificationCount.incrementAndGet();
       checkDelegationDepth();
 
       boolean shouldRevalidate = Registry.is("ide.tree.deferred.icon.invalidates.cache") && myScaledDelegateIcon.getIconWidth() != oldWidth;
@@ -244,9 +264,10 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
     if (isDone()) {
       return myScaledDelegateIcon;
     }
-    try (var ignored = SlowOperations.allowSlowOperations(SlowOperations.RENDERING)) {
-      return evaluate();
+    if (EDT.isCurrentThreadEdt()) {
+      return myScaledDelegateIcon;
     }
+    return evaluate();
   }
 
   public boolean isNeedReadAction() {
@@ -348,5 +369,49 @@ public final class DeferredIconImpl<T> extends JBScalableIcon implements Deferre
   @Override
   public String toString() {
     return "Deferred. Base=" + myScaledDelegateIcon;
+  }
+
+
+  /**
+   * Later it may be needed to implement more interfaces here. Ideally the same as in the DeferredIconImpl itself.
+   */
+  private static class DeferredIconAfterReplace<T> implements ReplaceableIcon {
+    private final @NotNull DeferredIconImpl<T> myOriginal;
+    private @NotNull Icon myOriginalEvaluatedIcon;
+    private final @NotNull IconReplacer myReplacer;
+    private @NotNull Icon myResultIcon;
+
+    DeferredIconAfterReplace(@NotNull DeferredIconImpl<T> original, @NotNull IconReplacer replacer) {
+      myOriginal = original;
+      myOriginalEvaluatedIcon = myOriginal.myScaledDelegateIcon;
+      myReplacer = replacer;
+      myResultIcon = myReplacer.replaceIcon(myOriginalEvaluatedIcon);
+    }
+
+    @Override
+    public void paintIcon(Component c, Graphics g, int x, int y) {
+      if (myOriginal.needScheduleEvaluation()) {
+        myOriginal.scheduleEvaluation(c, x, y);
+      } else if (myOriginalEvaluatedIcon != myOriginal.myScaledDelegateIcon) {
+        myOriginalEvaluatedIcon = myOriginal.myScaledDelegateIcon;
+        myResultIcon = myReplacer.replaceIcon(myOriginalEvaluatedIcon);
+      }
+      myResultIcon.paintIcon(c, g, x, y);
+    }
+
+    @Override
+    public int getIconWidth() {
+      return myResultIcon.getIconWidth();
+    }
+
+    @Override
+    public int getIconHeight() {
+      return myResultIcon.getIconHeight();
+    }
+
+    @Override
+    public @NotNull Icon replaceBy(@NotNull IconReplacer replacer) {
+      return replacer.replaceIcon(myOriginal);
+    }
   }
 }

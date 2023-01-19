@@ -51,6 +51,8 @@ internal class FileTestFixtureImpl(
     fixtureRoot = createFixtureRoot(relativePath)
     fixtureStateFile = createFixtureStateFile()
 
+    val oldState = readFixtureState()
+
     installFixtureFilesWatcher()
 
     val configuration = createFixtureConfiguration()
@@ -60,14 +62,12 @@ internal class FileTestFixtureImpl(
       .toSet()
 
     withSuppressedErrors {
-      repairFixtureCaches()
-      dumpFixtureState()
+      repairFixtureCaches(oldState)
     }
-
+    dumpFixtureState()
 
     withSuppressedErrors {
       configureFixtureCaches(configuration)
-      root.refreshAndWait()
     }
 
     isInitialized = true
@@ -99,8 +99,7 @@ internal class FileTestFixtureImpl(
     }
   }
 
-  private fun repairFixtureCaches() {
-    val state = readFixtureState()
+  private fun repairFixtureCaches(state: State) {
     val isInitialized = state.isInitialized ?: false
     val isSuppressedErrors = state.isSuppressedErrors ?: false
     val errors = state.errors ?: emptyList()
@@ -154,6 +153,7 @@ internal class FileTestFixtureImpl(
         createFiles(configuration.files)
         configuration.builders.forEach { it(root) }
       }
+      root.refreshAndWait()
     }
       .onFailureCatching { invalidateFixtureCaches() }
       .getOrThrow()
@@ -262,13 +262,16 @@ internal class FileTestFixtureImpl(
       override fun isProcessRecursively(): Boolean = true
 
       override fun isRelevant(file: VirtualFile, event: VFileEvent): Boolean {
-        val path = file.toNioPath()
         return !file.isDirectory &&
                file != fixtureStateFile &&
                VfsUtil.isAncestor(root, file, false) &&
-               path !in snapshots &&
-               path !in excludedFiles &&
-               excludedFiles.all { !FileUtil.isAncestor(it, path, false) }
+               run {
+                 val path = file.toNioPath() // file can have no nio.Path, check root is its ancestor firstly
+
+                 path !in snapshots &&
+                 path !in excludedFiles &&
+                 excludedFiles.all { !FileUtil.isAncestor(it, path, false) }
+               }
       }
 
       override fun updateFile(file: VirtualFile, event: VFileEvent) {

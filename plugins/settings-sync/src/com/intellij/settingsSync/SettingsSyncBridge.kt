@@ -1,7 +1,11 @@
 package com.intellij.settingsSync
 
+import com.intellij.codeInsight.template.impl.TemplateSettings
+import com.intellij.configurationStore.saveSettings
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.settingsSync.SettingsSyncBridge.PushRequestMode.*
 import com.intellij.util.Alarm
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
@@ -12,6 +16,7 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.annotations.VisibleForTesting
 import java.nio.file.Path
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
@@ -48,6 +53,8 @@ class SettingsSyncBridge(parentDisposable: Disposable,
 
   @RequiresBackgroundThread
   internal fun initialize(initMode: InitMode) {
+    saveIdeSettings()
+
     settingsLog.initialize()
 
     // the queue is not activated initially => events will be collected but not processed until we perform all initialization tasks
@@ -57,6 +64,12 @@ class SettingsSyncBridge(parentDisposable: Disposable,
     applyInitialChanges(initMode)
 
     queue.activate()
+  }
+
+  private fun saveIdeSettings() {
+    runBlockingMaybeCancellable {
+      saveSettings(ApplicationManager.getApplication(), forceSavingAllSettings = true)
+    }
   }
 
   private fun applyInitialChanges(initMode: InitMode) {
@@ -90,6 +103,7 @@ class SettingsSyncBridge(parentDisposable: Disposable,
   }
 
   private fun migrateFromOldStorage(migration: SettingsSyncMigration) {
+    TemplateSettings.getInstance() // Required for live templates to be migrated correctly, see IDEA-303831
     val migrationSnapshot = migration.getLocalDataIfAvailable(appConfigPath)
     if (migrationSnapshot != null) {
       settingsLog.applyIdeState(migrationSnapshot, "Migrate from old settings sync")
@@ -102,12 +116,16 @@ class SettingsSyncBridge(parentDisposable: Disposable,
         val snapshot = updateResult.settingsSnapshot
         masterPosition = settingsLog.forceWriteToMaster(snapshot, "Remote changes to overwrite migration data by settings from cloud")
         SettingsSyncLocalSettings.getInstance().knownAndAppliedServerId = updateResult.serverVersionId
+        pushToIde(settingsLog.collectCurrentSnapshot(), masterPosition)
       }
       else {
         // otherwise we place our migrated data to the cloud
         forcePushToCloud(masterPosition)
+
+        pushToIde(settingsLog.collectCurrentSnapshot(), masterPosition)
+        migration.migrateCategoriesSyncStatus(appConfigPath, SettingsSyncSettings.getInstance())
+        saveIdeSettings()
       }
-      pushToIde(settingsLog.collectCurrentSnapshot(), masterPosition)
       settingsLog.setCloudPosition(masterPosition)
     }
     else {
@@ -136,28 +154,61 @@ class SettingsSyncBridge(parentDisposable: Disposable,
 
     try {
       var pushRequestMode: PushRequestMode = PUSH_IF_NEEDED
+      var mergeAndPushAfterProcessingEvents = true
       while (pendingEvents.isNotEmpty()) {
         val event = pendingEvents.removeAt(0)
         LOG.debug("Processing event $event")
-        if (event is SyncSettingsEvent.IdeChange) {
-          settingsLog.applyIdeState(event.snapshot, "Local changes made in the IDE")
-        }
-        else if (event is SyncSettingsEvent.CloudChange) {
-          settingsLog.applyCloudState(event.snapshot, "Remote changes")
-          SettingsSyncLocalSettings.getInstance().knownAndAppliedServerId = event.serverVersionId
-        }
-        else if (event is SyncSettingsEvent.LogCurrentSettings) {
-          settingsLog.logExistingSettings()
-        }
-        else if (event is SyncSettingsEvent.MustPushRequest) {
-          pushRequestMode = MUST_PUSH
+        when (event) {
+          is SyncSettingsEvent.IdeChange -> {
+            settingsLog.applyIdeState(event.snapshot, "Local changes made in the IDE")
+          }
+          is SyncSettingsEvent.CloudChange -> {
+            settingsLog.applyCloudState(event.snapshot, "Remote changes")
+            SettingsSyncLocalSettings.getInstance().knownAndAppliedServerId = event.serverVersionId
+          }
+          is SyncSettingsEvent.LogCurrentSettings -> {
+            settingsLog.logExistingSettings()
+          }
+          is SyncSettingsEvent.MustPushRequest -> {
+            pushRequestMode = MUST_PUSH
+          }
+          is SyncSettingsEvent.DeleteServerData -> {
+            mergeAndPushAfterProcessingEvents = false
+            stopSyncingAndRollback(previousState)
+            deleteServerData(event.afterDeleting)
+          }
+          SyncSettingsEvent.DeletedOnCloud -> {
+            mergeAndPushAfterProcessingEvents = false
+            stopSyncingAndRollback(previousState)
+          }
+          SyncSettingsEvent.PingRequest -> {}
         }
       }
 
-      mergeAndPush(previousState.idePosition, previousState.cloudPosition, pushRequestMode)
+      if (mergeAndPushAfterProcessingEvents) {
+        mergeAndPush(previousState.idePosition, previousState.cloudPosition, pushRequestMode)
+      }
     }
     catch (exception: Throwable) {
       stopSyncingAndRollback(previousState, exception)
+    }
+  }
+
+  private fun deleteServerData(afterDeleting: (DeleteServerDataResult) -> Unit) {
+    val deletionSnapshot = SettingsSnapshot(SettingsSnapshot.MetaInfo(Instant.now(), getLocalApplicationInfo(), isDeleted = true),
+                                            emptySet(), null)
+    val pushResult = pushToCloud(deletionSnapshot, force = true)
+    LOG.info("Deleting server data. Result: $pushResult")
+    when (pushResult) {
+      is SettingsSyncPushResult.Success -> {
+        afterDeleting(DeleteServerDataResult.Success)
+      }
+      is SettingsSyncPushResult.Error -> {
+        afterDeleting(DeleteServerDataResult.Error(pushResult.message))
+      }
+      SettingsSyncPushResult.Rejected -> {
+        afterDeleting(DeleteServerDataResult.Error("Deletion rejected by server"))
+      }
     }
   }
 
@@ -173,10 +224,18 @@ class SettingsSyncBridge(parentDisposable: Disposable,
                                                                  settingsLog.getCloudPosition(),
                                                                  SettingsSyncLocalSettings.getInstance().knownAndAppliedServerId)
 
-  private fun stopSyncingAndRollback(previousState: CurrentState, exception: Throwable) {
-    LOG.error("Couldn't apply settings. Disabling sync and rolling back.", exception)
+  private fun stopSyncingAndRollback(previousState: CurrentState, exception: Throwable? = null) {
+    if (exception != null) {
+      LOG.error("Couldn't apply settings. Disabling sync and rolling back.", exception)
+      SettingsSyncEventsStatistics.DISABLED_AUTOMATICALLY.log(SettingsSyncEventsStatistics.AutomaticDisableReason.EXCEPTION)
+    }
+    else {
+      LOG.info("Settings Sync is switched off. Rolling back.")
+    }
     SettingsSyncSettings.getInstance().syncEnabled = false
-    SettingsSyncStatusTracker.getInstance().updateOnError(exception.localizedMessage)
+    if (exception != null) {
+      SettingsSyncStatusTracker.getInstance().updateOnError(exception.localizedMessage)
+    }
 
     ideMediator.removeStreamProvider()
     SettingsSyncEvents.getInstance().removeSettingsChangedListener(settingsChangeListener)
@@ -232,7 +291,7 @@ class SettingsSyncBridge(parentDisposable: Disposable,
       })
     }
     else {
-      LOG.info("Nothing to push")
+      LOG.debug("Nothing to push")
     }
   }
 

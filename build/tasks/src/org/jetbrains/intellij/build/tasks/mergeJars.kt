@@ -3,6 +3,9 @@
 @file:Suppress("ReplaceJavaStaticMethodWithKotlinAnalog")
 package org.jetbrains.intellij.build.tasks
 
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.trace.Span
 import org.jetbrains.intellij.build.io.*
 import java.nio.file.Path
 import java.nio.file.PathMatcher
@@ -39,10 +42,10 @@ data class ZipSource(val file: Path,
   }
 }
 
-data class DirSource(val dir: Path,
-                     val excludes: List<PathMatcher> = emptyList(),
+data class DirSource(@JvmField val dir: Path,
+                     @JvmField val excludes: List<PathMatcher> = emptyList(),
                      override val sizeConsumer: IntConsumer? = null,
-                     val prefix: String = "") : Source {
+                     @JvmField val prefix: String = "") : Source {
   override fun toString(): String {
     val shortPath = if (dir.startsWith(USER_HOME)) {
       "~/" + USER_HOME.relativize(dir)
@@ -54,7 +57,8 @@ data class DirSource(val dir: Path,
   }
 }
 
-data class InMemoryContentSource(val relativePath: String, val data: ByteArray, override val sizeConsumer: IntConsumer? = null) : Source {
+data class InMemoryContentSource(@JvmField val relativePath: String,
+                                 @JvmField val data: ByteArray, override val sizeConsumer: IntConsumer? = null) : Source {
   override fun toString() = "inMemory(relativePath=$relativePath)"
 
   override fun equals(other: Any?): Boolean {
@@ -92,14 +96,14 @@ fun buildJar(targetFile: Path,
   val packageIndexBuilder = if (compress) null else PackageIndexBuilder()
   writeNewFile(targetFile) { outChannel ->
     ZipFileWriter(outChannel, if (compress) Deflater(Deflater.DEFAULT_COMPRESSION, true) else null).use { zipCreator ->
-      val uniqueNames = HashSet<String>()
+      val uniqueNames = HashMap<String, Path>()
 
       for (source in sources) {
         val positionBefore = outChannel.position()
         when (source) {
           is DirSource -> {
             val archiver = ZipArchiver(zipCreator, fileAdded = {
-              if (uniqueNames.add(it)) {
+              if (uniqueNames.putIfAbsent(it, source.dir) == null) {
                 packageIndexBuilder?.addFile(it)
                 true
               }
@@ -113,7 +117,7 @@ fun buildJar(targetFile: Path,
           }
 
           is InMemoryContentSource -> {
-            if (!uniqueNames.add(source.relativePath)) {
+            if (uniqueNames.putIfAbsent(source.relativePath, Path.of(source.relativePath)) != null) {
               throw IllegalStateException("in-memory source must always be first " +
                                           "(targetFile=$targetFile, source=${source.relativePath}, sources=${sources.joinToString()})")
             }
@@ -129,13 +133,16 @@ fun buildJar(targetFile: Path,
             val requiresMavenFiles = targetFile.fileName.toString().startsWith("junixsocket-")
             readZipFile(sourceFile) { name, entry ->
               if (nativeFiles != null && isNative(name)) {
+                if (isDuplicated(uniqueNames, name, sourceFile)) {
+                  return@readZipFile
+                }
+
                 nativeFiles.computeIfAbsent(source) { mutableListOf() }.add(name)
               }
               else {
                 val filter = source.filter
                 val isIncluded = if (filter == null) {
                   checkName(name = name,
-                            uniqueNames = uniqueNames,
                             excludes = source.excludes,
                             includeManifest = sources.size == 1,
                             requiresMavenFiles = requiresMavenFiles)
@@ -145,13 +152,17 @@ fun buildJar(targetFile: Path,
                 }
 
                 if (isIncluded) {
+                  if (isDuplicated(uniqueNames, name, sourceFile)) {
+                    return@readZipFile
+                  }
+
                   packageIndexBuilder?.addFile(name)
                   zipCreator.uncompressedData(name, entry.getByteBuffer())
                 }
               }
             }
           }
-        }.let { } // sealed when
+        }
 
         source.sizeConsumer?.accept((zipCreator.resultStream.getChannelPosition() - positionBefore).toInt())
       }
@@ -161,17 +172,30 @@ fun buildJar(targetFile: Path,
   }
 }
 
+private fun isDuplicated(uniqueNames: HashMap<String, Path>, name: String, sourceFile: Path): Boolean {
+  val old = uniqueNames.putIfAbsent(name, sourceFile) ?: return false
+  Span.current().addEvent("$name is duplicated and ignored", Attributes.of(
+    AttributeKey.stringKey("firstSource"), old.toString(),
+    AttributeKey.stringKey("secondSource"), sourceFile.toString(),
+  ))
+  return true
+}
+
 private fun isNative(name: String): Boolean {
   return name.endsWith(".jnilib") ||
          name.endsWith(".dylib") ||
          name.endsWith(".so") ||
+         name.endsWith(".exe") ||
+         name.endsWith(".dll") ||
          name.endsWith(".tbd")
 }
 
+@Suppress("SpellCheckingInspection")
 private fun getIgnoredNames(): Set<String> {
   val set = HashSet<String>()
   // compilation cache on TC
   set.add(".hash")
+  set.add("classpath.index")
   @Suppress("SpellCheckingInspection")
   set.add(".gitattributes")
   set.add("pom.xml")
@@ -181,9 +205,19 @@ private fun getIgnoredNames(): Set<String> {
   set.add("META-INF/services/javax.xml.stream.XMLEventFactory")
   set.add("META-INF/services/javax.xml.parsers.DocumentBuilderFactory")
   set.add("META-INF/services/javax.xml.datatype.DatatypeFactory")
+
+  // duplicates in maven-resolver-transport-http and maven-resolver-transport-file
+  set.add("META-INF/sisu/javax.inject.Named")
+  // duplicates in recommenders-jayes-io-2.5.5 and recommenders-jayes-2.5.5.jar
+  set.add("OSGI-INF/l10n/bundle.properties")
+  // groovy
+  set.add("META-INF/groovy-release-info.properties")
+
   set.add("native-image")
   set.add("native")
   set.add("licenses")
+  set.add("META-INF/LGPL2.1")
+  set.add("META-INF/AL2.0")
   @Suppress("SpellCheckingInspection")
   set.add(".gitkeep")
   set.add(INDEX_FILENAME)
@@ -203,7 +237,6 @@ private fun getIgnoredNames(): Set<String> {
 private val ignoredNames = java.util.Set.copyOf(getIgnoredNames())
 
 private fun checkName(name: String,
-                      uniqueNames: MutableSet<String>,
                       excludes: List<Regex>,
                       includeManifest: Boolean,
                       requiresMavenFiles: Boolean): Boolean {
@@ -213,11 +246,11 @@ private fun checkName(name: String,
          (includeManifest || name != "META-INF/MANIFEST.MF") &&
          !name.startsWith("license/") &&
          !name.startsWith("META-INF/license/") &&
+         !name.startsWith("META-INF/LICENSE-") &&
          !name.startsWith("native-image/") &&
          !name.startsWith("native/") &&
          !name.startsWith("licenses/") &&
          (requiresMavenFiles || (name != "META-INF/maven" && !name.startsWith("META-INF/maven/"))) &&
          !name.startsWith("META-INF/INDEX.LIST") &&
-         (!name.startsWith("META-INF/") || (!name.endsWith(".DSA") && !name.endsWith(".SF") && !name.endsWith(".RSA"))) &&
-         uniqueNames.add(name)
+         (!name.startsWith("META-INF/") || (!name.endsWith(".DSA") && !name.endsWith(".SF") && !name.endsWith(".RSA")))
 }

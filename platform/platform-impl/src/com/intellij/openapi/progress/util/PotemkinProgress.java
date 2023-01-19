@@ -32,8 +32,6 @@ import java.util.function.Consumer;
 /**
  * A progress indicator for write actions. Paints itself explicitly, without resorting to normal Swing's delayed repaint API.
  * Doesn't dispatch Swing events, except for handling manually those that can cancel it or affect the visual presentation.
- *
- * @author peter
  */
 public final class PotemkinProgress extends ProgressWindow implements PingProgress {
   private final Application myApp = ApplicationManager.getApplication();
@@ -67,8 +65,10 @@ public final class PotemkinProgress extends ProgressWindow implements PingProgre
     // and it then just sits in the queue blocking the whole UI until the progress is finished.
 
     //noinspection SpellCheckingInspection
-    return event.toString().contains(",runnable=sun.lwawt.macosx.LWCToolkit") || // [tav] todo: remove in 2022.2
-           event.getClass().getName().equals("sun.awt.AWTThreading$TrackedInvocationEvent"); // see JBR-4208
+    String eventString = event.toString();
+    return eventString.contains(",runnable=sun.lwawt.macosx.LWCToolkit") || // [tav] todo: remove in 2022.2
+           (event.getClass().getName().equals("sun.awt.AWTThreading$TrackedInvocationEvent") // see JBR-4208
+           && !eventString.contains(",runnable=com.intellij.openapi.actionSystem.impl.ActionMenu$$Lambda")); // see IDEA-291469 Menu on macOs is invoked inside checkCanceled
   }
 
   @NotNull

@@ -3,10 +3,7 @@
 
 package org.jetbrains.intellij.build
 
-import kotlinx.collections.immutable.PersistentList
-import kotlinx.collections.immutable.PersistentMap
-import kotlinx.collections.immutable.persistentHashMapOf
-import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.*
 import org.jetbrains.intellij.build.impl.BaseLayout
 import org.jetbrains.intellij.build.impl.LibraryPackMode
 import org.jetbrains.intellij.build.kotlin.KotlinPluginBuilder
@@ -50,8 +47,12 @@ private val BASE_CLASS_VERSIONS = persistentHashMapOf(
   "plugins/xslt-debugger/lib/rt/xslt-debugger-impl-rt.jar" to "1.8",
 )
 
+/**
+ * Default bundled plugins for all editions of IntelliJ IDEA.
+ * See also [JB_BUNDLED_PLUGINS] and [DEFAULT_BUNDLED_PLUGINS].
+ */
 @Suppress("SpellCheckingInspection")
-val BUNDLED_PLUGIN_MODULES: PersistentList<String> = persistentListOf(
+val IDEA_BUNDLED_PLUGINS: PersistentList<String> = JB_BUNDLED_PLUGINS + persistentListOf(
   "intellij.java.plugin",
   "intellij.java.ide.customization",
   "intellij.copyright",
@@ -60,7 +61,6 @@ val BUNDLED_PLUGIN_MODULES: PersistentList<String> = persistentListOf(
   "intellij.emojipicker",
   "intellij.textmate",
   "intellij.editorconfig",
-  "intellij.settingsRepository",
   "intellij.settingsSync",
   "intellij.configurationScript",
   "intellij.yaml",
@@ -86,7 +86,6 @@ val BUNDLED_PLUGIN_MODULES: PersistentList<String> = persistentListOf(
   "intellij.xslt.debugger",
   "intellij.android.plugin",
   "intellij.android.design-plugin",
-  "intellij.javaFX.community",
   "intellij.java.i18n",
   "intellij.ant",
   "intellij.java.guiForms.designer",
@@ -106,7 +105,6 @@ val BUNDLED_PLUGIN_MODULES: PersistentList<String> = persistentListOf(
   "intellij.webp",
   "intellij.grazie",
   "intellij.featuresTrainer",
-  "intellij.vcs.git.featuresTrainer",
   "intellij.lombok",
   "intellij.searchEverywhereMl",
   "intellij.platform.tracing.ide",
@@ -132,6 +130,7 @@ abstract class BaseIdeaProperties : ProductProperties() {
   init {
     @Suppress("LeakingThis")
     configureJetBrainsProduct(this)
+
     productLayout.mainJarName = "idea.jar"
 
     productLayout.withAdditionalPlatformJar(BaseLayout.APP_JAR, "intellij.java.ide.resources")
@@ -174,8 +173,10 @@ abstract class BaseIdeaProperties : ProductProperties() {
       // TODO should be used as regular project library when the issue will be fixed at the Gradle tooling api side https://github.com/gradle/gradle/issues/8431 and the patched class will be removed
       layout.withoutProjectLibrary("Gradle")
 
-      //this library is placed into subdirectory of 'lib' directory in Android plugin layout, so we need to exclude it from the platform layout explicitly
+      // this library is placed into subdirectory of 'lib' directory in Android plugin layout, so we need to exclude it from the platform layout explicitly
       layout.withoutProjectLibrary("layoutlib")
+
+      layout.withoutProjectLibrary("qodana-sarif")
     }
 
     productLayout.compatiblePluginsToIgnore = persistentListOf(

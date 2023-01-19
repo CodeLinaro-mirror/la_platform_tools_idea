@@ -8,7 +8,9 @@ import com.intellij.ide.plugins.RepositoryHelper
 import com.intellij.ide.plugins.advertiser.PluginData
 import com.intellij.ide.plugins.newui.Tags
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.util.text.StringUtil.parseLong
 import com.intellij.openapi.util.text.StringUtil.unquoteString
+import org.jetbrains.annotations.Nls
 import java.util.*
 
 /**
@@ -148,3 +150,43 @@ class MarketplaceBrokenPlugin(
   val originalSince: String? = null,
   val originalUntil: String? = null
 )
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class PluginReviewComment(
+  val id: String = "",
+  val cdate: String = "",
+  val comment: @Nls String = "",
+  val rating: Int = 0,
+  val author: ReviewCommentAuthor = ReviewCommentAuthor(),
+  val plugin: ReviewCommentPlugin = ReviewCommentPlugin()
+) {
+  fun getDate() = parseLong(cdate, 0)
+}
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class ReviewCommentAuthor(
+  val name: @Nls String = ""
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class ReviewCommentPlugin(
+  val link: @Nls String = ""
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class IntellijPluginMetadata(
+  val screenshots: List<String>? = null,
+  val forumUrl: String? = null,
+  val licenseUrl: String? = null,
+  val bugtrackerUrl: String? = null,
+  val documentationUrl: String? = null,
+  val sourceCodeUrl: String? = null) {
+
+  fun toPluginNode(pluginNode: PluginNode) {
+    pluginNode.forumUrl = forumUrl
+    pluginNode.licenseUrl = licenseUrl
+    pluginNode.bugtrackerUrl = bugtrackerUrl
+    pluginNode.documentationUrl = documentationUrl
+    pluginNode.sourceCodeUrl = sourceCodeUrl
+  }
+}

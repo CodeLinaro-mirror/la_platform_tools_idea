@@ -243,7 +243,7 @@ abstract class ProductProperties() {
    * to allow users to customize location of the product runtime (`<PRODUCT>_JDK` variable),
    * *.vmoptions file (`<PRODUCT>_VM_OPTIONS`), `idea.properties` file (`<PRODUCT>_PROPERTIES`).
    */
-  open fun getEnvironmentVariableBaseName(applicationInfo: ApplicationInfoProperties) = applicationInfo.upperCaseProductName
+  open fun getEnvironmentVariableBaseName(appInfo: ApplicationInfoProperties) = appInfo.upperCaseProductName
 
   /**
    * Override this method to copy additional files to distributions of all operating systems.
@@ -294,4 +294,11 @@ abstract class ProductProperties() {
    * It's particularly useful when you want to limit modules used to calculate compatible plugins on the marketplace.
    */
   open fun customizeBuiltinModules(context: BuildContext, builtinModulesFile: Path) {}
+
+  /**
+   * When set to true, invokes keymap and inspections description generators during build.
+   * These generators produce artifacts utilized by documentation
+   * authoring tools and builds.
+   */
+  var buildDocAuthoringAssets: Boolean = false
 }

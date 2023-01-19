@@ -10,7 +10,6 @@ import org.jetbrains.idea.maven.importing.tree.MavenProjectTreeLegacyImporter
 import org.jetbrains.idea.maven.importing.workspaceModel.WorkspaceProjectImporter
 import org.jetbrains.idea.maven.project.*
 import org.jetbrains.idea.maven.utils.MavenLog
-import org.jetbrains.idea.maven.utils.MavenUtil
 import java.util.concurrent.atomic.AtomicInteger
 
 @ApiStatus.Internal
@@ -26,10 +25,10 @@ interface MavenProjectImporter {
                        importModuleGroupsRequired: Boolean,
                        modelsProvider: IdeModifiableModelsProvider,
                        importingSettings: MavenImportingSettings,
-                       dummyModule: Module?,
+                       previewModule: Module?,
                        importingActivity: StructuredIdeActivity): MavenProjectImporter {
       val importer = createImporter(project, projectsTree, projectsToImportWithChanges, importModuleGroupsRequired, modelsProvider,
-                                    importingSettings, dummyModule)
+                                    importingSettings, previewModule)
       return object : MavenProjectImporter {
         override fun importProject(): List<MavenProjectsProcessorTask>? {
           val activity = MavenImportStats.startApplyingModelsActivity(project, importingActivity)
@@ -59,7 +58,7 @@ interface MavenProjectImporter {
                                importModuleGroupsRequired: Boolean,
                                modelsProvider: IdeModifiableModelsProvider,
                                importingSettings: MavenImportingSettings,
-                               dummyModule: Module?): MavenProjectImporter {
+                               previewModule: Module?): MavenProjectImporter {
       if (isImportToWorkspaceModelEnabled(project)) {
         return WorkspaceProjectImporter(projectsTree, projectsToImportWithChanges,
                                         importingSettings, modelsProvider, project)
@@ -70,8 +69,11 @@ interface MavenProjectImporter {
                                               modelsProvider, importingSettings)
       }
 
-      return MavenProjectImporterImpl(project, projectsTree, projectsToImportWithChanges, importModuleGroupsRequired,
-                                      modelsProvider, importingSettings, dummyModule)
+      return MavenProjectLegacyImporter(project, projectsTree,
+                                        projectsToImportWithChanges,
+                                        importModuleGroupsRequired,
+                                        modelsProvider, importingSettings,
+                                        previewModule)
     }
 
     @JvmStatic
@@ -93,7 +95,9 @@ interface MavenProjectImporter {
 
     @JvmStatic
     fun isImportToWorkspaceModelEnabled(project: Project?): Boolean {
-      if ("true" == System.getProperty("maven.import.to.workspace.model")) return true
+      val property = System.getProperty("maven.import.to.workspace.model")
+      if ("true" == property) return true
+      if ("false" == property) return false
       if (project == null) return false
       return MavenProjectsManager.getInstance(project).importingSettings.isWorkspaceImportEnabled
     }

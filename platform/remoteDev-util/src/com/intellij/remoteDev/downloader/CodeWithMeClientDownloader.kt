@@ -6,6 +6,7 @@ import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.internal.statistic.StructuredIdeActivity
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.debug
@@ -16,13 +17,16 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.io.FileSystemUtil
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.remoteDev.RemoteDevSystemSettings
 import com.intellij.remoteDev.RemoteDevUtilBundle
 import com.intellij.remoteDev.connection.CodeWithMeSessionInfoProvider
 import com.intellij.remoteDev.connection.StunTurnServerInfo
 import com.intellij.remoteDev.util.*
+import com.intellij.util.PlatformUtils
 import com.intellij.util.application
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.concurrency.EdtScheduledExecutorService
@@ -48,11 +52,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.net.URI
-import java.nio.file.Files
-import java.nio.file.LinkOption
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
+import java.nio.file.*
 import java.nio.file.attribute.FileTime
+import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
@@ -140,9 +142,10 @@ object CodeWithMeClientDownloader {
   }
 
   fun createSessionInfo(clientBuildVersion: String, jreBuild: String?, unattendedMode: Boolean): CodeWithMeSessionInfoProvider {
-    if ("SNAPSHOT" in clientBuildVersion) {
-      LOG.warn(
-        "Thin client download from sources may result in failure due to different sources on host and client, don't forget to update your locally built archive")
+    val isSnapshot = "SNAPSHOT" in clientBuildVersion
+    if (isSnapshot) {
+      LOG.warn("Thin client download from sources may result in failure due to different sources on host and client, " +
+               "don't forget to update your locally built archive")
     }
 
     val bundledJre = isClientWithBundledJre(clientBuildVersion)
@@ -154,29 +157,36 @@ object CodeWithMeClientDownloader {
     }
 
     val hostBuildNumber = buildNumberRegex.find(clientBuildVersion)!!.value
+
     val platformSuffix = if (jreBuildToDownload != null) when {
       SystemInfo.isLinux && CpuArch.isIntel64() -> "-no-jbr.tar.gz"
       SystemInfo.isLinux && CpuArch.isArm64() -> "-no-jbr-aarch64.tar.gz"
-      SystemInfo.isWindows -> ".win.zip"
+      SystemInfo.isWindows && CpuArch.isIntel64() -> ".win.zip"
+      SystemInfo.isWindows && CpuArch.isArm64() -> "-aarch64.win.zip"
       SystemInfo.isMac && CpuArch.isIntel64() -> "-no-jdk.sit"
       SystemInfo.isMac && CpuArch.isArm64() -> "-no-jdk-aarch64.sit"
       else -> null
     } else when {
       SystemInfo.isLinux && CpuArch.isIntel64() -> ".tar.gz"
       SystemInfo.isLinux && CpuArch.isArm64() -> "-aarch64.tar.gz"
-      SystemInfo.isWindows -> ".jbr.win.zip"
+      SystemInfo.isWindows && CpuArch.isIntel64() -> ".jbr.win.zip"
+      SystemInfo.isWindows && CpuArch.isArm64() -> "-aarch64.jbr.win.zip"
       SystemInfo.isMac && CpuArch.isIntel64() -> ".sit"
       SystemInfo.isMac && CpuArch.isArm64() -> "-aarch64.sit"
       else -> null
     } ?: error("Current platform is not supported: OS ${SystemInfo.OS_NAME} ARCH ${SystemInfo.OS_ARCH}")
 
     val clientDistributionName = getClientDistributionName(clientBuildVersion)
-    val clientDownloadUrl = "${config.clientDownloadUrl.toString().trimEnd('/')}/$clientDistributionName-$hostBuildNumber$platformSuffix"
+
+    val clientBuildNumber = if (isSnapshot && config.downloadLatestBuildFromCDNForSnapshotHost) getLatestBuild(hostBuildNumber) else hostBuildNumber
+    val clientDownloadUrl = "${config.clientDownloadUrl.toString().trimEnd('/')}/$clientDistributionName-$clientBuildNumber$platformSuffix"
 
     val jreDownloadUrl = if (jreBuildToDownload != null) {
       val platformString = when {
-        SystemInfo.isLinux -> "linux-x64"
-        SystemInfo.isWindows -> "windows-x64"
+        SystemInfo.isLinux && CpuArch.isIntel64() -> "linux-x64"
+        SystemInfo.isLinux && CpuArch.isArm64() -> "linux-aarch64"
+        SystemInfo.isWindows && CpuArch.isIntel64() -> "windows-x64"
+        SystemInfo.isWindows && CpuArch.isArm64() -> "windows-aarch64"
         SystemInfo.isMac && CpuArch.isIntel64() -> "osx-x64"
         SystemInfo.isMac && CpuArch.isArm64() -> "osx-aarch64"
         else -> error("Current platform is not supported")
@@ -218,6 +228,22 @@ object CodeWithMeClientDownloader {
 
     LOG.info("Generated session info: $sessionInfo")
     return sessionInfo
+  }
+
+  private fun getLatestBuild(hostBuildNumber: String): String {
+    val majorVersion = hostBuildNumber.substringBefore('.')
+    val latestBuildTxtFileName = "$majorVersion-LAST-BUILD.txt"
+    val latestBuildTxtUri = "${config.clientDownloadUrl.toASCIIString().trimEnd('/')}/$latestBuildTxtFileName"
+
+    val tempFile = Files.createTempFile(latestBuildTxtFileName, "")
+    return try {
+      downloadWithRetries(URI(latestBuildTxtUri), tempFile, EmptyProgressIndicator()).let {
+        tempFile.readText().trim()
+      }
+    }
+    finally {
+      Files.delete(tempFile)
+    }
   }
 
   private val currentlyDownloading = ConcurrentHashMap<Path, CompletableFuture<Boolean>>()
@@ -450,7 +476,7 @@ object CodeWithMeClientDownloader {
       if (!guestSucceeded || !jdkSucceeded) error("Guest or jdk was not downloaded")
 
       LOG.info("Download of guest and jdk succeeded")
-      return ExtractedJetBrainsClientData(clientDir = guestData.targetPath, jreDir = jdkData?.targetPath)
+      return ExtractedJetBrainsClientData(clientDir = guestData.targetPath, jreDir = jdkData?.targetPath, version = sessionInfoResponse.hostBuildNumber)
     }
     catch(e: ProcessCanceledException) {
       LOG.info("Download was canceled")
@@ -565,8 +591,13 @@ object CodeWithMeClientDownloader {
   private fun findLauncherUnderCwmGuestRoot(guestRoot: Path): Pair<Path, List<String>> {
     when {
       SystemInfo.isWindows -> {
-        val launcherNames = listOf("jetbrains_client64.exe", "cwm_guest64.exe", "intellij_client64.exe", "intellij_client.bat")
-        return findLauncher(guestRoot, launcherNames)
+        val batchLaunchers = listOf("intellij_client.bat", "jetbrains_client.bat")
+        val exeLaunchers = listOf("jetbrains_client64.exe", "cwm_guest64.exe", "intellij_client64.exe")
+        val eligibleLaunchers = if (Registry.`is`("com.jetbrains.gateway.client.use.batch.launcher", false))
+          batchLaunchers
+        else
+          exeLaunchers + batchLaunchers
+        return findLauncher(guestRoot, eligibleLaunchers)
       }
 
       SystemInfo.isUnix -> {
@@ -604,11 +635,18 @@ object CodeWithMeClientDownloader {
       Files.setLastModifiedTime(path, FileTime.fromMillis(System.currentTimeMillis()))
     }
 
-    val parameters = listOf("thinClient", url)
+    val parameters =  listOf("thinClient", url)
     val processLifetimeDef = lifetime.createNested()
 
-    val vmOptionsFile = executable.resolveSibling("jetbrains_client64.vmoptions")
-    service<JetBrainsClientDownloaderConfigurationProvider>().patchVmOptions(vmOptionsFile)
+    val vmOptionsFile = if (SystemInfoRt.isMac) {
+      // macOS stores vmoptions file inside .app file – we can't edit it
+      Paths.get(
+        PathManager.getDefaultConfigPathFor(PlatformUtils.JETBRAINS_CLIENT_PREFIX + extractedJetBrainsClientData.version),
+        "jetbrains_client.vmoptions"
+      )
+    } else if (SystemInfoRt.isWindows) executable.resolveSibling("jetbrains_client64.exe.vmoptions")
+    else executable.resolveSibling("jetbrains_client64.vmoptions")
+    service<JetBrainsClientDownloaderConfigurationProvider>().patchVmOptions(vmOptionsFile, URI(url))
 
     if (SystemInfo.isWindows) {
       val hProcess = WindowsFileUtil.windowsShellExecute(
@@ -712,15 +750,9 @@ object CodeWithMeClientDownloader {
     return processLifetimeDef.lifetime
   }
 
-  private fun detectMacOsJbrDirectory(root: Path): Path {
-    val jbrDirectory = root.listDirectoryEntries().find { it.nameWithoutExtension.startsWith("jbr") }
-
-    LOG.debug { "JBR directory: $jbrDirectory" }
-    return jbrDirectory ?: error("Unable to find target content directory starts with 'jbr' inside MacOS package: '$root'")
-  }
-
   fun createSymlinkToJdkFromGuest(guestRoot: Path, jdkRoot: Path): Path {
-    val linkTarget = if (SystemInfo.isMac) detectMacOsJbrDirectory(jdkRoot) else detectTrueJdkRoot(jdkRoot)
+    val linkTarget = getJbrDirectory(jdkRoot)
+
     val guestHome = findCwmGuestHome(guestRoot)
     val link = guestHome / "jbr"
     createSymlink(link, linkTarget)
@@ -771,14 +803,29 @@ object CodeWithMeClientDownloader {
     }
   }
 
-  private fun detectTrueJdkRoot(jdkDownload: Path): Path {
-    jdkDownload.toFile().walk(FileWalkDirection.TOP_DOWN).forEach {
-      if (File(it, "bin").isDirectory && File(it, "lib").isDirectory) {
-        return it.toPath()
+  private fun getJbrDirectory(root: Path): Path =
+    tryGetMacOsJbrDirectory(root) ?: tryGetJdkRoot(root) ?: error("Unable to detect jdk content directory in path: '$root'")
+
+
+  private fun tryGetJdkRoot(jdkDownload: Path): Path? {
+    jdkDownload.toFile().walk(FileWalkDirection.TOP_DOWN).forEach { file ->
+      if (File(file, "bin").isDirectory && File(file, "lib").isDirectory) {
+        return file.toPath()
       }
     }
 
-    error("JDK root (bin/lib directories) was not found under $jdkDownload")
+    return null
+  }
+
+  private fun tryGetMacOsJbrDirectory(root: Path): Path? {
+    if (!SystemInfo.isMac) {
+      return null
+    }
+
+    val jbrDirectory = root.listDirectoryEntries().find { it.nameWithoutExtension.startsWith("jbr") }
+
+    LOG.debug { "JBR directory: $jbrDirectory" }
+    return jbrDirectory
   }
 
   fun versionsMatch(hostBuildNumberString: String, localBuildNumberString: String): Boolean {

@@ -8,6 +8,7 @@ import com.intellij.ide.dnd.DnDManager;
 import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.ide.lightEdit.LightEditCompatible;
 import com.intellij.ide.ui.UISettings;
+import com.intellij.ide.ui.laf.MouseDragSelectionEventHandler;
 import com.intellij.internal.statistic.service.fus.collectors.UIEventLogger;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
@@ -26,10 +27,7 @@ import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.actionSystem.*;
 import com.intellij.openapi.editor.actions.CopyAction;
 import com.intellij.openapi.editor.colors.*;
-import com.intellij.openapi.editor.colors.impl.AbstractColorsScheme;
-import com.intellij.openapi.editor.colors.impl.DelegateColorScheme;
-import com.intellij.openapi.editor.colors.impl.EditorFontCacheImpl;
-import com.intellij.openapi.editor.colors.impl.FontPreferencesImpl;
+import com.intellij.openapi.editor.colors.impl.*;
 import com.intellij.openapi.editor.event.*;
 import com.intellij.openapi.editor.ex.*;
 import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper;
@@ -80,6 +78,7 @@ import com.intellij.util.concurrency.EdtExecutorService;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.*;
 import com.intellij.util.ui.update.UiNotifyConnector;
+import kotlin.Unit;
 import org.intellij.lang.annotations.JdkConstants;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.*;
@@ -257,6 +256,10 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   private MyInputMethodHandler myInputMethodRequestsHandler;
   private InputMethodRequests myInputMethodRequestsSwingWrapper;
   private boolean myIsOneLineMode;
+  private final MouseDragSelectionEventHandler mouseDragHandler = new MouseDragSelectionEventHandler(e -> {
+    processMouseDragged(e);
+    return Unit.INSTANCE;
+  });
   private boolean myIsRendererMode;
   private VirtualFile myVirtualFile;
   private boolean myIsColumnMode;
@@ -2438,7 +2441,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
   private void resetMousePointer() {
-    UIUtil.setCursor(myEditorComponent, UIUtil.getTextCursor(getBackgroundColor()));
+    UIUtil.setCursor(myEditorComponent, NamedColorUtil.getTextCursor(getBackgroundColor()));
   }
 
   private void validateMousePointer(@NotNull MouseEvent e, @Nullable EditorMouseEvent editorMouseEvent) {
@@ -2485,14 +2488,14 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
         result = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR);
       }
     }
-    return result == null ? UIUtil.getTextCursor(getBackgroundColor()) : result;
+    return result == null ? NamedColorUtil.getTextCursor(getBackgroundColor()) : result;
   }
 
   private void runMouseDraggedCommand(@NotNull final MouseEvent e) {
     if (myCommandProcessor == null || e.isConsumed() || myMousePressedEvent != null && myMousePressedEvent.isConsumed()) {
       return;
     }
-    myCommandProcessor.executeCommand(myProject, () -> processMouseDragged(e), "", MOUSE_DRAGGED_COMMAND_GROUP,
+    myCommandProcessor.executeCommand(myProject, () -> mouseDragHandler.mouseDragged(e), "", MOUSE_DRAGGED_COMMAND_GROUP,
                                       UndoConfirmationPolicy.DEFAULT, getDocument());
   }
 
@@ -2931,6 +2934,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   public void setOneLineMode(boolean isOneLineMode) {
     if (isOneLineMode == myIsOneLineMode) return;
     myIsOneLineMode = isOneLineMode;
+    mouseDragHandler.setNativeSelectionEnabled(isOneLineMode);
     getScrollPane().setInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT, null);
     JBScrollPane pane = ObjectUtils.tryCast(getScrollPane(), JBScrollPane.class);
     JComponent component = pane == null ? null : pane.getStatusComponent();
@@ -3354,8 +3358,19 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   @Override
   public void setColorsScheme(@NotNull EditorColorsScheme scheme) {
     assertIsDispatchThread();
+    logSchemeChangeIfNeeded(scheme);
     myScheme = scheme;
     reinitSettings();
+  }
+
+  private static void logSchemeChangeIfNeeded(EditorColorsScheme scheme) {
+    if (!LOG.isDebugEnabled() || !(scheme instanceof EditorColorsSchemeImpl)) return;
+    EditorColorsManager colorsManager = ApplicationManager.getApplication().getServiceIfCreated(EditorColorsManager.class);
+    boolean isGlobal = colorsManager != null && colorsManager.getGlobalScheme() == scheme;
+
+    LOG.debug("Will set mutable scheme to editor (isGlobal=%b, presentationMode=%b)"
+                .formatted(isGlobal, UISettings.getInstance().getPresentationMode()));
+    LOG.debug(ExceptionUtil.currentStackTrace());
   }
 
   @Override
@@ -3859,6 +3874,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       }
       requestFocus();
       runMousePressedCommand(e);
+      myInitialMouseEvent = e.isConsumed() ? e : null;
     }
 
     @Override
@@ -4018,8 +4034,6 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     }
 
     private boolean processMousePressed(@NotNull final MouseEvent e) {
-      myInitialMouseEvent = e;
-
       if (myMouseSelectionState != MOUSE_SELECTION_STATE_NONE &&
           System.currentTimeMillis() - myMouseSelectionChangeTimestamp > Registry.intValue(
             "editor.mouseSelectionStateResetTimeout")) {
@@ -4485,6 +4499,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
   private final class MyColorSchemeDelegate extends DelegateColorScheme {
+    private final static float FONT_SIZE_TO_IGNORE = -1f;
     private final FontPreferencesImpl myFontPreferences = new FontPreferencesImpl();
     private final FontPreferencesImpl myConsoleFontPreferences = new FontPreferencesImpl();
     private final Map<TextAttributesKey, TextAttributes> myOwnAttributes = new HashMap<>();
@@ -4492,8 +4507,8 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     private final EditorColorsScheme myCustomGlobalScheme;
     private Map<EditorFontType, Font> myFontsMap;
     private float myMaxFontSize = EditorFontsConstants.getMaxEditorFontSize();
-    private float myFontSize = -1f;
-    private float myConsoleFontSize = -1f;
+    private float myFontSize = FONT_SIZE_TO_IGNORE;
+    private float myConsoleFontSize = FONT_SIZE_TO_IGNORE;
     private String myFaceName;
     private Float myLineSpacing;
     private boolean myFontPreferencesAreSetExplicitly;
@@ -4610,7 +4625,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       if (myFontPreferencesAreSetExplicitly) {
         return myFontPreferences.getSize2D(myFontPreferences.getFontFamily());
       }
-      if (myFontSize == -1f) {
+      if (myFontSize == FONT_SIZE_TO_IGNORE) {
         return getDelegate().getEditorFontSize2D();
       }
       return myFontSize;
@@ -4630,12 +4645,15 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
         LOG.debug("Font size overridden for " + EditorImpl.this, new Throwable());
       }
       myFontPreferencesAreSetExplicitly = false;
-      myFontSize = fontSize;
+
+      if (fontSize == super.getEditorFontSize2D()) myFontSize = FONT_SIZE_TO_IGNORE;
+      else myFontSize = fontSize;
+
       reinitFontsAndSettings();
     }
 
     void resetEditorFontSize() {
-      myFontSize = -1f;
+      myFontSize = FONT_SIZE_TO_IGNORE;
       reinitFonts();
     }
 
@@ -4654,7 +4672,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       }
       myFontPreferencesAreSetExplicitly = true;
       myFaceName = null;
-      myFontSize = -1f;
+      myFontSize = FONT_SIZE_TO_IGNORE;
       preferences.copyTo(myFontPreferences);
       reinitFontsAndSettings();
     }
@@ -4730,7 +4748,9 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
 
     @Override
     public void setConsoleFontSize(float fontSize) {
-      myConsoleFontSize = fontSize;
+      if (fontSize == super.getConsoleFontSize2D()) myConsoleFontSize = FONT_SIZE_TO_IGNORE;
+      else myConsoleFontSize = fontSize;
+
       reinitFontsAndSettings();
     }
 
@@ -4741,7 +4761,7 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
 
     @Override
     public float getConsoleFontSize2D() {
-      return myConsoleFontSize == -1f ? super.getConsoleFontSize2D() : myConsoleFontSize;
+      return myConsoleFontSize == FONT_SIZE_TO_IGNORE ? super.getConsoleFontSize2D() : myConsoleFontSize;
     }
 
     @Override

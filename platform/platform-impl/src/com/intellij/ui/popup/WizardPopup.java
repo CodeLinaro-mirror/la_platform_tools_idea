@@ -40,9 +40,12 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
   protected static final int STEP_X_PADDING = 2;
 
   private final WizardPopup myParent;
+  private boolean alignByParentBounds = true;
 
   protected final PopupStep<Object> myStep;
   protected WizardPopup myChild;
+
+  private  boolean myIsActiveRoot = true;
 
   private final Timer myAutoSelectionTimer =
     TimerUtil.createNamedTimer("Wizard auto-selection", Registry.intValue("ide.popup.auto.delay", 500), this);
@@ -186,7 +189,7 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
     LOG.assertTrue (!isDisposed());
     Rectangle targetBounds = new Rectangle(new Point(aScreenX, aScreenY), getContent().getPreferredSize());
 
-    if (getParent() != null) {
+    if (getParent() != null && alignByParentBounds) {
       final Rectangle parentBounds = getParent().getBounds();
       parentBounds.x += STEP_X_PADDING;
       parentBounds.width -= STEP_X_PADDING * 2;
@@ -200,7 +203,7 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
       ScreenUtil.moveToFit(targetBounds, ScreenUtil.getScreenRectangle(aScreenX + 1, aScreenY + 1), null);
     }
 
-    if (getParent() == null) {
+    if (getParent() == null && myIsActiveRoot) {
       PopupDispatcher.setActiveRoot(this);
     }
     else {
@@ -343,6 +346,14 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
     return myParent;
   }
 
+  public void setAlignByParentBounds(boolean alignByParentBounds) {
+    this.alignByParentBounds = alignByParentBounds;
+  }
+
+  public boolean isAlignByParentBounds() {
+    return alignByParentBounds;
+  }
+
   public PopupStep getStep() {
     return myStep;
   }
@@ -465,6 +476,10 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
     public void componentMoved(final ComponentEvent e) {
       processParentWindowMoved();
     }
+  }
+
+  public void setActiveRoot(boolean activeRoot) {
+    myIsActiveRoot = activeRoot;
   }
 
   @Override

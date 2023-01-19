@@ -38,6 +38,7 @@ import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.util.Alarm;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.*;
@@ -57,7 +58,7 @@ import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.*;
 
-public final class InfoAndProgressPanel extends JPanel implements CustomStatusBarWidget, UISettingsListener {
+public final class InfoAndProgressPanel extends JPanel implements CustomStatusBarWidget, UISettingsListener, Disposable {
   @ApiStatus.Internal
   public enum AutoscrollLimit {
     NOT_ALLOWED, ALLOW_ONCE, UNLIMITED
@@ -94,6 +95,8 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     icon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     icon.setBorder(JBUI.CurrentTheme.StatusBar.Widget.border());
     icon.setToolTipText(ActionsBundle.message("action.ShowProcessWindow.double.click"));
+    Disposer.register(this, icon);
+
     return icon;
   });
 
@@ -284,11 +287,11 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
 
       updateProgressIcon();
 
-      if (myOriginals.size() == 1) {
+      if (myInlinePanel.myIndicator == null) {
         myInlinePanel.updateState(compact);
       }
       else {
-        myInlinePanel.updateState();
+        setInlineProgressByWeight();
       }
       if (myInfos.size() > 1 && Registry.is("ide.windowSystem.autoShowProcessPopup")) {
         openProcessPopup(false);
@@ -337,8 +340,11 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
           hideProcessPopup();
         }
       }
+      else if (myInlinePanel.myIndicator != null && myInlinePanel.myIndicator.getInfo() == progress.getInfo()) {
+        setInlineProgressByWeight();
+      }
       else {
-        myInlinePanel.updateState(createInlineDelegate(myInfos.get(0), myOriginals.get(0), true));
+        myInlinePanel.updateState();
       }
 
       runQuery();
@@ -372,6 +378,32 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     }
 
     return original;
+  }
+
+  private void setInlineProgressByWeight() {
+    synchronized (myInfos) {
+      int size = myInfos.size();
+      Integer[] indexes = new Integer[size];
+      for (int i = 0; i < size; i++) {
+        indexes[i] = i;
+      }
+
+      ContainerUtil.sort(indexes, (index1, index2) -> myInfos.get(index1).getStatusBarIndicatorWeight() -
+                                                      myInfos.get(index2).getStatusBarIndicatorWeight());
+
+      int index = -1;
+
+      for (int i = 0; i < size; i++) {
+        ProgressSuspender suspender = ProgressSuspender.getSuspender(myOriginals.get(indexes[i]));
+        if (suspender == null || !suspender.isSuspended()) {
+          index = i;
+          break;
+        }
+      }
+
+      int resultIndex = indexes[index == -1 ? 0 : index];
+      myInlinePanel.updateState(createInlineDelegate(myInfos.get(resultIndex), myOriginals.get(resultIndex), true));
+    }
   }
 
   private void openProcessPopup(boolean requestFocus) {
@@ -753,6 +785,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
         else {
           suspender.suspendProcess(null);
         }
+        setInlineProgressByWeight();
         (suspender.isSuspended() ? UIEventLogger.ProgressPaused : UIEventLogger.ProgressResumed).log();
       };
     }
@@ -1056,6 +1089,10 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
         return; // e.g. project frame is closed
       }
       if (myIndicator != null) {
+        if (myIndicator == indicator) {
+          updateState();
+          return;
+        }
         remove(myIndicator.getComponent());
       }
 

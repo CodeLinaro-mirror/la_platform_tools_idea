@@ -1,6 +1,7 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.actionSystem.ex;
 
+import com.intellij.diagnostic.PluginException;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.actions.ActionsCollector;
@@ -25,7 +26,6 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.ui.ClientProperty;
-import com.intellij.ui.ComponentUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.containers.ContainerUtil;
@@ -198,8 +198,8 @@ public final class ActionUtil {
     return false;
   }
 
-  static void assertDeprecatedActionGroupFlagsNotChanged(@NotNull ActionGroup group, @NotNull AnActionEvent event,
-                                                         boolean wasPopup, boolean wasHideIfEmpty, boolean wasDisableIfEmpty) {
+  private static void assertDeprecatedActionGroupFlagsNotChanged(@NotNull ActionGroup group, @NotNull AnActionEvent event,
+                                                                 boolean wasPopup, boolean wasHideIfEmpty, boolean wasDisableIfEmpty) {
     boolean warnPopup = wasPopup != group.isPopup(event.getPlace());
     boolean warnHide = wasHideIfEmpty != group.hideIfNoVisibleChildren();
     boolean warnDisable = wasDisableIfEmpty != group.disableIfNoVisibleChildren();
@@ -207,18 +207,21 @@ public final class ActionUtil {
     String operationName = group.getClass().getSimpleName() + "#update (" + group.getClass().getName() + ")";
     if (warnPopup) {
       event.getPresentation().setPopupGroup(!wasPopup); // keep the old logic for a while
-      LOG.error("Calling `setPopup()` in " + operationName + ". " +
-               "Please use `event.getPresentation().setPopupGroup()` instead.");
+      String message = "Calling `setPopup()` in " + operationName + ". " +
+                       "Please use `event.getPresentation().setPopupGroup()` instead.";
+      LOG.error(PluginException.createByClass(message, null, group.getClass()));
     }
     if (warnHide) {
       event.getPresentation().setHideGroupIfEmpty(!wasHideIfEmpty); // keep the old logic for a while
-      LOG.error("Changing `hideIfNoVisibleChildren()` result in " + operationName + ". " +
-               "Please use `event.getPresentation().setHideGroupIfEmpty()` instead.");
+      String message = "Changing `hideIfNoVisibleChildren()` result in " + operationName + ". " +
+                       "Please use `event.getPresentation().setHideGroupIfEmpty()` instead.";
+      LOG.error(PluginException.createByClass(message, null, group.getClass()));
     }
     if (warnHide) {
       event.getPresentation().setDisableGroupIfEmpty(!wasDisableIfEmpty); // keep the old logic for a while
-      LOG.error("Changing `disableIfNoVisibleChildren()` result in " + operationName + ". " +
-               "Please use `event.getPresentation().setHideGroupIfEmpty()` instead.");
+      String message = "Changing `disableIfNoVisibleChildren()` result in " + operationName + ". " +
+                       "Please use `event.getPresentation().setHideGroupIfEmpty()` instead.";
+      LOG.error(PluginException.createByClass(message, null, group.getClass()));
     }
   }
 
@@ -262,7 +265,9 @@ public final class ActionUtil {
   public static boolean lastUpdateAndCheckDumb(@NotNull AnAction action, @NotNull AnActionEvent e, boolean visibilityMatters) {
     Project project = e.getProject();
     if (project != null && PerformWithDocumentsCommitted.isPerformWithDocumentsCommitted(action)) {
-      PsiDocumentManager.getInstance(project).commitAllDocuments();
+      try (AccessToken ignore = SlowOperations.allowSlowOperations(SlowOperations.ACTION_PERFORM)) {
+        PsiDocumentManager.getInstance(project).commitAllDocuments();
+      }
     }
     performDumbAwareUpdate(action, e, true);
 
@@ -287,7 +292,7 @@ public final class ActionUtil {
   /**
    * @deprecated use {@link #performActionDumbAwareWithCallbacks(AnAction, AnActionEvent)}
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public static void performActionDumbAwareWithCallbacks(@NotNull AnAction action, @NotNull AnActionEvent e, @NotNull DataContext context) {
     LOG.assertTrue(e.getDataContext() == context, "event context does not match the argument");
     performActionDumbAwareWithCallbacks(action, e);
@@ -410,11 +415,11 @@ public final class ActionUtil {
   }
 
   public static @NotNull List<AnAction> getActions(@NotNull JComponent component) {
-    return ContainerUtil.notNullize(ComponentUtil.getClientProperty(component, AnAction.ACTIONS_KEY));
+    return ContainerUtil.notNullize(ClientProperty.get(component, AnAction.ACTIONS_KEY));
   }
 
   public static void clearActions(@NotNull JComponent component) {
-    ComponentUtil.putClientProperty(component, AnAction.ACTIONS_KEY, null);
+    ClientProperty.put(component, AnAction.ACTIONS_KEY, null);
   }
 
   public static void copyRegisteredShortcuts(@NotNull JComponent to, @NotNull JComponent from) {

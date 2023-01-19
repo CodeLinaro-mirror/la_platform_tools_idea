@@ -5,7 +5,6 @@ import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.codeInsight.hint.HintManagerImpl;
 import com.intellij.codeInsight.hint.HintUtil;
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.find.FindBundle;
 import com.intellij.find.FindManager;
 import com.intellij.find.FindSettings;
@@ -74,10 +73,7 @@ import com.intellij.usages.rules.UsageFilteringRuleProvider;
 import com.intellij.util.*;
 import com.intellij.util.concurrency.EdtScheduledExecutorService;
 import com.intellij.util.messages.MessageBusConnection;
-import com.intellij.util.ui.GridBag;
-import com.intellij.util.ui.JBInsets;
-import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.*;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
@@ -181,7 +177,6 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
     }
 
     PsiDocumentManager.getInstance(project).commitAllDocuments();
-    FeatureUsageTracker.getInstance().triggerFeatureUsed("navigation.goto.usages");
     DataContext dataContext = e.getDataContext();
     showUsages(project, dataContext, ResolverKt.allTargets(dataContext));
   }
@@ -383,13 +378,14 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
 
     Project project = parameters.project;
     UsageViewImpl usageView = createUsageView(project);
-    UsageViewStatisticsCollector.logSearchStarted(project, usageView, CodeNavigateSource.ShowUsagesPopup);
+    UsageViewStatisticsCollector.logSearchStarted(project, usageView, CodeNavigateSource.ShowUsagesPopup,
+                                                  actionHandler.getTargetLanguage());
     final SearchScope searchScope = actionHandler.getSelectedScope();
     final AtomicInteger outOfScopeUsages = new AtomicInteger();
     AtomicBoolean manuallyResized = new AtomicBoolean();
 
     Predicate<? super Usage> originUsageCheck = originUsageCheck(parameters.editor);
-    var renderer = new ShowUsagesTableCellRenderer(project, originUsageCheck, outOfScopeUsages, searchScope);
+    var renderer = new ShowUsagesTableCellRenderer(originUsageCheck, outOfScopeUsages, searchScope);
     var table = new ShowUsagesTable(renderer, usageView);
 
     addUsageNodes(usageView.getRoot(), usageView, new ArrayList<>());
@@ -692,9 +688,19 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
     @NotNull Project project = parameters.project;
     @NotNull DialogPanel headerPanel = showUsagesPopupData.header.panel;
 
+    SpeedSearchAdvertiser advertiser = new SpeedSearchAdvertiser();
+    String hint = getSecondInvocationHint(actionHandler);
+
+    JPanel advertiserComponent = null;
+    boolean hintAdded = advertiser.addAdvertisement(hint);
+    boolean speedSearchAdded = advertiser.addSpeedSearchAdvertisement() != null;
+    if (hintAdded || speedSearchAdded) {
+      advertiserComponent = advertiser.getComponent();
+    }
+
     PopupChooserBuilder<?> builder = JBPopupFactory.getInstance().createPopupChooserBuilder(table).
       setTitle(showUsagesPopupData.header.getTitle()).
-      setAdText(getSecondInvocationHint(actionHandler)).
+      setAdvertiser(advertiserComponent).
       setMovable(true).
       setResizable(true).
       setCancelKeyEnabled(true).
@@ -1001,6 +1007,10 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
   ) {
     ScopeChooserCombo scopeChooserCombo = new ScopeChooserCombo();
     scopeChooserCombo.getComboBox().putClientProperty("JComboBox.isBorderless", Boolean.TRUE);
+    if (ExperimentalUI.isNewUI()) {
+      scopeChooserCombo.setOpaque(false);
+      scopeChooserCombo.getComboBox().setOpaque(false);
+    }
     scopeChooserCombo
       .initialize(project, false, false, initialScope.getDisplayName(), null)
       .onSuccess(__ -> {
@@ -1018,8 +1028,6 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
         });
       });
     scopeChooserCombo.setButtonVisible(false);
-    scopeChooserCombo.setOpaque(false);
-    scopeChooserCombo.getComboBox().setOpaque(false);
     return scopeChooserCombo;
   }
 

@@ -2,6 +2,7 @@
 package com.intellij.openapi.wm;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.SystemInfo;
@@ -56,7 +57,18 @@ public interface StatusBarWidget extends Disposable {
   }
 
   interface MultipleTextValuesPresentation extends WidgetPresentation {
-    @Nullable("null means the widget is unable to show the popup") ListPopup getPopupStep();
+    /**
+     * @deprecated implement {@link #getPopup()}
+     */
+    @Deprecated(forRemoval = true)
+    default @Nullable("null means the widget is unable to show the popup") ListPopup getPopupStep() {
+      return null;
+    }
+
+    @Nullable("null means the widget is unable to show the popup")
+    default JBPopup getPopup() {
+      return getPopupStep();
+    }
 
     @Nullable @NlsContexts.StatusBarText String getSelectedValue();
 
@@ -67,6 +79,13 @@ public interface StatusBarWidget extends Disposable {
     default @Nullable Icon getIcon() {
       return null;
     }
+
+    /**
+     * @deprecated not used
+     */
+    @Override
+    @Deprecated
+    default @Nullable Consumer<MouseEvent> getClickConsumer() { return null; }
   }
 
   //<editor-fold desc="Deprecated stuff">

@@ -10,9 +10,12 @@ import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.impl.ActionButton;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.colors.EditorColors;
+import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.impl.EditorComponentImpl;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbAwareAction;
+import com.intellij.openapi.project.DumbAwareToggleAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
@@ -140,9 +143,7 @@ public class TextEditorWithPreview extends UserDataHolderBase implements TextEdi
     mySplitter.setFirstComponent(myEditor.getComponent());
     mySplitter.setSecondComponent(myPreview.getComponent());
     mySplitter.setDividerWidth(ExperimentalUI.isNewUI() ? 1 : 2);
-    if (ExperimentalUI.isNewUI()) {
-      mySplitter.getDivider().setBackground(JBColor.border());
-    }
+    mySplitter.getDivider().setBackground(JBColor.lazy(() -> EditorColorsManager.getInstance().getGlobalScheme().getColor(EditorColors.PREVIEW_BORDER_COLOR)));
 
     myToolbarWrapper = createMarkdownToolbarWrapper(mySplitter);
 
@@ -270,15 +271,10 @@ public class TextEditorWithPreview extends UserDataHolderBase implements TextEdi
   @Nullable
   @Override
   public JComponent getPreferredFocusedComponent() {
-    switch (myLayout) {
-      case SHOW_EDITOR_AND_PREVIEW:
-      case SHOW_EDITOR:
-        return myEditor.getPreferredFocusedComponent();
-      case SHOW_PREVIEW:
-        return myPreview.getPreferredFocusedComponent();
-      default:
-        throw new IllegalStateException(myLayout.myId);
-    }
+    return switch (myLayout) {
+      case SHOW_EDITOR_AND_PREVIEW, SHOW_EDITOR -> myEditor.getPreferredFocusedComponent();
+      case SHOW_PREVIEW -> myPreview.getPreferredFocusedComponent();
+    };
   }
 
   @NotNull
@@ -478,7 +474,7 @@ public class TextEditorWithPreview extends UserDataHolderBase implements TextEdi
     group.setPopup(true);
     Presentation presentation = group.getTemplatePresentation();
     presentation.setText(IdeBundle.message("tab.view.modes"));
-    presentation.setIcon(AllIcons.Toolbar.Expand);
+    presentation.setIcon(AllIcons.General.ChevronDown);
     presentation.putClientProperty(ActionButton.HIDE_DROPDOWN_ICON, Boolean.TRUE);
     return group;
   }
@@ -618,7 +614,7 @@ public class TextEditorWithPreview extends UserDataHolderBase implements TextEdi
     }
   }
 
-  private class ChangeEditorSplitAction extends DumbAwareAction {
+  private class ChangeEditorSplitAction extends DumbAwareToggleAction {
     private final boolean myVerticalSplit;
 
     protected ChangeEditorSplitAction(@Nls String text, boolean isVerticalSplit) {
@@ -627,17 +623,16 @@ public class TextEditorWithPreview extends UserDataHolderBase implements TextEdi
     }
 
     @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-      if (TextEditorWithPreview.this.myIsVerticalSplit != myVerticalSplit) {
-        TextEditorWithPreview.this.myIsVerticalSplit = myVerticalSplit;
-        mySplitter.setOrientation(myVerticalSplit);
-      }
+    public boolean isSelected(@NotNull AnActionEvent e) {
+      return TextEditorWithPreview.this.myIsVerticalSplit == myVerticalSplit;
     }
 
     @Override
-    public void update(@NotNull AnActionEvent e) {
-      Icon icon = TextEditorWithPreview.this.myIsVerticalSplit == myVerticalSplit ? AllIcons.Actions.Checked : null;
-      e.getPresentation().setIcon(icon);
+    public void setSelected(@NotNull AnActionEvent e, boolean state) {
+      if (state) {
+        TextEditorWithPreview.this.myIsVerticalSplit = myVerticalSplit;
+        mySplitter.setOrientation(myVerticalSplit);
+      }
     }
 
     @Override

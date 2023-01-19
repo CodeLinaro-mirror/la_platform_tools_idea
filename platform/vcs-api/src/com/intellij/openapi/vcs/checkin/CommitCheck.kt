@@ -5,7 +5,15 @@ import com.intellij.openapi.project.PossiblyDumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.NlsContexts
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vcs.AbstractVcs
 import com.intellij.openapi.vcs.VcsBundle
+import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangesUtil
+import com.intellij.openapi.vcs.changes.CommitContext
+import com.intellij.openapi.vcs.changes.CommitExecutor
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
@@ -24,11 +32,12 @@ import org.jetbrains.annotations.Nls.Capitalization.Sentence
  */
 @ApiStatus.Experimental
 interface CommitCheck : PossiblyDumbAware {
-  fun getExecutionOrder(): ExecutionOrder = ExecutionOrder.LATE
+  fun getExecutionOrder(): ExecutionOrder
 
   /**
    * Indicates if commit check should be run for the commit.
    * E.g. if the corresponding option is enabled in settings.
+   * See [CheckinHandler.getBeforeCheckinConfigurationPanel] and [CheckinHandler.getBeforeCheckinSettings].
    *
    * @return `true` if commit check should be run for the commit and `false` otherwise
    */
@@ -47,7 +56,7 @@ interface CommitCheck : PossiblyDumbAware {
    * @return a commit problem found by the commit check or `null` if no problems found
    */
   @RequiresEdt
-  suspend fun runCheck(): CommitProblem?
+  suspend fun runCheck(commitInfo: CommitInfo): CommitProblem?
 
   enum class ExecutionOrder {
     /**
@@ -63,7 +72,9 @@ interface CommitCheck : PossiblyDumbAware {
     /**
      * Checks to be performed after all modifications are finished.
      */
-    LATE
+    LATE,
+
+    POST_COMMIT
   }
 }
 
@@ -91,13 +102,13 @@ interface CommitProblem {
     if (this is CommitProblemWithDetails) {
       val commit = MessageDialogBuilder.yesNoCancel(VcsBundle.message("checkin.commit.checks.failed"),
                                                     VcsBundle.message("checkin.commit.checks.failed.with.error.message", text))
-        .yesText(VcsBundle.message("checkin.commit.checks.failed.review.button"))
+        .yesText(StringUtil.toTitleCase(showDetailsAction))
         .noText(commitInfo.commitActionText)
         .cancelText(VcsBundle.message("checkin.commit.checks.failed.cancel.button"))
         .show(project)
       when (commit) {
         Messages.YES -> { // review
-          this.showDetails(project, commitInfo)
+          this.showDetails(project)
           return CheckinHandler.ReturnResult.CLOSE_WINDOW
         }
         Messages.NO -> return CheckinHandler.ReturnResult.COMMIT // commit anyway
@@ -133,19 +144,30 @@ interface CommitProblem {
 
 @ApiStatus.Experimental
 interface CommitProblemWithDetails : CommitProblem {
+  val showDetailsAction: @NlsContexts.NotificationContent String
+
   /**
    * Allows showing details for the problem (ex: by opening a toolwindow tab with a list of failed inspections).
    * Modal dialog will be closed after this call if it is shown.
    */
   @RequiresEdt
-  fun showDetails(project: Project, commitInfo: CommitInfo)
+  fun showDetails(project: Project)
 }
 
 class TextCommitProblem(override val text: String) : CommitProblem
 
 interface CommitInfo {
+  val commitContext: CommitContext
+  val executor: CommitExecutor?
+
+  val committedChanges: List<Change>
+  val affectedVcses: List<AbstractVcs>
+  val commitMessage: @Nls String
+
   /**
    * Commit action name, without mnemonics and ellipsis. Ex: 'Amend Commit'.
    */
   val commitActionText: @Nls String
 }
+
+val CommitInfo.committedVirtualFiles: List<VirtualFile> get() = ChangesUtil.iterateFiles(committedChanges).toList()

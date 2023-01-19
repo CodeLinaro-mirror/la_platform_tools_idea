@@ -7,6 +7,7 @@ import com.intellij.workspaceModel.storage.impl.WorkspaceEntityExtensionDelegate
 import com.intellij.workspaceModel.storage.url.MutableVirtualFileUrlIndex
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlIndex
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.deft.Obj
 import org.jetbrains.deft.annotations.Abstract
 import kotlin.reflect.KClass
@@ -23,7 +24,7 @@ import kotlin.reflect.KProperty1
  * * String;
  * * enum;
  * * [VirtualFileUrl];
- * * [WorkspaceEntity] or [PersistentEntityId];
+ * * [WorkspaceEntity] or [SymbolicEntityId];
  * * [List] of another allowed type;
  * * [Map] of another allowed types where key is NOT a WorkspaceEntity;
  * * another data class with properties of the allowed types (references to entities must be wrapped into [EntityReference]);
@@ -91,6 +92,17 @@ interface WorkspaceEntity : Obj {
       return WorkspaceEntityExtensionDelegate()
     }
   }
+
+  /**
+   * Base interface for modifiable variant of [Unmodifiable] entity. The implementation can be used to [create a new entity][MutableEntityStorage.addEntity]
+   * or [modify an existing value][MutableEntityStorage.modifyEntity].
+   *
+   * Currently, the class must inherit from ModifiableWorkspaceEntityBase.
+   */
+  @Abstract
+  interface Builder<Unmodifiable : WorkspaceEntity> : WorkspaceEntity {
+    override var entitySource: EntitySource
+  }
 }
 
 /**
@@ -99,17 +111,6 @@ interface WorkspaceEntity : Obj {
  */
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.TYPE)
 annotation class EqualsBy
-
-/**
- * Base interface for modifiable variant of [Unmodifiable] entity. The implementation can be used to [create a new entity][MutableEntityStorage.addEntity]
- * or [modify an existing value][MutableEntityStorage.modifyEntity].
- *
- * Currently, the class must inherit from ModifiableWorkspaceEntityBase.
- */
-@Abstract
-interface ModifiableWorkspaceEntity<Unmodifiable : WorkspaceEntity> : WorkspaceEntity {
-  override var entitySource: EntitySource
-}
 
 /**
  * Declares a place from which an entity came.
@@ -161,7 +162,7 @@ abstract class EntityReference<out E : WorkspaceEntity> {
  * * another data class with properties of the allowed types;
  * * sealed abstract class where all implementations satisfy these requirements.
  */
-interface PersistentEntityId<out E : WorkspaceEntityWithPersistentId> {
+interface SymbolicEntityId<out E : WorkspaceEntityWithSymbolicId> {
   /** Text which can be shown in an error message if id cannot be resolved */
   val presentableName: String
 
@@ -170,17 +171,17 @@ interface PersistentEntityId<out E : WorkspaceEntityWithPersistentId> {
 }
 
 @Abstract
-interface WorkspaceEntityWithPersistentId : WorkspaceEntity {
-  val persistentId: PersistentEntityId<WorkspaceEntityWithPersistentId>
+interface WorkspaceEntityWithSymbolicId : WorkspaceEntity {
+  val symbolicId: SymbolicEntityId<WorkspaceEntityWithSymbolicId>
 }
 
 interface EntityStorage {
   fun <E : WorkspaceEntity> entities(entityClass: Class<E>): Sequence<E>
   fun <E : WorkspaceEntity> entitiesAmount(entityClass: Class<E>): Int
   fun <E : WorkspaceEntity, R : WorkspaceEntity> referrers(e: E, entityClass: KClass<R>, property: KProperty1<R, EntityReference<E>>): Sequence<R>
-  fun <E : WorkspaceEntityWithPersistentId, R : WorkspaceEntity> referrers(id: PersistentEntityId<E>, entityClass: Class<R>): Sequence<R>
-  fun <E : WorkspaceEntityWithPersistentId> resolve(id: PersistentEntityId<E>): E?
-  operator fun <E : WorkspaceEntityWithPersistentId> contains(id: PersistentEntityId<E>): Boolean
+  fun <E : WorkspaceEntityWithSymbolicId, R : WorkspaceEntity> referrers(id: SymbolicEntityId<E>, entityClass: Class<R>): Sequence<R>
+  fun <E : WorkspaceEntityWithSymbolicId> resolve(id: SymbolicEntityId<E>): E?
+  operator fun <E : WorkspaceEntityWithSymbolicId> contains(id: SymbolicEntityId<E>): Boolean
 
   /**
    * Please select a name for your mapping in a form `<product_id>.<mapping_name>`.
@@ -210,10 +211,18 @@ interface EntityStorageSnapshot : EntityStorage {
  * reading its state after modifications.
  */
 interface MutableEntityStorage : EntityStorage {
+  @Deprecated("The name may be misleading, use !hasChanges() instead", ReplaceWith("!hasChanges()"))
   fun isEmpty(): Boolean
-  fun <T : WorkspaceEntity> addEntity(entity: T)
 
-  fun <M : ModifiableWorkspaceEntity<out T>, T : WorkspaceEntity> modifyEntity(clazz: Class<M>, e: T, change: M.() -> Unit): T
+  /**
+   * Returns `true` if there are changes recorded in this storage after its creation. Note, that this method may return `true` if these
+   * changes actually don't modify the resulting set of entities, you may use [hasSameEntities] to perform more sophisticated check.
+   */
+  fun hasChanges(): Boolean
+  
+  infix fun <T : WorkspaceEntity> addEntity(entity: T): T
+
+  fun <M : WorkspaceEntity.Builder<out T>, T : WorkspaceEntity> modifyEntity(clazz: Class<M>, e: T, change: M.() -> Unit): T
 
   /**
    * Remove the entity from the builder.
@@ -230,12 +239,22 @@ interface MutableEntityStorage : EntityStorage {
   fun addDiff(diff: MutableEntityStorage)
 
   /**
+   * Returns `true` if this instance contains entities with the same properties as [original] storage it was created from. 
+   * The difference from [hasChanges] is that this method will return `true` in cases when an entity was removed, and then a new entity
+   * with the same properties was added.
+   */
+  fun hasSameEntities(original: EntityStorage): Boolean
+
+  /**
    * Please see [EntityStorage.getExternalMapping] for naming conventions
    */
   fun <T> getMutableExternalMapping(identifier: String): MutableExternalEntityMapping<T>
   fun getMutableVirtualFileUrlIndex(): MutableVirtualFileUrlIndex
 
   val modificationCount: Long
+
+  @ApiStatus.Internal
+  fun setUseNewRbs(value: Boolean)
 
   companion object {
     @JvmStatic
@@ -279,3 +298,14 @@ sealed class EntityChange<T : WorkspaceEntity> {
 open class NotGeneratedRuntimeException(message: String) : RuntimeException(message)
 class NotGeneratedMethodRuntimeException(val methodName: String)
   : NotGeneratedRuntimeException("Method `$methodName` uses default implementation. Please regenerate entities")
+
+
+// Internal tools, not sure if we can open them
+
+
+/**
+ * Return same entity, but in different entity storage. Fail if no entity
+ */
+internal fun <T: WorkspaceEntity> T.from(storage: EntityStorage): T {
+  return this.createReference<T>().resolve(storage)!!
+}

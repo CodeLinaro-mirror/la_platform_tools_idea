@@ -16,11 +16,8 @@ import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeResult.MergeStatus.CONFLICTING
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.errors.EmptyCommitException
-import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.*
 import org.eclipse.jgit.lib.Constants.R_HEADS
-import org.eclipse.jgit.lib.ObjectId
-import org.eclipse.jgit.lib.Ref
-import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.merge.MergeStrategy
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
@@ -33,7 +30,7 @@ import kotlin.io.path.div
 internal class GitSettingsLog(private val settingsSyncStorage: Path,
                               private val rootConfigPath: Path,
                               parentDisposable: Disposable,
-                              private val initialSnapshotProvider: () -> SettingsSnapshot
+                              private val initialSnapshotProvider: (SettingsSnapshot) -> SettingsSnapshot
 ) : SettingsLog, Disposable {
 
   private lateinit var repository: Repository
@@ -84,8 +81,8 @@ internal class GitSettingsLog(private val settingsSyncStorage: Path,
 
   private fun copyExistingSettings() {
     LOG.info("Copying existing settings from $rootConfigPath to $settingsSyncStorage")
-    val snapshot = initialSnapshotProvider()
-    applyState(IDE_REF_NAME, snapshot, "Copy current configs")
+    val snapshot = initialSnapshotProvider(collectCurrentSnapshot())
+    applyState(IDE_REF_NAME, snapshot, "Copy current configs", warnAboutEmptySnapshot = false)
   }
 
   private fun initRepository(repository: Repository?) {
@@ -102,7 +99,7 @@ internal class GitSettingsLog(private val settingsSyncStorage: Path,
 
     val git = Git(repository)
     git.add().addFilepattern(".gitignore").call()
-    git.commit().setMessage("Initial").call()
+    commit("Initial")
   }
 
   override fun applyIdeState(snapshot: SettingsSnapshot, message: String) {
@@ -118,9 +115,9 @@ internal class GitSettingsLog(private val settingsSyncStorage: Path,
     return getMasterPosition()
   }
 
-  private fun applyState(refName: String, snapshot: SettingsSnapshot, message: String) {
-    if (snapshot.isEmpty()) {
-      LOG.error("Empty snapshot")
+  private fun applyState(refName: String, snapshot: SettingsSnapshot, message: String, warnAboutEmptySnapshot: Boolean = true) {
+    if (snapshot.isEmpty() && warnAboutEmptySnapshot) {
+      LOG.error("Empty snapshot, requested to apply on branch '$refName' with message '$message'")
       return
     }
 
@@ -136,29 +133,52 @@ internal class GitSettingsLog(private val settingsSyncStorage: Path,
     for (fileState in snapshot.fileStates) {
       val file = settingsSyncStorage.resolve(fileState.file)
       when (fileState) {
-        is FileState.Modified -> file.write(fileState.content, 0, fileState.size)
+        is FileState.Modified -> file.write(fileState.content)
         is FileState.Deleted -> file.write(DELETED_FILE_MARKER)
       }
       addCommand.addFilepattern(fileState.file)
     }
 
     if (snapshot.plugins != null) {
-      val pluginsState = json.encodeToString(snapshot.plugins)
+      val sortedState = SettingsSyncPluginsState(snapshot.plugins.plugins.toSortedMap())
+      val pluginsState = json.encodeToString(sortedState)
       pluginsFile.write(pluginsState)
       addCommand.addFilepattern("$METAINFO_FOLDER/$PLUGINS_FILE")
     }
 
     addCommand.call()
 
-    commit(message, snapshot.metaInfo.dateCreated)
+    val info = snapshot.metaInfo.appInfo
+    val body = if (info != null) {
+      val thisOrThat = if (info.applicationId == SettingsSyncLocalSettings.getInstance().applicationId) "[this]" else "[other]"
+      "\n\n" + """
+        id:     $thisOrThat ${info.applicationId}
+        user:   ${info.userName}
+        host:   ${info.hostName}
+        config: ${info.configFolder}
+      """.trimIndent()
+    }
+    else {
+      ""
+    }
+    commit("$message$body", snapshot.metaInfo.dateCreated)
   }
 
-  private fun commit(message: String, dateCreated: Instant) {
+  private fun commit(message: String, dateCreated: Instant? = null) {
     try {
       // Don't allow empty commit: sometimes the stream provider can notify about changes but there are no actual changes on disk
-      val commit = git.commit().setMessage(message).setAllowEmpty(false).call()
+      val mockGpgConfig = GpgConfig("", GpgConfig.GpgFormat.OPENPGP, "")
+      val commit = git.commit()
+        .setMessage(message)
+        .setAllowEmpty(false)
+        .setNoVerify(true)
+        .setSign(false)
+        .setGpgConfig(mockGpgConfig)
+        .call()
 
-      recordCreationDate(commit, dateCreated)
+      if (dateCreated != null) {
+        recordCreationDate(commit, dateCreated)
+      }
     }
     catch (e: EmptyCommitException) {
       LOG.info("No actual changes in the settings")

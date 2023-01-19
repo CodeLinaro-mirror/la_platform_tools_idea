@@ -7,7 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.intellij.build.ConsoleSpanExporter
 import org.jetbrains.intellij.build.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.TracerProviderManager
-import java.util.function.Supplier
+import org.jetbrains.intellij.build.closeKtorClient
 
 object DevIdeaBuilder {
   @JvmStatic
@@ -15,7 +15,7 @@ object DevIdeaBuilder {
     initLog()
     runBlocking(Dispatchers.Default) {
       // don't use JaegerJsonSpanExporter - not needed for clients, should be enabled only if needed to avoid writing ~500KB JSON file
-      TracerProviderManager.spanExporterProvider = Supplier { listOf(ConsoleSpanExporter()) }
+      TracerProviderManager.spanExporterProvider = { listOf(ConsoleSpanExporter()) }
       try {
         buildProductInProcess(request = BuildRequest(
           homePath = getHomePath(),
@@ -34,5 +34,9 @@ suspend fun buildProductInProcess(request: BuildRequest) {
   spanBuilder("build ide").setAttribute("request", request.toString()).useWithScope2 {
     BuildServer(homePath = request.homePath, productionClassOutput = request.productionClassOutput)
       .buildProductInProcess(isServerMode = false, request = request)
+    // otherwise, thread leak in tests
+    if (!request.keepHttpClient) {
+      closeKtorClient()
+    }
   }
 }

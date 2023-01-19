@@ -5,9 +5,10 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.roots.libraries.Library
-import com.intellij.workspaceModel.storage.bridgeEntities.api.LibraryId
+import com.intellij.workspaceModel.storage.bridgeEntities.LibraryId
 import org.jetbrains.annotations.ApiStatus
-import java.util.EventListener
+import org.jetbrains.annotations.TestOnly
+import java.util.*
 
 /**
  * Maintains index of libraries and SDKs referenced from project's modules. This is an internal low-level API, it isn't supposed to be used
@@ -16,6 +17,7 @@ import java.util.EventListener
 @ApiStatus.Internal
 interface ModuleDependencyIndex {
   companion object {
+    @JvmStatic
     fun getInstance(project: Project): ModuleDependencyIndex = project.service()
   }
 
@@ -26,6 +28,9 @@ interface ModuleDependencyIndex {
   fun addListener(listener: ModuleDependencyListener)
 
   fun setupTrackedLibrariesAndJdks()
+  
+  @TestOnly
+  fun reset()
 
   /**
    * Return `true` if at least one module has dependency on 'Project SDK'
@@ -56,58 +61,66 @@ interface ModuleDependencyListener : EventListener {
   /** 
    * Called when [library] is added to dependency of some module, and there were no dependencies on this library before 
    */
-  @JvmDefault
   fun addedDependencyOn(library: Library) {
   }
 
   /**
    * Called when [library] is removed from dependencies of some module, and there are no dependencies on this library anymore 
    */
-  @JvmDefault
   fun removedDependencyOn(library: Library) {
   }
 
   /**
    * Called when [library] is created and some module has a dependency on this library (it was unresolved before) 
    */
-  fun referencedLibraryAdded(library: Library)
+  fun referencedLibraryAdded(library: Library) {
+  }
 
   /**
    * Called when configuration of [library] is changed if some module has a dependency on this library
    */
-  fun referencedLibraryChanged(library: Library)
+  fun referencedLibraryChanged(library: Library) {
+  }
 
   /**
    * Called when [library] is removed and some module has a dependency on this library (it will become unresolved)
    */
-  fun referencedLibraryRemoved(library: Library)
+  fun referencedLibraryRemoved(library: Library) {
+  }
 
   /**
    * Called when [sdk] is added to dependency of some module, and there were no dependencies on this SDK before
    */
-  @JvmDefault
   fun addedDependencyOn(sdk: Sdk) {
   }
 
   /**
    * Called when [sdk] is removed from dependencies of some module, and there are no dependencies on this SDK anymore
    */
-  @JvmDefault
   fun removedDependencyOn(sdk: Sdk) {
   }
 
   /**
    * Called when [sdk] is created and some module has a dependency on this SDK (it was unresolved before)
    */
-  fun referencedSdkAdded(sdk: Sdk)
+  fun referencedSdkAdded(sdk: Sdk) {
+  }
 
   /**
    * Called when configuration of [sdk] is changed if some module has a dependency on this SDK
    */
-  fun referencedSdkChanged(sdk: Sdk)
+  fun referencedSdkChanged(sdk: Sdk) {
+  }
 
   /**
    * Called when [sdk] is removed and some module has a dependency on this SDK (it will become unresolved)
    */
-  fun referencedSdkRemoved(sdk: Sdk)
+  fun referencedSdkRemoved(sdk: Sdk) {
+  }
+
+  fun firstDependencyOnSdkAdded() {
+  }
+
+  fun lastDependencyOnSdkRemoved() {
+  }
 }

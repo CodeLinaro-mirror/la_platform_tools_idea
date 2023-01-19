@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.settingsRepository
 
 import com.intellij.configurationStore.StreamProvider
@@ -15,13 +15,13 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.options.SchemeManagerFactory
 import com.intellij.openapi.progress.runBackgroundableTask
+import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ProjectManagerListener
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.util.SingleAlarm
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.settingsRepository.git.GitRepositoryManager
 import org.jetbrains.settingsRepository.git.GitRepositoryService
 import org.jetbrains.settingsRepository.git.processChildren
@@ -63,10 +63,10 @@ class IcsManager @JvmOverloads constructor(dir: Path,
   val repositoryService: RepositoryService = GitRepositoryService()
 
   private val commitAlarm = SingleAlarm(Runnable {
-    runBackgroundableTask(icsMessage("task.commit.title")) { indicator ->
+    runBackgroundableTask(icsMessage("task.commit.title")) {
       LOG.runAndLogException {
-        runBlocking {
-          repositoryManager.commit(indicator, fixStateIfCannotCommit = false)
+        runBlockingCancellable {
+          repositoryManager.commit(fixStateIfCannotCommit = false)
         }
       }
     }
@@ -111,6 +111,18 @@ class IcsManager @JvmOverloads constructor(dir: Path,
       isRepositoryActive = repositoryManager.isRepositoryExists()
     }
   }
+
+  fun runInAutoCommitDisabledModeSync(task: () -> Unit) {
+    cancelAndDisableAutoCommit()
+    try {
+      task()
+    }
+    finally {
+      autoCommitEnabled = true
+      isRepositoryActive = repositoryManager.isRepositoryExists()
+    }
+  }
+
 
   fun setApplicationLevelStreamProvider() {
     val storageManager = ApplicationManager.getApplication().stateStore.storageManager
@@ -164,17 +176,18 @@ class IcsManager @JvmOverloads constructor(dir: Path,
       return true
     }
 
-    override fun write(fileSpec: String, content: ByteArray, size: Int, roamingType: RoamingType) {
+    override fun write(fileSpec: String, content: ByteArray, roamingType: RoamingType) {
       if (syncManager.writeAndDeleteProhibited) {
         throw IllegalStateException("Save is prohibited now")
       }
 
-      if (doSave(fileSpec, content, size, roamingType)) {
+      if (doSave(fileSpec, content, roamingType)) {
         scheduleCommit()
       }
     }
 
-    fun doSave(fileSpec: String, content: ByteArray, size: Int, roamingType: RoamingType): Boolean = repositoryManager.write(toRepositoryPath(fileSpec, roamingType), content, size)
+    fun doSave(fileSpec: String, content: ByteArray, roamingType: RoamingType): Boolean =
+      repositoryManager.write(toRepositoryPath(fileSpec, roamingType), content)
 
     override fun read(fileSpec: String, roamingType: RoamingType, consumer: (InputStream?) -> Unit): Boolean {
       if (!isRepositoryActive) {
