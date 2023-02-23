@@ -109,7 +109,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     }
     else {
       if (USE_TABBED_WELCOME_SCREEN && SystemInfoRt.isMac) {
-        rootPane.setJMenuBar(new WelcomeFrameMenuBar().setFrame(this));
+        rootPane.setJMenuBar(new WelcomeFrameMenuBar());
       }
       myContent.setContent(myScreen.getWelcomePanel());
     }
@@ -194,7 +194,7 @@ public class FlatWelcomeFrame extends JFrame implements IdeFrame, Disposable, Ac
     }
     else {
       if (USE_TABBED_WELCOME_SCREEN && SystemInfoRt.isMac) {
-        rootPane.setJMenuBar(new WelcomeFrameMenuBar().setFrame(this));
+        rootPane.setJMenuBar(new WelcomeFrameMenuBar());
       }
       myContent.setContent(myScreen.getWelcomePanel());
     }
