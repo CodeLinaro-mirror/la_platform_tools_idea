@@ -16,9 +16,9 @@
 <component xmlns="http://jetbrains.org/intellij/schema/application-info"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
            xsi:schemaLocation="http://jetbrains.org/intellij/schema/application-info http://jetbrains.org/intellij/schema/ApplicationInfo.xsd">
-  <version major="2022" minor="2" micro="0" patch="0" full="dev build" eap="true"/>
+  <version major="2022" minor="2" micro="0" patch="0" full="dev build" eap="false"/>
   <company name="Google" url="http://developer.android.com"/>
-  <build number="AI-__BUILD__" date="__BUILD_DATE__"/>
+  <build number="AI-__BUILD__" date="__BUILD_DATE__" majorReleaseDate="20230411"/>
   <logo url="/artwork/studio_splash.png" textcolor="cccccc" progressColor="d7effe" progressY="397" progressHeight="3" />
   <about url="/artwork/studio_about.png" foreground="cccccc"/>
   <icon svg="/artwork/androidstudio.svg" svg-small="/artwork/androidstudio-small.svg" ico="artwork/androidstudio.ico"/>
