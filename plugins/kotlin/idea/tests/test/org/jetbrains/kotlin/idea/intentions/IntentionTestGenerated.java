@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.intentions;
 
@@ -18128,6 +18128,41 @@ public abstract class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("propertyTypeIsMoreSpecific2.kt")
         public void testPropertyTypeIsMoreSpecific2() throws Exception {
             runTest("testData/intentions/usePropertyAccessSyntax/propertyTypeIsMoreSpecific2.kt");
+        }
+
+        @TestMetadata("referenceGetter0.kt")
+        public void testReferenceGetter0() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceGetter0.kt");
+        }
+
+        @TestMetadata("referenceGetter1.kt")
+        public void testReferenceGetter1() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceGetter1.kt");
+        }
+
+        @TestMetadata("referenceGetterFunctionalInterface.kt")
+        public void testReferenceGetterFunctionalInterface() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceGetterFunctionalInterface.kt");
+        }
+
+        @TestMetadata("referenceGetterNotBuiltInFunctionType.kt")
+        public void testReferenceGetterNotBuiltInFunctionType() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceGetterNotBuiltInFunctionType.kt");
+        }
+
+        @TestMetadata("referenceGetterOldLv.kt")
+        public void testReferenceGetterOldLv() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceGetterOldLv.kt");
+        }
+
+        @TestMetadata("referenceIsGetter.kt")
+        public void testReferenceIsGetter() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceIsGetter.kt");
+        }
+
+        @TestMetadata("referenceSetter.kt")
+        public void testReferenceSetter() throws Exception {
+            runTest("testData/intentions/usePropertyAccessSyntax/referenceSetter.kt");
         }
 
         @TestMetadata("set.kt")

@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.debugger.test;
 
@@ -116,6 +116,11 @@ public class SmartStepIntoTestGenerated extends AbstractSmartStepIntoTest {
     @TestMetadata("invoke.kt")
     public void testInvoke() throws Exception {
         runTest("testData/smartStepInto/invoke.kt");
+    }
+
+    @TestMetadata("javaSyntheticPropertyReference.kt")
+    public void testJavaSyntheticPropertyReference() throws Exception {
+        runTest("testData/smartStepInto/javaSyntheticPropertyReference.kt");
     }
 
     @TestMetadata("libraryFun.kt")
