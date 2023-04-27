@@ -4,6 +4,7 @@ package org.jetbrains.kotlin.idea.base.analysis
 
 import com.intellij.ProjectTopics
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.assertReadAccessAllowed
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.module.Module
@@ -18,6 +19,7 @@ import com.intellij.openapi.roots.libraries.Library
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
+import com.intellij.util.concurrency.annotations.RequiresReadLock
 import com.intellij.util.containers.MultiMap
 import com.intellij.workspaceModel.ide.WorkspaceModelChangeListener
 import com.intellij.workspaceModel.ide.WorkspaceModelTopics
@@ -38,6 +40,7 @@ import org.jetbrains.kotlin.idea.base.util.caching.SynchronizedFineGrainedEntity
 import org.jetbrains.kotlin.idea.caches.project.*
 import org.jetbrains.kotlin.idea.caches.trackers.ModuleModificationTracker
 import org.jetbrains.kotlin.idea.configuration.isMavenized
+import org.jetbrains.kotlin.platform.jvm.isJvm
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 private class LibraryDependencyCandidatesAndSdkInfos(
@@ -85,16 +88,53 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
     private fun computeLibrariesAndSdksUsedWith(libraryInfo: LibraryInfo): LibraryDependencies {
         val libraryDependencyCandidatesAndSdkInfos = computeLibrariesAndSdksUsedWithNoFilter(libraryInfo)
 
-        // Maven is Gradle Metadata unaware, and therefore needs stricter filter. See KTIJ-15758
-        val libraryDependenciesFilter = if (project.isMavenized)
-            StrictEqualityForPlatformSpecificCandidatesFilter
-        else
-            DefaultLibraryDependenciesFilter union SharedNativeLibraryToNativeInteropFallbackDependenciesFilter
+        val additionalDependenciesForLibrarySources: List<LibraryInfo>
+        val libraryDependenciesFilter: LibraryDependenciesFilter
+
+        when {
+            // Maven is Gradle Metadata unaware and needs special handling. See KTIJ-15758, KTIJ-23874
+            project.isMavenized -> {
+                libraryDependenciesFilter = StrictEqualityForPlatformSpecificCandidatesFilter
+                additionalDependenciesForLibrarySources =
+                    stdlibJvmDependencies(libraryInfo, libraryDependencyCandidatesAndSdkInfos.libraryDependencyCandidates)
+            }
+
+            else -> {
+                libraryDependenciesFilter =
+                    DefaultLibraryDependenciesFilter union SharedNativeLibraryToNativeInteropFallbackDependenciesFilter
+                additionalDependenciesForLibrarySources = emptyList()
+            }
+        }
+
         val libraries = libraryDependenciesFilter(
             libraryInfo.platform,
             libraryDependencyCandidatesAndSdkInfos.libraryDependencyCandidates
         ).flatMap { it.libraries }
-        return LibraryDependencies(libraryInfo, libraries, libraryDependencyCandidatesAndSdkInfos.sdkInfos.toList())
+
+        return LibraryDependencies(
+            libraryInfo,
+            libraries,
+            libraryDependencyCandidatesAndSdkInfos.sdkInfos.toList(),
+            additionalDependenciesForLibrarySources
+        )
+    }
+
+    /**
+     * Workaround for separate publishing of standard library sources (KTIJ-23874).
+     * Common parts of the standard library have to be provided as a dependency, but only in the context of a search scope for sources.
+     */
+    private fun stdlibJvmDependencies(
+        libraryInfo: LibraryInfo,
+        allDependencyCandidates: Set<LibraryDependencyCandidate>,
+    ): List<LibraryInfo> {
+        if (!libraryInfo.platform.isJvm()) return emptyList()
+
+        val stdlibCache = KotlinStdlibCache.getInstance(libraryInfo.project)
+        if (!stdlibCache.isStdlib(libraryInfo)) return emptyList()
+
+        return allDependencyCandidates.flatMap { candidate ->
+            candidate.libraries.filter { library -> stdlibCache.isStdlibDependency(library) }
+        }
     }
 
     //NOTE: used LibraryRuntimeClasspathScope as reference
@@ -150,10 +190,11 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
         }!!
 
     private inner class LibraryDependenciesInnerCache :
-        SynchronizedFineGrainedEntityCache<LibraryInfo, LibraryDependencies>(project, cleanOnLowMemory = true),
+        SynchronizedFineGrainedEntityCache<LibraryInfo, LibraryDependencies>(project, doSelfInitialization = false, cleanOnLowMemory = true),
         LibraryInfoListener,
         ModuleRootListener,
         ProjectJdkTable.Listener {
+
         override fun subscribe() {
             val connection = project.messageBus.connect(this)
             connection.subscribe(LibraryInfoListener.TOPIC, this)
@@ -163,7 +204,10 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
         }
 
         override fun libraryInfosRemoved(libraryInfos: Collection<LibraryInfo>) {
-            invalidateEntries({ k, v -> k in libraryInfos || v.libraries.any { it in libraryInfos } })
+            fun LibraryDependencies.haveOutdatedLibraries() =
+                libraries.any { it in libraryInfos } || sourcesOnlyDependencies.any { it in libraryInfos }
+
+            invalidateEntries({ k, v -> k in libraryInfos || v.haveOutdatedLibraries() })
         }
 
         override fun jdkRemoved(jdk: Sdk) {
@@ -182,7 +226,7 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
         }
 
         override fun checkValueValidity(value: LibraryDependencies) {
-            value.libraries.forEach { it.checkValidity() }
+            value.checkValidity()
         }
 
         override fun rootsChanged(event: ModuleRootEvent) {
@@ -199,14 +243,14 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
 
         inner class ModelChangeListener : ModuleEntityChangeListener(project) {
             override fun entitiesChanged(outdated: List<Module>) {
-                invalidate()
+                invalidate(writeAccessRequired = true)
             }
         }
 
     }
 
     private inner class ModuleDependenciesCache :
-        SynchronizedFineGrainedEntityCache<Module, LibraryDependencyCandidatesAndSdkInfos>(project),
+        SynchronizedFineGrainedEntityCache<Module, LibraryDependencyCandidatesAndSdkInfos>(project, doSelfInitialization = false),
         WorkspaceModelChangeListener,
         ProjectJdkTable.Listener,
         LibraryInfoListener,
@@ -220,7 +264,9 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
             connection.subscribe(ProjectTopics.PROJECT_ROOTS, this)
         }
 
+        @RequiresReadLock
         override fun get(key: Module): LibraryDependencyCandidatesAndSdkInfos {
+            assertReadAccessAllowed()
             return internalGet(key, hashMapOf(), linkedSetOf(), hashMapOf())
         }
 
@@ -311,8 +357,8 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
             val infoCache = LibraryInfoCache.getInstance(project)
             ModuleRootManager.getInstance(module).orderEntries()
                 .process(object : RootPolicy<Unit>() {
-                    override fun visitModuleSourceOrderEntry(moduleSourceOrderEntry: ModuleSourceOrderEntry, value: Unit) {
-                        modulesToVisit.addAll(moduleSourceOrderEntry.rootModel.getModuleDependencies(true).toList())
+                    override fun visitModuleOrderEntry(moduleOrderEntry: ModuleOrderEntry, value: Unit) {
+                        moduleOrderEntry.module?.let(modulesToVisit::add)
                     }
 
                     override fun visitLibraryOrderEntry(libraryOrderEntry: LibraryOrderEntry, value: Unit) {
@@ -410,7 +456,6 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
         }
 
         override fun calculate(key: Module): LibraryDependencyCandidatesAndSdkInfos =
-            //computeLibrariesAndSdksUsedIn(key)
             throw UnsupportedOperationException("calculate(Module) should not be invoked due to custom impl of get()")
 
         override fun checkKeyValidity(key: Module) {
@@ -431,11 +476,6 @@ class LibraryDependenciesCacheImpl(private val project: Project) : LibraryDepend
 
         override fun rootsChanged(event: ModuleRootEvent) {
             if (event.isCausedByWorkspaceModelChangesOnly) return
-
-            // TODO: `invalidate()` to be drop when IDEA-298694 is fixed
-            //  Reason: unload modules are untracked with WorkspaceModel
-            invalidate()
-            return
 
             // SDK could be changed (esp in tests) out of message bus subscription
             val sdks = project.allSdks()

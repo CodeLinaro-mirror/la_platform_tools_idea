@@ -180,16 +180,6 @@ public final class Utils {
 
   private static final boolean DO_FULL_EXPAND = Boolean.getBoolean("actionSystem.use.full.group.expand"); // for tests and debug
 
-  /** @deprecated Use {@link #expandActionGroup(ActionGroup, PresentationFactory, DataContext, String)} */
-  @Deprecated(forRemoval = true)
-  public static @NotNull List<AnAction> expandActionGroup(boolean isInModalContext,
-                                                          @NotNull ActionGroup group,
-                                                          @NotNull PresentationFactory presentationFactory,
-                                                          @NotNull DataContext context,
-                                                          @NotNull String place) {
-    return expandActionGroup(group, presentationFactory, context, place);
-  }
-
   public static @NotNull List<AnAction> expandActionGroup(@NotNull ActionGroup group,
                                                           @NotNull PresentationFactory presentationFactory,
                                                           @NotNull DataContext context,
@@ -315,7 +305,7 @@ public final class Utils {
     if (maxTime < 1) return null;
     BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
     ActionUpdater fastUpdater = ActionUpdater.getActionUpdater(updater.asFastUpdateSession(missedKeys, queue::offer));
-    try (AccessToken ignore = SlowOperations.allowSlowOperations(SlowOperations.FAST_TRACK)) {
+    try (AccessToken ignore = SlowOperations.startSection(SlowOperations.FAST_TRACK)) {
       long start = System.currentTimeMillis();
       CancellablePromise<List<AnAction>> promise = fastUpdater.expandActionGroupAsync(group, hideDisabled);
       return runLoopAndWaitForFuture(promise, null, false, () -> {
@@ -716,7 +706,7 @@ public final class Utils {
   private static boolean ourInUpdateSessionForInputEventEDTLoop;
 
   @ApiStatus.Internal
-  public static @Nullable <T> T runUpdateSessionForInputEvent(@NotNull List<AnAction> actions,
+  public static @Nullable <T> T runUpdateSessionForInputEvent(@NotNull List<? extends AnAction> actions,
                                                               @NotNull InputEvent inputEvent,
                                                               @NotNull DataContext dataContext,
                                                               @NotNull String place,
@@ -808,7 +798,7 @@ public final class Utils {
     List<ActionPromoter> promoters = ContainerUtil.concat(
       ActionPromoter.EP_NAME.getExtensionList(), ContainerUtil.filterIsInstance(actions, ActionPromoter.class));
     for (ActionPromoter promoter : promoters) {
-      try (AccessToken ignore = SlowOperations.allowSlowOperations(SlowOperations.FORCE_ASSERT)) {
+      try (AccessToken ignore = SlowOperations.startSection(SlowOperations.FORCE_ASSERT)) {
         List<AnAction> promoted = promoter.promote(readOnlyActions, frozenContext);
         if (promoted != null && !promoted.isEmpty()) {
           actions.removeAll(promoted);
@@ -862,7 +852,7 @@ public final class Utils {
     ProcessCanceledWithReasonException lastCancellation = null;
     int retries = Math.max(1, Registry.intValue("actionSystem.update.actions.max.retries", 20));
     for (int i = 0; i < retries; i++) {
-      try (AccessToken ignore = SlowOperations.allowSlowOperations(SlowOperations.RESET)) {
+      try (AccessToken ignore = SlowOperations.startSection(SlowOperations.RESET)) {
         return computable.get();
       }
       catch (Utils.ProcessCanceledWithReasonException ex) {

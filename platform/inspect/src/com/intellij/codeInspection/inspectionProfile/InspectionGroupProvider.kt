@@ -4,27 +4,18 @@ package com.intellij.codeInspection.inspectionProfile
 import com.intellij.codeInspection.ex.InspectionToolWrapper
 import com.intellij.openapi.extensions.ExtensionPointName
 
-interface InspectionGroupProvider {
+fun interface InspectionGroupProvider {
   companion object {
     @JvmStatic
     val EP = ExtensionPointName.create<InspectionGroupProvider>("com.intellij.inspectionGroupProvider")
 
-    private fun createYamlInspectionGroup(groupId: String): YamlInspectionGroup {
-      return object : YamlInspectionGroup {
-        override val groupId: String = groupId
-        override fun includesInspection(tool: InspectionToolWrapper<*, *>): Boolean {
-          return EP.extensionList.any { extension -> extension.findGroup(groupId).includesInspection(tool) }
-        }
-      }
+    private fun createYamlInspectionGroup(groupId: String): YamlInspectionGroup? {
+      return EP.extensionList.firstNotNullOfOrNull { extension -> extension.findGroup(groupId) }
     }
 
     @JvmStatic
     fun createDynamicGroupProvider(): InspectionGroupProvider {
-      return object : InspectionGroupProvider {
-        override fun findGroup(groupId: String): YamlInspectionGroup {
-          return createYamlInspectionGroup(groupId)
-        }
-      }
+      return InspectionGroupProvider { groupId -> createYamlInspectionGroup(groupId) }
     }
   }
 

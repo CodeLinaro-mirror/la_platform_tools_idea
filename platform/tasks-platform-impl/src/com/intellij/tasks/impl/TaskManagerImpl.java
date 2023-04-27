@@ -454,7 +454,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     return infos;
   }
 
-  private static VcsTaskHandler.TaskInfo fromBranches(List<BranchInfo> branches) {
+  private static VcsTaskHandler.TaskInfo fromBranches(List<? extends BranchInfo> branches) {
     if (branches.isEmpty()) return new VcsTaskHandler.TaskInfo(null, Collections.emptyList());
     MultiMap<String, String> map = new MultiMap<>();
     for (BranchInfo branch : branches) {
@@ -749,8 +749,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
 
     // search for active task
     LocalTask activeTask = null;
-    final List<LocalTask> tasks = getLocalTasks();
-    tasks.sort(TASK_UPDATE_COMPARATOR);
+    final List<LocalTask> tasks = ContainerUtil.sorted(getLocalTasks(), TASK_UPDATE_COMPARATOR);
     for (LocalTask task : tasks) {
       if (activeTask == null) {
         if (task.isActive()) {
@@ -986,17 +985,15 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
   }
 
   public String getChangelistName(Task task) {
-    String name = task.isIssue() && myConfig.changelistNameFormat != null
-                  ? TaskUtil.formatTask(task, myConfig.changelistNameFormat)
-                  : task.getSummary();
-    return StringUtil.shortenTextWithEllipsis(name, 100, 0);
+    String name = TaskUtil.formatTask(task, myConfig.changelistNameFormat);
+    return StringUtil.shortenTextWithEllipsis(name.isEmpty() ? task.getSummary() : name, 100, 0);
   }
 
   @NotNull
   public String suggestBranchName(@NotNull Task task, String separator) {
     String name = constructDefaultBranchName(task);
-    if (task.isIssue()) return name.replace(" ", separator);
-    List<String> words = StringUtil.getWordsIn(name);
+    if (!name.isEmpty()) return name.replace(" ", separator);
+    List<String> words = StringUtil.getWordsIn(task.getSummary());
     String[] strings = ArrayUtilRt.toStringArray(words);
     return StringUtil.join(strings, 0, Math.min(2, strings.length), separator);
   }
@@ -1008,7 +1005,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
 
   @NotNull
   public String constructDefaultBranchName(@NotNull Task task) {
-    return task.isIssue() ? TaskUtil.formatTask(task, myConfig.branchNameFormat) : task.getSummary();
+    return TaskUtil.formatTask(task, myConfig.branchNameFormat);
   }
 
   @TestOnly
@@ -1072,7 +1069,7 @@ public final class TaskManagerImpl extends TaskManager implements PersistentStat
     }
   }
 
-  private static class Activity implements StartupActivity.DumbAware {
+  private static final class Activity implements StartupActivity.DumbAware {
     @Override
     public void runActivity(@NotNull Project project) {
       ((TaskManagerImpl)TaskManager.getManager(project)).projectOpened();

@@ -6,7 +6,6 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtWhenEntry
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.uast.*
 import org.jetbrains.uast.kotlin.kinds.KotlinSpecialExpressionKinds
 
@@ -19,6 +18,12 @@ class KotlinUSwitchEntry(
         sourcePsi.conditions.map {
             baseResolveProviderService.baseKotlinConverter.convertWhenCondition(it, this, DEFAULT_EXPRESSION_TYPES_LIST)
                 ?: UastEmptyExpression(null)
+        }
+    }
+
+    private val containingWhenExpression by lz {
+        baseResolveProviderService.baseKotlinConverter.unwrapElements(sourcePsi.parent)?.let { parentUnwrapped ->
+            languagePlugin?.convertElementWithParent(parentUnwrapped, null)
         }
     }
 
@@ -54,21 +59,22 @@ class KotlinUSwitchEntry(
                         override val expression: UExpression?
                             get() =
                                 userExpressions.lastOrNull()?.sourcePsi?.let {
-                                    it.safeAs<KtExpression>() ?: it.parent.safeAs<KtExpression>()
+                                    it as? KtExpression ?: it.parentAs<KtExpression>()
                                 }?.let {
                                     baseResolveProviderService.baseKotlinConverter.convertExpression(
                                         it, this, DEFAULT_EXPRESSION_TYPES_LIST
                                     )
                                 }
+
+                        override val jumpTarget: UElement?
+                            get() = containingWhenExpression
                     }
                 else emptyList()
         }
     }
 
     override fun convertParent(): UElement? {
-        val result = baseResolveProviderService.baseKotlinConverter.unwrapElements(sourcePsi.parent)?.let { parentUnwrapped ->
-            languagePlugin?.convertElementWithParent(parentUnwrapped, null)
-        }
-        return (result as? KotlinUSwitchExpression)?.body ?: result
+        return (containingWhenExpression as? KotlinUSwitchExpression)?.body
+            ?: containingWhenExpression
     }
 }

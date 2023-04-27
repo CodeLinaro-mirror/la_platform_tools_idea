@@ -20,11 +20,11 @@ import com.intellij.codeInspection.LocalQuickFixProvider;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.util.InspectionMessage;
 import com.intellij.lang.annotation.Annotation;
+import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiReference;
-import com.intellij.psi.xml.XmlElement;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xml.*;
@@ -41,10 +41,12 @@ public class DomElementAnnotationHolderImpl extends SmartList<DomElementProblemD
   private final SmartList<Annotation> myAnnotations = new SmartList<>();
   private final boolean myOnTheFly;
   private final DomFileElement myFileElement;
+  private final AnnotationHolder myAnnotationHolder;
 
-  public DomElementAnnotationHolderImpl(boolean onTheFly, @NotNull DomFileElement fileElement) {
+  public DomElementAnnotationHolderImpl(boolean onTheFly, @NotNull DomFileElement fileElement, @NotNull AnnotationHolder toFill) {
     myOnTheFly = onTheFly;
     myFileElement = fileElement;
+    myAnnotationHolder = toFill;
   }
 
   @Override
@@ -113,16 +115,8 @@ public class DomElementAnnotationHolderImpl extends SmartList<DomElementProblemD
   }
 
   @Override
-  @NotNull
-  public Annotation createAnnotation(@NotNull DomElement element, HighlightSeverity severity, @Nullable @InspectionMessage String message) {
-    final XmlElement xmlElement = element.getXmlElement();
-    LOG.assertTrue(xmlElement != null, "No XML element for " + element);
-    final TextRange range = xmlElement.getTextRange();
-    final int startOffset = range.getStartOffset();
-    final int endOffset = message == null ? startOffset : range.getEndOffset();
-    final Annotation annotation = new Annotation(startOffset, endOffset, severity, message, null);
-    myAnnotations.add(annotation);
-    return annotation;
+  public @NotNull AnnotationHolder getAnnotationHolder() {
+    return myAnnotationHolder;
   }
 
   public final SmartList<Annotation> getAnnotations() {

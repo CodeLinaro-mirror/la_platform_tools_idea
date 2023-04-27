@@ -302,7 +302,8 @@ final class SearchForUsagesRunnable implements Runnable {
       // associate progress only if created successfully, otherwise Dispose will cancel the actual progress, see IDEA-195542
       PsiElement element = getPsiElement(mySearchFor);
       Language language = element != null ? element.getLanguage() : null;
-      UsageViewStatisticsCollector.logSearchStarted(myProject, usageView, CodeNavigateSource.FindToolWindow, language);
+      UsageViewStatisticsCollector.logSearchStarted(myProject, usageView, CodeNavigateSource.FindToolWindow, language, element,
+                                                    mySearchFor.length);
       usageView.associateProgress(indicator);
       if (myProcessPresentation.isShowFindOptionsPrompt()) {
         openView(usageView);
@@ -413,7 +414,7 @@ final class SearchForUsagesRunnable implements Runnable {
       }
       return true;
     });
-    if (getUsageView(indicator, startSearchStamp) != null) {
+    if (myProcessPresentation.isShowFindOptionsPrompt() && getUsageView(indicator, startSearchStamp) != null) {
       ApplicationManager.getApplication().invokeLater(() -> myUsageViewManager.showToolWindow(true), myProject.getDisposed());
     }
   }

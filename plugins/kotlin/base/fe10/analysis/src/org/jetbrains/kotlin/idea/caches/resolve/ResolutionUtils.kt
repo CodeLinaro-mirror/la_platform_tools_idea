@@ -4,13 +4,18 @@
 
 package org.jetbrains.kotlin.idea.caches.resolve
 
+import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.psi.PsiElement
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.analyzer.AnalysisResult
 import org.jetbrains.kotlin.caches.resolve.KotlinCacheService
+import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.idea.FrontendInternals
+import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
@@ -18,7 +23,10 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.BindingTraceContext
 import org.jetbrains.kotlin.resolve.ImportPath
 import org.jetbrains.kotlin.resolve.QualifiedExpressionResolver
+import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
+import org.jetbrains.kotlin.resolve.calls.model.VariableAsFunctionResolvedCall
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
+import org.jetbrains.kotlin.utils.KotlinExceptionWithAttachments
 
 fun KtElement.getResolutionFacade(): ResolutionFacade = KotlinCacheService.getInstance(project).getResolutionFacade(this)
 
@@ -27,6 +35,7 @@ fun KtElement.getResolutionFacade(): ResolutionFacade = KotlinCacheService.getIn
  *
  * But for non-local declarations it ignores bodyResolveMode and uses LazyDeclarationResolver directly
  */
+@ApiStatus.ScheduledForRemoval
 @Deprecated(
     message = "This function has unclear semantics. Please use either unsafeResolveToDescriptor or resolveToDescriptorIfAny instead",
     replaceWith = ReplaceWith("unsafeResolveToDescriptor")
@@ -85,6 +94,9 @@ fun KtParameter.resolveToParameterDescriptorIfAny(bodyResolveMode: BodyResolveMo
  */
 fun KtElement.resolveToCall(bodyResolveMode: BodyResolveMode = BodyResolveMode.PARTIAL) =
     resolveToCall(getResolutionFacade(), bodyResolveMode)
+
+fun ResolvedCall<out CallableDescriptor>.variableCallOrThis(): ResolvedCall<out CallableDescriptor> =
+    (this as? VariableAsFunctionResolvedCall)?.variableCall ?: this
 
 fun KtFile.resolveImportReference(fqName: FqName): Collection<DeclarationDescriptor> {
     val facade = getResolutionFacade()
@@ -200,7 +212,7 @@ fun ResolutionFacade.resolveImportReference(
     fqName: FqName
 ): Collection<DeclarationDescriptor> {
     val importDirective = KtPsiFactory(project).createImportDirective(ImportPath(fqName, false))
-    val qualifiedExpressionResolver = this.getFrontendService(moduleDescriptor, QualifiedExpressionResolver::class.java)
+    val qualifiedExpressionResolver = this.getFrontendService(QualifiedExpressionResolver::class.java)
     return qualifiedExpressionResolver.processImportReference(
         importDirective,
         moduleDescriptor,
@@ -211,9 +223,20 @@ fun ResolutionFacade.resolveImportReference(
 }
 
 @Suppress("DEPRECATION")
+@ApiStatus.ScheduledForRemoval
 @Deprecated(
     "This method is going to be removed in 1.3.0 release",
     ReplaceWith("analyzeWithAllCompilerChecks().bindingContext"),
     DeprecationLevel.ERROR
 )
 fun KtElement.analyzeFully(): BindingContext = analyzeWithAllCompilerChecks().bindingContext
+
+fun KtReferenceExpression.resolveMainReference(): PsiElement? =
+    try {
+        mainReference.resolve()
+    } catch (e: Exception) {
+        if (e is ControlFlowException) throw e
+        throw KotlinExceptionWithAttachments("Unable to resolve reference", e)
+            .withPsiAttachment("reference.txt", this)
+            .withPsiAttachment("file.kt", containingFile)
+    }

@@ -10,6 +10,7 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.options.advanced.AdvancedSettings
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.SystemInfo
@@ -38,7 +39,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
 
   private var state = UISettingsState()
 
-  private val myTreeDispatcher = ComponentTreeEventDispatcher.create(UISettingsListener::class.java)
+  private val treeDispatcher = ComponentTreeEventDispatcher.create(UISettingsListener::class.java)
 
   var ideAAType: AntialiasingType
     get() = notRoamableOptions.state.ideAAType
@@ -211,6 +212,12 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       state.compactTreeIndents = value
     }
 
+  var uiDensity: UIDensity
+    get() = state.uiDensity
+    set(value) {
+      state.uiDensity = value
+    }
+
   var showMainToolbar: Boolean
     get() = if (RegistryManager.getInstance().`is`("ide.experimental.ui")) separateMainMenu else state.showMainToolbar
     set(value) {
@@ -263,6 +270,18 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       state.wideScreenSupport = value
     }
 
+  var rememberSizeForEachToolWindowOldUI: Boolean
+    get() = state.rememberSizeForEachToolWindowOldUI
+    set(value) {
+      state.rememberSizeForEachToolWindowOldUI = value
+    }
+
+  var rememberSizeForEachToolWindowNewUI: Boolean
+    get() = state.rememberSizeForEachToolWindowNewUI
+    set(value) {
+      state.rememberSizeForEachToolWindowNewUI = value
+    }
+
   var sortBookmarks: Boolean
     get() = state.sortBookmarks
     set(value) {
@@ -279,9 +298,15 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   var presentationModeFontSize: Int
-    get() = state.presentationModeFontSize
+    get() = UISettingsUtils.presentationModeFontSize.toInt()
     set(value) {
-      state.presentationModeFontSize = value
+      UISettingsUtils.presentationModeFontSize = value.toFloat()
+    }
+
+  var presentationModeIdeScale: Float
+    get() = notRoamableOptions.state.presentationModeIdeScale
+    set(value) {
+      notRoamableOptions.state.presentationModeIdeScale = value
     }
 
   var editorTabPlacement: Int
@@ -348,6 +373,12 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     get() = notRoamableOptions.state.fontScale
     set(value) {
       notRoamableOptions.state.fontScale = value
+    }
+
+  var ideScale: Float
+    get() = notRoamableOptions.state.ideScale
+    set(value) {
+      notRoamableOptions.state.ideScale = value
     }
 
   var showDirectoryForNonUniqueFilenames: Boolean
@@ -581,12 +612,6 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     val defFontSize: Float
       get() = UISettingsState.defFontSize
 
-    @Deprecated("Use {@link #restoreFontSize(Float, Float?)} instead")
-    @JvmStatic
-    fun restoreFontSize(readSize: Int, readScale: Float?): Int {
-      return restoreFontSize(readSize.toFloat(), readScale).toInt()
-    }
-
     @JvmStatic
     fun restoreFontSize(readSize: Float, readScale: Float?): Float {
       var size = readSize
@@ -631,7 +656,16 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
 
     // if this is the main UISettings instance (and not on first call to getInstance) push event to bus and to all current components
     if (this === cachedInstance) {
-      myTreeDispatcher.multicaster.uiSettingsChanged(this)
+      try {
+        treeDispatcher.multicaster.uiSettingsChanged(this)
+      }
+      catch (e: ProcessCanceledException) {
+        throw e
+      }
+      catch (e: Exception) {
+        LOG.error(e)
+      }
+
       ApplicationManager.getApplication().messageBus.syncPublisher(UISettingsListener.TOPIC).uiSettingsChanged(this)
     }
   }
@@ -646,6 +680,11 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
 
   override fun getState() = state
 
+  override fun noStateLoaded() {
+    super.noStateLoaded()
+    migratePresentationFontSize()
+  }
+
   override fun loadState(state: UISettingsState) {
     this.state = state
     updateDeprecatedProperties()
@@ -654,6 +693,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     if (migrateOldFontSettings()) {
       notRoamableOptions.fixFontSettings()
     }
+    migratePresentationFontSize()
 
     // Check tab placement in editor
     val editorTabPlacement = state.editorTabPlacement
@@ -715,6 +755,10 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       migrated = true
     }
     return migrated
+  }
+
+  private fun migratePresentationFontSize() {
+    notRoamableOptions.migratePresentationModeFontSize(state.presentationModeFontSize)
   }
 
   //<editor-fold desc="Deprecated stuff.">

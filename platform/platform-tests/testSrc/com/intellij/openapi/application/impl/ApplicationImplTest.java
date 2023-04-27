@@ -31,10 +31,7 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -102,19 +99,8 @@ public class ApplicationImplTest extends LightPlatformTestCase {
     }
   }
 
-  private static void joinWithTimeout(Future<?> @NotNull ... threads) throws TimeoutException {
-    for (Future<?> thread : threads) {
-      try {
-        thread.get(20, TimeUnit.SECONDS);
-      }
-      catch (ExecutionException | InterruptedException e) {
-        throw new RuntimeException(e);
-      }
-      if (!thread.isDone()) {
-        System.err.println(thread + " is still running. threaddump:\n" + ThreadDumper.dumpThreadsToString());
-        throw new TimeoutException();
-      }
-    }
+  private static void joinWithTimeout(Future<?> @NotNull ... threads) throws TimeoutException, ExecutionException, InterruptedException {
+    ConcurrencyUtil.getAll(20, TimeUnit.SECONDS, Arrays.asList(threads));
   }
   private static void waitWithTimeout(@NotNull List<? extends Job<?>> threads) throws TimeoutException {
     for (Job<?> thread : threads) {
@@ -422,7 +408,7 @@ public class ApplicationImplTest extends LightPlatformTestCase {
     if (exception != null) throw exception;
   }
 
-  public void testWriteActionIsAllowedFromEDTOnly() throws TimeoutException {
+  public void testWriteActionIsAllowedFromEDTOnly() throws TimeoutException, ExecutionException, InterruptedException {
     Future<?> thread = ApplicationManager.getApplication().executeOnPooledThread(()-> {
         try {
           ApplicationManager.getApplication().runWriteAction(EmptyRunnable.getInstance());
@@ -441,7 +427,7 @@ public class ApplicationImplTest extends LightPlatformTestCase {
         boolean result = ApplicationManagerEx.getApplicationEx().runProcessWithProgressSynchronously(() -> {
           // check that defaultModalityState() carries write-safe context now
           ApplicationManager.getApplication().invokeAndWait(() -> {
-            ApplicationManager.getApplication().assertIsWriteThread();
+            ApplicationManager.getApplication().assertWriteIntentLockAcquired();
             ((TransactionGuardImpl)TransactionGuard.getInstance()).assertWriteActionAllowed();
           });
         }, "Title", true, getProject());
@@ -685,7 +671,7 @@ public class ApplicationImplTest extends LightPlatformTestCase {
         @Override
         public void beforeWriteActionStart(@NotNull Object action) {
           nestingCount.incrementAndGet();
-          assertTrue(application.isWriteThread());
+          assertTrue(application.isWriteIntentLockAcquired());
           assertEquals(nestingCount.get() > 1, application.isWriteAccessAllowed());
           assertTrue(application.isWriteActionPending());
           assertThrows(IllegalStateException.class,()->application.runWriteAction(() -> {}));
@@ -693,7 +679,7 @@ public class ApplicationImplTest extends LightPlatformTestCase {
 
         @Override
         public void writeActionStarted(@NotNull Object action) {
-          assertTrue(application.isWriteThread());
+          assertTrue(application.isWriteIntentLockAcquired());
           assertTrue(application.isWriteActionInProgress());
           assertTrue(application.isWriteAccessAllowed());
           assertFalse(application.isWriteActionPending());
@@ -703,7 +689,7 @@ public class ApplicationImplTest extends LightPlatformTestCase {
 
         @Override
         public void writeActionFinished(@NotNull Object action) {
-          assertTrue(application.isWriteThread());
+          assertTrue(application.isWriteIntentLockAcquired());
           assertTrue(application.isWriteAccessAllowed());
           assertTrue(application.isWriteActionInProgress());
           assertFalse(application.isWriteActionPending());
@@ -715,7 +701,7 @@ public class ApplicationImplTest extends LightPlatformTestCase {
 
         @Override
         public void afterWriteActionFinished(@NotNull Object action) {
-          assertTrue(application.isWriteThread());
+          assertTrue(application.isWriteIntentLockAcquired());
           assertFalse(application.isWriteAccessAllowed());
           assertFalse(application.isWriteActionInProgress());
           assertFalse(application.isWriteActionPending());
@@ -726,12 +712,12 @@ public class ApplicationImplTest extends LightPlatformTestCase {
         }
       }, disposable);
       application.runWriteAction(() -> {
-        assertTrue(application.isWriteThread());
+        assertTrue(application.isWriteIntentLockAcquired());
         assertTrue(application.isWriteAccessAllowed());
         assertFalse(application.isWriteActionPending());
         if (nestingCount.get() < 2) {
           application.runWriteAction(() -> {
-            assertTrue(application.isWriteThread());
+            assertTrue(application.isWriteIntentLockAcquired());
             assertTrue(application.isWriteAccessAllowed());
             assertFalse(application.isWriteActionPending());
           });

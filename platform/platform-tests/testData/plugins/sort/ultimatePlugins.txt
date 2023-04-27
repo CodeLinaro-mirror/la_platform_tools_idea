@@ -60,6 +60,7 @@
 + -org-jetbrains-plugins-javaFX-
 + -org-intellij-groovy-
 + -JavaScript-
++ -org-jetbrains-plugins-astro-
 + -com-jetbrains-restClient-
 + -com-jetbrains-php-
 + -com-jetbrains-php-blade-
@@ -127,7 +128,6 @@
 + -com-intellij-jsf-
 + -com-intellij-spring-
 + -CloudFoundry-
-+ -com-intellij-dmserver-
 + -com-intellij-spring-osgi-
 + -com-intellij-spring-security-
 + -com-intellij-thymeleaf-

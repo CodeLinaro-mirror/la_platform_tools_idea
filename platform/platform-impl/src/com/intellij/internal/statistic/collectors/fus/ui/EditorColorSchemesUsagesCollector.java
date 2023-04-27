@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.internal.statistic.collectors.fus.ui;
 
 import com.intellij.internal.statistic.beans.MetricEvent;
@@ -12,11 +12,11 @@ import com.intellij.openapi.editor.colors.impl.AbstractColorsScheme;
 import com.intellij.openapi.options.Scheme;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ColorUtil;
-import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollector {
@@ -48,6 +48,7 @@ public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollecto
     "IntelliJ Light",
     "Light",
     "New Dark",
+    "New Dark RC",
     "Dark",
     SCHEME_NAME_OTHER
   };
@@ -56,7 +57,7 @@ public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollecto
   private static final EventId2<String, Boolean> COLOR_SCHEME =
     GROUP.registerEvent(
       "enabled.color.scheme",
-      EventFields.String("scheme", ContainerUtil.newArrayList(KNOWN_NAMES)),
+      EventFields.String("scheme", List.of(KNOWN_NAMES)),
       EventFields.Boolean("is_dark")
     );
 

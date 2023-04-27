@@ -34,12 +34,13 @@ import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.beans.PropertyChangeListener;
+import java.lang.ref.WeakReference;
 import java.util.Objects;
 
 public final class MarkdownPreviewFileEditor extends UserDataHolderBase implements FileEditor {
   private static final long PARSING_CALL_TIMEOUT_MS = 50L;
   private static final long RENDERING_DELAY_MS = 20L;
-  public static final Key<MarkdownHtmlPanel> PREVIEW_BROWSER = Key.create("PREVIEW_BROWSER");
+  public static final Key<WeakReference<MarkdownHtmlPanel>> PREVIEW_BROWSER = Key.create("PREVIEW_BROWSER");
 
   private final Project myProject;
   private final VirtualFile myFile;
@@ -59,6 +60,8 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
   private @NotNull String myLastRenderedHtml = "";
 
   private Editor mainEditor;
+
+  private boolean isDisposed = false;
 
   public MarkdownPreviewFileEditor(@NotNull Project project, @NotNull VirtualFile file) {
     myProject = project;
@@ -101,6 +104,7 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
       () -> ObjectUtils.tryCast(myPanel, MarkdownHtmlPanelEx.class)
     );
     scrollPane.addMouseWheelListener(helper);
+    Disposer.register(this, () -> scrollPane.removeMouseWheelListener(helper));
   }
 
   public void setMainEditor(Editor editor) {
@@ -188,11 +192,17 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
     return myFile;
   }
 
+  public boolean isDisposed() {
+    return this.isDisposed;
+  }
+
   @Override
   public void dispose() {
     if (myPanel != null) {
-      Disposer.dispose(myPanel);
+      detachHtmlPanel();
     }
+    myLastRenderedHtml = "";
+    isDisposed = true;
   }
 
   @Nullable
@@ -225,7 +235,7 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
 
   // Is always run from pooled thread
   private void updateHtml() {
-    if (myPanel == null || myDocument == null || !myFile.isValid() || Disposer.isDisposed(this)) {
+    if (myPanel == null || myDocument == null || !myFile.isValid() || isDisposed()) {
       return;
     }
 
@@ -234,7 +244,7 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
     });
 
     // EA-75860: The lines to the top may be processed slowly; Since we're in pooled thread, we can be disposed already.
-    if (!myFile.isValid() || Disposer.isDisposed(this)) {
+    if (!myFile.isValid() || isDisposed()) {
       return;
     }
 
@@ -270,8 +280,8 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
       myHtmlPanelWrapper.remove(myPanel.getComponent());
       Disposer.dispose(myPanel);
       myPanel = null;
-      this.putUserData(PREVIEW_BROWSER, null);
     }
+    putUserData(PREVIEW_BROWSER, null);
   }
 
   private void attachHtmlPanel() {
@@ -281,7 +291,7 @@ public final class MarkdownPreviewFileEditor extends UserDataHolderBase implemen
     if (myHtmlPanelWrapper.isShowing()) myHtmlPanelWrapper.validate();
     myHtmlPanelWrapper.repaint();
     myLastRenderedHtml = "";
-    this.putUserData(PREVIEW_BROWSER, myPanel);
+    putUserData(PREVIEW_BROWSER, new WeakReference<>(myPanel));
     updateHtmlPooled();
   }
 

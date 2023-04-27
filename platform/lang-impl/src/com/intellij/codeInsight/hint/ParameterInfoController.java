@@ -28,6 +28,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.impl.source.tree.injected.InjectedLanguageEditorUtil;
 import com.intellij.psi.util.PsiUtilBase;
 import com.intellij.ui.HintHint;
 import com.intellij.ui.LightweightHint;
@@ -183,7 +184,7 @@ public final class ParameterInfoController extends ParameterInfoControllerBase {
     int flags = HintManager.HIDE_BY_ESCAPE | HintManager.UPDATE_BY_SCROLLING;
     if (!singleParameterInfo && myKeepOnHintHidden) flags |= HintManager.HIDE_BY_TEXT_CHANGE;
 
-    Editor editorToShow = myEditor instanceof EditorWindow ? ((EditorWindow)myEditor).getDelegate() : myEditor;
+    Editor editorToShow = InjectedLanguageEditorUtil.getTopLevelEditor(myEditor);
 
     //update presentation of descriptors synchronously
     myComponent.update(mySingleParameterInfo);
@@ -514,8 +515,16 @@ public final class ParameterInfoController extends ParameterInfoControllerBase {
         return Pair.create(previousBestPoint, previousBestPosition);
       }
 
-      if (pos == null) pos = EditorUtil.inlayAwareOffsetToVisualPosition(myEditor, offset);
-      Pair<Point, Short> position = chooseBestHintPosition(myEditor, pos, hint, activeLookup, preferredPosition, false);
+      Editor editor = myEditor;
+      if (pos == null) {
+        pos = EditorUtil.inlayAwareOffsetToVisualPosition(myEditor, offset);
+        // The position above is always in the host editor. If we are in an injected
+        // editor this position will likely be outside of our range and the hint position
+        // will be our range's end. To avoid that and compute hint position correctly,
+        // switch to the host editor.
+        editor = myEditor instanceof EditorWindow ? ((EditorWindow)myEditor).getDelegate() : editor;
+      }
+      Pair<Point, Short> position = chooseBestHintPosition(editor, pos, hint, activeLookup, preferredPosition, false);
 
       previousBestPoint = position.getFirst();
       previousBestPosition = position.getSecond();

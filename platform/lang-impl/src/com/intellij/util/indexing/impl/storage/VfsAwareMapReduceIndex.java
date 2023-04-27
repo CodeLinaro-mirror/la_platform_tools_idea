@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package com.intellij.util.indexing.impl.storage;
 
@@ -32,7 +32,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.locks.ReadWriteLock;
 
 /**
  * @author Eugene Zhuravlev
@@ -62,23 +61,20 @@ public class VfsAwareMapReduceIndex<Key, Value, FileCachedData extends VfsAwareM
   private final boolean myUpdateMappings;
 
   public VfsAwareMapReduceIndex(@NotNull FileBasedIndexExtension<Key, Value> extension,
-                                @NotNull VfsAwareIndexStorageLayout<Key, Value> indexStorageLayout,
-                                @Nullable ReadWriteLock lock) throws IOException {
+                                @NotNull VfsAwareIndexStorageLayout<Key, Value> indexStorageLayout) throws IOException {
     this(extension,
          () -> indexStorageLayout.openIndexStorage(),
          () -> indexStorageLayout.openForwardIndex(),
          indexStorageLayout.getForwardIndexAccessor(),
-         () -> indexStorageLayout.createOrClearSnapshotInputMappings(),
-         lock);
+         () -> indexStorageLayout.createOrClearSnapshotInputMappings());
   }
 
   protected VfsAwareMapReduceIndex(@NotNull FileBasedIndexExtension<Key, Value> extension,
                                    @NotNull ThrowableComputable<? extends IndexStorage<Key, Value>, ? extends IOException> storage,
                                    @Nullable ThrowableComputable<? extends ForwardIndex, ? extends IOException> forwardIndexMap,
                                    @Nullable ForwardIndexAccessor<Key, Value> forwardIndexAccessor,
-                                   @Nullable ThrowableComputable<? extends SnapshotInputMappingIndex<Key, Value, FileContent>, ? extends IOException> snapshotInputMappings,
-                                   @Nullable ReadWriteLock lock) throws IOException {
-    super(extension, storage, forwardIndexMap, forwardIndexAccessor, lock);
+                                   @Nullable ThrowableComputable<? extends SnapshotInputMappingIndex<Key, Value, FileContent>, ? extends IOException> snapshotInputMappings) throws IOException {
+    super(extension, storage, forwardIndexMap, forwardIndexAccessor);
     SnapshotInputMappingIndex<Key, Value, FileContent> inputMappings;
     try {
       inputMappings = snapshotInputMappings == null ? null : snapshotInputMappings.compute();
@@ -202,20 +198,54 @@ public class VfsAwareMapReduceIndex<Key, Value, FileCachedData extends VfsAwareM
   public FileCachedData getFileIndexMetaData(@NotNull IndexedFile file) {
     if (mySubIndexerRetriever != null) {
       try {
-        return (FileCachedData)ProgressManager.getInstance().computeInNonCancelableSection(() -> new IndexerIdHolder(mySubIndexerRetriever.getFileIndexerId(file)));
+        IndexerIdHolder holder = ProgressManager.getInstance()
+          .computeInNonCancelableSection(() -> new IndexerIdHolder(mySubIndexerRetriever.getFileIndexerId(file)));
+        LOG.assertTrue(holder != null,
+                       "getFileIndexMetaData() shouldn't have returned null in " + getClass() + ", " + myIndexId.getName());
+        return (FileCachedData)holder;
       }
       catch (IOException e) {
         LOG.error(e);
+        // Index would be rebuilt, and exception would be logged with INFO severity
+        // in com.intellij.util.indexing.FileBasedIndexImpl.requestIndexRebuildOnException
+        throw new RuntimeException(e);
       }
     }
     return null;
+  }
+
+  /**
+   * @return value < 0 means that no sub indexer id corresponds to the specified file
+   */
+  protected int getStoredFileSubIndexerId(int fileId) {
+    if (mySubIndexerRetriever == null) throw new IllegalStateException("not a composite indexer");
+    try {
+      return mySubIndexerRetriever.getStoredFileIndexerId(fileId);
+    }
+    catch (IOException e) {
+      LOG.error(e);
+      return -4;
+    }
+  }
+
+  public <SubIndexerVersion> @Nullable SubIndexerVersion getStoredSubIndexerVersion(int fileId) {
+    int indexerId = getStoredFileSubIndexerId(fileId);
+    if (indexerId < 0) return null;
+    try {
+      return (SubIndexerVersion)mySubIndexerRetriever.getVersionByIndexerId(indexerId);
+    }
+    catch (IOException e) {
+      LOG.error(e);
+      return null;
+    }
   }
 
   @Override
   public void setIndexedStateForFileOnFileIndexMetaData(int fileId, @Nullable FileCachedData fileData) {
     IndexingStamp.setFileIndexedStateCurrent(fileId, (ID<?, ?>)myIndexId);
     if (mySubIndexerRetriever != null) {
-      LOG.assertTrue(fileData != null, "getFileIndexMetaData() shouldn't have returned null.");
+      LOG.assertTrue(fileData != null,
+                     "getFileIndexMetaData() shouldn't have returned null in " + getClass() + ", " + myIndexId.getName());
       try {
         mySubIndexerRetriever.setFileIndexerId(fileId, fileData.indexerId);
       }

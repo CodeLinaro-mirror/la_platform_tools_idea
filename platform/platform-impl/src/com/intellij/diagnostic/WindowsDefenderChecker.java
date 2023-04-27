@@ -6,24 +6,30 @@ import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil;
 import com.intellij.execution.process.ProcessOutput;
 import com.intellij.execution.util.ExecUtil;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.util.NullableLazyValue;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.sun.jna.platform.win32.COM.COMException;
+import com.sun.jna.platform.win32.COM.Wbemcli;
 import com.sun.jna.platform.win32.COM.WbemcliUtil;
 import com.sun.jna.platform.win32.Ole32;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 import static com.intellij.openapi.util.NullableLazyValue.volatileLazyNullable;
@@ -34,12 +40,19 @@ import static java.util.Objects.requireNonNull;
  * <a href="https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/configure-extension-file-exclusions-microsoft-defender-antivirus">Defender Settings</a>,
  * <a href="https://learn.microsoft.com/en-us/powershell/module/defender/">Defender PowerShell Module</a>.
  */
+@SuppressWarnings("MethodMayBeStatic")
 public class WindowsDefenderChecker {
   private static final Logger LOG = Logger.getInstance(WindowsDefenderChecker.class);
 
+  private static final String IGNORE_STATUS_CHECK = "ignore.virus.scanning.warn.message";
   private static final String HELPER_SCRIPT_NAME = "defender-exclusions.ps1";
   private static final String SIG_MARKER = "# SIG # Begin signature block";
   private static final int WMIC_COMMAND_TIMEOUT_MS = 10_000, POWERSHELL_COMMAND_TIMEOUT_MS = 30_000;
+  private static final ExtensionPointName<Extension> EP_NAME = ExtensionPointName.create("com.intellij.defender.config");
+
+  public interface Extension {
+    @NotNull Collection<Path> getPaths(@NotNull Project project);
+  }
 
   public static WindowsDefenderChecker getInstance() {
     return ApplicationManager.getApplication().getService(WindowsDefenderChecker.class);
@@ -62,7 +75,18 @@ public class WindowsDefenderChecker {
   });
 
   public boolean isStatusCheckIgnored(@NotNull Project project) {
-    return false;
+    return PropertiesComponent.getInstance().isTrueValue(IGNORE_STATUS_CHECK) ||
+           PropertiesComponent.getInstance(project).isTrueValue(IGNORE_STATUS_CHECK);
+  }
+
+  final void ignoreStatusCheck(@Nullable Project project, boolean ignore) {
+    var component = project == null ? PropertiesComponent.getInstance() : PropertiesComponent.getInstance(project);
+    if (ignore) {
+      component.setValue(IGNORE_STATUS_CHECK, true);
+    }
+    else {
+      component.unsetValue(IGNORE_STATUS_CHECK);
+    }
   }
 
   /**
@@ -98,10 +122,15 @@ public class WindowsDefenderChecker {
       if (LOG.isDebugEnabled()) LOG.debug("RealTimeProtectionEnabled: " + rtProtection + " (" + rtProtection.getClass().getName() + ')');
       return Boolean.TRUE.equals(rtProtection);
     }
+    catch (COMException e) {
+      if (e.matchesErrorCode(Wbemcli.WBEM_E_INVALID_NAMESPACE)) return false;  // Windows Defender not installed
+      var message = "WMI Windows Defender check failed";
+      var hresult = e.getHresult();
+      if (hresult != null) message += " [0x" + Integer.toHexString(hresult.intValue()) + ']';
+      LOG.warn(message, e);
+      return null;
+    }
     catch (Exception e) {
-      if (e instanceof COMException ce && ce.matchesErrorCode(0x8004100e)) {  // WBEM_E_INVALID_NAMESPACE
-        return false;
-      }
       LOG.warn("WMI Windows Defender check failed", e);
       return null;
     }
@@ -114,9 +143,8 @@ public class WindowsDefenderChecker {
   private enum AntivirusProduct {DisplayName, ProductState}
   private enum MpComputerStatus {RealTimeProtectionEnabled}
 
-  /** Returns a list of paths that might impact build performance if Windows Defender were configured to scan them. */
-  protected @NotNull List<Path> getImportantPaths(@NotNull Project project) {
-    var paths = new ArrayList<Path>();
+  final @NotNull List<Path> getImportantPaths(@NotNull Project project) {
+    var paths = new TreeSet<Path>();
 
     var projectDir = ProjectUtil.guessProjectDir(project);
     if (projectDir != null && projectDir.getFileSystem() instanceof LocalFileSystem) {
@@ -125,15 +153,11 @@ public class WindowsDefenderChecker {
 
     paths.add(PathManager.getSystemDir());
 
-    var gradleUserHome = System.getenv("GRADLE_USER_HOME");
-    if (gradleUserHome != null) {
-      paths.add(Path.of(gradleUserHome));
-    }
-    else {
-      paths.add(Path.of(System.getProperty("user.home"), ".gradle"));
-    }
+    EP_NAME.forEachExtensionSafe(ext -> {
+      paths.addAll(ext.getPaths(project));
+    });
 
-    return paths;
+    return new ArrayList<>(paths);
   }
 
   final boolean excludeProjectPaths(@NotNull List<Path> paths) {
@@ -151,7 +175,8 @@ public class WindowsDefenderChecker {
         return false;
       }
 
-      var command = new GeneralCommandLine(psh.getPath(), "-NonInteractive", "-Command", "(Get-AuthenticodeSignature '" + script + "').Status");
+      var scriptlet = "(Get-AuthenticodeSignature '" + script + "').Status";
+      var command = new GeneralCommandLine(psh.getPath(), "-NoProfile", "-NonInteractive", "-Command", scriptlet);
       var output = run(command);
       if (output.getExitCode() != 0 || !"Valid".equals(output.getStdout().trim())) {
         LOG.info("validation failed:\n[" + output.getExitCode() + "] " + command + "\noutput: " + output.getStdout().trim());
@@ -160,10 +185,11 @@ public class WindowsDefenderChecker {
 
       command = ExecUtil.sudoCommand(
         new GeneralCommandLine(Stream.concat(
-          Stream.of(psh.getPath(), "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", script.toString()),
+          Stream.of(psh.getPath(), "-ExecutionPolicy", "Bypass", "-NoProfile", "-NonInteractive", "-File", script.toString()),
           paths.stream().map(Path::toString)
         ).toList()),
-        "");
+        ""
+      ).withCharset(StandardCharsets.UTF_8);
       output = run(command);
       if (output.getExitCode() != 0) {
         LOG.info("script failed:\n[" + output.getExitCode() + "] " + command + "\noutput: " + output.getStdout().trim());
@@ -181,12 +207,13 @@ public class WindowsDefenderChecker {
   }
 
   private static ProcessOutput run(GeneralCommandLine command) throws ExecutionException {
+    command.getEnvironment().remove("PSModulePath");
     return ExecUtil.execAndGetOutput(
       command.withRedirectErrorStream(true).withWorkDirectory(PathManager.getTempPath()),
       POWERSHELL_COMMAND_TIMEOUT_MS);
   }
 
-  public String getConfigurationInstructionsUrl() {
-    return "https://intellij-support.jetbrains.com/hc/en-us/articles/360006298560";
+  public @NotNull String getConfigurationInstructionsUrl() {
+    return "https://intellij.com/antivirus-impact-on-build-speed";
   }
 }

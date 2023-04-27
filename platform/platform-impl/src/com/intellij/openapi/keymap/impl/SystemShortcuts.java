@@ -24,6 +24,7 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.Strings;
 import com.intellij.util.ReflectionUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -129,7 +130,7 @@ public final class SystemShortcuts {
       return null;
     }
 
-    final Condition<Shortcut> predicat = sc -> {
+    final Condition<Shortcut> predicate = sc -> {
       if (sc == null) {
         return false;
       }
@@ -143,7 +144,7 @@ public final class SystemShortcuts {
       }
       return false;
     };
-    return ActionsTreeUtil.isActionFiltered(ActionManager.getInstance(), myKeymap, predicat);
+    return ActionsTreeUtil.isActionFiltered(ActionManager.getInstance(), myKeymap, predicate);
   }
 
   public @Nullable
@@ -235,7 +236,7 @@ public final class SystemShortcuts {
     }
 
     @Nullable String macOsShortcutAction = getDescription(sysKs);
-    if (macOsShortcutAction == ourUnknownSysAction) {
+    if (Strings.areSameInstance(macOsShortcutAction, ourUnknownSysAction)) {
       macOsShortcutAction = null;
     }
     //System.out.println(actionId + " shortcut '" + sysKS + "' "
@@ -463,7 +464,6 @@ public final class SystemShortcuts {
 
   private static final class MuteConflictsSettings {
     private static final String MUTED_ACTIONS_KEY = "muted.system.shortcut.conflicts.actions";
-    @NotNull
     private Set<String> myMutedActions;
 
     void init() {

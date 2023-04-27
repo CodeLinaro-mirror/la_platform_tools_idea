@@ -17,9 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * @author dsl
- */
 public final class CanonicalTypes {
   private CanonicalTypes() { }
 
@@ -136,7 +133,7 @@ public final class CanonicalTypes {
       }
       else {
         PsiType boundType = myBound.getType(context, manager);
-        if (boundType.equals(PsiType.NULL)) {
+        if (boundType.equals(PsiTypes.nullType())) {
           throw new IncorrectOperationException("Bound type is null " + getTypeText());
         }
         if (boundType instanceof PsiWildcardType) {

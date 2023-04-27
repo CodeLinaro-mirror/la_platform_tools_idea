@@ -23,9 +23,6 @@ import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * @author ven
- */
 public class WrapExpressionFix implements IntentionAction {
   private static final Logger LOG = Logger.getInstance(WrapExpressionFix.class);
 
@@ -171,7 +168,7 @@ public class WrapExpressionFix implements IntentionAction {
 
   public static void registerWrapAction(JavaResolveResult[] candidates,
                                         PsiExpression[] expressions,
-                                        HighlightInfo highlightInfo,
+                                        @NotNull HighlightInfo.Builder highlightInfo,
                                         TextRange fixRange) {
     PsiType expectedType = null;
     PsiExpression expr = null;
@@ -188,7 +185,7 @@ public class WrapExpressionFix implements IntentionAction {
       for (int j = 0; j < expressions.length; j++) {
         PsiExpression expression = expressions[j];
         final PsiType exprType = expression.getType();
-        if (exprType != null && !PsiType.NULL.equals(exprType)) {
+        if (exprType != null && !PsiTypes.nullType().equals(exprType)) {
           PsiType paramType = parameters[Math.min(j, parameters.length - 1)].getType();
           if (paramType instanceof PsiEllipsisType) {
             paramType = ((PsiEllipsisType)paramType).getComponentType();
@@ -211,7 +208,8 @@ public class WrapExpressionFix implements IntentionAction {
     }
 
     if (expectedType != null) {
-      QuickFixAction.registerQuickFixAction(highlightInfo, fixRange, new WrapExpressionFix(expectedType, expr, null));
+      IntentionAction action = new WrapExpressionFix(expectedType, expr, null);
+      highlightInfo.registerFix(action, null, null, fixRange, null);
     }
   }
 

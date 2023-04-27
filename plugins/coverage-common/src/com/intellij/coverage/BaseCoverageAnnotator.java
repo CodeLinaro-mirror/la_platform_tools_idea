@@ -17,6 +17,7 @@ public abstract class BaseCoverageAnnotator implements CoverageAnnotator {
   private final Project myProject;
   private volatile boolean myIsLoading = false;
 
+  @Override
   public boolean isLoading() {
     return myIsLoading;
   }
@@ -38,7 +39,8 @@ public abstract class BaseCoverageAnnotator implements CoverageAnnotator {
     final Runnable request = createRenewRequest(suite, dataManager);
     if (request != null) {
       if (myProject.isDisposed()) return;
-      ProgressManager.getInstance().run(new Task.Backgroundable(myProject, CoverageBundle.message("coverage.view.loading.data"), true) {
+      final Project project = myProject;
+      ProgressManager.getInstance().run(new Task.Backgroundable(project, CoverageBundle.message("coverage.view.loading.data"), true) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           myIsLoading = true;
@@ -52,7 +54,7 @@ public abstract class BaseCoverageAnnotator implements CoverageAnnotator {
 
         @Override
         public void onSuccess() {
-          final CoverageView coverageView = CoverageViewManager.getInstance(myProject).getToolwindow(suite);
+          final CoverageView coverageView = CoverageViewManager.getInstance(project).getToolwindow(suite);
           if (coverageView != null) {
             coverageView.resetView();
           }
@@ -61,7 +63,7 @@ public abstract class BaseCoverageAnnotator implements CoverageAnnotator {
         @Override
         public void onCancel() {
           super.onCancel();
-          CoverageDataManager.getInstance(myProject).chooseSuitesBundle(null);
+          CoverageDataManager.getInstance(project).chooseSuitesBundle(null);
         }
       });
     }

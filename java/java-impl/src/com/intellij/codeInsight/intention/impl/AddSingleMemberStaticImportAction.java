@@ -1,8 +1,5 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
-/*
- * @author ven
- */
 package com.intellij.codeInsight.intention.impl;
 
 import com.intellij.codeInsight.intention.BaseElementAtCaretIntentionAction;
@@ -10,7 +7,6 @@ import com.intellij.java.JavaBundle;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
@@ -21,6 +17,7 @@ import com.intellij.psi.util.MethodSignatureUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.ObjectUtils;
 import com.siyeh.ig.psiutils.CommentTracker;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -59,9 +56,8 @@ public class AddSingleMemberStaticImportAction extends BaseElementAtCaretIntenti
     if (element instanceof PsiIdentifier) {
       final PsiElement parent = element.getParent();
       if (parent instanceof PsiMethodReferenceExpression) return null;
-      if (parent instanceof PsiJavaCodeReferenceElement && ((PsiJavaCodeReferenceElement)parent).getQualifier() != null) {
+      if (parent instanceof PsiJavaCodeReferenceElement refExpr && refExpr.getQualifier() != null) {
         if (PsiTreeUtil.getParentOfType(parent, PsiImportList.class) != null) return null;
-        PsiJavaCodeReferenceElement refExpr = (PsiJavaCodeReferenceElement)parent;
         if (checkParameterizedReference(refExpr)) return null;
         JavaResolveResult[] results = refExpr.multiResolve(false);
         for (JavaResolveResult result : results) {
@@ -192,7 +188,8 @@ public class AddSingleMemberStaticImportAction extends BaseElementAtCaretIntenti
   }
 
   public static void invoke(PsiFile file, final PsiElement element) {
-    final PsiJavaCodeReferenceElement refExpr = (PsiJavaCodeReferenceElement)element.getParent();
+    final PsiJavaCodeReferenceElement refExpr = ObjectUtils.tryCast(element.getParent(), PsiJavaCodeReferenceElement.class);
+    if (refExpr == null) return;
     final String referenceName = refExpr.getReferenceName();
     final JavaResolveResult[] targets = refExpr.multiResolve(false);
     for (JavaResolveResult target : targets) {

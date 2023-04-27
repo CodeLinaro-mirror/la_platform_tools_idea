@@ -120,10 +120,10 @@ public class FileReferenceSet {
     return emptyList();
   }
 
-  public static FileReferenceSet createSet(@NotNull PsiElement element,
-                                           final boolean soft,
-                                           boolean endingSlashNotAllowed,
-                                           final boolean urlEncoded) {
+  public static @NotNull FileReferenceSet createSet(@NotNull PsiElement element,
+                                                    final boolean soft,
+                                                    boolean endingSlashNotAllowed,
+                                                    final boolean urlEncoded) {
 
     final TextRange range = ElementManipulators.getValueTextRange(element);
     int offset = range.getStartOffset();
@@ -534,6 +534,9 @@ public class FileReferenceSet {
     return myPathString.startsWith(getSeparatorString());
   }
 
+  /**
+   * @return true, if contexts from {@link FileContextProvider} can be used as the default
+   */
   protected boolean useIncludingFileAsContext() {
     return true;
   }

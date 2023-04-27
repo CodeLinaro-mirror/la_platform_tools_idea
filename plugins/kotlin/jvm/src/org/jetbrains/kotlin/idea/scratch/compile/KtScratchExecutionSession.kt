@@ -71,7 +71,7 @@ class KtScratchExecutionSession(
     }
 
     private fun createFileWithLightClassSupport(result: Result.OK, psiFile: KtFile): KtFile =
-        runReadAction { KtPsiFactory(file.project).createFileWithLightClassSupport("tmp.kt", result.code, psiFile) }
+        runReadAction { KtPsiFactory.contextual(psiFile).createPhysicalFile("tmp.kt", result.code) }
 
     private fun tryRunCommandLine(modifiedScratchSourceFile: KtFile, psiFile: KtFile, result: Result.OK, callback: () -> Unit) {
         assert(backgroundProcessIndicator != null)
@@ -86,7 +86,7 @@ class KtScratchExecutionSession(
         }
     }
 
-    fun reportError(result: Result.OK, e: Throwable, psiFile: KtFile) {
+    private fun reportError(result: Result.OK, e: Throwable, psiFile: KtFile) {
         LOG.printDebugMessage(result.code)
         executor.errorOccurs(e.message ?: KotlinJvmBundle.message("couldn.t.compile.0", psiFile.name), e, isFatal = true)
     }

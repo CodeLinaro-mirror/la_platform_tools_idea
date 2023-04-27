@@ -22,7 +22,6 @@ import com.intellij.openapi.keymap.impl.KeymapManagerImpl
 import com.intellij.openapi.keymap.impl.keymapComparator
 import com.intellij.openapi.keymap.impl.ui.KeymapSchemeManager
 import com.intellij.openapi.observable.properties.GraphProperty
-import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
 import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.ProjectManager
@@ -66,48 +65,50 @@ class CustomizeTab(parentDisposable: Disposable) : DefaultWelcomeScreenTab(IdeBu
                                                                            WelcomeScreenEventCollector.TabType.TabNavCustomize) {
   private val supportedColorBlindness = getColorBlindness()
   private val propertyGraph = PropertyGraph()
-  private val lafProperty = propertyGraph.graphProperty { laf.lookAndFeelReference }
-  private val syncThemeProperty = propertyGraph.graphProperty { laf.autodetect }
-  private val ideFontProperty = propertyGraph.graphProperty { getIdeFont() }
-  private val keymapProperty = propertyGraph.graphProperty { keymapManager.activeKeymap }
-  private val colorBlindnessProperty = propertyGraph.graphProperty { settings.colorBlindness ?: supportedColorBlindness.firstOrNull() }
-  private val adjustColorsProperty = propertyGraph.graphProperty { settings.colorBlindness != null }
+  private val lafProperty = propertyGraph.lazyProperty { laf.lookAndFeelReference }
+  private val syncThemeProperty = propertyGraph.lazyProperty { laf.autodetect }
+  private val ideFontProperty = propertyGraph.lazyProperty { getIdeFont() }
+  private val keymapProperty = propertyGraph.lazyProperty { keymapManager.activeKeymap }
+  private val colorBlindnessProperty = propertyGraph.lazyProperty { settings.colorBlindness ?: supportedColorBlindness.firstOrNull() }
+  private val adjustColorsProperty = propertyGraph.lazyProperty { settings.colorBlindness != null }
 
   private var keymapComboBox: ComboBox<Keymap>? = null
   private var colorThemeComboBox: ComboBox<LafManager.LafReference>? = null
 
   init {
-    lafProperty.afterChange({
-                              val newLaf = laf.findLaf(it)
-                              if (laf.currentLookAndFeel == newLaf) return@afterChange
-                              ApplicationManager.getApplication().invokeLater {
-                                QuickChangeLookAndFeel.switchLafAndUpdateUI(laf, newLaf, true)
-                                WelcomeScreenEventCollector.logLafChanged(newLaf, laf.autodetect)
-                              }
-                            }, parentDisposable)
+    lafProperty.afterChange(parentDisposable) {
+      val newLaf = laf.findLaf(it)
+      if (laf.currentLookAndFeel == newLaf) return@afterChange
+      ApplicationManager.getApplication().invokeLater {
+        QuickChangeLookAndFeel.switchLafAndUpdateUI(laf, newLaf, true)
+        WelcomeScreenEventCollector.logLafChanged(newLaf, laf.autodetect)
+      }
+    }
     syncThemeProperty.afterChange {
       if (laf.autodetect == it) return@afterChange
       laf.autodetect = it
       WelcomeScreenEventCollector.logLafChanged(laf.currentLookAndFeel, laf.autodetect)
     }
-    ideFontProperty.afterChange({
-                                  if (settings.fontSize2D == it) return@afterChange
-                                  settings.overrideLafFonts = true
-                                  WelcomeScreenEventCollector.logIdeFontChanged(settings.fontSize2D, it)
-                                  settings.fontSize2D = it
-                                  updateFontSettingsLater()
-                                }, parentDisposable)
-    keymapProperty.afterChange({
-                                 if (keymapManager.activeKeymap == it) return@afterChange
-                                 WelcomeScreenEventCollector.logKeymapChanged(it)
-                                 keymapManager.activeKeymap = it
-                               }, parentDisposable)
-    adjustColorsProperty.afterChange({
-                                       if (adjustColorsProperty.get() == (settings.colorBlindness != null)) return@afterChange
-                                       WelcomeScreenEventCollector.logColorBlindnessChanged(adjustColorsProperty.get())
-                                       updateColorBlindness()
-                                     }, parentDisposable)
-    colorBlindnessProperty.afterChange({ updateColorBlindness() }, parentDisposable)
+    ideFontProperty.afterChange(parentDisposable) {
+      if (settings.fontSize2D == it) return@afterChange
+      settings.overrideLafFonts = true
+      WelcomeScreenEventCollector.logIdeFontChanged(settings.fontSize2D, it)
+      settings.fontSize2D = it
+      updateFontSettingsLater()
+    }
+    keymapProperty.afterChange(parentDisposable) {
+      if (keymapManager.activeKeymap == it) return@afterChange
+      WelcomeScreenEventCollector.logKeymapChanged(it)
+      keymapManager.activeKeymap = it
+    }
+    adjustColorsProperty.afterChange(parentDisposable) {
+      if (adjustColorsProperty.get() == (settings.colorBlindness != null)) return@afterChange
+      WelcomeScreenEventCollector.logColorBlindnessChanged(adjustColorsProperty.get())
+      updateColorBlindness()
+    }
+    colorBlindnessProperty.afterChange(parentDisposable) {
+      updateColorBlindness()
+    }
 
     val busConnection = ApplicationManager.getApplication().messageBus.connect(parentDisposable)
     busConnection.subscribe(UISettingsListener.TOPIC, UISettingsListener { updateProperty(ideFontProperty) { getIdeFont() } })

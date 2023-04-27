@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.siyeh.ig.performance;
 
 import com.intellij.codeInsight.BlockUtils;
@@ -252,7 +252,7 @@ public class IfStatementMissingBreakInLoopInspection extends BaseInspection impl
   private static class IfStatementMissingBreakInLoopFix extends InspectionGadgetsFix {
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       PsiIfStatement ifStatement = tryCast(descriptor.getPsiElement().getParent(), PsiIfStatement.class);
       if (ifStatement == null || ifStatement.getElseBranch() != null) return;
       PsiStatement thenBranch = ifStatement.getThenBranch();

@@ -3,10 +3,14 @@ package org.jetbrains.idea.eclipse.config
 
 import com.intellij.workspaceModel.ide.JpsFileDependentEntitySource
 import com.intellij.workspaceModel.ide.JpsFileEntitySource
+import com.intellij.workspaceModel.ide.JpsProjectConfigLocation
 import com.intellij.workspaceModel.storage.*
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity
 import com.intellij.workspaceModel.storage.impl.containers.toMutableWorkspaceList
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl
+import kotlin.jvm.JvmName
+import kotlin.jvm.JvmOverloads
+import kotlin.jvm.JvmStatic
 import org.jetbrains.deft.ObjBuilder
 import org.jetbrains.deft.Type
 import org.jetbrains.deft.annotations.Child
@@ -51,6 +55,9 @@ interface EclipseProjectPropertiesEntity : WorkspaceEntity {
   }
 
   companion object : Type<EclipseProjectPropertiesEntity, Builder>() {
+    @JvmOverloads
+    @JvmStatic
+    @JvmName("create")
     operator fun invoke(variablePaths: Map<String, String>,
                         eclipseUrls: List<VirtualFileUrl>,
                         unknownCons: List<String>,
@@ -95,14 +102,9 @@ data class EclipseProjectFile(
 ) : EntitySource, JpsFileDependentEntitySource {
   override val originalSource: JpsFileEntitySource
     get() = internalSource
-}
 
-fun MutableEntityStorage.addEclipseProjectPropertiesEntity(module: ModuleEntity, source: EntitySource): EclipseProjectPropertiesEntity {
-  val entity = EclipseProjectPropertiesEntity(LinkedHashMap(), ArrayList(), ArrayList(), ArrayList(), false, 0, LinkedHashMap(), source) {
-    this.module = module
-}
-  this.addEntity(entity)
-  return entity
+  internal val projectLocation: JpsProjectConfigLocation
+    get() = (internalSource as JpsFileEntitySource.JpsProjectFileEntitySource).projectLocation
 }
 
 

@@ -34,7 +34,6 @@ import java.util.List;
  * <p/>
  * Invoke {@link #commit()} to persist changes, see also {@link ModuleRootModificationUtil}.
  *
- * @author dsl
  * @see ModuleRootManager#getModifiableModel()
  * @see ModuleRootModificationUtil
  */
@@ -78,6 +77,7 @@ public interface ModifiableRootModel extends ModuleRootModel {
    * @return new content entry
    */
   ContentEntry addContentEntry(@NotNull String url, @NotNull ProjectModelExternalSource externalSource);
+  ContentEntry addContentEntry(@NotNull String url, boolean useSourceOfModule);
 
   /**
    * Remove the specified content root.

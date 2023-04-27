@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.completion.test;
 
@@ -278,6 +278,29 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
         }
 
         @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("../testData/basic/common/backticked")
+        public static class Backticked extends AbstractJSBasicCompletionTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("NameWithDollars.kt")
+            public void testNameWithDollars() throws Exception {
+                runTest("../testData/basic/common/backticked/NameWithDollars.kt");
+            }
+
+            @TestMetadata("PropertyAfterBacktick1.kt")
+            public void testPropertyAfterBacktick1() throws Exception {
+                runTest("../testData/basic/common/backticked/PropertyAfterBacktick1.kt");
+            }
+
+            @TestMetadata("PropertyAfterBacktick2.kt")
+            public void testPropertyAfterBacktick2() throws Exception {
+                runTest("../testData/basic/common/backticked/PropertyAfterBacktick2.kt");
+            }
+        }
+
+        @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("../testData/basic/common/boldOrGrayed")
         public static class BoldOrGrayed extends AbstractJSBasicCompletionTest {
             private void runTest(String testDataFilePath) throws Exception {
@@ -287,6 +310,11 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("AfterNullable.kt")
             public void testAfterNullable() throws Exception {
                 runTest("../testData/basic/common/boldOrGrayed/AfterNullable.kt");
+            }
+
+            @TestMetadata("AfterNullable2.kt")
+            public void testAfterNullable2() throws Exception {
+                runTest("../testData/basic/common/boldOrGrayed/AfterNullable2.kt");
             }
 
             @TestMetadata("AfterNullableAutoCast.kt")
@@ -478,6 +506,69 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("root.kt")
             public void testRoot() throws Exception {
                 runTest("../testData/basic/common/dslMarker/root.kt");
+            }
+        }
+
+        @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("../testData/basic/common/extensionDeclarations")
+        public static class ExtensionDeclarations extends AbstractJSBasicCompletionTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            @TestMetadata("ClassTypeParameterAsReceiver.kt")
+            public void testClassTypeParameterAsReceiver() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/ClassTypeParameterAsReceiver.kt");
+            }
+
+            @TestMetadata("CompanionObject.kt")
+            public void testCompanionObject() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/CompanionObject.kt");
+            }
+
+            @TestMetadata("ExtensionFunReceiver.kt")
+            public void testExtensionFunReceiver() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/ExtensionFunReceiver.kt");
+            }
+
+            @TestMetadata("ExtensionFunReceiverForce.kt")
+            public void testExtensionFunReceiverForce() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/ExtensionFunReceiverForce.kt");
+            }
+
+            @TestMetadata("ExtensionInsideFunction.kt")
+            public void testExtensionInsideFunction() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/ExtensionInsideFunction.kt");
+            }
+
+            @TestMetadata("FunctionTypeParameterAsReceiver1.kt")
+            public void testFunctionTypeParameterAsReceiver1() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/FunctionTypeParameterAsReceiver1.kt");
+            }
+
+            @TestMetadata("FunctionTypeParameterAsReceiver2.kt")
+            public void testFunctionTypeParameterAsReceiver2() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/FunctionTypeParameterAsReceiver2.kt");
+            }
+
+            @TestMetadata("GenericExtensionFunReceiver1.kt")
+            public void testGenericExtensionFunReceiver1() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/GenericExtensionFunReceiver1.kt");
+            }
+
+            @TestMetadata("GenericExtensionFunReceiver2.kt")
+            public void testGenericExtensionFunReceiver2() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/GenericExtensionFunReceiver2.kt");
+            }
+
+            @TestMetadata("NestedClassName1.kt")
+            public void testNestedClassName1() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/NestedClassName1.kt");
+            }
+
+            @TestMetadata("NestedClassName2.kt")
+            public void testNestedClassName2() throws Exception {
+                runTest("../testData/basic/common/extensionDeclarations/NestedClassName2.kt");
             }
         }
 
@@ -712,6 +803,21 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("ParametrizedExpectedType.kt")
             public void testParametrizedExpectedType() throws Exception {
                 runTest("../testData/basic/common/extensions/ParametrizedExpectedType.kt");
+            }
+
+            @TestMetadata("regularFunctionVsFunctionWithReceiver.kt")
+            public void testRegularFunctionVsFunctionWithReceiver() throws Exception {
+                runTest("../testData/basic/common/extensions/regularFunctionVsFunctionWithReceiver.kt");
+            }
+
+            @TestMetadata("runCatchingInTheScopeWithReceiver.kt")
+            public void testRunCatchingInTheScopeWithReceiver() throws Exception {
+                runTest("../testData/basic/common/extensions/runCatchingInTheScopeWithReceiver.kt");
+            }
+
+            @TestMetadata("runCatchingWithoutScope.kt")
+            public void testRunCatchingWithoutScope() throws Exception {
+                runTest("../testData/basic/common/extensions/runCatchingWithoutScope.kt");
             }
 
             @TestMetadata("StarTypeArg.kt")
@@ -1262,6 +1368,11 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
                 runTest("../testData/basic/common/namedArguments/OnlyNamedArguments.kt");
             }
 
+            @TestMetadata("ParamsFromSingleUnapplicableOverload.kt")
+            public void testParamsFromSingleUnapplicableOverload() throws Exception {
+                runTest("../testData/basic/common/namedArguments/ParamsFromSingleUnapplicableOverload.kt");
+            }
+
             @TestMetadata("WithParameterExpression.kt")
             public void testWithParameterExpression() throws Exception {
                 runTest("../testData/basic/common/namedArguments/WithParameterExpression.kt");
@@ -1437,6 +1548,11 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
                 runTest("../testData/basic/common/parameterNameAndType/ByAbbreviation.kt");
             }
 
+            @TestMetadata("InSecondaryConstructor.kt")
+            public void testInSecondaryConstructor() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/InSecondaryConstructor.kt");
+            }
+
             @TestMetadata("NoAutoInsertion.kt")
             public void testNoAutoInsertion() throws Exception {
                 runTest("../testData/basic/common/parameterNameAndType/NoAutoInsertion.kt");
@@ -1455,6 +1571,11 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("NoFromFileAndFromClassesDuplication.kt")
             public void testNoFromFileAndFromClassesDuplication() throws Exception {
                 runTest("../testData/basic/common/parameterNameAndType/NoFromFileAndFromClassesDuplication.kt");
+            }
+
+            @TestMetadata("NoObjects.kt")
+            public void testNoObjects() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/NoObjects.kt");
             }
 
             @TestMetadata("NotForAnnnotationTypeConstructor.kt")
@@ -1517,6 +1638,21 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
                 runTest("../testData/basic/common/parameterNameAndType/ParametersInFileInaccessibleType2.kt");
             }
 
+            @TestMetadata("ParametersInFileNoDuplication.kt")
+            public void testParametersInFileNoDuplication() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/ParametersInFileNoDuplication.kt");
+            }
+
+            @TestMetadata("ParametersInFileNoLocalTypes.kt")
+            public void testParametersInFileNoLocalTypes() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/ParametersInFileNoLocalTypes.kt");
+            }
+
+            @TestMetadata("ParametersInFileNoTypeAnnotations.kt")
+            public void testParametersInFileNoTypeAnnotations() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/ParametersInFileNoTypeAnnotations.kt");
+            }
+
             @TestMetadata("ParametersInFileTypeParameter1.kt")
             public void testParametersInFileTypeParameter1() throws Exception {
                 runTest("../testData/basic/common/parameterNameAndType/ParametersInFileTypeParameter1.kt");
@@ -1535,6 +1671,21 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("Simple.kt")
             public void testSimple() throws Exception {
                 runTest("../testData/basic/common/parameterNameAndType/Simple.kt");
+            }
+
+            @TestMetadata("TypeAlias.kt")
+            public void testTypeAlias() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/TypeAlias.kt");
+            }
+
+            @TestMetadata("TypeParameter1.kt")
+            public void testTypeParameter1() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/TypeParameter1.kt");
+            }
+
+            @TestMetadata("TypeParameter2.kt")
+            public void testTypeParameter2() throws Exception {
+                runTest("../testData/basic/common/parameterNameAndType/TypeParameter2.kt");
             }
 
             @TestMetadata("URLConnection.kt")
@@ -2264,6 +2415,16 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
                 runTest("../testData/basic/common/EnumItemsThroughSingleTypeAlias.kt");
             }
 
+            @TestMetadata("EnumValuesMethodLowerPriority.kt")
+            public void testEnumValuesMethodLowerPriority() throws Exception {
+                runTest("../testData/basic/common/EnumValuesMethodLowerPriority.kt");
+            }
+
+            @TestMetadata("EnumValuesMethodUsualPriorityWhenFeatureDisabled.kt")
+            public void testEnumValuesMethodUsualPriorityWhenFeatureDisabled() throws Exception {
+                runTest("../testData/basic/common/EnumValuesMethodUsualPriorityWhenFeatureDisabled.kt");
+            }
+
             @TestMetadata("ExtendClassName.kt")
             public void testExtendClassName() throws Exception {
                 runTest("../testData/basic/common/ExtendClassName.kt");
@@ -2279,24 +2440,9 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
                 runTest("../testData/basic/common/ExtensionForProperty.kt");
             }
 
-            @TestMetadata("ExtensionFunReceiver.kt")
-            public void testExtensionFunReceiver() throws Exception {
-                runTest("../testData/basic/common/ExtensionFunReceiver.kt");
-            }
-
-            @TestMetadata("ExtensionFunReceiverForce.kt")
-            public void testExtensionFunReceiverForce() throws Exception {
-                runTest("../testData/basic/common/ExtensionFunReceiverForce.kt");
-            }
-
             @TestMetadata("ExtensionFunctionInClassObject.kt")
             public void testExtensionFunctionInClassObject() throws Exception {
                 runTest("../testData/basic/common/ExtensionFunctionInClassObject.kt");
-            }
-
-            @TestMetadata("ExtensionInsideFunction.kt")
-            public void testExtensionInsideFunction() throws Exception {
-                runTest("../testData/basic/common/ExtensionInsideFunction.kt");
             }
 
             @TestMetadata("ExtensionOnTypeAliasFromOtherTypeAlias.kt")
@@ -2357,16 +2503,6 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("GenericCompanionExtension.kt")
             public void testGenericCompanionExtension() throws Exception {
                 runTest("../testData/basic/common/GenericCompanionExtension.kt");
-            }
-
-            @TestMetadata("GenericExtensionFunReceiver1.kt")
-            public void testGenericExtensionFunReceiver1() throws Exception {
-                runTest("../testData/basic/common/GenericExtensionFunReceiver1.kt");
-            }
-
-            @TestMetadata("GenericExtensionFunReceiver2.kt")
-            public void testGenericExtensionFunReceiver2() throws Exception {
-                runTest("../testData/basic/common/GenericExtensionFunReceiver2.kt");
             }
 
             @TestMetadata("GenericKotlinClass.kt")
@@ -2649,11 +2785,6 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
                 runTest("../testData/basic/common/LocalMultideclarationValues.kt");
             }
 
-            @TestMetadata("NameWithDollars.kt")
-            public void testNameWithDollars() throws Exception {
-                runTest("../testData/basic/common/NameWithDollars.kt");
-            }
-
             @TestMetadata("NamedObject.kt")
             public void testNamedObject() throws Exception {
                 runTest("../testData/basic/common/NamedObject.kt");
@@ -2667,16 +2798,6 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("NestedClassBug.kt")
             public void testNestedClassBug() throws Exception {
                 runTest("../testData/basic/common/NestedClassBug.kt");
-            }
-
-            @TestMetadata("NestedClassNameForExtension.kt")
-            public void testNestedClassNameForExtension() throws Exception {
-                runTest("../testData/basic/common/NestedClassNameForExtension.kt");
-            }
-
-            @TestMetadata("NestedClassNameForExtension2.kt")
-            public void testNestedClassNameForExtension2() throws Exception {
-                runTest("../testData/basic/common/NestedClassNameForExtension2.kt");
             }
 
             @TestMetadata("NestedClassesOnClassWithDefaultObject.kt")
@@ -2937,6 +3058,11 @@ public abstract class JSBasicCompletionTestGenerated extends AbstractJSBasicComp
             @TestMetadata("TypeParameterFromOuterClass.kt")
             public void testTypeParameterFromOuterClass() throws Exception {
                 runTest("../testData/basic/common/TypeParameterFromOuterClass.kt");
+            }
+
+            @TestMetadata("TypeParameterInReturnType.kt")
+            public void testTypeParameterInReturnType() throws Exception {
+                runTest("../testData/basic/common/TypeParameterInReturnType.kt");
             }
 
             @TestMetadata("VariableClassName.kt")

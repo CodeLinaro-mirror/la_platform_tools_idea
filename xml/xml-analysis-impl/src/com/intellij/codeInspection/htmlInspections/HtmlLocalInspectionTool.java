@@ -27,9 +27,6 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.xml.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * @author spleaner
- */
 public abstract class HtmlLocalInspectionTool extends XmlSuppressableInspectionTool {
 
   @Override
@@ -46,6 +43,10 @@ public abstract class HtmlLocalInspectionTool extends XmlSuppressableInspectionT
   }
 
   protected void checkAttributeValue(@NotNull final XmlAttributeValue attributeValue, @NotNull final ProblemsHolder holder, final boolean isOnTheFly) {
+    // should be overridden
+  }
+
+  protected void checkText(@NotNull final XmlText text, @NotNull final ProblemsHolder holder, final boolean isOnTheFly) {
     // should be overridden
   }
 
@@ -69,6 +70,11 @@ public abstract class HtmlLocalInspectionTool extends XmlSuppressableInspectionT
             }
           }
         }
+      }
+
+      @Override
+      public void visitXmlText(@NotNull XmlText text) {
+        checkText(text, holder, isOnTheFly);
       }
 
       @Override

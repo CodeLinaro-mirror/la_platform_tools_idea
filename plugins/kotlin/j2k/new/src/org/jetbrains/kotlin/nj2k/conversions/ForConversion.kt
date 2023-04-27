@@ -58,6 +58,7 @@ class ForConversion(context: NewJ2kConverterContext) : RecursiveApplicableConver
                         symbolProvider
                     )
                 )
+
             !notNeedParentBlock -> blockStatement(convertedFromForLoopSyntheticWhileStatement)
             else -> convertedFromForLoopSyntheticWhileStatement
         }
@@ -113,7 +114,7 @@ class ForConversion(context: NewJ2kConverterContext) : RecursiveApplicableConver
             && !loopVarPsi.hasWriteAccesses(referenceSearcher, loopStatement.condition.psi())
         ) {
             val left = condition.left as? JKFieldAccessExpression ?: return null
-            if (condition.right.psi<PsiExpression>()?.type in listOf(PsiType.DOUBLE, PsiType.FLOAT, PsiType.CHAR)) return null
+            if (condition.right.psi<PsiExpression>()?.type in listOf(PsiTypes.doubleType(), PsiTypes.floatType(), PsiTypes.charType())) return null
             if (left.identifier.target != loopVar) return null
             val operationType =
                 (loopStatement.updaters.singleOrNull() as? JKExpressionStatement)?.expression?.isVariableIncrementOrDecrement(loopVar)
@@ -134,7 +135,7 @@ class ForConversion(context: NewJ2kConverterContext) : RecursiveApplicableConver
             val right = condition::right.detached().parenthesizeIfCompoundExpression()
             val range = forIterationRange(start, right, reversed, inclusive)
             val explicitType =
-                if (context.converter.settings.specifyLocalVariableTypeByDefault || loopVar.type.annotationList.annotations.isNotEmpty())
+                if (context.converter.settings.specifyLocalVariableTypeByDefault || loopVar.type.hasAnnotations)
                     JKJavaPrimitiveType.INT
                 else JKNoType
             val loopVarDeclaration =
@@ -175,12 +176,14 @@ class ForConversion(context: NewJ2kConverterContext) : RecursiveApplicableConver
                 convertBound(bound, if (inclusiveComparison) 0 else +1),
                 context
             )
+
             bound !is JKLiteralExpression && !inclusiveComparison ->
                 untilToExpression(
                     start,
                     convertBound(bound, 0),
                     context
                 )
+
             else -> JKBinaryExpression(
                 start,
                 convertBound(bound, if (inclusiveComparison) 0 else -1),
@@ -321,6 +324,7 @@ class ForConversion(context: NewJ2kConverterContext) : RecursiveApplicableConver
         when (this) {
             is JKDeclarationStatement ->
                 declaredStatements.filterIsInstance<JKVariable>().map { it.name.value }
+
             is JKJavaForLoopStatement -> initializers.flatMap { it.declaredVariableNames() }
             else -> emptyList()
         }

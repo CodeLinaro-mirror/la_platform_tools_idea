@@ -27,9 +27,6 @@ import java.util.*;
 
 import static com.jetbrains.python.psi.impl.PyCallExpressionHelper.*;
 
-/**
- * @author vlan
- */
 public class PyTypeCheckerInspection extends PyInspection {
   private static final Logger LOG = Logger.getInstance(PyTypeCheckerInspection.class.getName());
   private static final Key<Long> TIME_KEY = Key.create("PyTypeCheckerInspection.StartTime");
@@ -51,7 +48,7 @@ public class PyTypeCheckerInspection extends PyInspection {
     /**
      * @deprecated do not use
      */
-    @Deprecated
+    @Deprecated(forRemoval = true)
     public Visitor(@Nullable ProblemsHolder holder, @NotNull LocalInspectionToolSession session) {
       super(holder, session);
     }

@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task.Backgroundable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.rd.createLifetime
+import com.intellij.openapi.rd.util.launchUnderModalProgress
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.remoteDev.RemoteDevUtilBundle
@@ -28,10 +29,10 @@ object CodeWithMeGuestLauncher {
 
   fun isUnattendedModeUri(uri: URI) = uri.fragmentParameters["jt"] != null
 
-  fun downloadCompatibleClientAndLaunch(project: Project?, url: String, @NlsContexts.DialogTitle product: String, onDone: (Lifetime) -> Unit) {
+  fun downloadCompatibleClientAndLaunch(lifetime: Lifetime?, project: Project?, url: String, @NlsContexts.DialogTitle product: String, onDone: (Lifetime) -> Unit) {
     if (!application.isDispatchThread) {
       // starting a task from background will call invokeLater, but with wrong modality, so do it ourselves
-      application.invokeLater({ downloadCompatibleClientAndLaunch(project, url, product, onDone) }, ModalityState.any())
+      application.invokeLater({ downloadCompatibleClientAndLaunch(lifetime, project, url, product, onDone) }, ModalityState.any())
       return
     }
 
@@ -69,7 +70,7 @@ object CodeWithMeGuestLauncher {
           if (extractedJetBrainsClientData == null) return
 
           clientLifetime = runDownloadedClient(
-            lifetime = project?.createLifetime() ?: Lifetime.Eternal,
+            lifetime = lifetime ?: project?.createLifetime() ?: Lifetime.Eternal,
             extractedJetBrainsClientData = extractedJetBrainsClientData,
             urlForThinClient = url,
             product = product,

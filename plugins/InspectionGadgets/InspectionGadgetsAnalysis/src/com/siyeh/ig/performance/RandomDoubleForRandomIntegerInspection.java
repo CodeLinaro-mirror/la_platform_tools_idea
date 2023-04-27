@@ -61,7 +61,7 @@ public class RandomDoubleForRandomIntegerInspection extends BaseInspection imple
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiIdentifier name = (PsiIdentifier)descriptor.getPsiElement();
       final PsiReferenceExpression expression =
         (PsiReferenceExpression)name.getParent();
@@ -158,7 +158,7 @@ public class RandomDoubleForRandomIntegerInspection extends BaseInspection imple
       final PsiTypeCastExpression castExpression =
         (PsiTypeCastExpression)expression;
       final PsiType type = castExpression.getType();
-      return PsiType.INT.equals(type);
+      return PsiTypes.intType().equals(type);
     }
   }
 

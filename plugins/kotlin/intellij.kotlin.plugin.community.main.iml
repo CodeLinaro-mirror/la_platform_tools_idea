@@ -102,6 +102,7 @@
     <orderEntry type="module" module-name="kotlin.inspections" exported="" />
     <orderEntry type="module" module-name="kotlin.j2k.new" exported="" />
     <orderEntry type="module" module-name="kotlin.j2k.old" exported="" />
+    <orderEntry type="module" module-name="kotlin.j2k.old.post-processing" exported="" />
     <orderEntry type="module" module-name="kotlin.j2k.post-processing" exported="" />
     <orderEntry type="module" module-name="kotlin.i18n" exported="" />
     <orderEntry type="module" module-name="kotlin.jvm" exported="" />
@@ -181,13 +182,14 @@
     <orderEntry type="library" exported="" name="kotlinc.android-extensions-compiler-plugin" level="project" />
     <orderEntry type="library" exported="" name="kotlinc.parcelize-compiler-plugin" level="project" />
     <orderEntry type="library" exported="" name="kotlinx-coroutines-jdk8" level="project" />
-    <orderEntry type="library" exported="" name="kotlinx-collections-immutable-jvm" level="project" />
+    <orderEntry type="library" exported="" name="kotlinx-collections-immutable" level="project" />
     <orderEntry type="library" exported="" name="kotlin-reflect" level="project" />
     <orderEntry type="library" scope="RUNTIME" name="kotlinc.kotlin-script-runtime" level="project" />
     <orderEntry type="library" scope="RUNTIME" name="javaslang" level="project" />
     <orderEntry type="module" module-name="intellij.markdown" scope="RUNTIME" />
     <orderEntry type="library" scope="RUNTIME" name="javax-inject" level="project" />
-    <orderEntry type="module" module-name="kotlin.search" exported="" />
+    <orderEntry type="module" module-name="kotlin.searching.k2" exported="" />
+    <orderEntry type="module" module-name="kotlin.searching.base" exported="" />
     <orderEntry type="module" module-name="kotlin.refactorings.k2" exported="" />
     <orderEntry type="module" module-name="kotlin.refactorings.common" exported="" />
   </component>

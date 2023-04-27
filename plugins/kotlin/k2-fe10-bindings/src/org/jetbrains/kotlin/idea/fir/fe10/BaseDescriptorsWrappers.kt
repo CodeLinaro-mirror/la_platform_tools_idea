@@ -9,7 +9,6 @@ import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.KtSymbolOrigin.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KtAnnotatedSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KtNamedSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.markers.KtSymbolWithKind
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KtSymbolWithTypeParameters
 import org.jetbrains.kotlin.analysis.api.types.KtType
 import org.jetbrains.kotlin.descriptors.*
@@ -171,8 +170,8 @@ abstract class KtSymbolBasedDeclarationDescriptor(val context: Fe10WrapperContex
 }
 
 class KtSymbolBasedAnnotationDescriptor(
-    private val ktAnnotationCall: KtAnnotationApplication,
-    val context: Fe10WrapperContext
+    private val ktAnnotationCall: KtAnnotationApplicationWithArgumentsInfo,
+    val context: Fe10WrapperContext,
 ) : AnnotationDescriptor {
     override val type: KotlinType
         get() = context.implementationPlanned("ktAnnotationCall = $ktAnnotationCall")
@@ -269,7 +268,7 @@ class KtSymbolBasedClassDescriptor(override val ktSymbol: KtNamedClassOrObjectSy
 
     override fun getValueClassRepresentation(): ValueClassRepresentation<SimpleType> = TODO("Not yet implemented")
 
-    override fun getMemberScope(typeArguments: MutableList<out TypeProjection>): MemberScope = noImplementation()
+    override fun getMemberScope(typeArguments: List<TypeProjection>): MemberScope = noImplementation()
     override fun getMemberScope(typeSubstitution: TypeSubstitution): MemberScope = noImplementation()
     override fun getUnsubstitutedMemberScope(): MemberScope = noImplementation()
     override fun getUnsubstitutedInnerClassesScope(): MemberScope = noImplementation()

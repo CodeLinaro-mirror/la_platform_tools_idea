@@ -36,18 +36,15 @@ for the IntelliJ Platform.
 Using IntelliJ IDEA **File | Open**, select the `<IDEA_HOME>` directory. 
 * If IntelliJ IDEA displays an error about a missing or out of date required plugin (e.g. Kotlin),
   [enable, upgrade, or install that plugin](https://www.jetbrains.com/help/idea/managing-plugins.html) and restart IntelliJ IDEA.
-* If IntelliJ IDEA displays an error about a Gradle configuration not found,
-  [refresh the Gradle projects](https://www.jetbrains.com/help/idea/jetgradle-tool-window.html). 
 
 ### IntelliJ Build Configuration
 1. It's recommended to use JetBrains Runtime 17 to compile the project. 
    When you invoke **Build Project** for the first time, IntelliJ IDEA should suggest downloading it automatically.
 2. If the _Maven_ plugin is disabled, [add the path variable](https://www.jetbrains.com/help/idea/absolute-path-variables.html)
    "**MAVEN_REPOSITORY**" pointing to `<USER_HOME>/.m2/repository` directory.
-3. _**Speed Tip:**_ If you have enough RAM on your computer,
-   [configure the compiler settings](https://www.jetbrains.com/help/idea/specifying-compilation-settings.html)
-   to enable the "Compile independent modules in parallel" option and set "User-local build process heap size" to 3000.
-   These changes will greatly reduce compilation time.
+3. Make sure you have at least 8GB of RAM on your computer. With the bare minimum of RAM, disable "Compile independent modules in parallel"
+   option in [the compiler settings](https://www.jetbrains.com/help/idea/specifying-compilation-settings.html). With notably more memory
+   available, increase "User-local build process heap size" to 3000 - that will greatly reduce compilation time.
 
 ### Building the IntelliJ Application Source Code
 To build IntelliJ IDEA Community Edition from source, choose **Build | Build Project** from the main menu.
@@ -63,6 +60,10 @@ Examples (`./` should be added only for Linux/macOS):
 
 `installers.cmd` is used just to run [OpenSourceCommunityInstallersBuildTarget](build/scripts/OpenSourceCommunityInstallersBuildTarget.kt) from the command line.
 You may call it directly from IDEA, see run configuration `Build IDEA Community Installers (current OS)` for an example.
+
+#### Dockerized Build Environment
+To build installation packages inside a Docker container with preinstalled dependencies and tools, run the following command in `<IDEA_HOME>` directory (on Windows, use PowerShell):  
+`docker run --rm -it -v ${PWD}:/community $(docker build -q . --target build_env)`
 
 ## Running IntelliJ IDEA
 To run the IntelliJ IDEA built from source, choose **Run | Run** from the main menu. This will use the preconfigured run configuration "**IDEA**".

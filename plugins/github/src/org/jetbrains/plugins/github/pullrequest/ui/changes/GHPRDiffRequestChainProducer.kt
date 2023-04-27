@@ -24,6 +24,8 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.ex.isValidRanges
 import com.intellij.openapi.vcs.history.VcsDiffUtil
+import git4idea.changes.GitParsedChangesBundle
+import git4idea.changes.getDiffComputer
 import org.jetbrains.plugins.github.api.data.GHUser
 import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.action.GHPRActionKeys
@@ -32,7 +34,6 @@ import org.jetbrains.plugins.github.pullrequest.comment.GHPRDiffReviewSupportImp
 import org.jetbrains.plugins.github.pullrequest.comment.action.GHPRDiffReviewResolvedThreadsToggleAction
 import org.jetbrains.plugins.github.pullrequest.comment.action.GHPRDiffReviewThreadsReloadAction
 import org.jetbrains.plugins.github.pullrequest.comment.action.GHPRDiffReviewThreadsToggleAction
-import org.jetbrains.plugins.github.pullrequest.data.GHPRChangesProvider
 import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRDataProvider
 import org.jetbrains.plugins.github.pullrequest.data.service.GHPRRepositoryDataService
 import org.jetbrains.plugins.github.ui.avatars.GHAvatarIconsProvider
@@ -46,6 +47,7 @@ open class GHPRDiffRequestChainProducer(
   private val dataProvider: GHPRDataProvider,
   private val avatarIconsProvider: GHAvatarIconsProvider,
   private val repositoryDataService: GHPRRepositoryDataService,
+  private val ghostUser: GHUser,
   private val currentUser: GHUser
 ) : DiffRequestChainProducer {
 
@@ -76,7 +78,7 @@ open class GHPRDiffRequestChainProducer(
 
   private fun loadRequestDataKeys(indicator: ProgressIndicator,
                                   change: Change,
-                                  changesProviderFuture: CompletableFuture<GHPRChangesProvider>,
+                                  changesProviderFuture: CompletableFuture<GitParsedChangesBundle>,
                                   fetchFuture: CompletableFuture<Void>): Map<Key<out Any>, Any?> {
 
     val changesProvider = ProgressIndicatorUtils.awaitWithCheckCanceled(changesProviderFuture, indicator)
@@ -86,7 +88,7 @@ open class GHPRDiffRequestChainProducer(
 
     VcsDiffUtil.putFilePathsIntoChangeContext(change, requestDataKeys)
 
-    val diffComputer = getDiffComputer(changesProvider, change)
+    val diffComputer = changesProvider.findChangeDiffData(change)?.getDiffComputer()
     if (diffComputer != null) {
       requestDataKeys[DiffUserDataKeysEx.CUSTOM_DIFF_COMPUTER] = diffComputer
     }
@@ -115,32 +117,14 @@ open class GHPRDiffRequestChainProducer(
     return requestDataKeys
   }
 
-  private fun getReviewSupport(changesProvider: GHPRChangesProvider, change: Change): GHPRDiffReviewSupport? {
+  private fun getReviewSupport(changesProvider: GitParsedChangesBundle, change: Change): GHPRDiffReviewSupport? {
     val diffData = changesProvider.findChangeDiffData(change) ?: return null
 
     return GHPRDiffReviewSupportImpl(project,
                                      dataProvider.reviewData, dataProvider.detailsData, avatarIconsProvider,
                                      repositoryDataService,
                                      diffData,
+                                     ghostUser,
                                      currentUser)
-  }
-
-  private fun getDiffComputer(changesProvider: GHPRChangesProvider, change: Change): DiffUserDataKeysEx.DiffComputer? {
-    val diffRanges = changesProvider.findChangeDiffData(change)?.diffRangesWithoutContext ?: return null
-
-    return DiffUserDataKeysEx.DiffComputer { text1, text2, policy, innerChanges, indicator ->
-      val comparisonManager = ComparisonManagerImpl.getInstanceImpl()
-      val lineOffsets1 = LineOffsetsUtil.create(text1)
-      val lineOffsets2 = LineOffsetsUtil.create(text2)
-
-      if (!isValidRanges(text1, text2, lineOffsets1, lineOffsets2, diffRanges)) {
-        error("Invalid diff line ranges for change $change")
-      }
-      val iterable = DiffIterableUtil.create(diffRanges, lineOffsets1.lineCount, lineOffsets2.lineCount)
-      DiffIterableUtil.iterateAll(iterable).map {
-        comparisonManager.compareLinesInner(it.first, text1, text2, lineOffsets1, lineOffsets2, policy, innerChanges,
-                                            indicator)
-      }.flatten()
-    }
   }
 }

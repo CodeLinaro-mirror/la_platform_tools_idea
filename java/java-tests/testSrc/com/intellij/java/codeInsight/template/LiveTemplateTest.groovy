@@ -39,9 +39,6 @@ import org.jdom.Element
 import org.jetbrains.annotations.NotNull
 
 import static com.intellij.testFramework.EdtTestUtil.runInEdtAndWait
-/**
- * @author spleaner
- */
 @SuppressWarnings("SpellCheckingInspection")
 class LiveTemplateTest extends LiveTemplateTestCase {
   final String basePath = JavaTestUtil.getRelativeJavaTestDataPath() + "/codeInsight/template/"
@@ -1260,7 +1257,7 @@ class Foo {
     CodeInsightTestUtil.addTemplate(template, testRootDisposable)
 
     myFixture.configureByText 'a.java', '//a <selection><caret>foo_bar</selection> b'
-    def group = SurroundWithTemplateHandler.createActionGroup(editor, myFixture.file, [] as Set)
+    def group = SurroundWithTemplateHandler.createActionGroup(editor, myFixture.file, new HashSet())
     def action = group.find { it.templatePresentation.text.contains(template.key) }
     (action as InvokeTemplateAction).perform()
     myFixture.checkResult('//a foobar+x b')

@@ -91,6 +91,8 @@ public final class DetectedPluginsPanel extends OrderPanel<PluginDownloader> {
     Splitter splitter = new OnePixelSplitter(false);
     splitter.setFirstComponent(wrapWithPane(entryTable, 1, 0));
     splitter.setSecondComponent(wrapWithPane(myDetailsComponent, 0, 1));
+    splitter.setProportion(0.3f);
+
     add(splitter, BorderLayout.CENTER);
   }
 
@@ -100,12 +102,8 @@ public final class DetectedPluginsPanel extends OrderPanel<PluginDownloader> {
     return pane;
   }
 
-  public void addAll(@NotNull Collection<PluginDownloader> orderEntries, Collection<PluginDownloader> selectedPlugins) {
-    for (PluginDownloader entry : orderEntries) {
-      if (!selectedPlugins.contains(entry)) {
-        mySkippedPlugins.add(entry.getId());
-      }
-    }
+  @Override
+  public void addAll(@NotNull Collection<? extends PluginDownloader> orderEntries) {
     super.addAll(orderEntries);
     TableUtil.ensureSelectionExists(getEntryTable());
   }

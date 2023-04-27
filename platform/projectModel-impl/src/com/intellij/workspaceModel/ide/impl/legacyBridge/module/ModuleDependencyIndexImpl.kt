@@ -51,7 +51,7 @@ class ModuleDependencyIndexImpl(private val project: Project): ModuleDependencyI
   }
 
   override fun setupTrackedLibrariesAndJdks() {
-    val currentStorage = WorkspaceModel.getInstance(project).entityStorage.current
+    val currentStorage = WorkspaceModel.getInstance(project).currentSnapshot
     for (moduleEntity in currentStorage.entities(ModuleEntity::class.java)) {
       addTrackedLibraryAndJdkFromEntity(moduleEntity)
     }
@@ -71,6 +71,17 @@ class ModuleDependencyIndexImpl(private val project: Project): ModuleDependencyI
 
   override fun hasDependencyOn(sdk: Sdk): Boolean {
     return jdkChangeListener.hasDependencyOn(sdk)
+  }
+
+  fun workspaceModelChanged(event: VersionedStorageChange) {
+    if (project.isDisposed) return
+
+    // Roots changed event should be fired for the global libraries linked with module
+    val moduleChanges = event.getChanges(ModuleEntity::class.java)
+    for (change in moduleChanges) {
+      change.oldEntity?.let { removeTrackedLibrariesAndJdkFromEntity(it) }
+      change.newEntity?.let { addTrackedLibraryAndJdkFromEntity(it) }
+    }
   }
 
   private fun addTrackedLibraryAndJdkFromEntity(moduleEntity: ModuleEntity) {
@@ -392,16 +403,4 @@ class ModuleDependencyIndexImpl(private val project: Project): ModuleDependencyI
     jdkChangeListener.unsubscribe(true)
     setupTrackedLibrariesAndJdks()
   }
-
-  fun workspaceModelChanged(event: VersionedStorageChange){
-    if (project.isDisposed) return
-
-    // Roots changed event should be fired for the global libraries linked with module
-    val moduleChanges = event.getChanges(ModuleEntity::class.java)
-    for (change in moduleChanges) {
-      change.oldEntity?.let { removeTrackedLibrariesAndJdkFromEntity(it) }
-      change.newEntity?.let { addTrackedLibraryAndJdkFromEntity(it) }
-    }
-  }
-
 }

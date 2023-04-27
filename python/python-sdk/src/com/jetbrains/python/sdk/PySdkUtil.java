@@ -43,7 +43,6 @@ import java.util.Map;
  * A more flexible cousin of SdkVersionUtil.
  * Needs not to be instantiated and only holds static methods.
  *
- * @author dcheryasov
  * @see PythonSdkUtil for Pyhton SDK utilities with no run-time dependencies
  */
 //TODO: rename to PySdkExecuteUtil or PySdkRuntimeUtil
@@ -205,7 +204,7 @@ public final class PySdkUtil {
     if (sdkHome == null || sdkHome.trim().isEmpty()) {
       // homePath is empty (not null) by default.
       // If we cache values when path is empty, we would stuck with empty env and never reread it once path set
-      LOG.warn("homePath is null or empty, skipping env loading");
+      LOG.warn("homePath is null or empty, skipping env loading for " + sdk.getName());
       return Collections.emptyMap();
     }
 

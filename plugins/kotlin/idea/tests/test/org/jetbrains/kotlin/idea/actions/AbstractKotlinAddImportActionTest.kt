@@ -1,15 +1,13 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.actions
 
+import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.idea.base.test.TestRoot
 import org.jetbrains.kotlin.idea.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
+import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameOrNull
-import org.jetbrains.kotlin.test.TestMetadata
-import org.junit.internal.runners.JUnit38ClassRunner
-import org.junit.runner.RunWith
 import java.io.File
 
 abstract class AbstractKotlinAddImportActionTest : KotlinLightCodeInsightFixtureTestCase() {
@@ -24,6 +22,10 @@ abstract class AbstractKotlinAddImportActionTest : KotlinLightCodeInsightFixture
                 fixture.configureByFile(depFilePath)
             }
         }
+
+        val mainFile = dataFile()
+        val fileText = FileUtil.loadFile(mainFile, true)
+        assertTrue("\"<caret>\" is missing in file \"$mainFile\"", fileText.contains("<caret>"))
 
         fixture.configureByFile(fileName())
 
@@ -49,7 +51,9 @@ abstract class AbstractKotlinAddImportActionTest : KotlinLightCodeInsightFixture
 
             for (i in expectedVariantNames.indices) {
                 assertTrue(
-                    "mismatch at #$i: '${actualVariantNames[i]}' should start with '${expectedVariantNames[i]}'\nactual:\n${actualVariantNames.joinToString("\n")}",
+                    "mismatch at #$i: '${actualVariantNames[i]}' should start with '${expectedVariantNames[i]}'\nactual:\n${
+                        actualVariantNames.joinToString("\n") { "// EXPECT_VARIANT_IN_ORDER \"$it\"" }
+                    }",
                     actualVariantNames[i].contains(expectedVariantNames[i])
                 )
             }
@@ -65,8 +69,8 @@ abstract class AbstractKotlinAddImportActionTest : KotlinLightCodeInsightFixture
 
     private fun DeclarationDescriptor.variantName() = when(this) {
         is ClassDescriptor ->
-            fqNameOrNull()?.toString()?.let { "class $it" } ?: toString()
+            fqNameOrNull()?.toString()?.let { "class $it" } ?: DescriptorRenderer.DEBUG_TEXT.render(this)
         else ->
-            toString()
+            DescriptorRenderer.DEBUG_TEXT.render(this)
     }
 }

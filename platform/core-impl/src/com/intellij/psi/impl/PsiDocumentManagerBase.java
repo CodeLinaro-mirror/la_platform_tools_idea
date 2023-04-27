@@ -294,7 +294,7 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
       if (!isCommitInProgress()) {
         // in case of fireWriteActionFinished() we didn't execute 'actionsWhenAllDocumentsAreCommitted' yet
         assert actionsWhenAllDocumentsAreCommitted.isEmpty() : actionsWhenAllDocumentsAreCommitted + "; uncommitted docs: " +
-                                                               StringUtil.join(myUncommittedDocuments, document->document+":isEventSystemEnabled="+isEventSystemEnabled(document)+":virtualFile="+getVirtualFile(document), ",");
+               StringUtil.join(myUncommittedDocuments, document->document+":isEventSystemEnabled="+isEventSystemEnabled(document)+":virtualFile="+getVirtualFile(document), ",");
       }
       action.run();
       return true;
@@ -1173,9 +1173,14 @@ public abstract class PsiDocumentManagerBase extends PsiDocumentManager implemen
     return myProject.isDefault();
   }
 
+  @NonNls
   public String someDocumentDebugInfo(@NotNull Document document) {
     FileViewProvider viewProvider = getCachedViewProvider(document);
-    return "cachedProvider: " + viewProvider + "; isEventSystemEnabled: " + isEventSystemEnabled(document) + "; isCommitted:"+isCommitted(document)+"; myIsCommitInProgress:"+isCommitInProgress()+"; isInUncommittedSet:"+isInUncommittedSet(document);
+    return "cachedProvider: " + viewProvider +
+           "; isEventSystemEnabled: " + isEventSystemEnabled(document) +
+           "; isCommitted:"+isCommitted(document)+
+           "; myIsCommitInProgress:"+isCommitInProgress()+
+           "; isInUncommittedSet:"+isInUncommittedSet(document);
   }
 
   /**

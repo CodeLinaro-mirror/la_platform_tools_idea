@@ -54,7 +54,7 @@ public class ForeachStatementInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiForeachStatement statement = (PsiForeachStatement)element.getParent();
       assert statement != null;
@@ -70,7 +70,7 @@ public class ForeachStatementInspection extends BaseInspection {
       if (iteratedValue.getType() instanceof PsiArrayType) {
         final PsiType type = iterationParameter.getType();
         final String index = new VariableNameGenerator(statement, VariableKind.LOCAL_VARIABLE)
-          .byType(PsiType.INT).byName("i", "j", "k").generate(true);
+          .byType(PsiTypes.intType()).byName("i", "j", "k").generate(true);
         newStatement.append("for(int ").append(index).append(" = 0;");
         newStatement.append(index).append('<').append(iteratedValue.getText()).append(".length;");
         newStatement.append(index).append("++)").append("{ ");

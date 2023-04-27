@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package git4idea.actions.branch
 
 import com.intellij.dvcs.branch.DvcsSyncSettings
@@ -11,6 +11,7 @@ import git4idea.GitBranch
 import git4idea.branch.GitBranchUtil
 import git4idea.config.GitVcsSettings
 import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryManager
 
 object GitBranchActionsUtil {
   /**
@@ -50,6 +51,23 @@ object GitBranchActionsUtil {
   }
 
   /**
+   * For top level (without explicit repository selection) actions:
+   * if [com.intellij.dvcs.repo.RepositoryManager.isSyncEnabled] will delegate to [getAffectedRepositories],
+   * otherwise try to [GitBranchUtil.guessRepositoryForOperation]
+   */
+  @JvmStatic
+  fun getRepositoriesForTopLevelActions(e: AnActionEvent, isTopLevelAction: (AnActionEvent) -> Boolean): List<GitRepository> {
+    val project = e.project ?: return emptyList()
+
+    if (isTopLevelAction(e) && !userWantsSyncControl(project)) {
+      return GitBranchUtil.guessRepositoryForOperation(project, e.dataContext)?.let(::listOf).orEmpty()
+    }
+
+    return getAffectedRepositories(e)
+  }
+
+  /**
+   * If particular repositories already specified in action's data context - return it.
    * If [com.intellij.dvcs.repo.RepositoryManager.isSyncEnabled] return all repositories for the particular project,
    * otherwise return user's mostly used repository [GitBranchUtil.guessRepositoryForOperation]
    */
@@ -57,7 +75,13 @@ object GitBranchActionsUtil {
   fun getAffectedRepositories(e: AnActionEvent): List<GitRepository> {
     val project = e.project ?: return emptyList()
 
-    if (userWantsSyncControl(project)) return e.getData(REPOSITORIES_KEY).orEmpty()
+    val repositoriesInContext = e.getData(REPOSITORIES_KEY).orEmpty()
+
+    if (repositoriesInContext.isNotEmpty()) {
+      return repositoriesInContext
+    }
+
+    if (userWantsSyncControl(project)) return GitRepositoryManager.getInstance(project).repositories
 
     return GitBranchUtil.guessRepositoryForOperation(project, e.dataContext)?.let(::listOf).orEmpty()
   }

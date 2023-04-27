@@ -12,13 +12,13 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 
 /**
- * @see CodeVisionProviderFactory
  * If invalidation and calculation should be bound to daemon, then use @see [com.intellij.codeInsight.hints.codeVision.DaemonBoundCodeVisionProvider]
  * Otherwise implement [CodeVisionProvider] directly
  *
  * If you want to implement multiple providers with same meaning (for example, for different languages)
  * and group them in settings window, then @see [com.intellij.codeInsight.codeVision.settings.CodeVisionGroupSettingProvider]
- * Also @see [PlatformCodeVisionIds]
+ * @see [PlatformCodeVisionIds]
+ * @see CodeVisionProviderFactory
  */
 @ApiStatus.Experimental
 interface CodeVisionProvider<T> {
@@ -83,6 +83,7 @@ interface CodeVisionProvider<T> {
    * Calls on background BEFORE editor opening
    * @return ranges where placeholders should be when editor opens
    */
+  @ApiStatus.ScheduledForRemoval
   @Deprecated("use getPlaceholderCollector")
   fun collectPlaceholders(editor: Editor): List<TextRange> = emptyList()
 

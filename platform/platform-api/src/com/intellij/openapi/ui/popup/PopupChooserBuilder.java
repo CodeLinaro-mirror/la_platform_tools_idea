@@ -1,7 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.ui.popup;
 
-import com.intellij.openapi.ui.ListComponentUpdater;
+import com.intellij.openapi.ui.GenericListComponentUpdater;
 import com.intellij.openapi.ui.popup.util.PopupUtil;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.NlsContexts;
@@ -72,6 +72,7 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
   private boolean myModalContext;
   private boolean myCloseOnEnter = true;
   private boolean myCancelOnWindowDeactivation = true;
+  private boolean myCancelOnOtherWindowOpen = true;
   private boolean myUseForXYLocation;
   private @Nullable Processor<? super JBPopup> myCouldPin;
   private int myVisibleRowCount = 15;
@@ -99,7 +100,7 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
     default void autoSelect() {}
     default void setSelectionMode(int selection) {}
 
-    default ListComponentUpdater getBackgroundUpdater() {
+    default GenericListComponentUpdater<T> getBackgroundUpdater() {
       return null;
     }
 
@@ -328,12 +329,6 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
   @Override
   public @NotNull JBPopup createPopup() {
     JPanel contentPane = new JPanel(new BorderLayout());
-    if (!myForceMovable && myTitle != null) {
-      JLabel label = new JLabel(myTitle);
-      label.setBorder(BorderFactory.createEmptyBorder(2, 5, 2, 5));
-      label.setHorizontalAlignment(SwingConstants.CENTER);
-      contentPane.add(label, BorderLayout.NORTH);
-    }
 
     if (myAutoselect) {
       myChooserComponent.autoSelect();
@@ -410,7 +405,7 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
       .setRequestFocus(myRequestFocus)
       .setResizable(myForceResizable)
       .setMovable(myForceMovable)
-      .setTitle(myForceMovable ? myTitle : null)
+      .setTitle(myTitle)
       .setAlpha(myAlpha)
       .setFocusOwners(myFocusOwners)
       .setCancelKeyEnabled(myCancelKeyEnabled)
@@ -419,7 +414,7 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
       .setKeyboardActions(myKeyboardActions)
       .setMayBeParent(myMayBeParent)
       .setLocateWithinScreenBounds(true)
-      .setCancelOnOtherWindowOpen(true)
+      .setCancelOnOtherWindowOpen(myCancelOnOtherWindowOpen)
       .setModalContext(myModalContext)
       .setCancelOnWindowDeactivation(myCancelOnWindowDeactivation)
       .setCancelOnClickOutside(myCancelOnClickOutside)
@@ -565,6 +560,12 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
   }
 
   @Override
+  public IPopupChooserBuilder<T> setCancelOnOtherWindowOpen(boolean cancelOnWindow) {
+    myCancelOnOtherWindowOpen = cancelOnWindow;
+    return this;
+  }
+
+  @Override
   public IPopupChooserBuilder<T> setSelectionMode(int selection) {
     myChooserComponent.setSelectionMode(selection);
     return this;
@@ -595,7 +596,7 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
 
   @Override
   public IPopupChooserBuilder<T> withHintUpdateSupply() {
-    HintUpdateSupply.installSimpleHintUpdateSupply(myChooserComponent.getComponent());
+    HintUpdateSupply.installDataContextHintUpdateSupply(myChooserComponent.getComponent());
     addCancelCallback(() -> {
       HintUpdateSupply.hideHint(myChooserComponent.getComponent());
       return true;
@@ -626,7 +627,7 @@ public class PopupChooserBuilder<T> implements IPopupChooserBuilder<T> {
   }
 
   @Override
-  public ListComponentUpdater getBackgroundUpdater() {
+  public GenericListComponentUpdater<T> getBackgroundUpdater() {
     return myChooserComponent.getBackgroundUpdater();
   }
 

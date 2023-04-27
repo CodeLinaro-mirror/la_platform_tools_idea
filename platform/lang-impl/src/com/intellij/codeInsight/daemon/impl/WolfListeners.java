@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.ide.plugins.DynamicPluginListener;
@@ -7,7 +7,6 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vcs.FileStatusListener;
-import com.intellij.openapi.vcs.FileStatusManager;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.newvfs.BulkFileListener;
@@ -17,9 +16,7 @@ import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiTreeChangeAdapter;
 import com.intellij.psi.PsiTreeChangeEvent;
-import com.intellij.psi.PsiTreeChangeListener;
 import com.intellij.util.CommonProcessors;
-import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.update.MergingUpdateQueue;
 import com.intellij.util.ui.update.Update;
 import org.jetbrains.annotations.NotNull;
@@ -32,7 +29,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-class WolfListeners implements Disposable {
+final class WolfListeners implements Disposable {
   private final Project myProject;
   private final WolfTheProblemSolverImpl myWolfTheProblemSolver;
   private final MergingUpdateQueue invalidateFileQueue = new MergingUpdateQueue("WolfListeners.invalidateFileQueue", 0, true, null, this, null, false);
@@ -40,7 +37,7 @@ class WolfListeners implements Disposable {
   WolfListeners(@NotNull Project project, @NotNull WolfTheProblemSolverImpl wolfTheProblemSolver) {
     myProject = project;
     myWolfTheProblemSolver = wolfTheProblemSolver;
-    PsiTreeChangeListener changeListener = new PsiTreeChangeAdapter() {
+    PsiManager.getInstance(project).addPsiTreeChangeListener(new PsiTreeChangeAdapter() {
       @Override
       public void childAdded(@NotNull PsiTreeChangeEvent event) {
         childrenChanged(event);
@@ -70,9 +67,8 @@ class WolfListeners implements Disposable {
       public void childrenChanged(@NotNull PsiTreeChangeEvent event) {
         myWolfTheProblemSolver.clearSyntaxErrorFlag(event);
       }
-    };
-    PsiManager.getInstance(project).addPsiTreeChangeListener(changeListener, this);
-    MessageBusConnection busConnection = project.getMessageBus().connect();
+    }, this);
+    var busConnection = project.getMessageBus().simpleConnect();
     busConnection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener() {
       @Override
       public void after(@NotNull List<? extends @NotNull VFileEvent> events) {
@@ -97,20 +93,17 @@ class WolfListeners implements Disposable {
         }
       }
     });
-    FileStatusManager fileStatusManager = FileStatusManager.getInstance(project);
-    if (fileStatusManager != null) { //tests?
-      fileStatusManager.addFileStatusListener(new FileStatusListener() {
-        @Override
-        public void fileStatusesChanged() {
-          clearInvalidFiles();
-        }
+    busConnection.subscribe(FileStatusListener.TOPIC, new FileStatusListener() {
+      @Override
+      public void fileStatusesChanged() {
+        clearInvalidFiles();
+      }
 
-        @Override
-        public void fileStatusChanged(@NotNull VirtualFile virtualFile) {
-          fileStatusesChanged();
-        }
-      }, this);
-    }
+      @Override
+      public void fileStatusChanged(@NotNull VirtualFile virtualFile) {
+        fileStatusesChanged();
+      }
+    });
 
     busConnection.subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
       @Override
@@ -140,7 +133,6 @@ class WolfListeners implements Disposable {
 
   @Override
   public void dispose() {
-
   }
 
   @TestOnly

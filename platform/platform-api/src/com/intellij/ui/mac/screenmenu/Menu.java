@@ -6,8 +6,10 @@ import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SimpleTimer;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ReflectionUtil;
 import org.jetbrains.annotations.NonNls;
@@ -40,7 +42,7 @@ public class Menu extends MenuItem {
     setTitle(title);
   }
 
-  private Menu() {}
+  private Menu() { }
 
   // AppMenu is the first menu item (with title = application name) which is filled by OS
   public static Menu getAppMenu() {
@@ -59,7 +61,7 @@ public class Menu extends MenuItem {
     Set<String> keySet = replacements.getResourceBundle().keySet();
 
     ArrayList<String> replace = new ArrayList<>(keySet.size() * 2);
-    for (String title: keySet) {
+    for (String title : keySet) {
       replace.add(title);
       replace.add(replacements.getMessage(title));
     }
@@ -120,15 +122,18 @@ public class Menu extends MenuItem {
   @SuppressWarnings("SSBasedInspection")
   void disposeChildren(int delayMs) {
     if (delayMs <= 0) {
-      for (MenuItem item : myItems)
+      for (MenuItem item : myItems) {
         item.dispose();
-    } else {
+      }
+    }
+    else {
       // Schedule to dispose later.
       // NOTE: Can be invoked in any thread, not only EDT
       final ArrayList<MenuItem> copy = new ArrayList<>(myItems);
       SimpleTimer.getInstance().setUp(() -> {
-        for (MenuItem item: copy)
+        for (MenuItem item : copy) {
           item.dispose();
+        }
       }, delayMs);
     }
     myItems.clear();
@@ -143,12 +148,18 @@ public class Menu extends MenuItem {
   }
 
   public void beginFill() {
-    for (MenuItem item : myBuffer)
-      if (item != null) item.dispose();
+    for (MenuItem item : myBuffer) {
+      if (item != null) {
+        Disposer.dispose(item);
+      }
+    }
     myBuffer.clear();
   }
 
-  public @Nullable MenuItem add(@Nullable MenuItem item) { myBuffer.add(item); return item; }
+  public @Nullable MenuItem add(@Nullable MenuItem item) {
+    myBuffer.add(item);
+    return item;
+  }
 
   synchronized
   public void endFill(boolean onAppKit) {
@@ -166,7 +177,8 @@ public class Menu extends MenuItem {
         //System.err.printf("\t0x%X\n", newItemsPeers[c]);
         myItems.add(menuItem);
         menuItem.isInHierarchy = true;
-      } else {
+      }
+      else {
         myCachedPeers[c] = 0;
       }
     }
@@ -177,8 +189,9 @@ public class Menu extends MenuItem {
 
   synchronized void refillImpl(boolean onAppKit) {
     ensureNativePeer();
-    if (myCachedPeers != null)
+    if (myCachedPeers != null) {
       nativeRefill(nativePeer, myCachedPeers, onAppKit);
+    }
   }
 
   synchronized
@@ -198,8 +211,7 @@ public class Menu extends MenuItem {
   }
 
   @Override
-  synchronized
-  void ensureNativePeer() {
+  synchronized void ensureNativePeer() {
     if (nativePeer == 0) {
       nativePeer = nativeCreateMenu();
     }
@@ -219,12 +231,13 @@ public class Menu extends MenuItem {
         stub.ensureNativePeer();
         nativeAddItem(nativePeer, stub.nativePeer, false/*already on AppKit thread*/);
 
-        ApplicationManager.getApplication().invokeLater(()->{
+        ApplicationManager.getApplication().invokeLater(() -> {
           myOnOpen.run();
           endFill(true);
         });
-      } else {
-        invokeWithLWCToolkit(myOnOpen, ()->endFill(false/*already on AppKit thread*/), myComponent);
+      }
+      else {
+        invokeWithLWCToolkit(myOnOpen, () -> endFill(false/*already on AppKit thread*/), myComponent);
       }
     }
   }
@@ -240,8 +253,9 @@ public class Menu extends MenuItem {
 
     // NOTE: we can't perform native cleaning immediately, because items from 'Help' menu stop work.
     SimpleTimer.getInstance().setUp(() -> {
-      if (myIsOpened)
+      if (myIsOpened) {
         return;
+      }
 
       synchronized (this) {
         // clean native NSMenu item
@@ -268,12 +282,15 @@ public class Menu extends MenuItem {
   // Find methods
   // Always performs on AppKit thread with waiting for result
   private native long nativeFindItemByTitle(long menuPtr, String re); // NOTE: returns retained pointer
+
   private native int nativeFindIndexByTitle(long menuPtr, String re);
 
   // Modification methods
   // If menu was created but wasn't added into any parent menu then all setters can be invoked from any thread.
   private native void nativeSetTitle(long menuPtr, String title, boolean onAppKit);
+
   private native void nativeAddItem(long menuPtr, long itemPtr/*MenuItem OR Menu*/, boolean onAppKit);
+
   private native void nativeInsertItem(long menuPtr, long itemPtr/*MenuItem OR Menu*/, int position, boolean onAppKit);
 
   // Refill menu.
@@ -295,13 +312,15 @@ public class Menu extends MenuItem {
   //
 
   public static boolean isJbScreenMenuEnabled() {
-    if (IS_ENABLED != null)
+    if (IS_ENABLED != null) {
       return IS_ENABLED;
+    }
 
     IS_ENABLED = false;
 
-    if (!SystemInfo.isMacOSMojave) return false;
-    if (!Boolean.getBoolean("jbScreenMenuBar.enabled")) return false;
+    if (!SystemInfoRt.isMac || !Boolean.getBoolean("jbScreenMenuBar.enabled")) {
+      return false;
+    }
     if (Boolean.getBoolean("apple.laf.useScreenMenuBar")) {
       Logger.getInstance(Menu.class).info("apple.laf.useScreenMenuBar==true, default screen menu implementation will be used");
       return false;
@@ -309,15 +328,16 @@ public class Menu extends MenuItem {
 
     Path lib = PathManager.findBinFile("libmacscreenmenu64.dylib");
     try {
-      System.load(lib.toFile().getAbsolutePath());
+      System.load(lib.toString());
       nativeInitClass();
       // create and dispose native object (just for to test)
       Menu test = new Menu("test");
       test.ensureNativePeer();
-      test.dispose();
+      Disposer.dispose(test);
       IS_ENABLED = true;
       Logger.getInstance(Menu.class).info("use new ScreenMenuBar implementation");
-    } catch (Throwable e) {
+    }
+    catch (Throwable e) {
       // default screen menu implementation will be used
       Logger.getInstance(Menu.class).warn("can't load menu library: " + lib.toFile().getAbsolutePath() + ", exception: " + e.getMessage());
     }
@@ -327,20 +347,24 @@ public class Menu extends MenuItem {
 
   private static void invokeWithLWCToolkit(Runnable r, Runnable after, Component invoker) {
     try {
-      Class toolkitClass = Class.forName("sun.lwawt.macosx.LWCToolkit");
-      Method invokeMethod = ReflectionUtil.getDeclaredMethod(toolkitClass, "invokeAndWait", Runnable.class, Component.class);
+      Class<?> toolkitClass = Class.forName("sun.lwawt.macosx.LWCToolkit");
+      Method invokeMethod = ReflectionUtil.getDeclaredMethod(toolkitClass, "invokeAndWait", Runnable.class, Component.class, boolean.class, int.class);
       if (invokeMethod != null) {
         try {
+          invokeMethod.invoke(toolkitClass, r, invoker, true, -1);
           invokeMethod.invoke(toolkitClass, r, invoker);
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
           // suppress InvocationTargetException as in openjdk implementation (see com.apple.laf.ScreenMenu.java)
           Logger.getInstance(Menu.class).debug("invokeWithLWCToolkit.invokeAndWait: " + e);
         }
         if (after != null) after.run();
-      } else {
+      }
+      else {
         Logger.getInstance(Menu.class).warn("can't find sun.lwawt.macosx.LWCToolkit.invokeAndWait, screen menu won't be filled");
       }
-    } catch (ClassNotFoundException e) {
+    }
+    catch (ClassNotFoundException e) {
       Logger.getInstance(Menu.class).warn("can't find sun.lwawt.macosx.LWCToolkit, screen menu won't be filled");
     }
   }

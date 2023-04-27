@@ -3,12 +3,10 @@ package com.intellij.codeInsight.actions;
 
 import com.intellij.model.ModelPatch;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.module.ModifiableModuleModel;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.module.ModuleManager;
+import com.intellij.openapi.project.BaseProjectDirectories;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.util.Key;
@@ -17,6 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.codeStyle.ChangedRangesInfo;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -55,7 +54,7 @@ public class VcsFacade {
 
   /**
    * @return whether a directory has files with uncommitted changes in it.
-   * <p>
+   * <p/>
    * WARNING: DELETED files are NOT included (ie: we can't reformat them, thus they are ignored).
    */
   public boolean hasChanges(@NotNull VirtualFile file, @NotNull Project project) {
@@ -86,18 +85,8 @@ public class VcsFacade {
   }
 
   public boolean hasChanges(@NotNull final Project project) {
-    final ModifiableModuleModel moduleModel = ReadAction.compute(() -> ModuleManager.getInstance(project).getModifiableModel());
-    try {
-      for (Module module : moduleModel.getModules()) {
-        if (hasChanges(module)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    finally {
-      moduleModel.dispose();
-    }
+    final Set<VirtualFile> directories = BaseProjectDirectories.getBaseDirectories(project);
+    return ContainerUtil.exists(directories, it -> hasChanges(it, project));
   }
 
   @NotNull
@@ -143,7 +132,7 @@ public class VcsFacade {
 
   /**
    * @return the text ranges with uncommitted changes
-   * <p>
+   * <p/>
    * Deleted lines are ignored.
    * {@link ChangedRangesInfo#insertedRanges} contains 'completely new' lines.
    * {@link ChangedRangesInfo#insertedRanges} is {@code null} if the whole file is new.
@@ -163,10 +152,10 @@ public class VcsFacade {
 
   /**
    * Allows to temporally suppress document modification tracking.
-   * <p>
+   * <p/>
    * Ex: To perform a task, that might delete a whole document and re-create it from scratch (ex: rearrange methods by re-inserting).
    * Such modification would destroy all existing modified line ranges and associated data, unless handled as atomic change.
-   * <p>
+   * <p/>
    * While using `runHeavyModificationTask` would make trackers compare only the starting and finishing document states,
    * ignoring intermediate modifications (assuming that "cumulative" differences will be more incremental).
    *

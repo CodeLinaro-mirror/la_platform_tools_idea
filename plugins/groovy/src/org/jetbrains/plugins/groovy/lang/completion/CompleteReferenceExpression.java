@@ -59,9 +59,6 @@ import static org.jetbrains.plugins.groovy.lang.resolve.ResolveUtilKt.ignoreImpo
 import static org.jetbrains.plugins.groovy.lang.resolve.ResolveUtilKt.initialState;
 import static org.jetbrains.plugins.groovy.lang.resolve.processors.ClassHint.RESOLVE_CONTEXT;
 
-/**
- * @author ven
- */
 public final class CompleteReferenceExpression {
   private static final Logger LOG = Logger.getInstance(CompleteReferenceExpression.class);
 
@@ -282,7 +279,7 @@ public final class CompleteReferenceExpression {
     Project project = qualifier.getProject();
     final PsiType qualifierType = TypesUtil.boxPrimitiveType(qualifier.getType(), qualifier.getManager(), qualifier.getResolveScope());
     final ResolveState state = ResolveState.initial();
-    if (qualifierType == null || PsiType.VOID.equals(qualifierType)) {
+    if (qualifierType == null || PsiTypes.voidType().equals(qualifierType)) {
       if (qualifier instanceof GrReferenceExpression) {
         PsiPackage aPackage = resolvePackageFqn((GrReferenceElement<?>)qualifier);
         if (aPackage != null) {

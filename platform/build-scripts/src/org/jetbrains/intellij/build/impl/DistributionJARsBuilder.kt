@@ -25,7 +25,6 @@ import org.jetbrains.intellij.build.*
 import org.jetbrains.intellij.build.TraceManager.spanBuilder
 import org.jetbrains.intellij.build.dependencies.BuildDependenciesCommunityRoot
 import org.jetbrains.intellij.build.fus.createStatisticsRecorderBundledMetadataProviderTask
-import org.jetbrains.intellij.build.impl.SVGPreBuilder.createPrebuildSvgIconsJob
 import org.jetbrains.intellij.build.impl.projectStructureMapping.*
 import org.jetbrains.intellij.build.io.*
 import org.jetbrains.intellij.build.tasks.ZipSource
@@ -188,12 +187,18 @@ Android Studio: don't patch ApplicationNamesInfo yet */
     val modules = withContext(Dispatchers.IO) {
       val ideClasspath = createIdeClassPath(context)
       NioFiles.deleteRecursively(targetDirectory)
+      // bundled maven is also downloaded during traverseUI execution in external process
+      // making it fragile to call more than one traverseUI at the same time (in reproducibility test for example)
+      // so it's pre-downloaded with proper synchronization
+      BundledMavenDownloader.downloadMavenCommonLibs(context.paths.communityHomeDirRoot)
+      BundledMavenDownloader.downloadMavenDistribution(context.paths.communityHomeDirRoot)
       // Start the product in headless mode using com.intellij.ide.ui.search.TraverseUIStarter.
       // It'll process all UI elements in Settings dialog and build index for them.
       runApplicationStarter(context = context,
                             tempDir = context.paths.tempDir.resolve("searchableOptions"),
                             ideClasspath = ideClasspath,
                             arguments = listOf("traverseUI", targetDirectory.toString(), "true"),
+                            vmOptions = listOf("-Xmx2g"),
                             systemProperties = systemProperties)
       check(Files.isDirectory(targetDirectory)) {
         "Failed to build searchable options index: $targetDirectory does not exist. See log above for error output from traverseUI run."
@@ -567,7 +572,7 @@ fun getPluginLayoutsByJpsModuleNames(modules: Collection<String>, productLayout:
   for (moduleName in modules) {
     val customLayouts = pluginLayoutsByMainModule.get(moduleName)
     if (customLayouts == null) {
-      check(moduleName == "kotlin-ultimate.kmm-plugin" || result.add(PluginLayout.simplePlugin(moduleName))) {
+      check(moduleName == "kotlin-ultimate.kmm-plugin" || result.add(PluginLayout.plugin(moduleName))) {
         "Plugin layout for module $moduleName is already added (duplicated module name?)"
       }
     }
@@ -858,13 +863,9 @@ fun satisfiesBundlingRequirements(plugin: PluginLayout,
     return false
   }
 
-  if (bundlingRestrictions == PluginBundlingRestrictions.EPHEMERAL) {
+  if (bundlingRestrictions === PluginBundlingRestrictions.EPHEMERAL) {
     if (!withEphemeral) return false
     else return osFamily == null && arch == null
-  }
-
-  if (bundlingRestrictions == PluginBundlingRestrictions.MARKETPLACE) {
-    return false
   }
 
   return when {

@@ -474,15 +474,6 @@ public final class XmlUtil {
     return null;
   }
 
-  /**
-   * @deprecated use {@link XmlComment#getCommentText()}
-   */
-  @Deprecated(forRemoval = true)
-  @NotNull
-  public static String getCommentText(XmlComment comment) {
-    return comment.getCommentText();
-  }
-
   public static void reformatTagStart(XmlTag tag) {
     ASTNode child = XmlChildRole.START_TAG_END_FINDER.findChild(tag.getNode());
     if (child == null) {
@@ -1059,7 +1050,7 @@ public final class XmlUtil {
     if (surelyUrl) return true;
     int protocolIndex = s.indexOf(":/");
     if (protocolIndex > 1 && !s.regionMatches(0, "classpath", 0, protocolIndex)) return true;
-    return ExternalResourceManager.getInstance().getResourceLocation(s, project) != s;
+    return !s.equals(ExternalResourceManager.getInstance().getResourceLocation(s, project));
   }
 
   public static String generateDocumentDTD(XmlDocument doc, boolean full) {

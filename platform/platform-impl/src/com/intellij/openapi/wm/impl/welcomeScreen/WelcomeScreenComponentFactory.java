@@ -24,10 +24,7 @@ import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.StartPagePromoter;
 import com.intellij.openapi.wm.impl.ProjectFrameHelper;
-import com.intellij.ui.BalloonLayout;
-import com.intellij.ui.ClickListener;
-import com.intellij.ui.Gray;
-import com.intellij.ui.JBColor;
+import com.intellij.ui.*;
 import com.intellij.ui.border.CustomLineBorder;
 import com.intellij.ui.components.labels.ActionLink;
 import com.intellij.ui.components.panels.NonOpaquePanel;
@@ -56,7 +53,7 @@ import java.util.Collections;
 import java.util.Objects;
 
 public final class WelcomeScreenComponentFactory {
-  @NotNull static JComponent createSmallLogo() {
+  static @NotNull JComponent createSmallLogo() {
     ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
 
     NonOpaquePanel panel = new NonOpaquePanel(new BorderLayout());
@@ -91,7 +88,7 @@ public final class WelcomeScreenComponentFactory {
 
     JLabel version = new JLabel(appVersion);
     version.setFont(UIUtil.getLabelFont(UIUtil.FontSize.SMALL));
-    version.setForeground(Gray._128);
+    version.setForeground(ExperimentalUI.isNewUI() ? JBUI.CurrentTheme.ContextHelp.FOREGROUND : Gray._128);
     NonOpaquePanel textPanel = new NonOpaquePanel();
     textPanel.setLayout(new VerticalFlowLayout(0, 0));
     textPanel.setBorder(JBUI.Borders.empty(28, 10, 25, 10));
@@ -115,7 +112,7 @@ public final class WelcomeScreenComponentFactory {
     return panel;
   }
 
-  @NotNull static JComponent createLogo() {
+  static @NotNull JComponent createLogo() {
     ApplicationInfoEx appInfo = ApplicationInfoEx.getInstanceEx();
 
     NonOpaquePanel panel = new NonOpaquePanel(new BorderLayout());
@@ -184,7 +181,7 @@ public final class WelcomeScreenComponentFactory {
    * Wraps an {@link ActionLink} component and delegates accessibility support to it.
    */
   protected static final class JActionLinkPanel extends JPanel {
-    @NotNull private final ActionLink myActionLink;
+    private final @NotNull ActionLink myActionLink;
 
     public JActionLinkPanel(@NotNull ActionLink actionLink) {
       super(new BorderLayout());
@@ -231,8 +228,7 @@ public final class WelcomeScreenComponentFactory {
     }
   }
 
-  @NotNull
-  public static AnAction createShowPopupAction(@NonNls @NotNull String groupId) {
+  public static @NotNull AnAction createShowPopupAction(@NonNls @NotNull String groupId) {
     return new AnAction() {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e) {
@@ -276,16 +272,14 @@ public final class WelcomeScreenComponentFactory {
     return panel;
   }
 
-  public static JComponent createErrorsLink(Disposable parent) {
+  public static JComponent createErrorsLink(@NotNull Disposable parent) {
     IdeMessagePanel panel = new IdeMessagePanel(null, MessagePool.getInstance());
-    panel.setBorder(JBUI.Borders.emptyRight(13));
-    panel.setOpaque(false);
+    panel.getComponent().setBorder(JBUI.Borders.emptyRight(13));
     Disposer.register(parent, panel);
-    return panel;
+    return panel.getComponent();
   }
 
-  @NotNull
-  public static Component createEventLink(@NotNull @Nls String linkText, @NotNull Disposable parentDisposable) {
+  public static @NotNull Component createEventLink(@NotNull @Nls String linkText, @NotNull Disposable parentDisposable) {
     ActionLink actionLink = new ActionLink(linkText, AllIcons.Ide.Notification.NoEvents, new DumbAwareAction() {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e) {
@@ -316,8 +310,7 @@ public final class WelcomeScreenComponentFactory {
     return panel;
   }
 
-  @Nls
-  public static String getApplicationTitle() {
+  public static @Nls String getApplicationTitle() {
     String title = IdeBundle.message("label.welcome.to.0", ApplicationNamesInfo.getInstance().getFullProductName());
     if (Boolean.getBoolean("ide.ui.version.in.title")) {
       title += ' ' + ApplicationInfo.getInstance().getFullVersion();
@@ -331,14 +324,14 @@ public final class WelcomeScreenComponentFactory {
 
   public static @NotNull JPanel createNotificationPanel(@NotNull Disposable parentDisposable) {
     JPanel panel = new NonOpaquePanel(new FlowLayout(FlowLayout.RIGHT));
-    panel.setBorder(JBUI.Borders.empty(10, 0, 0, 3));
+    panel.setBorder(ExperimentalUI.isNewUI() ? JBUI.Borders.empty(10, 0, 12, 18) :
+                    JBUI.Borders.empty(10, 0, 0, 3));
     panel.add(createErrorsLink(parentDisposable));
     panel.add(createEventLink("", parentDisposable));
     return panel;
   }
 
-  @Nullable
-  static JPanel getSinglePromotion(boolean isEmptyState) {
+  static @Nullable JPanel getSinglePromotion(boolean isEmptyState) {
     StartPagePromoter[] extensions = StartPagePromoter.START_PAGE_PROMOTER_EP.getExtensions();
     JPanel result = null;
     for (StartPagePromoter promoter : extensions) {

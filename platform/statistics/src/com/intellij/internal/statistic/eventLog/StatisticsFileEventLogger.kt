@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.internal.statistic.eventLog
 
 import com.intellij.internal.statistic.eventLog.validator.IntellijSensitiveDataValidator
@@ -10,10 +10,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import com.jetbrains.fus.reporting.model.lion3.LogEvent
 import com.jetbrains.fus.reporting.model.lion3.LogEventAction
 import com.jetbrains.fus.reporting.model.lion3.LogEventGroup
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.*
 
 open class StatisticsFileEventLogger(private val recorderId: String,
                                      private val sessionId: String,
@@ -26,7 +23,7 @@ open class StatisticsFileEventLogger(private val recorderId: String,
                                      private val mergeStrategy: StatisticsEventMergeStrategy = FilteredEventMergeStrategy(emptySet()),
                                      private val ideMode: String? = null
 ) : StatisticsEventLogger, Disposable {
-  protected val logExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("StatisticsFileEventLogger: $sessionId", 1)
+  protected val logExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("StatisticsFileEventLogger", 1)
 
   private var lastEvent: FusEvent? = null
   private var lastEventTime: Long = 0
@@ -43,13 +40,14 @@ open class StatisticsFileEventLogger(private val recorderId: String,
     }
   }
 
-  override fun logAsync(group: EventLogGroup, eventId: String, data: Map<String, Any>, isState: Boolean): CompletableFuture<Void> {
+  override fun logAsync(group: EventLogGroup, eventId: String, dataProvider: () -> Map<String, Any>?, isState: Boolean): CompletableFuture<Void> {
     val eventTime = System.currentTimeMillis()
     group.validateEventId(eventId)
     return try {
       CompletableFuture.runAsync(Runnable {
         val validator = IntellijSensitiveDataValidator.getInstance(recorderId)
         if (!validator.isGroupAllowed(group)) return@Runnable
+        val data = dataProvider() ?: return@Runnable
         val event = LogEvent(sessionId, build, bucket, eventTime,
           LogEventGroup(group.id, group.version.toString()),
           recorderVersion,
@@ -66,12 +64,15 @@ open class StatisticsFileEventLogger(private val recorderId: String,
     }
   }
 
+  override fun computeAsync(computation: (backgroundThreadExecutor: Executor) -> Unit) {
+    computation(logExecutor)
+  }
+
   override fun logAsync(group: EventLogGroup,
                         eventId: String,
-                        dataProvider: () -> Map<String, Any>?,
+                        data: Map<String, Any>,
                         isState: Boolean): CompletableFuture<Void> {
-    val data = dataProvider() ?: return CompletableFuture.completedFuture(null)
-    return logAsync(group, eventId, data, isState)
+    return logAsync(group, eventId, { data }, isState)
   }
 
   private fun log(event: LogEvent, createdTime: Long, rawEventId: String, rawData: Map<String, Any>) {

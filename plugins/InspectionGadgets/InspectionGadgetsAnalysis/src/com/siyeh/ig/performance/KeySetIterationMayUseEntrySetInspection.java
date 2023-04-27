@@ -79,7 +79,7 @@ public class KeySetIterationMayUseEntrySetInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       PsiExpression expression = tryCast(descriptor.getPsiElement(), PsiExpression.class);
       if (expression == null) return;
       final PsiVariable toRemove;
@@ -315,7 +315,7 @@ public class KeySetIterationMayUseEntrySetInspection extends BaseInspection {
       final PsiExpression iteratedValue = PsiUtil.skipParenthesizedExprDown(statement.getIteratedValue());
       final PsiExpression iteratedExpression = getIteratedExpression(iteratedValue);
       if (iteratedExpression == null) return;
-      final PsiParameter parameter = statement.getIterationParameter();
+      PsiParameter parameter = statement.getIterationParameter();
       PsiElement context = statement.getBody();
       if (context == null) return;
       PsiReferenceExpression mapExpression = getMapReferenceFromKeySetCall(iteratedExpression);

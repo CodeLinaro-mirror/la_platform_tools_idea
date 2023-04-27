@@ -18,6 +18,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.fileChooser.FileTypeDescriptor;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -58,8 +59,6 @@ import static org.jetbrains.plugins.gradle.util.GradleConstants.KOTLIN_DSL_SCRIP
 
 /**
  * Holds miscellaneous utility methods.
- *
- * @author Denis Zhdanov
  */
 public final class GradleUtil {
   private static final String LAST_USED_GRADLE_HOME_KEY = "last.used.gradle.home";
@@ -179,7 +178,7 @@ public final class GradleUtil {
       // So, just ignore it and assume that the user didn't define any custom build file name.
     }
     File rootProjectParent = new File(rootProjectPath);
-    StringBuilder buffer = new StringBuilder(toCanonicalPath(rootProjectParent.getAbsolutePath()));
+    StringBuilder buffer = new StringBuilder(FileUtil.toCanonicalPath(rootProjectParent.getAbsolutePath()));
     Stack<String> stack = new Stack<>();
     for (GradleProject p = subProject; p != null; p = p.getParent()) {
       stack.push(p.getName());

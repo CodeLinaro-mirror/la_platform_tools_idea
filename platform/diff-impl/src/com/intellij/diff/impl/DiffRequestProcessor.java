@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.diff.impl;
 
 import com.intellij.codeInsight.hint.HintManager;
@@ -74,6 +74,7 @@ import java.util.List;
 import java.util.Map;
 
 import static com.intellij.diff.util.DiffUtil.recursiveRegisterShortcutSet;
+import static com.intellij.util.ObjectUtils.chooseNotNull;
 
 public abstract class DiffRequestProcessor implements CheckedDisposable {
   private static final Logger LOG = Logger.getInstance(DiffRequestProcessor.class);
@@ -446,12 +447,15 @@ public abstract class DiffRequestProcessor implements CheckedDisposable {
 
   @NotNull
   protected List<AnAction> getNavigationActions() {
-    List<AnAction> actions = ContainerUtil.newArrayList(
+    List<AnAction> actions = List.of(
       new MyPrevDifferenceAction(), new MyNextDifferenceAction(), new MyOpenInEditorAction(),
       Separator.getInstance(),
       new MyPrevChangeAction(), new MyNextChangeAction());
 
-    ContainerUtil.addIfNotNull(actions, createGoToChangeAction());
+    AnAction goToChangeAction = createGoToChangeAction();
+    if (goToChangeAction != null) {
+      actions = ContainerUtil.append(actions, goToChangeAction);
+    }
 
     return actions;
   }
@@ -550,7 +554,7 @@ public abstract class DiffRequestProcessor implements CheckedDisposable {
       navigationActions.add(new MyChangeDiffToolAction());
     }
     else {
-      myRightToolbarGroup.add(new MyDiffToolChooser(myMainPanel));
+      myRightToolbarGroup.add(new MyDiffToolChooser());
     }
     DiffUtil.addActionBlock(myToolbarGroup,
                             navigationActions);
@@ -640,7 +644,7 @@ public abstract class DiffRequestProcessor implements CheckedDisposable {
     return myPanel;
   }
 
-  @Nullable
+  @NotNull
   public JComponent getPreferredFocusedComponent() {
     JComponent component = myState.getPreferredFocusedComponent();
     JComponent fallback = myToolbar.getComponent();
@@ -761,13 +765,13 @@ public abstract class DiffRequestProcessor implements CheckedDisposable {
   }
 
   private class MyDiffToolChooser extends DiffToolChooser {
-    private MyDiffToolChooser(@Nullable JComponent targetComponent) {
-      super(targetComponent);
+    private MyDiffToolChooser() {
+      super(chooseNotNull(myProject, myContext.getProject()));
     }
 
     @Override
-    public void onSelected(@NotNull AnActionEvent e, @NotNull DiffTool diffTool) {
-      DiffUsageTriggerCollector.logToggleDiffTool(e.getProject(), diffTool, myContext.getUserData(DiffUserDataKeys.PLACE));
+    public void onSelected(@NotNull Project project, @NotNull DiffTool diffTool) {
+      DiffUsageTriggerCollector.logToggleDiffTool(project, diffTool, myContext.getUserData(DiffUserDataKeys.PLACE));
       moveToolOnTop(diffTool);
 
       updateRequest(true);
@@ -775,8 +779,8 @@ public abstract class DiffRequestProcessor implements CheckedDisposable {
 
     @NotNull
     @Override
-    public List<FrameDiffTool> getTools() {
-      return getAvailableFittedTools();
+    public List<DiffTool> getTools() {
+      return new ArrayList<>(getAvailableFittedTools());
     }
 
     @NotNull
@@ -1281,7 +1285,6 @@ public abstract class DiffRequestProcessor implements CheckedDisposable {
     @Override
     public final Component getDefaultComponent(final Container focusCycleRoot) {
       JComponent component = DiffRequestProcessor.this.getPreferredFocusedComponent();
-      if (component == null) return null;
       return IdeFocusTraversalPolicy.getPreferredFocusedComponent(component, this);
     }
 

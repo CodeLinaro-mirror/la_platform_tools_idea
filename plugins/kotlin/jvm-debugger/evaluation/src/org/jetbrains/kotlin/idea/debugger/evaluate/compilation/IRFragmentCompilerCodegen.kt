@@ -17,7 +17,6 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
 import org.jetbrains.kotlin.idea.MainFunctionDetector
 import org.jetbrains.kotlin.idea.debugger.evaluate.DebuggerFieldPropertyDescriptor
-import org.jetbrains.kotlin.idea.debugger.evaluate.EvaluationStatus
 import org.jetbrains.kotlin.idea.debugger.base.util.evaluate.ExecutionContext
 import org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.ClassToLoad
 import org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.GENERATED_CLASS_NAME
@@ -152,23 +151,23 @@ class IRFragmentCompilerCodegen : FragmentCompilerCodegen {
                 }
             },
             evaluatorFragmentInfoForPsi2Ir = evaluatorFragmentInfo,
-            shouldStubAndNotLinkUnboundSymbols = true
+            ideCodegenSettings = JvmIrCodegenFactory.IdeCodegenSettings(shouldStubAndNotLinkUnboundSymbols = true),
         )
     }
 
     override fun computeFragmentParameters(
         executionContext: ExecutionContext,
         codeFragment: KtCodeFragment,
-        bindingContext: BindingContext,
-        status: EvaluationStatus
-    ): CodeFragmentParameterInfo =
-        CodeFragmentParameterAnalyzer(executionContext, codeFragment, bindingContext, status).analyze().let { analysis ->
+        bindingContext: BindingContext
+    ): CodeFragmentParameterInfo {
+        return CodeFragmentParameterAnalyzer(executionContext, codeFragment, bindingContext).analyze().let { analysis ->
             // Local functions do not exist as run-time values on the IR backend: they are static functions.
             CodeFragmentParameterInfo(
                 analysis.parameters.filter { it.kind != CodeFragmentParameter.Kind.LOCAL_FUNCTION },
                 analysis.crossingBounds
             )
         }
+    }
 
     override fun extractResult(
         methodDescriptor: FunctionDescriptor,

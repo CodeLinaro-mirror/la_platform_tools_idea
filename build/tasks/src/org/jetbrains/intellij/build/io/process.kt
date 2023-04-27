@@ -5,11 +5,11 @@ package org.jetbrains.intellij.build.io
 
 import com.fasterxml.jackson.jr.ob.JSON
 import com.intellij.diagnostic.telemetry.useWithScope2
+import com.intellij.openapi.util.io.FileUtilRt
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.trace.Span
 import kotlinx.coroutines.*
 import org.jetbrains.intellij.build.TraceManager.spanBuilder
-import java.io.BufferedReader
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -32,16 +32,19 @@ suspend fun runJava(mainClass: String,
                     customOutputFile: Path? = null,
                     onError: (() -> Unit)? = null) {
   val jvmArgsWithJson = jvmArgs + "-Dintellij.log.to.json.stdout=true"
+  @Suppress("NAME_SHADOWING")
+  val workingDir = workingDir ?: Path.of(System.getProperty("user.dir"))
   spanBuilder("runJava")
     .setAttribute("mainClass", mainClass)
     .setAttribute(AttributeKey.stringArrayKey("args"), args)
     .setAttribute(AttributeKey.stringArrayKey("jvmArgs"), jvmArgsWithJson)
-    .setAttribute("workingDir", workingDir?.toString() ?: "")
+    .setAttribute("workingDir", "$workingDir")
     .setAttribute("timeoutMillis", timeout.toString())
     .useWithScope2 { span ->
       withContext(Dispatchers.IO) {
         val toDelete = ArrayList<Path>(3)
         var process: Process? = null
+        val phase = args.joinToString(prefix = "$mainClass ", separator = " ")
         try {
           val classpathFile = Files.createTempFile("classpath-", ".txt").also(toDelete::add)
           val classPathStringBuilder = createClassPathFile(classPath, classpathFile)
@@ -54,8 +57,9 @@ suspend fun runJava(mainClass: String,
           val errorOutputFile = Files.createTempFile("error-out-", ".txt").also(toDelete::add)
           val outputFile = customOutputFile?.also { customOutputFile.parent?.let { Files.createDirectories(it) } }
                            ?: Files.createTempFile("out-", ".txt").also(toDelete::add)
+          logFreeDiskSpace(workingDir, "before $phase")
           process = ProcessBuilder(processArgs)
-            .directory(workingDir?.toFile())
+            .directory(workingDir.toFile())
             .redirectError(errorOutputFile.toFile())
             .redirectOutput(outputFile.toFile())
             .start()
@@ -101,7 +105,8 @@ suspend fun runJava(mainClass: String,
         }
         finally {
           process?.waitFor()
-          toDelete.forEach(Files::deleteIfExists)
+          toDelete.forEach(FileUtilRt::deleteRecursively)
+          logFreeDiskSpace(workingDir, "after $phase")
         }
       }
     }
@@ -180,17 +185,23 @@ suspend fun runProcess(args: List<String>,
                        timeout: Duration = DEFAULT_TIMEOUT,
                        additionalEnvVariables: Map<String, String> = emptyMap(),
                        inheritOut: Boolean = false) {
+  @Suppress("NAME_SHADOWING")
+  val workingDir = workingDir ?: Path.of(System.getProperty("user.dir"))
   spanBuilder("runProcess")
     .setAttribute(AttributeKey.stringArrayKey("args"), args)
+    .setAttribute("workingDir", "$workingDir")
     .setAttribute("timeoutMillis", timeout.toString())
     .useWithScope2 { span ->
       withContext(Dispatchers.IO) {
         val toDelete = ArrayList<Path>(3)
+        var process: Process? = null
+        val phase = args.joinToString(separator = " ")
         try {
           val errorOutputFile = if (inheritOut) null else Files.createTempFile("error-out-", ".txt").also(toDelete::add)
           val outputFile = if (inheritOut) null else Files.createTempFile("out-", ".txt").also(toDelete::add)
-          val process = ProcessBuilder(args)
-            .directory(workingDir?.toFile())
+          logFreeDiskSpace(workingDir, "before $phase")
+          process = ProcessBuilder(args)
+            .directory(workingDir.toFile())
             .also { builder ->
               if (additionalEnvVariables.isNotEmpty()) {
                 builder.environment().putAll(additionalEnvVariables)
@@ -244,7 +255,9 @@ suspend fun runProcess(args: List<String>,
           }
         }
         finally {
-          toDelete.forEach(Files::deleteIfExists)
+          process?.waitFor()
+          toDelete.forEach(FileUtilRt::deleteRecursively)
+          logFreeDiskSpace(workingDir, "after $phase")
         }
       }
     }

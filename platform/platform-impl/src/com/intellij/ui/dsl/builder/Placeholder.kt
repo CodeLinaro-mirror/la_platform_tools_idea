@@ -3,7 +3,6 @@ package com.intellij.ui.dsl.builder
 
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.ui.dsl.gridLayout.Gaps
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
 import com.intellij.ui.dsl.gridLayout.VerticalAlign
 import org.jetbrains.annotations.ApiStatus
 import javax.swing.JComponent
@@ -21,8 +20,8 @@ interface Placeholder : CellBase<Placeholder> {
 
   override fun enabled(isEnabled: Boolean): Placeholder
 
-  override fun horizontalAlign(horizontalAlign: HorizontalAlign): Placeholder
-
+  @Deprecated("Use align method instead")
+  @ApiStatus.ScheduledForRemoval
   override fun verticalAlign(verticalAlign: VerticalAlign): Placeholder
 
   override fun align(align: Align): Placeholder

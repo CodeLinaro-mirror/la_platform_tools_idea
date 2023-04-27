@@ -4,20 +4,26 @@ package com.intellij.openapi.util;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * This class intended for working with the alternative representation of {@link TextRange} as a long value, which logically consists of two int parts for startOffset and endOffset.
+ * This class contains utility methods working with the alternative representation of {@link TextRange} as a {@code long} value,
+ * which logically consists of two {@code int} parts: for {@link TextRange#myStartOffset} and {@link TextRange#myEndOffset}.
  * It might be useful to address atomicity or memory concerns.
  */
-public class TextRangeScalarUtil {
+public final class TextRangeScalarUtil {
   public static long toScalarRange(@NotNull Segment range) {
     return toScalarRange(range.getStartOffset(), range.getEndOffset());
   }
 
   public static long toScalarRange(int start, int end) {
-    return ((long)start << 32) | end;
+    if (start > end || start < 0) {
+      throw new IllegalArgumentException("Incorrect offsets: start="+start+"; end="+end);
+    }
+    return ((long)end << 32) | start;
   }
 
-  public static long deltaScalarRange(long range, int deltaStart, int deltaEnd) {
-    return range + ((long)deltaStart << 32) + deltaEnd;
+  public static long shift(long range, int deltaStart, int deltaEnd) {
+    int newStart = startOffset(range) + deltaStart;
+    int newEnd = endOffset(range) + deltaEnd;
+    return toScalarRange(newStart, newEnd);
   }
 
   public static long union(long range1, long range2) {
@@ -27,11 +33,11 @@ public class TextRangeScalarUtil {
     return toScalarRange(start, end);
   }
 
-  public static int endOffset(long range) {
+  public static int startOffset(long range) {
     return (int)range & 0x7fffffff;
   }
 
-  public static int startOffset(long range) {
+  public static int endOffset(long range) {
     return (int)(range >>> 32);
   }
 

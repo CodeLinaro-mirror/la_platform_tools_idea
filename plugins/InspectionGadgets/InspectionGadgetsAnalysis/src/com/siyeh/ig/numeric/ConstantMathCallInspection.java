@@ -85,7 +85,7 @@ public class ConstantMathCallInspection extends BaseInspection implements Cleanu
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiIdentifier nameIdentifier =
         (PsiIdentifier)descriptor.getPsiElement();
       final PsiReferenceExpression reference =
@@ -125,7 +125,7 @@ public class ConstantMathCallInspection extends BaseInspection implements Cleanu
       if (newExpression == null) {
         return;
       }
-      if (PsiType.LONG.equals(type)) {
+      if (PsiTypes.longType().equals(type)) {
         PsiReplacementUtil.replaceExpressionAndShorten(call, newExpression + 'L', new CommentTracker());
       }
       else {
@@ -325,7 +325,7 @@ public class ConstantMathCallInspection extends BaseInspection implements Cleanu
       }
       final PsiExpression argument = arguments[0];
       final Object argumentValue =
-        ConstantExpressionUtil.computeCastTo(argument, PsiType.DOUBLE);
+        ConstantExpressionUtil.computeCastTo(argument, PsiTypes.doubleType());
       if (!(argumentValue instanceof Double)) {
         return;
       }

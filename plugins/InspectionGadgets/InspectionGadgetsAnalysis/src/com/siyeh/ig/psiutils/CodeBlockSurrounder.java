@@ -5,6 +5,7 @@ import com.intellij.codeInsight.BlockUtils;
 import com.intellij.codeInsight.intention.impl.SplitConditionUtil;
 import com.intellij.codeInspection.ConditionalBreakInInfiniteLoopInspection;
 import com.intellij.codeInspection.RedundantLambdaCodeBlockInspection;
+import com.intellij.codeInspection.dataFlow.DfaPsiUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
@@ -138,11 +139,36 @@ public abstract class CodeBlockSurrounder {
     if (parent instanceof PsiReturnStatement || parent instanceof PsiYieldStatement || parent instanceof PsiThrowStatement) {
       return ParentContext.RETURN;
     }
-    if (parent instanceof PsiIfStatement && ((PsiIfStatement)parent).getElseBranch() == null &&
-        ((PsiIfStatement)parent).getThenBranch() != null) {
-      return ParentContext.SIMPLE_IF_CONDITION;
+    if (parent instanceof PsiIfStatement ifStatement && ifStatement.getThenBranch() != null) {
+      PsiStatement elseBranch = ifStatement.getElseBranch();
+      if (elseBranch == null) {
+        return ParentContext.SIMPLE_IF_CONDITION;
+      }
+      // SIMPLE_IF_CONDITION is used now only to split 'if' with polyadic, so we may assume that at least first
+      // operand should be kept. If the subsequent conditions in else branches are mutually exclusive with this one,
+      // then it's still safe to split.
+      // TODO: support splitting at other operand, not only at 0
+      if (!(PsiUtil.skipParenthesizedExprDown(myExpression) instanceof PsiPolyadicExpression polyadic) || 
+          !polyadic.getOperationTokenType().equals(JavaTokenType.ANDAND)) {
+        return ParentContext.UNKNOWN;
+      }
+      if (isExclusiveElseBranch(polyadic.getOperands()[0], elseBranch)) {
+        return ParentContext.SIMPLE_IF_CONDITION;
+      }
     }
     return ParentContext.UNKNOWN;
+  }
+
+  private static boolean isExclusiveElseBranch(@NotNull PsiExpression condition, @Nullable PsiStatement branch) {
+    while (true) {
+      if (branch == null || ControlFlowUtils.statementIsEmpty(branch)) return true;
+      if (!(ControlFlowUtils.stripBraces(branch) instanceof PsiIfStatement ifStatement)) return false;
+      PsiExpression nextCondition = ifStatement.getCondition();
+      if (nextCondition == null) return false;
+      PsiStatement elseBranch = ifStatement.getElseBranch();
+      if (!DfaPsiUtil.mutuallyExclusive(condition, nextCondition)) return false;
+      branch = elseBranch;
+    }
   }
 
   /**
@@ -421,7 +447,7 @@ public abstract class CodeBlockSurrounder {
     LambdaCodeBlockSurrounder(@NotNull PsiExpression expression, @NotNull PsiLambdaExpression lambda) {
       super(expression);
       myLambda = lambda;
-      myVoidMode = PsiType.VOID.equals(LambdaUtil.getFunctionalInterfaceReturnType(myLambda));
+      myVoidMode = PsiTypes.voidType().equals(LambdaUtil.getFunctionalInterfaceReturnType(myLambda));
     }
 
     @Override
@@ -897,11 +923,32 @@ public abstract class CodeBlockSurrounder {
 
     @Override
     void collapse(@NotNull PsiElement anchor) {
+      if (anchor instanceof PsiIfStatement innerIf && innerIf.getElseBranch() == null) {
+        PsiStatement thenBranch = innerIf.getParent() instanceof PsiCodeBlock block && block.getStatementCount() == 1 &&
+                                  block.getParent() instanceof PsiBlockStatement blockStatement ? blockStatement : innerIf;
+        if (thenBranch.getParent() instanceof PsiIfStatement outerIf && outerIf.getThenBranch() == thenBranch &&
+            outerIf.getElseBranch() == null) {
+          mergeIfs(outerIf, innerIf);
+          return;
+        }
+      }
       PsiIfStatement ifStatement = tryCast(PsiTreeUtil.skipWhitespacesAndCommentsBackward(anchor), PsiIfStatement.class);
       if (ifStatement == null) return;
       PsiStatement result = collapseIf(ifStatement, "&&", "||");
       if (result == null) return;
       myUpstream.collapse(myUpstream.anchor(result));
+    }
+
+    private static void mergeIfs(@NotNull PsiIfStatement outerIf, @NotNull PsiIfStatement innerIf) {
+      PsiExpression outerCondition = outerIf.getCondition();
+      PsiExpression innerCondition = innerIf.getCondition();
+      if (outerCondition != null && innerCondition != null) {
+        innerCondition.replace(
+          JavaPsiFacade.getElementFactory(outerIf.getProject())
+            .createExpressionFromText(ParenthesesUtils.getText(outerCondition, ParenthesesUtils.OR_PRECEDENCE) + "&&" +
+                                      ParenthesesUtils.getText(innerCondition, ParenthesesUtils.OR_PRECEDENCE), null));
+        outerIf.replace(innerIf);
+      }
     }
   }
 

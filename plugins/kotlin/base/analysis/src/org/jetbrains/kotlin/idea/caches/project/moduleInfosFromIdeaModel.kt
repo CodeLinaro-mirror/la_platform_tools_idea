@@ -89,7 +89,11 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
         }
 
         modulesAndSdk = cachedValuesManager.createCachedValue {
-            val ideaModuleInfos = moduleCache.fetchValues().flatten() + sdkCache.fetchValues()
+            val ideaModuleInfos = moduleCache.fetchValues().flatten().also {
+                it.checkValidity { "modulesAndSdk: modules calculation" }
+            } + sdkCache.fetchValues().also {
+                it.checkValidity { "modulesAndSdk: sdks calculation" }
+            }
             CachedValueProvider.Result.create(ideaModuleInfos, modificationTracker)
         }
 
@@ -105,6 +109,8 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
                 }
             }
 
+            collectedLibraries.checkValidity { "libraries calculation" }
+
             CachedValueProvider.Result.create(collectedLibraries, libraryCache.removedLibraryInfoTracker(), modificationTracker)
         }
 
@@ -116,17 +122,19 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
 
     abstract inner class AbstractCache<Key : Any, Value : Any>(initializer: (AbstractCache<Key, Value>) -> Unit) :
         SynchronizedFineGrainedEntityCache<Key, Value>(project),
-        ModuleRootListener,
         WorkspaceModelChangeListener {
 
         @Volatile
         private var initializerRef: ((AbstractCache<Key, Value>) -> Unit)? = initializer
         private val initializerLock = Any()
 
+        init {
+            initialize()
+        }
+
         override fun subscribe() {
             val connection = project.messageBus.connect(this)
             connection.subscribe(WorkspaceModelTopics.CHANGED, this)
-            connection.subscribe(ProjectTopics.PROJECT_ROOTS, this)
             subscribe(connection)
         }
 
@@ -166,18 +174,6 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
 
         override fun checkKeyValidity(key: Module) {
             key.checkValidity()
-        }
-
-        override fun rootsChanged(event: ModuleRootEvent) {
-            // TODO: entire method to be drop when IDEA-298694 is fixed.
-            //  Reason: unload modules are untracked with WorkspaceModel
-            if (event.isCausedByWorkspaceModelChangesOnly) return
-
-            applyIfPossible {
-                invalidate()
-                project.ideaModules().forEach(::get)
-                incModificationCount()
-            }
         }
 
         override fun modelChanged(event: VersionedStorageChange) {
@@ -260,6 +256,7 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
 
         override fun subscribe(connection: MessageBusConnection) {
             connection.subscribe(ProjectJdkTable.JDK_TABLE_TOPIC, this)
+            connection.subscribe(ProjectTopics.PROJECT_ROOTS, this)
         }
 
         override fun checkKeyValidity(key: Sdk) = Unit
@@ -297,11 +294,7 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
                 // SDK could be changed (esp in tests) out of message bus subscription
                 val sdks = runReadAction { ProjectJdkTable.getInstance().allJdks }
 
-                // TODO: `invalidate()` to be drop when IDEA-298694 is fixed
-                //  Reason: unload modules are untracked with WorkspaceModel
-                invalidate()
-                // TODO: `invalidateEntries(..)` to be uncommented when IDEA-298694 is fixed
-                //invalidateEntries({ k, _ -> k !in sdks })
+                invalidateEntries({ k, _ -> k !in sdks })
 
                 // force calculation
                 sdks.forEach(::get)
@@ -350,11 +343,16 @@ class FineGrainedIdeaModelInfosCache(private val project: Project) : IdeaModelIn
                 val libraryInfos = libraries.value
                 val sdkInfos = sdkCache.fetchValues()
                 val ideaModuleInfos = platformModules + libraryInfos + sdkInfos
+                ideaModuleInfos.checkValidity { "resultByPlatform $platform calculation" }
                 ideaModuleInfos
+            }.also {
+                it.checkValidity { "forPlatform $platform" }
             }
         }
 
-    override fun allModules(): List<IdeaModuleInfo> = modulesAndSdk.value + libraries.value
+    override fun allModules(): List<IdeaModuleInfo> = (modulesAndSdk.value + libraries.value).also {
+        it.checkValidity { "allModules" }
+    }
 
     override fun getModuleInfosForModule(module: Module): Collection<ModuleSourceInfo> = moduleCache[module]
 

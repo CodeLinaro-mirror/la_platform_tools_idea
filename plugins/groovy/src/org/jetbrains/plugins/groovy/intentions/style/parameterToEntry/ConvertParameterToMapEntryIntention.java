@@ -59,9 +59,6 @@ import java.util.HashSet;
 import static org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil.createTypeByFQClassName;
 import static org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.JAVA_UTIL_LINKED_HASH_MAP;
 
-/**
- * @author ilyas
- */
 public class ConvertParameterToMapEntryIntention extends Intention {
 
   private static final Logger LOG =
@@ -440,9 +437,7 @@ public class ConvertParameterToMapEntryIntention extends Intention {
         for (final PsiReference reference : references) {
           ApplicationManager.getApplication().runReadAction(() -> {
             final PsiElement element = reference.getElement();
-            if (element != null) {
-              occurrences.add(element);
-            }
+            occurrences.add(element);
           });
         }
       }

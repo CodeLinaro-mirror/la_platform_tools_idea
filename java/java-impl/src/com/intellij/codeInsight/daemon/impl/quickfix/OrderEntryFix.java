@@ -1,7 +1,6 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
-import com.intellij.codeInsight.daemon.QuickFixActionRegistrar;
 import com.intellij.codeInsight.daemon.impl.actions.AddImportAction;
 import com.intellij.codeInsight.daemon.quickFix.ExternalLibraryResolver;
 import com.intellij.codeInsight.daemon.quickFix.ExternalLibraryResolver.ExternalClassResolveResult;
@@ -89,7 +88,7 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
   }
 
   @NotNull
-  public static List<LocalQuickFix> registerFixes(@NotNull QuickFixActionRegistrar registrar, @NotNull PsiReference reference) {
+  public static List<LocalQuickFix> registerFixes(@NotNull PsiReference reference, @NotNull List<? super IntentionAction> registrar) {
     PsiElement psiElement = reference.getElement();
     String shortReferenceName = reference.getRangeInElement().substring(psiElement.getText());
 
@@ -108,7 +107,7 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
     if (reference instanceof PsiJavaModuleReference) {
       List<LocalQuickFix> result = new SmartList<>();
       createModuleFixes((PsiJavaModuleReference)reference, currentModule, scope, result);
-      result.forEach(fix -> registrar.register((IntentionAction)fix));
+      result.forEach(fix -> registrar.add((IntentionAction)fix));
       return result;
     }
 
@@ -133,7 +132,7 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
     }
 
     OrderEntryFix moduleDependencyFix = new AddModuleDependencyFix(reference, currentModule, scope, allowedDependencies);
-    registrar.register(moduleDependencyFix);
+    registrar.add(moduleDependencyFix);
     result.add(moduleDependencyFix);
 
     Map<Library, String> librariesToAdd = new HashMap<>();
@@ -148,8 +147,7 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
       VirtualFile virtualFile = psiFile.getVirtualFile();
       if (virtualFile == null) continue;
       for (OrderEntry orderEntry : fileIndex.getOrderEntriesForFile(virtualFile)) {
-        if (orderEntry instanceof LibraryOrderEntry) {
-          final LibraryOrderEntry libraryEntry = (LibraryOrderEntry)orderEntry;
+        if (orderEntry instanceof LibraryOrderEntry libraryEntry) {
           final Library library = libraryEntry.getLibrary();
           if (library == null) continue;
           VirtualFile[] files = library.getFiles(OrderRootType.CLASSES);
@@ -195,14 +193,14 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
           }
         }
         OrderEntryFix fix = new AddLibraryFix(reference, currentModule, librariesToAdd, scope, false);
-        registrar.register(fix);
+        registrar.add(fix);
         result.add(fix);
       }
       
       if (!withTestScope.isEmpty()) {
         MoveToTestRootFix fix = new MoveToTestRootFix(containingFile);
         if (fix.isAvailable(containingFile)) {
-          registrar.register(fix);
+          registrar.add(fix);
           result.add(fix);
         }
       }
@@ -274,7 +272,7 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
                                             @NotNull String shortReferenceName,
                                             @NotNull Module currentModule,
                                             @NotNull DependencyScope scope,
-                                            @NotNull QuickFixActionRegistrar registrar,
+                                            @NotNull List<? super IntentionAction> registrar,
                                             @NotNull List<? super LocalQuickFix> result) {
     JavaPsiFacade facade = JavaPsiFacade.getInstance(currentModule.getProject());
     String fullReferenceText = reference.getCanonicalText();
@@ -294,7 +292,7 @@ public abstract class OrderEntryFix implements IntentionAction, LocalQuickFix {
         }
       }
       if (fix != null) {
-        registrar.register(fix);
+        registrar.add(fix);
         result.add(fix);
       }
     }

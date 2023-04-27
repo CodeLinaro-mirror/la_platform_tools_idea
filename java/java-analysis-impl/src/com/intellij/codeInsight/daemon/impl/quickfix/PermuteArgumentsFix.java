@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.QuickFixBundle;
@@ -68,14 +68,13 @@ public final class PermuteArgumentsFix implements IntentionAction, HighPriorityA
     Objects.requireNonNull(myCall.getArgumentList()).replace(Objects.requireNonNull(myPermutation.getArgumentList()));
   }
 
-  public static boolean registerFix(HighlightInfo info, PsiCall callExpression, final CandidateInfo[] candidates, final TextRange fixRange) {
+  public static boolean registerFix(@NotNull HighlightInfo.Builder info, PsiCall callExpression, final CandidateInfo[] candidates, final TextRange fixRange) {
     PsiExpression[] expressions = Objects.requireNonNull(callExpression.getArgumentList()).getExpressions();
     if (expressions.length < 2) return false;
     List<PsiCall> permutations = new ArrayList<>();
 
     for (CandidateInfo candidate : candidates) {
-      if (candidate instanceof MethodCandidateInfo) {
-        MethodCandidateInfo methodCandidate = (MethodCandidateInfo)candidate;
+      if (candidate instanceof MethodCandidateInfo methodCandidate) {
         PsiMethod method = methodCandidate.getElement();
         PsiSubstitutor substitutor = methodCandidate.getSubstitutor();
 
@@ -105,7 +104,7 @@ public final class PermuteArgumentsFix implements IntentionAction, HighPriorityA
     }
     if (permutations.size() == 1) {
       PermuteArgumentsFix fix = new PermuteArgumentsFix(callExpression, permutations.get(0));
-      QuickFixAction.registerQuickFixAction(info, fixRange, fix);
+      info.registerFix(fix, null, null, fixRange, null);
       return true;
     }
 

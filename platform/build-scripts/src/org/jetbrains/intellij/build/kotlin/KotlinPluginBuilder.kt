@@ -124,6 +124,7 @@ Android Studio: workaround for b/218317110 */
     "kotlin.j2k.post-processing",
     "kotlin.j2k.idea",
     "kotlin.j2k.old",
+    "kotlin.j2k.old.post-processing",
     "kotlin.j2k.new",
     "kotlin.plugin-updater",
     "kotlin.preferences",
@@ -176,12 +177,14 @@ Android Studio: workaround for b/218317110 */
     "kotlin.code-insight.line-markers-shared",
     "kotlin.code-insight.line-markers-k2",
     "kotlin.fir",
-    "kotlin.search",
+    "kotlin.searching.k2",
+    "kotlin.searching.base",
     "kotlin.highlighting",
     "kotlin.uast.uast-kotlin-fir",
     "kotlin.uast.uast-kotlin-idea-fir",
     "kotlin.fir.fir-low-level-api-ide-impl",
     "kotlin.navigation",
+    "kotlin.code-insight.line-markers-k2",
     "kotlin.refactorings.common",
     "kotlin.refactorings.k2",
     "kotlin.refactorings.rename.k2",
@@ -300,7 +303,7 @@ Android Studio: workaround for b/218317110 */
       spec.withProjectLibrary("kotlinc.kotlin-jps-common")
       //noinspection SpellCheckingInspection
       spec.withProjectLibrary("javaslang", LibraryPackMode.STANDALONE_MERGED)
-      spec.withProjectLibrary("kotlinx-collections-immutable-jvm", LibraryPackMode.STANDALONE_MERGED)
+      spec.withProjectLibrary("kotlinx-collections-immutable", LibraryPackMode.STANDALONE_MERGED)
       spec.withProjectLibrary("javax-inject", LibraryPackMode.STANDALONE_MERGED)
 
       spec.withGeneratedResources(BiConsumer { targetDir, context ->

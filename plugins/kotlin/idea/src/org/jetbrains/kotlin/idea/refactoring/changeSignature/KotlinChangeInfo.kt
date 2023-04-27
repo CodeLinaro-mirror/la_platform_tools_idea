@@ -15,7 +15,6 @@ import com.intellij.util.VisibilityUtil
 import org.jetbrains.kotlin.asJava.getRepresentativeLightMethod
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.asJava.unwrapped
-import org.jetbrains.kotlin.builtins.isNonExtensionFunctionType
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.DescriptorVisibility
@@ -120,7 +119,7 @@ open class KotlinChangeInfo(
 
             val toRemove = BooleanArray(receiverShift + methodDescriptor.parametersCount) { true }
             if (hasReceiver) {
-                toRemove[0] = receiverParameterInfo == null && hasReceiver && originalReceiver !in getNonReceiverParameters()
+                toRemove[0] = receiverParameterInfo == null && originalReceiver !in getNonReceiverParameters()
             }
 
             for (parameter in newParameters) {
@@ -271,13 +270,7 @@ open class KotlinChangeInfo(
 
             if (kind == Kind.FUNCTION) {
                 receiverParameterInfo?.let {
-                    val typeInfo = it.currentTypeInfo
-                    if (typeInfo.type != null && typeInfo.type.isNonExtensionFunctionType) {
-                        buffer.append("(${typeInfo.render()})")
-                    } else {
-                        buffer.append(typeInfo.render())
-                    }
-                    buffer.append('.')
+                    buffer.append(it.currentTypeInfo.getReceiverTypeText()).append('.')
                 }
                 buffer.append(newName)
             }
@@ -327,7 +320,7 @@ open class KotlinChangeInfo(
     }
 
     fun renderReceiverType(inheritedCallable: KotlinCallableDefinitionUsage<*>): String? {
-        val receiverTypeText = receiverParameterInfo?.currentTypeInfo?.render() ?: return null
+        val receiverTypeText = receiverParameterInfo?.currentTypeInfo?.getReceiverTypeText() ?: return null
         val typeSubstitutor = inheritedCallable.typeSubstitutor ?: return receiverTypeText
         val currentBaseFunction = inheritedCallable.baseFunction.currentCallableDescriptor ?: return receiverTypeText
         val receiverType = currentBaseFunction.extensionReceiverParameter!!.type
@@ -380,7 +373,7 @@ open class KotlinChangeInfo(
     fun getOrCreateJavaChangeInfos(): List<JavaChangeInfo>? {
         fun initCurrentSignatures(currentPsiMethods: List<PsiMethod>): List<JvmOverloadSignature> {
             val parameterInfoToPsi = methodDescriptor.original.parameters.zip(originalParameters).toMap()
-            val dummyParameter = KtPsiFactory(method).createParameter("dummy")
+            val dummyParameter = KtPsiFactory(method.project).createParameter("dummy")
             return makeSignatures(
                 parameters = newParameters,
                 psiMethods = currentPsiMethods,
@@ -435,16 +428,16 @@ open class KotlinChangeInfo(
                 .toSet()
 
             val javaChangeInfo = ChangeSignatureProcessor(
-                method.project,
-                originalPsiMethod,
-                false,
-                newVisibility,
-                newName,
-                CanonicalTypes.createTypeWrapper(newReturnType ?: PsiType.VOID),
-                newParameters,
-                arrayOf<ThrownExceptionInfo>(),
-                propagationTargets,
-                emptySet()
+              method.project,
+              originalPsiMethod,
+              false,
+              newVisibility,
+              newName,
+              CanonicalTypes.createTypeWrapper(newReturnType ?: PsiTypes.voidType()),
+              newParameters,
+              arrayOf<ThrownExceptionInfo>(),
+              propagationTargets,
+              emptySet()
             ).changeInfo
 
             javaChangeInfo.updateMethod(currentPsiMethod)
@@ -491,7 +484,7 @@ open class KotlinChangeInfo(
                 val type = if (isPrimaryMethodUpdated)
                     currentPsiMethod.parameterList.parameters[indexInCurrentPsiMethod++].type
                 else
-                    PsiType.VOID
+                  PsiTypes.voidType()
 
                 val defaultValue = info.defaultValueForCall ?: info.defaultValue
                 ParameterInfoImpl(javaOldIndex, info.name, type, defaultValue?.text ?: "")
@@ -520,7 +513,7 @@ open class KotlinChangeInfo(
             } else {
                 if (receiverParameterInfo != null) {
                     if (newJavaParameters.isEmpty()) {
-                        newJavaParameters.add(ParameterInfoImpl(oldIndex, "receiver", PsiType.VOID))
+                        newJavaParameters.add(ParameterInfoImpl(oldIndex, "receiver", PsiTypes.voidType()))
                     }
                 }
                 if (oldIndex < parameters.size) {
@@ -530,7 +523,7 @@ open class KotlinChangeInfo(
             }
 
             val newName = JvmAbi.setterName(newName)
-            return createJavaChangeInfo(originalPsiMethod, currentPsiMethod, newName, PsiType.VOID, newJavaParameters.toTypedArray())
+            return createJavaChangeInfo(originalPsiMethod, currentPsiMethod, newName, PsiTypes.voidType(), newJavaParameters.toTypedArray())
         }
 
         if (!(method.containingFile as KtFile).platform.isJvm()) return null

@@ -33,7 +33,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 
 import static com.intellij.openapi.vcs.VcsNotificationIdsHolder.PATCH_CREATION_FAILED;
@@ -148,8 +147,7 @@ public abstract class CreatePatchFromChangesAction extends ExtendableAction impl
     if (!SessionDialog.configureCommitSession(project, title, commitSession, changes, commitMessage)) return;
 
     ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
-      //noinspection unchecked
-      commitSession.execute((Collection<Change>)changes, commitMessage);
+      commitSession.execute(changes, commitMessage);
     }, VcsBundle.message("create.patch.commit.action.progress"), true, project);
   }
 
@@ -175,14 +173,12 @@ public abstract class CreatePatchFromChangesAction extends ExtendableAction impl
 
   @Override
   public void defaultUpdate(@NotNull AnActionEvent e) {
-    Boolean haveSelectedChanges = e.getData(VcsDataKeys.HAVE_SELECTED_CHANGES);
+    Change[] changes = e.getData(VcsDataKeys.CHANGES);
     ChangeList[] changeLists = e.getData(VcsDataKeys.CHANGE_LISTS);
     List<ShelvedChangeList> shelveChangelists = ShelvedChangesViewManager.getShelvedLists(e.getDataContext());
     int changelistNum = changeLists == null ? 0 : changeLists.length;
     changelistNum += shelveChangelists.size();
 
-    e.getPresentation().setEnabled(!Boolean.FALSE.equals(haveSelectedChanges) &&
-                                   changelistNum <= 1 &&
-                                   !ArrayUtil.isEmpty(e.getData(VcsDataKeys.CHANGES)));
+    e.getPresentation().setEnabled(changelistNum <= 1 && !ArrayUtil.isEmpty(changes));
   }
 }

@@ -5,13 +5,11 @@ package org.jetbrains.uast.test.kotlin
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.Ref
-import com.intellij.psi.JavaPsiFacade
-import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiType
-import com.intellij.psi.SyntaxTraverser
+import com.intellij.psi.*
 import com.intellij.psi.util.parentOfType
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.UsefulTestCase
+import com.intellij.testFramework.fixtures.JavaCodeInsightTestFixture
 import junit.framework.TestCase
 import org.jetbrains.kotlin.idea.KotlinLanguage
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
@@ -85,16 +83,16 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         TestCase.assertEquals("""
             UBinaryExpression (operator = &&)
                 UBinaryExpression (operator = &&)
-                    ULiteralExpression (value = null)
-                    ULiteralExpression (value = null)
-                ULiteralExpression (value = null)
+                    ULiteralExpression (value = true)
+                    ULiteralExpression (value = false)
+                ULiteralExpression (value = false)
         """.trimIndent(), expression.asRecursiveLogString().trim())
     }
 
     fun `test simple reference creating from variable`() {
         val context = dummyContextFile()
         val variable = uastElementFactory.createLocalVariable(
-            "a", PsiType.INT, uastElementFactory.createNullLiteral(context), false, context
+            "a", PsiTypes.intType(), uastElementFactory.createNullLiteral(context), false, context
         )
 
         val reference = uastElementFactory.createSimpleReference(variable, context) ?: kfail("cannot create reference")
@@ -119,7 +117,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val expression = psiFactory.createExpression("a + b").toUElementOfType<UExpression>()
             ?: kfail("Cannot find plugin")
 
-        val returnExpression = uastElementFactory.createReturnExpresion(expression, false, dummyContextFile())
+        val returnExpression = uastElementFactory.createReturnExpression(expression, false, dummyContextFile())
         TestCase.assertEquals("a + b", returnExpression.returnExpression?.asRenderString())
         TestCase.assertEquals("return a + b", returnExpression.sourcePsi?.text)
     }
@@ -137,7 +135,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val expression = psiFactory.createExpression("b").toUElementOfType<UExpression>()
             ?: kfail("cannot create variable declaration")
 
-        val declaration = uastElementFactory.createLocalVariable("a", PsiType.DOUBLE, expression, false, dummyContextFile())
+        val declaration = uastElementFactory.createLocalVariable("a", PsiTypes.doubleType(), expression, false, dummyContextFile())
 
         TestCase.assertEquals("var a: kotlin.Double = b", declaration.sourcePsi?.text)
     }
@@ -146,7 +144,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val expression = psiFactory.createExpression("b").toUElementOfType<UExpression>()
             ?: kfail("cannot create variable declaration")
 
-        val declaration = uastElementFactory.createLocalVariable("a", PsiType.DOUBLE, expression, true, dummyContextFile())
+        val declaration = uastElementFactory.createLocalVariable("a", PsiTypes.doubleType(), expression, true, dummyContextFile())
 
         TestCase.assertEquals("val a: kotlin.Double = b", declaration.sourcePsi?.text)
     }
@@ -155,7 +153,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val expression = psiFactory.createExpression("b").toUElementOfType<UExpression>()
             ?: kfail("cannot create variable declaration")
 
-        val declaration = uastElementFactory.createLocalVariable("a", PsiType.DOUBLE, expression, true, dummyContextFile())
+        val declaration = uastElementFactory.createLocalVariable("a", PsiTypes.doubleType(), expression, true, dummyContextFile())
 
         TestCase.assertEquals("val a: kotlin.Double = b", declaration.sourcePsi?.text)
         TestCase.assertEquals("""
@@ -187,7 +185,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
 
         val lambda = uastElementFactory.createLambdaExpression(
             listOf(
-                UParameterInfo(PsiType.INT, "a"),
+                UParameterInfo(PsiTypes.intType(), "a"),
                 UParameterInfo(null, "b")
             ),
             statement,
@@ -200,7 +198,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
                 UParameter (name = a)
                     UAnnotation (fqName = org.jetbrains.annotations.NotNull)
                 UParameter (name = b)
-                    UAnnotation (fqName = null)
+                    UAnnotation (fqName = org.jetbrains.annotations.NotNull)
                 UBlockExpression
                     UQualifiedReferenceExpression
                         UQualifiedReferenceExpression
@@ -245,8 +243,8 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
 
         val lambda = uastElementFactory.createLambdaExpression(
             listOf(
-                UParameterInfo(PsiType.INT, "a"),
-                UParameterInfo(PsiType.DOUBLE, "b")
+                UParameterInfo(PsiTypes.intType(), "a"),
+                UParameterInfo(PsiTypes.doubleType(), "b")
             ),
             statement,
             dummyContextFile()
@@ -324,7 +322,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
     fun `test suggested name`() {
         val expression = psiFactory.createExpression("f(a) + 1").toUElementOfType<UExpression>()
             ?: kfail("cannot create expression")
-        val variable = uastElementFactory.createLocalVariable(null, PsiType.INT, expression, true, dummyContextFile())
+        val variable = uastElementFactory.createLocalVariable(null, PsiTypes.intType(), expression, true, dummyContextFile())
 
         TestCase.assertEquals("val i: kotlin.Int = f(a) + 1", variable.sourcePsi?.text)
         TestCase.assertEquals("""
@@ -334,17 +332,14 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
                         UIdentifier (Identifier (f))
                         USimpleNameReferenceExpression (identifier = <anonymous class>, resolvesTo = null)
                         USimpleNameReferenceExpression (identifier = a)
-                    ULiteralExpression (value = null)
+                    ULiteralExpression (value = 1)
         """.trimIndent(), variable.asRecursiveLogString().trim())
     }
 
     fun `test method call generation with receiver`() {
-        val receiver = psiFactory.createExpression(""""10"""").toUElementOfType<UExpression>()
-            ?: kfail("cannot create receiver")
-        val arg1 = psiFactory.createExpression("1").toUElementOfType<UExpression>()
-            ?: kfail("cannot create arg1")
-        val arg2 = psiFactory.createExpression("2").toUElementOfType<UExpression>()
-            ?: kfail("cannot create arg2")
+        val receiver = myFixture.configureByKotlinExpression("receiver.kt", "\"10\"")
+        val arg1 = myFixture.configureByKotlinExpression("arg1.kt", "1")
+        val arg2 = myFixture.configureByKotlinExpression("arg2.kt", "2")
         val methodCall = uastElementFactory.createCallExpression(
             receiver,
             "substring",
@@ -367,10 +362,8 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
     }
 
     fun `test method call generation without receiver`() {
-        val arg1 = psiFactory.createExpression("1").toUElementOfType<UExpression>()
-            ?: kfail("cannot create arg1")
-        val arg2 = psiFactory.createExpression("2").toUElementOfType<UExpression>()
-            ?: kfail("cannot create arg2")
+        val arg1 = myFixture.configureByKotlinExpression("arg1.kt", "1")
+        val arg2 = myFixture.configureByKotlinExpression("arg2.kt", "2")
         val methodCall = uastElementFactory.createCallExpression(
             null,
             "substring",
@@ -431,14 +424,12 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
     private fun dummyContextFile(): KtFile = myFixture.configureByText("file.kt", "fun foo() {}") as KtFile
 
     fun `test method call generation with generics restoring 1 parameter with 1 existing`() {
-        val a = psiFactory.createExpression("A").toUElementOfType<UExpression>()
-            ?: kfail("cannot create a receiver")
-        val param = psiFactory.createExpression("\"a\"").toUElementOfType<UExpression>()
-            ?: kfail("cannot create a parameter")
+        val receiver = myFixture.configureByKotlinExpression("receiver.kt", "A")
+        val arg = myFixture.configureByKotlinExpression("arg.kt", "\"a\"")
         val methodCall = uastElementFactory.createCallExpression(
-            a,
+            receiver,
             "kek",
-            listOf(param),
+            listOf(arg),
             createTypeFromText(
                 "java.util.Map<java.lang.String, java.lang.Integer>",
                 null
@@ -564,7 +555,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val callExpression = uastElementFactory.createCallExpression(
             reference,
             "method",
-            listOf(uastElementFactory.createIntLiteral(1, null)),
+            listOf(uastElementFactory.createIntLiteral(1, file)),
             createTypeFromText(
                 "java.util.List<java.lang.Integer>",
                 null
@@ -688,7 +679,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
                     UastBinaryOperator.GREATER,
                     uLambdaExpression.sourcePsi
                 )!!,
-                createReturnExpresion(
+                createReturnExpression(
                     createStringLiteralExpression("exit", uLambdaExpression.sourcePsi), true,
                     uLambdaExpression.sourcePsi
                 ),
@@ -782,7 +773,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
                         uLambdaExpression.sourcePsi
                     )!!,
                     oldBlockExpression,
-                    createReturnExpresion(
+                    createReturnExpression(
                         createStringLiteralExpression("exit", uLambdaExpression.sourcePsi), true,
                         uLambdaExpression.sourcePsi
                     ),
@@ -814,7 +805,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
             """
         ULambdaExpression
             UParameter (name = it)
-                UAnnotation (fqName = null)
+                UAnnotation (fqName = org.jetbrains.annotations.NotNull)
             UBlockExpression
                 UReturnExpression
                     UIfExpression
@@ -899,7 +890,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val localVariable = uastElementFactory.createLocalVariable("a", null, uastElementFactory.createNullLiteral(context), true, context)
         val declarationExpression =
             uastElementFactory.createDeclarationExpression(listOf(localVariable), context)
-        val returnExpression = uastElementFactory.createReturnExpresion(
+        val returnExpression = uastElementFactory.createReturnExpression(
             uastElementFactory.createSimpleReference(localVariable, context), false, context
         )
         val block = uastElementFactory.createBlockExpression(listOf(declarationExpression, returnExpression), context)
@@ -931,7 +922,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
     fun `test expand oneline lambda`() {
 
         val context = dummyContextFile()
-        val parameters = listOf(UParameterInfo(PsiType.INT, "a"))
+        val parameters = listOf(UParameterInfo(PsiTypes.intType(), "a"))
         val oneLineLambda = with(uastElementFactory) {
             createLambdaExpression(
                 parameters,
@@ -951,12 +942,12 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
                 createBlockExpression(
                     listOf(
                         createCallExpression(
-                            null,
-                            "println",
-                            listOf(createSimpleReference("a", context)),
-                            PsiType.VOID,
-                            UastCallKind.METHOD_CALL,
-                            context
+                          null,
+                          "println",
+                          listOf(createSimpleReference("a", context)),
+                          PsiTypes.voidType(),
+                          UastCallKind.METHOD_CALL,
+                          context
                         )!!,
                         lambdaReturn
                     ),
@@ -1109,7 +1100,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val uParameter = uClass.methods.find { it.isConstructor && it.uastParameters.isNotEmpty() }?.uastParameters?.firstOrNull()
                          ?: kfail("Cannot find parameter")
 
-        WriteCommandAction.runWriteCommandAction(project) { generatePlugin.initializeField(uField, uParameter) }
+        initializeField(uField, uParameter)
         TestCase.assertEquals("""
             class MyClass() {
                 constructor(value: String): this() {
@@ -1133,7 +1124,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val uField = uClass.fields.firstOrNull() ?: kfail("Cannot find field")
         val uParameter = uClass.methods.find { it.uastParameters.isNotEmpty() }?.uastParameters?.firstOrNull() ?: kfail("Cannot find parameter")
 
-        WriteCommandAction.runWriteCommandAction(project) { generatePlugin.initializeField(uField, uParameter) }
+        initializeField(uField, uParameter)
         TestCase.assertEquals("""
             class MyClass(value: String) {
                 val field: String = value
@@ -1154,7 +1145,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val uField = uClass.fields.firstOrNull() ?: kfail("Cannot find field")
         val uParameter = uClass.methods.find { it.uastParameters.isNotEmpty() }?.uastParameters?.firstOrNull() ?: kfail("Cannot find parameter")
 
-        WriteCommandAction.runWriteCommandAction(project) { generatePlugin.initializeField(uField, uParameter) }
+        initializeField(uField, uParameter)
         TestCase.assertEquals("""
             class MyClass(private val field: String) {
             }
@@ -1178,7 +1169,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val uField = uClass.fields.firstOrNull() ?: kfail("Cannot find field")
         val uParameter = uClass.methods.find { it.uastParameters.isNotEmpty() }?.uastParameters?.firstOrNull() ?: kfail("Cannot find parameter")
 
-        WriteCommandAction.runWriteCommandAction(project) { generatePlugin.initializeField(uField, uParameter) }
+        initializeField(uField, uParameter)
         TestCase.assertEquals("""
             class MyClass(private val field: String) {
                 public fun test() {
@@ -1206,7 +1197,7 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         val uField = uClass.fields.firstOrNull() ?: kfail("Cannot find field")
         val uParameter = uClass.methods.find { it.uastParameters.isNotEmpty() }?.uastParameters?.firstOrNull() ?: kfail("Cannot find parameter")
 
-        WriteCommandAction.runWriteCommandAction(project) { generatePlugin.initializeField(uField, uParameter) }
+        initializeField(uField, uParameter)
         TestCase.assertEquals("""
             class MyClass(private val field: String) {
 
@@ -1221,6 +1212,19 @@ class KotlinUastGenerationTest : KotlinLightCodeInsightFixtureTestCase() {
         return JavaPsiFacade.getElementFactory(myFixture.project).createTypeFromText(s, newClass)
     }
 
+    private fun JavaCodeInsightTestFixture.configureByKotlinExpression(fileName: String, text: String): UExpression {
+        val file = configureByText(fileName, "private val x = $text") as KtFile
+        val property = file.declarations.singleOrNull() as? KtProperty ?: error("Property 'x' is not found in $file")
+        val initializer = property.initializer ?: error("Property initializer not found in $file")
+        return initializer.toUElementOfType() ?: error("Initializer '$initializer' is not convertable to UAST")
+    }
+
+    private fun initializeField(uField: UField, uParameter: UParameter) {
+        WriteCommandAction.runWriteCommandAction(project) {
+            val expression = generatePlugin.initializeField(uField, uParameter)
+            assertNotNull(expression)
+        }
+    }
 }
 
 // it is a copy of org.jetbrains.uast.UastUtils.asRecursiveLogString with `appendLine` instead of `appendln` to avoid windows related issues

@@ -63,7 +63,7 @@ public final class BootstrapClassLoaderUtil {
 
     if (AppMode.isDevServer()) {
       List<Path> paths = loadClassPathFromDevBuild(distDir);
-      pathClassLoader.getClassPath().appendFiles(paths);
+      pathClassLoader.getClassPath().addFiles(paths);
       return;
     }
 
@@ -125,7 +125,7 @@ public final class BootstrapClassLoaderUtil {
     }
 
     if (!classpath.isEmpty()) {
-      pathClassLoader.getClassPath().appendFiles(List.copyOf(classpath));
+      pathClassLoader.getClassPath().addFiles(List.copyOf(classpath));
     }
 
     if (installMarketplace) {
@@ -238,7 +238,7 @@ public final class BootstrapClassLoaderUtil {
     return true;
   }
 
-  private static void addLibraries(Collection<Path> classPath, Path fromDir, @Nullable Path selfRoot) throws IOException {
+  private static void addLibraries(Collection<? super Path> classPath, Path fromDir, @Nullable Path selfRoot) throws IOException {
     try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(fromDir)) {
       for (Path file : dirStream) {
         String path = file.toString();
@@ -256,7 +256,7 @@ public final class BootstrapClassLoaderUtil {
     }
   }
 
-  private static void parseClassPathString(@Nullable String pathString, @NotNull Collection<Path> classpath) {
+  private static void parseClassPathString(@Nullable String pathString, @NotNull Collection<? super Path> classpath) {
     if (pathString == null || pathString.isEmpty()) {
       return;
     }

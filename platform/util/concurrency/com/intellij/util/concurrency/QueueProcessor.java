@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.concurrency;
 
 import com.intellij.openapi.application.Application;
@@ -165,6 +165,7 @@ public final class QueueProcessor<T> {
   }
 
   public void waitFor() {
+    assertCorrectThread();
     synchronized (myQueue) {
       while (isProcessing) {
         try {
@@ -178,6 +179,7 @@ public final class QueueProcessor<T> {
   }
 
   boolean waitFor(long timeoutMS) {
+    assertCorrectThread();
     synchronized (myQueue) {
       long start = System.currentTimeMillis();
 
@@ -195,6 +197,12 @@ public final class QueueProcessor<T> {
       }
 
       return true;
+    }
+  }
+
+  private void assertCorrectThread() {
+    if (myThreadToUse == ThreadToUse.AWT && ApplicationManager.getApplication().isDispatchThread()) {
+      throw new IllegalStateException("Must not wait for AWT-backed queue in the EDT. Instead, to avoid deadlock, use background thread for that");
     }
   }
 
@@ -230,7 +238,7 @@ public final class QueueProcessor<T> {
           SwingUtilities.invokeLater(runnable);
         }
         else {
-          application.executeOnPooledThread(runnable);
+          AppJavaExecutorUtil.executeOnPooledIoThread(runnable);
         }
       }
     }

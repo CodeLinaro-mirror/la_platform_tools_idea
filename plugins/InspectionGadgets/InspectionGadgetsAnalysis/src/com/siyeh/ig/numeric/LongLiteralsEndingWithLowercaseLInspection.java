@@ -22,6 +22,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiLiteralExpression;
 import com.intellij.psi.PsiType;
+import com.intellij.psi.PsiTypes;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -63,7 +64,7 @@ public class LongLiteralsEndingWithLowercaseLInspection extends BaseInspection i
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiExpression literal =
         (PsiExpression)descriptor.getPsiElement();
       final String text = literal.getText();
@@ -83,7 +84,7 @@ public class LongLiteralsEndingWithLowercaseLInspection extends BaseInspection i
       if (type == null) {
         return;
       }
-      if (!type.equals(PsiType.LONG)) {
+      if (!type.equals(PsiTypes.longType())) {
         return;
       }
       final String text = expression.getText();

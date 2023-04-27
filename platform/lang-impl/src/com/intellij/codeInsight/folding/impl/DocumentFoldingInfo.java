@@ -18,6 +18,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -63,7 +64,7 @@ final class DocumentFoldingInfo implements CodeFoldingState {
       if (!region.isValid() || region.shouldNeverExpand()) continue;
       boolean expanded = region.isExpanded();
       String signature = region.getUserData(UpdateFoldRegionsOperation.SIGNATURE);
-      if (signature == UpdateFoldRegionsOperation.NO_SIGNATURE) continue;
+      if (Strings.areSameInstance(signature, UpdateFoldRegionsOperation.NO_SIGNATURE)) continue;
       Boolean storedCollapseByDefault = region.getUserData(UpdateFoldRegionsOperation.COLLAPSED_BY_DEFAULT);
       boolean collapseByDefault = storedCollapseByDefault != null && storedCollapseByDefault &&
                                   !FoldingUtil.caretInsideRange(editor, TextRange.create(region));
@@ -293,61 +294,9 @@ final class DocumentFoldingInfo implements CodeFoldingState {
     return true;
   }
 
-  private static class Info {
-    private final String signature;
-    private final boolean expanded;
-
-    Info(@NotNull String signature, boolean expanded) {
-      this.signature = signature;
-      this.expanded = expanded;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      Info info = (Info)o;
-      return expanded == info.expanded && Objects.equals(signature, info.signature);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(signature, expanded);
-    }
+  private record Info(@NotNull String signature, boolean expanded) {
   }
 
-  private static final class FoldingInfo {
-    private final String placeHolder;
-    private final boolean expanded;
-
-    private FoldingInfo(@NotNull String placeHolder, boolean expanded) {
-      this.placeHolder = placeHolder;
-      this.expanded = expanded;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) {
-        return true;
-      }
-      if (o == null || getClass() != o.getClass()) {
-        return false;
-      }
-
-      FoldingInfo info = (FoldingInfo)o;
-
-      return expanded == info.expanded && placeHolder.equals(info.placeHolder);
-    }
-
-    @Override
-    public int hashCode() {
-      int result = placeHolder.hashCode();
-      result = 31 * result + (expanded ? 1 : 0);
-      return result;
-    }
-
-    public boolean getExpanded() {
-      return expanded;
-    }
+  private record FoldingInfo(@NotNull String placeHolder, boolean expanded) {
   }
 }

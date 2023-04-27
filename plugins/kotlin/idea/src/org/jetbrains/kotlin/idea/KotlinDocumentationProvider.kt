@@ -194,7 +194,7 @@ class KotlinDocumentationProvider : AbstractDocumentationProvider(), ExternalDoc
         val contextDescriptor = bindingContext[BindingContext.DECLARATION_TO_DESCRIPTOR, navElement] ?: return null
         val descriptors = resolveKDocLink(
             bindingContext, resolutionFacade,
-            contextDescriptor, null, link.split('.')
+            contextDescriptor, navElement, null, link.split('.')
         )
         val target = descriptors.firstOrNull() ?: return null
         return DescriptorToSourceUtilsIde.getAnyDeclaration(psiManager.project, target)
@@ -364,7 +364,7 @@ class KotlinDocumentationProvider : AbstractDocumentationProvider(), ExternalDoc
                 val project = element.project
                 @Suppress("HardCodedStringLiteral")
                 return buildString {
-                    insert(buildKotlinDeclaration(element, quickNavigation)) {
+                    insert(buildKotlinDeclaration(element, quickNavigation = false)) {
                         definition {
                             it.inherit()
                             ordinal?.let {

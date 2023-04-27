@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.move.moveClassesOrPackages;
 
 import com.intellij.codeInsight.ChangeContextUtil;
@@ -26,9 +26,9 @@ import java.util.*;
 public class JavaMoveDirectoryWithClassesHelper extends MoveDirectoryWithClassesHelper {
 
   @Override
-  public void findUsages(Collection<PsiFile> filesToMove,
+  public void findUsages(Collection<? extends PsiFile> filesToMove,
                          PsiDirectory[] directoriesToMove,
-                         Collection<UsageInfo> result,
+                         Collection<? super UsageInfo> result,
                          boolean searchInComments,
                          boolean searchInNonJavaFiles,
                          Project project) { }
@@ -36,7 +36,7 @@ public class JavaMoveDirectoryWithClassesHelper extends MoveDirectoryWithClasses
   @Override
   public void findUsages(Map<VirtualFile, MoveDirectoryWithClassesProcessor.TargetDirectoryWrapper> filesToMove,
                          PsiDirectory[] directoriesToMove,
-                         Collection<UsageInfo> usages,
+                         Collection<? super UsageInfo> usages,
                          boolean searchInComments,
                          boolean searchInNonJavaFiles,
                          Project project) {
@@ -100,7 +100,7 @@ public class JavaMoveDirectoryWithClassesHelper extends MoveDirectoryWithClasses
   public boolean move(PsiFile file,
                       PsiDirectory moveDestination,
                       Map<PsiElement, PsiElement> oldToNewElementsMapping,
-                      List<PsiFile> movedFiles,
+                      List<? super PsiFile> movedFiles,
                       RefactoringElementListener listener) {
     if (!(file instanceof PsiClassOwner)) {
       return false;
@@ -132,8 +132,7 @@ public class JavaMoveDirectoryWithClassesHelper extends MoveDirectoryWithClasses
           element.delete();
         }
       }
-      if (usage instanceof MoveDirectoryUsageInfo) {
-        MoveDirectoryUsageInfo moveDirUsage = (MoveDirectoryUsageInfo)usage;
+      if (usage instanceof MoveDirectoryUsageInfo moveDirUsage) {
         PsiDirectory sourceDirectory = moveDirUsage.getSourceDirectory();
         if (sourceDirectory == null) continue;
         PsiJavaModule moduleDescriptor = JavaModuleGraphUtil.findDescriptorByElement(sourceDirectory);

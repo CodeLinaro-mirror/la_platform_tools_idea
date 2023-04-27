@@ -2,6 +2,7 @@
 package org.jetbrains.kotlin.idea.base.projectStructure
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.assertReadAccessAllowed
 import com.intellij.openapi.components.service
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
@@ -48,6 +49,10 @@ class LibraryInfoCache(project: Project) : Disposable {
 
         private val deduplicationCache = hashMapOf<String, MutableList<LibraryEx>>()
 
+        init {
+          initialize()
+        }
+
         override fun subscribe() {
             project.messageBus.connect(this).subscribe(WorkspaceModelTopics.CHANGED, ModelChangeListener(project))
         }
@@ -58,6 +63,7 @@ class LibraryInfoCache(project: Project) : Disposable {
         }
 
         override fun get(key: LibraryEx): List<LibraryInfo> {
+            assertReadAccessAllowed()
             checkKeyAndDisposeIllegalEntry(key)
 
             /**

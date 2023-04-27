@@ -4,8 +4,10 @@ package com.intellij.openapi.actionSystem.impl;
 import com.intellij.codeWithMe.ClientId;
 import com.intellij.concurrency.SensitiveProgressWrapper;
 import com.intellij.diagnostic.PluginException;
+import com.intellij.diagnostic.ThreadDumpService;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ProhibitAWTEvents;
+import com.intellij.internal.DebugAttachDetector;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction;
@@ -91,6 +93,7 @@ final class ActionUpdater {
   private final Consumer<? super Runnable> myLaterInvocator;
   private final int myTestDelayMillis;
 
+  private final ThreadDumpService myThreadDumpService = ThreadDumpService.getInstance();
   private int myEDTCallsCount;
   private long myEDTWaitNanos;
   private volatile long myCurEDTWaitMillis;
@@ -170,7 +173,7 @@ final class ActionUpdater {
     boolean shallAsync = updateThread == ActionUpdateThread.BGT;
     boolean isEDT = EDT.isCurrentThreadEdt();
     boolean shallEDT = !(canAsync && shallAsync);
-    if (isEDT && !shallEDT && !SlowOperations.isInsideActivity(SlowOperations.ACTION_PERFORM) &&
+    if (isEDT && !shallEDT && !SlowOperations.isInSection(SlowOperations.ACTION_PERFORM) &&
         !ApplicationManager.getApplication().isUnitTestMode()) {
       LOG.error("Calling on EDT " + operationName + " that requires " + updateThread +
                 (myForcedUpdateThread != null ? " (forced)" : ""));
@@ -210,38 +213,35 @@ final class ActionUpdater {
                              boolean noRulesInEDT) {
     myCurEDTWaitMillis = myCurEDTPerformMillis = 0L;
     ProgressIndicator progress = Objects.requireNonNull(ProgressIndicatorProvider.getGlobalProgressIndicator());
-    AtomicReference<FList<Throwable>> edtTracesRef = new AtomicReference<>();
+    AtomicReference<List<Throwable>> edtTracesRef = new AtomicReference<>();
     long start0 = System.nanoTime();
     Supplier<? extends T> supplier = () -> {
-      {
-        long curNanos = System.nanoTime();
-        myEDTCallsCount++;
-        myEDTWaitNanos += curNanos - start0;
-        myCurEDTWaitMillis = TimeUnit.NANOSECONDS.toMillis(curNanos - start0);
-      }
       long start = System.nanoTime();
-      FList<String> prevStack = ourInEDTActionOperationStack;
-      ourInEDTActionOperationStack = prevStack.prepend(operationName);
+      myEDTCallsCount++;
+      myEDTWaitNanos += start - start0;
+      myCurEDTWaitMillis = TimeUnit.NANOSECONDS.toMillis(start - start0);
       return computeWithSpan(Utils.getTracer(true), "edt-op", span -> {
         span.setAttribute(Utils.OT_OP_KEY, operationName);
-
-        try {
-          return ProgressManager.getInstance().runProcess(() -> {
-            boolean prevNoRules = ourNoRulesInEDTSection;
-            try (AccessToken ignored = ProhibitAWTEvents.start(operationName)) {
-              ourNoRulesInEDTSection = noRulesInEDT;
-              return call.get();
+        return ProgressManager.getInstance().runProcess(() -> {
+          FList<String> prevStack = ourInEDTActionOperationStack;
+          boolean prevNoRules = ourNoRulesInEDTSection;
+          ThreadDumpService.Cookie traceCookie = null;
+          try (AccessToken ignored = ProhibitAWTEvents.start(operationName);
+               ThreadDumpService.Cookie cookie = myThreadDumpService.start(100, 50, 5, Thread.currentThread())) {
+            traceCookie = cookie;
+            ourInEDTActionOperationStack = prevStack.prepend(operationName);
+            ourNoRulesInEDTSection = noRulesInEDT;
+            return call.get();
+          }
+          finally {
+            ourNoRulesInEDTSection = prevNoRules;
+            ourInEDTActionOperationStack = prevStack;
+            if (traceCookie != null) {
+              myCurEDTPerformMillis = TimeoutUtil.getDurationMillis(traceCookie.getStartNanos());
+              edtTracesRef.set(traceCookie.getTraces());
             }
-            finally {
-              ourNoRulesInEDTSection = prevNoRules;
-            }
-          }, ProgressWrapper.wrap(progress));
-        }
-        finally {
-          ourInEDTActionOperationStack = prevStack;
-          myCurEDTPerformMillis = TimeoutUtil.getDurationMillis(start);
-          edtTracesRef.set(ActionUpdateEdtExecutor.ourEDTExecTraces.get());
-        }
+          }
+        }, ProgressWrapper.wrap(progress));
       });
     };
     try {
@@ -254,7 +254,7 @@ final class ActionUpdater {
       if (myCurEDTPerformMillis > 300) {
         Throwable throwable = PluginException.createByClass(
           elapsedReport(myCurEDTPerformMillis, true, operationName) + OLD_EDT_MSG_SUFFIX, null, action.getClass());
-        FList<Throwable> edtTraces = edtTracesRef.get();
+        List<Throwable> edtTraces = edtTracesRef.get();
         // do not report pauses without EDT traces (e.g. due to debugging)
         if (edtTraces != null && edtTraces.size() > 0 && edtTraces.get(0).getStackTrace().length > 0) {
           for (Throwable trace : edtTraces) {
@@ -262,7 +262,7 @@ final class ActionUpdater {
           }
           LOG.error(throwable);
         }
-        else {
+        else if (!DebugAttachDetector.isDebugEnabled()) {
           LOG.warn(throwable);
         }
       }
@@ -383,7 +383,7 @@ final class ActionUpdater {
     };
     List<CancellablePromise<?>> targetPromises = myToolbarAction ? ourToolbarPromises : ourPromises;
     targetPromises.add(promise);
-    boolean isFastTrack = myLaterInvocator != null && SlowOperations.isInsideActivity(SlowOperations.FAST_TRACK);
+    boolean isFastTrack = myLaterInvocator != null && SlowOperations.isInSection(SlowOperations.FAST_TRACK);
     Executor executor = isFastTrack ? ourFastTrackExecutor : ourCommonExecutor;
     executor.execute(Context.current().wrap(() -> {
       Ref<Computable<Void>> applyRunnableRef = Ref.create();
@@ -450,13 +450,7 @@ final class ActionUpdater {
 
   private void waitTheTestDelay() {
     if (myTestDelayMillis <= 0) return;
-    ProgressIndicator progress = Objects.requireNonNull(ProgressIndicatorProvider.getGlobalProgressIndicator());
-    long start = System.nanoTime();
-    while (true) {
-      progress.checkCanceled();
-      if (TimeoutUtil.getDurationMillis(start) > myTestDelayMillis) break;
-      TimeoutUtil.sleep(1);
-    }
+    ProgressIndicatorUtils.awaitWithCheckCanceled(myTestDelayMillis);
   }
 
   private void ensureSlowDataKeysPreCached(@NotNull Object action, @NotNull String targetOperationName) {
@@ -566,7 +560,8 @@ final class ActionUpdater {
     boolean isPopup = presentation.isPopupGroup();
     boolean canBePerformed = presentation.isPerformGroup();
     boolean performOnly = isPopup && canBePerformed && Boolean.TRUE.equals(presentation.getClientProperty(ActionMenu.SUPPRESS_SUBMENU));
-    boolean skipChecks = performOnly || child instanceof AlwaysVisibleActionGroup;
+    boolean alwaysVisible = child instanceof AlwaysVisibleActionGroup;
+    boolean skipChecks = performOnly || alwaysVisible;
     boolean hideDisabled = isPopup && !skipChecks && hideDisabledBase;
     boolean hideEmpty = isPopup && !skipChecks && (presentation.isHideGroupIfEmpty() || group.hideIfNoVisibleChildren());
     boolean disableEmpty = isPopup && !skipChecks && (presentation.isDisableGroupIfEmpty() && group.disableIfNoVisibleChildren());
@@ -593,15 +588,20 @@ final class ActionUpdater {
       }
     }
 
+    boolean hideDisabledChildren = (hideDisabledBase || group instanceof CompactActionGroup) && !alwaysVisible;
     if (!hasEnabled && hideDisabled || !hasVisible && hideEmpty) {
       return canBePerformed ? List.of(group) : Collections.emptyList();
     }
     else if (isPopup) {
-      return Collections.singletonList(!hideDisabledBase || child instanceof CompactActionGroup ? group :
-                                       new Compact(group));
+      if (hideDisabledChildren && !(group instanceof CompactActionGroup)) {
+        return Collections.singletonList(new Compact(group));
+      }
+      else {
+        return Collections.singletonList(group);
+      }
     }
     else {
-      return doExpandActionGroup(group, hideDisabledBase || child instanceof CompactActionGroup, strategy);
+      return doExpandActionGroup(group, hideDisabledChildren, strategy);
     }
   }
 
@@ -773,15 +773,8 @@ final class ActionUpdater {
 
   private enum Op { update, getChildren }
 
-  private static class UpdateStrategy {
-    final NullableFunction<? super AnAction, Presentation> update;
-    final NotNullFunction<? super ActionGroup, ? extends AnAction[]> getChildren;
-
-    UpdateStrategy(NullableFunction<? super AnAction, Presentation> update,
-                   NotNullFunction<? super ActionGroup, ? extends AnAction[]> getChildren) {
-      this.update = update;
-      this.getChildren = getChildren;
-    }
+  private record UpdateStrategy(NullableFunction<? super AnAction, Presentation> update,
+                                NotNullFunction<? super ActionGroup, ? extends AnAction[]> getChildren) {
   }
 
   static @NotNull ActionUpdater getActionUpdater(@NotNull UpdateSession session) {

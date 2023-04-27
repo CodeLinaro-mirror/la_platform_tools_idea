@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package com.intellij.codeInspection.suspiciousNameCombination;
 
@@ -11,6 +11,7 @@ import com.intellij.codeInspection.ui.InspectionOptionsPanel;
 import com.intellij.codeInspection.ui.ListTable;
 import com.intellij.codeInspection.ui.ListWrappingTableModel;
 import com.intellij.java.JavaBundle;
+import com.intellij.openapi.actionSystem.ActionToolbarPosition;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.NlsSafe;
@@ -20,7 +21,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.NameUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.ui.AddEditDeleteListPanel;
-import com.intellij.util.ui.JBUI;
+import com.intellij.ui.ToolbarDecorator;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.psiutils.MethodMatcher;
 import com.siyeh.ig.ui.UiUtils;
@@ -33,7 +34,6 @@ import org.jetbrains.annotations.PropertyKey;
 import javax.swing.*;
 import javax.swing.event.ListDataEvent;
 import javax.swing.event.ListDataListener;
-import java.util.List;
 import java.util.*;
 
 
@@ -84,7 +84,7 @@ public class SuspiciousNameCombinationInspection extends AbstractBaseJavaLocalIn
       false);
 
     final InspectionOptionsPanel panel = new InspectionOptionsPanel();
-    panel.add(nameGroupsPanel, "growx, wrap");
+    panel.addGrowing(nameGroupsPanel);
     panel.addGrowing(tablePanel);
     return panel;
   }
@@ -160,8 +160,8 @@ public class SuspiciousNameCombinationInspection extends AbstractBaseJavaLocalIn
 
     NameGroupsPanel() {
       super(AnalysisBundle.message("suspicious.name.combination.options.title"), myNameGroups);
-      setMinimumSize(InspectionOptionsPanel.getMinimumListSize());
-      setPreferredSize(JBUI.size(150, 130));
+      setMinimumSize(InspectionOptionsPanel.getMinimumLongListSize());
+      setPreferredSize(InspectionOptionsPanel.getMinimumLongListSize());
       myListModel.addListDataListener(new ListDataListener() {
         @Override
         public void intervalAdded(ListDataEvent e) {
@@ -197,6 +197,11 @@ public class SuspiciousNameCombinationInspection extends AbstractBaseJavaLocalIn
                                       inputValue, null);
     }
 
+    @Override
+    protected void customizeDecorator(ToolbarDecorator decorator) {
+      decorator.setToolbarPosition(ActionToolbarPosition.LEFT);
+    }
+
     private void saveChanges() {
       clearNameGroups();
       for(int i=0; i<myListModel.getSize(); i++) {
@@ -214,8 +219,7 @@ public class SuspiciousNameCombinationInspection extends AbstractBaseJavaLocalIn
     @Override public void visitVariable(@NotNull PsiVariable variable) {
       if (variable.hasInitializer()) {
         PsiExpression expr = variable.getInitializer();
-        if (expr instanceof PsiReferenceExpression) {
-          PsiReferenceExpression refExpr = (PsiReferenceExpression) expr;
+        if (expr instanceof PsiReferenceExpression refExpr) {
           PsiIdentifier nameIdentifier = variable.getNameIdentifier();
           checkCombination(nameIdentifier != null ? nameIdentifier : variable, variable.getName(), refExpr.getReferenceName(), "suspicious.name.assignment");
         }
@@ -225,9 +229,7 @@ public class SuspiciousNameCombinationInspection extends AbstractBaseJavaLocalIn
     @Override public void visitAssignmentExpression(@NotNull PsiAssignmentExpression expression) {
       PsiExpression lhs = expression.getLExpression();
       PsiExpression rhs = expression.getRExpression();
-      if (lhs instanceof PsiReferenceExpression && rhs instanceof PsiReferenceExpression) {
-        PsiReferenceExpression lhsExpr = (PsiReferenceExpression) lhs;
-        PsiReferenceExpression rhsExpr = (PsiReferenceExpression) rhs;
+      if (lhs instanceof PsiReferenceExpression lhsExpr && rhs instanceof PsiReferenceExpression rhsExpr) {
         checkCombination(lhsExpr, lhsExpr.getReferenceName(), rhsExpr.getReferenceName(), "suspicious.name.assignment");
       }
     }

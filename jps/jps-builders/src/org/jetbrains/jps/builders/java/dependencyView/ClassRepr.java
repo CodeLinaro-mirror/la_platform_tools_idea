@@ -14,9 +14,6 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.*;
 import java.util.function.Predicate;
 
-/**
- * @author db
- */
 public final class ClassRepr extends ClassFileRepr {
   private final TypeRepr.ClassType mySuperClass;
   private final Set<TypeRepr.AbstractType> myInterfaces;
@@ -79,6 +76,10 @@ public final class ClassRepr extends ClassFileRepr {
 
   public boolean isInterface() {
     return (access & Opcodes.ACC_INTERFACE) != 0;
+  }
+
+  public boolean isEnum() {
+    return (access & Opcodes.ACC_ENUM) != 0;
   }
 
   public abstract static class Diff extends DifferenceImpl {

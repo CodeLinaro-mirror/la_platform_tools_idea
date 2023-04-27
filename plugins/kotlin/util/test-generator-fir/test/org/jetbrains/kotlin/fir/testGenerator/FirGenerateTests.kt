@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.fir.testGenerator
 
@@ -6,13 +6,12 @@ import org.jetbrains.kotlin.fir.testGenerator.codeinsight.generateK2CodeInsightT
 import org.jetbrains.kotlin.idea.fir.analysis.providers.AbstractIdeKotlinAnnotationsResolverTest
 import org.jetbrains.kotlin.idea.fir.analysis.providers.sessions.AbstractSessionsInvalidationTest
 import org.jetbrains.kotlin.idea.fir.analysis.providers.trackers.AbstractProjectWideOutOfBlockKotlinModificationTrackerTest
-import org.jetbrains.kotlin.idea.fir.completion.AbstractFirKeywordCompletionTest
-import org.jetbrains.kotlin.idea.fir.completion.AbstractHighLevelJvmBasicCompletionTest
-import org.jetbrains.kotlin.idea.fir.completion.AbstractHighLevelMultiFileJvmBasicCompletionTest
-import org.jetbrains.kotlin.idea.fir.completion.AbstractK2MultiPlatformCompletionTest
+import org.jetbrains.kotlin.idea.fir.codeInsight.AbstractK2MultiModuleLineMarkerTest
+import org.jetbrains.kotlin.idea.fir.completion.*
 import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractFirKeywordCompletionHandlerTest
 import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractHighLevelBasicCompletionHandlerTest
 import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractHighLevelJavaCompletionHandlerTest
+import org.jetbrains.kotlin.idea.fir.completion.test.handlers.AbstractK2CompletionCharFilterTest
 import org.jetbrains.kotlin.idea.fir.completion.wheigher.AbstractHighLevelWeigherTest
 import org.jetbrains.kotlin.idea.fir.documentation.AbstractFirQuickDocTest
 import org.jetbrains.kotlin.idea.fir.findUsages.AbstractFindUsagesFirTest
@@ -24,14 +23,17 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.AbstractFirLibraryModuleDecla
 import org.jetbrains.kotlin.idea.fir.parameterInfo.AbstractFirParameterInfoTest
 import org.jetbrains.kotlin.idea.fir.quickfix.AbstractHighLevelQuickFixMultiFileTest
 import org.jetbrains.kotlin.idea.fir.quickfix.AbstractHighLevelQuickFixTest
-import org.jetbrains.kotlin.idea.fir.refactoring.rename.AbstractFirSimpleRenameTest
+import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveInJavaTest
 import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceResolveTest
+import org.jetbrains.kotlin.idea.fir.resolve.AbstractFirReferenceToCompiledKotlinResolveInJavaTest
 import org.jetbrains.kotlin.idea.fir.search.AbstractHLImplementationSearcherTest
 import org.jetbrains.kotlin.idea.fir.shortenRefs.AbstractFirShortenRefsTest
 import org.jetbrains.kotlin.idea.fir.uast.*
+import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractFirRenameTest
 import org.jetbrains.kotlin.testGenerator.generator.TestGenerator
 import org.jetbrains.kotlin.testGenerator.model.*
 import org.jetbrains.kotlin.testGenerator.model.Patterns.DIRECTORY
+import org.jetbrains.kotlin.testGenerator.model.Patterns.JAVA
 import org.jetbrains.kotlin.testGenerator.model.Patterns.KT_OR_KTS_WITHOUT_DOTS
 import org.jetbrains.kotlin.testGenerator.model.Patterns.KT_WITHOUT_DOTS
 import org.jetbrains.kotlin.testGenerator.model.Patterns.KT_WITHOUT_DOT_AND_FIR_PREFIX
@@ -80,6 +82,14 @@ private fun assembleWorkspace(): TWorkspace = workspace {
             model("resolve/references", pattern = KT_WITHOUT_DOTS)
         }
 
+        testClass<AbstractFirReferenceResolveInJavaTest> {
+            model("resolve/referenceInJava/binaryAndSource", pattern = JAVA)
+            model("resolve/referenceInJava/sourceOnly", pattern = JAVA)
+        }
+
+        testClass<AbstractFirReferenceToCompiledKotlinResolveInJavaTest> {
+            model("resolve/referenceInJava/binaryAndSource", pattern = JAVA)
+        }
 
         testClass<AbstractHighLevelQuickFixTest> {
             val pattern = Patterns.forRegex("^([\\w\\-_]+)\\.kt$")
@@ -117,7 +127,11 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         }
 
         testClass<AbstractHighLevelQuickFixMultiFileTest> {
-            model("quickfix/autoImports", pattern = Patterns.forRegex("""^(\w+)\.((before\.Main\.\w+)|(test))$"""), testMethodName = "doTestWithExtraFile")
+            model(
+                "quickfix/autoImports",
+                pattern = Patterns.forRegex("""^(\w+)\.((before\.Main\.\w+)|(test))$"""),
+                testMethodName = "doTestWithExtraFile"
+            )
         }
 
 
@@ -169,6 +183,10 @@ private fun assembleWorkspace(): TWorkspace = workspace {
             model("multiPlatform", isRecursive = false, pattern = DIRECTORY)
         }
 
+        testClass<AbstractK2CompletionCharFilterTest> {
+            model("handlers/charFilter", pattern = KT_WITHOUT_DOT_AND_FIR_PREFIX)
+        }
+
         testClass<AbstractFirKeywordCompletionTest> {
             model("keywords", isRecursive = false, pattern = KT_WITHOUT_FIR_PREFIX)
             model(
@@ -178,11 +196,20 @@ private fun assembleWorkspace(): TWorkspace = workspace {
                 pattern = KT_WITHOUT_FIR_PREFIX
             )
         }
+        testClass<AbstractFirWithLibBasicCompletionTest> {
+            model("basic/withLib", isRecursive = false, pattern = KT_WITHOUT_FIR_PREFIX)
+        }
     }
 
-    testGroup("refactorings/rename.k2") {
-        testClass<AbstractFirSimpleRenameTest> {
-            model("refactoring/rename", pattern = KT_WITHOUT_DOTS)
+    testGroup("fir", testDataPath = "../code-insight/testData") {
+        testClass<AbstractK2MultiModuleLineMarkerTest> {
+            model("linemarkers", isRecursive = false, pattern = DIRECTORY)
+        }
+    }
+
+    testGroup("refactorings/rename.k2", testDataPath = "../../idea/tests/testData") {
+        testClass<AbstractFirRenameTest> {
+            model("refactoring/rename", pattern = Patterns.TEST, flatten = true)
         }
     }
 
@@ -210,7 +237,7 @@ private fun assembleWorkspace(): TWorkspace = workspace {
         testClass<AbstractHLImplementationSearcherTest> {
             model("search/implementations", pattern = KT_WITHOUT_DOTS)
         }
-        
+
         testClass<AbstractFirQuickDocTest> {
             model("quickDoc", pattern = Patterns.forRegex("""^([^_]+)\.(kt|java)$"""))
         }
@@ -251,5 +278,4 @@ private fun assembleWorkspace(): TWorkspace = workspace {
             model("")
         }
     }
-
 }

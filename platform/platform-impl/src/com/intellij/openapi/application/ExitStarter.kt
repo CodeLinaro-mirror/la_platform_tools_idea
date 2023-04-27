@@ -25,6 +25,7 @@ class ExitStarter private constructor() : ApplicationStarterBase(0, 1, 2) {
     forceExitApplication(args.any { ourRestartParameter == it })
     return CliResult.OK
   }
+
   companion object {
     fun forceExitApplication(restart: Boolean = false) {
       val application = ApplicationManager.getApplication()

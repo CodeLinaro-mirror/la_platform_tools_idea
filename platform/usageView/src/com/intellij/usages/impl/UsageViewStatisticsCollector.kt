@@ -5,6 +5,7 @@ import com.intellij.ide.util.scopeChooser.ScopeIdMapper
 import com.intellij.internal.statistic.eventLog.EventLogGroup
 import com.intellij.internal.statistic.eventLog.FeatureUsageData
 import com.intellij.internal.statistic.eventLog.events.EventFields
+import com.intellij.internal.statistic.eventLog.events.EventPair
 import com.intellij.internal.statistic.eventLog.events.PrimitiveEventField
 import com.intellij.internal.statistic.eventLog.validator.ValidationResultType
 import com.intellij.internal.statistic.eventLog.validator.rules.EventContext
@@ -16,6 +17,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.search.SearchScope
 import com.intellij.usageView.UsageInfo
 import com.intellij.usages.Usage
+import com.intellij.usages.UsageInfo2UsageAdapter
 import com.intellij.usages.UsageView
 import com.intellij.usages.rules.PsiElementUsage
 import org.jetbrains.annotations.Nls
@@ -35,7 +37,7 @@ class UsageViewStatisticsCollector : CounterUsagesCollector() {
   override fun getGroup() = GROUP
 
   companion object {
-    val GROUP = EventLogGroup("usage.view", 15)
+    val GROUP = EventLogGroup("usage.view", 19)
     val USAGE_VIEW = object : PrimitiveEventField<UsageView?>() {
       override val name: String = "usage_view"
 
@@ -46,12 +48,18 @@ class UsageViewStatisticsCollector : CounterUsagesCollector() {
       override val validationRule: List<String>
         get() = listOf("{regexp#integer}")
     }
+
+    @JvmField
+    val PRIMARY_TARGET = EventFields.Class("primary_target")
+    @JvmField
+    val NUMBER_OF_TARGETS = EventFields.Int("number_of_targets")
     private val REFERENCE_CLASS = EventFields.Class("reference_class")
     private val UI_LOCATION = EventFields.Enum("ui_location", CodeNavigateSource::class.java)
     private val USAGE_SHOWN = GROUP.registerVarargEvent("usage.shown", USAGE_VIEW, REFERENCE_CLASS, EventFields.Language, UI_LOCATION)
     private val USAGE_NAVIGATE = GROUP.registerEvent("usage.navigate", REFERENCE_CLASS, EventFields.Language)
     // fields specific for items in popup
     private val SELECTED_ROW = EventFields.Int("selected_usage")
+    private val PRESELECTED_ROW = EventFields.Int("preselected_usage")
     private val NUMBER_OF_ROWS = EventFields.Int("number_of_usages")
     private val NUMBER_OF_LETTERS_TYPED = EventFields.Int("number_of_letters_typed")
 
@@ -64,7 +72,8 @@ class UsageViewStatisticsCollector : CounterUsagesCollector() {
     private val TOO_MANY_RESULTS = EventFields.Boolean("too_many_result_warning")
     private val IS_SIMILAR_USAGE = EventFields.Boolean("is_similar_usage")
 
-    private val searchStarted = GROUP.registerVarargEvent("started", USAGE_VIEW, UI_LOCATION, EventFields.Language)
+    private val searchStarted = GROUP.registerVarargEvent("started", USAGE_VIEW, UI_LOCATION, EventFields.Language, PRIMARY_TARGET,
+                                                          NUMBER_OF_TARGETS)
 
     private val searchCancelled = GROUP.registerVarargEvent("cancelled",
                                                             SYMBOL_CLASS,
@@ -101,6 +110,12 @@ class UsageViewStatisticsCollector : CounterUsagesCollector() {
     private val scopeChanged = GROUP.registerVarargEvent("scope.changed", USAGE_VIEW, PREVIOUS_SCOPE, NEW_SCOPE, SYMBOL_CLASS)
     private val OPEN_IN_FIND_TOOL_WINDOW = GROUP.registerEvent("open.in.tool.window", USAGE_VIEW)
     private val USER_ACTION = EventFields.Enum("userAction", TooManyUsagesUserAction::class.java)
+    private val ITEM_CHOSEN = EventFields.Boolean("item_chosen")
+    private val popupClosed = GROUP.registerVarargEvent("popup.closed", USAGE_VIEW, PRESELECTED_ROW, SELECTED_ROW, ITEM_CHOSEN,
+                                                        PRIMARY_TARGET,
+                                                        NUMBER_OF_TARGETS,
+                                                        EventFields.Language, REFERENCE_CLASS,
+                                                        EventFields.DurationMs)
     private val tooManyUsagesDialog = GROUP.registerVarargEvent("tooManyResultsDialog",
       USAGE_VIEW,
       USER_ACTION,
@@ -110,8 +125,24 @@ class UsageViewStatisticsCollector : CounterUsagesCollector() {
     )
 
     @JvmStatic
-    fun logSearchStarted(project: Project?, usageView: UsageView, source: CodeNavigateSource, language: Language?) {
-      searchStarted.log(project, USAGE_VIEW.with(usageView), UI_LOCATION.with(source), EventFields.Language.with(language))
+    fun logSearchStarted(project: Project?,
+                         usageView: UsageView,
+                         source: CodeNavigateSource,
+                         showUsagesHandlerEventData: List<EventPair<*>>) {
+      val data = mutableListOf(USAGE_VIEW.with(usageView), UI_LOCATION.with(source))
+      data.addAll(showUsagesHandlerEventData)
+      searchStarted.log(project, data)
+    }
+
+    @JvmStatic
+    fun logSearchStarted(project: Project?,
+                         usageView: UsageView,
+                         source: CodeNavigateSource,
+                         language: Language?,
+                         psiElement: PsiElement?,
+                         numberOfTargets: Int) {
+      searchStarted.log(project, USAGE_VIEW.with(usageView), UI_LOCATION.with(source), EventFields.Language.with(language),
+                        PRIMARY_TARGET.with(psiElement?.javaClass), NUMBER_OF_TARGETS.with(numberOfTargets))
     }
 
     @JvmStatic
@@ -254,6 +285,26 @@ class UsageViewStatisticsCollector : CounterUsagesCollector() {
     fun logOpenInFindToolWindow(project: Project?, usageView: UsageView) =
       OPEN_IN_FIND_TOOL_WINDOW.log(project, usageView)
 
+    @JvmStatic
+    fun logPopupClosed(project: Project?,
+                       usageView: UsageView,
+                       itemChosen: Boolean,
+                       preselectRow: Int,
+                       selectedRow: Int?,
+                       usage: Usage?,
+                       startTime: Long?,
+                       showUsagesHandlerEventData: List<EventPair<*>>) {
+      val data = mutableListOf(USAGE_VIEW.with(usageView), ITEM_CHOSEN.with(itemChosen), PRESELECTED_ROW.with(preselectRow))
+      selectedRow?.let { data.add(SELECTED_ROW.with(it)) }
+      if (usage is UsageInfo2UsageAdapter) {
+        data.add(REFERENCE_CLASS.with(usage.referenceClass))
+      }
+      data.addAll(showUsagesHandlerEventData)
+      if (startTime != null) {
+        data.add(EventFields.DurationMs.with(System.currentTimeMillis() - startTime))
+      }
+      popupClosed.log(project, data)
+    }
   }
 }
 

@@ -82,7 +82,7 @@ public class UseOfObsoleteAssertInspection extends BaseInspection implements Cle
 
   private static class ReplaceObsoleteAssertsFix extends InspectionGadgetsFix {
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiMethodCallExpression call = PsiTreeUtil.getParentOfType(descriptor.getPsiElement(), PsiMethodCallExpression.class);
       if (call == null) {
         return;
@@ -146,7 +146,7 @@ public class UseOfObsoleteAssertInspection extends BaseInspection implements Cle
         PsiParameter[] parameters = newTarget.getParameterList().getParameters();
         if (parameters.length > 0) {
           PsiType paramType = parameters[parameters.length - 1].getType();
-          if (PsiType.DOUBLE.equals(paramType) || PsiType.FLOAT.equals(paramType)) {
+          if (PsiTypes.doubleType().equals(paramType) || PsiTypes.floatType().equals(paramType)) {
             call.getArgumentList().add(JavaPsiFacade.getElementFactory(project).createExpressionFromText("0.0", call));
           }
         }

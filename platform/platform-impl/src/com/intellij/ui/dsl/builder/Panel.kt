@@ -17,6 +17,7 @@ import javax.swing.JLabel
  * Empty label parameter for [Panel.row] method in case label is omitted.
  */
 @Deprecated("Use \"\" instead of this constant")
+@ApiStatus.ScheduledForRemoval
 val EMPTY_LABEL = ""
 
 @ApiStatus.NonExtendable
@@ -31,8 +32,12 @@ interface Panel : CellBase<Panel> {
 
   override fun enabledIf(predicate: ComponentPredicate): Panel
 
+  @Deprecated("Use align method instead")
+  @ApiStatus.ScheduledForRemoval
   override fun horizontalAlign(horizontalAlign: HorizontalAlign): Panel
 
+  @Deprecated("Use align method instead")
+  @ApiStatus.ScheduledForRemoval
   override fun verticalAlign(verticalAlign: VerticalAlign): Panel
 
   override fun align(align: Align): Panel
@@ -75,6 +80,7 @@ interface Panel : CellBase<Panel> {
   fun threeColumnsRow(column1: (Row.() -> Unit)?, column2: (Row.() -> Unit)? = null, column3: (Row.() -> Unit)? = null): Row
 
   @Deprecated(message = "Use overloaded method or group/groupRowsRange instead", level = DeprecationLevel.HIDDEN)
+  @ApiStatus.ScheduledForRemoval
   fun separator(@NlsContexts.Separator title: String? = null, background: Color? = null): Row
 
   /**
@@ -111,7 +117,7 @@ interface Panel : CellBase<Panel> {
    */
   fun group(title: JBLabel, indent: Boolean = true, init: Panel.() -> Unit): Row
 
-  @Deprecated("Use overloaded group(...) instead")
+  @Deprecated("Use overloaded group(...) instead", level = DeprecationLevel.HIDDEN)
   @ApiStatus.ScheduledForRemoval
   fun group(@NlsContexts.BorderTitle title: String? = null,
             indent: Boolean = true,
@@ -132,7 +138,7 @@ interface Panel : CellBase<Panel> {
 
   /**
    * Adds collapsible panel with independent grid, title and some vertical space above (except the group in the parents first row)
-   * and below (except the group in the parents last row) the group.
+   * and below (except the group in the parents last row) the group. The group title is focusable via the Tab key and supports mnemonics.
    * To change gaps around the group use [Row.topGap] and [Row.bottomGap] for the method result
    *
    * @param indent true if left indent is needed
@@ -141,7 +147,7 @@ interface Panel : CellBase<Panel> {
                        indent: Boolean = true,
                        init: Panel.() -> Unit): CollapsibleRow
 
-  @Deprecated("Use buttonsGroup(...) instead")
+  @Deprecated("Use buttonsGroup(...) instead", level = DeprecationLevel.HIDDEN)
   @ApiStatus.ScheduledForRemoval
   fun <T> buttonGroup(binding: PropertyBinding<T>, type: Class<T>, @NlsContexts.BorderTitle title: String? = null,
                       indent: Boolean = title != null, init: Panel.() -> Unit)

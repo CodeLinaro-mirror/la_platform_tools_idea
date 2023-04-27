@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.psi.*;
@@ -48,9 +48,9 @@ public final class RemoveUnusedVariableUtil {
     return RemoveMode.MAKE_STATEMENT;
   }
 
-  public static PsiElement replaceElementWithExpression(PsiExpression expression,
-                                                        PsiElementFactory factory,
-                                                        PsiElement element) throws IncorrectOperationException {
+  private static PsiElement replaceElementWithExpression(PsiExpression expression,
+                                                         PsiElementFactory factory,
+                                                         PsiElement element) throws IncorrectOperationException {
     PsiElement elementToReplace = element;
     PsiElement expressionToReplaceWith = expression;
     if (element.getParent() instanceof PsiExpressionStatement || element.getParent() instanceof PsiExpressionListStatement) {
@@ -69,9 +69,9 @@ public final class RemoveUnusedVariableUtil {
     return elementToReplace.replace(expressionToReplaceWith);
   }
 
-  static PsiElement createStatementIfNeeded(PsiExpression expression,
-                                            PsiElementFactory factory,
-                                            PsiElement element) throws IncorrectOperationException {
+  private static PsiElement createStatementIfNeeded(PsiExpression expression,
+                                                    PsiElementFactory factory,
+                                                    PsiElement element) throws IncorrectOperationException {
     // if element used in expression, subexpression will do
     PsiElement parent = element.getParent();
     if (!(parent instanceof PsiExpressionStatement) && !(parent instanceof PsiDeclarationStatement)) {
@@ -88,7 +88,7 @@ public final class RemoveUnusedVariableUtil {
     return factory.createStatementFromText(replacement, null);
   }
 
-  static void deleteWholeStatement(PsiElement element, PsiElementFactory factory)
+  private static void deleteWholeStatement(PsiElement element, PsiElementFactory factory)
     throws IncorrectOperationException {
     // just delete it altogether
     PsiElement parent = element.getParent();
@@ -101,8 +101,7 @@ public final class RemoveUnusedVariableUtil {
         parent.replace(createStatementIfNeeded(null, factory, element));
       }
     }
-    else if (parent instanceof PsiExpressionList && parent.getParent() instanceof PsiExpressionListStatement) {
-      PsiExpressionList list = (PsiExpressionList)parent;
+    else if (parent instanceof PsiExpressionList list && parent.getParent() instanceof PsiExpressionListStatement) {
       PsiExpression[] expressions = list.getExpressions();
       if (expressions.length == 2) {
         PsiExpression other = expressions[0] == element ? expressions[1] : expressions[0];
@@ -155,7 +154,7 @@ public final class RemoveUnusedVariableUtil {
         PsiExpression rExpression = expression.getRExpression();
         rExpression = PsiUtil.skipParenthesizedExprDown(rExpression);
         if (rExpression == null) return true;
-        // replace assignment with expression and resimplify
+        // replace assignment with expression and re-simplify
         boolean sideEffectFound = checkSideEffects(rExpression, variable, sideEffects);
         if (!ExpressionUtils.isVoidContext(expression) || PsiUtil.isStatement(rExpression)) {
           if (deleteMode == RemoveMode.MAKE_STATEMENT ||

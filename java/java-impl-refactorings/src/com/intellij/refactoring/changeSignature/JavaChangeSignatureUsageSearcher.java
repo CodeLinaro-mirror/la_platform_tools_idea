@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.changeSignature;
 
 import com.intellij.lang.java.JavaLanguage;
@@ -108,12 +108,8 @@ class JavaChangeSignatureUsageSearcher {
       return false;
     }
     for (int i = 0; i < components.length; i++) {
-      PsiPattern component = components[i];
-      if (!(component instanceof PsiTypeTestPattern)) {
-        return false;
-      }
-      PsiPatternVariable patternVar = ((PsiTypeTestPattern)component).getPatternVariable();
-      if (patternVar == null || !patternVar.getType().equals(parameters[i].getType())) {
+      PsiType type = JavaPsiPatternUtil.getPatternType(components[i]);
+      if (!parameters[i].getType().equals(type)) {
         return false;
       }
     }
@@ -121,9 +117,7 @@ class JavaChangeSignatureUsageSearcher {
   }
 
   private void findUsagesInCallers(final ArrayList<? super UsageInfo> usages) {
-    if (myChangeInfo instanceof JavaChangeInfoImpl) {
-      JavaChangeInfoImpl changeInfo = (JavaChangeInfoImpl)myChangeInfo;
-
+    if (myChangeInfo instanceof JavaChangeInfoImpl changeInfo) {
       for (PsiMethod caller : changeInfo.propagateParametersMethods) {
         usages.add(new CallerUsageInfo(caller, true, changeInfo.propagateExceptionsMethods.contains(caller)));
       }
@@ -296,8 +290,8 @@ class JavaChangeSignatureUsageSearcher {
           if (RefactoringUtil.isMethodUsage(element)) {
             PsiExpressionList list = RefactoringUtil.getArgumentListByMethodReference(element);
             if (list == null || !method.isVarArgs() && list.getExpressionCount() != parameterCount) continue;
-            if (method.isVarArgs() && 
-                ref instanceof PsiReferenceExpression && 
+            if (method.isVarArgs() &&
+                ref instanceof PsiReferenceExpression &&
                 !((PsiReferenceExpression)ref).advancedResolve(true).isValidResult()) {
               continue;
             }
@@ -316,9 +310,8 @@ class JavaChangeSignatureUsageSearcher {
             result.add(implicitUsageInfo);
           }
         }
-        else if (element instanceof PsiClass) {
+        else if (element instanceof PsiClass psiClass) {
           LOG.assertTrue(method.isConstructor());
-          final PsiClass psiClass = (PsiClass)element;
           if (JavaLanguage.INSTANCE.equals(psiClass.getLanguage())) {
             if (myChangeInfo instanceof JavaChangeInfoImpl) {
               if (shouldPropagateToNonPhysicalMethod(method, result, psiClass,

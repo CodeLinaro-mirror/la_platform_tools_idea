@@ -44,8 +44,6 @@ open class RuleGroup(rules: Set<String>) {
     @JvmField
     val LITERALS = CASING + PUNCTUATION
 
-    fun getLITERALS(): RuleGroup = LITERALS
-
     /**
      * Rules that allow for single sentences to be lowercase and lack starting/finishing punctuation,
      * useful in comments or commit messages

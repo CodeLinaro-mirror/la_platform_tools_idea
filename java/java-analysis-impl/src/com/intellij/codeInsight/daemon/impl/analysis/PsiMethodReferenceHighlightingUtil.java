@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.codeInsight.daemon.JavaErrorBundle;
@@ -11,7 +11,7 @@ import com.intellij.psi.util.*;
 import org.jetbrains.annotations.NotNull;
 
 public final class PsiMethodReferenceHighlightingUtil {
-  static HighlightInfo checkRawConstructorReference(@NotNull PsiMethodReferenceExpression expression) {
+  static HighlightInfo.Builder checkRawConstructorReference(@NotNull PsiMethodReferenceExpression expression) {
     if (expression.isConstructor()) {
       PsiType[] typeParameters = expression.getTypeParameters();
       if (typeParameters.length > 0) {
@@ -20,7 +20,7 @@ public final class PsiMethodReferenceHighlightingUtil {
           PsiElement resolve = ((PsiReferenceExpression)qualifier).resolve();
           if (resolve instanceof PsiClass && ((PsiClass)resolve).hasTypeParameters()) {
             return HighlightInfo.newHighlightInfo(HighlightInfoType.ERROR).range(expression)
-              .descriptionAndTooltip(JavaAnalysisBundle.message("text.raw.ctor.reference.with.type.parameters")).create();
+              .descriptionAndTooltip(JavaAnalysisBundle.message("text.raw.ctor.reference.with.type.parameters"));
           }
         }
       }
@@ -46,9 +46,7 @@ public final class PsiMethodReferenceHighlightingUtil {
     boolean receiverReferenced = false;
     boolean isConstructor = true;
 
-    if (resolve instanceof PsiMethod) {
-      PsiMethod method = (PsiMethod)resolve;
-
+    if (resolve instanceof PsiMethod method) {
       isMethodStatic = method.hasModifierProperty(PsiModifier.STATIC);
       isConstructor = method.isConstructor();
 

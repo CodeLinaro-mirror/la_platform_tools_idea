@@ -8,6 +8,8 @@ import com.intellij.openapi.wm.WelcomeScreenLeftPanel;
 import com.intellij.openapi.wm.WelcomeScreenTab;
 import com.intellij.openapi.wm.WelcomeTabFactory;
 import com.intellij.ui.CardLayoutPanel;
+import com.intellij.ui.ExperimentalUI;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.util.ui.JBUI;
@@ -35,7 +37,7 @@ public class TabbedWelcomeScreen extends AbstractWelcomeScreen {
          new TreeWelcomeScreenLeftPanel(), true, true);
   }
 
-  public TabbedWelcomeScreen(List<WelcomeTabFactory> welcomeTabFactories, WelcomeScreenLeftPanel leftSidebar, boolean addLogo, boolean addQuickAccessPanel) {
+  public TabbedWelcomeScreen(List<? extends WelcomeTabFactory> welcomeTabFactories, WelcomeScreenLeftPanel leftSidebar, boolean addLogo, boolean addQuickAccessPanel) {
     setBackground(WelcomeScreenUIManager.getMainTabListBackground());
 
     mainPanel = createCardPanel();
@@ -61,7 +63,7 @@ public class TabbedWelcomeScreen extends AbstractWelcomeScreen {
       leftSidebarHolder.add(quickAccessPanel, BorderLayout.SOUTH);
     }
 
-    leftSidebarHolder.setPreferredSize(new Dimension(JBUI.scale(215), leftSidebarHolder.getPreferredSize().height));
+    leftSidebarHolder.setPreferredSize(new Dimension(JBUI.scale(224), leftSidebarHolder.getPreferredSize().height));
 
     JComponent centralPanel = mainPanel;
     JComponent mainPanelToolbar = createMainPanelToolbar(this);
@@ -74,6 +76,11 @@ public class TabbedWelcomeScreen extends AbstractWelcomeScreen {
     add(leftSidebarHolder, BorderLayout.WEST);
     add(centralPanel, BorderLayout.CENTER);
 
+    if (ExperimentalUI.isNewUI()) {
+      setBorder(JBUI.Borders.customLineTop(JBColor.border()));
+      centralPanel.setBorder(JBUI.Borders.customLineLeft(JBColor.border()));
+    }
+
     loadTabs(welcomeTabFactories);
   }
 
@@ -83,14 +90,14 @@ public class TabbedWelcomeScreen extends AbstractWelcomeScreen {
     WelcomeScreenEventCollector.logWelcomeScreenHide();
   }
 
-  public void addSelectionListener(@NotNull Disposable disposable, @NotNull Consumer<WelcomeScreenTab> action) {
+  public void addSelectionListener(@NotNull Disposable disposable, @NotNull Consumer<? super WelcomeScreenTab> action) {
     myLeftSidebar.addSelectionListener(disposable, action);
   }
 
   /**
    * Prefer to use addSelectionListener(Disposable, Consumer)
    */
-  public void addSelectionListener(@NotNull Consumer<WelcomeScreenTab> action) {
+  public void addSelectionListener(@NotNull Consumer<? super WelcomeScreenTab> action) {
     myLeftSidebar.addSelectionListener(this, action);
   }
 
@@ -98,7 +105,7 @@ public class TabbedWelcomeScreen extends AbstractWelcomeScreen {
     loadTabs(WelcomeTabFactory.WELCOME_TAB_FACTORY_EP.getExtensionList());
   }
 
-  private void loadTabs(List<WelcomeTabFactory> welcomeTabFactories) {
+  private void loadTabs(List<? extends WelcomeTabFactory> welcomeTabFactories) {
     myLeftSidebar.removeAllTabs();
     if (currentDisposable != null) {
       Disposer.dispose(currentDisposable);

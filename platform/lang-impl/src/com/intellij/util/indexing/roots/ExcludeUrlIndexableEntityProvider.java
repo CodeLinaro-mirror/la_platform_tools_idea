@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.indexing.roots;
 
 import com.intellij.openapi.project.Project;
@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.Collections;
 
-class ExcludeUrlIndexableEntityProvider implements IndexableEntityProvider<ExcludeUrlEntity> {
+class ExcludeUrlIndexableEntityProvider implements IndexableEntityProvider.Enforced<ExcludeUrlEntity> {
 
   @Override
   public @NotNull Class<ExcludeUrlEntity> getEntityClass() {
@@ -25,7 +25,8 @@ class ExcludeUrlIndexableEntityProvider implements IndexableEntityProvider<Exclu
 
   @Override
   public @NotNull Collection<? extends IndexableIteratorBuilder> getReplacedEntityIteratorBuilders(@NotNull ExcludeUrlEntity oldEntity,
-                                                                                                   @NotNull ExcludeUrlEntity newEntity) {
+                                                                                                   @NotNull ExcludeUrlEntity newEntity,
+                                                                                                   @NotNull Project project) {
     if (VirtualFileUrlManagerUtil.isEqualOrParentOf(newEntity.getUrl(), oldEntity.getUrl())) return Collections.emptyList();
     return createBuilders(oldEntity);
   }

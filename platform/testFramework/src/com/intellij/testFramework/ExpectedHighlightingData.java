@@ -60,8 +60,8 @@ import static org.junit.Assert.*;
  * these markers are not checked.
  */
 public class ExpectedHighlightingData {
-  public static final String EXPECTED_DUPLICATION_MESSAGE =
-    "Expected duplication problem. Please remove this wrapper, if there is no such problem any more";
+  static final String EXPECTED_DUPLICATION_MESSAGE =
+    "Expected duplication problem. Please remove `ExpectedHighlightingData.expectedDuplicatedHighlighting()` surrounding call, if there is no such problem any more";
 
   private static final String ERROR_MARKER = CodeInsightTestFixture.ERROR_MARKER;
   private static final String WARNING_MARKER = CodeInsightTestFixture.WARNING_MARKER;
@@ -327,7 +327,8 @@ public class ExpectedHighlightingData {
     if (foregroundColor != null) {
       @JdkConstants.FontStyle int ft = fontType != null ? Integer.parseInt(fontType) : 0;
       forcedAttributes = new TextAttributes(
-        Color.decode(foregroundColor), backgroundColor != null ? Color.decode(backgroundColor) : null, effectColor != null ? Color.decode(effectColor) : null, 
+        Color.decode(foregroundColor), backgroundColor != null ? Color.decode(backgroundColor) : null,
+        effectColor != null ? Color.decode(effectColor) : null,
         effectType != null ? EffectType.valueOf(effectType) : null, ft);
     }
 
@@ -933,7 +934,7 @@ public class ExpectedHighlightingData {
 
     @Override
     public boolean equals(Object obj) {
-      return this == obj || (obj instanceof PathIcon && ((PathIcon)obj).path == path);
+      return this == obj || (obj instanceof PathIcon && ((PathIcon)obj).path.equals(path));
     }
 
     @Override

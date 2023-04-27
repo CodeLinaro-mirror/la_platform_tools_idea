@@ -1,10 +1,9 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.psi.impl.source.resolve.reference.impl.providers;
 
 import com.intellij.codeInsight.completion.JavaClassNameCompletionContributor;
 import com.intellij.codeInsight.completion.JavaLookupElementBuilder;
 import com.intellij.codeInsight.completion.scope.JavaCompletionProcessor;
-import com.intellij.codeInsight.daemon.QuickFixActionRegistrar;
 import com.intellij.codeInsight.daemon.quickFix.CreateClassOrPackageFix;
 import com.intellij.codeInsight.intention.QuickFixFactory;
 import com.intellij.codeInsight.lookup.LookupElement;
@@ -186,8 +185,7 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
     if (element instanceof PsiClass) {
       newName = getQualifiedClassNameToInsert((PsiClass)element);
     }
-    else if (element instanceof PsiPackage) {
-      PsiPackage psiPackage = (PsiPackage)element;
+    else if (element instanceof PsiPackage psiPackage) {
       newName = psiPackage.getQualifiedName();
     }
     else {
@@ -483,7 +481,7 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
 
   @NotNull
   private List<? extends LocalQuickFix> registerFixes() {
-    List<LocalQuickFix> list = QuickFixFactory.getInstance().registerOrderEntryFixes(QuickFixActionRegistrar.IGNORE_ALL, this);
+    List<LocalQuickFix> list = QuickFixFactory.getInstance().registerOrderEntryFixes(this, new ArrayList<>());
 
     String extendClass = ContainerUtil.getFirstItem(getSuperClasses());
 

@@ -3,13 +3,13 @@
 package org.jetbrains.kotlin.idea.refactoring.cutPaste
 
 import com.intellij.openapi.application.runReadAction
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.refactoring.RefactoringBundle
 import com.intellij.refactoring.suggested.range
@@ -35,19 +35,16 @@ class MoveDeclarationsProcessor(
     private val sourceDeclarationsText: List<String>
 ) {
     companion object {
-        fun build(editor: Editor, cookie: MoveDeclarationsEditorCookie): MoveDeclarationsProcessor? {
+        fun build(file: PsiFile, cookie: MoveDeclarationsEditorCookie): MoveDeclarationsProcessor? {
             val data = cookie.data
-            val project = editor.project ?: return null
+            val project = file.project
             val range = cookie.bounds.range ?: return null
 
             val sourceFileUrl = data.sourceFileUrl
             val sourceFile = VirtualFileManager.getInstance().findFileByUrl(sourceFileUrl) ?: return null
             if (sourceFile.getSourceRoot(project) == null) return null
 
-            val psiDocumentManager = PsiDocumentManager.getInstance(project)
-            psiDocumentManager.commitAllDocuments()
-
-            val targetPsiFile = psiDocumentManager.getPsiFile(editor.document) as? KtFile ?: return null
+            val targetPsiFile = file as? KtFile ?: return null
             if (targetPsiFile.virtualFile.getSourceRoot(project) == null) return null
             val sourcePsiFile = PsiManager.getInstance(project).findFile(sourceFile) as? KtFile ?: return null
 
@@ -58,7 +55,7 @@ class MoveDeclarationsProcessor(
 
             if (targetPsiFile == sourceContainer) return null
 
-            val declarations = MoveDeclarationsCopyPasteProcessor.rangeToDeclarations(targetPsiFile, range.startOffset, range.endOffset)
+            val declarations = MoveDeclarationsCopyPasteProcessor.rangeToDeclarations(targetPsiFile, range)
             if (declarations.isEmpty() || declarations.any { it.parent !is KtFile }) return null
 
             if (sourceContainer == sourcePsiFile && sourcePsiFile.packageFqName == targetPsiFile.packageFqName) return null
@@ -187,9 +184,7 @@ class MoveDeclarationsProcessor(
         val declarations =
             MoveDeclarationsCopyPasteProcessor.rangeToDeclarations(
                 sourcePsiFile,
-                insertedRange.startOffset,
-                insertedRange.endOffset
-            )
+                insertedRange.textRange)
 
         return Pair(insertedRange, declarations)
     }

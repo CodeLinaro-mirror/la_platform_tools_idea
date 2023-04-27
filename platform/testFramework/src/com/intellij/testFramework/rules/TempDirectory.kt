@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.testFramework.rules
 
 import com.intellij.openapi.util.io.FileUtil
@@ -56,7 +56,7 @@ open class TempDirectory : ExternalResource() {
     }
 
   override fun apply(base: Statement, description: Description): Statement {
-    before(description.methodName)
+    before(description.methodName ?: description.className)
     return super.apply(base, description)
   }
 
@@ -92,9 +92,7 @@ open class TempDirectory : ExternalResource() {
   /**
    * Creates a new directory at the given path relative to the root temp directory. Throws an exception if such a directory already exists.
    */
-  fun newDirectory(relativePath: String): File {
-    return newDirectoryPath(relativePath).toFile()
-  }
+  fun newDirectory(relativePath: String): File = newDirectoryPath(relativePath).toFile()
 
   /**
    * Creates a new directory at the given path relative to the root temp directory. Throws an exception if such a directory already exists.

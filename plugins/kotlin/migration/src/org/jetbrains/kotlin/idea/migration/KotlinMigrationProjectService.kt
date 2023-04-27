@@ -34,6 +34,7 @@ class KotlinMigrationProjectService(val project: Project) : Disposable {
         val migrationInfo = prepareMigrationInfo(old = oldState, new = newState) ?: return
         ReadAction.nonBlocking<Boolean> { applicableMigrationToolExists(migrationInfo) || isUnitTestMode() }
             .expireWith(this)
+            .inSmartMode(project)
             .finishOnUiThread(ModalityState.any()) { toolExists ->
                 if (toolExists) {
                     showMigrationNotification(project, migrationInfo)
@@ -47,7 +48,7 @@ class KotlinMigrationProjectService(val project: Project) : Disposable {
     internal class CommonCompilerSettingsChangeListener(private val project: Project) : KotlinCompilerSettingsListener {
         override fun <T> settingsChanged(oldSettings: T?, newSettings: T?) {
             val newCommonSettings = newSettings as? CommonCompilerArguments.DummyImpl ?: return
-            if (!CodeMigrationToggleAction.isEnabled(project)) return
+            if (!CodeMigrationToggleAction.Manager.isEnabled(project)) return
             project.service<KotlinMigrationProjectService>().updateState(
                 newCommonSettings.languageVersion?.let { LanguageVersion.fromVersionString(it) },
                 newCommonSettings.apiVersion?.let { ApiVersion.parse(it) },

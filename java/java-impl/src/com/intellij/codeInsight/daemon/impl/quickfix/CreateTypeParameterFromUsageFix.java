@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.FileModificationService;
@@ -62,7 +62,7 @@ public class CreateTypeParameterFromUsageFix extends BaseIntentionAction {
     if (element == null) return;
     Context context = Context.from(element, false);
     if (context == null) return;
-    List<PsiNameIdentifierOwner> placesToAdd = context.myPlacesToAdd;
+    List<PsiNameIdentifierOwner> placesToAdd = context.placesToAdd;
 
     Application application = ApplicationManager.getApplication();
     if (placesToAdd.size() == 1 || application.isUnitTestMode() || editor == null) {
@@ -121,8 +121,7 @@ public class CreateTypeParameterFromUsageFix extends BaseIntentionAction {
   private static void replaceOrAddTypeParameterList(@NotNull PsiElement methodOrClass,
                                                     @Nullable PsiTypeParameterList typeParameterList,
                                                     @NotNull PsiTypeParameterList newTypeParameterList) {
-    if (methodOrClass instanceof PsiMethod) {
-      PsiMethod method = (PsiMethod)methodOrClass;
+    if (methodOrClass instanceof PsiMethod method) {
       if (typeParameterList == null) {
         PsiTypeElement returnTypeElement = method.getReturnTypeElement();
         if (returnTypeElement == null) return;
@@ -153,20 +152,14 @@ public class CreateTypeParameterFromUsageFix extends BaseIntentionAction {
     return classes[0].getTypeParameterList();
   }
 
-  private static class Context {
-    @NotNull final List<PsiNameIdentifierOwner> myPlacesToAdd;
-    @NotNull final String typeName;
-
-    Context(@NotNull List<PsiNameIdentifierOwner> add, @NotNull String name) {
-      myPlacesToAdd = add;
-      typeName = name;
-    }
-
+  private record Context(@NotNull List<PsiNameIdentifierOwner> placesToAdd, @NotNull String typeName) {
     @Nullable
     static Context from(@NotNull PsiJavaCodeReferenceElement element, boolean findFirstOnly) {
       if (!PsiUtil.isLanguageLevel5OrHigher(element)) return null;
       if (element.isQualified()) return null;
-      PsiElement container = PsiTreeUtil.getParentOfType(element, PsiReferenceList.class, PsiClass.class, PsiMethod.class, PsiClassInitializer.class, PsiStatement.class);
+      PsiElement container =
+        PsiTreeUtil.getParentOfType(element, PsiReferenceList.class, PsiClass.class, PsiMethod.class, PsiClassInitializer.class,
+                                    PsiStatement.class);
       if (container == null || (container instanceof PsiClass aClass && !aClass.isRecord())) return null;
       PsiElement parent = element.getParent();
       if (parent instanceof PsiMethodCallExpression ||

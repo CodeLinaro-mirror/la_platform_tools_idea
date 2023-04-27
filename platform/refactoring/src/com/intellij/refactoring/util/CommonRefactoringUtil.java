@@ -27,7 +27,6 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,9 +35,6 @@ import java.util.HashSet;
 import static com.intellij.openapi.util.NlsContexts.DialogMessage;
 import static com.intellij.openapi.util.NlsContexts.DialogTitle;
 
-/**
- * @author ven
- */
 public final class CommonRefactoringUtil {
   private CommonRefactoringUtil() { }
 
@@ -252,7 +248,7 @@ public final class CommonRefactoringUtil {
   /**
    * @deprecated use {@link StringUtil#capitalize(String)}
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public static String capitalize(@NotNull String text) {
     return StringUtil.capitalize(text);
   }

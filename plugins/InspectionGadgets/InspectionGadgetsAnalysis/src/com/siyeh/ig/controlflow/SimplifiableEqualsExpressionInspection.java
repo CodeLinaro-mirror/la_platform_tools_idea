@@ -20,7 +20,7 @@ import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.dataFlow.CommonDataflow;
 import com.intellij.codeInspection.dataFlow.types.DfTypes;
-import com.intellij.codeInspection.ui.SingleCheckboxOptionsPanel;
+import com.intellij.codeInspection.options.OptPane;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
@@ -37,18 +37,17 @@ import com.siyeh.ig.psiutils.SideEffectChecker;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
+import static com.intellij.codeInspection.options.OptPane.checkbox;
+import static com.intellij.codeInspection.options.OptPane.pane;
 
 public class SimplifiableEqualsExpressionInspection extends BaseInspection implements CleanupLocalInspectionTool {
   public boolean REPORT_NON_CONSTANT = true;
 
-  @Nullable
   @Override
-  public JComponent createOptionsPanel() {
-    return new SingleCheckboxOptionsPanel(InspectionGadgetsBundle.message("simplifiable.equals.expression.option.non.constant"), this,
-                                          "REPORT_NON_CONSTANT");
+  public @NotNull OptPane getOptionsPane() {
+    return pane(
+      checkbox("REPORT_NON_CONSTANT", InspectionGadgetsBundle.message("simplifiable.equals.expression.option.non.constant")));
   }
 
   @NotNull
@@ -83,7 +82,7 @@ public class SimplifiableEqualsExpressionInspection extends BaseInspection imple
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement parent = ParenthesesUtils.getParentSkipParentheses(element);
       if (!(parent instanceof PsiPolyadicExpression)) {
@@ -121,7 +120,7 @@ public class SimplifiableEqualsExpressionInspection extends BaseInspection imple
       }
       final PsiExpression argument = arguments[0];
       final PsiType type = argument.getType();
-      if (PsiType.BOOLEAN.equals(type)) {
+      if (PsiTypes.booleanType().equals(type)) {
         final Object value = ExpressionUtils.computeConstantExpression(argument);
         if (Boolean.TRUE.equals(value)) {
           newExpressionText.append("java.lang.Boolean.TRUE");
@@ -133,22 +132,22 @@ public class SimplifiableEqualsExpressionInspection extends BaseInspection imple
           newExpressionText.append("java.lang.Boolean.valueOf(").append(argument.getText()).append(')');
         }
       }
-      else if (PsiType.BYTE.equals(type)) {
+      else if (PsiTypes.byteType().equals(type)) {
         newExpressionText.append("java.lang.Byte.valueOf(").append(argument.getText()).append(')');
       }
-      else if (PsiType.SHORT.equals(type)) {
+      else if (PsiTypes.shortType().equals(type)) {
         newExpressionText.append("java.lang.Short.valueOf(").append(argument.getText()).append(')');
       }
-      else if (PsiType.INT.equals(type)) {
+      else if (PsiTypes.intType().equals(type)) {
         newExpressionText.append("java.lang.Integer.valueOf(").append(argument.getText()).append(')');
       }
-      else if (PsiType.LONG.equals(type)) {
+      else if (PsiTypes.longType().equals(type)) {
         newExpressionText.append("java.lang.Long.valueOf(").append(argument.getText()).append(')');
       }
-      else if (PsiType.FLOAT.equals(type)) {
+      else if (PsiTypes.floatType().equals(type)) {
         newExpressionText.append("java.lang.Float.valueOf(").append(argument.getText()).append(')');
       }
-      else if (PsiType.DOUBLE.equals(type)) {
+      else if (PsiTypes.doubleType().equals(type)) {
         newExpressionText.append("java.lang.Double.valueOf(").append(argument.getText()).append(')');
       }
       else {

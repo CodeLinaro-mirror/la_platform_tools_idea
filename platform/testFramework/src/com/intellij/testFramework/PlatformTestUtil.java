@@ -1,7 +1,9 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.testFramework;
 
 import com.intellij.diagnostic.ThreadDumper;
+import com.intellij.execution.ExecutionException;
+import com.intellij.execution.Executor;
 import com.intellij.execution.*;
 import com.intellij.execution.actions.ConfigurationContext;
 import com.intellij.execution.actions.ConfigurationFromContext;
@@ -80,6 +82,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.AsyncPromise;
 import org.jetbrains.concurrency.Promise;
+import org.junit.AssumptionViolatedException;
 
 import javax.swing.*;
 import javax.swing.tree.TreeModel;
@@ -99,10 +102,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -469,14 +469,9 @@ public final class PlatformTestUtil {
     while (true) {
       AWTEvent event = eventQueue.peekEvent();
       if (event == null) break;
-      try {
-        event = eventQueue.getNextEvent();
-        if (event instanceof InvocationEvent) {
-          eventQueue.dispatchEvent(event);
-        }
-      }
-      catch (InterruptedException e) {
-        throw new RuntimeException(e);
+      event = eventQueue.getNextEvent();
+      if (event instanceof InvocationEvent) {
+        eventQueue.dispatchEvent(event);
       }
     }
   }
@@ -1236,6 +1231,20 @@ public final class PlatformTestUtil {
     }
     finally {
       SystemProperties.setProperty(key, original);
+    }
+  }
+
+  /**
+   * throws if the CPU cores number is too low for parallel tests
+   */
+  public static void assumeEnoughParallelism() throws AssumptionViolatedException {
+    int N = Math.min(Runtime.getRuntime().availableProcessors(), Math.min(ForkJoinPool.getCommonPoolParallelism(), ForkJoinPool.commonPool().getParallelism()));
+    if (N < 4) {
+      throw new AssumptionViolatedException(
+        "not enough parallelism, couldn't test parallel performance: " +
+        "available CPU cores=" + Runtime.getRuntime().availableProcessors() +
+        "; FJP configured parallelism=" + ForkJoinPool.getCommonPoolParallelism() +
+        "; FJP actual common pool parallelism=" + ForkJoinPool.commonPool().getParallelism());
     }
   }
 }

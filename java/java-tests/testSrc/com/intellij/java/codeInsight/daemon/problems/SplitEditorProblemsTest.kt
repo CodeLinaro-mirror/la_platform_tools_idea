@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.java.codeInsight.daemon.problems
 
 import com.intellij.codeInsight.codeVision.CodeVisionHost
@@ -7,7 +7,6 @@ import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.ex.FileEditorProviderManager
-import com.intellij.openapi.fileEditor.impl.FileEditorManagerExImpl
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.fileEditor.impl.FileEditorProviderManagerImpl
 import com.intellij.openapi.fileEditor.impl.text.TextEditorImpl
@@ -16,9 +15,10 @@ import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiJavaCodeReferenceElement
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
-import com.intellij.testFramework.registerComponentInstance
+import com.intellij.testFramework.replaceService
 import com.intellij.ui.docking.DockManager
 import com.intellij.util.ArrayUtilRt
+import com.intellij.util.childScope
 import javax.swing.SwingConstants
 
 internal class SplitEditorProblemsTest : ProjectProblemsViewTest() {
@@ -27,8 +27,9 @@ internal class SplitEditorProblemsTest : ProjectProblemsViewTest() {
   override fun setUp() {
     super.setUp()
     project.putUserData(CodeVisionHost.isCodeVisionTestKey, true)
-    manager = FileEditorManagerExImpl(project).also { it.initDockableContentFactory() }
-    project.registerComponentInstance(FileEditorManager::class.java, manager!!, testRootDisposable)
+    @Suppress("DEPRECATION")
+    manager = FileEditorManagerImpl(project, project.coroutineScope.childScope()).also { it.initDockableContentFactory() }
+    project.replaceService(FileEditorManager::class.java, manager!!, testRootDisposable)
     (FileEditorProviderManager.getInstance() as FileEditorProviderManagerImpl).clearSelectedProviders()
   }
 
@@ -102,10 +103,10 @@ internal class SplitEditorProblemsTest : ProjectProblemsViewTest() {
     assertEmpty(getProblems(parentEditor))
 
     // open child class in horizontal split, focus stays in parent editor
-    val currentWindow = editorManager.currentWindow
+    val currentWindow = editorManager.currentWindow!!
     editorManager.createSplitter(SwingConstants.HORIZONTAL, currentWindow)
-    val nextWindow = editorManager.getNextWindow(currentWindow)
-    val childEditor = editorManager.openFileWithProviders(childClass.containingFile.virtualFile, false, nextWindow).first[0]
+    val nextWindow = editorManager.getNextWindow(currentWindow)!!
+    val childEditor = editorManager.openFile(file = childClass.containingFile.virtualFile, nextWindow).allEditors.first()
 
     // rename parent, check for errors
     WriteCommandAction.runWriteCommandAction(project) {
@@ -115,7 +116,7 @@ internal class SplitEditorProblemsTest : ProjectProblemsViewTest() {
     rehighlight(parentEditor)
     assertSize(2, getProblems(parentEditor))
 
-    // select child editor, remove parent from child extends list, check that number of problems changed
+    // select child editor, remove parent from a child extends list, check that the number of problems changed
     IdeFocusManager.getInstance(project).requestFocus(childEditor.component, true)
     WriteCommandAction.runWriteCommandAction(project) {
       val factory = JavaPsiFacade.getInstance(project).elementFactory

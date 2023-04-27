@@ -23,7 +23,6 @@ import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.name.SpecialNames
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.parents
-import org.jetbrains.kotlin.types.typeUtil.TypeNullability
 import org.jetbrains.uast.*
 import org.jetbrains.uast.analysis.KotlinExtensionConstants.LAMBDA_THIS_PARAMETER_NAME
 import org.jetbrains.uast.kotlin.internal.*
@@ -137,8 +136,9 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
             val valueParameters = ktLambdaExpression.functionLiteral.getAnonymousFunctionSymbol().valueParameters
             if (includeExplicitParameters && valueParameters.isEmpty()) {
                 val expectedType = ktLambdaExpression.getExpectedType() as? KtFunctionalType
-                val lambdaImplicitReceiverType = expectedType?.typeArguments?.get(0)?.type?.asPsiType(
+                val lambdaImplicitReceiverType = expectedType?.ownTypeArguments?.get(0)?.type?.asPsiType(
                     ktLambdaExpression,
+                    allowErrorTypes = false,
                     KtTypeMappingMode.DEFAULT_UAST,
                     isAnnotationMethod = false
                 ) ?: UastErrorType
@@ -161,6 +161,7 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
             return valueParameters.map { p ->
                 val psiType = p.returnType.asPsiType(
                     ktLambdaExpression,
+                    allowErrorTypes = false,
                     KtTypeMappingMode.DEFAULT_UAST,
                     isAnnotationMethod = false
                 ) ?: UastErrorType
@@ -183,6 +184,38 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
 
     override fun getPsiAnnotations(psiElement: PsiModifierListOwner): Array<PsiAnnotation> {
         return psiElement.annotations
+    }
+
+    override fun getReferenceVariants(ktExpression: KtExpression, nameHint: String): Sequence<PsiElement> {
+        analyzeForUast(ktExpression) {
+            val candidates = ktExpression.collectCallCandidates()
+            if (candidates.isEmpty()) return emptySequence()
+            return sequence {
+                candidates.forEach { candidateInfo ->
+                    when (val candidate = candidateInfo.candidate) {
+                        is KtFunctionCall<*> -> {
+                            toPsiMethod(candidate.partiallyAppliedSymbol.symbol, ktExpression)?.let { yield(it) }
+                        }
+                        is KtCompoundVariableAccessCall -> {
+                            val variableSymbol = candidate.partiallyAppliedSymbol.symbol
+                            if (variableSymbol is KtSyntheticJavaPropertySymbol) {
+                                toPsiMethod(variableSymbol.getter, ktExpression)?.let { yield(it) }
+                                variableSymbol.setter?.let { toPsiMethod(it, ktExpression) }?.let { yield(it) }
+                            } else {
+                                psiForUast(variableSymbol, ktExpression.project)?.let { yield(it) }
+                            }
+                            toPsiMethod(candidate.compoundAccess.operationPartiallyAppliedSymbol.symbol, ktExpression)?.let { yield(it) }
+                        }
+                        is KtCompoundArrayAccessCall -> {
+                            toPsiMethod(candidate.getPartiallyAppliedSymbol.symbol, ktExpression)?.let { yield(it) }
+                            toPsiMethod(candidate.setPartiallyAppliedSymbol.symbol, ktExpression)?.let { yield(it) }
+                            toPsiMethod(candidate.compoundAccess.operationPartiallyAppliedSymbol.symbol, ktExpression)?.let { yield(it) }
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
     }
 
     override fun resolveBitwiseOperators(ktBinaryExpression: KtBinaryExpression): UastBinaryOperator {
@@ -360,7 +393,7 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
                             buildClassType(enumClassId)
                         }
                     else ->
-                        buildClassType(classOrObject.getClassOrObjectSymbol())
+                        classOrObject.getClassOrObjectSymbol()?.let(::buildClassType)
                 } ?: return null
                 val psiClass = toPsiClass(ktType, source = null, classOrObject, classOrObject.typeOwnerKind)
                 return when (classOrObject) {
@@ -416,19 +449,29 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
         return resolvedTargetElement
     }
 
-    override fun resolveToType(ktTypeReference: KtTypeReference, source: UElement, boxed: Boolean): PsiType? {
+    override fun resolveToType(ktTypeReference: KtTypeReference, source: UElement, isBoxed: Boolean): PsiType? {
         analyzeForUast(ktTypeReference) {
             val ktType = ktTypeReference.getKtType()
-            if (ktType is KtClassErrorType) return null
-            return toPsiType(ktType, source, ktTypeReference, ktTypeReference.typeOwnerKind, boxed)
+            if (ktType is KtErrorType) return null
+            return toPsiType(
+                ktType,
+                source,
+                ktTypeReference,
+                PsiTypeConversionConfiguration.create(ktTypeReference, isBoxed = isBoxed)
+            )
         }
     }
 
     override fun resolveToType(ktTypeReference: KtTypeReference, containingLightDeclaration: PsiModifierListOwner?): PsiType? {
         analyzeForUast(ktTypeReference) {
             val ktType = ktTypeReference.getKtType()
-            if (ktType is KtClassErrorType) return null
-            return toPsiType(ktType, containingLightDeclaration, ktTypeReference, ktTypeReference.typeOwnerKind)
+            if (ktType is KtErrorType) return null
+            return toPsiType(
+                ktType,
+                containingLightDeclaration,
+                ktTypeReference,
+                PsiTypeConversionConfiguration.create(ktTypeReference)
+            )
         }
     }
 
@@ -449,7 +492,12 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
     override fun getDoubleColonReceiverType(ktDoubleColonExpression: KtDoubleColonExpression, source: UElement): PsiType? {
         analyzeForUast(ktDoubleColonExpression) {
             val receiverKtType = ktDoubleColonExpression.getReceiverKtType() ?: return null
-            return toPsiType(receiverKtType, source, ktDoubleColonExpression, ktDoubleColonExpression.typeOwnerKind, boxed = true)
+            return toPsiType(
+                receiverKtType,
+                source,
+                ktDoubleColonExpression,
+                PsiTypeConversionConfiguration.create(ktDoubleColonExpression, isBoxed = true)
+            )
         }
     }
 
@@ -459,32 +507,66 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
             val leftType = left.getKtType() ?: return null
             val rightType = right.getKtType()  ?: return null
             val commonSuperType = commonSuperType(listOf(leftType, rightType)) ?: return null
-            return toPsiType(commonSuperType, uExpression, ktElement, ktElement.typeOwnerKind)
+            return toPsiType(
+                commonSuperType,
+                uExpression,
+                ktElement,
+                PsiTypeConversionConfiguration.create(ktElement)
+            )
         }
     }
 
     override fun getType(ktExpression: KtExpression, source: UElement): PsiType? {
         analyzeForUast(ktExpression) {
             val ktType = ktExpression.getKtType() ?: return null
-            return toPsiType(ktType, source, ktExpression, ktExpression.typeOwnerKind)
+            return toPsiType(
+                ktType,
+                source,
+                ktExpression,
+                PsiTypeConversionConfiguration.create(ktExpression)
+            )
         }
     }
 
     override fun getType(ktDeclaration: KtDeclaration, source: UElement): PsiType? {
         analyzeForUast(ktDeclaration) {
-            return toPsiType(ktDeclaration.getReturnKtType(), source, ktDeclaration, ktDeclaration.typeOwnerKind)
+            val ktType = ktDeclaration.getReturnKtType()
+            return toPsiType(
+                ktType,
+                source,
+                ktDeclaration,
+                PsiTypeConversionConfiguration.create(
+                    ktDeclaration,
+                    isBoxed = ktType.isMarkedNullable,
+                )
+            )
         }
     }
 
-    override fun getType(ktDeclaration: KtDeclaration, containingLightDeclaration: PsiModifierListOwner?): PsiType? {
+    override fun getType(
+        ktDeclaration: KtDeclaration,
+        containingLightDeclaration: PsiModifierListOwner?,
+        isForFake: Boolean,
+    ): PsiType? {
         analyzeForUast(ktDeclaration) {
-            return toPsiType(ktDeclaration.getReturnKtType(), containingLightDeclaration, ktDeclaration, ktDeclaration.typeOwnerKind)
+            val ktType = ktDeclaration.getReturnKtType()
+            return toPsiType(
+                ktType,
+                containingLightDeclaration,
+                ktDeclaration,
+                PsiTypeConversionConfiguration.create(
+                    ktDeclaration,
+                    isBoxed = ktType.isMarkedNullable,
+                    isForFake = isForFake,
+                )
+            )
         }
     }
 
-    override fun getFunctionType(ktFunction: KtFunction, source: UElement): PsiType? {
+    override fun getFunctionType(ktFunction: KtFunction, source: UElement?): PsiType? {
+        if (ktFunction is KtConstructor<*>) return null
         analyzeForUast(ktFunction) {
-            return toPsiType(ktFunction.getFunctionalType(), source, ktFunction, ktFunction.typeOwnerKind)
+            return toPsiType(ktFunction.getFunctionalType(), source, ktFunction, PsiTypeConversionConfiguration.create(ktFunction))
         }
     }
 
@@ -492,14 +574,14 @@ interface FirKotlinUastResolveProviderService : BaseKotlinUastResolveProviderSer
         val sourcePsi = uLambdaExpression.sourcePsi
         analyzeForUast(sourcePsi) {
             val samType = sourcePsi.getExpectedType()
-                ?.takeIf { it !is KtClassErrorType && it.isFunctionalInterfaceType }
+                ?.takeIf { it !is KtErrorType && it.isFunctionalInterfaceType }
                 ?.lowerBoundIfFlexible()
                 ?: return null
-            return toPsiType(samType, uLambdaExpression, sourcePsi, sourcePsi.typeOwnerKind)
+            return toPsiType(samType, uLambdaExpression, sourcePsi, PsiTypeConversionConfiguration.create(sourcePsi))
         }
     }
 
-    override fun nullability(psiElement: PsiElement): TypeNullability? {
+    override fun nullability(psiElement: PsiElement): KtTypeNullability? {
         if (psiElement is KtTypeReference) {
             analyzeForUast(psiElement) {
                 nullability(psiElement.getKtType())?.let { return it }

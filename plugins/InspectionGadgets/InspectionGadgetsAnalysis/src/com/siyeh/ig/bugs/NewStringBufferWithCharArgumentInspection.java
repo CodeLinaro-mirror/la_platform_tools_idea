@@ -63,7 +63,7 @@ public class NewStringBufferWithCharArgumentInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiNewExpression newExpression =
         (PsiNewExpression)element.getParent();
@@ -104,7 +104,7 @@ public class NewStringBufferWithCharArgumentInspection extends BaseInspection {
       }
       final PsiExpression argument = arguments[0];
       final PsiType type = argument.getType();
-      if (!PsiType.CHAR.equals(type)) {
+      if (!PsiTypes.charType().equals(type)) {
         return;
       }
       final PsiMethod constructor = expression.resolveConstructor();

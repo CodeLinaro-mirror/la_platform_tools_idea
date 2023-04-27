@@ -16,6 +16,7 @@ import com.intellij.profile.codeInspection.InspectionProfileManager;
 import com.intellij.profile.codeInspection.ProjectInspectionProfileManager;
 import com.intellij.testFramework.EdtTestUtilKt;
 import com.intellij.testFramework.PlatformTestUtil;
+import com.intellij.testFramework.utils.module.ModuleAssertions;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.gradle.settings.GradleProjectSettings;
@@ -89,11 +90,11 @@ public class GradleProjectOpenProcessorTest extends GradleImportingTestCase {
                            </module>""");
 
     Project fooProject = PlatformTestUtil.loadAndOpenProject(foo.toNioPath(), getTestRootDisposable());
-    AutoImportProjectTracker.getInstance(fooProject).enableAutoImportInTests();
+    AutoImportProjectTracker.enableAutoReloadInTests(getTestRootDisposable());
 
     try {
       edt(() -> UIUtil.dispatchAllInvocationEvents());
-      assertModules(fooProject, "foo", "bar");
+      ModuleAssertions.assertModules(fooProject, "foo", "bar");
 
       GradleImportingTestUtil.waitForProjectReload(() -> {
         createProjectSubFile("foo/.idea/gradle.xml",

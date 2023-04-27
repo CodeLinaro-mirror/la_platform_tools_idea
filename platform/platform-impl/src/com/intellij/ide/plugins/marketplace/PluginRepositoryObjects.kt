@@ -83,13 +83,15 @@ internal class MarketplaceSearchPluginData(
   var isPaid: Boolean = false,
   val rating: Double = 0.0,
   val name: String = "",
-  val cdate: Long? = null,
+  private val cdate: Long? = null,
   val organization: String = "",
   @get:JsonProperty("updateId")
   val externalUpdateId: String? = null,
   @get:JsonProperty("id")
   val externalPluginId: String? = null,
-  val downloads: String = ""
+  val downloads: String = "",
+  @get:JsonProperty("nearestUpdate")
+  val nearestUpdate: NearestUpdate? = null
 ) {
   fun toPluginNode(): PluginNode {
     val pluginNode = PluginNode(PluginId.getId(id))
@@ -98,12 +100,23 @@ internal class MarketplaceSearchPluginData(
     pluginNode.downloads = downloads
     pluginNode.organization = organization
     pluginNode.externalPluginId = externalPluginId
-    pluginNode.externalUpdateId = externalUpdateId
+    pluginNode.externalUpdateId = externalUpdateId ?: nearestUpdate?.id
+
     if (cdate != null) pluginNode.date = cdate
     if (isPaid) pluginNode.tags = listOf(Tags.Paid.name)
     return pluginNode
   }
 }
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+internal class NearestUpdate(
+  @get:JsonProperty("id")
+  val id: String? = null,
+  @get:JsonProperty("products")
+  val products: List<String> = emptyList(),
+  @get:JsonProperty("isCompatible")
+  val compatible: Boolean = true
+)
 
 /**
  * @param aggregations map of results and count of plugins

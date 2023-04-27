@@ -1,6 +1,7 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl;
 
+import com.intellij.diagnostic.PluginException;
 import com.intellij.model.ModelBranch;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.UnloadedModuleDescription;
@@ -15,7 +16,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.openapi.vfs.pointers.VirtualFilePointer;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.workspaceModel.ide.impl.UtilsKt;
+import com.intellij.workspaceModel.ide.VirtualFileUrls;
 import com.intellij.workspaceModel.storage.url.VirtualFileUrl;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -74,7 +75,7 @@ public class RootFileSupplier {
 
   @Nullable 
   public VirtualFile findFile(@NotNull VirtualFileUrl virtualFileUrl) {
-    return UtilsKt.getVirtualFile(virtualFileUrl);
+    return VirtualFileUrls.getVirtualFile(virtualFileUrl);
   }
 
   public static RootFileSupplier forBranch(ModelBranch branch) {
@@ -143,7 +144,8 @@ public class RootFileSupplier {
   public static boolean ensureValid(@NotNull VirtualFile file, @NotNull Object container, @Nullable Object containerProvider) {
     if (!file.isValid()) {
       if (containerProvider != null) {
-        LOG.error("Invalid root " + file + " in " + container + " provided by " + containerProvider.getClass());
+        Class<?> providerClass = containerProvider.getClass();
+        PluginException.logPluginError(LOG, "Invalid root " + file + " in " + container + " provided by " + providerClass, null, providerClass);
       }
       else {
         LOG.error("Invalid root " + file + " in " + container);

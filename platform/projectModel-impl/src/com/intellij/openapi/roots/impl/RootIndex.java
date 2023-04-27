@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.roots.impl;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -26,8 +26,8 @@ import com.intellij.openapi.vfs.VirtualFileWithId;
 import com.intellij.util.*;
 import com.intellij.util.containers.Stack;
 import com.intellij.util.containers.*;
+import com.intellij.workspaceModel.ide.VirtualFileUrls;
 import com.intellij.workspaceModel.ide.WorkspaceModel;
-import com.intellij.workspaceModel.ide.impl.UtilsKt;
 import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleEntityUtils;
 import com.intellij.workspaceModel.storage.EntityStorage;
 import com.intellij.workspaceModel.storage.WorkspaceEntity;
@@ -185,6 +185,10 @@ class RootIndex {
 
   @NotNull
   private RootInfo buildRootInfo(@NotNull Project project) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Start building root info " + Thread.currentThread());
+    }
+
     final RootInfo info = new RootInfo();
     ModuleManager moduleManager = ModuleManager.getInstance(project);
     boolean includeProjectJdk = true;
@@ -330,7 +334,7 @@ class RootIndex {
       }
     }
 
-    EntityStorage snapshot = WorkspaceModel.getInstance(project).getEntityStorage().getCurrent();
+    EntityStorage snapshot = WorkspaceModel.getInstance(project).getCurrentSnapshot();
     for (CustomEntityProjectModelInfoProvider<?> provider : CustomEntityProjectModelInfoProvider.EP.getExtensionList()) {
       handleCustomEntities(provider, info, snapshot);
     }
@@ -366,6 +370,7 @@ class RootIndex {
         info.libraryOrSdkSources.add(librarySource);
         info.classAndSourceRoots.add(librarySource);
         info.sourceOfLibraries.putValue(librarySource, entity);
+        info.packagePrefix.put(librarySource, "");
       }
 
       for (VirtualFile root : libraryRoots.classes) {
@@ -375,6 +380,7 @@ class RootIndex {
         info.libraryOrSdkClasses.add(libraryClass);
         info.classAndSourceRoots.add(libraryClass);
         info.classOfLibraries.putValue(libraryClass, entity);
+        info.packagePrefix.put(libraryClass, "");
       }
 
       for (VirtualFile root : libraryRoots.excluded) {
@@ -393,7 +399,7 @@ class RootIndex {
     for (CustomEntityProjectModelInfoProvider.@NotNull ExcludeStrategy<T> excludeStrategy :
       SequencesKt.asIterable(provider.getExcludeSdkRootStrategies(entities, snapshot))) {
       T entity = excludeStrategy.generativeEntity;
-      List<VirtualFile> files = ContainerUtil.mapNotNull(excludeStrategy.excludeUrls, UtilsKt::getVirtualFile);
+      List<VirtualFile> files = ContainerUtil.mapNotNull(excludeStrategy.excludeUrls, VirtualFileUrls::getVirtualFile);
       info.excludedFromProject.addAll(ContainerUtil.filter(files, file -> RootFileSupplier.ensureValid(file, entity, provider)));
 
       java.util.function.@Nullable Function<Sdk, List<VirtualFile>> fun = excludeStrategy.excludeSdkRootsStrategy;
@@ -414,7 +420,7 @@ class RootIndex {
   }
 
   @NotNull
-  private static Set<VirtualFile> collectSdkClasses(Set<Sdk> sdks) {
+  private static Set<VirtualFile> collectSdkClasses(Set<? extends Sdk> sdks) {
     Set<VirtualFile> roots = new HashSet<>();
 
     for (Sdk sdk : sdks) {
@@ -1180,9 +1186,8 @@ class RootIndex {
   }
 
   @NotNull
-  List<OrderEntry> getOrderEntries(@NotNull DirectoryInfo info) {
-    if (!(info instanceof DirectoryInfoImpl)) return Collections.emptyList();
-    return getOrderEntryGraph().getOrderEntries(((DirectoryInfoImpl)info).getRoot());
+  List<OrderEntry> getOrderEntries(@NotNull VirtualFile root) {
+    return getOrderEntryGraph().getOrderEntries(root);
   }
 
   @NotNull

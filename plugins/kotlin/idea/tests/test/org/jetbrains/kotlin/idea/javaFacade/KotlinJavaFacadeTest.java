@@ -10,9 +10,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.asJava.LightClassUtil;
 import org.jetbrains.kotlin.asJava.classes.KtLightClass;
 import org.jetbrains.kotlin.asJava.elements.KtLightMethod;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase;
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor;
-import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.jetbrains.kotlin.name.SpecialNames;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.test.TestMetadata;
@@ -79,11 +79,11 @@ public class KotlinJavaFacadeTest extends KotlinLightCodeInsightFixtureTestCase 
         doTestWrapMethod(true);
     }
 
-    public void testWrapFunWithImplInTrait() {
+    public void testWrapFunWithImplInInterface() {
         doTestWrapMethod(true);
     }
 
-    public void testWrapFunWithoutImplInTrait() {
+    public void testWrapFunWithoutImplInInterface() {
         doTestWrapMethod(true);
     }
 
@@ -123,7 +123,7 @@ public class KotlinJavaFacadeTest extends KotlinLightCodeInsightFixtureTestCase 
         doTestWrapProperty(true, true);
     }
 
-    public void testWrapVarPropertyWithAccessorsInTrait() {
+    public void testWrapVarPropertyWithAccessorsInInterface() {
         doTestWrapProperty(true, true);
     }
 
@@ -160,7 +160,7 @@ public class KotlinJavaFacadeTest extends KotlinLightCodeInsightFixtureTestCase 
         assertNotNull(mirrorClass);
         PsiMethod[] fun = mirrorClass.findMethodsByName("innerFun", false);
 
-        assertEquals(fun[0].getReturnType(), PsiType.VOID);
+        assertEquals(fun[0].getReturnType(), PsiTypes.voidType());
     }
 
     public void testClassObject() throws Exception {

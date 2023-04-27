@@ -72,7 +72,7 @@ public class ProjectSpecificSettingsStep<T> extends ProjectSettingsStepBase<T> i
   protected JPanel createAdvancedSettings() {
     JComponent advancedSettings = null;
     if (myProjectGenerator instanceof PythonProjectGenerator) {
-      advancedSettings = ((PythonProjectGenerator<?>)myProjectGenerator).getSettingsPanel(myProjectDirectory);
+      advancedSettings = ((PythonProjectGenerator<?>)myProjectGenerator).getSettingsPanel(myProjectDirectory.get());
     }
     else if (myProjectGenerator instanceof WebProjectTemplate) {
       advancedSettings = getPeer().getComponent();
@@ -345,7 +345,7 @@ public class ProjectSpecificSettingsStep<T> extends ProjectSettingsStepBase<T> i
     return decoratorPanel;
   }
 
-  private void addLocationChangeListener(@NotNull Consumer<DocumentEvent> listener) {
+  private void addLocationChangeListener(@NotNull Consumer<? super DocumentEvent> listener) {
     final TextFieldWithBrowseButton field = myLocationField;
     if (field == null) return;
     field.getTextField().getDocument().addDocumentListener(new DocumentAdapter() {

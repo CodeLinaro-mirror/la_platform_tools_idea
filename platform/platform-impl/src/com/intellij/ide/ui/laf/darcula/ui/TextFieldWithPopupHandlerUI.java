@@ -2,12 +2,14 @@
 package com.intellij.ide.ui.laf.darcula.ui;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.HelpTooltip;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.ui.laf.MouseDragSelectionEventHandler;
 import com.intellij.ide.ui.laf.darcula.DarculaUIUtil;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.util.Condition;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.ui.ClientProperty;
@@ -20,11 +22,9 @@ import com.intellij.util.FontUtil;
 import com.intellij.util.ui.GraphicsUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
+import com.intellij.xml.util.XmlStringUtil;
 import kotlin.Unit;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -48,9 +48,10 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
   @NonNls private static final String VARIANT = "JTextField.variant";
   @NonNls private static final String INPLACE_HISTORY = "JTextField.Search.InplaceHistory";
   @NonNls private static final String ON_CLEAR = "JTextField.Search.CancelAction";
+  @NonNls private static final String SEARCH_ICON = "JTextField.Search.Icon";
   @NonNls private static final String HISTORY_POPUP_ENABLED = "History.Popup.Enabled";
 
-  protected final LinkedHashMap<String, IconHolder> icons = new LinkedHashMap<>();
+  private final LinkedHashMap<String, IconHolder> icons = new LinkedHashMap<>();
   private final Handler handler = new Handler();
   private boolean monospaced;
   private Object variant;
@@ -289,6 +290,8 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
       }
       else if (VARIANT.equals(event.getPropertyName())) {
         setVariant(event.getNewValue());
+      } else if (SEARCH_ICON.equals(event.getPropertyName())) {
+        updateIcons();
       }
     }
 
@@ -304,16 +307,20 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
 
     @Override
     public void insertUpdate(DocumentEvent event) {
-      changedUpdate(event);
+      updateIcons();
     }
 
     @Override
     public void removeUpdate(DocumentEvent event) {
-      changedUpdate(event);
+      updateIcons();
     }
 
     @Override
     public void changedUpdate(DocumentEvent event) {
+      updateIcons();
+    }
+
+    private void updateIcons() {
       if (!icons.isEmpty()) {
         for (IconHolder holder : icons.values()) {
           updateIcon(holder);
@@ -454,7 +461,7 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
       g.setClip(clip);
       for (IconHolder holder : icons.values()) {
         if (holder.icon != null) {
-          if (ExperimentalUI.isNewUI() && holder.hovered && holder.isClickable()) {
+          if (holder.hovered && holder.isClickable() && holder.icon != AllIcons.Actions.CloseHovered && ExperimentalUI.isNewUI()) {
             GraphicsUtil.setupAAPainting(g);
             int arc = DarculaUIUtil.BUTTON_ARC.get();
             g.setColor(JBUI.CurrentTheme.ActionButton.hoverBackground());
@@ -562,7 +569,9 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
           addExtension((Extension)extension);
         }
         addExtension(new SearchExtension());
-        addExtension(new ClearExtension());
+        if (getComponent().getClientProperty("JTextField.Search.HideClearAction") == null) {
+          addExtension(new ClearExtension());
+        }
       }
     }
     updateIconsLayout(new Rectangle(getComponent().getSize())); // Effectively update margins
@@ -625,6 +634,10 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
 
     @Override
     public Icon getIcon(boolean hovered) {
+      Icon icon = (Icon)getComponent().getClientProperty(SEARCH_ICON);
+      if (icon != null) {
+        return icon;
+      }
       return getSearchIcon(hovered, isSearchFieldWithHistoryPopup(TextFieldWithPopupHandlerUI.this.getComponent()));
     }
 
@@ -653,7 +666,14 @@ public abstract class TextFieldWithPopupHandlerUI extends BasicTextFieldUI imple
       if (getActionOnClick() != null) {
         prefix = IdeBundle.message("tooltip.search.history");
       }
-      return (prefix == null) ? null : prefix + " (" + KeymapUtil.getFirstKeyboardShortcutText("ShowSearchHistory") + ")";
+      return (prefix == null) ? null : createTooltip(prefix);
+    }
+
+    @NotNull
+    @NlsContexts.Tooltip
+    private static String createTooltip(@Nls @NotNull String prefix) {
+      String shortcut = HelpTooltip.getShortcutAsHtml(KeymapUtil.getFirstKeyboardShortcutText("ShowSearchHistory"));
+      return XmlStringUtil.wrapInHtml(prefix + shortcut);
     }
 
     @Override

@@ -6,7 +6,8 @@ import com.intellij.workspaceModel.storage.EntityStorage
 import com.intellij.workspaceModel.storage.bridgeEntities.ContentRootEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity
 
-class UnloadedContentRootFileIndexContributor : WorkspaceFileIndexContributor<ContentRootEntity> {
+class UnloadedContentRootFileIndexContributor : WorkspaceFileIndexContributor<ContentRootEntity>,
+                                                PlatformInternalWorkspaceFileIndexContributor {
   override val entityClass: Class<ContentRootEntity>
     get() = ContentRootEntity::class.java
 

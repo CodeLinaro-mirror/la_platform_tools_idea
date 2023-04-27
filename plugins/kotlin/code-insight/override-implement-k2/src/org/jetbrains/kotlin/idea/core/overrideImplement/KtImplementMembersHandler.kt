@@ -15,11 +15,9 @@ import org.jetbrains.kotlin.analysis.api.symbols.KtClassOrObjectSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KtSymbolWithModality
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.idea.KtIconProvider.getIcon
+import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.diagnosticFixFactoryFromIntentionActions
 import org.jetbrains.kotlin.idea.core.overrideImplement.KtImplementMembersHandler.Companion.getUnimplementedMembers
 import org.jetbrains.kotlin.idea.core.util.KotlinIdeaCoreBundle
-import org.jetbrains.kotlin.idea.codeinsight.api.applicators.fixes.diagnosticFixFactoryFromIntentionActions
-import org.jetbrains.kotlin.analysis.api.KtAllowAnalysisOnEdt
-import org.jetbrains.kotlin.analysis.api.lifetime.allowAnalysisOnEdt
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtEnumEntry
@@ -31,31 +29,27 @@ open class KtImplementMembersHandler : KtGenerateMembersHandler(true) {
 
     override fun getNoMembersFoundHint() = KotlinIdeaCoreBundle.message("implement.members.handler.no.members.hint")
 
-    @OptIn(KtAllowAnalysisOnEdt::class)
     override fun collectMembersToGenerate(classOrObject: KtClassOrObject): Collection<KtClassMember> {
-        return allowAnalysisOnEdt {
-            analyze(classOrObject) {
-                getUnimplementedMembers(classOrObject).map { createKtClassMember(it, BodyType.FromTemplate, false) }
-            }
+        return analyze(classOrObject) {
+            getUnimplementedMembers(classOrObject).map { createKtClassMember(it, BodyType.FromTemplate, false) }
         }
     }
 
     companion object {
-        fun KtAnalysisSession.getUnimplementedMembers(classWithUnimplementedMembers: KtClassOrObject): List<KtClassMemberInfo> {
-            return getUnimplementedMemberSymbols(classWithUnimplementedMembers.getClassOrObjectSymbol()).map { unimplementedMemberSymbol ->
-                val containingSymbol = unimplementedMemberSymbol.originalContainingClassForOverride
-                KtClassMemberInfo(
-                    symbol = unimplementedMemberSymbol,
-                    memberText = unimplementedMemberSymbol.render(renderOption),
-                    memberIcon = getIcon(unimplementedMemberSymbol),
-                    containingSymbolText = containingSymbol?.classIdIfNonLocal?.asSingleFqName()?.toString()
-                        ?: containingSymbol?.name?.asString(),
-                    containingSymbolIcon = containingSymbol?.let { symbol -> getIcon(symbol) }
-                )
-            }
-        }
+        fun KtAnalysisSession.getUnimplementedMembers(classWithUnimplementedMembers: KtClassOrObject): List<KtClassMemberInfo> =
+            classWithUnimplementedMembers.getClassOrObjectSymbol()?.let { getUnimplementedMemberSymbols(it) }.orEmpty()
+                .map { unimplementedMemberSymbol ->
+                    val containingSymbol = unimplementedMemberSymbol.originalContainingClassForOverride
+                    KtClassMemberInfo.create(
+                        symbol = unimplementedMemberSymbol,
+                        memberText = unimplementedMemberSymbol.render(renderer),
+                        memberIcon = getIcon(unimplementedMemberSymbol),
+                        containingSymbolText = containingSymbol?.classIdIfNonLocal?.asSingleFqName()?.toString()
+                            ?: containingSymbol?.name?.asString(),
+                        containingSymbolIcon = containingSymbol?.let { symbol -> getIcon(symbol) }
+                    )
+                }
 
-        @OptIn(ExperimentalStdlibApi::class)
         private fun KtAnalysisSession.getUnimplementedMemberSymbols(classWithUnimplementedMembers: KtClassOrObjectSymbol): List<KtCallableSymbol> {
             return buildList {
                 classWithUnimplementedMembers.getMemberScope().getCallableSymbols().forEach { symbol ->

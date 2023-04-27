@@ -5,7 +5,6 @@ import com.intellij.CommonBundle
 import com.intellij.diff.DiffContext
 import com.intellij.diff.DiffManagerEx
 import com.intellij.diff.DiffTool
-import com.intellij.diff.FrameDiffTool
 import com.intellij.diff.FrameDiffTool.DiffViewer
 import com.intellij.diff.actions.impl.OpenInEditorAction
 import com.intellij.diff.impl.DiffRequestProcessor.getToolOrderFromSettings
@@ -28,6 +27,7 @@ import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
 import com.intellij.openapi.diff.DiffBundle
 import com.intellij.openapi.diff.impl.DiffUsageTriggerCollector
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.SystemInfo
@@ -128,7 +128,7 @@ class CombinedDiffMainUI(private val model: CombinedDiffModel, goToChangeFactory
     Touchbar.setActions(mainPanel, touchbarActionGroup)
 
     updateAvailableDiffTools()
-    diffToolChooser = MyDiffToolChooser(mainPanel)
+    diffToolChooser = MyDiffToolChooser()
 
     leftToolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.DIFF_TOOLBAR, leftToolbarGroup, true)
     context.putUserData(DiffUserDataKeysEx.LEFT_TOOLBAR, leftToolbar)
@@ -346,24 +346,24 @@ class CombinedDiffMainUI(private val model: CombinedDiffModel, goToChangeFactory
     private fun calculateTotalDifferences(): Int = loadedDifferences.values.sum()
   }
 
-  private inner class MyDiffToolChooser(targetComponent: JComponent?) : DiffToolChooser(targetComponent) {
+  private inner class MyDiffToolChooser : DiffToolChooser(context.project) {
     private val availableTools = arrayListOf<CombinedDiffTool>().apply {
       addAll(DiffManagerEx.getInstance().diffTools.filterIsInstance<CombinedDiffTool>())
     }
 
     private var activeTool: CombinedDiffTool = combinedToolOrder.firstOrNull() ?: availableTools.first()
 
-    override fun onSelected(e: AnActionEvent, diffTool: DiffTool) {
+    override fun onSelected(project: Project, diffTool: DiffTool) {
       val combinedDiffTool = diffTool as? CombinedDiffTool ?: return
 
-      DiffUsageTriggerCollector.logToggleDiffTool(e.project, diffTool, context.getUserData(DiffUserDataKeys.PLACE))
+      DiffUsageTriggerCollector.logToggleDiffTool(project, diffTool, context.getUserData(DiffUserDataKeys.PLACE))
       activeTool = combinedDiffTool
 
       moveToolOnTop(diffTool)
       model.reload()
     }
 
-    override fun getTools(): List<FrameDiffTool> = availableTools.toList()
+    override fun getTools(): List<CombinedDiffTool> = availableTools.toList()
 
     override fun getActiveTool(): DiffTool = activeTool
 

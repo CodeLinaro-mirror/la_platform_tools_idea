@@ -22,6 +22,7 @@ import com.intellij.ui.icons.LoadIconParameters;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.scale.ScaleContext;
 import com.intellij.util.IconUtil;
+import com.intellij.util.ImageLoader;
 import com.intellij.util.ResourceUtil;
 import com.intellij.util.ui.JBImageIcon;
 import com.intellij.util.ui.StartupUiUtil;
@@ -45,9 +46,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.*;
-
-import static com.intellij.DynamicBundle.findLanguageBundle;
-import static com.intellij.util.ImageLoader.*;
 
 public final class TipUtils {
   private static final Logger LOG = Logger.getInstance(TipUtils.class);
@@ -184,7 +182,7 @@ public final class TipUtils {
   private static List<TipRetriever> getTipRetrievers(@NotNull TipAndTrickBean tip) {
     final ClassLoader fallbackLoader = TipUtils.class.getClassLoader();
     final PluginDescriptor pluginDescriptor = tip.getPluginDescriptor();
-    final DynamicBundle.LanguageBundleEP langBundle = findLanguageBundle();
+    final DynamicBundle.LanguageBundleEP langBundle = DynamicBundle.findLanguageBundle();
 
     //I know of ternary operators, but in cases like this they're harder to comprehend and debug than this.
     ClassLoader tipLoader = null;
@@ -203,7 +201,7 @@ public final class TipUtils {
     String ideCode = ApplicationInfoEx.getInstanceEx().getApiVersionAsNumber().getProductCode().toLowerCase(Locale.ROOT);
     //Let's just use the same set of tips here to save space. IC won't try displaying tips it is not aware of, so there'll be no trouble.
     if (ideCode.contains("ic")) ideCode = "iu";
-    //So primary loader is determined. Now we're constructing retrievers that use a pair of path/loader to try to get the tips.
+    //So the primary loader is determined. Now we're constructing retrievers that use a pair of path/loaders to try to get the tips.
     final List<TipRetriever> retrievers = new ArrayList<>();
 
     retrievers.add(new TipRetriever(tipLoader, "tips", ideCode));
@@ -233,7 +231,7 @@ public final class TipUtils {
         // This case is required only for testing by opening tip from the file (see TipDialog.OpenTipsAction)
         try {
           URL imageUrl = new File(tipsPath, path).toURI().toURL();
-          image = loadFromUrl(imageUrl);
+          image = ImageLoader.loadFromUrl(imageUrl);
         }
         catch (MalformedURLException e) {
           handleError(e, isStrict);
@@ -242,7 +240,7 @@ public final class TipUtils {
         if (image == null) {
           try {
             URL imageUrl = new URL(null, path);
-            image = loadFromUrl(imageUrl);
+            image = ImageLoader.loadFromUrl(imageUrl);
           }
           catch (MalformedURLException e) {
             handleError(e, isStrict);
@@ -250,14 +248,14 @@ public final class TipUtils {
         }
       }
       else {
-        int flags = USE_SVG | ALLOW_FLOAT_SCALING | USE_CACHE;
+        int flags = ImageLoader.USE_SVG | ImageLoader.ALLOW_FLOAT_SCALING | ImageLoader.USE_CACHE;
         boolean isDark = StartupUiUtil.isUnderDarcula();
         if (isDark) {
-          flags |= USE_DARK;
+          flags |= ImageLoader.USE_DARK;
         }
         ScaleContext context = ScaleContext.create(contextComponent);
         LoadIconParameters parameters = new LoadIconParameters(Collections.emptyList(), context, isDark, null, false);
-        image = loadImage(tipsPath + path, parameters, null, loader, flags, !path.endsWith(".svg"));
+        image = ImageLoader.INSTANCE.loadImage(tipsPath + path, parameters, null, loader, flags, !path.endsWith(".svg"));
       }
 
       if (image != null) {
@@ -369,7 +367,7 @@ public final class TipUtils {
     URL getTipUrl(final @NotNull String tipName) {
       final String tipLocation = String.format("/%s/%s", myPath, mySubPath.length() > 0 ? mySubPath + "/" : "");
       URL tipUrl = ResourceUtil.getResource(myLoader, tipLocation, tipName);
-      //Tip not found, but if its name starts with prefix, try without as a safety measure.
+      //Tip is not found, but if its name starts with prefix, try without as a safety measure.
       if (tipUrl == null && tipName.startsWith("neue-")) {
         tipUrl = ResourceUtil.getResource(myLoader, tipLocation, tipName.substring(5));
       }

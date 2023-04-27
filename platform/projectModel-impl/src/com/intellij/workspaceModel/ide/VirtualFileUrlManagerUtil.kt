@@ -3,6 +3,7 @@
 
 package com.intellij.workspaceModel.ide
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
@@ -17,6 +18,8 @@ import java.nio.file.Path
  * That's why this method was declared here, where service was registered.
  */
 fun VirtualFileUrlManager.Companion.getInstance(project: Project): VirtualFileUrlManager = project.service()
+
+fun VirtualFileUrlManager.Companion.getGlobalInstance(): VirtualFileUrlManager = ApplicationManager.getApplication().service()
 
 fun VirtualFileUrl.isEqualOrParentOf(other: VirtualFileUrl): Boolean = FileUtil.startsWith(other.urlWithoutTrailingSlash, urlWithoutTrailingSlash)
 

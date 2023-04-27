@@ -84,7 +84,7 @@ private suspend fun buildResourcesForHelpPlugin(resourceRoot: Path, classPath: L
   spanBuilder("index help topics").useWithScope {
     runIdea(context = context, mainClass = "com.jetbrains.builtInHelp.indexer.HelpIndexer",
             args = listOf(resourceRoot.resolve("search").toString(),
-                                                          resourceRoot.resolve("topics").toString()),
+                          resourceRoot.resolve("topics").toString()),
             jvmArgs = emptyList(),
             classPath = classPath)
 

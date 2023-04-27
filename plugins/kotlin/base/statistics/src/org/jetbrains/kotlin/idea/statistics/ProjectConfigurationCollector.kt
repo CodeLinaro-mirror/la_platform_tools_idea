@@ -18,7 +18,7 @@ import org.jetbrains.kotlin.idea.configuration.buildSystemType
 import org.jetbrains.kotlin.idea.facet.KotlinFacetType
 import org.jetbrains.kotlin.konan.target.KonanTarget
 import org.jetbrains.kotlin.platform.isCommon
-import org.jetbrains.kotlin.platform.js.isJs
+import org.jetbrains.kotlin.platform.isJs
 import org.jetbrains.kotlin.platform.jvm.isJvm
 import org.jetbrains.kotlin.platform.konan.isNative
 
@@ -39,7 +39,8 @@ class ProjectConfigurationCollector : ProjectUsagesCollector() {
                         systemField.with(buildSystem),
                         platformField.with(platform),
                         isMPPBuild.with(it.isMultiPlatformModule || it.isNewMultiPlatformModule),
-                        pluginInfoField.with(KotlinIdePlugin.getPluginInfo())
+                        pluginInfoField.with(KotlinIdePlugin.getPluginInfo()),
+                        eventFlags.with(KotlinASStatisticsEventFlags.calculateAndPackEventsFlagsToLong(it))
                     )
                 )
             }
@@ -79,6 +80,8 @@ class ProjectConfigurationCollector : ProjectUsagesCollector() {
         private val isMPPBuild = EventFields.Boolean("isMPP")
         private val pluginInfoField = EventFields.PluginInfo
 
+        private val eventFlags = EventFields.Long("eventFlags")
+
         private fun composePlatformFields(): List<String> {
             return listOf(
                 listOf("jvm", "jvm.android", "js", "common", "native.unknown", "unknown"),
@@ -91,7 +94,8 @@ class ProjectConfigurationCollector : ProjectUsagesCollector() {
             systemField,
             platformField,
             isMPPBuild,
-            pluginInfoField
+            pluginInfoField,
+            eventFlags
         )
 
     }

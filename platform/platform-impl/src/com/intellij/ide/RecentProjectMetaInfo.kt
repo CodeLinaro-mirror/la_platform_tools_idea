@@ -1,16 +1,14 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet")
 
 package com.intellij.ide
 
 import com.intellij.openapi.components.BaseState
-import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.wm.impl.FrameInfo
 import com.intellij.util.xmlb.annotations.Attribute
 import com.intellij.util.xmlb.annotations.MapAnnotation
 import com.intellij.util.xmlb.annotations.OptionTag
 import com.intellij.util.xmlb.annotations.Property
-import java.util.concurrent.atomic.AtomicLong
 
 class RecentProjectMetaInfo : BaseState() {
   @get:Attribute
@@ -44,10 +42,6 @@ class RecentProjectManagerState : BaseState() {
   @get:OptionTag
   val recentPaths by list<String>()
 
-  @Deprecated("")
-  @get:OptionTag
-  val openPaths by list<String>()
-
   @get:OptionTag
   val groups by list<ProjectGroup>()
   var pid by string()
@@ -59,24 +53,4 @@ class RecentProjectManagerState : BaseState() {
   var lastProjectLocation by string()
 
   var lastOpenedProject by string()
-
-  fun validateRecentProjects(modCounter: AtomicLong) {
-    val limit = AdvancedSettings.getInt("ide.max.recent.projects")
-    if (additionalInfo.size <= limit || limit < 1) {
-      return
-    }
-
-    // might be freezing for many projects that were stored as "opened"
-    while (additionalInfo.size > limit) {
-      val iterator = additionalInfo.keys.iterator()
-      while (iterator.hasNext()) {
-        val path = iterator.next()
-        if (!additionalInfo.get(path)!!.opened) {
-          iterator.remove()
-          break
-        }
-      }
-    }
-    modCounter.incrementAndGet()
-  }
 }

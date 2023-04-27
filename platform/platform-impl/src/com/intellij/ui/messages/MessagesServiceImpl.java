@@ -17,6 +17,7 @@ import com.intellij.ui.InsertPathAction;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.util.Function;
 import com.intellij.util.PairFunction;
+import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.ui.SwingUndoUtil;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -48,9 +49,10 @@ public class MessagesServiceImpl implements MessagesService {
       return TestDialogManager.getTestImplementation().show(message);
     }
 
-    if (AlertMessagesManager.isEnabled()) {
-      return AlertMessagesManager.instance().showMessageDialog(project, parentComponent, message, title, options, defaultOptionIndex,
-                                                               focusedOptionIndex, icon, doNotAskOption, helpId);
+    AlertMessagesManager alertMessagesManager = AlertMessagesManager.getInstanceIfPossible();
+    if (alertMessagesManager != null) {
+      return alertMessagesManager.showMessageDialog(project, parentComponent, message, title, options, defaultOptionIndex,
+                                                    focusedOptionIndex, icon, doNotAskOption, helpId);
     }
 
     MessageDialog dialog = new MessageDialog(project, parentComponent, message, title, options, defaultOptionIndex, focusedOptionIndex,
@@ -60,6 +62,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public int showMoreInfoMessageDialog(Project project,
                                        String message,
                                        String title,
@@ -72,9 +75,12 @@ public class MessagesServiceImpl implements MessagesService {
       return TestDialogManager.getTestImplementation().show(message);
     }
 
-    if (AlertMessagesManager.isEnabled() && moreInfo == null) {
-      return AlertMessagesManager.instance().showMessageDialog(project, null, message, title, options, defaultOptionIndex,
-                                                               focusedOptionIndex, icon, null, null);
+    if (moreInfo == null) {
+      AlertMessagesManager alertMessagesManager = AlertMessagesManager.getInstanceIfPossible();
+      if (alertMessagesManager != null) {
+        return alertMessagesManager.showMessageDialog(project, null, message, title, options, defaultOptionIndex,
+                                                      focusedOptionIndex, icon, null, null);
+      }
     }
 
     MessageDialog dialog =
@@ -84,6 +90,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public int showTwoStepConfirmationDialog(String message,
                                            String title,
                                            String[] options,
@@ -104,6 +111,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public String showPasswordDialog(Project project, String message, String title, Icon icon, InputValidator validator) {
     if (isApplicationInUnitTestOrHeadless()) {
       return TestDialogManager.getTestInputImplementation().show(message, validator);
@@ -117,6 +125,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public char[] showPasswordDialog(@NotNull Component parentComponent, String message, String title, Icon icon, @Nullable InputValidator validator) {
     if (isApplicationInUnitTestOrHeadless()) {
       return TestDialogManager.getTestInputImplementation().show(message, validator).toCharArray();
@@ -128,6 +137,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public String showInputDialog(@Nullable Project project,
                                 Component parentComponent, String message,
                                 String title,
@@ -156,6 +166,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public String showMultilineInputDialog(Project project,
                                          String message,
                                          String title,
@@ -173,6 +184,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public @NotNull Pair<@Nullable String, Boolean> showInputDialogWithCheckBox(String message,
                                                                               String title,
                                                                               String checkboxText,
@@ -192,6 +204,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public String showEditableChooseDialog(String message,
                                          String title,
                                          Icon icon,
@@ -212,6 +225,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public int showChooseDialog(@Nullable Project project,
                               @Nullable Component parentComponent,
                               String message,
@@ -229,6 +243,7 @@ public class MessagesServiceImpl implements MessagesService {
   }
 
   @Override
+  @RequiresEdt
   public void showTextAreaDialog(final JTextField textField,
                                  String title,
                                  String dimensionServiceKey,

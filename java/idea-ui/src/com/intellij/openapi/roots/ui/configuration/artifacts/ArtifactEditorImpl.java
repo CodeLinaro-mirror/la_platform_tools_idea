@@ -109,7 +109,7 @@ public class ArtifactEditorImpl implements ArtifactEditorEx, DataProvider {
     myShowSpecificContentOptionsButton.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(ActionEvent e) {
-        ActionManager.getInstance().createActionPopupMenu(ActionPlaces.UNKNOWN, myShowSpecificContentOptionsGroup).getComponent().show(myShowSpecificContentOptionsButton, 0, 0);
+        ActionManager.getInstance().createActionPopupMenu("ArtifactEditor", myShowSpecificContentOptionsGroup).getComponent().show(myShowSpecificContentOptionsButton, 0, 0);
       }
     });
     setOutputPath(outputPath);
@@ -273,6 +273,7 @@ public class ArtifactEditorImpl implements ArtifactEditorEx, DataProvider {
 
     ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar("ProjectStructureArtifactEditor", createToolbarActionGroup(), true);
     JComponent toolbarComponent = toolbar.getComponent();
+    toolbar.setTargetComponent(treePanel);
     if (StartupUiUtil.isUnderDarcula()) {
       toolbarComponent.setBorder(new CustomLineBorder(0, 0, 1, 0));
     }

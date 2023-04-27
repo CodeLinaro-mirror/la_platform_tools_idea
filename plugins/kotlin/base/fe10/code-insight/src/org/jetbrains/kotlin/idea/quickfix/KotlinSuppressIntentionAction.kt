@@ -1,7 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.quickfix
 
-import com.intellij.codeInsight.FileModificationService
 import com.intellij.codeInsight.intention.FileModifier.SafeFieldForPreview
 import com.intellij.codeInspection.SuppressIntentionAction
 import com.intellij.openapi.editor.Editor
@@ -11,6 +10,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.idea.base.fe10.codeInsight.KotlinBaseFe10CodeInsightBundle
+import org.jetbrains.kotlin.idea.base.fe10.highlighting.KotlinBaseFe10HighlightingBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.highlighter.AnnotationHostKind
 import org.jetbrains.kotlin.idea.util.addAnnotation
@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.createSmartPointer
 import org.jetbrains.kotlin.psi.psiUtil.replaceFileAnnotationList
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 class KotlinSuppressIntentionAction(
     suppressAt: KtElement,
@@ -32,12 +33,24 @@ class KotlinSuppressIntentionAction(
     override fun getFamilyName() = KotlinBaseFe10CodeInsightBundle.message("intention.suppress.family")
     override fun getText() = KotlinBaseFe10CodeInsightBundle.message("intention.suppress.text", suppressionKey, kind.kind, kind.name ?: "")
 
-    override fun isAvailable(project: Project, editor: Editor?, element: PsiElement) = element.isValid
+    override fun isAvailable(project: Project, editor: Editor?, element: PsiElement): Boolean {
+        if (isLambdaParameter(element)) {
+            // Lambda parameters can't be annotated: KT-13900
+            return false
+        }
+        return element.isValid
+    }
+
+    private fun isLambdaParameter(element: PsiElement): Boolean {
+        if (kind.kind != KotlinBaseFe10HighlightingBundle.message("declaration.kind.parameter")) return false
+        val parentParameter = element.parent.safeAs<KtParameter>()
+            ?: element.parent.safeAs<KtDestructuringDeclarationEntry>()?.parent?.parent.safeAs<KtParameter>()
+        return parentParameter?.isLambdaParameter == true
+    }
 
     override fun invoke(project: Project, editor: Editor?, element: PsiElement) {
         if (!element.isValid) return
         val suppressAt = pointer.element ?: return
-        if (!FileModificationService.getInstance().preparePsiElementForWrite(element)) return
 
         val id = "\"$suppressionKey\""
         when (suppressAt) {
@@ -116,7 +129,7 @@ class KotlinSuppressIntentionAction(
         assert(suppressAt !is KtDeclaration) { "Declarations should have been checked for above" }
 
         val placeholderText = "PLACEHOLDER_ID"
-        val annotatedExpression = KtPsiFactory(suppressAt).createExpression(suppressAnnotationText(id) + "\n" + placeholderText)
+        val annotatedExpression = KtPsiFactory(project).createExpression(suppressAnnotationText(id) + "\n" + placeholderText)
 
         val copy = suppressAt.copy()!!
 
@@ -131,7 +144,7 @@ class KotlinSuppressIntentionAction(
     private fun addArgumentToSuppressAnnotation(entry: KtAnnotationEntry, id: String) {
         // add new arguments to an existing entry
         val args = entry.valueArgumentList
-        val psiFactory = KtPsiFactory(entry)
+        val psiFactory = KtPsiFactory(project)
         val newArgList = psiFactory.createCallArguments("($id)")
         when {
             args == null -> // new argument list

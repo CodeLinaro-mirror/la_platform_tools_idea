@@ -54,7 +54,7 @@ public class BigDecimalLegacyMethodInspection extends BaseInspection implements 
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement grandParent = element.getParent().getParent();
       if (!(grandParent instanceof PsiMethodCallExpression methodCallExpression)) {
@@ -114,7 +114,7 @@ public class BigDecimalLegacyMethodInspection extends BaseInspection implements 
         return;
       }
       final PsiExpression argument = arguments[arguments.length - 1];
-      if (!PsiType.INT.equals(argument.getType())) {
+      if (!PsiTypes.intType().equals(argument.getType())) {
         return;
       }
       if (!TypeUtils.expressionHasTypeOrSubtype(expression, "java.math.BigDecimal")) {

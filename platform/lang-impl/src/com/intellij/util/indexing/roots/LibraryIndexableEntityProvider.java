@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.indexing.roots;
 
 import com.intellij.openapi.project.Project;
@@ -15,7 +15,7 @@ import java.util.List;
 
 @ApiStatus.Internal
 @ApiStatus.Experimental
-class LibraryIndexableEntityProvider implements IndexableEntityProvider<LibraryEntity> {
+public class LibraryIndexableEntityProvider implements IndexableEntityProvider<LibraryEntity> {
 
   @Override
   public @NotNull Class<LibraryEntity> getEntityClass() {
@@ -33,7 +33,8 @@ class LibraryIndexableEntityProvider implements IndexableEntityProvider<LibraryE
 
   @Override
   public @NotNull Collection<? extends IndexableIteratorBuilder> getReplacedEntityIteratorBuilders(@NotNull LibraryEntity oldEntity,
-                                                                                                   @NotNull LibraryEntity newEntity) {
+                                                                                                   @NotNull LibraryEntity newEntity,
+                                                                                                   @NotNull Project project) {
     if (hasSomethingToIndex(oldEntity, newEntity)) {
       return IndexableIteratorBuilders.INSTANCE.forLibraryEntity(newEntity.getSymbolicId(), false);
     }

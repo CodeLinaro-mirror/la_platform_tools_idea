@@ -7,6 +7,7 @@ import com.intellij.execution.executors.ExecutorGroup;
 import com.intellij.execution.impl.EditConfigurationsDialog;
 import com.intellij.execution.impl.RunManagerImpl;
 import com.intellij.execution.runToolbar.RunToolbarSlotManager;
+import com.intellij.execution.ui.RedesignedRunWidgetKt;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.idea.ActionsBundle;
@@ -140,7 +141,9 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
       }
       presentation.setText(name, false);
       if (!ApplicationManager.getApplication().isUnitTestMode()) {
-        boolean withLiveIndicator = !(ExperimentalUI.isNewUI() && actionPlace.equals(ActionPlaces.MAIN_TOOLBAR));
+        boolean withLiveIndicator = !(ExperimentalUI.isNewUI() &&
+                                      RedesignedRunWidgetKt.isContrastRunWidget() &&
+                                      actionPlace.equals(ActionPlaces.MAIN_TOOLBAR));
         setConfigurationIcon(presentation, settings, project, withLiveIndicator);
       }
     }
@@ -256,8 +259,8 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
   @ApiStatus.Internal
   public static void addRunConfigurations(DefaultActionGroup allActionsGroup,
                                           Project project,
-                                          Function<RunnerAndConfigurationSettings, AnAction> createAction,
-                                          Function<@NlsSafe String, DefaultActionGroup> createFolder) {
+                                          Function<? super RunnerAndConfigurationSettings, ? extends AnAction> createAction,
+                                          Function<? super @NlsSafe String, ? extends DefaultActionGroup> createFolder) {
     for (Map<String, List<RunnerAndConfigurationSettings>> structure : RunManagerImpl.getInstanceImpl(project).getConfigurationsGroupedByTypeAndFolder(true).values()) {
       final DefaultActionGroup actionGroup = new DefaultActionGroup();
       for (Map.Entry<String, List<RunnerAndConfigurationSettings>> entry : structure.entrySet()) {
@@ -534,7 +537,7 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
       addExecutorActions(this,
                          executor -> new ExecutorRegistryImpl.RunSpecifiedConfigExecutorAction(executor, myConfiguration, false),
                          myExecutorFilter);
-      addSeparator();
+      addSeparator(ExperimentalUI.isNewUI() ? ExecutionBundle.message("choose.run.popup.separator") : null);
 
       Executor runExecutor = DefaultRunExecutor.getRunExecutorInstance();
       addAction(new ExecutorRegistryImpl.RunSpecifiedConfigExecutorAction(runExecutor, myConfiguration, true));
@@ -542,7 +545,7 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
       if (myConfiguration.isTemporary()) {
         String actionName = ExecutionBundle.message("choose.run.popup.save");
         String description = ExecutionBundle.message("choose.run.popup.save.description");
-        addAction(new AnAction(actionName, description, AllIcons.Actions.MenuSaveall) {
+        addAction(new AnAction(actionName, description, !ExperimentalUI.isNewUI() ? AllIcons.Actions.MenuSaveall : null) {
           @Override
           public void actionPerformed(@NotNull AnActionEvent e) {
             RunManager.getInstance(myProject).makeStable(myConfiguration);
@@ -552,7 +555,7 @@ public class RunConfigurationsComboBoxAction extends ComboBoxAction implements D
 
       String actionName = ExecutionBundle.message("choose.run.popup.delete");
       String description = ExecutionBundle.message("choose.run.popup.delete.description");
-      addAction(new AnAction(actionName, description, AllIcons.Actions.Cancel) {
+      addAction(new AnAction(actionName, description, !ExperimentalUI.isNewUI() ? AllIcons.Actions.Cancel : null) {
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
           ChooseRunConfigurationPopup.deleteConfiguration(myProject, myConfiguration, null);

@@ -8,7 +8,6 @@ import org.gradle.tooling.model.idea.IdeaModule
 import org.jetbrains.kotlin.idea.gradle.configuration.mpp.DistinctIdKotlinDependenciesPreprocessor
 import org.jetbrains.kotlin.idea.gradle.configuration.mpp.KotlinDependenciesPreprocessor
 import org.jetbrains.kotlin.idea.gradle.configuration.mpp.plus
-import org.jetbrains.kotlin.idea.gradleJava.configuration.KotlinMPPGradleProjectResolver.Companion.modifyDependenciesOnMppModules
 import org.jetbrains.kotlin.idea.gradleJava.configuration.getMppModel
 import org.jetbrains.kotlin.idea.gradleJava.configuration.klib.KotlinNativeLibrariesDependencySubstitutor
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinDependency
@@ -28,7 +27,7 @@ internal typealias ArtifactPath = String
 data class KotlinMppPopulateModuleDependenciesContext(
     val resolverCtx: ProjectResolverContext,
     val mppModel: KotlinMPPGradleModel,
-    val gradleModule: IdeaModule,
+    val gradleIdeaModule: GradleIdeaModule,
     val ideProject: DataNode<ProjectData>,
     val ideModule: DataNode<ModuleData>,
     val dependenciesPreprocessor: KotlinDependenciesPreprocessor,
@@ -44,7 +43,7 @@ fun createKotlinMppPopulateModuleDependenciesContext(
     resolverCtx: ProjectResolverContext
 ): KotlinMppPopulateModuleDependenciesContext? {
     val mppModel = resolverCtx.getMppModel(gradleModule) ?: return null
-    mppModel.dependencyMap.values.modifyDependenciesOnMppModules(ideProject, resolverCtx)
+    mppModel.dependencyMap.values.modifyDependenciesOnMppModules(ideProject)
 
     val sourceSetMap = ideProject.getUserData(GradleProjectResolver.RESOLVED_SOURCE_SETS) ?: return null
     val artifactsMap = ideProject.getUserData(GradleProjectResolver.CONFIGURATION_ARTIFACTS) ?: return null
@@ -54,7 +53,7 @@ fun createKotlinMppPopulateModuleDependenciesContext(
     return KotlinMppPopulateModuleDependenciesContext(
         resolverCtx = resolverCtx,
         mppModel = mppModel,
-        gradleModule = gradleModule,
+        gradleIdeaModule = gradleModule,
         ideProject = ideProject,
         ideModule = ideModule,
         dependenciesPreprocessor = dependenciesPreprocessor,

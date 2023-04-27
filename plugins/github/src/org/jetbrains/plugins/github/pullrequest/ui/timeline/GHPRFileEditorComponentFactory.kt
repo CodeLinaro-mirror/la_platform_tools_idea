@@ -2,7 +2,14 @@
 package org.jetbrains.plugins.github.pullrequest.ui.timeline
 
 import com.intellij.collaboration.async.CompletableFutureUtil.handleOnEdt
+import com.intellij.collaboration.ui.CollaborationToolsUIUtil
+import com.intellij.collaboration.ui.ComponentListPanelFactory
 import com.intellij.collaboration.ui.SingleValueModel
+import com.intellij.collaboration.ui.VerticalListPanel
+import com.intellij.collaboration.ui.codereview.CodeReviewChatItemUIUtil
+import com.intellij.collaboration.ui.codereview.CodeReviewTimelineUIUtil
+import com.intellij.collaboration.ui.codereview.comment.CommentInputActionsComponentFactory
+import com.intellij.collaboration.ui.codereview.timeline.comment.CommentTextFieldFactory
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DataProvider
@@ -10,19 +17,15 @@ import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.roots.ui.componentsList.components.ScrollablePanel
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.ScrollPaneFactory
+import com.intellij.ui.components.panels.ListLayout
 import com.intellij.ui.components.panels.Wrapper
-import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.update.UiNotifyConnector
-import net.miginfocom.layout.AC
-import net.miginfocom.layout.CC
-import net.miginfocom.layout.LC
-import net.miginfocom.swing.MigLayout
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.plugins.github.api.data.GHRepositoryPermissionLevel
 import org.jetbrains.plugins.github.api.data.GHUser
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestShort
@@ -31,6 +34,7 @@ import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.GHPRTimelineFileEditor
 import org.jetbrains.plugins.github.pullrequest.comment.ui.GHCommentTextFieldFactory
 import org.jetbrains.plugins.github.pullrequest.comment.ui.GHCommentTextFieldModel
+import org.jetbrains.plugins.github.pullrequest.comment.ui.submitAction
 import org.jetbrains.plugins.github.pullrequest.data.GHListLoader
 import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRCommentsDataProvider
 import org.jetbrains.plugins.github.pullrequest.data.provider.GHPRDetailsDataProvider
@@ -40,9 +44,9 @@ import org.jetbrains.plugins.github.pullrequest.ui.changes.GHPRSuggestedChangeHe
 import org.jetbrains.plugins.github.ui.avatars.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.ui.component.GHHandledErrorPanelModel
 import org.jetbrains.plugins.github.ui.component.GHHtmlErrorPanel
-import org.jetbrains.plugins.github.ui.util.GHUIUtil
 import javax.swing.JComponent
 import javax.swing.JLabel
+import javax.swing.JPanel
 import javax.swing.event.ChangeEvent
 import javax.swing.event.ChangeListener
 
@@ -103,60 +107,74 @@ internal class GHPRFileEditorComponentFactory(private val project: Project,
       if (PlatformDataKeys.UI_DISPOSABLE.`is`(it)) uiDisposable else null
     })
 
-    val header = GHPRTitleComponent.create(project, detailsModel, editor.detailsData)
+    val header = GHPRTitleComponent.create(detailsModel).let {
+      CollaborationToolsUIUtil.wrapWithLimitedSize(it, CodeReviewChatItemUIUtil.TEXT_CONTENT_WIDTH)
+    }.apply {
+      border = JBUI.Borders.empty(CodeReviewTimelineUIUtil.HEADER_VERT_PADDING, CodeReviewTimelineUIUtil.ITEM_HOR_PADDING)
+    }
 
     val suggestedChangesHelper = GHPRSuggestedChangeHelper(project,
                                                            uiDisposable,
                                                            editor.repositoryDataService.remoteCoordinates.repository,
                                                            editor.reviewData,
                                                            editor.detailsData)
-    val timeline = GHPRTimelineComponent(detailsModel,
-                                         timelineModel,
-                                         createItemComponentFactory(
-                                           project,
-                                           editor.detailsData, editor.commentsData, editor.reviewData,
-                                           reviewThreadsModelsProvider, editor.avatarIconsProvider,
-                                           suggestedChangesHelper,
-                                           editor.securityService.currentUser
-                                         )).apply {
-      border = JBUI.Borders.empty(16, 0)
-    }
-    val errorPanel = GHHtmlErrorPanel.create(errorModel)
 
-    val timelineLoader = editor.timelineLoader
-    val loadingIcon = JLabel(AnimatedIcon.Default()).apply {
-      border = JBUI.Borders.empty(8, 0)
-      isVisible = timelineLoader.loading
-    }
-    timelineLoader.addLoadingStateChangeListener(uiDisposable) {
-      loadingIcon.isVisible = timelineLoader.loading
-    }
-
-    val timelinePanel = ScrollablePanel().apply {
+    val itemComponentFactory = createItemComponentFactory(
+      project,
+      editor.detailsData, editor.commentsData, editor.reviewData,
+      reviewThreadsModelsProvider, editor.avatarIconsProvider,
+      suggestedChangesHelper,
+      editor.securityService.ghostUser,
+      editor.securityService.currentUser
+    )
+    val descriptionWrapper = Wrapper().apply {
       isOpaque = false
-      border = JBUI.Borders.empty(24, 20)
+    }
+    detailsModel.addAndInvokeListener {
+      descriptionWrapper.setContent(itemComponentFactory.createComponent(detailsModel.value))
+    }
 
-      val maxWidth = GHUIUtil.getPRTimelineWidth()
+    val timeline = ComponentListPanelFactory.createVertical(timelineModel, componentFactory = itemComponentFactory)
+    val timelineLoader = editor.timelineLoader
 
-      layout = MigLayout(LC().gridGap("0", "0")
-                           .insets("0", "0", "0", "0")
-                           .fill()
-                           .flowY(),
-                         AC().grow().gap("push"))
+    val progressAndErrorPanel = JPanel(ListLayout.vertical(0, ListLayout.Alignment.CENTER)).apply {
+      isOpaque = false
 
-      add(header, CC().growX().maxWidth("$maxWidth"))
-      add(timeline, CC().growX().minWidth(""))
+      val errorPanel = GHHtmlErrorPanel.create(errorModel).apply {
+        border = CodeReviewTimelineUIUtil.ITEM_BORDER
+      }
 
-      val fullTimelineWidth = JBUIScale.scale(GHUIUtil.AVATAR_SIZE) + maxWidth
+      val loadingIcon = JLabel(AnimatedIcon.Default()).apply {
+        border = CodeReviewTimelineUIUtil.ITEM_BORDER
+        isVisible = timelineLoader.loading
+      }
+      timelineLoader.addLoadingStateChangeListener(uiDisposable) {
+        loadingIcon.isVisible = timelineLoader.loading
+      }
 
-      add(errorPanel, CC().hideMode(2).width("$fullTimelineWidth"))
-      add(loadingIcon, CC().hideMode(2).width("$fullTimelineWidth"))
+      add(errorPanel)
+      add(loadingIcon)
+    }.let {
+      CollaborationToolsUIUtil
+        .wrapWithLimitedSize(it, CodeReviewChatItemUIUtil.TEXT_CONTENT_WIDTH + CodeReviewTimelineUIUtil.ITEM_HOR_PADDING * 2)
+    }
+
+    val timelinePanel = VerticalListPanel().apply {
+      border = JBUI.Borders.empty(CodeReviewTimelineUIUtil.VERT_PADDING, 0)
+
+      add(header)
+      add(descriptionWrapper)
+      add(timeline)
+
+      add(progressAndErrorPanel)
 
       if (editor.securityService.currentUserHasPermissionLevel(GHRepositoryPermissionLevel.READ)) {
         val commentField = createCommentField(editor.commentsData,
                                               editor.avatarIconsProvider,
-                                              editor.securityService.currentUser)
-        add(commentField, CC().growX().pushX().maxWidth("$fullTimelineWidth"))
+                                              editor.securityService.currentUser).apply {
+          border = JBUI.Borders.empty(CodeReviewChatItemUIUtil.ComponentType.FULL.inputPaddingInsets)
+        }
+        add(commentField)
       }
     }
 
@@ -202,7 +220,17 @@ internal class GHPRFileEditorComponentFactory(private val project: Project,
     val model = GHCommentTextFieldModel(project) {
       commentService.addComment(EmptyProgressIndicator(), it)
     }
-    return GHCommentTextFieldFactory(model).create(avatarIconsProvider, currentUser)
+
+    val submitShortcutText = CommentInputActionsComponentFactory.submitShortcutText
+
+    val actions = CommentInputActionsComponentFactory.Config(
+      primaryAction = MutableStateFlow(model.submitAction(GithubBundle.message("action.comment.text"))),
+      submitHint = MutableStateFlow(GithubBundle.message("pull.request.comment.hint", submitShortcutText))
+    )
+    val icon = CommentTextFieldFactory.IconConfig.of(CodeReviewChatItemUIUtil.ComponentType.FULL,
+                                                     avatarIconsProvider, currentUser.avatarUrl)
+
+    return GHCommentTextFieldFactory(model).create(actions, icon)
   }
 
   private fun createItemComponentFactory(project: Project,
@@ -212,18 +240,25 @@ internal class GHPRFileEditorComponentFactory(private val project: Project,
                                          reviewThreadsModelsProvider: GHPRReviewsThreadsModelsProvider,
                                          avatarIconsProvider: GHAvatarIconsProvider,
                                          suggestedChangeHelper: GHPRSuggestedChangeHelper,
+                                         ghostUser: GHUser,
                                          currentUser: GHUser)
     : GHPRTimelineItemComponentFactory {
 
     val selectInToolWindowHelper = GHPRSelectInToolWindowHelper(project, detailsModel.value)
     val diffFactory = GHPRReviewThreadDiffComponentFactory(project, EditorFactory.getInstance())
-    val eventsFactory = GHPRTimelineEventComponentFactoryImpl(avatarIconsProvider)
     return GHPRTimelineItemComponentFactory(
       project,
-      detailsDataProvider, commentsDataProvider, reviewDataProvider, avatarIconsProvider, reviewThreadsModelsProvider,
+      detailsDataProvider,
+      commentsDataProvider,
+      reviewDataProvider,
+      avatarIconsProvider,
+      reviewThreadsModelsProvider,
       diffFactory,
-      eventsFactory, selectInToolWindowHelper,
-      suggestedChangeHelper, currentUser
+      selectInToolWindowHelper,
+      suggestedChangeHelper,
+      ghostUser,
+      detailsModel.value.author,
+      currentUser
     )
   }
 }

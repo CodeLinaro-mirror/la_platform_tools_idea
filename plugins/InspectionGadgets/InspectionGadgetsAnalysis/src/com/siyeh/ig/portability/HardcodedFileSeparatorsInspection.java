@@ -16,7 +16,12 @@
 package com.siyeh.ig.portability;
 
 import com.intellij.codeInsight.CodeInsightUtilCore;
-import com.intellij.codeInspection.ui.SingleCheckboxOptionsPanel;
+import com.intellij.codeInsight.options.JavaClassValidator;
+import com.intellij.codeInspection.options.OptPane;
+import com.intellij.codeInspection.options.OptionController;
+import com.intellij.codeInspection.options.RegexValidator;
+import com.intellij.openapi.util.InvalidDataException;
+import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.openapi.util.io.OSAgnosticPathUtil;
 import com.intellij.psi.*;
 import com.intellij.util.containers.ContainerUtil;
@@ -25,22 +30,26 @@ import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.portability.mediatype.*;
 import com.siyeh.ig.psiutils.MethodCallUtils;
+import com.siyeh.ig.psiutils.MethodMatcher;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.TypeUtils;
+import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
-import javax.swing.*;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.TimeZone;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.intellij.codeInspection.options.OptPane.*;
 
 public class HardcodedFileSeparatorsInspection extends BaseInspection {
 
   private static final char BACKSLASH = '\\';
   private static final char SLASH = '/';
+
   private static class Holder {
   /**
    * The regular expression pattern that matches strings which are likely to
@@ -63,7 +72,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
     Pattern.compile("^[a-z][a-z0-9+\\-:]+://.*$");
 
   /**
-   * All mimetypes, see http://www.iana.org/assignments/media-types/
+   * All mimetypes, see <a href="http://www.iana.org/assignments/media-types/">IANA</a>
    */
   private static final Set<String> mimeTypes = new HashSet<>();
 
@@ -106,10 +115,37 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
     ContainerUtil.addAll(timeZoneIds, TimeZone.getAvailableIDs());
   }
   }
+
+  private final MethodMatcher myMethodMatcher;
+
   /**
    * @noinspection PublicField
    */
   public boolean m_recognizeExampleMediaType = false;
+
+
+  public HardcodedFileSeparatorsInspection() {
+    myMethodMatcher = getMatcherByDefault();
+  }
+
+  private static MethodMatcher getMatcherByDefault() {
+    return new MethodMatcher(false, "ignoredCalls")
+      .add(CommonClassNames.JAVA_LANG_CLASS, "getResource|getResourceAsStream")
+      .add("java.lang.ClassLoader", "findResource|getResource|getResources|resources|getSystemResource|getSystemResources|getSystemResourceAsStream")
+      .finishDefault();
+  }
+
+    @Override
+  public void readSettings(@NotNull Element element) throws InvalidDataException {
+    super.readSettings(element);
+    myMethodMatcher.readSettings(element);
+  }
+
+  @Override
+  public void writeSettings(@NotNull Element element) throws WriteExternalException {
+    super.writeSettings(element);
+    myMethodMatcher.writeSettings(element);
+  }
 
   @Override
   @NotNull
@@ -125,11 +161,36 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
   }
 
   @Override
-  public JComponent createOptionsPanel() {
-    return new SingleCheckboxOptionsPanel(
-      InspectionGadgetsBundle.message(
-        "hardcoded.file.separator.include.option"),
-      this, "m_recognizeExampleMediaType");
+  public @NotNull OptPane getOptionsPane() {
+    //noinspection InjectedReferences
+    return pane(
+      checkbox("m_recognizeExampleMediaType", InspectionGadgetsBundle.message(
+        "hardcoded.file.separator.include.option")),
+      table(InspectionGadgetsBundle.message(
+              "hardcoded.file.separator.ignore.methods.option"),
+            stringList("myClassNames", InspectionGadgetsBundle.message("class.name"), new JavaClassValidator()),
+            stringList("myRegexMethods", InspectionGadgetsBundle.message("method.name.regex"), new RegexValidator())
+      ));
+  }
+
+  @Override
+  public @NotNull OptionController getOptionController() {
+    return super.getOptionController()
+      .onValue("myClassNames", getterFor(myMethodMatcher.getClassNames()), setterFor(myMethodMatcher.getClassNames()))
+      .onValue("myRegexMethods", getterFor(myMethodMatcher.getMethodNamePatterns()), setterFor(myMethodMatcher.getMethodNamePatterns()));
+  }
+
+  private static Consumer<List<String>> setterFor(List<String> patterns) {
+    return strings -> {
+      //there is a chance that strings and patterns refer to the same object
+      ArrayList<String> copy = new ArrayList<>(strings);
+      patterns.clear();
+      patterns.addAll(copy);
+    };
+  }
+
+  private static Supplier<List<String>> getterFor(List<String> list) {
+    return () -> list;
   }
 
   @Override
@@ -154,9 +215,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
           final PsiElement grandParent = parent.getParent();
           if (grandParent instanceof PsiMethodCallExpression) {
             final PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression)grandParent;
-            if (MethodCallUtils.isCallToRegexMethod(methodCallExpression) ||
-                MethodCallUtils.isCallToMethod(methodCallExpression, "java.lang.Class", null, "getResource", (PsiType[])null) ||
-                MethodCallUtils.isCallToMethod(methodCallExpression, "java.lang.Class", null, "getResourceAsStream", (PsiType[])null)) {
+            if (MethodCallUtils.isCallToRegexMethod(methodCallExpression) || myMethodMatcher.matches(methodCallExpression)) {
               return;
             }
           }
@@ -169,7 +228,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
         }
         registerErrorInString(expression);
       }
-      else if (type != null && type.equals(PsiType.CHAR)) {
+      else if (type != null && type.equals(PsiTypes.charType())) {
         final Character value = (Character)expression.getValue();
         if (value == null) {
           return;
@@ -251,7 +310,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
      * @return {@code true} if the string is likely to be an XML
      *         fragment, or {@code false} if not.
      */
-    private boolean isXMLString(String string) {
+    private static boolean isXMLString(String string) {
       return string.contains("</") || string.contains("/>");
     }
 
@@ -263,7 +322,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
      * @return {@code true} if the string is likely to be a date
      *         string, {@code false} if not.
      */
-    private boolean isDateFormatString(String string) {
+    private static boolean isDateFormatString(String string) {
       if (string.length() < 3) {
         // A string this short is very unlikely to be a date format.
         return false;
@@ -292,7 +351,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
      * @return {@code true} if the string is likely to be a URL,
      *         {@code false} if not.
      */
-    private boolean isURLString(String string) {
+    private static boolean isURLString(String string) {
       final Matcher urlMatcher = Holder.URL_PATTERN.matcher(string);
       return urlMatcher.find();
     }
@@ -340,7 +399,7 @@ public class HardcodedFileSeparatorsInspection extends BaseInspection {
      * @return {@code true} if the string is likely to be a
      *         TimeZone ID, {@code false} if not.
      */
-    private boolean isTimeZoneIdString(String string) {
+    private static boolean isTimeZoneIdString(String string) {
       return Holder.timeZoneIds.contains(string);
     }
   }

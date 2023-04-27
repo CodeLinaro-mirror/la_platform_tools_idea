@@ -4,7 +4,6 @@ import com.intellij.openapi.components.SettingsCategory
 import com.intellij.testFramework.LoggedErrorProcessor
 import com.intellij.util.ConcurrencyUtil
 import com.intellij.util.concurrency.AppExecutorUtil.createBoundedScheduledExecutorService
-import com.intellij.util.io.exists
 import com.intellij.util.io.readText
 import com.intellij.util.io.write
 import org.eclipse.jgit.api.Git
@@ -23,6 +22,7 @@ import java.time.Instant
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import kotlin.io.path.div
+import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
 @RunWith(JUnit4::class)
@@ -114,8 +114,8 @@ internal class SettingsSyncFlowTest : SettingsSyncTestBase() {
     SettingsSyncSettings.getInstance().syncEnabled = true
     initSettingsSync(SettingsSyncBridge.InitMode.PushToServer)
 
-    remoteCommunicator.prepareFileOnServer(SettingsSnapshot(SettingsSnapshot.MetaInfo(Instant.now(), getLocalApplicationInfo(),
-                                                                                      isDeleted = true), emptySet(), null, emptySet()))
+    val metaInfo = SettingsSnapshot.MetaInfo(Instant.now(), getLocalApplicationInfo(), isDeleted = true)
+    remoteCommunicator.prepareFileOnServer(SettingsSnapshot(metaInfo, emptySet(), null, emptyMap(), emptySet()))
     syncSettingsAndWait()
 
     assertFalse("Settings sync was not disabled", SettingsSyncSettings.getInstance().syncEnabled)
@@ -342,7 +342,7 @@ internal class SettingsSyncFlowTest : SettingsSyncTestBase() {
 
   @Test fun `migration should respect deletion on server`() {
     val deletionSnapshot = SettingsSnapshot(SettingsSnapshot.MetaInfo(Instant.now(), getLocalApplicationInfo(), isDeleted = true),
-                                            emptySet(), null, emptySet())
+                                            emptySet(), null, emptyMap(), emptySet())
     remoteCommunicator.prepareFileOnServer(deletionSnapshot)
 
     val migration = migrationFromLafXml()

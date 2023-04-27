@@ -136,7 +136,8 @@ public final class ActionUrl implements JDOMExternalizable {
       group.setForceShowAsPopup(Boolean.parseBoolean(element.getAttributeValue(FORCE_POPUP)));
       myComponent = group;
     }
-    myActionType = Integer.parseInt(element.getAttributeValue(ACTION_TYPE));
+    String actionTypeString = element.getAttributeValue(ACTION_TYPE);
+    myActionType = actionTypeString == null ? -1 : Integer.parseInt(actionTypeString);
     myAbsolutePosition = Integer.parseInt(element.getAttributeValue(POSITION));
     DefaultJDOMExternalizer.readExternal(this, element);
   }
@@ -202,7 +203,8 @@ public final class ActionUrl implements JDOMExternalizable {
     final int absolutePosition = url.getAbsolutePosition();
     if (node.getChildCount() > absolutePosition && absolutePosition >= 0) {
       DefaultMutableTreeNode child = (DefaultMutableTreeNode)node.getChildAt(absolutePosition);
-      if (child.getUserObject().equals(url.getComponent())) {
+      Object userObj = child.getUserObject();
+      if (url.getComponent().equals(userObj instanceof Pair<?, ?> pair ? pair.first : userObj)) {
         node.remove(child);
       }
     }
@@ -218,7 +220,8 @@ public final class ActionUrl implements JDOMExternalizable {
         if (parent.getChildCount() > absolutePosition && absolutePosition >= 0) {
           if (parent.getChildCount() > initialPosition && initialPosition >= 0) {
             final DefaultMutableTreeNode child = (DefaultMutableTreeNode)parent.getChildAt(initialPosition);
-            if (child.getUserObject().equals(url.getComponent())) {
+            Object userObj = child.getUserObject();
+            if (url.getComponent().equals(userObj instanceof Pair<?, ?> pair ? pair.first : userObj)) {
               parent.remove(child);
               parent.insert(child, absolutePosition);
             }

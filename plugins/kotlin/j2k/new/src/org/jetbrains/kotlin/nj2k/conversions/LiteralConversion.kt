@@ -57,7 +57,7 @@ class LiteralConversion(context: NewJ2kConverterContext) : RecursiveApplicableCo
         }
     }
 
-    private fun JKLiteralExpression.toDoubleLiteral() =
+    private fun JKLiteralExpression.toDoubleLiteral(): String =
         literal.cleanFloatAndDoubleLiterals().let { text ->
             if (!text.contains(".") && !text.contains("e", true))
                 "$text."
@@ -66,52 +66,25 @@ class LiteralConversion(context: NewJ2kConverterContext) : RecursiveApplicableCo
             if (text.endsWith(".")) "${text}0" else text
         }
 
-    private fun JKLiteralExpression.toFloatLiteral() =
+    private fun JKLiteralExpression.toFloatLiteral(): String =
         literal.cleanFloatAndDoubleLiterals().let { text ->
             if (!text.endsWith("f")) "${text}f"
             else text
         }
 
-    private fun JKLiteralExpression.toStringLiteral() =
-        literal
-            .replaceOctalEscapes(format = "%s\\u%04x")
-            .replace("""\$([A-Za-z]+|\{)""".toRegex(), "\\\\$0")
-            .replace("\\f", "\\u000c")
-
-    private fun JKLiteralExpression.toRawStringLiteral(): String {
-        // remove implicit newlines that were suppressed with a single backslash at end of line
-        literal = literal.replace("([^\\\\])\\\\\n\\s*".toRegex(), "$1")
-        while (literal.contains("\\n")) {
-            // replace escaped newlines with real newlines and leading indenting spaces
-            literal = literal.replace("""\n(\s*)(.*)(\\n)""".toRegex(), "\n$1$2\n$1")
-        }
-        rawStringSpecialCharReplacements.forEach { (old, new) -> literal = literal.replace(old, new) }
-        return literal
-            .replaceOctalEscapes(format = "%s\${'\\u%04x'}")
-            // unescape backslashes
-            .replace("\\\\", "\\")
-            // add a trailing line break and leading indenting spaces before the closing triple quote
-            .replace("\\n(\\s*)(.*)\"\"\"\\Z".toRegex(), "\n$1$2\n$1\"\"\"")
-    }
-
-    private fun JKLiteralExpression.convertCharLiteral() =
-        literal.replace("""\\([0-3]?[0-7]{1,2})""".toRegex()) {
-            String.format("\\u%04x", Integer.parseInt(it.groupValues[1], 8))
-        }
-
-    private fun JKLiteralExpression.toIntLiteral() =
-        literal
-            .cleanIntAndLongLiterals()
-            .convertHexLiteral(isLongLiteral = false)
-            .convertBinaryLiteral(isLongLiteral = false)
-            .convertOctalLiteral(isLongLiteral = false)
-
-    private fun JKLiteralExpression.toLongLiteral() =
+    private fun JKLiteralExpression.toLongLiteral(): String =
         literal
             .cleanIntAndLongLiterals()
             .convertHexLiteral(isLongLiteral = true)
             .convertBinaryLiteral(isLongLiteral = true)
             .convertOctalLiteral(isLongLiteral = true) + "L"
+
+    private fun JKLiteralExpression.toIntLiteral(): String =
+        literal
+            .cleanIntAndLongLiterals()
+            .convertHexLiteral(isLongLiteral = false)
+            .convertBinaryLiteral(isLongLiteral = false)
+            .convertOctalLiteral(isLongLiteral = false)
 
     private fun String.convertHexLiteral(isLongLiteral: Boolean): String {
         if (!startsWith("0x", ignoreCase = true)) return this
@@ -150,24 +123,84 @@ class LiteralConversion(context: NewJ2kConverterContext) : RecursiveApplicableCo
     private fun String.cleanIntAndLongLiterals() =
         replace("l", "", ignoreCase = true)
             .replace("_", "")
-}
 
-private fun String.replaceOctalEscapes(format: String): String =
-    replace("""(\\*)\\([0-3]?[0-7]{1,2})""".toRegex()) { matchResult ->
-        val leadingBackslashes = matchResult.groupValues[1]
-        if (leadingBackslashes.length % 2 == 0)
-            String.format(format, leadingBackslashes, Integer.parseInt(matchResult.groupValues[2], 8))
-        else matchResult.value
+    private fun JKLiteralExpression.convertCharLiteral(): String =
+        literal.replace(charOctalEscapeRegex) {
+            String.format("\\u%04x", Integer.parseInt(it.groupValues[1], 8))
+        }
+
+    private fun JKLiteralExpression.toStringLiteral(): String =
+        literal
+            .replaceOctalEscapes(format = "%s\\u%04x")
+            .replace(dollarRegex, "\\\\$0")
+            .replaceFormFeed()
+
+    private fun JKLiteralExpression.toRawStringLiteral(): String {
+        // remove implicit newlines that were suppressed with a single backslash at end of line
+        literal = literal.replace(implicitNewlineRegex, "$1")
+
+        while (literal.contains("\\n")) {
+            // replace escaped newlines with real newlines and leading indenting spaces
+            literal = literal.replace(escapedNewlineRegex, "\n$1$2\n$1")
+        }
+
+        rawStringSpecialCharSimpleReplacements.forEach { (old: String, new: String) -> literal = literal.replace(old, new) }
+
+        rawStringSpecialCharRegexReplacements.forEach { (pattern: Regex, replacement: String) ->
+            literal = literal.replace(pattern) { matchResult ->
+                val leadingBackslashes = matchResult.groupValues[1]
+                // if the number of leading backslashes is odd, then the next backslash
+                // is actually an escaped backslash, not a part of the char escape sequence.
+                if (leadingBackslashes.length % 2 == 0) "$leadingBackslashes$replacement" else matchResult.value
+            }
+        }
+
+        return literal
+            .replaceOctalEscapes(format = "%s\${'\\u%04x'}")
+            // unescape backslashes
+            .replace("\\\\", "\\")
+            // add a trailing line break and leading indenting spaces before the closing triple quote
+            .replace(closingTripleQuoteRegex, "\n$1$2\n$1\"\"\"")
     }
 
-private val rawStringSpecialCharReplacements: Map<String, String> = mapOf(
+    private fun String.replaceOctalEscapes(format: String): String =
+        replace(stringOctalEscapeRegex) { matchResult ->
+            val leadingBackslashes = matchResult.groupValues[1]
+            // if the number of leading backslashes is odd, then the backslash in "\123"
+            // is actually an escaped backslash, not a part of the octal escape sequence.
+            if (leadingBackslashes.length % 2 == 0) {
+                String.format(format, leadingBackslashes, Integer.parseInt(matchResult.groupValues[2], 8))
+            } else {
+                matchResult.value
+            }
+        }
+
+    private fun String.replaceFormFeed(): String =
+        replace(formFeedRegex) { matchResult ->
+            val leadingBackslashes = matchResult.groupValues[1]
+            // if the number of leading backslashes is odd, then the backslash in "\f"
+            // is actually an escaped backslash, not a part of the form feed character.
+            if (leadingBackslashes.length % 2 == 0) "$leadingBackslashes\\u000c" else matchResult.value
+        }
+}
+
+private val rawStringSpecialCharSimpleReplacements: Map<String, String> = mapOf(
     "\$" to "\${'$'}",
-    "\\040" to " ", // escaped (trailing) space
-    "\\s" to " ", // also escaped (trailing) space
     "\\\'" to "'",
     "\\\"" to "\${'\"'}",
-    "\\r" to "\${'\\r'}",
-    "\\t" to "\${'\\t'}",
-    "\\b" to "\${'\\b'}",
-    "\\f" to "\${'\\u000c'}"
 )
+private val rawStringSpecialCharRegexReplacements: Map<Regex, String> = mapOf(
+    """(\\*)\\040""".toRegex() to " ", // escaped (trailing) space
+    """(\\*)\\s""".toRegex() to " ", // also escaped (trailing) space
+    """(\\*)\\r""".toRegex() to "\${'\\r'}",
+    """(\\*)\\t""".toRegex() to "\${'\\t'}",
+    """(\\*)\\b""".toRegex() to "\${'\\b'}",
+    """(\\*)\\f""".toRegex() to "\${'\\u000c'}"
+)
+private val dollarRegex = """\$([A-Za-z]+|\{)""".toRegex()
+private val formFeedRegex = """(\\*)\\f""".toRegex()
+private val implicitNewlineRegex = "([^\\\\])\\\\\n\\s*".toRegex()
+private val escapedNewlineRegex = """\n(\s*)(.*)(\\n)""".toRegex()
+private val closingTripleQuoteRegex = "\\n(\\s*)(.*)\"\"\"\\Z".toRegex()
+private val charOctalEscapeRegex = """\\([0-3]?[0-7]{1,2})""".toRegex()
+private val stringOctalEscapeRegex = """(\\*)\\([0-3]?[0-7]{1,2})""".toRegex()

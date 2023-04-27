@@ -1,11 +1,11 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet")
 
 package com.intellij.openapi.project.impl
 
 import com.intellij.ide.*
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.project.ProjectCloseListener
 import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.project.stateStore
 import com.intellij.testFramework.*
@@ -22,7 +22,6 @@ import org.junit.Test
 import org.junit.rules.ExternalResource
 import java.awt.Color
 import java.nio.file.Path
-import java.util.*
 
 class RecentProjectsTest {
   companion object {
@@ -48,7 +47,7 @@ class RecentProjectsTest {
   val tempDir = TemporaryDirectory()
 
   @Test
-  fun testMostRecentOnTop() = runBlocking {
+  fun mostRecentOnTop() = runBlocking {
     val p1 = createAndOpenProject("p1")
     val p2 = createAndOpenProject("p2")
     val p3 = createAndOpenProject("p3")
@@ -61,7 +60,7 @@ class RecentProjectsTest {
   }
 
   @Test
-  fun testGroupsOrder() = runBlocking {
+  fun groupOrder() = runBlocking {
     val p1 = createAndOpenProject("p1")
     val p2 = createAndOpenProject("p2")
     val p3 = createAndOpenProject("p3")
@@ -91,14 +90,14 @@ class RecentProjectsTest {
     var project = projectManager.openProjectAsync(z1, createTestOpenProjectOptions(runPostStartUpActivities = false))!!
     try {
       val recentProjectManager = RecentProjectsManagerBase.getInstanceEx()
-      recentProjectManager.runProjectPostStartupActivity(project)
+      recentProjectManager.projectOpened(project)
 
       val timestamp = getProjectOpenTimestamp("z1")
       projectManager.forceCloseProjectAsync(project)
       project = projectManager.openProjectAsync(z1, createTestOpenProjectOptions(runPostStartUpActivities = false))!!
-      recentProjectManager.runProjectPostStartupActivity(project)
+      recentProjectManager.projectOpened(project)
       recentProjectManager.updateLastProjectPath()
-      // "Timestamp for opened project has not been updated"
+      // "Timestamp for an opened project has not been updated"
       assertThat(getProjectOpenTimestamp("z1")).isGreaterThan(timestamp)
     }
     finally {
@@ -107,7 +106,7 @@ class RecentProjectsTest {
   }
 
   @Test
-  fun testSlnLikeProjectIcon() {
+  fun solutionLikeProjectIcon() {
     // For Rider
     val rpm = (RecentProjectsManager.getInstance() as RecentProjectsManagerBase)
 
@@ -146,7 +145,7 @@ class RecentProjectsTest {
     val projectManager = ProjectManagerEx.getInstanceEx()
     val project = projectManager.openProjectAsync(projectPath, createTestOpenProjectOptions(runPostStartUpActivities = false))!!
     try {
-      RecentProjectsManagerBase.getInstanceEx().runProjectPostStartupActivity(project)
+      RecentProjectsManagerBase.getInstanceEx().projectOpened(project)
     }
     finally {
       projectManager.forceCloseProjectAsync(project)
@@ -182,11 +181,11 @@ class RecentProjectsTest {
     var project = projectManager.openProjectAsync(path, createTestOpenProjectOptions(runPostStartUpActivities = false))!!
     try {
       val recentProjectManager = RecentProjectsManagerBase.getInstanceEx()
-      recentProjectManager.runProjectPostStartupActivity(project)
+      recentProjectManager.projectOpened(project)
       project.stateStore.saveComponent(RecentProjectsManager.getInstance() as RecentProjectsManagerBase)
       projectManager.forceCloseProjectAsync(project)
       project = projectManager.openProjectAsync(path, createTestOpenProjectOptions(runPostStartUpActivities = false))!!
-      recentProjectManager.runProjectPostStartupActivity(project)
+      recentProjectManager.projectOpened(project)
       return path
     }
     finally {
@@ -200,7 +199,7 @@ internal class RecentProjectManagerListenerRule : ExternalResource() {
 
   override fun before() {
     connection = ApplicationManager.getApplication().messageBus.simpleConnect()
-    connection!!.subscribe(ProjectManager.TOPIC, RecentProjectsManagerBase.MyProjectListener())
+    connection!!.subscribe(ProjectCloseListener.TOPIC, RecentProjectsManagerBase.MyProjectListener())
     connection!!.subscribe(AppLifecycleListener.TOPIC, RecentProjectsManagerBase.MyAppLifecycleListener())
   }
 

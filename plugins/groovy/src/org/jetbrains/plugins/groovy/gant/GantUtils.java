@@ -25,9 +25,6 @@ import org.jetbrains.plugins.groovy.util.LibrariesUtil;
 
 import java.util.ArrayList;
 
-/**
- * @author ilyas
- */
 public final class GantUtils {
   @NonNls public static final String GANT_JAR_FILE_PATTERN = "gant((_groovy)?|-)\\d.*\\.jar";
 
@@ -60,11 +57,6 @@ public final class GantUtils {
 
   public static @NlsSafe @Nullable String getGantVersionOrNull(String path) {
     return AbstractConfigUtils.getSDKJarVersion(path + "/lib", "gant-\\d.*\\.jar", AbstractConfigUtils.MANIFEST_PATH);
-  }
-
-  public static String getGantVersion(String path) {
-    String jarVersion = getGantVersionOrNull(path);
-    return jarVersion != null ? jarVersion : AbstractConfigUtils.UNDEFINED_VERSION;
   }
 
   public static boolean isGantSdkHome(VirtualFile file) {

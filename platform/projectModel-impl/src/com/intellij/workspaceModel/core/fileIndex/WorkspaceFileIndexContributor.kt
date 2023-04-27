@@ -24,7 +24,7 @@ interface WorkspaceFileIndexContributor<E : WorkspaceEntity> {
    * Implement this function and call functions from [registrar] to specify files and directories which should be included or excluded from
    * the workspace. 
    * 
-   * The implementation may use properties from [entity] or from its parents only and don't use other data which may change.
+   * The implementation may use properties from [entity] or from its parents or its children only and don't use other data which may change.
    * If properties from other entities are used for computation, their classes must be registered in [dependenciesOnOtherEntities].
    * This is necessary to ensure that [WorkspaceFileIndex] is properly updated when entities change. 
    * 
@@ -106,7 +106,10 @@ enum class WorkspaceFileKind {
    * referenced from [CONTENT] files. This kind was introduced mainly for compatibility with the old code, it corresponds to
    * [com.intellij.openapi.roots.ProjectFileIndex.isInLibrarySource] method. 
    */
-  EXTERNAL_SOURCE
+  EXTERNAL_SOURCE;
+  
+  val isContent: Boolean
+    get() = this == CONTENT || this == TEST_CONTENT
 }
 
 /**
@@ -148,6 +151,12 @@ interface WorkspaceFileSetRegistrar {
    * This is a temporary solution to keep behavior of old code. 
    */
   fun registerExcludedRoot(excludedRoot: VirtualFile, excludedFrom: WorkspaceFileKind, entity: WorkspaceEntity)
+  
+  /**
+   * Excludes [excludedRoot] and all files under it from [excludedFrom] kind of files. 
+   * This is a temporary solution to keep behavior of old code. 
+   */
+  fun registerExcludedRoot(excludedRoot: VirtualFileUrl, excludedFrom: WorkspaceFileKind, entity: WorkspaceEntity)
 
   /**
    * Excludes all files and directories under [root] which names match to one of [patterns] (`*` and `?` wildcards are supported) from the
@@ -160,6 +169,12 @@ interface WorkspaceFileSetRegistrar {
    * Excludes all files and directories under [root] which satisfy [condition] from the workspace.
    * @param condition may access the passed file and its parents and children only
    * @param entity first parameter of [WorkspaceFileIndexContributor.registerFileSets] must be passed here
+   */
+  fun registerExclusionCondition(root: VirtualFileUrl, condition: (VirtualFile) -> Boolean, entity: WorkspaceEntity)
+
+  /**
+   * A variant of [registerExclusionCondition] function which takes [VirtualFile] instead of [VirtualFileUrl].
+   * This function is considered as a temporary solution until all contributors to [WorkspaceFileIndex] are migrated to Workspace Model.
    */
   fun registerExclusionCondition(root: VirtualFile, condition: (VirtualFile) -> Boolean, entity: WorkspaceEntity)
 }

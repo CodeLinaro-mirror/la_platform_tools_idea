@@ -7,17 +7,17 @@ import com.intellij.openapi.compiler.JavaCompilerBundle
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.runUnderIndicator
+import com.intellij.openapi.progress.coroutineToIndicator
 import com.intellij.openapi.progress.withBackgroundProgressIndicator
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.ProjectPostStartupActivity
+import com.intellij.openapi.startup.ProjectActivity
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
 
 /**
  * @see IsUpToDateCheckConsumer
  */
-internal class IsUpToDateCheckStartupActivity : ProjectPostStartupActivity {
+internal class IsUpToDateCheckStartupActivity : ProjectActivity {
   init {
     if (ApplicationManager.getApplication().isUnitTestMode) {
       throw ExtensionNotApplicableException.create()
@@ -50,8 +50,8 @@ internal class IsUpToDateCheckStartupActivity : ProjectPostStartupActivity {
   }
 
   @Suppress("DuplicatedCode")
-  suspend fun nonBlockingIsUpToDate(project: Project): Boolean {
-    return runUnderIndicator {
+  private suspend fun nonBlockingIsUpToDate(project: Project): Boolean {
+    return coroutineToIndicator {
       val manager = CompilerManager.getInstance(project)
       manager.isUpToDate(manager.createProjectCompileScope(project), ProgressManager.getInstance().progressIndicator)
     }

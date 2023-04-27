@@ -11,9 +11,6 @@ import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * @author vlan
- */
 public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
 
   @Override
@@ -205,6 +202,7 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
     doTest();
   }
 
+  // TODO This test fails with Python 3 Typeshed stubs
   // PY-4285
   public void testMapReturnElementType() {
     doTest();
@@ -1506,15 +1504,16 @@ public class PyTypeCheckerInspectionTest extends PyInspectionTestCase {
   public void testGenericTypedDict() {
     runWithLanguageLevel(
       LanguageLevel.getLatest(),
-      () -> doTestByText("from typing import TypeVar, TypedDict, Generic\n" +
-                         "T = TypeVar('T')\n" +
-                         "T1 = TypeVar('T1')\n" +
-                         "class Group(TypedDict, Generic[T]):\n" +
-                         "    key: T\n" +
-                         "    group: list[T]\n" +
-                         "class GroupWithOtherKey(Group, Generic[T1]):\n" +
-                         "    some_other_key: T1\n" +
-                         "group: GroupWithOtherKey[str, int] = {\"key\": <warning descr=\"Expected type 'str', got 'int' instead\">1</warning>, \"group\": [], \"some_other_key\": <warning descr=\"Expected type 'int', got 'str' instead\">''</warning>}")
+      () -> doTestByText("""
+                           from typing import TypeVar, TypedDict, Generic
+                           T = TypeVar('T')
+                           T1 = TypeVar('T1')
+                           class Group(TypedDict, Generic[T]):
+                               key: T
+                               group: list[T]
+                           class GroupWithOtherKey(Group, Generic[T1]):
+                               some_other_key: T1
+                           group: GroupWithOtherKey[str, int] = {"key": <warning descr="Expected type 'str', got 'int' instead">1</warning>, "group": [], "some_other_key": <warning descr="Expected type 'int', got 'str' instead">''</warning>}""")
     );
   }
 }

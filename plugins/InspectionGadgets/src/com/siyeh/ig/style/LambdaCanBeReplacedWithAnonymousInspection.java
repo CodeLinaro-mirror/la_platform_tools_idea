@@ -159,7 +159,7 @@ public class LambdaCanBeReplacedWithAnonymousInspection extends BaseInspection {
     if (body instanceof PsiExpression) {
       final PsiType returnType = LambdaUtil.getFunctionalInterfaceReturnType(lambdaExpression);
       blockText = "{\n";
-      blockText += PsiType.VOID.equals(returnType) ? "" : "return ";
+      blockText += PsiTypes.voidType().equals(returnType) ? "" : "return ";
       blockText +=  body.getText() + ";\n}";
     } else if (body != null) {
       blockText = body.getText();
@@ -241,7 +241,7 @@ public class LambdaCanBeReplacedWithAnonymousInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getStartElement();
       final PsiElement parent = element instanceof PsiLambdaExpression ? element : element.getParent();
       if (parent instanceof PsiLambdaExpression) {

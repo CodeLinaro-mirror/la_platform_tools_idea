@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.ui.customization;
 
 import com.intellij.icons.AllIcons;
@@ -21,7 +21,6 @@ import com.intellij.packageDependencies.ui.TreeExpansionMonitor;
 import com.intellij.ui.*;
 import com.intellij.ui.mac.touchbar.TouchbarSupport;
 import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.EditableModel;
 import com.intellij.util.ui.UIUtil;
@@ -237,7 +236,7 @@ public class CustomizableActionsPanel {
     TreeUtil.ensureSelection(myActionsTree);
   }
 
-  private static List<String> toActionIDs(List<TreePath> paths) {
+  private static List<String> toActionIDs(List<? extends TreePath> paths) {
     return ContainerUtil.map(paths, path -> getActionId((DefaultMutableTreeNode)path.getLastPathComponent()));
   }
 
@@ -318,7 +317,10 @@ public class CustomizableActionsPanel {
             append("   ", SimpleTextAttributes.REGULAR_ATTRIBUTES, false);
             append(description, SimpleTextAttributes.GRAY_ATTRIBUTES);
           }
-          setIcon(icon);
+          // do not show the icon for the top groups
+          if (((DefaultMutableTreeNode)value).getLevel() > 1) {
+            setIcon(icon);
+          }
         });
         setForeground(UIUtil.getTreeForeground(selected, hasFocus));
       }
@@ -657,9 +659,9 @@ public class CustomizableActionsPanel {
         ActionUrl addUrl = CustomizationUtil.getActionUrl(targetPath, ADDED);
         if (position == INTO) {
           addUrl.setAbsolutePosition(((DefaultMutableTreeNode)targetPath.getLastPathComponent()).getChildCount());
-          ObjectUtils.consumeIfCast(TreeUtil.getUserObject(targetPath.getLastPathComponent()), Group.class, group -> {
+          if (TreeUtil.getUserObject(targetPath.getLastPathComponent()) instanceof Group group) {
             addUrl.getGroupPath().add(group.getName());
-          });
+          }
         }
         addUrl.setComponent(removeUrl.getComponent());
         changePathInActionsTree(myActionsTree, addUrl);

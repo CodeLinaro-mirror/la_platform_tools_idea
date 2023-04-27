@@ -8,7 +8,7 @@ import com.intellij.psi.PsiEnumConstant
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifierListOwner
 import org.jetbrains.kotlin.idea.base.psi.kotlinFqName
-import org.jetbrains.kotlin.idea.search.KotlinSearchUsagesSupport.Companion.findDeepestSuperMethodsNoWrapping
+import org.jetbrains.kotlin.idea.search.KotlinSearchUsagesSupport.SearchUtils.findDeepestSuperMethodsNoWrapping
 import org.jetbrains.kotlin.name.SpecialNames
 import org.jetbrains.kotlin.nj2k.isObjectOrCompanionObject
 import org.jetbrains.kotlin.nj2k.psi
@@ -49,9 +49,11 @@ val JKSymbol.isStaticMember
         is KtElement -> target.getStrictParentOfType<KtClassOrObject>()
             ?.safeAs<KtObjectDeclaration>()
             ?.isCompanion() == true
+
         is JKTreeElement ->
             target.safeAs<JKOtherModifiersOwner>()?.hasOtherModifier(OtherModifier.STATIC) == true
                     || target.parent.safeAs<JKClassBody>()?.parent.safeAs<JKClass>()?.isObjectOrCompanionObject == true
+
         else -> false
     }
 

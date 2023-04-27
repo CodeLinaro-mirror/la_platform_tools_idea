@@ -113,7 +113,7 @@ class WindowInfoImpl : Cloneable, WindowInfo, BaseState() {
   }
 
   internal fun setType(type: ToolWindowType) {
-    if (ToolWindowType.DOCKED == type || ToolWindowType.SLIDING == type) {
+    if (type.isInternal) {
       internalType = type
     }
     setTypeAndCheck(type)
@@ -154,12 +154,12 @@ private class ToolWindowAnchorConverter : Converter<ToolWindowAnchor>() {
 }
 
 private fun canActivateOnStart(id: String): Boolean {
-  val ep = findEp(ToolWindowEP.EP_NAME.iterable, id)
-           ?: findEp(FacetDependentToolWindow.EXTENSION_POINT_NAME.iterable, id)
-           ?: findEp(LibraryDependentToolWindow.EXTENSION_POINT_NAME.iterable, id)
+  val ep = findEp(ToolWindowEP.EP_NAME.lazySequence(), id)
+           ?: findEp(FacetDependentToolWindow.EXTENSION_POINT_NAME.lazySequence(), id)
+           ?: findEp(LibraryDependentToolWindow.EXTENSION_POINT_NAME.lazySequence(), id)
   return ep == null || !ep.isDoNotActivateOnStart
 }
 
-private fun findEp(list: Iterable<ToolWindowEP>, id: String): ToolWindowEP? {
+private fun findEp(list: Sequence<ToolWindowEP>, id: String): ToolWindowEP? {
   return list.firstOrNull { id == it.id }
 }

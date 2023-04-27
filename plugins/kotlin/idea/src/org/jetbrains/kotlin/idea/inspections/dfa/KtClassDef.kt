@@ -45,11 +45,11 @@ class KtClassDef(val cls: ClassDescriptor) : TypeConstraints.ClassDef {
         return isInheritor(other) || other.isInheritor(this)
     }
 
-    override fun isInterface(): Boolean = cls.kind == ClassKind.INTERFACE
+    override fun isInterface(): Boolean = cls.kind == ClassKind.INTERFACE || cls.kind == ClassKind.ANNOTATION_CLASS
 
     override fun isEnum(): Boolean = cls.kind == ClassKind.ENUM_CLASS
 
-    override fun isFinal(): Boolean = cls.modality == Modality.FINAL
+    override fun isFinal(): Boolean = cls.modality == Modality.FINAL && cls.kind != ClassKind.ANNOTATION_CLASS
 
     override fun isAbstract(): Boolean = cls.modality == Modality.ABSTRACT
 
@@ -88,8 +88,11 @@ class KtClassDef(val cls: ClassDescriptor) : TypeConstraints.ClassDef {
     companion object {
         fun getClassConstraint(context: KtElement, name: FqNameUnsafe): TypeConstraint.Exact {
             val descriptor = context.findModuleDescriptor().resolveClassByFqName(name.toSafe(), NoLookupLocation.FROM_IDE)
-            return if (descriptor == null) TypeConstraints.unresolved(name.asString())
-            else TypeConstraints.exactClass(KtClassDef(descriptor))
+            return when {
+              descriptor == null -> TypeConstraints.unresolved(name.asString())
+              descriptor.kind == ClassKind.OBJECT -> TypeConstraints.singleton(KtClassDef(descriptor))
+              else -> TypeConstraints.exactClass(KtClassDef(descriptor))
+            }
         }
 
         fun fromJvmClassName(context: KtElement, jvmClassName: String): TypeConstraints.ClassDef? {

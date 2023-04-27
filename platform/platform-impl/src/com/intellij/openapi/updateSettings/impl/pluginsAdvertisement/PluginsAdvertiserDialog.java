@@ -18,8 +18,6 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-import static java.util.Collections.emptyList;
-
 /**
  * @author anna
  */
@@ -44,12 +42,6 @@ public final class PluginsAdvertiserDialog extends DialogWrapper {
     mySelectAllSuggestions = selectAllSuggestions;
     setTitle(IdeBundle.message("dialog.title.choose.plugins.to.install.or.enable"));
     init();
-  }
-
-  public PluginsAdvertiserDialog(@Nullable Project project,
-                                 @NotNull Collection<PluginDownloader> pluginsToInstall,
-                                 @NotNull List<PluginNode> customPlugins) {
-    this(project, pluginsToInstall, customPlugins, false, null);
 
     JRootPane rootPane = getPeer().getRootPane();
     if (rootPane != null) {
@@ -57,15 +49,23 @@ public final class PluginsAdvertiserDialog extends DialogWrapper {
     }
   }
 
+  public PluginsAdvertiserDialog(@Nullable Project project,
+                                 @NotNull Collection<PluginDownloader> pluginsToInstall,
+                                 @NotNull List<PluginNode> customPlugins) {
+    this(project, pluginsToInstall, customPlugins, false, null);
+  }
+
   @Override
   protected @NotNull JComponent createCenterPanel() {
     if (myPanel == null) {
       myPanel = new DetectedPluginsPanel(myProject);
-      if (mySelectAllSuggestions || myPluginToInstall.size() == 1) {
-        myPanel.addAll(myPluginToInstall, myPluginToInstall); // all or nothing, single plugin always gets selected automatically
-      } else {
-        myPanel.addAll(myPluginToInstall, emptyList());
+
+      // all or nothing, single plugin always gets selected automatically
+      boolean checkAll = mySelectAllSuggestions || myPluginToInstall.size() == 1;
+      for (PluginDownloader downloader : myPluginToInstall) {
+        myPanel.setChecked(downloader, checkAll);
       }
+      myPanel.addAll(myPluginToInstall);
     }
     return myPanel;
   }

@@ -64,9 +64,6 @@ import java.util.Map;
 
 import static org.jetbrains.plugins.groovy.lang.psi.GroovyElementTypes.*;
 
-/**
- * @author ven
- */
 @SuppressWarnings("ConstantConditions")
 public class GroovyPsiElementFactoryImpl extends GroovyPsiElementFactory {
   private static final Logger LOG = Logger.getInstance(GroovyPsiElementFactoryImpl.class);
@@ -249,7 +246,7 @@ public class GroovyPsiElementFactoryImpl extends GroovyPsiElementFactory {
                                                          String... identifiers) {
     @NlsSafe StringBuilder text = writeModifiers(modifiers);
 
-    if (type != null && type != PsiType.NULL) {
+    if (type != null && type != PsiTypes.nullType()) {
       final PsiType unboxed = TypesUtil.unboxPrimitiveTypeWrapper(type);
       final String typeText = getTypeText(unboxed);
       text.append(typeText).append(" ");
@@ -545,7 +542,7 @@ public class GroovyPsiElementFactoryImpl extends GroovyPsiElementFactory {
   public GrMethod createMethodFromSignature(@NotNull String name, @NotNull GrSignature signature) {
     StringBuilder builder = new StringBuilder(PsiKeyword.PUBLIC);
     final PsiType returnType = signature.getReturnType();
-    if (returnType != null && returnType != PsiType.NULL) {
+    if (returnType != null && returnType != PsiTypes.nullType()) {
       builder.append(' ');
       builder.append(returnType.getCanonicalText());
     }

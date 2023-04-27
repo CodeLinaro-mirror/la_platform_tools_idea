@@ -1,29 +1,28 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.runToolbar
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
+import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.StartupActivity
-import com.intellij.openapi.util.Disposer
-import kotlinx.coroutines.CoroutineScope
+import com.intellij.openapi.startup.ProjectActivity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.time.delay
-import java.time.Duration
-import java.time.temporal.ChronoUnit
-import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.seconds
 
-class RunToolbarInitializeService : StartupActivity.DumbAware {
-  override fun runActivity(project: Project) {
-    val cs = CoroutineScope(EmptyCoroutineContext)
-    Disposer.register(project) {
-      cs.cancel()
+private class RunToolbarInitializeService : ProjectActivity {
+  init {
+    if (ApplicationManager.getApplication().isHeadlessEnvironment) {
+      throw ExtensionNotApplicableException.create()
     }
+  }
 
-    cs.launch(Dispatchers.EDT) {
-      delay(Duration.of(5, ChronoUnit.SECONDS))
-        RunToolbarSlotManager.getInstance(project).initialized = true
-      }
+  override suspend fun execute(project: Project) {
+    delay(5.seconds)
+    val toolbarSlotManager = RunToolbarSlotManager.getInstance(project)
+    withContext(Dispatchers.EDT) {
+      toolbarSlotManager.initialized = true
+    }
   }
 }

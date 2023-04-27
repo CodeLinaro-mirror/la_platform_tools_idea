@@ -50,7 +50,9 @@ public class ExtensionPointDeclarationReferencesContributor extends PsiReference
 
           uExpression().methodCallParameter(0,
                                             psiMethod().withName("create").withParameterCount(1)
-                                              .definedInClass(ExtensionPointName.class.getName())),
+                                              .definedInClass(psiClass().withQualifiedName(
+                                                string().oneOf(ExtensionPointName.class.getName(),
+                                                               ExtensionPointName.Companion.getClass().getCanonicalName())))),
 
           uExpression().callParameter(0,
                                       callExpression().constructor(keyedExtensionCollectorInheritor)),

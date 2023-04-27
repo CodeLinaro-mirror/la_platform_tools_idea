@@ -1,10 +1,12 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.help.impl;
 
 import com.google.common.collect.Sets;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.Shortcut;
+import com.intellij.openapi.application.ApplicationInfo;
+import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.ApplicationStarter;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
@@ -17,29 +19,25 @@ import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.IntStream;
 
 /**
  * @author Konstantin Bulenkov
  */
 final class KeymapGenerator implements ApplicationStarter {
-
-  private static final Logger LOG = Logger.getInstance(KeymapGenerator.class);
-
-  private static final String[] LEVELS = IntStream.range(1, 4).mapToObj(i -> " ".repeat(i * 2)).toArray(String[]::new);
-  private static final ActionManager MANAGER = ActionManager.getInstance();
-
   @Override
   public String getCommandName() {
     return "keymap";
   }
+
+  private static final Logger LOG = Logger.getInstance(KeymapGenerator.class);
+  private static final String[] LEVELS = IntStream.range(1, 4).mapToObj(i -> " ".repeat(i * 2)).toArray(String[]::new);
+  private static final ActionManager MANAGER = ActionManager.getInstance();
 
   private static void renderAction(final @NotNull String id,
                                    final @Nullable String asId,
@@ -67,9 +65,9 @@ final class KeymapGenerator implements ApplicationStarter {
     }
   }
 
+
   @Override
   public void main(@NotNull List<String> args) {
-
     final StringBuilder xml = new StringBuilder();
     xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n").append("<Keymaps>\n");
 

@@ -64,7 +64,7 @@ public class CloneReturnsClassTypeInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiTypeElement)) {
         return;
@@ -93,7 +93,7 @@ public class CloneReturnsClassTypeInspection extends BaseInspection {
             return;
           }
           final PsiType type = returnValue.getType();
-          if (newType.equals(type) || PsiType.NULL.equals(type)) {
+          if (newType.equals(type) || PsiTypes.nullType().equals(type)) {
             return;
           }
           final CommentTracker commentTracker = new CommentTracker();

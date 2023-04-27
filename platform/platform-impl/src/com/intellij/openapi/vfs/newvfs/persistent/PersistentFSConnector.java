@@ -6,8 +6,10 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.newvfs.persistent.dev.OffsetBasedNonStrictStringsEnumerator;
-import com.intellij.openapi.vfs.newvfs.persistent.dev.StreamlinedBlobStorage;
-import com.intellij.openapi.vfs.newvfs.persistent.dev.StreamlinedBlobStorage.SpaceAllocationStrategy.DataLengthPlusFixedPercentStrategy;
+import com.intellij.openapi.vfs.newvfs.persistent.dev.blobstorage.LargeSizeStreamlinedBlobStorage;
+import com.intellij.openapi.vfs.newvfs.persistent.dev.blobstorage.SpaceAllocationStrategy.DataLengthPlusFixedPercentStrategy;
+import com.intellij.openapi.vfs.newvfs.persistent.dev.blobstorage.StreamlinedBlobStorage;
+import com.intellij.openapi.vfs.newvfs.persistent.dev.blobstorage.StreamlinedBlobStorageOverLockFreePagesStorage;
 import com.intellij.util.PlatformUtils;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
@@ -134,7 +136,6 @@ final class PersistentFSConnector {
                                                CapacityAllocationPolicy.FIVE_PERCENT_FOR_GROWTH,
                                                SequentialTaskExecutor.createSequentialApplicationPoolExecutor(
                                                  "FSRecords Content Write Pool"),
-                                               FSRecords.useCompressionUtil,
                                                useContentHashes);
 
       // sources usually zipped with 4x ratio
@@ -190,9 +191,10 @@ final class PersistentFSConnector {
 
         boolean deleted = FileUtil.delete(persistentFSPaths.getCorruptionMarkerFile());
         deleted &= IOUtil.deleteAllFilesStartingWith(namesFile);
-        if(FSRecords.USE_STREAMLINED_ATTRIBUTES_IMPLEMENTATION){
-          deleted &= AttributesStorageOnTheTopOfBlobStorage.deleteStorageFiles(attributesFile);
-        }else {
+        if (FSRecords.USE_STREAMLINED_ATTRIBUTES_IMPLEMENTATION) {
+          deleted &= AttributesStorageOverBlobStorage.deleteStorageFiles(attributesFile);
+        }
+        else {
           deleted &= AbstractStorage.deleteFiles(attributesFile);
         }
         deleted &= AbstractStorage.deleteFiles(contentsFile);
@@ -219,20 +221,22 @@ final class PersistentFSConnector {
   private static AbstractAttributesStorage createAttributesStorage(final Path attributesFile) throws IOException {
     if (FSRecords.USE_STREAMLINED_ATTRIBUTES_IMPLEMENTATION) {
       LOG.info("VFS uses new (streamlined) attributes storage");
-      final PagedFileStorage pagedStorage = new PagedFileStorage(
-        attributesFile,
-        PERSISTENT_FS_STORAGE_CONTEXT,
-        PagedFileStorage.DEFAULT_PAGE_SIZE,
-        true,
-        true
-      );
-      return new AttributesStorageOnTheTopOfBlobStorage(
-        new StreamlinedBlobStorage(
-          pagedStorage,
-          //avg record size is ~60b, hence I've chosen minCapacity=64 bytes, and defaultCapacity= 2 minCapacity
-          new DataLengthPlusFixedPercentStrategy(128, 64, 30)
-        )
-      );
+      //avg record size is ~60b, hence I've chosen minCapacity=64 bytes, and defaultCapacity= 2*minCapacity
+      final DataLengthPlusFixedPercentStrategy allocationStrategy = new DataLengthPlusFixedPercentStrategy(128, 64, 30);
+      final StreamlinedBlobStorage blobStorage;
+      if (PageCacheUtils.LOCK_FREE_VFS_ENABLED) {
+        blobStorage = new StreamlinedBlobStorageOverLockFreePagesStorage(
+          new PagedFileStorageLockFree(attributesFile, PERSISTENT_FS_STORAGE_CONTEXT, PageCacheUtils.DEFAULT_PAGE_SIZE, true),
+          allocationStrategy
+        );
+      }
+      else {
+        blobStorage = new LargeSizeStreamlinedBlobStorage(
+          new PagedFileStorage(attributesFile, PERSISTENT_FS_STORAGE_CONTEXT, PageCacheUtils.DEFAULT_PAGE_SIZE, true, true),
+          allocationStrategy
+        );
+      }
+      return new AttributesStorageOverBlobStorage(blobStorage);
     }
     else {
       LOG.info("VFS uses regular attributes storage");
@@ -257,16 +261,16 @@ final class PersistentFSConnector {
       LOG.info("VFS uses non-strict names enumerator");
       final ResizeableMappedFile mappedFile = new ResizeableMappedFile(
         namesFile,
-        10 * PagedFileStorage.MB,
+        10 * IOUtil.MiB,
         PERSISTENT_FS_STORAGE_CONTEXT,
-        PagedFileStorage.MB,
+        IOUtil.MiB,
         false
       );
       return new OffsetBasedNonStrictStringsEnumerator(mappedFile);
     }
     else {
       LOG.info("VFS uses strict names enumerator");
-      return  new PersistentStringEnumerator(namesFile, PERSISTENT_FS_STORAGE_CONTEXT);
+      return new PersistentStringEnumerator(namesFile, PERSISTENT_FS_STORAGE_CONTEXT);
     }
   }
 

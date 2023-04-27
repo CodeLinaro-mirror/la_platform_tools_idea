@@ -23,7 +23,6 @@ import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
 
-@Suppress("UsePropertyAccessSyntax")
 class ModuleLevelLibrariesInRootModelTest {
   companion object {
     @JvmField
@@ -304,7 +303,7 @@ class ModuleLevelLibrariesInRootModelTest {
     addLibrary("a")
     addLibrary("b")
 
-    val builder = MutableEntityStorage.from(WorkspaceModel.getInstance(projectModel.project).entityStorage.current)
+    val builder = MutableEntityStorage.from(WorkspaceModel.getInstance(projectModel.project).currentSnapshot)
     val moduleModel = (projectModel.moduleManager as ModuleManagerBridgeImpl).getModifiableModel(builder)
     moduleModel.disposeModule(module)
     val newModule = projectModel.createModule("module", moduleModel)
@@ -369,7 +368,7 @@ class ModuleLevelLibrariesInRootModelTest {
 
   private fun doTestMultiCommitForModuleLevelLibrary(newScope: DependencyScope) {
     addLibrary("a")
-    val builder = MutableEntityStorage.from(WorkspaceModel.getInstance(projectModel.project).entityStorage.current)
+    val builder = MutableEntityStorage.from(WorkspaceModel.getInstance(projectModel.project).currentSnapshot)
     val moduleModel = (projectModel.moduleManager as ModuleManagerBridgeImpl).getModifiableModel(builder)
     val rootModel = ModuleRootManagerEx.getInstanceEx(module).getModifiableModelForMultiCommit(RootAccessorWithWorkspaceModel(builder))
     getSingleLibraryOrderEntry(rootModel).scope = newScope

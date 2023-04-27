@@ -198,10 +198,14 @@
         <keyboard-shortcut first-keystroke="ctrl j" />
     </action>
     <action id="EditorLineEnd">
+        <keyboard-shortcut first-keystroke="END"/>
         <keyboard-shortcut first-keystroke="meta right" />
+        <keyboard-shortcut first-keystroke="control E"/>
     </action>
     <action id="EditorLineStart">
+        <keyboard-shortcut first-keystroke="END"/>
         <keyboard-shortcut first-keystroke="meta left" />
+        <keyboard-shortcut first-keystroke="control A"/>
     </action>
     <action id="EditorMatchBrace">
         <keyboard-shortcut first-keystroke="shift meta back_slash" />
@@ -718,9 +722,6 @@
   <!-- Rider -->
   <action id="BuildSolutionAction">
     <keyboard-shortcut first-keystroke="meta shift b"/>
-  </action>
-  <action id="TerminalNewSession">
-    <keyboard-shortcut first-keystroke="ctrl shift BACK_QUOTE"/>
   </action>
   <action id="Terminal.SelectAll">
     <keyboard-shortcut first-keystroke="meta a"/>

@@ -7,9 +7,9 @@ import com.intellij.jarRepository.RemoteRepositoryDescription
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
-import com.intellij.util.io.exists
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.workspaceModel.ide.getInstance
-import com.intellij.workspaceModel.ide.impl.toVirtualFileUrl
+import com.intellij.workspaceModel.ide.toVirtualFileUrl
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
 import org.jetbrains.annotations.Nls
 import org.jetbrains.idea.maven.aether.ArtifactKind
@@ -34,6 +34,7 @@ import java.io.InputStream
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
+import kotlin.io.path.exists
 
 object KotlinArtifactsDownloader {
     fun getUnpackedKotlinDistPath(version: String): File =
@@ -67,7 +68,7 @@ object KotlinArtifactsDownloader {
         project: Project,
         jpsVersion: String,
         indicator: ProgressIndicator,
-        onError: (String) -> Unit,
+        onError: (@Nls(capitalization = Nls.Capitalization.Sentence) String) -> Unit,
     ): Boolean {
         val context = LazyKotlinJpsPluginClasspathDownloader.Context(project, indicator)
         val jpsPluginClasspath = LazyKotlinJpsPluginClasspathDownloader(jpsVersion).lazyDownload(context)
@@ -178,7 +179,7 @@ object KotlinArtifactsDownloader {
         val repos = getMavenRepos(project) + additionalMavenRepos
 
         return JarRepositoryManager.loadDependenciesSync(project, prop, false, false, null, repos, indicator)
-            .map { File(it.file.toVirtualFileUrl(VirtualFileUrlManager.getInstance(project)).presentableUrl).canonicalFile }
+            .map { VfsUtilCore.virtualToIoFile(it.file).canonicalFile }
             .distinct()
     }
 
@@ -232,8 +233,11 @@ object KotlinArtifactsDownloader {
     private fun getMavenRepos(project: Project): List<RemoteRepositoryDescription> =
         RemoteRepositoriesConfiguration.getInstance(project).repositories
 
-    @Nls
-    fun failedToDownloadUnbundledJpsMavenArtifact(project: Project, artifactId: String, version: String): String {
+    fun failedToDownloadUnbundledJpsMavenArtifact(
+        project: Project,
+        artifactId: String,
+        version: String,
+    ): @Nls(capitalization = Nls.Capitalization.Sentence) String {
         require(artifactId == KOTLIN_JPS_PLUGIN_PLUGIN_ARTIFACT_ID || artifactId == KOTLIN_DIST_FOR_JPS_META_ARTIFACT_ID) {
             "$artifactId should be either $KOTLIN_JPS_PLUGIN_PLUGIN_ARTIFACT_ID or $KOTLIN_DIST_FOR_JPS_META_ARTIFACT_ID"
         }

@@ -22,7 +22,6 @@ import com.intellij.ui.components.JBLoadingPanel
 import com.intellij.ui.jcef.JBCefBrowserBase.ErrorPage
 import com.intellij.ui.jcef.JCEFHtmlPanel
 import com.intellij.util.Alarm
-import com.intellij.util.AlarmFactory
 import com.intellij.util.ui.UIUtil
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
@@ -33,10 +32,10 @@ import java.beans.PropertyChangeListener
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.JComponent
 
-internal class HTMLFileEditor(private val project: Project, private val file: LightVirtualFile, url: String) : UserDataHolderBase(), FileEditor {
+class HTMLFileEditor(private val project: Project, private val file: LightVirtualFile, url: String) : UserDataHolderBase(), FileEditor {
   private val loadingPanel = JBLoadingPanel(BorderLayout(), this)
-  private val contentPanel = JCEFHtmlPanel(true, null, null)
-  private val alarm = AlarmFactory.getInstance().create(Alarm.ThreadToUse.SWING_THREAD, this)
+  val contentPanel = JCEFHtmlPanel(true, null, null)
+  private val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
   private val initial = AtomicBoolean(true)
   private val navigating = AtomicBoolean(false)
 

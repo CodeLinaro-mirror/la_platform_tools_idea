@@ -3,6 +3,11 @@
   "fixed": false,
   "ui": [
     {
+      "key": "ActionButton.separatorColor",
+      "description": "ActionButton separator line color",
+      "since": "2023.1"
+    },
+    {
       "key": "Banner.infoBackground"
     },
     {
@@ -505,12 +510,21 @@
       "description": "GotIt tooltip shortcuts foreground color if different from ToolTip.shortcutForeground"
     },
     {
+      "key": "GotItTooltip.shortcutBackground",
+      "description": "GotIt tooltip shortcuts rounded background color if different from GotItTooltip.background"
+    },
+    {
       "key": "GotItTooltip.borderColor",
       "description": "GotIt tooltip border color if different from ToolTip.borderColor"
     },
     {
       "key": "GotItTooltip.linkForeground",
       "description": "GotIt tooltip link foreground color if different from Link.activeForeground"
+    },
+    {
+      "key": "GotItTooltip.stepForeground",
+      "description": "GotIt tooltip step number foreground color if different from GotItTooltip.foreground",
+      "since": "2023.1"
     },
     {
       "key": "GotItTooltip.Header.foreground",
@@ -561,6 +575,46 @@
       "key": "GotItTooltip.endBorderColor",
       "description": "Use GotItTooltip.Button.endBorderColor",
       "deprecated": true
+    },
+    {
+      "key": "GotItTooltip.insets",
+      "description": "GotIt tooltip content insets",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.textInset",
+      "description": "GotIt tooltip inset between header and description, and description and link",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.buttonTopInset",
+      "description": "GotIt tooltip inset between description and button",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.buttonBottomInset",
+      "description": "GotIt tooltip additional bottom inset if there is a button",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.iconInset",
+      "description": "GotIt tooltip inset between step number/icon and header/description",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.imageTopInset",
+      "description": "GotIt tooltip additional top inset if there is an image",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.imageBottomInset",
+      "description": "GotIt tooltip inset between image and header/description",
+      "since": "2023.1"
+    },
+    {
+      "key": "GotItTooltip.arc",
+      "description": "GotIt tooltip radius of the rounded corners",
+      "since": "2023.1"
     },
     {
       "key": "Group.disabledSeparatorColor"
@@ -1265,6 +1319,11 @@
       "description": "A background of a hovered row in an unfocused tree if hover is allowed."
     },
     {
+      "key": "Tree.Selection.arc",
+      "since": "2023",
+      "description": "Selection border corners radius in tree selection"
+    },
+    {
       "key": "Table.hoverBackground",
       "since": "2020.3",
       "description": "A background of a hovered row in a focused table if hover is allowed."
@@ -1365,6 +1424,11 @@
       "key": "ToolBar.horizontalToolbarInsets",
       "description": "Default insets for horizontal action toolbars",
       "since": "2022.1"
+    },
+    {
+      "key": "ToolBar.separatorColor",
+      "description": "ToolBar separator line color",
+      "since": "2023.1"
     },
     {
       "key": "ToolBar.verticalToolbarInsets",
@@ -1699,6 +1763,10 @@
       "description": "Background for project actions buttons"
     },
     {
+      "key": "WelcomeScreen.Projects.actions.selectionBorderColor",
+      "description": "Border color of selected action"
+    },
+    {
       "key": "Window.border",
       "description": "Dialog border. Format: \"top,left,bottom,right,hex\", e.g. \"1,1,1,1,FFFFFF\". Sizes in pixels"
     },
@@ -1814,8 +1882,23 @@
       "since": "2022.3"
     },
     {
+      "key": "MainToolbar.background",
+      "description": "Background color of the Main Toolbar",
+      "since": "2022.3"
+    },
+    {
+      "key": "MainToolbar.Dropdown.maxWidth",
+      "description": "Max width for Combo Widgets",
+      "since": "2023.1"
+    },
+    {
       "key": "RunWidget.foreground",
       "description": "Foreground for run widget components and stroke icons",
+      "since": "2022.3"
+    },
+    {
+      "key": "RunWidget.disabledForeground",
+      "description": "Foreground for run widget components and stroke icons in disable state",
       "since": "2022.3"
     },
     {
@@ -1842,6 +1925,33 @@
       "key": "RunWidget.separatorColor",
       "description": "The color for separator in run widget",
       "since": "2022.3"
+    },
+    {
+      "key": "MainWindow.Tab.selectedForeground"
+    },
+    {
+      "key": "MainWindow.Tab.selectedBackground"
+    },
+    {
+      "key": "MainWindow.Tab.selectedInactiveBackground"
+    },
+    {
+      "key": "MainWindow.Tab.foreground"
+    },
+    {
+      "key": "MainWindow.Tab.background"
+    },
+    {
+      "key": "MainWindow.Tab.hoverForeground"
+    },
+    {
+      "key": "MainWindow.Tab.hoverBackground"
+    },
+    {
+      "key": "MainWindow.Tab.separatorColor"
+    },
+    {
+      "key": "MainWindow.Tab.borderColor"
     }
   ]
 }

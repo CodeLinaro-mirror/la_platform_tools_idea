@@ -361,7 +361,9 @@ public final class AdvancedEnhancer extends AbstractClassGenerator
 
   @NotNull
   private List<Object> createKey() {
-    List<Object> tuple = ContainerUtil.newArrayList(Arrays.asList(callbackTypes), (useFactory ? 1 : 0) + (interceptDuringConstruction ? 2 : 0));
+    List<Object> tuple = new ArrayList<>();
+    tuple.add(Arrays.asList(callbackTypes));
+    tuple.add((useFactory ? 1 : 0) + (interceptDuringConstruction ? 2 : 0));
     if (superclass != null) tuple.add(superclass.getName());
     if (interfaces != null) {
       tuple.addAll(ContainerUtil.map(interfaces, Class::getName));
@@ -651,7 +653,7 @@ public final class AdvancedEnhancer extends AbstractClassGenerator
     }
   }
 
-  private void emitConstructors(ClassEmitter ce, List<MethodInfo> constructors) {
+  private void emitConstructors(ClassEmitter ce, List<? extends MethodInfo> constructors) {
     boolean seenNull = false;
     for (final MethodInfo constructor : constructors) {
       CodeEmitter e = EmitUtils.begin_method(ce, constructor, Constants.ACC_PUBLIC);

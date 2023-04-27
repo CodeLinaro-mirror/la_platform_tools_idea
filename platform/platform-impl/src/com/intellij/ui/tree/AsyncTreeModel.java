@@ -1,7 +1,8 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.tree;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
@@ -100,8 +101,8 @@ public final class AsyncTreeModel extends AbstractTreeModel implements Searchabl
     else {
       background = foreground;
     }
-    if (background instanceof Invoker.EDT) {
-      LOG.warn(new Throwable("Background invoker shall not be EDT"));
+    if (background instanceof Invoker.EDT && !ApplicationManager.getApplication().isUnitTestMode()) {
+      LOG.error(new Throwable("Background invoker shall not be EDT"));
     }
     this.model = model;
     this.model.addTreeModelListener(listener);
@@ -692,7 +693,7 @@ public final class AsyncTreeModel extends AbstractTreeModel implements Searchabl
   }
 
   private static final class CommandQueue<T extends Command> {
-    private final Deque<T> deque = new ArrayDeque<>();
+    private final Deque<T> deque = new LinkedList<>();
     private volatile boolean closed;
 
     T get() {
@@ -880,7 +881,7 @@ public final class AsyncTreeModel extends AbstractTreeModel implements Searchabl
     }
 
     private void updatePaths(@NotNull Object oldObject, @NotNull Object newObject) {
-      if (paths.stream().anyMatch(path -> contains(path, oldObject))) {
+      if (ContainerUtil.exists(paths, path -> contains(path, oldObject))) {
         // replace instance of user's object in all internal maps to avoid memory leaks
         List<TreePath> updated = ContainerUtil.map(paths, path -> update(path, oldObject, newObject));
         paths.clear();

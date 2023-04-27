@@ -18,9 +18,6 @@ package org.jetbrains.idea.maven.dom;
 import com.intellij.maven.testFramework.MavenDomTestCase;
 import org.junit.Test;
 
-/**
- * @author Sergey Evdokimov
- */
 public class MavenDomSoftReferencesInParentTest extends MavenDomTestCase {
 
   @Test
@@ -54,22 +51,17 @@ public class MavenDomSoftReferencesInParentTest extends MavenDomTestCase {
                     </build>
                     """);
 
-    createProjectPom("<groupId>test</groupId>\n" +
-                 "<artifactId>project</artifactId>\n" +
-                 "<version>1</version>\n" +
-
-                 "<packaging>jar</packaging>\n" +
-
-                 "<build>\n" +
-                 //"<sourceDirectory><error descr=\"Cannot resolve file 'foo1'\">foo1</error></sourceDirectory>\n" +
-                 //"<testSourceDirectory><error descr=\"Cannot resolve file 'foo2'\">foo2</error></testSourceDirectory>\n" +
-                 //"<scriptSourceDirectory><error descr=\"Cannot resolve file 'foo3'\">foo3</error></scriptSourceDirectory>\n" +
-
-                 "<sourceDirectory><error>foo1</error></sourceDirectory>\n" +
-                 "<testSourceDirectory><error>foo2</error></testSourceDirectory>\n" +
-                 "<scriptSourceDirectory><error>foo3</error></scriptSourceDirectory>\n" +
-                 "</build>\n" +
-                 "");
+    createProjectPom("""
+                       <groupId>test</groupId>
+                       <artifactId>project</artifactId>
+                       <version>1</version>
+                       <packaging>jar</packaging>
+                       <build>
+                       <sourceDirectory><error>foo1</error></sourceDirectory>
+                       <testSourceDirectory><error>foo2</error></testSourceDirectory>
+                       <scriptSourceDirectory><error>foo3</error></scriptSourceDirectory>
+                       </build>
+                       """);
 
     checkHighlighting();
   }

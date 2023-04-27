@@ -1,6 +1,7 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.propertyBased
 
+import com.intellij.codeInsight.codeVision.CodeVisionHost
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.codeInsight.daemon.problems.MemberCollector
 import com.intellij.codeInsight.daemon.problems.MemberUsageCollector
@@ -47,8 +48,10 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
   }
 
   fun testAllFilesWithMemberNameReported() {
+    TestModeFlags.set(CodeVisionHost.isCodeVisionTestKey, true, testRootDisposable)
     RecursionManager.disableMissedCacheAssertions(testRootDisposable)
     PropertyChecker.customized()
+      .rechecking("6NPkvxPGro77DQMBOrenewIECAQCAwoG")
       .withIterationCount(50)
       .checkScenarios { ImperativeCommand(this::doTestAllFilesWithMemberNameReported) }
   }
@@ -107,6 +110,9 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
 
   private data class ScopedMember(val psiMember: PsiMember, var scope: SearchScope)
 
+  /**
+   * @return set of files reported for the element after the change
+   */
   private fun changeSelectedFile(env: ImperativeCommand.Environment,
                                  members: List<ScopedMember>,
                                  fileToChange: PsiJavaFile): Set<VirtualFile>? {
@@ -375,7 +381,7 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
     private class ChangeType(member: PsiMember, env: ImperativeCommand.Environment) : Modification(member, env) {
 
       private val typeElement = env.generateValue(Generator.sampledFrom(findTypeElements(member)), null)
-      private val newType = if (typeElement.type == PsiPrimitiveType.INT) TypeUtils.getStringType(typeElement) else PsiPrimitiveType.INT
+      private val newType = if (typeElement.type == PsiTypes.intType()) TypeUtils.getStringType(typeElement) else PsiTypes.intType()
 
       override fun apply(project: Project) {
         val factory = JavaPsiFacade.getElementFactory(project)
@@ -402,7 +408,7 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
 
       override fun apply(project: Project) {
         val factory = JavaPsiFacade.getElementFactory(project)
-        val param = factory.createParameter(paramName, PsiType.INT)
+        val param = factory.createParameter(paramName, PsiTypes.intType())
         (member as PsiMethod).parameterList.add(param)
       }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.psi.formatter.java;
 
 import com.intellij.formatting.*;
@@ -22,6 +22,7 @@ import com.intellij.psi.impl.source.tree.java.ClassElement;
 import com.intellij.psi.jsp.JspClassLevelDeclarationStatementType;
 import com.intellij.psi.jsp.JspCodeBlockType;
 import com.intellij.psi.tree.IElementType;
+import com.intellij.util.ArrayUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.text.CharArrayUtil;
@@ -645,8 +646,7 @@ public abstract class AbstractJavaBlock extends AbstractBlock implements JavaBlo
 
         Block block = createJavaBlock(child, mySettings, myJavaSettings, childIndent, wrap, alignmentStrategyToUse, childOffset, myFormattingMode);
 
-        if (block instanceof AbstractJavaBlock) {
-          final AbstractJavaBlock javaBlock = (AbstractJavaBlock)block;
+        if (block instanceof AbstractJavaBlock javaBlock) {
           if (nodeType == JavaElementType.METHOD_CALL_EXPRESSION && childType == JavaElementType.REFERENCE_EXPRESSION) {
             javaBlock.setReservedWrap(getReservedWrap(nodeType), nodeType);
             javaBlock.setReservedWrap(getReservedWrap(childType), childType);
@@ -1260,10 +1260,7 @@ public abstract class AbstractJavaBlock extends AbstractBlock implements JavaBlo
     final Block previousBlock = getSubBlocks().get(newChildIndex - 1);
     if (!(previousBlock instanceof AbstractBlock)) return false;
     final IElementType previousElementType = ((AbstractBlock)previousBlock).getNode().getElementType();
-    for (IElementType elementType : elementTypes) {
-      if (previousElementType == elementType) return true;
-    }
-    return false;
+    return ArrayUtil.contains(previousElementType, elementTypes);
   }
 
   @Nullable

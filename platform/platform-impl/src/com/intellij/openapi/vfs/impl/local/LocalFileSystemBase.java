@@ -484,6 +484,7 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
   }
 
   protected static byte @NotNull [] loadFileContent(@NotNull File ioFile, int length) throws IOException {
+    if (0 == length) return new byte[0];
     try (InputStream stream = new FileInputStream(ioFile)) {
       // io_util.c#readBytes allocates custom native stack buffer for io operation with malloc if io request > 8K
       // so let's do buffered requests with buffer size 8192 that will use stack allocated buffer
@@ -687,7 +688,8 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
 
   @Override
   public @NotNull String getCanonicallyCasedName(@NotNull VirtualFile file) {
-    if (file.getParent().isCaseSensitive()) {
+    var parent = file.getParent();
+    if (parent == null || parent.isCaseSensitive()) {
       return super.getCanonicallyCasedName(file);
     }
 
@@ -783,28 +785,17 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
   }
 
   private static @Nullable FileAttributes getAttributesWithCustomTimestamp(VirtualFile file) {
-    var pathStr = FileUtilRt.toSystemDependentName(file.getPath());
-    if (pathStr.length() == 2 && pathStr.charAt(1) == ':') pathStr += '\\';
-    var attributes = FileSystemUtil.getAttributes(pathStr);
+    FileAttributes attributes = FileSystemUtil.getAttributes(FileUtilRt.toSystemDependentName(file.getPath()));
     return copyWithCustomTimestamp(file, attributes);
   }
 
-  protected static @Nullable FileAttributes copyWithCustomTimestamp(@NotNull VirtualFile file, @Nullable FileAttributes attributes) {
-    if (attributes == null) return null;
-
-    for (LocalFileSystemTimestampEvaluator provider : LocalFileSystemTimestampEvaluator.EP_NAME.getExtensionList()) {
-      final Long custom = provider.getTimestamp(file);
-      if (custom != null) {
-        return new FileAttributes(
-          attributes.isDirectory(),
-          attributes.isSpecial(),
-          attributes.isSymLink(),
-          attributes.isHidden(),
-          attributes.length,
-          custom,
-          attributes.isWritable(),
-          attributes.areChildrenCaseSensitive()
-        );
+  private static @Nullable FileAttributes copyWithCustomTimestamp(VirtualFile file, @Nullable FileAttributes attributes) {
+    if (attributes != null) {
+      for (LocalFileSystemTimestampEvaluator provider : LocalFileSystemTimestampEvaluator.EP_NAME.getExtensionList()) {
+        Long custom = provider.getTimestamp(file);
+        if (custom != null) {
+          return attributes.withTimeStamp(custom);
+        }
       }
     }
 

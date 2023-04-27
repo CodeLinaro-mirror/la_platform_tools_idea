@@ -8,9 +8,10 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.extensions.ExtensionNotApplicableException
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.ProjectPostStartupActivity
+import com.intellij.openapi.startup.ProjectActivity
 import org.jetbrains.kotlin.idea.KotlinIcons
 import org.jetbrains.kotlin.idea.KotlinPluginUpdater
 import org.jetbrains.kotlin.idea.compiler.configuration.IdeKotlinVersion
@@ -20,12 +21,14 @@ import org.jetbrains.kotlin.idea.util.application.isHeadlessEnvironment
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
 import org.jetbrains.kotlin.idea.util.isKotlinFileType
 
-class KotlinPluginUpdateCheckerStartActivity : ProjectPostStartupActivity {
-    override suspend fun execute(project: Project) {
+class KotlinPluginUpdateCheckerStartActivity : ProjectActivity {
+    init {
         if (isUnitTestMode() || isHeadlessEnvironment()) {
-            return
+            throw ExtensionNotApplicableException.create()
         }
+    }
 
+    override suspend fun execute(project: Project) {
         val documentListener: DocumentListener = object : DocumentListener {
             override fun documentChanged(e: DocumentEvent) {
                 FileDocumentManager.getInstance().getFile(e.document)?.let { virtualFile ->

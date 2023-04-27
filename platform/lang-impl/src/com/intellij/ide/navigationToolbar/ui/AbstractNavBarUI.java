@@ -31,7 +31,9 @@ import static com.intellij.ide.navbar.ui.UiKt.*;
 
 /**
  * @author Konstantin Bulenkov
+ * @deprecated unused in ide.navBar.v2. If you do a change here, please also update v2 implementation
  */
+@Deprecated
 public abstract class AbstractNavBarUI implements NavBarUI {
   private final static Map<NavBarItem, Map<ImageType, ScaleContext.Cache<BufferedImage>>> cache = new HashMap<>();
 
@@ -42,7 +44,7 @@ public abstract class AbstractNavBarUI implements NavBarUI {
   }
 
   @Override
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public JBInsets getElementPadding() {
     return ExperimentalUI.isNewUI()
            ? JBUI.insets("StatusBar.Breadcrumbs.itemInsets", JBUI.insets(2, 0))

@@ -45,6 +45,7 @@
     <settingsEntryPointIconCustomizer implementation="com.intellij.settingsSync.config.SettingsSyncStatusAction$IconCustomizer"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.settingsSync.SettingsSyncStateStatistics"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.settingsSync.SettingsSyncEventsStatistics"/>
+    <iconMapper mappingFile="SettingsSyncIconMappings.json"/>
     </extensions>
 
   <applicationListeners>
@@ -54,6 +55,7 @@
 
   <extensionPoints>
     <extensionPoint qualifiedName="com.intellij.settingsSyncMigration" interface="com.intellij.settingsSync.SettingsSyncMigration" dynamic="true"/>
+    <extensionPoint interface="com.intellij.settingsSync.SettingsProvider" dynamic="true" name="settingsProvider"/>
   </extensionPoints>
 
   <actions>

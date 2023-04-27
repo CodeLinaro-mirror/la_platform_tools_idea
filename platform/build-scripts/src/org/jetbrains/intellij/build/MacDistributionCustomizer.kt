@@ -8,7 +8,10 @@ import java.nio.file.Path
 import java.util.function.Predicate
 
 abstract class MacDistributionCustomizer(
-  internal val extraExecutables: List<String> = emptyList(),
+  /**
+   * Relative paths to files in macOS distribution which should take 'executable' permissions
+   */
+  val extraExecutables: List<String> = emptyList()
 ) {
   /**
    * Path to icns file containing product icon bundle for macOS distribution
@@ -40,20 +43,20 @@ abstract class MacDistributionCustomizer(
   /**
    * String with declarations of additional file types that should be automatically opened by the application.
    * Example:
-   * <pre>
-   * &lt;dict&gt;
-   *   &lt;key&gt;CFBundleTypeExtensions&lt;/key&gt;
-   *   &lt;array&gt;
-   *     &lt;string&gt;extension&lt;/string&gt;
-   *   &lt;/array&gt;
-   *   &lt;key&gt;CFBundleTypeIconFile&lt;/key&gt;
-   *   &lt;string&gt;path_to_icons.icns&lt;/string&gt;
-   *   &lt;key&gt;CFBundleTypeName&lt;/key&gt;
-   *   &lt;string&gt;File type description&lt;/string&gt;
-   *   &lt;key&gt;CFBundleTypeRole&lt;/key&gt;
-   *   &lt;string&gt;Editor&lt;/string&gt;
-   * &lt;/dict&gt;
-   * </pre>
+   * ```
+   * <dict>
+   *   <key>CFBundleTypeExtensions</key>
+   *   <array>
+   *     <string>extension</string>
+   *   </array>
+   *   <key>CFBundleTypeIconFile</key>
+   *   <string>path_to_icons.icns</string>
+   *   <key>CFBundleTypeName</key>
+   *   <string>File type description</string>
+   *   <key>CFBundleTypeRole</key>
+   *   <string>Editor</string>
+   * </dict>
+   * ```
    */
   var additionalDocTypes = ""
 
@@ -119,11 +122,11 @@ abstract class MacDistributionCustomizer(
    * @param context build context that contains information about build directories, product properties and application info
    * @param targetDirectory application bundle directory
    */
-  open fun copyAdditionalFiles(context: BuildContext, targetDirectory: String) {
+  open fun copyAdditionalFiles(context: BuildContext, targetDirectory: Path) {
     copyAdditionalFilesBlocking(context, targetDirectory)
   }
 
-  protected open fun copyAdditionalFilesBlocking(context: BuildContext, targetDirectory: String) {
+  protected open fun copyAdditionalFilesBlocking(context: BuildContext, targetDirectory: Path) {
   }
 
   /**
@@ -142,5 +145,23 @@ abstract class MacDistributionCustomizer(
   }
 
   protected open fun copyAdditionalFilesBlocking(context: BuildContext, targetDirectory: Path, arch: JvmArchitecture) {
+  }
+
+  open fun generateExecutableFilesPatterns(context: BuildContext, includeRuntime: Boolean, arch: JvmArchitecture): List<String> {
+    var executableFilePatterns = persistentListOf(
+      "bin/*.sh",
+      "plugins/**/*.sh",
+      "bin/fsnotifier",
+      "bin/printenv",
+      "bin/restarter",
+      "MacOS/*"
+    )
+    executableFilePatterns.addAll(RepairUtilityBuilder.executableFilesPatterns(context))
+    if (includeRuntime) {
+      executableFilePatterns = executableFilePatterns.addAll(context.bundledRuntime.executableFilesPatterns(OsFamily.MACOS, context))
+    }
+    return executableFilePatterns
+      .addAll(extraExecutables)
+      .addAll(context.getExtraExecutablePattern(OsFamily.MACOS))
   }
 }

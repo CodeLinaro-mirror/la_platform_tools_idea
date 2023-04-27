@@ -14,8 +14,8 @@ import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.KotlinLanguage
+import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.safeAnalyzeNonSourceRootCode
 import org.jetbrains.kotlin.idea.parameterInfo.HintsTypeRenderer
 import org.jetbrains.kotlin.psi.*
@@ -29,10 +29,10 @@ import org.jetbrains.kotlin.types.isError
  *
  * Test - [org.jetbrains.kotlin.idea.codeInsight.hints.KotlinCallChainHintsProviderTest]
  */
-class KotlinCallChainHintsProvider : AbstractCallChainHintsProvider<KtQualifiedExpression, KotlinType, BindingContext>() {
+open class KotlinCallChainHintsProvider : AbstractCallChainHintsProvider<KtQualifiedExpression, KotlinType, BindingContext>() {
 
     override val group: InlayGroup
-        get() = InlayGroup.TYPES_GROUP
+        get() = InlayGroup.METHOD_CHAINS_GROUP
 
     override val previewText: String
         get() = """
@@ -65,7 +65,7 @@ class KotlinCallChainHintsProvider : AbstractCallChainHintsProvider<KtQualifiedE
     override fun getCaseDescription(case: ImmediateConfigurable.Case): String? = case.extendedDescription
 
     override fun createFile(project: Project, fileType: FileType, document: Document): PsiFile =
-        KotlinAbstractHintsProvider.createKtFile(project, document, fileType)
+        createKtFile(project, document, fileType)
 
     override fun KotlinType.getInlayPresentation(
         expression: PsiElement,
@@ -76,7 +76,7 @@ class KotlinCallChainHintsProvider : AbstractCallChainHintsProvider<KtQualifiedE
         val inlayInfoDetails = HintsTypeRenderer
             .getInlayHintsTypeRenderer(context, expression as? KtElement ?: error("Only Kotlin psi are possible"))
             .renderTypeIntoInlayInfo(this)
-        return KotlinAbstractHintsProvider.getInlayPresentationForInlayInfoDetails(
+        return getInlayPresentationForInlayInfoDetails(
             expression,
             null,
             InlayInfoDetails(InlayInfo("", expression.textRange.endOffset), inlayInfoDetails),

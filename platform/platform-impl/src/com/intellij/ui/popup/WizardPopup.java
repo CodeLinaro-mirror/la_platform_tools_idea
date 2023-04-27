@@ -204,7 +204,7 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
         targetBounds.x = getParent().getBounds().x - targetBounds.width - STEP_X_PADDING;
       }
     } else {
-      ScreenUtil.moveToFit(targetBounds, ScreenUtil.getScreenRectangle(aScreenX + 1, aScreenY + 1), null);
+      ScreenUtil.moveToFit(targetBounds, ScreenUtil.getScreenRectangle(aScreenX + size.width / 2, aScreenY + 1), null);
     }
 
     if (getParent() == null && myIsActiveRoot) {
@@ -382,11 +382,15 @@ public abstract class WizardPopup extends AbstractPopup implements ActionListene
     }
 
     myMnemonicsSearch.processKeyEvent(event);
-    mySpeedSearch.processKeyEvent(event);
+    processKeyEvent(event);
 
     if (event.isConsumed()) return true;
     process(event);
     return event.isConsumed();
+  }
+
+  protected void processKeyEvent(@NotNull KeyEvent e) {
+    mySpeedSearch.processKeyEvent(e);
   }
 
   private boolean proceedKeyEvent(KeyEvent event, KeyStroke stroke) {

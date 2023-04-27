@@ -10,12 +10,15 @@ import com.intellij.diagnostic.telemetry.IJTracer;
 import com.intellij.diagnostic.telemetry.TraceManager;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.client.ClientAppSession;
+import com.intellij.openapi.client.ClientKind;
+import com.intellij.openapi.client.ClientSessionsManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerListener;
+import com.intellij.openapi.project.ProjectCloseListener;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.patterns.ElementPattern;
@@ -26,10 +29,7 @@ import com.intellij.util.messages.SimpleMessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static com.intellij.diagnostic.telemetry.TraceKt.runWithSpan;
 
@@ -40,27 +40,97 @@ public final class CompletionServiceImpl extends BaseCompletionService {
   private static final Logger LOG = Logger.getInstance(CompletionServiceImpl.class);
 
   private static final CompletionPhaseHolder DEFAULT_PHASE_HOLDER = new CompletionPhaseHolder(CompletionPhase.NoCompletion, null);
-  private static final Map<ClientId, CompletionPhaseHolder> clientId2Holders = new ConcurrentHashMap<>();
 
   private final IJTracer myCompletionTracer = TraceManager.INSTANCE.getTracer("codeCompletion");
+
+  private static class ClientCompletionService implements Disposable {
+    @Nullable
+    public static ClientCompletionService tryGetInstance(@Nullable ClientAppSession session) {
+      if (session == null)
+        return null;
+      return session.getService(ClientCompletionService.class);
+    }
+
+    @NotNull
+    private final ClientAppSession myAppSession;
+
+    @NotNull
+    private volatile CompletionPhaseHolder myPhaseHolder = DEFAULT_PHASE_HOLDER;
+
+    ClientCompletionService(@NotNull ClientAppSession appSession) {
+      myAppSession = appSession;
+    }
+
+    @Override
+    public void dispose() {
+      Disposer.dispose(myPhaseHolder.phase);
+    }
+
+    public void setCompletionPhase(@NotNull CompletionPhase phase) {
+      // wrap explicitly with client id for the case when some called API depends on ClientId.current
+      try (AccessToken ignored = ClientId.withClientId(myAppSession.getClientId())) {
+        ApplicationManager.getApplication().assertIsDispatchThread();
+        CompletionPhase oldPhase = getCompletionPhase();
+        CompletionProgressIndicator oldIndicator = oldPhase.indicator;
+        if (oldIndicator != null &&
+            !(phase instanceof CompletionPhase.BgCalculation) &&
+            oldIndicator.isRunning() &&
+            !oldIndicator.isCanceled()) {
+          LOG.error("don't change phase during running completion: oldPhase=" + oldPhase);
+        }
+        boolean wasCompletionRunning = isRunningPhase(oldPhase);
+        boolean isCompletionRunning = isRunningPhase(phase);
+        if (isCompletionRunning != wasCompletionRunning) {
+          ApplicationManager.getApplication().getMessageBus().syncPublisher(CompletionPhaseListener.TOPIC)
+            .completionPhaseChanged(isCompletionRunning);
+        }
+
+        Disposer.dispose(oldPhase);
+        Throwable phaseTrace = new Throwable();
+        myPhaseHolder = new CompletionPhaseHolder(phase, phaseTrace);
+      }
+    }
+
+    public @NotNull CompletionPhase getCompletionPhase() {
+      return getCompletionPhaseHolder().phase;
+    }
+
+    public @NotNull CompletionPhaseHolder getCompletionPhaseHolder() {
+      return myPhaseHolder;
+    }
+
+    public CompletionProgressIndicator getCurrentCompletionProgressIndicator() {
+      return getCurrentCompletionProgressIndicator(getCompletionPhase());
+    }
+
+    public CompletionProgressIndicator getCurrentCompletionProgressIndicator(@NotNull CompletionPhase phase) {
+      if (isPhase(phase, CompletionPhase.BgCalculation.class, CompletionPhase.ItemsCalculated.class,
+                  CompletionPhase.CommittingDocuments.class, CompletionPhase.Synchronous.class)) {
+        return phase.indicator;
+      }
+      return null;
+    }
+  }
 
   public CompletionServiceImpl() {
     super();
     SimpleMessageBusConnection connection = ApplicationManager.getApplication().getMessageBus().simpleConnect();
-    connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
+    connection.subscribe(ProjectCloseListener.TOPIC, new ProjectCloseListener() {
       @Override
       public void projectClosing(@NotNull Project project) {
-        List<ClientId> clientIds = new ArrayList<>(clientId2Holders.keySet());  // original set might be modified during iteration
-        for (ClientId clientId : clientIds) {
-          try (AccessToken ignored = ClientId.withClientId(clientId)) {
-            CompletionProgressIndicator indicator = getCurrentCompletionProgressIndicator(clientId);
-            if (indicator != null && indicator.getProject() == project) {
-              indicator.closeAndFinish(true);
-              setCompletionPhase(clientId, CompletionPhase.NoCompletion);
-            }
-            else if (indicator == null) {
-              setCompletionPhase(clientId, CompletionPhase.NoCompletion);
-            }
+        List<ClientAppSession> sessions = ClientSessionsManager.getAppSessions(ClientKind.ALL);
+        for (ClientAppSession session : sessions) {
+          ClientCompletionService clientCompletionService = ClientCompletionService.tryGetInstance(session);
+          if (clientCompletionService == null)
+            continue;
+
+          CompletionProgressIndicator indicator = clientCompletionService.getCurrentCompletionProgressIndicator();
+          if (indicator != null && indicator.getProject() == project) {
+            indicator.closeAndFinish(true);
+            clientCompletionService.setCompletionPhase(CompletionPhase.NoCompletion);
+          }
+          else if (indicator == null) {
+            clientCompletionService.setCompletionPhase(CompletionPhase.NoCompletion);
           }
         }
       }
@@ -68,11 +138,12 @@ public final class CompletionServiceImpl extends BaseCompletionService {
     connection.subscribe(DynamicPluginListener.TOPIC, new DynamicPluginListener() {
       @Override
       public void beforePluginUnload(@NotNull IdeaPluginDescriptor pluginDescriptor, boolean isUpdate) {
-        List<ClientId> clientIds = new ArrayList<>(clientId2Holders.keySet());  // original set might be modified during iteration
-        for (ClientId clientId : clientIds) {
-          try (AccessToken ignored = ClientId.withClientId(clientId)) {
-            setCompletionPhase(clientId, CompletionPhase.NoCompletion);
-          }
+        List<ClientAppSession> sessions = ClientSessionsManager.getAppSessions(ClientKind.ALL);
+        for (ClientAppSession session : sessions) {
+          ClientCompletionService clientCompletionService = ClientCompletionService.tryGetInstance(session);
+          if (clientCompletionService == null)
+            continue;
+          clientCompletionService.setCompletionPhase(CompletionPhase.NoCompletion);
         }
       }
     });
@@ -85,12 +156,8 @@ public final class CompletionServiceImpl extends BaseCompletionService {
 
   @Override
   public void setAdvertisementText(@NlsContexts.PopupAdvertisement @Nullable final String text) {
-    setAdvertisementText(ClientId.getCurrent(), text);
-  }
-
-  private static void setAdvertisementText(@NotNull ClientId clientId, @NlsContexts.PopupAdvertisement @Nullable final String text) {
     if (text == null) return;
-    final CompletionProgressIndicator completion = getCurrentCompletionProgressIndicator(clientId);
+    final CompletionProgressIndicator completion = getCurrentCompletionProgressIndicator();
     if (completion != null) {
       completion.addAdvertisement(text, null);
     }
@@ -106,31 +173,21 @@ public final class CompletionServiceImpl extends BaseCompletionService {
 
   @Override
   public CompletionProcess getCurrentCompletion() {
-    return getCurrentCompletion(ClientId.getCurrent());
-  }
-
-  private CompletionProcess getCurrentCompletion(@NotNull ClientId clientId) {
-    CompletionProgressIndicator indicator = getCurrentCompletionProgressIndicator(clientId);
+    CompletionProgressIndicator indicator = getCurrentCompletionProgressIndicator();
     if (indicator != null) {
       return indicator;
     }
-    return clientId.equals(ClientId.getLocalId()) ? myApiCompletionProcess : null;
+    // TODO we have to move myApiCompletionProcess inside per client service somehow
+    // also shouldn't we delegate here to base method instead of accessing the field of the base class?
+    return ClientId.isCurrentlyUnderLocalId() ? myApiCompletionProcess : null;
   }
 
+  @Nullable
   public static CompletionProgressIndicator getCurrentCompletionProgressIndicator() {
-    return getCurrentCompletionProgressIndicator(ClientId.getCurrent());
-  }
-
-  private static CompletionProgressIndicator getCurrentCompletionProgressIndicator(@NotNull ClientId clientId) {
-    return getCurrentCompletionProgressIndicator(getCompletionPhase(clientId));
-  }
-
-  private static CompletionProgressIndicator getCurrentCompletionProgressIndicator(@NotNull CompletionPhase phase) {
-    if (isPhase(phase, CompletionPhase.BgCalculation.class, CompletionPhase.ItemsCalculated.class,
-                CompletionPhase.CommittingDocuments.class, CompletionPhase.Synchronous.class)) {
-      return phase.indicator;
-    }
-    return null;
+    ClientCompletionService clientCompletionService = ClientCompletionService.tryGetInstance(ClientSessionsManager.getAppSession());
+    if (clientCompletionService == null)
+      return null;
+    return clientCompletionService.getCurrentCompletionProgressIndicator();
   }
 
   private static class CompletionResultSetImpl extends BaseCompletionResultSet {
@@ -195,37 +252,29 @@ public final class CompletionServiceImpl extends BaseCompletionService {
 
   @SafeVarargs
   public static void assertPhase(Class<? extends CompletionPhase> @NotNull ... possibilities) {
-    assertPhase(ClientId.getCurrent(), possibilities);
+    ClientCompletionService clientCompletionService = ClientCompletionService.tryGetInstance(ClientSessionsManager.getAppSession());
+    CompletionPhaseHolder holder =
+      clientCompletionService != null ? clientCompletionService.getCompletionPhaseHolder() : DEFAULT_PHASE_HOLDER;
+    assertPhase(holder, possibilities);
   }
 
   @SafeVarargs
-  private static void assertPhase(@NotNull ClientId clientId, Class<? extends CompletionPhase> @NotNull ... possibilities) {
-    assertPhase(clientId, getCompletionPhaseHolder(clientId), possibilities);
-  }
-
-  @SafeVarargs
-  private static void assertPhase(@NotNull ClientId clientId,
-                                  @NotNull CompletionPhaseHolder phaseHolder,
-                                  Class<? extends CompletionPhase> @NotNull ... possibilities) {
-    if (!isPhase(phaseHolder.getPhase(), possibilities)) {
-      reportPhase(clientId, phaseHolder);
+  private static void assertPhase(@NotNull CompletionPhaseHolder phaseHolder,
+                           Class<? extends CompletionPhase> @NotNull ... possibilities) {
+    if (!isPhase(phaseHolder.phase(), possibilities)) {
+      reportPhase(phaseHolder);
     }
   }
 
-  private static void reportPhase(@NotNull ClientId clientId, @NotNull CompletionPhaseHolder phaseHolder) {
-    Throwable phaseTrace = phaseHolder.getPhaseTrace();
+  private static void reportPhase(@NotNull CompletionPhaseHolder phaseHolder) {
+    Throwable phaseTrace = phaseHolder.phaseTrace();
     String traceText = phaseTrace != null ? "; set at " + ExceptionUtil.getThrowableText(phaseTrace) : "";
-    LOG.error(phaseHolder.getPhase() + "; " + clientId + traceText);
+    LOG.error(phaseHolder.phase() + "; " + ClientId.getCurrent() + traceText);
   }
 
   @SafeVarargs
   public static boolean isPhase(Class<? extends CompletionPhase> @NotNull ... possibilities) {
-    return isPhase(ClientId.getCurrent(), possibilities);
-  }
-
-  @SafeVarargs
-  private static boolean isPhase(@NotNull ClientId clientId, Class<? extends CompletionPhase> @NotNull ... possibilities) {
-    return isPhase(getCompletionPhase(clientId), possibilities);
+    return isPhase(getCompletionPhase(), possibilities);
   }
 
   @SafeVarargs
@@ -239,42 +288,10 @@ public final class CompletionServiceImpl extends BaseCompletionService {
   }
 
   public static void setCompletionPhase(@NotNull CompletionPhase phase) {
-    setCompletionPhase(ClientId.getCurrent(), phase);
-  }
-
-  private static void setCompletionPhase(@NotNull ClientId clientId, @NotNull CompletionPhase phase) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
-    CompletionPhase oldPhase = getCompletionPhase(clientId);
-    CompletionProgressIndicator oldIndicator = oldPhase.indicator;
-    if (oldIndicator != null &&
-        !(phase instanceof CompletionPhase.BgCalculation) &&
-        oldIndicator.isRunning() &&
-        !oldIndicator.isCanceled()) {
-      LOG.error("don't change phase during running completion: oldPhase=" + oldPhase);
-    }
-    boolean wasCompletionRunning = isRunningPhase(oldPhase);
-    boolean isCompletionRunning = isRunningPhase(phase);
-    if (isCompletionRunning != wasCompletionRunning) {
-      ApplicationManager.getApplication().getMessageBus().syncPublisher(CompletionPhaseListener.TOPIC)
-        .completionPhaseChanged(isCompletionRunning);
-    }
-
-    Disposer.dispose(oldPhase);
-    if (isPhase(phase, CompletionPhase.NoCompletion.getClass()) && !ClientId.isValid(clientId)) {
-      clientId2Holders.remove(clientId);
+    ClientCompletionService clientCompletionService = ClientCompletionService.tryGetInstance(ClientSessionsManager.getAppSession());
+    if (clientCompletionService == null)
       return;
-    }
-    Throwable phaseTrace = new Throwable();
-    CompletionPhaseHolder holder = new CompletionPhaseHolder(phase, phaseTrace);
-    CompletionPhaseHolder previous = clientId2Holders.put(clientId, holder);
-    if (previous == null) {
-      Disposer.register(ClientId.toDisposable(clientId), () -> {
-        if (isPhase(clientId, CompletionPhase.NoCompletion.getClass())) {
-          clientId2Holders.remove(clientId);
-        }
-        // Otherwise it's still used (e.g. by CompletionProgressIndicator)
-      });
-    }
+    clientCompletionService.setCompletionPhase(phase);
   }
 
   private static boolean isRunningPhase(@NotNull CompletionPhase phase) {
@@ -283,15 +300,10 @@ public final class CompletionServiceImpl extends BaseCompletionService {
   }
 
   public static @NotNull CompletionPhase getCompletionPhase() {
-    return getCompletionPhase(ClientId.getCurrent());
-  }
-
-  private static @NotNull CompletionPhase getCompletionPhase(@NotNull ClientId clientId) {
-    return getCompletionPhaseHolder(clientId).getPhase();
-  }
-
-  private static @NotNull CompletionPhaseHolder getCompletionPhaseHolder(@NotNull ClientId clientId) {
-    return clientId2Holders.getOrDefault(clientId, DEFAULT_PHASE_HOLDER);
+    ClientCompletionService clientCompletionService = ClientCompletionService.tryGetInstance(ClientSessionsManager.getAppSession());
+    if (clientCompletionService == null)
+      return DEFAULT_PHASE_HOLDER.phase;
+    return clientCompletionService.getCompletionPhase();
   }
 
   @NotNull
@@ -319,6 +331,7 @@ public final class CompletionServiceImpl extends BaseCompletionService {
   protected void getVariantsFromContributor(CompletionParameters params, CompletionContributor contributor, CompletionResultSet result) {
     runWithSpan(myCompletionTracer, contributor.getClass().getSimpleName(), span -> {
       super.getVariantsFromContributor(params, contributor, result);
+      span.setAttribute("avoid_null_value", true);
     });
   }
 
@@ -341,21 +354,6 @@ public final class CompletionServiceImpl extends BaseCompletionService {
     });
   }
 
-  private static class CompletionPhaseHolder {
-    private final @NotNull CompletionPhase ourPhase;
-    private final @Nullable Throwable ourPhaseTrace;
-
-    CompletionPhaseHolder(@NotNull CompletionPhase phase, @Nullable Throwable phaseTrace) {
-      ourPhase = phase;
-      ourPhaseTrace = phaseTrace;
-    }
-
-    @NotNull CompletionPhase getPhase() {
-      return ourPhase;
-    }
-
-    @Nullable Throwable getPhaseTrace() {
-      return ourPhaseTrace;
-    }
+  private record CompletionPhaseHolder(@NotNull CompletionPhase phase, @Nullable Throwable phaseTrace) {
   }
 }

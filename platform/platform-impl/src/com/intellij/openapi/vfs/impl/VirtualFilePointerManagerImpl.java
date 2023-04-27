@@ -18,6 +18,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.io.OSAgnosticPathUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.vfs.*;
 import com.intellij.openapi.vfs.AsyncFileListener.ChangeApplier;
 import com.intellij.openapi.vfs.ex.temp.TempFileSystem;
@@ -249,8 +250,7 @@ public final class VirtualFilePointerManagerImpl extends VirtualFilePointerManag
     if (file == null) {
       String cleanPath = cleanupPath(path);
       // if newly created path is the same as the one extracted from url then the url did not change, we can reuse it
-      //noinspection StringEquality
-      if (cleanPath != path) {
+      if (!Strings.areSameInstance(cleanPath, path)) {
         url = VirtualFileManager.constructUrl(protocol, cleanPath);
         path = cleanPath;
       }
@@ -539,24 +539,11 @@ public final class VirtualFilePointerManagerImpl extends VirtualFilePointerManag
     return container;
   }
 
-  private static class CollectedEvents {
-    private final @NotNull MultiMap<VirtualFilePointerListener, VirtualFilePointerImpl> toFirePointers;
-    private final List<? extends NodeToUpdate> toUpdateNodes;
-    private final List<? extends EventDescriptor> eventList;
-    private final long startModCount;
-    private final long prepareElapsedMs;
-
-    CollectedEvents(@NotNull MultiMap<VirtualFilePointerListener, VirtualFilePointerImpl> toFirePointers,
-                    @NotNull List<? extends NodeToUpdate> toUpdateNodes,
-                    @NotNull List<? extends EventDescriptor> eventList,
-                    long startModCount,
-                    long prepareElapsedMs) {
-      this.toFirePointers = toFirePointers;
-      this.toUpdateNodes = toUpdateNodes;
-      this.eventList = eventList;
-      this.startModCount = startModCount;
-      this.prepareElapsedMs = prepareElapsedMs;
-    }
+  private record CollectedEvents(@NotNull MultiMap<VirtualFilePointerListener, VirtualFilePointerImpl> toFirePointers,
+                                 @NotNull List<? extends NodeToUpdate> toUpdateNodes,
+                                 @NotNull List<? extends EventDescriptor> eventList,
+                                 long startModCount,
+                                 long prepareElapsedMs) {
   }
 
   static class NodeToUpdate {
@@ -736,7 +723,7 @@ public final class VirtualFilePointerManagerImpl extends VirtualFilePointerManag
     }
     myCollectedEvents = null;
     long start = System.currentTimeMillis();
-    ApplicationManager.getApplication().assertIsWriteThread(); // guarantees no attempts to get read action lock under "this" lock
+    ApplicationManager.getApplication().assertWriteIntentLockAcquired(); // guarantees no attempts to get read action lock under "this" lock
     incModificationCount();
 
     //noinspection SynchronizeOnThis

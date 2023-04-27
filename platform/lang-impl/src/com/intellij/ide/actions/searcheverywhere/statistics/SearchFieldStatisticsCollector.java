@@ -3,7 +3,6 @@ package com.intellij.ide.actions.searcheverywhere.statistics;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
-import kotlin.Unit;
 
 import javax.swing.*;
 import java.awt.event.KeyAdapter;
@@ -53,7 +52,6 @@ public final class SearchFieldStatisticsCollector implements Disposable {
       pairs.add(TYPED_NAVIGATION_KEYS.with(myNavKeysTyped));
       pairs.add(TYPED_SYMBOL_KEYS.with(mySymbolKeysTyped));
       pairs.add(DURATION_MS.with(info.getDuration()));
-      return Unit.INSTANCE;
     });
   }
 

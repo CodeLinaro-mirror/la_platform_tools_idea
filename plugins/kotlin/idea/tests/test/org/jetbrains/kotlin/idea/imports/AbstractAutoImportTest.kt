@@ -4,6 +4,7 @@ package org.jetbrains.kotlin.idea.imports
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl
+import com.intellij.util.concurrency.AppExecutorUtil
 import org.jetbrains.kotlin.idea.codeInsight.KotlinCodeInsightSettings
 import org.jetbrains.kotlin.idea.test.*
 import java.io.File
@@ -60,8 +61,10 @@ abstract class AbstractAutoImportTest : KotlinLightCodeInsightFixtureTestCase() 
                     editor, intArrayOf(),
                     /* canChange */ true
                 )
-
-                DaemonCodeAnalyzerImpl.waitForUnresolvedReferencesQuickFixesUnderCaret(myFixture.file, myFixture.editor)
+                AppExecutorUtil.getAppExecutorService().submit {
+                    DaemonCodeAnalyzerImpl.waitForUnresolvedReferencesQuickFixesUnderCaret(myFixture.file, myFixture.editor)
+                }.get()
+                
             } finally {
                 ConfigLibraryUtil.unconfigureLibrariesByDirective(module, originalText)
 

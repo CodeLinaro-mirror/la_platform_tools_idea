@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * @author gregsh
  * @noinspection SpellCheckingInspection, HardCodedStringLiteral
  */
-final class Pluralizer {
+public final class Pluralizer {
   static final Pluralizer PLURALIZER;
 
   private final Map<String, String> irregularSingles = CollectionFactory.createCaseInsensitiveStringMap();
@@ -59,8 +59,8 @@ final class Pluralizer {
    * Pass in a word token to produce a function that can replicate the case on
    * another word.
    */
-  static String restoreCase(String word, String result) {
-    if (word == null || result == null || word == result) return result;
+  public static String restoreCase(String word, String result) {
+    if (word == null || result == null || Strings.areSameInstance(word, result)) return result;
     int len = Math.min(result.length(), word.length());
     if (len == 0) return result;
     char[] chars = result.toCharArray();
@@ -89,7 +89,7 @@ final class Pluralizer {
   /**
    * Sanitize a word by passing in the word and sanitization rules.
    */
-  private String sanitizeWord(String word, List<Map.Entry<Pattern, String>> rules) {
+  private String sanitizeWord(String word, List<? extends Map.Entry<Pattern, String>> rules) {
     if (Strings.isEmpty(word) || uncountables.contains(word)) return word;
 
     int len = rules.size();
@@ -112,7 +112,7 @@ final class Pluralizer {
   private String replaceWord(String word,
                              Map<String, String> replaceMap,
                              Map<String, String> keepMap,
-                             List<Map.Entry<Pattern, String>> rules) {
+                             List<? extends Map.Entry<Pattern, String>> rules) {
     if (Strings.isEmpty(word)) return word;
 
     // Get the correct token and case restoration functions.

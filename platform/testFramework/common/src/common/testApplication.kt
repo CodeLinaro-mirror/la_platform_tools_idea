@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
 
 package com.intellij.testFramework.common
@@ -9,6 +9,7 @@ import com.intellij.codeInsight.hint.HintManagerImpl
 import com.intellij.concurrency.IdeaForkJoinWorkerThreadFactory
 import com.intellij.diagnostic.LoadingState
 import com.intellij.diagnostic.StartUpMeasurer
+import com.intellij.diagnostic.enableCoroutineDump
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.PluginSet
 import com.intellij.idea.*
@@ -27,7 +28,7 @@ import com.intellij.openapi.editor.impl.EditorFactoryImpl
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.impl.FileTypeManagerImpl
 import com.intellij.openapi.progress.ModalTaskOwner
-import com.intellij.openapi.progress.runBlockingModal
+import com.intellij.openapi.progress.runBlockingModalWithRawProgressReporter
 import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.RecursionManager
@@ -66,6 +67,7 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 private var applicationInitializationResult: Result<Unit>? = null
+const val LEAKED_PROJECTS = "leakedProjects"
 
 val isApplicationInitialized: Boolean
   get() = applicationInitializationResult?.isSuccess == true
@@ -99,6 +101,7 @@ fun loadApp() {
 @OptIn(DelicateCoroutinesApi::class)
 @Internal
 fun loadApp(setupEventQueue: Runnable) {
+  enableCoroutineDump()
   val isHeadless = UITestUtil.getAndSetHeadlessProperty()
   AppMode.setHeadlessInTestMode(isHeadless)
   PluginManagerCore.isUnitTestMode = true
@@ -142,7 +145,7 @@ private fun loadAppInUnitTestMode(isHeadless: Boolean) {
     Registry.markAsLoaded()
 
     if (EDT.isCurrentThreadEdt()) {
-      runBlockingModal(ModalTaskOwner.guess(), "") {
+      runBlockingModalWithRawProgressReporter(ModalTaskOwner.guess(), "") {
         preloadServicesAndCallAppInitializedListeners(app, pluginSet)
       }
     }
@@ -168,6 +171,7 @@ private suspend fun preloadServicesAndCallAppInitializedListeners(app: Applicati
         modules = pluginSet.getEnabledModules(),
         activityPrefix = "",
         syncScope = this,
+        asyncScope = app.coroutineScope,
       )
     }
 
@@ -176,7 +180,7 @@ private suspend fun preloadServicesAndCallAppInitializedListeners(app: Applicati
         loadComponentInEdtTask()
       }
     }
-    app.loadComponents()
+    app.loadAppComponents()
   }
 
   coroutineScope {
@@ -296,12 +300,12 @@ fun assertNonDefaultProjectsAreNotLeaked() {
     LeakHunter.checkNonDefaultProjectLeak()
   }
   catch (e: AssertionError) {
-    publishHeapDump("leakedProjects")
-    throw e
+    publishHeapDump(LEAKED_PROJECTS)
+    throw AssertionError(e)
   }
   catch (e: Exception) {
-    publishHeapDump("leakedProjects")
-    throw e
+    publishHeapDump(LEAKED_PROJECTS)
+    throw AssertionError(e)
   }
 }
 

@@ -12,16 +12,16 @@ import com.intellij.openapi.externalSystem.util.ui.DataView
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory.createSingleLocalFileDescriptor
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
-import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.graphProperty
 import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.observable.properties.transform
-import com.intellij.openapi.observable.properties.map
+import com.intellij.openapi.observable.util.trim
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.ui.BrowseFolderDescriptor.Companion.withPathToTextConvertor
+import com.intellij.openapi.ui.BrowseFolderDescriptor.Companion.withTextToPathConvertor
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.openapi.ui.getCanonicalPath
 import com.intellij.openapi.ui.getPresentablePath
 import com.intellij.openapi.util.io.FileUtil.*
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SortedComboBoxModel
 import com.intellij.ui.layout.*
@@ -40,19 +40,19 @@ abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardConte
   abstract fun findAllParents(): List<Data>
 
   private val propertyGraph = PropertyGraph()
-  private val entityNameProperty = propertyGraph.graphProperty(::suggestName)
-  private val locationProperty = propertyGraph.graphProperty { suggestLocationByName() }
-  private val parentProperty = propertyGraph.graphProperty(::suggestParentByLocation)
-  private val groupIdProperty = propertyGraph.graphProperty(::suggestGroupIdByParent)
-  private val artifactIdProperty = propertyGraph.graphProperty(::suggestArtifactIdByName)
-  private val versionProperty = propertyGraph.graphProperty(::suggestVersionByParent)
+  private val entityNameProperty = propertyGraph.lazyProperty(::suggestName)
+  private val locationProperty = propertyGraph.lazyProperty(::suggestLocationByName)
+  private val parentProperty = propertyGraph.lazyProperty(::suggestParentByLocation)
+  private val groupIdProperty = propertyGraph.lazyProperty(::suggestGroupIdByParent)
+  private val artifactIdProperty = propertyGraph.lazyProperty(::suggestArtifactIdByName)
+  private val versionProperty = propertyGraph.lazyProperty(::suggestVersionByParent)
 
-  var entityName by entityNameProperty.map { it.trim() }
+  var entityName by entityNameProperty.trim()
   var location by locationProperty
   var parent by parentProperty
-  var groupId by groupIdProperty.map { it.trim() }
-  var artifactId by artifactIdProperty.map { it.trim() }
-  var version by versionProperty.map { it.trim() }
+  var groupId by groupIdProperty.trim()
+  var artifactId by artifactIdProperty.trim()
+  var version by versionProperty.trim()
 
   val parents by lazy { parentsData.map(::createView) }
   val parentsData by lazy { findAllParents() }
@@ -66,8 +66,8 @@ abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardConte
     entityNameProperty.dependsOn(locationProperty, ::suggestNameByLocation)
     entityNameProperty.dependsOn(artifactIdProperty, ::suggestNameByArtifactId)
     parentProperty.dependsOn(locationProperty, ::suggestParentByLocation)
-    locationProperty.dependsOn(parentProperty) { suggestLocationByParentAndName() }
-    locationProperty.dependsOn(entityNameProperty) { suggestLocationByParentAndName() }
+    locationProperty.dependsOn(parentProperty, ::suggestLocationByParentAndName)
+    locationProperty.dependsOn(entityNameProperty, ::suggestLocationByParentAndName)
     groupIdProperty.dependsOn(parentProperty, ::suggestGroupIdByParent)
     artifactIdProperty.dependsOn(entityNameProperty, ::suggestArtifactIdByName)
     versionProperty.dependsOn(parentProperty, ::suggestVersionByParent)
@@ -93,11 +93,13 @@ abstract class MavenizedStructureWizardStep<Data : Any>(val context: WizardConte
         installNameGenerators(getBuilderId(), entityNameProperty)
       }
       row(ExternalSystemBundle.message("external.system.mavenized.structure.wizard.location.label")) {
-        val fileChooserDescriptor = createSingleLocalFileDescriptor().withFileFilter { it.isDirectory }
-        val fileChosen = { file: VirtualFile -> getPresentablePath(file.path) }
+        val fileChooserDescriptor = createSingleLocalFileDescriptor()
+          .withFileFilter { it.isDirectory }
+          .withPathToTextConvertor(::getPresentablePath)
+          .withTextToPathConvertor(::getCanonicalPath)
         val title = IdeBundle.message("title.select.project.file.directory", context.presentationName)
         val property = locationProperty.transform(::getPresentablePath, ::getCanonicalPath)
-        textFieldWithBrowseButton(property, title, context.project, fileChooserDescriptor, fileChosen)
+        textFieldWithBrowseButton(property, title, context.project, fileChooserDescriptor)
           .withValidationOnApply { validateLocation() }
           .withValidationOnInput { validateLocation() }
       }

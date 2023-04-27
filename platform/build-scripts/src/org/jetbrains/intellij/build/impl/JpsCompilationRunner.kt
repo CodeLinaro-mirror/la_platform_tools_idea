@@ -41,6 +41,9 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.function.BiConsumer
+import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
+import kotlin.io.path.listDirectoryEntries
 
 internal class JpsCompilationRunner(private val context: CompilationContext) {
   private val compilationData = context.compilationData
@@ -165,17 +168,62 @@ internal class JpsCompilationRunner(private val context: CompilationContext) {
         context.compilationData.builtArtifacts.remove(it.name)
       }
     }
-    val modules = if (buildIncludedModules) getModulesIncludedInArtifacts(artifacts) else emptyList()
+    val includedModules = getModulesIncludedInArtifacts(artifacts)
+    val modules = if (buildIncludedModules) includedModules
+    else {
+      includedModules.filter {
+        val module = context.findRequiredModule(it)
+        val outputDir = context.getModuleOutputDir(module)
+        if (outputDir.exists() &&
+            outputDir.isDirectory() &&
+            outputDir.listDirectoryEntries().isNotEmpty()) false
+        else {
+          /**
+           * See [compileMissingArtifactsModules]
+           */
+          context.messages.warning("Compilation output of module $it is missing: $outputDir")
+          true
+        }
+      }
+    }
     runBuild(moduleSet = modules,
              allModules = false,
              artifactNames = artifacts.map { it.name },
              includeTests = false,
              resolveProjectDependencies = false)
-    artifacts.forEach {
+    val failedToBeBuilt = artifacts.filter {
       if (it.outputFilePath?.let(Path::of)?.let(Files::exists) == true) {
         context.messages.info("${it.name} was successfully built at ${it.outputFilePath}")
+        false
       }
       else {
+        context.messages.warning("${it.name} is expected to be built at ${it.outputFilePath}")
+        true
+      }
+    }
+    if (failedToBeBuilt.isNotEmpty()) {
+      compileMissingArtifactsModules(failedToBeBuilt)
+    }
+  }
+
+  // FIXME: workaround for sporadically missing build artifacts, to be investigated
+  private fun compileMissingArtifactsModules(artifacts: Collection<JpsArtifact>) {
+    val modules = getModulesIncludedInArtifacts(artifacts)
+    require(modules.isNotEmpty()) {
+      "No modules found for artifacts ${artifacts.map { it.name }}"
+    }
+    artifacts.forEach {
+      context.compilationData.builtArtifacts.remove(it.name)
+    }
+    context.messages.block("Compiling modules for missing artifacts: ${modules.joinToString()}") {
+      runBuild(moduleSet = modules,
+               allModules = false,
+               artifactNames = artifacts.map { it.name },
+               includeTests = false,
+               resolveProjectDependencies = false)
+    }
+    artifacts.forEach {
+      if (it.outputFilePath?.let(Path::of)?.let(Files::exists) == false) {
         context.messages.error("${it.name} is expected to be built at ${it.outputFilePath}")
       }
     }
@@ -212,7 +260,7 @@ internal class JpsCompilationRunner(private val context: CompilationContext) {
                             "will be written to $buildLogFile")
     }
     catch (t: Throwable) {
-      context.messages.warning("Cannot setup additional logging to $buildLogFile.absolutePath: ${t.message}")
+      context.messages.warning("Cannot setup additional logging to $buildLogFile: ${t.message}")
     }
   }
 
@@ -221,78 +269,87 @@ internal class JpsCompilationRunner(private val context: CompilationContext) {
                        artifactNames: Collection<String>,
                        includeTests: Boolean,
                        resolveProjectDependencies: Boolean) {
-    messageHandler = JpsMessageHandler(context)
-    if (context.options.compilationLogEnabled) {
-      setupAdditionalBuildLogging(compilationData)
-    }
+    synchronized(context.paths.projectHome.toString().intern()) {
+      messageHandler = JpsMessageHandler(context)
+      if (context.options.compilationLogEnabled) {
+        setupAdditionalBuildLogging(compilationData)
+      }
 
-    Logger.setFactory(JpsLoggerFactory::class.java)
-    val forceBuild = !context.options.incrementalCompilation
-    val scopes = ArrayList<TargetTypeBuildScope>()
-    for (type in JavaModuleBuildTargetType.ALL_TYPES) {
-      if (includeTests || !type.isTests) {
-        val namesToCompile = if (allModules) context.project.modules.mapTo(mutableListOf()) { it.name } else moduleSet.toMutableList()
-        if (type.isTests) {
-          namesToCompile.removeAll(compilationData.compiledModuleTests)
-          compilationData.compiledModuleTests.addAll(namesToCompile)
-        }
-        else {
-          namesToCompile.removeAll(compilationData.compiledModules)
-          compilationData.compiledModules.addAll(namesToCompile)
-        }
-        if (namesToCompile.isEmpty()) {
-          continue
-        }
+      Logger.setFactory(JpsLoggerFactory::class.java)
+      val forceBuild = !context.options.incrementalCompilation ||
+                       !context.compilationData.dataStorageRoot.exists() ||
+                       !context.compilationData.dataStorageRoot.isDirectory() ||
+                       Files.newDirectoryStream(context.compilationData.dataStorageRoot).use { it.count() } == 0
+      val scopes = ArrayList<TargetTypeBuildScope>()
+      for (type in JavaModuleBuildTargetType.ALL_TYPES) {
+        if (includeTests || !type.isTests) {
+          val namesToCompile = if (allModules) context.project.modules.mapTo(mutableListOf()) { it.name } else moduleSet.toMutableList()
+          if (type.isTests) {
+            namesToCompile.removeAll(compilationData.compiledModuleTests)
+            compilationData.compiledModuleTests.addAll(namesToCompile)
+          }
+          else {
+            namesToCompile.removeAll(compilationData.compiledModules)
+            compilationData.compiledModules.addAll(namesToCompile)
+          }
+          if (namesToCompile.isEmpty()) {
+            continue
+          }
 
-        val builder = TargetTypeBuildScope.newBuilder().setTypeId(type.typeId).setForceBuild(forceBuild)
-        if (allModules) {
-          scopes.add(builder.setAllTargets(true).build())
+          val builder = TargetTypeBuildScope.newBuilder().setTypeId(type.typeId).setForceBuild(forceBuild)
+          if (allModules) {
+            scopes.add(builder.setAllTargets(true).build())
+          }
+          else {
+            scopes.add(builder.addAllTargetId(namesToCompile).build())
+          }
         }
-        else {
-          scopes.add(builder.addAllTargetId(namesToCompile).build())
+      }
+      if (resolveProjectDependencies && !compilationData.projectDependenciesResolved) {
+        scopes.add(TargetTypeBuildScope.newBuilder().setTypeId("project-dependencies-resolving")
+                     .setForceBuild(false).setAllTargets(true).build())
+      }
+      val artifactsToBuild = artifactNames - compilationData.builtArtifacts
+      if (!artifactsToBuild.isEmpty()) {
+        val builder = TargetTypeBuildScope.newBuilder().setTypeId(ArtifactBuildTargetType.INSTANCE.typeId).setForceBuild(forceBuild)
+        scopes.add(builder.addAllTargetId(artifactsToBuild).build())
+      }
+      val compilationStart = System.nanoTime()
+      spanBuilder("compilation")
+        .setAttribute("scope", "${if (allModules) "all" else moduleSet.size} modules")
+        .setAttribute("includeTests", includeTests)
+        .setAttribute("artifactsToBuild", artifactsToBuild.size.toLong())
+        .setAttribute("resolveProjectDependencies", resolveProjectDependencies)
+        .setAttribute("modules", moduleSet.joinToString(separator = ", "))
+        .setAttribute("incremental", context.options.incrementalCompilation)
+        .setAttribute("includeTests", includeTests)
+        .setAttribute("cacheDir", compilationData.dataStorageRoot.toString())
+        .useWithScope {
+          Standalone.runBuild(
+            { context.projectModel }, compilationData.dataStorageRoot.toFile(),
+            mapOf(GlobalOptions.BUILD_DATE_IN_SECONDS to "${context.options.buildDateInSeconds}"),
+            messageHandler, scopes, false
+          )
         }
+      if (!messageHandler.errorMessagesByCompiler.isEmpty) {
+        for ((key, value) in messageHandler.errorMessagesByCompiler.entrySet()) {
+          @Suppress("UNCHECKED_CAST")
+          context.messages.compilationErrors(key, value as List<String>)
+        }
+        throw RuntimeException("Compilation failed")
       }
-    }
-    if (resolveProjectDependencies && !compilationData.projectDependenciesResolved) {
-      scopes.add(TargetTypeBuildScope.newBuilder().setTypeId("project-dependencies-resolving")
-                   .setForceBuild(false).setAllTargets(true).build())
-    }
-    val artifactsToBuild = artifactNames - compilationData.builtArtifacts
-    if (!artifactsToBuild.isEmpty()) {
-      val builder = TargetTypeBuildScope.newBuilder().setTypeId(ArtifactBuildTargetType.INSTANCE.typeId).setForceBuild(forceBuild)
-      scopes.add(builder.addAllTargetId(artifactsToBuild).build())
-    }
-    val compilationStart = System.nanoTime()
-    spanBuilder("compilation")
-      .setAttribute("scope", "${if (allModules) "all" else moduleSet.size} modules")
-      .setAttribute("includeTests", includeTests)
-      .setAttribute("artifactsToBuild", artifactsToBuild.size.toLong())
-      .setAttribute("resolveProjectDependencies", resolveProjectDependencies)
-      .setAttribute("modules", moduleSet.joinToString(separator = ", "))
-      .setAttribute("incremental", context.options.incrementalCompilation)
-      .setAttribute("includeTests", includeTests)
-      .setAttribute("cacheDir", compilationData.dataStorageRoot.toString())
-      .useWithScope {
-        Standalone.runBuild({ context.projectModel }, compilationData.dataStorageRoot.toFile(), messageHandler, scopes, false)
+      else if (!compilationData.statisticsReported) {
+        messageHandler.printPerModuleCompilationStatistics(compilationStart)
+        context.messages.reportStatisticValue("Compilation time, ms",
+                                              TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - compilationStart).toString())
+        compilationData.statisticsReported = true
       }
-    if (!messageHandler.errorMessagesByCompiler.isEmpty) {
-      for ((key, value) in messageHandler.errorMessagesByCompiler.entrySet()) {
-        @Suppress("UNCHECKED_CAST")
-        context.messages.compilationErrors(key, value as List<String>)
+      if (!artifactsToBuild.isEmpty()) {
+        compilationData.builtArtifacts.addAll(artifactsToBuild)
       }
-      throw RuntimeException("Compilation failed")
-    }
-    else if (!compilationData.statisticsReported) {
-      messageHandler.printPerModuleCompilationStatistics(compilationStart)
-      context.messages.reportStatisticValue("Compilation time, ms",
-                                            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - compilationStart).toString())
-      compilationData.statisticsReported = true
-    }
-    if (!artifactsToBuild.isEmpty()) {
-      compilationData.builtArtifacts.addAll(artifactsToBuild)
-    }
-    if (resolveProjectDependencies) {
-      compilationData.projectDependenciesResolved = true
+      if (resolveProjectDependencies) {
+        compilationData.projectDependenciesResolved = true
+      }
     }
   }
 }
@@ -403,7 +460,7 @@ private class JpsMessageHandler(private val context: CompilationContext) : Messa
   }
 }
 
-private class BackedLogger constructor(category: String?, private val fileLogger: Logger?) : DefaultLogger(category) {
+private class BackedLogger(category: String?, private val fileLogger: Logger?) : DefaultLogger(category) {
   override fun error(@Nls message: @NonNls String?, t: Throwable?, vararg details: String) {
     if (t == null) {
       messageHandler.processMessage(CompilerMessage(COMPILER_NAME, BuildMessage.Kind.ERROR, message))
@@ -419,11 +476,13 @@ private class BackedLogger constructor(category: String?, private val fileLogger
     fileLogger?.warn(message, t)
   }
 
-  override fun info(message: String) {
+  override fun info(message: String?) {
+    messageHandler.processMessage(CompilerMessage(COMPILER_NAME, BuildMessage.Kind.INFO, message))
     fileLogger?.info(message)
   }
 
-  override fun info(message: String, t: Throwable?) {
+  override fun info(message: String?, t: Throwable?) {
+    messageHandler.processMessage(CompilerMessage(COMPILER_NAME, BuildMessage.Kind.INFO, message + (t?.message?.let { ": $it" } ?: "")))
     fileLogger?.info(message, t)
   }
 
@@ -431,7 +490,7 @@ private class BackedLogger constructor(category: String?, private val fileLogger
     return fileLogger != null && fileLogger.isDebugEnabled
   }
 
-  override fun debug(message: String) {
+  override fun debug(message: String?) {
     fileLogger?.debug(message)
   }
 
@@ -439,7 +498,7 @@ private class BackedLogger constructor(category: String?, private val fileLogger
     fileLogger?.debug(t)
   }
 
-  override fun debug(message: String, t: Throwable?) {
+  override fun debug(message: String?, t: Throwable?) {
     fileLogger?.debug(message, t)
   }
 
@@ -447,7 +506,7 @@ private class BackedLogger constructor(category: String?, private val fileLogger
     return fileLogger != null && fileLogger.isTraceEnabled
   }
 
-  override fun trace(message: String) {
+  override fun trace(message: String?) {
     fileLogger?.trace(message)
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.documentation.render;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -6,8 +6,6 @@ import com.intellij.codeInsight.documentation.DocFontSizePopup;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.HelpTooltip;
 import com.intellij.ide.ui.LafManagerListener;
-import com.intellij.lang.documentation.DocumentationTarget;
-import com.intellij.lang.documentation.InlineDocumentation;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
@@ -32,6 +30,8 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.platform.documentation.DocumentationTarget;
+import com.intellij.platform.documentation.InlineDocumentation;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.ui.LayeredIcon;
@@ -266,7 +266,7 @@ public final class DocRenderItem {
     toggle(null);
   }
 
-  private boolean toggle(@Nullable Collection<Runnable> foldingTasks) {
+  private boolean toggle(@Nullable Collection<? super Runnable> foldingTasks) {
     if (!(editor instanceof EditorEx)) return false;
     FoldingModelEx foldingModel = ((EditorEx)editor).getFoldingModel();
     if (foldRegion == null) {
@@ -349,7 +349,7 @@ public final class DocRenderItem {
     if (items != null) updateRenderers(items, recreateContent);
   }
 
-  private void updateIcon(List<Runnable> foldingTasks) {
+  private void updateIcon(List<? super Runnable> foldingTasks) {
     boolean iconEnabled = DocRenderDummyLineMarkerProvider.isGutterIconEnabled();
     boolean iconExists = highlighter.getGutterIconRenderer() != null;
     if (iconEnabled != iconExists) {

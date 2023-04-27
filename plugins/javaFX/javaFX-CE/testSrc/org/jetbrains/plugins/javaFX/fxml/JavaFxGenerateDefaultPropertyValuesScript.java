@@ -37,8 +37,6 @@ import java.util.zip.ZipInputStream;
  * <p>
  * When launched with {@code -fromSource} argument it attempts to extract default property values from the sources (JavaDoc and declarations),
  * the results can be used for updating the contents of {@link #ourFromSource} map, which contains manually edited properties
- *
- * @author Pavel.Dolgov
  */
 public class JavaFxGenerateDefaultPropertyValuesScript extends Application {
   public static final String BINARIES_PATH = "/usr/lib/jvm/java-8-oracle/jre/lib/ext/jfxrt.jar";
@@ -241,7 +239,7 @@ public class JavaFxGenerateDefaultPropertyValuesScript extends Application {
     final Map<String, Map<String, DefaultValue>> fromSource = new TreeMap<>();
     ourFromSource.forEach((qualifiedPropName, value) -> {
       final int p = qualifiedPropName.indexOf('#');
-      if (p > 0 && p < qualifiedPropName.length()) {
+      if (p > 0) {
         final String className = qualifiedPropName.substring(0, p);
         final String propName = qualifiedPropName.substring(p + 1);
         fromSource.computeIfAbsent(className, unused -> new TreeMap<>())

@@ -1,8 +1,9 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.toolWindow
 
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener.ToolWindowManagerEventType
 import com.intellij.openapi.wm.impl.IdeFrameImpl
@@ -28,25 +29,25 @@ abstract class ToolWindowManagerTestCase : LightPlatformTestCase() {
 
     runBlocking {
       val project = project
-      manager = object : ToolWindowManagerImpl(project) {
-        override fun fireStateChanged(changeType: ToolWindowManagerEventType) {}
+      manager = object : ToolWindowManagerImpl(coroutineScope = project.coroutineScope, project = project) {
+        override fun fireStateChanged(changeType: ToolWindowManagerEventType, toolWindow: ToolWindow?) {}
       }
       project.replaceService(ToolWindowManager::class.java, manager!!, testRootDisposable)
 
       val frame = withContext(Dispatchers.EDT) {
-        val frame = ProjectFrameHelper(IdeFrameImpl(), null)
+        val frame = ProjectFrameHelper(IdeFrameImpl())
         frame.init()
         frame
       }
 
-      val reopeningEditorsJob = Job().also { it.complete() }
-      manager!!.doInit(frame, project.messageBus.connect(testRootDisposable), FileEditorManagerEx.getInstanceEx(project).component, reopeningEditorsJob)
+      val reopeningEditorJob = Job().also { it.complete() }
+      manager!!.doInit(frame, project.messageBus.connect(testRootDisposable), reopeningEditorJob, taskListDeferred = null)
     }
   }
 
   public override fun tearDown() {
     try {
-      manager!!.projectClosed()
+      manager?.let { Disposer.dispose(it) }
       manager = null
     }
     catch (e: Throwable) {

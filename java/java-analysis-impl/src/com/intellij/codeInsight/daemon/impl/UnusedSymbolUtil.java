@@ -1,10 +1,9 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeInsight.daemon.ImplicitUsageProvider;
 import com.intellij.codeInsight.daemon.impl.analysis.DaemonTooltipsUtil;
 import com.intellij.codeInsight.daemon.impl.analysis.JavaHighlightUtil;
-import com.intellij.codeInsight.daemon.impl.quickfix.QuickFixAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInspection.ex.EntryPointsManager;
 import com.intellij.codeInspection.ex.EntryPointsManagerBase;
@@ -79,11 +78,22 @@ public final class UnusedSymbolUtil {
     return EntryPointsManager.getInstance(project).isImplicitWrite(element);
   }
 
+  /**
+   * @deprecated use {@link #createUnusedSymbolInfoBuilder(PsiElement, String, HighlightInfoType, String)} instead
+   */
+  @Deprecated
   @Nullable
   public static HighlightInfo createUnusedSymbolInfo(@NotNull PsiElement element,
                                                      @NotNull @NlsContexts.DetailedDescription String message,
                                                      @NotNull final HighlightInfoType highlightInfoType,
                                                      @Nullable String shortName) {
+    return createUnusedSymbolInfoBuilder(element, message, highlightInfoType, shortName).create();
+  }
+  @NotNull
+  public static HighlightInfo.Builder createUnusedSymbolInfoBuilder(@NotNull PsiElement element,
+                                                                    @NotNull @NlsContexts.DetailedDescription String message,
+                                                                    @NotNull final HighlightInfoType highlightInfoType,
+                                                                    @Nullable String shortName) {
     String tooltip;
     if (shortName != null) {
       tooltip = DaemonTooltipsUtil.getWrappedTooltip(message, shortName, true);
@@ -92,17 +102,14 @@ public final class UnusedSymbolUtil {
       tooltip = XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(message));
     }
 
-    HighlightInfo info = HighlightInfo.newHighlightInfo(highlightInfoType).range(element)
+    HighlightInfo.@NotNull Builder info = HighlightInfo.newHighlightInfo(highlightInfoType).range(element)
       .description(message).escapedToolTip(tooltip).group(
-      GeneralHighlightingPass.POST_UPDATE_ALL).create();
-    if (info == null) {
-      return null; //filtered out
-    }
+      GeneralHighlightingPass.POST_UPDATE_ALL);
 
     for (UnusedDeclarationFixProvider provider : UnusedDeclarationFixProvider.EP_NAME.getExtensionList()) {
       IntentionAction[] fixes = provider.getQuickFixes(element);
       for (IntentionAction fix : fixes) {
-        QuickFixAction.registerQuickFixAction(info, fix);
+        info.registerFix(fix, null, null, null, null);
       }
     }
     return info;
@@ -254,8 +261,7 @@ public final class UnusedSymbolUtil {
       options = new JavaClassFindUsagesOptions(useScope);
       options.isSearchForTextOccurrences = true;
     }
-    else if (member instanceof PsiMethod) {
-      PsiMethod method = (PsiMethod)member;
+    else if (member instanceof PsiMethod method) {
       options = new JavaMethodFindUsagesOptions(useScope);
       options.isSearchForTextOccurrences = method.isConstructor();
       toSearch.addAll(DeepestSuperMethodsSearch.search(method).findAll());
