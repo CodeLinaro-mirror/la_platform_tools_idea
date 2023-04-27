@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.debugger.test;
 
@@ -1370,6 +1370,16 @@ public abstract class KotlinSteppingTestGenerated extends AbstractKotlinStepping
             runTest("testData/stepping/custom/smartStepIntoInterfaceImpl.kt");
         }
 
+        @TestMetadata("smartStepIntoJavaSyntheticPropertySetter.kt")
+        public void testSmartStepIntoJavaSyntheticPropertySetter() throws Exception {
+            runTest("testData/stepping/custom/smartStepIntoJavaSyntheticPropertySetter.kt");
+        }
+
+        @TestMetadata("smartStepIntoJavaSyntheticPropetyGetter.kt")
+        public void testSmartStepIntoJavaSyntheticPropetyGetter() throws Exception {
+            runTest("testData/stepping/custom/smartStepIntoJavaSyntheticPropetyGetter.kt");
+        }
+
         @TestMetadata("smartStepIntoLambdaWithparametersDestructuring.kt")
         public void testSmartStepIntoLambdaWithparametersDestructuring() throws Exception {
             runTest("testData/stepping/custom/smartStepIntoLambdaWithparametersDestructuring.kt");
@@ -1398,6 +1408,11 @@ public abstract class KotlinSteppingTestGenerated extends AbstractKotlinStepping
         @TestMetadata("smartStepIntoPropertyGetterReference.kt")
         public void testSmartStepIntoPropertyGetterReference() throws Exception {
             runTest("testData/stepping/custom/smartStepIntoPropertyGetterReference.kt");
+        }
+
+        @TestMetadata("smartStepIntoPropertySetter.kt")
+        public void testSmartStepIntoPropertySetter() throws Exception {
+            runTest("testData/stepping/custom/smartStepIntoPropertySetter.kt");
         }
 
         @TestMetadata("smartStepIntoSamLambdaFromJavaFunInterface.kt")

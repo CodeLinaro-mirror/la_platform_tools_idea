@@ -76,7 +76,13 @@ class KotlinSourceSetInfo @PropertyMapping("kotlinComponent") constructor(val ko
     /**
      * Note: This includes *all* dependsOn source sets (whole transtive closure)!
      */
-    var dependsOn: List<String> = emptyList()
+    var dependsOn: Set<String> = emptySet()
+
+    // No need to fix binary compatibility for setter, AGP only reads the property
+    @Suppress("unused")
+    @Deprecated(message = "For binary compatibility", level = DeprecationLevel.HIDDEN)
+    fun getDependsOn(): List<String> = dependsOn.toList()
+
     var additionalVisible: Set<String> = emptySet()
     var externalSystemRunTasks: Collection<ExternalSystemRunTask> = emptyList()
 }
