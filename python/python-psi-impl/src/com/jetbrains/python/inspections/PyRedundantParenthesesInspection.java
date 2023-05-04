@@ -117,13 +117,12 @@ public final class PyRedundantParenthesesInspection extends PyInspection {
         registerProblem(node, PyPsiBundle.message("QFIX.redundant.parentheses"), new RedundantParenthesesQuickFix());
       }
       else if (parent instanceof PyReturnStatement || parent instanceof PyYieldExpression) {
-        if (!isTupleWithUnpacking(expression) && !oneElementTuple(expression) ||
-            languageLevel.isAtLeast(LanguageLevel.PYTHON38) && !isYieldFrom(parent)) {
+        if (!(isTupleWithUnpacking(expression) && languageLevel.isOlderThan(LanguageLevel.PYTHON38)) && !oneElementTuple(expression) &&
+            !isYieldFrom(parent)) {
           registerProblem(node, PyPsiBundle.message("QFIX.redundant.parentheses"), new RedundantParenthesesQuickFix());
         }
       }
-      else if (expression instanceof PyBinaryExpression) {
-        final PyBinaryExpression binaryExpression = (PyBinaryExpression)expression;
+      else if (expression instanceof PyBinaryExpression binaryExpression) {
 
         if (parent instanceof PyPrefixExpression) {
           return;

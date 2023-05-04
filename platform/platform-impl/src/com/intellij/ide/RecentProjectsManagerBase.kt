@@ -4,7 +4,6 @@
 package com.intellij.ide
 
 import com.intellij.diagnostic.runActivity
-import com.intellij.ide.RecentProjectsManager.Companion.fireChangeEvent
 import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.ide.impl.ProjectUtil.isSameProject
@@ -37,6 +36,7 @@ import com.intellij.openapi.wm.impl.*
 import com.intellij.openapi.wm.impl.welcomeScreen.WelcomeFrame
 import com.intellij.platform.ProjectSelfieUtil
 import com.intellij.project.stateStore
+import com.intellij.ui.ExperimentalUI
 import com.intellij.util.PathUtilRt
 import com.intellij.util.SingleAlarm
 import com.intellij.util.io.isDirectory
@@ -82,6 +82,9 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
     }
   }
 
+  // https://youtrack.jetbrains.com/issue/IDEA-310958/Screenshot-of-the-mixed-old-new-UI-is-shown-after-switching-to-new-UI-and-restart
+  private val appStartedWithOldUi = !ExperimentalUI.isNewUI()
+
   private val modCounter = LongAdder()
   private val projectIconHelper by lazy(::RecentProjectIconHelper)
   private val namesToResolve = HashSet<String>(MAX_PROJECTS_IN_MAIN_MENU)
@@ -106,9 +109,10 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
 
   final override fun getState() = state
 
-  fun getProjectMetaInfo(file: Path): RecentProjectMetaInfo? {
+  fun getProjectMetaInfo(projectStoreBaseDir: Path): RecentProjectMetaInfo? {
+    val path = getProjectPath(projectStoreBaseDir) ?: return null
     synchronized(stateLock) {
-      return state.additionalInfo.get(file.systemIndependentPath)
+      return state.additionalInfo.get(path)
     }
   }
 
@@ -260,6 +264,10 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
   // for Rider
   protected open fun getRecentProjectMetadata(path: String, project: Project): String? = null
 
+  open fun getProjectPath(projectStoreBaseDir: Path): String? {
+    return projectStoreBaseDir.systemIndependentPath
+  }
+
   open fun getProjectPath(project: Project): String? {
     return FileUtilRt.toSystemIndependentName(project.presentableUrl ?: return null)
   }
@@ -386,7 +394,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
   fun getRecentPaths(): List<String> {
     synchronized(stateLock) {
       validateRecentProjects(modCounter, state.additionalInfo)
-      return state.additionalInfo.keys.reversed()
+      return state.additionalInfo.filter { !it.value.hidden }.keys.reversed()
     }
   }
 
@@ -416,7 +424,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
     }
 
     synchronized(stateLock) {
-      return state.additionalInfo.values.any { it.opened }
+      return state.additionalInfo.values.any { canReopenProject(it) }
     }
   }
 
@@ -547,9 +555,26 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
     return true
   }
 
+  private fun canReopenProject(info: RecentProjectMetaInfo): Boolean {
+    return info.opened && !info.hidden
+  }
+
+  /**
+   * Do not reopen project on restart and do not show it in the recent projects list
+   */
+  fun setProjectHidden(project: Project, hidden: Boolean) {
+    val path = getProjectPath(project) ?: return
+    val info = state.additionalInfo.get(path) ?: return
+    val oldHidden = info.hidden
+    info.hidden = hidden
+    if (oldHidden != hidden) {
+      modCounter.increment()
+    }
+  }
+
   protected val lastOpenedProjects: List<Entry<String, RecentProjectMetaInfo>>
     get() = synchronized(stateLock) {
-      return state.additionalInfo.entries.filter { it.value.opened }
+      return state.additionalInfo.entries.filter { canReopenProject(it.value) }
     }
 
   override val groups: List<ProjectGroup>
@@ -640,7 +665,7 @@ open class RecentProjectsManagerBase : RecentProjectsManager, PersistentStateCom
 
       if (workspaceId != null) {
         val selfieLocation = ProjectSelfieUtil.getSelfieLocation(workspaceId)
-        if (ProjectSelfieUtil.isEnabled) {
+        if (!appStartedWithOldUi && ProjectSelfieUtil.isEnabled) {
           NotificationsToolWindowFactory.clearAll(project)
           frameHelper.balloonLayout?.closeAll()
           (project.serviceIfCreated<ToolWindowManager>() as? ToolWindowManagerEx)?.closeBalloons()
@@ -771,6 +796,12 @@ int32 "extendedState"
   }
 }
 
+private fun fireChangeEvent() {
+  ApplicationManager.getApplication().invokeLater {
+    ApplicationManager.getApplication().messageBus.syncPublisher(RecentProjectsManager.RECENT_PROJECTS_CHANGE_TOPIC).change()
+  }
+}
+
 private fun isUseProjectFrameAsSplash() = Registry.`is`("ide.project.frame.as.splash")
 
 private fun readProjectName(path: String): String {
@@ -827,6 +858,7 @@ private fun validateRecentProjects(modCounter: LongAdder, map: MutableMap<String
     return
   }
 
+  val oldMapSize = map.size
   val iterator = map.values.iterator()
   while (true) {
     if (!iterator.hasNext()) {
@@ -844,5 +876,9 @@ private fun validateRecentProjects(modCounter: LongAdder, map: MutableMap<String
     if (toRemove <= 0) {
       break
     }
+  }
+
+  if (oldMapSize != map.size) {
+    modCounter.increment()
   }
 }

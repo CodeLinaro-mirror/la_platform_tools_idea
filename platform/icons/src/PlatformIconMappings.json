@@ -97,6 +97,7 @@
     },
     "editor": {
       "inlayGlobe.svg": "actions/inlayGlobe.svg",
+      "inlaySecuredShield.svg": "actions/inlaySecuredShield.svg",
       "inlayRenameInComments.svg": "actions/inlayRenameInComments.svg",
       "inlayRenameInCommentsActive.svg": "actions/inlayRenameInCommentsActive.svg",
       "inlayRenameInNoCodeFiles.svg": "actions/inlayRenameInNoCodeFiles.svg",
@@ -633,7 +634,6 @@
         "icons/com/jetbrains/python/pythonPackages.svg"
       ],
       "documentation.svg": "toolwindows/documentation.svg",
-      "endpoints.svg": "icons/toolWindowEndpoints.svg",
       "find.svg": "toolwindows/toolWindowFind.svg",
       "gradle.svg": "icons/toolWindowGradle.svg",
       "hierarchy.svg": "toolwindows/toolWindowHierarchy.svg",
@@ -681,7 +681,11 @@
         "vcs/Unshelve.svg",
         "vcs/unshelveSilent.svg"
       ],
-      "update.svg": "actions/checkOut.svg"
+      "update.svg": "actions/checkOut.svg",
+      "vcs.svg": [
+        "vcs/branch.svg",
+        "vcs/branchNode.svg"
+      ]
     },
     "welcome": {
       "createNewProjectTab.svg": "welcome/createNewProjectTab.svg",

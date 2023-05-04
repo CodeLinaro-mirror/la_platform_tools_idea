@@ -466,7 +466,7 @@ public final class ReturnSeparatedFromComputationInspection extends AbstractBase
 
     private static boolean hasTotalSwitchLabel(@NotNull PsiCodeBlock switchBody) {
       for (PsiStatement statement : switchBody.getStatements()) {
-        if (statement instanceof PsiSwitchLabelStatement && SwitchUtils.isTotalLabel((PsiSwitchLabelStatement)statement)) {
+        if (statement instanceof PsiSwitchLabelStatement && SwitchUtils.isUnconditionalLabel((PsiSwitchLabelStatement)statement)) { // TODO check because isUnconditionalLabel was chanched
           return true;
         }
       }
@@ -566,29 +566,13 @@ public final class ReturnSeparatedFromComputationInspection extends AbstractBase
     }
   }
 
-  private static final class ReturnContext {
-    final PsiReturnStatement returnStatement;
-    final PsiCodeBlock returnScope;
-    final PsiType returnType;
-    final PsiStatement refactoredStatement;
-    final PsiVariable returnedVariable;
-    final PsiCodeBlock variableScope;
-
-    private ReturnContext(@NotNull PsiReturnStatement returnStatement,
-                          @NotNull PsiCodeBlock returnScope,
-                          @NotNull PsiType returnType,
-                          @NotNull PsiStatement refactoredStatement,
-                          @NotNull PsiVariable returnedVariable,
-                          @NotNull PsiCodeBlock variableScope) {
-
-      this.returnStatement = returnStatement;
-      this.returnScope = returnScope;
-      this.returnType = returnType;
-      this.refactoredStatement = refactoredStatement;
-      this.returnedVariable = returnedVariable;
-      this.variableScope = variableScope;
+  private record ReturnContext(@NotNull PsiReturnStatement returnStatement,
+                              @NotNull PsiCodeBlock returnScope,
+                              @NotNull PsiType returnType,
+                              @NotNull PsiStatement refactoredStatement,
+                              @NotNull PsiVariable returnedVariable,
+                              @NotNull PsiCodeBlock variableScope) {
     }
-  }
 
   private static class Highlighter {
     private final List<PsiElement> myElements = new ArrayList<>();

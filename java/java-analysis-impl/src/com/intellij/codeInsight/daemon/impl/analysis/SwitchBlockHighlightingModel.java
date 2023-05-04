@@ -399,15 +399,23 @@ public class SwitchBlockHighlightingModel {
   private static @NotNull LinkedHashMap<PsiClass, PsiPattern> findPatternClasses(@NotNull List<? extends PsiCaseLabelElement> elements) {
     LinkedHashMap<PsiClass, PsiPattern> patternClasses = new LinkedHashMap<>();
     for (PsiCaseLabelElement element : elements) {
-      PsiPattern patternLabelElement = ObjectUtils.tryCast(element, PsiPattern.class);
-      if (patternLabelElement == null) continue;
+      PsiPattern pattern = extractPattern(element);
+      if (pattern == null) continue;
       PsiClass patternClass = PsiUtil.resolveClassInClassTypeOnly(JavaPsiPatternUtil.getPatternType(element));
       if (patternClass != null) {
-        patternClasses.put(patternClass, patternLabelElement);
-        visitAllPermittedClasses(patternClass, permittedClass -> patternClasses.put(permittedClass, patternLabelElement));
+        patternClasses.put(patternClass, pattern);
+        visitAllPermittedClasses(patternClass, permittedClass -> patternClasses.put(permittedClass, pattern));
       }
     }
     return patternClasses;
+  }
+
+  private static @Nullable PsiPattern extractPattern(PsiCaseLabelElement element) {
+    if (element instanceof PsiPatternGuard patternGuard) {
+      Object constVal = ExpressionUtils.computeConstantExpression(patternGuard.getGuardingExpression());
+      return Boolean.TRUE.equals(constVal) ? patternGuard.getPattern() : null;
+    }
+    return ObjectUtils.tryCast(element, PsiPattern.class);
   }
 
   private static void visitAllPermittedClasses(@NotNull PsiClass psiClass, Consumer<? super PsiClass> consumer){
@@ -597,10 +605,9 @@ public class SwitchBlockHighlightingModel {
           holder.add(error);
           return;
         }
-        if (JavaGenericsUtil.isUncheckedCast(patternType, mySelectorType)) {
-          String message = JavaErrorBundle.message("unsafe.cast.in.instanceof", JavaHighlightUtil.formatType(mySelectorType),
-                                                   JavaHighlightUtil.formatType(patternType));
-          holder.add(createError(elementToReport, message).create());
+        HighlightInfo.Builder error = PatternHighlightingModel.getUncheckedPatternConversionError(elementToReport);
+        if (error != null) {
+          holder.add(error.create());
           return;
         }
         PsiDeconstructionPattern deconstructionPattern = JavaPsiPatternUtil.findDeconstructionPattern(elementToReport);

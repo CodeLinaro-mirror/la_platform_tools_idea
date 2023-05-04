@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.ui;
 
 import com.intellij.BundleBase;
@@ -65,6 +65,8 @@ import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 
 @SuppressWarnings("StaticMethodOnlyUsedInOneClass")
@@ -2886,12 +2888,11 @@ public final class UIUtil {
   }
 
   public static int getLineHeight(@NotNull JTextComponent textComponent) {
-    return textComponent.getFontMetrics(textComponent.getFont()).getHeight();
+    return getLineHeight((JComponent)textComponent);
   }
 
-  public static int getUnscaledLineHeight(@NotNull JComponent component) {
-    Font baseFont = component.getFont().deriveFont(JBUIScale.DEF_SYSTEM_FONT_SIZE);
-    return component.getFontMetrics(baseFont).getHeight();
+  public static int getLineHeight(@NotNull JComponent component) {
+    return component.getFontMetrics(component.getFont()).getHeight();
   }
 
   /**
@@ -3423,6 +3424,26 @@ public final class UIUtil {
     });
   }
 
+  public static Future<?> runOnceWhenResized(@NotNull Component component, @NotNull Runnable runnable) {
+    var future = new CompletableFuture<>();
+    component.addComponentListener(new ComponentAdapter() {
+      @Override
+      public void componentResized(ComponentEvent e) {
+        component.removeComponentListener(this);
+        if (!future.isCancelled()) {
+          try {
+            runnable.run();
+            future.complete(null);
+          }
+          catch (Throwable ex) {
+            future.completeExceptionally(ex);
+          }
+        }
+      }
+    });
+    return future;
+  }
+
   public static Font getLabelFont() {
     return StartupUiUtil.getLabelFont();
   }
@@ -3529,5 +3550,9 @@ public final class UIUtil {
 
   private static @Nullable Color getDeprecatedBackground() {
     return Registry.getColor("ui.deprecated.components.color", null);
+  }
+
+  public static boolean isMetalRendering() {
+    return SystemInfo.isMac && Boolean.getBoolean("sun.java2d.metal");
   }
 }

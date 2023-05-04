@@ -320,6 +320,14 @@ public abstract class AbstractJavaBlock extends AbstractBlock implements JavaBlo
         }
         return Indent.getNoneIndent();
       }
+      if (parent.getPsi() instanceof PsiSwitchExpression &&
+          child instanceof PsiCodeBlock) {
+        if (settings.BRACE_STYLE == CommonCodeStyleSettings.NEXT_LINE_SHIFTED ||
+            settings.BRACE_STYLE == CommonCodeStyleSettings.NEXT_LINE_SHIFTED2) {
+          return Indent.getNormalIndent();
+        }
+        return Indent.getNoneIndent();
+      }
     }
 
     return null;

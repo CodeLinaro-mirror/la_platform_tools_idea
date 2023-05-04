@@ -3,7 +3,6 @@
 
 package org.jetbrains.intellij.build
 
-import com.intellij.util.containers.MultiMap
 import it.unimi.dsi.fastutil.Hash
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenCustomHashSet
 import kotlinx.collections.immutable.*
@@ -21,17 +20,12 @@ val DEFAULT_BUNDLED_PLUGINS: PersistentList<String> = persistentListOf(
 
 class ProductModulesLayout {
   /**
-   * Name of the main product JAR file. Outputs of {@link #productImplementationModules} will be packed into it.
-   */
-  lateinit var mainJarName: String
-
-  /**
    * Names of the additional product-specific modules which need to be packed into openapi.jar in the product's 'lib' directory.
    */
   var productApiModules: List<String> = emptyList()
 
   /**
-   * Names of the additional product-specific modules which need to be included into {@link #mainJarName} in the product's 'lib' directory
+   * Names of the additional product-specific modules which need to be included in the product's 'lib' directory
    */
   var productImplementationModules: List<String> = emptyList()
 
@@ -42,15 +36,11 @@ class ProductModulesLayout {
   var bundledPluginModules: MutableList<String> = DEFAULT_BUNDLED_PLUGINS.toMutableList()
 
   /**
-   * Names of the main modules (containing META-INF/plugin.xml) of the plugins which aren't bundled with the product but may be installed
+   * Main module names (containing META-INF/plugin.xml) of the plugins which aren't bundled with the product but may be installed
    * into it. Zip archives of these plugins will be built and placed under "&lt;product-code&gt;-plugins" directory in the build artifacts.
    * Layouts of the plugins are specified in {@link [pluginLayouts]} list.
    */
-  var pluginModulesToPublish: Collection<String> = LinkedHashSet()
-    get() = java.util.Set.copyOf(field)
-    set(value) {
-      field = LinkedHashSet(value)
-    }
+  var pluginModulesToPublish: PersistentSet<String> = persistentSetOf()
 
   /**
    * Describes layout of non-trivial plugins which may be included into the product. The actual list of the plugins need to be bundled
@@ -75,16 +65,6 @@ class ProductModulesLayout {
     }
 
   /**
-   * Names of the project libraries which JARs' contents should be extracted into {@link #mainJarName} JAR.
-   */
-  var projectLibrariesToUnpackIntoMainJar: PersistentList<String> = persistentListOf()
-
-  /**
-   * Maps names of JARs to names of the modules; these modules will be packed into these JARs and copied to the product's 'lib' directory.
-   */
-  val additionalPlatformJars: MultiMap<String, String> = MultiMap.createLinkedSet()
-
-  /**
    * Module name to list of Ant-like patterns describing entries which should be excluded from its output.
    * <strong>This is a temporary property added to keep layout of some products. If some directory from a module shouldn't be included into the
    * product JAR it's strongly recommended to move that directory outside of the module source roots.</strong>
@@ -94,16 +74,16 @@ class ProductModulesLayout {
   /**
    * Additional customizations of platform JARs. **This is a temporary property added to keep layout of some products.**
    */
-  internal var platformLayoutSpec = persistentListOf<(PlatformLayout.Spec, BuildContext) -> Unit>()
+  internal var platformLayoutSpec = persistentListOf<(PlatformLayout, BuildContext) -> Unit>()
 
   @Deprecated("PlatformLayout should be immutable", replaceWith = ReplaceWith("addPlatformSpec"))
   fun addPlatformCustomizer(customizer: BiConsumer<PlatformLayout, BuildContext>) {
-    platformLayoutSpec = platformLayoutSpec.add { spec, context ->
-      customizer.accept(spec.layout, context)
+    platformLayoutSpec = platformLayoutSpec.add { layout, context ->
+      customizer.accept(layout, context)
     }
   }
 
-  fun addPlatformSpec(customizer: (PlatformLayout.Spec, BuildContext) -> Unit) {
+  fun addPlatformSpec(customizer: (PlatformLayout, BuildContext) -> Unit) {
     platformLayoutSpec = platformLayoutSpec.add(customizer)
   }
 
@@ -129,7 +109,7 @@ class ProductModulesLayout {
    *
    * @see #setPluginModulesToPublish
    */
-  var prepareCustomPluginRepositoryForPublishedPlugins = true
+  var prepareCustomPluginRepositoryForPublishedPlugins: Boolean = true
 
   /**
    * If {@code true} then all plugins that compatible with an IDE will be built. By default, these plugins will be placed to "auto-uploading"
@@ -137,7 +117,7 @@ class ProductModulesLayout {
    * <br>
    * If {@code false} only plugins from {@link #setPluginModulesToPublish} will be considered.
    */
-  var buildAllCompatiblePlugins = true
+  var buildAllCompatiblePlugins: Boolean = true
 
   /**
    * List of plugin names which should not be built even if they are compatible and {@link #buildAllCompatiblePlugins} is true
@@ -150,29 +130,6 @@ class ProductModulesLayout {
    * This API is experimental, use with care
    */
   var excludedModuleNames: PersistentSet<String> = persistentSetOf()
-
-  /**
-   * @return list of all modules which output is included into the plugin's JARs
-   */
-  fun getIncludedPluginModules(enabledPluginModules: Collection<String>): Collection<String> {
-    val result = LinkedHashSet<String>()
-    result.addAll(enabledPluginModules)
-    pluginLayouts.asSequence()
-      .filter { enabledPluginModules.contains(it.mainModule) }
-      .flatMapTo(result) { it.includedModuleNames }
-    return result
-  }
-
-  /**
-   * Map name of JAR to names of the modules; these modules will be packed into these JARs and copied to the product's 'lib' directory.
-   */
-  fun withAdditionalPlatformJar(jarName: String, vararg moduleNames: String) {
-    additionalPlatformJars.putValues(jarName, moduleNames.asList())
-  }
-
-  fun withoutAdditionalPlatformJar(jarName: String, moduleName: String) {
-    additionalPlatformJars.remove(jarName, moduleName)
-  }
 }
 
 internal fun createPluginLayoutSet(expectedSize: Int): MutableSet<PluginLayout> {

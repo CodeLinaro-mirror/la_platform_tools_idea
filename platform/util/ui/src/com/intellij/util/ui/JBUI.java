@@ -625,6 +625,13 @@ public final class JBUI {
         return JBFont.label();
       }
 
+      public static float unselectedAlpha() {
+        return getFloat("EditorTabs.unselectedAlpha", 0.75f);
+      }
+
+      public static float unselectedBlend() {
+        return getFloat("EditorTabs.unselectedBlend", StartupUiUtil.isUnderDarcula() ? 0.7f : 0.9f);
+      }
     }
 
     public interface Editor {
@@ -1428,23 +1435,27 @@ public final class JBUI {
       }
 
       public static @NotNull Color foreground(boolean useContrastColors) {
+        Color base = JBColor.namedColor("GotItTooltip.foreground", UIUtil.getToolTipForeground());
         if (useContrastColors) {
-          return JBColor.namedColor("Tooltip.Learning.foreground", 0xF5F5F5);
-        } else {
-          return JBColor.namedColor("GotItTooltip.foreground", UIUtil.getToolTipForeground());
+          return JBColor.namedColor("Tooltip.Learning.foreground", base);
         }
+        return base;
       }
 
       public static @NotNull Color background(boolean useContrastColors) {
+        Color base = JBColor.namedColor("GotItTooltip.background", UIUtil.getToolTipBackground());
         if (useContrastColors) {
-          return JBColor.namedColor("Tooltip.Learning.background");
-        } else {
-          return JBColor.namedColor("GotItTooltip.background", UIUtil.getToolTipBackground());
+          return JBColor.namedColor("Tooltip.Learning.background", base);
         }
+        return base;
       }
 
-      public static @NotNull Color stepForeground() {
-        return JBColor.namedColor("GotItTooltip.stepForeground", foreground(false));
+      public static @NotNull Color stepForeground(boolean useContrastColors) {
+        Color base = JBColor.namedColor("GotItTooltip.stepForeground", foreground(false));
+        if (useContrastColors) {
+          return JBColor.namedColor("Tooltip.Learning.stepNumberForeground", base);
+        }
+        return base;
       }
 
       public static @NotNull Color headerForeground() {
@@ -1452,16 +1463,20 @@ public final class JBUI {
       }
 
       public static @NotNull Color shortcutForeground(boolean useContrastColors) {
+        Color base = JBColor.namedColor("GotItTooltip.shortcutForeground", foreground(false));
         if (useContrastColors) {
-          return JBColor.namedColor("Tooltip.Learning.spanForeground", 0xF5F5F5);
-        } else {
-          return JBColor.namedColor("GotItTooltip.shortcutForeground", foreground(false));
+          return JBColor.namedColor("Tooltip.Learning.spanForeground", base);
         }
+        return base;
       }
 
-      public static @NotNull Color shortcutBackground() {
-        return JBColor.namedColor("GotItTooltip.shortcutBackground",
-                                  JBColor.namedColor("Lesson.shortcutBackground", 0xE6EEF7, 0x333638));
+      public static @NotNull Color shortcutBackground(boolean useContrastColors) {
+        Color base = JBColor.namedColor("GotItTooltip.shortcutBackground",
+                                        JBColor.namedColor("Lesson.shortcutBackground", 0xE6EEF7, 0x333638));
+        if (useContrastColors) {
+          return JBColor.namedColor("Tooltip.Learning.spanBackground", base);
+        }
+        return base;
       }
 
       public static @NotNull Color linkForeground() {
@@ -1469,11 +1484,11 @@ public final class JBUI {
       }
 
       public static @NotNull Color borderColor(boolean useContrastColors) {
+        Color base = JBColor.namedColor("GotItTooltip.borderColor", JBUI.CurrentTheme.Tooltip.borderColor());
         if (useContrastColors) {
-          return JBColor.namedColor("Tooltip.Learning.background", 0x1071E8, 0x0E62CF);
-        } else {
-          return JBColor.namedColor("GotItTooltip.borderColor", JBUI.CurrentTheme.Tooltip.borderColor());
+          return JBColor.namedColor("Tooltip.Learning.borderColor", base);
         }
+        return base;
       }
 
       public static @NotNull Color buttonBackgroundContrast() {

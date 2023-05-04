@@ -11,6 +11,7 @@ import com.intellij.find.FindSettings;
 import com.intellij.find.findUsages.*;
 import com.intellij.find.impl.FindManagerImpl;
 import com.intellij.find.usages.api.SearchTarget;
+import com.intellij.find.usages.impl.Psi2UsageInfo2UsageAdapter;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.util.PropertiesComponent;
@@ -27,6 +28,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction;
 import com.intellij.openapi.actionSystem.impl.ActionButton;
+import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
@@ -57,6 +59,7 @@ import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
+import com.intellij.psi.SmartPsiFileRange;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.SearchScope;
@@ -102,6 +105,7 @@ import java.util.stream.Collectors;
 import static com.intellij.find.actions.ResolverKt.findShowUsages;
 import static com.intellij.find.actions.ShowUsagesActionHandler.getSecondInvocationHint;
 import static com.intellij.find.findUsages.FindUsagesHandlerFactory.OperationMode.USAGES_WITH_DEFAULT_OPTIONS;
+import static com.intellij.util.ObjectUtils.doIfNotNull;
 import static org.jetbrains.annotations.Nls.Capitalization.Sentence;
 
 public class ShowUsagesAction extends AnAction implements PopupAction, HintManagerImpl.ActionToIgnore {
@@ -633,6 +637,20 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
         return usage -> usage instanceof UsageInfo2UsageAdapter &&
                         ((UsageInfo2UsageAdapter)usage).getUsageInfo().equals(originUsageInfo);
       }
+
+      int offset = editor.getCaretModel().getOffset();
+      return usage -> {
+        if (usage instanceof Psi2UsageInfo2UsageAdapter adapter) {
+          for (UsageInfo info : adapter.getMergedInfos()) {
+            final Segment range = doIfNotNull(info.getPsiFileRange(), SmartPsiFileRange::getRange);
+            if (range != null && range.getStartOffset() <= offset && offset <= range.getEndOffset()) {
+              return true;
+            }
+          }
+        }
+
+        return false;
+      };
     }
     return __ -> false;
   }
@@ -789,15 +807,6 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
       }
     });
 
-    if (!(actionHandler.getMaximalScope() instanceof LocalSearchScope)) {
-      filteringGroup.add(createScopeChooser(project, contentDisposable, actionHandler.getSelectedScope(), scope -> {
-        UsageViewStatisticsCollector.logScopeChanged(project, usageView, actionHandler.getSelectedScope(), scope,
-                                                     actionHandler.getTargetClass());
-        cancel(popupRef.get());
-        showElementUsages(parameters, actionHandler.withScope(scope));
-      }));
-    }
-
     JPanel northPanel = new JPanel(new GridBagLayout());
     GridBag gc = new GridBag().nextLine();
 
@@ -806,11 +815,26 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
     toolbarComponent.setOpaque(false);
     northPanel.add(toolbarComponent, gc.next());
 
-    northPanel.add(new Box.Filler(JBUI.size(10, 0), JBUI.size(10, 0), JBUI.size(Short.MAX_VALUE, 0)), gc.next().weightx(1.0).fillCellHorizontally());
+    if (!(actionHandler.getMaximalScope() instanceof LocalSearchScope)) {
+      DefaultActionGroup scopeChooserGroup = new DefaultActionGroup(createScopeChooser(project, contentDisposable, usageView, showUsagesPopupData));
+      ActionToolbar scopeChooserToolbar =
+        ActionManager.getInstance().createActionToolbar(ActionPlaces.SHOW_USAGES_POPUP_TOOLBAR, scopeChooserGroup, true);
+      scopeChooserToolbar.setTargetComponent(table);
+      scopeChooserToolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY);
+      ((ActionToolbarImpl) scopeChooserToolbar).setForceMinimumSize(true);
+      JComponent component = scopeChooserToolbar.getComponent();
+      component.setBorder(JBUI.Borders.empty());
+      component.setOpaque(false);
+      northPanel.add(component, gc.next());
+    }
+
+    Dimension fillerSize = JBUI.size(8, 0);
+    northPanel.add(new Box.Filler(fillerSize, fillerSize, fillerSize), gc.next().weightx(1.0));
 
     DefaultActionGroup settingsGroup = new DefaultActionGroup(
       new SettingsAction(project, () -> cancel(popupRef.get()), showDialogAndRestartRunnable(parameters, actionHandler)));
     actionToolbar = createActionToolbar(table, settingsGroup);
+    ((ActionToolbarImpl) actionToolbar).setForceMinimumSize(true);
     JComponent settingsToolbarComponent = actionToolbar.getComponent();
     settingsToolbarComponent.setOpaque(false);
 
@@ -891,8 +915,7 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
 
           if (value instanceof UsageNode) {
             Usage usage = ((UsageNode)value).getUsage();
-            if (usage instanceof UsageInfoAdapter) {
-              UsageInfoAdapter adapter = (UsageInfoAdapter)usage;
+            if (usage instanceof UsageInfoAdapter adapter) {
               file = adapter.getPath();
               if (adapter.isValid()) {
                 selectedUsagePromises.add(adapter.getMergedInfosAsync());
@@ -961,7 +984,7 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
       northPanel.setBackground(background);
       table.setBackground(background);
       northPanel.setBorder(createComplexPopupToolbarBorder());
-      toolbarComponent.setBorder(JBUI.Borders.emptyRight(16));
+      toolbarComponent.setBorder(JBUI.Borders.empty());
       settingsToolbarComponent.setBorder(JBUI.Borders.emptyLeft(8));
       if (contentSplitter != null) {
         contentSplitter.setBackground(background);
@@ -1025,11 +1048,17 @@ public class ShowUsagesAction extends AnAction implements PopupAction, HintManag
   private static @NotNull ScopeChooserGroup createScopeChooser(
     @NotNull Project project,
     @NotNull Disposable parentDisposable,
-    @NotNull SearchScope initialScope,
-    @NotNull Consumer<SearchScope> scopeConsumer
+    @NotNull UsageViewImpl usageView,
+    @NotNull ShowUsagesPopupData showUsagesPopupData
   ) {
-    ScopeChooserGroup result = new ScopeChooserGroup(project, parentDisposable, initialScope);
-    result.addChangeListener(scopeConsumer);
+    ShowUsagesActionHandler actionHandler = showUsagesPopupData.actionHandler;
+    ScopeChooserGroup result = new ScopeChooserGroup(project, parentDisposable, actionHandler.getSelectedScope());
+    result.addChangeListener(scope -> {
+      UsageViewStatisticsCollector.logScopeChanged(project, usageView, actionHandler.getSelectedScope(), scope,
+                                                   actionHandler.getTargetClass());
+      cancel(showUsagesPopupData.popupRef.get());
+      showElementUsages(showUsagesPopupData.parameters, actionHandler.withScope(scope));
+    });
 
     return result;
   }

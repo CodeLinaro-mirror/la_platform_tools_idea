@@ -11,6 +11,7 @@ import org.gradle.api.Task
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.file.ContentFilterable
 import org.gradle.api.file.FileCopyDetails
+import org.gradle.api.file.RegularFile
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
@@ -19,6 +20,7 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.AbstractTestTask
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.util.PatternFilterable
+import org.gradle.jvm.toolchain.internal.JavaToolchain
 import org.gradle.plugins.ide.idea.IdeaPlugin
 import org.gradle.util.GradleVersion
 import org.jetbrains.annotations.NotNull
@@ -29,6 +31,7 @@ import org.jetbrains.plugins.gradle.tooling.ErrorMessageBuilder
 import org.jetbrains.plugins.gradle.tooling.MessageReporter
 import org.jetbrains.plugins.gradle.tooling.ModelBuilderContext
 import org.jetbrains.plugins.gradle.tooling.util.JavaPluginUtil
+import org.jetbrains.plugins.gradle.tooling.util.ReflectionUtil
 import org.jetbrains.plugins.gradle.tooling.util.SourceSetCachedFinder
 import org.jetbrains.plugins.gradle.tooling.util.resolve.DependencyResolverImpl
 
@@ -50,6 +53,7 @@ class ExternalProjectBuilderImpl extends AbstractModelBuilderService {
   public static final boolean is51OrBetter = is4OrBetter && gradleBaseVersion >= GradleVersion.version("5.1")
   public static final boolean is67OrBetter = gradleBaseVersion >= GradleVersion.version("6.7")
   public static final boolean is74OrBetter = gradleBaseVersion >= GradleVersion.version("7.4")
+  public static final boolean is80OrBetter = gradleBaseVersion >= GradleVersion.version("8.0")
 
   static final DataProvider<ConcurrentMap<Project, ExternalProject>> PROJECTS_PROVIDER = new DataProvider<ConcurrentMap<Project, ExternalProject>>() {
     @NotNull
@@ -300,7 +304,12 @@ class ExternalProjectBuilderImpl extends AbstractModelBuilderService {
           if (compiler.present) {
             try {
               def metadata = compiler.get().metadata
-              externalSourceSet.jdkInstallationPath = metadata.installationPath.asFile.canonicalPath
+              def configuredInstallationPath = metadata.installationPath.asFile.canonicalPath
+              boolean isFallbackToolchain = is80OrBetter && metadata instanceof JavaToolchain && ((JavaToolchain)metadata).isFallbackToolchain();
+              boolean isJavaHomeCompiler = configuredInstallationPath != null && configuredInstallationPath == System.getProperty("java.home");
+              if (!isJavaHomeCompiler && !isFallbackToolchain) {
+                externalSourceSet.jdkInstallationPath = configuredInstallationPath
+              }
             } catch (Throwable e) {
               project.logger.warn("Skipping java toolchain information for $javaCompileTask.path : $e.message")
               project.logger.info("Failed to resolve java toolchain info for $javaCompileTask.path", e)
@@ -318,7 +327,9 @@ class ExternalProjectBuilderImpl extends AbstractModelBuilderService {
 
       def jarTask = project.tasks.findByName(sourceSet.jarTaskName)
       if (jarTask instanceof AbstractArchiveTask) {
-        externalSourceSet.artifacts = [jarTask.archivePath]
+        externalSourceSet.artifacts = [ is67OrBetter ?
+                                        ReflectionUtil.reflectiveGetProperty(jarTask, "getArchiveFile", RegularFile.class).getAsFile() :
+                                        jarTask.archivePath ]
       }
 
       def sources = [:] as Map<ExternalSystemSourceType, DefaultExternalSourceDirectorySet>

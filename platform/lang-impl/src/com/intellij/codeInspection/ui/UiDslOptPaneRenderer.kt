@@ -6,7 +6,6 @@ import com.intellij.codeInsight.hint.HintUtil
 import com.intellij.codeInspection.InspectionProfileEntry
 import com.intellij.codeInspection.options.*
 import com.intellij.ide.DataManager
-import com.intellij.ide.ui.laf.darcula.DarculaUIUtil
 import com.intellij.lang.LangBundle
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionToolbarPosition
@@ -15,11 +14,6 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.options.ex.ConfigurableVisitor
 import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.ComponentValidator
-import com.intellij.openapi.ui.ValidationInfo
-import com.intellij.openapi.ui.cellvalidators.TableCellValidator
-import com.intellij.openapi.ui.cellvalidators.ValidatingTableCellRendererWrapper
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.text.HtmlBuilder
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.*
@@ -35,10 +29,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UI.PanelFactory
 import com.intellij.util.ui.UIUtil.setEnabledRecursively
 import java.awt.EventQueue
-import java.util.concurrent.ConcurrentHashMap
-import java.util.function.Supplier
 import javax.swing.*
-import javax.swing.table.DefaultTableCellRenderer
 import kotlin.math.max
 
 
@@ -181,19 +172,25 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
       // Split label with null suffix
       splitLabel?.prefix != null -> row(splitLabel.prefix) { cell = renderOptCell(component, context) }
       // No row label (align left, control handles the label)
-      else -> row {
-        cell = renderOptCell(component, context)
-
+      else -> row { cell = renderOptCell(component, context) }
+    }
+      .layout(RowLayout.PARENT_GRID)
+      .applyIf(withBottomGap) { bottomGap(BottomGap.SMALL) }
+      .applyIf(component.hasResizableRow) { resizableRow() }
+      .applyIf(component is OptNumber || component is OptString || component is OptCheckbox) {
+        (component as OptDescribedComponent).description()?.let {
+          cell.gap(RightGap.SMALL)
+          contextHelp (HtmlBuilder().append(it).toString())
+        }
+        this
+      }
+      .apply {
         nestedInRow?.let { nested ->
           val checkbox = cell.component as JBCheckBox
           renderOptCell(nested, context)
             .enabledIf(checkboxPredicate(checkbox))
         }
       }
-    }
-      .layout(RowLayout.PARENT_GRID)
-      .applyIf(withBottomGap) { bottomGap(BottomGap.SMALL) }
-      .applyIf(component.hasResizableRow) { resizableRow() }
 
     // Nested components
     component.nestedControls?.let { nested ->
@@ -223,10 +220,6 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
               isSelected = context.getOption(component.bindId) as Boolean
             }
             .onChanged { context.setOption(component.bindId, it.isSelected) }
-            .apply { component.description?.let {
-              gap(RightGap.SMALL)
-              this@renderOptCell.contextHelp (HtmlBuilder().append(it).toString())
-            } }
         }
 
         is OptString -> {
@@ -241,10 +234,6 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
             .onChanged {
               context.setOption(component.bindId, it.text)
             }
-            .apply { component.description?.let {
-              gap(RightGap.SMALL)
-              this@renderOptCell.contextHelp (HtmlBuilder().append(it).toString())
-            } }
         }
 
         is OptNumber -> {
@@ -322,7 +311,7 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
           val form = when (val validator = component.validator) {
             is StringValidatorWithSwingSelector -> ListEditForm("", component.label.label(), listWithListener, "", validator::select)
             else -> ListEditForm("", component.label.label(), listWithListener)
-          }
+          }.also { addColumnValidators(it.table, listOf(component.validator), context.parent, context.project) }
           cell(form.contentPanel)
             .align(Align.FILL)
             .resizableColumn()
@@ -331,6 +320,7 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
                 if (it.propertyName == "enabled") setEnabledRecursively(this, isEnabled)
               }
             }
+            .comment(component.description?.toString(), 50)
         }
 
         is OptTable -> {
@@ -338,9 +328,9 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
             @Suppress("UNCHECKED_CAST") val list = context.getOption(stringList.bindId) as MutableList<String>
             ListWithListener(list) { context.setOption(stringList.bindId, list) }
           }
-          val columnNames = component.children.map { stringList -> stringList.label.label() }
+          val columnNames = component.children.map { column -> column.name.label() }
           val table = ListTable(ListWrappingTableModel(columns, *columnNames.toTypedArray()))
-            .also { addColumnValidators(it, component, context) }
+            .also { addColumnValidators(it, component.children.map(OptTableColumn::validator), context.parent, context.project) }
           val panel = ToolbarDecorator.createDecorator(table)
             .setToolbarPosition(ActionToolbarPosition.LEFT)
             .setAddAction { _ ->
@@ -360,6 +350,7 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
                    .resizeY(true)
                    .createPanel()
                })
+            .comment(component.description()?.toString(), 40)
             .align(Align.FILL)
         }
 
@@ -374,51 +365,6 @@ class UiDslOptPaneRenderer : InspectionOptionPaneRenderer {
         }
 
         is OptCheckboxPanel, is OptGroup, is OptHorizontalStack, is OptSeparator, is OptTabSet -> { throw IllegalStateException("Unsupported nested component: ${component.javaClass}") }
-    }
-  }
-
-  private fun addColumnValidators(table: ListTable, component: OptTable, context: RendererContext) {
-    if (context.project == null || context.parent == null) return
-    for ((index, child) in component.children.withIndex()) {
-      val validator = child.validator ?: continue
-      val cellEditor = JBTextField()
-      cellEditor.putClientProperty(DarculaUIUtil.COMPACT_PROPERTY, true)
-
-      val column = table.columnModel.getColumn(index)
-      ComponentValidator(context.parent).withValidator(Supplier<ValidationInfo?> {
-        val errorMessage = validator.getErrorMessage(context.project, cellEditor.text ?: "")
-        return@Supplier if (errorMessage == null) {
-          null
-        }
-        else {
-          ValidationInfo(errorMessage, cellEditor)
-        }
-      })
-        .andRegisterOnDocumentListener(cellEditor)
-        .installOn(cellEditor)
-
-      column.cellEditor = DefaultCellEditor(cellEditor)
-      column.cellRenderer = ValidatingTableCellRendererWrapper(DefaultTableCellRenderer())
-        .bindToEditorSize {
-          cellEditor.preferredSize
-        }
-        .withCellValidator(object : TableCellValidator {
-          val cache: ConcurrentHashMap<Pair<Int, Int>, Pair<String, @NlsContexts.HintText String?>> = ConcurrentHashMap()
-          override fun validate(value: Any?, row: Int, column: Int): ValidationInfo? {
-            val stringValue = (value as? String) ?: ""
-            val previous = cache[Pair(row, column)]
-            if (previous != null && stringValue == previous.first) {
-              val previousResult = previous.second ?: return null
-              return ValidationInfo(previousResult, null)
-            }
-            val errorMessage = validator.getErrorMessage(context.project, stringValue)
-            cache[Pair(row, column)] = Pair(stringValue, errorMessage)
-            if (errorMessage == null) {
-              return null
-            }
-            return ValidationInfo(errorMessage, null)
-          }
-        })
     }
   }
 

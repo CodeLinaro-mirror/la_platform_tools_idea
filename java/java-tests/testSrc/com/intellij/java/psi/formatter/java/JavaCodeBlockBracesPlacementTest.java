@@ -400,4 +400,56 @@ public class JavaCodeBlockBracesPlacementTest extends AbstractJavaFormatterTest 
     getSettings().BRACE_STYLE = braceStyle;
     doMethodTest(before, after);
   }
+
+  public void testSwitchExpression() {
+    String before = """
+      var x = switch (foo) {
+      		case "bar" ->
+      			{
+      				yield "2000";
+      			}
+      		default -> "n/a";
+      	};""";
+
+    String endOfLine = """
+      var x = switch (foo) {
+          case "bar" -> {
+              yield "2000";
+          }
+          default -> "n/a";
+      };""";
+
+    String nextLine = """
+      var x = switch (foo)
+      {
+          case "bar" ->
+          {
+              yield "2000";
+          }
+          default -> "n/a";
+      };""";
+
+    String nextLineShifted = """
+      var x = switch (foo)
+          {
+          case "bar" ->
+              {
+              yield "2000";
+              }
+          default -> "n/a";
+          };""";
+
+    String nextLineShiftedEach = """
+      var x = switch (foo)
+          {
+              case "bar" ->
+                  {
+                      yield "2000";
+                  }
+              default -> "n/a";
+          };""";
+
+    checkFormatterWithDifferentBraceStyles(before, endOfLine, nextLine, nextLineShifted,
+                                           nextLineShiftedEach);
+  }
 }

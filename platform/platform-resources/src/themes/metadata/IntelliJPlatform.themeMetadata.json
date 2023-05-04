@@ -394,6 +394,16 @@
       "description": "Inner insets around each editor tab"
     },
     {
+      "key": "EditorTabs.unselectedAlpha",
+      "description": "The alpha coefficient (0..1) that is used to paint file icon if the tab is not selected and not hovered",
+      "since": "2023.1"
+    },
+    {
+      "key": "EditorTabs.unselectedBlend",
+      "description": "The blending coefficient (0..1) that is used to edit the foreground of the tab label if the tab is not selected and not hovered",
+      "since": "2023.1"
+    },
+    {
       "key": "EditorPane.splitBorder",
       "description": "Separator color for editor split mode",
       "since": "2022.2"
@@ -1676,6 +1686,11 @@
       "key": "VersionControl.Log.Commit.rowHeight",
       "description": "Height of row in the Version Control | Log tab (experimental UI only)",
       "since": "2022.2"
+    },
+    {
+      "key": "VersionControl.Log.Commit.Reference.foreground",
+      "description": "Foreground color for reference labels in log (experimental UI only)",
+      "since": "2023.1"
     },
     {
       "key": "VersionControl.RefLabel.backgroundBase",

@@ -35,8 +35,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -56,6 +55,10 @@ import static com.intellij.ui.paint.PaintUtil.RoundingMode.ROUND;
  */
 public final class JBCefApp {
   private static final Logger LOG = Logger.getInstance(JBCefApp.class);
+  private static final boolean SKIP_VERSION_CHECK = Boolean.getBoolean("ide.browser.jcef.skip_version_check");
+  private static final boolean SKIP_MODULE_CHECK = Boolean.getBoolean("ide.browser.jcef.skip_module_check");
+
+  private static String ourLinuxDistribution = null;
 
   public static final @NotNull NotNullLazyValue<NotificationGroup> NOTIFICATION_GROUP = NotNullLazyValue.createValue(() -> {
     return NotificationGroup.create("JCEF", NotificationDisplayType.BALLOON, true, null, null, null);
@@ -179,6 +182,20 @@ public final class JBCefApp {
           LOG.info("JCEF-sandbox was disabled (to enable you should start IDE from launcher)");
           settings.no_sandbox = true;
         }
+      } else if (SystemInfoRt.isLinux) {
+        String linuxDistrib = readLinuxDistribution();
+        if (
+          linuxDistrib != null &&
+          (linuxDistrib.contains("debian") || linuxDistrib.contains("centos"))
+        ) {
+          if (Boolean.getBoolean("ide.browser.jcef.sandbox.disable_linux_os_check")) {
+            LOG.warn("JCEF sandbox enabled via VM-option 'disable_linux_os_check', OS: " + linuxDistrib);
+          } else {
+            LOG.info("JCEF sandbox was disabled because of unsupported OS: " + linuxDistrib);
+            settings.no_sandbox = true;
+            // TODO: show notification with workaround
+          }
+        }
       }
     }
 
@@ -247,6 +264,57 @@ public final class JBCefApp {
       case "default" -> LogSeverity.LOGSEVERITY_DEFAULT;
       default -> LogSeverity.LOGSEVERITY_DEFAULT;
     };
+  }
+
+  private static @Nullable String readLinuxDistributionFromOsRelease() {
+    String fileName = "/etc/os-release";
+    File f = new File(fileName);
+    if (!f.exists()) return null;
+
+    try {
+      BufferedReader br = new BufferedReader(new FileReader(fileName));
+      String line;
+      while ((line = br.readLine()) != null) {
+        if (line.startsWith("NAME="))
+          return line.replace("NAME=", "").replace("\"", "").toLowerCase();
+      }
+    } catch (IOException e) {
+      LOG.error(e);
+    }
+    return null;
+  }
+
+  private static @Nullable String readLinuxDistributionFromLsbRelease() {
+    String fileName = "/etc/lsb-release";
+    File f = new File(fileName);
+    if (!f.exists()) return null;
+
+    try {
+      BufferedReader br = new BufferedReader(new FileReader(fileName));
+      String line;
+      while ((line = br.readLine()) != null) {
+        if (line.startsWith("DISTRIB_DESCRIPTION"))
+          return line.replace("DISTRIB_DESCRIPTION=", "").replace("\"", "").toLowerCase();
+      }
+    } catch (IOException e) {
+      LOG.error(e);
+    }
+    return null;
+  }
+
+  private static String readLinuxDistribution() {
+    if (ourLinuxDistribution == null) {
+      if (SystemInfoRt.isLinux) {
+        String readResult = readLinuxDistributionFromLsbRelease();
+        if (readResult == null)
+          readResult = readLinuxDistributionFromOsRelease();
+        ourLinuxDistribution = readResult == null ? "linux" : readResult;
+      } else {
+        ourLinuxDistribution = "";
+      }
+    }
+
+    return ourLinuxDistribution;
   }
 
   private static boolean isSandboxSupported() {
@@ -354,35 +422,40 @@ public final class JBCefApp {
       {
         return unsupported.apply("JCEF is manually disabled in headless env via 'ide.browser.jcef.headless.enabled=false'");
       }
-      JCefVersionDetails version;
-      try {
-        version = JCefAppConfig.getVersionDetails();
+      if (!SKIP_VERSION_CHECK) {
+        JCefVersionDetails version;
+        try {
+          version = JCefAppConfig.getVersionDetails();
+        }
+        catch (Throwable e) {
+          return unsupported.apply("JCEF runtime version is not supported");
+        }
+        if (MIN_SUPPORTED_CEF_MAJOR_VERSION > version.cefVersion.major) {
+          return unsupported.apply("JCEF: minimum supported CEF major version is " + MIN_SUPPORTED_CEF_MAJOR_VERSION +
+                                   ", current is " + version.cefVersion.major);
+        }
+        if (MIN_SUPPORTED_JCEF_API_MAJOR_VERSION > version.apiVersion.major ||
+            (MIN_SUPPORTED_JCEF_API_MAJOR_VERSION == version.apiVersion.major &&
+             MIN_SUPPORTED_JCEF_API_MINOR_VERSION > version.apiVersion.minor))
+        {
+          return unsupported.apply("JCEF: minimum supported API version is " +
+                                   MIN_SUPPORTED_JCEF_API_MAJOR_VERSION + "." + MIN_SUPPORTED_JCEF_API_MINOR_VERSION +
+                                   ", current is " + version.apiVersion.major + "." + version.apiVersion.minor);
+        }
       }
-      catch (Throwable e) {
-        return unsupported.apply("JCEF runtime version is not supported");
+      if (!SKIP_MODULE_CHECK) {
+        URL url = JCefAppConfig.class.getResource("JCefAppConfig.class");
+        if (url == null) {
+          return unsupported.apply("JCefAppConfig.class not found");
+        }
+        String path = url.toString();
+        String name = JCefAppConfig.class.getName().replace('.', '/');
+        boolean isJbrModule = path != null && path.contains("/jcef/" + name);
+        if (!isJbrModule) {
+          return unsupported.apply("JCefAppConfig.class is not from a JBR module, url: " + path);
+        }
       }
-      if (MIN_SUPPORTED_CEF_MAJOR_VERSION > version.cefVersion.major) {
-        return unsupported.apply("JCEF: minimum supported CEF major version is " + MIN_SUPPORTED_CEF_MAJOR_VERSION +
-                                 ", current is " + version.cefVersion.major);
-      }
-      if (MIN_SUPPORTED_JCEF_API_MAJOR_VERSION > version.apiVersion.major ||
-          (MIN_SUPPORTED_JCEF_API_MAJOR_VERSION == version.apiVersion.major &&
-           MIN_SUPPORTED_JCEF_API_MINOR_VERSION > version.apiVersion.minor))
-      {
-        return unsupported.apply("JCEF: minimum supported API version is " +
-                                 MIN_SUPPORTED_JCEF_API_MAJOR_VERSION + "." + MIN_SUPPORTED_JCEF_API_MINOR_VERSION +
-                                 ", current is " + version.apiVersion.major + "." + version.apiVersion.minor);
-      }
-      URL url = JCefAppConfig.class.getResource("JCefAppConfig.class");
-      if (url == null) {
-        return unsupported.apply("JCefAppConfig.class not found");
-      }
-      String path = url.toString();
-      String name = JCefAppConfig.class.getName().replace('.', '/');
-      boolean isJbrModule = path != null && path.contains("/jcef/" + name);
-      if (!isJbrModule) {
-        LOG.warn("JCefAppConfig is not from a JBR module, path: " + path);
-      }
+
       ourSupported = new AtomicBoolean(true);
       return true;
     }

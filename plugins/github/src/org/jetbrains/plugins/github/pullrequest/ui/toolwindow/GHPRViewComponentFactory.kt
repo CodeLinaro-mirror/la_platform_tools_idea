@@ -20,14 +20,19 @@ import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.ui.ClientProperty
 import com.intellij.ui.ScrollPaneFactory
+import com.intellij.ui.ScrollableContentBorder
+import com.intellij.ui.Side
 import com.intellij.util.containers.TreeTraversal
-import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import com.intellij.vcsUtil.VcsUtil
 import git4idea.changes.GitParsedChangesBundle
+import git4idea.changes.findCumulativeChange
 import git4idea.repo.GitRepository
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import org.jetbrains.annotations.Nls
 import org.jetbrains.plugins.github.api.data.GHCommit
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequest
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestFileViewedState
@@ -158,7 +163,7 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
         tree.selectFile(VcsUtil.getFilePath(filePath, false))
       }
       else {
-        val change = changesProviderModel.value.findCumulativeChange(oid, filePath)
+        val change = changesProviderModel.value.patchesByChange.findCumulativeChange(oid, filePath)
         if (change == null) {
           tree.selectFile(VcsUtil.getFilePath(filePath, false))
         }
@@ -188,18 +193,20 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
       val reviewDetailsVm = GHPRDetailsViewModelImpl(scope, detailsModel, stateModel)
       val reviewFlowVm = GHPRReviewFlowViewModelImpl(scope,
                                                      metadataModel,
+                                                     stateModel,
                                                      dataContext.securityService,
+                                                     dataContext.avatarIconsProvider,
                                                      dataProvider.detailsData,
                                                      dataProvider.reviewData,
                                                      disposable)
-      val commitsVm = GHPRCommitsViewModelImpl(scope, commitsLoadingModel)
+      val commitsVm = GHPRCommitsViewModelImpl(scope, commitsLoadingModel, dataContext.securityService)
 
       GHPRDetailsComponentFactory.create(project,
                                          scope,
                                          reviewDetailsVm, reviewFlowVm, commitsVm,
                                          dataProvider,
                                          dataContext.repositoryDataService, dataContext.securityService, dataContext.avatarIconsProvider,
-                                         branchesModel, metadataModel, stateModel,
+                                         branchesModel,
                                          createCommitFilesBrowserComponent(scope, commitsVm),
                                          diffBridge)
     }.apply {
@@ -237,9 +244,9 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
       val controller = Controller(tree, model, commitsVm, diffBridge)
       ClientProperty.put(tree, GHPRCommitBrowserComponentController.KEY, controller)
 
-      return@createWithUpdatesStripe ScrollPaneFactory.createScrollPane(tree, true).apply {
-        border = JBUI.Borders.customLineBottom(JBUI.CurrentTheme.CustomFrameDecorations.separatorForeground())
-      }
+      val scrollPane = ScrollPaneFactory.createScrollPane(tree, true)
+      ScrollableContentBorder.setup(scrollPane, Side.TOP_AND_BOTTOM, parent)
+      return@createWithUpdatesStripe scrollPane
     }
   }
 
@@ -248,25 +255,31 @@ internal class GHPRViewComponentFactory(private val actionManager: ActionManager
     changesProviderModel: SingleValueModel<GitParsedChangesBundle>,
     commitsAndFilesVm: GHPRCommitsViewModel
   ): SingleValueModel<Collection<Change>> {
-    val commitChangesModel: SingleValueModel<Collection<Change>> = SingleValueModel(emptyList())
-    scope.launch(start = CoroutineStart.UNDISPATCHED) {
-      commitsAndFilesVm.selectedCommit.collect { selectedCommit ->
-        commitChangesModel.value = if (selectedCommit == null) {
-          changesProviderModel.value.changes
-        }
-        else {
-          changesProviderModel.value.changesByCommits[selectedCommit.oid].orEmpty()
-        }
+    val changesState = MutableStateFlow(changesProviderModel.value)
+    changesProviderModel.addAndInvokeListener {
+      changesState.value = it
+    }
+    val selectedChanges = combine(changesState, commitsAndFilesVm.selectedCommit) { changes, commit ->
+      if (commit == null) {
+        changes.changes
+      }
+      else {
+        changes.changesByCommits[commit.oid].orEmpty()
       }
     }
-
+    val commitChangesModel: SingleValueModel<Collection<Change>> = SingleValueModel(emptyList())
+    scope.launch(start = CoroutineStart.UNDISPATCHED) {
+      selectedChanges.collect {
+        commitChangesModel.value = it
+      }
+    }
     return commitChangesModel
   }
 
   private fun createChangesTree(
     parentPanel: JPanel,
     model: SingleValueModel<Collection<Change>>,
-    emptyTextText: String,
+    emptyTextText: @Nls String,
     getCustomData: ChangesTree.(String) -> Any? = { null }
   ): ChangesTree {
     val tree = CodeReviewChangesTreeFactory(project, model).create(emptyTextText)

@@ -110,8 +110,7 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
     AnAction toolbarAction;
     AnAction runContextAction;
     AnAction runNonExistingContextAction;
-    if (executor instanceof ExecutorGroup) {
-      ExecutorGroup<?> executorGroup = (ExecutorGroup<?>)executor;
+    if (executor instanceof ExecutorGroup<?> executorGroup) {
       ActionGroup toolbarActionGroup = new SplitButtonAction(new ExecutorGroupActionGroup(executorGroup, ExecutorAction::new));
       Presentation presentation = toolbarActionGroup.getTemplatePresentation();
       presentation.setIcon(executor.getIcon());
@@ -152,9 +151,8 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
   private synchronized void initRunToolbarExecutorActions(@NotNull Executor executor, @NotNull ActionManager actionManager) {
     if (ToolbarSettings.getInstance().isAvailable()) {
       RunToolbarProcess.getProcessesByExecutorId(executor.getId()).forEach(process -> {
-        if (executor instanceof ExecutorGroup) {
+        if (executor instanceof ExecutorGroup<?> executorGroup) {
 
-          ExecutorGroup<?> executorGroup = (ExecutorGroup<?>)executor;
           if (process.getShowInBar()) {
             ActionGroup wrappedAction = new RunToolbarExecutorGroupAction(
               new RunToolbarExecutorGroup(executorGroup, (ex) -> new RunToolbarGroupProcessAction(process, ex), process));
@@ -314,10 +312,6 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
       return ActionUpdateThread.BGT;
     }
 
-    private boolean canRun(@NotNull Project project, @NotNull List<SettingsAndEffectiveTarget> pairs) {
-      return RunnerHelper.canRun(project, pairs, myExecutor);
-    }
-
     @Override
     public void update(@NotNull AnActionEvent e) {
       Presentation presentation = e.getPresentation();
@@ -368,13 +362,7 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
         presentation.setIcon(getInformativeIcon(project, selectedSettings, e));
         RunConfiguration configuration = selectedSettings.getConfiguration();
         if (!isSuppressed(project)) {
-          if (configuration instanceof CompoundRunConfiguration) {
-            enabled = canRun(project, ((CompoundRunConfiguration)configuration).getConfigurationsWithEffectiveRunTargets());
-          }
-          else {
-            ExecutionTarget target = ExecutionTargetManager.getActiveTarget(project);
-            enabled = canRun(project, Collections.singletonList(new SettingsAndEffectiveTarget(configuration, target)));
-          }
+          enabled = RunnerHelper.canRun(project, myExecutor, configuration);
         }
         if (!(configuration instanceof CompoundRunConfiguration)) {
           runConfigAsksToHideDisabledExecutorButtons = configuration.hideDisabledExecutorButtons();
@@ -551,8 +539,7 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
     protected Icon getInformativeIcon(@NotNull Project project, @NotNull RunnerAndConfigurationSettings selectedConfiguration,
                                       @NotNull AnActionEvent e) {
       RunConfiguration configuration = selectedConfiguration.getConfiguration();
-      if (configuration instanceof RunnerIconProvider) {
-        RunnerIconProvider provider = (RunnerIconProvider)configuration;
+      if (configuration instanceof RunnerIconProvider provider) {
         Icon icon = provider.getExecutorIcon(configuration, myExecutor);
         if (icon != null) {
           return icon;
@@ -843,7 +830,6 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
                            @NotNull Executor executor) {
       if (settings != null) {
         RunConfigurationStartHistory.getInstance(project).register(settings);
-        RunManager.getInstance(project).setSelectedConfiguration(settings);
       }
       runSubProcess(project, configuration, settings, dataContext, executor, RunToolbarProcessData.prepareBaseSettingCustomization(settings, null));
     }
@@ -882,6 +868,18 @@ public final class ExecutorRegistryImpl extends ExecutorRegistry {
         if(environmentCustomization != null) environmentCustomization.accept(environment);
         ExecutionManager.getInstance(project).restartRunProfile(environment);
       }
+    }
+
+    public static boolean canRun(@NotNull Project project, @NotNull Executor executor, RunConfiguration configuration) {
+      List<SettingsAndEffectiveTarget> pairs;
+      if (configuration instanceof CompoundRunConfiguration) {
+        pairs = ((CompoundRunConfiguration)configuration).getConfigurationsWithEffectiveRunTargets();
+      }
+      else {
+        ExecutionTarget target = ExecutionTargetManager.getActiveTarget(project);
+        pairs = Collections.singletonList(new SettingsAndEffectiveTarget(configuration, target));
+      }
+      return canRun(project, pairs, executor);
     }
 
     public static boolean canRun(@NotNull Project project, @NotNull List<SettingsAndEffectiveTarget> pairs, @NotNull Executor executor) {

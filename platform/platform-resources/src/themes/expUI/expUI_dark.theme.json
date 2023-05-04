@@ -82,7 +82,31 @@
     "Orange8": "#F0AC81",
     "Orange9": "#F5BD98",
     "Orange10": "#FACEAF",
-    "Orange11": "#FFDFC7"
+    "Orange11": "#FFDFC7",
+
+    "Purple1": "#2F2936",
+    "Purple2": "#433358",
+    "Purple3": "#583D7A",
+    "Purple4": "#6C469C",
+    "Purple5": "#8150BE",
+    "Purple6": "#955AE0",
+    "Purple7": "#A571E6",
+    "Purple8": "#B589EC",
+    "Purple9": "#C4A0F3",
+    "Purple10": "#D4B8F9",
+    "Purple11": "#E4CEFF",
+
+    "Teal1": "#1D3838",
+    "Teal2": "#1E4D4A",
+    "Teal3": "#20635D",
+    "Teal4": "#21786F",
+    "Teal5": "#238E82",
+    "Teal6": "#24A394",
+    "Teal7": "#42B1A4",
+    "Teal8": "#60C0B5",
+    "Teal9": "#7DCEC5",
+    "Teal10": "#9BDDD6",
+    "Teal11": "#B9EBE6"
   },
 
   "ui": {
@@ -225,7 +249,9 @@
     },
 
     "EditorTabs": {
+      "underlineArc": "4",
       "tabInsets": "-3,12,-4,8",
+      "unselectedBlend": "0.7",
       "hoverBackground": "#1E1F2200",
       "inactiveHoverBackground": "#1E1F2200",
       "inactiveColoredFileBackground": "#1E1F2280",
@@ -504,6 +530,8 @@
         "leftRightInsets": "0,12,0,12"
       },
       "Button": {
+        "selectedForeground": "Grey14",
+        "selectedBackground": "Blue6",
         "DragAndDrop" : {
           "stripeBackground" : "Grey2",
           "buttonDropBackground": "#35538F99",
@@ -560,12 +588,20 @@
       "Log.Commit": {
         "currentBranchBackground": "#1c2433",
         "unmatchedForeground": "Grey7",
-        "hoveredBackground": "#FFFFFFED"
+        "hoveredBackground": "#FFFFFFED",
+        "Reference.foreground": "Grey7"
       },
       "FileHistory.Commit.selectedBranchBackground": "#1c2433",
       "MarkerPopup": {
         "borderInsets": "6,8,6,10",
         "borderColor": "Grey4"
+      },
+      "GitLog": {
+        "headIconColor": "Yellow8",
+        "localBranchIconColor": "Green6",
+        "otherIconColor": "Grey8",
+        "remoteBranchIconColor": "Purple8",
+        "tagIconColor": "Grey8"
       }
     },
 
@@ -581,38 +617,66 @@
       "shortcutBackground": "Grey5"
     },
 
+    "Tooltip.Learning": {
+      "background": "Blue6",
+      "borderColor": "Blue6",
+      "spanBackground": "Blue4",
+      "spanForeground": "Grey14",
+      "foreground": "Grey14",
+      "stepNumberForeground": "Blue11"
+    },
+
     "UnattendedHostStatus": {
       "warningBackground": "Yellow7",
       "warningForeground": "Grey3",
       "dangerBackground": "Red6"
     },
 
-    "CodeWithMe.Users": {
-      "1": {
-        "Background": "Green6",
-        "Foreground": "Grey13"
+    "CodeWithMe": {
+      "MainToolbar": {
+        "NoConnectionLabelForeground": "Grey8"
       },
-      "2": {
-        "Background": "#15A0B2",
-        "Foreground": "Grey13"
-      },
-      "3": {
-        "Background": "Red6",
-        "Foreground": "Grey13"
-      },
-      "4": {
-        "Background": "#955AE0",
-        "Foreground": "Grey13"
-      },
-      "5": {
-        "Background": "Yellow6",
-        "Foreground": "Grey13"
-      },
-      "6": {
-        "Background": "Orange6",
-        "Foreground": "Grey13"
+      "Users": {
+        "1": {
+          "Background": "Green6",
+          "Foreground": "Grey14",
+          "StopFollowingLinkForeground": "Blue1",
+          "FollowingBorderTextForeground": "Grey14"
+        },
+        "2": {
+          "Background": "Red6",
+          "Foreground": "Grey14",
+          "StopFollowingLinkForeground": "Blue1",
+          "FollowingBorderTextForeground": "Grey14"
+        },
+        "3": {
+          "Background": "Purple6",
+          "Foreground": "Grey14",
+          "StopFollowingLinkForeground": "Blue1",
+          "FollowingBorderTextForeground": "Grey14"
+        },
+        "4": {
+          "Background": "Orange6",
+          "Foreground": "Grey14",
+          "StopFollowingLinkForeground": "Blue1",
+          "FollowingBorderTextForeground": "Grey14"
+        },
+        "5": {
+          "Background": "Teal6",
+          "Foreground": "Grey14",
+          "StopFollowingLinkForeground": "Blue1",
+          "FollowingBorderTextForeground": "Grey14"
+        },
+        "6": {
+          "Background": "Yellow6",
+          "Foreground": "Grey14",
+          "StopFollowingLinkForeground": "Blue1",
+          "FollowingBorderTextForeground": "Grey1"
+        }
       }
     },
+
+
 
     "PackageSearch": {
       "SearchResult": {

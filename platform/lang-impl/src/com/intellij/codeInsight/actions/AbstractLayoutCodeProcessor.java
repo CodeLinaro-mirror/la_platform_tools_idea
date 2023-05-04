@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package com.intellij.codeInsight.actions;
 
@@ -149,7 +149,7 @@ public abstract class AbstractLayoutCodeProcessor {
                                         boolean processChangedTextOnly) {
     myProject = project;
     myModule = null;
-    myFiles = ContainerUtil.filter(files, AbstractLayoutCodeProcessor::canBeFormatted);
+    myFiles = List.of(files);
     myProgressText = progressText;
     myCommandName = commandName;
     myPostRunnable = postRunnable;
@@ -229,7 +229,7 @@ public abstract class AbstractLayoutCodeProcessor {
   @NotNull
   private FileRecursiveIterator build() {
     if (myFiles != null) {
-      return new FileRecursiveIterator(myProject, myFiles);
+      return new FileRecursiveIterator(myProject, ContainerUtil.filter(myFiles, AbstractLayoutCodeProcessor::canBeFormatted));
     }
     if (myProcessChangedTextOnly) {
       return buildChangedFilesIterator();
@@ -286,7 +286,7 @@ public abstract class AbstractLayoutCodeProcessor {
       );
       return;
     }
-    
+
     Consumer<@NotNull ProgressIndicator> runnable = (indicator) -> {
       indicator.setText(myProgressText);
         try {
@@ -300,8 +300,6 @@ public abstract class AbstractLayoutCodeProcessor {
           ApplicationManager.getApplication().invokeLater(myPostRunnable);
         }
     };
-
-    
 
     if (ApplicationManager.getApplication().isHeadlessEnvironment()) {
       ProgressManager.getInstance().run(new Task.Modal(myProject, getProgressTitle(), true) {

@@ -168,7 +168,7 @@ public record OptPane(@NotNull List<@NotNull OptRegularComponent> components) {
                                           @NotNull @NlsContexts.Label String splitLabel,
                                           int minValue,
                                           int maxValue) {
-    return new OptNumber(bindId, new PlainMessage(splitLabel), minValue, maxValue);
+    return new OptNumber(bindId, new PlainMessage(splitLabel), minValue, maxValue, null);
   }
 
   /**
@@ -304,8 +304,9 @@ public record OptPane(@NotNull List<@NotNull OptRegularComponent> components) {
    * @return editable sorted list of unique strings
    */
   @Contract(pure = true)
-  public static @NotNull OptStringList stringList(@Language("jvm-field-name") @NotNull String bindId, @NotNull @Nls String label) {
-    return new OptStringList(bindId, new PlainMessage(label), null);
+  public static @NotNull OptStringList stringList(@Language("jvm-field-name") @NotNull String bindId,
+                                                  @NotNull @NlsContexts.Label String label) {
+    return new OptStringList(bindId, new PlainMessage(label), null, null);
   }
 
   /**
@@ -316,24 +317,54 @@ public record OptPane(@NotNull List<@NotNull OptRegularComponent> components) {
    * @return editable sorted list of unique strings
    */
   @Contract(pure = true)
-  public static @NotNull OptStringList stringList(@Language("jvm-field-name") @NotNull String bindId, @NotNull @Nls String label,
+  public static @NotNull OptStringList stringList(@Language("jvm-field-name") @NotNull String bindId,
+                                                  @NotNull @NlsContexts.Label String label,
                                                   @NotNull StringValidator validator) {
-    return new OptStringList(bindId, new PlainMessage(label), validator);
+    return new OptStringList(bindId, new PlainMessage(label), validator, null);
   }
 
   /**
    * @param label   label above the control
    * @param columns lists for every column
-   * @return new table 
+   * @return new table
+   * @see #column(String, String) 
+   * @see #column(String, String, StringValidator) 
    */
-  public static @NotNull OptTable table(@NotNull @NlsContexts.Label String label, @NotNull OptStringList @NotNull ... columns) {
-    return new OptTable(new PlainMessage(label), List.of(columns));
+  public static @NotNull OptTable table(@NotNull @NlsContexts.Label String label, @NotNull OptTableColumn @NotNull ... columns) {
+    return new OptTable(new PlainMessage(label), List.of(columns), null);
+  }
+
+  /**
+   * @param bindId identifier of binding variable used by inspection; the corresponding variable is expected to be a mutable {@code List<String>}.
+   * @param name   name of the table column
+   * @return editable table column
+   * @see #table(String, OptTableColumn...) 
+   */
+  @Contract(pure = true)
+  public static @NotNull OptTableColumn column(@Language("jvm-field-name") @NotNull String bindId,
+                                               @NotNull @NlsContexts.ColumnName String name) {
+    return new OptTableColumn(bindId, new PlainMessage(name), null);
+  }
+
+  /**
+   * @param bindId    identifier of binding variable used by inspection; the corresponding variable is expected to be a mutable {@code List<String>}.
+   * @param name      name of the table column
+   * @param validator optional validator for content; can validate max-length or be something more complicated
+   *                  (e.g., validate that a string is a class-name which is a subclass of specific class)
+   * @return editable table column
+   * @see #table(String, OptTableColumn...)
+   */
+  @Contract(pure = true)
+  public static @NotNull OptTableColumn column(@Language("jvm-field-name") @NotNull String bindId,
+                                               @NotNull @NlsContexts.ColumnName String name,
+                                               @NotNull StringValidator validator) {
+    return new OptTableColumn(bindId, new PlainMessage(name), validator);
   }
 
   /* Layout elements */
 
   /**
-   * @param label label to display above the group
+   * @param label    label to display above the group
    * @param children list of child components
    * @return a group of controls with a name
    */

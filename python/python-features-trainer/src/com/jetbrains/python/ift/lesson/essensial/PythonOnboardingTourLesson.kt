@@ -231,7 +231,7 @@ class PythonOnboardingTourLesson :
     }
     caret(sample.startOffset)
 
-    toggleBreakpointTask(sample, { logicalPosition }, checkLine = false) {
+    toggleBreakpointTask(sample, { logicalPosition }, breakpointXRange = { IntRange(13, it - 17) }, checkLine = false) {
       text(PythonLessonsBundle.message("python.onboarding.balloon.click.here"),
            LearningBalloonConfig(Balloon.Position.below, width = 0, cornerToPointerDistance = JBUI.scale(20)))
       text(PythonLessonsBundle.message("python.onboarding.toggle.breakpoint.1",
@@ -257,7 +257,6 @@ class PythonOnboardingTourLesson :
       gotItStep(Balloon.Position.above, width = 0,
                 PythonLessonsBundle.message("python.onboarding.balloon.about.debug.panel",
                                             strong(UIBundle.message("tool.window.name.debug")),
-                                            if (UIExperiment.isNewDebuggerUIEnabled()) 0 else 1,
                                             strong(LessonsBundle.message("debug.workflow.lesson.name"))))
       restoreIfModified(sample)
     }

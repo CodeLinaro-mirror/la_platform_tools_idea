@@ -4,9 +4,6 @@ package org.jetbrains.plugins.github.pullrequest.ui.changes
 import com.intellij.diff.chains.AsyncDiffRequestChain
 import com.intellij.diff.chains.DiffRequestChain
 import com.intellij.diff.chains.DiffRequestProducer
-import com.intellij.diff.comparison.ComparisonManagerImpl
-import com.intellij.diff.comparison.iterables.DiffIterableUtil
-import com.intellij.diff.tools.util.text.LineOffsetsUtil
 import com.intellij.diff.util.DiffUserDataKeys
 import com.intellij.diff.util.DiffUserDataKeysEx
 import com.intellij.icons.AllIcons
@@ -22,7 +19,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
-import com.intellij.openapi.vcs.ex.isValidRanges
 import com.intellij.openapi.vcs.history.VcsDiffUtil
 import git4idea.changes.GitParsedChangesBundle
 import git4idea.changes.getDiffComputer
@@ -51,19 +47,17 @@ open class GHPRDiffRequestChainProducer(
   private val currentUser: GHUser
 ) : DiffRequestChainProducer {
 
-  internal val changeProducerFactory = object : ChangeDiffRequestProducerFactory {
+  internal val changeProducerFactory = ChangeDiffRequestProducerFactory { project, change ->
     val changesData = dataProvider.changesData
     val changesProviderFuture = changesData.loadChanges()
     //TODO: check if revisions are already fetched or load via API (could be much quicker in some cases)
     val fetchFuture = CompletableFuture.allOf(changesData.fetchBaseBranch(), changesData.fetchHeadBranch())
 
-    override fun create(project: Project?, change: Change): DiffRequestProducer? {
-      val indicator = ProgressManager.getInstance().progressIndicator ?: EmptyProgressIndicator()
-      val changeDataKeys = loadRequestDataKeys(indicator, change, changesProviderFuture, fetchFuture)
-      val customDataKeys = createCustomContext(change)
+    val indicator = ProgressManager.getInstance().progressIndicator ?: EmptyProgressIndicator()
+    val changeDataKeys = loadRequestDataKeys(indicator, change, changesProviderFuture, fetchFuture)
+    val customDataKeys = createCustomContext(change)
 
-      return ChangeDiffRequestProducer.create(project, change, changeDataKeys + customDataKeys)
-    }
+    ChangeDiffRequestProducer.create(project, change, changeDataKeys + customDataKeys)
   }
 
   override fun getRequestChain(changes: ListSelection<Change>): DiffRequestChain {
@@ -88,7 +82,7 @@ open class GHPRDiffRequestChainProducer(
 
     VcsDiffUtil.putFilePathsIntoChangeContext(change, requestDataKeys)
 
-    val diffComputer = changesProvider.findChangeDiffData(change)?.getDiffComputer()
+    val diffComputer = changesProvider.patchesByChange[change]?.getDiffComputer()
     if (diffComputer != null) {
       requestDataKeys[DiffUserDataKeysEx.CUSTOM_DIFF_COMPUTER] = diffComputer
     }
@@ -118,7 +112,7 @@ open class GHPRDiffRequestChainProducer(
   }
 
   private fun getReviewSupport(changesProvider: GitParsedChangesBundle, change: Change): GHPRDiffReviewSupport? {
-    val diffData = changesProvider.findChangeDiffData(change) ?: return null
+    val diffData = changesProvider.patchesByChange[change] ?: return null
 
     return GHPRDiffReviewSupportImpl(project,
                                      dataProvider.reviewData, dataProvider.detailsData, avatarIconsProvider,

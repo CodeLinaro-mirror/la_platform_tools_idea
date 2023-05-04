@@ -608,7 +608,6 @@ object ProjectUtil {
       return projectManager.openProjectAsync(existingFile, OpenProjectTask { runConfigurators = true })
     }
 
-    @Suppress("BlockingMethodInNonBlockingContext")
     val created = try {
       withContext(Dispatchers.IO) {
         !Files.exists(file) && Files.createDirectories(file) != null || Files.isDirectory(file)
@@ -675,7 +674,7 @@ object ProjectUtil {
     val canAttach = ProjectAttachProcessor.canAttachToProject()
     val preferAttach = currentProject != null &&
                        canAttach &&
-                       (PlatformUtils.isDataGrip() && !ProjectUtilCore.isValidProjectPath(file) || PlatformUtils.isDataSpell())
+                       (PlatformUtils.isDataGrip() && !ProjectUtilCore.isValidProjectPath(file))
     if (preferAttach && attachToProjectAsync(projectToClose = currentProject!!, projectDir = file, callback = null)) {
       return null
     }

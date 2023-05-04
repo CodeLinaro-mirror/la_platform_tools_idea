@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.tree;
 
 import com.intellij.ide.util.treeView.AbstractTreeNode;
@@ -36,7 +36,7 @@ import static org.jetbrains.concurrency.Promises.createError;
 public class StructureTreeModel<Structure extends AbstractTreeStructure>
   extends AbstractTreeModel implements Disposable, InvokerSupplier, ChildrenProvider<TreeNode> {
 
-  private static final TreePath ROOT_INVALIDATED = new TreePath(new DefaultMutableTreeNode());
+  private static final TreePath ROOT_INVALIDATED = new CachingTreePath(new DefaultMutableTreeNode());
   private static final Logger LOG = Logger.getInstance(StructureTreeModel.class);
   private final Reference<Node> root = new Reference<>();
   private final String description;
@@ -138,8 +138,7 @@ public class StructureTreeModel<Structure extends AbstractTreeStructure>
   private @NotNull <Result> CompletableFuture<Result> onValidThread(@NotNull TreePath path,
                                                                     @NotNull Function<? super Node, ? extends Result> function) {
     Object component = path.getLastPathComponent();
-    if (component instanceof Node) {
-      Node node = (Node)component;
+    if (component instanceof Node node) {
       return onValidThread(__ -> disposed || isNodeRemoved(node) ? null : function.apply(node));
     }
 
@@ -318,8 +317,7 @@ public class StructureTreeModel<Structure extends AbstractTreeStructure>
   }
 
   private Node getNode(Object object, boolean validateChildren) {
-    if (disposed || !(object instanceof Node) || !isValidThread()) return null;
-    Node node = (Node)object;
+    if (disposed || !(object instanceof Node node) || !isValidThread()) return null;
     if (isNodeRemoved(node)) return null;
     if (validateChildren) validateChildren(node);
     return node;

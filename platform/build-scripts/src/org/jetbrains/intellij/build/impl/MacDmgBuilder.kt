@@ -1,11 +1,8 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:Suppress("BlockingMethodInNonBlockingContext")
-
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.io.NioFiles
-import io.opentelemetry.api.trace.Span
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -45,14 +42,24 @@ internal suspend fun signAndBuildDmg(builder: MacDistributionBuilder,
   val sitFile = (if (context.publishSitArchive) context.paths.artifactDir else context.paths.tempDir).resolve("$targetName.sit")
   macZip.moveTo(sitFile, overwrite = true)
   signMacBinaries(context, listOf(sitFile))
+  val useNotaryRestApi = useNotaryRestApi()
+  val useNotaryXcodeApi = notarize && !useNotaryRestApi
+  if (notarize && useNotaryRestApi) {
+    notarize(sitFile, context)
+  }
   val useMacHost = macHostProperties?.host != null &&
                    macHostProperties.userName != null &&
                    macHostProperties.password != null
-  if (useMacHost && (notarize || !context.isStepSkipped(BuildOptions.MAC_DMG_STEP))) {
-    notarizeAndBuildDmgViaMacBuilderHost(sitFile, requireNotNull(macHostProperties), notarize, customizer, context)
+  if (useMacHost && (useNotaryXcodeApi || !context.isStepSkipped(BuildOptions.MAC_DMG_STEP))) {
+    notarizeAndBuildDmgViaMacBuilderHost(
+      sitFile, requireNotNull(macHostProperties),
+      notarize = useNotaryXcodeApi,
+      staple = notarize,
+      customizer, context
+    )
   }
   else {
-    buildLocally(sitFile, targetName, notarize, customizer, context)
+    buildLocally(sitFile, targetName, notarize = useNotaryXcodeApi, customizer, context)
   }
   check(Files.exists(sitFile)) {
     "$sitFile wasn't created"
@@ -87,6 +94,7 @@ private suspend fun generateIntegrityManifest(sitFile: Path, sitRoot: String, co
 private fun notarizeAndBuildDmgViaMacBuilderHost(sitFile: Path,
                                                  macHostProperties: MacHostProperties,
                                                  notarize: Boolean,
+                                                 staple: Boolean,
                                                  customizer: MacDistributionCustomizer,
                                                  context: BuildContext) {
   val dmgImage = if (context.options.buildStepsToSkip.contains(BuildOptions.MAC_DMG_STEP)) {
@@ -109,7 +117,8 @@ private fun notarizeAndBuildDmgViaMacBuilderHost(sitFile: Path,
     artifactDir = Path.of(context.paths.artifacts),
     dmgImage = dmgImage,
     artifactBuilt = context::notifyArtifactWasBuilt,
-    publishAppArchive = context.publishSitArchive
+    publishAppArchive = context.publishSitArchive,
+    staple = staple
   )
 }
 
@@ -136,7 +145,7 @@ private suspend fun notarizeSitLocally(sitFile: Path,
                                        context: BuildContext) {
   context.executeStep(spanBuilder("Notarizing .sit locally").setAttribute("sitFile", "$sitFile"), BuildOptions.MAC_NOTARIZE_STEP) {
     if (!SystemInfoRt.isMac) {
-      Span.current().addEvent(".sit can be notarized only on macOS")
+      it.addEvent(".sit can be notarized only on macOS")
       return@executeStep
     }
     val targetFile = tempDir.resolve(sitFile.fileName)
@@ -176,7 +185,7 @@ private suspend fun buildDmgLocally(sitFile: Path,
                                     context: BuildContext) {
   context.executeStep(spanBuilder("build .dmg locally"), BuildOptions.MAC_DMG_STEP) {
     if (!SystemInfoRt.isMac) {
-      Span.current().addEvent(".dmg can be built only on macOS")
+      it.addEvent(".dmg can be built only on macOS")
       return@executeStep
     }
     val exploded = tempDir.resolve("${context.fullBuildNumber}.exploded")

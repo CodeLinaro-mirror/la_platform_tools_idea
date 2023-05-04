@@ -34,7 +34,6 @@ import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.border.CustomLineBorder
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.ui.components.panels.Wrapper
-import com.intellij.util.PlatformUtils
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.ui.JBUI
 import kotlinx.coroutines.launch
@@ -55,8 +54,6 @@ internal class ProjectsTabFactory : WelcomeTabFactory {
   }
 
   override fun createWelcomeTab(parentDisposable: Disposable): WelcomeScreenTab = ProjectsTab(parentDisposable)
-
-  override fun isApplicable(): Boolean = !PlatformUtils.isDataSpell()
 }
 
 class ProjectsTab(private val parentDisposable: Disposable) : DefaultWelcomeScreenTab(
@@ -99,9 +96,9 @@ class ProjectsTab(private val parentDisposable: Disposable) : DefaultWelcomeScre
 
       val recentPaths = RecentProjectsManagerBase.getInstanceEx().getRecentPaths()
       WelcomeScreenCounterUsageCollector.reportWelcomeScreenShowed(recentPaths.size)
-      val promoPanel = WelcomeScreenComponentFactory.getSinglePromotion(recentPaths.isEmpty())
-      if (promoPanel != null) {
-        val borderPanel = JBUI.Panels.simplePanel(promoPanel).andTransparent().apply {
+      val promo = WelcomeScreenComponentFactory.getSinglePromotion(recentPaths.isEmpty())
+      if (promo != null) {
+        val borderPanel = JBUI.Panels.simplePanel(promo).andTransparent().apply {
           border = JBUI.Borders.empty(0, PROMO_BORDER_OFFSET, PROMO_BORDER_OFFSET, PROMO_BORDER_OFFSET)
         }
 

@@ -10,6 +10,8 @@ import com.intellij.ide.actions.IdeScaleTransformer
 import com.intellij.ide.actions.QuickChangeLookAndFeel
 import com.intellij.ide.ui.laf.LafManagerImpl
 import com.intellij.ide.ui.search.OptionDescription
+import com.intellij.internal.statistic.service.fus.collectors.IdeZoomChanged
+import com.intellij.internal.statistic.service.fus.collectors.IdeZoomEventFields
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.EditorFactory
@@ -38,10 +40,7 @@ import com.intellij.ui.UIBundle
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.dsl.builder.*
-import com.intellij.ui.layout.editableValueMatches
 import com.intellij.ui.layout.not
-import com.intellij.ui.layout.or
-import com.intellij.ui.layout.selectedValueMatches
 import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.UIUtil
@@ -144,44 +143,81 @@ internal class AppearanceConfigurable : BoundSearchableConfigurable(message("tit
     }
 
     return panel {
-      row(message("combobox.look.and.feel")) {
-        val theme = comboBox(lafManager.lafComboBoxModel, lafManager.lookAndFeelCellRenderer)
-          .bindItem(lafProperty)
-          .accessibleName(message("combobox.look.and.feel"))
+      panel {
+        row(message("combobox.look.and.feel")) {
+          val theme = comboBox(lafManager.lafComboBoxModel, lafManager.lookAndFeelCellRenderer)
+            .bindItem(lafProperty)
+            .accessibleName(message("combobox.look.and.feel"))
 
-        val syncCheckBox = checkBox(message("preferred.theme.autodetect.selector"))
-          .bindSelected(syncThemeProperty)
-          .visible(lafManager.autodetectSupported)
-          .gap(RightGap.SMALL)
+          val syncCheckBox = checkBox(message("preferred.theme.autodetect.selector"))
+            .bindSelected(syncThemeProperty)
+            .visible(lafManager.autodetectSupported)
 
-        theme.enabledIf(syncCheckBox.selected.not())
-        cell(lafManager.settingsToolbar)
-          .visibleIf(syncCheckBox.selected)
+          theme.enabledIf(syncCheckBox.selected.not())
+          cell(lafManager.settingsToolbar)
+            .visibleIf(syncCheckBox.selected)
 
-        link(message("link.get.more.themes")) {
-          val settings = Settings.KEY.getData(DataManager.getInstance().getDataContext(it.source as ActionLink))
-          settings?.select(settings.find("preferences.pluginManager"), "/tag:theme")
-        }
-      }.layout(RowLayout.INDEPENDENT)
-
-      row(message("combobox.ide.scale.percent")) {
-        comboBox(IdeScaleTransformer.Settings.regularScaleComboboxModel, SimpleListCellRenderer.create("") { it })
-          .bindItem( { settings.ideScale.percentStringValue }, { })
-          .onChanged {
-            IdeScaleTransformer.Settings.scaleFromPercentStringValue(it.item)?.let { scale ->
-              settings.ideScale = scale
-              settings.fireUISettingsChanged()
-            }
+          link(message("link.get.more.themes")) {
+            val settings = Settings.KEY.getData(DataManager.getInstance().getDataContext(it.source as ActionLink))
+            settings?.select(settings.find("preferences.pluginManager"), "/tag:theme")
           }
-      }.layout(RowLayout.INDEPENDENT).topGap(TopGap.SMALL)
+        }
+
+        row(message("combobox.ide.scale.percent")) {
+          val defaultScale = UISettingsUtils.defaultScale(false)
+          var resetZoom: Cell<ActionLink>? = null
+
+          val model = IdeScaleTransformer.Settings.createIdeScaleComboboxModel()
+          val zoomComboBox = comboBox(model, SimpleListCellRenderer.create("") { it })
+            .bindItem({ settings.ideScale.percentStringValue }, { })
+            .onChanged {
+              IdeScaleTransformer.Settings.scaleFromPercentStringValue(it.item, false)?.let { scale ->
+                logIdeZoomChanged(scale, false)
+                resetZoom?.visible(scale.percentValue != defaultScale.percentValue)
+                settings.ideScale = scale
+                settings.fireUISettingsChanged()
+              }
+            }.gap(RightGap.SMALL)
+
+          val zoomInString = KeymapUtil.getShortcutTextOrNull("ZoomInIdeAction")
+          val zoomOutString = KeymapUtil.getShortcutTextOrNull("ZoomOutIdeAction")
+          val resetScaleString = KeymapUtil.getShortcutTextOrNull("ResetIdeScaleAction")
+
+          if (zoomInString != null && zoomOutString != null && resetScaleString != null) {
+            zoomComboBox.comment(message("combobox.ide.scale.comment.format", zoomInString, zoomOutString, resetScaleString))
+          }
+
+          resetZoom = link(message("ide.scale.reset.link")) {
+            model.selectedItem = defaultScale.percentStringValue
+          }.apply { visible(settings.ideScale.percentValue != defaultScale.percentValue) }
+        }.topGap(TopGap.SMALL)
+      }
 
       row {
+        var resetCustomFont: (() -> Unit)? = null
+
+        val useCustomCheckbox = checkBox(message("checkbox.override.default.laf.fonts"))
+          .gap(RightGap.SMALL)
+          .bindSelected(settings::overrideLafFonts) {
+            settings.overrideLafFonts = it
+            if (!it) {
+              getDefaultFont().let { defaultFont ->
+                settings.fontFace = defaultFont.family
+                settings.fontSize = defaultFont.size
+              }
+            }
+          }
+          .onChanged { checkbox ->
+            if (!checkbox.isSelected) resetCustomFont?.invoke()
+          }
+          .shouldUpdateLaF()
+
         val fontFace = cell(FontComboBox())
-          .label(message("label.font.name"))
           .bind({ it.fontName }, { it, value -> it.fontName = value },
                 MutableProperty({ if (settings.overrideLafFonts) settings.fontFace else getDefaultFont().family },
                                 { settings.fontFace = it }))
           .shouldUpdateLaF()
+          .enabledIf(useCustomCheckbox.selected)
           .accessibleName(message("label.font.name"))
           .component
 
@@ -190,25 +226,18 @@ internal class AppearanceConfigurable : BoundSearchableConfigurable(message("tit
                          settings.fontSize)
           .label(message("label.font.size"))
           .shouldUpdateLaF()
+          .enabledIf(useCustomCheckbox.selected)
           .accessibleName(message("label.font.size"))
           .component
 
-        lateinit var resetCustomFont: Cell<ActionLink>
-        resetCustomFont = link(message("font.reset.link")) {
+        resetCustomFont = {
           val defaultFont = getDefaultFont()
           fontFace.fontName = defaultFont.family
           val fontSizeValue = defaultFont.size.toString()
           fontSize.selectedItem = fontSizeValue
           fontSize.editor.item = fontSizeValue
-          resetCustomFont.enabled(false)
-        }.enabledIf(fontFace.selectedValueMatches { value -> value?.toString() != getDefaultFont().family }
-                      or fontSize.editableValueMatches { value -> value != getDefaultFont().size.toString() })
+        }
       }.topGap(TopGap.SMALL)
-
-      onApply {
-        val defaultFont = getDefaultFont()
-        settings.overrideLafFonts = settings.fontFace != defaultFont.family || settings.fontSize != defaultFont.size
-      }
 
       group(message("title.accessibility")) {
         row {
@@ -427,16 +456,17 @@ internal class AppearanceConfigurable : BoundSearchableConfigurable(message("tit
 
       group(message("group.presentation.mode")) {
         row(message("presentation.mode.ide.scale")) {
-          comboBox(IdeScaleTransformer.Settings.presentationModeScaleComboboxModel, SimpleListCellRenderer.create("") { it })
+          comboBox(IdeScaleTransformer.Settings.createPresentationModeScaleComboboxModel(), SimpleListCellRenderer.create("") { it })
             .bindItem( { settings.presentationModeIdeScale.percentStringValue }, { })
             .applyToComponent {
               isEditable = true
             }
-            .validationOnInput(IdeScaleTransformer.Settings::validatePercentScaleInput)
+            .validationOnInput(IdeScaleTransformer.Settings::validatePresentationModePercentScaleInput)
             .onChanged {
-              if (IdeScaleTransformer.Settings.validatePercentScaleInput(it.item) != null) return@onChanged
+              if (IdeScaleTransformer.Settings.validatePresentationModePercentScaleInput(it.item) != null) return@onChanged
 
-              IdeScaleTransformer.Settings.scaleFromPercentStringValue(it.item)?.let { scale ->
+              IdeScaleTransformer.Settings.scaleFromPercentStringValue(it.item, true)?.let { scale ->
+                logIdeZoomChanged(scale, true)
                 settings.presentationModeIdeScale = scale
                 if (settings.presentationMode) {
                   settings.fireUISettingsChanged()
@@ -519,4 +549,16 @@ private class AAListCellRenderer(private val myUseEditorFont: Boolean) : SimpleL
 
     text = value.presentableName
   }
+}
+
+private fun logIdeZoomChanged(value: Float, isPresentation: Boolean) {
+  val oldScale = if (isPresentation) settings.presentationModeIdeScale else settings.ideScale
+
+  IdeZoomChanged.log(
+    IdeZoomEventFields.zoomMode.with(if (value.percentValue > oldScale.percentValue) IdeZoomEventFields.ZoomMode.ZOOM_IN
+                                     else IdeZoomEventFields.ZoomMode.ZOOM_OUT),
+    IdeZoomEventFields.place.with(IdeZoomEventFields.Place.SETTINGS),
+    IdeZoomEventFields.zoomScalePercent.with(value.percentValue),
+    IdeZoomEventFields.presentationMode.with(isPresentation)
+  )
 }
