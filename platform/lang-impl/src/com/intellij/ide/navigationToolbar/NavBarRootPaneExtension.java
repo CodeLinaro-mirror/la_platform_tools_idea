@@ -142,8 +142,6 @@ final class MyNavBarWrapperPanel extends NavBarRootPaneExtension.NavBarWrapperPa
 
   @Override
   public void uiSettingsChanged(@NotNull UISettings uiSettings) {
-    if (myProject.isDisposed()) return;
-
     toggleRunPanel(isShowToolPanel(uiSettings));
     toggleNavPanel(uiSettings);
 

@@ -182,7 +182,6 @@ public class GradleExecutionHelper {
         propertiesFixes.put("user.dir", projectDir);
       }
       propertiesFixes.put("java.system.class.loader", null);
-      propertiesFixes.put("jna.noclasspath", null);
       return propertiesFixes;
     }
   }
