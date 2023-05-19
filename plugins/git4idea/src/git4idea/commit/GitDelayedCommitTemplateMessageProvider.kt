@@ -10,35 +10,34 @@ import com.intellij.vcs.commit.DelayedCommitMessageProvider
 import git4idea.repo.GitCommitTemplateListener
 import git4idea.repo.GitCommitTemplateTracker
 import git4idea.repo.GitRepository
+import org.jetbrains.concurrency.isPending
 
 internal class GitDelayedCommitTemplateMessageProvider : DelayedCommitMessageProvider {
 
   override fun init(project: Project, commitUi: CommitWorkflowUi, initialCommitMessage: String?) {
     val commitMessageUpdater = CommitMessageUpdater(project, commitUi)
+    commitMessageUpdater.disableFieldUntilTemplateLoaded()
 
     project.messageBus.connect(commitUi).subscribe(GitCommitTemplateListener.TOPIC, commitMessageUpdater)
   }
 
   private inner class CommitMessageUpdater(private val project: Project,
                                            private val commitUi: CommitWorkflowUi) : GitCommitTemplateListener {
-    init {
-      startLoadingIfNeeded()
-    }
-
     private val templateTracker get() = project.service<GitCommitTemplateTracker>()
     private val vcsConfiguration get() = VcsConfiguration.getInstance(project)
-
-    override fun loadingFinished() {
-      runInEdt { commitUi.commitMessageUi.stopLoading() }
-    }
 
     override fun notifyCommitTemplateChanged(repository: GitRepository) {
       runInEdt { update(repository) }
     }
 
-    private fun startLoadingIfNeeded() {
-      if (!templateTracker.isStarted()) {
+    fun disableFieldUntilTemplateLoaded() {
+      val initPromise = templateTracker.initPromise
+      if (initPromise.isPending) {
         commitUi.commitMessageUi.startLoading()
+        initPromise.onProcessed { _ ->
+          // todo: ModalityState?
+          runInEdt { commitUi.commitMessageUi.stopLoading() }
+        }
       }
     }
 

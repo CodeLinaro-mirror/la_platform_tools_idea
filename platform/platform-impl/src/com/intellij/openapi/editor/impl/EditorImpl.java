@@ -94,10 +94,7 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
-import java.awt.dnd.DropTarget;
-import java.awt.dnd.DropTargetAdapter;
-import java.awt.dnd.DropTargetDragEvent;
-import java.awt.dnd.DropTargetDropEvent;
+import java.awt.dnd.*;
 import java.awt.event.*;
 import java.awt.font.TextHitInfo;
 import java.awt.geom.Point2D;
@@ -4842,6 +4839,20 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   }
 
   private static class MyTransferHandler extends TransferHandler {
+    private static final TransferHandler transferHandlerStub = new TransferHandler() {
+      @Override
+      protected Transferable createTransferable(JComponent c) {
+        return null;
+      }
+    };
+    private static final JComponent componentStub = new JComponent() {
+      @Override
+      public TransferHandler getTransferHandler() {
+        return transferHandlerStub;
+      }
+    };
+    private static final MouseEvent mouseEventStub = new MouseEvent(new Component() {}, 0, 0l, 0, 0, 0, 0, false, 0);
+
     private static EditorImpl getEditor(@NotNull JComponent comp) {
       EditorComponentImpl editorComponent = (EditorComponentImpl)comp;
       return editorComponent.getEditor();
@@ -4905,6 +4916,15 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
       }
 
       editor.clearDnDContext();
+
+      // IDEA-316937 Project leak via TransferHandler$SwingDragGestureRecognizer.
+      // This is a dirty, makeshift solution. We are restricted by Swing, because javax.swing.TransferHandler.recognizer
+      // is a private field, and we cannot reset its value to null to avoid the memory leak.
+      // To prevent project leaks, we pass a contextless componentStub for it to replace the previous value of the recognizer field.
+      if (source != componentStub) {
+        exportAsDrag(componentStub, mouseEventStub, MOVE);
+      }
+
     }
 
     private static void removeDraggedOutFragment(@NotNull EditorImpl editor) {
