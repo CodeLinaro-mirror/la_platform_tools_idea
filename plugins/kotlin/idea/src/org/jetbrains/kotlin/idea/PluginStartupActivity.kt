@@ -24,10 +24,7 @@ import java.util.concurrent.Callable
 internal class PluginStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         excludedFromUpdateCheckPlugins.add("org.jetbrains.kotlin")
-/* Android Studio (b/261747757): this compatibility check is inconvenient during the IJ merge process,
- * and its value is limited anyway because we generally disallow out-of-band Kotlin plugin updates.
         checkPluginCompatibility()
- */
         setupReportingFromRelease()
 
         //todo[Sedunov]: wait for fix in platform to avoid misunderstood from Java newbies (also ConfigureKotlinInTempDirTest)
@@ -62,13 +59,18 @@ internal class PluginStartupActivity : ProjectActivity {
     }
 
     private fun checkPluginCompatibility() {
-        val platformVersion = ApplicationInfo.getInstance().shortVersion ?: return
+        val platformBuild = ApplicationInfo.getInstance().build
+        if (platformBuild.isSnapshot) {
+            return
+        }
+
+        val platformVersion = platformBuild.baselineVersion.toString()
         val isAndroidStudio = KotlinPlatformUtils.isAndroidStudio
 
         val rawVersion = KotlinIdePlugin.version
         val kotlinPluginVersion = KotlinIdePluginVersion.parse(rawVersion).getOrNull() ?: return
 
-        if (kotlinPluginVersion.platformVersion != platformVersion || kotlinPluginVersion.isAndroidStudio != isAndroidStudio) {
+        if (kotlinPluginVersion.platformBaselineVersion != platformVersion || kotlinPluginVersion.isAndroidStudio != isAndroidStudio) {
             val ideName = ApplicationInfo.getInstance().versionName
 
             runInEdt {

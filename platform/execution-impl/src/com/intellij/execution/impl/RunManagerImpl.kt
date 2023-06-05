@@ -1,10 +1,11 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet", "ReplacePutWithAssignment")
 
 package com.intellij.execution.impl
 
 import com.intellij.configurationStore.*
 import com.intellij.execution.*
+import com.intellij.execution.compound.CompoundRunConfiguration
 import com.intellij.execution.configurations.*
 import com.intellij.execution.runToolbar.RunToolbarSlotManager
 import com.intellij.execution.runners.ExecutionEnvironment
@@ -41,7 +42,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.project.isDirectoryBased
 import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.IconManager
-import com.intellij.util.*
+import com.intellij.util.IconUtil
+import com.intellij.util.ModalityUiUtil
+import com.intellij.util.SmartList
+import com.intellij.util.ThreeState
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.containers.filterSmart
 import com.intellij.util.containers.mapSmart
@@ -160,7 +164,9 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   private var notYetAppliedInitialSelectedConfigurationId: String? = null
   private var selectedRCSetupScheduled: Boolean = false
 
-  private val iconCache = RunConfigurationIconAndInvalidCache()
+  private val iconAndInvalidCache = RunConfigurationIconAndInvalidCache()
+  val iconCache: RunConfigurationIconCache
+    get() = iconAndInvalidCache
 
   private val recentlyUsedTemporaries = ArrayList<RunnerAndConfigurationSettings>()
 
@@ -231,11 +237,11 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
     messageBusConnection.subscribe(DynamicPluginListener.TOPIC, object : DynamicPluginListener {
       override fun beforePluginUnload(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
-        iconCache.clear()
+        iconAndInvalidCache.clear()
       }
 
       override fun pluginUnloaded(pluginDescriptor: IdeaPluginDescriptor, isUpdate: Boolean) {
-        iconCache.clear()
+        iconAndInvalidCache.clear()
         // must be on unload and not before, since load must not be able to use unloaded plugin classes
         reloadSchemes()
       }
@@ -254,7 +260,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
   private fun clearSelectedConfigurationIcon() {
     selectedConfiguration?.let {
-      iconCache.remove(it.uniqueID)
+      iconAndInvalidCache.remove(it.uniqueID)
     }
   }
 
@@ -291,7 +297,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
   override fun dispose() {
     lock.write {
-      iconCache.clear()
+      iconAndInvalidCache.clear()
       templateIdToConfiguration.clear()
     }
   }
@@ -988,7 +994,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
       configurations
     }
 
-    iconCache.clear()
+    iconAndInvalidCache.clear()
     val eventPublisher = eventPublisher
     removedConfigurations.forEach { eventPublisher.runConfigurationRemoved(it) }
   }
@@ -1143,9 +1149,9 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
   override fun getConfigurationIcon(settings: RunnerAndConfigurationSettings, withLiveIndicator: Boolean): Icon {
     val uniqueId = settings.uniqueID
     if (selectedConfiguration?.uniqueID == uniqueId) {
-      iconCache.checkValidity(uniqueId, project)
+      iconAndInvalidCache.checkValidity(uniqueId, project)
     }
-    var icon = iconCache.get(uniqueId, settings, project)
+    var icon = iconAndInvalidCache.get(uniqueId, settings, project)
     if (withLiveIndicator) {
       val runningDescriptors = ExecutionManagerImpl.getInstance(project).getRunningDescriptors(Condition { it === settings })
       when {
@@ -1160,7 +1166,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
   fun isInvalidInCache(configuration: RunConfiguration): Boolean {
     findSettings(configuration)?.let {
-      return iconCache.isInvalid(it.uniqueID)
+      return iconAndInvalidCache.isInvalid(it.uniqueID)
     }
     return false
   }
@@ -1295,7 +1301,7 @@ open class RunManagerImpl @JvmOverloads constructor(val project: Project, shared
 
           recentlyUsedTemporaries.remove(settings)
           removed.add(settings)
-          iconCache.remove(settings.uniqueID)
+          iconAndInvalidCache.remove(settings.uniqueID)
         }
         else {
           var isChanged = false
@@ -1411,8 +1417,25 @@ private fun getNameWeight(n1: String) = if (n1.startsWith("<template> of ") || n
 internal fun doGetBeforeRunTasks(configuration: RunConfiguration): List<BeforeRunTask<*>> {
   return when (configuration) {
     is WrappingRunConfiguration<*> -> doGetBeforeRunTasks(configuration.peer)
-    else -> configuration.beforeRunTasks
+    else -> configuration.beforeRunTasks.flatMap {
+      return@flatMap beforeRunTasks(it, configuration)
+    }
   }
+}
+
+private fun beforeRunTasks(it: BeforeRunTask<*>,
+                           configuration: RunConfiguration): List<BeforeRunTask<*>> {
+  val compound = (it as? RunConfigurationBeforeRunProvider.RunConfigurableBeforeRunTask)?.settings?.configuration as? CompoundRunConfiguration
+  if (compound != null) {
+    val provider = RunConfigurationBeforeRunProvider(configuration.project)
+    val runManager = RunManagerImpl.getInstanceImpl(configuration.project)
+    return compound.getConfigurationsWithTargets(runManager).map {
+      val task = provider.createTask(it.key)
+      task.setSettingsWithTarget(runManager.findSettings(it.key), it.value)
+      task
+    }
+  }
+  return listOf(it)
 }
 
 internal fun RunConfiguration.cloneBeforeRunTasks() {

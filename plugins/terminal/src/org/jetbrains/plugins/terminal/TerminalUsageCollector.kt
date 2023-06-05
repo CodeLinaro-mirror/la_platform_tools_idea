@@ -12,13 +12,14 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.Version
 import com.intellij.terminal.TerminalShellCommandHandler
 import com.intellij.util.PathUtil
+import org.jetbrains.plugins.terminal.fus.TerminalCommandUsageStatistics
 import java.util.*
 
 class TerminalUsageTriggerCollector : CounterUsagesCollector() {
   override fun getGroup(): EventLogGroup = GROUP
 
   companion object {
-    private val GROUP = EventLogGroup(GROUP_ID, 5)
+    private val GROUP = EventLogGroup(GROUP_ID, 9)
 
     private val TERMINAL_COMMAND_HANDLER_FIELD = EventFields.StringValidatedByCustomRule("terminalCommandHandler",
                                                                                          ClassNameRuleValidator::class.java)
@@ -26,7 +27,6 @@ class TerminalUsageTriggerCollector : CounterUsagesCollector() {
                                                                                       ClassNameRuleValidator::class.java)
 
     private val sshExecEvent = GROUP.registerEvent("ssh.exec")
-    private val terminalCommandExecutedEvent = GROUP.registerEvent("terminal.command.executed")
     private val terminalSmartCommandExecutedEvent = GROUP.registerVarargEvent("terminal.smart.command.executed",
                                                                               TERMINAL_COMMAND_HANDLER_FIELD,
                                                                               RUN_ANYTHING_PROVIDER_FIELD)
@@ -37,11 +37,17 @@ class TerminalUsageTriggerCollector : CounterUsagesCollector() {
                                                      EventFields.StringValidatedByRegexp("os-version", "version"),
                                                      EventFields.String("shell", KNOWN_SHELLS.toList()))
 
+    private val commandExecutedEvent = GROUP.registerEvent("terminal.command.executed",
+                                                           TerminalCommandUsageStatistics.commandExecutableField,
+                                                           TerminalCommandUsageStatistics.subCommandField)
+
     @JvmStatic
     fun triggerSshShellStarted(project: Project) = sshExecEvent.log(project)
 
     @JvmStatic
-    fun triggerCommandExecuted(project: Project) = terminalCommandExecutedEvent.log(project)
+    fun triggerCommandExecuted(project: Project, userCommandLine: String) {
+      TerminalCommandUsageStatistics.triggerCommandExecuted(commandExecutedEvent, project, userCommandLine)
+    }
 
     @JvmStatic
     fun triggerSmartCommand(project: Project,
@@ -97,25 +103,40 @@ private val KNOWN_SHELLS = setOf("unspecified",
                                  "other",
                                  "activate",
                                  "anaconda3",
+                                 "ash",
                                  "bash",
+                                 "bbsh",
                                  "cexec",
                                  "cmd",
                                  "cmder",
                                  "cmder_shell",
+                                 "csh",
                                  "cygwin",
+                                 "dash",
+                                 "es",
+                                 "eshell",
                                  "fish",
+                                 "fsh",
                                  "git",
                                  "git-bash",
                                  "git-cmd",
+                                 "hamilton",
                                  "init",
+                                 "ion",
+                                 "ksh",
                                  "miniconda3",
+                                 "mksh",
                                  "msys2_shell",
+                                 "nushell",
                                  "powershell",
                                  "pwsh",
+                                 "rc",
+                                 "scsh",
                                  "sh",
                                  "tcsh",
                                  "ubuntu",
                                  "ubuntu1804",
                                  "wsl",
+                                 "xonsh",
                                  "zsh")
 private val KNOWN_EXTENSIONS = setOf("exe", "bat", "cmd")

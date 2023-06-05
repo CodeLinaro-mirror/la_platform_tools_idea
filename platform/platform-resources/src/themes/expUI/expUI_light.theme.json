@@ -368,10 +368,7 @@
         "foreground": "Grey7",
         "background": "Grey13",
         "borderColor": "Grey13",
-        "fontSizeOffset": {
-          "os.default": -1,
-          "os.windows": 0
-        }
+        "fontSizeOffset": -1
       },
       "Header": {
         "activeBackground": "Grey14",
@@ -457,8 +454,9 @@
       "tabSelectionArc": 4,
       "hoverColor": "Grey12",
       "contentAreaColor": "Grey12",
-      "focusColor": "Blue11"
-    },
+      "focusColor": "Blue11",
+      "tabInsets": "0,12,0,12"
+      },
 
     "Table": {
       "gridColor": "Grey12",
@@ -492,6 +490,9 @@
       "Header.foreground": "Grey14",
       "shortcutForeground": "Grey14",
       "shortcutBackground": "Grey5",
+      "codeForeground": "Grey14",
+      "codeBackground": "Grey2",
+      "codeBorderColor": "Grey6",
       "linkForeground": "Blue7",
       "Button": {
         "foreground": "Grey14",
@@ -542,6 +543,7 @@
 
     "MainToolbar": {
       "background": "Grey2",
+      "foreground": "Grey12",
       "inactiveBackground": "Grey3",
       "separatorColor": "Grey4",
       "Icon": {
@@ -618,7 +620,8 @@
       "spanBackground": "Blue2",
       "spanForeground": "Grey14",
       "foreground": "Grey14",
-      "stepNumberForeground": "Blue11"
+      "stepNumberForeground": "Blue11",
+      "codeBorderColor": "#FFFFFFBF"
     },
 
     "PackageSearch": {
