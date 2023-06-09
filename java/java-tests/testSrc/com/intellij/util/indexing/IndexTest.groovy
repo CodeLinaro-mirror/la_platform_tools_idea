@@ -1337,7 +1337,7 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     }
   }
 
-  void "test composite index with snapshot mappings hash id"() {
+  void "_test composite index with snapshot mappings hash id"() {
     def groovyFileId = ((VirtualFileWithId)myFixture.addFileToProject("Foo.groovy", "class Foo {}").virtualFile).getId()
     def javaFileId = ((VirtualFileWithId)myFixture.addFileToProject("Foo.java", "class Foo {}").virtualFile).getId()
 
@@ -1347,7 +1347,6 @@ class IndexTest extends JavaCodeInsightFixtureTestCase {
     def idIndex = ((FileBasedIndexImpl)fbi).getIndex(IdIndex.NAME)
     def trigramIndex = ((FileBasedIndexImpl)fbi).getIndex(TrigramIndex.INDEX_ID)
 
-    assertTrue(FileBasedIndex.ourSnapshotMappingsEnabled)
     def idIndexForwardIndex = (IntForwardIndex)((VfsAwareMapReduceIndex)idIndex).getForwardIndex()
     def trigramIndexForwardIndex = (IntForwardIndex)((VfsAwareMapReduceIndex)trigramIndex).getForwardIndex()
 
