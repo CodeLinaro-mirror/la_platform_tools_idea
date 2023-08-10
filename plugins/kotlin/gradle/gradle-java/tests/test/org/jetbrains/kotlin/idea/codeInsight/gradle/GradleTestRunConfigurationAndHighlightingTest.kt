@@ -33,7 +33,10 @@ import java.io.File
 
 class GradleTestRunConfigurationAndHighlightingTest23 : KotlinGradleImportingTestCase() {
     @Test
-    fun testExpectClassWithTests() = doTest()
+    fun testExpectClassWithTests() {
+        enableExperimentalMPP(true)
+        doTest()
+    }
 
     @Test
     fun testMultiplatformInheritedTests() {
@@ -163,6 +166,7 @@ class GradleTestRunConfigurationAndHighlightingTest23 : KotlinGradleImportingTes
         return context.configurationsFromContext.orEmpty()
     }
 
+    override fun testDataDirName(): String = "multiplatform/testRunConfigurations"
     private fun mockInheritorPopup() {
         application.replaceService(
             JBPopupFactory::class.java, object : PopupFactoryImpl() {
@@ -177,5 +181,4 @@ class GradleTestRunConfigurationAndHighlightingTest23 : KotlinGradleImportingTes
         )
     }
 
-    override fun testDataDirName(): String = "testRunConfigurations"
 }
