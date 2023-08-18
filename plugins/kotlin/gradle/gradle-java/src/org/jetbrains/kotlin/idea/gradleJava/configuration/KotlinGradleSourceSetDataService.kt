@@ -31,6 +31,7 @@ import org.jetbrains.kotlin.config.KotlinFacetSettings
 import org.jetbrains.kotlin.config.TargetPlatformKind
 import org.jetbrains.kotlin.extensions.ProjectExtensionDescriptor
 import org.jetbrains.kotlin.idea.base.codeInsight.tooling.tooling
+import org.jetbrains.kotlin.idea.base.externalSystem.KotlinGradleFacade
 import org.jetbrains.kotlin.idea.base.externalSystem.findAll
 import org.jetbrains.kotlin.idea.base.platforms.KotlinCommonLibraryKind
 import org.jetbrains.kotlin.idea.base.platforms.KotlinJavaScriptLibraryKind
@@ -261,11 +262,11 @@ fun configureFacetByGradleModule(
     sourceSetName: String? = sourceSetNode?.data?.id?.let { it.substring(it.lastIndexOf(':') + 1) }
 ): KotlinFacet? {
     if (moduleNode.kotlinSourceSetData?.sourceSetInfo != null) return null // Suppress in the presence of new MPP model
-    val kotlinGradleProjectDataNode = moduleNode.kotlinGradleProjectDataNodeOrNull ?: return null
-    val kotlinGradleProjectData = kotlinGradleProjectDataNode.data
-    if (!kotlinGradleProjectData.isResolved) return null
+    val kotlinGradleProjectDataNode = moduleNode.kotlinGradleProjectDataNodeOrNull
+    val kotlinGradleProjectData = kotlinGradleProjectDataNode?.data
 
-    if (!kotlinGradleProjectData.hasKotlinPlugin) {
+    if (kotlinGradleProjectData?.isResolved == false) return null
+    if (kotlinGradleProjectDataNode == null || kotlinGradleProjectData?.hasKotlinPlugin == false) {
         val facetModel = modelsProvider.getModifiableFacetModel(ideModule)
         val facet = facetModel.getFacetByType(KotlinFacetType.TYPE_ID)
         if (facet != null) {
@@ -280,7 +281,7 @@ fun configureFacetByGradleModule(
 
     val compilerVersion = kotlinGradleSourceSetDataNode?.data?.kotlinPluginVersion?.let(IdeKotlinVersion::opt)
     // required for GradleFacetImportTest.{testCommonImportByPlatformPlugin, testKotlinAndroidPluginDetection}
-        ?: KotlinGradleFacadeImpl.findKotlinPluginVersion(moduleNode)
+        ?: KotlinGradleFacade.instance?.findKotlinPluginVersion(moduleNode)
 
     if (compilerVersion == null) {
         logger.error("[Kotlin Facet]: cannot create facet for module '${ideModule.name}' due to unknown compiler version. " +
