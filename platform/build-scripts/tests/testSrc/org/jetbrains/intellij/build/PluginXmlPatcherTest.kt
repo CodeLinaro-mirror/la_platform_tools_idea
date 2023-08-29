@@ -4,6 +4,7 @@ package org.jetbrains.intellij.build
 import de.pdark.decentxml.XMLParser
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.intellij.build.impl.doPatchPluginXml
+import org.jetbrains.intellij.build.impl.getCompatiblePlatformVersionRange
 import org.junit.jupiter.api.Test
 
 class PluginXmlPatcherTest {
@@ -249,6 +250,12 @@ class PluginXmlPatcherTest {
     retainProductDescriptorForBundledPlugin = true,
     toPublish = false,
   )
+
+  @Test
+  fun androidStudioSinceUntilVersion() {
+    val sinceUntil = getCompatiblePlatformVersionRange(CompatibleBuildRange.EXACT, "232.8660.185.2321.__BUILD_NUMBER__")
+    assertThat(sinceUntil).isEqualTo(Pair("232.8660.185", "232.8660.185"))
+  }
 
   private fun assertTransform(
     before: String,

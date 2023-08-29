@@ -14,6 +14,10 @@ internal val pluginDateFormat = DateTimeFormatter.ofPattern("yyyyMMdd")
 private val buildNumberRegex = Regex("(\\d+\\.)+\\d+")
 
 fun getCompatiblePlatformVersionRange(compatibleBuildRange: CompatibleBuildRange, buildNumber: String): Pair<String, String> {
+  if (compatibleBuildRange == CompatibleBuildRange.EXACT && buildNumber.endsWith("__BUILD_NUMBER__")) {
+    val shortBuildNumber = buildNumber.split(".").take(3).joinToString(".")
+    return Pair(shortBuildNumber, shortBuildNumber)
+  }
   if (compatibleBuildRange == CompatibleBuildRange.EXACT || !buildNumber.matches(buildNumberRegex)) {
     return Pair(buildNumber, buildNumber)
   }
