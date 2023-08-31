@@ -314,7 +314,7 @@ private fun preprocessArgs(args: Array<String>): List<String> {
 private fun installPluginUpdates() {
   try {
     // referencing `StartupActionScriptManager` is OK - a string constant will be inlined
-    val scriptFile = Path.of(PathManager.getPluginTempPath(), StartupActionScriptManager.ACTION_SCRIPT_FILE)
+    val scriptFile = PathManager.getStartupScriptDir().resolve(StartupActionScriptManager.ACTION_SCRIPT_FILE)
     if (Files.isRegularFile(scriptFile)) {
       // load StartupActionScriptManager and all other related class (ObjectInputStream and so on loaded as part of class define)
       // only if there is an action script to execute
@@ -350,7 +350,7 @@ private class BytecodeTransformerAdapter(private val impl: BytecodeTransformer) 
     return impl.isApplicable(className, loader, null)
   }
 
-  override fun transform(loader: ClassLoader, className: String, classBytes: ByteArray): ByteArray {
+  override fun transform(loader: ClassLoader, className: String, classBytes: ByteArray): ByteArray? {
     return impl.transform(loader, className, null, classBytes)
   }
 }
