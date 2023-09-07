@@ -19,15 +19,14 @@ import kotlinx.collections.immutable.putAll
 import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS
 import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
 import org.jetbrains.intellij.build.impl.PluginLayout.Companion.plugin
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.function.BiPredicate
 
-// Based on the IdeaCommunityProperties definition
-// TODO: Need Windows installer and Mac DMG images
-// TODO: Need uninstaller feedback URL
-// Consider switching from AI to AS code
-// Restore a lot of the custom logic from studio_properties
-// TODO: Use separate bundle identifier for EAP and non-EAP
+/**
+ * Configures the Android Studio distribution by specifying bundled plugins, JVM args, extra files, and more.
+ * See also: BaseIdeaProperties, IdeaCommunityProperties, CLionProperties.
+ */
 class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
   companion object {
@@ -94,6 +93,18 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       layout.withModule("intellij.cidr.common.testFramework.core", TEST_FRAMEWORK_JAR)
       layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
       layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
+
+      layout.withPatch { patcher, context ->
+        // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
+        // IntelliJ IDEA build number. At runtime, it will be used by ApplicationInfo.getApiVersion()
+        // and PluginManagerCore.getBuildNumber() for plugin compatibility purposes.
+        val apiVersion = context.buildNumber.split('.').take(3).joinToString(".")
+        val appInfoPath = "idea/AndroidStudioApplicationInfo.xml"
+        val moduleOutDir = context.getModuleOutputDir(context.findApplicationInfoModule())
+        val original = Files.readString(moduleOutDir.resolve(appInfoPath))
+        val patched = original.replace(Regex("<build (.*?)/>"), "<build $1 apiVersion=\"$apiVersion\"/>")
+        patcher.patchModuleOutput(applicationInfoModule, appInfoPath, patched, overwrite = true)
+      }
     }
 
     val unknownExcludedPlugins = EXCLUDED_PLUGINS - INHERITED_PLUGINS

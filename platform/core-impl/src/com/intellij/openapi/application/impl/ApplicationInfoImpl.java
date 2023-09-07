@@ -15,7 +15,6 @@ import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.util.BuildNumber;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.serviceContainer.NonInjectable;
-import com.intellij.util.PlatformUtils;
 import com.intellij.util.xml.dom.XmlElement;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -431,15 +430,6 @@ public final class ApplicationInfoImpl extends ApplicationInfoEx {
         return api;
       }
     }
-    // Android Studio: Create API version from the first 3 values of build number
-    else if (PlatformUtils.isAndroidStudio()) {
-      assert build.getComponents().length >= 3;
-      BuildNumber apiBuildNumber = new BuildNumber("AI",
-                                                   build.getComponents()[0],
-                                                   build.getComponents()[1],
-                                                   build.getComponents()[2]);
-      return apiBuildNumber;
-    }
     return build;
   }
 
@@ -472,12 +462,9 @@ public final class ApplicationInfoImpl extends ApplicationInfoEx {
     else {
       result = requireNonNullElse(myMajorVersion) + '.' + requireNonNullElse(myMinorVersion);
     }
-/* Android Studio: removed by Change I2708044e / commit e1454d7
-    // In Android Studio we don't want the EAP suffix in version names
     if (myVersionSuffix != null && !myVersionSuffix.isEmpty()) {
       result += " " + myVersionSuffix;
     }
-Android Studio: removed by Change I2708044e / commit e1454d7 */
     return result;
   }
 
