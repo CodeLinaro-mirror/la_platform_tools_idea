@@ -9,12 +9,27 @@ import org.jetbrains.plugins.gradle.util.*
 
 @State(name = "GradleJvmSupportMatrix", storages = [Storage(StoragePathMacros.NON_ROAMABLE_FILE)])
 class GradleJvmSupportMatrix : PersistentStateComponent<JvmCompatibilityState?> {
-  private lateinit var mySupportedGradleVersions: List<GradleVersion>
-  private lateinit var mySupportedJavaVersions: List<JavaVersion>
+
+  @Volatile
+  private var mySupportedGradleVersions: List<GradleVersion> = emptyList()
+
+  @Volatile
+  private var mySupportedJavaVersions: List<JavaVersion> = emptyList()
+
   private var myState: JvmCompatibilityState? = null
-  private lateinit var myCompatibility: List<Pair<Ranges<JavaVersion>, Ranges<GradleVersion>>>
+
+  @Volatile
+  private var myCompatibility: List<Pair<Ranges<JavaVersion>, Ranges<GradleVersion>>> = emptyList()
+
   override fun getState(): JvmCompatibilityState? {
     return myState
+  }
+
+  init {
+    // Android Studio (b/300512355): This fixes an issue present in IDEA 231
+    myCompatibility = CompatibilityDataParser(ApplicationInfo.getInstance().fullVersion).getCompatibilityRanges(DEFAULT_DATA)
+    mySupportedGradleVersions = DEFAULT_DATA.supportedGradleVersions.map(GradleVersion::version)
+    mySupportedJavaVersions = DEFAULT_DATA.supportedJavaVersions.map(JavaVersion::parse)
   }
 
   override fun loadState(state: JvmCompatibilityState) {
