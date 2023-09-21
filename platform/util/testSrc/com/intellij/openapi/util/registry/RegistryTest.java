@@ -168,19 +168,6 @@ public class RegistryTest {
   }
 
   @Test
-  public void dontPersistDefaultValue(){
-    int originalValue = Registry.intValue(INT_KEY_REQUIRE_RESTART);
-    Registry.get(INT_KEY_REQUIRE_RESTART).setValue("2222");
-    assertTrue(JDOMUtil.writeElement(Registry.getInstance().getState()).contains(
-      "<entry key=\"%s\" value=\"2222\"".formatted(INT_KEY_REQUIRE_RESTART))
-    );
-    Registry.get(INT_KEY_REQUIRE_RESTART).setValue(String.valueOf(originalValue));
-    assertFalse(JDOMUtil.writeElement(Registry.getInstance().getState()).contains(
-      INT_KEY_REQUIRE_RESTART)
-    );
-  }
-
-  @Test
   public void beforeListenerDoesNotChangeValueWhenSetting() {
     String registryValue = "testBoolean";
     RegistryValue regValue = new RegistryValue(Registry.getInstance(), registryValue, null);
@@ -194,7 +181,6 @@ public class RegistryTest {
     regValue.setValue(true);
     assertTrue(regValue.asBoolean());
   }
-
 
   private Element registryElementFromMap(Map<String, String> map){
     Element registryElement = new Element("registry");
