@@ -63,6 +63,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "intellij.java.byteCodeViewer",
       "intellij.java.guiForms.designer",
       "intellij.javaFX.community",
+      "intellij.lombok",
       "intellij.maven",
       "intellij.packageSearch",
       "intellij.platform.tracing.ide",
