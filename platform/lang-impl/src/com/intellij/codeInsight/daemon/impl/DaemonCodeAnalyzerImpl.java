@@ -48,6 +48,7 @@ import com.intellij.openapi.progress.impl.CoreProgressManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.DumbServiceImpl;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
@@ -69,11 +70,14 @@ import com.intellij.util.gist.GistManager;
 import com.intellij.util.gist.GistManagerImpl;
 import com.intellij.util.io.storage.HeavyProcessLatch;
 import com.intellij.util.ui.EDT;
+import java.awt.Window;
 import org.jdom.Element;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
+import java.awt.*;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1223,14 +1227,20 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
 
     // editors in modal context
     List<? extends Editor> editors = EditorTracker.getInstance(myProject).getActiveEditors();
-    Collection<TextEditor> activeTextEditors;
-    if (editors.isEmpty()) {
-      activeTextEditors = Collections.emptyList();
-    }
-    else {
+    Collection<FileEditor> activeTextEditors = new HashSet<>(editors.size());
+    Set<VirtualFile> files = new HashSet<>(editors.size());
+    if (!editors.isEmpty()) {
       TextEditorProvider textEditorProvider = TextEditorProvider.getInstance();
-      activeTextEditors = ContainerUtil.map2SetNotNull(editors,
-                                                       editor -> editor.isDisposed() ? null: textEditorProvider.getTextEditor(editor));
+      for (Editor editor : editors) {
+        if (!editor.isDisposed()) {
+          TextEditor textEditor = textEditorProvider.getTextEditor(editor);
+          VirtualFile virtualFile = textEditor.getFile();
+          if (textEditor.isValid() && virtualFile != null && virtualFile.isValid() && isInActiveProject(textEditor)) {
+            activeTextEditors.add(textEditor);
+            files.add(virtualFile);
+          }
+        }
+      }
     }
 
     if (ModalityState.current() != ModalityState.nonModal()) {
@@ -1238,9 +1248,25 @@ public final class DaemonCodeAnalyzerImpl extends DaemonCodeAnalyzerEx implement
     }
 
     // tests usually care about just one explicitly configured editor
-    Collection<FileEditor> tabEditors = application.isUnitTestMode() ? Collections.emptyList() : getFileEditorManager().getSelectedEditorWithRemotes();
-    return ContainerUtil.filter(ContainerUtil.union(activeTextEditors, tabEditors),
-                         fileEditor -> fileEditor.isValid() && fileEditor.getFile() != null && fileEditor.getFile().isValid());
+    Collection<FileEditor> tabEditors = ApplicationManager.getApplication().isUnitTestMode() ? Collections.emptyList() : getFileEditorManager().getSelectedEditorWithRemotes();
+    for (FileEditor tabEditor : tabEditors) {
+      VirtualFile tabFile = tabEditor.getFile();
+      if (tabFile != null && tabFile.isValid() && files.add(tabFile) && isInActiveProject(tabEditor)) {
+        activeTextEditors.add(tabEditor);
+      }
+    }
+
+    return activeTextEditors;
+  }
+
+  private static boolean isInActiveProject(@NotNull FileEditor editor) {
+    if (ProjectManager.getInstance().getOpenProjects().length <= 1 || ApplicationManager.getApplication().isUnitTestMode()) {
+      return true;
+    }
+    // optimization: in the case of two or more projects, ignore projects which are not active at the moment, e.g., inside minimized windows
+    // see IDEA-314543 Don't run LineMarkersPass on non-active(opened) projects
+    Window window = SwingUtilities.getWindowAncestor(editor.getComponent());
+    return window == null || window.isActive();
   }
 
   /**
