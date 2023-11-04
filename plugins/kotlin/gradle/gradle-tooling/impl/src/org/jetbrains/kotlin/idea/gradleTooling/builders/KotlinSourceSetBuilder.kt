@@ -20,8 +20,7 @@ internal class KotlinSourceSetBuilder(
     private val context: MultiplatformModelImportingContext
 ) {
     private val sourceSetsWithoutNeedOfBuildingDependenciesMetadata: Set<Named> by lazy {
-        val isHMPPEnabled = context.getProperty(GradleImportProperties.IS_HMPP_ENABLED)
-        if (!isHMPPEnabled) return@lazy emptySet()
+        if (!context.isHMPPEnabled) return@lazy emptySet()
 
         val sourceSetPlatforms = mutableMapOf<Named, MutableSet<KotlinPlatform>>()
         val targets = context.kotlinExtensionReflection.targets
@@ -193,3 +192,4 @@ internal class KotlinSourceSetBuilder(
 
 
 internal const val INTRANSITIVE_METADATA_CONFIGURATION_NAME_ACCESSOR = "getIntransitiveMetadataConfigurationName"
+internal const val NATIVE_TARGET_PLATFORM_TYPE_NAME = "native"

@@ -9,11 +9,14 @@ import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.stubs.StubIndexKey
+import com.intellij.util.indexing.FileBasedIndex
+import org.jetbrains.kotlin.analysis.project.structure.KtModule
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProvider
 import org.jetbrains.kotlin.analysis.providers.KotlinDeclarationProviderFactory
 import org.jetbrains.kotlin.idea.base.indices.names.KotlinTopLevelCallableByPackageShortNameIndex
 import org.jetbrains.kotlin.idea.base.indices.names.KotlinTopLevelClassLikeDeclarationByPackageShortNameIndex
 import org.jetbrains.kotlin.idea.stubindex.*
+import org.jetbrains.kotlin.idea.vfilefinder.KotlinModuleMappingIndex
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
@@ -22,8 +25,8 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 internal class IdeKotlinDeclarationProviderFactory(private val project: Project) : KotlinDeclarationProviderFactory() {
-    override fun createDeclarationProvider(searchScope: GlobalSearchScope): KotlinDeclarationProvider {
-        return IdeKotlinDeclarationProvider(project, searchScope)
+    override fun createDeclarationProvider(scope: GlobalSearchScope, contextualModule: KtModule?): KotlinDeclarationProvider {
+        return IdeKotlinDeclarationProvider(project, scope)
     }
 }
 
@@ -83,6 +86,13 @@ private class IdeKotlinDeclarationProvider(
 
     override fun findFilesForScript(scriptFqName: FqName): Collection<KtScript> {
         return KotlinScriptFqnIndex[scriptFqName.asString(), project, scope]
+    }
+
+    /**
+     * [org.jetbrains.kotlin.idea.caches.resolve.IDEPackagePartProvider.computePackageSetWithNonClassDeclarations]
+     */
+    override fun computePackageSetWithTopLevelCallableDeclarations(): Set<String> = buildSet {
+        FileBasedIndex.getInstance().processAllKeys(KotlinModuleMappingIndex.NAME, { name -> add(name); true }, scope, null)
     }
 
     override fun findFilesForFacade(facadeFqName: FqName): Collection<KtFile> {

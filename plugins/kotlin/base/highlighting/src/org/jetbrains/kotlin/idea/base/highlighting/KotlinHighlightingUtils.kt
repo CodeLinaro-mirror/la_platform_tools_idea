@@ -44,8 +44,6 @@ fun KtFile.shouldHighlightFile(): Boolean {
         return true
     }
 
-    if (isCompiled) return false
-
     if (OutsidersPsiFileSupport.isOutsiderFile(virtualFile)) {
         return true
     }

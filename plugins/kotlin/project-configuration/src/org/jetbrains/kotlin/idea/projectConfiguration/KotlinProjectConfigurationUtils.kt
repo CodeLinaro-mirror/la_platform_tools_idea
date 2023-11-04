@@ -40,6 +40,7 @@ import org.jetbrains.kotlin.platform.impl.CommonIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.JsIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.JvmIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.NativeIdePlatformKind
+import org.jetbrains.kotlin.platform.impl.WasmIdePlatformKind
 import org.jetbrains.kotlin.utils.PathUtil
 
 fun getLibraryDescription(project: Project, platformKind: IdePlatformKind): CustomLibraryDescription? {
@@ -47,6 +48,7 @@ fun getLibraryDescription(project: Project, platformKind: IdePlatformKind): Cust
         CommonIdePlatformKind -> CommonStandardLibraryDescription(project)
         JvmIdePlatformKind -> JavaRuntimeLibraryDescription(project)
         JsIdePlatformKind -> JSLibraryStdDescription(project)
+        WasmIdePlatformKind -> null
         NativeIdePlatformKind -> null
         else -> throw IllegalArgumentException("Unsupported platform kind: $platformKind")
     }
@@ -73,6 +75,42 @@ fun getJvmStdlibArtifactId(sdk: Sdk?, version: IdeKotlinVersion): String {
         jdkVersion == JavaSdkVersion.JDK_1_7 -> PathUtil.KOTLIN_JAVA_RUNTIME_JRE7_NAME
         else -> PathUtil.KOTLIN_JAVA_STDLIB_NAME
     }
+}
+
+fun getDefaultJvmTargetForBuildScripts(sdk: Sdk?, version: IdeKotlinVersion): JvmTarget? {
+    if (!hasJreSpecificRuntime(version)) {
+        return null
+    }
+
+    val jdkVersion = sdk?.let { JavaSdk.getInstance().getVersion(it) }
+        ?: return null
+
+    var jvmTarget = when {
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_20) -> JvmTarget.JVM_20
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_19) -> JvmTarget.JVM_19
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_18) -> JvmTarget.JVM_18
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_17) -> JvmTarget.JVM_17
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_16) -> JvmTarget.JVM_16
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_15) -> JvmTarget.JVM_15
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_14) -> JvmTarget.JVM_14
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_13) -> JvmTarget.JVM_13
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_12) -> JvmTarget.JVM_12
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_11) -> JvmTarget.JVM_11
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_10) -> JvmTarget.JVM_10
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_1_9) -> JvmTarget.JVM_9
+        jdkVersion.isAtLeast(JavaSdkVersion.JDK_1_8) -> JvmTarget.JVM_1_8
+        else -> null
+    }
+
+    if (version.compare("1.9.0") >= 0) {
+        if (jdkVersion.isAtLeast(JavaSdkVersion.JDK_20)) jvmTarget = JvmTarget.JVM_20
+    } else if (version.compare("1.8.0") >= 0) {
+        if (jdkVersion.isAtLeast(JavaSdkVersion.JDK_19)) jvmTarget = JvmTarget.JVM_19
+    } else if (version.compare("1.7.20") >= 0) {
+        if (jdkVersion.isAtLeast(JavaSdkVersion.JDK_18)) jvmTarget = JvmTarget.JVM_18
+    }
+
+    return jvmTarget
 }
 
 fun getDefaultJvmTarget(sdk: Sdk?, version: IdeKotlinVersion): JvmTarget? {

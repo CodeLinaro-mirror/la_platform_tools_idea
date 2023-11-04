@@ -27,10 +27,9 @@ import com.intellij.util.indexing.DumbModeAccessType
 import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.config.KotlinFacetSettingsProvider
 import org.jetbrains.kotlin.idea.KotlinFileType
+import org.jetbrains.kotlin.idea.base.facet.platform.platform
 import org.jetbrains.kotlin.idea.base.indices.KotlinPackageIndexUtils
-import org.jetbrains.kotlin.idea.base.platforms.KotlinJavaScriptLibraryKind
-import org.jetbrains.kotlin.idea.base.platforms.KotlinNativeLibraryKind
-import org.jetbrains.kotlin.idea.base.platforms.detectLibraryKind
+import org.jetbrains.kotlin.idea.base.platforms.*
 import org.jetbrains.kotlin.idea.base.projectStructure.*
 import org.jetbrains.kotlin.idea.base.util.projectScope
 import org.jetbrains.kotlin.idea.base.util.runReadActionInSmartMode
@@ -47,6 +46,11 @@ import org.jetbrains.kotlin.idea.vfilefinder.KlibMetaFileIndex
 import org.jetbrains.kotlin.idea.vfilefinder.KotlinJavaScriptMetaFileIndex
 import org.jetbrains.kotlin.idea.vfilefinder.hasSomethingInPackage
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.platform.isCommon
+import org.jetbrains.kotlin.platform.isJs
+import org.jetbrains.kotlin.platform.isWasm
+import org.jetbrains.kotlin.platform.jvm.isJvm
+import org.jetbrains.kotlin.platform.konan.isNative
 
 private val LOG = Logger.getInstance("#org.jetbrains.kotlin.idea.configuration.ConfigureKotlinInProjectUtils")
 
@@ -320,8 +324,10 @@ fun hasAnyKotlinRuntimeInScope(module: Module): Boolean {
         DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(ThrowableComputable {
             scope.hasKotlinJvmRuntime(module.project)
                     || runReadAction { hasKotlinJsKjsmFile(LibraryKindSearchScope(module, scope, KotlinJavaScriptLibraryKind)) }
-                    || hasKotlinCommonRuntimeInScope(scope)
+                    || hasKotlinCommonRuntimeInScope(module)
+                    || hasKotlinCommonLegacyRuntimeInScope(scope)
                     || hasKotlinJsRuntimeInScope(module)
+                    || hasKotlinWasmRuntimeInScope(module)
                     || hasKotlinNativeRuntimeInScope(module)
         })
     }
@@ -329,6 +335,20 @@ fun hasAnyKotlinRuntimeInScope(module: Module): Boolean {
 
 fun isStdlibModule(module: Module): Boolean {
     return KotlinPackageIndexUtils.packageExists(FqName("kotlin"), module.moduleProductionSourceScope)
+}
+
+fun getPlatform(module: Module): String {
+    return when {
+        module.platform.isJvm() -> {
+            if (module.name.contains("android")) "jvm.android"
+            else "jvm"
+        }
+        module.platform.isWasm() && hasKotlinWasmRuntimeInScope(module) -> "wasm"
+        module.platform.isJs() && hasKotlinJsRuntimeInScope(module) -> "js"
+        module.platform.isCommon() -> "common"
+        module.platform.isNative() -> "native." + (module.platform?.componentPlatforms?.first()?.targetName ?: "unknown")
+        else -> "unknown"
+    }
 }
 
 fun hasKotlinJvmRuntimeInScope(module: Module): Boolean {
@@ -349,12 +369,26 @@ fun hasKotlinJsLegacyRuntimeInScope(module: Module): Boolean {
     }
 }
 
-fun hasKotlinCommonRuntimeInScope(scope: GlobalSearchScope): Boolean {
+/**
+ * Will check if kotlin is present as klib (knm files)
+ */
+fun hasKotlinCommonRuntimeInScope(module: Module): Boolean {
+    return hasKotlinPlatformRuntimeInScope(module, StandardNames.BUILT_INS_PACKAGE_FQ_NAME, KotlinCommonLibraryKind)
+}
+
+/**
+ * Will check if kotlin is present as .kotlin_metadata (legacy) file
+ */
+fun hasKotlinCommonLegacyRuntimeInScope(scope: GlobalSearchScope): Boolean {
     return IdeVirtualFileFinder(scope).hasMetadataPackage(StandardNames.BUILT_INS_PACKAGE_FQ_NAME)
 }
 
 fun hasKotlinJsRuntimeInScope(module: Module): Boolean {
     return hasKotlinPlatformRuntimeInScope(module, KOTLIN_JS_FQ_NAME, KotlinJavaScriptLibraryKind)
+}
+
+fun hasKotlinWasmRuntimeInScope(module: Module): Boolean {
+    return hasKotlinPlatformRuntimeInScope(module, KOTLIN_WASM_FQ_NAME, KotlinWasmLibraryKind)
 }
 
 fun hasKotlinNativeRuntimeInScope(module: Module): Boolean {
@@ -373,6 +407,7 @@ fun hasKotlinPlatformRuntimeInScope(
 }
 
 private val KOTLIN_JS_FQ_NAME = FqName("kotlin.js")
+private val KOTLIN_WASM_FQ_NAME = FqName("kotlin.wasm")
 
 private val KOTLIN_NATIVE_FQ_NAME = FqName("kotlin.native")
 

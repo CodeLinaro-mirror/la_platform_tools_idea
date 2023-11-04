@@ -223,6 +223,7 @@ object SourceNavigationHelper {
             if (receiversMatch(declaration, candidateDescriptor)
                 && valueParametersTypesMatch(declaration, candidateDescriptor)
                 && typeParametersMatch(declaration as KtTypeParameterListOwner, candidateDescriptor.typeParameters)
+                && declaration.isExpectDeclaration() == candidate.isExpectDeclaration()
             ) {
                 return candidate
             }
@@ -239,7 +240,10 @@ object SourceNavigationHelper {
         val classFqName = entity.fqName ?: return null
         return targetScopes(entity, navigationKind).firstNotNullOfOrNull { scope ->
             ProgressManager.checkCanceled()
-            index.get(classFqName.asString(), entity.project, scope).minByOrNull { it.isExpectDeclaration() }
+            val declarations = index.get(classFqName.asString(), entity.project, scope)
+            declarations.firstOrNull { declaration ->
+                entity.isExpectDeclaration() == declaration.isExpectDeclaration()
+            } ?: declarations.firstOrNull()
         }
     }
 
@@ -260,7 +264,7 @@ object SourceNavigationHelper {
 
         return scopes.flatMap { scope ->
             ProgressManager.checkCanceled()
-            index.get(declaration.fqName!!.asString(), declaration.project, scope).sortedBy { it.isExpectDeclaration() }
+            index.get(declaration.fqName!!.asString(), declaration.project, scope)
         }
     }
 

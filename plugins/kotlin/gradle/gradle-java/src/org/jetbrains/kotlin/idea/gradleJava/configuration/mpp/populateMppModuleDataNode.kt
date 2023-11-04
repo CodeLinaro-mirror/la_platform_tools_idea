@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.idea.util.NotNullableCopyableDataNodeUserDataPropert
 import org.jetbrains.kotlin.platform.impl.JsIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.JvmIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.NativeIdePlatformKind
+import org.jetbrains.kotlin.platform.impl.WasmIdePlatformKind
 import org.jetbrains.plugins.gradle.model.DefaultExternalSourceDirectorySet
 import org.jetbrains.plugins.gradle.model.DefaultExternalSourceSet
 import org.jetbrains.plugins.gradle.model.ExternalProject
@@ -98,6 +99,7 @@ internal fun doCreateSourceSetInfo(
             when (it) {
                 is JvmIdePlatformKind -> KotlinPlatform.JVM
                 is JsIdePlatformKind -> KotlinPlatform.JS
+                is WasmIdePlatformKind -> KotlinPlatform.WASM
                 is NativeIdePlatformKind -> KotlinPlatform.NATIVE
                 else -> KotlinPlatform.COMMON
             }
@@ -209,10 +211,11 @@ private fun KotlinMppGradleProjectResolver.Context.initializeModuleData() {
         mppModel.targets.filter { it.jar != null && it.jar!!.archiveFile != null }.forEach { target ->
             val path = ExternalSystemApiUtil.toCanonicalPath(target.jar!!.archiveFile!!.absolutePath)
             val currentModules = userData[path] ?: ArrayList<String>().apply { userData[path] = this }
-            // Test modules should not be added. Otherwise we could get dependnecy of java.mail on jvmTest
-            val allSourceSets = target.compilations.filter { !it.isTestComponent }.flatMap { it.declaredSourceSets }.toSet()
-            val availableViaDependsOn = allSourceSets.flatMap { it.allDependsOnSourceSets }.mapNotNull { mppModel.sourceSetsByName[it] }
-            allSourceSets.union(availableViaDependsOn).forEach { sourceSet ->
+            val declaredSourceSetsOfCompilations = target.jar!!.compilations.flatMap { it.declaredSourceSets }.toSet()
+            val availableViaDependsOn = declaredSourceSetsOfCompilations
+                .flatMap { it.allDependsOnSourceSets }
+                .mapNotNull { mppModel.sourceSetsByName[it] }
+            declaredSourceSetsOfCompilations.union(availableViaDependsOn).forEach { sourceSet ->
                 currentModules.add(KotlinModuleUtils.getKotlinModuleId(gradleModule, sourceSet, resolverCtx))
             }
         }
