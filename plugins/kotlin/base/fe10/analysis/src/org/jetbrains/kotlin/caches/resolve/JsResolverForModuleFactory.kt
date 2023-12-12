@@ -62,7 +62,7 @@ class JsResolverForModuleFactory(
         )
         var packageFragmentProvider = container.get<ResolveSession>().packageFragmentProvider
 
-        val libraryProviders = createPackageFragmentProvider(moduleInfo, container, moduleContext, moduleDescriptor)
+        val libraryProviders = createJsPackageFragmentProvider(moduleInfo, container, moduleContext, moduleDescriptor)
 
         if (libraryProviders.isNotEmpty()) {
             packageFragmentProvider = CompositePackageFragmentProvider(
@@ -75,7 +75,7 @@ class JsResolverForModuleFactory(
     }
 }
 
-internal fun <M : ModuleInfo> createPackageFragmentProvider(
+internal fun <M : ModuleInfo> createJsPackageFragmentProvider(
     moduleInfo: M,
     container: StorageComponentContainer,
     moduleContext: ModuleContext,

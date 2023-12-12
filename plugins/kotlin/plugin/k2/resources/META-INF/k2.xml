@@ -39,6 +39,7 @@
   <extensions defaultExtensionNs="org.jetbrains.kotlin">
     <idePlatformKindTooling implementation="org.jetbrains.kotlin.idea.base.fir.codeInsight.tooling.FirJvmIdePlatformKindTooling"/>
     <idePlatformKindTooling implementation="org.jetbrains.kotlin.idea.base.fir.codeInsight.tooling.FirJsIdePlatformKindTooling"/>
+    <idePlatformKindTooling implementation="org.jetbrains.kotlin.idea.base.fir.codeInsight.tooling.FirWasmIdePlatformKindTooling"/>
     <idePlatformKindTooling implementation="org.jetbrains.kotlin.idea.base.fir.codeInsight.tooling.FirNativeIdePlatformKindTooling"/>
     <idePlatformKindTooling implementation="org.jetbrains.kotlin.idea.base.fir.codeInsight.tooling.FirCommonIdePlatformKindTooling"/>
 
@@ -236,5 +237,8 @@
     <module name="kotlin.navigation"/>
     <module name="kotlin.code-insight.line-markers-k2"/>
     <module name="kotlin.highlighting"/>
+
+    <module name="kotlin.compiler-reference-index"/>
+    <module name="kotlin.compiler-plugins.assignment.common-k2"/>
   </content>
 </idea-plugin>
