@@ -18,6 +18,7 @@ package org.jetbrains.intellij.build
 import kotlinx.collections.immutable.putAll
 import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS
 import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
+import org.jetbrains.intellij.build.impl.PluginLayout
 import org.jetbrains.intellij.build.impl.PluginLayout.Companion.plugin
 import java.nio.file.Files
 import java.nio.file.Path
@@ -33,6 +34,8 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     private val INHERITED_PLUGINS = IDEA_BUNDLED_PLUGINS
 
     private val EXTRA_PLUGINS = listOf(
+      // We bundle DevKit for ASwB development purposes (b/308477340).
+      "intellij.devkit",
       // Android Studio: package CIDR plugins. This list is based on what we have been shipping in Android Studio
       // and the structure of CIDR plugins.
       "intellij.c.clangd.plugin",
@@ -42,14 +45,12 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "intellij.cidr.base.plugin",
       "intellij.cidr.clangConfig.plugin",
       "intellij.cidr.clangFormat.plugin",
+      "intellij.rml.dfa.ide",
     )
 
     private val EXCLUDED_PLUGINS = listOf(
       "intellij.settingsSync", // Not supported yet in Studio (b/267070185).
-      "intellij.android.design-plugin",
       "intellij.android.gradle.dsl",
-      "intellij.android.plugin",
-      "intellij.ant",
       "intellij.eclipse",
       "intellij.featuresTrainer",
       "intellij.gradle.analysis",
@@ -62,7 +63,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "intellij.platform.tracing.ide",
       "intellij.searchEverywhereMl",
       "intellij.statsCollector",
-      "intellij.xpath",
     )
   }
 
@@ -70,7 +70,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
   init {
     platformPrefix = "AndroidStudio"
-    productCode = "AI"
     applicationInfoModule = "intellij.android.adt.branding"
     useSplash = true
     additionalIDEPropertiesFilePaths = listOf(home.resolve("build/conf/ideaCE.properties"))
@@ -83,19 +82,34 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     includeIntoSourcesArchiveFilter = BiPredicate { _, _ -> true }
     customJvmMemoryOptions = customJvmMemoryOptions.putAll(arrayOf("-Xms" to "256m", "-Xmx" to "2048m"))
     additionalIdeJvmArguments = mutableListOf(
-      "-XX:FlightRecorderOptions=stackdepth=256", // Reduces the chance of truncated JFR stacks (ag/I16b829882).
-      "--add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED", // Required by instantapps-api.jar (ag/I55803b347).
-      "-Didea.required.plugins.id=org.jetbrains.kotlin", // Stopgap solution to ensure the Kotlin plugin stays enabled (b/202048599).
-      "-Djava.security.manager=allow", // Enable use of the deprecated SecurityManager (b/302171264).
+      // Reduces the chance of truncated JFR stacks (ag/I16b829882).
+      "-XX:FlightRecorderOptions=stackdepth=256",
+      // Required by instantapps-api.jar (ag/I55803b347).
+      "--add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED",
+      // Stopgap solution to ensure the Kotlin plugin stays enabled (b/202048599).
+      "-Didea.required.plugins.id=org.jetbrains.kotlin",
+      // Enable use of the deprecated SecurityManager (b/302171264).
+      "-Djava.security.manager=allow",
+      // Configure the feedback URL displayed for IDE startup failures. This system property should match
+      // StartupErrorReporter.STARTUP_ERROR_REPORTING_URL_PROPERTY. Eventually we may want a better landing page (b/295896403).
+      "-Dintellij.custom.startup.error.reporting.url=https://issuetracker.google.com/issues/new?component=192708",
     )
 
     embeddedJetBrainsClientMainModule = null // Overrides org.jetbrains.intellij.build.configureJetBrainsProduct().
-    productLayout.productImplementationModules =
-      listOf("intellij.idea.community.resources", "intellij.platform.duplicates.analysis", "intellij.platform.main", "intellij.platform.structuralSearch") -
-      listOf("intellij.platform.jps.model.impl", "intellij.platform.jps.model.serialization")
+    productLayout.productImplementationModules = listOf(
+      // From IdeaCommunityProperties:
+      "intellij.platform.main",
+      "intellij.idea.customization.base",
+      "intellij.idea.community.customization",
+    )
     productLayout.addPlatformSpec { layout, _ ->
+      // From IdeaCommunityProperties:
+      layout.withModule("intellij.platform.duplicates.analysis")
+      layout.withModule("intellij.platform.structuralSearch")
+
       layout.withModule("intellij.android.adt.branding", "resources.jar")
       layout.withModule("intellij.cidr.common.testFramework.core", TEST_FRAMEWORK_JAR)
+      layout.withModule("intellij.cidr.common.testFramework.core.nolang", TEST_FRAMEWORK_JAR)
       layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
       layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
 
@@ -114,17 +128,14 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
     val unknownExcludedPlugins = EXCLUDED_PLUGINS - INHERITED_PLUGINS
     check(unknownExcludedPlugins.isEmpty()) { "AndroidStudioProperties.EXCLUDED_PLUGINS contains nonexistent plugins: $unknownExcludedPlugins" }
-    productLayout.bundledPluginModules.clear()
-    productLayout.bundledPluginModules.addAll(INHERITED_PLUGINS + EXTRA_PLUGINS - EXCLUDED_PLUGINS)
+    val bundledPlugins = INHERITED_PLUGINS + EXTRA_PLUGINS - EXCLUDED_PLUGINS.toSet()
+    productLayout.bundledPluginModules = bundledPlugins.toMutableList()
 
     productLayout.mainModules = listOf("intellij.idea.community.main")
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = false
 
-    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removeAll {
-      // Remove plugin layouts that reference modules that do not exist in our fork.
-      it.mainModule in EXCLUDED_PLUGINS || it.mainModule == "intellij.python.community.plugin"
-    }
+    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removeAll { it.mainModule !in bundledPlugins }
     productLayout.pluginLayouts = inheritedPluginLayouts.addAll(listOf(
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
@@ -136,7 +147,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         spec.withModule("intellij.cidr.util.execution", spec.mainJarName)
       },
       plugin("intellij.cidr.base.plugin") { spec ->
-        spec.withModule("intellij.c.dfa", spec.mainJarName)
         spec.withModule("intellij.cidr.base", spec.mainJarName)
         spec.withModule("intellij.cidr.projectModel", spec.mainJarName)
         spec.withModule("intellij.cidr.workspaceModel", spec.mainJarName)
@@ -179,7 +189,25 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       plugin("intellij.cidr.clangFormat.plugin") { spec ->
         spec.withModule("intellij.cidr.clangFormat")
       },
+      plugin("intellij.rml.dfa.ide") { spec ->
+        spec.withModule("intellij.rml.dfa")
+      },
     ))
+
+    // IntelliJ Community is missing a PluginLayout for 'intellij.performanceTesting' despite it having
+    // multiple modules. So, we define our own layout for now (b/314149266).
+    if (productLayout.pluginLayouts.any { it.mainModule == "intellij.performanceTesting" }) {
+      error("It appears the following workaround for 'intellij.performanceTesting' can be removed")
+    }
+    productLayout.pluginLayouts = productLayout.pluginLayouts.add(
+      plugin("intellij.performanceTesting") { spec ->
+        spec.withModule("intellij.performanceTesting.remoteDriver")
+      }
+    )
+
+    // IntelliJ normally excludes the DevKit plugin from public builds, but we need it for ASwB development purposes (b/308477340).
+    val devkitPluginLayout = productLayout.pluginLayouts.first { it.mainModule == "intellij.devkit" }
+    devkitPluginLayout.bundlingRestrictions.includeInDistribution = PluginDistribution.ALL
   }
 
   override suspend fun copyAdditionalFiles(context: BuildContext, targetDirectory: String) {
@@ -232,12 +260,12 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         return "https://www.jetbrains.com/idea/uninstall/?edition=IC-${appInfo.majorVersion}.${appInfo.minorVersion}"
       }
 
-      override fun copyAdditionalFilesBlocking(context: BuildContext, targetDirectory: Path) {
+      override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/win/x64"))
           .includeAll()
-          .copyToDir(targetDirectory.resolve("plugins/c-clangd-plugin/bin/clang/win/x64"))
+          .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/bin/clang/win/x64"))
 
-        GameTools(context, OsFamily.WINDOWS, JvmArchitecture.x64).copyAdditionalFiles(targetDirectory.resolve("bin"))
+        GameTools(context, OsFamily.WINDOWS, JvmArchitecture.x64).copyAdditionalFiles(targetDir.resolve("bin"))
       }
     }
   }
@@ -245,15 +273,14 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
   override fun createLinuxCustomizer(projectHome: String): LinuxDistributionCustomizer {
     return object : LinuxDistributionCustomizer() {
       init {
-        buildTarGzWithoutBundledRuntime = true
-        buildOnlyBareTarGz = true
+        buildArtifactWithoutRuntime = true
         iconPngPath = "$projectHome/adt-branding/src/artwork/icon_AS_128.png"
         iconPngPathForEAP = "$projectHome/adt-branding/src/artwork/preview/icon_AS_128.png"
       }
 
       override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio"
 
-      override fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
+      override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/linux/x64"))
           .includeAll()
           .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/bin/clang/linux/x64"))
@@ -280,10 +307,14 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       return if (appInfo.isEAP) "Android Studio Preview.app" else "Android Studio.app"
     }
 
-    override fun copyAdditionalFilesBlocking(context: BuildContext, targetDirectory: Path, arch: JvmArchitecture) {
-      FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/mac"))
+    override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
+      val archDir = when (arch) {
+        JvmArchitecture.x64 -> "x64"
+        JvmArchitecture.aarch64 -> "aarch64"
+      }
+      FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/mac/$archDir"))
         .includeAll()
-        .copyToDir(targetDirectory.resolve("plugins/c-clangd-plugin/bin/clang/mac"))
+        .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/bin/clang/mac/$archDir"))
     }
   }
 
