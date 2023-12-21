@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.tooling.core.isStable
 object KotlinGradlePluginVersions {
     val V_1_7_21 = KotlinToolingVersion(1, 7, 21, null)
     val V_1_8_22 = KotlinToolingVersion(1, 8, 22, null)
-    val latest = KotlinToolingVersion("1.9.21-release-633")
+    val latest = KotlinToolingVersion("1.9.22-release-704")
 
     val all = listOf(
         V_1_7_21,
