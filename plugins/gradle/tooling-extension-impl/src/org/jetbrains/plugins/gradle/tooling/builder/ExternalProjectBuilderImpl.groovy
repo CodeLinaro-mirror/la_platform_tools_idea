@@ -135,7 +135,7 @@ class ExternalProjectBuilderImpl extends AbstractModelBuilderService {
     defaultExternalProject.sourceSets = getSourceSets(project, context, resolveSourceSetDependencies, sourceSetFinder)
     def skipTasks;  // Android Studio: b/235320590
     try {
-      skipTasks = Boolean.parseBoolean(String.valueOf(project.getProperties().get("idea.gradle.do.not.build.tasks")).trim())
+      skipTasks = Boolean.parseBoolean(String.valueOf(project.findProperty("idea.gradle.do.not.build.tasks")).trim())
     }
     catch (Throwable ignored) {
       skipTasks = false
