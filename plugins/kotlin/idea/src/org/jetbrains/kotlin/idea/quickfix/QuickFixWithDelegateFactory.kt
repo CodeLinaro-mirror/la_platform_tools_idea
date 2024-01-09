@@ -11,30 +11,32 @@ import com.intellij.psi.PsiFile
 import org.jetbrains.annotations.Nls
 
 open class QuickFixWithDelegateFactory(
-    delegateFactory: () -> IntentionAction?
+    private val delegateFactory: () -> IntentionAction?
 ) : IntentionAction, ReportingClassSubstitutor {
     @Nls
     private val familyName: String
     @Nls
     private val text: String
     private val startInWriteAction: Boolean
-    private val delegate: IntentionAction?
+    private val substitutedClass: Class<*>
 
     init {
-        delegate = delegateFactory()
+        val delegate = delegateFactory()
         familyName = delegate?.familyName ?: ""
         text = delegate?.text ?: ""
         startInWriteAction = delegate != null && delegate.startInWriteAction()
+        substitutedClass = delegate?.javaClass ?: javaClass
     }
 
-    override fun getSubstitutedClass(): Class<*> = delegate?.javaClass ?: javaClass
+    override fun getSubstitutedClass(): Class<*> = substitutedClass
 
     override fun getFamilyName() = familyName
 
     override fun getText() = text
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean {
-        return delegate?.isAvailable(project, editor, file) ?: false
+        val action = delegateFactory() ?: return false
+        return action.isAvailable(project, editor, file)
     }
 
     override fun startInWriteAction() = startInWriteAction
@@ -44,7 +46,7 @@ open class QuickFixWithDelegateFactory(
             return
         }
 
-        val action = delegate ?: return
+        val action = delegateFactory() ?: return
 
         assert(action.detectPriority() == this.detectPriority()) {
             "Incorrect priority of QuickFixWithDelegateFactory wrapper for ${action::class.java.name}"
