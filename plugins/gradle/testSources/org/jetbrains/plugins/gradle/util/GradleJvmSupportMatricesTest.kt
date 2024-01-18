@@ -42,6 +42,13 @@ class GradleJvmSupportMatricesTest : GradleJvmSupportMatricesTestCase() {
     assertFalse(isSupported("7.5", 19))
     assertFalse(isSupported("7.5.1", 19))
     assertTrue(isSupported("7.6", 19))
+
+    assertFalse(isSupported("8.2", 20))
+    assertTrue(isSupported("8.3", 20))
+    assertTrue(isSupported("8.4", 20))
+
+    assertFalse(isSupported("8.4", 21))
+    assertTrue(isSupported("8.5", 21))
   }
 
   fun `test suggesting gradle version for java version`() {
@@ -82,6 +89,9 @@ class GradleJvmSupportMatricesTest : GradleJvmSupportMatricesTestCase() {
     assertEquals(18, suggestLatestSupportedJavaVersion("7.5.1"))
     assertEquals(19, suggestLatestSupportedJavaVersion("7.6"))
     assertEquals(19, suggestLatestSupportedJavaVersion("8.2"))
+    assertEquals(20, suggestLatestSupportedJavaVersion("8.3"))
+    assertEquals(20, suggestLatestSupportedJavaVersion("8.4"))
+    assertEquals(21, suggestLatestSupportedJavaVersion("8.5"))
   }
 
   
@@ -100,6 +110,8 @@ class GradleJvmSupportMatricesTest : GradleJvmSupportMatricesTestCase() {
     assertEquals("7.2", suggestOldestSupportedGradleVersion(17))
     assertEquals("7.5", suggestOldestSupportedGradleVersion(18))
     assertEquals("7.6", suggestOldestSupportedGradleVersion(19))
+    assertEquals("8.3", suggestOldestSupportedGradleVersion(20))
+    assertEquals(null, suggestOldestSupportedGradleVersion(21))
   }
 
   fun `test suggesting oldest compatible java version for gradle version`() {
@@ -111,5 +123,7 @@ class GradleJvmSupportMatricesTest : GradleJvmSupportMatricesTestCase() {
     assertEquals(8, suggestOldestSupportedJavaVersion("7.2"))
     assertEquals(8, suggestOldestSupportedJavaVersion("7.5"))
     assertEquals(8, suggestOldestSupportedJavaVersion("7.6"))
+    assertEquals(8, suggestOldestSupportedJavaVersion("8.0"))
+    assertEquals(8, suggestOldestSupportedJavaVersion("8.5"))
   }
 }
