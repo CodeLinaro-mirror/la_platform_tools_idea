@@ -187,6 +187,9 @@ abstract class ToolWindowHeader internal constructor(
           }
           else {
             toolWindow.fireActivated(ToolWindowEventSource.ToolWindowHeader)
+            // Move focus the context component.
+            val decorator = InternalDecoratorImpl.findNearestDecorator(this@ToolWindowHeader)
+            decorator?.requestContentFocus()
           }
         }
       }
@@ -222,7 +225,7 @@ abstract class ToolWindowHeader internal constructor(
     }
     // Makes sure toolbar stays after the tab component
     val allowDnd = ClientProperty.isTrue(toolWindow.component as Component?, ToolWindowContentUi.ALLOW_DND_FOR_TABS)
-    westPanel.add(contentUi.tabComponent, if (allowDnd) CC().grow().pushX() else CC().growY())
+    westPanel.add(contentUi.tabComponent, if (allowDnd) CC().grow() else CC().growY())
     toolbarWest?.apply { westPanel.add(component, CC().pushX()) }
   }
 
@@ -298,7 +301,7 @@ abstract class ToolWindowHeader internal constructor(
     val type = toolWindow.type
     val nearestDecorator = InternalDecoratorImpl.findNearestDecorator(this@ToolWindowHeader)
     val isNewUi = toolWindow.toolWindowManager.isNewUi
-    val drawTopLine = type != ToolWindowType.FLOATING && !ClientProperty.isTrue(nearestDecorator, InternalDecoratorImpl.INACTIVE_LOOK)
+    val drawTopLine = type != ToolWindowType.FLOATING && locationOnScreen.y == toolWindow.decorator?.locationOnScreen?.y
     var drawBottomLine = true
 
     if (isNewUi) {
