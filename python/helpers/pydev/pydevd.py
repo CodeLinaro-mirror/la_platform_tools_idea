@@ -69,6 +69,7 @@ from pydevd_file_utils import get_fullname, rPath, get_package_dir
 import pydev_ipython  # @UnusedImport
 from _pydevd_bundle.pydevd_dont_trace_files import DONT_TRACE
 from pydevd_file_utils import get_abs_path_real_path_and_base_from_frame, NORM_PATHS_AND_BASE_CONTAINER
+from _pydevd_bundle.pydevd_asyncio_provider import get_apply
 
 get_file_type = DONT_TRACE.get
 
@@ -529,7 +530,7 @@ class PyDB(object):
         '''
         set_fallback_excepthook()
         if USE_LOW_IMPACT_MONITORING:
-            enable_pep699_monitoring(self)
+            enable_pep699_monitoring()
             return
         if self.frame_eval_func is not None:
             self.frame_eval_func()
@@ -1312,7 +1313,7 @@ class PyDB(object):
         if USE_LOW_IMPACT_MONITORING:
             debugger = get_global_debugger()
             if debugger:
-                enable_pep699_monitoring(debugger)
+                enable_pep699_monitoring()
         else:
             while frame is not None:
                 try:
@@ -1370,7 +1371,7 @@ class PyDB(object):
 
         if enable_tracing_from_start:
             if USE_LOW_IMPACT_MONITORING:
-                enable_pep699_monitoring(self)
+                enable_pep699_monitoring()
             else:
                 pydevd_tracing.SetTrace(self.trace_dispatch)
 
@@ -1520,9 +1521,9 @@ class PyDB(object):
         if set_trace:
             self.enable_tracing()
 
-        from _pydevd_bundle.pydevd_asyncio_provider import apply
-        if apply is not None:
-            apply()
+        apply_func = get_apply()
+        if apply_func is not None:
+            apply_func()
 
         return self._exec(is_module, entry_point_fn, module_name, file, globals, locals)
 

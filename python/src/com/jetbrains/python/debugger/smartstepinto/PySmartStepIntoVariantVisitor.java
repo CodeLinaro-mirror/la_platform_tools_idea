@@ -10,6 +10,7 @@ import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.pyi.PyiFile;
+import com.jetbrains.python.sdk.PySdkUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -57,9 +58,12 @@ public class PySmartStepIntoVariantVisitor extends PyRecursiveElementVisitor {
     PsiElement ref = callee.getReference() != null ? callee.getReference().resolve() : null;
     if (ref != null && isBuiltIn(ref)) return;
 
-    if (ref instanceof PyFunction && ((((PyFunction)ref).isAsync()) || ((PyFunction)ref).isGenerator())) return;
+    if (LanguageLevel.forElement(node).isOlderThan(LanguageLevel.PYTHON312)
+        && ref instanceof PyFunction && ((((PyFunction)ref).isAsync()) || ((PyFunction)ref).isGenerator())) {
+      return;
+    }
 
-    if (isAlreadySeen()) return;
+    if (isAlreadyCalled()) return;
 
     myCollector.add(new PySmartStepIntoVariantCallExpression(node, callOrder, myContext));
   }
@@ -87,7 +91,7 @@ public class PySmartStepIntoVariantVisitor extends PyRecursiveElementVisitor {
     int callOrder = getCallOrder();
     mySeenVariants.put(myVariantsFromPython.get(myVariantIndex).first, ++callOrder);
 
-    if (isAlreadySeen()) return;
+    if (isAlreadyCalled()) return;
 
     myCollector.add(new PySmartStepIntoVariantComprehension(node, callOrder, myContext));
   }
@@ -135,7 +139,7 @@ public class PySmartStepIntoVariantVisitor extends PyRecursiveElementVisitor {
     var context = TypeEvalContext.userInitiated(expression.getProject(), expression.getContainingFile());
     PsiElement resolved = expression.getReference(PyResolveContext.defaultContext(context)).resolve();
 
-    if (resolved == null || isBuiltIn(resolved) || isAlreadySeen()) return;
+    if (resolved == null || isBuiltIn(resolved) || isAlreadyCalled()) return;
 
     PsiElement psiOperator = isBinaryOperator ? ((PyBinaryExpression)expression).getPsiOperator() : expression;
     if (psiOperator != null) myCollector.add(new PySmartStepIntoVariantOperator(psiOperator, callOrder, myContext));
@@ -147,7 +151,7 @@ public class PySmartStepIntoVariantVisitor extends PyRecursiveElementVisitor {
             || navFile instanceof PyiFile);
   }
 
-  private boolean isAlreadySeen() {
+  private boolean isAlreadyCalled() {
     return myVariantsFromPython.get(myVariantIndex).second;
   }
 

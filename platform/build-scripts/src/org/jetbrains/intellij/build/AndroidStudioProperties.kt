@@ -15,10 +15,8 @@
  */
 package org.jetbrains.intellij.build
 
-import kotlinx.collections.immutable.putAll
 import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS
 import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
-import org.jetbrains.intellij.build.impl.PluginLayout
 import org.jetbrains.intellij.build.impl.PluginLayout.Companion.plugin
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,6 +34,8 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     private val EXTRA_PLUGINS = listOf(
       // We bundle DevKit for ASwB development purposes (b/308477340).
       "intellij.devkit",
+      // Bundle the GitHub plugin, just like IdeaCommunityProperties does.
+      "intellij.vcs.github.community",
       // Android Studio: package CIDR plugins. This list is based on what we have been shipping in Android Studio
       // and the structure of CIDR plugins.
       "intellij.c.clangd.plugin",
@@ -45,7 +45,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "intellij.cidr.base.plugin",
       "intellij.cidr.clangConfig.plugin",
       "intellij.cidr.clangFormat.plugin",
-      "intellij.rml.dfa.ide",
+      "intellij.rml.dfa.plugin",
     )
 
     private val EXCLUDED_PLUGINS = listOf(
@@ -86,7 +86,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
     allLibraryLicenses += AndroidStudioLibraryLicenses.LICENSES_LIST
     includeIntoSourcesArchiveFilter = BiPredicate { _, _ -> true }
-    customJvmMemoryOptions = customJvmMemoryOptions.putAll(arrayOf("-Xms" to "256m", "-Xmx" to "2048m"))
+    customJvmMemoryOptions = customJvmMemoryOptions.plus(arrayOf("-Xms" to "256m", "-Xmx" to "2048m"))
     additionalIdeJvmArguments = mutableListOf(
       // Reduces the chance of truncated JFR stacks (ag/I16b829882).
       "-XX:FlightRecorderOptions=stackdepth=256",
@@ -119,6 +119,14 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
       layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
 
+      // TODO(b/330399456): error-prone-annotations and grpc are used by ASwB only; these libs should be moved outside the platform.
+      layout.withProjectLibrary("error-prone-annotations")
+      layout.withProjectLibrary("grpc-core")
+      layout.withProjectLibrary("grpc-kotlin-stub")
+      layout.withProjectLibrary("grpc-netty-shaded")
+      layout.withProjectLibrary("grpc-protobuf")
+      layout.withProjectLibrary("grpc-stub")
+
       layout.withPatch { patcher, context ->
         // Patch AndroidStudioProperties.xml: set the platform API version to match the 3-component
         // IntelliJ IDEA build number. At runtime, it will be used by ApplicationInfo.getApiVersion()
@@ -145,6 +153,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     productLayout.pluginLayouts = inheritedPluginLayouts.addAll(listOf(
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
+      CommunityRepositoryModules.githubPlugin("intellij.vcs.github.community"),
       plugin("intellij.cidr.debugger.plugin") { spec ->
         spec.withModule("intellij.cidr.debugger", spec.mainJarName)
         spec.withModule("intellij.cidr.debugger.backend", spec.mainJarName)
@@ -194,58 +203,48 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       },
       plugin("intellij.cidr.clangFormat.plugin") { spec ->
         spec.withModule("intellij.cidr.clangFormat")
+        spec.withModule("intellij.cidr.clangFormat.lang")
       },
-      plugin("intellij.rml.dfa.ide") { spec ->
+      plugin("intellij.rml.dfa.plugin") { spec ->
         spec.withModule("intellij.rml.dfa")
+        spec.withModule("intellij.rml.dfa.impl")
+        spec.withModule("intellij.rml.dfa.devtools")
+        spec.withModule("intellij.rml.dfa.devtools.impl")
       },
     ))
-
-    // IntelliJ Community is missing a PluginLayout for 'intellij.performanceTesting' despite it having
-    // multiple modules. So, we define our own layout for now (b/314149266).
-    // This plugin will only be used for integration testing. We will store it in the `/prebuilts` directory but will
-    // later exclude from the Studio installer.
-    // TODO(b/329416516): Rework "excluding" performanceTesting plugin
-    if (productLayout.pluginLayouts.any { it.mainModule == "intellij.performanceTesting" }) {
-      error("It appears the following workaround for 'intellij.performanceTesting' can be removed")
-    }
-    productLayout.pluginLayouts = productLayout.pluginLayouts.add(
-      plugin("intellij.performanceTesting") { spec ->
-        spec.withModule("intellij.performanceTesting.remoteDriver")
-      }
-    )
 
     // IntelliJ normally excludes the DevKit plugin from public builds, but we need it for ASwB development purposes (b/308477340).
     val devkitPluginLayout = productLayout.pluginLayouts.first { it.mainModule == "intellij.devkit" }
     devkitPluginLayout.bundlingRestrictions.includeInDistribution = PluginDistribution.ALL
   }
 
-  override suspend fun copyAdditionalFiles(context: BuildContext, targetDirectory: String) {
+  override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path) {
     FileSet(context.paths.communityHomeDir)
       .include("LICENSE.txt")
       .include("NOTICE.txt")
-      .copyToDir(Path.of(targetDirectory))
+      .copyToDir(targetDir)
     FileSet(context.paths.communityHomeDir.resolve("build/conf/ideaCE/common/bin"))
       .includeAll()
-      .copyToDir(Path.of(targetDirectory, "bin"))
+      .copyToDir(targetDir.resolve("bin"))
     FileSet(context.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/lldb/helpers"))
       .includeAll()
-      .copyToDir(Path.of(targetDirectory, "bin/lldb/helpers"))
+      .copyToDir(targetDir.resolve("bin/lldb/helpers"))
     FileSet(context.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/helpers"))
       .includeAll()
-      .copyToDir(Path.of(targetDirectory, "bin/helpers"))
+      .copyToDir(targetDir.resolve("bin/helpers"))
 
     // Copy CIDR license to CIDR plugins.
     FileSet(context.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
-      .copyToDir(Path.of(targetDirectory, "plugins/c-clangd-plugin/lib/LICENSE.txt"))
+      .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/lib/LICENSE.txt"))
     FileSet(context.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
-      .copyToDir(Path.of(targetDirectory, "plugins/c-plugin/lib/LICENSE.txt"))
+      .copyToDir(targetDir.resolve("plugins/c-plugin/lib/LICENSE.txt"))
     FileSet(context.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
-      .copyToDir(Path.of(targetDirectory, "plugins/cidr-base-plugin/lib/LICENSE.txt"))
+      .copyToDir(targetDir.resolve("plugins/cidr-base-plugin/lib/LICENSE.txt"))
 
-    return super.copyAdditionalFiles(context, targetDirectory)
+    return super.copyAdditionalFiles(context, targetDir)
   }
 
   override fun createWindowsCustomizer(projectHome: String): WindowsDistributionCustomizer {
