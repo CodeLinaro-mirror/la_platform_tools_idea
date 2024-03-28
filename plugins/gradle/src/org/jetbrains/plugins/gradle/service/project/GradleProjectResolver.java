@@ -542,6 +542,7 @@ public class GradleProjectResolver implements ExternalSystemProjectResolver<Grad
           .filter(node -> buildSrcProjectPaths.contains(node.getData().getLinkedExternalProjectPath()))
           .forEach(node -> {
             buildSrcModules.put(node.getData().getId(), node);
+            GradleModuleDataKt.setBuildSrcModule(node.getData());
             findAll(node, GradleSourceSetData.KEY).forEach(
               sourceSetNode -> buildSrcModules.put(sourceSetNode.getData().getId(), sourceSetNode));
 
