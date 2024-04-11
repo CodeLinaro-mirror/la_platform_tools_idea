@@ -76,7 +76,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     toolsJarRequired = true
     scrambleMainJar = false
     buildSourcesArchive = true
-    buildCrossPlatformDistribution = true
 
     // Software Bill of Materials (SBOM).
     sbomOptions.creator = "Organization: Google LLC"
@@ -118,6 +117,8 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       layout.withModule("intellij.cidr.common.testFramework.core.nolang", TEST_FRAMEWORK_JAR)
       layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
       layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
+
+      layout.withProjectLibrary("jetbrains.intellij.deps.eclipse.jgit") // Used by settings repository plugin (b/332587380)
 
       // TODO(b/330399456): error-prone-annotations and grpc are used by ASwB only; these libs should be moved outside the platform.
       layout.withProjectLibrary("error-prone-annotations")
