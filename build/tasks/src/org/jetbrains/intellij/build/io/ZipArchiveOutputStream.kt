@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.intellij.build.io
 
 import com.intellij.util.lang.ImmutableZipFile
@@ -437,6 +437,8 @@ Android Studio: b/233762164 */  addDirEntry(dirName)
 
     // file name length
     buffer.putShort(headerOffset + 28, (name.size and 0xffff).toShort())
+    // external file attributes
+    buffer.putInt(headerOffset + 38, 0x81a40000L.toInt())
     // relative offset of local file header
     buffer.putInt(headerOffset + 42, (offset and 0xffffffffL).toInt())
     // file name
