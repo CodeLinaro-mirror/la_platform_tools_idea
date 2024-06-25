@@ -46,6 +46,8 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus.Internal
 import java.awt.*
 import java.awt.event.MouseEvent
+import java.lang.ref.WeakReference
+import java.util.WeakHashMap
 import javax.accessibility.AccessibleContext
 import javax.accessibility.AccessibleRole
 import javax.swing.Icon
@@ -271,7 +273,11 @@ private fun createActionBar(group: ActionGroup, customizationGroup: ActionGroup?
 
   toolbar.setMinimumButtonSize { ActionToolbar.experimentalToolbarMinimumButtonSize() }
   toolbar.targetComponent = null
-  toolbar.layoutStrategy = CompressingLayoutStrategy()
+  toolbar.layoutStrategy = object : CompressingLayoutStrategy() {
+    override fun getNonCompressibleWidth(mainToolbar: Container): Int {
+      return super.getNonCompressibleWidth(mainToolbar) + layoutGap * 4
+    }
+  }
   val component = toolbar.component
   component.border = JBUI.Borders.empty()
   component.isOpaque = false
@@ -449,13 +455,18 @@ internal fun isDarkHeader(): Boolean = ColorUtil.isDark(JBColor.namedColor("Main
 fun adjustIconForHeader(icon: Icon): Icon = if (isDarkHeader()) IconLoader.getDarkIcon(icon = icon, dark = true) else icon
 
 private class HeaderIconUpdater {
-  private val iconCache = ContainerUtil.createWeakSet<Icon>()
+  private val iconCache = WeakHashMap<Icon, WeakReference<Icon>>()
+  private val alreadyUpdated = ContainerUtil.createWeakSet<Icon>()
 
   fun updateIcon(sourceIcon: Icon): Icon {
-    if (sourceIcon in iconCache) return sourceIcon
+    if (sourceIcon in alreadyUpdated) return sourceIcon
+
+    val cached = iconCache[sourceIcon]?.get()
+    if (cached != null) return cached
 
     val replaceIcon = adjustIconForHeader(sourceIcon)
-    iconCache.add(replaceIcon)
+    iconCache[sourceIcon] = WeakReference(replaceIcon)
+    alreadyUpdated.add(replaceIcon)
     return replaceIcon
   }
 }

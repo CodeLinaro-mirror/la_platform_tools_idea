@@ -526,7 +526,7 @@ public class AllIcons {
     /** 13x13 */ public static final @NotNull Icon ModifiedSelected = load("general/modifiedSelected.svg", 251018616, 0);
     /** 16x16 */ public static final @NotNull Icon MoreTabs = load("general/moreTabs.svg", -82809530, 2);
     /** 16x16 */ public static final @NotNull Icon Mouse = load("general/mouse.svg", 1719479873, 2);
-    /** 38x16 */ public static final @NotNull Icon New_badge = load("general/new_badge.svg", 1778671870, 0);
+    /** 38x16 */ public static final @NotNull Icon New_badge = load("general/new_badge.svg", 394698412, 0);
     /** 16x16 */ public static final @NotNull Icon Note = load("general/note.svg", -2137204668, 0);
     /** 24x24 */ public static final @NotNull Icon NotificationError = load("general/notificationError.svg", -172459168, 2);
     /** 24x24 */ public static final @NotNull Icon NotificationInfo = load("general/notificationInfo.svg", -1956337174, 2);
@@ -630,6 +630,7 @@ public class AllIcons {
     /** 20x20 */ public static final @NotNull Icon DislikeSelected = load("ide/dislikeSelected.svg", 843594024, 2);
     /** 6x6 */ public static final @NotNull Icon ErrorPoint = load("ide/errorPoint.svg", 1599629614, 2);
     /** 14x14 */ public static final @NotNull Icon External_link_arrow = load("ide/external_link_arrow.svg", -1698491733, 0);
+    /** 14x14 */ public static final @NotNull Icon ExternalLinkArrowWhite = load("ide/externalLinkArrowWhite.svg", 555726287, 0);
     /** 16x16 */ public static final @NotNull Icon FatalErrorRead = load("ide/fatalError-read.svg", -2061937514, 2);
     /** 16x16 */ public static final @NotNull Icon FatalError = load("ide/fatalError.svg", -1290263519, 2);
     /** 32x32 */ public static final @NotNull Icon FeedbackRating = load("ide/feedbackRating.svg", 2100656760, 2);
@@ -1241,9 +1242,11 @@ public class AllIcons {
   }
 
   public static final class Ultimate {
+    /** 16x16 */ public static final @NotNull Icon IdeaUltimatePromo = load("ultimate/ideaUltimatePromo.svg", 1893560592, 0);
     /** 16x16 */ public static final @NotNull Icon Lock = load("ultimate/lock.svg", 2079176291, 2);
     /** 16x16 */ public static final @NotNull Icon LockWhite = load("ultimate/lockWhite.svg", -1891265957, 0);
     /** 16x16 */ public static final @NotNull Icon PycharmLock = load("ultimate/pycharmLock.svg", 1729774235, 2);
+    /** 16x16 */ public static final @NotNull Icon PycharmPromo = load("ultimate/pycharmPromo.svg", 663371893, 0);
   }
 
   public static final class Vcs {

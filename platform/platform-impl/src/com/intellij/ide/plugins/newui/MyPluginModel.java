@@ -144,6 +144,10 @@ public class MyPluginModel extends InstalledPluginsTableModel implements PluginE
    * @return true if changes were applied without a restart
    */
   public boolean apply(@Nullable JComponent parent) throws ConfigurationException {
+    if (ApplicationManager.getApplication().isExitInProgress()) {
+      needRestart = true; // don't unload or load plugins, app will exit anyway
+    }
+
     Map<PluginId, IdeaPluginDescriptorImpl> pluginIdMap = PluginManagerCore.INSTANCE.buildPluginIdMap();
     updatePluginDependencies(pluginIdMap);
     assertCanApply(pluginIdMap);
@@ -387,15 +391,22 @@ public class MyPluginModel extends InstalledPluginsTableModel implements PluginE
                              @NotNull IdeaPluginDescriptor descriptor,
                              @Nullable IdeaPluginDescriptor updateDescriptor,
                              @NotNull ModalityState modalityState) {
+    boolean isUpdate = updateDescriptor != null;
+    IdeaPluginDescriptor actionDescriptor = isUpdate ? updateDescriptor : descriptor;
+    if (!PluginManagerMain.checkThirdPartyPluginsAllowed(List.of(actionDescriptor))) {
+      return;
+    }
+
     if (myInstallSource != null) {
       String pluginId = descriptor.getPluginId().getIdString();
       myInstallSource.logInstallPlugins(Collections.singletonList(pluginId));
     }
 
-    boolean isUpdate = updateDescriptor != null;
-    IdeaPluginDescriptor actionDescriptor = isUpdate ? updateDescriptor : descriptor;
-    if (!PluginManagerMain.checkThirdPartyPluginsAllowed(List.of(actionDescriptor))) {
-      return;
+    if (descriptor instanceof PluginNode node) {
+      FUSEventSource installSource = node.getInstallSource();
+      if (installSource != null) {
+        installSource.logInstallPlugins(List.of(descriptor.getPluginId().getIdString()));
+      }
     }
 
     Ref<Boolean> allowInstallWithoutRestart = Ref.create(true);

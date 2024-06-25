@@ -348,7 +348,6 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
   private boolean myScrollingToCaret;
 
   private boolean myIsStickyLinePainting;
-  private boolean myIsStickyLineHovered;
 
   EditorImpl(@NotNull Document document,
              boolean viewer,
@@ -5735,19 +5734,9 @@ public final class EditorImpl extends UserDataHolderBase implements EditorEx, Hi
     myIsStickyLinePainting = stickyLinePainting;
   }
 
-  @ApiStatus.Internal
-  public boolean isStickyLineHovered() {
-    return myIsStickyLineHovered;
-  }
-
-  @ApiStatus.Internal
-  public void setStickyLineHovered(boolean stickyLineHovered) {
-    myIsStickyLineHovered = stickyLineHovered;
-  }
-
   private @Nullable StickyLinesPanel createStickyLinesPanel() {
     if (myProject != null && myKind == EditorKind.MAIN_EDITOR && !isMirrored()) {
-      StickyLinesManager stickyManager = new StickyLinesManager(this, myDocumentMarkupModel, myDisposable);
+      StickyLinesManager stickyManager = new StickyLinesManager(this, myDocumentMarkupModel.getDelegate(), myDisposable);
       myLayeredPane.add(stickyManager.getStickyPanel(), Integer.valueOf(200));
       myLayeredPane.add(myVerticalScrollBar, Integer.valueOf(250));
       ((MyScrollPaneLayout) myScrollPane.getLayout()).setVerticalScrollBar(myVerticalScrollBar);
