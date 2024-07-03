@@ -364,12 +364,15 @@ internal class WindowsDistributionBuilder(
       val appInfo = context.applicationInfo
       val icoPath = if (context.isLanguageServer) "no-icon" else locateIcoFileForWindowsLauncher(customizer, context).absolutePathString()
 
+/* Android Studio: our build number has 5 components, but this code expects only 3.
       val productVersion = context.buildNumber
         .replace(".SNAPSHOT", ".0")
         .replace("-SNAPSHOT", ".0")
         .let { version ->
           version + ".0".repeat(3 - version.count { it == '.' })
         }
+*/
+      val productVersion = context.buildNumber.split('.').take(3).joinToString(".") + ".0"
       val launcherProperties = mapOf(
         "CompanyName" to appInfo.companyName,
         "LegalCopyright" to "Copyright 2000-${LocalDate.now().year} ${appInfo.companyName}",
