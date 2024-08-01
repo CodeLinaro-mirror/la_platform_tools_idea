@@ -56,6 +56,7 @@ import java.util.*;
 import static com.intellij.openapi.util.text.StringUtil.join;
 import static com.intellij.openapi.util.text.StringUtil.notNullize;
 import static com.jetbrains.python.psi.PyUtil.as;
+import static com.jetbrains.python.psi.impl.PyDeprecationUtilKt.extractDeprecationMessageFromDecorator;
 
 
 public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyClass {
@@ -1311,7 +1312,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     if (stub != null) {
       return stub.getDeprecationMessage();
     }
-    return PyClass.super.getDeprecationMessage();
+    return extractDeprecationMessageFromDecorator(this);
   }
 
   @Nullable
@@ -1524,7 +1525,6 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     try {
       return classTypes
         .stream()
-        .filter(t -> !PyNames.ABC_META.equals(t.getClassQName()))
         .max(
           (t1, t2) -> {
             if (Objects.equals(t1, t2)) {

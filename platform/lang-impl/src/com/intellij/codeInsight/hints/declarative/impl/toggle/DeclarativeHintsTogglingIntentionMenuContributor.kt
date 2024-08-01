@@ -59,7 +59,7 @@ class DeclarativeHintsTogglingIntentionMenuContributor : IntentionMenuContributo
     override fun addPresentation(position: InlayPosition,
                                  payloads: List<InlayPayload>?,
                                  tooltip: String?,
-                                 hasBackground: Boolean,
+                                 hintFormat: HintFormat,
                                  builder: PresentationTreeBuilder.() -> Unit) {
       if (currentOptions.isEmpty()) {
         attemptedToAddWithoutOptions = true

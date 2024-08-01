@@ -31,5 +31,5 @@ verifyArchs "$out_dir/xplat-launcher"
 
 # Copy to Dist
 [[ -n "${dist_dir:-}" ]] || exit 0
-cp "$out_dir/x86_64-apple-darwin/release/xplat-launcher"  "$dist_dir"
+cp "$out_dir/xplat-launcher"  "$dist_dir"
 echo "Built $dist_dir/xplat-launcher"

@@ -42,9 +42,6 @@ inline fun <T> trimLists(left: List<T>, right: List<T>, comparator: (T, T) -> Bo
   return left.run { subList(trimLeft, size - trimRight) } to right.run { subList(trimLeft, size - trimRight) }
 }
 
-
-
-
 /**
  * Creates a document listener that will be automatically unregistered when the editor is disposed.
  */
@@ -61,7 +58,7 @@ fun Document.getText(interval: NotebookCellLines.Interval): String =
     getLineEndOffset(interval.lines.last)
   ))
 
-private fun Document.getLineText(line: Int): String =
+fun Document.getLineText(line: Int): String =
   getText(TextRange(getLineStartOffset(line), getLineEndOffset(line)))
 
 fun Editor.getCell(line: Int): NotebookCellLines.Interval =
@@ -96,7 +93,7 @@ val NotebookCellLines.Interval.lastContentLine: Int
     else lines.last
 
 val NotebookCellLines.Interval.contentLines: IntRange
-  get() = firstContentLine .. lastContentLine
+  get() = firstContentLine..lastContentLine
 
 fun makeMarkersFromIntervals(document: Document, intervals: Iterable<NotebookCellLines.Interval>): List<NotebookCellLinesLexer.Marker> {
   val markers = ArrayList<NotebookCellLinesLexer.Marker>()
@@ -156,7 +153,7 @@ fun isLineVisible(editor: EditorImpl, line: Int): Boolean {
   return viewArea.y <= lineY && lineY <= viewArea.y + viewArea.height
 }
 
-class SwingClientProperty<T, R: T?>(name: String) {
+class SwingClientProperty<T, R : T?>(name: String) {
   class Name(private val name: String) {
     override fun toString(): String = "Name($name)"
   }

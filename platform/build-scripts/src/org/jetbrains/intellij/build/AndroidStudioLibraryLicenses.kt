@@ -19,14 +19,12 @@ object AndroidStudioLibraryLicenses {
   @JvmStatic
   val LICENSES_LIST: List<LibraryLicense> = listOf(
     LibraryLicense(name = "Eclipse LSP4J", libraryName = "eclipse.lsp4j", url = "https://github.com/eclipse/lsp4j").eplV2(),
+    LibraryLicense(name = "Eclipse LSP4J Debug", libraryName = "eclipse.lsp4j.debug", url = "https://github.com/eclipse/lsp4j").eplV2(),
     LibraryLicense(name = "Eclipse LSP4J JSON RPC", libraryName = "eclipse.lsp4j.jsonrpc", url = "https://github.com/eclipse/lsp4j").eplV2(),
+    LibraryLicense(name = "Eclipse LSP4J JSON RPC Debug", libraryName = "eclipse.lsp4j.jsonrpc.debug", url = "https://github.com/eclipse/lsp4j").eplV2(),
     LibraryLicense(name = "JTS IO Common", libraryName = "jts-io-common", url = "https://github.com/locationtech/jts").eplV2(),
     LibraryLicense(name = "Xtext", libraryName = "xtext-xbase", url = "https://eclipse.dev/Xtext").eplV1(),
     LibraryLicense(name = "Kryo", libraryName = "Kryo", url = "https://github.com/EsotericSoftware/kryo")
       .newBsd("https://github.com/EsotericSoftware/kryo/blob/master/LICENSE.md"),
-    // TODO(b/330399456): error-prone-annotations is used by ASwB only; this lib should be moved outside the platform.
-    LibraryLicense(name = "error-prone-annotations", libraryName = "error-prone-annotations", url = "https://github.com/google/error-prone")
-      .apache("https://github.com/google/error-prone/blob/master/COPYING")
-      .suppliedByOrganizations(SoftwareBillOfMaterials.Companion.Suppliers.GOOGLE),
   )
 }

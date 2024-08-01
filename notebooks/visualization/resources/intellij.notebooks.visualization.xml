@@ -69,27 +69,22 @@
       <action id="NotebookOutputCollapseAllAction"
               class="org.jetbrains.plugins.notebooks.visualization.outputs.impl.NotebookOutputCollapseAllAction"/>
     </group>
+
+    <action id="NotebookOutputSelectAllAction"
+            class="org.jetbrains.plugins.notebooks.visualization.r.inlays.components.NotebookOutputSelectAllAction"
+            use-shortcut-of="$SelectAll"/>
   </actions>
 
   <extensions defaultExtensionNs="com.intellij">
     <notificationGroup displayType="BALLOON" id="Notebook Table" bundle="messages.VisualizationBundle" key="inlay.output.table.notification.group.name"/>
     <editorFactoryListener id="org.jetbrains.plugins.notebooks.visualization.r.inlays.InlaysManager" implementation="org.jetbrains.plugins.notebooks.visualization.r.inlays.InlaysManager"/>
 
-    <editorFactoryMouseListener
-      implementation="org.jetbrains.plugins.notebooks.visualization.outputs.impl.OutputCollapsingGutterMouseListener"
-      id="OutputCollapsingGutterMouseListener"
-      order="first"/>
-    <editorFactoryMouseMotionListener
-      implementation="org.jetbrains.plugins.notebooks.visualization.outputs.impl.OutputCollapsingGutterMouseListener"/>
-
     <getDataRule
       key="NOTEBOOK_CELL_LINES_INTERVAL"
-      implementationClass="org.jetbrains.plugins.notebooks.visualization.NotebookCellLinesIntervalDataRule"
-      type="context"/>
-    <getDataRule
-      key="EDITORS_WITH_OFFSETS_DATA_KEY"
-      implementationClass="org.jetbrains.plugins.notebooks.visualization.EditorsWithOffsetsDataRule"
-      type="fast"/>
+      implementationClass="org.jetbrains.plugins.notebooks.visualization.NotebookCellLinesIntervalDataRule"/>
+    <uiDataRule implementation="org.jetbrains.plugins.notebooks.visualization.EditorsWithOffsetsDataRule"/>
+    <editorFactoryDocumentListener implementation="org.jetbrains.plugins.notebooks.visualization.UndoableActionListener"
+                                   order="last"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains.plugins.notebooks.visualization.r.inlays.visualisation">
@@ -111,8 +106,4 @@
       interface="org.jetbrains.plugins.notebooks.visualization.outputs.NotebookOutputComponentWrapper"
       dynamic="true"/>
   </extensionPoints>
-  <extensions defaultExtensionNs="org.jetbrains.plugins.notebooks">
-    <notebookCellInlayController
-      implementation="org.jetbrains.plugins.notebooks.visualization.outputs.NotebookOutputInlayController$Factory"/>
-  </extensions>
 </idea-plugin>

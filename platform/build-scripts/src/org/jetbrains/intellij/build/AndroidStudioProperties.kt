@@ -16,9 +16,11 @@
 package org.jetbrains.intellij.build
 
 import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSITORY_PLUGINS
+import org.jetbrains.intellij.build.impl.PatchOverwriteMode
 import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
 import org.jetbrains.intellij.build.impl.PluginLayout
 import org.jetbrains.intellij.build.impl.PluginLayout.Companion.plugin
+import org.jetbrains.intellij.build.impl.PluginLayout.Companion.pluginAuto
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.function.BiPredicate
@@ -66,6 +68,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "intellij.grazie",
       "intellij.java.byteCodeViewer",
       "intellij.java.guiForms.designer",
+      "intellij.marketplaceMl", // Currently experimental and disabled by default anyway (in IJ 2024.2).
       "intellij.maven",
       "intellij.platform.tracing.ide",
       "intellij.searchEverywhereMl",
@@ -86,9 +89,13 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
     // Software Bill of Materials (SBOM).
     sbomOptions.creator = "Organization: Google LLC"
-    sbomOptions.copyrightText = "Copyright 2023 Google LLC and contributors"
-    sbomOptions.license = SoftwareBillOfMaterials.Options.DistributionLicense(name = "Google", text = "NOASSERTION", url = null)
     sbomOptions.documentNamespace = "https://spdx.google/AndroidStudio-0794716c-a8f8-40ad-9bd0-90ce3dbaaf2a"
+    sbomOptions.license = SoftwareBillOfMaterials.Options.DistributionLicense(
+      name = "Google",
+      text = "NOASSERTION",
+      copyrightText = "Copyright 2023 Google LLC and contributors",
+      url = null,
+    )
 
     allLibraryLicenses += AndroidStudioLibraryLicenses.LICENSES_LIST
     includeIntoSourcesArchiveFilter = BiPredicate { _, _ -> true }
@@ -104,14 +111,12 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "-Djava.security.manager=allow",
       // Configure the feedback URL displayed for IDE startup failures. This system property should match
       // StartupErrorReporter.STARTUP_ERROR_REPORTING_URL_PROPERTY. Eventually we may want a better landing page (b/295896403).
-      "-Dintellij.custom.startup.error.reporting.url=https://issuetracker.google.com/issues/new?component=192708",
+      "-Dij.startup.error.report.url=https://issuetracker.google.com/issues/new?component=192708",
     )
 
-    embeddedJetBrainsClientMainModule = null // Overrides org.jetbrains.intellij.build.configureJetBrainsProduct().
     productLayout.productImplementationModules = listOf(
       // From IdeaCommunityProperties:
-      "intellij.platform.main",
-      "intellij.idea.customization.base",
+      "intellij.platform.starter",
       "intellij.idea.community.customization",
     )
     productLayout.addPlatformSpec { layout, _ ->
@@ -125,14 +130,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       layout.withProjectLibrary("assertJ", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
       layout.withProjectLibrary("hamcrest", TEST_FRAMEWORK_JAR) // Used by the CIDR test framework (b/295336541).
 
-      // Add libraries needed for compatibility with JetBrains plugins that we do not bundle.
-      // TODO(b/347323348): remove these libraries after updating to IntelliJ 2024.2.
-      layout.withProjectLibrary("jetbrains.intellij.deps.eclipse.jgit") // Settings Sync.
-      layout.withProjectLibrary("cloud-config-client") // Settings Sync.
-      layout.withProjectLibrary("commons-text") // Grazie.
-
-      // TODO(b/330399456): error-prone-annotations and grpc are used by ASwB only; these libs should be moved outside the platform.
-      layout.withProjectLibrary("error-prone-annotations")
+      // TODO(b/330399456): grpc is used by ASwB only; it should be moved outside the platform.
       layout.withProjectLibrary("grpc-core")
       layout.withProjectLibrary("grpc-kotlin-stub")
       layout.withProjectLibrary("grpc-netty-shaded")
@@ -148,7 +146,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         val moduleOutDir = context.getModuleOutputDir(context.findApplicationInfoModule())
         val original = Files.readString(moduleOutDir.resolve(appInfoPath))
         val patched = original.replace(Regex("<build (.*?)/>"), "<build $1 apiVersion=\"$apiVersion\"/>")
-        patcher.patchModuleOutput(applicationInfoModule, appInfoPath, patched, overwrite = true)
+        patcher.patchModuleOutput(applicationInfoModule, appInfoPath, patched, PatchOverwriteMode.TRUE)
       }
     }
 
@@ -163,6 +161,9 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
     val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removeAll { it.mainModule !in bundledPlugins }
     productLayout.pluginLayouts = inheritedPluginLayouts.addAll(listOf(
+      // TODO(b/352080200): figure out why the plugin layouts for 'intellij.copyright' and 'intellij.turboComplete' are needed here.
+      pluginAuto(listOf("intellij.copyright")),
+      pluginAuto(listOf("intellij.turboComplete")),
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
       CommunityRepositoryModules.githubPlugin("intellij.vcs.github.community"),
@@ -323,9 +324,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       // same mechanisms for our .ico and .svg files
       icnsPath = "$projectHome/adt-branding/src/artwork/AndroidStudio.icns"
       icnsPathForEAP = "$projectHome/adt-branding/src/artwork/preview/AndroidStudio.icns"
-
-      // TODO b/313701398 switch to new XPlatLauncher
-      useXPlatLauncher = false
     }
 
     override fun getRootDirectoryName(appInfo: ApplicationInfoProperties, buildNumber: String): String {

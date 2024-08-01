@@ -38106,8 +38106,8 @@ org/jetbrains/kotlin/idea/codeinsights/impl/base/quickFix/ChangeVariableMutabili
 org/jetbrains/kotlin/analysis/api/lifetime/KtLifetimeOwner.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/analysis/api/diagnostics/KtDiagnostic.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/analysis/api/diagnostics/KtDiagnosticWithPsi.class:plugins/Kotlin/lib/kotlin-plugin.jar
-org/jetbrains/kotlin/analysis/api/fir/diagnostics/KtFirDiagnostic.class:plugins/Kotlin/lib/kotlin-plugin.jar
-org/jetbrains/kotlin/analysis/api/fir/diagnostics/KtFirDiagnostic$ValReassignment.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/fir/diagnostics/KaFirDiagnostic.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/fir/diagnostics/KaFirDiagnostic$ValReassignment.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/idea/codeinsights/impl/base/quickFix/ChangeVariableMutabilityFix$Companion$VAL_REASSIGNMENT$1.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/idea/codeinsight/api/applicators/fixes/KotlinDiagnosticFixFactoryKt.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/idea/codeinsight/api/applicators/fixes/KotlinDiagnosticFixFactory.class:plugins/Kotlin/lib/kotlin-plugin.jar
@@ -49801,11 +49801,11 @@ com/intellij/psi/search/PsiSearchHelper$SearchCostResult.class:lib/app-client.ja
 org/jetbrains/kotlin/analysis/api/symbols/markers/KtPossibleMultiplatformSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/idea/inspections/UnusedSymbolInspection$Companion$WhenMappings.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/analysis/api/symbols/markers/KtSymbolWithTypeParameters.class:plugins/Kotlin/lib/kotlin-plugin.jar
-org/jetbrains/kotlin/analysis/api/symbols/KtDeclarationSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/symbols/KaDeclarationSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/analysis/api/base/KtContextReceiversOwner.class:plugins/Kotlin/lib/kotlin-plugin.jar
-org/jetbrains/kotlin/analysis/api/symbols/KtCallableSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
-org/jetbrains/kotlin/analysis/api/symbols/KtFunctionLikeSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
-org/jetbrains/kotlin/analysis/api/symbols/KtFunctionSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/symbols/KaCallableSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/symbols/KaFunctionLikeSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/symbols/KaFunctionSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/jetbrains/kotlin/analysis/api/descriptors/symbols/descriptorBased/KtFe10DescFunctionSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
 com/intellij/codeInspection/ex/EntryPointsManagerImpl.class:plugins/java/lib/java-impl.jar
 com/intellij/psi/impl/PsiClassImplUtil$2.class:plugins/java/lib/java-impl.jar
@@ -49865,7 +49865,7 @@ org/testng/annotations/DataProvider.class:plugins/testng/lib/testng-plugin.jar
 org/testng/annotations/BeforeClass.class:plugins/testng/lib/testng-plugin.jar
 org/testng/annotations/BeforeGroups.class:plugins/testng/lib/testng-plugin.jar
 org/testng/annotations/BeforeMethod.class:plugins/testng/lib/testng-plugin.jar
-org/jetbrains/kotlin/analysis/api/symbols/KtConstructorSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
+org/jetbrains/kotlin/analysis/api/symbols/KaConstructorSymbol.class:plugins/Kotlin/lib/kotlin-plugin.jar
 org/testng/annotations/BeforeSuite.class:plugins/testng/lib/testng-plugin.jar
 org/testng/annotations/BeforeTest.class:plugins/testng/lib/testng-plugin.jar
 org/testng/annotations/AfterClass.class:plugins/testng/lib/testng-plugin.jar

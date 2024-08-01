@@ -90,6 +90,12 @@ public class PyDeprecationTest extends PyTestCase {
     myFixture.checkHighlighting(true, false, false);
   }
 
+  public void testFqnDecorator() {
+    myFixture.enableInspections(PyDeprecationInspection.class);
+    myFixture.configureByFile("deprecation/fqnDeprecation.py");
+    myFixture.checkHighlighting(true, false, false);
+  }
+
   public void testDeprecatedMethod() {
     myFixture.enableInspections(PyDeprecationInspection.class);
     myFixture.configureByFile("deprecation/deprecatedMethod.py");
@@ -111,6 +117,12 @@ public class PyDeprecationTest extends PyTestCase {
   public void testDeprecatedWithSeveralArguments() {
     myFixture.enableInspections(PyDeprecationInspection.class);
     myFixture.configureByFile("deprecation/deprecatedWithSeveralArguments.py");
+    myFixture.checkHighlighting(true, false, false);
+  }
+
+  public void testStubAndPyFile() {
+    myFixture.enableInspections(PyDeprecationInspection.class);
+    myFixture.configureByFiles("deprecation/usingDeprecatedMethod.py", "deprecation/deprecatedLibrary.py", "deprecation/deprecatedLibrary.pyi");
     myFixture.checkHighlighting(true, false, false);
   }
 
