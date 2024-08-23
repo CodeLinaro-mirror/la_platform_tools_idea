@@ -4,12 +4,18 @@ package com.intellij.psi;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.psi.util.PsiUtilCore;
+import com.intellij.util.Processor;
 import com.intellij.util.WalkingState;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 public abstract class PsiWalkingState extends WalkingState<PsiElement> {
   private static final Logger LOG = Logger.getInstance(PsiWalkingState.class);
   private final PsiElementVisitor myVisitor;
+
+  public static boolean processAll(@NotNull PsiElement root, final @NotNull Processor<? super PsiElement> processor) {
+    return processAll(root, PsiWalkingState.PsiTreeGuide.instance, processor);
+  }
 
   private static class PsiTreeGuide implements TreeGuide<PsiElement> {
     @Override
@@ -37,7 +43,8 @@ public abstract class PsiWalkingState extends WalkingState<PsiElement> {
       return element.getParent();
     }
 
-    private static final PsiTreeGuide instance = new PsiTreeGuide();
+    @ApiStatus.Internal
+    public static final PsiTreeGuide instance = new PsiTreeGuide();
   }
 
   protected PsiWalkingState(@NotNull PsiElementVisitor delegate) {
