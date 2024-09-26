@@ -27,7 +27,7 @@ import com.intellij.internal.statistic.collectors.fus.actions.persistence.Action
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.*
-import com.intellij.openapi.actionSystem.ex.ActionUtil.showDumbModeWarning
+import com.intellij.openapi.actionSystem.ex.ActionUtil.getUnavailableMessage
 import com.intellij.openapi.actionSystem.impl.ActionConfigurationCustomizer.LightCustomizeStrategy
 import com.intellij.openapi.application.*
 import com.intellij.openapi.application.impl.RawSwingDispatcher
@@ -45,6 +45,8 @@ import com.intellij.openapi.keymap.impl.KeymapImpl
 import com.intellij.openapi.keymap.impl.UpdateResult
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.blockingContext
+import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.project.DumbServiceImpl
 import com.intellij.openapi.project.IndexNotReadyException
 import com.intellij.openapi.project.ProjectType
 import com.intellij.openapi.util.*
@@ -140,22 +142,11 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
 
     this.keymapToOperations = keymapToOperations
 
-    val mutator = PreInitActionRuntimeRegistrar(idToAction = idToAction, actionRegistrar = actionPreInitRegistrar)
-
-    val heavyTasks = mutableListOf<ActionConfigurationCustomizer.CustomizeStrategy>()
-    ActionConfigurationCustomizer.EP.forEachExtensionSafe { extension ->
-      val customizeStrategy = extension.customize()
-      if (customizeStrategy is LightCustomizeStrategy) {
-        // same thread - mutator is not thread-safe by intention
-        // todo use plugin-aware coroutineScope
-        coroutineScope.launch(Dispatchers.Unconfined) {
-          customizeStrategy.customize(mutator)
-        }
-      }
-      else {
-        heavyTasks.add(customizeStrategy)
-      }
-    }
+    val heavyTasks = preInitRegistration(
+      idToAction = idToAction,
+      actionPreInitRegistrar = actionPreInitRegistrar,
+      coroutineScope = coroutineScope,
+    )
 
     // by intention, _after_ doRegisterActions
     actionPostInitRegistrar = PostInitActionRegistrar(idToAction = idToAction, boundShortcuts = boundShortcuts, state = state)
@@ -178,7 +169,7 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
     }
 
     DYNAMIC_EP_NAME.forEachExtensionSafe { customizer ->
-      callDynamicRegistration(customizer, mutator)
+      callDynamicRegistration(customizer, actionPostInitRuntimeRegistrar)
     }
 
     DYNAMIC_EP_NAME.addExtensionPointListener(coroutineScope, object : ExtensionPointListener<DynamicActionConfigurationCustomizer> {
@@ -1196,7 +1187,12 @@ open class ActionManagerImpl protected constructor(private val coroutineScope: C
       result.isPerformed -> Unit
       result.failureCause is IndexNotReadyException -> {
         LOG.info(result.failureCause)
-        showDumbModeWarning(project, action, event)
+        if (project != null) {
+          //see com.intellij.openapi.actionSystem.ex.ActionUtil.getActionUnavailableMessage, will be fixed in 2024.3
+          val actionName = StringUtilRt.notNullize(event.presentation.text, "This action")
+          val dumbServiceImpl = DumbService.getInstance(project) as DumbServiceImpl
+          dumbServiceImpl.showDumbModeNotificationForFailedAction(getUnavailableMessage(actionName, false), getId(action))
+        }
       }
       else -> throw result.failureCause
     }
@@ -2330,4 +2326,28 @@ private fun registerOrReplaceActionInner(element: XmlElement,
     }
     onActionLoadedFromXml(actionId = id, plugin = plugin)
   }
+}
+
+private fun preInitRegistration(
+  idToAction: HashMap<String, AnAction>,
+  actionPreInitRegistrar: ActionPreInitRegistrar,
+  coroutineScope: CoroutineScope,
+): MutableList<ActionConfigurationCustomizer.CustomizeStrategy> {
+  val mutator = PreInitActionRuntimeRegistrar(idToAction = idToAction, actionRegistrar = actionPreInitRegistrar)
+
+  val heavyTasks = mutableListOf<ActionConfigurationCustomizer.CustomizeStrategy>()
+  ActionConfigurationCustomizer.EP.forEachExtensionSafe { extension ->
+    val customizeStrategy = extension.customize()
+    if (customizeStrategy is LightCustomizeStrategy) {
+      // same thread - mutator is not thread-safe by intention
+      // todo use plugin-aware coroutineScope
+      coroutineScope.launch(Dispatchers.Unconfined) {
+        customizeStrategy.customize(mutator)
+      }
+    }
+    else {
+      heavyTasks.add(customizeStrategy)
+    }
+  }
+  return heavyTasks
 }
