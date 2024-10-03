@@ -23,7 +23,6 @@ import com.intellij.util.ThrowableConsumer;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.PreemptiveSafeFileOutputStream;
 import com.intellij.util.io.SafeFileOutputStream;
-import com.intellij.util.lang.JavaVersion;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,6 +32,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -503,12 +503,18 @@ public abstract class LocalFileSystemBase extends LocalFileSystem {
     var t = LOG.isTraceEnabled() ? System.nanoTime() : 0;
     try {
       var nioFile = convertToNioFileAndCheck(file, false);
-      if (SystemInfo.isWindows || JavaVersion.current().isAtLeast(21)) {
+      if (SystemInfo.isWindows) {
         var realName = nioFile.toRealPath(LinkOption.NOFOLLOW_LINKS).getFileName().toString();
-        if (originalFileName.equalsIgnoreCase(realName)) {
+        if (
+          originalFileName.equalsIgnoreCase(realName) ||
+          Normalizer.isNormalized(originalFileName, Normalizer.Form.NFC) &&
+          originalFileName.equalsIgnoreCase(Normalizer.normalize(originalFileName, Normalizer.Form.NFC))
+        ) {
           return realName;
         }
       }
+      // Don't call toRealPath for Unix, because UnixPath#toRealPath lists the directory internally anyway,
+      // see https://github.com/JetBrains/JetBrainsRuntime/blob/e9d570349a20a4755bb80a3a7bbb8ab6a4d989f0/src/java.base/unix/classes/sun/nio/fs/UnixPath.java#L978
       var parentFile = nioFile.getParent();
       if (parentFile != null) {
         var canonicalFileNames = parentFile.toFile().list();
