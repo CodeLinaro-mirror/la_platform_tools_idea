@@ -474,6 +474,7 @@ open class JBTabsImpl internal constructor(
       }
     }.addTo(this)
     scrollBarChangeListener = ChangeListener { updateTabsOffsetFromScrollBar() }
+    setTabsPosition(tabsPosition)
   }
 
   @Internal
