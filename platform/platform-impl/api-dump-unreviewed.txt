@@ -17636,8 +17636,6 @@ e:com.intellij.openapi.updateSettings.impl.UpdateChannel$Licensing
 - s:values():com.intellij.openapi.updateSettings.impl.UpdateChannel$Licensing[]
 f:com.intellij.openapi.updateSettings.impl.UpdateChecker
 - sf:INSTANCE:com.intellij.openapi.updateSettings.impl.UpdateChecker
-- sf:MACHINE_ID_DISABLED_PROPERTY:java.lang.String
-- sf:MACHINE_ID_PARAMETER:java.lang.String
 - sf:NOTIFICATIONS:com.intellij.notification.NotificationGroup
 - sf:checkAndPrepareToInstall(com.intellij.openapi.updateSettings.impl.PluginDownloader,com.intellij.ide.plugins.InstalledPluginsState,java.util.Map):V
 - sf:checkAndPrepareToInstall(com.intellij.openapi.updateSettings.impl.PluginDownloader,com.intellij.ide.plugins.InstalledPluginsState,java.util.Map,com.intellij.openapi.util.BuildNumber):V
@@ -24237,6 +24235,7 @@ f:com.intellij.ui.LicensingFacade
 - platformProductCode:java.lang.String
 - productLicenses:java.util.Map
 - restrictions:java.util.List
+- subType:java.lang.String
 - <init>():V
 - s:fromJson(java.lang.String):com.intellij.ui.LicensingFacade
 - getConfirmationStamp(java.lang.String):java.lang.String
@@ -25052,8 +25051,16 @@ f:com.intellij.ui.TextIcon
 - <init>(java.lang.String,java.awt.Color,java.awt.Color,I,Z,I):V
 - <init>(java.lang.String,java.awt.Color,java.awt.Color,java.awt.Color,I,Z):V
 - equals(java.lang.Object):Z
+- getBackground():java.awt.Color
+- getBorderColor():java.awt.Color
+- getFont():java.awt.Font
+- getForeground():java.awt.Color
 - getIconHeight():I
 - getIconWidth():I
+- getInsets():java.awt.Insets
+- getRound():java.lang.Integer
+- getText():java.lang.String
+- getWithBorders():java.lang.Boolean
 - hashCode():I
 - paintIcon(java.awt.Component,java.awt.Graphics,I,I):V
 - setBackground(java.awt.Color):V

@@ -99,11 +99,16 @@ public final class ShowAutoImportPass extends TextEditorHighlightingPass {
       if (!UIUtil.hasFocus(myEditor.getContentComponent())) {
         return;
       }
-      if (DumbService.isDumb(myProject) || !myFile.isValid()) {
+      if (DumbService.isDumb(myProject)) {
         return;
       }
-      if (myEditor.isDisposed() || myEditor instanceof EditorWindow window && !window.isValid()) {
-        return;
+      try (AccessToken ignore = SlowOperations.knownIssue("IJPL-162974")) {
+        if (!myFile.isValid()) {
+          return;
+        }
+        if (myEditor.isDisposed() || myEditor instanceof EditorWindow window && !window.isValid()) {
+          return;
+        }
       }
 
       int caretOffset = myEditor.getCaretModel().getOffset();
@@ -127,9 +132,9 @@ public final class ShowAutoImportPass extends TextEditorHighlightingPass {
     ThreadingAssertions.assertEventDispatchThread();
     try (AccessToken ignore = SlowOperations.knownIssue("IDEA-335057, EA-843299")) {
       if (!mayAutoImportNow(myFile, true, ThreeState.UNSURE)) return;
-    }
-    for (BooleanSupplier autoImportAction : autoImportActions) {
-      autoImportAction.getAsBoolean();
+      for (BooleanSupplier autoImportAction : autoImportActions) {
+        autoImportAction.getAsBoolean();
+      }
     }
   }
 
