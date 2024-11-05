@@ -34,9 +34,10 @@ class EnableK2NotificationService {
     private val productName: @NlsSafe String
         get() = ApplicationNamesInfo.getInstance().fullProductName
 
-    private val applicableVersions = setOf("2024.2", "2024.3")
+    private val applicableVersions = setOf("2024.3")
 
     fun showEnableK2Notification(project: Project, state: K2UserTrackerState) {
+        return
         // We shouldn't show this notification in the K2 mode:)
         if (KotlinPluginModeProvider.currentPluginMode == KotlinPluginMode.K2) return
 
