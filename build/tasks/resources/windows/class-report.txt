@@ -2480,7 +2480,6 @@ com/intellij/remoteDev/tracing/CustomExportersListener.class:lib/app-client.jar
 org/h2/mvstore/MVStore.class:lib/modules.jar
 kotlinx/coroutines/repackaged/net/bytebuddy/dynamic/scaffold/MethodGraph$Node.class:lib/util-8.jar
 org/h2/mvstore/MVStoreException.class:lib/modules.jar
-com/intellij/ide/LanguageBundleListener.class:lib/app-client.jar
 com/fasterxml/jackson/core/base/ParserMinimalBase.class:lib/lib-client.jar
 com/intellij/openapi/fileTypes/impl/associate/OSFileAssociationStartupConfigurator.class:lib/app-client.jar
 com/fasterxml/jackson/core/base/ParserBase.class:lib/lib-client.jar

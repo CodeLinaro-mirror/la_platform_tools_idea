@@ -90,11 +90,12 @@ internal class InlineCompletionInvocationTracker(
       data.add(InvokedEvents.ADDITIONAL.with(ObjectEventData(it)))
     }
 
-    InlineCompletionUsageTracker.INVOKED_EVENT.log(listOf(
+    InlineCompletionUsageTracker.INVOKED_EVENT.log(request.editor.project, listOf(
       InvokedEvents.REQUEST_ID.with(requestId),
       *data.toTypedArray(),
       InvokedEvents.EVENT.with(request.event::class.java),
       InvokedEvents.PROVIDER.with(provider),
+      InvokedEvents.PROVIDER_PLUGIN_INFO.with(getPluginInfo(provider)),
       InvokedEvents.TIME_TO_COMPUTE.with(System.currentTimeMillis() - invocationTime),
       InvokedEvents.OUTCOME.with(
         when {

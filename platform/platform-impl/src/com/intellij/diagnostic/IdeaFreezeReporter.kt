@@ -29,13 +29,16 @@ import java.lang.management.ThreadInfo
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 import kotlin.math.max
 import kotlin.math.min
 
+private val FREEZE_NOTIFIER_EP: ExtensionPointName<FreezeNotifier> = ExtensionPointName("com.intellij.diagnostic.freezeNotifier")
+
 internal class IdeaFreezeReporter : PerformanceListener {
   private var dumpTask: SamplingTask? = null
-  private val currentDumps = ArrayList<ThreadDump>()
+  private val currentDumps = Collections.synchronizedList(ArrayList<ThreadDump>())
   private var stacktraceCommonPart: List<StackTraceElement>? = null
 
   @Volatile
@@ -107,14 +110,19 @@ internal class IdeaFreezeReporter : PerformanceListener {
       }
 
       dumpTask = object : SamplingTask(100, maxDumpDuration, coroutineScope) {
+        private val stopped = AtomicBoolean()
         override fun stop() {
           super.stop()
-          EP_NAME.forEachExtensionSafe { it.stop(reportDir) }
+          if (stopped.compareAndSet(false, true)) {
+            EP_NAME.forEachExtensionSafe { it.stop(reportDir) }
+          }
         }
 
         override suspend fun stopDumpingThreads() {
           super.stopDumpingThreads()
-          EP_NAME.forEachExtensionSafe { it.stop(reportDir) }
+          if (stopped.compareAndSet(false, true)) {
+            EP_NAME.forEachExtensionSafe { it.stop(reportDir) }
+          }
         }
       }
       EP_NAME.forEachExtensionSafe { it.start(reportDir) }
@@ -159,19 +167,30 @@ internal class IdeaFreezeReporter : PerformanceListener {
       return
     }
 
+    val dumps = ArrayList(currentDumps) // defensive copy
+
     if (Registry.`is`("freeze.reporter.enabled", false)) {
       val performanceWatcher = PerformanceWatcher.getInstance()
       // check that we have at least half of the dumps required
       if ((durationMs / 1000).toInt() > FREEZE_THRESHOLD && !stacktraceCommonPart.isNullOrEmpty()) {
         val dumpingDurationMs = durationMs - performanceWatcher.unresponsiveInterval
         val dumpsCount = min(performanceWatcher.maxDumpDuration.toLong(), dumpingDurationMs / 2) / performanceWatcher.dumpInterval
-        if (dumpTask.isValid(dumpingDurationMs) || currentDumps.size >= max(3, dumpsCount)) {
+        if (dumpTask.isValid(dumpingDurationMs) || dumps.size >= max(3, dumpsCount)) {
           val attachments = ArrayList<Attachment>()
-          addDumpsAttachments(from = currentDumps, textMapper = { it.rawDump }, container = attachments)
+          addDumpsAttachments(from = dumps, textMapper = { it.rawDump }, container = attachments)
           if (reportDir != null) {
             EP_NAME.forEachExtensionSafe { attachments.addAll(it.getAttachments(reportDir)) }
           }
-          report(createEvent(dumpTask, durationMs, attachments, reportDir, performanceWatcher, finished = true))
+
+          val loggingEvent = createEvent(dumpTask, durationMs, attachments, reportDir, performanceWatcher, finished = true)
+
+          report(loggingEvent)
+
+          if (reportDir != null && loggingEvent != null && dumps.isNotEmpty()) {
+            for (notifier in FREEZE_NOTIFIER_EP.extensionList) {
+              notifier.notifyFreeze(loggingEvent, dumps, reportDir, durationMs)
+            }
+          }
         }
       }
     }

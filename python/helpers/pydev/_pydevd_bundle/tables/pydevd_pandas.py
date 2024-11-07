@@ -4,7 +4,7 @@ import pandas as pd
 import typing
 
 TABLE_TYPE_NEXT_VALUE_SEPARATOR = '__pydev_table_column_type_val__'
-MAX_COLWIDTH_PYTHON_2 = 100000
+MAX_COLWIDTH = 100000
 
 
 def get_type(table):
@@ -21,7 +21,7 @@ def get_shape(table):
 # noinspection PyUnresolvedReferences
 def get_head(table):
     # type: (Union[pd.DataFrame, pd.Series]) -> str
-    return repr(__convert_to_df(table).head().to_html(notebook=True, max_cols=None))
+    return repr(__convert_to_df(table).head(1).to_html(notebook=True, max_cols=None))
 
 
 # noinspection PyUnresolvedReferences
@@ -34,23 +34,42 @@ def get_column_types(table):
 
 # used by pydevd
 # noinspection PyUnresolvedReferences
-def get_data(table, start_index=None, end_index=None, format=None):
+def get_data(table, use_csv_serialization, start_index=None, end_index=None, format=None):
     # type: (Union[pd.DataFrame, pd.Series], int, int) -> str
 
-    def convert_data_to_html(data, max_cols):
-        return repr(__convert_to_df(data).to_html(notebook=True, max_cols=max_cols))
+    def convert_data_to_csv(data):
+        return repr(__convert_to_df(data).to_csv(na_rep = "NaN", float_format=format))
 
-    return _compute_sliced_data(table, convert_data_to_html, start_index, end_index, format)
+    def convert_data_to_html(data):
+        return repr(__convert_to_df(data).to_html(notebook=True))
+
+    if use_csv_serialization:
+        computed_data = _compute_sliced_data(table, convert_data_to_csv, start_index, end_index, format)
+    else:
+        computed_data = _compute_sliced_data(table, convert_data_to_html, start_index, end_index, format)
+    return computed_data
 
 
 # used by DSTableCommands
 # noinspection PyUnresolvedReferences
-def display_data(table, start_index, end_index):
+def display_data_csv(table, start_index, end_index):
     # type: (Union[pd.DataFrame, pd.Series], int, int) -> None
-    def ipython_display(data, max_cols):
+    def ipython_display(data):
+        try:
+            data = data.to_csv(na_rep = "NaN")
+        except AttributeError:
+            pass
+        print(__convert_to_df(data))
+    _compute_sliced_data(table, ipython_display, start_index, end_index)
+
+
+# used by DSTableCommands
+# noinspection PyUnresolvedReferences
+def display_data_html(table, start_index, end_index):
+    # type: (Union[pd.DataFrame, pd.Series], int, int) -> None
+    def ipython_display(data):
         from IPython.display import display
         display(__convert_to_df(data))
-
     _compute_sliced_data(table, ipython_display, start_index, end_index)
 
 
@@ -81,7 +100,7 @@ def _compute_sliced_data(table, fun, start_index=None, end_index=None, format=No
     if start_index is not None and end_index is not None:
         table = __get_data_slice(table, start_index, end_index)
 
-    data = fun(table, max_cols)
+    data = fun(table)
 
     pd.set_option('display.max_columns', _jb_max_cols)
     pd.set_option('display.max_colwidth', _jb_max_colwidth)
@@ -276,11 +295,10 @@ def __get_tables_display_options():
     # type: () -> Tuple[None, Union[int, None], None]
     import sys
     if sys.version_info < (3, 0):
-        return None, MAX_COLWIDTH_PYTHON_2, None
+        return None, MAX_COLWIDTH, None
     try:
-        import pandas as pd
         if int(pd.__version__.split('.')[0]) < 1:
-            return None, MAX_COLWIDTH_PYTHON_2, None
+            return None, MAX_COLWIDTH, None
     except ImportError:
         pass
     return None, None, None

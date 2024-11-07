@@ -1,7 +1,6 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.gradle.toolingExtension.impl.model.taskModel
 
-import com.intellij.gradle.toolingExtension.impl.model.taskIndex.GradleTaskIndex
 import com.intellij.gradle.toolingExtension.impl.modelBuilder.Messages
 import com.intellij.gradle.toolingExtension.impl.util.GradleObjectUtil
 import com.intellij.gradle.toolingExtension.impl.util.GradleTaskUtil
@@ -9,6 +8,7 @@ import org.gradle.api.Project
 import org.gradle.api.tasks.testing.AbstractTestTask
 import org.gradle.api.tasks.testing.Test
 import org.gradle.util.GradleVersion
+import org.gradle.process.JavaForkOptions
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.model.DefaultExternalTask
 import org.jetbrains.plugins.gradle.model.GradleTaskModel
@@ -26,6 +26,7 @@ class GradleTaskModelBuilder : AbstractModelBuilderService() {
 
   override fun buildAll(modelName: String, project: Project, context: ModelBuilderContext): Any {
     val taskModel = DefaultGradleTaskModel()
+
     // Android Studio (b/243767844, b/235320590): only register test tasks when fetching Gradle task information.
     // This is tested by GradleTaskListIntegrationTest.testSyncWithGradleTaskListSkipped().
     val skipTasks = if (GradleVersion.current() >= GradleVersion.version("8.1")) { // https://github.com/gradle/gradle/issues/19793
@@ -36,45 +37,29 @@ class GradleTaskModelBuilder : AbstractModelBuilderService() {
     if (skipTasks) {
       taskModel.tasks = getTestTasks(project)
     } else {
-      taskModel.tasks = getTasks(project, context)
+      taskModel.tasks = collectTasks(project)
     }
     return taskModel
   }
 
-  private fun getTasks(
-    project: Project,
-    context: ModelBuilderContext,
-  ): Map<String, DefaultExternalTask> {
-    val tasks = GradleTaskIndex.getInstance(context)
-      .getAllTasks(project)
-
+  private fun collectTasks(project: Project): Map<String, DefaultExternalTask> {
     val result = HashMap<String, DefaultExternalTask>()
-    for (task in tasks) {
-      val taskName = task.name
-      val taskPath = task.path
-      val projectPath = project.path
-      val projectTaskPath = if (":" == projectPath) ":$taskName" else "$projectPath:$taskName"
-
-      var externalTask = result[taskName]
-      if (externalTask == null) {
-        externalTask = DefaultExternalTask()
-        externalTask.name = taskName
-        externalTask.qName = taskName
-        externalTask.description = task.description
-        externalTask.group = GradleObjectUtil.notNull(task.group, "other")
-        val isInternalTest = GradleTaskUtil.getBooleanProperty(task, "idea.internal.test", false)
-        val isEffectiveTest = "check" == taskName && "verification" == task.group
-        val isJvmTest = task is Test
-        val isAbstractTest = task is AbstractTestTask
-        externalTask.isTest = isJvmTest || isAbstractTest || isInternalTest || isEffectiveTest
-        externalTask.isJvmTest = isJvmTest || isAbstractTest
-        externalTask.type = getType(task)
-        result[externalTask.name] = externalTask
-      }
-
-      if (projectTaskPath == taskPath) {
-        externalTask.qName = taskPath
-      }
+    for (task in project.tasks) {
+      val externalTask = DefaultExternalTask()
+      externalTask.name = task.name
+      externalTask.qName = task.path
+      externalTask.description = task.description
+      externalTask.group = GradleObjectUtil.notNull(task.group, "other")
+      externalTask.isJvm = task is JavaForkOptions
+      val isInternalTest = GradleTaskUtil.getBooleanProperty(task, "idea.internal.test", false)
+      val isEffectiveTest = "check" == task.name && "verification" == task.group
+      val isJvmTest = task is Test
+      val isAbstractTest = task is AbstractTestTask
+      externalTask.isTest = isJvmTest || isAbstractTest || isInternalTest || isEffectiveTest
+      externalTask.isJvmTest = isJvmTest || isAbstractTest
+      externalTask.isInherited = false
+      externalTask.type = getType(task)
+      result[externalTask.name] = externalTask
     }
     return result
   }

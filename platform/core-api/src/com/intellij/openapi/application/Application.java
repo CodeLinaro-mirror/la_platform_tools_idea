@@ -10,10 +10,11 @@ import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.concurrency.ThreadingAssertions;
 import com.intellij.util.concurrency.annotations.*;
+import kotlin.coroutines.CoroutineContext;
+import kotlin.coroutines.EmptyCoroutineContext;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.util.concurrent.Callable;
@@ -643,11 +644,6 @@ public interface Application extends ComponentManager {
   @Deprecated
   void removeApplicationListener(@NotNull ApplicationListener listener);
 
-  /** @deprecated use corresponding {@link Application#invokeLater} methods */
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated
-  @NotNull ModalityInvokator getInvokator();
-
   /** @deprecated use {@link #isDisposed()} instead */
   @Deprecated
   default boolean isDisposeInProgress() {
@@ -661,13 +657,6 @@ public interface Application extends ComponentManager {
   /** @deprecated use {@link #runWriteAction}, {@link WriteAction#run(ThrowableRunnable)}, or {@link WriteAction#compute} instead */
   @Deprecated
   @NotNull AccessToken acquireWriteActionLock(@NotNull Class<?> marker);
-
-  /** @deprecated Internal API */
-  @ApiStatus.ScheduledForRemoval
-  @ApiStatus.Internal
-  @Deprecated
-  @SuppressWarnings({"override", "DeprecatedIsStillUsed"})
-  <T> @Nullable T getServiceByClassName(@NotNull String serviceClassName);
 
   /** @deprecated bad name, use {@link #isWriteIntentLockAcquired()} instead */
   @Deprecated
@@ -685,4 +674,16 @@ public interface Application extends ComponentManager {
     assertWriteIntentLockAcquired();
   }
   //</editor-fold>
+
+  @ApiStatus.Experimental
+  @ApiStatus.Internal
+  default CoroutineContext getLockStateAsCoroutineContext() {
+    return EmptyCoroutineContext.INSTANCE;
+  }
+
+  @ApiStatus.Experimental
+  @ApiStatus.Internal
+  default boolean hasLockStateInContext(CoroutineContext context) {
+    return false;
+  }
 }

@@ -8,6 +8,7 @@ import com.intellij.concurrency.installThreadContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.contextModality
+import com.intellij.openapi.application.isLockStoredInContext
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.IntellijInternalApi
@@ -33,7 +34,7 @@ private val LOG = Logger.getInstance("#com.intellij.openapi.progress")
  * This function might suspend if the coroutine is paused,
  * or yield if the coroutine has a lower priority while a higher priority task is running.
  *
- * @throws CancellationException if the coroutine is canceled; the exception is also thrown if coroutine is canceled while suspended
+ * @throws CancellationException if the coroutine is canceled. The exception is also thrown if the coroutine is canceled while suspended.
  * @see ensureActive
  * @see coroutineSuspender
  */
@@ -325,6 +326,7 @@ fun currentThreadCoroutineScope() : CoroutineScope {
         | If the transition from coroutines to blocking code happens in the same stack frame as the call to this function, the transition should use `blockingContext`.
         | If the transition occurs in the different stack frame, then the transition should use `blockingContextScope` to set up a `Job` on this frame.""".trimMargin()))
   }
+  @Suppress("SSBasedInspection")
   return CoroutineScope(threadContext)
 }
 
@@ -478,8 +480,16 @@ private fun assertBackgroundThreadOrWriteAction() {
 @Internal
 fun readActionContext(): CoroutineContext {
   val application = ApplicationManager.getApplication()
-  return if (application != null && application.isReadAccessAllowed) {
-    RunBlockingUnderReadActionMarker
+  return if (application != null) {
+    if (isLockStoredInContext) {
+      application.lockStateAsCoroutineContext
+    }
+    else if (application.isReadAccessAllowed) {
+      RunBlockingUnderReadActionMarker
+    }
+    else {
+      EmptyCoroutineContext
+    }
   }
   else {
     EmptyCoroutineContext
@@ -489,7 +499,13 @@ fun readActionContext(): CoroutineContext {
 @IntellijInternalApi
 @Internal
 fun CoroutineContext.isRunBlockingUnderReadAction(): Boolean {
-  return this[RunBlockingUnderReadActionMarker] != null
+  return if (isLockStoredInContext) {
+    val application = ApplicationManager.getApplication()
+    application != null && application.hasLockStateInContext(this)
+  }
+  else {
+    this[RunBlockingUnderReadActionMarker] != null
+  }
 }
 
 private object RunBlockingUnderReadActionMarker

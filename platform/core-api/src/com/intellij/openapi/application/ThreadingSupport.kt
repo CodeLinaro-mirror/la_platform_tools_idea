@@ -15,6 +15,7 @@ import java.util.concurrent.Future
 import java.util.function.BooleanSupplier
 import java.util.function.Consumer
 import javax.swing.JComponent
+import kotlin.coroutines.CoroutineContext
 
 interface ThreadingSupport {
   @ApiStatus.Internal
@@ -63,24 +64,6 @@ interface ThreadingSupport {
    */
   @ApiStatus.Internal
   fun isWriteIntentLocked(): Boolean
-
-  /**
-   * Runs specified action with disabled implicit read lock if this feature is enabled with system property.
-   *
-   * @see com.intellij.idea.StartupUtil.isImplicitReadOnEDTDisabled
-   * @param runnable action to run with disabled implicit read lock.
-   */
-  @ApiStatus.Internal
-  fun runWithoutImplicitRead(runnable: Runnable)
-
-  /**
-   * Runs specified action with enabled implicit read lock if this feature is enabled with system property.
-   *
-   * @see com.intellij.idea.StartupUtil.isImplicitReadOnEDTDisabled
-   * @param runnable action to run with enabled implicit read lock.
-   */
-  @ApiStatus.Internal
-  fun runWithImplicitRead(runnable: Runnable)
 
   /**
    * Requests pooled thread to execute the action.
@@ -360,4 +343,16 @@ interface ThreadingSupport {
    */
   @ApiStatus.Internal
   fun isInImpatientReader(): Boolean
+
+  /**
+   * DO NOT USE
+   */
+  @ApiStatus.Internal
+  fun isInsideUnlockedWriteIntentLock(): Boolean
+
+  @ApiStatus.Internal
+  fun getPermitAsContextElement(): CoroutineContext
+
+  @ApiStatus.Internal
+  fun hasPermitAsContextElement(context: CoroutineContext): Boolean
 }

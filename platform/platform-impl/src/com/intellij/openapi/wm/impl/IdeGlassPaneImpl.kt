@@ -15,6 +15,7 @@ import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.application.impl.LaterInvocator
 import com.intellij.openapi.application.impl.RawSwingDispatcher
 import com.intellij.openapi.editor.impl.EditorComponentImpl
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.impl.ProjectLoadingCancelled
 import com.intellij.openapi.ui.AbstractPainter
 import com.intellij.openapi.ui.Divider
@@ -34,7 +35,6 @@ import com.intellij.util.awaitCancellationAndInvoke
 import com.intellij.util.ui.*
 import kotlinx.coroutines.*
 import java.awt.*
-import java.awt.datatransfer.StringSelection
 import java.awt.event.*
 import java.util.*
 import javax.swing.*
@@ -58,7 +58,7 @@ class IdeGlassPaneImpl : JComponent, IdeGlassPaneEx, IdeEventQueue.EventDispatch
   private var prevPressEvent: MouseEvent? = null
 
   @Suppress("MemberVisibilityCanBePrivate")
-  internal var windowShadowPainter: AbstractPainter? = null
+  internal @JvmField var windowShadowPainter: AbstractPainter? = null
   private var paintersInstalled = false
   private var loadingIndicator: IdePaneLoadingLayer? = null
 
@@ -319,7 +319,9 @@ class IdeGlassPaneImpl : JComponent, IdeGlassPaneEx, IdeEventQueue.EventDispatch
       if (event.isAltDown && SwingUtilities.isLeftMouseButton(event) && event.id == MouseEvent.MOUSE_PRESSED) {
         val c = SwingUtilities.getDeepestComponentAt(e.component, e.x, e.y)
         val component = ComponentUtil.findParentByCondition(c) { ClientProperty.isTrue(it, UIUtil.TEXT_COPY_ROOT) }
-        component?.toolkit?.systemClipboard?.setContents(StringSelection(UIUtil.getDebugText(component)), EmptyClipboardOwner.INSTANCE)
+        if (component != null) {
+          CopyPasteManager.copyTextToClipboard(UIUtil.getDebugText(component))
+        }
       }
 
       if (!IdeGlassPaneUtil.canBePreprocessed(e)) {
@@ -457,6 +459,7 @@ class IdeGlassPaneImpl : JComponent, IdeGlassPaneEx, IdeEventQueue.EventDispatch
   }
 
   @Suppress("MemberVisibilityCanBePrivate")
+  @JvmName("getNamedPainters")
   internal fun getNamedPainters(name: String): PainterHelper {
     return namedPainters.computeIfAbsent(name) { PainterHelper(this) }
   }

@@ -4,6 +4,7 @@ package com.intellij.java.navigation
 import com.intellij.ide.actions.searcheverywhere.*
 import com.intellij.ide.util.gotoByName.GotoActionTest
 import com.intellij.idea.IJIgnore
+import com.intellij.navigation.PsiElementNavigationItem
 import com.intellij.openapi.actionSystem.AbbreviationManager
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
@@ -15,6 +16,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.PlatformTestUtil.waitForFuture
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
+import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase.assertEquals
 import com.intellij.util.Processor
 import org.mockito.Mockito
 import javax.swing.DefaultListCellRenderer
@@ -28,6 +30,7 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
   private var mySearchUI: SearchEverywhereUI? = null
 
   private lateinit var mixingResultsFlag: SEParam
+  private lateinit var waitForEssentialFlag: SEParam
 
   override fun setUp() {
     super.setUp()
@@ -35,6 +38,10 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
       { Experiments.getInstance().isFeatureEnabled("search.everywhere.mixed.results") },
       { Experiments.getInstance().setFeatureEnabled("search.everywhere.mixed.results", it) }
     )
+
+    waitForEssentialFlag = SEParam(
+      { AdvancedSettings.getBoolean("search.everywhere.wait.for.contributors") },
+      { AdvancedSettings.setBoolean("search.everywhere.wait.for.contributors", it) })
   }
 
   override fun tearDown() {
@@ -44,6 +51,7 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
         mySearchUI = null
       }
       mixingResultsFlag.reset()
+      waitForEssentialFlag.reset()
     }
     catch (e: Throwable) {
       addSuppressedException(e)
@@ -106,9 +114,9 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
     assertEquals(listOf("item8", "item7", "item2", "item5", "item1", "item4", "item6", "item3"), waitForFuture(future, SEARCH_TIMEOUT))
   }
 
-  @IJIgnore(issue = "IDEA-336674")
   fun `test priority for actions with space in pattern`() {
     mixingResultsFlag.set(true)
+    waitForEssentialFlag.set(false)
 
     val action1 = StubAction("Bravo Charlie")
     val action2 = StubAction("Alpha Bravo Charlie")
@@ -138,9 +146,9 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
     }
   }
 
-  @IJIgnore(issue = "IDEA-336671")
   fun `test top hit priority`() {
     mixingResultsFlag.set(true)
+    waitForEssentialFlag.set(false)
 
     val action1 = StubAction("Bravo Charlie")
     val action2 = StubAction("Alpha Bravo Charlie")
@@ -227,14 +235,14 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
         recentFilesContributor
       ))
 
-      var future = ui.findElementsForPattern("appfile")
+      var future = ui.findPsiElementsForPattern("appfile")
       assertEquals(listOf(file2, file1, file4, file3, file6, file5), waitForFuture(future, SEARCH_TIMEOUT))
 
       myFixture.openFileInEditor(file4.originalFile.virtualFile)
       myFixture.openFileInEditor(file3.originalFile.virtualFile)
       myFixture.openFileInEditor(file5.originalFile.virtualFile)
       myFixture.openFileInEditor(wrongFile.originalFile.virtualFile)
-      future = ui.findElementsForPattern("appfile")
+      future = ui.findPsiElementsForPattern("appfile")
       assertEquals(listOf(file4, file3, file5, file2, file1, file6), waitForFuture(future, SEARCH_TIMEOUT))
     } finally {
       AdvancedSettings.setBoolean("search.everywhere.recent.at.top", savedFlag)
@@ -302,8 +310,6 @@ class SearchEverywhereTest : LightJavaCodeInsightFixtureTestCase() {
     override fun processSelectedItem(selected: Any, modifiers: Int, searchText: String): Boolean = false
 
     override fun getElementsRenderer(): ListCellRenderer<in Any> = DefaultListCellRenderer()
-
-    override fun getDataForItem(element: Any, dataId: String): Any? = null
   }
 
   private class StubAction(text: String) : AnAction(text) {

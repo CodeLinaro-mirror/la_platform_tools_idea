@@ -4,6 +4,7 @@ package com.intellij.codeInsight.inline.completion
 import com.intellij.codeInsight.inline.completion.elements.InlineCompletionElement
 import com.intellij.codeInsight.inline.completion.logs.InlineCompletionUsageTracker.ShownEvents.FinishType
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval
 import java.util.*
 
 /**
@@ -31,6 +32,9 @@ sealed class InlineCompletionEventType {
       get() = request.requestId
   }
 
+  @ApiStatus.Internal
+  class SuggestionInitialized @ApiStatus.Internal constructor(val variantsNumber: Int) : InlineCompletionEventType()
+
   /**
    * This event is triggered when a provider either returned no variants, either all the returned variants are empty.
    */
@@ -57,12 +61,16 @@ sealed class InlineCompletionEventType {
    */
   class Hide @ApiStatus.Internal constructor(
     val finishType: FinishType,
-    @Deprecated("""
-      This value delegates to InlineCompletionContext.isCurrentlyDisplaying(). 
-      In cases of invalidation (e.g., mismatched typing), the context is already cleared, causing the method to return false, 
-      which can be misleading. 
-      Please use other methods of the listener to determine whether completion is or was being shown.""")
-    val isCurrentlyDisplaying: Boolean
+    @Deprecated(
+      message = """
+This value delegates to InlineCompletionContext.isCurrentlyDisplaying(). 
+In cases of invalidation (e.g., mismatched typing), the context is already cleared, causing the method to return false, 
+which can be misleading. 
+Please use other methods of the listener to determine whether completion is or was being shown.
+      """,
+    )
+    @ScheduledForRemoval
+    val isCurrentlyDisplaying: Boolean,
   ) : InlineCompletionEventType()
 
   /**
@@ -75,7 +83,7 @@ sealed class InlineCompletionEventType {
   class VariantSwitched @ApiStatus.Internal constructor(
     val fromVariantIndex: Int,
     val toVariantIndex: Int,
-    val explicit: Boolean
+    val explicit: Boolean,
   ) : InlineCompletionEventType()
 
   // Per variant flow
@@ -95,7 +103,7 @@ sealed class InlineCompletionEventType {
   class Computed @ApiStatus.Internal constructor(
     override val variantIndex: Int,
     val element: InlineCompletionElement,
-    val i: Int
+    val i: Int,
   ) : PerVariantEventType()
 
   /**
@@ -107,7 +115,7 @@ sealed class InlineCompletionEventType {
   class Show @ApiStatus.Internal constructor(
     override val variantIndex: Int,
     val element: InlineCompletionElement,
-    val i: Int
+    val i: Int,
   ) : PerVariantEventType()
 
   /**
@@ -116,9 +124,10 @@ sealed class InlineCompletionEventType {
    * * [elements] indicates the list of new elements after update.
    */
   class Change @ApiStatus.Internal constructor(
+    @ApiStatus.Internal val event: InlineCompletionEvent,
     override val variantIndex: Int,
     @ApiStatus.Internal val elements: List<InlineCompletionElement>,
-    val lengthChange: Int
+    val lengthChange: Int,
   ) : PerVariantEventType() {
 
     @Deprecated(
@@ -126,13 +135,18 @@ sealed class InlineCompletionEventType {
       replaceWith = ReplaceWith("lengthChange")
     )
     val overtypedLength: Int
+      @ScheduledForRemoval
+      @Deprecated(
+        "Use lengthChange, because now a variant can be updated not only due typings.",
+        replaceWith = ReplaceWith("lengthChange"),
+      )
       get() = lengthChange
   }
 
   /**
    * This event is triggered when a variant is invalidated during some update.
    */
-  class Invalidated @ApiStatus.Internal constructor(override val variantIndex: Int) : PerVariantEventType()
+  class Invalidated @ApiStatus.Internal constructor(@ApiStatus.Internal val event: InlineCompletionEvent, override val variantIndex: Int) : PerVariantEventType()
 
   /**
    * This event is triggered when a variant is computed and turned out to be completely empty.
@@ -160,6 +174,7 @@ interface InlineCompletionEventAdapter : InlineCompletionEventListener {
       is InlineCompletionEventType.Empty -> onEmpty(event)
       is InlineCompletionEventType.VariantComputed -> onVariantComputed(event)
       is InlineCompletionEventType.VariantSwitched -> onVariantSwitched(event)
+      is InlineCompletionEventType.SuggestionInitialized -> onSuggestionInitialized(event)
     }
   }
 
@@ -176,4 +191,8 @@ interface InlineCompletionEventAdapter : InlineCompletionEventListener {
   fun onEmpty(event: InlineCompletionEventType.Empty) {}
   fun onVariantComputed(event: InlineCompletionEventType.VariantComputed) {}
   fun onVariantSwitched(event: InlineCompletionEventType.VariantSwitched) {}
+
+  @ApiStatus.Internal
+  @ApiStatus.NonExtendable
+  fun onSuggestionInitialized(event: InlineCompletionEventType.SuggestionInitialized) {}
 }

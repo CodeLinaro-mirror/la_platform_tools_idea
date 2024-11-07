@@ -3,14 +3,12 @@ package com.jetbrains.python.run
 
 import com.intellij.execution.target.RunConfigurationTargetEnvironmentAdjuster
 import com.intellij.openapi.options.SettingsEditor
-import com.intellij.openapi.util.registry.Registry
 import java.util.*
 
 class PyRunConfigurationTargetOptions : PyRunConfigurationEditorExtension {
   private val factoriesCache = WeakHashMap<RunConfigurationTargetEnvironmentAdjuster, PyRunConfigurationEditorFactory>()
 
   override fun accepts(configuration: AbstractPythonRunConfiguration<out AbstractPythonRunConfiguration<*>>): PyRunConfigurationEditorFactory? {
-    if (!Registry.`is`("python.use.targets.api")) return null
     val sdk = configuration.sdk ?: return null
     val adjuster = RunConfigurationTargetEnvironmentAdjuster.Factory.findTargetEnvironmentRequestAdjuster(sdk) ?: return null
     return if (adjuster.providesAdditionalRunConfigurationUI()) {

@@ -11,14 +11,13 @@ import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.editor.ClientEditorManager;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.LogicalPosition;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.WriteIntentReadAction;
+import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.EditorColorsUtil;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.*;
@@ -28,6 +27,9 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiManager;
+import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.AppUIUtil;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.ScreenUtil;
@@ -35,6 +37,7 @@ import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.util.Consumer;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import com.intellij.xdebugger.*;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
 import com.intellij.xdebugger.breakpoints.XBreakpointListener;
@@ -50,7 +53,7 @@ import com.intellij.xdebugger.impl.frame.XWatchesView;
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree;
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTreeState;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
-import com.intellij.xdebugger.impl.ui.visualizedtext.VisualizedTextPopup;
+import com.intellij.xdebugger.impl.ui.visualizedtext.VisualizedTextPopupUtil;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
@@ -135,17 +138,16 @@ public final class DebuggerUIUtil {
                                     @NotNull MouseEvent event,
                                     @NotNull Project project,
                                     @Nullable Editor editor) {
-    VisualizedTextPopup.INSTANCE.evaluateAndShowValuePopup(evaluator, event, project, editor);
+    WriteIntentReadAction.run((Runnable)() -> VisualizedTextPopupUtil.evaluateAndShowValuePopup(evaluator, event, project, editor));
   }
 
+  /**
+   * Create read-only {@link TextViewer} for plain text data.
+   * @see #createFormattedTextViewer(String, FileType, Project, Disposable)
+   */
   @ApiStatus.Experimental
   public static TextViewer createTextViewer(@NotNull String initialText, @NotNull Project project) {
-    return createTextViewer(initialText, project, FileTypes.PLAIN_TEXT);
-  }
-
-  @ApiStatus.Experimental
-  public static TextViewer createTextViewer(@NotNull String initialText, @NotNull Project project, FileType fileType) {
-    TextViewer textArea = new TextViewer(initialText, project, fileType);
+    TextViewer textArea = new TextViewer(initialText, project);
     textArea.setBackground(HintUtil.getInformationColor());
 
     textArea.addSettingsProvider(e -> {
@@ -154,6 +156,27 @@ public final class DebuggerUIUtil {
     });
 
     return textArea;
+  }
+
+  /**
+   * Create read-only {@link Editor} for text data with syntax highlighting, folding and other {@link Editor} features.
+   * @see #createTextViewer(String, Project)
+   */
+  @ApiStatus.Experimental
+  public static Editor createFormattedTextViewer(@NotNull String initialText, @NotNull FileType type, @NotNull Project project, @NotNull Disposable parentDisposable) {
+    // Proper highlighting requires presense of PSIFile corresponding to the Document, see IJPL-157652.
+    var virtualFile = new LightVirtualFile("", type, initialText);
+    var psiFile = PsiManager.getInstance(project).findFile(virtualFile);
+    assert psiFile != null;
+    var document = PsiDocumentManager.getInstance(project).getDocument(psiFile);
+    assert document != null;
+
+    var editor = EditorFactory.getInstance().createEditor(document, project, virtualFile, true);
+    Disposer.register(parentDisposable, () -> {
+      EditorFactory.getInstance().releaseEditor(editor);
+    });
+    editor.getSettings().setLineNumbersShown(false);
+    return editor;
   }
 
   @ApiStatus.Experimental
@@ -207,6 +230,7 @@ public final class DebuggerUIUtil {
   public static JBPopup createValuePopup(Project project,
                                          JComponent component,
                                          @Nullable Runnable cancelCallback) {
+    component.putClientProperty(UIUtil.ENABLE_IME_FORWARDING_IN_POPUP, true);
     return createCancelablePopupBuilder(project, component, null, cancelCallback, FULL_VALUE_POPUP_DIMENSION_KEY).createPopup();
   }
 
@@ -546,7 +570,7 @@ public final class DebuggerUIUtil {
     if (component instanceof AntiFlickeringPanel antiFlickeringPanel) {
       int delay = Registry.intValue("debugger.anti.flickering.delay", 0);
       if (delay > 0) {
-        antiFlickeringPanel.freezePainting(delay);
+        ApplicationManager.getApplication().invokeAndWait(() -> antiFlickeringPanel.freezePainting(delay), ModalityState.any());
         return true;
       }
     }

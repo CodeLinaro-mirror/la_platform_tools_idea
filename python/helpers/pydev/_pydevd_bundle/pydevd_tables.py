@@ -9,6 +9,7 @@ from _pydevd_bundle.pydevd_xml import ExceptionOnEvaluate
 class TableCommandType:
     DF_INFO = "DF_INFO"
     SLICE = "SLICE"
+    SLICE_CSV = "SLICE_CSV"
     DESCRIBE = "DF_DESCRIBE"
     VISUALIZATION_DATA = "VISUALIZATION_DATA"
 
@@ -53,7 +54,9 @@ def exec_table_command(init_command, command_type, start_index, end_index, forma
         res.append(NEXT_VALUE_SEPARATOR)
 
     elif command_type == TableCommandType.SLICE:
-        res.append(table_provider.get_data(table, start_index, end_index, format))
+        res.append(table_provider.get_data(table, False, start_index, end_index, format))
+    elif command_type == TableCommandType.SLICE_CSV:
+        res.append(table_provider.get_data(table, True, start_index, end_index, format))
 
     return True, ''.join(res)
 
@@ -65,6 +68,10 @@ def __get_table_provider(output):
 
     table_provider = None
     type_qualified_name = '{}.{}'.format(output_type.__module__, output_type.__name__)
+    numpy_based_type_qualified_names = ['tensorflow.python.framework.ops.EagerTensor',
+                                        'tensorflow.python.ops.resource_variable_ops.ResourceVariable',
+                                        'tensorflow.python.framework.sparse_tensor.SparseTensor',
+                                        'torch.Tensor']
     if type_qualified_name in ['pandas.core.frame.DataFrame',
                                'pandas.core.series.Series',
                                'geopandas.geoseries.GeoSeries',
@@ -74,16 +81,13 @@ def __get_table_provider(output):
     # dict is needed for sort commands
     elif type_qualified_name == 'builtins.dict':
         table_type = '{}.{}'.format(type(output['data']).__module__, type(output['data']).__name__)
-        if table_type in ['tensorflow.python.framework.sparse_tensor.SparseTensor', 'torch.Tensor']:
+        if table_type in numpy_based_type_qualified_names:
             import _pydevd_bundle.tables.pydevd_numpy_based as table_provider
         else:
             import _pydevd_bundle.tables.pydevd_numpy as table_provider
     elif type_qualified_name == 'numpy.ndarray':
         import _pydevd_bundle.tables.pydevd_numpy as table_provider
-    elif type_qualified_name in ['tensorflow.python.framework.ops.EagerTensor',
-                                 'tensorflow.python.ops.resource_variable_ops.ResourceVariable',
-                                 'tensorflow.python.framework.sparse_tensor.SparseTensor',
-                                 'torch.Tensor']:
+    elif type_qualified_name in numpy_based_type_qualified_names:
         import _pydevd_bundle.tables.pydevd_numpy_based as table_provider
     elif type_qualified_name.startswith('polars') and (
             type_qualified_name.endswith('DataFrame')

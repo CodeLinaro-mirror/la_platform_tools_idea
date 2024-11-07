@@ -11,6 +11,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.ExtensionDescriptor
 import com.intellij.openapi.extensions.ExtensionPointDescriptor
 import com.intellij.openapi.extensions.LoadingOrder
+import com.intellij.openapi.extensions.LoadingOrder.Companion.readOrder
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.util.Java11Shim
 import com.intellij.util.messages.ListenerDescriptor
@@ -41,6 +42,7 @@ private const val defaultXPointerValue = "xpointer(/idea-plugin/*)"
 /**
  * Do not use [java.io.BufferedInputStream] - buffer is used internally already.
  */
+@ApiStatus.Internal
 fun readModuleDescriptor(
   input: InputStream,
   readContext: ReadModuleContext,
@@ -60,6 +62,7 @@ fun readModuleDescriptor(
   )
 }
 
+@ApiStatus.Internal
 fun readModuleDescriptor(
   input: ByteArray,
   readContext: ReadModuleContext,
@@ -117,6 +120,42 @@ internal fun readModuleDescriptor(
   }
   finally {
     reader.closeCompletely()
+  }
+}
+
+@Throws(XMLStreamException::class)
+internal fun readBasicDescriptorData(input: InputStream): RawPluginDescriptor? {
+  val reader = createNonCoalescingXmlStreamReader(input, locationSource = null)
+  try {
+    if (reader.eventType != XMLStreamConstants.START_DOCUMENT) {
+      throw XMLStreamException("Expected: ${XMLStreamConstants.START_DOCUMENT}, got: ${getEventTypeString(reader.eventType)}", reader.location)
+    }
+
+    @Suppress("ControlFlowWithEmptyBody")
+    while (reader.next() != XMLStreamConstants.START_ELEMENT) ;
+    if (!reader.isStartElement) {
+      return null
+    }
+
+    val descriptor = RawPluginDescriptor()
+
+    reader.consumeChildElements { localName ->
+      when (localName) {
+        "id" -> descriptor.id = getNullifiedContent(reader)
+        "name" -> descriptor.name = getNullifiedContent(reader)
+        "version" -> descriptor.version = getNullifiedContent(reader)
+        "description" -> descriptor.description = getNullifiedContent(reader)
+        "idea-version" -> readIdeaVersion(reader, descriptor)
+        "product-descriptor" -> readProduct(reader, descriptor)
+        else -> reader.skipElement()
+      }
+      assert(reader.isEndElement)
+    }
+
+    return descriptor
+  }
+  finally {
+    reader.close()
   }
 }
 
@@ -189,6 +228,9 @@ private val K2_ALLOWED_PLUGIN_IDS = Java11Shim.INSTANCE.copyOf(KNOWN_KOTLIN_PLUG
   "androidx.compose.plugins.idea",
   "org.jetbrains.compose.desktop.ide",
   "org.jetbrains.plugins.kotlin.jupyter",
+  "com.intellij.kmm",
+  "com.jetbrains.kotlin.ocswift",
+  "kotlin.gradle.gradle-java"
 ))
 
 private fun readRootElementChild(
@@ -238,15 +280,7 @@ private fun readRootElementChild(
       }
       reader.skipElement()
     }
-    "idea-version" -> {
-      for (i in 0 until reader.attributeCount) {
-        when (reader.getAttributeLocalName(i)) {
-          "since-build" -> descriptor.sinceBuild = getNullifiedAttributeValue(reader, i)
-          "until-build" -> descriptor.untilBuild = getNullifiedAttributeValue(reader, i)
-        }
-      }
-      reader.skipElement()
-    }
+    "idea-version" -> readIdeaVersion(reader, descriptor)
     "vendor" -> {
       for (i in 0 until reader.attributeCount) {
         when (reader.getAttributeLocalName(i)) {
@@ -315,6 +349,16 @@ private fun readRootElementChild(
   if (!reader.isEndElement) {
     throw XMLStreamException("Unexpected state (expected=END_ELEMENT, actual=${getEventTypeString(reader.eventType)}, lastProcessedElement=$localName)", reader.location)
   }
+}
+
+private fun readIdeaVersion(reader: XMLStreamReader2, descriptor: RawPluginDescriptor) {
+  for (i in 0 until reader.attributeCount) {
+    when (reader.getAttributeLocalName(i)) {
+      "since-build" -> descriptor.sinceBuild = getNullifiedAttributeValue(reader, i)
+      "until-build" -> descriptor.untilBuild = getNullifiedAttributeValue(reader, i)
+    }
+  }
+  reader.skipElement()
 }
 
 private val actionNameToEnum = run {
@@ -489,15 +533,6 @@ private fun readExtensions(reader: XMLStreamReader2, descriptor: RawPluginDescri
 
     containerDescriptor.addService(readServiceDescriptor(reader, os))
     reader.skipElement()
-  }
-}
-
-private fun readOrder(orderAttr: String?): LoadingOrder {
-  return when (orderAttr) {
-    null -> LoadingOrder.ANY
-    LoadingOrder.FIRST_STR -> LoadingOrder.FIRST
-    LoadingOrder.LAST_STR -> LoadingOrder.LAST
-    else -> LoadingOrder(orderAttr)
   }
 }
 
@@ -760,9 +795,13 @@ private fun readContent(reader: XMLStreamReader2, descriptor: RawPluginDescripto
     }
 
     var name: String? = null
+    var loading: String? = null
+    var os: ExtensionDescriptor.Os? = null
     for (i in 0 until reader.attributeCount) {
       when (reader.getAttributeLocalName(i)) {
         "name" -> name = readContext.interner.name(reader.getAttributeValue(i))
+        "loading" -> loading = reader.getAttributeValue(i)
+        "os" -> os = readOs(reader.getAttributeValue(i))
       }
     }
 
@@ -781,20 +820,25 @@ private fun readContent(reader: XMLStreamReader2, descriptor: RawPluginDescripto
     }
 
     val isEndElement = reader.next() == XMLStreamConstants.END_ELEMENT
+    val loadingRule = when (loading) {
+      null, "optional" -> ModuleLoadingRule.OPTIONAL
+      "required" -> ModuleLoadingRule.REQUIRED
+      "on-demand" -> ModuleLoadingRule.ON_DEMAND
+      else -> error("Unexpected value '$loading' of 'loading' attribute at ${reader.location}")
+    }
     if (isEndElement) {
-      descriptor.contentModules!!.add(PluginContentDescriptor.ModuleItem(name = name, configFile = configFile, descriptorContent = null))
+      if (os == null || os.isSuitableForOs()) {
+        descriptor.contentModules!!.add(PluginContentDescriptor.ModuleItem(name = name, configFile = configFile, descriptorContent = null, loadingRule = loadingRule))
+      }
     }
     else {
-      val fromIndex = reader.textStart
-      val toIndex = fromIndex + reader.textLength
-      val length: Int = toIndex - fromIndex
-      val descriptorContent = if (length == 0) {
-        null
+      if (os == null || os.isSuitableForOs()) {
+        val fromIndex = reader.textStart
+        val toIndex = fromIndex + reader.textLength
+        val length = toIndex - fromIndex
+        val descriptorContent = if (length == 0) null else Arrays.copyOfRange(reader.textCharacters, fromIndex, toIndex)
+        descriptor.contentModules!!.add(PluginContentDescriptor.ModuleItem(name = name, configFile = configFile, descriptorContent = descriptorContent, loadingRule = loadingRule))
       }
-      else {
-        Arrays.copyOfRange(reader.textCharacters, fromIndex, toIndex)
-      }
-      descriptor.contentModules!!.add(PluginContentDescriptor.ModuleItem(name = name, configFile = configFile, descriptorContent = descriptorContent))
 
       var nesting = 1
       while (true) {
@@ -862,6 +906,7 @@ private fun getNullifiedContent(reader: XMLStreamReader2): String? = reader.elem
 
 private fun getNullifiedAttributeValue(reader: XMLStreamReader2, i: Int) = reader.getAttributeValue(i).trim().takeIf { !it.isEmpty() }
 
+@ApiStatus.Internal
 interface ReadModuleContext {
   val interner: XmlInterner
   val isMissingIncludeIgnored: Boolean

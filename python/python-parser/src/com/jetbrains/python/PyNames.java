@@ -3,6 +3,7 @@ package com.jetbrains.python;
 
 import com.intellij.openapi.util.NlsSafe;
 import com.jetbrains.python.psi.LanguageLevel;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -71,7 +72,8 @@ public final @NonNls class PyNames {
   public static final String NEW = "__new__";
   public static final String GETATTR = "__getattr__";
   public static final String GETATTRIBUTE = "__getattribute__";
-  public static final String GET = "__get__";
+  public static final String DUNDER_GET = "__get__";
+  public static final String DUNDER_SET = "__set__";
   public static final String __CLASS__ = "__class__";
   public static final String DUNDER_METACLASS = "__metaclass__";
   public static final @NlsSafe String METACLASS = "metaclass";
@@ -447,6 +449,7 @@ public final @NonNls class PyNames {
   /**
    * @deprecated use {@link #getBuiltinMethods(LanguageLevel)} instead
    */
+  @ApiStatus.Internal
   @Deprecated
   public static final Map<String, BuiltinDescription> PY36_BUILTIN_METHODS = concat(
     PY35_BUILTIN_METHODS,

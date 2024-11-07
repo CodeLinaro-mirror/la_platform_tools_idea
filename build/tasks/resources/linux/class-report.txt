@@ -2546,7 +2546,6 @@ com/intellij/remoteDev/tracing/CustomExportersListener.class:lib/app-client.jar
 com/intellij/platform/diagnostic/telemetry/AsyncSpanExporter.class:lib/app-client.jar
 org/h2/mvstore/FileStore.class:lib/modules.jar
 com/intellij/platform/diagnostic/telemetry/exporters/JaegerJsonSpanExporter.class:lib/app-client.jar
-com/intellij/ide/LanguageBundleListener.class:lib/app-client.jar
 com/intellij/platform/ide/IdeFingerprint.class:lib/app-client.jar
 com/intellij/openapi/fileTypes/impl/associate/OSFileAssociationStartupConfigurator.class:lib/app-client.jar
 kotlinx/coroutines/sync/MutexKt.class:lib/util-8.jar
