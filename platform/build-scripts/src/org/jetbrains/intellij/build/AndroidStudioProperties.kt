@@ -96,7 +96,10 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       // Configure the feedback URL displayed for IDE startup failures. This system property should match
       // StartupErrorReporter.STARTUP_ERROR_REPORTING_URL_PROPERTY. Eventually we may want a better landing page (b/295896403).
       "-Dij.startup.error.report.url=https://issuetracker.google.com/issues/new?component=192708",
-    )
+      // Workaround for C2 crashes b/377324522
+      "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::simpleType",
+      "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::toAttributes",
+      )
 
     productLayout.productImplementationModules = listOf(
       // From IdeaCommunityProperties:
@@ -155,11 +158,13 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
       plugin("intellij.cidr.debugger.plugin") { spec ->
+        spec.withModule("intellij.nativeDebug", spec.mainJarName)
         spec.withModule("intellij.cidr.debugger", spec.mainJarName)
         spec.withModule("intellij.cidr.debugger.backend", spec.mainJarName)
         spec.withModule("intellij.cidr.debugger.commandInterpreterLang", spec.mainJarName)
         spec.withModule("intellij.cidr.core", spec.mainJarName)
         spec.withModule("intellij.cidr.util.execution", spec.mainJarName)
+        spec.withModule("intellij.cidr.runner", spec.mainJarName)
       },
       plugin("intellij.cidr.base.plugin") { spec ->
         spec.withModule("intellij.cidr.base", spec.mainJarName)
@@ -182,7 +187,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         // this base plugin so that they will still be shipped.
         spec.withModule("intellij.cidr.psi.base", spec.mainJarName)
         spec.withModule("intellij.cidr.common", spec.mainJarName)
-        spec.withModule("intellij.cidr.runner", spec.mainJarName)
         spec.withModule("intellij.cmake.psi", spec.mainJarName)
       },
       plugin("intellij.c.plugin") { spec ->
