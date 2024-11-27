@@ -3,6 +3,7 @@
 package org.jetbrains.uast.kotlin.internal
 
 import com.intellij.psi.*
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.PsiTypesUtil
 import org.jetbrains.kotlin.analysis.api.*
 import org.jetbrains.kotlin.analysis.api.annotations.*
@@ -21,6 +22,7 @@ import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget.PROPERTY_GETTER
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget.PROPERTY_SETTER
 import org.jetbrains.kotlin.idea.KotlinLanguage
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.JvmStandardClassIds
 import org.jetbrains.kotlin.name.StandardClassIds
 import org.jetbrains.kotlin.psi.*
@@ -36,6 +38,8 @@ val firKotlinUastPlugin: FirKotlinUastLanguagePlugin by lazyPub {
     UastLanguagePlugin.getInstances().single { it.language == KotlinLanguage.INSTANCE } as FirKotlinUastLanguagePlugin?
         ?: FirKotlinUastLanguagePlugin()
 }
+
+private val COMPOSABLE_CLASS_ID: ClassId = ClassId.fromString("androidx/compose/runtime/Composable")
 
 @OptIn(KaAllowAnalysisOnEdt::class)
 internal inline fun <R> analyzeForUast(
@@ -155,13 +159,29 @@ private fun toPsiMethodForDeserialized(
 ): PsiMethod? {
 
     fun equalSignatures(psiMethod: PsiMethod): Boolean {
-        val methodParameters: Array<PsiParameter> = psiMethod.parameterList.parameters
+        var methodParameters: List<PsiParameter> = psiMethod.parameterList.parameters.toList()
+        val isSuspend = (functionSymbol as? KaNamedFunctionSymbol)?.isSuspend == true
+        if (isSuspend) {
+            // Drop the Continuation added by the compiler
+            methodParameters = methodParameters.dropLast(1)
+        }
+        val isComposable = COMPOSABLE_CLASS_ID in functionSymbol.annotations
+        if (isComposable) {
+            // Drop the last two parameters added by Compose compiler plugin
+            methodParameters = methodParameters.dropLast(2)
+        }
         val symbolParameters: List<KaValueParameterSymbol> = functionSymbol.valueParameters
-        if (methodParameters.size != symbolParameters.size) {
+        val symbolParameterSize =
+            if (functionSymbol.isExtension) {
+                symbolParameters.size + 1
+            } else {
+                symbolParameters.size
+            }
+        if (methodParameters.size != symbolParameterSize) {
             return false
         }
 
-        for (i in methodParameters.indices) {
+        for (i in symbolParameters.indices) {
             val symbolParameter = symbolParameters[i]
             val symbolParameterType = toPsiType(
                 symbolParameter.returnType,
@@ -173,18 +193,30 @@ private fun toPsiMethodForDeserialized(
                 )
             )
 
-            if (methodParameters[i].type != symbolParameterType) return false
+            val idx = if (functionSymbol.isExtension) i+1 else i
+            if (methodParameters[idx].type != symbolParameterType) return false
         }
         val psiMethodReturnType = psiMethod.returnType ?: PsiTypes.voidType()
-        val symbolReturnType = toPsiType(
-            functionSymbol.returnType,
-            psiMethod,
-            context,
-            PsiTypeConversionConfiguration(
-                TypeOwnerKind.DECLARATION,
-                typeMappingMode = KaTypeMappingMode.RETURN_TYPE,
-            )
-        )
+        val symbolReturnType =
+            // The return type of compiled `suspend` function is [Object].
+            if (isSuspend) {
+                val psiFacade = JavaPsiFacade.getInstance(psiMethod.project)
+                val psiObjectClass =
+                    psiFacade.findClass(CommonClassNames.JAVA_LANG_OBJECT, GlobalSearchScope.allScope(psiFacade.project))
+                if (psiObjectClass != null) {
+                    PsiTypesUtil.getClassType(psiObjectClass)
+                } else PsiTypes.voidType()
+            } else {
+                toPsiType(
+                    functionSymbol.returnType,
+                    psiMethod,
+                    context,
+                    PsiTypeConversionConfiguration(
+                        TypeOwnerKind.DECLARATION,
+                        typeMappingMode = KaTypeMappingMode.RETURN_TYPE,
+                    )
+                )
+            }
 
         return psiMethodReturnType == symbolReturnType
     }
