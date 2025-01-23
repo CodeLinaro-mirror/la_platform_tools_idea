@@ -100,6 +100,9 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       // Workaround for C2 crashes b/377324522
       "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::simpleType",
       "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::toAttributes",
+      // b/373746515: K2 mode
+      // TODO(b/377539365): revert this after branching
+      "-Didea.kotlin.plugin.use.k2=true",
       )
 
     productLayout.productImplementationModules = listOf(
@@ -332,7 +335,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
   }
 
   override fun getSystemSelector(appInfo: ApplicationInfoProperties, buildNumber: String): String =
-    "_ANDROID_STUDIO_SYSTEM_SELECTOR_${if (appInfo.isEAP) "Preview" else ""}${appInfo.majorVersion}.${appInfo.minorVersionMainPart}"
+    "_ANDROID_STUDIO_SYSTEM_SELECTOR_"
 
   override fun getBaseArtifactName(appInfo: ApplicationInfoProperties, buildNumber: String): String = "android-studio-$buildNumber"
 
