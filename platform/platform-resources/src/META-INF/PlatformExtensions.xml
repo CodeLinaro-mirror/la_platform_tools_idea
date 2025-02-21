@@ -132,7 +132,10 @@ Android Studio: b/282808067 -->
     <applicationService serviceInterface="com.intellij.openapi.keymap.KeymapManager"
                         serviceImplementation="com.intellij.openapi.keymap.impl.KeymapManagerImpl"/>
 
-    <eelProvider implementation="com.intellij.execution.wsl.ijent.nio.toggle.IjentWslNioFsToggler$WslEelProvider"/>
+    <eelProvider implementation="com.intellij.execution.wsl.ijent.nio.toggle.IjentWslNioFsToggler$WslEelProvider" os="windows"/>
+
+    <projectServiceContainerInitializedListener implementation="com.intellij.execution.eel.EelProjectServiceInitializer"
+                                                order="before moduleBridgeLoaderService"/>
 
     <applicationService serviceInterface="com.intellij.openapi.project.ProjectManager"
                         serviceImplementation="com.intellij.openapi.project.impl.ProjectManagerImpl"
@@ -634,6 +637,8 @@ Android Studio: don't register IntelliJ fork -->
     <welcomeTabFactory id="ProjectsWelcomeTab" implementation="com.intellij.openapi.wm.impl.welcomeScreen.ProjectsTabFactory"/>
     <registryKey defaultValue="3" description="Number of primary buttons on welcome screen (other go to 'more actions')" key="welcome.screen.primaryButtonsCount" restartRequired="true"/>
     <statistics.counterUsagesCollector
+      implementationClass="com.intellij.openapi.wm.impl.welcomeScreen.survey.IdeSurveyCollector"/>
+    <statistics.counterUsagesCollector
       implementationClass="com.intellij.openapi.wm.impl.welcomeScreen.statistics.WelcomeScreenCounterUsageCollector"/>
     <welcomeTabFactory id="CustomizeWelcomeTab" implementation="com.intellij.openapi.wm.impl.welcomeScreen.CustomizeTabFactory"
                        order="after ProjectsWelcomeTab"/>
@@ -836,7 +841,8 @@ Android Studio: don't register IntelliJ fork -->
 
     <projectService serviceInterface="com.intellij.execution.RunManager"
                     serviceImplementation="com.intellij.execution.impl.RunManagerImpl"/>
-    <projectServiceContainerInitializedListener implementation="com.intellij.execution.impl.ProjectRunConfigurationInitializer"/>
+    <projectServiceContainerInitializedListener implementation="com.intellij.execution.impl.ProjectRunConfigurationInitializer"
+                                                order="after moduleBridgeLoaderService"/>
     <projectFileScanner implementation="com.intellij.execution.impl.RunConfigurationInArbitraryFileScanner"/>
     <vfs.asyncListener implementation="com.intellij.execution.impl.RCInArbitraryFileListener"/>
     <editorNotificationProvider implementation="com.intellij.execution.impl.RunConfigEditorNotificationProvider"/>
@@ -1036,6 +1042,9 @@ Android Studio: don't register IntelliJ fork -->
     <statistics.collectorExtension implementation="com.intellij.ide.actions.ToolwindowFusEventFields"/>
     <statistics.collectorExtension implementation="com.intellij.ide.actions.DragEditorTabsFusEventFields"/>
 
+    <applicationInitializedListener implementation="com.intellij.ide.OsDataLoggerApplicationInitializedListener"/>
+    <aboutPopupDescriptionProvider implementation="com.intellij.ide.OsDataLoggerAboutPopupDescriptionProvider"/>
+
     <statistics.applicationUsagesCollector implementation="com.intellij.featureStatistics.fusCollectors.EAPUsageCollector"
                                            allowOnStartup="true"/>
 <!-- Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered in androidstudio.xml
@@ -1055,6 +1064,7 @@ Android Studio: instead AndroidStudioStatisticsEventLoggerProvider is registered
     <statistics.counterUsagesCollector implementationClass="com.intellij.openapi.fileChooser.impl.FileChooserUsageCollector"/>
     <statistics.counterUsagesCollector implementationClass="com.intellij.openapi.editor.markup.InspectionsFUS"/>
     <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.build.BuildToolsCollector"/>
+    <statistics.applicationUsagesCollector implementation="com.intellij.internal.statistic.collectors.fus.environment.EditorsCollector"/>
 
     <fileTypeUsageSchemaDescriptor schema="DotBazelFile"
                                    implementationClass="com.intellij.internal.statistic.collectors.fus.build.DotBazelFileTypeUsageSchemaDescriptor"/>
@@ -1138,7 +1148,7 @@ Android Studio: b/285867050 -->
     <editorNotificationProvider implementation="com.intellij.ide.CommandLineWaitingManager$MyNotification"/>
     <editorNotificationProvider implementation="com.intellij.ide.trustedProjects.impl.UntrustedProjectNotificationProvider"/>
 
-    <uiDataRule implementation="com.intellij.ide.impl.dataRules.BasicUiDataRule"/>
+    <uiDataRule implementation="com.intellij.ide.impl.dataRules.BasicUiDataRule" id="BasicUiDataRule"/>
     <getDataRule key="NavigatableArray" implementationClass="com.intellij.ide.impl.dataRules.NavigatableArrayRule"/>
     <getDataRule key="context.ProjectFileDirectory" implementationClass="com.intellij.ide.impl.dataRules.ProjectFileDirectoryRule"/>
 
@@ -1166,6 +1176,8 @@ Android Studio: b/285867050 -->
                     testServiceImplementation="com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.HeadlessPluginAdvertiserServiceImpl"/>
     <applicationService
       serviceImplementation="com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.GlobalIgnoredPluginSuggestionState"/>
+    <applicationService serviceInterface="com.intellij.openapi.updateSettings.impl.UpdateRequestParametersProvider"
+                        serviceImplementation="com.intellij.openapi.updateSettings.impl.DefaultUpdateRequestParametersProvider"/>
     <dependencyCollector kind="executable"
                          implementation="com.intellij.openapi.updateSettings.impl.pluginsAdvertisement.EnvironmentDependencyCollector"/>
 
@@ -1523,7 +1535,8 @@ Android Studio: b/285867050 -->
     <notificationGroup id="Test Hidden Notification" displayType="NONE" hideFromSettings="true"/>
     <notificationGroup id="Test Notification" displayType="BALLOON" hideFromSettings="true"/>
     <notificationGroup id="Test Runner" displayType="NONE" bundle="messages.TestRunnerBundle" key="notification.group.test.runner"/>
-    <notificationGroup id="System Messages" displayType="BALLOON" bundle="messages.IdeBundle" key="notification.group.system.messages"/>
+    <notificationGroup id="System Messages" displayType="BALLOON" bundle="messages.IdeBundle" key="notification.group.system.messages"
+                       notificationIds="cloud.config.alert"/>
     <notificationGroup id="Merge Internal Error" displayType="BALLOON" hideFromSettings="true"/>
     <notificationGroup id="Diff Changes Loading Error" displayType="BALLOON" hideFromSettings="true"/>
     <notificationGroup id="System shortcuts conflicts" displayType="STICKY_BALLOON" bundle="messages.KeyMapBundle"
@@ -1851,8 +1864,9 @@ Android Studio: b/285867050 -->
     <applicationService serviceImplementation="com.intellij.openapi.wm.impl.customFrameDecorations.frameButtons.LinuxIconThemeConfiguration" headlessImplementation=""
                         preload="notHeadless" os="linux"/>
 
-    <postStartupActivity implementation="com.intellij.execution.wsl.ijent.nio.toggle.IjentInProjectStarter"
-                         os="windows"/>
+    <projectServiceInitializer.essential
+      implementation="com.intellij.execution.eel.EelProjectServiceInitializer"
+      order="before moduleBridgeLoaderService"/>
     <applicationActivity implementation="com.intellij.ide.SwingTooltipManagerCustomizer"/>
     <registryKey key="rhizome.progress"
                  defaultValue="false"
@@ -1861,6 +1875,10 @@ Android Studio: b/285867050 -->
     <applicationService serviceInterface="com.intellij.auth.GenericAuthService"
                         serviceImplementation="com.intellij.auth.LocalGenericAuthService"
                         client="local"/>
+    <applicationService serviceInterface="com.intellij.platform.ide.provisioner.ProvisionedServiceRegistry"
+                        serviceImplementation="com.intellij.platform.ide.provisioner.DefaultProvisionedServiceRegistry"/>
+    <applicationService serviceInterface="com.intellij.platform.ide.provisioner.ProvisionerCompanyBrandingProvider"
+                        serviceImplementation="com.intellij.platform.ide.provisioner.DefaultProvisionerCompanyBrandingProvider"/>
   </extensions>
 
   <applicationListeners>
