@@ -131,7 +131,7 @@ class MarketplaceRequests(private val coroutineScope: CoroutineScope) : PluginIn
       val chunks = mutableListOf<MutableList<PluginId>>()
       chunks.add(mutableListOf())
 
-      val maxLength = 7000 // 8k minus safety gap
+      val maxLength = 3500 // 4k minus safety gap
       var currentLength = 0
       val pluginXmlIdsLength = "&pluginXmlId=".length
 
@@ -166,7 +166,7 @@ class MarketplaceRequests(private val coroutineScope: CoroutineScope) : PluginIn
         var url = URI(MarketplaceUrls.getSearchPluginsUpdatesUrl())
         val os = URLEncoder.encode(SystemInfo.OS_NAME + " " + SystemInfo.OS_VERSION, CharsetToolkit.UTF8)
         val machineId = MachineIdManager.getAnonymizedMachineId("JetBrainsUpdates") // same as regular updates
-          .takeIf { PropertiesComponent.getInstance().getBoolean(UpdateChecker.MACHINE_ID_DISABLED_PROPERTY, false) }
+          .takeIf { !PropertiesComponent.getInstance().getBoolean(UpdateChecker.MACHINE_ID_DISABLED_PROPERTY, false) }
 
         val query = buildString {
           append("build=${ApplicationInfoImpl.orFromPluginCompatibleBuild(buildNumber)}")

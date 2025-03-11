@@ -50,8 +50,8 @@ import java.awt.event.*;
 import java.beans.PropertyChangeListener;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
@@ -197,6 +197,7 @@ public abstract class DialogWrapper {
   private int myValidationDelay = 300;
   private boolean myValidationStarted;
   private boolean myKeepPopupsOpen;
+  @Nls private @NonNls @Nullable String invocationPlace = null;
 
   protected Action myOKAction;
   protected Action myCancelAction;
@@ -473,8 +474,8 @@ public abstract class DialogWrapper {
    * @param isOk     is OK
    * @throws IllegalStateException if the dialog is invoked not on the event dispatch thread
    */
-  public final void close(int exitCode, boolean isOk) {
-    logCloseDialogEvent(exitCode);
+  public final void close(int exitCode, boolean isOk, ExitActionType exitActionType) {
+    logCloseDialogEvent(exitCode, exitActionType);
     ensureEventDispatchThread();
     if (myClosed) return;
     myClosed = true;
@@ -498,8 +499,16 @@ public abstract class DialogWrapper {
     }
   }
 
+  public final void close(int exitCode, boolean isOk) {
+    close(exitCode, isOk, ExitActionType.UNDEFINED);
+  }
+
+  public final void close(int exitCode, ExitActionType exitActionType) {
+    close(exitCode, exitCode != CANCEL_EXIT_CODE, exitActionType);
+  }
+
   public final void close(int exitCode) {
-    close(exitCode, exitCode != CANCEL_EXIT_CODE);
+    close(exitCode, exitCode != CANCEL_EXIT_CODE, ExitActionType.UNDEFINED);
   }
 
   /**
@@ -1016,7 +1025,7 @@ public abstract class DialogWrapper {
    */
   public void doCancelAction() {
     if (getCancelAction().isEnabled()) {
-      close(CANCEL_EXIT_CODE);
+      close(CANCEL_EXIT_CODE, ExitActionType.CANCEL);
     }
   }
 
@@ -1070,7 +1079,7 @@ public abstract class DialogWrapper {
   protected void doOKAction() {
     if (getOKAction().isEnabled()) {
       applyFields();
-      close(OK_EXIT_CODE);
+      close(OK_EXIT_CODE, ExitActionType.OK);
     }
   }
 
@@ -1862,23 +1871,23 @@ public abstract class DialogWrapper {
       .findFirst();
   }
 
-  private void logCloseDialogEvent(int exitCode) {
+  private void logCloseDialogEvent(int exitCode, ExitActionType exitActionType) {
     boolean canRecord = canRecordDialogId();
     if (canRecord) {
-      FeatureUsageUiEventsKt.getUiEventLogger().logCloseDialog(getClass(), exitCode);
+      FeatureUsageUiEventsKt.getUiEventLogger().logCloseDialog(getClass(), exitCode, exitActionType, invocationPlace);
     }
   }
 
   private void logShowDialogEvent() {
     boolean canRecord = canRecordDialogId();
     if (canRecord) {
-      FeatureUsageUiEventsKt.getUiEventLogger().logShowDialog(getClass());
+      FeatureUsageUiEventsKt.getUiEventLogger().logShowDialog(getClass(), invocationPlace);
     }
   }
 
   private void logClickOnHelpDialogEvent() {
     if (!canRecordDialogId()) return;
-    FeatureUsageUiEventsKt.getUiEventLogger().logClickOnHelpDialog(getClass());
+    FeatureUsageUiEventsKt.getUiEventLogger().logClickOnHelpDialog(getClass(), invocationPlace);
   }
 
   /**
@@ -1886,6 +1895,11 @@ public abstract class DialogWrapper {
    */
   protected boolean canRecordDialogId() {
     return true;
+  }
+
+  @ApiStatus.Internal
+  public void setInvocationPlace(@Nullable @NonNls String invocationPlace) {
+     this.invocationPlace = invocationPlace;
   }
 
   /**
