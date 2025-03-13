@@ -37,11 +37,12 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     private val EXTRA_PLUGINS = listOf(
       // We bundle DevKit for ASwB development purposes (b/308477340).
       "intellij.devkit",
-      // Bundle the GitHub plugin, just like IdeaCommunityProperties does.
+      // Bundle the GitHub and GitLab plugins, just like IdeaCommunityProperties does.
       "intellij.vcs.github.community",
+      "intellij.vcs.gitlab.community",
       // Android Studio: package CIDR plugins. This list is based on what we have been shipping in Android Studio
       // and the structure of CIDR plugins.
-      "intellij.c.clangd.plugin",
+      "intellij.c.clangd",
       "intellij.c.clangdBridge.plugin",
       "intellij.c.plugin",
       "intellij.cidr.debugger.plugin",
@@ -69,7 +70,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "intellij.java.byteCodeViewer",
       "intellij.marketplaceMl", // Currently experimental and disabled by default anyway (in IJ 2024.2).
       "intellij.maven",
-      "intellij.platform.tracing.ide",
       "intellij.searchEverywhereMl",
     )
   }
@@ -102,7 +102,8 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::toAttributes",
       )
     // b/373746515: K2 mode
-    // enableKotlinPluginK2ByDefault()
+    // TODO(b/377539365): revert this after branching
+    enableKotlinPluginK2ByDefault()
 
     productLayout.productImplementationModules = listOf(
       // From IdeaCommunityProperties:
@@ -147,6 +148,10 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         patcher.patchModuleOutput(applicationInfoModule, appInfoPath, patched, PatchOverwriteMode.TRUE)
       }
     }
+
+    // skip unresolved content modules similar to IdeaCommunityProperties, otherwise unresolved modules e.g.
+    // intellij.yaml.frontend.split as of 2025.1 will fail the build (b/398025574)
+    productLayout.skipUnresolvedContentModules = true
 
     val unknownExcludedPlugins = EXCLUDED_PLUGINS - INHERITED_PLUGINS
     check(unknownExcludedPlugins.isEmpty()) { "AndroidStudioProperties.EXCLUDED_PLUGINS contains nonexistent plugins: $unknownExcludedPlugins" }
@@ -199,8 +204,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         spec.withModule("intellij.c.testing", spec.mainJarName)
         spec.withModule("intellij.cidr.modulemap.language", spec.mainJarName)
       },
-      plugin("intellij.c.clangd.plugin") { spec ->
-        spec.withModule("intellij.c.clangd")
+      plugin("intellij.c.clangd") { spec ->
         spec.withModule("intellij.c.dfa", spec.mainJarName)
       },
       plugin("intellij.c.clangdBridge.plugin") { spec ->
@@ -239,7 +243,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     // Copy CIDR license to CIDR plugins.
     FileSet(context.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
-      .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/lib/LICENSE.txt"))
+      .copyToDir(targetDir.resolve("plugins/c-clangd/lib/LICENSE.txt"))
     FileSet(context.paths.communityHomeDir)
       .include("CIDR_LICENSE.txt")
       .copyToDir(targetDir.resolve("plugins/c-plugin/lib/LICENSE.txt"))
@@ -274,7 +278,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/win/x64"))
           .includeAll()
-          .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/bin/clang/win/x64/bin"))
+          .copyToDir(targetDir.resolve("plugins/c-clangd/bin/clang/win/x64/bin"))
 
         GameTools(context, OsFamily.WINDOWS, JvmArchitecture.x64).copyAdditionalFiles(targetDir.resolve("bin"))
       }
@@ -294,7 +298,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/linux/x64"))
           .includeAll()
-          .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/bin/clang/linux/x64/bin"))
+          .copyToDir(targetDir.resolve("plugins/c-clangd/bin/clang/linux/x64/bin"))
 
         GameTools(context, OsFamily.LINUX, arch).copyAdditionalFiles(targetDir.resolve("bin"))
       }
@@ -325,7 +329,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       }
       FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/mac/$archDir"))
         .includeAll()
-        .copyToDir(targetDir.resolve("plugins/c-clangd-plugin/bin/clang/mac/$archDir/bin"))
+        .copyToDir(targetDir.resolve("plugins/c-clangd/bin/clang/mac/$archDir/bin"))
     }
   }
 

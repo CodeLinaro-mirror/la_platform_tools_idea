@@ -5,6 +5,8 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.project.Project
 import com.intellij.util.EnvironmentUtil
 import org.jetbrains.kotlin.config.LanguageVersion
+import org.jetbrains.kotlin.idea.core.script.k2.NewScriptFileInfo
+import org.jetbrains.kotlin.idea.core.script.k2.kotlinScriptTemplateInfo
 import org.jetbrains.kotlin.idea.core.script.loadDefinitionsFromTemplatesByPaths
 import org.jetbrains.kotlin.idea.core.script.scriptingDebugLog
 import org.jetbrains.kotlin.idea.core.script.scriptingInfoLog
@@ -207,6 +209,8 @@ fun getDefinitionsTemplateClasspath(gradleHome: String?): List<String> = try {
     emptyList()
 }
 
+const val DEFINITION_ID: String = "ideGradleScriptDefinitionId"
+
 class GradleKotlinScriptDefinitionWrapper(
     legacyDefinition: KotlinScriptDefinitionFromAnnotatedTemplate,
     override val hostConfiguration: ScriptingHostConfiguration,
@@ -218,7 +222,10 @@ class GradleKotlinScriptDefinitionWrapper(
         order = Int.MIN_VALUE
     }
 
-    override val compilationConfiguration by lazy {
+    override val definitionId: String
+        get() = DEFINITION_ID
+
+    override val compilationConfiguration: ScriptCompilationConfiguration by lazy {
         ScriptCompilationConfigurationFromDefinition(
             hostConfiguration,
             legacyDefinition
@@ -226,6 +233,11 @@ class GradleKotlinScriptDefinitionWrapper(
             ScriptCompilationConfiguration.ide.acceptedLocations.put(listOf(ScriptAcceptedLocation.Project))
             @Suppress("DEPRECATION_ERROR")
             ScriptCompilationConfiguration.fileNamePattern.put(legacyDefinition.scriptFilePattern.pattern)
+            ide.kotlinScriptTemplateInfo(NewScriptFileInfo().apply{
+                id = "gradle-kts"
+                title = ".gradle.kts"
+                templateName = "Kotlin Script Gradle"
+            })
         }
     }
 

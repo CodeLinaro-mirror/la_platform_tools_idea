@@ -56,7 +56,7 @@ internal class EditorEmbeddedComponentLayoutManager(private val editor: EditorEx
 
   override fun layoutContainer(parent: Container) {
     synchronized(parent.treeLock) {
-      keepScrollingPositionWhile(editor) {
+      editor.notebookEditor.editorPositionKeeper.keepScrollingPositionWhile {
         val visibleWidth = maxOf(myEditorScrollPane.getViewport().getWidth() - myEditorScrollPane.getVerticalScrollBar().getWidth(), 0)
         for (entry in constraints) {
           val component: JComponent = entry.first
@@ -74,7 +74,7 @@ internal class EditorEmbeddedComponentLayoutManager(private val editor: EditorEx
       val newBounds = Rectangle(
         inlayBounds.x,
         inlayBounds.y,
-        min((if (constraint.isFullWidth) visibleWidth else size.width).toDouble(), visibleWidth.toDouble()).toInt(),
+        min((if (constraint.isFullWidth) visibleWidth else size.width), visibleWidth),
         size.height
       )
       if (newBounds != component.bounds) {

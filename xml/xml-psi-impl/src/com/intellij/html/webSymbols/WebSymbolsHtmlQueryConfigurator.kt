@@ -56,6 +56,8 @@ class WebSymbolsHtmlQueryConfigurator : WebSymbolsQueryConfigurator {
     override val priority: WebSymbol.Priority
       get() = WebSymbol.Priority.HIGHEST
 
+    override fun requiresResolve(): Boolean = false
+
     override fun build(queryExecutor: WebSymbolsQueryExecutor, consumer: (WebSymbolsScope) -> Unit) {
       val context = location.parentOfTypes(XmlTag::class, XmlAttribute::class)
       val element = (context as? XmlTag) ?: (context as? XmlAttribute)?.parent ?: return
@@ -259,12 +261,11 @@ class WebSymbolsHtmlQueryConfigurator : WebSymbolsQueryConfigurator {
     override val attributeValue: WebSymbolHtmlAttributeValue
       get() {
         val isBooleanAttribute = HtmlUtil.isBooleanAttribute(descriptor, null)
-        val isEnumerated = descriptor.isEnumerated
         return WebSymbolHtmlAttributeValue.create(
           null,
           when {
             isBooleanAttribute -> WebSymbolHtmlAttributeValue.Type.BOOLEAN
-            isEnumerated -> WebSymbolHtmlAttributeValue.Type.ENUM
+            descriptor.isEnumerated -> WebSymbolHtmlAttributeValue.Type.ENUM
             else -> WebSymbolHtmlAttributeValue.Type.STRING
           },
           !isBooleanAttribute,

@@ -4,13 +4,18 @@ import com.intellij.notebooks.ui.visualization.NotebookEditorAppearanceUtils.isO
 import com.intellij.notebooks.ui.visualization.NotebookUtil.notebookAppearance
 import com.intellij.notebooks.visualization.NotebookCellInlayController
 import com.intellij.notebooks.visualization.NotebookCellLines
+import com.intellij.notebooks.visualization.ui.cellsDnD.EditorCellDragAssistant
+import com.intellij.notebooks.visualization.ui.jupyterToolbars.EditorCellActionsToolbarManager
+import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.impl.EditorImpl
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.registry.Registry
 import java.awt.Rectangle
 
 class EditorCellInput(
   private val editor: EditorImpl,
   componentFactory: NotebookCellInlayController.InputFactory,
-  private val cell: EditorCell,
+  val cell: EditorCell,
 ) : EditorCellViewComponent() {
 
   val interval: NotebookCellLines.Interval
@@ -22,9 +27,21 @@ class EditorCellInput(
 
   val component: EditorCellViewComponent = componentFactory.createComponent(editor, cell).also { add(it) }
 
-  val folding = EditorCellFoldingBar(editor, ::getFoldingBounds) { toggleFolding() }
+  private val dragAssistant = when(Registry.`is`("jupyter.editor.dnd.cells")) {
+    true -> EditorCellDragAssistant(editor, this, ::fold, ::unfold).also { Disposer.register(this, it) }
+    false -> null
+  }
 
-  var folded = false
+  val folding: EditorCellFoldingBar = EditorCellFoldingBar(editor, dragAssistant, ::getFoldingBounds) { toggleFolding() }
+    .also {
+      Disposer.register(this, it)
+    }
+
+  val cellActionsToolbar: EditorCellActionsToolbarManager? =
+    if (Registry.`is`("jupyter.per.cell.management.actions.toolbar") && editor.isOrdinaryNotebookEditor()) EditorCellActionsToolbarManager(editor, cell)
+    else null
+
+  var folded: Boolean = false
     private set
 
   private fun shouldShowRunButton(): Boolean {
@@ -43,7 +60,7 @@ class EditorCellInput(
       editor.notebookAppearance.aboveFirstCellDelimiterHeight
     }
     else {
-      editor.notebookAppearance.cellBorderHeight / 2
+      editor.notebookAppearance.cellBorderHeight
     }
 
     val bounds = calculateBounds()
@@ -55,30 +72,44 @@ class EditorCellInput(
     (component as? InputComponent)?.updateFolding(ctx, folded)
   }
 
+  private fun fold() = editor.updateManager.update { ctx ->
+    folded = true
+    (component as? InputComponent)?.updateFolding(ctx, true)
+  }
+
+  private fun unfold() = editor.updateManager.update { ctx ->
+    folded = false
+    (component as? InputComponent)?.updateFolding(ctx, false)
+  }
+
   override fun dispose() {
     super.dispose()
-    folding.dispose()
+    Disposer.dispose(folding)
+    cellActionsToolbar?.let { Disposer.dispose(it) }
   }
 
   fun update() {
     updateInput()
   }
 
-  override fun calculateBounds(): Rectangle {
+  fun getBlockElementsInRange(): List<Inlay<*>> {
     val linesRange = interval.lines
     val startOffset = editor.document.getLineStartOffset(linesRange.first)
     val endOffset = editor.document.getLineEndOffset(linesRange.last)
-    val bounds = editor.inlayModel.getBlockElementsInRange(startOffset, endOffset)
+    return editor.inlayModel.getBlockElementsInRange(startOffset, endOffset)
+  }
+
+  override fun calculateBounds(): Rectangle {
+    return getBlockElementsInRange()
       .asSequence()
       .filter { it.properties.priority > editor.notebookAppearance.NOTEBOOK_OUTPUT_INLAY_PRIORITY }
       .mapNotNull { it.bounds }
       .fold(component.calculateBounds()) { b, i ->
         b.union(i)
       }
-    return bounds
   }
 
-  fun updateInput() = editor.updateManager.update { ctx ->
+  fun updateInput(): Unit? = editor.updateManager.update { ctx ->
     (component as? InputComponent)?.updateInput(ctx)
   }
 

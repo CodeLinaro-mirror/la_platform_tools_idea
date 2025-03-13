@@ -65,7 +65,7 @@ open class CachedImageIcon private constructor(
   @Volatile
   @JvmField
   internal var loader: ImageDataLoader?,
-  private val localFilterSupplier: RgbImageFilterSupplier? = null,
+  @Internal val localFilterSupplier: RgbImageFilterSupplier? = null,
   private val colorPatcher: ColorPatcherStrategy = GlobalColorPatcherStrategy,
   private val toolTip: Supplier<String?>? = null,
   private val scaleContext: ScaleContext? = null,
@@ -156,7 +156,7 @@ open class CachedImageIcon private constructor(
 
   final override fun getIconHeight(): Int = resolveActualIcon().iconHeight
 
-  final override fun getScale(): Float = 1.0f
+  final override fun getScale(): Float = (getObjScale() ?: 1.0).toFloat()
 
   @Internal
   fun getRealIcon(): Icon = resolveActualIcon()

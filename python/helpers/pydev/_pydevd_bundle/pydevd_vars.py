@@ -549,6 +549,9 @@ def array_to_xml(array, name, roffset, coffset, rows, cols, format):
     rows = min(rows, MAXIMUM_ARRAY_SIZE)
     cols = min(cols, MAXIMUM_ARRAY_SIZE)
 
+    if rows == 0 and cols == 0:
+        return xml
+
     # there is no obvious rule for slicing (at least 5 choices)
     if len(array) == 1 and (rows > 1 or cols > 1):
         array = array[0]
@@ -605,6 +608,19 @@ def array_to_meta_xml(array, name, format):
     type = array.dtype.kind
     slice = name
     l = len(array.shape)
+
+    if l == 0:
+        rows, cols = 0, 0
+        bounds = (0, 0)
+        return array, slice_to_xml(name, rows, cols, format, "", bounds), rows, cols, format
+
+    try:
+        import numpy as np
+        if isinstance(array, np.recarray) and l > 1:
+            slice = "{}['{}']".format(slice, array.dtype.names[0])
+            array = array[array.dtype.names[0]]
+    except ImportError:
+        pass
 
     # initial load, compute slice
     if format == '%':
@@ -666,13 +682,13 @@ def get_formatted_row_elements(row, iat, dim, cols, format, dtypes):
     for c in range(cols):
         val = iat[row, c] if dim > 1 else iat[row]
         col_formatter = get_column_formatter_by_type(format, dtypes[c])
-        if val != val:
-            yield "nan"
-        else:
-            try:
+        try:
+            if val != val:
+                yield "nan"
+            else:
                 yield ("%" + col_formatter) % (val,)
-            except TypeError:
-                yield ("%" + DEFAULT_DF_FORMAT) % (val,)
+        except TypeError:
+            yield ("%" + DEFAULT_DF_FORMAT) % (val,)
 
 
 def array_default_format(type):
@@ -836,6 +852,7 @@ def is_able_to_format_number(format):
 
 TYPE_TO_XML_CONVERTERS = {
     "ndarray": array_to_xml,
+    "recarray": array_to_xml,
     "DataFrame": dataframe_to_xml,
     "Series": dataframe_to_xml,
     "GeoDataFrame": dataframe_to_xml,

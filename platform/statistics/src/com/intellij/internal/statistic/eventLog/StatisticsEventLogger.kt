@@ -12,6 +12,7 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.util.Disposer
 import com.intellij.platform.runtime.product.ProductMode
 import kotlinx.coroutines.*
+import org.jetbrains.annotations.ApiStatus
 import java.io.File
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -32,6 +33,8 @@ interface StatisticsEventLogger {
 }
 
 /**
+ * Represents the recorder.
+ *
  * [useDefaultRecorderId] - When enabled, device and machine ids would match FUS(default) recorder. Must NOT be enabled for non-anonymized recorders.
  */
 abstract class StatisticsEventLoggerProvider(val recorderId: String,
@@ -41,6 +44,25 @@ abstract class StatisticsEventLoggerProvider(val recorderId: String,
                                              val sendLogsOnIdeClose: Boolean = false,
                                              val isCharsEscapingRequired: Boolean = true,
                                              val useDefaultRecorderId: Boolean = false) {
+  open val coroutineScope: CoroutineScope = StatisticsServiceScope.getScope()
+
+  @ApiStatus.Internal
+  val recorderOptionsProvider: RecorderOptionProvider
+
+  init {
+    // add existing options
+    val configOptionsService = EventLogConfigOptionsService.getInstance()
+    recorderOptionsProvider = RecorderOptionProvider(configOptionsService.getOptions(recorderId).allOptions)
+
+    // options can also be changed during the lifetime of the application
+    ApplicationManager.getApplication().messageBus.connect(coroutineScope).subscribe(EventLogConfigOptionsService.TOPIC, object : EventLogConfigOptionsListener {
+      override fun optionsChanged(changedRecorder: String, options: Map<String, String>) {
+        if (changedRecorder == recorderId) {
+          recorderOptionsProvider.update(options)
+        }
+      }
+    })
+  }
 
   @Deprecated(message = "Use primary constructor instead")
   constructor(recorderId: String,
@@ -83,7 +105,7 @@ abstract class StatisticsEventLoggerProvider(val recorderId: String,
     }
   }
 
-  open val coroutineScope: CoroutineScope = StatisticsServiceScope.getScope()
+
   private val localLogger: StatisticsEventLogger by lazy { createLocalLogger() }
   private val actualLogger: StatisticsEventLogger by lazy { createLogger() }
   internal val eventLogSystemLogger: EventLogSystemCollector by lazy { EventLogSystemCollector(this) }

@@ -3,7 +3,6 @@ package org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.even
 
 import org.gradle.tooling.Failure;
 import org.gradle.tooling.events.problems.Problem;
-import org.gradle.tooling.model.internal.Exceptions;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.io.Serializable;
@@ -11,14 +10,22 @@ import java.util.List;
 
 @ApiStatus.Internal
 public final class InternalFailure implements Failure, Serializable {
+
   private final String message;
   private final String description;
   private final List<InternalFailure> causes;
+  private final List<Problem> problems;
 
-  public InternalFailure(String message, String description, List<InternalFailure> causes) {
+  public InternalFailure(
+    String message,
+    String description,
+    List<InternalFailure> causes,
+    List<Problem> problems
+  ) {
     this.message = message;
     this.description = description;
     this.causes = causes;
+    this.problems = problems;
   }
 
   @Override
@@ -36,9 +43,8 @@ public final class InternalFailure implements Failure, Serializable {
     return this.causes;
   }
 
-  // Android Studio: Update version of gradle-tooling-api ahead of update in intellij platform
   @Override
   public List<Problem> getProblems() {
-    throw Exceptions.unsupportedMethod(InternalFailure.class.getSimpleName() + ".getProblems()");
+    return problems;
   }
 }

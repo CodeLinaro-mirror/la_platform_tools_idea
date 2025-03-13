@@ -32,7 +32,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.SystemInfo
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.util.text.Strings
@@ -78,7 +77,6 @@ import javax.swing.plaf.TabbedPaneUI
 import javax.swing.text.View
 import javax.swing.text.html.ImageView
 import javax.swing.text.html.ParagraphView
-import kotlin.collections.set
 import kotlin.coroutines.coroutineContext
 
 @Internal
@@ -108,6 +106,7 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
   private var updateButton: JButton? = null
   private var gearButton: JComponent? = null
   private var myEnableDisableButton: JButton? = null
+  private var myUninstallButton: JButton? = null
   private var errorComponent: ErrorComponent? = null
   private var version: JTextField? = null
   private var isEnabledForProject: JLabel? = null
@@ -130,6 +129,8 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
   private var disableFeedbackNotification: BorderLayoutPanel? = null
   private val sentFeedbackPlugins = HashSet<PluginId>()
   private val licensePanel = LicensePanel(false)
+  private val unavailableWithoutSubscriptionBanner: InlineBannerBase? = UnavailableWithoutSubscriptionComponent.getBanner()
+  private val partiallyAvailableBanner: InlineBannerBase? = PartiallyAvailableComponent.getBanner()
   private var homePage: LinkPanel? = null
   private var forumUrl: LinkPanel? = null
   private var licenseUrl: LinkPanel? = null
@@ -173,7 +174,8 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
 
   companion object {
     @JvmStatic
-    fun isMultiTabs(): Boolean = Registry.`is`("plugins.show.multi.tabs", true)
+    @Deprecated("Always true")
+    fun isMultiTabs(): Boolean = true
 
     @JvmStatic
     fun createDescriptionComponent(imageViewHandler: Consumer<in View>?): JEditorPane {
@@ -342,6 +344,15 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
     topPanel.add(licensePanel)
     licensePanel.border = JBUI.Borders.emptyBottom(5)
 
+    if (unavailableWithoutSubscriptionBanner != null) {
+      topPanel.add(unavailableWithoutSubscriptionBanner, VerticalLayout.FILL_HORIZONTAL)
+      unavailableWithoutSubscriptionBanner.isVisible = false
+    }
+    if (partiallyAvailableBanner != null) {
+      topPanel.add(partiallyAvailableBanner, VerticalLayout.FILL_HORIZONTAL)
+      partiallyAvailableBanner.isVisible = false
+    }
+
     createTabs(panel!!)
   }
 
@@ -480,6 +491,7 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
         { this.createUninstallAction() })
       nameAndButtons.addButtonComponent(enableDisableController!!.button.also { gearButton = it })
       nameAndButtons.addButtonComponent(enableDisableController!!.bundledButton.also { myEnableDisableButton = it })
+      nameAndButtons.addButtonComponent(enableDisableController!!.uninstallButton.also { myUninstallButton = it })
     }
     else {
       gearButton = SelectionBasedPluginModelAction.createGearButton(
@@ -1064,6 +1076,11 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
     }
 
     showLicensePanel()
+
+    unavailableWithoutSubscriptionBanner?.isVisible = showComponent?.isNotFreeInFreeMode == true
+    partiallyAvailableBanner?.isVisible = showComponent?.isNotFreeInFreeMode != true  &&
+                                          PluginManagerCore.dependsOnUltimateOptionally(showComponent?.pluginDescriptor)
+
     val homepage = getPluginHomepage(plugin.pluginId)
 
     if (plugin.isBundled && !plugin.allowBundledUpdate() || !isPluginFromMarketplace || homepage == null) {
@@ -1316,6 +1333,7 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
       installButton!!.isVisible = false
       updateButton!!.isVisible = false
       gearButton!!.isVisible = false
+      myUninstallButton?.isVisible = false
       if (isMultiTabs) {
         myEnableDisableButton!!.isVisible = false
       }
@@ -1333,6 +1351,7 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
       installButton!!.isVisible = !installed
 
       updateButton!!.isVisible = false
+      myUninstallButton?.isVisible = false
       if (isMultiTabs) {
         if (installed || installedDescriptorForMarketplace == null) {
           gearButton!!.isVisible = false
@@ -1359,7 +1378,8 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
 
           val bundled = installedDescriptorForMarketplace!!.isBundled
           enableDisableController!!.update()
-          gearButton!!.isVisible = !uninstalled && !bundled
+          gearButton!!.isVisible = !uninstalled && !bundled && showComponent?.isNotFreeInFreeMode != true
+          myUninstallButton?.isVisible = !uninstalled && !bundled && showComponent?.isNotFreeInFreeMode == true
           myEnableDisableButton!!.isVisible = bundled
           updateButton!!.isVisible = !uninstalled && updateDescriptor != null && !installedWithoutRestart
           updateEnableForNameAndIcon()
@@ -1402,9 +1422,10 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
         val bundled = plugin!!.isBundled
         val isEssential = ApplicationInfo.getInstance().isEssentialPlugin(
           plugin!!.pluginId)
-        gearButton!!.isVisible = !uninstalled && !bundled
+        gearButton!!.isVisible = !uninstalled && !bundled && showComponent?.isNotFreeInFreeMode != true
         myEnableDisableButton!!.isVisible = bundled
-        myEnableDisableButton!!.isEnabled = !isEssential
+        myEnableDisableButton!!.isEnabled = !isEssential && showComponent?.isNotFreeInFreeMode != true
+        myUninstallButton?.isVisible = !uninstalled && !bundled && showComponent?.isNotFreeInFreeMode == true
       }
       else {
         gearButton!!.isVisible = !uninstalled
@@ -1428,9 +1449,11 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
   }
 
   private fun updateErrors() {
-    val errors = pluginModel.getErrors(descriptorForActions!!)
-    updateIcon(errors)
-    errorComponent!!.setErrors(errors) { this.handleErrors() }
+    if (showComponent?.isNotFreeInFreeMode != true) {
+      val errors = pluginModel.getErrors(descriptorForActions!!)
+      updateIcon(errors)
+      errorComponent!!.setErrors(errors) { this.handleErrors() }
+    }
   }
 
   private fun handleErrors() {
@@ -1532,6 +1555,7 @@ class PluginDetailsPageComponent @JvmOverloads constructor(
     installButton!!.isVisible = false
     updateButton!!.isVisible = false
     gearButton!!.isVisible = false
+    myUninstallButton?.isVisible = false
     if (myEnableDisableButton != null) {
       myEnableDisableButton!!.isVisible = false
     }

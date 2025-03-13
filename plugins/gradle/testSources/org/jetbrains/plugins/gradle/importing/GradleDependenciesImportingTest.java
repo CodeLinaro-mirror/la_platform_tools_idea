@@ -383,7 +383,7 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
     importProject(
       createBuildScriptBuilder()
         .withJavaPlugin()
-        .addRepository("maven { url file('lib') }")
+        .addRepository("maven { url = file('lib') }")
         .addImplementationDependency("dep:dep:1.0")
         .addTestImplementationDependency("dep:dep:1.0:tests")
         .addRuntimeOnlyDependency("dep:dep:1.0@someExt")
@@ -502,7 +502,7 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
     importProject(
       createBuildScriptBuilder()
         .withJavaPlugin()
-        .addRepository("maven { url file('lib') }")
+        .addRepository("maven { url = file('lib') }")
         .addImplementationDependency("dep:dep:1.0")
         .addImplementationDependency("some:unresolvable-lib:0.1")
         .generate()
@@ -546,8 +546,8 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
                          """ + including("api", "modules:X", "modules:Y"));
     importProject(
       "configure(subprojects - project(':modules')) {\n" +
-      "    group 'server'\n" +
-      "    version '1.0-SNAPSHOT'\n" +
+      "    group = 'server'\n" +
+      "    version = '1.0-SNAPSHOT'\n" +
       "    apply plugin: 'java'\n" +
       (isGradleAtLeast("8.2")
        ? "  java { sourceCompatibility = 1.8 }\n"
@@ -1767,10 +1767,10 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
     importProject(
       createBuildScriptBuilder()
         .withJavaPlugin()
-        .addPrefix("repositories { ivy { url file('repo') } }")
+        .addPrefix("repositories { ivy { url = file('repo') } }")
         .addImplementationDependency("depGroup:depArtifact:1.0-SNAPSHOT")
         .withIdeaPlugin()
-        .addPrefix("idea.module.downloadJavadoc true")
+        .addPrefix("idea.module.downloadJavadoc = true")
         .generate()
     );
 
@@ -1840,7 +1840,7 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
         .addPrefix("repositories { ivy { url = file('repo') \n layout('ivy') } }")
         .addImplementationDependency("depGroup:depArtifact:1.0-SNAPSHOT")
         .withIdeaPlugin()
-        .addPrefix("idea.module.downloadJavadoc true")
+        .addPrefix("idea.module.downloadJavadoc = true")
         .generate()
     );
 
@@ -1902,7 +1902,7 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
         .addPrefix("repositories { ivy { artifactPattern('repo/" + customIvyPattern + "') } }")
         .addImplementationDependency("depGroup:depArtifact:1.0-SNAPSHOT")
         .withIdeaPlugin()
-        .addPrefix("idea.module.downloadJavadoc true")
+        .addPrefix("idea.module.downloadJavadoc = true")
         .generate()
     );
 
@@ -1944,8 +1944,8 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
         .addPrefix("repositories { ivy { url = file('repo') } }")
         .addPrefix("""
                      dependencies {
-                       implementation 'depGroup:depArtifact:1.0-SNAPSHOT' targetConfiguration 'api'
-                       runtimeOnly 'depGroup:depArtifact:1.0-SNAPSHOT' targetConfiguration 'runtime'
+                       implementation('depGroup:depArtifact:1.0-SNAPSHOT') { targetConfiguration = 'api' }
+                       runtimeOnly('depGroup:depArtifact:1.0-SNAPSHOT') { targetConfiguration = 'runtime' }
                      }
                      """)
         .withIdeaPlugin()
@@ -2211,13 +2211,19 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
                                             todir: new File(gradle.gradleUserHomeDir, '/caches/ij_test_repo/test')
                                }
                            }
+                           
+                           interface FileSystemOperationsInjector {
+                               @Inject FileSystemOperations getFileSystemOperations()
+                           }
+                           
                            task removeALibFromGradleUserHome(type: DefaultTask) {
+                               def injector = project.objects.newInstance(FileSystemOperationsInjector)
                                doLast {
                                  def attemptsLeft = 10;
                                  while (attemptsLeft > 0) {
                                    attemptsLeft--;
                                    try {
-                                     project.delete {
+                                     injector.fileSystemOperations.delete {
                                        delete new File(gradle.gradleUserHomeDir, '/caches/ij_test_repo/test')
                                        followSymlinks = true
                                      }
@@ -2242,7 +2248,7 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
       importProject(createBuildScriptBuilder()
                       .withJavaPlugin()
                       .withIdeaPlugin()
-                      .addRepository(" maven { url new File(gradle.gradleUserHomeDir, 'caches/ij_test_repo')} ")
+                      .addRepository(" maven { url = new File(gradle.gradleUserHomeDir, 'caches/ij_test_repo')} ")
                       .addDependency("implementation 'test:aLib:1.0-SNAPSHOT-1'")
                       .addPrefix(
                         "idea.module {",
@@ -2371,19 +2377,18 @@ public class GradleDependenciesImportingTest extends GradleImportingTestCase {
     ExternalSystemTaskId taskId = ExternalSystemTaskId.create(GradleConstants.SYSTEM_ID, ExternalSystemTaskType.EXECUTE_TASK, myProject);
     String projectPath = getProjectPath();
     GradleExecutionSettings settings = new GradleManager().getExecutionSettingsProvider().fun(new Pair<>(myProject, projectPath));
-    new GradleTaskManager().executeTasks(
-      taskId, Collections.singletonList(task), projectPath, settings, null,
-      new ExternalSystemTaskNotificationListener() {
-        @Override
-        public void onTaskOutput(@NotNull ExternalSystemTaskId id, @NotNull String text, boolean stdOut) {
-          if (stdOut) {
-            System.out.print(text);
-          }
-          else {
-            System.err.print(text);
-          }
+    settings.setTasks(Arrays.asList(task));
+    new GradleTaskManager().executeTasks(projectPath, taskId, settings, new ExternalSystemTaskNotificationListener() {
+      @Override
+      public void onTaskOutput(@NotNull ExternalSystemTaskId id, @NotNull String text, boolean stdOut) {
+        if (stdOut) {
+          System.out.print(text);
         }
-      });
+        else {
+          System.err.print(text);
+        }
+      }
+    });
   }
 
   private static void checkIfSourcesOrJavadocsCanBeAttached(String binaryPath,

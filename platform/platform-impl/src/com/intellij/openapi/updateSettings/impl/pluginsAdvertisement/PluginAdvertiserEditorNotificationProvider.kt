@@ -7,12 +7,15 @@ import com.intellij.ide.plugins.PluginManagerConfigurable
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.ide.plugins.advertiser.PluginData
 import com.intellij.ide.plugins.marketplace.MarketplaceRequests
+import com.intellij.ide.plugins.pluginRequiresUltimatePluginButItsDisabled
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileEditor.FileEditor
@@ -152,10 +155,15 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
       val installedPlugin = installedPlugin
       if (hasSuggestedIde) {
         addSuggestedIdes(panel, label, pluginAdvertiserExtensionsState)
-        return panel    // Don't show the "Ignore extension" label
+        return panel // Don't show the "Ignore extension" label
       }
       else if (installedPlugin != null) {
         if (!installedPlugin.isEnabled) {
+          if (pluginRequiresUltimatePluginButItsDisabled(installedPlugin.pluginId)) {
+            // the plugin requires ultimate and it cannot be enabled
+            return null
+          }
+
           panel.createActionLabel(IdeBundle.message("plugins.advertiser.action.enable.plugin", installedPlugin.name)) {
             pluginAdvertiserExtensionsState.addEnabledExtensionOrFileNameAndInvalidateCache(extensionOrFileName)
             updateAllNotifications(project)
@@ -231,7 +239,7 @@ class PluginAdvertiserEditorNotificationProvider : EditorNotificationProvider, D
       }
 
       panel.createActionLabel(IdeBundle.message("plugins.advertiser.action.ignore.ultimate")) {
-        FUSEventSource.EDITOR.doIgnoreUltimateAndLog(project)
+        FUSEventSource.EDITOR.ignoreUltimateAndLog(project)
         updateAllNotifications(project)
       }
     }
@@ -361,6 +369,8 @@ private fun getSuggestedIdes(activeProductCode: String,
 private fun updateAllNotifications(project: Project) {
   EditorNotifications.getInstance(project).updateAllNotifications()
 }
+
+private val LOG: Logger = fileLogger()
 
 @Service(Service.Level.PROJECT)
 internal class AdvertiserInfoUpdateService(

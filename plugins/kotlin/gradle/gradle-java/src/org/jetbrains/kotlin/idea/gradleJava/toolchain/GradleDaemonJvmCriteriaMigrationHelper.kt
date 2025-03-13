@@ -14,16 +14,25 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.future.asCompletableFuture
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withContext
+import org.gradle.util.GradleVersion
 import org.jetbrains.jps.model.java.JdkVersionDetector
 import org.jetbrains.kotlin.idea.gradleCodeInsightCommon.GradleBuildScriptSupport
 import org.jetbrains.kotlin.idea.gradleCodeInsightCommon.getTopLevelBuildScriptSettingsPsiFile
+import org.jetbrains.plugins.gradle.frameworkSupport.GradleDsl
+import org.jetbrains.plugins.gradle.frameworkSupport.settingsScript.GradleSettingScriptBuilder
+import org.jetbrains.plugins.gradle.frameworkSupport.settingsScript.GradleSettingScriptBuilder.Companion.settingsScript
 import org.jetbrains.plugins.gradle.service.GradleInstallationManager
 import org.jetbrains.plugins.gradle.service.execution.GradleDaemonJvmCriteria
 import org.jetbrains.plugins.gradle.service.execution.GradleDaemonJvmHelper
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 import org.jetbrains.plugins.gradle.util.GradleBundle
+import org.jetbrains.plugins.gradle.util.GradleConstants.KOTLIN_DSL_SCRIPT_NAME
 import org.jetbrains.plugins.gradle.util.toJvmCriteria
+import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
+import kotlin.io.path.exists
+import kotlin.io.path.name
+import kotlin.io.path.writeText
 
 object GradleDaemonJvmCriteriaMigrationHelper {
 
@@ -59,7 +68,9 @@ object GradleDaemonJvmCriteriaMigrationHelper {
     }
 
     suspend fun applyDefaultToolchainResolverPlugin(project: Project, externalProjectPath: String) {
-        configureSettingsFileWithAppliedFoojayPlugin(project, externalProjectPath)
+        if (!configureSettingsFileWithAppliedFoojayPlugin(project, externalProjectPath)) {
+            createSettingsFileWithAppliedFoojayPlugin(project, externalProjectPath)
+        }
     }
 
     private suspend fun configureSettingsFileWithAppliedFoojayPlugin(project: Project, externalProjectPath: String): Boolean {
@@ -69,6 +80,24 @@ object GradleDaemonJvmCriteriaMigrationHelper {
             buildScriptSupport.addFoojayPlugin(settingsFile)
             return@writeCommandAction true
         }
+    }
+
+    private fun createSettingsFileWithAppliedFoojayPlugin(project: Project, externalProjectPath: String) {
+        val settings = GradleSettings.getInstance(project)
+        val projectSettings = settings.getLinkedProjectSettings(externalProjectPath) ?: return
+        val gradleVersion = GradleInstallationManager.guessGradleVersion(projectSettings) ?: return
+        createSettingsFileWithAppliedFoojayPlugin(Path.of(externalProjectPath), gradleVersion)
+    }
+
+    private fun createSettingsFileWithAppliedFoojayPlugin(projectPath: Path, gradleVersion: GradleVersion) {
+        val gradleDsl = GradleDsl.valueOf(projectPath.resolve(KOTLIN_DSL_SCRIPT_NAME).exists())
+        val settingsScriptName = GradleSettingScriptBuilder.getSettingsScriptName(gradleDsl)
+        val settingsScriptPath = projectPath.resolve(settingsScriptName)
+        val settingsScriptContent = settingsScript(gradleVersion, gradleDsl) {
+            setProjectName(projectPath.name)
+            withFoojayPlugin()
+        }
+        settingsScriptPath.writeText(settingsScriptContent)
     }
 
     private fun overrideGradleJvmReferenceWithDefault(project: Project, externalProjectPath: String) {

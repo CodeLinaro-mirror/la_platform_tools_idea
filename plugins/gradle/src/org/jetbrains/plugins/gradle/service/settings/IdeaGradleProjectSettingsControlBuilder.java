@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.service.settings;
 
 import com.intellij.icons.AllIcons;
@@ -59,7 +59,6 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.File;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -206,8 +205,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
   }
 
   @Override
-  @NotNull
-  public GradleProjectSettings getInitialSettings() {
+  public @NotNull GradleProjectSettings getInitialSettings() {
     return myInitialSettings;
   }
 
@@ -281,14 +279,14 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
   private void deduceGradleHomeIfPossible() {
     if (myGradleHomePathField == null) return;
 
-    File gradleHome = GradleInstallationManager.getInstance().getAutodetectedGradleHome(myProjectRef.get());
+    Path gradleHome = GradleInstallationManager.getInstance().getAutodetectedGradleHome(myProjectRef.get());
     if (gradleHome == null) {
       new DelayedBalloonInfo(MessageType.WARNING, GradleLocationSettingType.UNKNOWN, BALLOON_DELAY_MILLIS).run();
       return;
     }
     myGradleHomeSettingType = GradleLocationSettingType.DEDUCED;
     new DelayedBalloonInfo(MessageType.INFO, GradleLocationSettingType.DEDUCED, BALLOON_DELAY_MILLIS).run();
-    myGradleHomePathField.setText(gradleHome.getPath());
+    myGradleHomePathField.setText(gradleHome.toString());
     myGradleHomePathField.getTextField().setForeground(GradleLocationSettingType.DEDUCED.getColor());
   }
 
@@ -418,7 +416,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       }
       else {
         Project project = myProjectRef.get();
-        if (GradleInstallationManager.getInstance().isGradleSdkHome(project, myGradleHomePathField.getText())) {
+        if (GradleInstallationManager.getInstance().isGradleSdkHome(project, Path.of(myGradleHomePathField.getText()))) {
           myGradleHomeSettingType = GradleLocationSettingType.EXPLICIT_CORRECT;
         }
         else {
@@ -433,8 +431,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
     }
   }
 
-  @Nullable
-  private DistributionType getSelectedGradleDistribution() {
+  private @Nullable DistributionType getSelectedGradleDistribution() {
     if (myGradleDistributionComboBox == null) return null;
     Object selection = myGradleDistributionComboBox.getSelectedItem();
     return selection == null ? null : ((DistributionTypeItem)selection).value;
@@ -465,7 +462,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
         myGradleHomeSettingType = GradleLocationSettingType.UNKNOWN;
         throw new ConfigurationException(GradleBundle.message("gradle.home.setting.type.explicit.empty", gradleHomePath));
       }
-      else if (!GradleInstallationManager.getInstance().isGradleSdkHome(myProjectRef.get(), new File(gradleHomePath))) {
+      else if (!GradleInstallationManager.getInstance().isGradleSdkHome(myProjectRef.get(), Path.of(gradleHomePath))) {
         myGradleHomeSettingType = GradleLocationSettingType.EXPLICIT_INCORRECT;
         new DelayedBalloonInfo(MessageType.ERROR, myGradleHomeSettingType, 0).run();
         throw new ConfigurationException(GradleBundle.message("gradle.home.setting.type.explicit.incorrect", gradleHomePath));
@@ -491,26 +488,26 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
   public void apply(GradleProjectSettings settings) {
     settings.setCompositeBuild(myInitialSettings.getCompositeBuild());
     if (myGradleHomePathField != null) {
-      String gradleHomePath = FileUtil.toCanonicalPath(myGradleHomePathField.getText());
-      File gradleHomeFile = new File(gradleHomePath);
-      String finalGradleHomePath;
-      if (GradleInstallationManager.getInstance().isGradleSdkHome(myProjectRef.get(), gradleHomeFile)) {
+      Path gradleHomePath = Path.of(FileUtil.toCanonicalPath(myGradleHomePathField.getText()));
+      Path finalGradleHomePath;
+      if (GradleInstallationManager.getInstance().isGradleSdkHome(myProjectRef.get(), gradleHomePath)) {
         finalGradleHomePath = gradleHomePath;
       }
       else {
         finalGradleHomePath = GradleInstallationManager.getInstance().suggestBetterGradleHomePath(myProjectRef.get(), gradleHomePath);
         if (finalGradleHomePath != null) {
           SwingUtilities.invokeLater(() -> {
-            myGradleHomePathField.setText(finalGradleHomePath);
+            myGradleHomePathField.setText(finalGradleHomePath.toString());
           });
         }
       }
-      if (StringUtil.isEmpty(finalGradleHomePath)) {
+      if (finalGradleHomePath == null) {
         settings.setGradleHome(null);
       }
       else {
-        settings.setGradleHome(finalGradleHomePath);
-        GradleUtil.storeLastUsedGradleHome(finalGradleHomePath);
+        String finalGradleHome = finalGradleHomePath.toString();
+        settings.setGradleHome(finalGradleHome);
+        GradleUtil.storeLastUsedGradleHome(finalGradleHome);
       }
     }
 
@@ -648,12 +645,12 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       deduceGradleHomeIfPossible();
     }
     else {
-      File gradleHomeFile = new File(gradleHome);
-      if (GradleInstallationManager.getInstance().isGradleSdkHome(project, gradleHomeFile)) {
+      Path gradleHomePath = Path.of(gradleHome);
+      if (GradleInstallationManager.getInstance().isGradleSdkHome(project, gradleHomePath)) {
         myGradleHomeSettingType = GradleLocationSettingType.EXPLICIT_CORRECT;
       }
       else {
-        myGradleHomeSettingType = GradleInstallationManager.getInstance().suggestBetterGradleHomePath(project, gradleHome) != null
+        myGradleHomeSettingType = GradleInstallationManager.getInstance().suggestBetterGradleHomePath(project, gradleHomePath) != null
                                   ? GradleLocationSettingType.EXPLICIT_CORRECT
                                   : GradleLocationSettingType.EXPLICIT_INCORRECT;
       }
@@ -691,7 +688,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
     }
   }
 
-  protected void resetGradleJdkComboBox(@Nullable final Project project,
+  protected void resetGradleJdkComboBox(final @Nullable Project project,
                                         GradleProjectSettings settings,
                                         @Nullable WizardContext wizardContext) {
     ProjectSdksModel sdksModel = new ProjectSdksModel();
@@ -910,8 +907,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
     sdksModel.setProjectSdk(projectSdk);
   }
 
-  @NotNull
-  private static GridBag getLabelConstraints(int indentLevel) {
+  private static @NotNull GridBag getLabelConstraints(int indentLevel) {
     Insets insets = JBUI.insets(0, INSETS + INSETS * indentLevel, 0, INSETS);
     return new GridBag().anchor(GridBagConstraints.WEST).weightx(0).insets(insets);
   }
@@ -942,8 +938,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
     }
   }
 
-  @NlsSafe
-  static String getIDEName() {
+  static @NlsSafe String getIDEName() {
     return ApplicationNamesInfo.getInstance().getFullProductName();
   }
 
@@ -965,34 +960,29 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       ending.getAppearance().customize(this);
     }
 
-    @NotNull
-    private static SimpleTextAttributes getTextAttributes(boolean selected) {
+    private static @NotNull SimpleTextAttributes getTextAttributes(boolean selected) {
       return selected && !(SystemInfoRt.isWindows && UIManager.getLookAndFeel().getName().contains("Windows"))
              ? SimpleTextAttributes.SELECTED_SIMPLE_CELL_ATTRIBUTES
              : SimpleTextAttributes.SIMPLE_CELL_ATTRIBUTES;
     }
 
-    @NotNull
-    private static SimpleTextAttributes getCommentAttributes(boolean selected) {
+    private static @NotNull SimpleTextAttributes getCommentAttributes(boolean selected) {
       return SystemInfo.isMac && selected
              ? new SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor.WHITE)
              : SimpleTextAttributes.GRAY_ATTRIBUTES;
     }
   }
 
-  private static abstract class MyItem<T> {
-    @Nullable
-    protected final T value;
+  private abstract static class MyItem<T> {
+    protected final @Nullable T value;
 
     private MyItem(@Nullable T value) {
       this.value = value;
     }
 
-    @NlsContexts.ListItem
-    protected abstract String getText();
+    protected abstract @NlsContexts.ListItem String getText();
 
-    @NlsContexts.ListItem
-    protected abstract String getComment();
+    protected abstract @NlsContexts.ListItem String getComment();
 
     @Override
     public boolean equals(Object o) {
@@ -1048,9 +1038,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       return Comparing.equal(value, GradleProjectSettings.DEFAULT_DELEGATE) ? GradleBundle.message("gradle.settings.text.default") : null;
     }
 
-    @NotNull
-    @NlsContexts.ListItem
-    private static String getText(@Nullable Boolean state) {
+    private static @NotNull @NlsContexts.ListItem String getText(@Nullable Boolean state) {
       if (state == Boolean.TRUE) {
         return GradleConstants.GRADLE_NAME; //NON-NLS GRADLE_NAME
       }
@@ -1080,9 +1068,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
              : null;
     }
 
-    @NotNull
-    @NlsContexts.ListItem
-    private static String getText(@Nullable TestRunner runner) {
+    private static @NotNull @NlsContexts.ListItem String getText(@Nullable TestRunner runner) {
       if (runner == TestRunner.GRADLE) {
         return GradleConstants.GRADLE_NAME;  //NON-NLS GRADLE_NAME
       }
@@ -1113,9 +1099,7 @@ public class IdeaGradleProjectSettingsControlBuilder implements GradleProjectSet
       return null;
     }
 
-    @NotNull
-    @NlsContexts.ListItem
-    private static String getText(@Nullable DistributionType value) {
+    private static @NotNull @NlsContexts.ListItem String getText(@Nullable DistributionType value) {
       if (value != null) {
         return switch (value) {
           case BUNDLED -> GradleBundle.message("gradle.project.settings.distribution.bundled");

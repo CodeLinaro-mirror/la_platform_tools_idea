@@ -5,21 +5,18 @@ import com.intellij.openapi.actionSystem.DataKey
 import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.openapi.util.Disposer
 import org.jetbrains.annotations.TestOnly
-import com.intellij.notebooks.ui.isFoldingEnabledKey
-import com.intellij.notebooks.visualization.outputs.NotebookOutputComponentFactory.Companion.gutterPainter
 import com.intellij.notebooks.visualization.outputs.NotebookOutputInlayShowable
 import com.intellij.notebooks.visualization.outputs.impl.CollapsingComponent
-import java.awt.Graphics
 import java.awt.Rectangle
 import javax.swing.JComponent
 import javax.swing.SwingUtilities
 
-val NOTEBOOK_CELL_OUTPUT_DATA_KEY = DataKey.create<EditorCellOutputView>("NOTEBOOK_CELL_OUTPUT")
+internal val NOTEBOOK_CELL_OUTPUT_DATA_KEY = DataKey.create<EditorCellOutputView>("NOTEBOOK_CELL_OUTPUT")
 
 class EditorCellOutputView internal constructor(
   private val editor: EditorImpl,
   private val component: CollapsingComponent,
-  private val toDispose: Disposable?
+  private val toDispose: Disposable?,
 ) : EditorCellViewComponent() {
 
   var collapsed: Boolean
@@ -29,7 +26,12 @@ class EditorCellOutputView internal constructor(
     }
 
   // Real UI Panel will be created lazily when folding became visible.
-  val folding: EditorCellFoldingBar = EditorCellFoldingBar(editor, ::getFoldingBounds) { component.isSeen = !component.isSeen }
+  val folding: EditorCellFoldingBar = EditorCellFoldingBar(editor, null, ::getFoldingBounds) {
+    component.isSeen = !component.isSeen
+  }
+    .also {
+      Disposer.register(this, it)
+    }
 
   @TestOnly
   fun getOutputComponent(): JComponent = component.mainComponent
@@ -41,7 +43,6 @@ class EditorCellOutputView internal constructor(
 
   override fun dispose() {
     super.dispose()
-    folding.dispose()
     toDispose?.let { Disposer.dispose(it) }
   }
 
@@ -52,24 +53,10 @@ class EditorCellOutputView internal constructor(
     component.shown = editor.scrollPane.viewport.viewRect.intersects(componentRect)
   }
 
-  fun paintGutter(editor: EditorImpl, yOffset: Int, g: Graphics, r: Rectangle) {
-    if (editor.getUserData(isFoldingEnabledKey) != true) {
-      component.paintGutter(editor, yOffset, g)
-    }
-    val mainComponent = component.mainComponent
-
-    mainComponent.gutterPainter?.let { painter ->
-      mainComponent.yOffsetFromEditor(editor)?.let { yOffset ->
-        val bounds = Rectangle(r.x, yOffset, r.width, mainComponent.height)
-        painter.paintGutter(editor, g, bounds)
-      }
-    }
-  }
-
   override fun calculateBounds(): Rectangle {
     val allCellOutputs = parent as? EditorCellOutputsView ?: return Rectangle(0, 0, 0, 0)
 
-    //Need validate because swing component can be invalid on update
+    // Need to validate because a swing component can be invalid on update
     allCellOutputs.innerComponent.validate()
 
     val inlayBounds = allCellOutputs.inlay?.bounds ?: Rectangle(0, 0, 0, 0)

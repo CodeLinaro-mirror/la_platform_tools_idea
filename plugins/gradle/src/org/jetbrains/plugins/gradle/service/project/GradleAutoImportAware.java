@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.service.project;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -37,9 +37,8 @@ import java.util.stream.Stream;
 public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
   private static final Logger LOG = Logger.getInstance(GradleAutoImportAware.class);
 
-  @Nullable
   @Override
-  public String getAffectedExternalProjectPath(@NotNull String changedFileOrDirPath, @NotNull Project project) {
+  public @Nullable String getAffectedExternalProjectPath(@NotNull String changedFileOrDirPath, @NotNull Project project) {
     if (!changedFileOrDirPath.endsWith("." + GradleConstants.EXTENSION) &&
         !changedFileOrDirPath.endsWith("." + GradleConstants.KOTLIN_DSL_SCRIPT_EXTENSION)) {
       return null;
@@ -102,11 +101,11 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
   }
 
   @Override
-  public List<File> getAffectedExternalProjectFiles(@NotNull String externalProjectPath, @NotNull Project project) {
+  public @NotNull List<File> getAffectedExternalProjectFiles(@NotNull String externalProjectPath, @NotNull Project project) {
     GradleSettings settings = GradleSettings.getInstance(project);
     GradleProjectSettings projectSettings = settings.getLinkedProjectSettings(externalProjectPath);
     if (projectSettings == null) {
-      return null;
+      return Collections.emptyList();
     }
     return GradleAutoReloadSettingsCollector.EP_NAME.getExtensionList().stream()
       .flatMap(it -> it.collectSettingsFiles(project, projectSettings).stream())
@@ -115,9 +114,8 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
 
   public static final class GradlePropertiesCollector implements GradleAutoReloadSettingsCollector {
 
-    @NotNull
     @Override
-    public List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
+    public @NotNull List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
       String gradleUserHome = ObjectUtils.chooseNotNull(
         GradleSettings.getInstance(project).getServiceDirectoryPath(),
         GradleUserHomeUtil.gradleUserHomeDir().getPath()
@@ -134,9 +132,8 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
 
   public static final class VersionCatalogCollector implements GradleAutoReloadSettingsCollector {
 
-    @NotNull
     @Override
-    public List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
+    public @NotNull List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
       String externalProjectPath = projectSettings.getExternalProjectPath();
 
       List<File> files = new SmartList<>();
@@ -154,9 +151,8 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
   }
 
   public static final class WrapperConfigCollector implements GradleAutoReloadSettingsCollector {
-    @NotNull
     @Override
-    public List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
+    public @NotNull List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
       String externalProjectPath = projectSettings.getExternalProjectPath();
 
       List<File> files = new SmartList<>();
@@ -178,9 +174,8 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
 
   public static final class GradleScriptCollector implements GradleAutoReloadSettingsCollector {
 
-    @NotNull
     @Override
-    public List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
+    public @NotNull List<File> collectSettingsFiles(@NotNull Project project, @NotNull GradleProjectSettings projectSettings) {
       List<File> files = new SmartList<>();
 
       for (String modulePath : projectSettings.getModules()) {

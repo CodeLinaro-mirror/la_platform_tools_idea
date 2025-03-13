@@ -11,26 +11,46 @@ import com.intellij.openapi.ui.DoNotAskOption
 import com.intellij.openapi.ui.MessageDialogBuilder.Companion.yesNo
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Version
-import com.intellij.ui.components.dialog
-import com.intellij.ui.dsl.builder.bindSelected
-import com.intellij.ui.dsl.builder.panel
-import com.intellij.util.ui.JBUI
+import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.jetbrains.python.PyBundle
-import com.jetbrains.python.inspections.PyPackageRequirementsInspection.InstallPackageQuickFix
+import com.jetbrains.python.inspections.quickfix.InstallPackageQuickFix
 import com.jetbrains.python.packaging.common.PythonPackage
-import com.jetbrains.python.packaging.common.runPackagingOperationOrShowErrorDialog
+import com.jetbrains.python.packaging.common.normalizePackageName
 import com.jetbrains.python.packaging.management.PythonPackageManager
+import com.jetbrains.python.packaging.ui.PyChooseRequirementsDialog
+import com.jetbrains.python.statistics.PyPackagesUsageCollector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 object PyPackageInstallUtils {
+  fun checkIsInstalled(project: Project, sdk: Sdk, packageName: String): Boolean {
+    val packageManager = PythonPackageManager.forSdk(project, sdk)
+    val normalizedName = normalizePackageName(packageName)
+    return packageManager.installedPackages.any { normalizePackageName(it.name) == normalizedName }
+  }
+
+  fun checkExistsInRepository(project: Project, sdk: Sdk, packageName: String): Boolean {
+    if (!PyPackageUtil.packageManagementEnabled(sdk, false, true)) {
+      return false
+    }
+    val packageManager = PythonPackageManager.forSdk(project, sdk)
+    val repositoryManager = packageManager.repositoryManager
+    val normalizedName = normalizePackageName(packageName)
+    return repositoryManager.allPackages().any { normalizePackageName(it) == normalizedName }
+  }
+
+
   suspend fun confirmAndInstall(project: Project, sdk: Sdk, packageName: String) {
     val isConfirmed = withContext(Dispatchers.EDT) {
       confirmInstall(project, packageName)
     }
     if (!isConfirmed)
       return
-    installPackage(project, sdk, packageName)
+    val result = withBackgroundProgress(project = project, PyBundle.message("python.packaging.installing.package", packageName),
+                                        cancellable = true) {
+      installPackage(project, sdk, packageName)
+    }
+    result.getOrThrow()
   }
 
   fun confirmInstall(project: Project, packageName: String): Boolean {
@@ -59,15 +79,26 @@ object PyPackageInstallUtils {
     return pythonPackageManager.updatePackage(packageSpecification)
   }
 
+  suspend fun initPackages(project: Project, sdk: Sdk) {
+    val pythonPackageManager = PythonPackageManager.forSdk(project, sdk)
+    if (pythonPackageManager.installedPackages.isEmpty()) {
+      withContext(Dispatchers.IO) {
+        pythonPackageManager.reloadPackages()
+      }
+    }
+  }
 
   suspend fun installPackage(project: Project, sdk: Sdk, packageName: String, version: String? = null): Result<List<PythonPackage>> {
     val pythonPackageManager = PythonPackageManager.forSdk(project, sdk)
     val packageSpecification = pythonPackageManager.repositoryManager.repositories.firstOrNull()?.createPackageSpecification(packageName, version)
                                ?: return Result.failure(Exception("Could not find any repositories"))
 
-    return pythonPackageManager.installPackage(packageSpecification, emptyList<String>())
+    return pythonPackageManager.installPackage(packageSpecification, emptyList())
   }
 
+  /**
+   * NOTE calling this functions REQUIRED init package list before the calling!
+   */
   fun getPackageVersion(project: Project, sdk: Sdk, packageName: String): Version? {
     val pythonPackage = getPackage(project, sdk, packageName)
     val version = pythonPackage?.version ?: return null
@@ -80,7 +111,9 @@ object PyPackageInstallUtils {
     packageName: String,
   ): PythonPackage? {
     val pythonPackageManager = PythonPackageManager.forSdk(project, sdk)
-    val pythonPackage = pythonPackageManager.installedPackages.firstOrNull { it.name == packageName }
+    val installedPackages = pythonPackageManager.installedPackages
+
+    val pythonPackage = installedPackages.firstOrNull { it.name == packageName }
     return pythonPackage
   }
 
@@ -99,45 +132,19 @@ object PyPackageInstallUtils {
   }
 }
 
-@Suppress("HardCodedStringLiteral")
-fun getConfirmedPackages(packageNames: List<String>): List<String> {
-  val confirmationEnabled = PropertiesComponent.getInstance().getBoolean(InstallPackageQuickFix.CONFIRM_PACKAGE_INSTALLATION_PROPERTY, true)
-  if (!confirmationEnabled) {
-    return packageNames
+internal fun getConfirmedPackages(packageNames: List<PyRequirement>, project: Project): Set<PyRequirement> {
+  val confirmationEnabled = PropertiesComponent.getInstance()
+    .getBoolean(InstallPackageQuickFix.CONFIRM_PACKAGE_INSTALLATION_PROPERTY, true)
+
+  if (!confirmationEnabled || packageNames.isEmpty()) return packageNames.toSet()
+
+  val dialog = PyChooseRequirementsDialog(project, packageNames) { it.presentableText }
+
+  if (!dialog.showAndGet()) {
+    PyPackagesUsageCollector.installAllCanceledEvent.log()
+    return emptySet()
   }
 
-  val packageRank = ApplicationManager.getApplication()
-    .getService(PyPIPackageRanking::class.java)
-    .packageRank
-
-  val (knownPackages, nonWellKnownPackages) = packageNames.partition {
-    packageRank.containsKey(it)
-  }
-
-  if (nonWellKnownPackages.isEmpty()) {
-    return packageNames
-  }
-
-  val packagesToInstall = ArrayList(packageNames)
-  val panel = panel {
-    packageNames.forEach {
-      row {
-        checkBox(it).bindSelected({ true }, { isSelected ->
-          if (isSelected)
-            packagesToInstall.add(it)
-          else
-            packagesToInstall.remove(it)
-        })
-      }
-    }
-  }
-
-  val dialog = dialog(PyBundle.message("python.packaging.dialog.title.install.package.confirmation"), panel, resizable = true)
-  dialog.contentPanel.preferredSize = JBUI.size(maxOf(dialog.contentPanel.preferredSize.width, 600), dialog.preferredSize.height)
-
-  val isOk = dialog.showAndGet()
-  if (!isOk) {
-    return emptyList()
-  }
-  return knownPackages + packagesToInstall
+  return dialog.markedElements.toSet()
 }
+

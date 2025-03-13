@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.projectRoots.impl.jdkDownloader
 
 import com.intellij.execution.wsl.WslDistributionManager
@@ -23,6 +23,10 @@ import com.intellij.openapi.roots.ui.configuration.projectRoot.SdkDownloadTask
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.platform.eel.EelApi
+import com.intellij.platform.eel.provider.LocalEelDescriptor
+import com.intellij.platform.eel.provider.getEelDescriptor
+import com.intellij.platform.eel.provider.upgradeBlocking
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.Nls
 import java.nio.file.Path
@@ -32,14 +36,20 @@ import javax.swing.JComponent
 
 private val LOG = logger<JdkDownload>()
 
-internal val JDK_DOWNLOADER_EXT: DataKey<JdkDownloaderDialogHostExtension> = DataKey.create("jdk-downloader-extension")
+@Internal
+val JDK_DOWNLOADER_EXT: DataKey<JdkDownloaderDialogHostExtension> = DataKey.create("jdk-downloader-extension")
 
-internal interface JdkDownloaderDialogHostExtension {
+@Internal
+interface JdkDownloaderDialogHostExtension {
   fun allowWsl() : Boolean = true
+
+  fun getEel(): EelApi? = null
 
   fun createMainPredicate() : JdkPredicate? = null
 
   fun createWslPredicate() : JdkPredicate? = null
+
+  fun createEelPredicate(eel: EelApi) : JdkPredicate? = null
 
   fun shouldIncludeItem(sdkType: SdkTypeId, item: JdkItem) : Boolean = true
 }
@@ -116,7 +126,16 @@ class JdkDownload : SdkDownload {
     okActionText: @NlsContexts.Button String,
   ): Pair<JdkItem, Path>? {
     val items = try {
-      val extension = extension ?: object : JdkDownloaderDialogHostExtension {}
+      val extension = extension ?: object : JdkDownloaderDialogHostExtension {
+        override fun getEel(): EelApi? {
+          if (!Registry.`is`("java.home.finder.use.eel")) {
+            return null
+          }
+          else {
+            return (project?.getEelDescriptor() ?: LocalEelDescriptor).upgradeBlocking()
+          }
+        }
+      }
       computeInBackground(project, ProjectBundle.message("progress.title.downloading.jdk.list")) {
 
         val buildModel = { predicate: JdkPredicate ->
@@ -133,7 +152,22 @@ class JdkDownload : SdkDownload {
 
         val mainModel = buildModel(extension.createMainPredicate() ?: JdkPredicate.default()) ?: return@computeInBackground null
         val wslModel = if (allowWsl && wslDistributions.isNotEmpty()) buildModel(extension.createWslPredicate() ?: JdkPredicate.forWSL()) else null
-        JdkDownloaderMergedModel(mainModel, wslModel, wslDistributions, projectWslDistribution)
+
+        val eelApi = extension.getEel()
+        val eelPair: Pair<EelApi, JdkDownloaderModel>? =
+          if (eelApi != null) {
+            buildModel(extension.createEelPredicate(eelApi) ?: JdkPredicate.forEel(eelApi))?.let { eelApi to it }
+          }
+          else null
+
+        JdkDownloaderMergedModel(
+          mainModel = mainModel,
+          wslModel = wslModel,
+          eelModel = eelPair?.second,
+          wslDistributions = wslDistributions,
+          eel = eelPair?.first,
+          projectWSLDistribution = projectWslDistribution,
+        )
       }
     }
     catch (e: Throwable) {
@@ -202,7 +236,17 @@ internal fun selectJdkAndPath(
   val projectWslDistribution = if (allowWsl) project?.basePath?.let { WslPath.getDistributionByWindowsUncPath(it) } else null
 
   val mainModel = buildJdkDownloaderModel(items) { extension.shouldIncludeItem(sdkTypeId, it) }
-  val mergedModel = JdkDownloaderMergedModel(mainModel, null, wslDistributions, projectWslDistribution)
+
+  val eelModel = null // TODO What should be here?
+
+  val mergedModel = JdkDownloaderMergedModel(
+    mainModel = mainModel,
+    wslModel = null,
+    eelModel = eelModel,
+    eel = null,
+    wslDistributions = wslDistributions,
+    projectWSLDistribution = projectWslDistribution,
+  )
 
   if (project?.isDisposed == true) return null
 

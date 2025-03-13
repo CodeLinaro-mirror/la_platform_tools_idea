@@ -6,7 +6,7 @@ import com.intellij.codeInsight.completion.PrioritizedLookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.observable.properties.AtomicBooleanProperty
@@ -15,7 +15,10 @@ import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBColor
-import com.intellij.ui.dsl.builder.*
+import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.Cell
+import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.dsl.builder.text
 import com.intellij.util.TextFieldCompletionProvider
 import com.intellij.util.ui.UIUtil
 import com.jetbrains.python.PyBundle
@@ -36,7 +39,7 @@ import javax.swing.JPanel
 open class PyDataViewerPanel(@JvmField protected val project: Project, val frameAccessor: PyFrameAccessor) :
   JPanel(BorderLayout()), Disposable {
 
-  protected val tablePanel = JPanel(BorderLayout())
+  protected val tablePanel: JPanel = JPanel(BorderLayout())
 
   protected var table: AbstractDataViewTable? = null
 
@@ -114,10 +117,8 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
   init {
     PyDataViewCompletionProvider().apply(sliceTextFieldOldTable)
 
-    val panel = panel {
-      row {
-        cell(tablePanel).align(Align.FILL).resizableColumn()
-      }.resizableRow()
+    add(tablePanel, BorderLayout.CENTER)
+    add(panel {
       row {
         cell(sliceTextFieldOldTable).align(AlignX.FILL).resizableColumn()
         label(PyBundle.message("form.data.viewer.format"))
@@ -126,14 +127,12 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
       row {
         errorLabel = text("").apply { component.setForeground(JBColor.RED) }
       }
-    }
-
-    add(panel, BorderLayout.CENTER)
+    }, BorderLayout.SOUTH)
 
     setupChangeListener()
   }
 
-  override fun dispose() = Unit
+  override fun dispose(): Unit = Unit
 
   private fun isVariablePresentInStack(): Boolean {
     val values = frameAccessor.loadFrame(null) ?: return true
@@ -189,7 +188,11 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
   protected open fun getOrCreateMainTable(): AbstractDataViewTable {
     val mainTable = JBTableWithRowHeaders(PyDataView.isAutoResizeEnabled(project))
     mainTable.scrollPane.border = BorderFactory.createEmptyBorder()
-    tablePanel.add(mainTable.scrollPane, BorderLayout.CENTER)
+    tablePanel.apply {
+      add(mainTable.scrollPane, BorderLayout.CENTER)
+      revalidate()
+      repaint()
+    }
     table = mainTable
     return mainTable
   }
@@ -245,22 +248,22 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
         ApplicationManager.getApplication().invokeLater { setError(e.localizedMessage, modifier) } //NON-NLS
       }
       catch (e: PyDebuggerException) {
-        LOG.error(e)
+        thisLogger().error(e)
       }
       catch (e: Exception) {
         if (e.message?.let { "Numpy is not available" in it } == true) {
           setError(PyBundle.message("debugger.data.view.numpy.is.not.available", type), modifier)
         }
-        LOG.error(e)
+        thisLogger().error(e)
       }
     }
   }
 
   @Throws(PyDebuggerException::class)
-  protected open fun doStrategyInitExecution(frameAccessor: PyFrameAccessor, strategy: DataViewStrategy) = Unit
+  protected open fun doStrategyInitExecution(frameAccessor: PyFrameAccessor, strategy: DataViewStrategy): Unit = Unit
 
   // Chunk currently could be null when we are trying to view, for example,  pandas dataframe.
-  protected open fun updateTabNameAndSliceField(chunk: ArrayChunk?, originalDebugValue: PyDebugValue, modifier: Boolean) {
+  protected fun updateTabNameAndSliceField(chunk: ArrayChunk?, originalDebugValue: PyDebugValue, modifier: Boolean) {
     // Debugger generates a temporary name for every slice evaluation, so we should select a correct name for it
     val debugValue = chunk?.value
     val realName = if (debugValue == null || debugValue.name == originalDebugValue.tempName) originalDebugValue.name else chunk.slicePresentation
@@ -288,8 +291,10 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
     }
   }
 
-  protected open fun updateUI(chunk: ArrayChunk, originalDebugValue: PyDebugValue,
-                              strategy: DataViewStrategy, modifier: Boolean) {
+  protected open fun updateUI(
+    chunk: ArrayChunk, originalDebugValue: PyDebugValue,
+    strategy: DataViewStrategy, modifier: Boolean,
+  ) {
     val debugValue = chunk.value
     val model = strategy.createTableModel(chunk.rows, chunk.columns, this, debugValue)
     model.addToCache(chunk)
@@ -368,7 +373,7 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
     fun onNameChanged(name: @NlsContexts.TabTitle String)
   }
 
-  private inner class PyDataViewCompletionProvider : TextFieldCompletionProvider() {
+  protected inner class PyDataViewCompletionProvider : TextFieldCompletionProvider() {
     override fun addCompletionVariants(text: String, offset: Int, prefix: String, result: CompletionResultSet) {
       val values = availableValues.sortedBy { obj: PyDebugValue -> obj.name }
       for (i in values.indices) {
@@ -392,16 +397,15 @@ open class PyDataViewerPanel(@JvmField protected val project: Project, val frame
           }
         }
         catch (e: Exception) {
-          LOG.error(e)
+          thisLogger().error(e)
         }
         return values
       }
   }
 
-  open fun closeEditorTabs() {}
+  open fun closeEditorTabs(): Unit = Unit
 
   companion object {
-    private val LOG = Logger.getInstance(PyDataViewerPanel::class.java)
     private const val MODIFIED_VARIABLE_FORMAT = "%s*"
   }
 }
