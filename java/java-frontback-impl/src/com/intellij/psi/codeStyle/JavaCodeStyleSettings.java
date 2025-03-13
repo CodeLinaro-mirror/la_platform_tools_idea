@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.psi.codeStyle;
 
 import com.intellij.application.options.CodeStyle;
@@ -10,6 +10,7 @@ import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiModifier;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings.WrapConstant;
+import com.intellij.util.containers.ContainerUtil;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
@@ -57,7 +58,7 @@ public class JavaCodeStyleSettings extends CustomCodeStyleSettings implements Im
   public boolean GENERATE_FINAL_PARAMETERS;
 
   @PsiModifier.ModifierConstant
-  public String VISIBILITY = "public";
+  public String VISIBILITY = PsiModifier.PUBLIC;
 
   public boolean USE_EXTERNAL_ANNOTATIONS;
   public boolean GENERATE_USE_TYPE_ANNOTATION_BEFORE_TYPE = true;
@@ -170,6 +171,8 @@ public class JavaCodeStyleSettings extends CustomCodeStyleSettings implements Im
 
   // Imports
   public boolean LAYOUT_STATIC_IMPORTS_SEPARATELY = true;
+  public boolean LAYOUT_ON_DEMAND_IMPORT_FROM_SAME_PACKAGE_FIRST = true;
+  public boolean PRESERVE_MODULE_IMPORTS = true;
   public boolean USE_FQ_CLASS_NAMES;
   public boolean USE_SINGLE_CLASS_IMPORTS = true;
   public boolean INSERT_INNER_CLASS_IMPORTS;
@@ -288,7 +291,14 @@ public class JavaCodeStyleSettings extends CustomCodeStyleSettings implements Im
   @Override
   public void setLayoutStaticImportsSeparately(boolean value) {
     LAYOUT_STATIC_IMPORTS_SEPARATELY = value;
+  }
 
+  public boolean isLayoutOnDemandImportFromSamePackageFirst() {
+    return LAYOUT_ON_DEMAND_IMPORT_FROM_SAME_PACKAGE_FIRST;
+  }
+
+  public void setLayoutOnDemandImportFromSamePackageFirst(boolean value) {
+    this.LAYOUT_ON_DEMAND_IMPORT_FROM_SAME_PACKAGE_FIRST = value;
   }
 
   @Override
@@ -330,6 +340,14 @@ public class JavaCodeStyleSettings extends CustomCodeStyleSettings implements Im
     return USE_SINGLE_CLASS_IMPORTS;
   }
 
+  public boolean isPreserveModuleImports() {
+    return PRESERVE_MODULE_IMPORTS;
+  }
+
+  public void setPreserveModuleImports(boolean value) {
+    PRESERVE_MODULE_IMPORTS = value;
+  }
+
   @Override
   public void setUseSingleClassImports(boolean value) {
     USE_SINGLE_CLASS_IMPORTS = value;
@@ -358,6 +376,11 @@ public class JavaCodeStyleSettings extends CustomCodeStyleSettings implements Im
   private void initImportsByDefault() {
     PACKAGES_TO_USE_IMPORT_ON_DEMAND.addEntry(new PackageEntry(false, "java.awt", false));
     PACKAGES_TO_USE_IMPORT_ON_DEMAND.addEntry(new PackageEntry(false,"javax.swing", false));
+    initImportLayout();
+  }
+
+  private void initImportLayout() {
+    IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.ALL_MODULE_IMPORTS);
     IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.ALL_OTHER_IMPORTS_ENTRY);
     IMPORT_LAYOUT_TABLE.addEntry(PackageEntry.BLANK_LINE_ENTRY);
     IMPORT_LAYOUT_TABLE.addEntry(new PackageEntry(false, "javax", true));
@@ -434,6 +457,33 @@ public class JavaCodeStyleSettings extends CustomCodeStyleSettings implements Im
     readExternalCollection(parentElement, myDoNotImportInner, DO_NOT_IMPORT_INNER, DO_NOT_IMPORT_INNER_ITEM);
     myOldVersion = myVersion = CustomCodeStyleSettingsUtils.readVersion(parentElement.getChild(getTagName()));
     myIsInitialized = true;
+    PackageEntry[] entries = IMPORT_LAYOUT_TABLE.getEntries();
+    //if it is broken, try to restore
+    if (entries.length == 0) {
+      initImportLayout();
+    }
+    else {
+      //if something is missed, restore it
+      if (LAYOUT_STATIC_IMPORTS_SEPARATELY && !ContainerUtil.exists(entries, entry -> entry == PackageEntry.ALL_OTHER_STATIC_IMPORTS_ENTRY)) {
+        if (entries[0] == PackageEntry.ALL_MODULE_IMPORTS) {
+          IMPORT_LAYOUT_TABLE.insertEntryAt(PackageEntry.ALL_OTHER_STATIC_IMPORTS_ENTRY, 1);
+        }
+        else {
+          IMPORT_LAYOUT_TABLE.insertEntryAt(PackageEntry.ALL_OTHER_STATIC_IMPORTS_ENTRY, 0);
+        }
+      }
+      if (!ContainerUtil.exists(entries, entry -> entry == PackageEntry.ALL_OTHER_IMPORTS_ENTRY)) {
+        if (entries[0] == PackageEntry.ALL_MODULE_IMPORTS) {
+          IMPORT_LAYOUT_TABLE.insertEntryAt(PackageEntry.ALL_OTHER_IMPORTS_ENTRY, 1);
+        }
+        else {
+          IMPORT_LAYOUT_TABLE.insertEntryAt(PackageEntry.ALL_OTHER_IMPORTS_ENTRY, 0);
+        }
+      }
+      if (!ContainerUtil.exists(entries, entry -> entry == PackageEntry.ALL_MODULE_IMPORTS)) {
+        IMPORT_LAYOUT_TABLE.insertEntryAt(PackageEntry.ALL_MODULE_IMPORTS, 0);
+      }
+    }
   }
 
   @Override

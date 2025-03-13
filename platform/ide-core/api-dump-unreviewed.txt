@@ -1943,6 +1943,16 @@ a:com.intellij.openapi.ui.DoNotAskOption$Adapter
 - a:rememberChoice(Z,I):V
 - f:setToBeShown(Z,I):V
 - shouldSaveOptionsOnCancel():Z
+e:com.intellij.openapi.ui.ExitActionType
+- java.lang.Enum
+- sf:CANCEL:com.intellij.openapi.ui.ExitActionType
+- sf:NO:com.intellij.openapi.ui.ExitActionType
+- sf:OK:com.intellij.openapi.ui.ExitActionType
+- sf:UNDEFINED:com.intellij.openapi.ui.ExitActionType
+- sf:YES:com.intellij.openapi.ui.ExitActionType
+- s:getEntries():kotlin.enums.EnumEntries
+- s:valueOf(java.lang.String):com.intellij.openapi.ui.ExitActionType
+- s:values():com.intellij.openapi.ui.ExitActionType[]
 f:com.intellij.openapi.ui.MessageConstants
 - sf:CANCEL:I
 - sf:NO:I
@@ -1961,6 +1971,7 @@ a:com.intellij.openapi.ui.MessageDialogBuilder
 - pf:getDoNotAskOption():com.intellij.openapi.ui.DoNotAskOption
 - pf:getHelpId():java.lang.String
 - pf:getIcon():javax.swing.Icon
+- pf:getInvocationPlace():java.lang.String
 - pf:getMessage():java.lang.String
 - pf:getNoText():java.lang.String
 - pf:getParentComponent():java.awt.Component
@@ -1975,6 +1986,7 @@ a:com.intellij.openapi.ui.MessageDialogBuilder
 - pf:setDoNotAskOption(com.intellij.openapi.ui.DoNotAskOption):V
 - pf:setHelpId(java.lang.String):V
 - pf:setIcon(javax.swing.Icon):V
+- pf:setInvocationPlace(java.lang.String):V
 - pf:setNoText(java.lang.String):V
 - pf:setParentComponent(java.awt.Component):V
 - pf:setProject(com.intellij.openapi.project.Project):V

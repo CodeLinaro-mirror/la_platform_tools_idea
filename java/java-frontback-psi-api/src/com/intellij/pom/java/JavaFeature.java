@@ -117,7 +117,16 @@ public enum JavaFeature {
   IMPLICIT_IMPORT_IN_IMPLICIT_CLASSES(LanguageLevel.JDK_23_PREVIEW, "feature.implicit.import.in.implicit.classes"),
   PRIMITIVE_TYPES_IN_PATTERNS(LanguageLevel.JDK_23_PREVIEW, "feature.primitive.types.in.patterns"),
 
+  //see together with PACKAGE_IMPORTS_SHADOW_MODULE_IMPORTS and TRANSITIVE_DEPENDENCY_ON_JAVA_BASE
   MODULE_IMPORT_DECLARATIONS(LanguageLevel.JDK_23_PREVIEW, "feature.module.import.declarations"),
+
+  /**
+   * Usually, this type of comments is shown as Javadoc despite language level.
+   * This option can be used only to adjust behavior for cases with conflicts between different types of comments (markdown and old-style)
+   */
+  MARKDOWN_COMMENT(LanguageLevel.JDK_23, "feature.markdown.comment"),
+  PACKAGE_IMPORTS_SHADOW_MODULE_IMPORTS(LanguageLevel.JDK_24_PREVIEW, "feature.package.import.shadow.module.import"),
+  TRANSITIVE_DEPENDENCY_ON_JAVA_BASE(LanguageLevel.JDK_24_PREVIEW, "feature.package.transitive.dependency.on.java.base"),
   ;
 
   private final @NotNull LanguageLevel myLevel;
