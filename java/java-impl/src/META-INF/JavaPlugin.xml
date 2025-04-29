@@ -430,6 +430,7 @@
     <virtualFileSystem implementationClass="com.intellij.openapi.vfs.impl.jrt.JrtFileSystemImpl" key="jrt" physical="true"/>
 
     <registryKey key="use.jdk.vendor.in.suggested.jdk.name" defaultValue="true" description="Include Vendor name in suggested SDK names"/>
+    <registryKey key="java.exceptions.anniversary.banner" defaultValue="[on*|off|force]" description="Show the java anniversary banner in the console"/>
 
     <sdkType implementation="com.intellij.openapi.projectRoots.impl.JavaSdkImpl"/>
 
@@ -937,6 +938,7 @@
     <consoleFilterProvider implementation="com.intellij.execution.impl.JavaDebuggerConsoleFilterProvider"/>
     <jvm.exceptionFilter implementation="com.intellij.debugger.impl.attach.JavaDebuggerAddExceptionBreakpointFilter"/>
     <jvm.exceptionFilter implementation="com.intellij.execution.filters.NavigateToExceptionClassFilter"/>
+    <jvm.exceptionFilter implementation="com.intellij.execution.filters.JavaExceptionFilter"/>
 
     <xdebugger.breakpointType implementation="com.intellij.debugger.ui.breakpoints.JavaCollectionBreakpointType"/>
     <xdebugger.breakpointType implementation="com.intellij.debugger.ui.breakpoints.JavaMethodBreakpointType"/>
