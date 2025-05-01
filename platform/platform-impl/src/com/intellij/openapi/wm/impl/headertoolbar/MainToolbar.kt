@@ -39,13 +39,13 @@ import com.intellij.platform.diagnostic.telemetry.impl.span
 import com.intellij.ui.*
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.ui.mac.touchbar.TouchbarSupport
+import com.intellij.util.containers.ConcurrentList
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.ui.JBInsets
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.JBUI.CurrentTheme.Toolbar.mainToolbarButtonInsets
 import com.intellij.util.ui.showingScope
 import com.jetbrains.WindowDecorations
-import fleet.multiplatform.shims.ConcurrentHashSet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -55,6 +55,7 @@ import java.awt.*
 import java.awt.event.MouseEvent
 import java.lang.ref.WeakReference
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import javax.accessibility.AccessibleContext
 import javax.accessibility.AccessibleRole
 import javax.swing.Icon
@@ -108,7 +109,8 @@ class MainToolbar(
   private val isFullScreen: () -> Boolean,
 ) : JPanel(HorizontalLayout(layoutGap)) {
   private val flavor: MainToolbarFlavor
-  private val widthCalculationListeners = ConcurrentHashSet<ToolbarWidthCalculationListener>()
+  private val widthCalculationListeners = mutableSetOf<ToolbarWidthCalculationListener>()
+  private val cachedWidths by lazy { ConcurrentHashMap<String, Int>() }
 
   init {
     this.background = background
@@ -129,9 +131,21 @@ class MainToolbar(
       preferredSizeFunction = { component ->
         when (component) {
           is ActionToolbar -> {
-            notifyToolbarWidthCalculation(ToolbarWidthCalculationEvent(this@MainToolbar))
-            val availableSize = Dimension(this@MainToolbar.width - 4 * JBUI.scale(layoutGap), this@MainToolbar.height)
-            CompressingLayoutStrategy.distributeSize(availableSize, components.filterIsInstance<ActionToolbar>()).getValue(component)
+            val mainToolbarWidth = this@MainToolbar.width
+            val availableSize = Dimension(mainToolbarWidth - 4 * JBUI.scale(layoutGap), this@MainToolbar.height)
+            val sizeMap = CompressingLayoutStrategy.distributeSize(availableSize, components.filterIsInstance<ActionToolbar>())
+            val dimension = sizeMap.getValue(component)
+
+            if (widthCalculationListeners.isNotEmpty()) {
+              val componentText = (component as ActionToolbar).actionGroup.templatePresentation.text
+              val cachedWidth = cachedWidths[componentText]
+              if (dimension.width != cachedWidth || cachedWidths[MAIN_TOOLBAR_ID] != mainToolbarWidth) {
+                notifyToolbarWidthCalculation(ToolbarWidthCalculationEvent(this@MainToolbar))
+                cachedWidths.put(componentText, dimension.width)
+                cachedWidths.put(MAIN_TOOLBAR_ID, mainToolbarWidth)
+              }
+            }
+            dimension
           }
           else -> {
             component.preferredSize
@@ -399,10 +413,6 @@ class MyActionToolbarImpl(group: ActionGroup, customizationGroup: ActionGroup?)
         }
       }
     }
-  }
-
-  override fun updateActionsOnAdd() {
-    // do nothing - called explicitly
   }
 
   fun updateActions() {
