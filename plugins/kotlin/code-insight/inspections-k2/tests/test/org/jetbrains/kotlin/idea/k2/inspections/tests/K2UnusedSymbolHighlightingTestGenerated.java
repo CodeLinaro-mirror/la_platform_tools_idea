@@ -152,6 +152,11 @@ public abstract class K2UnusedSymbolHighlightingTestGenerated extends AbstractK2
         public void testSecondaryConstructorUnused() throws Exception {
             runTest("../../../idea/tests/testData/inspectionsLocal/unusedSymbol/multifile/secondaryConstructorUnused.kt");
         }
+
+        @TestMetadata("textUsagesClass.kt")
+        public void testTextUsagesClass() throws Exception {
+            runTest("../../../idea/tests/testData/inspectionsLocal/unusedSymbol/multifile/textUsagesClass.kt");
+        }
     }
 
     @RunWith(JUnit3RunnerWithInners.class)
@@ -275,6 +280,11 @@ public abstract class K2UnusedSymbolHighlightingTestGenerated extends AbstractK2
         @TestMetadata("contextReceiver.kt")
         public void testContextReceiver() throws Exception {
             runTest("../../../idea/tests/testData/inspectionsLocal/unusedSymbol/contextReceiver.kt");
+        }
+
+        @TestMetadata("dataClassByPrimaryConstructor.kt")
+        public void testDataClassByPrimaryConstructor() throws Exception {
+            runTest("../../../idea/tests/testData/inspectionsLocal/unusedSymbol/dataClassByPrimaryConstructor.kt");
         }
 
         @TestMetadata("dataInlineClassDeclarationk1.kt")
@@ -615,6 +625,11 @@ public abstract class K2UnusedSymbolHighlightingTestGenerated extends AbstractK2
         @TestMetadata("suppressedClass.kt")
         public void testSuppressedClass() throws Exception {
             runTest("../../../idea/tests/testData/inspectionsLocal/unusedSymbol/suppressedClass.kt");
+        }
+
+        @TestMetadata("textUsages.kt")
+        public void testTextUsages() throws Exception {
+            runTest("../../../idea/tests/testData/inspectionsLocal/unusedSymbol/textUsages.kt");
         }
 
         @TestMetadata("typeAlias.kt")
