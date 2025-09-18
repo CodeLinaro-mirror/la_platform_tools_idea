@@ -4,35 +4,44 @@ package org.jetbrains.intellij.build.io
 import com.dynatrace.hash4j.hashing.Hashing
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufAllocator
+import java.util.zip.ZipEntry
 
 internal const val INDEX_FORMAT_VERSION: Byte = 4
 
-class ZipIndexWriter(@JvmField val indexWriter: IkvIndexBuilder?) {
-  @JvmField
-  val buffer: ByteBuf = ByteBufAllocator.DEFAULT.directBuffer(512 * 1024)
+class ZipIndexWriter(@JvmField val packageIndexBuilder: PackageIndexBuilder?, allocator: ByteBufAllocator = byteBufferAllocator) {
+  private var buffer: ByteBuf? = allocator.directBuffer(64 * 1024)
 
-  internal var entryCount = 0
-    private set
+  private var entryCount = 0
 
-  private var isReleased = false
+  @Synchronized
+  fun isEmpty(): Boolean = entryCount == 0
 
-  fun writeCentralFileHeader(
-    size: Int,
-    compressedSize: Int,
-    method: Int,
-    crc: Long,
-    name: ByteArray,
-    localFileHeaderOffset: Long,
-    dataOffset: Long,
-    normalName: ByteArray = name,
-  ) {
+  fun writeCentralFileHeader(path: ByteArray, size: Int, crc: Long, headerOffset: Long) {
+    writeCentralFileHeader(
+      path = path,
+      size = size,
+      compressedSize = size,
+      method = ZipEntry.STORED,
+      crc = crc,
+      headerOffset = headerOffset,
+      dataOffset = 30 + path.size + headerOffset,
+    )
+  }
+
+  @Synchronized
+  fun writeCentralFileHeader(path: ByteArray, size: Int, compressedSize: Int, method: Int, crc: Long, headerOffset: Long, dataOffset: Long) {
+    val buffer = buffer!!
     entryCount++
-    buffer.ensureWritable(46 + name.size)
+    buffer.ensureWritable(46 + path.size)
 
     buffer.writeIntLE(0x02014b50)
-    // Version made by (2), Version needed to extract (2), General purpose bit flag (2)
+    // Version made by (2) - high byte Unix, low byte version 2.0 see https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT for more details
     buffer.writeShortLE(0x0314)
+    // Version needed to extract (2). The version gets encoded as 10 * major + minor % 10, so for version 2.0 this is 20 or 0x0014 hex.
+    // While some of these are stored as is i.e. ZipEntry.STORED (not using the deflate compression algorithm) i.e. support version 1
+    // version 2 is over 30 years old and is needed for directories
     buffer.writeShortLE(0x0014)
+    // General purpose bit flag (2) set bit 11 so that target systems know to use UTF-8 when decoding
     buffer.writeShortLE(0x0800)
     // compression method
     buffer.writeShortLE(method)
@@ -45,25 +54,66 @@ class ZipIndexWriter(@JvmField val indexWriter: IkvIndexBuilder?) {
     // uncompressed size
     buffer.writeIntLE(size)
 
+    val indexWriter = packageIndexBuilder?.indexWriter
     if (indexWriter != null) {
-      indexWriter.add(IkvIndexEntry(longKey = Hashing.xxh3_64().hashBytesToLong(normalName), offset = dataOffset, size = size))
-      indexWriter.names.add(normalName)
+      indexWriter.add(IkvIndexEntry(longKey = Hashing.xxh3_64().hashBytesToLong(path), offset = dataOffset, size = size))
+      indexWriter.names.add(path)
     }
 
     // file name length
-    buffer.writeShortLE((name.size and 0xffff))
-    // Extra field length (2), File comment length (2), Disk number where a file starts (or 0xffff for ZIP64)(2), Internal file attributes (2), External file attributes(4)
+    buffer.writeShortLE((path.size and 0xffff))
+    // Extra field length (2), File comment length (2), Disk number where a file starts (or 0xffff for ZIP64)(2), Internal file attributes (2)
     buffer.writeZero(8)
-    val isDir = name.lastOrNull() == '/'.code.toByte()
-    val unixAttributes = if (isDir) 0x41ed0000L else 0x81a40000L
-    buffer.writeIntLE(unixAttributes.toInt())
+    // External file attributes(4) file, permissions=rw-r--r--
+    buffer.writeIntLE(0x81a40000L.toInt())
     // relative offset of local file header
-    buffer.writeIntLE((localFileHeaderOffset and 0xffffffffL).toInt())
+    buffer.writeIntLE((headerOffset and 0xffffffffL).toInt())
     // file name
-    buffer.writeBytes(name)
+    buffer.writeBytes(path)
   }
 
-  fun finish(centralDirectoryOffset: Long, indexWriter: IkvIndexBuilder?, indexOffset: Int) {
+  @Synchronized
+  internal fun writeCentralFileHeaderForDirectory(path: ByteArray, headerOffset: Long) {
+    val buffer = buffer!!
+    entryCount++
+    val nameSize = path.size + 1
+    buffer.ensureWritable(46 + nameSize)
+
+    buffer.writeIntLE(0x02014b50)
+    // Version made by (2), Version needed to extract (2), General purpose bit flag (2),
+    // Version made by
+    buffer.writeShortLE(0x0314)
+    // Version needed to extract (minimum)
+    buffer.writeShortLE(0x0014)
+    //general purpose bit flag (utf-8)
+    buffer.writeShortLE(0x0800)
+    // compression method
+    // File last modification time (2), File last modification date(2), CRC-32 of uncompressed data
+    // compressed size, uncompressed size
+    buffer.writeZero(18)
+    // file name length
+    buffer.writeShortLE((nameSize and 0xffff))
+    // Extra field length (2), File comment length (2), Disk number where a file starts (or 0xffff for ZIP64)(2),
+    // Internal file attributes (2)
+    buffer.writeZero(8)
+    // External file attributes(4) directory, permissions=rwxr-xr-x
+    buffer.writeIntLE(0x41ed0000L.toInt())
+    // relative offset of local file header
+    buffer.writeIntLE((headerOffset and 0xffffffffL).toInt())
+    // file name
+    buffer.writeBytes(path)
+    buffer.writeByte('/'.code)
+
+    val indexWriter = packageIndexBuilder?.indexWriter
+    if (indexWriter != null) {
+      indexWriter.add(IkvIndexEntry(longKey = Hashing.xxh3_64().hashBytesToLong(path), offset = -1, size = 0))
+      indexWriter.names.add(path)
+    }
+  }
+
+  @Synchronized
+  fun finish(centralDirectoryOffset: Long, indexDataEnd: Int): ByteBuf {
+    val buffer = buffer!!
     val centralDirectoryLength = buffer.readableBytes()
     if (entryCount < 65_535) {
       // write an end of central directory record (EOCD)
@@ -80,6 +130,7 @@ class ZipIndexWriter(@JvmField val indexWriter: IkvIndexBuilder?) {
       buffer.writeIntLE((centralDirectoryOffset and 0xffffffffL).toInt())
 
       // comment length
+      val indexWriter = packageIndexBuilder?.indexWriter
       if (indexWriter == null) {
         buffer.writeZero(2)
       }
@@ -87,88 +138,91 @@ class ZipIndexWriter(@JvmField val indexWriter: IkvIndexBuilder?) {
         buffer.writeShortLE(Byte.SIZE_BYTES + Integer.BYTES)
         // version
         buffer.writeByte(INDEX_FORMAT_VERSION.toInt())
-        buffer.writeIntLE(indexOffset)
+        buffer.writeIntLE(indexDataEnd)
       }
     }
     else {
       writeZip64End(
+        buffer = buffer,
         entryCount = entryCount,
         centralDirectoryLength = centralDirectoryLength,
         centralDirectoryOffset = centralDirectoryOffset,
-        optimizedMetadataOffset = indexOffset,
+        optimizedMetadataOffset = indexDataEnd,
       )
     }
+    return buffer
   }
 
-  private fun writeZip64End(
-    entryCount: Int,
-    centralDirectoryLength: Int,
-    centralDirectoryOffset: Long,
-    optimizedMetadataOffset: Int,
-  ) {
-    buffer.writeIntLE(0x06064b50)
-    // size of - will be written later
-    val eocdSizePosition = buffer.writerIndex()
-    buffer.writeLongLE(0)
-    val eocdSizeCalculationStartPosition = buffer.writerIndex()
-    // Version made by
-    buffer.writeShortLE(0)
-    // Version needed to extract (minimum)
-    buffer.writeShortLE(0)
-    // Disk number
-    buffer.writeIntLE(0)
-    // Disk where the central directory starts
-    buffer.writeIntLE(0)
-    // Number of central directory records on this disk
-    buffer.writeLongLE(entryCount.toLong())
-    // Total number of central directory records
-    buffer.writeLongLE(entryCount.toLong())
-    // Size of central directory (bytes)
-    buffer.writeLongLE(centralDirectoryLength.toLong())
-    // central directory start offset, relative to start of archive
-    buffer.writeLongLE(centralDirectoryOffset)
-
-    // comment length
-    if (optimizedMetadataOffset != -1) {
-      // version
-      buffer.writeByte(INDEX_FORMAT_VERSION.toInt())
-      buffer.writeIntLE(optimizedMetadataOffset)
-    }
-
-    buffer.setLongLE(eocdSizePosition, (buffer.writerIndex() - eocdSizeCalculationStartPosition).toLong())
-
-    // Zip64 end of central directory locator
-    buffer.writeIntLE(0x07064b50)
-    // disk number with the start of the zip64 end of central directory
-    buffer.writeIntLE(0)
-    // relative offset of the zip64 end of central directory record
-    buffer.writeLongLE(centralDirectoryOffset + centralDirectoryLength)
-    // total number of disks
-    buffer.writeIntLE(1)
-
-    // write EOCD (EOCD is required even if we write EOCD64)
-    buffer.writeIntLE(0x06054b50)
-    // disk number (short)
-    buffer.writeShortLE(0xffff)
-    // disk where the central directory starts (short)
-    buffer.writeShortLE(0xffff)
-    // number of central directory records on this disk
-    buffer.writeShortLE(0xffff)
-    // total number of central directory records
-    buffer.writeShortLE(0xffff)
-    // Size of central directory (bytes) (or 0xffffffff for ZIP64)
-    buffer.writeIntLE(0xffffffff.toInt())
-    // central directory offset start, relative to start of archive
-    buffer.writeIntLE(0xffffffff.toInt())
-    // comment length
-    buffer.writeShortLE(0)
-  }
-
+  @Synchronized
   fun release() {
-    if (!isReleased) {
-      buffer.release()
-      isReleased = true
+    buffer?.let {
+      buffer = null
+      it.release()
     }
   }
 }
 
+private fun writeZip64End(
+  entryCount: Int,
+  centralDirectoryLength: Int,
+  centralDirectoryOffset: Long,
+  optimizedMetadataOffset: Int,
+  buffer: ByteBuf,
+) {
+  buffer.writeIntLE(0x06064b50)
+  // size of - will be written later
+  val eocdSizePosition = buffer.writerIndex()
+  buffer.writeLongLE(0)
+  val eocdSizeCalculationStartPosition = buffer.writerIndex()
+  // Version made by
+  buffer.writeShortLE(0x0314)
+  // Version needed to extract (minimum)
+  buffer.writeShortLE(0x0014)
+  // Disk number
+  buffer.writeIntLE(0)
+  // Disk where the central directory starts
+  buffer.writeIntLE(0)
+  // Number of central directory records on this disk
+  buffer.writeLongLE(entryCount.toLong())
+  // Total number of central directory records
+  buffer.writeLongLE(entryCount.toLong())
+  // Size of central directory (bytes)
+  buffer.writeLongLE(centralDirectoryLength.toLong())
+  // central directory start offset, relative to start of archive
+  buffer.writeLongLE(centralDirectoryOffset)
+
+  // comment length
+  if (optimizedMetadataOffset != -1) {
+    // version
+    buffer.writeByte(INDEX_FORMAT_VERSION.toInt())
+    buffer.writeIntLE(optimizedMetadataOffset)
+  }
+
+  buffer.setLongLE(eocdSizePosition, (buffer.writerIndex() - eocdSizeCalculationStartPosition).toLong())
+
+  // Zip64 end of central directory locator
+  buffer.writeIntLE(0x07064b50)
+  // disk number with the start of the zip64 end of central directory
+  buffer.writeIntLE(0)
+  // relative offset of the zip64 end of central directory record
+  buffer.writeLongLE(centralDirectoryOffset + centralDirectoryLength)
+  // total number of disks
+  buffer.writeIntLE(1)
+
+  // write EOCD (EOCD is required even if we write EOCD64)
+  buffer.writeIntLE(0x06054b50)
+  // disk number (short)
+  buffer.writeShortLE(0xffff)
+  // disk where the central directory starts (short)
+  buffer.writeShortLE(0xffff)
+  // number of central directory records on this disk
+  buffer.writeShortLE(0xffff)
+  // total number of central directory records
+  buffer.writeShortLE(0xffff)
+  // Size of central directory (bytes) (or 0xffffffff for ZIP64)
+  buffer.writeIntLE(0xffffffff.toInt())
+  // central directory offset start, relative to start of archive
+  buffer.writeIntLE(0xffffffff.toInt())
+  // comment length
+  buffer.writeShortLE(0)
+}

@@ -1,7 +1,9 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+@file:OptIn(IntellijInternalApi::class)
+
 package com.intellij.util.indexing.contentQueue
 
-import com.intellij.openapi.application.readAction
+import com.intellij.openapi.application.readActionUndispatched
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.ThrottledLogger
 import com.intellij.openapi.fileTypes.FileTypeRegistry
@@ -9,9 +11,12 @@ import com.intellij.openapi.progress.Cancellation
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
+import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.io.FileUtilRt
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.InvalidVirtualFileAccessException
 import com.intellij.openapi.vfs.VfsUtil
@@ -25,6 +30,7 @@ import com.intellij.platform.diagnostic.telemetry.Scope
 import com.intellij.platform.diagnostic.telemetry.TelemetryManager
 import com.intellij.platform.diagnostic.telemetry.helpers.useWithScope
 import com.intellij.util.PathUtil
+import com.intellij.util.SystemProperties
 import com.intellij.util.SystemProperties.getBooleanProperty
 import com.intellij.util.indexing.*
 import com.intellij.util.indexing.IndexingFlag.unlockFile
@@ -37,6 +43,7 @@ import com.intellij.util.indexing.diagnostic.IndexStatisticGroup
 import com.intellij.util.indexing.diagnostic.IndexingFileSetStatistics
 import com.intellij.util.indexing.diagnostic.ProjectDumbIndexingHistoryImpl
 import com.intellij.util.indexing.events.FileIndexingRequest
+import com.intellij.workspaceModel.core.fileIndex.WorkspaceFileIndex
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import org.jetbrains.annotations.ApiStatus
@@ -169,7 +176,7 @@ class IndexUpdateRunner(
 
     val filesToIndexCount = fileSet.size()
     TRACER.spanBuilder("doIndexFiles").setAttribute("files", filesToIndexCount.toLong()).useWithScope {
-      withContext(Dispatchers.Default + CoroutineName("Indexing(${project.locationHash}")) {
+      withContext(Dispatchers.IO + CoroutineName("Indexing(${project.locationHash}")) {
         //Ideally, we should launch a coroutine for each file in a fileSet, and let the coroutine scheduler do it's job
         // of distributing the load across available CPUs.
         // But the fileSet could be quite large (10-100-1000k files), so it could be quite a load for a scheduler.
@@ -194,7 +201,7 @@ class IndexUpdateRunner(
                     processRequestTask(fileIndexingRequest)
                   }
 
-                yield()
+                ensureActive()
               }
             }
             //FIXME RC: for profiling, remove afterwards
@@ -264,7 +271,7 @@ class IndexUpdateRunner(
     private val fileBasedIndex: FileBasedIndexImpl,
     private val indexingRequest: IndexingRequestToken,
   ) {
-
+    private val doubleCheckFilesAreStillInProject = Registry.`is`("indexing.double.check.files.still.in.project", true)
     private val indexingAttemptCount = AtomicInteger()
     private val indexingSuccessfulCount = AtomicInteger()
 
@@ -281,6 +288,30 @@ class IndexUpdateRunner(
         //  here with an invalid file, but in a (badly isolated) tests it could happen
         LOG.warn("Invalid (alien?) file: #${(file as VirtualFileWithId).id}")
         return
+      }
+
+      if (doubleCheckFilesAreStillInProject && !fileIndexingRequest.isDeleteRequest) {
+        // WorkspaceFileIndex.getInstance(project).isInContent(file) does not contain libraries
+        // WorkspaceFileIndex.getInstance(project).isInWorkspace(file) does not contain files contributed via
+        //  indexing contributors (See com.intellij.flex.completion.ActionScriptCompletionTest.testSOE which indexes file
+        //  out/classes/production/intellij.flex/com/intellij/lang/javascript/flex/library/ECMAScript.js2)
+        // ProjectRootManager.isExcluded looks safe enough, but not exactly the same check as done by scanning.
+        // upd: also, files, registered as non indexable (see WorkspaceFileKind.CONTENT_NON_INDEXABLE) should be skipped during indexing.
+        val workspaceFileIndex = WorkspaceFileIndex.getInstance(project)
+        val excluded = readActionUndispatched {
+          val isIndexable = workspaceFileIndex.isIndexable(file)
+          val belongsToContentNonIndexable = workspaceFileIndex.findFileSet(file, true, false, includeContentNonIndexableSets = true, false, false, false) != null
+          // We don't want to just exclude all !isIndexable,
+          // because they may be contributed by an indexing contributor while WorkspaceFileIndex is not aware about it.
+          // We only want to exclude the files that are explicitly registered as non indexable.
+          ProjectRootManager.getInstance(project).fileIndex.isExcluded(file) || (!isIndexable && belongsToContentNonIndexable)
+        }
+        if (excluded) {
+          // respect user: only log file names in debug level
+          val fileDebugDetails = if (LOG.isDebugEnabled) file.name else ""
+          LOG.info("File has been excluded: $fileDebugDetails #${(file as VirtualFileWithId).id}")
+          return
+        }
       }
 
       // snapshot at the beginning: if file changes while being processed, we can detect this on the following scanning
@@ -319,7 +350,7 @@ class IndexUpdateRunner(
       indexingStamp: FileIndexingStamp,
       file: VirtualFile,
     ): FileIndexingResult? {
-      val fileIndexingResult = readAction {
+      val fileIndexingResult = readActionUndispatched {
         fileBasedIndex.getApplierToRemoveDataFromIndexesForFile(file, indexingStamp)
       }
       incIndexingSuccessfulCountAndLogIfNeeded()
@@ -344,7 +375,7 @@ class IndexUpdateRunner(
       try {
         val fileTypeChangeChecker = CachedFileType.getFileTypeChangeChecker()
         val type = FileTypeRegistry.getInstance().getFileTypeByFile(file, fileContent.bytes)
-        val fileIndexingResult = readAction {
+        val fileIndexingResult = readActionUndispatched {
           indexingAttemptCount.incrementAndGet()
           val fileType = if (fileTypeChangeChecker.get()) type else null
           fileBasedIndex.indexFileContent(project, fileContent, false, fileType, indexingStamp)
@@ -414,7 +445,10 @@ class IndexUpdateRunner(
      * Single file may be bigger, but until memory is freed indexing is suspended.
      * @see UsedMemorySoftLimiter
      */
-    private val SOFT_MAX_TOTAL_BYTES_LOADED_INTO_MEMORY = INDEXING_PARALLELIZATION * 4L * FileUtilRt.MEGABYTE
+    private val SOFT_MAX_TOTAL_BYTES_LOADED_INTO_MEMORY: Long = SystemProperties.getLongProperty(
+      "idea.indexing.total-loaded-file-content-soft-limit-bytes",
+      INDEXING_PARALLELIZATION * 4L * FileUtilRt.MEGABYTE
+    )
 
     private val loadedFileContentLimiter = UsedMemorySoftLimiter(SOFT_MAX_TOTAL_BYTES_LOADED_INTO_MEMORY)
 

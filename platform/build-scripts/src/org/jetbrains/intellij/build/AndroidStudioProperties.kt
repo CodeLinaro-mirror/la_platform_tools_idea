@@ -20,10 +20,13 @@ import org.jetbrains.intellij.build.CommunityRepositoryModules.COMMUNITY_REPOSIT
 import org.jetbrains.intellij.build.impl.PatchOverwriteMode
 import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
 import org.jetbrains.intellij.build.impl.PluginLayout
-import org.jetbrains.intellij.build.impl.PluginLayout.Companion.plugin
+import org.jetbrains.intellij.build.impl.PluginLayout.Companion.pluginAuto
+import org.jetbrains.intellij.build.impl.getPluginLayoutsByJpsModuleNames
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.function.BiPredicate
+import kotlin.io.path.copyTo
+import kotlin.io.path.createParentDirectories
 
 /**
  * Configures the Android Studio distribution by specifying bundled plugins, JVM args, extra files, and more.
@@ -38,31 +41,23 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       // Bundle the GitHub and GitLab plugins, just like IdeaCommunityProperties does.
       "intellij.vcs.github.community",
       "intellij.vcs.gitlab.community",
-      // Android Studio: package CIDR plugins. This list is based on what we have been shipping in Android Studio
-      // and the structure of CIDR plugins.
-      "intellij.c.clangd",
-      "intellij.c.clangdBridge.plugin",
-      "intellij.c.plugin",
-      "intellij.cidr.debugger.plugin",
-      "intellij.cidr.base.plugin",
-      "intellij.cidr.clangConfig.plugin",
-      "intellij.cidr.clangFormat.plugin",
+      // Android Studio: package CIDR plugins.
+      "intellij.cidr.clangd",
+      "intellij.c",
+      "intellij.cidr.debugger",
+      "intellij.cidr.base",
     )
 
     private val EXCLUDED_PLUGINS = listOf(
-      "intellij.settingsSync", // Not supported yet in Studio (b/267070185).
       "intellij.android.gradle.dsl",
       "intellij.android.gradle.declarative.lang.ide",
       "intellij.eclipse",
       "intellij.featuresTrainer",
-      "intellij.gradle.analysis",
-      "intellij.gradle.dependencyUpdater",
-      "intellij.gradle.java.maven",
       "intellij.grazie",
       "intellij.java.byteCodeViewer",
       "intellij.marketplaceMl", // Currently experimental and disabled by default anyway (in IJ 2024.2).
       "intellij.maven",
-      "intellij.searchEverywhereMl",
+      "intellij.mcpserver",
     )
   }
 
@@ -166,60 +161,27 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     productLayout.pluginLayouts = inheritedPluginLayouts.addAll(listOf(
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
-      plugin("intellij.cidr.debugger.plugin") { spec ->
-        spec.withModule("intellij.nativeDebug", spec.mainJarName)
-        spec.withModule("intellij.cidr.debugger", spec.mainJarName)
-        spec.withModule("intellij.cidr.debugger.backend", spec.mainJarName)
-        spec.withModule("intellij.cidr.debugger.commandInterpreterLang", spec.mainJarName)
-        spec.withModule("intellij.cidr.core", spec.mainJarName)
-        spec.withModule("intellij.cidr.util.execution", spec.mainJarName)
-        spec.withModule("intellij.cidr.runner", spec.mainJarName)
+      // CIDR plugins migrated to v2 layouts, thus the included modules are computed
+      // mostly automatically based on the <content> tag in plugin.xml.
+      pluginAuto("intellij.cidr.clangd") { spec ->
+        copyCidrLicense(spec)
       },
-      plugin("intellij.cidr.base.plugin") { spec ->
-        spec.withModule("intellij.cidr.base", spec.mainJarName)
-        spec.withModule("intellij.cidr.projectModel", spec.mainJarName)
-        spec.withModule("intellij.cidr.workspaceModel", spec.mainJarName)
-        spec.withModule("intellij.cidr.lang.base", spec.mainJarName)
-        spec.withModule("intellij.cidr.execution", spec.mainJarName)
-        spec.withModule("intellij.cidr.util", spec.mainJarName)
-        spec.withModule("intellij.cidr.util.serializer", spec.mainJarName)
-        spec.withModule("intellij.cidr.util.ui", spec.mainJarName)
-        spec.withModule("intellij.cidr.asm", spec.mainJarName)
-        spec.withModule("intellij.cidr.asm.debugger", spec.mainJarName)
-        // Note the following are in CLionProperties.groovy but we don't include them since
-        // they were never shipped with Android Studio before.
-        //   * intellij.cidr.toolchains
-        //   * intellij.platform.ssh.nio
-        //   * intellij.apple.sdk
-        // The following are not in CLionProperties.groovy for this plugin. Instead they
-        // are put under plugin "intellij.clion" or IDE implementation. We put them under
-        // this base plugin so that they will still be shipped.
-        spec.withModule("intellij.cidr.psi.base", spec.mainJarName)
-        spec.withModule("intellij.cidr.common", spec.mainJarName)
-        spec.withModule("intellij.cmake.psi", spec.mainJarName)
+      pluginAuto("intellij.c") { spec ->
+        copyCidrLicense(spec)
       },
-      plugin("intellij.c.plugin") { spec ->
-        spec.withModule("intellij.c", spec.mainJarName)
-        spec.withModule("intellij.c.debugger", spec.mainJarName)
-        spec.withModule("intellij.c.doxygen", spec.mainJarName)
-        spec.withModule("intellij.c.testing", spec.mainJarName)
-        spec.withModule("intellij.cidr.modulemap.language", spec.mainJarName)
+      pluginAuto("intellij.cidr.debugger") { spec ->
+        copyCidrLicense(spec)
+        spec.withProjectLibrary("antlr4-runtime")
+        spec.withModule("intellij.nativeDebug") // For NativeDebugPlugin.xml.
       },
-      plugin("intellij.c.clangd") { spec ->
-        spec.withModule("intellij.c.dfa", spec.mainJarName)
-      },
-      plugin("intellij.c.clangdBridge.plugin") { spec ->
-        spec.withModule("intellij.c.clangdBridge")
-        spec.withModule("intellij.c.dfa.bridge", spec.mainJarName)
-      },
-      plugin("intellij.cidr.clangConfig.plugin") { spec ->
-        spec.withModule("intellij.cidr.clangConfig")
-      },
-      plugin("intellij.cidr.clangFormat.plugin") { spec ->
-        spec.withModule("intellij.cidr.clangFormat")
-        spec.withModule("intellij.cidr.clangFormat.lang")
+      pluginAuto("intellij.cidr.base") { spec ->
+        copyCidrLicense(spec)
       },
     ))
+
+    // Fill in the remaining plugin layouts (including "trivial-layout" plugins)
+    // so we can correctly patch all plugin layouts below.
+    productLayout.pluginLayouts = getPluginLayoutsByJpsModuleNames(bundledPlugins, productLayout).toPersistentList()
 
     // Patch plugin.xml files to ensure plugins are non-updatable. We want platform
     // plugins to always come from our own IntelliJ fork (which may have patches, for example).
@@ -230,6 +192,20 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         delegatePatcher(pluginXml, ctx).replace("allow-bundled-update=\"true\"", "allow-bundled-update=\"false\"")
       }
     }
+  }
+
+  private fun copyCidrLicense(spec: PluginLayout.PluginLayoutBuilder) {
+    spec.withGeneratedResources { pluginDir, context ->
+      val source = context.paths.communityHomeDir.resolve("CIDR_LICENSE.txt")
+      val target = pluginDir.resolve("lib/LICENSE.txt")
+      target.createParentDirectories()
+      source.copyTo(target)
+    }
+  }
+
+  private fun clangdPluginDirName(): String {
+    val clangdPlugin = productLayout.pluginLayouts.single { p -> p.mainModule == "intellij.cidr.clangd" }
+    return clangdPlugin.directoryName
   }
 
   override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path) {
@@ -246,18 +222,6 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     FileSet(context.paths.communityHomeDir.resolve("../../tools/vendor/intellij/cidr/cidr-debugger/bin/helpers"))
       .includeAll()
       .copyToDir(targetDir.resolve("bin/helpers"))
-
-    // Copy CIDR license to CIDR plugins.
-    FileSet(context.paths.communityHomeDir)
-      .include("CIDR_LICENSE.txt")
-      .copyToDir(targetDir.resolve("plugins/c-clangd/lib/LICENSE.txt"))
-    FileSet(context.paths.communityHomeDir)
-      .include("CIDR_LICENSE.txt")
-      .copyToDir(targetDir.resolve("plugins/c-plugin/lib/LICENSE.txt"))
-    FileSet(context.paths.communityHomeDir)
-      .include("CIDR_LICENSE.txt")
-      .copyToDir(targetDir.resolve("plugins/cidr-base-plugin/lib/LICENSE.txt"))
-
     return super.copyAdditionalFiles(context, targetDir)
   }
 
@@ -285,7 +249,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/win/x64"))
           .includeAll()
-          .copyToDir(targetDir.resolve("plugins/c-clangd/bin/clang/win/x64/bin"))
+          .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/win/x64/bin"))
 
         GameTools(context, OsFamily.WINDOWS, JvmArchitecture.x64).copyAdditionalFiles(targetDir.resolve("bin"))
       }
@@ -305,14 +269,14 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       override suspend fun copyAdditionalFiles(context: BuildContext, targetDir: Path, arch: JvmArchitecture) {
         FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/linux/x64"))
           .includeAll()
-          .copyToDir(targetDir.resolve("plugins/c-clangd/bin/clang/linux/x64/bin"))
+          .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/linux/x64/bin"))
 
         GameTools(context, OsFamily.LINUX, arch).copyAdditionalFiles(targetDir.resolve("bin"))
       }
     }
   }
 
-  class StudioMacDistributionCustomizer(projectHome: String) : MacDistributionCustomizer() {
+  inner class StudioMacDistributionCustomizer(projectHome: String) : MacDistributionCustomizer() {
     init {
       urlSchemes = listOf("idea")
       associateIpr = true
@@ -334,7 +298,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       }
       FileSet(context.paths.communityHomeDir.resolve("../../prebuilts/tools/clion/bin/clang/mac/$archDir"))
         .includeAll()
-        .copyToDir(targetDir.resolve("plugins/c-clangd/bin/clang/mac/$archDir/bin"))
+        .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/mac/$archDir/bin"))
     }
   }
 
