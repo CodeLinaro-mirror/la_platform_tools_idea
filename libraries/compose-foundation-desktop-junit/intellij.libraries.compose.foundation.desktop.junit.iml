@@ -7,315 +7,53 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="intellij.libraries.compose.foundation.desktop" exported="" scope="TEST" />
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.test.junit4" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-test-junit4:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4/1.8.0-alpha04/ui-test-junit4-1.8.0-alpha04.jar">
-              <sha256sum>8fcad9fc0ae84479092715a9fe2c06077df9f79f4b1547c1835800813ef4441c</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4/1.8.0-alpha04/ui-test-junit4-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4/1.8.0-alpha04/ui-test-junit4-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
+    <orderEntry type="module" module-name="intellij.libraries.compose.foundation.desktop" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.libraries.skiko" scope="TEST" />
+    <orderEntry type="library" scope="TEST" name="jbr-api" level="project" />
     <orderEntry type="module-library" exported="" scope="TEST">
       <library name="org.jetbrains.compose.ui.ui.test.junit4.desktop" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-test-junit4-desktop:1.8.0-alpha04">
+        <properties maven-id="org.jetbrains.compose.ui:ui-test-junit4-desktop:1.9.0">
           <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.8.0-alpha04/ui-test-junit4-desktop-1.8.0-alpha04.jar">
-              <sha256sum>dcaa6f6c4ac510333c99919151a5da37ec5959905634143ce35d232d5df432a8</sha256sum>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.9.0/ui-test-junit4-desktop-1.9.0.jar">
+              <sha256sum>7d1244618abff60a17ba0c596cb13addeff74664acc8400d2b785bbd8ee66b52</sha256sum>
+            </artifact>
+            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.9.0/ui-test-desktop-1.9.0.jar">
+              <sha256sum>f25e0e5b778c6cb67c66f5bbb4c327f103ebddeac6ddf09a6f48bc900577e672</sha256sum>
             </artifact>
           </verification>
+          <exclude>
+            <dependency maven-id="androidx.annotation:annotation-jvm" />
+            <dependency maven-id="junit:junit" />
+            <dependency maven-id="androidx.collection:collection-jvm" />
+            <dependency maven-id="org.jetbrains.compose.runtime:runtime-desktop" />
+            <dependency maven-id="org.jetbrains.kotlin:kotlin-stdlib" />
+            <dependency maven-id="org.jetbrains.kotlinx:kotlinx-coroutines-core" />
+            <dependency maven-id="org.jetbrains.skiko:skiko-awt" />
+            <dependency maven-id="org.jetbrains:annotations" />
+            <dependency maven-id="org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm" />
+            <dependency maven-id="org.jetbrains.kotlin:kotlin-stdlib-jdk7" />
+            <dependency maven-id="org.jetbrains.kotlin:kotlin-stdlib-jdk8" />
+            <dependency maven-id="org.jetbrains.kotlinx:atomicfu-jvm" />
+            <dependency maven-id="org.jetbrains.kotlinx:kotlinx-coroutines-test-jvm" />
+            <dependency maven-id="org.jetbrains.kotlinx:kotlinx-serialization-core-jvm" />
+          </exclude>
         </properties>
         <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.8.0-alpha04/ui-test-junit4-desktop-1.8.0-alpha04.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.9.0/ui-test-junit4-desktop-1.9.0.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.9.0/ui-test-desktop-1.9.0.jar!/" />
         </CLASSES>
-        <JAVADOC />
+        <JAVADOC>
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.9.0/ui-test-junit4-desktop-1.9.0-javadoc.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.9.0/ui-test-desktop-1.9.0-javadoc.jar!/" />
+        </JAVADOC>
         <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.8.0-alpha04/ui-test-junit4-desktop-1.8.0-alpha04-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-junit4-desktop/1.9.0/ui-test-junit4-desktop-1.9.0-sources.jar!/" />
+          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.9.0/ui-test-desktop-1.9.0-sources.jar!/" />
         </SOURCES>
       </library>
     </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.hamcrest.hamcrest.core" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.hamcrest:hamcrest-core:1.3">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar">
-              <sha256sum>66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.test" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-test:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test/1.8.0-alpha04/ui-test-1.8.0-alpha04.jar">
-              <sha256sum>59800a701fa24b4e972148db89babe95c6f38b9abf67799b28a2dde995499304</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test/1.8.0-alpha04/ui-test-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test/1.8.0-alpha04/ui-test-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.test.desktop" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-test-desktop:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.8.0-alpha04/ui-test-desktop-1.8.0-alpha04.jar">
-              <sha256sum>f20c0c3dd83ff8fef72d131d9d86dddbd432aa0f133c56aaf548783202a7c0f3</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.8.0-alpha04/ui-test-desktop-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-test-desktop/1.8.0-alpha04/ui-test-desktop-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.runtime.runtime" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.runtime:runtime:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04.jar">
-              <sha256sum>3941e008a0041664eea0712d8598cd957ab045cf8facac0033b35c5a251e3ea1</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui/1.8.0-alpha04/ui-1.8.0-alpha04.jar">
-              <sha256sum>d1bbc8b6155f8db7ef3d3ee66cf506cc1d533fddc2de0590d6e5575d16fb39ae</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui/1.8.0-alpha04/ui-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui/1.8.0-alpha04/ui-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.text" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-text:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-text/1.8.0-alpha04/ui-text-1.8.0-alpha04.jar">
-              <sha256sum>839f2e601ac1c923c9a8402b173c82025d666aa1e614af5e5423808d85e219e0</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-text/1.8.0-alpha04/ui-text-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-text/1.8.0-alpha04/ui-text-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.unit" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-unit:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-unit/1.8.0-alpha04/ui-unit-1.8.0-alpha04.jar">
-              <sha256sum>10e5f2639f20c8898e38a319ab9008d024ee5b92fafc75aa2819802fc8f6b72b</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-unit/1.8.0-alpha04/ui-unit-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-unit/1.8.0-alpha04/ui-unit-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.annotations" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains:annotations:23.0.0">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/annotations/23.0.0/annotations-23.0.0.jar">
-              <sha256sum>7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/annotations/23.0.0/annotations-23.0.0.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/annotations/23.0.0/annotations-23.0.0-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.desktop.desktop" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.desktop:desktop:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/desktop/desktop/1.8.0-alpha04/desktop-1.8.0-alpha04.jar">
-              <sha256sum>bff3d1e895fd5abd54ee725dab59214acabf900e1a0784544d20cf20521bf9f3</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/desktop/desktop/1.8.0-alpha04/desktop-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/desktop/desktop/1.8.0-alpha04/desktop-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.desktop.desktop.jvm" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.desktop:desktop-jvm:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/desktop/desktop-jvm/1.8.0-alpha04/desktop-jvm-1.8.0-alpha04.jar">
-              <sha256sum>21913b100d46165707b2b656ed5b38bc8eda0f6063f5532787e9d1bf7f943efe</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/desktop/desktop-jvm/1.8.0-alpha04/desktop-jvm-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/desktop/desktop-jvm/1.8.0-alpha04/desktop-jvm-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.runtime.runtime" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.runtime:runtime:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04.jar">
-              <sha256sum>3941e008a0041664eea0712d8598cd957ab045cf8facac0033b35c5a251e3ea1</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui/1.8.0-alpha04/ui-1.8.0-alpha04.jar">
-              <sha256sum>d1bbc8b6155f8db7ef3d3ee66cf506cc1d533fddc2de0590d6e5575d16fb39ae</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui/1.8.0-alpha04/ui-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui/1.8.0-alpha04/ui-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.tooling.preview" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-tooling-preview:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-tooling-preview/1.8.0-alpha04/ui-tooling-preview-1.8.0-alpha04.jar">
-              <sha256sum>1b409141a9ee6ed38e76a8fb8f9cf280030bf45375ba7e07e60b2742039b573e</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-tooling-preview/1.8.0-alpha04/ui-tooling-preview-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-tooling-preview/1.8.0-alpha04/ui-tooling-preview-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.ui.ui.tooling.preview.desktop" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.ui:ui-tooling-preview-desktop:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-tooling-preview-desktop/1.8.0-alpha04/ui-tooling-preview-desktop-1.8.0-alpha04.jar">
-              <sha256sum>497823104629591a0bf40bb99546a6fc43fce0abbb3bfcac746748d60e8dba80</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-tooling-preview-desktop/1.8.0-alpha04/ui-tooling-preview-desktop-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/ui/ui-tooling-preview-desktop/1.8.0-alpha04/ui-tooling-preview-desktop-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library" exported="" scope="TEST">
-      <library name="org.jetbrains.compose.runtime.runtime" type="repository">
-        <properties include-transitive-deps="false" maven-id="org.jetbrains.compose.runtime:runtime:1.8.0-alpha04">
-          <verification>
-            <artifact url="file://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04.jar">
-              <sha256sum>3941e008a0041664eea0712d8598cd957ab045cf8facac0033b35c5a251e3ea1</sha256sum>
-            </artifact>
-          </verification>
-        </properties>
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES>
-          <root url="jar://$MAVEN_REPOSITORY$/org/jetbrains/compose/runtime/runtime/1.8.0-alpha04/runtime-1.8.0-alpha04-sources.jar!/" />
-        </SOURCES>
-      </library>
-    </orderEntry>
-    <orderEntry type="module" module-name="intellij.libraries.junit4" exported="" scope="TEST" />
     <orderEntry type="library" exported="" scope="TEST" name="kotlinx-coroutines-test" level="project" />
-    <orderEntry type="module" module-name="intellij.libraries.skiko" exported="" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.libraries.junit4" exported="" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.libraries.hamcrest" exported="" scope="TEST" />
   </component>
 </module>

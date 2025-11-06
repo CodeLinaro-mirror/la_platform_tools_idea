@@ -157,6 +157,7 @@ object CommunityRepositoryModules {
     pluginAuto("intellij.junit") { spec ->
       spec.withModule("intellij.junit.rt", "junit-rt.jar")
       spec.withModule("intellij.junit.v5.rt", "junit5-rt.jar")
+      spec.withModule("intellij.junit.v6.rt", "junit6-rt.jar")
     },
     plugin("intellij.testng") { spec ->
       spec.mainJarName = "testng-plugin.jar"
@@ -243,6 +244,7 @@ object CommunityRepositoryModules {
         spec.withModule("intellij.android.design-plugin.descriptor")
       }
       spec.withModule("intellij.android.designer.customview")
+      spec.withModule("intellij.android.designer.gradle")
       spec.withModule("intellij.android.designer")
       spec.withModule("intellij.android.glance-designer")
       spec.withModule("intellij.android.layoutlib")

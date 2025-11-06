@@ -7,6 +7,8 @@ import com.intellij.codeWithMe.ClientId
 import com.intellij.diagnostic.Activity
 import com.intellij.diagnostic.StartUpMeasurer
 import com.intellij.featureStatistics.fusCollectors.FileEditorCollector.EmptyStateCause
+import com.intellij.frontend.FrontendApplicationInfo
+import com.intellij.frontend.FrontendType
 import com.intellij.icons.AllIcons
 import com.intellij.ide.IdeEventQueue
 import com.intellij.ide.ui.UISettings
@@ -262,6 +264,17 @@ open class EditorsSplitters internal constructor(
     }
   }
 
+  internal var borderPainter: BorderPainter = DefaultBorderPainter()
+
+  override fun paintChildren(g: Graphics) {
+    super.paintChildren(g)
+    borderPainter.paintAfterChildren(this, g)
+  }
+
+  override fun isPaintingOrigin(): Boolean {
+    return borderPainter.isPaintingOrigin(this)
+  }
+
   fun writeExternal(element: Element) {
     writeExternal(element = element, delayedStates = emptyMap())
   }
@@ -287,7 +300,7 @@ open class EditorsSplitters internal constructor(
       removeAll()
     }
 
-    if (PlatformUtils.isJetBrainsClient() && !Registry.`is`("editor.rd.reopen.editors.on.frontend")) {
+    if (PlatformUtils.isJetBrainsClient() && !shouldReopenEditorsOnJetBrainsClient()) {
       // Don't restore editors from local files on JetBrains Client, editors are opened from the backend
       return
     }
@@ -314,7 +327,7 @@ open class EditorsSplitters internal constructor(
 
   internal suspend fun createEditors(state: EditorSplitterState) {
     manager.project.putUserData(OPEN_FILES_ACTIVITY, StartUpMeasurer.startActivity(StartUpMeasurer.Activities.EDITOR_RESTORING_TILL_PAINT))
-    if (PlatformUtils.isJetBrainsClient() && !Registry.`is`("editor.rd.reopen.editors.on.frontend")) {
+    if (PlatformUtils.isJetBrainsClient() && !shouldReopenEditorsOnJetBrainsClient()) {
       // Don't reopen editors from local files on JetBrains Client, it is done from the backend
       return
     }
@@ -328,6 +341,11 @@ open class EditorsSplitters internal constructor(
           InternalUICustomization.getInstance()?.installEditorBackground(it)
         },
       )
+  }
+
+  private fun shouldReopenEditorsOnJetBrainsClient(): Boolean {
+    val frontendType = FrontendApplicationInfo.getFrontendType()
+    return frontendType is FrontendType.RemoteDev && frontendType.isLuxSupported && Registry.`is`("editor.rd.reopen.editors.on.frontend")
   }
 
   fun addSelectedEditorsTo(result: MutableCollection<FileEditor>) {
