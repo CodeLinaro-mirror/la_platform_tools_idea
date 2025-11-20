@@ -2,7 +2,6 @@
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.analysis.AnalysisBundle;
-import com.intellij.analytics.AndroidStudioAnalytics;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightInfoHolder;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingLevelManager;
 import com.intellij.codeInsight.problems.ProblemImpl;
@@ -107,9 +106,13 @@ public sealed class GeneralHighlightingPass extends ProgressableTextEditorHighli
     HighlightVisitorRunner.assertHighlightingPassNotRunning();
   }
 
+  // Android Studio (b/461569054): collect metrics for highlighting latency. This callback is initialized during app startup.
+  @SuppressWarnings("StaticNonFinalField")
+  public static volatile java.util.function.BiConsumer<com.intellij.openapi.editor.Document, Long> latencyCallbackForAndroidStudio;
+
   @Override
   protected void collectInformationWithProgress(@NotNull ProgressIndicator progress) {
-    long start = System.nanoTime(); // Android Studio: collect metrics for syntax highlighting latency.
+    long start = System.nanoTime(); // Android Studio (b/461569054): collect metrics for highlighting latency.
     ApplicationManager.getApplication().assertIsNonDispatchThread();
 
     DaemonCodeAnalyzerEx daemonCodeAnalyzer = DaemonCodeAnalyzerEx.getInstanceEx(myProject);
@@ -218,9 +221,12 @@ public sealed class GeneralHighlightingPass extends ProgressableTextEditorHighli
             reportErrorsToWolf(myHasErrorSeverity);
           }
 
-          // Android Studio: collect metrics for syntax highlighting latency.
+          // Android Studio (b/461569054): collect metrics for syntax highlighting latency.
           long latencyMs = (System.nanoTime() - start) / 1_000_000;
-          AndroidStudioAnalytics.getInstance().recordHighlightingLatency(getDocument(), latencyMs);
+          var latencyCallback = latencyCallbackForAndroidStudio;
+          if (latencyCallback != null) {
+            latencyCallback.accept(getDocument(), latencyMs);
+          }
         }
         else {
           cancelAndRestartDaemonLater(progress, myProject, "GHP.collectHighlights() == false");
