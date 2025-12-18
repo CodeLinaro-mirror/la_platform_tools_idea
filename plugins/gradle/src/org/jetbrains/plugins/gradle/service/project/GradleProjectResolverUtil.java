@@ -19,6 +19,10 @@ import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.util.text.Strings;
+import com.intellij.platform.workspace.jps.entities.ModuleId;
+import com.intellij.platform.workspace.storage.EntityStorage;
+import com.intellij.platform.workspace.storage.ImmutableEntityStorage;
 import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.PathUtilRt;
 import com.intellij.util.SmartList;
@@ -196,6 +200,27 @@ public final class GradleProjectResolverUtil {
                                                @NotNull ExternalProject externalProject,
                                                @Nullable String sourceSetName,
                                                @NotNull ProjectResolverContext resolverCtx) {
+    if (resolverCtx.isPhasedSyncEnabled()) {
+      if (sourceSetName == null) {
+        return getHolderModuleName(
+          resolverCtx,
+          gradleModule.getGradleProject().getProjectIdentifier().getBuildIdentifier().getRootDir().toPath(),
+          // Build name is derived from the root project's name
+          getRootProject(gradleModule.getGradleProject()).getName(),
+          externalProject
+        );
+      } else {
+        return resolveSourceSetModuleName(
+          resolverCtx,
+          gradleModule.getGradleProject().getProjectIdentifier().getBuildIdentifier().getRootDir().toPath(),
+          // Build name is derived from the root project's name
+          getRootProject(gradleModule.getGradleProject()).getName(),
+          externalProject,
+          sourceSetName
+        );
+      }
+    }
+
     String delimiter;
     StringBuilder moduleName = new StringBuilder();
     String rootName = gradleModule.getProject().getName();
@@ -221,6 +246,121 @@ public final class GradleProjectResolverUtil {
       moduleName.append(sourceSetName);
     }
     return PathUtilRt.suggestFileName(moduleName.toString(), true, false);
+  }
+
+  /**
+   * The Gradle holder module is module that corresponds to the Gradle project and holds the Gradle source set modules.
+   *
+   * @param context         the unified container for sync settings, parameters, models, etc.
+   * @param projectModel    defines Gradle project (build.gradle[.kts])
+   * @param externalProject a helper model with the Gradle project identity path
+   * @return the Gradle holder module name
+   */
+  @ApiStatus.Internal
+  public static @NotNull String getHolderModuleName(
+    @NotNull ProjectResolverContext context,
+    @NotNull GradleLightProject projectModel,
+    // TODO: replace with GradleLightProject#identityPath
+    @NotNull ExternalProject externalProject
+  ) {
+    return getHolderModuleName(
+      context,
+      projectModel.getBuild().getBuildIdentifier().getRootDir().toPath(),
+      projectModel.getBuild().getName(),
+      externalProject
+    );
+  }
+
+  private static @NotNull String getHolderModuleName(
+    @NotNull ProjectResolverContext context,
+    @NotNull Path buildPath,
+    @NotNull String buildName,
+    // TODO: replace with GradleLightProject#identityPath
+    @NotNull ExternalProject externalProject
+  ) {
+    var rootBuildPath = context.getRootBuild().getBuildIdentifier().getRootDir().toPath();
+    var rootBuildName = context.getRootBuild().getName();
+
+    var identityPath = externalProject.getIdentityPath();
+
+    var moduleName = Strings.trimStart(identityPath, ":");
+
+    var isRootBuild = rootBuildPath.equals(buildPath);
+    var isBuildSrcOfRootBuild = rootBuildPath.equals(buildPath.getParent()) &&
+                                buildName.equals(GradleConstants.BUILD_SRC_NAME);
+    if (isRootBuild || isBuildSrcOfRootBuild) {
+      moduleName = rootBuildName + ":" + moduleName;
+    }
+    if (context.getBuildSrcGroup() != null) {
+      moduleName = context.getBuildSrcGroup() + ":" + moduleName;
+    }
+
+    // if identityPath is ":"
+    moduleName = Strings.trimEnd(moduleName, ":");
+
+    return Arrays.stream(moduleName.split(":"))
+      .map(it -> escapeModuleNameElement(it))
+      .collect(Collectors.joining("."));
+  }
+
+  /**
+   * The Gradle holder module is module that corresponds to the Gradle project and holds the Gradle source set modules.
+   *
+   * @param context         the unified container for sync settings, parameters, models, etc.
+   * @param projectModel    defines Gradle project (build.gradle[.kts])
+   * @param externalProject a helper model with the Gradle project identity path
+   * @param sourceSetName   the Gradle source set name
+   * @return the Gradle source set module name
+   */
+  @ApiStatus.Internal
+  public static @NotNull String resolveSourceSetModuleName(
+    @NotNull ProjectResolverContext context,
+    @NotNull EntityStorage storage,
+    @NotNull GradleLightProject projectModel,
+    // TODO: replace with GradleLightProject#identityPath
+    @NotNull ExternalProject externalProject,
+    @NotNull String sourceSetName
+  ) {
+    var sourceSetModuleName = resolveSourceSetModuleName(
+      context,
+      projectModel.getBuild().getBuildIdentifier().getRootDir().toPath(),
+      projectModel.getBuild().getName(),
+      externalProject,
+      sourceSetName
+    );
+    if (storage.contains(new ModuleId(sourceSetModuleName))) {
+      // Related issue: IDEA-169388
+      // The user can create the 'test' holder module that conflicts with the `test` source set module.
+      return sourceSetModuleName + "~1";
+    } else {
+      return sourceSetModuleName;
+    }
+  }
+
+  private static @NotNull String resolveSourceSetModuleName(
+    @NotNull ProjectResolverContext context,
+    @NotNull Path buildPath,
+    @NotNull String buildName,
+    // TODO: replace with GradleLightProject#identityPath
+    @NotNull ExternalProject externalProject,
+    @NotNull String sourceSetName
+  ) {
+    var holderModuleName = getHolderModuleName(context, buildPath, buildName, externalProject);
+    return holderModuleName + "." + escapeModuleNameElement(sourceSetName);
+  }
+
+  /**
+   * Escapes forbidden elements in the module name's element.
+   * The fully qualified module name consists from module group's elements and module name.
+   */
+  private static @NotNull String escapeModuleNameElement(
+    @NotNull String moduleNameElement
+  ) {
+    return moduleNameElement
+      .replace(" ", "_")
+      .replace("/", "_")
+      .replace("\\\\", "_")
+      .replace(".", "_");
   }
 
   private static @NotNull String gradlePathToQualifiedName(@NotNull String rootName,
@@ -326,6 +466,26 @@ public final class GradleProjectResolverUtil {
       moduleId += (':' + projectDependency.getConfigurationName());
     }
     return moduleId;
+  }
+
+  public static @NotNull String getModuleId(
+    @NotNull ProjectResolverContext context,
+    @NotNull GradleLightProject projectModel
+  ) {
+    if (!StringUtil.isEmpty(context.getBuildSrcGroup())) {
+      return context.getBuildSrcGroup() + ":" + getModuleId(projectModel);
+    }
+    return getModuleId(projectModel);
+  }
+
+  private static @NotNull String getModuleId(
+    @NotNull GradleLightProject projectModel
+  ) {
+    String identityPath = projectModel.getIdentityPath();
+    if (":".equals(identityPath)) {
+      return projectModel.getName();
+    }
+    return identityPath;
   }
 
   public static @Nullable String getSourceSetName(final Module module) {
