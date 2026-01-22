@@ -65,7 +65,8 @@ public enum LanguageLevel {
   PYTHON311(311),
   PYTHON312(312),
   PYTHON313(313),
-  PYTHON314(314);
+  PYTHON314(314),
+  PYTHON315(315);
 
   public static final Comparator<LanguageLevel> VERSION_COMPARATOR = (first, second) -> {
     return first == second ? 0 : first.isOlderThan(second) ? -1 : 1;
@@ -202,6 +203,9 @@ public enum LanguageLevel {
       if (pythonVersionOutput.startsWith("3.14")) {
         return PYTHON314;
       }
+      if (pythonVersionOutput.startsWith("3.15")) {
+        return PYTHON315;
+      }
       return DEFAULT3;
     }
     return null;
@@ -212,7 +216,7 @@ public enum LanguageLevel {
   }
 
   public static @NotNull LanguageLevel forElement(@NotNull PsiElement element) {
-    return PyLanguageFacade.Companion.getINSTANCE().forLanguage(element);
+    return PyLanguageFacade.getINSTANCE().getEffectiveLanguageLevel(element);
   }
 
   public static @NotNull LanguageLevel getLatest() {

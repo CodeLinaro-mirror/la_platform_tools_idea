@@ -3,16 +3,13 @@ package com.intellij.platform.eel.path
 
 import com.intellij.platform.eel.EelDescriptor
 import com.intellij.platform.eel.EelOsFamily
+import com.intellij.platform.eel.directorySeparators
 
 internal class ArrayListEelAbsolutePath private constructor(
   override val descriptor: EelDescriptor,
   private val _root: Root,
   override val parts: List<String>,
 ) : EelPath, Comparable<EelPath> {
-  init {
-    // TODO To be removed when the class is thoroughly covered with unit tests.
-    require(parts.all(String::isNotEmpty)) { "An empty string in the path parts: $parts" }
-  }
 
   override val root: EelPath by lazy {
     if (parts.isEmpty()) this
@@ -52,7 +49,7 @@ internal class ArrayListEelAbsolutePath private constructor(
   }
 
   override fun resolve(other: String): EelPath {
-    val delimiters = this.os.directorySeparators
+    val delimiters = this.platform.directorySeparators
     val otherParts = other.split(*delimiters).filter(String::isNotEmpty)
     for (name in otherParts) {
       if (name.isNotEmpty()) {
@@ -65,6 +62,7 @@ internal class ArrayListEelAbsolutePath private constructor(
   }
 
   override fun getChild(name: String): EelPath {
+    require(name.isNotEmpty()) { "Child name must not be empty" }
     val error = checkFileName(name)
     return if (error == null)
       ArrayListEelAbsolutePath(descriptor, _root, parts + name)
@@ -115,12 +113,6 @@ internal class ArrayListEelAbsolutePath private constructor(
 
     return nameCount - other.nameCount
   }
-
-  override val os: EelPath.OS
-    get() = when (this._root) {
-      Root.Unix -> EelPath.OS.UNIX
-      is Root.Windows -> EelPath.OS.WINDOWS
-    }
 
   override fun equals(other: Any?): Boolean =
     other is EelPath &&
@@ -226,6 +218,11 @@ internal class ArrayListEelAbsolutePath private constructor(
     /** https://learn.microsoft.com/en-us/dotnet/standard/io/file-path-formats#traditional-dos-paths */
     @Throws(EelPathException::class)
     private fun findAbsoluteTraditionalDosPath(raw: String, descriptor: EelDescriptor): ArrayListEelAbsolutePath? {
+      var raw = raw
+      if (raw.length == 2 && raw.endsWith(":")) {
+        // For cases like "C:" (which is "c:\\")
+        raw += "\\"
+      }
       if (raw.length < 3) return null
       if (!raw[0].isLetter()) return null
       if (raw[1] != ':') return null
@@ -246,16 +243,17 @@ internal class ArrayListEelAbsolutePath private constructor(
     }
 
     private fun findAbsoluteUnixPath(raw: String, descriptor: EelDescriptor): ArrayListEelAbsolutePath? {
-      if (raw.getOrNull(0) != '/') return null
+      if (raw.isEmpty() || raw[0] != '/') return null
 
-      val parts = raw
-        .splitToSequence('/')
-        .filter(String::isNotEmpty)
-        .toList()
-
-      for (part in parts) {
-        val error = checkFileName(part, isWindows = false)
-        if (error != null) throw EelPathException(raw, error)
+      val parts = raw.split("/").mapNotNull { part ->
+        if (part.isNotEmpty()) {
+          val error = checkFileName(part, isWindows = false)
+          if (error != null) throw EelPathException(raw, error)
+          part
+        }
+        else {
+          null
+        }
       }
 
       return ArrayListEelAbsolutePath(descriptor, Root.Unix, parts)

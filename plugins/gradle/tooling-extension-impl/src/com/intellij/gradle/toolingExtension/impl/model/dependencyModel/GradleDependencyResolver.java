@@ -8,6 +8,7 @@ import com.intellij.gradle.toolingExtension.impl.model.dependencyModel.auxiliary
 import com.intellij.gradle.toolingExtension.impl.model.dependencyModel.auxiliary.AuxiliaryConfigurationArtifacts;
 import com.intellij.gradle.toolingExtension.impl.model.dependencyModel.auxiliary.LegacyAuxiliaryArtifactResolver;
 import com.intellij.gradle.toolingExtension.impl.model.sourceSetArtifactIndex.GradleSourceSetArtifactIndex;
+import com.intellij.gradle.toolingExtension.util.GradleReflectionUtil;
 import com.intellij.gradle.toolingExtension.util.GradleVersionUtil;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
@@ -32,6 +33,8 @@ import org.jetbrains.plugins.gradle.tooling.ModelBuilderContext;
 
 import java.io.File;
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 /**
  * @author Vladislav.Soroka
@@ -39,6 +42,22 @@ import java.util.*;
 public final class GradleDependencyResolver {
 
   private static final boolean IS_83_OR_BETTER = GradleVersionUtil.isCurrentGradleAtLeast("8.3");
+
+  // Gradle 6.4+
+  private static final Predicate<String> UNRESOLVED_DEPENDENCY_JVM_PREDICATE = Pattern.compile(
+    // Gradle 8.8+
+    "(Dependency resolution is looking for a library compatible with JVM runtime version (\\d+), " +
+    "but '(.+?)' is only compatible with JVM runtime version (\\d+) or newer\\.)" +
+    "|" +
+    // Gradle 6.4-8.7
+    "(No matching variant of (.+?) was found\\. " +
+    "The consumer was configured to find (?:a library for use during (?:compile-time|runtime),|an API of a library) compatible with Java)"
+  ).asPredicate();
+
+  // Gradle 6.0-6.3
+  private static final Predicate<String> UNRESOLVED_DEPENDENCY_JVM_6_0_PREDICATE = Pattern.compile(
+    "Required org.gradle.jvm.version '(\\d+)' (?:but no value provided|and found incompatible value '(\\d+)')\\."
+  ).asPredicate();
 
   private final @NotNull Project myProject;
   private final @NotNull GradleDependencyDownloadPolicy myDownloadPolicy;
@@ -389,26 +408,11 @@ public final class GradleDependencyResolver {
       if (!allowedDependencyGroups.isEmpty() && !allowedDependencyGroups.contains(unresolvedDependency.getSelector().getGroup())) {
         continue;
       }
-      MyModuleVersionSelector moduleVersionSelector = null;
       Throwable problem = unresolvedDependency.getProblem();
       if (problem.getCause() != null) {
         problem = problem.getCause();
       }
-      try {
-        if (problem instanceof ModuleVersionResolveException) {
-          ComponentSelector componentSelector = ((ModuleVersionResolveException)problem).getSelector();
-          if (componentSelector instanceof ModuleComponentSelector) {
-            ModuleComponentSelector moduleComponentSelector = (ModuleComponentSelector)componentSelector;
-            moduleVersionSelector = new MyModuleVersionSelector(
-              moduleComponentSelector.getModule(),
-              moduleComponentSelector.getGroup(),
-              moduleComponentSelector.getVersion()
-            );
-          }
-        }
-      }
-      catch (Throwable ignore) {
-      }
+      MyModuleVersionSelector moduleVersionSelector = extractModuleVersionSelector(unresolvedDependency, problem);
       if (moduleVersionSelector == null) {
         problem = unresolvedDependency.getProblem();
         ModuleVersionSelector selector = unresolvedDependency.getSelector();
@@ -424,13 +428,47 @@ public final class GradleDependencyResolver {
     return result;
   }
 
+  private static @Nullable MyModuleVersionSelector extractModuleVersionSelector(
+    @NotNull UnresolvedDependency unresolvedDependency,
+    @NotNull Throwable problem
+  ) {
+    try {
+      // instanceof may throw an exception if the class is no longer available in some new Gradle version
+      if (problem instanceof ModuleVersionResolveException) {
+        ComponentSelector componentSelector = ((ModuleVersionResolveException)problem).getSelector();
+        if (componentSelector instanceof ModuleComponentSelector) {
+          ModuleComponentSelector moduleComponentSelector = (ModuleComponentSelector)componentSelector;
+          return new MyModuleVersionSelector(
+            moduleComponentSelector.getModule(),
+            moduleComponentSelector.getGroup(),
+            moduleComponentSelector.getVersion()
+          );
+        }
+      }
+    }
+    catch (Throwable ignore) {
+    }
+    if (UNRESOLVED_DEPENDENCY_JVM_PREDICATE.test(problem.getMessage())) {
+      ModuleVersionSelector selector = unresolvedDependency.getSelector();
+      return new MyModuleVersionSelector(selector.getName(), selector.getGroup(), selector.getVersion());
+    }
+    else if ((problem.getMessage().startsWith("Cannot choose between the following variants of") ||
+              problem.getMessage().startsWith("Unable to find a matching variant of")) &&
+             UNRESOLVED_DEPENDENCY_JVM_6_0_PREDICATE.test(problem.getMessage())) {
+      ModuleVersionSelector selector = unresolvedDependency.getSelector();
+      return new MyModuleVersionSelector(selector.getName(), selector.getGroup(), selector.getVersion());
+    }
+    return null;
+  }
+
   private static @NotNull String getBuildName(@NotNull ProjectComponentIdentifier projectComponentIdentifier) {
     BuildIdentifier buildIdentifier = projectComponentIdentifier.getBuild();
     if (IS_83_OR_BETTER) {
       return buildIdentifier.getBuildPath();
+    } else {
+      // The getName method was removed in Gradle 9.0
+      return GradleReflectionUtil.getValue(buildIdentifier, "getName", String.class);
     }
-    //noinspection deprecation
-    return buildIdentifier.getName();
   }
 
   private static final class MyModuleVersionSelector {

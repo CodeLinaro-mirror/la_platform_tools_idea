@@ -7,19 +7,22 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.playback.PlaybackContext
 import com.intellij.openapi.ui.playback.commands.PlaybackCommandCoroutineAdapter
-import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.system.OS
 import com.intellij.util.ui.ImageUtil
+import com.intellij.util.ui.StartupUiUtil
 import kotlinx.coroutines.*
 import java.awt.*
 import java.awt.image.BufferedImage
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.ImageIO
 import kotlin.time.Duration.Companion.seconds
 
 private val LOG: Logger
   get() = logger<TakeScreenshotCommand>()
+
+private val screenshotSequence = AtomicInteger(1)
 
 /**
  * Command takes screenshot.
@@ -92,14 +95,9 @@ suspend fun captureComponent(component: Component, file: File) {
 }
 
 fun getNextFolder(base: File): File {
-  var counter = 0
-  var folder = base
-
-  while (folder.exists()) {
-    counter++
-    val name = "${base.name}_$counter"
-    folder = File(base.parentFile, name)
-  }
+  val counter = "%03d".format(screenshotSequence.getAndIncrement())
+  val name = "${counter}_${base.name}"
+  val folder = File(base.parentFile, name)
 
   folder.mkdirs()
   return folder
@@ -114,7 +112,7 @@ internal fun takeFullScreenshot(childFolder: String? = null): String? {
   // don't try to take a screenshot when IDE in a headless mode
   if (ApplicationManager.getApplication().isHeadlessEnvironment) return null
   // On Wayland it triggers system dialog about granting permissions each time, and it can't be disabled.
-  if (SystemInfo.isWayland) return null
+  if (StartupUiUtil.isWayland) return null
 
   var screenshotPath = File(PathManager.getLogPath() + "/screenshots/" + (childFolder ?: "default"))
   screenshotPath = getNextFolder(screenshotPath)

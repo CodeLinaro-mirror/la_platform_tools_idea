@@ -23,8 +23,9 @@ internal suspend fun createWinDockDelegate(): SystemDock? {
   val stackTraceHolder = Throwable("Asynchronously launched from here")
 
   try {
+    val recentProjectsInDockSupported = serviceAsync<RecentProjectListActionProvider>().recentProjectsInDocSupported()
     @Suppress("SpellCheckingInspection")
-    if (RegistryManager.getInstanceAsync().`is`("windows.jumplist")) {
+    if (RegistryManager.getInstanceAsync().`is`("windows.jumplist") && recentProjectsInDockSupported) {
       return WinDockDelegate(WinShellIntegration.getInstance() ?: return null)
     }
     else {
@@ -40,7 +41,7 @@ internal suspend fun createWinDockDelegate(): SystemDock? {
 
 private class WinDockDelegate(private val wsi: WinShellIntegration) : SystemDock {
   override suspend fun updateRecentProjectsMenu() {
-    val recentProjectActions = serviceAsync<RecentProjectListActionProvider>().getActions()
+    val recentProjectActions = serviceAsync<RecentProjectListActionProvider>().getActionsWithoutGroups()
     val jumpTasks = convertToJumpTasks(recentProjectActions)
     // todo WinShellIntegration should use coroutines
     withContext(Dispatchers.IO) {

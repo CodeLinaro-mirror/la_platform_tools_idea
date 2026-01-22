@@ -6,6 +6,7 @@ import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTracker
+import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectTrackerSettings
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
@@ -97,6 +98,7 @@ class KotlinProjectConfigurationService(private val project: Project, private va
 
     /**
      * @return true if the sync is already enqueued or actually in progress by the underlying external system.
+     * Note: For Gradle projects, use [isSyncInProgress] instead because it operates with fewer sync state levels.
      */
     fun isSyncing(): Boolean {
         return syncState.get().run {
@@ -140,6 +142,13 @@ class KotlinProjectConfigurationService(private val project: Project, private va
     suspend fun sync() {
         queueSync()
         awaitSyncFinished()
+    }
+
+    @ApiStatus.Internal
+    fun queueSyncIfPossible() {
+        if (ExternalSystemProjectTrackerSettings.getInstance(project).autoReloadType != ExternalSystemProjectTrackerSettings.AutoReloadType.NONE) {
+            queueSync()
+        }
     }
 
     /**

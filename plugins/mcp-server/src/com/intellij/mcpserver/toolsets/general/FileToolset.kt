@@ -6,8 +6,6 @@ package com.intellij.mcpserver.toolsets.general
 import com.intellij.mcpserver.*
 import com.intellij.mcpserver.annotations.McpDescription
 import com.intellij.mcpserver.annotations.McpTool
-import com.intellij.mcpserver.mcpFail
-import com.intellij.mcpserver.project
 import com.intellij.mcpserver.toolsets.Constants
 import com.intellij.mcpserver.util.projectDirectory
 import com.intellij.mcpserver.util.relativizeIfPossible
@@ -23,6 +21,7 @@ import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions
 import com.intellij.openapi.roots.ContentIterator
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.*
+import com.intellij.openapi.vfs.transformer.TextPresentationTransformers
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -266,9 +265,11 @@ class FileToolset : McpToolset {
         val existing = parent.findChild(path.name)
         if (existing != null && !overwrite) mcpFail("File already exists: $pathInProject. Specify 'overwrite=true' to overwrite it")
         val createdFile = parent.findOrCreateFile(path.name)
+
         if (text != null) {
+          val documentText = TextPresentationTransformers.fromPersistent(text, virtualFile = createdFile)
           val document = FileDocumentManager.getInstance().getDocument(createdFile) ?: mcpFail("Can't get document for created file: $pathInProject")
-          document.setText(text)
+          document.setText(documentText)
         }
       }
     }

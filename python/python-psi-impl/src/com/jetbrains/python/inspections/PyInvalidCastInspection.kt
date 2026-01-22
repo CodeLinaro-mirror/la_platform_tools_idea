@@ -29,7 +29,7 @@ class PyInvalidCastInspection : PyInspection() {
         val targetType = Ref.deref(targetTypeRef)
         val actualType = myTypeEvalContext.getType(args[1])
 
-        if (PyTypeChecker.overlappingTypes(targetType, actualType, myTypeEvalContext)) return
+        if (PyTypeUtil.isOverlappingWith(targetType, actualType, myTypeEvalContext)) return
         val fromName = PythonDocumentationProvider.getTypeName(actualType, myTypeEvalContext)
         val toName = PythonDocumentationProvider.getVerboseTypeName(targetType, myTypeEvalContext)
 
@@ -83,7 +83,7 @@ private fun computeSuggestedIntermediateTypeName(targetType: PyType?, actualType
     fun mro(t: PyClassLikeType): List<PyClassLikeType> {
       val result = ArrayList<PyClassLikeType>()
       result.add(t)
-      result.addAll(t.getAncestorTypes(context))
+      result.addAll(t.getAncestorTypes(context).filterNotNull())
       return result
     }
 

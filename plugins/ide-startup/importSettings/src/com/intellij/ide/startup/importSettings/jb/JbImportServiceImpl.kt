@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.startup.importSettings.jb
 
 import com.intellij.configurationStore.getPerOsSettingsStorageFolderName
@@ -41,7 +41,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import javax.swing.Icon
@@ -59,7 +58,7 @@ internal data class JbProductInfo(
   val pluginDir: Path,
 ) : Product {
   override val origin = SettingsImportOrigin.JetBrainsProduct
-  private val descriptorsMap = ConcurrentHashMap<PluginId, IdeaPluginDescriptorImpl>()
+  private val descriptorsMap = ConcurrentHashMap<PluginId, PluginMainDescriptor>()
   private val descriptorsPrefetchTask = AtomicReference<Deferred<Unit>>()
   private var keymapRef: AtomicReference<String> = AtomicReference()
   val activeKeymap: String?
@@ -115,7 +114,7 @@ internal data class JbProductInfo(
     }
   }
 
-  private fun isCompatible(descriptor: IdeaPluginDescriptorImpl): Boolean {
+  private fun isCompatible(descriptor: PluginMainDescriptor): Boolean {
     if (PluginManagerCore.getPluginSet().isPluginEnabled(descriptor.pluginId)) {
       logger.info("Plugin \"${descriptor.name}\" from \"$name\" is already present in \"${IDEData.getSelf()?.fullName}\"")
       return false
@@ -144,7 +143,7 @@ internal data class JbProductInfo(
     return true
   }
 
-  fun getPluginsDescriptors(): ConcurrentHashMap<PluginId, IdeaPluginDescriptorImpl> {
+  fun getPluginsDescriptors(): ConcurrentHashMap<PluginId, PluginMainDescriptor> {
     if (descriptorsPrefetchTask.get()?.isCompleted != true) {
       logger.warn("Plugins prefetch is still in progress!")
     }
@@ -209,7 +208,7 @@ class JbImportServiceImpl(private val coroutineScope: CoroutineScope) : JbServic
     val modalityState = ModalityState.current()
     ImportSettingsEventsCollector.customDirectorySelected()
     coroutineScope.async(modalityState.asContextElement()) {
-      val importer = JbSettingsImporter(folderPath, folderPath, null)
+      val importer = JbSettingsImporter(folderPath, folderPath)
       importer.importRaw()
       logger.info("Performing raw import from '$folderPath'")
       withContext(Dispatchers.EDT) {
@@ -295,13 +294,11 @@ class JbImportServiceImpl(private val coroutineScope: CoroutineScope) : JbServic
   }
 
   private fun toJbProductInfo(confDir: Path): JbProductInfo? {
-    val ideName: String = IDEData.IDE_MAP.keys
-                            .filter { confDir.name.startsWith(it) }
-                            .sortedByDescending { it.length }
-                            .firstOrNull() ?: run {
+    val ideData = IDEData.getForConfigDir(confDir) ?: run {
       logger.info("$confDir is not prefixed with with any known IDE name. Skipping it")
       return null
     }
+    val ideName: String = ideData.folderName
     val ideVersion = confDir.name.substring(ideName.length)
     if (ideVersion.isEmpty()) {
       logger.info("$confDir doesn't contain any version info. Skipping it")
@@ -391,7 +388,7 @@ class JbImportServiceImpl(private val coroutineScope: CoroutineScope) : JbServic
   override fun importSettings(productId: String, data: DataToApply): DialogImportData {
     val productInfo = products[productId] ?: error("Can't find product")
     val filteredCategories = mutableSetOf<SettingsCategory>()
-    var plugins2import: Map<PluginId, IdeaPluginDescriptorImpl>? = null
+    var plugins2import: Map<PluginId, PluginMainDescriptor>? = null
     var unselectedPlugins: List<String>? = null
     for (setting in data.importSettings) {
       if (setting.id == SettingsCategory.PLUGINS.name) {
@@ -417,7 +414,7 @@ class JbImportServiceImpl(private val coroutineScope: CoroutineScope) : JbServic
                            && unselectedPlugins.isNullOrEmpty()
 
     val importData = TransferSettingsProgress(productInfo)
-    val importer = JbSettingsImporter(productInfo.configDir, productInfo.pluginDir, null)
+    val importer = JbSettingsImporter(productInfo.configDir, productInfo.pluginDir)
     val progressIndicator = importData.createProgressIndicatorAdapter()
     val importLifetime = LifetimeDefinition()
     var importStartedDeferred: Deferred<Unit>? = null
@@ -460,7 +457,7 @@ class JbImportServiceImpl(private val coroutineScope: CoroutineScope) : JbServic
                 logger.info("Started importing plugins...")
                 restartRequired = true
                 val pluginsStartTime = System.currentTimeMillis()
-                importer.installPlugins(coroutineScope, progressIndicator, plugins2import)
+                importer.installPlugins(progressIndicator, plugins2import)
                 (System.currentTimeMillis() - pluginsStartTime).let {
                   logger.info("Plugins migrated in $it ms.")
                   ImportSettingsEventsCollector.jbPluginsImportTimeSpent(it)
@@ -512,6 +509,16 @@ class JbImportServiceImpl(private val coroutineScope: CoroutineScope) : JbServic
 
       fun restartIde() {
         logger.info("Calling restart...")
+        runCatching {
+          val properties = listOf(
+            InitialConfigImportState.FIRST_SESSION_KEY to true.toString(),
+            InitialConfigImportState.CONFIG_IMPORTED_IN_CURRENT_SESSION_KEY to true.toString(),
+            InitialConfigImportState.CONFIG_IMPORTED_FROM_PATH to productInfo.configDir.toString(),
+          )
+          CustomConfigMigrationOption.SetProperties(properties).writeConfigMarkerFile()
+        }.onFailure {
+          logger.warn("Could not write config migration options", it)
+        }
         ApplicationManager.getApplication().invokeLater({
                                                           ImportSettingsEventsCollector.importFinished()
                                                           ApplicationManagerEx.getApplicationEx().restart(true)

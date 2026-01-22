@@ -1,7 +1,9 @@
 // Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python;
 
+import com.intellij.idea.TestFor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.RecursionManager;
 import com.intellij.psi.PsiFile;
 import com.jetbrains.python.fixtures.PyTestCase;
 import com.jetbrains.python.inspections.PyTypeCheckerInspectionTest;
@@ -16,7 +18,188 @@ import java.util.Map;
 
 public class Py3TypeTest extends PyTestCase {
   public static final String TEST_DIRECTORY = "/types/";
+  
+  // See PyReferenceExpressionImpl.getQualifiedReferenceType for explanations.
+  public void testQualifiedNameResolution() {
+    doTest("str", """
+      class C:
+          def m(self):
+              self.t = 5
+      
+      def f(self: C, x: float):
+          self.t = "foo"
+          expr = self.t
+      """);
 
+    doTest("int", """
+      class C:
+          def m(self):
+              self.t: int = 5
+      
+      def f(self: C, x: float):
+          self.t = "foo"
+          expr = self.t
+      """);
+
+    doTest("int", """
+      class C:
+          def __init__(self):
+              self.t: int = 5
+      
+      def f(self: C, x: float):
+          self.t = "foo"
+          expr = self.t
+      """);
+  }
+  
+  // PY-83047
+  public void testQualifiedReferenceTypeNarrowing() {
+    doTest("int | None", """
+      class C:
+          def __init__(self):
+              self.t: int | None = 5
+      
+          def f(self, x: float):
+              if x < 0:
+                  self.t = None
+      
+              expr = self.t
+      """);
+
+    doTest("int", """
+      class C:
+          def __init__(self):
+              self.t: int | None = 5
+      
+          def f(self, x: float):
+              if self.t is not None:
+                  expr = self.t
+      """);
+
+    doTest("None", """
+      class C:
+          def __init__(self):
+              self.t: int | None = 5
+      
+          def f(self, x: float):
+              if self.t is None:
+                  expr = self.t
+      """);
+
+    // Same, but as a separate function
+    
+    doTest("int | None", """
+      class C:
+          def __init__(self):
+              self.t: int | None = 5
+      
+      def f(self: C, x: float):
+          if x < 0:
+              self.t = None
+  
+          expr = self.t
+      """);
+
+    doTest("int", """
+      class C:
+          def __init__(self):
+              self.t: int | None = 5
+      
+      def f(self: C, x: float):
+          if self.t is not None:
+              expr = self.t
+      """);
+
+    doTest("None", """
+      class C:
+          def __init__(self):
+              self.t: int | None = 5
+      
+      def f(self: C, x: float):
+          if self.t is None:
+              expr = self.t
+      """);
+  }
+
+  /** 
+  Overload signatures for dict.get and dict.pop in builtins.pyi differ slightly,
+  dict.get has default value for "default" parameter. This affect the logic of overload resolution.
+  Therefore it makes sense to test both.
+  <p>
+   <pre>{@code
+  @overload
+  def get(self, key: _KT, default: None = None, /) -> _VT | None: ...
+  # mode overloads...
+   }</pre>
+   <p>
+   <pre>{@code
+  @overload
+  def pop(self, key: _KT, /) -> _VT: ...
+  # mode overloads...
+   }</pre>
+   */
+  // PY-82818
+  public void testGetFromDictWithDefaultNoneValue() {
+    doTest("Any | None", """
+             d = {}
+             expr = d.get("abc", None)""");
+  }
+
+  // PY-82818
+  public void testPopFromDictWithDefaultNoneValue() {
+    doTest("Any", """
+             d = {}
+             expr = d.pop("abc", None)""");
+  }
+  
+  // PY-83351
+  public void testWhileStatementNarrowing() {
+    doTest("int",
+           """
+             def foo(x: int | None):
+                 while x:
+                     expr = x
+                     x = None
+             """);
+    doTest("int",
+           """
+             def foo(x: int | None):
+                 while not (not (((not (not x))))):
+                     expr = x
+                     x = None
+             """);
+  }
+  
+  // PY-83597
+  public void testAndExpressionNarrowing() {
+    doTest("int", """
+             def foo(x: int | None):
+                 x and (expr := x)
+             """);
+  }
+  
+  // PY-83348
+  public void testOrExpressionType() {
+    doTest("int | str", """
+             def foo(x: int | None):
+                 expr = x or "foo"
+             """);
+    doTest("str", """
+             def foo(x: None):
+                 expr = x or "foo"
+             """);
+  }
+
+  public void testYieldInsideLambda() {
+    // Checks that foo is not a generator
+    doTest("int", """
+             def foo():
+                 y = lambda x: (yield x)
+                 return 42
+             expr = foo()
+             """);
+  }
+  
   // PY-21069
   public void testDunderGetattr() {
     doTest("MyClass", """
@@ -410,7 +593,7 @@ public class Py3TypeTest extends PyTestCase {
   }
 
   public void testOpenBinary() {
-    doTest("BufferedReader",
+    doTest("BufferedReader[_BufferedReaderStream]",
            "expr = open('foo', 'rb')\n");
   }
 
@@ -431,7 +614,7 @@ public class Py3TypeTest extends PyTestCase {
   }
 
   public void testIoOpenBinary() {
-    doTest("BufferedReader",
+    doTest("BufferedReader[_BufferedReaderStream]",
            """
              import io
              expr = io.open('foo', 'rb')
@@ -463,7 +646,7 @@ public class Py3TypeTest extends PyTestCase {
 
   // PY-20770
   public void testAsyncGeneratorDunderAnext() {
-    doTest("Awaitable[int]",
+    doTest("Coroutine[Any, Any, int]",
            """
              async def asyncgen():
                  yield 42
@@ -650,7 +833,7 @@ public class Py3TypeTest extends PyTestCase {
   }
 
   public void testIsEnumMember() {
-    doTest("Literal[Answer.No, Answer.Yes]",
+    doTest("Literal[Answer.Yes, Answer.No]",
            """
              from enum import Enum
              
@@ -662,7 +845,7 @@ public class Py3TypeTest extends PyTestCase {
                  if v is Answer.Yes or v is Answer.No:
                      expr = v
              """);
-    doTest("Literal[Answer.No, Answer.Yes]",
+    doTest("Literal[Answer.Yes, Answer.No]",
            """
              from enum import Enum
              
@@ -675,7 +858,7 @@ public class Py3TypeTest extends PyTestCase {
                      raise ValueError("Invalid value")
                  expr = v
              """);
-    doTest("Literal[Answer.No, Answer.Yes]",
+    doTest("Literal[Answer.Yes, Answer.No]",
            """
              from enum import Enum
 
@@ -960,6 +1143,15 @@ public class Py3TypeTest extends PyTestCase {
              def f() -> Callable[[int, str], int]:
                  pass
              expr = f()""");
+  }
+
+  // PY-81606
+  public void testCallable() {
+    doTest("(x: int, /, s: str, *, k: bytes) -> None",
+           """
+             def func(x: int, /, s: str, *, k: bytes) -> None:
+                 pass
+             expr = func""");
   }
 
   // PY-24445
@@ -3807,6 +3999,59 @@ public class Py3TypeTest extends PyTestCase {
     });
   }
 
+  // PY-37755
+  public void testNonLocalType() {
+    doTest("bool",
+           """
+             def fun():
+                 expr = True
+
+                 def nuf():
+                     nonlocal expr
+                     expr""");
+
+    doTest("bool",
+           """
+             a = []
+
+             def fun():
+                 a = True
+
+                 def nuf():
+                     nonlocal a
+                     expr = a""");
+
+    doTest("bool | int",
+           """
+             a = []
+
+             def fun():
+                 if True:
+                     a = True
+                 else:
+                     a = 5
+
+                 def nuf():
+                     nonlocal a
+                     expr = a""");
+
+    // PY-82115
+    doTest("str",
+           """
+             def outer1():
+                 s = "aba"
+             
+                 def outer2():
+                     def inner1():
+                         nonlocal s
+                         expr = s
+             
+                     def inner2():
+                         global s
+                         s = 1
+             """);
+  }
+
   // PY-75679
   public void testSelfSubstitutedWithGenericQualifierType() {
     doTest("Derived[int]", """
@@ -3838,6 +4083,229 @@ public class Py3TypeTest extends PyTestCase {
       class B(A[int]): ...
       
       expr = B().f()
+      """);
+  }
+
+  // PY-76855
+  public void testCallableWithSelfSubstitutedWithQualifierTypeWithDefault() {
+    doTest("(self: Foo7[int], /) -> Foo7[int]", """
+      from typing import Self, Generic, TypeVar
+      
+      DefaultIntT = TypeVar('DefaultIntT', default=int)
+      class Foo7(Generic[DefaultIntT]):
+          def meth(self, /) -> Self:
+              return self
+      
+      expr = Foo7.meth
+      """);
+  }
+
+  // PY-76855
+  public void testCallableWithSelfSubstitutedWithQualifierTypeDefaultOverriden() {
+    doTest("(self: Foo7[str], /) -> Foo7[str]", """
+      from typing import Self, Generic, TypeVar
+      
+      DefaultIntT = TypeVar('DefaultIntT', default=int)
+      class Foo7(Generic[DefaultIntT]):
+          def meth(self, /) -> Self:
+              return self
+      
+      expr = Foo7[str].meth
+      """);
+  }
+
+  // PY-76855
+  public void testCallableWithSelfSubstitutedWithQualifierTypeSelfDropped() {
+    doTest("(/) -> Foo7[str]", """
+      from typing import Self, Generic, TypeVar
+      
+      DefaultIntT = TypeVar('DefaultIntT', default=int)
+      class Foo7(Generic[DefaultIntT]):
+          def meth(self, /) -> Self:
+              return self
+      
+      expr = Foo7[str]().meth
+      """);
+  }
+
+  // PY-82699
+  public void testTypeParameterRebind() {
+    doTest("int", """
+      def outer[T]() -> None:
+          def inner() -> None:
+              expr = T
+
+          T = -1
+      """);
+  }
+
+  // PY-74257
+  public void testNotProperlyImportedQualifiedNameInTypeHint() {
+    doMultiFileTest("Any", """
+      from lib import f
+      
+      expr = f()
+      """);
+  }
+
+  @TestFor(issues="PY-81651")
+  public void testEqWithAny() {
+    // the actual result is `Any`, but we don't have the technology yet
+    doTest("bool | Any", """
+      from typing import Any
+      
+      class A:
+          def __eq__(self, other) -> Any:
+            return "hello :)"
+
+      expr = A() == 1
+      """);
+  }
+
+  @TestFor(issues="PY-84524")
+  public void testBuiltinsCallable() {
+    doTest("(...) -> object", """
+      a = object()
+      if callable(a):
+          expr = a
+      """);
+  }
+
+  @TestFor(issues="PY-83339")
+  public void testAssertNarrowsOptionalAfterAssert() {
+    doTest("int", """
+      def foo(param: int | None):
+          assert param
+          expr = param
+      """);
+  }
+
+  // PY-83529
+  public void testImportNestedBinarySubModule() {
+    String testDir = TEST_DIRECTORY + getTestName(false);
+    runWithAdditionalClassEntryInSdkRoots(testDir + "/site-packages", () -> {
+      runWithAdditionalClassEntryInSdkRoots(testDir + "/python_stubs", () -> {
+        doTest("pkg", """
+          import pkg.subpkg
+          expr = pkg
+          """);
+        doTest("pkg.subpkg", """
+          import pkg.subpkg
+          expr = pkg.subpkg
+          """);
+      });
+    });
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaParameterUsesAssignmentContext() {
+    doTest("int", """
+      from typing import Callable
+      
+      _: Callable[[int], object] = lambda expr: expr
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaParameterUsesAssignmentContextSplitDefinition() {
+    doTest("int", """
+      from typing import Callable
+      
+      a: Callable[[int], int]
+      a = lambda expr: expr
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaParameterUsesAssignmentContextSplitDefinitionClass() {
+    doTest("int", """
+      from typing import Callable
+      
+      class C:
+        attr: Callable[[int], str]
+        def __init__(self):
+          self.attr = lambda expr: str(expr)
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaParameterUsesParameterContext() {
+    doTest("int", """
+      from typing import Callable
+      
+      def f(fn: Callable[[int], object]): ...
+      
+      f(lambda expr: expr)
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaParameterUsesReturnContext() {
+    doTest("int", """
+      from typing import Callable
+      
+      def f() -> Callable[[int], object]:
+        return lambda expr: expr
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaUsesGenericContext() {
+    doTest("int", """
+      from typing import Callable
+      
+      def f[T](t: T, fn: Callable[[T], object]) -> T:
+      
+      f(1, lambda expr: expr)
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaUsesGenericContextReceiver() {
+    doTest("int", """
+      from typing import Callable
+      
+      class A[T]:
+          def f(self, fn: Callable[[T], object]) -> T:
+      
+      A[int]().f(lambda expr: expr)
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaParameterDoesntEndlessRecursion() {
+    RecursionManager.assertOnRecursionPrevention(myFixture.getTestRootDisposable());
+    doTest("Any", "_ = lambda expr: expr");
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaAsNonAnnotatedFunctionReturnValue() {
+    RecursionManager.assertOnRecursionPrevention(myFixture.getTestRootDisposable());
+    doTest("(x: Any) -> int | Any", """
+      def f():
+          return lambda x: x + 1
+      expr = f()
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaAsNonAnnotatedVariableValue() {
+    RecursionManager.assertOnRecursionPrevention(myFixture.getTestRootDisposable());
+    doTest("(x: Any) -> int | Any", """
+      t = lambda x: x + 1
+      expr = t
+      """);
+  }
+
+  @TestFor(issues="PY-28130")
+  public void testLambdaAsNonAnnotatedParameterValue() {
+    RecursionManager.assertOnRecursionPrevention(myFixture.getTestRootDisposable());
+    doTest("Any", """
+      from typing import Callable
+      
+      def f(fn): ...
+      
+      f(lambda expr: 42)
       """);
   }
 

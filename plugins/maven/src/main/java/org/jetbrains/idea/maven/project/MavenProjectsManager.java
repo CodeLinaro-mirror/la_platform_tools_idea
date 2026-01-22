@@ -76,8 +76,9 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
 
   private final MavenEmbeddersManager myEmbeddersManager;
 
-  private MavenProjectsTree myProjectsTree;
-  private MavenProjectManagerWatcher myWatcher;
+  private final @NotNull MavenProjectsTree myProjectsTree = new MavenProjectsTree(getProject());
+  private final AtomicReference<MavenProjectManagerWatcher> myWatcherRef = new AtomicReference<>(null);
+  private volatile Exception myWatcherCreationTrace;
 
   private final EventDispatcher<MavenProjectsTree.Listener> myProjectsTreeDispatcher =
     EventDispatcher.create(MavenProjectsTree.Listener.class);
@@ -122,7 +123,6 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
 
-
   @Override
   public void loadState(@NotNull MavenProjectsManagerState state) {
     myState = state;
@@ -159,7 +159,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
 
   @Deprecated(forRemoval = true)
   public File getLocalRepository() {
-      return MavenSettingsCache.getInstance(myProject).getEffectiveUserLocalRepo().toFile();
+    return MavenSettingsCache.getInstance(myProject).getEffectiveUserLocalRepo().toFile();
   }
 
   public Path getRepositoryPath() {
@@ -198,7 +198,6 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
     }
     fireActivated();
     if (!ApplicationManager.getApplication().isUnitTestMode()) {
-      listenForExternalChanges();
       MavenIndicesManager.getInstance(myProject).scheduleUpdateIndicesList();
     }
   }
@@ -254,15 +253,17 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
       scheduleUpdateAllMavenProjects(MavenSyncSpec.full("MavenProjectsManager.onProjectStartup"));
     }
   }
+
   private void initProjectsTree() {
+    if (projectsTreeInitialized.get()) return;
     initLock.lock();
     try {
-      if (projectsTreeInitialized.getAndSet(true)) return;
-
+      if (projectsTreeInitialized.get()) return;
       Path path = getProjectsTreeFile();
-      myProjectsTree = MavenProjectsTree.read(myProject, path);
+      myProjectsTree.read(path);
       applyStateToTree(myProjectsTree, this);
       myProjectsTree.addListener(myProjectsTreeDispatcher.getMulticaster(), this);
+      projectsTreeInitialized.set(true);
     }
     finally {
       initLock.unlock();
@@ -289,23 +290,23 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
     Update update = new Update(this) {
       @Override
       public void run() {
-       saveTree();
+        saveTree();
       }
     };
     if (MavenUtil.isMavenUnitTestModeEnabled()) {
       mySaveQueue.queue(update);
-    } else {
+    }
+    else {
       MergingQueueUtil.queueTracked(mySaveQueue, update);
     }
   }
 
   private void saveTree() {
     try {
-      MavenProjectsTree tree = myProjectsTree;
-      if (tree == null) {
+      if (!projectsTreeInitialized.get()) {
         return;
       }
-      tree.save(getProjectsTreeFile());
+      myProjectsTree.save(getProjectsTreeFile());
     }
     catch (IOException e) {
       MavenLog.LOG.info(e);
@@ -328,18 +329,39 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   private void initWorkers() {
-    myWatcher = new MavenProjectManagerWatcher(myProject, myProjectsTree);
+    var watcher = new MavenProjectManagerWatcher(myProject);
+    if (myWatcherRef.compareAndSet(null, watcher)) {
+      myWatcherCreationTrace = new Exception("Created here");
+      if (!ApplicationManager.getApplication().isUnitTestMode()) {
+        watcher.start();
+      }
+    }
+    else {
+      MavenLog.LOG.error("Watcher is already created", new Exception("tried to create second time", myWatcherCreationTrace));
+    }
   }
 
   public void listenForExternalChanges() {
-    myWatcher.start();
+    var watcher = myWatcherRef.get();
+    if (watcher != null) {
+      watcher.start();
+    }
+    else {
+      MavenLog.LOG.error("trying to start watcher, which is null", new Exception());
+    }
   }
 
   @TestOnly
   public void enableAutoImportInTests() {
     assert isInitialized();
     listenForExternalChanges();
-    myWatcher.enableAutoImportInTests();
+    var watcher = myWatcherRef.get();
+    if (watcher != null) {
+      watcher.enableAutoImportInTests();
+    }
+    else {
+      MavenLog.LOG.error("trying to start watcher, which is null", new Exception());
+    }
   }
 
   private void projectClosed() {
@@ -348,9 +370,13 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
       if (!isInitialized.getAndSet(false)) {
         return;
       }
-
-      myWatcher.stop();
-
+      var watcher = myWatcherRef.get();
+      if (watcher != null) {
+        watcher.stop();
+      }
+      else {
+        MavenLog.LOG.error("trying to stop watcher, which is null", new Exception());
+      }
       mySaveQueue.flush();
 
       if (MavenUtil.isMavenUnitTestModeEnabled()) {
@@ -383,7 +409,9 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
     if (!isInitialized()) {
       doInit();
       doActivate();
-      var distributionUrl = getWrapperDistributionUrl(ProjectUtil.guessProjectDir(myProject));
+      var baseDir = ProjectUtil.guessProjectDir(myProject);
+
+      var distributionUrl = baseDir == null ? null : getWrapperDistributionUrl(baseDir.toNioPath());
       if (distributionUrl != null) {
         getGeneralSettings().setMavenHomeType(MavenWrapper.INSTANCE);
       }
@@ -577,7 +605,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
 
   @ApiStatus.Internal
   public @NotNull MavenProjectsTree getProjectsTree() {
-    if (myProjectsTree == null) {
+    if (!projectsTreeInitialized.get()) {
       initProjectsTree();
     }
     return myProjectsTree;
@@ -662,22 +690,8 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public void updateProjectTargetFolders() {
-    ApplicationManager.getApplication().invokeLater(() -> {
-      if (myProject.isDisposed()) return;
-
-      MavenProjectImporter.tryUpdateTargetFolders(myProject);
-      VirtualFileManager.getInstance().asyncRefresh();
-    });
-  }
-
-  /**
-   * @deprecated Use {@link #scheduleUpdateAllMavenProjects(MavenSyncSpec)}}
-   */
-  @Deprecated(forRemoval = true)
-  // used in third-party plugins
-  public List<Module> importProjects() {
-    scheduleUpdateAllMavenProjects(MavenSyncSpec.full("MavenProjectsManager.importProjects"));
-    return List.of();
+    if (myProject.isDisposed()) return;
+    MavenProjectImporter.scheduleUpdateTargetFolders(myProject);
   }
 
   @ApiStatus.Internal

@@ -3,6 +3,7 @@ package com.intellij.mcpserver
 import com.intellij.mcpserver.annotations.McpDescription
 import com.intellij.mcpserver.impl.McpServerService
 import com.intellij.mcpserver.impl.util.asTool
+import com.intellij.mcpserver.stdio.IJ_MCP_SERVER_PROJECT_PATH
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.use
@@ -11,19 +12,20 @@ import com.intellij.testFramework.junit5.fixture.projectFixture
 import com.intellij.util.application
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.sse.SSE
-import io.ktor.utils.io.streams.asInput
-import io.modelcontextprotocol.kotlin.sdk.Implementation
+import io.ktor.client.request.header
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.StdioClientTransport
 import io.modelcontextprotocol.kotlin.sdk.shared.AbstractTransport
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.io.asSink
+import kotlinx.io.asSource
 import kotlinx.io.buffered
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
@@ -58,21 +60,25 @@ class TransportTest {
   fun tool_call_has_project_stdio() = tool_call_has_project(StdioTransportHolder(project))
 
   @Test
-  @Disabled("Headers passing should be implemented in kotlin mcp server sdk")
   fun tool_call_has_project_sse() = tool_call_has_project(StdioTransportHolder(project))
 
   fun tool_call_has_project(transport: TransportHolder) = transportTest(transport) { client ->
+    delay(500)
     Disposer.newDisposable().use { disposable ->
       application.extensionArea.getExtensionPoint(McpToolsProvider.EP).registerExtension(object : McpToolsProvider {
         override fun getTools(): List<McpTool> {
           return listOf(this@TransportTest::test_tool.asTool())
         }
       }, disposable)
+      // tools change is being listened in a backgound coroutine, so we have to wait a bit
+      delay(500)
       client.callTool("test_tool", emptyMap())
 
       val actual = withTimeout(2000) { projectFromTool.await() }
       assertEquals(project, actual)
     }
+    // the same to unregistration. Otherwise, tools change notification is being sent into a closed transport
+    delay(500) // delay for exit from use {}
   }
 
   val projectFromTool = CompletableDeferred<Project?>()
@@ -114,7 +120,7 @@ class StdioTransportHolder(project: Project) : TransportHolder() {
   }
 
   override val transport: AbstractTransport by lazy {
-    StdioClientTransport(process.inputStream.asInput(), process.outputStream.asSink().buffered())
+    StdioClientTransport(process.inputStream.asSource().buffered(), process.outputStream.asSink().buffered())
   }
 
   override fun close() {
@@ -132,7 +138,9 @@ class SseTransportHolder(project: Project) : TransportHolder() {
   override val transport: AbstractTransport by lazy {
     SseClientTransport(HttpClient {
       install(SSE)
-    }, "http://localhost:${McpServerService.getInstance().port}/sse")
+    }, "http://localhost:${McpServerService.getInstance().port}/sse") {
+      header(IJ_MCP_SERVER_PROJECT_PATH, project.basePath)
+    }
   }
 
   override fun toString(): String {

@@ -24,7 +24,6 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles
 import org.jetbrains.idea.maven.project.MavenProject
 import org.jetbrains.idea.maven.project.MavenProjectsTree
-import org.jetbrains.idea.maven.project.MavenSettingsCache
 import org.junit.Test
 import java.util.*
 import java.util.Set
@@ -697,7 +696,7 @@ class MavenProjectsTreeReadingTest : MavenProjectsTreeTestCase() {
                                             <version>1</version>
                                           </parent>
                                           """.trimIndent())
-    waitForImportWithinTimeout{
+    waitForImportWithinTimeout {
       projectsManager.addManagedFiles(listOf(child))
     }
     assertEquals("child", tree.findProject(child)!!.mavenId.artifactId)
@@ -980,6 +979,7 @@ class MavenProjectsTreeReadingTest : MavenProjectsTreeTestCase() {
     deleteProject(child)
     assertEquals("\${subChildName}", tree.findProject(subChild)!!.mavenId.artifactId)
   }
+
 
   @Test
   fun testRecursiveInheritanceAndAggregation() = runBlocking {
@@ -1665,7 +1665,8 @@ class MavenProjectsTreeReadingTest : MavenProjectsTreeTestCase() {
     resolve(project, parentProject!!, mavenGeneralSettings)
     val f = dir.resolve("tree.dat")
     tree.save(f)
-    val read = MavenProjectsTree.read(project, f)
+    val read = MavenProjectsTree(project)
+    read.read(f)
     val roots = read!!.rootProjects
     assertEquals(1, roots.size)
     val rootProject = roots[0]
@@ -1728,7 +1729,7 @@ class MavenProjectsTreeReadingTest : MavenProjectsTreeTestCase() {
   @Test
   fun testCollectingProfilesFromParentsAfterResolve() = runBlocking {
     val parent1 = createModulePom("parent1",
-                    """
+                                  """
                       <groupId>test</groupId>
                       <artifactId>parent1</artifactId>
                       <version>1</version>
@@ -1741,7 +1742,7 @@ class MavenProjectsTreeReadingTest : MavenProjectsTreeTestCase() {
                       """.trimIndent())
 
     val parent2 = createModulePom("parent2",
-                    """
+                                  """
                       <groupId>test</groupId>
                       <artifactId>parent2</artifactId>
                       <version>1</version>

@@ -18,6 +18,7 @@ package com.jetbrains.python;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.QualifiedName;
@@ -109,7 +110,7 @@ public final class PyCustomType implements PyClassLikeType {
   }
 
   @Override
-  public @Nullable String getClassQName() {
+  public @Nullable @NlsSafe String getClassQName() {
     return myQualifiedName;
   }
 
@@ -298,6 +299,26 @@ public final class PyCustomType implements PyClassLikeType {
     }
 
     return result;
+  }
+
+  @Override
+  public @NotNull List<@NotNull PyTypeMember> getAllMembers(@NotNull PyResolveContext resolveContext) {
+    List<PyTypeMember> result = new ArrayList<>();
+    for (PyClassLikeType type : myTypesToMimic) {
+      result.addAll(type.getAllMembers(resolveContext));
+    }
+    return result;
+  }
+
+  @Override
+  public @NotNull List<@NotNull PyTypeMember> findMember(@NotNull String name, @NotNull PyResolveContext resolveContext) {
+    for (PyClassLikeType type : myTypesToMimic) {
+      List<PyTypeMember> members = type.findMember(name, resolveContext);
+      if (!members.isEmpty()) {
+        return members;
+      }
+    }
+    return List.of();
   }
 
   /**

@@ -34,7 +34,10 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.task.RunConfigurationTaskState;
 import com.intellij.util.containers.ContainerUtil;
 import org.gradle.api.Task;
-import org.gradle.tooling.*;
+import org.gradle.tooling.CancellationToken;
+import org.gradle.tooling.CancellationTokenSource;
+import org.gradle.tooling.GradleConnector;
+import org.gradle.tooling.ProjectConnection;
 import org.gradle.util.GradleVersion;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
@@ -57,7 +60,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import static com.intellij.openapi.externalSystem.rt.execution.ForkedDebuggerHelper.DISPATCH_ADDR_SYS_PROP;
 import static com.intellij.openapi.externalSystem.rt.execution.ForkedDebuggerHelper.DISPATCH_PORT_SYS_PROP;
 import static com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunnableState.*;
-import static org.jetbrains.plugins.gradle.util.GradleUtil.determineRootProject;
+import static org.jetbrains.plugins.gradle.service.task.debugger.GradleDebuggerSupport.setupDebuggerProxy;
 
 public class GradleTaskManager implements ExternalSystemTaskManager<GradleExecutionSettings> {
 
@@ -107,13 +110,12 @@ public class GradleTaskManager implements ExternalSystemTaskManager<GradleExecut
     CancellationToken cancellationToken = cancellationTokenSource.token();
     myCancellationMap.put(id, cancellationTokenSource);
     try {
-      if (settings.getDistributionType() == DistributionType.WRAPPED) {
-        String rootProjectPath = determineRootProject(projectPath);
-        GradleWrapperHelper.ensureInstalledWrapper(id, rootProjectPath, settings, listener, cancellationToken);
-      }
       GradleExecutionContextImpl context = new GradleExecutionContextImpl(
         projectPath, id, settings, listener, cancellationToken
       );
+      if (settings.getDistributionType() == DistributionType.WRAPPED) {
+        GradleWrapperHelper.ensureInstalledWrapper(context);
+      }
       GradleExecutionHelper.execute(context, connection -> {
         prepareSettingsForExecution(settings, context);
         executeTasks(connection, context);
@@ -129,6 +131,7 @@ public class GradleTaskManager implements ExternalSystemTaskManager<GradleExecut
     @NotNull GradleExecutionSettings settings,
     @NotNull GradleExecutionContext context
   ) {
+    setupDebuggerProxy(context, settings);
     setupGradleScriptDebugging(settings);
     setupDebuggerDispatchPort(settings);
     setupBuiltInTestEvents(settings, context);

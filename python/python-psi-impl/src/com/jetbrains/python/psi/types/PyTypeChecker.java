@@ -4,9 +4,12 @@ package com.jetbrains.python.psi.types;
 import com.intellij.openapi.util.*;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiNamedElement;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PyNames;
+import com.jetbrains.python.PyNamesKt;
 import com.jetbrains.python.PythonRuntimeService;
 import com.jetbrains.python.ast.PyAstFunction;
 import com.jetbrains.python.codeInsight.dataflow.scope.ScopeUtil;
@@ -22,7 +25,7 @@ import com.jetbrains.python.psi.types.PyRecursiveTypeVisitor.PyTypeTraverser;
 import com.jetbrains.python.psi.types.PyRecursiveTypeVisitor.Traversal;
 import com.jetbrains.python.psi.types.PyTypeParameterMapping.Option;
 import com.jetbrains.python.pyi.PyiFile;
-import com.jetbrains.python.sdk.PythonSdkUtil;
+import com.jetbrains.python.sdk.legacy.PythonSdkUtil;
 import one.util.streamex.EntryStream;
 import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
@@ -50,19 +53,18 @@ public final class PyTypeChecker {
 
   /**
    * Checks whether a type {@code actual} can be placed where {@code expected} is expected.
-   *
+   * <p>
    * For example {@code int} matches {@code object}, while {@code str} doesn't match {@code int}.
    * Work for builtin types, classes, tuples etc.
-   *
+   * <p>
    * Whether it's unknown if {@code actual} match {@code expected} the method returns {@code true}.
    *
-   * @implNote This behavior may be changed in future by replacing {@code boolean} with {@code Optional<Boolean>} and updating the clients.
-   *
-   * @param expected expected type
-   * @param actual type to be matched against expected
-   * @param context type evaluation context
+   * @param expected      expected type
+   * @param actual        type to be matched against expected
+   * @param context       type evaluation context
    * @param substitutions map of substitutions for {@code expected} type
    * @return {@code false} if {@code expected} and {@code actual} don't match, true otherwise
+   * @implNote This behavior may be changed in future by replacing {@code boolean} with {@code Optional<Boolean>} and updating the clients.
    */
   public static boolean match(@Nullable PyType expected,
                               @Nullable PyType actual,
@@ -92,7 +94,7 @@ public final class PyTypeChecker {
 
   /**
    * Perform type matching.
-   *
+   * <p>
    * Implementation details:
    * <ul>
    *  <li>The method mutates {@code context.substitutions} map adding new entries into it
@@ -179,6 +181,14 @@ public final class PyTypeChecker {
       return Optional.of(match((PyUnionType)expected, actual, context));
     }
 
+    if (actual instanceof PyUnsafeUnionType weakUnionType) {
+      return Optional.of(match(expected, weakUnionType, context));
+    }
+
+    if (expected instanceof PyUnsafeUnionType weakUnionType) {
+      return Optional.of(match(weakUnionType, actual, context));
+    }
+
     if (expected instanceof PyClassType && actual instanceof PyClassType) {
       Optional<Boolean> match = match((PyClassType)expected, (PyClassType)actual, context);
       if (match.isPresent()) {
@@ -210,8 +220,11 @@ public final class PyTypeChecker {
       return Optional.of(actual instanceof PyModuleType && ((PyModuleType)expected).getModule() == ((PyModuleType)actual).getModule());
     }
 
-    if (expected instanceof PyClassType && actual instanceof PyModuleType) {
-      return match(expected, ((PyModuleType)actual).getModuleClassType(), context);
+    if (expected instanceof PyClassType classType && actual instanceof PyModuleType moduleType) {
+      if (PyProtocolsKt.isProtocol(classType, context.context)) {
+        return Optional.of(match(classType, moduleType, context));
+      }
+      return match(expected, moduleType.getModuleClassType(), context);
     }
 
     return Optional.of(matchNumericTypes(expected, actual));
@@ -231,7 +244,7 @@ public final class PyTypeChecker {
 
   /**
    * Check whether {@code expected} is Python *object* or *type*.
-   *
+   * <p>
    * {@see PyTypeChecker#match(PyType, PyType, TypeEvalContext, Map)}
    */
   private static @NotNull Optional<Boolean> matchObject(@NotNull PyClassType expected, @Nullable PyType actual) {
@@ -250,7 +263,7 @@ public final class PyTypeChecker {
 
   /**
    * Match {@code actual} versus {@link PyTypeVarType} expected.
-   *
+   * <p>
    * The method mutates {@code context.substitutions} map adding new entries into it
    */
   private static boolean match(@NotNull PyTypeVarType expected, @Nullable PyType actual, @NotNull MatchContext context) {
@@ -258,16 +271,16 @@ public final class PyTypeChecker {
       return false;
     }
 
-    PyType substituted = context.mySubstitutions.typeVars.get(expected);
+    Ref<PyType> substitutedRef = context.mySubstitutions.typeVars.get(expected);
     Ref<? extends PyType> defaultTypeRef = expected.getDefaultType();
     if (defaultTypeRef != null) {
       PyType defaultType = defaultTypeRef.get();
       // Skip default substitution
-      if (defaultType != null && defaultType.equals(substituted)) {
-        substituted = null;
+      if (defaultType != null && defaultType.equals(Ref.deref(substitutedRef))) {
+        substitutedRef = null;
       }
     }
-    final PyType substitution = substituted;
+    final PyType substitution = Ref.deref(substitutedRef);
     PyType bound = expected.getBound();
     List<@Nullable PyType> constraints = expected.getConstraints();
     int matchedConstraintIndex = -1;
@@ -293,8 +306,8 @@ public final class PyTypeChecker {
       }
     }
 
-    if (substitution != null) {
-      if (expected.equals(safeActual) || substitution.equals(expected)) {
+    if (substitutedRef != null) {
+      if (expected.equals(safeActual) || expected.equals(substitution)) {
         return true;
       }
 
@@ -308,12 +321,12 @@ public final class PyTypeChecker {
 
     if (safeActual != null) {
       PyType type = constraints.isEmpty() ? safeActual : constraints.get(matchedConstraintIndex);
-      context.mySubstitutions.typeVars.put(expected, type);
+      context.mySubstitutions.typeVars.put(expected, Ref.create(type));
     }
     else {
       PyType effectiveBound = PyTypeUtil.getEffectiveBound(expected);
       if (effectiveBound != null) {
-        context.mySubstitutions.typeVars.put(expected, PyUnionType.createWeakType(effectiveBound));
+        context.mySubstitutions.typeVars.put(expected, Ref.create(PyUnionType.createWeakType(effectiveBound)));
       }
     }
 
@@ -323,7 +336,7 @@ public final class PyTypeChecker {
   private static @Nullable PyType toClass(@Nullable PyType type) {
     return PyTypeUtil.toStream(type)
       .map(t -> t instanceof PyInstantiableType<?> instantiableType ? instantiableType.toClass() : t)
-      .collect(PyTypeUtil.toUnion());
+      .collect(PyTypeUtil.toUnion(type));
   }
 
   private static boolean match(@NotNull PyPositionalVariadicType expected, @Nullable PyType actual, @NotNull MatchContext context) {
@@ -407,6 +420,7 @@ public final class PyTypeChecker {
     if (actual == null) return true;
     List<PyType> expectedFirstTypes = expected.getFirstTypes();
     int expectedPrefixSize = expectedFirstTypes.size();
+    PyParamSpecType expectedParamSpec = expected.getParamSpec();
     if (actual instanceof PyConcatenateType actualConcatenateType) {
       if (expectedPrefixSize > actualConcatenateType.getFirstTypes().size()) {
         return false;
@@ -415,13 +429,16 @@ public final class PyTypeChecker {
       if (!match(expectedFirstTypes, actualFirstTypes, context)) {
         return false;
       }
+      if (expectedParamSpec == null) {
+        return true;
+      }
       if (actualFirstTypes.size() > expectedPrefixSize) {
-        return match(expected.getParamSpec(),
+        return match(expectedParamSpec,
                      new PyConcatenateType(ContainerUtil.subList(expectedFirstTypes, actualFirstTypes.size()),
                                            actualConcatenateType.getParamSpec()), context);
       }
       else {
-        return match(expected.getParamSpec(), actualConcatenateType.getParamSpec(), context);
+        return match(expectedParamSpec, actualConcatenateType.getParamSpec(), context);
       }
     }
     else if (actual instanceof PyCallableParameterListType actualParameters) {
@@ -433,14 +450,19 @@ public final class PyTypeChecker {
       if (!match(expectedFirstTypes, actualFirstParamTypes, context)) {
         return false;
       }
-      return match(expected.getParamSpec(),
+      if (expectedParamSpec == null) {
+        return true;
+      }
+      return match(expectedParamSpec,
                    new PyCallableParameterListTypeImpl(ContainerUtil.subList(actualParameters.getParameters(), expectedPrefixSize)),
                    context);
     }
     return false;
   }
 
-  private static boolean match(@NotNull PyCallableParameterListType expectedParameters, @Nullable PyType actual, @NotNull MatchContext context) {
+  private static boolean match(@NotNull PyCallableParameterListType expectedParameters,
+                               @Nullable PyType actual,
+                               @NotNull MatchContext context) {
     if (actual == null) return true;
     if (!(actual instanceof PyCallableParameterListType actualParameters)) return false;
     return matchCallableParameters(expectedParameters.getParameters(), actualParameters.getParameters(), context);
@@ -455,15 +477,22 @@ public final class PyTypeChecker {
       }
     }
 
-    // checking strictly separately until PY-24834 gets implemented
-    if (ContainerUtil.exists(actual.getMembers(), x -> x instanceof PyLiteralStringType || x instanceof PyLiteralType)) {
-      return ContainerUtil.and(actual.getMembers(), type -> match(expected, type, context).orElse(false));
+    if (!PyUnionType.isStrictSemanticsEnabled()) {// checking strictly separately until PY-24834 gets implemented
+      if (ContainerUtil.exists(actual.getMembers(), x -> x instanceof PyLiteralStringType || x instanceof PyLiteralType)) {
+        return ContainerUtil.and(actual.getMembers(), type -> match(expected, type, context).orElse(false));
+      }
+      return ContainerUtil.or(actual.getMembers(), type -> match(expected, type, context).orElse(false));
     }
+    return ContainerUtil.and(actual.getMembers(), type -> match(expected, type, context).orElse(false));
+  }
 
+  private static boolean match(@NotNull PyType expected, @NotNull PyUnsafeUnionType actual, @NotNull MatchContext context) {
     return ContainerUtil.or(actual.getMembers(), type -> match(expected, type, context).orElse(false));
   }
 
-  private static @NotNull Optional<Boolean> match(@NotNull PyTupleType expected, @NotNull PyUnionType actual, @NotNull MatchContext context) {
+  private static @NotNull Optional<Boolean> match(@NotNull PyTupleType expected,
+                                                  @NotNull PyUnionType actual,
+                                                  @NotNull MatchContext context) {
     final int elementCount = expected.getElementCount();
 
     if (!expected.isHomogeneous()) {
@@ -483,7 +512,16 @@ public final class PyTypeChecker {
     return ContainerUtil.or(expected.getMembers(), type -> match(type, actual, context).orElse(true));
   }
 
-  private static @NotNull Optional<Boolean> match(@NotNull PyClassType expected, @NotNull PyClassType actual, @NotNull MatchContext matchContext) {
+  private static boolean match(@NotNull PyUnsafeUnionType expected, @NotNull PyType actual, @NotNull MatchContext context) {
+    if (expected.getMembers().contains(actual)) {
+      return true;
+    }
+    return ContainerUtil.or(expected.getMembers(), type -> match(type, actual, context).orElse(true));
+  }
+
+  private static @NotNull Optional<Boolean> match(@NotNull PyClassType expected,
+                                                  @NotNull PyClassType actual,
+                                                  @NotNull MatchContext matchContext) {
     if (expected.equals(actual)) {
       return Optional.of(true);
     }
@@ -539,57 +577,55 @@ public final class PyTypeChecker {
     return Optional.empty();
   }
 
-  public static boolean sameType(@Nullable PyType type1, @Nullable PyType type2, @NotNull TypeEvalContext context) {
-    if ((type1 == null || type2 == null) && type1 != type2) return false;
-
-    return match(type1, type2, context)
-           && match(type2, type1, context);
-  }
-
-  /**
-   * if some possible value of one type is assignable to the other type
-   */
-  public static boolean overlappingTypes(@Nullable PyType type1, @Nullable PyType type2, @NotNull TypeEvalContext context) {
-    if (type1 instanceof PyUnionType unionType1) {
-      return ContainerUtil.exists(unionType1.getMembers(), t -> overlappingTypes(t, type2, context));
-    }
-    if (type2 instanceof PyUnionType unionType2) {
-      return ContainerUtil.exists(unionType2.getMembers(), t -> overlappingTypes(type1, t, context));
-    }
-    return match(type1, type2, context)
-           || match(type2, type1, context);
-  }
-
   private static boolean matchProtocols(@NotNull PyClassType expected, @NotNull PyClassType actual, @NotNull MatchContext matchContext) {
     GenericSubstitutions substitutions = collectTypeSubstitutions(actual, matchContext.context);
 
     MatchContext protocolContext = new MatchContext(matchContext.context, new GenericSubstitutions(), matchContext.reversedSubstitutions);
-    for (kotlin.Pair<PyTypedElement, List<PyTypedResolveResult>> pair : PyProtocolsKt.inspectProtocolSubclass(expected, actual, matchContext.context)) {
-      final List<PyType> subclassElementTypes = ContainerUtil.map(pair.getSecond(), member -> member.getType());
-      if (ContainerUtil.isEmpty(subclassElementTypes)) {
+    for (kotlin.Pair<PyTypeMember, List<PyTypeMember>> pair : PyProtocolsKt.inspectProtocolSubclass(expected, actual,
+                                                                                                    matchContext.context)) {
+      final PyTypeMember protocolMember = pair.getFirst();
+      final List<PyTypeMember> subclassElementMembers = pair.getSecond();
+      if (ContainerUtil.isEmpty(subclassElementMembers)) {
         return false;
       }
 
-      final PyType protocolElementType = dropSelfIfNeeded(expected, matchContext.context.getType(pair.getFirst()), matchContext.context);
-      final boolean elementResult = StreamEx
-        .of(subclassElementTypes)
-        .map(type -> dropSelfIfNeeded(actual, type, matchContext.context))
-        .map(type -> substitute(type, substitutions, matchContext.context))
-        .anyMatch(
-          subclassElementType -> {
-            boolean matched = match(protocolElementType, subclassElementType, protocolContext).orElse(true);
-            if (!matched) return false;
-            if (!(protocolElementType instanceof PyCallableType callableProtocolElement) ||
-                !(subclassElementType instanceof PyCallableType callableSubclassElement)) return matched;
-            var protocolReturnType = callableProtocolElement.getReturnType(protocolContext.context);
-            if (protocolReturnType instanceof PySelfType) {
-              var subclassReturnType = callableSubclassElement.getReturnType(protocolContext.context);
-              if (subclassReturnType instanceof PySelfType) return true;
-              return match(actual, subclassReturnType, matchContext).orElse(true);
-            }
-            return matched;
+      final PyType protocolElementType = dropSelfIfNeeded(expected, pair.getFirst().getType(), matchContext.context);
+      final boolean elementResult = ContainerUtil.exists(subclassElementMembers, subclassElementMember -> {
+        // Ignore read-only checks for methods
+        // Usually methods are writable, but protocol methods are considered read-only
+        if ((!(protocolMember.getElement() instanceof PyFunction) &&
+             !(subclassElementMember.getElement() instanceof PyFunction)) ||
+            (protocolMember.isProperty() || subclassElementMember.isProperty())
+        ) {
+          if (protocolMember.isWritable() && !subclassElementMember.isWritable()) {
+            return false;
           }
-        );
+          if (protocolMember.isDeletable() && !subclassElementMember.isDeletable()) {
+            return false;
+          }
+        }
+        boolean isProtocolMemberClassVar = protocolMember.isClassVar();
+        boolean isSubclassMemberClassVar = subclassElementMember.isClassVar();
+        if (isSubclassMemberClassVar != isProtocolMemberClassVar) {
+          return false;
+        }
+
+        PyType subclassElementType = dropSelfIfNeeded(actual, subclassElementMember.getType(), matchContext.context);
+        subclassElementType = substitute(subclassElementType, substitutions, matchContext.context);
+        boolean matched = match(protocolElementType, subclassElementType, protocolContext).orElse(true);
+        if (!matched) return false;
+        if (!(protocolElementType instanceof PyCallableType callableProtocolElement) ||
+            !(subclassElementType instanceof PyCallableType callableSubclassElement)) {
+          return matched;
+        }
+        var protocolReturnType = callableProtocolElement.getReturnType(protocolContext.context);
+        if (protocolReturnType instanceof PySelfType) {
+          var subclassReturnType = callableSubclassElement.getReturnType(protocolContext.context);
+          if (subclassReturnType instanceof PySelfType) return true;
+          return match(actual, subclassReturnType, matchContext).orElse(true);
+        }
+        return matched;
+      });
 
       if (!elementResult) {
         return false;
@@ -600,12 +636,51 @@ public final class PyTypeChecker {
     if (expected instanceof PyCollectionType) {
       PyCollectionType genericSuperClass = findGenericDefinitionType(expected.getPyClass(), matchContext.context);
       if (genericSuperClass != null) {
-        PyCollectionType concreteSuperClass = (PyCollectionType)substitute(genericSuperClass, protocolContext.mySubstitutions, protocolContext.context);
+        PyCollectionType concreteSuperClass =
+          (PyCollectionType)substitute(genericSuperClass, protocolContext.mySubstitutions, protocolContext.context);
         assert concreteSuperClass != null;
         return matchGenericClassesParameterWise((PyCollectionType)expected, concreteSuperClass, matchContext);
       }
     }
 
+    return true;
+  }
+
+  private static boolean match(PyClassType expectedProtocol, PyModuleType actualModule, MatchContext matchContext) {
+    PyFile module = actualModule.getModule();
+
+    Map<String, PyTypedElement> moduleElements =
+      StreamEx.of(ContainerUtil.concat(module.getTopLevelAttributes(), module.getTopLevelFunctions()))
+        .filter(e -> {
+          var name = ((PyQualifiedNameOwner)e).getName();
+          return name != null && !PyNamesKt.isPrivate(name) && !PyNamesKt.isProtected(name);
+        })
+        .toMap(PyTypedElement::getName, v -> v);
+
+    var protocolElements = PyProtocolsKt.inspectProtocolSubclass(expectedProtocol, expectedProtocol, matchContext.context);
+
+    if (protocolElements.size() != moduleElements.size()) return false;
+
+    GenericSubstitutions substitutions = collectTypeSubstitutions(expectedProtocol, matchContext.context);
+    for (kotlin.Pair<PyTypeMember, List<PyTypeMember>> pair : protocolElements) {
+      PsiElement pm = pair.getFirst().getMainElement();
+      if (!(pm instanceof PsiNamedElement protocolMember)) {
+        continue;
+      }
+      String name = protocolMember.getName();
+      PyTypedElement moduleElement = moduleElements.get(name);
+      if (moduleElement != null) {
+        PyType expectedProtocolMemberType =
+          substitute(dropSelfIfNeeded(expectedProtocol, pair.getFirst().getType(), matchContext.context), substitutions,
+                     matchContext.context);
+        PyType actualModuleElementType = matchContext.context.getType(moduleElement);
+        if (!match(expectedProtocolMemberType, actualModuleElementType, matchContext.context)) {
+          return false;
+        }
+        continue;
+      }
+      return false;
+    }
     return true;
   }
 
@@ -621,7 +696,9 @@ public final class PyTypeChecker {
   }
 
   // https://typing.python.org/en/latest/spec/tuples.html#type-compatibility-rules
-  private static @NotNull Optional<Boolean> match(@NotNull PyTupleType expected, @NotNull PyTupleType actual, @NotNull MatchContext context) {
+  private static @NotNull Optional<Boolean> match(@NotNull PyTupleType expected,
+                                                  @NotNull PyTupleType actual,
+                                                  @NotNull MatchContext context) {
     if (actual.isHomogeneous()) {
       // The type tuple[Any, ...] is consistent with any tuple
       final PyType elementType = actual.getIteratedItemType();
@@ -889,13 +966,14 @@ public final class PyTypeChecker {
       Map<PyType, PyType> substitutionsFromClassDefinition = provider.getGenericSubstitutions(classType.getPyClass(), context);
       for (Map.Entry<PyType, PyType> entry : substitutionsFromClassDefinition.entrySet()) {
         if (entry.getKey() instanceof PyTypeVarType typeVarType) {
-          result.typeVars.put(typeVarType, entry.getValue());
+          result.typeVars.put(typeVarType, Ref.create(entry.getValue()));
         }
         else if (entry.getKey() instanceof PyTypeVarTupleType typeVarTuple) {
           assert entry.getValue() instanceof PyPositionalVariadicType;
           result.typeVarTuples.put(typeVarTuple, (PyPositionalVariadicType)entry.getValue());
         }
-        else if (entry.getKey() instanceof PyParamSpecType specType && entry.getValue() instanceof PyCallableParameterVariadicType paramSpecType) {
+        else if (entry.getKey() instanceof PyParamSpecType specType &&
+                 entry.getValue() instanceof PyCallableParameterVariadicType paramSpecType) {
           result.paramSpecs.put(specType, paramSpecType);
         }
       }
@@ -1015,11 +1093,13 @@ public final class PyTypeChecker {
       }
     }
     if (type instanceof PyUnionType union) {
-      for (PyType t : union.getMembers()) {
-        if (isUnknown(t, genericsAreUnknown, context)) {
-          return true;
-        }
+      if (!PyUnionType.isStrictSemanticsEnabled()) {
+        return ContainerUtil.exists(union.getMembers(), member -> isUnknown(member, genericsAreUnknown, context));
       }
+      return ContainerUtil.all(union.getMembers(), member -> isUnknown(member, genericsAreUnknown, context));
+    }
+    if (type instanceof PyUnsafeUnionType weakUnion) {
+      return ContainerUtil.exists(weakUnion.getMembers(), member -> isUnknown(member, genericsAreUnknown, context));
     }
     return false;
   }
@@ -1045,7 +1125,7 @@ public final class PyTypeChecker {
       boolean isAlreadyBound = existingSubstitutions.typeVars.containsKey(returnTypeParam) ||
                                existingSubstitutions.typeVars.containsKey(invert(returnTypeParam));
       if (canGetBoundFromArguments && !isAlreadyBound) {
-        existingSubstitutions.typeVars.put(returnTypeParam, Ref.deref(returnTypeParam.getDefaultType()));
+        existingSubstitutions.typeVars.put(returnTypeParam, (Ref<PyType>)returnTypeParam.getDefaultType());
       }
     }
     for (PyParamSpecType paramSpecType : typeParamsFromReturnType.paramSpecs) {
@@ -1058,8 +1138,8 @@ public final class PyTypeChecker {
         else {
           existingSubstitutions.paramSpecs.put(paramSpecType, new PyCallableParameterListTypeImpl(
             List.of(PyCallableParameterImpl.positionalNonPsi("args", null),
-                  PyCallableParameterImpl.keywordNonPsi("kwargs", null)))
-        );
+                    PyCallableParameterImpl.keywordNonPsi("kwargs", null)))
+          );
         }
       }
     }
@@ -1177,10 +1257,11 @@ public final class PyTypeChecker {
           }
           return typeVarType;
         }
-        PyType substitution = substitutions.typeVars.get(typeVarType);
-        if (substitution == null) {
+        Ref<PyType> substitutionRef = substitutions.typeVars.get(typeVarType);
+        PyType substitution = Ref.deref(substitutionRef);
+        if (substitutionRef == null) {
           final PyInstantiableType<?> invertedTypeVar = invert(typeVarType);
-          final PyInstantiableType<?> invertedSubstitution = as(substitutions.typeVars.get(invertedTypeVar), PyInstantiableType.class);
+          final PyInstantiableType<?> invertedSubstitution = as(Ref.deref(substitutions.typeVars.get(invertedTypeVar)), PyInstantiableType.class);
           if (invertedSubstitution != null) {
             substitution = invert(invertedSubstitution);
           }
@@ -1235,7 +1316,7 @@ public final class PyTypeChecker {
         }
         return PyTypeUtil.toStream(qualifierType)
           .filter(memberType -> match(selfScopeClassType, memberType, context))
-          .collect(PyTypeUtil.toUnion());
+          .collect(PyTypeUtil.toUnion(qualifierType));
       }
 
       @Override
@@ -1394,37 +1475,52 @@ public final class PyTypeChecker {
                                                        @Nullable PyType actualType,
                                                        @NotNull GenericSubstitutions substitutions,
                                                        @NotNull TypeEvalContext context) {
-      // TODO find out a better way to pass the corresponding function inside
-      final PyParameter param = paramWrapper.getParameter();
-      final PyFunction function = as(ScopeUtil.getScopeOwner(param), PyFunction.class);
-      assert function != null;
-      if (function.getModifier() == PyAstFunction.Modifier.CLASSMETHOD) {
-        actualType = PyTypeUtil.toStream(actualType)
-          .select(PyClassLikeType.class)
-          .map(PyClassLikeType::toClass)
-          .select(PyType.class)
-          .foldLeft(PyUnionType::union)
-          .orElse(actualType);
-      }
-      else if (PyUtil.isInitMethod(function)) {
-        actualType = PyTypeUtil.toStream(actualType)
-          .select(PyInstantiableType.class)
-          .map(PyInstantiableType::toInstance)
-          .select(PyType.class)
-          .foldLeft(PyUnionType::union)
-          .orElse(actualType);
-      }
+    // TODO find out a better way to pass the corresponding function inside
+    final PyParameter param = paramWrapper.getParameter();
+    final PyFunction function = as(ScopeUtil.getScopeOwner(param), PyFunction.class);
+    assert function != null;
+    if (function.getModifier() == PyAstFunction.Modifier.CLASSMETHOD) {
+      actualType = PyTypeUtil.toStream(actualType)
+        .select(PyClassLikeType.class)
+        .map(PyClassLikeType::toClass)
+        .select(PyType.class)
+        .foldLeft(PyUnionType::union)
+        .orElse(actualType);
+    }
+    else if (PyUtil.isInitMethod(function)) {
+      actualType = PyTypeUtil.toStream(actualType)
+        .select(PyInstantiableType.class)
+        .map(PyInstantiableType::toInstance)
+        .select(PyType.class)
+        .foldLeft(PyUnionType::union)
+        .orElse(actualType);
+    }
+    if (PyUnionType.isStrictSemanticsEnabled()) {
+      PyClass pyClass = function.getContainingClass();
+      assert pyClass != null;
+      PyClassLikeType classType = as(context.getType(pyClass), PyClassLikeType.class);
+      assert classType != null;
+      PyClassLikeType superType =
+        function.getModifier() == PyAstFunction.Modifier.CLASSMETHOD || isNewMethod(function) ? classType : classType.toInstance();
+      // In a union receiver type, leave only members that actually have this function
+      // TODO how does it work with qualified calls, e.g. SomeClass.method(receiver, arg1, arg2)
+      // TODO how does it work with @classmethods?
+      actualType = PyTypeUtil.toStream(actualType)
+        .filter(type -> match(superType, type, context))
+        .collect(PyTypeUtil.toUnion(actualType));
+    }
 
-      PyClass containingClass = function.getContainingClass();
-      assert containingClass != null;
-      PyType genericClass = findGenericDefinitionType(containingClass, context);
-      if (genericClass instanceof PyInstantiableType<?> instantiableType && (isNewMethod(function) || function.getModifier() == PyAstFunction.Modifier.CLASSMETHOD)) {
-        genericClass = instantiableType.toClass();
-      }
-      if (genericClass != null && !match(genericClass, expectedType, context, substitutions)) {
-        return null;
-      }
-      return actualType;
+    PyClass containingClass = function.getContainingClass();
+    assert containingClass != null;
+    PyType genericClass = findGenericDefinitionType(containingClass, context);
+    if (genericClass instanceof PyInstantiableType<?> instantiableType &&
+        (isNewMethod(function) || function.getModifier() == PyAstFunction.Modifier.CLASSMETHOD)) {
+      genericClass = instantiableType.toClass();
+    }
+    if (genericClass != null && !match(genericClass, expectedType, context, substitutions)) {
+      return null;
+    }
+    return actualType;
   }
 
   private static boolean matchParameterArgumentTypes(@NotNull PyCallableParameter paramWrapper,
@@ -1486,7 +1582,7 @@ public final class PyTypeChecker {
         .select(PyClassType.class)
         .map(type -> collectTypeSubstitutions(type, context))
         .forEach(newSubstitutions -> {
-          for (Map.Entry<PyTypeVarType, PyType> typeVarMapping : newSubstitutions.typeVars.entrySet()) {
+          for (Map.Entry<PyTypeVarType, Ref<PyType>> typeVarMapping : newSubstitutions.typeVars.entrySet()) {
             substitutions.typeVars.putIfAbsent(typeVarMapping.getKey(), typeVarMapping.getValue());
           }
           for (Map.Entry<PyTypeVarTupleType, PyPositionalVariadicType> typeVarMapping : newSubstitutions.typeVarTuples.entrySet()) {
@@ -1638,8 +1734,8 @@ public final class PyTypeChecker {
    */
   @ApiStatus.Internal
   public static @Nullable PyType parameterizeType(@NotNull PyType genericType,
-                                        @NotNull List<PyType> actualTypeParams,
-                                        @NotNull TypeEvalContext context) {
+                                                  @NotNull List<PyType> actualTypeParams,
+                                                  @NotNull TypeEvalContext context) {
     Generics typeParams = collectGenerics(genericType, context);
     if (!typeParams.isEmpty()) {
       List<PyType> expectedTypeParams = new ArrayList<>(new LinkedHashSet<>(typeParams.getAllTypeParameters()));
@@ -1676,7 +1772,7 @@ public final class PyTypeChecker {
     if (mapping != null) {
       for (Couple<PyType> pair : mapping.getMappedTypes()) {
         if (pair.getFirst() instanceof PyTypeVarType typeVar) {
-          substitutions.typeVars.put(typeVar, pair.getSecond());
+          substitutions.typeVars.put(typeVar, Ref.create(pair.getSecond()));
         }
         else if (pair.getFirst() instanceof PyTypeVarTupleType typeVarTuple) {
           substitutions.typeVarTuples.put(typeVarTuple, as(pair.getSecond(), PyPositionalVariadicType.class));
@@ -1696,6 +1792,68 @@ public final class PyTypeChecker {
     Optional<Boolean> matched = match(superType, type, matchContext);
     if (matched.orElse(false)) {
       return substitute(superType, matchContext.mySubstitutions, context);
+    }
+    return null;
+  }
+
+  @ApiStatus.Internal
+  public static @Nullable PyType getExpectedType(@NotNull PyExpression expression, @NotNull TypeEvalContext context) {
+    var parent = expression.getParent();
+    // Handle keyword arguments by looking at the keyword argument node instead of the expression
+    PsiElement callArgument = parent instanceof PyKeywordArgument kwArg ? kwArg : expression;
+    if (callArgument.getParent() instanceof PyArgumentList argumentList) {
+      var mappingResults = argumentList.getCallExpression().multiMapArguments(PyResolveContext.defaultContext(context));
+      if (mappingResults.isEmpty()) return null;
+      var argumentMapping = mappingResults.getFirst();
+      var mapped = argumentMapping.getMappedParameters().get(callArgument);
+      if (mapped != null) {
+        var expected = mapped.getType(context);
+        // Extract element type from *args: tuple[T, ...]
+        if (mapped.isPositionalContainer() && expected instanceof PyTupleType tupleType && tupleType.isHomogeneous()) {
+          expected = tupleType.getElementTypes().get(0);
+        }
+        // Extract value type from **kwargs: dict[str, T]
+        else if (mapped.isKeywordContainer() && expected instanceof PyCollectionType dictType &&
+                 PyNames.DICT.equals(dictType.getPyClass().getName())) {
+          expected = ContainerUtil.getOrElse(dictType.getElementTypes(), 1, null);
+        }
+        if (hasGenerics(expected, context)) {
+          PyExpression receiver = argumentList.getParent() instanceof PyCallExpression callExpression
+                                  ? callExpression.getReceiver(null)
+                                  : null;
+          final var substitutions = unifyGenericCall(receiver, argumentMapping.getMappedParameters(), context);
+          if (substitutions != null) {
+            final var substitutionsWithUnresolvedReturnGenerics =
+              getSubstitutionsWithUnresolvedReturnGenerics(((PyCallable)expression).getParameters(context), expected, substitutions,
+                                                           context);
+            return substitute(expected, substitutionsWithUnresolvedReturnGenerics, context);
+          }
+        }
+        return expected;
+      }
+    }
+    // Handle unpacking in assignments: skip PyParenthesizedExpression and PyTupleExpression
+    else if (PsiTreeUtil.skipParentsOfType(expression, PyParenthesizedExpression.class,
+                                           PyTupleExpression.class) instanceof PyAssignmentStatement assignment) {
+      List<Pair<PyExpression, PyExpression>> mapping = assignment.getTargetsToValuesMapping();
+      Pair<PyExpression, PyExpression> matchingPair = ContainerUtil.find(mapping, pair -> pair.getSecond() == expression);
+      if (matchingPair != null && matchingPair.getFirst() instanceof PyTargetExpression target) {
+        // resolve declared type
+        if (target.getAnnotationValue() != null) {
+          return context.getType(target);
+        }
+
+        var result = new PyTypingTypeProvider().getReferenceType(target, context, expression);
+        if (result != null) {
+          return result.get();
+        }
+      }
+    }
+    else if (parent instanceof PyReturnStatement) {
+      var scopeOwner = ScopeUtil.getScopeOwner(expression);
+      if (scopeOwner instanceof PyFunction function && function.getAnnotationValue() != null) {
+        return context.getReturnType(function);
+      }
     }
     return null;
   }
@@ -1744,11 +1902,13 @@ public final class PyTypeChecker {
 
   @ApiStatus.Experimental
   public static class GenericSubstitutions {
-    private final @NotNull Map<PyTypeVarType, PyType> typeVars;
+    
+    // Nullable-Nullable because of com.jetbrains.python.psi.types.PyTypeChecker.collectTypeSubstitutions
+    private final @NotNull Map<PyTypeVarType, @Nullable Ref<@Nullable PyType>> typeVars;
 
-    private final @NotNull Map<PyTypeVarTupleType, PyPositionalVariadicType> typeVarTuples;
+    private final @NotNull Map<PyTypeVarTupleType, @Nullable PyPositionalVariadicType> typeVarTuples;
 
-    private final @NotNull Map<PyParamSpecType, PyCallableParameterVariadicType> paramSpecs;
+    private final @NotNull Map<PyParamSpecType, @Nullable PyCallableParameterVariadicType> paramSpecs;
 
     private @Nullable PyType qualifierType;
 
@@ -1756,6 +1916,7 @@ public final class PyTypeChecker {
       this(
         EntryStream.of(typeParameters)
           .selectKeys(PyTypeVarType.class)
+          .mapValues(Ref::create)
           .toCustomMap(LinkedHashMap::new),
         EntryStream.of(typeParameters)
           .selectKeys(PyTypeVarTupleType.class)
@@ -1773,7 +1934,7 @@ public final class PyTypeChecker {
       this(new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), null);
     }
 
-    private GenericSubstitutions(@NotNull Map<PyTypeVarType, PyType> typeVars,
+    private GenericSubstitutions(@NotNull Map<PyTypeVarType, Ref<PyType>> typeVars,
                                  @NotNull Map<PyTypeVarTupleType, PyPositionalVariadicType> typeVarTuples,
                                  @NotNull Map<PyParamSpecType, PyCallableParameterVariadicType> paramSpecs,
                                  @Nullable PyType qualifierType) {
@@ -1787,7 +1948,7 @@ public final class PyTypeChecker {
       return Collections.unmodifiableMap(paramSpecs);
     }
 
-    public @NotNull Map<PyTypeVarType, PyType> getTypeVars() {
+    public @NotNull Map<PyTypeVarType, Ref<PyType>> getTypeVars() {
       return Collections.unmodifiableMap(typeVars);
     }
 

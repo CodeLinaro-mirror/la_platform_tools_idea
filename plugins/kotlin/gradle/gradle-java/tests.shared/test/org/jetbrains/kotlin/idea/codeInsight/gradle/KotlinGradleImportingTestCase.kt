@@ -2,6 +2,7 @@
 package org.jetbrains.kotlin.idea.codeInsight.gradle
 
 import com.intellij.execution.executors.DefaultRunExecutor
+import com.intellij.execution.process.ProcessOutputType
 import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener
@@ -14,6 +15,8 @@ import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.options.advanced.AdvancedSettingsImpl
+import com.intellij.openapi.projectRoots.JavaSdkVersion
+import com.intellij.openapi.projectRoots.JavaSdkVersionUtil
 import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ModuleOrderEntry
 import com.intellij.openapi.roots.ModuleRootManager
@@ -28,13 +31,9 @@ import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
 import org.jetbrains.kotlin.idea.base.test.AndroidStudioTestUtils
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModel
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModelBinary
-import org.jetbrains.kotlin.idea.test.ExpectedPluginModeProvider
-import org.jetbrains.kotlin.idea.test.GradleProcessOutputInterceptor
-import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
-import org.jetbrains.kotlin.idea.test.KotlinTestUtils
+import org.jetbrains.kotlin.idea.test.*
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils.getTestDataFileName
 import org.jetbrains.kotlin.idea.test.TestMetadataUtil.getTestData
-import org.jetbrains.kotlin.idea.test.setUpWithKotlinPlugin
 import org.jetbrains.kotlin.utils.addToStdlib.filterIsInstanceWithChecker
 import org.jetbrains.plugins.gradle.importing.GradleImportingTestCase
 import org.jetbrains.plugins.gradle.service.project.open.createLinkSettings
@@ -52,7 +51,7 @@ import kotlin.reflect.KClass
 abstract class KotlinGradleImportingTestCase : GradleImportingTestCase(),
                                                ExpectedPluginModeProvider {
 
-    public override fun getModule(name: String?): Module = super.getModule(name)
+    public override fun getModule(name: String): Module = super.getModule(name)
 
     protected open fun testDataDirName(): String = ""
 
@@ -354,8 +353,8 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase(),
     protected fun runTaskAndGetErrorOutput(projectPath: String, taskName: String, scriptParameters: String = ""): String {
         val taskErrOutput = StringBuilder()
         val stdErrListener = object : ExternalSystemTaskNotificationListener {
-            override fun onTaskOutput(id: ExternalSystemTaskId, text: String, stdOut: Boolean) {
-                if (!stdOut) {
+            override fun onTaskOutput(id: ExternalSystemTaskId, text: String, processOutputType: ProcessOutputType) {
+                if (processOutputType.isStderr) {
                     taskErrOutput.append(text)
                 }
             }
@@ -386,6 +385,12 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase(),
         } finally {
             notificationManager.removeNotificationListener(stdErrListener)
         }
+    }
+
+    fun assertModuleSdk(moduleName: String, expectedLevel: JavaSdkVersion?) {
+        val module = getModule(moduleName)
+        val sdk = ModuleRootManager.getInstance(module).sdk
+        assertEquals(expectedLevel, JavaSdkVersionUtil.getJavaSdkVersion(sdk))
     }
 
     companion object {

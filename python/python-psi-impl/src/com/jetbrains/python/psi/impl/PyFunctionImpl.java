@@ -35,7 +35,7 @@ import com.jetbrains.python.psi.stubs.PyClassStub;
 import com.jetbrains.python.psi.stubs.PyFunctionStub;
 import com.jetbrains.python.psi.stubs.PyTargetExpressionStub;
 import com.jetbrains.python.psi.types.*;
-import com.jetbrains.python.sdk.PythonSdkUtil;
+import com.jetbrains.python.sdk.legacy.PythonSdkUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -223,6 +223,22 @@ public class PyFunctionImpl extends PyBaseElementImpl<PyFunctionStub> implements
     if (PyTypeChecker.hasGenerics(type, context)) {
       final var substitutions = PyTypeChecker.unifyGenericCall(receiver, parameters, context);
       if (substitutions != null) {
+        // Special handling for __new__ constructor and factory methods of generic classes returning Self:
+        //
+        // class C[T]:
+        //     def __new__(cls, x: T) -> Self:
+        //         ...
+        //
+        // C(42)  # expected C[int], not just C
+        if (getModifier() == CLASSMETHOD || PyUtil.isNewMethod(this)) {
+          PyClass containingClass = getContainingClass();
+          if (containingClass != null && type instanceof PySelfType) {
+            PyType genericType = PyTypeChecker.findGenericDefinitionType(containingClass, context);
+            if (genericType != null) {
+              type = genericType;
+            }
+          }
+        }
         final var substitutionsWithUnresolvedReturnGenerics =
           PyTypeChecker.getSubstitutionsWithUnresolvedReturnGenerics(getParameters(context), type, substitutions, context);
         type = PyTypeChecker.substitute(type, substitutionsWithUnresolvedReturnGenerics, context);
@@ -323,6 +339,11 @@ public class PyFunctionImpl extends PyBaseElementImpl<PyFunctionStub> implements
     @Override
     public void visitPyLambdaExpression(@NotNull PyLambdaExpression node) {
       // Ignore nested lambdas
+    }
+
+    @Override
+    public void visitPyClass(@NotNull PyClass node) {
+      // Ignore nested classes
     }
   }
 
@@ -631,6 +652,16 @@ public class PyFunctionImpl extends PyBaseElementImpl<PyFunctionStub> implements
         }
 
         @Override
+        public void visitPyLambdaExpression(@NotNull PyLambdaExpression node) {
+          // Ignore lambdas
+        }
+
+        @Override
+        public void visitPyClass(@NotNull PyClass node) {
+          // Ignore nested classes
+        }
+
+        @Override
         public void visitElement(@NotNull PsiElement element) {
           if (!containsYield.get()) {
             super.visitElement(element);
@@ -757,15 +788,6 @@ public class PyFunctionImpl extends PyBaseElementImpl<PyFunctionStub> implements
   @Override
   public @Nullable PyAnnotation getAnnotation() {
     return getStubOrPsiChild(PyStubElementTypes.ANNOTATION);
-  }
-
-  /**
-   * is `function` a method or a classmethod
-   */
-  public static boolean isMethod(PyFunction function) {
-    final var isMethod = ScopeUtil.getScopeOwner(function) instanceof PyClass;
-    final var modifier = function.getModifier();
-    return (isMethod && modifier == null) || modifier == CLASSMETHOD;
   }
 
   /**

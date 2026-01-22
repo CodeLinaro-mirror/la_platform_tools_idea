@@ -8,21 +8,21 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.progress.util.PotemkinProgress
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.IntellijInternalApi
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.swing.JComponent
 
-private val LOG
-  get() = logger<DynamicPluginEnabler>()
+private val LOG = logger<DynamicPluginEnabler>()
 
 fun interface PluginEnableStateChangedListener{
   fun stateChanged(pluginDescriptors: Collection<IdeaPluginDescriptor>, enable: Boolean)
 }
 
 @ApiStatus.Internal
+@IntellijInternalApi
 class DynamicPluginEnabler : PluginEnabler {
-
   companion object {
     private val pluginEnableStateChangedListeners = CopyOnWriteArrayList<PluginEnableStateChangedListener>()
 
@@ -37,14 +37,13 @@ class DynamicPluginEnabler : PluginEnabler {
     }
   }
 
-  override fun isDisabled(pluginId: PluginId): Boolean =
-    PluginEnabler.HEADLESS.isDisabled(pluginId)
+  override fun isDisabled(pluginId: PluginId): Boolean = PluginEnabler.HEADLESS.isDisabled(pluginId)
 
-  override fun enable(descriptors: Collection<IdeaPluginDescriptor>): Boolean =
-    enable(descriptors, project = null)
+  override fun enable(descriptors: Collection<IdeaPluginDescriptor>): Boolean = enable(descriptors, project = null)
 
-  fun enable(descriptors: Collection<IdeaPluginDescriptor>, project: Project? = null): Boolean =
-    enable(descriptors = descriptors, progressTitle = null, project = project)
+  fun enable(descriptors: Collection<IdeaPluginDescriptor>, project: Project? = null): Boolean {
+    return enable(descriptors = descriptors, progressTitle = null, project = project)
+  }
 
   fun enable(
     descriptors: Collection<IdeaPluginDescriptor>,
@@ -86,8 +85,7 @@ class DynamicPluginEnabler : PluginEnabler {
     return pluginsLoaded
   }
 
-  override fun disable(descriptors: Collection<IdeaPluginDescriptor>): Boolean =
-    disable(descriptors, project = null)
+  override fun disable(descriptors: Collection<IdeaPluginDescriptor>): Boolean = disable(descriptors, project = null)
 
   fun disable(
     descriptors: Collection<IdeaPluginDescriptor>,
@@ -110,20 +108,23 @@ class DynamicPluginEnabler : PluginEnabler {
   }
 }
 
-private fun findInstalledPlugins(descriptors: Collection<IdeaPluginDescriptor>): List<IdeaPluginDescriptorImpl>? {
+private fun findInstalledPlugins(descriptors: Collection<IdeaPluginDescriptor>): List<PluginMainDescriptor>? {
   val result = descriptors.mapNotNull {
     runCatching { findInstalledPlugin(it) }
       .getOrLogException(LOG)
   }
-  return if (result.size == descriptors.size) result else null
+  if (result.size != descriptors.size) {
+    return null
+  }
+  // drop duplicates just in case
+  return result.toSet().toList()
 }
 
-private fun findInstalledPlugin(descriptor: IdeaPluginDescriptor): IdeaPluginDescriptorImpl {
+private fun findInstalledPlugin(descriptor: IdeaPluginDescriptor): PluginMainDescriptor {
   return when (descriptor) {
-    is IdeaPluginDescriptorImpl -> descriptor
+    is IdeaPluginDescriptorImpl -> descriptor.getMainDescriptor()
     is PluginNode -> {
       val pluginId = descriptor.pluginId
-
       PluginManagerCore.getPluginSet().findInstalledPlugin(pluginId)
       ?: throw IllegalStateException("Plugin '$pluginId' is not installed")
     }

@@ -1,22 +1,23 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.updates
 
 import com.intellij.ide.startup.StartupActionScriptManager
 import com.intellij.openapi.application.PathManager
-import com.intellij.openapi.util.io.IoTestUtil
-import com.intellij.openapi.util.io.NioFiles
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.rules.TempDirectory
+import com.intellij.util.io.Compressor
+import com.intellij.util.io.createDirectories
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.listDirectoryEntries
 
 class StartupActionScriptManagerTest {
   @Rule @JvmField val tempDir = TempDirectory()
@@ -24,12 +25,13 @@ class StartupActionScriptManagerTest {
   private lateinit var scriptFile: Path
 
   @Before fun setUp() {
-    scriptFile = PathManager.getStartupScriptDir().resolve(StartupActionScriptManager.ACTION_SCRIPT_FILE)
-    NioFiles.createDirectories(scriptFile.parent)
+    scriptFile = PathManager.getStartupScriptDir()
+      .createDirectories()
+      .resolve(StartupActionScriptManager.ACTION_SCRIPT_FILE)
   }
 
   @After fun tearDown() {
-    Files.deleteIfExists(scriptFile)
+    scriptFile.deleteIfExists()
   }
 
   @Test fun `reading and writing empty file`() {
@@ -40,11 +42,11 @@ class StartupActionScriptManagerTest {
   }
 
   @Test fun `executing 'copy' command`() {
-    val source = tempDir.newFile("source.txt").toPath()
-    val destination = File(tempDir.root, "destination.txt").toPath()
+    val source = tempDir.newFileNio("source.txt")
+    val destination = source.resolveSibling("destination.txt")
     assertThat(source).exists()
     assertThat(destination).doesNotExist()
-    StartupActionScriptManager.addActionCommands(listOf(StartupActionScriptManager.CopyCommand(source, destination)))
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.CopyCommand(source, destination))
     StartupActionScriptManager.executeActionScript()
     assertThat(destination).exists()
     assertThat(source).exists()
@@ -52,12 +54,13 @@ class StartupActionScriptManagerTest {
   }
 
   @Test fun `executing 'unzip' command`() {
-    val source = IoTestUtil.createTestJar(tempDir.newFile("source.zip"), "zip/file.txt", "").toPath()
-    val destination = tempDir.newDirectory("dir").toPath()
+    val source = tempDir.newFileNio("source.zip")
+    Compressor.Zip(source).use { it.addFile("zip/file.txt", byteArrayOf()) }
+    val destination = tempDir.newDirectoryPath("dir")
     val unpacked = destination.resolve("zip/file.txt")
     assertThat(source).exists()
     assertThat(unpacked).doesNotExist()
-    StartupActionScriptManager.addActionCommands(listOf(StartupActionScriptManager.UnzipCommand(source, destination)))
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.UnzipCommand(source, destination))
     StartupActionScriptManager.executeActionScript()
     assertThat(unpacked).exists()
     assertThat(source).exists()
@@ -65,25 +68,26 @@ class StartupActionScriptManagerTest {
   }
 
   @Test fun `executing 'delete' command`() {
-    val tempFile = tempDir.newFile("temp.txt").toPath()
+    val tempFile = tempDir.newFileNio("temp.txt")
     assertThat(tempFile).exists()
-    StartupActionScriptManager.addActionCommands(listOf(StartupActionScriptManager.DeleteCommand(tempFile)))
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.DeleteCommand(tempFile))
     StartupActionScriptManager.executeActionScript()
     assertThat(tempFile).doesNotExist()
     assertThat(scriptFile).doesNotExist()
   }
 
   @Test fun `executing commands with path mapping`() {
-    val oldTarget = tempDir.newDirectory("old/plugins").toPath()
-    val newTarget = tempDir.newDirectory("new/plugins").toPath()
-    val copySource = tempDir.newFile("source.txt").toPath()
+    val oldTarget = tempDir.newDirectoryPath("old/plugins")
+    val newTarget = tempDir.newDirectoryPath("new/plugins")
+    val copySource = tempDir.newFileNio("source.txt")
     val copyDestinationInOld = oldTarget.resolve("destination.txt")
     val copyDestinationInNew = newTarget.resolve("destination.txt")
-    val unzipSource = IoTestUtil.createTestJar(tempDir.newFile("source.zip"), "zip/file.txt", "").toPath()
+    val unzipSource = tempDir.newFileNio("source.zip")
+    Compressor.Zip(unzipSource).use { it.addFile("zip/file.txt", byteArrayOf()) }
     val unpackedInOld = oldTarget.resolve("zip/file.txt")
     val unpackedInNew = newTarget.resolve("zip/file.txt")
-    val deleteInOld = tempDir.newFile("old/plugins/to_delete.txt").toPath()
-    val deleteInNew = tempDir.newFile("new/plugins/to_delete.txt").toPath()
+    val deleteInOld = tempDir.newFileNio("old/plugins/to_delete.txt")
+    val deleteInNew = tempDir.newFileNio("new/plugins/to_delete.txt")
 
     StartupActionScriptManager.addActionCommands(listOf(
       StartupActionScriptManager.CopyCommand(copySource, copyDestinationInOld),
@@ -103,7 +107,7 @@ class StartupActionScriptManagerTest {
 
   @Test fun `backward compatibility`() {
     val dataDir = Path.of(PlatformTestUtil.getPlatformTestDataPath(), "updates/startupActionScript")
-    Files.list(dataDir).use { it.toList() }.forEach { script ->
+    dataDir.listDirectoryEntries().forEach { script ->
       val actions = StartupActionScriptManager.loadActionScript(script).map { it.toString() }
       assertThat(actions).describedAs("script: ${script.fileName}").containsExactly(
         "copy[/copy/src,/copy/dst]",
@@ -121,7 +125,7 @@ class StartupActionScriptManagerTest {
 
     val badCommands = listOf(
       StartupActionScriptManager.DeleteCommand(Path.of("file-4")),
-      object : StartupActionScriptManager.ActionCommand { override fun execute(): Unit = throw UnsupportedOperationException() },
+      StartupActionScriptManager.ActionCommand { throw UnsupportedOperationException() },
       StartupActionScriptManager.DeleteCommand(Path.of("file-5")))
     assertThatCode { StartupActionScriptManager.addActionCommands(badCommands) }.isInstanceOf(IOException::class.java)
 
@@ -130,13 +134,13 @@ class StartupActionScriptManagerTest {
   }
 
   @Test fun `add action command to beginning`() {
-    val source = tempDir.newFile("source.txt").toPath()
-    val destination = File(tempDir.root, "destination.txt").toPath()
+    val source = tempDir.newFileNio("source.txt")
+    val destination = source.resolveSibling("destination.txt")
     assertThat(source).exists()
     assertThat(destination).doesNotExist()
 
-    StartupActionScriptManager.addActionCommands(listOf(StartupActionScriptManager.DeleteCommand(destination)))
-    StartupActionScriptManager.addActionCommands(listOf(StartupActionScriptManager.CopyCommand(source, destination)))
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.DeleteCommand(destination))
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.CopyCommand(source, destination))
     StartupActionScriptManager.addActionCommandsToBeginning(listOf(StartupActionScriptManager.DeleteCommand(destination)))
 
     StartupActionScriptManager.executeActionScript()
@@ -144,4 +148,97 @@ class StartupActionScriptManagerTest {
     assertThat(source).exists()
     assertThat(scriptFile).doesNotExist()
   }
+
+  @Test fun `executing MP commands only`() {
+    val marketplaceSource = tempDir.newFileNio("marketplace/plugin.zip")
+    Compressor.Zip(marketplaceSource).use { it.addFile("plugin/content.txt", byteArrayOf()) }
+    val marketplaceDestination = tempDir.newDirectoryPath("plugins")
+    val unpacked = marketplaceDestination.resolve("plugin/content.txt")
+
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.UnzipCommand(marketplaceSource, marketplaceDestination))
+    StartupActionScriptManager.executeMarketplaceCommandsFromActionScript()
+
+    assertThat(unpacked).exists()
+    assertThat(scriptFile).doesNotExist()
+  }
+
+  @Test fun `preserving non-MP commands`() {
+    val regularFile = tempDir.newFileNio("temp.txt")
+    assertThat(regularFile).exists()
+
+    StartupActionScriptManager.addActionCommand(StartupActionScriptManager.DeleteCommand(regularFile))
+    StartupActionScriptManager.executeMarketplaceCommandsFromActionScript()
+
+    assertThat(regularFile).exists()
+    assertThat(scriptFile).exists()
+    assertThat(StartupActionScriptManager.loadActionScript(scriptFile)).hasSize(1)
+  }
+
+  @Test fun `executing mixed MP and non-MP commands`() {
+    val marketplaceCopySource = tempDir.newFileNio("marketplace/file.txt")
+    val marketplaceCopyDest = marketplaceCopySource.resolveSibling("destination.txt")
+    val regularFile = tempDir.newFileNio("regular/temp.txt")
+    val marketplaceDeleteFile = tempDir.newFileNio("marketplace/old.txt")
+
+    assertThat(marketplaceCopySource).exists()
+    assertThat(marketplaceCopyDest).doesNotExist()
+    assertThat(regularFile).exists()
+    assertThat(marketplaceDeleteFile).exists()
+
+    StartupActionScriptManager.addActionCommands(listOf(
+      StartupActionScriptManager.CopyCommand(marketplaceCopySource, marketplaceCopyDest),
+      StartupActionScriptManager.DeleteCommand(regularFile),
+      StartupActionScriptManager.DeleteCommand(marketplaceDeleteFile)
+    ))
+
+    StartupActionScriptManager.executeMarketplaceCommandsFromActionScript()
+
+    assertThat(marketplaceCopyDest).exists()
+    assertThat(marketplaceDeleteFile).doesNotExist()
+    assertThat(regularFile).exists()
+    assertThat(scriptFile).exists()
+    assertThat(StartupActionScriptManager.loadActionScript(scriptFile)).hasSize(1)
+  }
+
+  @Test fun `executing MP commands from empty script`() {
+    assertThatCode { StartupActionScriptManager.executeMarketplaceCommandsFromActionScript() }.doesNotThrowAnyException()
+    assertThat(scriptFile).doesNotExist()
+  }
+
+  @Test fun `updating MP plugin`() {
+    val pluginsDir = tempDir.newDirectoryPath("plugins")
+    val oldMarketplaceDir = pluginsDir.resolve("marketplace")
+    val oldFile = oldMarketplaceDir.resolve("old-version.txt")
+    oldFile.parent.createDirectories()
+    Files.writeString(oldFile, "old content")
+
+    val marketplaceZip = tempDir.newFileNio("marketplace-1.2.3.zip")
+    Compressor.Zip(marketplaceZip).use { zip ->
+      zip.addFile("marketplace/new-version.txt", "new content".toByteArray())
+      zip.addFile("marketplace/plugin.xml", "<plugin></plugin>".toByteArray())
+    }
+
+    val newFile = oldMarketplaceDir.resolve("new-version.txt")
+    val pluginXml = oldMarketplaceDir.resolve("plugin.xml")
+
+    assertThat(oldFile).exists()
+    assertThat(newFile).doesNotExist()
+    assertThat(pluginXml).doesNotExist()
+    assertThat(marketplaceZip).exists()
+
+    StartupActionScriptManager.addActionCommands(listOf(
+      StartupActionScriptManager.DeleteCommand(oldMarketplaceDir),
+      StartupActionScriptManager.UnzipCommand(marketplaceZip, pluginsDir),
+      StartupActionScriptManager.DeleteCommand(marketplaceZip)
+    ))
+
+    StartupActionScriptManager.executeMarketplaceCommandsFromActionScript()
+
+    assertThat(oldFile).doesNotExist()
+    assertThat(newFile).exists()
+    assertThat(pluginXml).exists()
+    assertThat(marketplaceZip).doesNotExist()
+    assertThat(scriptFile).doesNotExist()
+  }
+
 }

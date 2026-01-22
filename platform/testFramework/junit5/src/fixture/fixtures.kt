@@ -9,6 +9,7 @@ import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.application.writeIntentReadAction
 import com.intellij.openapi.components.serviceAsync
+import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -25,19 +26,26 @@ import com.intellij.openapi.util.io.toCanonicalPath
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.refreshAndFindVirtualFileOrDirectory
 import com.intellij.platform.eel.fs.EelFileSystemApi.CreateTemporaryEntryOptions
 import com.intellij.platform.eel.getOrThrow
 import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.psi.PsiDirectory
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
+import com.intellij.testFramework.common.EditorCaretTestUtil
 import com.intellij.util.io.createDirectories
 import com.intellij.util.io.delete
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.TestOnly
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.Path
+import kotlin.io.path.copyToRecursively
 import kotlin.io.path.exists
 
 @TestOnly
@@ -57,6 +65,17 @@ fun tempPathFixture(root: Path? = null, prefix: String = "IJ"): TestFixture<Path
   val realTempDir = tempDir.toRealPath()
   initialized(realTempDir) {
     withContext(Dispatchers.IO) {
+      repeat(10) {
+        try {
+          // This method might throw DirectoryNotEmptyException due to races, hence retry
+          realTempDir.delete(recursively = true)
+          return@withContext
+        }
+        catch (e: IOException) {
+          fileLogger().warn("Can't delete $realTempDir", e)
+          Thread.sleep(100)
+        }
+      }
       realTempDir.delete(recursively = true)
     }
   }
@@ -71,6 +90,22 @@ fun TestFixture<Project>.pathInProjectFixture(path: Path): TestFixture<Path> {
       // will be removed with project directory
     }
   }
+}
+
+@TestOnly
+fun TestFixture<Project>.fileOrDirInProjectFixture(relativePath: String): TestFixture<VirtualFile> = testFixture {
+  val filePath = pathInProjectFixture(Path(relativePath)).init()
+  val file = filePath.refreshAndFindVirtualFileOrDirectory()
+             ?: throw IllegalStateException("File not found: $relativePath, absolutePath: $filePath")
+
+  initialized(file) {}
+}
+
+@TestOnly
+fun TestFixture<Project>.moduleInProjectFixture(name: String): TestFixture<Module> = testFixture {
+  val project = init()
+  val module = ModuleManager.getInstance(project).findModuleByName(name) ?: throw IllegalStateException("Module not found: $name")
+  initialized(module) {}
 }
 
 @TestOnly
@@ -96,12 +131,14 @@ fun projectFixture(
 @TestOnly
 fun TestFixture<Project>.moduleFixture(
   name: String? = null,
+  moduleType: String? = null,
 ): TestFixture<Module> = testFixture(name ?: "unnamed module") { context ->
   val project = this@moduleFixture.init()
   val manager = ModuleManager.getInstance(project)
   val module = edtWriteAction {
     manager.newNonPersistentModule(name ?: context.uniqueId, "")
   }
+  moduleType?.let { module.setModuleType(it) }
   initialized(module) {
     edtWriteAction {
       manager.disposeModule(module)
@@ -154,12 +191,34 @@ fun disposableFixture(): TestFixture<Disposable> = testFixture { context ->
   }
 }
 
+
+/**
+ * The fixture represents a directory within a module's content root, marked as either a source or a test source directory.
+ * Optionally, it can copy the content of a specified resource path into the created directory.
+ *
+ * @param [isTestSource] Specifies whether the directory should be marked as a test source (true)
+ *        or a source directory (false).
+ * @param [blueprintResourcePath] An optional path to a resource whose contents will be copied to the
+ *        created directory.
+ * @return A fixture providing a PsiDirectory instance representing the initialized source root.
+ */
+@OptIn(ExperimentalPathApi::class)
 @TestOnly
-fun TestFixture<Module>.sourceRootFixture(isTestSource: Boolean = false, pathFixture: TestFixture<Path> = tempPathFixture()): TestFixture<PsiDirectory> =
+fun TestFixture<Module>.sourceRootFixture(
+  isTestSource: Boolean = false,
+  pathFixture: TestFixture<Path> = tempPathFixture(),
+  blueprintResourcePath: Path? = null,
+): TestFixture<PsiDirectory> =
   testFixture { _ ->
     val module = this@sourceRootFixture.init()
     val directoryPath: Path = pathFixture.init()
     val directoryVfs = VfsUtil.createDirectories(directoryPath.toCanonicalPath())
+
+    blueprintResourcePath?.let {
+      require(it.exists()) { "Blueprint resource path provided does not exist: $it" }
+      it.copyToRecursively(directoryPath, followLinks = false, overwrite = true)
+    }
+
     ModuleRootModificationUtil.updateModel(module) { model ->
       model.addContentEntry(directoryVfs).addSourceFolder(directoryVfs, isTestSource)
     }
@@ -215,6 +274,13 @@ fun TestFixture<PsiFile>.editorFixture(): TestFixture<Editor> = testFixture { _ 
     writeIntentReadAction {
       val editor = fileEditorManager.openTextEditor(OpenFileDescriptor(project, file), true)
       requireNotNull(editor)
+
+      val caretAndSelection = EditorCaretTestUtil.extractCaretAndSelectionMarkers(editor.document)
+      if (caretAndSelection.hasExplicitCaret()) {
+        EditorCaretTestUtil.setCaretsAndSelection(editor, caretAndSelection)
+        PsiDocumentManager.getInstance(project).commitDocument(editor.document)
+      }
+      editor
     }
   }
   initialized(editor) {

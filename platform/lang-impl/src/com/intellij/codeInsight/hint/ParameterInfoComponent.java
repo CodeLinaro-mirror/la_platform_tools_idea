@@ -3,7 +3,6 @@
 package com.intellij.codeInsight.hint;
 
 import com.intellij.codeInsight.CodeInsightBundle;
-import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.injected.editor.EditorWindow;
@@ -22,10 +21,8 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
-import com.intellij.ui.ColorUtil;
-import com.intellij.ui.ExperimentalUI;
-import com.intellij.ui.JBColor;
-import com.intellij.ui.ScrollPaneFactory;
+import com.intellij.ui.*;
+import com.intellij.ui.AnimatedIcon;
 import com.intellij.ui.components.JBHtmlPane;
 import com.intellij.ui.components.JBHtmlPaneConfiguration;
 import com.intellij.ui.components.JBHtmlPaneStyleConfiguration;
@@ -62,7 +59,7 @@ public final class ParameterInfoComponent extends JPanel {
   private JLabel myShortcutLabel;
   private final JPanel myBottomPanel;
   private JComponent myCustomBottomComponent;
-  private final JLabel myDumbLabel = new JLabel(IdeBundle.message("dumb.mode.results.might.be.incomplete"));
+  private final JLabel myDumbLabel = new JLabel(IdeBundle.message("dumb.mode.analyzing.project"));
   private final boolean myAllowSwitchLabel;
 
   private final Font NORMAL_FONT;
@@ -188,7 +185,8 @@ public final class ParameterInfoComponent extends JPanel {
                      ? ColorUtil.blendColorsInRgb(BACKGROUND, FOREGROUND, disabledSignatureAlpha(isDarkTheme))
                      : JBColor.namedColor("ParameterInfo.disabledForeground", new JBColor(0xA8A8A8, 0x777777));
     HIGHLIGHTED_BACKGROUND = mySimpleDesignMode
-                             ? ColorUtil.blendColorsInRgb(BACKGROUND, JBColor.GREEN, selectedSignatureAlpha(isDarkTheme))
+                             ? ColorUtil.blendColorsInRgb(BACKGROUND, getSelectedOverloadBackgroundBlendBase(),
+                                                          selectedSignatureAlpha(isDarkTheme))
                              : JBColor.namedColor("ParameterInfo.currentOverloadBackground", BORDER_COLOR);
     HIGHLIGHTED_COLOR = mySimpleDesignMode
                         ? FOREGROUND
@@ -209,7 +207,7 @@ public final class ParameterInfoComponent extends JPanel {
     add(myBottomPanel, BorderLayout.SOUTH);
 
     myDumbLabel.setForeground(CONTEXT_HELP_FOREGROUND);
-    myDumbLabel.setIcon(AllIcons.General.Warning);
+    myDumbLabel.setIcon(AnimatedIcon.Default.INSTANCE);
     if (mySimpleDesignMode) {
       myDumbLabel.setBorder(JBUI.Borders.emptyTop(12));
       myBottomPanel.add(myDumbLabel);

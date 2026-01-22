@@ -16,9 +16,59 @@
 package com.jetbrains.python.inspections;
 
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
+import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
 
 public class Py3CompatibilityInspectionTest extends PyInspectionTestCase {
+
+  // PY-80237
+  public void testBreakInFinallyBlock() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON313,
+      () -> doTestByText("""
+        while True:
+          try:
+            print("a")
+          finally:
+            <warning descr="Python versions 3.14, 3.15 do not support 'break' inside 'finally' clause">break</warning>""")
+    );
+  }
+
+  // PY-80237
+  public void testReturnInFinallyBlock() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON313,
+      () -> doTestByText("""
+        def foo():
+          try:
+            pass
+          finally:
+            <warning descr="Python versions 3.14, 3.15 do not support 'return' inside 'finally' clause">return</warning>""")
+    );
+  }
+
+
+  // PY-80237
+  public void testReturnInFunctionDefinitionInFinallyBlock() {
+    doTestByText("""
+                 try:
+                   pass
+                 finally:
+                   def f():
+                     return 42"""
+    );
+  }
+
+  // PY-80237
+  public void testBreakInLoopInFinallyBlock() {
+    doTestByText("""
+                 try:
+                   pass
+                 finally:
+                   for x in [1, 2, 3]:
+                     break"""
+    );
+  }
 
   // PY-18965
   public void testExec() {

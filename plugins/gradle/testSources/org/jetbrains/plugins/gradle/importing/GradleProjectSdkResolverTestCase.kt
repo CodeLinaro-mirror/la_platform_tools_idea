@@ -9,6 +9,7 @@ import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkUt
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkUtilTestCase.TestJdkProvider
 import com.intellij.openapi.externalSystem.service.execution.TestUnknownSdkResolver
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
+import com.intellij.openapi.externalSystem.util.awaitProjectActivity
 import com.intellij.openapi.externalSystem.util.environment.Environment
 import com.intellij.openapi.externalSystem.util.environment.TestEnvironment
 import com.intellij.openapi.projectRoots.JavaSdk
@@ -20,10 +21,10 @@ import com.intellij.openapi.roots.ui.configuration.SdkTestCase
 import com.intellij.openapi.roots.ui.configuration.SdkTestCase.Companion.assertSdk
 import com.intellij.openapi.roots.ui.configuration.SdkTestCase.TestSdkGenerator
 import com.intellij.testFramework.VfsTestUtil
+import com.intellij.testFramework.common.runAll
 import com.intellij.testFramework.replaceService
 import com.intellij.util.lang.JavaVersion
 import org.jetbrains.plugins.gradle.service.project.open.linkAndSyncGradleProject
-import org.jetbrains.plugins.gradle.testFramework.util.awaitGradleProjectConfiguration
 import org.jetbrains.plugins.gradle.testFramework.util.createBuildFile
 import org.jetbrains.plugins.gradle.testFramework.util.createSettingsFile
 import org.jetbrains.plugins.gradle.tooling.GradleJvmResolver
@@ -57,13 +58,13 @@ abstract class GradleProjectSdkResolverTestCase : GradleImportingTestCase() {
   }
 
   suspend fun loadProject() {
-    awaitGradleProjectConfiguration(myProject) {
+    awaitProjectActivity(myProject) {
       linkAndSyncGradleProject(myProject, projectPath)
     }
   }
 
   suspend fun reloadProject() {
-    awaitGradleProjectConfiguration(myProject) {
+    awaitProjectActivity(myProject) {
       val importSpec = ImportSpecBuilder(myProject, externalSystemId)
       ExternalSystemUtil.refreshProject(projectPath, importSpec)
     }
@@ -82,15 +83,19 @@ abstract class GradleProjectSdkResolverTestCase : GradleImportingTestCase() {
   }
 
   fun assertSdks(sdk: Sdk?, vararg moduleNames: String, isAssertSdkName: Boolean = true) {
-    assertProjectSdk(sdk, isAssertSdkName)
-    for (moduleName in moduleNames) {
-      assertModuleSdk(moduleName, sdk, isAssertSdkName)
-    }
+    runAll(
+      { assertProjectSdk(sdk, isAssertSdkName = isAssertSdkName) },
+      { assertModuleSdks(sdk, *moduleNames, isAssertSdkName = isAssertSdkName) }
+    )
   }
 
-  private fun assertProjectSdk(sdk: Sdk?, isAssertSdkName: Boolean) {
+  fun assertProjectSdk(sdk: Sdk?, isAssertSdkName: Boolean = true) {
     val projectSdk = getSdkForProject()
     assertSdk(sdk, projectSdk, isAssertSdkName)
+  }
+
+  fun assertModuleSdks(sdk: Sdk?, vararg moduleNames: String, isAssertSdkName: Boolean = true) {
+    runAll(moduleNames.asList()) { assertModuleSdk(it, sdk, isAssertSdkName) }
   }
 
   private fun assertModuleSdk(moduleName: String, sdk: Sdk?, isAssertSdkName: Boolean) {
@@ -121,6 +126,6 @@ abstract class GradleProjectSdkResolverTestCase : GradleImportingTestCase() {
 
   fun createDaemonJvmPropertiesFile(sdk: Sdk) {
     val version = JavaVersion.tryParse(sdk.versionString!!)
-    VfsTestUtil.createFile(projectRoot, "gradle/gradle-daemon-jvm.properties", "toolchainVersion=$version")
+    VfsTestUtil.createFile(myProjectRoot, "gradle/gradle-daemon-jvm.properties", "toolchainVersion=$version")
   }
 }

@@ -3,6 +3,7 @@ package com.intellij.openapi.application.impl
 
 import com.intellij.openapi.actionSystem.ex.ActionButtonLook
 import com.intellij.openapi.components.serviceOrNull
+import com.intellij.openapi.editor.impl.EditorHeaderComponent
 import com.intellij.openapi.fileEditor.impl.EditorTabPainterAdapter
 import com.intellij.openapi.fileEditor.impl.EditorsSplitters
 import com.intellij.openapi.project.Project
@@ -16,8 +17,11 @@ import com.intellij.openapi.wm.impl.headertoolbar.MainToolbar
 import com.intellij.toolWindow.StripesUxCustomizer
 import com.intellij.toolWindow.ToolWindowButtonManager
 import com.intellij.toolWindow.xNext.XNextStripesUxCustomizer
+import com.intellij.ui.BorderPainter
 import com.intellij.ui.JBColor
+import com.intellij.ui.mac.WindowTabsComponent
 import com.intellij.ui.tabs.JBTabPainter
+import com.intellij.ui.tabs.JBTabsPosition
 import com.intellij.ui.tabs.impl.JBTabsImpl
 import com.intellij.ui.tabs.impl.TabLabel
 import com.intellij.ui.tabs.impl.TabPainterAdapter
@@ -59,8 +63,6 @@ open class InternalUICustomization {
 
   open val debuggerTabPainterAdapter: TabPainterAdapter? = null
 
-  open val shouldPaintEditorFadeout: Boolean = true
-
   open val toolWindowUIDecorator: ToolWindowUIDecorator = ToolWindowUIDecorator()
 
   open val toolWindowTabPainter: JBTabPainter = JBTabPainter.TOOL_WINDOW
@@ -73,6 +75,8 @@ open class InternalUICustomization {
     }
 
   open val isMainMenuBottomBorder: Boolean = true
+
+  open val isTabOccupiesWholeHeight: Boolean = true
 
   internal open fun configureToolWindowPane(toolWindowPaneParent: JComponent, buttonManager: ToolWindowButtonManager) {}
 
@@ -92,7 +96,11 @@ open class InternalUICustomization {
 
   open fun configureMainToolbar(toolbar: MainToolbar) {}
 
-  open fun configureButtonLook(look: ActionButtonLook, g: Graphics): Graphics? = null
+  /**
+   * For Islands theme: the components are painted with the IDE background or gradient if set.
+   * For other themes: has no effect
+   */
+  open fun registerWindowBackgroundComponent(component: JComponent) {}
 
   open fun getEditorToolbarButtonLook(): ActionButtonLook? = null
 
@@ -101,6 +109,10 @@ open class InternalUICustomization {
   open fun installBackgroundUpdater(component: JComponent) {}
 
   open fun installEditorBackground(component: JComponent) {}
+
+  open fun configureSearchReplaceComponent(component: EditorHeaderComponent): JComponent = component
+
+  open fun shouldPaintEditorTabsBottomBorder(editorCompositePanel: JComponent): Boolean = true
 
   open fun frameHeaderBackgroundConverter(color: Color?): Color? = color
 
@@ -124,7 +136,7 @@ open class InternalUICustomization {
 
   open fun attachIdeFrameBackgroundPainter(frame: IdeFrame, glassPane: IdeGlassPane): Unit = Unit
 
-  open fun paintFrameBackground(frame: Window, component: Component, g: Graphics2D) {}
+  open fun paintFrameBackground(frame: IdeFrame, component: Component, g: Graphics2D) {}
 
   open fun updateBackgroundPainter() {}
 
@@ -152,15 +164,20 @@ open class InternalUICustomization {
 
   open fun getProjectTabContentInsets(): Insets? = null
 
-  open fun paintProjectTabsContainer(component: JComponent, g: Graphics): Boolean = false
-
-  open fun createProjectTab(frame: JFrame) {}
+  open fun createProjectTab(frame: JFrame, tabsComponent: WindowTabsComponent) {}
 
   open fun paintProjectTab(frame: JFrame, label: TabLabel, g: Graphics, tabs: JBTabsImpl, selected: Boolean, index: Int, lastIndex: Int): Boolean = false
 
-  open fun paintTab(g: Graphics, rect: Rectangle, hovered: Boolean, selected: Boolean): Boolean = false
+  open fun paintTab(g: Graphics, position: JBTabsPosition, rect: Rectangle, hovered: Boolean, selected: Boolean): Boolean = false
 
   open fun paintTabBorder(g: Graphics, tabPlacement: Int, tabIndex: Int, x: Int, y: Int, w: Int, h: Int, isSelected: Boolean): Boolean = false
 
   open fun getTabLayoutStart(layout: ContentLayout): Int = 0
+
+  open fun getSingleRowTabInsets(tabsPosition: JBTabsPosition): Insets? = null
+}
+
+@ApiStatus.Internal
+interface BorderPainterHolder {
+  var borderPainter: BorderPainter
 }

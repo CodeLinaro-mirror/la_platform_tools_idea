@@ -22,6 +22,7 @@ import com.intellij.platform.diagnostic.telemetry.impl.span
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.workspace.jps.entities.ModuleEntity
 import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.workspaceModel.ide.JpsGlobalModelSynchronizer
 import com.intellij.workspaceModel.ide.JpsProjectLoadedListener
 import com.intellij.workspaceModel.ide.impl.GlobalWorkspaceModel
 import com.intellij.workspaceModel.ide.impl.WorkspaceModelImpl
@@ -30,6 +31,7 @@ import com.intellij.workspaceModel.ide.impl.jpsMetrics
 import com.intellij.workspaceModel.ide.impl.legacyBridge.library.ProjectLibraryTableBridgeImpl
 import com.intellij.workspaceModel.ide.impl.legacyBridge.project.ProjectRootManagerBridge
 import io.opentelemetry.api.metrics.Meter
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -63,7 +65,11 @@ private class ModuleBridgeLoaderService : InitProjectActivity {
 
       val start = Milliseconds.now()
 
+      val globalWorkspaceModel = GlobalWorkspaceModel.getInstanceAsync(project.getEelDescriptor().machine)
+      globalWorkspaceModel.registerInitializingProjectForUpdatesFromGlobalModel(project)
+
       if (workspaceModel.loadedFromCache) {
+        val globalWsmAppliedToProjectWsm = CompletableDeferred<Project>()
         span("modules loading with cache") {
           if (projectModelSynchronizer.hasNoSerializedJpsModules()) {
             LOG.warn("Loaded from cache, but no serialized modules found. " +
@@ -77,32 +83,42 @@ private class ModuleBridgeLoaderService : InitProjectActivity {
             targetUnloadedEntitiesBuilder = null,
             loadedFromCache = workspaceModel.loadedFromCache,
             workspaceModel = workspaceModel,
+            globalWsmAppliedToProjectWsm = globalWsmAppliedToProjectWsm,
           )
         }
-        val globalWorkspaceModel = GlobalWorkspaceModel.getInstanceAsync(project.getEelDescriptor())
         backgroundWriteAction {
-          globalWorkspaceModel.applyStateToProject(project)
+          try {
+            globalWorkspaceModel.applyStateToProject(project)
+          }
+          finally {
+            globalWsmAppliedToProjectWsm.complete(project)
+          }
         }
       }
       else {
         LOG.info("Workspace model loaded without cache. Loading real project state into workspace model. ${Thread.currentThread()}")
-        val projectEntities = span("modules loading without cache") {
-          val projectEntities = projectModelSynchronizer.loadProjectToEmptyStorage(project)
-          loadModules(
-            project = project,
-            targetBuilder = projectEntities?.builder,
-            targetUnloadedEntitiesBuilder = projectEntities?.unloadedEntitiesBuilder,
-            loadedFromCache = workspaceModel.loadedFromCache,
-            workspaceModel = workspaceModel,
-          )
-          projectEntities
+        val projectSyncJob = launch {
+          val projectEntities = span("modules loading without cache") {
+            val projectEntities = projectModelSynchronizer.loadProjectToEmptyStorage(project, workspaceModel)
+            loadModules(
+              project = project,
+              targetBuilder = projectEntities?.builder,
+              targetUnloadedEntitiesBuilder = projectEntities?.unloadedEntitiesBuilder,
+              loadedFromCache = workspaceModel.loadedFromCache,
+              workspaceModel = workspaceModel,
+            )
+            projectEntities
+          }
+          if (projectEntities?.builder != null) {
+            @Suppress("DEPRECATION")
+            project.serviceAsync<WorkspaceModelTopics>().notifyModulesAreLoaded()
+          }
+          projectModelSynchronizer.applyLoadedStorage(projectEntities, workspaceModel)
+          project.messageBus.syncPublisher(JpsProjectLoadedListener.LOADED).loaded()
         }
-        if (projectEntities?.builder != null) {
-          @Suppress("DEPRECATION")
-          project.serviceAsync<WorkspaceModelTopics>().notifyModulesAreLoaded()
-        }
-        projectModelSynchronizer.applyLoadedStorage(projectEntities)
-        project.messageBus.syncPublisher(JpsProjectLoadedListener.LOADED).loaded()
+        
+        // Set the project synchronization job on the global synchronizer to prevent race conditions
+        JpsGlobalModelSynchronizer.getInstance().setProjectSynchronizationJob(projectSyncJob)
       }
 
       span("tracked libraries setup") {
@@ -130,6 +146,7 @@ private suspend fun loadModules(
   targetBuilder: MutableEntityStorage?,
   targetUnloadedEntitiesBuilder: MutableEntityStorage?,
   loadedFromCache: Boolean,
+  globalWsmAppliedToProjectWsm: CompletableDeferred<Project>? = null,
 ) {
   span("modules instantiation") {
     val moduleManager = project.serviceAsync<ModuleManager>() as ModuleManagerComponentBridge
@@ -146,7 +163,8 @@ private suspend fun loadModules(
     moduleManager.loadModules(loadedEntities = entities,
                               unloadedEntities = unloadedEntities,
                               targetBuilder = targetBuilder,
-                              initializeFacets = loadedFromCache)
+                              initializeFacets = loadedFromCache,
+                              globalWsmAppliedToProjectWsm)
   }
 
   span("libraries instantiation") {

@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.debugger.engine;
 
 import com.intellij.debugger.JavaDebuggerBundle;
@@ -69,6 +69,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.java.debugger.JavaDebuggerEditorsProvider;
 
+import static com.intellij.xdebugger.impl.frame.XDebugSessionProxy.useFeProxy;
+
 public class JavaDebugProcess extends XDebugProcess {
   private final DebuggerSession myJavaSession;
   private final JavaDebuggerEditorsProvider myEditorsProvider;
@@ -76,6 +78,7 @@ public class JavaDebugProcess extends XDebugProcess {
   private final NodeManagerImpl myNodeManager;
   private final JvmSmartStepIntoActionHandler mySmartStepIntoActionHandler;
   private final JvmDropFrameActionHandler myDropFrameActionActionHandler;
+  private final JavaDebugSessionEventsProvider myJavaDebugSessionEventsProvider;
 
   private static final JavaBreakpointHandlerFactory[] ourDefaultBreakpointHandlerFactories = {
     process -> new JavaBreakpointHandler.JavaLineBreakpointHandler(process),
@@ -224,6 +227,7 @@ public class JavaDebugProcess extends XDebugProcess {
 
     mySmartStepIntoActionHandler = new JvmSmartStepIntoActionHandler(javaSession);
     myDropFrameActionActionHandler = new JvmDropFrameActionHandler(javaSession);
+    myJavaDebugSessionEventsProvider = new JavaDebugSessionEventsProvider(this);
   }
 
   private boolean shouldApplyContext(DebuggerContextImpl context) {
@@ -242,7 +246,8 @@ public class JavaDebugProcess extends XDebugProcess {
   }
 
   private void saveNodeHistory(final StackFrameProxyImpl frameProxy) {
-    myJavaSession.getProcess().getManagerThread().schedule(PrioritizedTask.Priority.NORMAL,
+    // TODO: reject calls from non-DMT, for now must use invoke to avoid IncompatibleThreadStateException
+    myJavaSession.getProcess().getManagerThread().invoke(PrioritizedTask.Priority.NORMAL,
                                                            () -> myNodeManager.setHistoryByContext(frameProxy));
   }
 
@@ -252,6 +257,11 @@ public class JavaDebugProcess extends XDebugProcess {
 
   public DebuggerSession getDebuggerSession() {
     return myJavaSession;
+  }
+
+  @Override
+  public XDebugSessionEventsProvider getSessionEventsProvider() {
+    return myJavaDebugSessionEventsProvider;
   }
 
   @Override
@@ -327,7 +337,9 @@ public class JavaDebugProcess extends XDebugProcess {
     return new XDebugTabLayouter() {
       @Override
       public void registerAdditionalContent(@NotNull RunnerLayoutUi ui) {
-        registerThreadsPanel(ui);
+        if (!useFeProxy()) {
+          registerThreadsPanel(ui);
+        }
         registerMemoryViewPanel(ui);
         registerOverheadMonitor(ui);
       }

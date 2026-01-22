@@ -7,7 +7,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.projectImport.ProjectOpenProcessor
 import javax.swing.Icon
 
-internal class MavenProjectOpenProcessor : ProjectOpenProcessor() {
+class MavenProjectOpenProcessor : ProjectOpenProcessor() {
   private val importProvider = MavenOpenProjectProvider()
 
   override val name: String
@@ -17,10 +17,6 @@ internal class MavenProjectOpenProcessor : ProjectOpenProcessor() {
     get() = importProvider.getIcon()
 
   override fun canOpenProject(file: VirtualFile): Boolean = importProvider.canOpenProject(file)
-
-  override fun doOpenProject(virtualFile: VirtualFile, projectToClose: Project?, forceOpenInNewFrame: Boolean): Project? {
-    return runUnderModalProgressIfIsEdt { importProvider.openProject(virtualFile, projectToClose, forceOpenInNewFrame) }
-  }
 
   override suspend fun openProjectAsync(virtualFile: VirtualFile,
                                         projectToClose: Project?,

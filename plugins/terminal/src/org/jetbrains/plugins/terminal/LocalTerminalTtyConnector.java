@@ -4,6 +4,7 @@ package org.jetbrains.plugins.terminal;
 import com.google.common.base.Ascii;
 import com.intellij.execution.ijent.IjentChildPtyProcessAdapter;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.platform.eel.EelDescriptor;
 import com.intellij.terminal.pty.PtyProcessTtyConnector;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.jediterm.core.util.TermSize;
@@ -12,7 +13,7 @@ import com.pty4j.unix.UnixPtyProcess;
 import com.pty4j.windows.conpty.WinConPtyProcess;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.plugins.terminal.util.ShellEelProcess;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -23,12 +24,26 @@ import java.util.concurrent.TimeUnit;
 public class LocalTerminalTtyConnector extends PtyProcessTtyConnector {
   private static final Logger LOG = Logger.getInstance(LocalTerminalTtyConnector.class);
   private final @NotNull PtyProcess myProcess;
-  private final @Nullable ShellProcessHolder myShellProcessHolder;
+  private final @NotNull ShellProcessHolder myShellProcessHolder;
 
-  public LocalTerminalTtyConnector(@NotNull PtyProcess process, @NotNull Charset charset, @Nullable ShellProcessHolder shellProcessHolder) {
-    super(process, charset);
-    myProcess = process;
+  public LocalTerminalTtyConnector(@NotNull ShellProcessHolder shellProcessHolder, @NotNull Charset charset) {
+    super(shellProcessHolder.getPtyProcess(), charset);
+    myProcess = shellProcessHolder.getPtyProcess();
     myShellProcessHolder = shellProcessHolder;
+  }
+
+  @ApiStatus.Internal
+  public @NotNull EelDescriptor getEelDescriptor() {
+    return myShellProcessHolder.getDescriptor();
+  }
+
+  @ApiStatus.Internal
+  public @NotNull ShellEelProcess getShellEelProcess() {
+    return new ShellEelProcess(
+      myShellProcessHolder.getEelProcess(),
+      myShellProcessHolder.getEelApi(),
+      myProcess
+    );
   }
 
   @Override
@@ -42,7 +57,7 @@ public class LocalTerminalTtyConnector extends PtyProcessTtyConnector {
         }
       }, 1000, TimeUnit.MILLISECONDS);
     }
-    else if (myProcess instanceof IjentChildPtyProcessAdapter && myShellProcessHolder != null && myShellProcessHolder.isPosix()) {
+    else if (myProcess instanceof IjentChildPtyProcessAdapter && myShellProcessHolder.isPosix()) {
       myShellProcessHolder.terminatePosixShell();
     }
     else {

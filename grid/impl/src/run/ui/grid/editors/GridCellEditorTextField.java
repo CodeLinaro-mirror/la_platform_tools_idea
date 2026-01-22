@@ -6,6 +6,7 @@ import com.intellij.database.run.ui.GridEditGuard;
 import com.intellij.database.run.ui.grid.editors.GridCellEditorFactory.ValueFormatterResult;
 import com.intellij.database.run.ui.grid.renderers.DefaultTextRendererFactory;
 import com.intellij.ide.highlighter.HighlighterFactory;
+import com.intellij.ide.navigationToolbar.NavBarModelExtension;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.ui.UISettingsUtils;
 import com.intellij.lang.Language;
@@ -21,6 +22,7 @@ import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.impl.ContextMenuPopupHandler;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider;
 import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.fileTypes.PlainTextLanguage;
 import com.intellij.openapi.project.DumbAwareAction;
@@ -126,9 +128,16 @@ public class GridCellEditorTextField extends EditorTextField implements Disposab
   @Override
   public void uiDataSnapshot(@NotNull DataSink sink) {
     super.uiDataSnapshot(sink);
-    sink.set(CommonDataKeys.VIRTUAL_FILE, FileDocumentManager.getInstance().getFile(getDocument()));
+    VirtualFile file = FileDocumentManager.getInstance().getFile(getDocument());
+    if (file != null) {
+      file.putUserData(NavBarModelExtension.IGNORE_IN_NAVBAR, true);
+    }
+    sink.set(CommonDataKeys.VIRTUAL_FILE, file);
     Editor editor = getEditor();
     sink.set(CommonDataKeys.EDITOR, editor);
+    if (editor != null) {
+      sink.set(PlatformCoreDataKeys.FILE_EDITOR, TextEditorProvider.getInstance().getTextEditor(editor));
+    }
   }
 
   @Override

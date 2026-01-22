@@ -29,7 +29,6 @@ import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.awt.RelativePoint
-import com.intellij.util.PlatformUtils
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.ui.StartupUiUtil
 import com.intellij.util.ui.UIUtil
@@ -195,19 +194,8 @@ class MarkdownPreviewFileEditor(
         logger.warn("Cannot find any available preview panel provider. Registered providers: ${registeredProviders.joinToString { it.providerInfo.name }}")
       }
       else {
+        logger.warn("Cannot use preview panel provider '${preferredProvider.providerInfo.name}'. Using the first one that is available: ${availableProvider.providerInfo.name}")
         settings.previewPanelProviderInfo = availableProvider.providerInfo
-        if (PlatformUtils.getPlatformPrefix() != "AndroidStudio") {
-          Notifications.Bus.notify(
-            Notification(
-              "Markdown",
-              MarkdownBundle.message("markdown.settings.notification.title"),
-              MarkdownBundle.message("markdown.settings.preview.provider.not.available", providerInfo.name, availableProvider.providerInfo.name),
-              NotificationType.WARNING
-            ),
-            project
-          )
-          logger.warn("Cannot use preview panel provider '${providerInfo.name}'. Using the first one that is available: ${preferredProvider.providerInfo.name}")
-        }
         preferredProvider = availableProvider
       }
     }
@@ -217,8 +205,19 @@ class MarkdownPreviewFileEditor(
 
   @RequiresEdt
   private suspend fun updateHtml() {
-    val panel = this.panel ?: return
-    if (!file.isValid || isDisposed) {
+    logger.info("MarkdownPreviewFileEditor: updateHtml")
+    val panel = this.panel ?: run {
+      logger.warn("MarkdownPreviewFileEditor: panel is null, cannot update preview")
+      return
+    }
+
+    if (isDisposed) {
+      logger.warn("MarkdownPreviewFileEditor: cannot update preview for disposed file ${file.path}")
+      return
+    }
+
+    if (!file.isValid) {
+      logger.warn("MarkdownPreviewFileEditor: Cannot update preview for invalid file ${file.path}")
       return
     }
 
@@ -249,6 +248,7 @@ class MarkdownPreviewFileEditor(
 
   @RequiresEdt
   private suspend fun attachHtmlPanel() {
+    logger.info("MarkdownPreviewFileEditor: attachHtmlPanel")
     val settings = MarkdownSettings.getInstance(project)
     val panelProvider = retrievePanelProvider(settings)
     val panel = panelProvider.createHtmlPanel(project, file)

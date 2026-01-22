@@ -3,8 +3,11 @@ package com.jetbrains.python.sdk.uv
 
 import com.intellij.platform.eel.EelApi
 import com.intellij.platform.eel.provider.localEel
-import com.intellij.python.community.services.shared.UICustomization
+import com.intellij.python.community.impl.uv.common.UV_TOOL_ID
+import com.intellij.python.community.impl.uv.common.UV_UI_INFO
+import com.intellij.python.community.impl.uv.common.icons.PythonCommunityImplUVCommonIcons
 import com.intellij.python.community.services.systemPython.SystemPythonProvider
+import com.jetbrains.python.PyToolUIInfo
 import com.jetbrains.python.PythonBinary
 import com.jetbrains.python.Result
 import com.jetbrains.python.errorProcessing.PyResult
@@ -20,10 +23,10 @@ internal class UvSystemPythonProvider : SystemPythonProvider {
       return Result.success(emptySet())
     }
 
-    val uv = createUvLowLevel(Path.of("."))
+    val uv = createUvLowLevel(Path.of(".")).getOr { return it }
     return uv.listUvPythons()
   }
 
-  @Suppress("HardCodedStringLiteral") // tool name is untranslatable
-  override val uiCustomization: UICustomization = UICustomization("uv", PythonIcons.UV)
+  override val uiCustomization: PyToolUIInfo = UV_UI_INFO
 }
+
