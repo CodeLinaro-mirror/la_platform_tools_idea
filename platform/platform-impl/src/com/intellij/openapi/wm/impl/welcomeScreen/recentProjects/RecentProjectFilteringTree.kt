@@ -22,7 +22,6 @@ import com.intellij.openapi.wm.impl.welcomeScreen.cloneableProjects.CloneablePro
 import com.intellij.openapi.wm.impl.welcomeScreen.cloneableProjects.CloneableProjectsService.CloneStatus
 import com.intellij.openapi.wm.impl.welcomeScreen.cloneableProjects.CloneableProjectsService.CloneableProject
 import com.intellij.openapi.wm.impl.welcomeScreen.projectActions.RecentProjectsWelcomeScreenActionBase
-import com.intellij.toolWindow.ToolWindowPane
 import com.intellij.ui.*
 import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.components.TextComponentEmptyText
@@ -60,6 +59,8 @@ import javax.swing.event.TreeWillExpandListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreeCellRenderer
 import javax.swing.tree.TreePath
+import kotlin.io.path.invariantSeparatorsPathString
+import kotlin.io.path.pathString
 
 @ApiStatus.Internal
 class RecentProjectFilteringTree(
@@ -188,21 +189,43 @@ class RecentProjectFilteringTree(
     }
   }
 
-  fun selectLastOpenedProject() {
+  /**
+   * @return true if the last opened project was selected
+   */
+  fun selectLastOpenedProject(): Boolean {
     val recentProjectsManager = RecentProjectsManagerBase.getInstanceEx()
-    val projectPath = recentProjectsManager.getLastOpenedProject() ?: return
+    val projectPath = recentProjectsManager.getLastOpenedProject() ?: return false
 
     val node = TreeUtil.findNode(root, Condition {
       when (val item = TreeUtil.getUserObject(RecentProjectTreeItem::class.java, it)) {
         is RecentProjectItem -> item.projectPath == projectPath
-        is CloneableProjectItem -> item.projectPath == projectPath
+        is CloneableProjectItem -> item.projectPath.invariantSeparatorsPathString == projectPath
         else -> false
       }
     })
 
     if (node != null) {
       TreeUtil.selectNode(tree, node)
+      return true
     }
+    return false
+  }
+
+  @ApiStatus.Internal
+  fun selectLastOpenedProjectOrTheFirstInTree(): Boolean {
+    if (selectLastOpenedProject()) {
+      return true
+    }
+
+    if (root.childCount <= 0) {
+      return false
+    }
+    val firstChild = root.firstChild
+    if (firstChild != null) {
+      TreeUtil.selectNode(tree, firstChild)
+      return true
+    }
+    return false
   }
 
   private class ProjectActionMouseListener(
@@ -664,7 +687,7 @@ class RecentProjectFilteringTree(
         val cloneStatus = cloneableProject.cloneStatus
 
         projectNameLabel.text = item.displayName() // NON-NLS
-        projectPathLabel.text = FileUtil.getLocationRelativeToUserHome(PathUtil.toSystemDependentName(item.projectPath), false)
+        projectPathLabel.text = FileUtil.getLocationRelativeToUserHome(item.projectPath.pathString, false)
         when (cancelButton) {
           true -> {
             buttonViewModel.prepareActionsButton(projectActionButton, rowHovered, AllIcons.Actions.DeleteTag,
@@ -820,7 +843,6 @@ class RecentProjectFilteringTree(
       val dataContext = DataManager.getInstance().getDataContext(tree)
       val actionPlace = UIUtil.uiParents(tree, true).let { parents ->
         for (parent in parents) {
-          if (parent is ToolWindowPane) return@let ActionPlaces.WELCOME_SCREEN_NON_MODAL
           if (parent is FlatWelcomeFrame) return@let ActionPlaces.WELCOME_SCREEN
         }
         return@let ActionPlaces.POPUP

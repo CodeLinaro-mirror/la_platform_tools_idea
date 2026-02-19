@@ -59,7 +59,7 @@ def remove_imported_pydev_package():
     re-import again (with proper sys.path)
     """
     pydev_module = sys.modules.get('pydevd', None)
-    if pydev_module is not None and 'site-packages' in str(pydev_module):
+    if pydev_module is not None and ('site-packages' in str(pydev_module) or 'debugpy/_vendored' in str(pydev_module)):
         import os
         pydev_dir = os.listdir(os.path.dirname(pydev_module.__file__))
         pydev_dir.append('pydevd')
@@ -105,14 +105,9 @@ def enable_tracing():
 def disable_tracing():
     ipython_shell = get_ipython()
     if hasattr(ipython_shell, "debugger"):
-        ipython_shell.debugger.disable_tracing()
-        kill_pydev_threads(ipython_shell.debugger)
-
-
-def kill_pydev_threads(py_db):
-    from _pydevd_bundle.pydevd_kill_all_pydevd_threads import kill_all_pydev_threads
-    py_db.finish_debugging_session()
-    kill_all_pydev_threads()
+        py_db = ipython_shell.debugger
+        py_db.disable_tracing()
+        py_db.dispose_and_kill_all_pydevd_threads()
 
 
 def is_cell_filename(filename):

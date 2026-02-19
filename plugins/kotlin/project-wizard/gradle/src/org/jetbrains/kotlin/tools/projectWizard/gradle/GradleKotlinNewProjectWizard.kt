@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.tools.projectWizard.gradle
 
 import com.fasterxml.jackson.dataformat.toml.TomlMapper
@@ -11,13 +11,13 @@ import com.intellij.ide.projectWizard.generators.AssetsOnboardingTips.shouldRend
 import com.intellij.ide.wizard.NewProjectWizardChainStep.Companion.nextStep
 import com.intellij.ide.wizard.NewProjectWizardStep
 import com.intellij.ide.wizard.NewProjectWizardStep.Companion.ADD_SAMPLE_CODE_PROPERTY_NAME
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.observable.util.bindBooleanStorage
 import com.intellij.openapi.observable.util.equalsTo
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.project.modules
-import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.UIBundle
 import com.intellij.ui.dsl.builder.Panel
@@ -37,6 +37,7 @@ import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizar
 import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizardData.Companion.SRC_MAIN_RESOURCES_PATH
 import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizardData.Companion.SRC_TEST_KOTLIN_PATH
 import org.jetbrains.kotlin.tools.projectWizard.BuildSystemKotlinNewProjectWizardData.Companion.SRC_TEST_RESOURCES_PATH
+import org.jetbrains.kotlin.tools.projectWizard.compatibility.GradleToPluginsCompatibilityStore
 import org.jetbrains.kotlin.tools.projectWizard.compatibility.KotlinGradleCompatibilityStore
 import org.jetbrains.kotlin.tools.projectWizard.compatibility.KotlinLibrariesCompatibilityStore
 import org.jetbrains.kotlin.tools.projectWizard.compatibility.KotlinLibrariesCompatibilityStore.Companion.COROUTINES_ARTIFACT_ID
@@ -64,6 +65,10 @@ private const val KOTLIN_GRADLE_PLUGIN_ID = "org.jetbrains.kotlin:kotlin-gradle-
 private val MIN_GRADLE_VERSION_BUILD_SRC = GradleVersion.version("8.2")
 
 internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard {
+
+    companion object {
+        private val LOG = Logger.getInstance(GradleKotlinNewProjectWizard::class.java)
+    }
 
     override val name = GRADLE
 
@@ -206,10 +211,9 @@ internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard 
         var selectedJdkJvmTarget: Int? = null
             private set
 
-        private fun resolveSelectedJvmTarget(): Int? {
+        private fun resolveSelectedJvmTarget(): Int? =
             // Ordinal here works correctly, starting at Java 1.0 (0)
-            return sdk?.let { JavaSdk.getInstance().getVersion(it) }?.ordinal
-        }
+            jdkIntent.javaVersion?.feature
 
         override fun resolveIsFoojayPluginSupported(): Boolean {
             if (!super.resolveIsFoojayPluginSupported()) {
@@ -293,7 +297,7 @@ internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard 
                 // Find the library entries from the libraries table in the TOML file
                 val libraryEntries = tomlTree.get("libraries") ?: return false
                 // Find the name of the library entry that contains the Kotlin Gradle Plugin
-                libraryEntries.fields().asSequence().firstOrNull { (_, node) ->
+                libraryEntries.properties().firstOrNull { (_, node) ->
                     node.get("module")?.asText()?.contains(KOTLIN_GRADLE_PLUGIN_ID) == true
                 }?.key
             }.getOrNull() ?: return false
@@ -314,7 +318,7 @@ internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard 
             setupCommonProjectAssets()
 
             if (parent.shouldGenerateMultipleModules) {
-                setupMultiModuleProjectAssets(project)
+                setupMultiModuleProjectAssets(project, parent.gradleVersionToUse)
             } else {
                 setupSingleModuleProjectAssets(project)
             }
@@ -368,18 +372,25 @@ internal class GradleKotlinNewProjectWizard : BuildSystemKotlinNewProjectWizard 
         }
 
         // This is currently only supported for generating new projects!
-        private fun setupMultiModuleProjectAssets(project: Project) {
+        private fun setupMultiModuleProjectAssets(project: Project, gradleVersion: GradleVersion) {
             assert(context.isCreatingNewProject)
             val librariesVersionStore = KotlinLibrariesCompatibilityStore.getInstance()
             val datetimeVersion = librariesVersionStore.getLatestVersion(KOTLINX_GROUP, DATETIME_ARTIFACT_ID) ?: ""
             val coroutinesVersion = librariesVersionStore.getLatestVersion(KOTLINX_GROUP, COROUTINES_ARTIFACT_ID) ?: ""
             val serializationJsonVersion = librariesVersionStore.getLatestVersion(KOTLINX_GROUP, SERIALIZATION_JSON_ARTIFACT_ID) ?: ""
 
+            val gradleToPluginsCompatibilityStore = GradleToPluginsCompatibilityStore.getInstance()
+            val foojayVersion =
+                gradleToPluginsCompatibilityStore.getFoojayVersion(gradleVersion)
+                    ?: GradleToPluginsCompatibilityStore.getDefaultFoojayVersion().also {
+                        LOG.error("Unable to get Foojay version for Gradle $gradleVersion, getting a default one")
+                    }
+
             val templateParameters = mapOf(
                 "PROJECT_NAME" to parent.name,
                 "PACKAGE_NAME" to parent.groupId,
                 "KOTLIN_VERSION" to Versions.KOTLIN,
-                "FOOJAY_VERSION" to Versions.GRADLE_PLUGINS.FOOJAY_VERSION,
+                "FOOJAY_VERSION" to foojayVersion,
                 "JVM_VERSION" to (parent.selectedJdkJvmTarget?.toString() ?: "21"),
                 "KOTLINX_DATETIME_VERSION" to datetimeVersion,
                 "KOTLINX_SERIALIZATION_JSON_VERSION" to serializationJsonVersion,

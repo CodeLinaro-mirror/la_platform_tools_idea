@@ -9,6 +9,7 @@ import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.internal.statistic.eventLog.*
 import com.intellij.internal.statistic.eventLog.LogSystemCollector.sendingForAllRecordersDisabledField
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventGroupsFilterRules
+import com.intellij.internal.statistic.eventLog.connection.metadata.StatsConnectionSettings
 import com.intellij.internal.statistic.eventLog.uploader.EventLogUploadException.EventLogUploadErrorType.*
 import com.intellij.internal.statistic.uploader.EventLogUploaderOptions
 import com.intellij.internal.statistic.uploader.EventLogUploaderOptions.*
@@ -19,10 +20,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.text.Strings
 import com.intellij.util.ArrayUtil
-import com.jetbrains.fus.reporting.configuration.ConfigurationClient
-import com.jetbrains.fus.reporting.connection.StatsHttpClient
-import com.jetbrains.fus.reporting.model.http.StatsConnectionSettings
-import com.jetbrains.fus.reporting.serialization.FusKotlinSerializer
+import com.jetbrains.fus.reporting.MetadataStorage
 import kotlinx.serialization.StringFormat
 import kotlinx.serialization.json.Json
 import org.jetbrains.annotations.NotNull
@@ -127,9 +125,7 @@ object EventLogExternalUploader {
       findLibraryByClass(IllegalCallableAccessException::class.java), // add kotlin-reflect
       findLibraryByClass(EventGroupsFilterRules::class.java), // validation library
       findLibraryByClass(StatsConnectionSettings::class.java), // com.jetbrains.fus.reporting.model
-      findLibraryByClass(ConfigurationClient::class.java), // com.jetbrains.fus.reporting.configuration
-      findLibraryByClass(FusKotlinSerializer::class.java), // com.jetbrains.fus.reporting.serialization
-      findLibraryByClass(StatsHttpClient::class.java), // com.jetbrains.fus.reporting.connection.StatsHttpClient
+      findLibraryByClass(MetadataStorage::class.java), // com.jetbrains.fus.reporting.api
       findLibraryByClass(Json::class.java), // kotlinx.serialization.json
       findLibraryByClass(StringFormat::class.java) // kotlinx.serialization
     )

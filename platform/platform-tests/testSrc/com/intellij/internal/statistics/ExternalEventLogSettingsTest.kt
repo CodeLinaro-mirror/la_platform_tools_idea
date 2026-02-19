@@ -5,12 +5,17 @@ import com.intellij.ide.Region
 import com.intellij.internal.statistic.eventLog.ExternalEventLogSettings
 import com.intellij.internal.statistic.eventLog.StatsAppConnectionSettings
 import com.intellij.internal.statistic.eventLog.connection.EventLogUploadSettingsClient
+import com.intellij.internal.statistic.eventLog.validator.storage.FusComponentProvider
 import com.intellij.internal.statistic.utils.StatisticsUploadAssistant
 import com.intellij.testFramework.ExtensionTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.jetbrains.fus.reporting.FusHttpClient
 import com.jetbrains.fus.reporting.configuration.ConfigurationClientFactory
 import com.jetbrains.fus.reporting.configuration.RegionCode
+import com.jetbrains.fus.reporting.jvm.JvmHttpClient
+import com.jetbrains.fus.reporting.jvm.ProxyInfo
 import org.assertj.core.api.Assertions
+import java.time.Duration
 
 private const val URL = "https://localhost/"
 private const val RECORDER = "FUS"
@@ -28,6 +33,7 @@ class ExternalEventLogSettingsTest : BasePlatformTestCase() {
   }
 
   private val connectionSettings = StatsAppConnectionSettings()
+  private lateinit var httpClient: FusHttpClient
   override fun setUp() {
     super.setUp()
     installEp()
@@ -37,14 +43,30 @@ class ExternalEventLogSettingsTest : BasePlatformTestCase() {
     ExtensionTestUtil.maskExtensions(ExternalEventLogSettings.EP_NAME, listOf(TestExternalEventLogSettings()), testRootDisposable)
   }
 
+  fun setupHttpClientRequestBuilders() {
+    httpClient = JvmHttpClient(
+      proxyProvider = { configurationUrl ->
+        ProxyInfo(connectionSettings.provideProxy(configurationUrl).proxy)
+      },
+      sslContextProvider = { connectionSettings.provideSSLContext() },
+      extraHeadersProvider = { connectionSettings.provideExtraHeaders() },
+      userAgent = connectionSettings.provideUserAgent(),
+      timeout = Duration.ofSeconds(1)
+    )
+  }
+
   fun testSubstitution() {
-    val configurationClient = ConfigurationClientFactory.create(RECORDER,
-                                                                PRODUCT_CODE,
-                                                                PRODUCT_VERSION,
-                                                                false,
-                                                                connectionSettings,
-                                                                RegionCode.ALL,
-                                                                1)
+    setupHttpClientRequestBuilders()
+    val configurationClient = ConfigurationClientFactory.create(
+      recorderId = RECORDER,
+      productCode = PRODUCT_CODE,
+      productVersion = PRODUCT_VERSION,
+      isTestConfiguration = false,
+      httpClient = httpClient,
+      regionCode = RegionCode.ALL,
+      cacheTimeoutMs = 1,
+      serializer = FusComponentProvider.FusJacksonSerializer()
+    )
     Assertions.assertThat(configurationClient.configurationUrl).isNotEqualTo(URL)
   }
 
@@ -52,14 +74,16 @@ class ExternalEventLogSettingsTest : BasePlatformTestCase() {
    * Check that the config url is https://resources.jetbrains.com/storage/fus/config/v4/FUS/IC.json for other regions.
    */
   fun testUsualRegionConfigurationUrl() {
-    val configurationClient = ConfigurationClientFactory.Companion.create(
-      RECORDER,
-      PRODUCT_CODE,
-      PRODUCT_VERSION,
-      false,
-      connectionSettings,
-      RegionCode.ALL,
-      1
+    setupHttpClientRequestBuilders()
+    val configurationClient = ConfigurationClientFactory.create(
+      recorderId = RECORDER,
+      productCode = PRODUCT_CODE,
+      productVersion = PRODUCT_VERSION,
+      isTestConfiguration = false,
+      httpClient = httpClient,
+      regionCode = RegionCode.ALL,
+      cacheTimeoutMs = 1,
+      serializer = FusComponentProvider.FusJacksonSerializer()
     )
     Assertions.assertThat(configurationClient.configurationUrl).isEqualTo(CONFIG_URL)
   }
@@ -68,14 +92,16 @@ class ExternalEventLogSettingsTest : BasePlatformTestCase() {
    * Check that the config url is https://resources.jetbrains.com.cn/storage/fus/config/v4/FUS/IC.json for the China region.
    */
   fun testChinaRegionConfigurationUrl() {
-    val configurationClient = ConfigurationClientFactory.Companion.create(
-      RECORDER,
-      PRODUCT_CODE,
-      PRODUCT_VERSION,
-      false,
-      connectionSettings,
-      RegionCode.CN,
-      1
+    setupHttpClientRequestBuilders()
+    val configurationClient = ConfigurationClientFactory.create(
+      recorderId = RECORDER,
+      productCode = PRODUCT_CODE,
+      productVersion = PRODUCT_VERSION,
+      isTestConfiguration = false,
+      httpClient = httpClient,
+      regionCode = RegionCode.CN,
+      cacheTimeoutMs = 1,
+      serializer = FusComponentProvider.FusJacksonSerializer()
     )
     Assertions.assertThat(configurationClient.configurationUrl).isEqualTo(CHINA_CONFIG_URL)
   }
@@ -84,14 +110,16 @@ class ExternalEventLogSettingsTest : BasePlatformTestCase() {
    * Check that the config url is https://resources.jetbrains.com.cn/test/storage/fus/config/v4/FUS/IC.json for test.
    */
   fun testTestEnvironmentConfigurationUrl() {
-    val configurationClient = ConfigurationClientFactory.Companion.create(
-      RECORDER,
-      PRODUCT_CODE,
-      PRODUCT_VERSION,
-      true,
-      connectionSettings,
-      RegionCode.ALL,
-      1
+    setupHttpClientRequestBuilders()
+    val configurationClient = ConfigurationClientFactory.create(
+      recorderId = RECORDER,
+      productCode = PRODUCT_CODE,
+      productVersion = PRODUCT_VERSION,
+      isTestConfiguration = true,
+      httpClient = httpClient,
+      regionCode = RegionCode.ALL,
+      cacheTimeoutMs = 1,
+      serializer = FusComponentProvider.FusJacksonSerializer()
     )
     Assertions.assertThat(configurationClient.configurationUrl).isEqualTo(TEST_CONFIG_URL)
   }

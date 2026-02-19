@@ -2,10 +2,8 @@ package com.intellij.driver.sdk.ui.components.common
 
 import com.intellij.driver.client.Remote
 import com.intellij.driver.client.impl.DriverCallException
-import com.intellij.driver.client.impl.RefWrapper
 import com.intellij.driver.model.LockSemantics
 import com.intellij.driver.model.OnDispatcher
-import com.intellij.driver.model.RdTarget
 import com.intellij.driver.model.RemoteMouseButton
 import com.intellij.driver.sdk.*
 import com.intellij.driver.sdk.remoteDev.BeControlClass
@@ -15,11 +13,17 @@ import com.intellij.driver.sdk.ui.Finder
 import com.intellij.driver.sdk.ui.center
 import com.intellij.driver.sdk.ui.components.ComponentData
 import com.intellij.driver.sdk.ui.components.UiComponent
+import com.intellij.driver.sdk.ui.components.elements.actionButton
+import com.intellij.driver.sdk.ui.components.elements.checkBox
+import com.intellij.driver.sdk.ui.components.elements.textField
+import com.intellij.driver.sdk.ui.rdTarget
 import com.intellij.driver.sdk.ui.remote.Component
+import com.intellij.driver.sdk.ui.shouldContainText
 import org.intellij.lang.annotations.Language
 import java.awt.Point
 import java.awt.Rectangle
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 fun Finder.editor(@Language("xpath") xpath: String? = null): JEditorUiComponent {
   return x(xpath ?: "//div[@class='EditorComponentImpl']",
@@ -45,7 +49,7 @@ fun Finder.editor(@Language("xpath") xpath: String? = null, action: JEditorUiCom
 open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
   private val caretPosition
     get() = editor.getCaretModel().getLogicalPosition()
-  protected open val editorComponent : EditorComponentImpl
+  protected open val editorComponent: EditorComponentImpl
     get() = driver.cast(component, EditorComponentImpl::class)
 
   val editor: Editor get() = editorComponent.getEditor()
@@ -76,7 +80,7 @@ open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
     click(inlayCenter)
   }
 
-  fun getInlayHints(): List<InlayHint> {
+  fun getInlayHints(braceAround: Boolean = true): List<InlayHint> {
     val hints = mutableListOf<InlayHint>()
     this.editor.getInlayModel().getInlineElementsInRange(0, Int.MAX_VALUE).forEach { element ->
       val hintText = try {
@@ -87,7 +91,9 @@ open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
           driver.cast(element.getRenderer(), DeclarativeInlayRenderer::class).getPresentationList().getEntries().joinToString { it.getText() }
         }
         catch (e: DriverCallException) {
-          element.getRenderer().toString().substring(1, element.getRenderer().toString().length - 1)
+          if (braceAround)
+            element.getRenderer().toString().substring(1, element.getRenderer().toString().length - 1)
+          else element.getRenderer().toString()
         }
       }
       hints.add(InlayHint(element.getOffset(), hintText!!))
@@ -140,15 +146,17 @@ open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
   fun goToPosition(line: Int, column: Int): Unit = step("Go to position $line line $column column") {
     click()
     interact {
-      getCaretModel().moveToLogicalPosition(driver.logicalPosition(line - 1, column - 1, (this as? RefWrapper)?.getRef()?.rdTarget ?: RdTarget.DEFAULT))
+      getCaretModel().moveToLogicalPosition(driver.logicalPosition(line - 1, column - 1, component.rdTarget))
     }
+    scrollToCaret()
   }
 
   fun goToLine(line: Int): Unit = step("Go to $line line") {
     click()
     interact {
-      getCaretModel().moveToLogicalPosition(driver.logicalPosition(line - 1, 1, (this as? RefWrapper)?.getRef()?.rdTarget ?: RdTarget.DEFAULT))
+      getCaretModel().moveToLogicalPosition(driver.logicalPosition(line - 1, 1, component.rdTarget))
     }
+    scrollToCaret()
   }
 
   fun moveCaretToOffset(offset: Int) {
@@ -164,13 +172,17 @@ open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
     }
   }
 
-  fun clickOnPosition(line: Int, column: Int) {
-    setFocus()
+  fun clickOnPosition(line: Int, column: Int, scrollToPosition: Boolean = true) {
+    if (scrollToPosition) {
+      scrollToPosition(line, column)
+    }
     click(calculatePositionPoint(line, column))
   }
 
-  fun hoverOnPosition(line: Int, column: Int) {
-    setFocus()
+  fun hoverOnPosition(line: Int, column: Int, scrollToPosition: Boolean = true) {
+    if (scrollToPosition) {
+      scrollToPosition(line, column)
+    }
     moveMouse(calculatePositionPoint(line, column))
   }
 
@@ -194,6 +206,10 @@ open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
     driver.utility(AiTestIntentionUtils::class).invokeAiAssistantIntention(editor, intentionActionName)
   }
 
+  /**
+   * @see shouldContainText For better readability
+   */
+  @Deprecated("Use shouldContainText instead", ReplaceWith("shouldContainText(expectedText)"))
   fun containsText(expectedText: String) {
     step("Verify that editor contains text: $expectedText") {
       waitFor(errorMessage = { "Editor doesn't contain text: $expectedText" },
@@ -226,6 +242,25 @@ open class JEditorUiComponent(data: ComponentData) : UiComponent(data) {
         return@mapNotNull null
       }
     }
+
+  fun getAllHighlights(): List<HighlightInfo> = editor.getMarkupModel().getAllHighlighters().mapNotNull {
+    driver.utility(HighlightInfo::class).fromRangeHighlighter(it)
+  } + driver.getHighlights(editor.getDocument())
+
+  fun scrollToPosition(line: Int, column: Int) {
+    val position = driver.logicalPosition(line, column, component.rdTarget)
+    val scrollType = scrollType()
+    interact { editor.getScrollingModel().scrollTo(position, scrollType) }
+    wait(200.milliseconds) // wait for scroll to finish
+  }
+
+  fun scrollToCaret() {
+    val scrollType = scrollType()
+    interact { editor.getScrollingModel().scrollToCaret(scrollType) }
+    wait(200.milliseconds) // wait for scroll to finish
+  }
+
+  private fun scrollType(name: String = "CENTER") = driver.utility(ScrollType::class).valueOf(name)
 }
 
 @Remote("com.jetbrains.performancePlugin.utils.IntentionActionUtils", plugin = "com.jetbrains.performancePlugin")
@@ -283,6 +318,10 @@ class GutterUiComponent(data: ComponentData) : UiComponent(data) {
 
   fun hoverOverIcon(line: Int) {
     moveMouse(icons.firstOrNull { it.line == line - 1 }!!.location)
+  }
+
+  fun clickOnIcon(line: Int) {
+    click(icons.firstOrNull { it.line == line - 1 }!!.location)
   }
 
   fun rightClickOnIcon(line: Int) {
@@ -344,7 +383,8 @@ enum class GutterIcon(val path: String) {
   BREAKPOINT_VALID("expui/breakpoints/breakpointValid.svg"),
   NEXT_STATEMENT("expui/debugger/nextStatement.svg"),
   GOTO("icons/expui/assocFile@14x14.svg"),
-  IMPLEMENT("expui/gutter/implementingMethod.svg")
+  IMPLEMENT("expui/gutter/implementingMethod.svg"),
+  CONSTEXPR_DEBUG("resharper/RunMarkers/DebugThis.svg")
 }
 
 data class GutterState(

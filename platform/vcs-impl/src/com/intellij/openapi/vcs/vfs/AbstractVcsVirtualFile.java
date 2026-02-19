@@ -1,7 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.vcs.vfs;
 
-import com.intellij.codeInsight.daemon.OutsidersPsiFileSupport;
+import com.intellij.codeInsight.daemon.SyntheticPsiFileSupport;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsSafe;
@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -30,41 +29,12 @@ public abstract class AbstractVcsVirtualFile extends VirtualFile {
   protected @NlsSafe String myRevision;
   protected int myModificationStamp = 0;
 
-  /**
-   * @deprecated {@link VcsFileSystem} cannot be overwritten
-   */
-  @Deprecated
-  protected AbstractVcsVirtualFile(@NotNull @NlsSafe String path, @NotNull VirtualFileSystem ignored) {
-    this(path);
-  }
-
-  protected AbstractVcsVirtualFile(@NotNull @NlsSafe String path) {
-    myPath = path;
-    File file = new File(myPath);
-    myName = file.getName();
-    if (!isDirectory()) {
-      myParent = new VcsVirtualFolder(file.getParent(), this);
-    }
-    else
-      myParent = null;
-
-    OutsidersPsiFileSupport.markFile(this);
-  }
-
-  /**
-   * @deprecated {@link VcsFileSystem} cannot be overwritten
-   */
-  @Deprecated
-  protected AbstractVcsVirtualFile(@Nullable VirtualFile parent, @NotNull String name, @NotNull VirtualFileSystem ignored) {
-    this(parent, name);
-  }
-
   protected AbstractVcsVirtualFile(@Nullable VirtualFile parent, @NotNull String name) {
     myPath = parent != null && !StringUtil.isEmpty(parent.getPath()) ? parent.getPath() + "/" + name : name;
     myName = name;
     myParent = parent;
 
-    OutsidersPsiFileSupport.markFile(this);
+    SyntheticPsiFileSupport.markFile(this);
   }
 
   protected AbstractVcsVirtualFile(@Nullable VirtualFile parent, @NotNull FilePath path) {
@@ -72,7 +42,7 @@ public abstract class AbstractVcsVirtualFile extends VirtualFile {
     myName = path.getName();
     myParent = parent;
 
-    OutsidersPsiFileSupport.markFile(this, path);
+    markSyntheticFile(this, path);
   }
 
   protected AbstractVcsVirtualFile(@NotNull FilePath path) {
@@ -82,7 +52,7 @@ public abstract class AbstractVcsVirtualFile extends VirtualFile {
     FilePath parentPath = !isDirectory() ? path.getParentPath() : null;
     myParent = parentPath != null ? new VcsVirtualFolder(parentPath, this) : null;
 
-    OutsidersPsiFileSupport.markFile(this, path);
+    markSyntheticFile(this, path);
   }
 
   @Override
@@ -178,5 +148,9 @@ public abstract class AbstractVcsVirtualFile extends VirtualFile {
       VcsBundle.message("message.text.could.not.load.virtual.file.content", getPresentableUrl(), e.getLocalizedMessage()),
       VcsBundle.message("message.title.could.not.load.content"),
       Messages.getInformationIcon()));
+  }
+
+  private static void markSyntheticFile(@NotNull VirtualFile file, @Nullable FilePath originalPath) {
+    SyntheticPsiFileSupport.markFile(file, originalPath != null ? originalPath.getPath() : null);
   }
 }

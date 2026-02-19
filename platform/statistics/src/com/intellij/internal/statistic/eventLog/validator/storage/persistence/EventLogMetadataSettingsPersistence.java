@@ -24,9 +24,7 @@ import java.util.*;
   storages = @Storage(value = "EventLogAllowedList.xml", roamingType = RoamingType.LOCAL)
 )
 public final class EventLogMetadataSettingsPersistence implements PersistentStateComponent<Element> {
-  private static final String MODIFY = "update";
   private static final String RECORDER_ID = "recorder-id";
-  private static final String LAST_MODIFIED = "last-modified";
   private static final String PATH = "path";
   private static final String CUSTOM_PATH = "custom-path";
   private static final String USE_CUSTOM_PATH = "use-custom-path";
@@ -41,7 +39,6 @@ public final class EventLogMetadataSettingsPersistence implements PersistentStat
   private final Object optionsLock = new Object();
 
   private boolean internal = false;
-  private final Map<String, Long> lastModifications = new HashMap<>();
   private final Map<String, EventsSchemePathSettings> recorderToPathSettings = new HashMap<>();
   private final Map<String, EventLogExternalOptions> options = new HashMap<>();
   private final Map<String, String> recorderToBuildNumber = new HashMap<>();
@@ -91,14 +88,6 @@ public final class EventLogMetadataSettingsPersistence implements PersistentStat
     }
   }
 
-  public long getLastModified(@NotNull String recorderId) {
-    return lastModifications.containsKey(recorderId) ? Math.max(lastModifications.get(recorderId), 0) : 0;
-  }
-
-  public void setLastModified(@NotNull String recorderId, long lastUpdate) {
-    lastModifications.put(recorderId, Math.max(lastUpdate, 0));
-  }
-
   public @Nullable EventsSchemePathSettings getPathSettings(@NotNull String recorderId) {
     return recorderToPathSettings.get(recorderId);
   }
@@ -119,15 +108,6 @@ public final class EventLogMetadataSettingsPersistence implements PersistentStat
   public void loadState(final @NotNull Element element) {
       Element internalElement = element.getChild(INTERNAL);
       internal = internalElement != null && Boolean.parseBoolean(internalElement.getValue());
-
-      lastModifications.clear();
-      for (Element update : element.getChildren(MODIFY)) {
-        final String recorder = update.getAttributeValue(RECORDER_ID);
-        if (StringUtil.isNotEmpty(recorder)) {
-          final long lastUpdate = parseLastUpdate(update);
-          lastModifications.put(recorder, lastUpdate);
-        }
-      }
 
       recorderToBuildNumber.clear();
       for (Element build : element.getChildren(BUILD)) {
@@ -169,15 +149,6 @@ public final class EventLogMetadataSettingsPersistence implements PersistentStat
     }
   }
 
-  private static long parseLastUpdate(@NotNull Element update) {
-    try {
-      return Long.parseLong(update.getAttributeValue(LAST_MODIFIED, "0"));
-    }
-    catch (NumberFormatException e) {
-      return 0;
-    }
-  }
-
   @Override
   public Element getState() {
     final Element element = new Element("state");
@@ -187,13 +158,6 @@ public final class EventLogMetadataSettingsPersistence implements PersistentStat
       Element internalElement = new Element(INTERNAL);
       internalElement.setText(Boolean.toString(internal));
       element.addContent(internalElement);
-    }
-
-    for (Map.Entry<String, Long> entry : lastModifications.entrySet()) {
-      final Element update = new Element(MODIFY);
-      update.setAttribute(RECORDER_ID, entry.getKey());
-      update.setAttribute(LAST_MODIFIED, String.valueOf(entry.getValue()));
-      element.addContent(update);
     }
 
     for (Map.Entry<String, String> entry : recorderToBuildNumber.entrySet()) {

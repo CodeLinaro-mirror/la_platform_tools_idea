@@ -1,4 +1,4 @@
-// Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.io;
 
 import com.intellij.Patches;
@@ -230,6 +230,7 @@ public final class HttpRequests {
     private final String myUrl;
     private int myConnectTimeout = CONNECTION_TIMEOUT;
     private int myTimeout = READ_TIMEOUT;
+    private boolean myFollowRedirects = true;
     private int myRedirectLimit = REDIRECT_LIMIT;
     private boolean myGzip = true;
     private boolean myForceHttps;
@@ -256,6 +257,12 @@ public final class HttpRequests {
     @Override
     public RequestBuilder readTimeout(int value) {
       myTimeout = value;
+      return this;
+    }
+
+    @Override
+    public RequestBuilder followRedirects(boolean value) {
+      myFollowRedirects = value;
       return this;
     }
 
@@ -306,15 +313,23 @@ public final class HttpRequests {
 
     @Override
     public RequestBuilder productNameAsUserAgent() {
+      String userAgent;
       Application app = ApplicationManager.getApplication();
       if (app != null && !app.isDisposed()) {
         String productName = ApplicationNamesInfo.getInstance().getFullProductName();
         String version = ApplicationInfo.getInstance().getBuild().asStringWithoutProductCode();
-        return userAgent(productName + '/' + version);
+        userAgent = productName + '/' + version;
       }
       else {
-        return userAgent("IntelliJ");
+        userAgent = "IntelliJ";
       }
+
+      String currentBuildUrl = System.getenv("BUILD_URL");
+      if (currentBuildUrl != null) {
+        userAgent += " (" + currentBuildUrl + ")";
+      }
+
+      return userAgent(userAgent);
     }
 
     @Override
@@ -635,6 +650,10 @@ public final class HttpRequests {
 
       if (responseCode < 200 || responseCode >= 300 && responseCode != HttpURLConnection.HTTP_NOT_MODIFIED) {
         if (ArrayUtil.indexOf(REDIRECTS, responseCode) >= 0) {
+          if (!builder.myFollowRedirects) {
+            return connection;
+          }
+
           httpURLConnection.disconnect();
           String loc = connection.getHeaderField("Location");
           if (LOG.isDebugEnabled()) LOG.debug("redirect from " + url + ": " + loc);
@@ -660,22 +679,34 @@ public final class HttpRequests {
     throw new IOException(IdeCoreBundle.message("error.connection.failed.redirects"));
   }
 
-  private static void throwHttpStatusError(HttpURLConnection connection,
-                                           RequestImpl request,
-                                           RequestBuilderImpl builder,
-                                           int responseCode) throws IOException {
+  private static void throwHttpStatusError(
+    HttpURLConnection connection,
+    RequestImpl request,
+    RequestBuilderImpl builder,
+    int statusCode
+  ) throws IOException {
     String message = null;
-    if (responseCode == CUSTOM_ERROR_CODE) {
+    if (statusCode == CUSTOM_ERROR_CODE) {
       message = connection.getHeaderField("Error-Message");
     }
     if ((message == null || message.isEmpty()) && builder.myIsReadResponseOnError) {
       message = request.readError(connection);
     }
     if (message == null || message.isEmpty()) {
-      message = IdeCoreBundle.message("error.connection.failed.status", responseCode);
+      message = IdeCoreBundle.message("error.connection.failed.status", statusCode);
     }
     connection.disconnect();
-    throw new HttpStatusException(message, responseCode, requireNonNullElse(request.myUrl, "Empty URL"));
+    if (statusCode == HttpURLConnection.HTTP_PROXY_AUTH) {
+      var uiService = getIdeUiService();
+      if (uiService != null) {
+        uiService.showProxyAuthNotification();
+      }
+      if (LOG.isDebugEnabled()) LOG.debug(
+        "proxy auth failed for " + request.getURL() + "; Proxy-Authenticate=" + connection.getHeaderField("Proxy-Authenticate"),
+        new Exception()
+      );
+    }
+    throw new HttpStatusException(message, statusCode, requireNonNullElse(request.myUrl, "Empty URL"));
   }
 
   private static void configureSslConnection(@NotNull String url, @NotNull HttpsURLConnection connection) {
@@ -696,6 +727,11 @@ public final class HttpRequests {
     catch (Throwable e) {
       LOG.info("Problems configuring SSL connection to " + url, e);
     }
+  }
+
+  private static @Nullable IdeUiService getIdeUiService() {
+    var app = ApplicationManager.getApplication();
+    return app != null ? app.getServiceIfCreated(IdeUiService.class) : null;
   }
 
   /*

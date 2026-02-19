@@ -142,7 +142,7 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
           element instanceof PyTargetExpression && e != null && PyUtil.inSameFile(element, e) && PyPsiUtils.isBefore(element, e)) {
         continue;
       }
-      results.add(changePropertyMethodToSameNameGetter(r, name));
+      results.add(changePropertyMethodToSameNameGetter(r, name, element));
     }
     return results;
   }
@@ -160,7 +160,19 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
     return false;
   }
 
-  private static @NotNull RatedResolveResult changePropertyMethodToSameNameGetter(@NotNull RatedResolveResult resolveResult, @NotNull String name) {
+  private static @NotNull RatedResolveResult changePropertyMethodToSameNameGetter(@NotNull RatedResolveResult resolveResult,
+                                                                                   @NotNull String name,
+                                                                                   @NotNull PsiElement referenceElement) {
+    PyCallExpression propertyCall = PsiTreeUtil.getParentOfType(referenceElement, PyCallExpression.class);
+    if (propertyCall != null) {
+      // Avoid converting function to property getter when the reference we are resolving sits inside a property(...) call (e.g., property(__getX))
+      // In such context we actually need the bare function, not the property
+      PyCallExpression propertyCallSite = PropertyBunch.findPropertyCallSite(propertyCall);
+      if (propertyCallSite != null) {
+        return resolveResult;
+      }
+    }
+
     final PsiElement element = resolveResult.getElement();
     if (element instanceof PyFunction) {
       final Property property = ((PyFunction)element).getProperty();
@@ -236,7 +248,10 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
     final ScopeOwner resolvedOwner = processor.getOwner();
 
     final Collection<PsiElement> resolvedElements = processor.getElements();
-    if (resolvedOwner != null && !resolvedElements.isEmpty() && !ControlFlowCache.getScope(resolvedOwner).isGlobal(referencedName)) {
+    if (resolvedOwner != null &&
+        !processor.isTypeParameterScope() &&
+        !resolvedElements.isEmpty() &&
+        !ControlFlowCache.getScope(resolvedOwner).isGlobal(referencedName)) {
       if (resolvedOwner == referenceOwner && referenceAnchor != null) {
         final List<Instruction> instructions = getLatestDefinitions(referencedName, resolvedOwner, referenceAnchor);
         // TODO: Use the results from the processor as a cache for resolving to latest defs
@@ -392,17 +407,19 @@ public class PyReferenceImpl implements PsiReferenceEx, PsiPolyVariantReference 
 
     if (myElement instanceof PyTargetExpression) {
       final ScopeOwner scopeOwner = PsiTreeUtil.getParentOfType(myElement, ScopeOwner.class);
-      final Scope scope;
       if (scopeOwner != null) {
-        scope = ControlFlowCache.getScope(scopeOwner);
-        final String name = myElement.getName();
-        if (scope.isNonlocal(name)) {
+        final Scope scope = ControlFlowCache.getScope(scopeOwner);
+        if (scope.isNonlocal(referencedName)) {
           final ScopeOwner nonlocalOwner = ScopeUtil.getDeclarationScopeOwner(myElement, referencedName);
-          if (nonlocalOwner != null && !(nonlocalOwner instanceof PyFile)) {
-            return nonlocalOwner;
+          if (nonlocalOwner != null) {
+            boolean isGlobal = nonlocalOwner instanceof PyFile ||
+                               ControlFlowCache.getScope(nonlocalOwner).getGlobals().contains(referencedName);
+            if (!isGlobal) {
+              return nonlocalOwner;
+            }
           }
         }
-        if (!scope.isGlobal(name)) {
+        if (!scope.getGlobals().contains(referencedName)) {
           return scopeOwner;
         }
       }

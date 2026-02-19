@@ -2,16 +2,14 @@
 package com.intellij.internal.statistic.eventLog.validator.storage;
 
 import com.intellij.internal.statistic.eventLog.connection.metadata.EventLogMetadataLoadException;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Map;
-
+/**
+ * Only used for test {@link com.intellij.ide.starter.extended.TestContextExtensionKt#loadMetadataFromServer}
+ */
+@ApiStatus.Internal
 public interface EventLogMetadataLoader {
-
-  long getLastModifiedOnServer();
-
   @NotNull
   String loadMetadataFromServer() throws EventLogMetadataLoadException;
-
-  @NotNull Map<String, String> getOptionValues();
 }

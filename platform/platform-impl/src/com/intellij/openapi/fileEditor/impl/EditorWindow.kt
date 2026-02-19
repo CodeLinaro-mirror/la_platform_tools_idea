@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplacePutWithAssignment", "ReplaceGetOrSet", "PrivatePropertyName")
 
 package com.intellij.openapi.fileEditor.impl
@@ -19,7 +19,6 @@ import com.intellij.openapi.application.impl.InternalUICustomization
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.fileEditor.CompositeTabIconHolderCreator
-import com.intellij.openapi.fileEditor.FileEditorManagerKeys
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.advanced.AdvancedSettings
@@ -74,11 +73,6 @@ class EditorWindow internal constructor(
   companion object {
     @JvmField
     val DATA_KEY: DataKey<EditorWindow> = DataKey.create("editorWindow")
-
-    @JvmField
-    @ApiStatus.ScheduledForRemoval
-    @Deprecated("Use SINGLETON_EDITOR_IN_WINDOW instead")
-    val HIDE_TABS: Key<Boolean> = FileEditorManagerKeys.SINGLETON_EDITOR_IN_WINDOW
 
     // Metadata to support editor tab drag&drop process: initial index
     internal val DRAG_START_INDEX_KEY: Key<Int> = KeyWithDefaultValue.create("drag start editor index", -1)
@@ -155,13 +149,6 @@ class EditorWindow internal constructor(
 
   val selectedComposite: EditorComposite?
     get() = currentCompositeFlow.value
-
-  @Suppress("DEPRECATION")
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use getSelectedComposite", ReplaceWith("getSelectedComposite(ignorePopup)"), level = DeprecationLevel.ERROR)
-  fun getSelectedEditor(@Suppress("UNUSED_PARAMETER") ignorePopup: Boolean): EditorWithProviderComposite? {
-    return selectedComposite as EditorWithProviderComposite?
-  }
 
   // used externally
   /**
@@ -401,7 +388,7 @@ class EditorWindow internal constructor(
         owner.setCurrentWindow(window = this@EditorWindow)
       }
 
-      composite.coroutineScope.launch(Dispatchers.EDT + ClientId.coroutineContext() + ModalityState.any().asContextElement()) {
+      composite.coroutineScope.launch(Dispatchers.UI + ClientId.coroutineContext() + ModalityState.any().asContextElement()) {
         if (!isHeadless) {
           owner.setCurrentWindow(window = this@EditorWindow)
         }
@@ -410,8 +397,10 @@ class EditorWindow internal constructor(
         if (options.requestFocus) {
           withContext(Dispatchers.Default) {
             composite.waitForAvailable()
+            withContext(Dispatchers.EDT) {
+              focusEditorOnComposite(composite = composite, splitters = owner, forceFocus = options.forceFocus)
+            }
           }
-          focusEditorOnComposite(composite = composite, splitters = owner)
         }
       }
     }
@@ -426,7 +415,7 @@ class EditorWindow internal constructor(
       attachAsChildTo(composite.coroutineScope)
       composite.selectedEditorWithProvider.collectLatest {
         val tabActions = it?.fileEditor?.tabActions
-        withContext(Dispatchers.EDT) {
+        withContext(Dispatchers.UiWithModelAccess) {
           if (tab.tabPaneActions != tabActions) {
             tab.setTabPaneActions(tabActions)
             if (tab == tabbedPane.editorTabs.selectedInfo) {
@@ -469,7 +458,7 @@ class EditorWindow internal constructor(
         composite.waitForAvailable()
         // In the case of the JetBrains client, the project is opened under a modal dialog, and closing it removes the focus from the editor
         val modalityState = if (PlatformUtils.isJetBrainsClient()) ModalityState.nonModal() else ModalityState.any()
-        if (withContext(Dispatchers.EDT + modalityState.asContextElement()) {
+        if (withContext(Dispatchers.UiWithModelAccess + modalityState.asContextElement()) {
             focusEditorOnComposite(composite = composite, splitters = owner, toFront = false)
           }) {
           // update frame title only when the first file editor is ready to load (editor is not yet fully loaded at this moment)
@@ -487,7 +476,8 @@ class EditorWindow internal constructor(
     virtualFile: VirtualFile?,
     focusNew: Boolean,
     fileIsSecondaryComponent: Boolean = true,
-  ): EditorWindow? = split(orientation, forceSplit, virtualFile, focusNew, fileIsSecondaryComponent, null)
+    forceFocus: Boolean = false,
+  ): EditorWindow? = split(orientation, forceSplit, virtualFile, focusNew, fileIsSecondaryComponent, forceFocus, null)
 
   internal fun split(
     orientation: Int,
@@ -495,6 +485,7 @@ class EditorWindow internal constructor(
     virtualFile: VirtualFile?,
     focusNew: Boolean,
     fileIsSecondaryComponent: Boolean = true,
+    forceFocus: Boolean = false,
     explicitlySetCompositeProvider: (() -> EditorComposite?)?,
   ): EditorWindow? {
     checkConsistency()
@@ -510,7 +501,7 @@ class EditorWindow internal constructor(
           window = target,
           _file = virtualFile,
           entry = selectedComposite.takeIf { it.file == virtualFile }?.currentStateAsFileEntry(),
-          options = FileEditorOpenOptions(requestFocus = focusNew, explicitlyOpenCompositeProvider = null),
+          options = FileEditorOpenOptions(requestFocus = focusNew, forceFocus = forceFocus, explicitlyOpenCompositeProvider = null),
         )
       }
       return target
@@ -552,6 +543,7 @@ class EditorWindow internal constructor(
         isExactState = true,
         pin = getComposite(nextFile)?.isPinned ?: false,
         selectAsCurrent = focusNew,
+        forceFocus = forceFocus,
         explicitlyOpenCompositeProvider = explicitlySetCompositeProvider
       ),
     ) ?: return newWindow

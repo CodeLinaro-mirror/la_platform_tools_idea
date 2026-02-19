@@ -5,10 +5,10 @@ import com.intellij.ide.IdeBundle
 import com.intellij.ide.plugins.DependencyCollector
 import com.intellij.ide.plugins.DependencyInformation
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.IntellijInternalApi
 import com.intellij.util.EnvironmentUtil
+import com.intellij.util.system.OS
 import org.jetbrains.annotations.ApiStatus
-import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
@@ -38,11 +38,16 @@ internal class EnvironmentDependencyCollector : DependencyCollector {
   }
 }
 
+@IntellijInternalApi
 @ApiStatus.Internal
 object EnvironmentScanner {
   fun getPathNames(): List<Path> {
     val fs = FileSystems.getDefault()
-    val pathNames = EnvironmentUtil.getEnvironmentMap()["PATH"]?.split(File.pathSeparatorChar)
+
+    @Suppress("IO_FILE_USAGE")
+    val pathDelimiter = java.io.File.pathSeparatorChar
+
+    val pathNames = EnvironmentUtil.getEnvironmentMap()["PATH"]?.split(pathDelimiter)
       ?.mapNotNull {
         try {
           fs.getPath(it)
@@ -56,7 +61,7 @@ object EnvironmentScanner {
   }
 
   fun hasToolInLocalPath(pathNames: List<Path>, executableWithoutExt: String): Boolean {
-    val baseNames = if (SystemInfo.isWindows) {
+    val baseNames = if (OS.CURRENT == OS.Windows) {
       sequenceOf(".bat", ".cmd", ".com", ".exe")
         .map { exeSuffix -> executableWithoutExt + exeSuffix }
     }
@@ -69,7 +74,6 @@ object EnvironmentScanner {
         baseNames.map { basename -> pathEntry.resolve(basename) }
       }
       .filter(Path::isRegularFile)
-      .filter(Path::isExecutable)
-      .any()
+      .any(Path::isExecutable)
   }
 }

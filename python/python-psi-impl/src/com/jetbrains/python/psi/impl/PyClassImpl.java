@@ -2,7 +2,6 @@
 package com.jetbrains.python.psi.impl;
 
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
 import com.intellij.codeInsight.completion.CompletionUtilCoreImpl;
 import com.intellij.lang.ASTNode;
 import com.intellij.navigation.ItemPresentation;
@@ -19,6 +18,7 @@ import com.intellij.psi.tree.TokenSet;
 import com.intellij.psi.util.CachedValueProvider.Result;
 import com.intellij.psi.util.*;
 import com.intellij.ui.IconManager;
+import com.intellij.ui.PlatformIcons;
 import com.intellij.util.ArrayFactory;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
@@ -28,9 +28,11 @@ import com.intellij.util.containers.MultiMap;
 import com.jetbrains.python.*;
 import com.jetbrains.python.ast.PyAstFunction.Modifier;
 import com.jetbrains.python.ast.impl.PyUtilCore;
+import com.jetbrains.python.codeInsight.PyDataclassParameters;
 import com.jetbrains.python.codeInsight.controlflow.ControlFlowCache;
 import com.jetbrains.python.codeInsight.controlflow.ScopeOwner;
 import com.jetbrains.python.codeInsight.dataflow.scope.ScopeUtil;
+import com.jetbrains.python.codeInsight.stdlib.PyDataclassTypeProvider;
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider;
 import com.jetbrains.python.documentation.docstrings.DocStringUtil;
 import com.jetbrains.python.psi.*;
@@ -53,11 +55,14 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.intellij.openapi.util.text.StringUtil.join;
 import static com.intellij.openapi.util.text.StringUtil.notNullize;
+import static com.jetbrains.python.codeInsight.PyDataclassesKt.parseDataclassParameters;
 import static com.jetbrains.python.psi.PyUtil.as;
 import static com.jetbrains.python.psi.impl.PyDeprecationUtilKt.extractDeprecationMessageFromDecorator;
+import static java.util.Collections.emptySet;
 
 
 public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyClass {
@@ -78,6 +83,9 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
 
   @Override
   public PyType getType(@NotNull TypeEvalContext context, @NotNull TypeEvalContext.Key key) {
+    if (PyTypingTypeProvider.ANY.equals(getQualifiedName())) {
+      return null;
+    }
     return new PyClassTypeImpl(this, true);
   }
 
@@ -117,7 +125,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
 
   @Override
   public Icon getIcon(int flags) {
-    return IconManager.getInstance().getPlatformIcon(com.intellij.ui.PlatformIcons.Class);
+    return IconManager.getInstance().getPlatformIcon(PlatformIcons.Class);
   }
 
   @Override
@@ -223,7 +231,8 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     final PyClassType currentType = new PyClassTypeImpl(this, true);
     final TypeEvalContext contextToUse = notNullizeContext(context);
 
-    for (PyClassLikeType type : Iterables.concat(Collections.singletonList(currentType), getAncestorTypes(contextToUse))) {
+    List<PyClassLikeType> meAndAncestors = ContainerUtil.concat(Collections.singletonList(currentType), getAncestorTypes(contextToUse));
+    for (PyClassLikeType type : ContainerUtil.reverse(meAndAncestors)) {
       if (!(type instanceof PyClassType)) return null;
 
       final PyClass cls = ((PyClassType)type).getPyClass();
@@ -233,9 +242,18 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
 
       if (!cls.isNewStyleClass(contextToUse)) return null;
 
-      final List<String> ownSlots = cls.getOwnSlots();
-      if (ownSlots == null || ownSlots.contains(PyNames.DUNDER_DICT)) {
-        return null;
+      result.removeAll(getNamesOfOwnAttributesThatHaveAssignedValues()); // remove slots that are shadowed by class attributes
+
+      List<String> ownSlots = cls.getOwnSlots();
+      if (ownSlots != null && ownSlots.contains(PyNames.DUNDER_DICT)) {
+        return null; // not "viably slotted" due to __dict__ in __slots__
+      }
+      if (ownSlots == null) {
+        // check @dataclass(slots=True)
+        ownSlots = getOwnSlotsSynthesized(contextToUse);
+      }
+      if (ownSlots == null) {
+        return null; // not "viably slotted"
       }
 
       result.addAll(ownSlots);
@@ -251,15 +269,64 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
       return stub.getSlots();
     }
 
-    final PyTargetExpression slots = ContainerUtil.find(getClassAttributes(), target -> PyNames.SLOTS.equals(target.getName()));
-    if (slots != null) {
-      final PyExpression value = slots.findAssignedValue();
+    final PyTargetExpression slotsTargetExpr = ContainerUtil.find(getClassAttributes(), target -> PyNames.SLOTS.equals(target.getName()));
+    if (slotsTargetExpr != null) {
+      final PyExpression slotsValue = slotsTargetExpr.findAssignedValue();
+      final LinkedHashSet<String> slots = new LinkedHashSet<>();
+      if (slotsValue instanceof PyStringLiteralExpression) {
+        slots.add(((PyStringLiteralExpression)slotsValue).getStringValue());
+      }
+      else {
+        List<@NotNull String> slotsValues = PyUtilCore.strListValue(slotsValue);
+        if (slotsValues != null) {
+          slots.addAll(slotsValues);
+        }
+      }
 
-      return value instanceof PyStringLiteralExpression
-             ? Collections.singletonList(((PyStringLiteralExpression)value).getStringValue())
-             : PyUtilCore.strListValue(value);
+      slots.removeAll(getNamesOfOwnAttributesThatHaveAssignedValues()); // remove slots that are shadowed by class attributes
+
+      return new ArrayList<>(slots);
     }
 
+    return null;
+  }
+
+  private Set<String> getNamesOfOwnAttributesThatHaveAssignedValues() {
+    return getClassAttributes().stream()
+      .filter(target -> target.hasAssignedValue() && target.getName() != null)
+      .map(PyTargetExpression::getName).collect(Collectors.toSet());
+  }
+
+
+  /**
+   * Returns null if this class is not made "viably slotted" via <code>@dataclass(slots=True)</code>.
+   * Returns a list of all valid slotted attribute names otherwise.
+   */
+  private @Nullable List<@NotNull String> getOwnSlotsSynthesized(@NotNull TypeEvalContext context) {
+    PyDataclassParameters dcParams = parseDataclassParameters(this, context);
+    if (dcParams != null && dcParams.getSlots()) {
+      List<String> result = new ArrayList<>();
+      var initVars = PyDataclassTypeProvider.Companion.getInitVars(this, dcParams, context);
+      var initVarTargets = initVars == null ? emptySet() : ContainerUtil.map2Set(initVars, iv -> iv.getTargetExpression());
+      var attributes = getClassAttributes();
+
+      for (PyTargetExpression target : attributes) {
+        final String name = target.getName();
+        if (name == null) continue;
+
+        // Include only dataclass instance fields:
+        // - must be an annotated field (PEP 526), not an unannotated class attribute
+        // - must not be typing.ClassVar
+        // - must not be dataclasses.InitVar
+        final boolean isAnnotatedField = target.getAnnotation() != null || target.getParent() instanceof PyTypeDeclarationStatement;
+        if (!isAnnotatedField) continue;
+        if (PyTypingTypeProvider.isClassVar(target, context)) continue;
+        if (initVarTargets.contains(target)) continue;
+
+        result.add(name);
+      }
+      return result;
+    }
     return null;
   }
 
@@ -335,9 +402,9 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
       boolean found = false;
       PyClassLikeType head = null; // to keep compiler happy; really head is assigned in the loop at least once.
       for (List<PyClassLikeType> seq : nonBlankSequences) {
-        head = seq.get(0);
+        head = seq.getFirst();
         if (head == null) {
-          seq.remove(0);
+          seq.removeFirst();
           found = true;
           break;
         }
@@ -365,8 +432,8 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
       // remove it from heads of other sequences
       if (head != null) {
         for (List<PyClassLikeType> seq : nonBlankSequences) {
-          if (Comparing.equal(seq.get(0), head)) {
-            seq.remove(0);
+          if (Comparing.equal(seq.getFirst(), head)) {
+            seq.removeFirst();
           }
         }
       }
@@ -419,7 +486,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
       }
       result = mroMerge(lines);
       if (addThisType) {
-        result.add(0, type);
+        result.addFirst(type);
       }
       result = Collections.unmodifiableList(result);
     }
@@ -1020,7 +1087,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
   }
 
   @Override
-  public List<PyTargetExpression> getClassAttributes() {
+  public @NotNull List<PyTargetExpression> getClassAttributes() {
     final List<PyTargetExpression> result = new ArrayList<>();
     PyClassStub stub = getStub();
     if (stub != null) {
@@ -1032,7 +1099,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     }
     else {
       getStatementList().acceptChildren(
-        new PyVersionAwareTopLevelElementVisitor(PythonLanguageLevelPusher.getLanguageLevelForFile(getContainingFile())) {
+        new PyTypeCheckedTopLevelElementVisitor(PyLanguageFacadeKt.getEffectiveLanguageLevel(getContainingFile())) {
           @Override
           protected void checkAddElement(PsiElement psiElement) {
             if (psiElement instanceof PyAssignmentStatement assignmentStatement) {
@@ -1100,6 +1167,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     Map<String, ScopeOwner> scopesToSkip = StreamEx.of(getInstanceAttributes())
       .filter(e -> e.getName() != null)
       .mapToEntry(e -> e.getName(), e -> ScopeUtil.getScopeOwner(e))
+      .distinctKeys()
       .toMap();
     attributes = collectInstanceAttributes(scopesToSkip);
     myFallbackInstanceAttributes = attributes;
@@ -1107,7 +1175,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
   }
 
   private @NotNull List<PyTargetExpression> collectInstanceAttributes(@NotNull Map<String, ScopeOwner> scopesToSkip) {
-    Map<String, PyTargetExpression> result = new HashMap<>();
+    MultiMap<String, PyTargetExpression> result = new MultiMap<>();
     collectAttributesInConstructors(result, scopesToSkip);
     final PyFunction[] methods = getMethods();
     for (PyFunction method : methods) {
@@ -1116,29 +1184,41 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
     return new ArrayList<>(result.values());
   }
 
-  private void collectAttributesInConstructors(@NotNull Map<String, PyTargetExpression> result,
+  private void collectAttributesInConstructors(@NotNull MultiMap<String, PyTargetExpression> result,
                                                @NotNull Map<String, ScopeOwner> scopesToSkip) {
     PyFunction newMethod = findMethodByName(PyNames.NEW, false, null);
     if (newMethod != null) {
       for (PyTargetExpression target : getTargetExpressions(newMethod)) {
         String name = target.getName();
         if (scopesToSkip.get(name) != newMethod) {
-          result.put(name, target);
+          result.putValue(name, target);
         }
       }
     }
     PyFunction initMethod = findMethodByName(PyNames.INIT, false, null);
     if (initMethod != null) {
-      collectInstanceAttributes(initMethod, result, Collections.emptySet(), scopesToSkip);
+      collectInstanceAttributes(initMethod, result, emptySet(), scopesToSkip);
     }
   }
 
+  public static void collectInstanceAttributes(@NotNull PyFunction method, final @NotNull MultiMap<String, PyTargetExpression> result) {
+    collectInstanceAttributes(method, result, emptySet(), Collections.emptyMap());
+  }
+
+  /**
+   * @deprecated Use collectInstanceAttributes(com.jetbrains.python.psi.PyFunction, com.intellij.util.containers.MultiMap)
+   */
+  @Deprecated
   public static void collectInstanceAttributes(@NotNull PyFunction method, final @NotNull Map<String, PyTargetExpression> result) {
-    collectInstanceAttributes(method, result, Collections.emptySet(), Collections.emptyMap());
+    MultiMap<String, PyTargetExpression> localResult = new MultiMap<>();
+    collectInstanceAttributes(method, localResult, emptySet(), Collections.emptyMap());
+    for (Map.Entry<String, Collection<PyTargetExpression>> entry : localResult.entrySet()) {
+      result.put(entry.getKey(), ContainerUtil.getFirstItem(entry.getValue()));
+    }
   }
 
   private static void collectInstanceAttributes(@NotNull PyFunction method,
-                                                final @NotNull Map<String, PyTargetExpression> result,
+                                                final @NotNull MultiMap<String, PyTargetExpression> result,
                                                 @NotNull Set<String> namesToSkip,
                                                 @NotNull Map<String, ScopeOwner> scopesToSkip) {
     final PyParameter[] params = method.getParameterList().getParameters();
@@ -1150,7 +1230,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
       if (!namesToSkip.contains(name) &&
           scopesToSkip.get(name) != method &&
           PyUtil.isInstanceAttribute(target)) {
-        result.put(name, target);
+        result.putValue(name, target);
       }
     }
   }
@@ -1257,7 +1337,7 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
   }
 
   private @NotNull Iterable<@NotNull StubElement<?>> getVersionSpecificChildrenStubs(@NotNull PyClassStub stub) {
-    return PyVersionSpecificStubBaseKt.getChildrenStubs(stub, PythonLanguageLevelPusher.getLanguageLevelForFile(getContainingFile()));
+    return PyVersionSpecificStubBaseKt.getChildrenStubs(stub, PyLanguageFacadeKt.getEffectiveLanguageLevel(getContainingFile()));
   }
 
   @Override
@@ -1306,27 +1386,10 @@ public class PyClassImpl extends PyBaseElementImpl<PyClassStub> implements PyCla
 
   @Override
   public boolean processInstanceLevelDeclarations(@NotNull PsiScopeProcessor processor, @Nullable PsiElement location) {
-    final PyFunction instanceMethod = PsiTreeUtil.getStubOrPsiParentOfType(location, PyFunction.class);
-    final PyClass containingClass = instanceMethod != null ? instanceMethod.getContainingClass() : null;
-    if (instanceMethod != null && containingClass != null && CompletionUtilCoreImpl.getOriginalElement(containingClass) == this) {
-      for (PyTargetExpression target : getTargetExpressions(instanceMethod)) {
-        if (PyUtil.isInstanceAttribute(target) && !processor.execute(target, ResolveState.initial())) {
-          return false;
-        }
-      }
+    for (PyTargetExpression expr : getInstanceAttributes()) {
+      if (!processor.execute(expr, ResolveState.initial())) return false;
     }
-    if (!processInstanceAttributesNotInMethod(processor, instanceMethod, getInstanceAttributes())) return false;
-    if (!processInstanceAttributesNotInMethod(processor, instanceMethod, getFallbackInstanceAttributes())) return false;
-    return true;
-  }
-
-  private static boolean processInstanceAttributesNotInMethod(@NotNull PsiScopeProcessor processor,
-                                                              @Nullable PyFunction instanceMethod,
-                                                              @NotNull List<PyTargetExpression> instanceAttributes) {
-    for (PyTargetExpression expr : instanceAttributes) {
-      if (instanceMethod != null && ScopeUtil.getScopeOwner(expr) == instanceMethod) {
-        continue;
-      }
+    for (PyTargetExpression expr : getFallbackInstanceAttributes()) {
       if (!processor.execute(expr, ResolveState.initial())) return false;
     }
     return true;

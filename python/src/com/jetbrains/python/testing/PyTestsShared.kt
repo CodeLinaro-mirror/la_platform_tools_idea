@@ -1,6 +1,7 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.testing
 
+import com.google.gson.Gson
 import com.intellij.execution.*
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.execution.actions.ConfigurationFromContext
@@ -34,16 +35,17 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFileSystemItem
-import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.QualifiedName
 import com.intellij.refactoring.listeners.RefactoringElementListener
 import com.intellij.remote.PathMappingProvider
 import com.intellij.remote.RemoteSdkAdditionalData
 import com.intellij.util.ThreeState
+import com.intellij.util.execution.ParametersListUtil
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.extensions.*
-import com.jetbrains.python.packaging.PyPackageManager
+import com.jetbrains.python.packaging.management.PythonPackageManager
+import com.jetbrains.python.packaging.management.hasInstalledPackageSnapshot
 import com.jetbrains.python.psi.PyClass
 import com.jetbrains.python.psi.PyFile
 import com.jetbrains.python.psi.PyFunction
@@ -59,16 +61,20 @@ import com.jetbrains.python.run.targetBasedConfiguration.PyRunTargetVariant
 import com.jetbrains.python.run.targetBasedConfiguration.TargetWithVariant
 import com.jetbrains.python.run.targetBasedConfiguration.createRefactoringListenerIfPossible
 import com.jetbrains.python.run.targetBasedConfiguration.targetAsPsiElement
-import com.jetbrains.python.sdk.PythonSdkUtil
+import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import com.jetbrains.python.sdk.baseDir
 import com.jetbrains.python.testing.doctest.PythonDocTestUtil
 import jetbrains.buildServer.messages.serviceMessages.ServiceMessage
 import jetbrains.buildServer.messages.serviceMessages.TestStdErr
 import jetbrains.buildServer.messages.serviceMessages.TestStdOut
+import org.jdom.Element
 import org.jetbrains.annotations.PropertyKey
 import org.jetbrains.jps.model.java.JavaSourceRootType
+import java.io.File
 import java.nio.file.Path
 import java.util.regex.Matcher
+import java.util.regex.Pattern
+import javax.swing.JComponent
 
 fun getFactoryById(id: String): PyAbstractTestFactory<*>? =
   // user may have "pytest" because it was used instead of py.test (old id) for some time
@@ -101,21 +107,29 @@ fun isTestElement(element: PsiElement, testCaseClassRequired: ThreeState, typeEv
   is PsiDirectory -> isTestFolder(element, testCaseClassRequired, typeEvalContext)
   is PyFunction -> PythonUnitTestDetectorsBasedOnSettings.isTestFunction(element,
                                                                          testCaseClassRequired, typeEvalContext)
-  is com.jetbrains.python.psi.PyClass -> {
+  is PyClass -> {
     PythonUnitTestDetectorsBasedOnSettings.isTestClass(element, testCaseClassRequired, typeEvalContext)
   }
   else -> false
 }
 
 /**
- * If element is a subelement of the folder excplicitly marked as test root -- use it
+ * If an element is a subelement of the folder explicitly marked as test root -- use it
+ *
+ * @param findSource if true, will also check if an element is a subelement of the source root, then use it as working dir
  */
-private fun getExplicitlyConfiguredTestRoot(element: PsiFileSystemItem): VirtualFile? {
+private fun getExplicitlyConfiguredTestRoot(element: PsiFileSystemItem, findSource: Boolean = false): VirtualFile? {
   val vfDirectory = element.virtualFile
   val module = ModuleUtil.findModuleForPsiElement(element) ?: return null
-  return ModuleRootManager.getInstance(module).getSourceRoots(JavaSourceRootType.TEST_SOURCE).firstOrNull {
-    VfsUtil.isAncestor(it, vfDirectory, false)
+  val manager = ModuleRootManager.getInstance(module)
+  val findSourceByType = {type: JavaSourceRootType -> manager.getSourceRoots(type).firstOrNull { VfsUtil.isAncestor(it, vfDirectory, false) } }
+
+  findSourceByType(JavaSourceRootType.TEST_SOURCE)?.let { return it }
+  if (findSource) {
+    findSourceByType(JavaSourceRootType.SOURCE)?.let { return it }
   }
+
+  return null
 }
 
 private fun isTestFolder(element: PsiDirectory,
@@ -156,7 +170,7 @@ private fun findConfigurationFactoryFromSettings(module: Module): ConfigurationF
 
 
 // folder provided by python side. Resolve test names versus it
-private val PATH_URL = java.util.regex.Pattern.compile("^python<([^<>]+)>$")
+private val PATH_URL = Pattern.compile("^python<([^<>]+)>$")
 
 
 private fun Sdk.getMapping(project: Project) = (sdkAdditionalData as? RemoteSdkAdditionalData)?.let { data ->
@@ -177,12 +191,14 @@ private fun getFolderFromMatcher(matcher: Matcher, module: Module): String? {
   }
 }
 
-private fun getElementByUrl(protocol: String,
-                            path: String,
-                            module: Module,
-                            evalContext: TypeEvalContext,
-                            matcher: Matcher = PATH_URL.matcher(protocol),
-                            metainfo: String? = null): Location<out PsiElement>? = runReadAction {
+private fun getElementByUrl(
+  protocol: String,
+  path: String,
+  module: Module,
+  evalContext: TypeEvalContext,
+  matcher: Matcher = PATH_URL.matcher(protocol),
+  metainfo: String? = null,
+): Location<out PsiElement>? = runReadAction {
   val folder = getFolderFromMatcher(matcher, module)?.let { LocalFileSystem.getInstance().findFileByPath(it) }
 
   val qualifiedName = QualifiedName.fromDottedString(path)
@@ -244,9 +260,10 @@ object PyTestsLocator : SMTestLocator {
 }
 
 
-abstract class PyTestExecutionEnvironment<T : PyAbstractTestConfiguration>(configuration: T,
-                                                                           environment: ExecutionEnvironment)
-  : PythonTestCommandLineStateBase<T>(configuration, environment) {
+abstract class PyTestExecutionEnvironment<T : PyAbstractTestConfiguration>(
+  configuration: T,
+  environment: ExecutionEnvironment,
+) : PythonTestCommandLineStateBase<T>(configuration, environment) {
 
   override fun getTestLocator(): SMTestLocator = PyTestsLocator
 
@@ -259,7 +276,7 @@ abstract class PyTestExecutionEnvironment<T : PyAbstractTestConfiguration>(confi
 
   override fun generateCommandLine(): GeneralCommandLine {
     val line = super.generateCommandLine()
-    line.workDirectory = java.io.File(configuration.workingDirectorySafe)
+    line.workDirectory = File(configuration.workingDirectorySafe)
     return line
   }
 }
@@ -280,7 +297,7 @@ abstract class PyAbstractTestSettingsEditor(private val sharedForm: PyTestShared
     s.copyFrom(getProperties(sharedForm, usePojoProperties = true))
   }
 
-  override fun createEditor(): javax.swing.JComponent = sharedForm.panel
+  override fun createEditor(): JComponent = sharedForm.panel
 }
 
 /**
@@ -291,9 +308,10 @@ private const val DEFAULT_PATH = ""
 /**
  * Target depends on target type. It could be path to file/folder or python target
  */
-data class ConfigurationTarget(@ConfigField("runcfg.python_tests.config.target") override var target: String,
-                               @ConfigField(
-                                 "runcfg.python_tests.config.targetType") override var targetType: PyRunTargetVariant) : TargetWithVariant {
+data class ConfigurationTarget(
+  @ConfigField("runcfg.python_tests.config.target") override var target: String,
+  @ConfigField("runcfg.python_tests.config.targetType") override var targetType: PyRunTargetVariant,
+) : TargetWithVariant {
   fun copyTo(dst: ConfigurationTarget) {
     // TODO:  do we have such method it in Kotlin?
     dst.target = target
@@ -469,7 +487,7 @@ abstract class PyAbstractTestConfiguration(project: Project,
   /**
    * Args after it passed to test runner itself
    */
-  protected val rawArgumentsSeparator = "--"
+  protected val rawArgumentsSeparator: String = "--"
 
   @DelegationProperty
   val target: ConfigurationTarget = ConfigurationTarget(DEFAULT_PATH, PyRunTargetVariant.PATH)
@@ -482,7 +500,7 @@ abstract class PyAbstractTestConfiguration(project: Project,
 
   fun isTestClassRequired(): ThreeState {
     val sdk = sdk ?: return ThreeState.UNSURE
-    return if (testFactory.onlyClassesAreSupported(sdk)) {
+    return if (testFactory.onlyClassesAreSupported(project, sdk)) {
       ThreeState.YES
     }
     else {
@@ -612,7 +630,7 @@ abstract class PyAbstractTestConfiguration(project: Project,
   private fun generateRawArguments(forRerun: Boolean = false): List<String> {
     val rawArguments = additionalArguments + " " + getCustomRawArgumentsString(forRerun)
     if (rawArguments.isNotBlank()) {
-      return listOf(rawArgumentsSeparator) + com.intellij.util.execution.ParametersListUtil.parse(rawArguments, false, true)
+      return listOf(rawArgumentsSeparator) + ParametersListUtil.parse(rawArguments, false, true)
     }
     return emptyList()
   }
@@ -620,7 +638,7 @@ abstract class PyAbstractTestConfiguration(project: Project,
   /**
    * If true, then framework name must be used as part of the run configuration name i.e "pytest: spam.eggs"
    */
-  protected open val useFrameworkNameInConfiguration = true
+  protected open val useFrameworkNameInConfiguration: Boolean = true
 
   override fun suggestedName(): String {
     val testFrameworkName = if (useFrameworkNameInConfiguration) testFrameworkName else PyBundle.message("runcfg.test.display_name")
@@ -659,10 +677,10 @@ abstract class PyAbstractTestConfiguration(project: Project,
   }
 
 
-  override fun writeExternal(element: org.jdom.Element) {
+  override fun writeExternal(element: Element) {
     super.writeExternal(element)
 
-    val gson = com.google.gson.Gson()
+    val gson = Gson()
 
     getConfigFields().properties.forEach {
       val value = it.get()
@@ -673,10 +691,10 @@ abstract class PyAbstractTestConfiguration(project: Project,
     }
   }
 
-  override fun readExternal(element: org.jdom.Element) {
+  override fun readExternal(element: Element) {
     super.readExternal(element)
 
-    val gson = com.google.gson.Gson()
+    val gson = Gson()
 
     getConfigFields().properties.forEach {
       val fromJson: Any? = gson.fromJson(readField(element, it.prefixedName), it.getType())
@@ -738,16 +756,17 @@ abstract class PyAbstractTestFactory<out CONF_T : PyAbstractTestConfiguration>(t
   /**
    * Only UnitTest inheritors are supported
    */
-  abstract fun onlyClassesAreSupported(sdk: Sdk): Boolean
+  abstract fun onlyClassesAreSupported(project: Project, sdk: Sdk): Boolean
 
   /**
    * Test framework needs package to be installed
    */
   open val packageRequired: String? = null
 
-  open fun isFrameworkInstalled(sdk: Sdk): Boolean {
+  open fun isFrameworkInstalled(project: Project, sdk: Sdk): Boolean {
     val requiredPackage = packageRequired ?: return true // No package required
-    return PyPackageManager.getInstance(sdk).packages?.firstOrNull { it.name == requiredPackage } != null
+    val isInstalled = PythonPackageManager.forSdk(project, sdk).hasInstalledPackageSnapshot(requiredPackage)
+    return isInstalled
   }
 }
 
@@ -802,6 +821,10 @@ internal class PyTestsConfigurationProducer : AbstractPythonTestConfigurationPro
           val module = configuration.module ?: return null
 
           val elementFile = element.containingFile as? PyFile ?: return null
+
+          // If pytest is the selected framework, ensure the file is a pytest test module by default naming
+          if (!PyTestDiscoveryUtil.isPyTestAllowedForFile(module, elementFile)) return null
+
           val workingDirectory = getDirectoryForFileToBeImportedFrom(elementFile, module) ?: return null
           val context = QNameResolveContext(ModuleBasedContextAnchor(module),
                                             evalContext = TypeEvalContext.userInitiated(configuration.project,
@@ -815,7 +838,12 @@ internal class PyTestsConfigurationProducer : AbstractPythonTestConfigurationPro
           val virtualFile = element.virtualFile
 
           val workingDirectory: VirtualFile = when (element) {
-                                                is PyFile -> getDirectoryForFileToBeImportedFrom(element, configuration.module)?.virtualFile
+                                                is PyFile -> {
+                                                  val file = element
+                                                  val module = configuration.module
+                                                  if (!PyTestDiscoveryUtil.isPyTestAllowedForFile(module, file)) return null
+                                                  getDirectoryForFileToBeImportedFrom(file, configuration.module)?.virtualFile
+                                                }
                                                 is PsiDirectory -> virtualFile
                                                 else -> return null
                                               } ?: return null
@@ -830,8 +858,8 @@ internal class PyTestsConfigurationProducer : AbstractPythonTestConfigurationPro
      * Inspect file relative imports, find farthest and return folder with imported file
      */
     private fun getDirectoryForFileToBeImportedFrom(file: PyFile, module: Module?): PsiDirectory? {
-      getExplicitlyConfiguredTestRoot(file)?.let {
-        return PsiManager.getInstance(file.project).findDirectory(it)
+      getExplicitlyConfiguredTestRoot(file, true)?.let {
+        return file.manager.findDirectory(it)
       }
 
       module?.baseDir?.let {

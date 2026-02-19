@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.groovy.annotator;
 
 import com.intellij.codeInsight.AnnotationUtil;
@@ -262,21 +262,7 @@ public final class GroovyAnnotator extends GroovyElementVisitor {
 
   @Override
   public void visitVariableDeclaration(@NotNull GrVariableDeclaration variableDeclaration) {
-    if (variableDeclaration.isTuple()) {
-      final GrModifierList list = variableDeclaration.getModifierList();
-
-      final PsiElement last = PsiUtil.skipWhitespacesAndComments(list.getLastChild(), false);
-      if (last != null) {
-        final IElementType type = last.getNode().getElementType();
-        if (type != GroovyTokenTypes.kDEF) {
-          myHolder.newAnnotation(HighlightSeverity.ERROR, GroovyBundle.message("tuple.declaration.should.end.with.def.modifier")).range(list).create();
-        }
-      }
-      else {
-        myHolder.newAnnotation(HighlightSeverity.ERROR, GroovyBundle.message("tuple.declaration.should.end.with.def.modifier")).range(list).create();
-      }
-    }
-    else {
+    if (!variableDeclaration.isTuple()) {
       GrTypeParameterList typeParameterList = findChildOfType(variableDeclaration, GrTypeParameterList.class);
       if (typeParameterList != null) {
         myHolder.newAnnotation(HighlightSeverity.ERROR, GroovyBundle.message("type.parameters.are.unexpected")).range(typeParameterList).create();
@@ -602,7 +588,7 @@ public final class GroovyAnnotator extends GroovyElementVisitor {
     PsiElement blockParent = block.getParent();
     if (blockParent instanceof GrMethod method) {
       if (GrTraitUtil.isMethodAbstract(method)) {
-        String message = GroovyBundle.message("abstract.methods.must.not.have.body");
+        String message = GrTraitUtil.isInterface(method.getContainingClass()) ? GroovyBundle.message("interface.abstract.methods.must.not.have.body") : GroovyBundle.message("abstract.methods.must.not.have.body");
         AnnotationBuilder builder =
           myHolder.newAnnotation(HighlightSeverity.ERROR, message);
         registerMakeAbstractMethodNotAbstractFix(builder, method, true, message, block.getTextRange()).create();
@@ -784,11 +770,13 @@ public final class GroovyAnnotator extends GroovyElementVisitor {
 
   @Override
   public void visitVariable(@NotNull GrVariable variable) {
+    if (variable.isUnnamed()) return;
     checkName(variable);
 
     PsiElement parent = variable.getParent();
     if (parent instanceof GrForInClause) {
       PsiElement delimiter = ((GrForInClause)parent).getDelimiter();
+      if (delimiter == null) return;
       if (delimiter.getNode().getElementType() == GroovyTokenTypes.mCOLON) {
         GrTypeElement typeElement = variable.getTypeElementGroovy();
         GrModifierList modifierList = variable.getModifierList();
@@ -1819,9 +1807,14 @@ public final class GroovyAnnotator extends GroovyElementVisitor {
       }
       //interface
       else if (containingTypeDef.isInterface()) {
-        checkModifierIsNotAllowed(modifiersList, PsiModifier.STATIC, GroovyBundle.message("interface.must.have.no.static.method"), holder);
-        checkModifierIsNotAllowed(modifiersList, PsiModifier.PRIVATE, GroovyBundle.message("interface.members.are.not.allowed.to.be", PsiModifier.PRIVATE), holder);
-        checkModifierIsNotAllowed(modifiersList, PsiModifier.PROTECTED, GroovyBundle.message("interface.members.are.not.allowed.to.be", PsiModifier.PROTECTED), holder);
+        if (!GroovyConfigUtils.isAtLeastGroovy50(containingTypeDef)) {
+          checkModifierIsNotAllowed(modifiersList, PsiModifier.STATIC, GroovyBundle.message("interface.must.have.no.static.method"),
+                                    holder);
+          checkModifierIsNotAllowed(modifiersList, PsiModifier.PRIVATE,
+                                    GroovyBundle.message("interface.members.are.not.allowed.to.be", PsiModifier.PRIVATE), holder);
+        }
+        checkModifierIsNotAllowed(modifiersList, PsiModifier.PROTECTED,
+                                  GroovyBundle.message("interface.members.are.not.allowed.to.be", PsiModifier.PROTECTED), holder);
       }
       else if (containingTypeDef.isAnonymous()) {
         if (isMethodAbstract) {
@@ -2082,7 +2075,7 @@ public final class GroovyAnnotator extends GroovyElementVisitor {
       JavaPsiFacade facade = JavaPsiFacade.getInstance(typeDefinition.getProject());
       GlobalSearchScope scope = inferClassScopeForSearchingDuplicates(typeDefinition);
       final PsiClass[] classes = facade.findClasses(qName, scope);
-      if (classes.length > 1) {
+      if (classes.length > 1 && (!GroovyConfigUtils.isAtLeastGroovy50(typeDefinition) || areInTheDifferentFiles(classes))) {
         String packageName = getPackageName(typeDefinition);
 
         if (!isScriptGeneratedClass(classes)) {
@@ -2093,6 +2086,17 @@ public final class GroovyAnnotator extends GroovyElementVisitor {
         }
       }
     }
+  }
+
+  private static boolean areInTheDifferentFiles(PsiClass[] classes) {
+    if (classes.length <= 1) return true;
+
+    List<PsiFile> fileList = ContainerUtil.map(classes, it -> it.getContainingFile());
+    PsiFile file = fileList.getFirst();
+    for (int i = 1; i < fileList.size(); i++) {
+      if(fileList.get(i) != file) return true;
+    }
+    return false;
   }
 
   private static GlobalSearchScope inferClassScopeForSearchingDuplicates(GrTypeDefinition typeDefinition) {

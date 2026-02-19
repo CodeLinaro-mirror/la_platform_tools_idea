@@ -133,7 +133,11 @@ open class InlayButtonPresentationFactory(
     }
 
     fun withTooltip(tooltip: @NlsContexts.Tooltip String): InlayButtonPresentationBuilder {
-      presentation = factory.delegate.withTooltip(tooltip, presentation)
+      return withTooltip(tooltip, showAbove = true)
+    }
+
+    fun withTooltip(tooltip: @NlsContexts.Tooltip String, showAbove: Boolean): InlayButtonPresentationBuilder {
+      presentation = factory.delegate.withTooltip(tooltip, presentation, showAbove)
       return this
     }
 
@@ -142,11 +146,13 @@ open class InlayButtonPresentationFactory(
       return this
     }
 
-    fun build(): InlayPresentation = factory.createPaddedPresentation(
+    fun build(): InlayPresentation = build(ADDITIONAL_SPACING_BETWEEN_COMPONENTS)
+
+    fun build(spacingBetweenComponents: Int): InlayPresentation = factory.createPaddedPresentation(
       factory.delegate.withCursorOnHover(
         withInlayAttributes(border(), factory.defaultAttributesKey), Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
       ),
-      left = ADDITIONAL_SPACING_BETWEEN_COMPONENTS
+      left = spacingBetweenComponents
     )
 
     fun buildFocused(): InlayPresentation = factory.delegate.withCursorOnHover(

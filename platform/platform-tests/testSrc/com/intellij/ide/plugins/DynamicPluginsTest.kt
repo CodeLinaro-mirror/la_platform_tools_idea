@@ -10,6 +10,9 @@ import com.intellij.codeInspection.InspectionEP
 import com.intellij.codeInspection.ex.InspectionToolRegistrar
 import com.intellij.ide.actions.ContextHelpAction
 import com.intellij.ide.plugins.cl.PluginClassLoader
+import com.intellij.ide.plugins.testPluginSrc.IJPL207058.DefaultService
+import com.intellij.ide.plugins.testPluginSrc.IJPL207058.ServiceInterface
+import com.intellij.ide.plugins.testPluginSrc.IJPL207058.module.OverriddenService
 import com.intellij.ide.plugins.testPluginSrc.bar.BarAction
 import com.intellij.ide.plugins.testPluginSrc.bar.BarService
 import com.intellij.ide.plugins.testPluginSrc.foo.FooAction
@@ -30,6 +33,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.PathManager
+import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
@@ -68,12 +72,14 @@ import com.intellij.util.io.directoryContent
 import com.intellij.util.io.java.classFile
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.xmlb.annotations.Attribute
+import org.assertj.core.api.Assertions
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
-import org.junit.jupiter.api.assertNull
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
+import kotlin.test.assertTrue
 
 @Suppress("UnresolvedPluginConfigReference")
 @RunsInEdt
@@ -277,7 +283,7 @@ class DynamicPluginsTest {
     }
     val descriptor = loadDescriptorInTest(plugin, pluginsDir)
     assertThat(DynamicPlugins.checkCanUnloadWithoutRestart(descriptor))
-      .isEqualTo("Plugin ${descriptor.pluginId} is not unload-safe because of extension to non-dynamic EP $epName")
+      .isEqualTo("Plugin '${descriptor.pluginId}' is not unload-safe because of extension to non-dynamic EP '$epName'")
   }
 
   @Test
@@ -349,7 +355,7 @@ class DynamicPluginsTest {
       content {
         module("intellij.foo.one.module1") {
           packagePrefix = "org.foo"
-          dependencies { module(pluginTwoBuilder.id!!) } // TODO this shouldn't work o_O
+          dependencies { plugin(pluginTwoBuilder.id!!) }
           extensions("""<barExtension key="foo" implementationClass="y"/>""", "bar")
         }
       }
@@ -965,7 +971,7 @@ class DynamicPluginsTest {
         val descriptor = loadDescriptorInTest(main, pluginsDir)
         setPluginClassLoaderForMainAndSubPlugins(descriptor, DynamicPluginsTest::class.java.classLoader)
         assertThat(DynamicPlugins.checkCanUnloadWithoutRestart(descriptor)).isEqualTo(
-          "Plugin ${main.id} is not unload-safe because of extension to non-dynamic EP foo.barExtension in optional dependency on ${quux.id} in optional dependency on ${bar.id}")
+          "Plugin '${main.id}' is not unload-safe because of extension to non-dynamic EP 'foo.barExtension' in optional dependency on ${quux.id} in optional dependency on ${bar.id}")
       }
     }
   }
@@ -1089,6 +1095,7 @@ class DynamicPluginsTest {
     plugin("bar") {}.buildDir(barPluginPath)
     plugin("foo") {
       content {
+        namespace = "test_ns"
         module("foo.a") {
           dependencies {
             plugin("bar")
@@ -1109,7 +1116,7 @@ class DynamicPluginsTest {
     PluginSetTestBuilder.fromPath(pluginsDir).withDisabledPlugins("bar").build()
     loadPluginInTest(fooPluginPath) {
       loadPluginInTest(barPluginPath) {
-        assertThat(PluginManagerCore.getPluginSet().findEnabledModule("foo.b")).isNull()
+        assertThat(PluginManagerCore.getPluginSet().findEnabledModule(PluginModuleId("foo.b", "test_ns"))).isNull()
         assertThat(ActionManager.getInstance().getAction("foo.b.action")).isNull()
       }
     }
@@ -1123,6 +1130,7 @@ class DynamicPluginsTest {
     plugin("bar") {}.buildDir(barPluginPath)
     plugin("foo") {
       implementationDetail = true
+      namespace = "foo"
       content {
         module("foo.a") {
           dependencies {
@@ -1135,7 +1143,101 @@ class DynamicPluginsTest {
     PluginSetTestBuilder.fromPath(pluginsDir).withDisabledPlugins("bar").build()
     loadPluginInTest(fooPluginPath) {
       loadPluginInTest(barPluginPath) {
-        assertThat(PluginManagerCore.getPluginSet().buildContentModuleIdMap().contains("foo.a")).isTrue
+        assertThat(PluginManagerCore.getPluginSet().buildContentModuleIdMap().contains(PluginModuleId("foo.a", "test_ns"))).isTrue
+      }
+    }
+  }
+
+  @Ignore // FIXME
+  @Test // IJPL-207058
+  fun `dynamic load of a plugin with service overrides is declined`() {
+    plugin("foo") {
+      content {
+        module("foo.module") {
+          extensions("""
+            <applicationService interface="${ServiceInterface::class.qualifiedName}" 
+                                implementation="${OverriddenService::class.qualifiedName}"
+                                overrides="true"/>
+          """.trimIndent())
+          includePackageClassFiles<OverriddenService>()
+        }
+      }
+      extensions("""
+        <applicationService interface="${ServiceInterface::class.qualifiedName}" 
+                            implementation="${DefaultService::class.qualifiedName}"/>
+      """.trimIndent())
+      includePackageClassFiles<DefaultService>()
+    }.buildDir(pluginsDir.resolve("foo"))
+    val foo = loadDescriptorInTest(pluginsDir.resolve("foo"))
+    assertThat(DynamicPlugins.loadPlugin(foo)).isFalse
+  }
+
+  @Test
+  fun `IJPL-218420 dependent modules loading order is correct`() {
+    val ai = plugin("ai") {}
+    val completion = plugin("completion") {
+      content {
+        module("completion.ai") {
+          dependencies {
+            plugin("ai")
+          }
+        }
+      }
+    }
+    val scala = plugin("scala") {
+      content {
+        module("scala.ai.completion") {
+          dependencies {
+            plugin("ai")
+            module("completion.ai")
+          }
+        }
+      }
+    }
+
+    loadPluginWithText(completion).use {
+      loadPluginWithText(scala).use {
+        loadPluginWithText(ai).use {
+          val scalaAiCompletion = PluginManagerCore.getPlugin(PluginId("scala"))!!.contentModules[0] as ContentModuleDescriptor
+          assert(PluginManagerCore.getPluginSet().isModuleEnabled(PluginModuleId("scala.ai.completion", PluginModuleId.JETBRAINS_NAMESPACE)))
+          assert(scalaAiCompletion.pluginClassLoader != null)
+        }
+      }
+    }
+  }
+
+
+  @Ignore
+  @Test
+  fun `IJPL-218420 dependent modules loading order is correct - transitive dependency`() {
+    val ai = plugin("ai") {}
+    val completion = plugin("completion") {
+      content {
+        module("completion.ai") {
+          dependencies {
+            plugin("ai")
+          }
+        }
+      }
+    }
+    val scala = plugin("scala") {
+      content {
+        module("scala.ai.completion") {
+          dependencies {
+            // plugin("ai") // FIXME in this case dependency on 'ai' is transitive, yet, the dynamic loading processes only direct dependents
+            module("completion.ai")
+          }
+        }
+      }
+    }
+
+    loadPluginWithText(completion).use {
+      loadPluginWithText(scala).use {
+        loadPluginWithText(ai).use {
+          val scalaAiCompletion = PluginManagerCore.getPlugin(PluginId("scala"))!!.contentModules[0] as ContentModuleDescriptor
+          assert(PluginManagerCore.getPluginSet().isModuleEnabled(PluginModuleId("scala.ai.completion", PluginModuleId.JETBRAINS_NAMESPACE)))
+          assert(scalaAiCompletion.pluginClassLoader != null)
+        }
       }
     }
   }
@@ -1271,7 +1373,7 @@ private inline fun runAndCheckThatNoNewPlugins(block: () -> Unit) {
 
 private fun lexicographicallySortedPluginIds() = PluginManagerCore.loadedPlugins.toSortedSet(compareBy { it.pluginId })
 
-private fun findEnabledModuleByName(id: String) = PluginManagerCore.getPluginSet().findEnabledModule(id)
+private fun findEnabledModuleByName(id: String) = PluginManagerCore.getPluginSet().findEnabledModule(PluginModuleId(id, "test_ns"))
 
 private fun assertModuleIsNotLoaded(moduleName: String) {
   assertThat(findEnabledModuleByName(moduleName)).isNull()
@@ -1290,6 +1392,27 @@ private fun loadPluginInTest(pluginPath: Path, actionWithPluginLoaded: () -> Uni
   }
   finally {
     unloadAndUninstallPlugin(descriptor)
+  }
+}
+
+private fun loadPluginInTest(
+  plugin: PluginMainDescriptor,
+): Disposable {
+  Assertions.assertThat(DynamicPlugins.checkCanUnloadWithoutRestart(plugin)).isNull()
+  try {
+    assertTrue(DynamicPlugins.loadPlugin(pluginDescriptor = plugin), "expected $plugin to load dynamically")
+    IndexingTestUtil.waitUntilIndexesAreReadyInAllOpenedProjects()
+  }
+  catch (e: Exception) {
+    unloadAndUninstallPlugin(plugin) // FIXME it does not seem to uninstall the plugin and it we should not do it anyway
+    throw e
+  }
+  return Disposable {
+    val reason = DynamicPlugins.checkCanUnloadWithoutRestart(plugin)
+    invokeAndWaitIfNeeded {
+      unloadAndUninstallPlugin(plugin)
+    }
+    Assertions.assertThat(reason).isNull()
   }
 }
 

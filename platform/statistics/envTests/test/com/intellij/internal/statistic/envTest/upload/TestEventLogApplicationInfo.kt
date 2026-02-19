@@ -8,9 +8,13 @@ import com.intellij.internal.statistic.eventLog.MachineId
 import com.intellij.internal.statistic.eventLog.connection.EventLogSendListener
 import com.intellij.internal.statistic.eventLog.connection.EventLogSettingsClient
 import com.intellij.internal.statistic.eventLog.connection.EventLogStatisticsService
+import com.intellij.internal.statistic.eventLog.validator.storage.FusComponentProvider
 import com.intellij.internal.statistic.uploader.EventLogExternalSendConfig
 import com.jetbrains.fus.reporting.configuration.ConfigurationClientFactory
+import com.jetbrains.fus.reporting.jvm.JvmHttpClient
+import com.jetbrains.fus.reporting.jvm.ProxyInfo
 import java.io.File
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 internal const val RECORDER_ID = "FUS"
@@ -31,11 +35,19 @@ internal class TestEventLogUploadSettingsClient(
 ) : EventLogSettingsClient() {
   override val applicationInfo = TestEventLogApplicationInfo()
   override val configurationClient = ConfigurationClientFactory.createTest(
-    applicationInfo.productCode,
-    applicationInfo.productVersion,
-    applicationInfo.connectionSettings,
-    configCacheTimeoutMs,
-    configUrl
+    productCode = applicationInfo.productCode,
+    productVersion = applicationInfo.productVersion,
+    httpClient = JvmHttpClient(
+      sslContextProvider = { applicationInfo.connectionSettings.provideSSLContext() },
+      proxyProvider = { configurationUrl ->
+        ProxyInfo(applicationInfo.connectionSettings.provideProxy(configurationUrl).proxy)
+      },
+      extraHeadersProvider = { applicationInfo.connectionSettings.provideExtraHeaders() },
+      userAgent = applicationInfo.connectionSettings.provideUserAgent(),
+      timeout = Duration.ofMillis(configCacheTimeoutMs)
+    ),
+    configurationUrl = configUrl,
+    serializer = FusComponentProvider.FusJacksonSerializer()
   )
   override val recorderId: String = RECORDER_ID
 }

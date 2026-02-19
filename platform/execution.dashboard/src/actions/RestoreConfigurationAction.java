@@ -27,7 +27,7 @@ final class RestoreConfigurationAction
   public void update(@NotNull AnActionEvent e) {
     Project project = e.getProject();
     RunDashboardRunConfigurationNode node = project == null ? null : getTarget(e);
-    boolean enabled = node != null && !RunManager.getInstance(project).hasSettings(node.getConfigurationSettings());
+    boolean enabled = node != null && node.getConfigurationSettings() != null && !RunManager.getInstance(project).hasSettings(node.getConfigurationSettings());
     Presentation presentation = e.getPresentation();
     presentation.setEnabled(enabled);
     boolean popupPlace = e.isFromContextMenu();
@@ -40,7 +40,6 @@ final class RestoreConfigurationAction
     RunDashboardRunConfigurationNode node = project == null ? null : getTarget(e);
     if (node == null) return;
 
-    // todo delegate to backend - ask Lera?
     RunManager runManager = RunManager.getInstance(project);
     RunnerAndConfigurationSettings settings = node.getConfigurationSettings();
     runManager.setUniqueNameIfNeeded(settings.getConfiguration());

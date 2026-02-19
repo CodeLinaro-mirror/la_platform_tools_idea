@@ -2193,6 +2193,9 @@
   <item name="java.util.Collections java.util.Collection&lt;T&gt; unmodifiableCollection(java.util.Collection&lt;? extends T&gt;)">
     <annotation name="org.jetbrains.annotations.NotNull"/>
     <annotation name="org.jetbrains.annotations.UnmodifiableView"/>
+    <annotation name='org.jetbrains.annotations.Contract'>
+      <val name="pure" val="true"/>
+    </annotation>
   </item>
   <item name="java.util.Collections java.util.Collection&lt;T&gt; unmodifiableCollection(java.util.Collection&lt;? extends T&gt;) 0">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -2304,6 +2307,9 @@
   <item name="java.util.Collections java.util.List&lt;T&gt; unmodifiableList(java.util.List&lt;? extends T&gt;)">
     <annotation name="org.jetbrains.annotations.NotNull"/>
     <annotation name="org.jetbrains.annotations.UnmodifiableView"/>
+    <annotation name='org.jetbrains.annotations.Contract'>
+      <val name="pure" val="true"/>
+    </annotation>
   </item>
   <item name="java.util.Collections java.util.List&lt;T&gt; unmodifiableList(java.util.List&lt;? extends T&gt;) 0">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -2364,6 +2370,9 @@
   <item name="java.util.Collections java.util.Map&lt;K,V&gt; unmodifiableMap(java.util.Map&lt;? extends K,? extends V&gt;)">
     <annotation name="org.jetbrains.annotations.NotNull"/>
     <annotation name="org.jetbrains.annotations.UnmodifiableView"/>
+    <annotation name='org.jetbrains.annotations.Contract'>
+      <val name="pure" val="true"/>
+    </annotation>
   </item>
   <item name="java.util.Collections java.util.Map&lt;K,V&gt; unmodifiableMap(java.util.Map&lt;? extends K,? extends V&gt;) 0">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -2496,6 +2505,9 @@
   <item name="java.util.Collections java.util.Set&lt;T&gt; unmodifiableSet(java.util.Set&lt;? extends T&gt;)">
     <annotation name="org.jetbrains.annotations.NotNull"/>
     <annotation name="org.jetbrains.annotations.UnmodifiableView"/>
+    <annotation name='org.jetbrains.annotations.Contract'>
+      <val name="pure" val="true"/>
+    </annotation>
   </item>
   <item name="java.util.Collections java.util.Set&lt;T&gt; unmodifiableSet(java.util.Set&lt;? extends T&gt;) 0">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -2541,6 +2553,9 @@
   <item name="java.util.Collections java.util.SortedMap&lt;K,V&gt; unmodifiableSortedMap(java.util.SortedMap&lt;K,? extends V&gt;)">
     <annotation name="org.jetbrains.annotations.NotNull"/>
     <annotation name="org.jetbrains.annotations.UnmodifiableView"/>
+    <annotation name='org.jetbrains.annotations.Contract'>
+      <val name="pure" val="true"/>
+    </annotation>
   </item>
   <item name="java.util.Collections java.util.SortedMap&lt;K,V&gt; unmodifiableSortedMap(java.util.SortedMap&lt;K,? extends V&gt;) 0">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -2586,6 +2601,9 @@
   <item name="java.util.Collections java.util.SortedSet&lt;T&gt; unmodifiableSortedSet(java.util.SortedSet&lt;T&gt;)">
     <annotation name="org.jetbrains.annotations.NotNull"/>
     <annotation name="org.jetbrains.annotations.UnmodifiableView"/>
+    <annotation name='org.jetbrains.annotations.Contract'>
+      <val name="pure" val="true"/>
+    </annotation>
   </item>
   <item name="java.util.Collections java.util.SortedSet&lt;T&gt; unmodifiableSortedSet(java.util.SortedSet&lt;T&gt;) 0">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -2734,10 +2752,12 @@
   </item>
   <item name='java.util.Comparator java.util.Comparator&lt;T&gt; naturalOrder()'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
-    <annotation name='org.jetbrains.annotations.NotNull' typePath="/1"/>
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+  </item>
+  <item name='java.util.Comparator java.util.Comparator&lt;T&gt; naturalOrder() &lt;T&gt;'>
+    <annotation name='org.jetbrains.annotations.NotNull' typePath="/1"/>
   </item>
   <item name='java.util.Comparator java.util.Comparator&lt;T&gt; nullsFirst(java.util.Comparator&lt;? super T&gt;)'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
@@ -2748,6 +2768,7 @@
   </item>
   <item name='java.util.Comparator java.util.Comparator&lt;T&gt; nullsFirst(java.util.Comparator&lt;? super T&gt;) 0'>
     <annotation name='org.jetbrains.annotations.Nullable'/>
+    <annotation name='org.jetbrains.annotations.NotNull' typePath="/1/*"/>
   </item>
   <item name='java.util.Comparator java.util.Comparator&lt;T&gt; nullsLast(java.util.Comparator&lt;? super T&gt;)'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
@@ -2758,6 +2779,7 @@
   </item>
   <item name='java.util.Comparator java.util.Comparator&lt;T&gt; nullsLast(java.util.Comparator&lt;? super T&gt;) 0'>
     <annotation name='org.jetbrains.annotations.Nullable'/>
+    <annotation name='org.jetbrains.annotations.NotNull' typePath="/1/*"/>
   </item>
   <item name='java.util.Comparator java.util.Comparator&lt;T&gt; reverseOrder()'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
@@ -3407,6 +3429,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of()'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3422,14 +3445,18 @@
       <val name="value" val="&quot;_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
-    <annotation name="org.jetbrains.annotations.NotNull" typePath="/1"/>
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="value" val="&quot;_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
+  </item>
+  <item name='java.util.List java.util.List&lt;E&gt; of(E, E) &lt;E&gt;'>
+    <annotation name="org.jetbrains.annotations.NotNull"/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3438,6 +3465,7 @@
       <val name="value" val="&quot;_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3446,6 +3474,7 @@
       <val name="value" val="&quot;_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3454,6 +3483,7 @@
       <val name="value" val="&quot;_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3462,6 +3492,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3470,6 +3501,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3478,6 +3510,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3486,6 +3519,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E, E, E, E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3494,6 +3528,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E...)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -3501,6 +3536,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.List java.util.List&lt;E&gt; of(E...) 0'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
@@ -4038,6 +4074,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of()'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4046,6 +4083,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4055,6 +4093,7 @@
       <val name="value" val="&quot;_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4064,6 +4103,7 @@
       <val name="value" val="&quot;_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4073,6 +4113,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4082,6 +4123,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4091,6 +4133,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4100,6 +4143,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4109,6 +4153,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V, K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4118,6 +4163,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V, K, V, K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4127,6 +4173,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; of(K, V, K, V, K, V, K, V, K, V, K, V, K, V, K, V, K, V, K, V)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4136,6 +4183,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; ofEntries(java.util.Map.Entry&lt;? extends K,? extends V&gt;...)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4144,6 +4192,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Map java.util.Map&lt;K,V&gt; ofEntries(java.util.Map.Entry&lt;? extends K,? extends V&gt;...) 0'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
@@ -4156,6 +4205,7 @@
       <val name="value" val="&quot;_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name="java.util.Map java.util.Set&lt;K&gt; keySet()">
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4299,6 +4349,9 @@
       <val name="value" val="&quot;null, _ -&gt; param2&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+  </item>
+  <item name='java.util.Optional &lt;T&gt;'>
+    <annotation name='org.jetbrains.annotations.NotNull'/>
   </item>
   <item name='java.util.Optional T get()'>
     <annotation name='org.jetbrains.annotations.NotNull'/>
@@ -4681,6 +4734,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of()'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4688,6 +4742,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4696,6 +4751,7 @@
       <val name="value" val="&quot;_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4704,6 +4760,7 @@
       <val name="value" val="&quot;_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4712,6 +4769,7 @@
       <val name="value" val="&quot;_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4720,6 +4778,7 @@
       <val name="value" val="&quot;_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4728,6 +4787,7 @@
       <val name="value" val="&quot;_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4736,6 +4796,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4744,6 +4805,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4752,6 +4814,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4760,6 +4823,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E, E, E, E, E, E, E, E, E, E)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4768,6 +4832,7 @@
       <val name="value" val="&quot;_,_,_,_,_,_,_,_,_,_-&gt;new&quot;"/>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name='java.util.Set java.util.Set&lt;E&gt; of(E...)'>
     <annotation name="org.jetbrains.annotations.NotNull"/>
@@ -4775,6 +4840,7 @@
     <annotation name='org.jetbrains.annotations.Contract'>
       <val name="pure" val="true"/>
     </annotation>
+    <annotation name='org.jetbrains.annotations.Unmodifiable'/>
   </item>
   <item name="java.util.SortedMap java.util.SortedMap&lt;K,V&gt; headMap(K)">
     <annotation name="org.jetbrains.annotations.NotNull"/>

@@ -1,43 +1,132 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.frame
 
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.NlsSafe
+import com.intellij.platform.debugger.impl.rpc.XDebugSessionApi
+import com.intellij.ui.AutoScrollToSourceHandler
 import com.intellij.ui.SimpleColoredComponent
+import com.intellij.ui.SimpleTextAttributes
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.frame.*
 import com.intellij.xdebugger.frame.presentation.XRegularValuePresentation
-import com.intellij.xdebugger.impl.XDebugSessionImpl
+import com.intellij.xdebugger.frame.presentation.XValuePresentation
+import com.intellij.xdebugger.impl.actions.XDebuggerActions.THREADS_VIEW_POPUP_GROUP
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTreePanel
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueContainerNode
+import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
+import java.awt.Component
+import java.awt.event.HierarchyEvent
 import javax.swing.JPanel
 
+@OptIn(FlowPreview::class)
 @ApiStatus.Internal
-class XThreadsView(project: Project, session: XDebugSessionImpl) : XDebugView() {
-  private val treePanel = XDebuggerTreePanel(project, session.debugProcess.editorsProvider, this, null, "", null)
+class XThreadsView(project: Project, session: XDebugSessionProxy) : XDebugView() {
 
-  fun getTree() = treePanel.tree
-  fun getPanel(): JPanel = treePanel.mainPanel
+  private val rebuildRequests = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+  private var wasShowing = false
 
-  override fun getMainComponent() = getPanel()
+  @ApiStatus.Obsolete
+  constructor(project: Project, session: XDebugSession) : this(project, session.asProxy())
 
-  fun getDefaultFocusedComponent(): XDebuggerTree =  treePanel.tree
+  private val treePanel = XDebuggerTreePanel(project, session.editorsProvider, this, null, THREADS_VIEW_POPUP_GROUP, null)
 
-  override fun clear() {
-    DebuggerUIUtil.invokeLater {
-      getTree().setRoot(object : XValueContainerNode<XValueContainer>(getTree(), null, true, object : XValueContainer() {}) {}, false)
+  init {
+    object : AutoScrollToSourceHandler() {
+      override fun isAutoScrollMode(): Boolean = true
+
+      override fun setAutoScrollMode(state: Boolean) {}
+
+      override fun needToCheckFocus(): Boolean = false
+
+      @RequiresEdt
+      override fun scrollToSource(tree: Component) {
+        val path = (tree as? XDebuggerTree)?.selectionPath ?: return
+        (path.lastPathComponent as? XValueNodeImpl)?.valueContainer?.let { xValueContainer ->
+          if (xValueContainer is FrameValue) {
+            val xStackFrame = xValueContainer.frame
+            session.setCurrentStackFrame(xValueContainer.executionStack, xStackFrame, false);
+          }
+        }
+      }
+    }.install(tree)
+
+    panel.addHierarchyListener { e ->
+      if ((e.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong()) > 0) {
+        val isCurrentlyShowing = panel.isShowing
+        if (!wasShowing && isCurrentlyShowing) {
+          requestRebuild()
+        }
+        wasShowing = isCurrentlyShowing
+      }
+    }
+
+    subscribeToThreadRefreshEvents(session)
+
+    session.coroutineScope.launch {
+      rebuildRequests
+        .debounce(200)
+        .collectLatest {
+          withContext(Dispatchers.EDT) {
+            if (panel.isShowing) {
+              tree.setRoot(XThreadsRootNode(tree, session), false)
+            }
+          }
+        }
     }
   }
 
-  override fun processSessionEvent(event: SessionEvent, session: XDebugSession) {
+  private fun subscribeToThreadRefreshEvents(session: XDebugSessionProxy) {
+    session.coroutineScope.launch {
+      XDebugSessionApi.getInstance().getUiUpdateEventsFlow(session.id)
+        .collectLatest {
+          requestRebuild()
+        }
+    }
+  }
+
+  val tree: XDebuggerTree get() = treePanel.tree
+
+  val panel: JPanel get() = treePanel.mainPanel
+
+  override fun getMainComponent(): JPanel = panel
+
+  fun getDefaultFocusedComponent(): XDebuggerTree = tree
+
+  private fun requestRebuild() {
+    rebuildRequests.tryEmit(Unit)
+  }
+
+  override fun clear() {
+    DebuggerUIUtil.invokeLater {
+      tree.setRoot(object : XValueContainerNode<XValueContainer>(tree, null, true, object : XValueContainer() {}) {}, false)
+    }
+  }
+
+  override fun processSessionEvent(event: SessionEvent, session: XDebugSessionProxy) {
     if (event == SessionEvent.BEFORE_RESUME) {
       return
     }
-    val suspendContext = session.suspendContext
-    if (suspendContext == null) {
+    if (!session.hasSuspendContext()) {
       requestClear()
+      return
+    }
+    // Do not refresh a tree on a FRAME_CHANGED event
+    // so that selecting stack frames does not collapse a thread node.
+    if (event == SessionEvent.FRAME_CHANGED) {
       return
     }
     if (event == SessionEvent.PAUSED) {
@@ -45,31 +134,30 @@ class XThreadsView(project: Project, session: XDebugSessionImpl) : XDebugView() 
       cancelClear()
       clear()
     }
-    DebuggerUIUtil.invokeLater {
-      getTree().setRoot(XThreadsRootNode(getTree(), suspendContext), false)
-    }
+    requestRebuild()
   }
 
   override fun dispose() {
   }
 
-  class ThreadsContainer(val suspendContext: XSuspendContext) : XValueContainer() {
+  class ThreadsContainer(val session: XDebugSessionProxy) : XValueContainer() {
     override fun computeChildren(node: XCompositeNode) {
-      suspendContext.computeExecutionStacks(object : XSuspendContext.XExecutionStackContainer {
-        override fun errorOccurred(errorMessage: String) {
+      session.computeExecutionStacks {
+        object : XSuspendContext.XExecutionStackContainer {
+          override fun errorOccurred(errorMessage: String) {
+          }
 
+          override fun addExecutionStack(executionStacks: List<XExecutionStack>, last: Boolean) {
+            val children = XValueChildrenList()
+            executionStacks.map { FramesContainer(it) }.forEach { children.add("", it) }
+            node.addChildren(children, last)
+          }
         }
-
-        override fun addExecutionStack(executionStacks: List<XExecutionStack>, last: Boolean) {
-          val children = XValueChildrenList()
-          executionStacks.map { FramesContainer(it) }.forEach { children.add("", it) }
-          node.addChildren(children, last)
-        }
-      })
+      }
     }
   }
 
-  class FramesContainer(private val executionStack: XExecutionStack) : XValue() {
+  class FramesContainer(val executionStack: XExecutionStack) : XValue() {
     override fun computeChildren(node: XCompositeNode) {
       executionStack.computeStackFrames(0, object : XExecutionStack.XStackFrameContainer {
         override fun errorOccurred(errorMessage: String) {
@@ -77,7 +165,7 @@ class XThreadsView(project: Project, session: XDebugSessionImpl) : XDebugView() 
 
         override fun addStackFrames(stackFrames: List<XStackFrame>, last: Boolean) {
           val children = XValueChildrenList()
-          stackFrames.forEach { children.add("", FrameValue(it)) }
+          stackFrames.forEach { children.add("", FrameValue(executionStack,it)) }
           node.addChildren(children, last)
         }
       })
@@ -88,14 +176,28 @@ class XThreadsView(project: Project, session: XDebugSessionImpl) : XDebugView() 
     }
   }
 
-  class FrameValue(val frame : XStackFrame) : XValue() {
+  class FrameValue(val executionStack: XExecutionStack, val frame : XStackFrame) : XValue() {
     override fun computePresentation(node: XValueNode, place: XValuePlace) {
       val component = SimpleColoredComponent()
-      frame.customizePresentation(component)
-      node.setPresentation(component.icon, XRegularValuePresentation(component.getCharSequence(false).toString(), null, ""), false)
+      frame.customizeTextPresentation(component)
+      node.setPresentation(component.icon, object : XValuePresentation() {
+        override fun getSeparator(): @NlsSafe String = ""
+        override fun renderValue(renderer: XValueTextRenderer) {
+          val i = component.iterator()
+          while (i.hasNext()) {
+            i.next()
+            val text = i.fragment
+            when (i.textAttributes) {
+              SimpleTextAttributes.GRAYED_ATTRIBUTES -> renderer.renderComment(text)
+              SimpleTextAttributes.ERROR_ATTRIBUTES -> renderer.renderError(text)
+              SimpleTextAttributes.REGULAR_ATTRIBUTES -> renderer.renderValue(text)
+            }
+          }
+        }
+      }, false)
     }
   }
 
-  class XThreadsRootNode(tree: XDebuggerTree, suspendContext: XSuspendContext) :
-    XValueContainerNode<ThreadsContainer>(tree, null, false, ThreadsContainer(suspendContext))
+  class XThreadsRootNode(tree: XDebuggerTree, session: XDebugSessionProxy) :
+    XValueContainerNode<ThreadsContainer>(tree, null, false, ThreadsContainer(session))
 }

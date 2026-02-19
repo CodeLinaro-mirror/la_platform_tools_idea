@@ -67,7 +67,7 @@ public final class PyUnboundLocalVariableInspection extends PyInspection {
       if (PsiTreeUtil.getParentOfType(node, PyImportStatementBase.class) != null) {
         return;
       }
-      if (PyDataFlowKt.isUnreachableForInspection(node, myTypeEvalContext)) {
+      if (PyDataFlowKt.isUnreachableByControlFlow(node, myTypeEvalContext)) {
         return;
       }
       final String name = node.getReferencedName();
@@ -114,6 +114,10 @@ public final class PyUnboundLocalVariableInspection extends PyInspection {
         }
         final PsiPolyVariantReference ref = node.getReference(getResolveContext());
         final PsiElement resolved = ref.resolve();
+        // type parameter list is not included in CFG
+        if (resolved instanceof PyTypeParameter) {
+          return;
+        }
         final boolean isBuiltin = PyBuiltinCache.getInstance(node).isBuiltin(resolved);
         if (owner instanceof PyClass) {
           if (isBuiltin || ScopeUtil.getDeclarationScopeOwner(owner, name) != null) {

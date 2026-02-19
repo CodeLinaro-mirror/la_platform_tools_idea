@@ -12,6 +12,7 @@ import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.util.concurrency.annotations.RequiresReadLock
@@ -47,7 +48,15 @@ object DebuggerUtils {
     @set:TestOnly
     var forceRanking = false
 
+    /**
+     * Regex for lambda names before Kotlin 2.2.20, e.g foo$lambda$0$lambda$1$lambda$2
+     */
     private val IR_BACKEND_LAMBDA_REGEX = ".+\\\$lambda[$-]\\d+".toRegex()
+
+    /**
+     * Regex for lambda names for Kotlin 2.2.20+, e.g. foo$lambda$0$1$2
+     */
+    private val IR_BACKEND_NEW_LAMBDA_REGEX = ".+\\\$lambda([$-]\\d+)+".toRegex()
 
     fun findSourceFileForClassIncludeLibrarySources(
         project: Project,
@@ -104,6 +113,14 @@ object DebuggerUtils {
             }
 
             if (!hasLocation || files.size == 1 && !forceRanking) {
+                if (files.size > 1) {
+                    val psiManager = PsiManager.getInstance(project)
+                    val fromProject = files.find { psiManager.isInProject(it) }
+                    if (fromProject != null) {
+                        return listOf(fromProject)
+                    }
+                }
+
                 return listOf(files.first())
             }
 
@@ -191,7 +208,10 @@ object DebuggerUtils {
         substringBefore('-')
 
     fun String.isGeneratedIrBackendLambdaMethodName() =
-        matches(IR_BACKEND_LAMBDA_REGEX)
+        matches(IR_BACKEND_LAMBDA_REGEX) || matches(IR_BACKEND_NEW_LAMBDA_REGEX)
+
+    fun String.isGeneratedNewIrBackendLambdaMethodName() =
+        matches(IR_BACKEND_NEW_LAMBDA_REGEX)
 
     fun LocalVariable.getBorders(): ClosedRange<Location>? {
         val localVariableImpl = this as? LocalVariableImpl ?: return null

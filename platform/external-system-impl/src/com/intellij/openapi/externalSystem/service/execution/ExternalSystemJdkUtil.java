@@ -51,8 +51,8 @@ public final class ExternalSystemJdkUtil {
 
   @Contract("_, null -> null")
   public static @Nullable Sdk resolveJdkName(@Nullable Sdk projectSdk, @Nullable String jdkName) throws ExternalSystemJdkException {
-    if (jdkName == null) return null;
     return switch (jdkName) {
+      case null -> null;
       case USE_INTERNAL_JAVA -> getInternalJdk();
       case USE_PROJECT_JDK -> {
         if (projectSdk == null) {
@@ -178,8 +178,16 @@ public final class ExternalSystemJdkUtil {
     return parentSdk;
   }
 
+  /**
+   * @deprecated use {@link #suggestJdkHomePaths()} instead.
+   */
+  @Deprecated
   public static @NotNull Collection<String> suggestJdkHomePaths() {
     return getJavaSdkType().suggestHomePaths();
+  }
+
+  public static @NotNull Collection<String> suggestJdkHomePaths(@NotNull Project project) {
+    return getJavaSdkType().suggestHomePaths(project);
   }
 
   public static @NotNull SdkType getJavaSdkType() {
@@ -249,6 +257,15 @@ public final class ExternalSystemJdkUtil {
   }
 
   @ApiStatus.Internal
+  public static @Nullable Sdk lookupJdkByVersion(@NotNull JavaVersion javaVersion) {
+    return SdkLookupUtil.lookupSdkBlocking(builder -> builder
+      .withVersionFilter(it -> matchJavaVersion(javaVersion, it))
+      .withSdkType(getJavaSdkType())
+      .onDownloadableSdkSuggested(__ -> SdkLookupDecision.STOP)
+    );
+  }
+
+  @ApiStatus.Internal
   public static @NotNull Sdk lookupJdkByPath(@NotNull String sdkHome) {
     var jdk = findJdkInSdkTableByPath(sdkHome);
     if (jdk != null) {
@@ -261,6 +278,14 @@ public final class ExternalSystemJdkUtil {
       }
       return createJdk(sdkHome);
     });
+  }
+
+  @ApiStatus.Internal
+  public static boolean matchJavaVersion(@NotNull JavaVersion versionRequirement, @Nullable String versionString) {
+    var version = JavaVersion.tryParse(versionString);
+    return version != null &&
+           version.compareTo(versionRequirement) >= 0 &&
+           version.feature == versionRequirement.feature;
   }
 
   @RequiresWriteLock

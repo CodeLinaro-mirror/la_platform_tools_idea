@@ -88,6 +88,14 @@
       interface="com.intellij.codeInsight.inline.completion.InlineCompletionHandlerInitializer"
       dynamic="true"/>
     <extensionPoint
+      name="inline.completion.editorInsertHandler"
+      interface="com.intellij.codeInsight.inline.completion.InlineCompletionEditorInsertHandler"
+      dynamic="true"/>
+    <extensionPoint
+      name="inline.completion.insertActionIdResolver"
+      interface="com.intellij.codeInsight.inline.completion.tooltip.InlineCompletionInsertActionIdResolver"
+      dynamic="true"/>
+    <extensionPoint
       name="inline.completion.usage.data"
       interface="com.intellij.codeInsight.inline.completion.logs.InlineCompletionProviderSpecificUsageData"
       dynamic="true"/>
@@ -103,6 +111,14 @@
     <extensionPoint
       name="inline.completion.editorTypeResolver"
       interface="com.intellij.codeInsight.inline.completion.editor.InlineCompletionEditorTypeResolver"
+      dynamic="true"/>
+    <extensionPoint
+      name="inline.edit.awaiter"
+      interface="com.intellij.codeInsight.inline.edit.InlineEditAwaiter"
+      dynamic="true"/>
+    <extensionPoint
+      name="inline.completion.suppress.state.supplier"
+      interface="com.intellij.codeInsight.inline.completion.suppress.InlineCompletionSuppressStateSupplier"
       dynamic="true"/>
   </extensionPoints>
 </idea-plugin>

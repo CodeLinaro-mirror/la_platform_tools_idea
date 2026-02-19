@@ -26,7 +26,6 @@ import com.jetbrains.python.formatter.PyCodeStyleSettings;
 import com.jetbrains.python.inspections.PyUnusedImportsInspection;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.impl.PyPsiUtils;
-import com.jetbrains.python.psi.impl.PythonLanguageLevelPusher;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
@@ -78,9 +77,7 @@ public final class PyImportOptimizer implements ImportOptimizer {
     TypeEvalContext context = TypeEvalContext.codeAnalysis(file.getProject(), rfile);
 
     PyUnusedImportsInspection inspection = new PyUnusedImportsInspection();
-    PyUnusedImportsInspection.Visitor visitor = new PyUnusedImportsInspection.Visitor(
-      null, inspection, context, PythonLanguageLevelPusher.getLanguageLevelForFile(file)
-    );
+    PyUnusedImportsInspection.Visitor visitor = new PyUnusedImportsInspection.Visitor(null, inspection, context);
     file.accept(new PyRecursiveElementVisitor() {
       @Override
       public void visitElement(@NotNull PsiElement node) {

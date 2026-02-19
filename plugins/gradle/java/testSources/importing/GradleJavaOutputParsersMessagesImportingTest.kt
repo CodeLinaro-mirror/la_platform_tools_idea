@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.importing
 
 import org.jetbrains.plugins.gradle.settings.GradleSettings
@@ -144,9 +144,9 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                               |  :processResources
                               |  :classes
                               |  :compileTestJava
-                              |  Could not resolve junit:junit:4.12 because no repositories are defined
+                              |  Could Not Resolve junit:junit:4.12 because no repositories are defined
                               """.trimMargin())
-    assertBuildViewSelectedNode("Could not resolve junit:junit:4.12 because no repositories are defined",
+    assertBuildViewSelectedNode("Could Not Resolve junit:junit:4.12 because no repositories are defined",
                                 """
                                 |Could not resolve all files for configuration ':testCompileClasspath'.
                                 |> Cannot resolve external dependency junit:junit:4.12 because no repositories are defined.
@@ -177,17 +177,21 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                               |  :processResources
                               |  :classes
                               |  -:compileTestJava
-                              |   Could not resolve junit:junit:4.12 because no repositories are defined
+                              |   Could Not Resolve junit:junit:4.12 because no repositories are defined
                               """.trimMargin()
     )
-    val projectQualifier = if (isGradleAtLeast("8.10")) "root project" else "project"
-    assertBuildViewSelectedNode("Could not resolve junit:junit:4.12 because no repositories are defined",
+    val projectQualifier = when {
+      isGradleAtLeast("9.0") -> "root project 'project'"
+      isGradleAtLeast("8.10") -> "root project :"
+      else -> "project :"
+    }
+    assertBuildViewSelectedNode("Could Not Resolve junit:junit:4.12 because no repositories are defined",
                                 """
                                 |Execution failed for task ':compileTestJava'.
                                 |> Could not resolve all files for configuration ':testCompileClasspath'.
                                 |   > Cannot resolve external dependency junit:junit:4.12 because no repositories are defined.
                                 |     Required by:
-                                |         $projectQualifier :
+                                |         $projectQualifier
                                 |
                                 |Possible solution:
                                 | - Declare repository providing the artifact, see the documentation at https://docs.gradle.org/current/userguide/declaring_repositories.html
@@ -217,9 +221,9 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                               |  :processResources
                               |  :classes
                               |  :compileTestJava
-                              |  Could not resolve junit:junit:99.99
+                              |  Could Not Resolve junit:junit:99.99
                               """.trimMargin())
-    assertBuildViewSelectedNode("Could not resolve junit:junit:99.99",
+    assertBuildViewSelectedNode("Could Not Resolve junit:junit:99.99",
                                 """|Could not resolve all files for configuration ':testCompileClasspath'.
                                    |> Could not resolve junit:junit:99.99.
                                    |  Required by:
@@ -256,17 +260,21 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
         assertNode(":processResources")
         assertNode(":classes")
         assertNode(":compileTestJava") {
-          assertNode("Could not resolve junit:junit:99.99")
+          assertNode("Could Not Resolve junit:junit:99.99")
         }
       }
     }
-    val projectQualifier = if (isGradleAtLeast("8.10")) "root project" else "project"
-    assertBuildViewSelectedNode("Could not resolve junit:junit:99.99", """
+    val projectQualifier = when {
+      isGradleAtLeast("9.0") -> "root project 'project'"
+      isGradleAtLeast("8.10") -> "root project :"
+      else -> "project :"
+    }
+    assertBuildViewSelectedNode("Could Not Resolve junit:junit:99.99", """
       |Execution failed for task ':compileTestJava'.
       |> Could not resolve all files for configuration ':testCompileClasspath'.
       |   > Could not resolve junit:junit:99.99.
       |     Required by:
-      |         $projectQualifier :
+      |         $projectQualifier
       |      > No cached version of junit:junit:99.99 available for offline mode.
       |
       |Possible solution:
@@ -296,11 +304,11 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                               |  :processResources
                               |  :classes
                               |  :compileTestJava
-                              |  Could not resolve junit:junit:99.99
+                              |  Could Not Resolve junit:junit:99.99
                               """.trimMargin()
     )
     val repositoryPrefix = if (isGradleOlderThan("4.8")) " " else "-"
-    assertBuildViewSelectedNode("Could not resolve junit:junit:99.99",
+    assertBuildViewSelectedNode("Could Not Resolve junit:junit:99.99",
                                 """Could not resolve all files for configuration ':testCompileClasspath'.
                                 |> Could not find junit:junit:99.99.
                                 |  Searched in the following locations:
@@ -342,10 +350,14 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                               |  :processResources
                               |  :classes
                               |  -:compileTestJava
-                              |   Could not resolve junit:junit:99.99
+                              |   Could Not Resolve junit:junit:99.99
                               """.trimMargin())
-    val projectQualifier = if (isGradleAtLeast("8.10")) "root project" else "project"
-    assertBuildViewSelectedNode("Could not resolve junit:junit:99.99",
+    val projectQualifier = when {
+      isGradleAtLeast("9.0") -> "root project 'project'"
+      isGradleAtLeast("8.10") -> "root project :"
+      else -> "project :"
+    }
+    assertBuildViewSelectedNode("Could Not Resolve junit:junit:99.99",
                                 """Execution failed for task ':compileTestJava'.
                                 |> Could not resolve all files for configuration ':testCompileClasspath'.
                                 |   > Could not find junit:junit:99.99.
@@ -353,13 +365,13 @@ class GradleJavaOutputParsersMessagesImportingTest : GradleOutputParsersMessages
                                 |       - $MAVEN_REPOSITORY/junit/junit/99.99/junit-99.99.pom
                                 |       - $MAVEN_REPOSITORY/junit/junit/99.99/junit-99.99.jar
                                 |     Required by:
-                                |         $projectQualifier :
+                                |         $projectQualifier
                                 |   > Could not find junit:junit:99.99.
                                 |     Searched in the following locations:
                                 |       - $MAVEN_REPOSITORY/junit/junit/99.99/junit-99.99.pom
                                 |       - $MAVEN_REPOSITORY/junit/junit/99.99/junit-99.99.jar
                                 |     Required by:
-                                |         $projectQualifier :
+                                |         $projectQualifier
                                 |
                                 |Possible solution:
                                 | - Declare repository providing the artifact, see the documentation at https://docs.gradle.org/current/userguide/declaring_repositories.html

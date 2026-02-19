@@ -28,6 +28,7 @@ import javax.swing.tree.TreeNode;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 public class GroupNode extends Node implements Navigatable, Comparable<GroupNode> {
   private static final NodeComparator COMPARATOR = new NodeComparator();
@@ -149,42 +150,72 @@ public class GroupNode extends Node implements Navigatable, Comparable<GroupNode
     return null;
   }
 
-
-  int removeUsagesBulk(@NotNull Set<? extends UsageNode> usages, @NotNull DefaultTreeModel treeModel) {
+  int removeUsagesBulk(@NotNull Set<UsageNode> usages, @NotNull DefaultTreeModel treeModel) {
     ThreadingAssertions.assertEventDispatchThread();
     int removed = 0;
+    List<MutableTreeNode> removedNodes = new SmartList<>();
     synchronized (this) {
-      List<MutableTreeNode> removedNodes = new SmartList<>();
-      for (UsageNode usage : usages) {
-        if (myChildren.remove(usage)) {
-          removedNodes.add(usage);
+      int newIdx = 0;
+      List<Node> children = myChildren;
+      // We are trying to change the children in-place just shrinking them to the new size.
+      // The new size is always <= the old size, because we are removing elements here.
+      // The construct
+      // ```
+      // if (idx != newIdx) {
+      //   children.set(newIdx, child);
+      // }
+      // newIdx++;
+      // ```
+      // just accepts the current node. Can't abstract it in away in a passable way because it needs
+      // either byref-passing to be a method or a mutable capture to be a capture, and this is java code
+      // The perf characteristics of this algorithm depend on the shape of input.
+      // When it gets a single-node input, it succeeds in O(depth+nr of siblings of every traversed level).
+      // When it gets a multi-node input, it traverses more nodes but still skips most of them (doesn't visit every leaf).
+      // It will visit all nodes only when we get at least one leaf from every possible leaf parent.
+      for (int idx = 0; idx < children.size(); idx++) {
+        Node child = children.get(idx);
+        // If removable, remove and register remove
+        if (usages.remove(child)) {
+          removedNodes.add(child);
           removed++;
         }
-      }
-
-      if (removed == 0) {
-        for (GroupNode groupNode : getSubGroups()) {
-          int delta = groupNode.removeUsagesBulk(usages, treeModel);
-          if (delta > 0) {
-            if (groupNode.getRecursiveUsageCount() == 0) {
-              myChildren.remove(groupNode);
-              removedNodes.add(groupNode);
+        else if (child instanceof GroupNode groupNode) {
+          // Go deeper in search of the node to remove
+          // if there is still something to remove
+          if (!usages.isEmpty()) {
+            int delta = groupNode.removeUsagesBulk(usages, treeModel);
+            // Removed SOMETHING
+            if (delta > 0) {
+              removed += delta;
+              // If we removed everything, remove the group node and go collecting the nodes further
+              if (groupNode.getChildren().isEmpty()) {
+                removedNodes.add(groupNode);
+                continue;
+              }
             }
-            removed += delta;
-            if (removed == usages.size()) break;
           }
+          // We either
+          // (a) removed all we wanted to remove from this group node, and it is left in a non-empty state
+          // or (b) we didn't touch its contents and it also needs to remain
+          if (idx != newIdx) {
+            children.set(newIdx, child);
+          }
+          newIdx++;
+        }
+        // Not removed, not group node, just keep it
+        else {
+          if (idx != newIdx) {
+            children.set(newIdx, child);
+          }
+          newIdx++;
         }
       }
-      if (!myChildren.isEmpty()) {
-        removeNodesFromParent(treeModel, this, removedNodes);
-      }
+      children.subList(newIdx, children.size()).clear();
+      removeNodesFromParent(treeModel, this, removedNodes);
     }
 
-    if (removed > 0) {
-      myRecursiveUsageCount -= removed;
-      if (myRecursiveUsageCount != 0) {
-        treeModel.nodeChanged(this);
-      }
+    if (removed > 0 && (myRecursiveUsageCount -= removed) != 0) {
+      treeModel.nodeChanged(this);
     }
 
     return removed;
@@ -199,8 +230,9 @@ public class GroupNode extends Node implements Navigatable, Comparable<GroupNode
    * @param nodes     must all be children of parent
    */
   @Contract(mutates = "param3")
-  private static void removeNodesFromParent(@NotNull DefaultTreeModel treeModel, @NotNull GroupNode parent,
-                                            @NotNull List<? extends MutableTreeNode> nodes) {
+  private static void removeNodesFromParent(@NotNull DefaultTreeModel treeModel,
+                                            @NotNull GroupNode parent,
+                                            @NotNull List<MutableTreeNode> nodes) {
     int count = nodes.size();
     if (count == 0) {
       return;
@@ -210,7 +242,7 @@ public class GroupNode extends Node implements Navigatable, Comparable<GroupNode
     for (MutableTreeNode node : nodes) {
       ordering.put(node, parent.getIndex(node));
     }
-    nodes.sort(Comparator.comparingInt(ordering::getInt)); // need ascending order
+    nodes.sort(Comparator.comparingInt(key -> ordering.getInt(key))); // need ascending order
     int[] indices = ordering.values().toIntArray();
     Arrays.sort(indices);
     for (int i = count - 1; i >= 0; i--) {

@@ -6,7 +6,7 @@ import com.intellij.openapi.application.edtWriteAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.backend.workspace.GlobalWorkspaceModelCache
-import com.intellij.platform.eel.path.EelPath
+import com.intellij.platform.eel.EelPlatform
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.testFramework.junit5.eel.fixture.eelFixture
 import com.intellij.platform.testFramework.junit5.eel.fixture.tempDirFixture
@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test
 
 @TestApplication
 class GlobalWorkspaceModelEelTest {
-  val eel = eelFixture(EelPath.OS.UNIX)
+  val eel = eelFixture(EelPlatform.Linux(EelPlatform.Arch.Unknown))
 
   val eelTempDir = eel.tempDirFixture()
   val eelProject = projectFixture(eelTempDir)
@@ -38,7 +38,7 @@ class GlobalWorkspaceModelEelTest {
      * even before [com.intellij.platform.backend.workspace.GlobalWorkspaceModelCache] is initialized
      * (see [com.intellij.workspaceModel.ide.impl.GlobalWorkspaceModelSeparationListener])
      */
-    Assumptions.assumeTrue(Registry.get("ide.workspace.model.per.environment.model.separation").asBoolean())
+    Assumptions.assumeTrue(Registry.`is`("ide.workspace.model.per.environment.model.separation", false))
   }
 
   @Test
@@ -46,17 +46,17 @@ class GlobalWorkspaceModelEelTest {
     assumeRegistryValueSet()
     application.service<GlobalWorkspaceModelRegistry>().dropCaches()
 
-    val globalWorkspaceModelEel = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor())
+    val globalWorkspaceModelEel = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor().machine)
 
     edtWriteAction {
       globalWorkspaceModelEel.updateModel("A test update") { mutableStorage ->
         mutableStorage.addEntity(StringEntity("sample", SampleEntitySource("test eel")))
       }
     }
-    val eelEntities = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor()).currentSnapshot.entities(StringEntity::class.java).toList()
+    val eelEntities = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor().machine).currentSnapshot.entities(StringEntity::class.java).toList()
     Assertions.assertFalse(eelEntities.isEmpty())
 
-    val localEntities = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor()).currentSnapshot.entities(StringEntity::class.java).toList()
+    val localEntities = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor().machine).currentSnapshot.entities(StringEntity::class.java).toList()
     Assertions.assertTrue(localEntities.isEmpty())
   }
 
@@ -66,8 +66,8 @@ class GlobalWorkspaceModelEelTest {
     assumeRegistryValueSet()
     application.service<GlobalWorkspaceModelRegistry>().dropCaches()
 
-    val globalWorkspaceModelEel = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor())
-    val globalWorkspaceModelLocal = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor())
+    val globalWorkspaceModelEel = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor().machine)
+    val globalWorkspaceModelLocal = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor().machine)
 
 
     edtWriteAction {
@@ -82,15 +82,15 @@ class GlobalWorkspaceModelEelTest {
     application.service<GlobalWorkspaceModelCache>().saveCacheNow()
     application.service<GlobalWorkspaceModelRegistry>().dropCaches()
 
-    val eelModel = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor())
+    val eelModel = GlobalWorkspaceModel.getInstance(eelProject.get().getEelDescriptor().machine)
     Assertions.assertTrue(eelModel.loadedFromCache)
     val eelEntities = eelModel.currentSnapshot.entities(StringEntity::class.java).toList()
     Assertions.assertTrue(eelEntities.find { it.data == "eel sample" } != null)
     Assertions.assertFalse(eelEntities.find { it.data == "local sample" } != null)
 
-    val localModel = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor())
+    val localModel = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor().machine)
     Assertions.assertTrue(localModel.loadedFromCache)
-    val localEntities = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor()).currentSnapshot.entities(StringEntity::class.java).toList()
+    val localEntities = GlobalWorkspaceModel.getInstance(localProject.get().getEelDescriptor().machine).currentSnapshot.entities(StringEntity::class.java).toList()
     Assertions.assertTrue(localEntities.find { it.data == "local sample" } != null)
     Assertions.assertFalse(localEntities.find { it.data == "eel sample" } != null)
   }

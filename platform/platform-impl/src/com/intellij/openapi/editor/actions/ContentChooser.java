@@ -136,22 +136,7 @@ public abstract class ContentChooser<Data> extends DialogWrapper {
       @Override
       public void keyPressed(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.VK_DELETE) {
-          int newSelectionIndex = -1;
-          for (Item o : myList.getSelectedValuesList()) {
-            int i = o.index;
-            removeContentAt(myAllContents.get(i));
-            if (newSelectionIndex < 0) {
-              newSelectionIndex = i;
-            }
-          }
-
-          rebuildListContent();
-          if (myAllContents.isEmpty()) {
-            close(CANCEL_EXIT_CODE);
-            return;
-          }
-          newSelectionIndex = Math.min(newSelectionIndex, myAllContents.size() - 1);
-          myList.setSelectedIndex(newSelectionIndex);
+          deleteSelectedItems();
         }
         else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
           doOKAction();
@@ -191,8 +176,19 @@ public abstract class ContentChooser<Data> extends DialogWrapper {
       }
     });
 
-    mySplitter.setFirstComponent(ListWithFilter.wrap(
-      myList, ScrollPaneFactory.createScrollPane(myList), o -> o.getShortText(renderer.previewChars), true));
+    ToolbarDecorator toolbarDecorator = ToolbarDecorator.createDecorator(myList)
+      .disableUpDownActions()
+      .setRemoveAction(button -> deleteSelectedItems());
+    toolbarDecorator.createPanel();
+
+    JScrollPane scroll = ScrollPaneFactory.createScrollPane(myList);
+    JComponent listWithFilter = ListWithFilter.wrap(myList, scroll, o -> o.getShortText(renderer.previewChars), true);
+
+    JPanel filteringListWithToolbar = new JPanel(new BorderLayout());
+    filteringListWithToolbar.add(toolbarDecorator.getActionsPanel(), BorderLayout.NORTH);
+    filteringListWithToolbar.add(listWithFilter, BorderLayout.CENTER);
+
+    mySplitter.setFirstComponent(filteringListWithToolbar);
     mySplitter.setSecondComponent(new JPanel());
     mySplitter.getFirstComponent().addComponentListener(new ComponentAdapter() {
       @Override
@@ -223,6 +219,27 @@ public abstract class ContentChooser<Data> extends DialogWrapper {
     d.restoreSplitterProportions(mySplitter);
 
     return mySplitter;
+  }
+
+  private void deleteSelectedItems() {
+    int bottomVisibleComponent = myList.getLastVisibleIndex();
+    int newSelectionIndex = -1;
+    for (Item o : myList.getSelectedValuesList()) {
+      int i = o.index;
+      removeContentAt(myAllContents.get(i));
+      if (newSelectionIndex < 0) {
+        newSelectionIndex = i;
+      }
+    }
+
+    rebuildListContent();
+    if (myAllContents.isEmpty()) {
+      close(CANCEL_EXIT_CODE);
+      return;
+    }
+    newSelectionIndex = Math.min(newSelectionIndex, myAllContents.size() - 1);
+    myList.setSelectedIndex(newSelectionIndex);
+    myList.ensureIndexIsVisible(Math.min(bottomVisibleComponent, myList.getItemsCount() - 1));
   }
 
   protected abstract void removeContentAt(final Data content);

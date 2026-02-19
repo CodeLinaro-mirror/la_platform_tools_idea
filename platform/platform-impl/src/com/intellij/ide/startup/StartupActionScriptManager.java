@@ -1,4 +1,4 @@
-// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.startup;
 
 import com.intellij.openapi.application.PathManager;
@@ -10,22 +10,25 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
 import java.nio.file.*;
+import java.nio.file.FileSystem;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public final class StartupActionScriptManager {
+  @ApiStatus.Internal
   public static final String ACTION_SCRIPT_FILE = "action.script";
 
   private StartupActionScriptManager() { }
 
   @ApiStatus.Internal
   public static synchronized void executeActionScript() throws IOException {
-    Path scriptFile = getActionScriptFile();
+    var scriptFile = getActionScriptFile();
     try {
-      List<ActionCommand> commands = loadActionScript(scriptFile);
-      for (ActionCommand command : commands) {
+      var commands = loadActionScript(scriptFile);
+      for (var command : commands) {
         command.execute();
       }
     }
@@ -36,13 +39,16 @@ public final class StartupActionScriptManager {
   }
 
   @ApiStatus.Internal
-  public static void executeActionScriptCommands(@NotNull List<? extends ActionCommand> commands,
-                                                 @NotNull Path oldTarget,
-                                                 @NotNull Path newTarget) throws IOException {
-    for (ActionCommand command : commands) {
-      ActionCommand toExecute = mapPaths(command, oldTarget, newTarget);
+  public static void executeActionScriptCommands(
+    @NotNull List<? extends ActionCommand> commands,
+    @NotNull Path oldTarget,
+    @NotNull Path newTarget
+  ) throws IOException {
+    var fs = oldTarget.getFileSystem();
+    for (var command : commands) {
+      var toExecute = mapPaths(command, oldTarget, newTarget);
       if (toExecute != null) {
-        toExecute.execute();
+        toExecute.execute(fs);
       }
     }
   }
@@ -55,21 +61,22 @@ public final class StartupActionScriptManager {
     addActionCommands(commands, true);
   }
 
+  @ApiStatus.Experimental
   public static synchronized void addActionCommandsToBeginning(@NotNull List<? extends ActionCommand> commands) throws IOException {
     addActionCommands(commands, false);
   }
 
-  private static synchronized void addActionCommands(@NotNull List<? extends ActionCommand> commands, boolean toEndOfScript)
-    throws IOException {
+  private static synchronized void addActionCommands(@NotNull List<? extends ActionCommand> commands, boolean toEndOfScript) throws IOException {
     List<ActionCommand> script = new ArrayList<>(), originalScript = null;
-    Path scriptFile = getActionScriptFile();
+    var scriptFile = getActionScriptFile();
     if (Files.exists(scriptFile)) {
       originalScript = loadActionScript(scriptFile);
       script.addAll(originalScript);
     }
     if (toEndOfScript) {
       script.addAll(commands);
-    } else {
+    }
+    else {
       script.addAll(0, commands);
     }
 
@@ -81,7 +88,9 @@ public final class StartupActionScriptManager {
         try {
           saveActionScript(originalScript, scriptFile);
         }
-        catch (Throwable tt) { t.addSuppressed(tt); }
+        catch (Throwable tt) {
+          t.addSuppressed(tt);
+        }
       }
       throw t;
     }
@@ -93,8 +102,8 @@ public final class StartupActionScriptManager {
 
   @ApiStatus.Internal
   public static @NotNull List<ActionCommand> loadActionScript(@NotNull Path scriptFile) throws IOException {
-    try (ObjectInputStream ois = new ObjectInputStream(Files.newInputStream(scriptFile))) {
-      Object data = ois.readObject();
+    try (var ois = new ObjectInputStream(Files.newInputStream(scriptFile))) {
+      var data = ois.readObject();
       if (data instanceof ActionCommand[]) {
         return Arrays.asList((ActionCommand[])data);
       }
@@ -113,7 +122,7 @@ public final class StartupActionScriptManager {
   @ApiStatus.Internal
   public static void saveActionScript(@NotNull List<ActionCommand> commands, @NotNull Path scriptFile) throws IOException {
     Files.createDirectories(scriptFile.getParent());
-    try (ObjectOutput oos = new ObjectOutputStream(Files.newOutputStream(scriptFile))) {
+    try (var oos = new ObjectOutputStream(Files.newOutputStream(scriptFile))) {
       oos.writeObject(commands.toArray(new ActionCommand[0]));
     }
     catch (Throwable t) {
@@ -126,20 +135,20 @@ public final class StartupActionScriptManager {
   }
 
   private static @Nullable ActionCommand mapPaths(ActionCommand command, Path oldTarget, Path newTarget) {
-    if (command instanceof CopyCommand) {
-      Path destination = mapPath(((CopyCommand)command).myDestination, oldTarget, newTarget);
+    if (command instanceof CopyCommand copyCommand) {
+      var destination = mapPath(copyCommand.myDestination, oldTarget, newTarget);
       if (destination != null) {
-        return new CopyCommand(Paths.get(((CopyCommand)command).mySource), destination);
+        return new CopyCommand(oldTarget.getFileSystem().getPath(copyCommand.mySource), destination);
       }
     }
     else if (command instanceof UnzipCommand unzipCommand) {
-      Path destination = mapPath(unzipCommand.myDestination, oldTarget, newTarget);
+      var destination = mapPath(unzipCommand.myDestination, oldTarget, newTarget);
       if (destination != null) {
-        return new UnzipCommand(Path.of(unzipCommand.mySource), destination, unzipCommand.myFilenameFilter);
+        return new UnzipCommand(oldTarget.getFileSystem().getPath(unzipCommand.mySource), destination, unzipCommand.myFilenameFilter);
       }
     }
-    else if (command instanceof DeleteCommand) {
-      Path source = mapPath(((DeleteCommand)command).mySource, oldTarget, newTarget);
+    else if (command instanceof DeleteCommand deleteCommand) {
+      var source = mapPath(deleteCommand.mySource, oldTarget, newTarget);
       if (source != null) {
         return new DeleteCommand(source);
       }
@@ -149,24 +158,57 @@ public final class StartupActionScriptManager {
   }
 
   private static @Nullable Path mapPath(String path, Path oldTarget, Path newTarget) {
-    String oldTargetPath = oldTarget.toString();
-    if (path.startsWith(oldTargetPath)) {
-      if (path.length() == oldTargetPath.length()) {
-        return newTarget;
+    var fsPath = oldTarget.getFileSystem().getPath(path);
+    return fsPath.startsWith(oldTarget) ? newTarget.resolve(oldTarget.relativize(fsPath)) : null;
+  }
+
+  @ApiStatus.Internal
+  public static synchronized void executeMarketplaceCommandsFromActionScript() throws IOException {
+    var scriptFile = getActionScriptFile();
+    @Nullable List<ActionCommand> remainingCommands = null;
+    boolean marketplaceCommandsFound = false;
+    try {
+      var commands = loadActionScript(scriptFile);
+
+      var partitioned = commands.stream().collect(Collectors.partitioningBy(command -> {
+        if (command instanceof UnzipCommand unzipCommand) {
+          return Path.of(unzipCommand.mySource).getFileName().toString().startsWith("marketplace");
+        }
+        else if (command instanceof DeleteCommand deleteCommand) {
+          return Path.of(deleteCommand.mySource).getFileName().toString().equals("marketplace");
+        }
+        return false;
+      }));
+
+      var marketplaceCommands = partitioned.get(true);
+      remainingCommands = partitioned.get(false);
+
+      for (var command : marketplaceCommands) {
+        marketplaceCommandsFound = true;
+        command.execute();
       }
-      if (path.charAt(oldTargetPath.length()) == File.separatorChar) {
-        return newTarget.resolve(path.substring(oldTargetPath.length() + 1));
+    } finally {
+      if (remainingCommands == null || remainingCommands.isEmpty()) {
+        Files.deleteIfExists(scriptFile);
+      }
+      else if (marketplaceCommandsFound) { // the file won't change if no marketplace commands were found
+        saveActionScript(remainingCommands, scriptFile);
       }
     }
-    return null;
   }
 
   public interface ActionCommand {
-    void execute() throws IOException;
+    /** @deprecated implement {@link #execute(FileSystem)} */
+    @Deprecated(forRemoval = true)
+    default void execute() throws IOException {
+      execute(FileSystems.getDefault());
+    }
+
+    void execute(@NotNull FileSystem fs) throws IOException;
   }
 
   public static final class CopyCommand implements Serializable, ActionCommand {
-    private static final long serialVersionUID = 201708031943L;
+    @Serial private static final long serialVersionUID = 201708031943L;
 
     private final String mySource;
     private final String myDestination;
@@ -178,14 +220,15 @@ public final class StartupActionScriptManager {
 
     /** @deprecated Use {@link #CopyCommand(Path, Path)} */
     @Deprecated(forRemoval = true)
+    @SuppressWarnings("IO_FILE_USAGE")
     public CopyCommand(@NotNull File source, @NotNull File destination) {
       mySource = source.getAbsolutePath();
       myDestination = destination.getAbsolutePath();
     }
 
     @Override
-    public void execute() throws IOException {
-      Path source = Path.of(mySource), destination = Path.of(myDestination);
+    public void execute(@NotNull FileSystem fs) throws IOException {
+      Path source = fs.getPath(mySource), destination = fs.getPath(myDestination);
       if (!Files.isRegularFile(source)) {
         throw new IOException("Source file missing: " + mySource);
       }
@@ -204,7 +247,7 @@ public final class StartupActionScriptManager {
   }
 
   public static final class UnzipCommand implements Serializable, ActionCommand {
-    private static final long serialVersionUID = 201708031943L;
+    @Serial private static final long serialVersionUID = 201708031943L;
 
     private final String mySource;
     private final String myDestination;
@@ -215,7 +258,8 @@ public final class StartupActionScriptManager {
     }
 
     /** @deprecated Use {@link #UnzipCommand(Path, Path)} */
-    @Deprecated
+    @Deprecated(forRemoval = true)
+    @SuppressWarnings("IO_FILE_USAGE")
     public UnzipCommand(@NotNull File source, @NotNull File destination) {
       this(source.toPath(), destination.toPath());
     }
@@ -227,8 +271,8 @@ public final class StartupActionScriptManager {
     }
 
     @Override
-    public void execute() throws IOException {
-      Path source = Path.of(mySource), destination = Path.of(myDestination);
+    public void execute(@NotNull FileSystem fs) throws IOException {
+      Path source = fs.getPath(mySource), destination = fs.getPath(myDestination);
       if (!Files.isRegularFile(source)) {
         throw new IOException("Source file missing: " + mySource);
       }
@@ -251,7 +295,7 @@ public final class StartupActionScriptManager {
   }
 
   public static final class DeleteCommand implements Serializable, ActionCommand {
-    private static final long serialVersionUID = 201708031943L;
+    @Serial private static final long serialVersionUID = 201708031943L;
 
     private final String mySource;
 
@@ -260,14 +304,15 @@ public final class StartupActionScriptManager {
     }
 
     /** @deprecated Use {@link #DeleteCommand(Path)} */
-    @Deprecated
+    @Deprecated(forRemoval = true)
+    @SuppressWarnings("IO_FILE_USAGE")
     public DeleteCommand(@NotNull File source) {
       mySource = source.getAbsolutePath();
     }
 
     @Override
-    public void execute() throws IOException {
-      NioFiles.deleteRecursively(Path.of(mySource));
+    public void execute(@NotNull FileSystem fs) throws IOException {
+      NioFiles.deleteRecursively(fs.getPath(mySource));
     }
 
     @Override

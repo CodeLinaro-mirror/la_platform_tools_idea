@@ -1,9 +1,10 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.packaging.toolwindow.packages.tree
 
-import com.intellij.openapi.actionSystem.ActionGroup
-import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.ide.CopyProvider
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.components.service
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.putUserData
 import com.intellij.openapi.util.Key
@@ -18,9 +19,14 @@ import com.jetbrains.python.packaging.toolwindow.PyPackagingToolWindowService
 import com.jetbrains.python.packaging.toolwindow.model.*
 import com.jetbrains.python.packaging.toolwindow.packages.tree.renderers.PackageNameCellRenderer
 import com.jetbrains.python.packaging.toolwindow.packages.tree.renderers.PackageVersionCellRenderer
+import com.jetbrains.python.sdk.isReadOnly
 import org.jetbrains.annotations.ApiStatus
 import java.awt.Component
 import java.awt.Point
+import java.awt.datatransfer.StringSelection
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
+import java.awt.event.FocusListener
 import java.awt.event.MouseEvent
 import javax.swing.JScrollPane
 import javax.swing.JTable
@@ -35,7 +41,7 @@ class PyPackagesTreeTable(
   val project: Project,
   private val controller: PyPackagingToolWindowPanel,
   private var treeListener: PyPackagesTreeListener? = null,
-) : JBTreeTable(PyPackagesTreeTableModel()), PackageTreeTableOperations {
+) : JBTreeTable(PyPackagesTreeTableModel()), PackageTreeTableOperations, UiDataProvider, CopyProvider {
 
   companion object {
     private const val COLUMN_PROPORTION = 0.3f
@@ -55,7 +61,11 @@ class PyPackagesTreeTable(
     set(value) {
       field = value
       treeTableModel.items = value
+      treeListener?.onTreeStructureChanged()
     }
+
+  internal val isReadOnly
+    get() = packagingService.currentSdk?.isReadOnly == true
 
   init {
     table.putUserData(TREE_TABLE_KEY, this)
@@ -65,13 +75,23 @@ class PyPackagesTreeTable(
   private fun initializeUI() {
     initializeTreeTableProperties()
     initializeTreeProperties()
+    initializeTableProperties()
     initializeCellRenderers()
     setupTreeInteractions()
     setupContextMenu()
   }
 
+  // To properly update renderers font size and color after theme change.
+  override fun updateUI() {
+    initializeCellRenderers()
+  }
+
   private fun initializeTreeTableProperties() {
     splitter.setResizeEnabled(false)
+    val firstComponent = splitter.firstComponent as JScrollPane
+    firstComponent.apply {
+      horizontalScrollBarPolicy = HORIZONTAL_SCROLLBAR_NEVER
+    }
     val secondComponent = splitter.secondComponent as JScrollPane
     secondComponent.apply {
       horizontalScrollBarPolicy = HORIZONTAL_SCROLLBAR_NEVER
@@ -84,6 +104,13 @@ class PyPackagesTreeTable(
       isRootVisible = false
       showsRootHandles = true
       selectionModel.selectionMode = SINGLE_TREE_SELECTION
+      transferHandler = null
+    }
+  }
+
+  private fun initializeTableProperties() {
+    table.apply {
+      transferHandler = null
     }
   }
 
@@ -98,24 +125,61 @@ class PyPackagesTreeTable(
   }
 
   private fun setupTreeEventListeners() {
+    registerTreeCoreListeners()
+
+    val sharedFocusListener = createSharedFocusListener()
+    tree.addFocusListener(sharedFocusListener)
+    table.addFocusListener(sharedFocusListener)
+  }
+
+  private fun registerTreeCoreListeners() {
     tree.addTreeSelectionListener(createPackageSelectionListener())
     tree.addTreeExpansionListener(createTreeExpansionListener())
     installPackageDoubleClickHandler()
   }
 
+  private fun handlePackageSelection(pkg: DisplayablePackage) {
+    when (pkg) {
+      is InstalledPackage -> controller.packageSelected(pkg)
+      is InstallablePackage -> controller.packageSelected(pkg)
+      is RequirementPackage -> controller.packageSelected(pkg)
+      is ErrorNode -> controller.setEmpty()
+      is ExpandResultNode -> controller.setEmpty()
+    }
+  }
+
+  private fun hasActiveFocus(): Boolean = tree.hasFocus() || table.hasFocus()
+
+  private var suppressClearOnFocusLoss: Boolean = false
+
+  private fun createSharedFocusListener(): FocusListener = object : FocusAdapter() {
+    override fun focusGained(e: FocusEvent) {
+      val pkg = selectedItem() ?: return
+      handlePackageSelection(pkg)
+    }
+
+    override fun focusLost(e: FocusEvent) {
+      if (suppressClearOnFocusLoss || e.isTemporary) return
+      controller.setEmpty()
+    }
+  }
+
   private fun createPackageSelectionListener() = TreeSelectionListener { event ->
     val path = event.path ?: return@TreeSelectionListener
     val node = path.lastPathComponent
-    when (val pkg = treeTableModel.getValueAt(node, 0)) {
-      is DisplayablePackage -> controller.packageSelected(pkg)
-      else -> controller.setEmpty()
-    }
+
+    val hasActiveFocus = hasActiveFocus()
+    if (!hasActiveFocus) return@TreeSelectionListener
+
+    val pkg = treeTableModel.getValueAt(node, 0) as? DisplayablePackage ?: return@TreeSelectionListener
+    handlePackageSelection(pkg)
   }
 
   private fun createTreeExpansionListener() = object : TreeExpansionListener {
     override fun treeExpanded(event: TreeExpansionEvent) {
       treeListener?.onTreeStructureChanged()
     }
+
     override fun treeCollapsed(event: TreeExpansionEvent) {
       treeListener?.onTreeStructureChanged()
     }
@@ -170,19 +234,25 @@ class PyPackagesTreeTable(
 
     private fun shouldShowPopupForNode(node: DisplayablePackage): Boolean = when (node) {
       is InstallablePackage, is InstalledPackage -> true
-      is RequirementPackage, is ExpandResultNode -> false
+      is RequirementPackage, is ExpandResultNode, is ErrorNode -> false
     }
 
     private fun createAndShowPopupMenu(comp: Component?, x: Int, y: Int, actionGroup: ActionGroup) {
       val popupMenu = ActionManager.getInstance()
         .createActionPopupMenu(POPUP_MENU_PLACE, actionGroup)
         .component
-      popupMenu.show(comp, x, y)
+      try {
+        suppressClearOnFocusLoss = true
+        popupMenu.show(comp, x, y)
+      }
+      finally {
+        suppressClearOnFocusLoss = false
+      }
     }
   }
 
   private fun loadMoreItems(node: ExpandResultNode) {
-    val result = packagingService.getMoreResultsForRepo(node.repository, items.size - 1) ?: return
+    val result = packagingService.getMoreResultsForRepo(node.repository, items.size - 1)
     items = items.dropLast(1) + result.packages
     if (result.moreItems > 0) {
       node.more = result.moreItems
@@ -206,6 +276,25 @@ class PyPackagesTreeTable(
       val node = tree.getPathForRow(row)?.lastPathComponent ?: return@mapNotNull null
       treeTableModel.getValueAt(node, 0) as? DisplayablePackage
     } ?: emptySequence()
+
+  override fun uiDataSnapshot(sink: DataSink) {
+    sink[PlatformDataKeys.COPY_PROVIDER] = this
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+  override fun performCopy(dataContext: DataContext) {
+    getTextForCopy()?.let { CopyPasteManager.getInstance().setContents(StringSelection(it)) }
+  }
+
+  override fun isCopyEnabled(dataContext: DataContext): Boolean = getTextForCopy() != null
+
+  override fun isCopyVisible(dataContext: DataContext): Boolean = true
+
+  private fun getTextForCopy(): String? = when (val pkg = selectedItem()) {
+    is InstalledPackage, is InstallablePackage, is RequirementPackage -> pkg.name
+    is ErrorNode, is ExpandResultNode, null -> null
+  }
 }
 
 private interface PackageTreeTableOperations {

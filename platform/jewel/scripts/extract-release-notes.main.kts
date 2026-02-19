@@ -36,7 +36,7 @@ private object Config {
     const val RELEASE_NOTES_FILE = "RELEASE NOTES.md"
 }
 
-class ExtractReleaseNotesCommand : CliktCommand() {
+private class ExtractReleaseNotesCommand : CliktCommand() {
     private val startDate: String by
         option(
                 "--start-date",
@@ -106,7 +106,7 @@ class ExtractReleaseNotesCommand : CliktCommand() {
 
         val elapsed = mark.elapsedNow()
 
-        println(" DONE")
+        printlnSuccess(" DONE")
 
         println("  ℹ️ Found ${allCommitHashes.size} commits in $elapsed")
 
@@ -139,7 +139,7 @@ class ExtractReleaseNotesCommand : CliktCommand() {
 
         val uniquePrCommits = prCommits.distinctBy { it.prId }.sortedBy { it.issueId }
 
-        println(" DONE")
+        printlnSuccess(" DONE")
 
         println(
             "  ℹ️ Found ${uniquePrCommits.size} unique PRs to process. " +
@@ -358,7 +358,7 @@ class ExtractReleaseNotesCommand : CliktCommand() {
                     .let { Json.parseToJsonElement(it).jsonObject }
 
             val prUrl = prInfo["url"]?.jsonPrimitive?.content!!
-            val prBody = prInfo["body"]?.jsonPrimitive?.content!!
+            val prBody = prInfo["body"]?.jsonPrimitive?.content!!.substringBefore("<!-- CURSOR_SUMMARY -->")
             val prTitle = prInfo["title"]?.jsonPrimitive?.content!!
             if (isVerbose) logs.add("ℹ️  PR body fetched:\n${prBody.prependIndent("      ")}\n")
 

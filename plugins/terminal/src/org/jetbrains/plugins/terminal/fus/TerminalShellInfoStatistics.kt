@@ -6,14 +6,17 @@ import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.internal.statistic.eventLog.events.StringEventField
 import com.intellij.internal.statistic.eventLog.validator.rules.impl.AllowedItemsResourceWeakRefStorage
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.PathUtil
+import com.intellij.util.execution.ParametersListUtil
+import com.intellij.util.system.OS
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.terminal.fus.TerminalShellInfoStatistics.shellVersionField
 import java.util.*
 
-internal object TerminalShellInfoStatistics {
+@ApiStatus.Internal
+object TerminalShellInfoStatistics {
   private val knownPromptThemes: List<String> = getKnownPromptThemes()
 
   val shellVersionField: StringEventField = EventFields.StringValidatedByRegexpReference("shell_version", "version")
@@ -30,46 +33,49 @@ internal object TerminalShellInfoStatistics {
   val isOhMyBashField: BooleanEventField = EventFields.Boolean("is_oh_my_bash", "Bash only")
   val isBashItField: BooleanEventField = EventFields.Boolean("is_bash_it", "Bash only")
 
-  val KNOWN_SHELLS = setOf("unspecified",
-                           "other",
-                           "activate",
-                           "anaconda3",
-                           "ash",
-                           "bash",
-                           "bbsh",
-                           "cexec",
-                           "cmd",
-                           "cmder",
-                           "cmder_shell",
-                           "csh",
-                           "cygwin",
-                           "dash",
-                           "es",
-                           "eshell",
-                           "fish",
-                           "fsh",
-                           "git",
-                           "git-bash",
-                           "git-cmd",
-                           "hamilton",
-                           "init",
-                           "ion",
-                           "ksh",
-                           "miniconda3",
-                           "mksh",
-                           "msys2_shell",
-                           "nushell",
-                           "powershell",
-                           "pwsh",
-                           "rc",
-                           "scsh",
-                           "sh",
-                           "tcsh",
-                           "ubuntu",
-                           "ubuntu1804",
-                           "wsl",
-                           "xonsh",
-                           "zsh")
+  const val UNSPECIFIED_SHELL_NAME: String = "unspecified"
+  const val OTHER_SHELL_NAME: String = "other"
+
+  val KNOWN_SHELLS: Set<String> = setOf(UNSPECIFIED_SHELL_NAME,
+                                        OTHER_SHELL_NAME,
+                                        "activate",
+                                        "anaconda3",
+                                        "ash",
+                                        "bash",
+                                        "bbsh",
+                                        "cexec",
+                                        "cmd",
+                                        "cmder",
+                                        "cmder_shell",
+                                        "csh",
+                                        "cygwin",
+                                        "dash",
+                                        "es",
+                                        "eshell",
+                                        "fish",
+                                        "fsh",
+                                        "git",
+                                        "git-bash",
+                                        "git-cmd",
+                                        "hamilton",
+                                        "init",
+                                        "ion",
+                                        "ksh",
+                                        "miniconda3",
+                                        "mksh",
+                                        "msys2_shell",
+                                        "nushell",
+                                        "powershell",
+                                        "pwsh",
+                                        "rc",
+                                        "scsh",
+                                        "sh",
+                                        "tcsh",
+                                        "ubuntu",
+                                        "ubuntu1804",
+                                        "wsl",
+                                        "xonsh",
+                                        "zsh")
 
   private val KNOWN_EXTENSIONS = setOf("exe", "bat", "cmd")
 
@@ -151,17 +157,16 @@ internal object TerminalShellInfoStatistics {
     return AllowedItemsResourceWeakRefStorage(TerminalShellInfoStatistics::class.java, path).items
   }
 
-  fun getShellNameForStat(shellName: String?): String {
-    if (shellName == null) return "unspecified"
-    var name = shellName.trimStart()
-    val ind = name.indexOf(" ")
-    name = if (ind < 0) name else name.substring(0, ind)
-    if (SystemInfo.isFileSystemCaseSensitive) {
-      name = name.lowercase(Locale.ENGLISH)
-    }
-    name = PathUtil.getFileName(name)
-    name = trimKnownExt(name)
-    return if (KNOWN_SHELLS.contains(name)) name else "other"
+  /**
+   * @param shellCommand shell command line to extract the shell name from
+   */
+  fun getShellNameForStat(shellCommand: String?): String {
+    if (shellCommand == null) return UNSPECIFIED_SHELL_NAME
+    val command = ParametersListUtil.parse(shellCommand, false, OS.CURRENT != OS.Windows)
+    val shellPath = command.firstOrNull() ?: return UNSPECIFIED_SHELL_NAME
+    val shellName = PathUtil.getFileName(shellPath).lowercase(Locale.ENGLISH)
+    val trimmedName = trimKnownExt(shellName)
+    return if (KNOWN_SHELLS.contains(trimmedName)) trimmedName else OTHER_SHELL_NAME
   }
 
   private fun trimKnownExt(name: String): String {

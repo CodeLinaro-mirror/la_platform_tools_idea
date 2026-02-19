@@ -1,8 +1,13 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.sdk.conda
 
-import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.openapi.extensions.ExtensionPointName
+import com.intellij.openapi.module.Module
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
+import com.jetbrains.python.sdk.configuration.CreateSdkInfo
+import com.jetbrains.python.sdk.configuration.CreateSdkInfoWithTool
+import com.jetbrains.python.sdk.configuration.PyProjectSdkConfigurationExtension
 import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Internal
@@ -22,12 +27,18 @@ interface PyCondaSdkCustomizer {
   val suggestSharedCondaEnvironments: Boolean
     get() = false
 
-  val fallbackInterpreterFix: LocalQuickFix?
+  val fallbackConfigurator: PyProjectSdkConfigurationExtension?
     get() = null
 
   companion object {
     val EP_NAME: ExtensionPointName<PyCondaSdkCustomizer> = ExtensionPointName.create("Pythonid.condaSdkCustomizer")
     val instance: PyCondaSdkCustomizer
       get() = EP_NAME.extensionList.first()
+
+    @RequiresBackgroundThread
+    fun checkEnvironmentAndPrepareSdkCreatorBlocking(extension: PyProjectSdkConfigurationExtension, module: Module): CreateSdkInfoWithTool? =
+      runBlockingMaybeCancellable {
+        extension.checkEnvironmentAndPrepareSdkCreator(module)?.let { CreateSdkInfoWithTool(it, extension.toolId) }
+      }
   }
 }

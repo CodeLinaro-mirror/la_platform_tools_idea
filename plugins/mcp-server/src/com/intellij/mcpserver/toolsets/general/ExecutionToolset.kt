@@ -12,25 +12,26 @@ import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder
 import com.intellij.execution.runners.ProgramRunner
 import com.intellij.execution.ui.RunContentDescriptor
-import com.intellij.mcpserver.McpServerBundle
-import com.intellij.mcpserver.McpToolset
+import com.intellij.mcpserver.*
 import com.intellij.mcpserver.annotations.McpDescription
 import com.intellij.mcpserver.annotations.McpTool
-import com.intellij.mcpserver.mcpFail
-import com.intellij.mcpserver.project
-import com.intellij.mcpserver.reportToolActivity
 import com.intellij.mcpserver.toolsets.Constants
 import com.intellij.mcpserver.util.TruncateMode
 import com.intellij.mcpserver.util.checkUserConfirmationIfNeeded
 import com.intellij.mcpserver.util.truncateText
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.diagnostic.rethrowControlFlowException
+import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.util.Key
 import kotlinx.coroutines.*
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlin.time.Duration.Companion.milliseconds
+
+private val logger = logger<ExecutionToolset>()
 
 class ExecutionToolset : McpToolset {
 
@@ -104,6 +105,10 @@ class ExecutionToolset : McpToolset {
       if (runner == null) mcpFail("No suitable runner found for configuration '${runnerAndConfigurationSettings.name}'")
 
       val callback = object : ProgramRunner.Callback {
+
+        override fun processNotStarted(error: Throwable?) {
+          exitCodeDeferred.completeExceptionally(error ?: IllegalStateException("Process not started by some reasons. Probably build process failed."))
+        }
         override fun processStarted(descriptor: RunContentDescriptor) {
           val processHandler = descriptor.processHandler
           if (processHandler == null) {
@@ -135,7 +140,14 @@ class ExecutionToolset : McpToolset {
     }
 
     val exitCode = withTimeoutOrNull(timeout.milliseconds) {
-      exitCodeDeferred.await()
+      try {
+        exitCodeDeferred.await()
+      }
+      catch (e: Exception) {
+        rethrowControlFlowException(e)
+        logger.trace { "Execution failed: ${e.message}" }
+        mcpFail("Execution failed: ${e.message}")
+      }
     }
     val output = truncateText(outputBuilder.toString(), maxLinesCount = maxLinesCount, truncateMode = truncateMode)
     return RunConfigurationResult(

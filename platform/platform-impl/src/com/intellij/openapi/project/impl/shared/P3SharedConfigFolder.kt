@@ -12,10 +12,6 @@ import com.intellij.openapi.components.impl.stores.stateStore
 import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.impl.processPerProjectSupport
-import com.intellij.openapi.util.registry.EarlyAccessRegistryManager
-import com.intellij.openapi.util.registry.RegistryManager
-import com.intellij.openapi.util.registry.RegistryValue
-import com.intellij.openapi.util.registry.RegistryValueListener
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -39,27 +35,30 @@ private class P3SharedConfigFolderApplicationLoadListener : ApplicationLoadListe
 @OptIn(FlowPreview::class)
 private class ProcessPerProjectSharedConfigFolderApplicationInitializedListener : ApplicationActivity {
   override suspend fun execute() = coroutineScope {
-  val path = PathManager.getOriginalConfigDir()
-    if (processPerProjectSupport().isEnabled()) {
-      LOG.info("P3 mode is enabled, configuration files with be synchronized with $path.")
-      val application = ApplicationManager.getApplication()
-      val compoundStreamProvider = application.stateStore.storageManager.streamProvider
-      val streamProvider = compoundStreamProvider.getInstanceOf(SharedConfigFolderStreamProvider::class.java) as SharedConfigFolderStreamProvider
-      val configFilesUpdatedByThisProcess = streamProvider.configFilesUpdatedByThisProcess
-      SharedConfigFolderUtil.installFsWatcher(path, configFilesUpdatedByThisProcess)
+    if (!processPerProjectSupport().isEnabled()) {
+      return@coroutineScope
+    }
 
-      launch {
-        while (isActive) {
-          delay(1.minutes)
-          configFilesUpdatedByThisProcess.cleanUpOldData()
-        }
+    val path = PathManager.getOriginalConfigDir()
+    LOG.info("P3 mode is enabled, configuration files with be synchronized with $path.")
+    val app = ApplicationManager.getApplication()
+    val compoundStreamProvider = app.stateStore.storageManager.streamProvider
+    val streamProvider = compoundStreamProvider.getInstanceOf(SharedConfigFolderStreamProvider::class.java) as SharedConfigFolderStreamProvider
+    val configFilesUpdatedByThisProcess = streamProvider.configFilesUpdatedByThisProcess
+    launch {
+      SharedConfigFolderUtil.installFsWatcher(path, configFilesUpdatedByThisProcess)
+    }
+
+    launch {
+      while (isActive) {
+        delay(1.minutes)
+        configFilesUpdatedByThisProcess.cleanUpOldData()
       }
-      
-      application.messageBus.connect().subscribe(DynamicPluginListener.TOPIC, serviceAsync<P3DynamicPluginSynchronizer>())
-      coroutineScope {
-        setupSyncEarlyAccessRegistry(path, this)
-        setupSyncDisabledPlugins(path, this)
-      }
+    }
+
+    app.messageBus.connect(this@coroutineScope).subscribe(DynamicPluginListener.TOPIC, serviceAsync<P3DynamicPluginSynchronizer>())
+    coroutineScope {
+      setupSyncDisabledPlugins(path, this)
     }
   }
 
@@ -73,26 +72,6 @@ private class ProcessPerProjectSharedConfigFolderApplicationInitializedListener 
     DisabledPluginsState.addDisablePluginListener {
       syncDisabledPluginsRequests.tryEmit(Unit)
     }
-  }
-
-  private suspend fun setupSyncEarlyAccessRegistry(path: Path, asyncScope: CoroutineScope) {
-    withContext(Dispatchers.IO) {
-      syncCustomConfigFile(path, EarlyAccessRegistryManager.fileName)
-    }
-    val saveEarlyAccessRegistryRequests = MutableSharedFlow<Unit>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    asyncScope.launch(Dispatchers.IO) {
-      saveEarlyAccessRegistryRequests.debounce(100).collectLatest {
-        EarlyAccessRegistryManager.syncAndFlush()
-        syncCustomConfigFile(path, EarlyAccessRegistryManager.fileName)
-      }
-    }
-    ApplicationManager.getApplication().messageBus.connect().subscribe(RegistryManager.TOPIC, object : RegistryValueListener {
-      override fun afterValueChanged(value: RegistryValue) {
-        if (value.key in EarlyAccessRegistryManager.getOrLoadMap()) {
-          saveEarlyAccessRegistryRequests.tryEmit(Unit)
-        }
-      }
-    })
   }
 
   private fun syncCustomConfigFile(originalConfigDir: Path, fileName: String) {

@@ -4,10 +4,13 @@ package com.intellij.ide.actions
 import com.intellij.ide.IdeBundle
 import com.intellij.ide.startup.StartupManagerEx
 import com.intellij.ide.ui.search.SearchUtil
+import com.intellij.ide.ui.search.SearchableOptionsRegistrar
+import com.intellij.ide.ui.search.SearchableOptionsRegistrarImpl
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.serviceAsync
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.getOrLogException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -69,35 +72,7 @@ open class ShowSettingsUtilImpl : ShowSettingsUtil() {
 
     @JvmStatic
     fun showSettings(project: Project?, groups: List<ConfigurableGroup>, toSelect: Configurable?) {
-      showInternal(project = project, groups = groups, toSelect = toSelect, filter = null)
-    }
-
-    private fun showInternal(project: Project?, groups: List<ConfigurableGroup>, toSelect: Configurable?, filter: String?) {
-      if (project != null &&
-          project != ProjectManager.getInstance().defaultProject &&
-          useNonModalSettingsWindow() &&
-          ModalityState.current() == ModalityState.nonModal()) {
-        runWithModalProgressBlocking(project, IdeBundle.message("settings.modal.opening.message")) {
-          val settingsFile = SettingsVirtualFileHolder.getInstance(project).getOrCreate(toSelect) {
-            val dialog = createDialogWrapper(
-              project = project,
-              groups = groups,
-              toSelect = toSelect,
-              filter = filter,
-              isModal = false,
-            ) as SettingsDialog
-            dialog.peer.rootPane.isFocusCycleRoot = true
-            dialog.peer.rootPane.focusTraversalPolicy = IdeFocusTraversalPolicy()
-            dialog
-          }
-          val fileEditorManager = FileEditorManagerEx.getInstanceEx(project)
-          val options = FileEditorOpenOptions(reuseOpen = true, isSingletonEditorInWindow = true, requestFocus = true)
-          fileEditorManager.openFile(settingsFile, options)
-        }
-      }
-      else {
-        createDialogWrapper(project, groups, toSelect, filter, true).show()
-      }
+      (getInstance() as ShowSettingsUtilImpl).doShow(project = project, groups = groups, toSelect = toSelect, filter = null)
     }
 
     /**
@@ -141,7 +116,7 @@ open class ShowSettingsUtilImpl : ShowSettingsUtil() {
         .takeIf { !it.configurables.isEmpty() }
       val configurableToSelect = if (idToSelect == null) null else ConfigurableVisitor.findById(idToSelect, listOf(group))
 
-      showInternal(project, listOf<ConfigurableGroup>(group!!), configurableToSelect, filter)
+      (getInstance() as ShowSettingsUtilImpl).doShow(project, listOf(group!!), configurableToSelect, filter)
     }
 
     @JvmStatic
@@ -150,9 +125,38 @@ open class ShowSettingsUtilImpl : ShowSettingsUtil() {
     }
   }
 
+  @ApiStatus.Internal
+  protected open fun doShow(project: Project?, groups: List<ConfigurableGroup>, toSelect: Configurable?, filter: String?) {
+    if (project != null &&
+        project != ProjectManager.getInstance().defaultProject &&
+        useNonModalSettingsWindow() &&
+        ModalityState.current() == ModalityState.nonModal()) {
+      runWithModalProgressBlocking(project, IdeBundle.message("settings.modal.opening.message")) {
+        val settingsFile = SettingsVirtualFileHolder.getInstance(project).getOrCreate(toSelect) {
+          val dialog = createDialogWrapper(
+            project = project,
+            groups = groups,
+            toSelect = toSelect,
+            filter = filter,
+            isModal = false,
+          ) as SettingsDialog
+          dialog.peer.rootPane.isFocusCycleRoot = true
+          dialog.peer.rootPane.focusTraversalPolicy = IdeFocusTraversalPolicy()
+          dialog
+        }
+        val fileEditorManager = FileEditorManagerEx.getInstanceEx(project)
+        val options = FileEditorOpenOptions(reuseOpen = true, isSingletonEditorInWindow = true, requestFocus = true)
+        fileEditorManager.openFile(settingsFile, options)
+      }
+    }
+    else {
+      createDialogWrapper(project, groups, toSelect, filter, true).show()
+    }
+  }
+
   override fun showSettingsDialog(project: Project, vararg groups: ConfigurableGroup) {
     runCatching {
-      showInternal(project = project, groups = groups.asList(), toSelect = null, filter = null)
+      doShow(project = project, groups = groups.asList(), toSelect = null, filter = null)
     }.getOrLogException(LOG)
   }
 
@@ -451,6 +455,10 @@ private fun useNonModalSettingsWindow(): Boolean {
 // ShowSettingsAction in a deprecated language
 internal fun scheduleDoShowSettingsDialogWithACheckThatProjectIsInitialized(project: Project) {
   project.service<CoreUiCoroutineScopeHolder>().coroutineScope.launch {
+    launch {
+      (serviceAsync<SearchableOptionsRegistrar>() as? SearchableOptionsRegistrarImpl)?.initialize()
+    }
+
     if (project.isDefault) {
       serviceAsync<ShowSettingsUtil>().showSettingsDialog(project, createConfigurableGroups(project))
     }
@@ -464,7 +472,7 @@ internal fun scheduleDoShowSettingsDialogWithACheckThatProjectIsInitialized(proj
       // SwingUtilities must be used here
       SwingUtilities.invokeLater {
         val endTime = System.nanoTime()
-        LOG.debug("Displaying settings dialog took ${(endTime - startTime) / 1_000_000} ms")
+        LOG.debug { "Displaying settings dialog took ${(endTime - startTime) / 1_000_000} ms" }
       }
     }
   }

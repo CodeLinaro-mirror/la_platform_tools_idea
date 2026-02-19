@@ -55,6 +55,11 @@ public class HighLevelMultiFileJvmBasicCompletionTestGenerated extends AbstractH
         runTest("../../completion/testData/basic/multifile/ChainCompletionDontDuplicate/");
     }
 
+    @TestMetadata("ChainCompletionDontShowSameProperty")
+    public void testChainCompletionDontShowSameProperty() throws Exception {
+        runTest("../../completion/testData/basic/multifile/ChainCompletionDontShowSameProperty/");
+    }
+
     @TestMetadata("ClassInExcludedPackage")
     public void testClassInExcludedPackage() throws Exception {
         runTest("../../completion/testData/basic/multifile/ClassInExcludedPackage/");
@@ -218,6 +223,11 @@ public class HighLevelMultiFileJvmBasicCompletionTestGenerated extends AbstractH
     @TestMetadata("HiddenDeclarationsInWhenCondition")
     public void testHiddenDeclarationsInWhenCondition() throws Exception {
         runTest("../../completion/testData/basic/multifile/HiddenDeclarationsInWhenCondition/");
+    }
+
+    @TestMetadata("ImplicitReceiverExposedSuperInterface")
+    public void testImplicitReceiverExposedSuperInterface() throws Exception {
+        runTest("../../completion/testData/basic/multifile/ImplicitReceiverExposedSuperInterface/");
     }
 
     @TestMetadata("InImportClassifiers")

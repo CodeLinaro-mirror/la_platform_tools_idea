@@ -13,8 +13,8 @@ import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.getEelDescriptor
 import com.intellij.platform.eel.provider.toEelApiBlocking
 import com.intellij.platform.eel.where
+import com.intellij.platform.ide.impl.wsl.WslEelDescriptor
 import com.intellij.util.application
-import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,27 +22,33 @@ import kotlinx.coroutines.async
 import java.nio.file.Path
 import kotlin.io.path.pathString
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @Service(Service.Level.APP)
 internal class GitEelExecutableDetectionHelper private constructor(private val scope: CoroutineScope) {
   private val myCache = mutableMapOf<String, Deferred<String?>>()
   private val myLock = Any()
 
-  @OptIn(ExperimentalCoroutinesApi::class)
-  fun getExecutablePathIfReady(eelApi: EelApi, rootDir: String): String? {
-    return getExecutablePathPromise(eelApi, rootDir).takeIf { it.isCompleted }?.getCompleted()
+  fun getExecutablePathIfReady(eelDescriptor: EelDescriptor, rootDir: String): String? {
+    return getExecutablePathPromise(eelDescriptor, rootDir).takeIf { it.isCompleted }?.getCompleted()
   }
 
-  fun getExecutablePathBlocking(eelApi: EelApi, rootDir: String): String? {
+  fun getExecutablePathBlocking(eelDescriptor: EelDescriptor, rootDir: String): String? {
     return runBlockingMaybeCancellable {
-      getExecutablePathPromise(eelApi, rootDir).await();
+      getExecutablePathPromise(eelDescriptor, rootDir).await();
     }
   }
 
-  fun getExecutablePathPromise(eelApi: EelApi, rootDir: String): Deferred<String?> {
+  fun getExecutablePathPromise(eelDescriptor: EelDescriptor, rootDir: String): Deferred<String?> {
     return synchronized(myLock) {
-      myCache.computeIfAbsent(rootDir) {
+      val existing = myCache[rootDir]
+      if (existing != null && (!existing.isCompleted || existing.getCompleted() != null)) {
+        existing
+      }
+      else {
         scope.async {
-          eelApi.exec.where("git")?.asNioPath()?.pathString
+          eelDescriptor.toEelApi().exec.where("git")?.asNioPath()?.pathString
+        }.also {
+          myCache[rootDir] = it
         }
       }
     }
@@ -60,25 +66,37 @@ internal class GitEelExecutableDetectionHelper private constructor(private val s
     fun getInstance() = application.service<GitEelExecutableDetectionHelper>()
 
     @JvmStatic
-    fun canUseEel(): Boolean = Registry.`is`("git.use.eel.for.non.local.projects")
+    fun canUseEel(): Boolean = Registry.`is`("git.use.eel.for.container.projects")
+
+    @JvmStatic
+    fun canUseEelForWsl(): Boolean = Registry.`is`("git.use.eel.for.wsl.projects")
 
     @JvmStatic
     fun useEelForLocalProjects(): Boolean = Registry.`is`("git.use.eel.for.local.projects")
 
-    @RequiresBackgroundThread
     @JvmStatic
     fun tryGetEel(project: Project?, gitDirectory: Path?): EelApi? {
-      val canUseEelForNonLocal = canUseEel()
+      return tryGetEelDescriptor(project, gitDirectory)?.toEelApiBlocking()
+    }
+
+    @JvmStatic
+    fun tryGetEelDescriptor(project: Project?, gitDirectory: Path?): EelDescriptor? {
       val canUseEelForLocal = useEelForLocalProjects()
-      return if (!canUseEelForLocal && !canUseEelForNonLocal) {
+      val canUseEelForWsl = canUseEelForWsl()
+      val canUseEelForOther = canUseEel()
+      return if (!canUseEelForLocal && !canUseEelForOther) {
         null
       } else {
         val descriptor: EelDescriptor? = project?.getEelDescriptor() ?: gitDirectory?.getEelDescriptor()
-        val shouldUse = if (descriptor === LocalEelDescriptor) canUseEelForLocal else canUseEelForNonLocal
+        val shouldUse = when {
+          descriptor === LocalEelDescriptor -> canUseEelForLocal
+          descriptor is WslEelDescriptor -> canUseEelForWsl
+          else -> canUseEelForOther
+        }
         if (!shouldUse) {
           null
         } else {
-          descriptor?.toEelApiBlocking()
+          descriptor
         }
       }
     }

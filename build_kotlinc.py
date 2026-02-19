@@ -22,12 +22,25 @@ def main():
     assert workspace.joinpath('WORKSPACE').exists(), 'failed to find workspace root'
 
     # Set properties not currently exposed as flags.
-    args.kotlinc_version = '2.2.255-dev-255'  # JetBrains uses this version for local builds.
+    args.kotlinc_version = '2.3.255-dev-255'  # Must match BOOTSTRAP_VERSION in project-model-updater.
     args.intellij_dir = workspace.joinpath('tools/idea')
     args.kotlinc_dir = workspace.joinpath('external/jetbrains/kotlin')
     args.gradlew = args.kotlinc_dir.joinpath('gradlew')
     args.cmd_env = os.environ.copy()
-    args.cmd_env['JAVA_HOME'] = str(compute_java_home(workspace))
+    args.cmd_env['JAVA_HOME'] = str(compute_java_home(workspace, 'jbrjdk-next'))
+    args.gradle_jdk_args = [
+        # Unfortunately, the Kotlin compiler build requires several different JDKs.
+        # We provide the JDKs from prebuilts to avoid network issues in CI (e.g. b/482057769).
+        '-Dorg.gradle.java.installations.auto-download=false',
+        '-Dorg.gradle.java.installations.auto-detect=false',
+        '-Dorg.gradle.java.home=' + str(compute_java_home(workspace, 'jbrjdk-next')),
+        '-Dorg.gradle.java.installations.paths=' + ','.join([
+            str(compute_java_home(workspace, 'jbrjdk-next')),
+            str(compute_java_home(workspace, 'jdk17')),
+            str(compute_java_home(workspace, 'jdk11')),
+            str(compute_java_home(workspace, 'jdk8')),
+        ]),
+    ]
 
     build_kotlin_compiler(args)
     update_ide_project_model(args)
@@ -36,19 +49,21 @@ def main():
 # Builds Kotlinc (via Gradle).
 def build_kotlin_compiler(args):
     clean_args = ['clean', '--no-build-cache'] if args.clean else []
-    # The flags are similar to .idea/runConfigurations/Kotlin_Coop__Publish_compiler_for_ide_JARs.xml.
+    # This is similar to publishCompiler() in project-model-updater, we just tweak the options
+    # (e.g. we set teamcity=true to get optimized production artifacts).
     cmd = [
         str(args.gradlew),
         f'--project-dir={args.kotlinc_dir}',
         '--no-daemon',
+        *args.gradle_jdk_args,
         *clean_args,
         'publishIdeArtifacts',
         ':prepare:ide-plugin-dependencies:kotlin-dist-for-ide:publish',
+        f'-Pkotlin.build.deploy-path={args.intellij_dir}/lib/kotlin-snapshot',  # From project-model-updater.
         '-Ppublish.ide.plugin.dependencies=true',
         f'-PdeployVersion={args.kotlinc_version}',
         f'-Pbuild.number={args.kotlinc_version}',
         '-Pteamcity=true',  # Makes this a release build rather than a dev build.
-        '-Pkotlin.build.isObsoleteJdkOverrideEnabled=true',  # Avoids the need for JDK 1.6.
     ]
     run_subprocess(cmd, args.cmd_env, 'Building the Kotlin compiler')
 
@@ -69,18 +84,18 @@ def update_ide_project_model(args):
 
     # Run the updater.
     clean_args = ['clean', '--no-build-cache'] if args.clean else []
-    cmd = [str(args.gradlew), f'--project-dir={updater_dir}', '--no-daemon', *clean_args, 'run']
+    cmd = [str(args.gradlew), f'--project-dir={updater_dir}', '--no-daemon', *args.gradle_jdk_args, *clean_args, 'run']
     run_subprocess(cmd, args.cmd_env, 'Running project-model-updater')
 
 
 # Finds a standard JDK with which to run Gradle.
-def compute_java_home(workspace: Path) -> Path:
-    jdk_base = workspace.joinpath('prebuilts/studio/jdk/jbr-next')
+def compute_java_home(workspace: Path, version: str) -> Path:
+    jdk_base = workspace.joinpath(f'prebuilts/studio/jdk/{version}')
     system = platform.system()
     if system == 'Linux':
         return jdk_base.joinpath('linux')
     elif system == 'Darwin':
-        subdir = 'mac-arm64' if platform.machine() == 'arm64' else 'mac'
+        subdir = 'mac-arm64' if platform.machine() == 'arm64' and version != 'jdk8' else 'mac'
         return jdk_base.joinpath(subdir, 'Contents/Home')
     else:
         sys.exit(f'Unrecognized system: {system}')

@@ -129,7 +129,7 @@ internal class DocumentationPopupUI(
   fun jointHover() {
     // TODO ? separate DocumentationJointHoverUI class
     val bg = UIUtil.getToolTipActionBackground()
-    Disposer.register(this, ui.setBackground(bg))
+    Disposer.register(this, ui.setTemporaryEditorBackground(bg))
     component.background = bg
     component.border = IdeBorderFactory.createBorder(UIUtil.getTooltipSeparatorColor(), SideBorder.TOP)
   }
@@ -170,6 +170,7 @@ internal class DocumentationPopupUI(
     EDT.assertIsEdt()
     browser.clearCloseTrigger()
     val ui = ui
+    ui.reloadAsDetached()
     _ui = null
     return ui
   }

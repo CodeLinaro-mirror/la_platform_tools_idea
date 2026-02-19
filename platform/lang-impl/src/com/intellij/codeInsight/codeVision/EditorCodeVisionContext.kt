@@ -2,11 +2,13 @@
 package com.intellij.codeInsight.codeVision
 
 import com.intellij.codeInsight.codeVision.ui.CodeVisionView
+import com.intellij.codeInsight.codeVision.ui.model.CodeVisionVisualVerticalPositionKeeper
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.EditorThreading
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.openapi.rd.createLifetime
@@ -57,7 +59,7 @@ open class EditorCodeVisionContext(
 
   @RequiresEdt
   fun notifyPendingLenses() {
-    ThreadingAssertions.assertEventDispatchThread()
+    EditorThreading.assertInteractionAllowed()
     if (!hasPendingLenses) {
       LOG.trace("Have pending lenses")
     }
@@ -99,6 +101,19 @@ open class EditorCodeVisionContext(
   // used externally
   @Suppress("MemberVisibilityCanBePrivate")
   fun resubmitThings() {
+    // RIDER-133722
+    editor.scrollingModel.disableAnimation()
+    val keeper = CodeVisionVisualVerticalPositionKeeper(editor)
+    try {
+      resubmitThingsInternal()
+    }
+    finally {
+      keeper.restoreOriginalLocation()
+      editor.scrollingModel.enableAnimation()
+    }
+  }
+
+  private fun resubmitThingsInternal() {
     val project = editor.project
     if (project == null) {
       LOG.warn("Project wasn't available from editor during code vision calculation")

@@ -5,11 +5,21 @@ import com.intellij.notebooks.ui.visualization.NotebookEditorAppearance.Companio
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorKind
 import com.intellij.openapi.editor.impl.EditorImpl
+import com.intellij.openapi.util.Key
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.Rectangle
 
 object NotebookUtil {
+  private val IS_JUPYTER_CONSOLE_EDITOR_KEY: Key<Boolean> = Key.create("JUPYTER_HISTORY_EDITOR_KEY")
+
+  var Editor.isJupyterConsoleEditor: Boolean
+    get() = getUserData(IS_JUPYTER_CONSOLE_EDITOR_KEY) == true
+    set(value) {
+      putUserData(IS_JUPYTER_CONSOLE_EDITOR_KEY, value)
+    }
+
+
   val Editor.notebookAppearance: NotebookEditorAppearance
     get() = NOTEBOOK_APPEARANCE_KEY.get(this)!!
 
@@ -42,4 +52,16 @@ object NotebookUtil {
 
     actionBetweenBackgroundAndStripe()
   }
+
+  fun Editor.isOrdinaryNotebookEditor(): Boolean = when {
+    this.editorKind != EditorKind.MAIN_EDITOR -> false
+    isJupyterConsoleEditor -> false
+    else -> true
+  }
+
+  fun Editor.isDiffKind(): Boolean = editorKind.isDiff()
+
+  fun EditorKind.isDiff(): Boolean = this === EditorKind.DIFF
+
+  fun getJupyterCellSpacing(editor: Editor): Int = editor.getLineHeight()
 }

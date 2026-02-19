@@ -17,14 +17,15 @@ import com.intellij.codeInsight.inline.completion.session.InlineCompletionSessio
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionSuggestion
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionVariant
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionVariantsComputer
+import com.intellij.codeInsight.inline.completion.suppress.InlineCompletionSuppressStateSupplier
 import com.intellij.codeInsight.inline.edit.InlineEditRequestExecutor
 import com.intellij.codeInsight.lookup.LookupManager
-import com.intellij.inlinePrompt.isInlinePromptShown
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.diagnostic.trace
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.ScrollType
@@ -124,22 +125,6 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     replaceWith = ReplaceWith("invokeEvent(event)"),
   )
   @ScheduledForRemoval
-  fun invoke(event: InlineCompletionEvent.LookupChange): Unit = invokeEvent(event)
-
-  @Deprecated(
-    message = "Use general invokeEvent.",
-    level = DeprecationLevel.WARNING,
-    replaceWith = ReplaceWith("invokeEvent(event)"),
-  )
-  @ScheduledForRemoval
-  fun invoke(event: InlineCompletionEvent.LookupCancelled): Unit = invokeEvent(event)
-
-  @Deprecated(
-    message = "Use general invokeEvent.",
-    level = DeprecationLevel.WARNING,
-    replaceWith = ReplaceWith("invokeEvent(event)"),
-  )
-  @ScheduledForRemoval
   fun invoke(event: InlineCompletionEvent.DirectCall): Unit = invokeEvent(event)
 
   @RequiresEdt
@@ -161,8 +146,8 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
         return
       }
 
-      if (isInlineCompletionSuppressedByPrompt()) {
-        LOG.trace("Inline Completion is suppressed. Event $event is ignored.")
+      if (InlineCompletionSuppressStateSupplier.isSuppressed(editor)) {
+        LOG.trace { "Inline completion is suppressed. Event $event is ignored." }
         return
       }
 
@@ -208,9 +193,14 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     context.copyUserDataTo(insertEnvironment)
     hide(context, FinishType.SELECTED)
 
-    editor.document.insertString(offset, textToInsert)
-    editor.caretModel.moveToOffset(insertEnvironment.insertedRange.endOffset)
-    PsiDocumentManager.getInstance(session.request.file.project).commitDocument(editor.document)
+    val insertingHandler = InlineCompletionEditorInsertHandler.EP_NAME.extensionList.firstOrNull { it.isApplicable(editor) }
+    if (insertingHandler == null) {
+      LOG.error("[Inline Completion] Cannot insert completion due to missing InlineCompletionEditorInsertHandler.")
+      return
+    }
+
+    insertingHandler.insert(editor = editor, textToInsert = textToInsert, offset = offset, file = session.request.file)
+
     session.provider.insertHandler.afterInsertion(insertEnvironment, elements)
     editor.scrollingModel.scrollToCaret(ScrollType.RELATIVE)
     traceBlocking(InlineCompletionEventType.AfterInsert)
@@ -255,9 +245,6 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
     traceBlocking(InlineCompletionEventType.Hide(finishType, context.isCurrentlyDisplaying()))
     sessionManager.removeSession()
   }
-
-  // TODO extract EP
-  private fun isInlineCompletionSuppressedByPrompt(): Boolean = isInlinePromptShown(editor)
 
   private suspend fun invokeRequest(request: InlineCompletionRequest, session: InlineCompletionSession) {
     currentCoroutineContext().ensureActive()
@@ -601,9 +588,7 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
 
   // -----------------------------------
 
-  @TestOnly
   suspend fun awaitExecution() {
-    ThreadingAssertions.assertEventDispatchThread()
     executor.awaitActiveRequest()
   }
 

@@ -5,13 +5,13 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.diagnostic.telemetry.helpers.useWithScope
 import com.intellij.platform.diagnostic.telemetry.rt.context.TelemetryContext
+import com.intellij.platform.eel.provider.LocalEelDescriptor
+import com.intellij.platform.eel.provider.asEelPath
 import com.intellij.platform.util.progress.RawProgressReporter
 import kotlinx.coroutines.*
-import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.idea.maven.buildtool.MavenEventHandler
 import org.jetbrains.idea.maven.buildtool.MavenLogEventHandler
@@ -23,9 +23,9 @@ import org.jetbrains.idea.maven.project.MavenProject
 import org.jetbrains.idea.maven.project.MavenProjectsManager
 import org.jetbrains.idea.maven.telemetry.tracer
 import org.jetbrains.idea.maven.utils.MavenLog
-import org.jetbrains.idea.maven.utils.MavenProgressIndicator
 import java.io.File
 import java.io.Serializable
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.rmi.RemoteException
 import java.util.*
@@ -127,7 +127,10 @@ abstract class MavenEmbedderWrapper internal constructor(private val project: Pr
   }
 
   suspend fun evaluateEffectivePom(file: File, activeProfiles: Collection<String>, inactiveProfiles: Collection<String>): String? {
-    return getOrCreateWrappee().evaluateEffectivePom(file, ArrayList(activeProfiles), ArrayList(inactiveProfiles), ourToken)
+    return runLongRunningTask(
+      LongRunningEmbedderTask { embedder, taskInput ->
+        embedder.evaluateEffectivePom(taskInput, file, ArrayList(activeProfiles), ArrayList(inactiveProfiles), ourToken)
+      }, null, MavenLogEventHandler)
   }
 
   @Deprecated("use {@link MavenEmbedderWrapper#resolveArtifacts()}")
@@ -253,30 +256,16 @@ abstract class MavenEmbedderWrapper internal constructor(private val project: Pr
     return getOrCreateWrappee().readModel(file, ourToken)
   }
 
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("use suspend method")
-  fun executeGoal(
-    requests: Collection<MavenGoalExecutionRequest>,
-    goal: String,
-    progressIndicator: MavenProgressIndicator?,
-    console: MavenConsole,
-  ): List<MavenGoalExecutionResult> {
-    val progressReporter = object : RawProgressReporter {
-      override fun text(text: @NlsContexts.ProgressText String?) {
-        progressIndicator?.indicator?.text = text
-      }
-    }
-    return runBlockingMaybeCancellable { executeGoal(requests, goal, progressReporter, console) }
-  }
-
   suspend fun executeGoal(
     requests: Collection<MavenGoalExecutionRequest>,
     goal: String,
     progressReporter: RawProgressReporter,
     eventHandler: MavenEventHandler,
   ): List<MavenGoalExecutionResult> {
+    val processedRequests = requests.map { it.asNativeRequest() }
+      .toCollection(ArrayList<MavenGoalExecutionRequest>())
     return runLongRunningTask(
-      LongRunningEmbedderTask { embedder, taskInput -> embedder.executeGoal(taskInput, ArrayList(requests), goal, ourToken) },
+      LongRunningEmbedderTask { embedder, taskInput -> embedder.executeGoal(taskInput, processedRequests, goal, ourToken) },
       progressReporter, eventHandler)
   }
 
@@ -353,6 +342,7 @@ abstract class MavenEmbedderWrapper internal constructor(private val project: Pr
               processImportEvents(status)
               eventHandler.handleConsoleEvents(status.consoleEvents())
               eventHandler.handleDownloadEvents(status.downloadEvents())
+              handleDownloadArtifactEvents(status)
             }
             catch (e: Throwable) {
               if (isActive) {
@@ -383,6 +373,7 @@ abstract class MavenEmbedderWrapper internal constructor(private val project: Pr
             processImportEvents(status)
             eventHandler.handleConsoleEvents(status.consoleEvents())
             eventHandler.handleDownloadEvents(status.downloadEvents())
+            handleDownloadArtifactEvents(status)
             response.result
           }
         }
@@ -390,6 +381,14 @@ abstract class MavenEmbedderWrapper internal constructor(private val project: Pr
       finally {
         progressIndication.cancelAndJoin()
       }
+    }
+  }
+
+  private fun handleDownloadArtifactEvents(status: LongRunningTaskStatus) {
+    val artifactEvents = status.downloadArtifactEvents()
+    for (e in artifactEvents) {
+      ApplicationManager.getApplication().messageBus.syncPublisher(MavenServerConnector.DOWNLOAD_LISTENER_TOPIC).artifactDownloaded(
+        File(e.file))
     }
   }
 
@@ -424,5 +423,29 @@ abstract class MavenEmbedderWrapper internal constructor(private val project: Pr
 
   protected fun interface LongRunningEmbedderTask<R : Serializable> {
     fun run(embedder: MavenServerEmbedder, longRunningTaskInput: LongRunningTaskInput): MavenServerResponse<R>
+  }
+
+  /**
+   * The only difference is location of the pom file.
+   * In case of local execution, we don't have to map the pom path.
+   * In case of non-local execution (e.g. Docker, WSL) the pom path should be a local one.
+   */
+  private fun MavenGoalExecutionRequest.asNativeRequest(): MavenGoalExecutionRequest {
+    val eelPath = try {
+      val path = file().toPath()
+      path.asEelPath()
+    }
+    catch (_: InvalidPathException) {
+      return this
+    }
+    return when (eelPath.descriptor) {
+      LocalEelDescriptor -> this
+      else -> MavenGoalExecutionRequest(
+        File(eelPath.toString()),
+        profiles(),
+        selectedProjects(),
+        userProperties()
+      )
+    }
   }
 }

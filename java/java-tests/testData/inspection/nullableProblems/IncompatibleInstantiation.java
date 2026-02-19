@@ -2,15 +2,20 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.annotation.ElementType;
+import java.util.Comparator;
 import java.util.function.Supplier;
 
 @NullMarked
 class Main {
 
   public static void main(String[] args) {
-    Main.<<warning descr="Not-null type parameter 'T' cannot be instantiated with @Nullable type">@Nullable</warning> Object>fNonNullBound(() -> getNullableObject());
-    Main.<<warning descr="Not-null type parameter 'T' cannot be instantiated with @Nullable type">@Nullable</warning> Object>fNonNullBound(Main::getNullableObject);
+    Main.<<warning descr="Non-null type parameter 'T' cannot be instantiated with @Nullable type">@Nullable</warning> Object>fNonNullBound(() -> getNullableObject());
+    Main.<<warning descr="Non-null type parameter 'T' cannot be instantiated with @Nullable type">@Nullable</warning> Object>fNonNullBound(Main::getNullableObject);
 
+  }
+
+  Comparator<String> getComparator() {
+    return Comparator.<<warning descr="Non-null type parameter 'T' cannot be instantiated with @Nullable type">@Nullable</warning> String>naturalOrder();
   }
 
   static <T extends @Nullable Object> T fNullableBound(Supplier<T> supplier){
@@ -28,7 +33,7 @@ class Main {
   @NullableScope
   static class NullableScopeClass {
     void test() {
-      Main.<<warning descr="Not-null type parameter 'T' cannot be instantiated under @NullableScope">Object</warning>>fNonNullBound(Main::getNullableObject);
+      Main.<<warning descr="Non-null type parameter 'T' cannot be instantiated under @NullableScope">Object</warning>>fNonNullBound(Main::getNullableObject);
     }
   }
 }

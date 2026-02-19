@@ -4,6 +4,7 @@ package org.jetbrains.plugins.gitlab.mergerequest.diff
 import com.intellij.collaboration.async.computationStateFlow
 import com.intellij.collaboration.async.mapScoped
 import com.intellij.collaboration.ui.codereview.diff.DiffLineLocation
+import com.intellij.collaboration.ui.codereview.diff.DiscussionsViewOption
 import com.intellij.collaboration.ui.codereview.diff.model.CodeReviewDiffProcessorViewModel
 import com.intellij.collaboration.ui.codereview.diff.model.DiffViewerScrollRequest
 import com.intellij.collaboration.ui.codereview.diff.model.PreLoadingCodeReviewAsyncDiffViewModelDelegate
@@ -14,6 +15,7 @@ import com.intellij.collaboration.util.RefComparisonChange
 import com.intellij.collaboration.util.getOrNull
 import com.intellij.openapi.ListSelection
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.platform.util.coroutines.childScope
@@ -36,6 +38,9 @@ import org.jetbrains.plugins.gitlab.mergerequest.ui.review.GitLabMergeRequestRev
 import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.minutes
 
+/**
+ * A viewmodel for the merge request diff window capable of showing different file diffs
+ */
 @ApiStatus.Internal
 interface GitLabMergeRequestDiffViewModel : GitLabMergeRequestReviewViewModel, CodeReviewDiffProcessorViewModel<GitLabMergeRequestDiffChangeViewModel> {
   fun getViewModelFor(change: RefComparisonChange): Flow<GitLabMergeRequestDiffReviewViewModel?>
@@ -44,6 +49,8 @@ interface GitLabMergeRequestDiffViewModel : GitLabMergeRequestReviewViewModel, C
     val KEY: Key<GitLabMergeRequestDiffViewModel> = Key.create("GitLab.MergeRequest.Diff.ViewModel")
   }
 }
+
+private val LOG = logger<GitLabMergeRequestDiffProcessorViewModelImpl>()
 
 internal class GitLabMergeRequestDiffProcessorViewModelImpl(
   private val project: Project,
@@ -54,8 +61,10 @@ internal class GitLabMergeRequestDiffProcessorViewModelImpl(
   private val avatarIconsProvider: IconsProvider<GitLabUserDTO>,
 ) : GitLabMergeRequestDiffViewModel, GitLabMergeRequestReviewViewModelBase(
   parentCs.childScope("GitLab Merge Request Diff Review VM"),
-  currentUser, mergeRequest
+  currentUser, mergeRequest,
+  project.service<GitLabMergeRequestsPreferences>().diffReviewViewOption
 ) {
+  private val preferences = project.service<GitLabMergeRequestsPreferences>()
   private val changesFetchFlow = computationStateFlow(mergeRequest.changes, GitLabMergeRequestChanges::loadRevisionsAndParseChanges)
   private val changesSorter = project.service<GitLabMergeRequestsPreferences>().changesGroupingState
     .map {
@@ -80,6 +89,11 @@ internal class GitLabMergeRequestDiffProcessorViewModelImpl(
     showChange(changeVm, scrollRequest)
   }
 
+  override fun setDiscussionsViewOption(viewOption: DiscussionsViewOption) {
+    super.setDiscussionsViewOption(viewOption)
+    preferences.diffReviewViewOption = viewOption
+  }
+
   fun showChanges(changes: ListSelection<RefComparisonChange>, scrollLocation: DiffLineLocation? = null) =
     delegate.showChanges(changes, scrollLocation?.let(DiffViewerScrollRequest::toLine))
 
@@ -92,7 +106,16 @@ internal class GitLabMergeRequestDiffProcessorViewModelImpl(
       changesFetchFlow
         .mapNotNull { it.getOrNull() }
         .mapScoped { changes ->
-          changes.patchesByChange[change]?.let { createChangeVm(changes, change, it) }
+          val patchWithHistory = changes.patchesByChange[change]
+          if (patchWithHistory == null) {
+            LOG.warn("Could not find patch for change $change")
+            return@mapScoped null
+          }
+          if (patchWithHistory.patch.hunks.isEmpty()) {
+            LOG.warn("Empty patch for change $change")
+            return@mapScoped null
+          }
+          createChangeVm(changes, change, patchWithHistory)
         }.stateIn(cs, SharingStarted.WhileSubscribed(5.minutes, ZERO), null)
     }
 

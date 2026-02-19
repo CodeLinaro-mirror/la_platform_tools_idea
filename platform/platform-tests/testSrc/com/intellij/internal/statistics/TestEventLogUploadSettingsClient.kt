@@ -3,21 +3,34 @@ package com.intellij.internal.statistics
 
 import com.intellij.internal.statistic.eventLog.EventLogInternalApplicationInfo
 import com.intellij.internal.statistic.eventLog.connection.EventLogSettingsClient
+import com.intellij.internal.statistic.eventLog.connection.metadata.StatsBasicConnectionSettings
+import com.intellij.internal.statistic.eventLog.connection.metadata.StatsConnectionSettings
+import com.intellij.internal.statistic.eventLog.validator.storage.FusComponentProvider
 import com.jetbrains.fus.reporting.configuration.ConfigurationClientFactory
-import com.jetbrains.fus.reporting.model.http.StatsBasicConnectionSettings
-import com.jetbrains.fus.reporting.model.http.StatsConnectionSettings
+import com.jetbrains.fus.reporting.jvm.JvmHttpClient
+import com.jetbrains.fus.reporting.jvm.ProxyInfo
 import java.security.SecureRandom
+import java.time.Duration
 import javax.net.ssl.SSLContext
 
 const val DEFAULT_RECORDER_ID = "FUS"
 
 internal class TestEventLogUploadSettingsClient(configurationUrl: String) : EventLogSettingsClient() {
   override val applicationInfo = TestEventLogApplicationInfo()
-  override val configurationClient = ConfigurationClientFactory.Companion.createTest(
+  override val configurationClient = ConfigurationClientFactory.createTest(
     applicationInfo.productCode,
     applicationInfo.productVersion,
-    applicationInfo.connectionSettings,
-    configurationUrl = configurationUrl
+    httpClient = JvmHttpClient(
+      proxyProvider = { configurationUrl ->
+        ProxyInfo(applicationInfo.connectionSettings.provideProxy(configurationUrl).proxy)
+      },
+      sslContextProvider = { applicationInfo.connectionSettings.provideSSLContext() },
+      extraHeadersProvider = { applicationInfo.connectionSettings.provideExtraHeaders() },
+      userAgent = applicationInfo.connectionSettings.provideUserAgent(),
+      timeout = Duration.ofSeconds(1)
+    ),
+    configurationUrl = configurationUrl,
+    serializer = FusComponentProvider.FusJacksonSerializer()
   )
   override val recorderId: String = DEFAULT_RECORDER_ID
 }

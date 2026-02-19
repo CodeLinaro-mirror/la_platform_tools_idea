@@ -57,7 +57,7 @@ public abstract class BaseEventLogMetadataPersistence {
     return getMetadataConfigRoot(DEPRECATED_FUS_METADATA_DIR);
   }
 
-  private static @NotNull Path getMetadataByDir(@NotNull String dir, @NotNull String recorderId, @NotNull String fileName) throws IOException {
+  protected static @NotNull Path getMetadataByDir(@NotNull String dir, @NotNull String recorderId, @NotNull String fileName) throws IOException {
     Path metadataDir = getMetadataConfigRoot(dir);
     return metadataDir
       .resolve(StringUtil.toLowerCase(recorderId))

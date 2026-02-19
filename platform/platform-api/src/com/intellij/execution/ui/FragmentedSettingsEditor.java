@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.ui;
 
 import com.intellij.openapi.options.CompositeSettingsEditor;
@@ -18,6 +18,16 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * The fragmented settings editor built of reusable fragments ({@link SettingsEditorFragment}).
+ * <p>
+ * Only essential fragments are displayed when a new run configuration is created from a template.
+ * This reduces visual clutter for the user.
+ * <p>
+ * Individual fragments can be shared between different run configuration editors.
+ *
+ * @see <a href="https://plugins.jetbrains.com/docs/intellij/run-configurations.html#fragmented-settings-editor">Fragmented Settings Editor (IntelliJ Platform Docs)</a>
+ */
 public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettings> extends CompositeSettingsEditor<Settings> {
 
   private final NotNullLazyValue<Collection<SettingsEditorFragment<Settings, ?>>> myFragments =
@@ -39,7 +49,7 @@ public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettin
 
   protected abstract Collection<SettingsEditorFragment<Settings, ?>> createFragments();
 
-  protected final Collection<SettingsEditorFragment<Settings, ?>> getFragments() {
+  protected final @NotNull Collection<SettingsEditorFragment<Settings, ?>> getFragments() {
     return myFragments.getValue();
   }
 
@@ -55,6 +65,7 @@ public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettin
       FragmentedSettings.Option option = ContainerUtil.find(options, o -> fragment.getId().equals(o.getName()));
       fragment.setSelected(option == null ? fragment.isInitiallyVisible(settings) : option.getVisible());
     }
+    updateFragmentVisibility();
   }
 
   @Override
@@ -84,6 +95,18 @@ public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettin
       }
     }
     settings.setSelectedOptions(options);
+    updateFragmentVisibility();
+  }
+
+  private void updateFragmentVisibility() {
+    getAllFragments().forEach(f -> {
+      var shouldBeVisible = f.isAvailable() && f.isSelected();
+      f.component().setVisible(shouldBeVisible);
+      var hintComponent = f.getHintComponent();
+      if (hintComponent != null) {
+        hintComponent.setVisible(shouldBeVisible);
+      }
+    });
   }
 
   @Override
@@ -117,7 +140,7 @@ public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettin
     }
   }
 
-  private static void installFragmentsAligner(SettingsEditor<?> fragment) {
+  private static void installFragmentsAligner(@NotNull SettingsEditor<?> fragment) {
     JComponent component = fragment.getComponent();
     for (Component childComponent : component.getComponents()) {
       if (childComponent instanceof PanelWithAnchor) {
@@ -128,7 +151,7 @@ public abstract class FragmentedSettingsEditor<Settings extends FragmentedSettin
     }
   }
 
-  private static void alignPanels(JComponent container) {
+  private static void alignPanels(@NotNull JComponent container) {
     List<PanelWithAnchor> panels =
       Arrays.stream(container.getComponents())
         .filter(component -> component.isVisible())

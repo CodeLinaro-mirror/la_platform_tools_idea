@@ -350,10 +350,10 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
   public void testLambdaVariousArgs() {
     Map<String, PsiElement> marks = loadTest(4);
 
-    feignCtrlP(marks.get("<arg1>").getTextOffset()).check("x, y=1, *args, **kwargs", new String[]{"x, "});
-    feignCtrlP(marks.get("<arg2>").getTextOffset()).check("x, y=1, *args, **kwargs", new String[]{"y=1, "});
-    feignCtrlP(marks.get("<arg3>").getTextOffset()).check("x, y=1, *args, **kwargs", new String[]{"*args, "});
-    feignCtrlP(marks.get("<arg4>").getTextOffset()).check("x, y=1, *args, **kwargs", new String[]{"**kwargs"});
+    feignCtrlP(marks.get("<arg1>").getTextOffset()).check("x, y: int = 1, *args, **kwargs", new String[]{"x, "});
+    feignCtrlP(marks.get("<arg2>").getTextOffset()).check("x, y: int = 1, *args, **kwargs", new String[]{"y: int = 1, "});
+    feignCtrlP(marks.get("<arg3>").getTextOffset()).check("x, y: int = 1, *args, **kwargs", new String[]{"*args, "});
+    feignCtrlP(marks.get("<arg4>").getTextOffset()).check("x, y: int = 1, *args, **kwargs", new String[]{"**kwargs"});
   }
 
   public void testTupleAndNamedArg1() {
@@ -990,9 +990,9 @@ public class PyParameterInfoTest extends LightMarkedTestCase {
   public void testInitializingTypeVar() {
     final int offset = loadTest(1).get("<arg1>").getTextOffset();
 
-    feignCtrlP(offset).check(Arrays.asList("self: TypeVar, name: str, *constraints, bound: Any | None = None, contravariant: bool = False, covariant: bool = False, infer_variance: bool = False, default=..."),
+    feignCtrlP(offset).check(Arrays.asList("cls: type[TypeVar], name: str, *constraints, bound: Any | None = None, contravariant: bool = False, covariant: bool = False, infer_variance: bool = False, default=..."),
                              Arrays.asList(new String[]{"name: str, "}, new String[]{"name: str, "}),
-                             Arrays.asList(new String[]{"self: TypeVar, "}, new String[]{"self: TypeVar, "}));
+                             Arrays.asList(new String[]{"cls: type[TypeVar], "}, new String[]{"cls: type[TypeVar], "}));
   }
 
   // PY-36008

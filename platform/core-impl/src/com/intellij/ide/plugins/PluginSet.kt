@@ -3,7 +3,7 @@
 package com.intellij.ide.plugins
 
 import com.intellij.openapi.extensions.PluginId
-import com.intellij.util.Java11Shim
+import com.intellij.util.containers.Java11Shim
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import java.util.*
@@ -14,9 +14,10 @@ class PluginSet internal constructor(
   private val sortedModulesWithDependencies: ModulesWithDependencies,
   @JvmField val allPlugins: Set<PluginMainDescriptor>,
   @JvmField val enabledPlugins: List<PluginMainDescriptor>,
-  private val enabledModuleMap: Map<String, PluginModuleDescriptor>,
+  private val enabledModuleMap: Map<PluginModuleId, ContentModuleDescriptor>,
   private val enabledPluginAndV1ModuleMap: Map<PluginId, PluginModuleDescriptor>,
   private val enabledModules: List<PluginModuleDescriptor>,
+  private val topologicalComparator: Comparator<PluginModuleDescriptor>,
 ) {
   /**
    * You must not use this method before [ClassLoaderConfigurator.configure].
@@ -27,8 +28,10 @@ class PluginSet internal constructor(
     return sortedModulesWithDependencies.directDependencies.getOrDefault(moduleDescriptor, Collections.emptyList())
   }
 
+  fun getModuleTopologicalComparator(): Comparator<PluginModuleDescriptor> = topologicalComparator
+
   @TestOnly
-  fun getUnsortedEnabledModules(): Collection<PluginModuleDescriptor> = Java11Shim.INSTANCE.copyOf(enabledModuleMap.values)
+  fun getUnsortedEnabledModules(): Collection<ContentModuleDescriptor> = Java11Shim.INSTANCE.copyOf(enabledModuleMap.values)
 
   fun isPluginInstalled(id: PluginId): Boolean = findInstalledPlugin(id) != null
 
@@ -38,9 +41,9 @@ class PluginSet internal constructor(
 
   fun findEnabledPlugin(id: PluginId): PluginModuleDescriptor? = enabledPluginAndV1ModuleMap.get(id)
 
-  fun findEnabledModule(id: String): PluginModuleDescriptor? = enabledModuleMap.get(id)
+  fun findEnabledModule(moduleId: PluginModuleId): ContentModuleDescriptor? = enabledModuleMap.get(moduleId)
 
-  fun isModuleEnabled(id: String): Boolean = enabledModuleMap.containsKey(id)
+  fun isModuleEnabled(id: PluginModuleId): Boolean = enabledModuleMap.containsKey(id)
 
   fun withPlugin(plugin: PluginMainDescriptor): PluginSetBuilder {
     // in tests or on plugin installation it is not present in a plugin list, may exist on plugin update, though
@@ -84,16 +87,16 @@ class PluginSet internal constructor(
   /**
    * Returns a map from content module ID (name) to the corresponding descriptor from all plugins, not only enabled.
    */
-  fun buildContentModuleIdMap(): Map<String, ContentModuleDescriptor> {
-    val result = HashMap<String, ContentModuleDescriptor>()
+  fun buildContentModuleIdMap(): Map<PluginModuleId, ContentModuleDescriptor> {
+    val result = HashMap<PluginModuleId, ContentModuleDescriptor>()
     val enabledPluginIds = enabledPlugins.mapTo(HashSet()) { it.pluginId }
     for (plugin in allPlugins) {
       if (plugin.pluginId !in enabledPluginIds) {
-        plugin.contentModules.associateByTo(result, ContentModuleDescriptor::moduleName)
+        plugin.contentModules.associateByTo(result, ContentModuleDescriptor::moduleId)
       }
     }
     for (plugin in enabledPlugins) {
-      plugin.contentModules.associateByTo(result, ContentModuleDescriptor::moduleName)
+      plugin.contentModules.associateByTo(result, ContentModuleDescriptor::moduleId)
     }
     return result
   }

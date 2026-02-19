@@ -7,10 +7,9 @@ import com.intellij.ide.SystemDock
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ex.ActionUtil
-import com.intellij.openapi.application.UiDispatcherKind
-import com.intellij.openapi.application.ui
+import com.intellij.openapi.application.UiWithModelAccess
 import com.intellij.openapi.components.serviceAsync
-import com.intellij.openapi.diagnostic.getOrLogException
+import com.intellij.openapi.diagnostic.getOrHandleException
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.wm.impl.headertoolbar.ProjectToolbarWidgetPresentable
@@ -18,34 +17,45 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.awt.*
 
-internal suspend fun createMacDelegate(): SystemDock {
+internal suspend fun createMacDelegate(): SystemDock? {
   // todo get rid of UI dispatcher here
-  val recentProjectsMenu = withContext(Dispatchers.ui(UiDispatcherKind.RELAX)) {
+  return withContext(Dispatchers.UiWithModelAccess) {
     val dockMenu = PopupMenu("DockMenu")
-    val recentProjectsMenu = Menu("Recent Projects")
+
     runCatching {
-      dockMenu.add(recentProjectsMenu)
-      ExtensionPointName<MacDockMenuActions>("com.intellij.mac.dockMenuActions").forEachExtensionSafe { actions ->
-        actions.createMenuItem()?.let {
-          dockMenu.add(it)
-        }
-      }
+      val recentProjectsMenuItem = initRecentProjectsMenuItem(dockMenu)
+      initAdditionalItems(dockMenu)
       if (Taskbar.isTaskbarSupported() /* not supported in CWM/Projector environment */) {
         Taskbar.getTaskbar().menu = dockMenu
       }
-    }.getOrLogException { logger<MacDockDelegate>() }
-    recentProjectsMenu
+      recentProjectsMenuItem?.let { MacDockDelegate(it) }
+    }.getOrHandleException { logger<MacDockDelegate>() }
   }
-  return MacDockDelegate(recentProjectsMenu)
+}
+
+private suspend fun initRecentProjectsMenuItem(dockMenu: PopupMenu): Menu? {
+  val recentProjectsInDockSupported = serviceAsync<RecentProjectListActionProvider>().recentProjectsInDocSupported()
+  if (!recentProjectsInDockSupported) return null
+  val recentProjectsMenu = Menu("Recent Projects")
+  dockMenu.add(recentProjectsMenu)
+  return recentProjectsMenu
+}
+
+private fun initAdditionalItems(dockMenu: PopupMenu) {
+  ExtensionPointName<MacDockMenuActions>("com.intellij.mac.dockMenuActions").forEachExtensionSafe { actions ->
+    actions.createMenuItem()?.let {
+      dockMenu.add(it)
+    }
+  }
 }
 
 private class MacDockDelegate(private val recentProjectsMenu: Menu) : SystemDock {
   override suspend fun updateRecentProjectsMenu() {
     val projectListActionProvider = serviceAsync<RecentProjectListActionProvider>()
     // todo get rid of UI dispatcher here
-    withContext(Dispatchers.ui(UiDispatcherKind.RELAX)) {
+    withContext(Dispatchers.UiWithModelAccess) {
       recentProjectsMenu.removeAll()
-      for (action in projectListActionProvider.getActions()) {
+      for (action in projectListActionProvider.getActionsWithoutGroups()) {
         if (action !is ProjectToolbarWidgetPresentable) {
           continue
         }
