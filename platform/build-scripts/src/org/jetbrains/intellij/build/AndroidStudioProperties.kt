@@ -22,6 +22,7 @@ import org.jetbrains.intellij.build.impl.PlatformJarNames.TEST_FRAMEWORK_JAR
 import org.jetbrains.intellij.build.impl.PluginLayout
 import org.jetbrains.intellij.build.impl.PluginLayout.Companion.pluginAuto
 import org.jetbrains.intellij.build.impl.getPluginLayoutsByJpsModuleNames
+import org.jetbrains.intellij.build.kotlin.KotlinBinaries
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.function.BiPredicate
@@ -156,7 +157,7 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
     productLayout.prepareCustomPluginRepositoryForPublishedPlugins = false
     productLayout.buildAllCompatiblePlugins = false
 
-    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removeAll { it.mainModule !in bundledPlugins }
+    val inheritedPluginLayouts = COMMUNITY_REPOSITORY_PLUGINS.removeAll { it.mainModule !in bundledPlugins || it.mainModule == "intellij.performanceTesting" }
     productLayout.pluginLayouts = inheritedPluginLayouts.addAll(listOf(
       JavaPluginLayout.javaPlugin(),
       CommunityRepositoryModules.groovyPlugin(),
@@ -176,6 +177,9 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
       pluginAuto("intellij.cidr.base") { spec ->
         copyCidrLicense(spec)
       },
+      pluginAuto("intellij.performanceTesting") { spec ->
+        spec.withProjectLibrary("assertJ")
+      }
     ))
 
     // Fill in the remaining plugin layouts (including "trivial-layout" plugins)
@@ -272,6 +276,16 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
 
         GameTools(context, OsFamily.LINUX, arch).copyAdditionalFiles(targetDir.resolve("bin"))
       }
+
+      override fun generateExecutableFilesPatterns(
+        context: BuildContext,
+        includeRuntime: Boolean,
+        arch: JvmArchitecture,
+        targetLibcImpl: LibcImpl,
+      ): Sequence<String> =
+        super.generateExecutableFilesPatterns(context, includeRuntime, arch, targetLibcImpl)
+          .plus(KotlinBinaries.kotlinCompilerExecutables)
+          .filterNot { it == "plugins/**/*.sh" }
     }
   }
 
@@ -299,6 +313,11 @@ class AndroidStudioProperties(home: Path) : BaseIdeaProperties() {
         .includeAll()
         .copyToDir(targetDir.resolve("plugins/${clangdPluginDirName()}/bin/clang/mac/$archDir/bin"))
     }
+
+    override fun generateExecutableFilesPatterns(context: BuildContext, includeRuntime: Boolean, arch: JvmArchitecture): Sequence<String> =
+      super.generateExecutableFilesPatterns(context, includeRuntime, arch)
+        .plus(KotlinBinaries.kotlinCompilerExecutables)
+        .filterNot { it == "plugins/**/*.sh" }
   }
 
   override fun createMacCustomizer(projectHome: String): MacDistributionCustomizer {
