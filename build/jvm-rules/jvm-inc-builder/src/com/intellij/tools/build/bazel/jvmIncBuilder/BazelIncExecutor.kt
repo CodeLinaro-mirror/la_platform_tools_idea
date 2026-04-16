@@ -32,7 +32,7 @@ internal class BazelIncExecutor : WorkRequestExecutor {
       scope.coroutineContext.job.invokeOnCompletion { globalSpan.end() }
 
       // configure logging for the code using IJ Platform logging API
-      com.intellij.openapi.diagnostic.Logger.setFactory { IJPrintStreamLogger(category = it, stream = System.err, span = globalSpan) }
+      org.jetbrains.kotlin.com.intellij.openapi.diagnostic.Logger.setFactory { IJPrintStreamLogger(category = it, stream = System.err, span = globalSpan) }
 
       // configure logging for the code using Java SDK logging API
       val rootLogger = java.util.logging.Logger.getLogger("")
@@ -46,8 +46,10 @@ internal class BazelIncExecutor : WorkRequestExecutor {
     private fun configureGlobals() {
       ExternalRefCollectorCompilerToolExtension.enable()
       // TMH assertions
+      /* Android Studio (b/493960803): disable threading assertions for now, matching the previous behavior in the JPS build.
       System.setProperty(ThreadingModelInstrumenter.INSTRUMENT_ANNOTATIONS_PROPERTY, "true")
       System.setProperty(ThreadingModelInstrumenter.GENERATE_LINE_NUMBERS_PROPERTY, "true")
+      */
     }
 
     @JvmStatic
