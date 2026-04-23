@@ -85,12 +85,9 @@ class AndroidStudioProperties : ProductProperties() {
       "-XX:FlightRecorderOptions=stackdepth=256",
       // Required by instantapps-api.jar (ag/I55803b347).
       "--add-opens=java.base/sun.net.www.protocol.https=ALL-UNNAMED",
-
+      // Redirect startup errors to our custom handler (b/512488877).
       "-Dij.startup.error.handler.class=com.intellij.platform.ide.bootstrap.StudioStartupErrorHandler",
-      // Workaround for C2 crashes b/377324522
-      "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::simpleType",
-      "-XX:CompileCommand=exclude,org.jetbrains.kotlin.serialization.deserialization.TypeDeserializer::toAttributes",
-      )
+    )
 
     // From JetBrainsProductProperties (to place native libs at the correct locations in the distro):
     presignedNativeLibs = mapOf(
