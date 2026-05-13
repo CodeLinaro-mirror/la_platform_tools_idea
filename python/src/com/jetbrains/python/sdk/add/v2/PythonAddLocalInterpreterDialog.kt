@@ -46,13 +46,13 @@ internal class PythonAddLocalInterpreterDialog(private val dialogPresenter: Pyth
   override fun doOKAction() {
     super.doOKAction()
     val addEnvironment = mainPanel.currentSdkManager
-    PyPackageCoroutine.launch(dialogPresenter.moduleOrProject.project, ModalityState.current().asContextElement()) {
+    PyPackageCoroutine.launch(dialogPresenter.moduleOrProject.project, ModalityState.stateForComponent(owner).asContextElement()) {
       dialogPresenter.okClicked(addEnvironment)
     }
   }
 
   override fun createCenterPanel(): JComponent {
-    val errorSink = ShowingMessageErrorSync
+    val errorSink = ShowingMessageErrorSync.withProject(dialogPresenter.moduleOrProject.project)
 
     val rootPanel = panel {
       model = PythonLocalAddInterpreterModel(ProjectPathFlows.create(basePath), FileSystem.Eel(eelApi = localEel))
@@ -67,7 +67,7 @@ internal class PythonAddLocalInterpreterDialog(private val dialogPresenter: Pyth
       mainPanel.setupUI(this, WHEN_PROPERTY_CHANGED(AtomicProperty(basePath)))
     }
 
-    rootPanel.launchOnShow("PythonAddLocalInterpreterDialog launchOnShow", TraceContext(PyBundle.message("tracecontext.add.local.python.sdk.dialog"), null)) {
+    rootPanel.launchOnShow("PythonAddLocalInterpreterDialog launchOnShow", TraceContext(PyBundle.message("trace.context.add.local.python.sdk.dialog"), null)) {
       supervisorScope {
         model.initialize(this@supervisorScope)
         mainPanel.onShown(this@supervisorScope)

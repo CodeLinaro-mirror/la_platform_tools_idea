@@ -4,16 +4,22 @@
 package com.intellij.java.workspace.entities
 
 import com.intellij.platform.workspace.jps.entities.LibraryId
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 
 @GeneratedCodeApiVersion(3)
-interface LibraryFilesPackagingElementEntityBuilder : WorkspaceEntityBuilder<LibraryFilesPackagingElementEntity>, PackagingElementEntity.Builder<LibraryFilesPackagingElementEntity> {
+interface LibraryFilesPackagingElementEntityBuilder : WorkspaceEntityBuilder<LibraryFilesPackagingElementEntity>,
+                                                      PackagingElementEntity.Builder<LibraryFilesPackagingElementEntity> {
   override var entitySource: EntitySource
   override var parentEntity: CompositePackagingElementEntityBuilder<out CompositePackagingElementEntity>?
   var library: LibraryId?
 }
 
-internal object LibraryFilesPackagingElementEntityType : EntityType<LibraryFilesPackagingElementEntity, LibraryFilesPackagingElementEntityBuilder>() {
+internal object LibraryFilesPackagingElementEntityType :
+  EntityType<LibraryFilesPackagingElementEntity, LibraryFilesPackagingElementEntityBuilder>() {
   override val entityClass: Class<LibraryFilesPackagingElementEntity> get() = LibraryFilesPackagingElementEntity::class.java
   operator fun invoke(
     entitySource: EntitySource,

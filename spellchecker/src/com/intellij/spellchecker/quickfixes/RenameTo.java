@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.spellchecker.quickfixes;
 
 import com.intellij.codeInsight.intention.EventTrackingIntentionAction;
@@ -11,12 +11,24 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiNameIdentifierOwner;
+import com.intellij.psi.PsiNamedElement;
+import com.intellij.psi.PsiNamedElementWithCustomPresentation;
+import com.intellij.psi.SmartPointerManager;
+import com.intellij.psi.SmartPsiElementPointer;
+import com.intellij.psi.SmartPsiFileRange;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.refactoring.RefactoringActionHandler;
 import com.intellij.refactoring.RefactoringActionHandlerFactory;
-import com.intellij.refactoring.rename.*;
+import com.intellij.refactoring.rename.PsiElementRenameHandler;
+import com.intellij.refactoring.rename.RenameHandler;
+import com.intellij.refactoring.rename.RenameHandlerRegistry;
+import com.intellij.refactoring.rename.RenameProcessor;
+import com.intellij.refactoring.rename.RenameUtil;
 import com.intellij.spellchecker.SpellCheckerManager;
 import com.intellij.spellchecker.statistics.SpellcheckerActionStatistics;
 import com.intellij.spellchecker.statistics.SpellcheckerRateTracker;
@@ -26,23 +38,25 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
+import javax.swing.Icon;
 import java.util.ArrayList;
 import java.util.List;
 
 public class RenameTo extends IntentionAndQuickFixAction implements Iconable, EventTrackingIntentionAction {
 
   private final String typo;
-  private final TextRange range;
+  private final SmartPsiFileRange rangeRelativeToFile;
   private final SmartPsiElementPointer<PsiElement> pointer;
   private final SpellcheckerRateTracker tracker;
   private volatile List<String> suggestions;
   private SmartPsiElementPointer<PsiElement> namedPointer;
 
   public RenameTo(String typo, TextRange range, PsiElement psi, SpellcheckerRateTracker tracker) {
+    PsiFile file = psi.getContainingFile();
+    this.rangeRelativeToFile = SmartPointerManager.getInstance(psi.getProject())
+      .createSmartPsiFileRangePointer(file, range.shiftRight(psi.getTextRange().getStartOffset()));
     this.typo = typo;
-    this.range = range;
-    this.pointer = SmartPointerManager.getInstance(psi.getProject()).createSmartPsiElementPointer(psi, psi.getContainingFile());
+    this.pointer = SmartPointerManager.getInstance(psi.getProject()).createSmartPsiElementPointer(psi, file);
     this.tracker = tracker;
   }
 
@@ -52,9 +66,9 @@ public class RenameTo extends IntentionAndQuickFixAction implements Iconable, Ev
     if (element == null) return false;
     var presentationName = getPresentationName(element);
     if (presentationName == null) return false;
-    generateSuggestions(presentationName.getSecond(), element);
+    generateSuggestions(presentationName.getSecond(), presentationName.getFirst());
     this.namedPointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(presentationName.getFirst());
-    if (suggestions.isEmpty()) return false;
+    if (suggestions == null || suggestions.isEmpty()) return false;
     return true;
   }
 
@@ -131,16 +145,30 @@ public class RenameTo extends IntentionAndQuickFixAction implements Iconable, Ev
     return handler;
   }
 
-  private void generateSuggestions(String name, PsiElement element) {
+  private void generateSuggestions(String name, PsiNamedElement namedElement) {
     if (suggestions == null) {
-      TextRange range = this.range.shiftLeft(element.getText().indexOf(name));
+      TextRange range = getNameRelativeRange(namedElement);
+      if (range == null) return;
       this.suggestions = SpellCheckerManager.getInstance(pointer.getProject()).getSuggestions(typo)
         .stream()
         .map(suggestion -> range.replace(name, suggestion))
-        .filter(suggestion -> RenameUtil.isValidName(element.getProject(), element, suggestion))
+        .filter(suggestion -> RenameUtil.isValidName(namedElement.getProject(), namedElement, suggestion))
         .distinct()
         .toList();
     }
+  }
+
+  private @Nullable TextRange getNameRelativeRange(PsiNamedElement namedElement) {
+    Segment rangeRelativeToFile = this.rangeRelativeToFile.getRange();
+    if (rangeRelativeToFile == null) return null;
+
+    return namedElement instanceof PsiNameIdentifierOwner owner ?
+           adjustRangeRelativeToElement(owner.getNameIdentifier(), rangeRelativeToFile) :
+           adjustRangeRelativeToElement(pointer.getElement(), rangeRelativeToFile);
+  }
+
+  private static @Nullable TextRange adjustRangeRelativeToElement(PsiElement element, Segment rangeRelativeToFile) {
+    return element != null ? TextRange.create(rangeRelativeToFile).shiftLeft(element.getTextRange().getStartOffset()) : null;
   }
 
   private void runRenamer(PsiElement element, String suggestion) {

@@ -2,7 +2,7 @@ package com.intellij.terminal.frontend.view.impl
 
 import com.intellij.codeInsight.highlighting.BackgroundHighlightingUtil
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.UiWithModelAccess
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
@@ -26,7 +26,12 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.terminal.TerminalFontSettingsListener
 import org.jetbrains.plugins.terminal.TerminalFontSettingsService
 import org.jetbrains.plugins.terminal.TerminalFontSizeProviderImpl
-import org.jetbrains.plugins.terminal.block.ui.*
+import org.jetbrains.plugins.terminal.block.ui.ChangeTerminalFontSizeStrategy
+import org.jetbrains.plugins.terminal.block.ui.TerminalUi
+import org.jetbrains.plugins.terminal.block.ui.TerminalUiUtils
+import org.jetbrains.plugins.terminal.block.ui.VerticalSpaceInlayRenderer
+import org.jetbrains.plugins.terminal.block.ui.applyFontSettings
+import org.jetbrains.plugins.terminal.block.ui.setTerminalFontSize
 import org.jetbrains.plugins.terminal.block.util.TerminalDataContextUtils
 import java.awt.event.HierarchyEvent
 import javax.swing.JScrollPane
@@ -44,7 +49,6 @@ object TerminalEditorFactory {
     val editor = createEditor(document, project, settings, coroutineScope)
     editor.putUserData(TerminalDataContextUtils.IS_OUTPUT_MODEL_EDITOR_KEY, true)
     addTopAndBottomInsets(editor)
-    configureSoftWraps(editor)
 
     BackgroundHighlightingUtil.disableBackgroundHighlightingForeverIn(editor)
     TextEditorProvider.putTextEditor(editor, TerminalOutputTextEditor(editor))
@@ -60,9 +64,6 @@ object TerminalEditorFactory {
     val editor = createEditor(document, project, settings, coroutineScope)
     editor.putUserData(TerminalDataContextUtils.IS_ALTERNATE_BUFFER_MODEL_EDITOR_KEY, true)
 
-    // Soft wraps are not needed in the alternate buffer editor because it's content is fully refreshed on resize.
-    // So, soft wraps will only create additional noise.
-    editor.settings.isUseSoftWraps = false
     editor.scrollPane.verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_NEVER
     editor.scrollPane.horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_NEVER
     return editor
@@ -115,9 +116,10 @@ object TerminalEditorFactory {
     editor.settings.isBlockCursor = false // we paint our own cursor, but this setting affects mouse selection subtly (IJPL-190533)
     editor.contentComponent.focusTraversalKeysEnabled = false
     editor.contextMenuGroupId = "Terminal.ReworkedTerminalContextMenu"
+    configureSoftWraps(editor)
     CopyOnSelectionHandler.install(editor, settings)
 
-    coroutineScope.awaitCancellationAndInvoke(Dispatchers.UiWithModelAccess) {
+    coroutineScope.awaitCancellationAndInvoke(Dispatchers.EDT) {
       // Check two things:
       // 1. If it is already disposed by the platform logic (for example, in case of project closing).
       // 2. Do not dispose if it is still showing because then it will be painted green.

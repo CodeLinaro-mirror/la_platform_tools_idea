@@ -19,8 +19,6 @@ import com.jetbrains.python.PyToolUIInfo
 import com.jetbrains.python.PythonInfo
 import com.jetbrains.python.TraceContext
 import com.jetbrains.python.errorProcessing.PyResult
-import com.jetbrains.python.errorProcessing.emit
-import com.jetbrains.python.getOrNull
 import com.jetbrains.python.newProjectWizard.projectPath.ProjectPathFlows
 import com.jetbrains.python.sdk.PySdkToInstall
 import com.jetbrains.python.sdk.add.v2.conda.CondaViewModel
@@ -29,10 +27,24 @@ import com.jetbrains.python.sdk.add.v2.pipenv.PipenvViewModel
 import com.jetbrains.python.sdk.add.v2.poetry.PoetryViewModel
 import com.jetbrains.python.sdk.add.v2.uv.UvViewModel
 import com.jetbrains.python.sdk.add.v2.venv.VenvViewModel
-import com.jetbrains.python.sdk.basePath
+import com.jetbrains.python.sdk.baseDir
 import com.jetbrains.python.target.ui.TargetPanelExtension
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.TestOnly
 import java.nio.file.Path
@@ -54,32 +66,47 @@ abstract class PythonAddInterpreterModel<P : PathHolder>(
   open val state: AddInterpreterState<P> = AddInterpreterState(propertyGraph)
 
   val condaViewModel: CondaViewModel<P> = CondaViewModel(fileSystem, propertyGraph, projectPathFlows)
-  val uvViewModel: UvViewModel<P> = UvViewModel(fileSystem, propertyGraph)
+  val uvViewModel: UvViewModel<P> = UvViewModel(fileSystem, propertyGraph, projectPathFlows)
   val pipenvViewModel: PipenvViewModel<P> = PipenvViewModel(fileSystem, propertyGraph)
   val poetryViewModel: PoetryViewModel<P> = PoetryViewModel(fileSystem, propertyGraph)
   val hatchViewModel: HatchViewModel<P> = HatchViewModel(fileSystem, propertyGraph, projectPathFlows)
   val venvViewModel: VenvViewModel<P> = VenvViewModel(fileSystem, propertyGraph, projectPathFlows)
 
   internal val knownInterpreters: MutableStateFlow<List<PythonSelectableInterpreter<P>>?> = MutableStateFlow(null)
-  private val _detectedInterpreters: MutableStateFlow<List<DetectedSelectableInterpreter<P>>?> = MutableStateFlow(null)
-  val detectedInterpreters: StateFlow<List<DetectedSelectableInterpreter<P>>?> = _detectedInterpreters
+  private val detectedInterpretersUnfiltered: MutableStateFlow<List<DetectedSelectableInterpreter<P>>?> = MutableStateFlow(null)
+  lateinit var detectedInterpreters: StateFlow<List<DetectedSelectableInterpreter<P>>?>
   val manuallyAddedInterpreters: MutableStateFlow<List<ManuallyAddedSelectableInterpreter<P>>> = MutableStateFlow(emptyList())
   private var installable: List<InstallableSelectableInterpreter<P>> = emptyList()
   lateinit var allInterpreters: StateFlow<List<PythonSelectableInterpreter<P>>?>
   lateinit var baseInterpreters: StateFlow<List<PythonSelectableInterpreter<P>>?>
 
+  @TestOnly
+  @ApiStatus.Internal
+  fun addKnown(known: PythonSelectableInterpreter<P>) {
+    knownInterpreters.value?.let { existing ->
+      knownInterpreters.value = existing + known
+    }
+  }
 
   @TestOnly
   @ApiStatus.Internal
   fun addDetected(detected: DetectedSelectableInterpreter<P>) {
-    _detectedInterpreters.value?.let { existing ->
-      _detectedInterpreters.value = existing + detected
+    detectedInterpretersUnfiltered.value?.let { existing ->
+      detectedInterpretersUnfiltered.value = existing + detected
     }
   }
 
   // If the project is provided, sdks associated with it will be kept in the list of interpreters. If not, then they will be filtered out.
   open fun initialize(scope: CoroutineScope) {
     listOf(condaViewModel, uvViewModel, pipenvViewModel, poetryViewModel, hatchViewModel, venvViewModel).forEach { it.initialize(scope) }
+
+    this.detectedInterpreters = combine(
+      knownInterpreters,
+      detectedInterpretersUnfiltered,
+    ) { known, unfiltered ->
+      val existingSdkPaths = known?.map { it.homePath }?.toSet() ?: return@combine null
+      unfiltered?.filterNot { it.homePath in existingSdkPaths }
+    }.stateIn(scope, SharingStarted.Eagerly, null)
 
     merge(
       projectPathFlows.projectPathWithDefault,
@@ -92,12 +119,13 @@ abstract class PythonAddInterpreterModel<P : PathHolder>(
       modificationCounter.updateAndGet { it + 1 }
     }.launchIn(scope + Dispatchers.EDT)
 
-    scope.launch(TraceContext(message("tracecontext.loading.interpreter.list"), scope) + Dispatchers.EDT) {
+    scope.launch(TraceContext(message("trace.context.loading.interpreter.list"), scope) + Dispatchers.EDT) {
       installable = fileSystem.getInstallableInterpreters()
       val projectPathPrefix = projectPathFlows.projectPathWithDefault.first()
       val existingSelectableInterpreters = fileSystem.getExistingSelectableInterpreters(projectPathPrefix)
       knownInterpreters.value = existingSelectableInterpreters
-      _detectedInterpreters.value = fileSystem.getDetectedSelectableInterpreters(existingSelectableInterpreters)
+      val detectedSelectableInterpreters = withContext(Dispatchers.IO) { fileSystem.detectSelectableVenv(projectPathPrefix) }
+      detectedInterpretersUnfiltered.value = detectedSelectableInterpreters
     }
 
     this.allInterpreters = combine(
@@ -112,7 +140,7 @@ abstract class PythonAddInterpreterModel<P : PathHolder>(
     }.stateIn(scope, started = SharingStarted.Eagerly, initialValue = null)
 
     this.baseInterpreters = combine( // base pythons are always system only
-      detectedInterpreters.map { it?.sysPythonsOnly() },
+      detectedInterpretersUnfiltered.map { it?.sysPythonsOnly() },
       manuallyAddedInterpreters.sysPythonsOnly()
     ) { detected, manual ->
       val base = detected ?: return@combine null
@@ -128,9 +156,14 @@ abstract class PythonAddInterpreterModel<P : PathHolder>(
     state.selectedInterpreter.set(interpreter)
   }
 
-  internal suspend fun addManuallyAddedPythonNotNecessarilySystem(homePath: P) = addManuallyAddedInterpreter(homePath, requireSystemPython = false)
+  internal suspend fun addManuallyAddedPythonNotNecessarilySystem(homePath: P) =
+    addManuallyAddedInterpreter(homePath, requireSystemPython = false)
+
   internal suspend fun addManuallyAddedSystemPython(homePath: P) = addManuallyAddedInterpreter(homePath, requireSystemPython = true)
-  private suspend fun addManuallyAddedInterpreter(homePath: P, requireSystemPython: Boolean): PyResult<ManuallyAddedSelectableInterpreter<P>> {
+  private suspend fun addManuallyAddedInterpreter(
+    homePath: P,
+    requireSystemPython: Boolean,
+  ): PyResult<ManuallyAddedSelectableInterpreter<P>> {
     val python = homePath.let { fileSystem.getSystemPythonFromSelection(it, requireSystemPython) }.getOr { return it }
 
     val interpreter = ManuallyAddedSelectableInterpreter(homePath, python.pythonInfo, isBase = python.isBase).also {
@@ -143,16 +176,18 @@ abstract class PythonAddInterpreterModel<P : PathHolder>(
   @RequiresEdt
   internal fun addInstalledInterpreter(homePath: P, pythonInfo: PythonInfo): DetectedSelectableInterpreter<P> {
     val installedInterpreter = DetectedSelectableInterpreter(homePath, pythonInfo, true)
-    _detectedInterpreters.value = (_detectedInterpreters.value ?: emptyList()) + installedInterpreter
+    detectedInterpretersUnfiltered.value = (detectedInterpretersUnfiltered.value ?: emptyList()) + installedInterpreter
     return installedInterpreter
   }
 }
 
-abstract class PythonMutableTargetAddInterpreterModel<P : PathHolder>(projectPathFlows: ProjectPathFlows, fileSystem: FileSystem<P>) : PythonAddInterpreterModel<P>(projectPathFlows, fileSystem) {
+abstract class PythonMutableTargetAddInterpreterModel<P : PathHolder>(projectPathFlows: ProjectPathFlows, fileSystem: FileSystem<P>) :
+  PythonAddInterpreterModel<P>(projectPathFlows, fileSystem) {
   override val state: MutableTargetState<P> = MutableTargetState(propertyGraph)
 }
 
-class PythonLocalAddInterpreterModel<P : PathHolder>(projectPathFlows: ProjectPathFlows, fileSystem: FileSystem<P>) : PythonMutableTargetAddInterpreterModel<P>(projectPathFlows, fileSystem) {
+class PythonLocalAddInterpreterModel<P : PathHolder>(projectPathFlows: ProjectPathFlows, fileSystem: FileSystem<P>) :
+  PythonMutableTargetAddInterpreterModel<P>(projectPathFlows, fileSystem) {
   override fun initialize(scope: CoroutineScope) {
     super.initialize(scope)
 
@@ -277,7 +312,7 @@ internal val <P : PathHolder> PythonAddInterpreterModel<P>.existingSdks: List<Sd
 internal suspend fun PythonAddInterpreterModel<*>.getBasePath(module: Module?): Path = withContext(Dispatchers.IO) {
   val pyProjectTomlBased = module?.let { PyProjectToml.findFile(it)?.toNioPathOrNull()?.parent }
 
-  pyProjectTomlBased ?: module?.basePath?.let { Path.of(it) } ?: projectPathFlows.projectPathWithDefault.first()
+  pyProjectTomlBased ?: module?.baseDir?.path?.let { Path.of(it) } ?: projectPathFlows.projectPathWithDefault.first()
 }
 
 private fun <T : MaybeSystemPython> Flow<Iterable<T>>.sysPythonsOnly(): Flow<List<T>> = map { it.sysPythonsOnly() }

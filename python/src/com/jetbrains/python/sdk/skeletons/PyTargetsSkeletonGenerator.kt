@@ -18,6 +18,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.python.community.execService.impl.processLaunchers.uploadMeasureTime
 import com.jetbrains.python.PythonHelper
 import com.jetbrains.python.run.PythonInterpreterTargetEnvironmentFactory
 import com.jetbrains.python.run.buildTargetedCommandLine
@@ -33,8 +34,8 @@ import kotlin.io.path.div
 import kotlin.io.path.exists
 import kotlin.io.path.setPosixFilePermissions
 
-class PyTargetsSkeletonGenerator(skeletonPath: String, pySdk: Sdk, currentFolder: String?, project: Project?)
-  : PySkeletonGenerator(skeletonPath, pySdk, currentFolder) {
+class PyTargetsSkeletonGenerator(skeletonPath: String, pySdk: Sdk, currentFolder: String?, project: Project?) :
+  PySkeletonGenerator(skeletonPath, pySdk, currentFolder) {
   private val pyRequest: HelpersAwareTargetEnvironmentRequest = checkNotNull(
     // TODO Get rid of the dependency on the default project
     PythonInterpreterTargetEnvironmentFactory.findPythonTargetInterpreter(mySdk, project ?: ProjectManager.getInstance().defaultProject)
@@ -77,11 +78,6 @@ class PyTargetsSkeletonGenerator(skeletonPath: String, pySdk: Sdk, currentFolder
       targetEnvRequest.downloadVolumes += skeletonsDownloadRoot
       (targetEnvRequest as? VolumeCopyingRequest)?.shouldCopyVolumes = true
       generatorScriptExecution.addParameter(skeletonsDownloadRoot.getTargetDownloadPath())
-      if (myAssemblyRefs.isNotEmpty()) {
-        generatorScriptExecution.addParameter("-c")
-        // TODO [targets-api] these refs are paths or some strings?
-        generatorScriptExecution.addParameter(myAssemblyRefs.joinToString(separator = ";"))
-      }
       if (myExtraSysPath.isNotEmpty()) {
         generatorScriptExecution.addParameter("-s")
         // TODO [targets-api] are these paths come from target or from the local machine?
@@ -127,7 +123,7 @@ class PyTargetsSkeletonGenerator(skeletonPath: String, pySdk: Sdk, currentFolder
       try {
 
         // XXX Make it automatic
-        targetEnvironment.uploadVolumes.values.forEach { it.upload(".", TargetProgressIndicator.EMPTY) }
+        targetEnvironment.uploadVolumes.values.forEach { it.uploadMeasureTime(".", TargetProgressIndicator.EMPTY, "skeleton") }
 
         val targetedCommandLine = generatorScriptExecution.buildTargetedCommandLine(targetEnvironment, sdk, emptyList())
         val process = targetEnvironment.createProcess(targetedCommandLine, EmptyProgressIndicator())

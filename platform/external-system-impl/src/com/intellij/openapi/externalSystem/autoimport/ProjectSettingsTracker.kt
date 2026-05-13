@@ -2,7 +2,7 @@
 package com.intellij.openapi.externalSystem.autoimport
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.autoimport.AutoImportProjectTracker.Companion.isAsyncChangesProcessing
 import com.intellij.openapi.externalSystem.autoimport.ExternalSystemModificationType.EXTERNAL
@@ -28,6 +28,7 @@ import com.intellij.openapi.observable.operation.core.whenOperationStarted
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SimpleModificationTracker
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.util.io.FileUtilRt.toSystemIndependentName
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import kotlinx.serialization.Serializable
@@ -56,6 +57,7 @@ class ProjectSettingsTracker(
   private fun calculateSettingsFilesCRC(settingsFiles: Set<String>): Map<String, Long> {
     val localFileSystem = LocalFileSystem.getInstance()
     return settingsFiles
+      .asSequence()
       .mapNotNull { localFileSystem.findFileByPath(it) }
       .mapNotNull {
         val crc = calculateCrc(it)
@@ -201,9 +203,9 @@ class ProjectSettingsTracker(
       // Therefore, the operation stamp cannot be taken earlier than VFS refresh for the settings files.
       // @see the AsyncFileChangesListener#apply function for details
       val operationStamp = Stamp.nextStamp()
-      val newSettingsFilesCRC = runReadAction {
+      val newSettingsFilesCRC = ReadAction.nonBlocking<Map<String, Long>> {
         calculateSettingsFilesCRC(settingsPaths)
-      }
+      }.expireWith(parentDisposable).executeSynchronously()
       val settingsFilesStatus = updateSettingsFilesStatus(operationName, newSettingsFilesCRC, context.reloadStatus)
       updateProjectStatus(operationStamp, context.syncEvent, context.changeEvent, settingsFilesStatus)
       context.callback?.invoke()
@@ -237,7 +239,7 @@ class ProjectSettingsTracker(
 
   init {
     projectAware.subscribe(ProjectListener(), parentDisposable)
-    whenNewFilesCreated(settingsAsyncSupplier::invalidate, parentDisposable)
+    whenNewFilesCreated({ settingsAsyncSupplier.invalidate() }, parentDisposable)
     subscribeOnDocumentsAndVirtualFilesChanges(settingsAsyncSupplier, ProjectSettingsListener(), parentDisposable)
   }
 
@@ -358,7 +360,7 @@ class ProjectSettingsTracker(
 
     private fun getOrCollectSettingsFiles(): Set<String> {
       return settingsFilesCache.getOrCreateValueBlocking(modificationTracker.modificationCount) {
-        projectAware.settingsFiles
+        projectAware.settingsFiles.map { toSystemIndependentName(it) }.toSet()
       }
     }
 

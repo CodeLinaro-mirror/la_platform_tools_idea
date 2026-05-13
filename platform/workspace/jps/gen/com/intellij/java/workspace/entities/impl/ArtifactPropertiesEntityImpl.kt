@@ -4,7 +4,14 @@ package com.intellij.java.workspace.entities.impl
 import com.intellij.java.workspace.entities.ArtifactEntity
 import com.intellij.java.workspace.entities.ArtifactEntityBuilder
 import com.intellij.java.workspace.entities.ArtifactPropertiesEntity
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.ConnectionId
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.GeneratedCodeImplVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntity
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
+import com.intellij.platform.workspace.storage.WorkspaceEntityInternalApi
 import com.intellij.platform.workspace.storage.impl.EntityLink
 import com.intellij.platform.workspace.storage.impl.ModifiableWorkspaceEntityBase
 import com.intellij.platform.workspace.storage.impl.WorkspaceEntityBase
@@ -19,29 +26,23 @@ import com.intellij.platform.workspace.storage.metadata.model.EntityMetadata
 @GeneratedCodeApiVersion(3)
 @GeneratedCodeImplVersion(7)
 @OptIn(WorkspaceEntityInternalApi::class)
-internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactPropertiesEntityData) : ArtifactPropertiesEntity, WorkspaceEntityBase(
-  dataSource) {
+internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactPropertiesEntityData) : ArtifactPropertiesEntity,
+                                                                                                    WorkspaceEntityBase(dataSource) {
 
   private companion object {
-    internal val ARTIFACT_CONNECTION_ID: ConnectionId = ConnectionId.create(ArtifactEntity::class.java,
-                                                                            ArtifactPropertiesEntity::class.java,
-                                                                            ConnectionId.ConnectionType.ONE_TO_MANY, false)
-
-    private val connections = listOf<ConnectionId>(
-      ARTIFACT_CONNECTION_ID,
-    )
+    internal val ARTIFACT_CONNECTION_ID: ConnectionId =
+      ConnectionId.create(ArtifactEntity::class.java, ArtifactPropertiesEntity::class.java, ConnectionId.ConnectionType.ONE_TO_MANY, false)
+    private val connections = listOf<ConnectionId>(ARTIFACT_CONNECTION_ID)
 
   }
 
   override val artifact: ArtifactEntity
     get() = snapshot.extractOneToManyParent(ARTIFACT_CONNECTION_ID, this)!!
-
   override val providerType: String
     get() {
       readField("providerType")
       return dataSource.providerType
     }
-
   override val propertiesXmlTag: String?
     get() {
       readField("propertiesXmlTag")
@@ -59,8 +60,8 @@ internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactProp
   }
 
 
-  internal class Builder(result: ArtifactPropertiesEntityData?) : ModifiableWorkspaceEntityBase<ArtifactPropertiesEntity, ArtifactPropertiesEntityData>(
-    result), ArtifactPropertiesEntity.Builder {
+  internal class Builder(result: ArtifactPropertiesEntityData?) :
+    ModifiableWorkspaceEntityBase<ArtifactPropertiesEntity, ArtifactPropertiesEntityData>(result), ArtifactPropertiesEntity.Builder {
     internal constructor() : this(ArtifactPropertiesEntityData())
 
     override fun applyToBuilder(builder: MutableEntityStorage) {
@@ -73,15 +74,13 @@ internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactProp
           error("Entity ArtifactPropertiesEntity is already created in a different builder")
         }
       }
-
       this.diff = builder
       addToBuilder()
       this.id = getEntityData().createEntityId()
-      // After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
-      // Builder may switch to snapshot at any moment and lock entity data to modification
+// After adding entity data to the builder, we need to unbind it and move the control over entity data to builder
+// Builder may switch to snapshot at any moment and lock entity data to modification
       this.currentEntityData = null
-
-      // Process linked entities that are connected without a builder
+// Process linked entities that are connected without a builder
       processLinkedEntities(builder)
       checkInitialization() // TODO uncomment and check failed tests
     }
@@ -128,7 +127,6 @@ internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactProp
         changedProperty.add("entitySource")
 
       }
-
     override var artifact: ArtifactEntityBuilder
       get() {
         val _diff = diff
@@ -145,25 +143,24 @@ internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactProp
         checkModificationAllowed()
         val _diff = diff
         if (_diff != null && value is ModifiableWorkspaceEntityBase<*, *> && value.diff == null) {
-          // Setting backref of the list
+// Setting backref of the list
           if (value is ModifiableWorkspaceEntityBase<*, *>) {
             val data = (value.entityLinks[EntityLink(true, ARTIFACT_CONNECTION_ID)] as? List<Any> ?: emptyList()) + this
             value.entityLinks[EntityLink(true, ARTIFACT_CONNECTION_ID)] = data
           }
-          // else you're attaching a new entity to an existing entity that is not modifiable
+// else you're attaching a new entity to an existing entity that is not modifiable
           _diff.addEntity(value as ModifiableWorkspaceEntityBase<WorkspaceEntity, *>)
         }
         if (_diff != null && (value !is ModifiableWorkspaceEntityBase<*, *> || value.diff != null)) {
           _diff.updateOneToManyParentOfChild(ARTIFACT_CONNECTION_ID, this, value)
         }
         else {
-          // Setting backref of the list
+// Setting backref of the list
           if (value is ModifiableWorkspaceEntityBase<*, *>) {
             val data = (value.entityLinks[EntityLink(true, ARTIFACT_CONNECTION_ID)] as? List<Any> ?: emptyList()) + this
             value.entityLinks[EntityLink(true, ARTIFACT_CONNECTION_ID)] = data
           }
-          // else you're attaching a new entity to an existing entity that is not modifiable
-
+// else you're attaching a new entity to an existing entity that is not modifiable
           this.entityLinks[EntityLink(false, ARTIFACT_CONNECTION_ID)] = value
         }
         changedProperty.add("artifact")
@@ -176,7 +173,6 @@ internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactProp
         getEntityData(true).providerType = value
         changedProperty.add("providerType")
       }
-
     override var propertiesXmlTag: String?
       get() = getEntityData().propertiesXmlTag
       set(value) {
@@ -187,6 +183,7 @@ internal class ArtifactPropertiesEntityImpl(private val dataSource: ArtifactProp
 
     override fun getEntityClass(): Class<ArtifactPropertiesEntity> = ArtifactPropertiesEntity::class.java
   }
+
 }
 
 @OptIn(WorkspaceEntityInternalApi::class)
@@ -238,9 +235,7 @@ internal class ArtifactPropertiesEntityData : WorkspaceEntityData<ArtifactProper
   override fun equals(other: Any?): Boolean {
     if (other == null) return false
     if (this.javaClass != other.javaClass) return false
-
     other as ArtifactPropertiesEntityData
-
     if (this.entitySource != other.entitySource) return false
     if (this.providerType != other.providerType) return false
     if (this.propertiesXmlTag != other.propertiesXmlTag) return false
@@ -250,9 +245,7 @@ internal class ArtifactPropertiesEntityData : WorkspaceEntityData<ArtifactProper
   override fun equalsIgnoringEntitySource(other: Any?): Boolean {
     if (other == null) return false
     if (this.javaClass != other.javaClass) return false
-
     other as ArtifactPropertiesEntityData
-
     if (this.providerType != other.providerType) return false
     if (this.propertiesXmlTag != other.propertiesXmlTag) return false
     return true

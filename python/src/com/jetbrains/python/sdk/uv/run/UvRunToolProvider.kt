@@ -1,35 +1,31 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.sdk.uv.run
 
-import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.platform.eel.provider.localEel
 import com.jetbrains.python.PyBundle
 import com.jetbrains.python.run.features.PyRunToolData
 import com.jetbrains.python.run.features.PyRunToolId
 import com.jetbrains.python.run.features.PyRunToolParameters
-import com.jetbrains.python.run.features.PyRunToolProvider
+import com.jetbrains.python.run.features.PySdkRunToolProvider
+import com.jetbrains.python.sdk.add.v2.FileSystem
+import com.jetbrains.python.sdk.uv.UvSdkAdditionalData
 import com.jetbrains.python.sdk.uv.impl.getUvExecutable
-import com.jetbrains.python.sdk.uv.isUv
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * PyRunToolProvider implementation that runs scripts/modules using `uv run`.
  */
-private class UvRunToolProvider : PyRunToolProvider {
+internal class UvRunToolProvider : PySdkRunToolProvider<UvSdkAdditionalData>(UvSdkAdditionalData::class.java) {
 
-  override suspend fun getRunToolParameters(): PyRunToolParameters {
-    if (!runToolParameters.isCompleted) {
-      runToolParametersMutex.withLock {
-        if (!runToolParameters.isCompleted) {
-          runToolParameters.complete(
-            PyRunToolParameters(requireNotNull(getUvExecutable()?.toString()) { "Unable to find uv executable." }, listOf("run"))
-          )
-        }
-      }
+  override suspend fun getRunToolParameters(data: UvSdkAdditionalData): PyRunToolParameters {
+    val env = mutableMapOf<String, String>()
+    val flavorData = data.flavorData
+    val uvExecutable = getUvExecutable(FileSystem.Eel(localEel), flavorData.uvPath)?.toString()
+    // TODO PY-87712 Duplicated code for setting up uv envs
+    flavorData.venvPath?.let {
+      env += "VIRTUAL_ENV" to it
+      env += "UV_PROJECT_ENVIRONMENT" to it
     }
-
-    return runToolParameters.await()
+    return PyRunToolParameters(requireNotNull(uvExecutable) { "Unable to find uv executable." }, listOf("run"), env)
   }
 
   override val runToolData: PyRunToolData = PyRunToolData(
@@ -39,13 +35,4 @@ private class UvRunToolProvider : PyRunToolProvider {
   )
 
   override val initialToolState: Boolean = true
-
-  override fun isAvailable(sdk: Sdk): Boolean = sdk.isUv
-
-  /**
-   * We use runToolParameters only if a tool provider is available. So we need to have a lazy initialization here
-   * to construct these parameters iff the validation has passed.
-   */
-  private val runToolParameters = CompletableDeferred<PyRunToolParameters>()
-  private val runToolParametersMutex = Mutex()
 }

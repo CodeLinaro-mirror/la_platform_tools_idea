@@ -16,7 +16,12 @@ import com.intellij.openapi.util.registry.EarlyAccessRegistryManager
 import com.intellij.platform.diagnostic.telemetry.impl.span
 import com.intellij.ui.ExperimentalUI
 import com.intellij.util.ui.RawSwingDispatcher
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CancellationException
@@ -107,12 +112,6 @@ private suspend fun importConfig(
   appStarter: AppStarter,
   euaDocumentDeferred: Deferred<EndUserAgreementStatus>,
 ) {
-  span("screen reader checking") {
-    runCatching {
-      enableScreenReaderSupportIfNecessary()
-    }.getOrLogException(log)
-  }
-
   span("config importing") {
     appStarter.beforeImportConfigs()
 
@@ -125,6 +124,12 @@ private suspend fun importConfig(
     appStarter.importFinished(targetDirectoryToImportConfig)
     EarlyAccessRegistryManager.invalidate()
     IconLoader.clearCache()
+  }
+
+  span("screen reader checking") {
+    runCatching {
+      enableScreenReaderSupportIfNecessary()
+    }.getOrLogException(log)
   }
 }
 

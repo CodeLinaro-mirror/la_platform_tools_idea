@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.net
 
 import com.intellij.credentialStore.Credentials
@@ -6,7 +6,7 @@ import com.intellij.ide.IdeBundle
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.options.ConfigurableUi
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.Messages
@@ -26,25 +26,31 @@ import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.layout.and
 import com.intellij.ui.layout.not
 import com.intellij.ui.layout.selected
+import com.intellij.util.io.HttpRequests.HttpStatusException
 import com.intellij.util.net.OverrideCapableProxySettings.State
 import com.intellij.util.net.ProxyConfiguration.ProxyProtocol
-import com.intellij.util.proxy.CommonProxy
 import com.intellij.util.proxy.JavaProxyProperty
 import com.intellij.util.ui.JBUI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
 import java.net.MalformedURLException
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicReference
-import javax.swing.*
+import javax.swing.JButton
+import javax.swing.JCheckBox
+import javax.swing.JComponent
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.JPasswordField
+import javax.swing.JTextField
 import javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
 import javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS
 
 // TODO: shouldn't accept services, should instead accept UI model or some temporary mutable representation of the settings
-@Suppress("DEPRECATION")
 internal class ProxySettingsUi(
   proxySettings: ProxySettings,
   private val credentialStore: ProxyCredentialStore,
@@ -87,7 +93,7 @@ internal class ProxySettingsUi(
       row {
         systemProxyDefinedWarning = label(UIBundle.message("proxy.system.label")).applyToComponent {
           icon = Messages.getWarningIcon()
-          isVisible = java.lang.Boolean.getBoolean(JavaProxyProperty.USE_SYSTEM_PROXY)
+          isVisible = System.getProperty(JavaProxyProperty.USE_SYSTEM_PROXY).toBoolean()
         }.component
       }
       row {
@@ -109,7 +115,7 @@ internal class ProxySettingsUi(
               SystemProxySettings.getInstance().openProxySettings()
             }
             catch (e: Exception) {
-              logger<ProxySettingsUi>().error("failed to open system proxy settings", e)
+              thisLogger().error("failed to open system proxy settings", e)
             }
           }.applyToComponent {
             setExternalLinkIcon()
@@ -120,15 +126,14 @@ internal class ProxySettingsUi(
         indent {
           row {
             pacUrlCheckBox = checkBox(UIBundle.message("proxy.pac.url.label")).component
-            pacUrlTextField = textField().align(AlignX.FILL).comment(UIBundle.message("proxy.pac.url.example")).component
+            pacUrlTextField = textField().align(AlignX.FILL).comment(UIBundle.message("proxy.pac.url.example")).enabledIf(pacUrlCheckBox.selected).component
           }
           row {
-            @Suppress("DialogTitleCapitalization")
             clearPasswordsButton = button(UIBundle.message("proxy.pac.pw.clear.button")) {
               credentialStore.clearAllCredentials()
-              @Suppress("DialogTitleCapitalization")
-              Messages.showMessageDialog(getMainPanel(), IdeBundle.message("message.text.proxy.passwords.were.cleared"),
-                                         IdeBundle.message("dialog.title.auto.detected.proxy"), Messages.getInformationIcon())
+              Messages.showMessageDialog(
+                getMainPanel(), IdeBundle.message("message.text.proxy.passwords.were.cleared"), IdeBundle.message("dialog.title.auto.detected.proxy"), Messages.getInformationIcon()
+              )
             }.component
           }
         }.enabledIf(autoDetectProxyRb.selected and pluginOverrideCheckbox.selected.not())
@@ -197,7 +202,6 @@ internal class ProxySettingsUi(
         }.component
       }
       row {
-        @Suppress("DialogTitleCapitalization")
         checkButton = button(UIBundle.message("proxy.test.button")) {
           doCheckConnection()
         }.applyToComponent {
@@ -239,10 +243,15 @@ internal class ProxySettingsUi(
         try {
           val client = PlatformHttpClient.client()
           val request = PlatformHttpClient.requestBuilder(URI(url)).timeout(Duration.ofSeconds(3)).build()
-          PlatformHttpClient.checkResponse(client.send(request, HttpResponse.BodyHandlers.discarding()))
+          JdkProxyProvider.toggleProxyAuthNotification(suppress = true)
+          PlatformHttpClient.send(client, request, HttpResponse.BodyHandlers.discarding())
         }
         catch (e: Exception) {
           exceptionReference.set(e)
+          thisLogger().warn(e)
+        }
+        finally {
+          JdkProxyProvider.toggleProxyAuthNotification(suppress = false)
         }
       }
     }
@@ -251,7 +260,10 @@ internal class ProxySettingsUi(
       Messages.showMessageDialog(mainPanel, IdeBundle.message("message.connection.successful"), title, Messages.getInformationIcon())
     }
     else {
-      lastProxyError = IdeBundle.message("dialog.message.problem.with.connection", StringUtil.removeHtmlTags(exception.message.orEmpty()))
+      lastProxyError = when (exception) {
+        is HttpStatusException if exception.statusCode == HttpURLConnection.HTTP_PROXY_AUTH -> IdeBundle.message("proxy.settings.auth.failed")
+        else -> IdeBundle.message("proxy.settings.connection.problem", StringUtil.removeHtmlTags(exception.message.orEmpty()))
+      }
       Messages.showErrorDialog(mainPanel, lastProxyError, title)
     }
     reset(ProxySettings.getInstance())
@@ -372,7 +384,7 @@ internal class ProxySettingsUi(
       pluginOverrideCheckbox.isSelected = overrideProvider != null && settings.isOverrideEnabled
       if (overrideProvider != null) {
         val pluginName = settings.getProviderPluginName(overrideProvider) ?: "<unknown>".also {
-          logger<ProxySettingsUi>().error("couldn't find plugin descriptor for $overrideProvider")
+          thisLogger().error("couldn't find plugin descriptor for $overrideProvider")
         }
         pluginOverrideCheckbox.text = UIBundle.message("proxy.settings.override.by.plugin.checkbox", pluginName)
       }
@@ -385,7 +397,8 @@ internal class ProxySettingsUi(
     errorLabel.isVisible = lastProxyError.isNotEmpty()
     errorLabel.text = lastProxyError
 
-    val javaPropsMessage = CommonProxy.getMessageFromProps(CommonProxy.getOldStyleProperties())
+    @Suppress("DEPRECATION") val javaPropsMessage =
+      com.intellij.util.proxy.CommonProxy.getMessageFromProps(com.intellij.util.proxy.CommonProxy.getOldStyleProperties())
     javaPropertiesWarning.isVisible = !javaPropsMessage.isNullOrBlank()
     javaPropertiesWarning.text = javaPropsMessage
   }
@@ -408,10 +421,8 @@ internal class ProxySettingsUi(
     disabledPromptsManager.enableAllPromptedAuthentications()
     if (modified && JBCefApp.isStarted()) {
       JBCefApp.getNotificationGroup()
-        .createNotification(IdeBundle.message("notification.title.jcef.proxyChanged"),
-                            IdeBundle.message("notification.content.jcef.applySettings"), NotificationType.WARNING)
-        .addAction(
-          NotificationAction.createSimple(IdeBundle.message("action.jcef.restart")) { ApplicationManager.getApplication().restart() })
+        .createNotification(IdeBundle.message("notification.title.jcef.proxyChanged"), IdeBundle.message("notification.content.jcef.applySettings"), NotificationType.WARNING)
+        .addAction(NotificationAction.createSimple(IdeBundle.message("action.jcef.restart")) { ApplicationManager.getApplication().restart() })
         .notify(null)
     }
 
@@ -422,7 +433,7 @@ internal class ProxySettingsUi(
   override fun getComponent(): JComponent {
     mainPanel.setBorder(JBUI.Borders.empty(11, 16, 16, 16))
     val scrollPane = JBScrollPane(mainPanel, VERTICAL_SCROLLBAR_ALWAYS, HORIZONTAL_SCROLLBAR_NEVER)
-    scrollPane.setBorder(null)
+    scrollPane.setBorder(JBUI.Borders.empty())
     return scrollPane
   }
 }

@@ -4,16 +4,22 @@
 package com.intellij.java.workspace.entities
 
 import com.intellij.platform.workspace.jps.entities.ModuleId
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 
 @GeneratedCodeApiVersion(3)
-interface ModuleTestOutputPackagingElementEntityBuilder : WorkspaceEntityBuilder<ModuleTestOutputPackagingElementEntity>, PackagingElementEntity.Builder<ModuleTestOutputPackagingElementEntity> {
+interface ModuleTestOutputPackagingElementEntityBuilder : WorkspaceEntityBuilder<ModuleTestOutputPackagingElementEntity>,
+                                                          PackagingElementEntity.Builder<ModuleTestOutputPackagingElementEntity> {
   override var entitySource: EntitySource
   override var parentEntity: CompositePackagingElementEntityBuilder<out CompositePackagingElementEntity>?
   var module: ModuleId?
 }
 
-internal object ModuleTestOutputPackagingElementEntityType : EntityType<ModuleTestOutputPackagingElementEntity, ModuleTestOutputPackagingElementEntityBuilder>() {
+internal object ModuleTestOutputPackagingElementEntityType :
+  EntityType<ModuleTestOutputPackagingElementEntity, ModuleTestOutputPackagingElementEntityBuilder>() {
   override val entityClass: Class<ModuleTestOutputPackagingElementEntity> get() = ModuleTestOutputPackagingElementEntity::class.java
   operator fun invoke(
     entitySource: EntitySource,

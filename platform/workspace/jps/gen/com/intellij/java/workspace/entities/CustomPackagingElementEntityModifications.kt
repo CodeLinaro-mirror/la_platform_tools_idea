@@ -3,10 +3,15 @@
 
 package com.intellij.java.workspace.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 
 @GeneratedCodeApiVersion(3)
-interface CustomPackagingElementEntityBuilder : WorkspaceEntityBuilder<CustomPackagingElementEntity>, CompositePackagingElementEntity.Builder<CustomPackagingElementEntity> {
+interface CustomPackagingElementEntityBuilder : WorkspaceEntityBuilder<CustomPackagingElementEntity>,
+                                                CompositePackagingElementEntity.Builder<CustomPackagingElementEntity> {
   override var entitySource: EntitySource
   override var parentEntity: CompositePackagingElementEntityBuilder<out CompositePackagingElementEntity>?
   override var artifact: ArtifactEntityBuilder?

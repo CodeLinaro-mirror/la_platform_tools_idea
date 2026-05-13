@@ -47,6 +47,10 @@ public abstract class PyTypeVisitorExt<T> extends PyTypeVisitor<T> {
     return visitPyType(unsafeUnionType);
   }
 
+  public T visitPyIntersectionType(@NotNull PyIntersectionType intersectionType) {
+    return visitPyType(intersectionType);
+  }
+
   public T visitPyTypingNewType(@NotNull PyTypingNewType typingNewType) {
     return visitPyClassType(typingNewType);
   }
@@ -57,5 +61,9 @@ public abstract class PyTypeVisitorExt<T> extends PyTypeVisitor<T> {
 
   public T visitPyConcatenateType(@NotNull PyConcatenateType concatenateType) {
     return visitPyType(concatenateType);
+  }
+
+  public T visitPyOverloadType(@NotNull PyOverloadType overloadType) {
+    return visitPyType(overloadType);
   }
 }

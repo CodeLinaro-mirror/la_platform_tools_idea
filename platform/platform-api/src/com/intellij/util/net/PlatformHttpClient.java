@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.net;
 
 import com.intellij.diagnostic.LoadingState;
@@ -21,7 +21,11 @@ import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.*;
+import java.net.Authenticator;
+import java.net.CookieHandler;
+import java.net.HttpURLConnection;
+import java.net.ProxySelector;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
@@ -37,32 +41,37 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Flow;
 import java.util.zip.GZIPInputStream;
 
-/**
- * Collection of helpers for working with {@link HttpClient}.
- * <p>
- * Example:
- * <pre>
- *   var client = PlatformHttpClient.client();
- *   var request = PlatformHttpClient.request(uri);
- *   var response = PlatformHttpClient.checkResponse(client.send(request, HttpResponse.BodyHandlers.ofString()));
- *   var content = response.body();
- * </pre>
- * <p>
- * Notable differences with {@link HttpRequests}:
- * <ul>
- *   <li>No default read timeout. Clients should use {@link HttpClient#sendAsync} instead.</li>
- *   <li>No transparent GZIP handling. Clients should decode raw bytes with {@link GZIPInputStream} or use {@link #gzipStringBodyHandler}.</li>
- * </ul>
- *
- * @since 2025.2
- */
+import static java.util.Objects.requireNonNullElse;
+
+/// Collection of helpers for working with [HttpClient].
+///
+/// Example:
+///
+/// <pre>
+///   try (var client = PlatformHttpClient.client()) {
+///     var request = PlatformHttpClient.request(uri);
+///     var content = PlatformHttpClient.send(client, request, HttpResponse.BodyHandlers.ofString());
+///   }
+/// </pre>
+///
+/// Notable differences with [HttpRequests]:
+/// - No default read timeout. Clients should use [HttpClient#sendAsync] instead.
+/// - No transparent GZIP handling. Clients should decode raw bytes with [GZIPInputStream] or use [#gzipStringBodyHandler].
+///
+/// @since 2025.2
 @ApiStatus.Experimental
 public final class PlatformHttpClient {
   /**
    * Returns a preconfigured {@link HttpClient}. For more customization, use {@link #clientBuilder()}.
+   * The resulting client is expected to be eventually {@link HttpClient#close() closed}.
    */
   public static @NotNull HttpClient client() {
     return clientBuilder().build();
@@ -70,6 +79,7 @@ public final class PlatformHttpClient {
 
   /**
    * Returns a preconfigured {@link HttpClient.Builder}.
+   * The resulting client is expected to be eventually {@link HttpClient#close() closed}.
    */
   public static HttpClient.@NotNull Builder clientBuilder() {
     var builder = new DelegatingHttpClientBuilder()
@@ -79,7 +89,7 @@ public final class PlatformHttpClient {
     if (LoadingState.CONFIGURATION_STORE_INITIALIZED.isOccurred()) {
       var app = ApplicationManager.getApplication();
       if (app != null && !app.isDisposed()) {
-        CertificateManager certificateManager = app.getServiceIfCreated(CertificateManager.class);
+        var certificateManager = app.getServiceIfCreated(CertificateManager.class);
         if (certificateManager != null) {
           builder = builder.sslContext(certificateManager.getSslContext());
         }
@@ -117,9 +127,46 @@ public final class PlatformHttpClient {
     }
   }
 
-  /**
-   * Throws {@link HttpStatusException} if a response status code is not the {@code [200, 300)} range.
-   */
+  /// Throws [HttpStatusException] if a response status code is not in the `[200, 300)` range, and returns the response body.
+  ///
+  /// **Note:** It is important to use this method instead of [HttpClient#send], because it handles I/O exceptions from JRE internals
+  /// and detects proxy misconfiguration issues.
+  public static <T> T send(
+    @NotNull HttpClient client,
+    @NotNull HttpRequest request,
+    @NotNull HttpResponse.BodyHandler<T> bodyHandler
+  ) throws IOException, InterruptedException {
+    HttpResponse<T> response;
+    try {
+      response = client.send(request, bodyHandler);
+    }
+    catch (IOException e) {
+      var cause = e.getCause();
+      if (cause instanceof IOException && requireNonNullElse(e.getMessage(), "").contains("too many authentication attempts")) {
+        var stack = cause.getStackTrace();
+        if (
+          stack.length > 1 &&
+          "jdk.internal.net.http.AuthenticationFilter".equals(stack[0].getClassName()) &&
+          "response".equals(stack[0].getMethodName())
+        ) {
+          var proxy = IdeProxyAuthenticator.isProxied(request.uri());
+          if (proxy) {
+            JdkProxyProvider.showProxyAuthNotification();
+            var logger = Logger.getInstance(PlatformHttpClient.class);
+            if (logger.isDebugEnabled()) logger.debug("proxy auth failed for " + request.uri(), e);
+          }
+          var statusCode = proxy ? HttpURLConnection.HTTP_PROXY_AUTH : HttpURLConnection.HTTP_UNAUTHORIZED;
+          var message = IdeCoreBundle.message("error.connection.failed.status", statusCode);
+          throw new HttpStatusException(message, statusCode, request.uri().toString());
+        }
+      }
+      throw e;
+    }
+    return checkResponse(response).body();
+  }
+
+  /// @deprecated does not detect misconfigured proxy situations; use [#send] instead.
+  @Deprecated(forRemoval = true)
   public static <T> HttpResponse<T> checkResponse(@NotNull HttpResponse<T> response) throws HttpStatusException {
     var statusCode = response.statusCode();
     if (statusCode < 200 || statusCode >= 300) {
@@ -131,20 +178,16 @@ public final class PlatformHttpClient {
           new Exception()
         );
       }
-      throw new HttpStatusException(errorMessage(response), statusCode, response.uri().toString());
+      var message = (String)null;
+      if (response.statusCode() == HttpRequests.CUSTOM_ERROR_CODE) {
+        message = response.headers().firstValue("Error-Message").orElse(null);
+      }
+      if (message == null) {
+        message = IdeCoreBundle.message("error.connection.failed.status", response.statusCode());
+      }
+      throw new HttpStatusException(message, statusCode, response.uri().toString());
     }
     return response;
-  }
-
-  private static String errorMessage(HttpResponse<?> response) {
-    String message = null;
-    if (response.statusCode() == HttpRequests.CUSTOM_ERROR_CODE) {
-      message = response.headers().firstValue("Error-Message").orElse(null);
-    }
-    if (message == null) {
-      message = IdeCoreBundle.message("error.connection.failed.status", response.statusCode());
-    }
-    return message;
   }
 
   public static HttpResponse.BodyHandler<String> gzipStringBodyHandler() {
@@ -196,7 +239,7 @@ public final class PlatformHttpClient {
 
   private static Charset findCharset(HttpHeaders headers) {
     return headers.firstValue("Content-Type").map(v -> {
-      int p = v.indexOf("charset=");
+      var p = v.indexOf("charset=");
       if (p > 0) {
         try {
           return Charset.forName(v.substring(p + 8).trim());
@@ -367,7 +410,7 @@ public final class PlatformHttpClient {
         var result = new CompletableFuture<HttpResponse<T>>();
         delegate.executor().orElseGet(() -> ExecutorsKt.asExecutor(Dispatchers.getIO())).execute(() -> {
           try {
-            var data = Files.readAllBytes(Path.of(request.uri()));
+            @SuppressWarnings("UseOptimizedEelFunctions") var data = Files.readAllBytes(Path.of(request.uri()));
             completeResult(responseHandler, fhr, data, result);
           }
           catch (NoSuchFileException e) {

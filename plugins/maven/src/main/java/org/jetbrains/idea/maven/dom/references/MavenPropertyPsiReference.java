@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.dom.references;
 
 import com.intellij.codeInsight.lookup.LookupElement;
@@ -17,7 +17,12 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
-import com.intellij.psi.*;
+import com.intellij.psi.ElementManipulators;
+import com.intellij.psi.PsiDirectory;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiFileFactory;
+import com.intellij.psi.PsiManager;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlDocument;
 import com.intellij.psi.xml.XmlFile;
@@ -56,8 +61,12 @@ import org.jetbrains.idea.maven.project.MavenSettingsCache;
 import org.jetbrains.idea.maven.utils.MavenUtil;
 import org.jetbrains.idea.maven.vfs.MavenPropertiesVirtualFileSystem;
 
-import javax.swing.*;
-import java.util.*;
+import javax.swing.Icon;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import static icons.OpenapiIcons.RepositoryLibraryLogo;
 import static org.jetbrains.idea.maven.dom.MavenDomUtil.isAtLeastMaven4;
@@ -583,7 +592,7 @@ public class MavenPropertyPsiReference extends MavenPsiReference implements Loca
   private @NotNull String getSchemaUrl() {
     if (isAtLeastMaven4(myVirtualFile, myProject)
         && myProjectDom != null
-        && MODEL_VERSION_4_1_0.equals(myProjectDom.getModelVersion().getValue())
+        && MODEL_VERSION_4_1_0.equals(myProjectDom.getEffectiveModelVersion())
     ) {
       return MavenSchemaProvider.MAVEN_PROJECT_SCHEMA_4_1_URL;
     }

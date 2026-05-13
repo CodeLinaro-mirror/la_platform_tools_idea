@@ -1,12 +1,9 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.gradle.statistics.v2.flow
 
-import com.intellij.internal.statistic.eventLog.events.AnonymizedListEventField
 import com.intellij.internal.statistic.eventLog.events.EventField
 import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.internal.statistic.eventLog.events.EventPair
-import com.intellij.internal.statistic.eventLog.events.StringEventField
-import kotlin.String
 
 /**
  * Base class for all Kotlin build tool Feature Usage Statistics (FUS) metrics.
@@ -151,17 +148,33 @@ internal open class RegexStringFusMetric(metric: String, regex: String, aggregat
 /**
  * String FUS metric that concatenates all values from a list of allowed values.
  * The final value will be a semicolon-separated string of all valid values.
- * 
+ *
+ * Use [JoinedListValuesStringFusMetric] instead. Global regexp could be updated without changing the codebase.
+ *
  * @param metric The name of the metric
  * @param allowedValues The list of allowed values for validation
  */
-internal class ConcatenatedAllowedListValuesStringFusMetric(metric: String, allowedValues: List<String>) :
+class ConcatenatedAllowedListValuesStringFusMetric(metric: String, allowedValues: List<String>) :
     KotlinBuildToolFusMetric<String>(
         metric,
         eventField = EventFields.StringValidatedByInlineRegexp(metric.lowercase(), allowedValues.joinToString(prefix = "((", postfix = ");?)+", separator = "|"),
         ) as EventField<String>,
         validationStep = KotlinBuildToolStringAllowedValuesFlowValidationStep(allowedValues),
         aggregationStep = ConcatenateValuesAggregationStep(";")
+    )
+
+/**
+ * String FUS metric that concatenates all values.
+ * Global enum #kbt_$metric should be registered in the FUS backend.
+ *
+ * @param metric The name of the metric
+ */
+class JoinedListValuesStringFusMetric(metric: String, enumRef: String = "kbt_${metric.lowercase()}") :
+    KotlinBuildToolFusMetric<List<String>>(
+        metric,
+        eventField = EventFields.StringListValidatedByEnum(metric.lowercase(),enumRef) as EventField<List<String>>,
+        validationStep = KotlinBuildToolListFlowValidationStep(),
+        aggregationStep = JoinListAggregationStep
     )
 
 /**

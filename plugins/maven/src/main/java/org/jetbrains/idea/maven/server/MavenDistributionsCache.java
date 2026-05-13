@@ -1,4 +1,4 @@
-// Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.server;
 
 import com.intellij.ide.plugins.PluginManager;
@@ -19,7 +19,15 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.maven.execution.MavenExternalParameters;
 import org.jetbrains.idea.maven.execution.SyncBundle;
-import org.jetbrains.idea.maven.project.*;
+import org.jetbrains.idea.maven.project.BundledMaven;
+import org.jetbrains.idea.maven.project.BundledMaven3;
+import org.jetbrains.idea.maven.project.MavenHomeType;
+import org.jetbrains.idea.maven.project.MavenInSpecificPath;
+import org.jetbrains.idea.maven.project.MavenProject;
+import org.jetbrains.idea.maven.project.MavenProjectsManager;
+import org.jetbrains.idea.maven.project.MavenWorkspaceSettings;
+import org.jetbrains.idea.maven.project.MavenWorkspaceSettingsComponent;
+import org.jetbrains.idea.maven.project.MavenWrapper;
 import org.jetbrains.idea.maven.utils.MavenUtil;
 import org.jetbrains.intellij.build.dependencies.BuildDependenciesCommunityRoot;
 import org.jetbrains.intellij.build.impl.BundledMavenDownloader;
@@ -29,7 +37,10 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import static org.jetbrains.idea.maven.utils.MavenUtil.*;
+import static org.jetbrains.idea.maven.server.MavenWrapperSupport.extractVersionFromDistributionUrl;
+import static org.jetbrains.idea.maven.utils.MavenUtil.extractMvnFromDaemon;
+import static org.jetbrains.idea.maven.utils.MavenUtil.isValidMavenDaemon;
+import static org.jetbrains.idea.maven.utils.MavenUtil.isValidMavenHome;
 
 @Service(Service.Level.PROJECT)
 public final class MavenDistributionsCache {
@@ -108,6 +119,29 @@ public final class MavenDistributionsCache {
     return myVmSettingsMap.computeIfAbsent(multiModuleDir, MavenExternalParameters::readJvmConfigOptions);
   }
 
+  public @Nullable String getMavenVersion(@Nullable VirtualFile file) {
+    if (!useWrapper() || file == null) {
+      return mySettingsDistribution.getValue().getVersion();
+    }
+
+    VirtualFile workingDirectory = file.isDirectory() ? file : file.getParent();
+    String workingDirectoryString = workingDirectory == null ? null : workingDirectory.getPath();
+    if (workingDirectoryString == null) {
+      return mySettingsDistribution.getValue().getVersion();
+    }
+
+    String multiModuleDir = myWorkingDirToMultiModuleMap.computeIfAbsent(workingDirectoryString, this::resolveMultiModuleDirectory);
+    String distributionUrl = getWrapperDistributionUrl(multiModuleDir);
+
+    if (distributionUrl != null) {
+      String version = extractVersionFromDistributionUrl(distributionUrl);
+      if (version != null) return version;
+    }
+
+    return myMultimoduleDirToWrapperedMavenDistributionsMap
+      .computeIfAbsent(multiModuleDir, __ -> resolveEmbeddedMavenHome())
+      .getVersion();
+  }
 
   public @NotNull MavenDistribution getMavenDistribution(@Nullable VirtualFile file) {
     if (!useWrapper() || file == null) {

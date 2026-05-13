@@ -22,7 +22,11 @@ import com.intellij.psi.PsiElementVisitor;
 import com.jetbrains.python.PyNames;
 import com.jetbrains.python.PyPsiBundle;
 import com.jetbrains.python.inspections.quickfix.PyRemoveCallQuickFix;
-import com.jetbrains.python.psi.*;
+import com.jetbrains.python.psi.PyCallExpression;
+import com.jetbrains.python.psi.PyDecorator;
+import com.jetbrains.python.psi.PyElement;
+import com.jetbrains.python.psi.PyExpression;
+import com.jetbrains.python.psi.PyQualifiedExpression;
 import com.jetbrains.python.psi.types.PyClassType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.PyTypeChecker;
@@ -37,7 +41,10 @@ public final class PyCallingNonCallableInspection extends PyInspection {
   public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder,
                                                  boolean isOnTheFly,
                                                  @NotNull LocalInspectionToolSession session) {
-    return new Visitor(holder, PyInspectionVisitor.getContext(session));
+    var context = PyInspectionVisitor.getContext(session);
+    var visitor = new Visitor(holder, PyInspectionVisitor.getContext(session));
+    visitor.downgradeHighlightForTypeEngine = context.getTypeEngine() != null;
+    return visitor;
   }
 
   public static class Visitor extends PyInspectionVisitor {

@@ -20,7 +20,13 @@ import com.intellij.ui.tabs.impl.themes.TabTheme
 import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import java.awt.*
+import java.awt.Color
+import java.awt.Component
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.Point
+import java.awt.Rectangle
+import javax.swing.JComponent
 import kotlin.math.floor
 
 internal class IslandsTabPainterAdapter(isDefault: Boolean, debugger: Boolean, var isEnabled: Boolean) : TabPainterAdapter {
@@ -51,7 +57,7 @@ internal class IslandsTabPainterAdapter(isDefault: Boolean, debugger: Boolean, v
     try {
       GraphicsUtil.setupAAPainting(g2)
 
-      tabs.setFirstTabOffset(JBUI.scale(3))
+      tabs.setFirstTabOffset(IslandsTabPainter.firstTabOffset)
       (tabPainter as IslandsTabPainter).paintTab(g2, tabs.tabsPosition, rect, info.tabColor, active, hovered, selected)
     }
     finally {
@@ -162,7 +168,7 @@ internal open class IslandsTabPainter(isDefault: Boolean, isToolWindow: Boolean)
     val compactMode = UISettings.getInstance().compactMode
 
     val hOffset = JBUIScale.scale(getHOffsetUnscaled(compactMode, position).toFloat()).toDouble()
-    val minVOffset = JBUIScale.scale(if (compactMode) 4f else 8f).toDouble()
+    val minVOffset = JBUIScale.scale(if (compactMode) 4f else (if (position.isSide) 6f else 8f)).toDouble()
 
     val fullHeight = JBUIScale.scale(if (compactMode) 24f else 28f).toDouble()
     val vOffset = (rect.height - fullHeight).coerceAtLeast(minVOffset)
@@ -186,11 +192,27 @@ internal open class IslandsTabPainter(isDefault: Boolean, isToolWindow: Boolean)
     RectanglePainter2D.DRAW.paint(g, x, y, width, height, arc)
   }
 
-  private fun getHOffsetUnscaled(compactMode: Boolean, position: JBTabsPosition): Int {
-    return  when (position.isSide) {
-        true -> 6
-        false -> if (compactMode) 2 else 4
-      }
+  /**
+   * Calculates the composed background color for editor tabs. The resulting color is not transparent,
+   * see [paintTab] for details.
+   */
+  fun getEditorTabComposedBgColor(
+    component: JComponent,
+    tabColor: Color?,
+    active: Boolean,
+    hovered: Boolean,
+    selected: Boolean,
+  ): Color {
+    var result = if (myFillBackground) getBackgroundColor() else UIUtil.getBgFillColor(component)
+
+    if (tabColor != null) {
+      result = ColorUtil.alphaBlending(ColorUtil.withAlpha(tabColor, 0.9), result)
+    }
+
+    val (fill, _) = getColors(active, hovered, selected)
+    result = ColorUtil.alphaBlending(fill, result)
+
+    return result
   }
 
   private val hoverBackground = JBColor("EditorTabs.hoverBackground", JBColor(Color(0xE5, 0xEE, 0xFF, 0x80), Color(0x34, 0x3E, 0x51, 0x80)))
@@ -223,5 +245,16 @@ internal open class IslandsTabPainter(isDefault: Boolean, isToolWindow: Boolean)
       return hoveredColors
     }
     return regularColors
+  }
+
+  internal companion object {
+    internal fun getHOffsetUnscaled(compactMode: Boolean, position: JBTabsPosition): Int {
+      return when (position.isSide) {
+        true -> 6
+        false -> if (compactMode) 2 else 4
+      }
+    }
+
+    internal val firstTabOffset = JBUI.scale(3)
   }
 }

@@ -33,6 +33,8 @@ jvm_library(
     "//platform/lang-api:lang",
     "//platform/eel",
     "//platform/eel-provider",
+    "//platform/execution",
+    "//platform/platform-impl/eel:ide-impl-wsl",
   ]
 )
 ### auto-generated section `build intellij.terminal.backend` end

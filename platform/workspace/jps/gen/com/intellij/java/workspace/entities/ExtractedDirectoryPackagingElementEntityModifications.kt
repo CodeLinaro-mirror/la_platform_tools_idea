@@ -3,18 +3,24 @@
 
 package com.intellij.java.workspace.entities
 
-import com.intellij.platform.workspace.storage.*
+import com.intellij.platform.workspace.storage.EntitySource
+import com.intellij.platform.workspace.storage.EntityType
+import com.intellij.platform.workspace.storage.GeneratedCodeApiVersion
+import com.intellij.platform.workspace.storage.MutableEntityStorage
+import com.intellij.platform.workspace.storage.WorkspaceEntityBuilder
 import com.intellij.platform.workspace.storage.url.VirtualFileUrl
 
 @GeneratedCodeApiVersion(3)
-interface ExtractedDirectoryPackagingElementEntityBuilder : WorkspaceEntityBuilder<ExtractedDirectoryPackagingElementEntity>, FileOrDirectoryPackagingElementEntity.Builder<ExtractedDirectoryPackagingElementEntity> {
+interface ExtractedDirectoryPackagingElementEntityBuilder : WorkspaceEntityBuilder<ExtractedDirectoryPackagingElementEntity>,
+                                                            FileOrDirectoryPackagingElementEntity.Builder<ExtractedDirectoryPackagingElementEntity> {
   override var entitySource: EntitySource
   override var parentEntity: CompositePackagingElementEntityBuilder<out CompositePackagingElementEntity>?
   override var filePath: VirtualFileUrl
   var pathInArchive: String
 }
 
-internal object ExtractedDirectoryPackagingElementEntityType : EntityType<ExtractedDirectoryPackagingElementEntity, ExtractedDirectoryPackagingElementEntityBuilder>() {
+internal object ExtractedDirectoryPackagingElementEntityType :
+  EntityType<ExtractedDirectoryPackagingElementEntity, ExtractedDirectoryPackagingElementEntityBuilder>() {
   override val entityClass: Class<ExtractedDirectoryPackagingElementEntity> get() = ExtractedDirectoryPackagingElementEntity::class.java
   operator fun invoke(
     filePath: VirtualFileUrl,

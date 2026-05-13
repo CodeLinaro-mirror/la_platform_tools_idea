@@ -21,21 +21,32 @@ import com.intellij.openapi.vfs.NonPhysicalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileFilter;
 import com.intellij.openapi.wm.ex.ProgressIndicatorEx;
-import com.intellij.psi.*;
+import com.intellij.pom.core.impl.PomModelImpl;
+import com.intellij.psi.FileViewProvider;
+import com.intellij.psi.PsiDirectory;
+import com.intellij.psi.PsiDirectoryContainer;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiFileSystemItem;
+import com.intellij.psi.PsiTreeChangeListener;
 import com.intellij.psi.impl.file.impl.FileManager;
 import com.intellij.psi.impl.file.impl.FileManagerEx;
 import com.intellij.psi.impl.file.impl.FileManagerImpl;
+import com.intellij.psi.impl.source.resolve.FileContextUtil;
 import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.serviceContainer.NonInjectable;
 import com.intellij.util.concurrency.ThreadingAssertions;
-import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.concurrency.TransferredWriteActionService;
 import com.intellij.util.concurrency.annotations.RequiresReadLock;
 import com.intellij.util.concurrency.annotations.RequiresWriteLock;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.messages.Topic;
 import com.intellij.util.ui.EDT;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.util.Arrays;
 import java.util.List;
@@ -115,7 +126,7 @@ public final class PsiManagerImpl extends PsiManagerEx implements Disposable {
       LOG.error("PsiManager#dropPsiCaches must be called in EDT or in write action");
     }
     dropResolveCaches();
-    ApplicationManager.getApplication().runWriteAction(myFileManager::firePropertyChangedForUnloadedPsi);
+    ApplicationManager.getApplication().runWriteAction(() -> myFileManager.firePropertyChangedForUnloadedPsi());
   }
 
   @Override
@@ -414,8 +425,8 @@ public final class PsiManagerImpl extends PsiManagerEx implements Disposable {
                                && event.getCode() != PsiTreeChangeEventImpl.PsiEventType.BEFORE_PROPERTY_CHANGE;
 
     PsiFile file = event.getFile();
-    if (file == null || file.isPhysical()) {
-      ApplicationManager.getApplication().assertWriteAccessAllowed();
+    if (file == null || PomModelImpl.shouldFirePhysicalPsiEvents(file)) {
+      ThreadingAssertions.assertWriteAccess();
     }
     if (isRealTreeChange) {
       LOG.assertTrue(!myTreeChangeEventIsFiring, "Changes to PSI are not allowed inside event processing");
